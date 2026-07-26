@@ -12,11 +12,11 @@ import {
     createDefaultMeleeStrategyConfiguration,
     hasMeleeStrategyActions,
     moveLogicColumnPriority,
+    setLogicColumnPriority,
     createExpressionCondition,
     createLogicCluster,
     createLogicBlock,
     normalizeMeleeStrategyConfiguration,
-    radialVelocityTowardPlayer,
     resolveMeleeStrategyTarget,
     selectMeleeStrategyActionPlan,
     selectMeleeStrategyBlock,
@@ -27,12 +27,42 @@ import {
 } from "./BotBrain.js";
 import { buildStatePayload } from "../beta/modelPayloads/strategyStatePayload.js";
 import { buildDeterministicLogicAction } from "./ArenaActionPlanner.js";
-import { getTutorialScenario } from "../tutorial/TutorialPresets.js";
+import { getTutorialScenario, TUTORIAL_STEP_COUNT, validateCustomVariablesLesson, validateSearchNodesLesson } from "../tutorial/TutorialPresets.js";
 
 test("opponent condition and variable labels contain only one ordinal", () => {
     for (const definition of [...CONDITION_DEFINITIONS, ...STATE_VARIABLES]) {
         assert.doesNotMatch(definition.label, /Opponent 1 1\b/, definition.id);
     }
+});
+
+test("search-nodes tutorial starts shuffled and validates the completed brain", () => {
+    const scenario = getTutorialScenario(8);
+    assert.equal(TUTORIAL_STEP_COUNT, 11);
+    assert.equal(scenario.emptyBrain.columns.length, 20);
+    assert.deepEqual(
+        scenario.emptyBrain.columns.map((column) => column.name),
+        ["Node A", "Node E", "Node C", "Node D", "Node H", "Node F", "Node G", "Node K", "Node I", "Node J", "Node N", "Node L", "Node M", "Node B", "Node O", "Node P", "Node Q", "Node R", "Node S", "Node T"],
+    );
+    assert.equal(validateSearchNodesLesson(scenario.emptyBrain), false);
+    assert.equal(validateSearchNodesLesson(scenario.solution), true);
+
+    const wrongDirection = structuredClone(scenario.solution);
+    wrongDirection.columns.find((column) => column.id === "lesson-search-node-q").branches[0].actions[0].movementDirection = "away";
+    assert.equal(validateSearchNodesLesson(wrongDirection), false);
+});
+
+test("custom-variables tutorial requires reusable boolean logic and integer history", () => {
+    const scenario = getTutorialScenario(7);
+    assert.equal(validateCustomVariablesLesson(scenario.emptyBrain), false);
+    assert.equal(validateCustomVariablesLesson(scenario.solution), true);
+
+    const missingAbilityUse = structuredClone(scenario.solution);
+    missingAbilityUse.columns = missingAbilityUse.columns.filter((column) => !column.id.endsWith("rail_shot"));
+    assert.equal(validateCustomVariablesLesson(missingAbilityUse), false);
+
+    const missingHitMemory = structuredClone(scenario.solution);
+    missingHitMemory.columns = missingHitMemory.columns.filter((column) => column.id !== "lesson-variables-count");
+    assert.equal(validateCustomVariablesLesson(missingHitMemory), false);
 });
 
 test("expression condition factory preserves a supplied custom variable definition", () => {
@@ -94,6 +124,30 @@ function payload(overrides = {}) {
     };
 }
 
+function selectedAbilityCondition(ability, {
+    owner = "my",
+    field = "Ready",
+    comparator = "eq",
+    value = true,
+    join,
+} = {}) {
+    return {
+        type: "expression",
+        left: `${owner}.selectedAbility${field}`,
+        ability,
+        comparator,
+        right: { type: typeof value === "boolean" ? "boolean" : "number", value },
+        ...(join ? { join } : {}),
+    };
+}
+
+function selectedAbilityBlock(ability, action, options) {
+    return {
+        ...createLogicBlock("always", action),
+        conditions: [selectedAbilityCondition(ability, options)],
+    };
+}
+
 test("Bot Room resolves Opponent 1 by fighter id for Walk, Dash, and Micro Dash", () => {
     const state = buildStatePayload([
         { id: "main", type: "circle", slot: 1, x: 400, y: 400, rotation: 0, hp: 100, size: 60, abilities: ["dash", "micro_dash"], dashCooldownMs: 0, dashActiveMs: 0, abilityCooldowns: { micro_dash: 0 } },
@@ -132,8 +186,8 @@ test("target-relative Away uses opposite facing when fighters occupy the same po
             actions: [{ action: "move_walk", movementMode: "target", movementDirection: "away", actionTarget: "opponent" }],
         }],
     }, {
-        playerModel: { id: "main", x: 500, y: 500, rotation: 90, hp: 20, abilities: [] },
-        objects: [{ id: "opponent-model", type: "opponentModel", x: 500, y: 500, rotation: 270, hp: 1000, abilities: [] }],
+        playerModel: { id: "main", x: 500, y: 500, rotation: 180, hp: 20, abilities: [] },
+        objects: [{ id: "opponent-model", type: "opponentModel", x: 500, y: 500, rotation: 0, hp: 1000, abilities: [] }],
     });
 
     assert.ok(Math.abs(action.dx) < 0.001);
@@ -143,8 +197,8 @@ test("target-relative Away uses opposite facing when fighters occupy the same po
 test("step seven solution stops approaching inside Sword Swing range", () => {
     const configuration = getTutorialScenario(6).solution;
     const action = buildDeterministicLogicAction(configuration, {
-        playerModel: { id: "main", x: 500, y: 480, rotation: 90, hp: 100, abilities: ["swing"], swingAvailable: true },
-        objects: [{ id: "opponent-model", type: "opponentModel", x: 500, y: 560, rotation: 270, hp: 1000, abilities: ["swing"] }],
+        playerModel: { id: "main", x: 500, y: 480, rotation: 180, hp: 100, abilities: ["swing"], swingAvailable: true },
+        objects: [{ id: "opponent-model", type: "opponentModel", x: 500, y: 560, rotation: 0, hp: 1000, abilities: ["swing"] }],
     });
 
     assert.equal(action.dx, 0);
@@ -155,13 +209,13 @@ test("step seven solution stops approaching inside Sword Swing range", () => {
 test("normalizes deterministic logic blocks without training knobs", () => {
     const configuration = normalizeMeleeStrategyConfiguration({
         epochLimit: 999,
-        blocks: [{ conditions: [{ type: "my_hp_lt", value: 999 }], action: "move_outward", sampleCount: 99999 }],
+        blocks: [{ conditions: [{ type: "expression", left: "my.hp", comparator: "lt", right: { type: "number", value: 999 } }], action: "move_outward", sampleCount: 99999 }],
     });
 
     assert.equal(configuration.version, "melee-logic-tree-v1");
     assert.equal(configuration.epochLimit, undefined);
     assert.equal(configuration.blocks[0].sampleCount, undefined);
-    assert.equal(configuration.blocks[0].conditions[0].value, 100);
+    assert.equal(configuration.blocks[0].conditions[0].right.value, 100);
 });
 
 test("default strategy starts empty and requires at least one non-veto action", () => {
@@ -173,32 +227,31 @@ test("default strategy starts empty and requires at least one non-veto action", 
     assert.ok(validateMeleeStrategyConfiguration(onlyVeto).errors.some((error) => error.includes("bot brain action")));
 });
 
-test("validation catches contradictory and impossible conditions", () => {
-    const contradictory = {
-        blocks: [{
-            ...createLogicBlock("my_swing_ready", "swing"),
-            conditions: [{ type: "my_swing_ready" }, { type: "my_swing_cooldown" }],
-        }],
-    };
-    assert.ok(validateMeleeStrategyConfiguration(contradictory).errors.some((error) => error.includes("contradictory")));
-
-    const impossible = {
-        blocks: [{
-            ...createLogicBlock("enemy_hp_gt", "swing"),
-            conditions: [{ type: "enemy_hp_gt", value: 80 }, { type: "enemy_hp_lt", value: 40 }],
-        }],
-    };
-    assert.ok(validateMeleeStrategyConfiguration(impossible).errors.some((error) => error.includes("opponent HP")));
+test("legacy direct and fixed-ability conditionals are absent from the frontend contract", () => {
+    assert.deepEqual(CONDITION_DEFINITIONS.map(({ id }) => id), ["always"]);
+    const variableIds = new Set(STATE_VARIABLES.map(({ id }) => id));
+    for (const id of ["my.swingReady", "my.shieldUp", "my.dashCooldownMs", "my.gunAmmo", "opponent.blockReady", "opponent.fireballCharges"]) {
+        assert.equal(variableIds.has(id), false);
+    }
+    const normalized = normalizeMeleeStrategyConfiguration({
+        blocks: [{ action: "swing", conditions: [{ type: "my_swing_ready" }] }],
+    });
+    assert.deepEqual(normalized.blocks[0].conditions[0], {
+        type: "expression",
+        left: "match.elapsedSeconds",
+        comparator: "lt",
+        right: { type: "number", value: 0 },
+    });
 });
 
 test("first matching non-veto block is the selected priority action", () => {
     const closeRetreat = {
         ...createLogicBlock("enemy_distance_lt", "move_outward"),
-        conditions: [{ type: "enemy_distance_lt", value: 250 }],
+        conditions: [{ type: "expression", left: "target.distance", comparator: "lt", right: { type: "number", value: 250 } }],
     };
     const alwaysEngage = {
         ...createLogicBlock("enemy_distance_gt", "move_inward"),
-        conditions: [{ type: "enemy_distance_gt", value: 10 }],
+        conditions: [{ type: "expression", left: "target.distance", comparator: "gt", right: { type: "number", value: 10 } }],
     };
 
     const selected = selectMeleeStrategyBlock({ blocks: [closeRetreat, alwaysEngage] }, payload());
@@ -272,12 +325,12 @@ test("lower priority numbers beat higher priority numbers", () => {
     const highPriorityRetreat = {
         ...createLogicBlock("enemy_distance_gt", "move_outward"),
         priority: 1,
-        conditions: [{ type: "enemy_distance_gt", value: 10 }],
+        conditions: [{ type: "expression", left: "target.distance", comparator: "gt", right: { type: "number", value: 10 } }],
     };
     const lowerPriorityEngage = {
         ...createLogicBlock("enemy_distance_gt", "move_inward"),
         priority: 5,
-        conditions: [{ type: "enemy_distance_gt", value: 10 }],
+        conditions: [{ type: "expression", left: "target.distance", comparator: "gt", right: { type: "number", value: 10 } }],
     };
 
     const selected = selectMeleeStrategyBlock({ blocks: [lowerPriorityEngage, highPriorityRetreat] }, payload());
@@ -299,6 +352,18 @@ test("brain-node priority controls reorder root columns and execution order", ()
     assert.deepEqual(reordered.map((column) => column.id), ["concussive", "fireball"]);
     assert.deepEqual(reordered.map((column) => column.createdOrder), [0, 1]);
     assert.equal(selectMeleeStrategyActionPlan({ version: "melee-logic-tree-v1", columns: reordered }, state).ability.action, "concussive_shot");
+});
+
+test("setting a brain-node priority inserts it at that position and shifts displaced nodes", () => {
+    const columns = ["one", "two", "three", "four", "five"].map((id, createdOrder) => ({ id, createdOrder }));
+
+    const movedHigher = setLogicColumnPriority(columns, 4, 3);
+    assert.deepEqual(movedHigher.map((column) => column.id), ["one", "two", "five", "three", "four"]);
+    assert.deepEqual(movedHigher.map((column) => column.createdOrder), [0, 1, 2, 3, 4]);
+
+    const movedLower = setLogicColumnPriority(columns, 1, 4);
+    assert.deepEqual(movedLower.map((column) => column.id), ["one", "three", "four", "two", "five"]);
+    assert.deepEqual(movedLower.map((column) => column.createdOrder), [0, 1, 2, 3, 4]);
 });
 
 test("an unavailable higher-priority ability falls through without losing the ability head", () => {
@@ -332,12 +397,12 @@ test("low-health retreat stays selected over lower-priority distance engage", ()
     const lowHealthRetreat = {
         ...createLogicBlock("my_hp_lt", "move_outward"),
         priority: 1,
-        conditions: [{ type: "my_hp_lt", value: 50 }],
+        conditions: [{ type: "expression", left: "my.hp", comparator: "lt", right: { type: "number", value: 50 } }],
     };
     const distanceEngage = {
         ...createLogicBlock("enemy_distance_gt", "move_inward"),
         priority: 2,
-        conditions: [{ type: "enemy_distance_gt", value: 10 }],
+        conditions: [{ type: "expression", left: "target.distance", comparator: "gt", right: { type: "number", value: 10 } }],
     };
 
     const plan = selectMeleeStrategyActionPlan({
@@ -371,7 +436,7 @@ test("dash blocks do not keep moving while dash is on cooldown", () => {
     };
     const dodgeGrenade = {
         ...createLogicBlock("target_exists", "dash_tangent_right"),
-        conditions: [{ type: "target_exists", target: "opponent_grenade" }],
+        conditions: [{ type: "expression", left: "target.exists", leftTarget: "opponent_grenade", comparator: "eq", right: { type: "boolean", value: true } }],
         actionTarget: "opponent_grenade",
     };
     const readyPlan = selectMeleeStrategyActionPlan({ blocks: [dodgeGrenade] }, payload({
@@ -442,15 +507,15 @@ test("current bot-brain columns count as executable opponent actions", () => {
 });
 
 test("cluster conditions and cluster priority gate nested logic blocks", () => {
-    const fallback = createLogicBlock("enemy_distance_gt", "move_inward");
+    const fallback = createLogicBlock("always", "move_inward");
     const cluster = {
-        ...createLogicCluster("my_hp_lt"),
+        ...createLogicCluster("always"),
         priority: 1,
-        conditions: [{ type: "my_hp_lt", value: 50 }],
-        blocks: [createLogicBlock("target_health_pack", "move_inward")],
+        conditions: [{ type: "expression", left: "my.hp", comparator: "lt", right: { type: "number", value: 50 } }],
+        blocks: [createLogicBlock("always", "move_inward")],
     };
     cluster.blocks[0].actionTarget = "object_1";
-    cluster.blocks[0].conditions = [{ type: "target_health_pack", target: "object_1" }];
+    cluster.blocks[0].conditions = [{ type: "always" }];
 
     const selectedHealthy = selectMeleeStrategyBlock({
         blocks: [{ ...fallback, priority: 5 }],
@@ -471,7 +536,7 @@ test("cluster conditions and cluster priority gate nested logic blocks", () => {
 test("cluster blocks can inherit the cluster condition without their own IF condition", () => {
     const cluster = {
         ...createLogicCluster("my_hp_lt"),
-        conditions: [{ type: "my_hp_lt", value: 50 }],
+        conditions: [{ type: "expression", left: "my.hp", comparator: "lt", right: { type: "number", value: 50 } }],
         blocks: [{
             ...createLogicBlock("enemy_distance_gt", "move_outward"),
             conditions: [],
@@ -497,12 +562,18 @@ test("do-not-dash suppresses dash without replacing movement intent", () => {
 });
 
 test("opponent cooldown conditionals read opponent ability state", () => {
-    const punishCooldown = createLogicBlock("opponent_dash_cooldown", "move_inward");
+    const punishCooldown = selectedAbilityBlock("dash", "move_inward", {
+        owner: "opponent",
+        field: "CooldownMs",
+        comparator: "gt",
+        value: 0,
+    });
     const selected = selectMeleeStrategyBlock({
         blocks: [punishCooldown],
     }, payload({
         opponent: {
             dashAvailable: false,
+            dashCooldownRemainingMs: 500,
         },
     }));
 
@@ -510,7 +581,7 @@ test("opponent cooldown conditionals read opponent ability state", () => {
 });
 
 test("fire gun conditionals select the ranged action head", () => {
-    const fireWhenReady = createLogicBlock("my_fire_gun_ready", "fire_gun");
+    const fireWhenReady = selectedAbilityBlock("fire_gun", "fire_gun");
     const plan = selectMeleeStrategyActionPlan({
         blocks: [fireWhenReady],
     }, payload({
@@ -530,7 +601,7 @@ test("fire gun conditionals select the ranged action head", () => {
 });
 
 test("grenade conditionals select the ranged grenade action head", () => {
-    const throwWhenReady = createLogicBlock("my_grenade_ready", "throw_grenade");
+    const throwWhenReady = selectedAbilityBlock("throw_grenade", "throw_grenade");
     const plan = selectMeleeStrategyActionPlan({
         blocks: [throwWhenReady],
     }, payload({
@@ -550,7 +621,7 @@ test("grenade conditionals select the ranged grenade action head", () => {
 });
 
 test("fireball conditionals select the mage fireball action head", () => {
-    const shootWhenReady = createLogicBlock("my_fireball_ready", "shoot_fireball");
+    const shootWhenReady = selectedAbilityBlock("shoot_fireball", "shoot_fireball");
     const plan = selectMeleeStrategyActionPlan({
         blocks: [shootWhenReady],
     }, payload({
@@ -572,7 +643,7 @@ test("fireball conditionals select the mage fireball action head", () => {
 });
 
 test("stun conditionals select the mage stun action head", () => {
-    const stunWhenReady = createLogicBlock("my_stun_ready", "stun");
+    const stunWhenReady = selectedAbilityBlock("stun", "stun");
     const plan = selectMeleeStrategyActionPlan({
         blocks: [stunWhenReady],
     }, payload({
@@ -663,7 +734,7 @@ test("opponent grenade can be used as a condition and movement target", () => {
     };
     const dodgeGrenade = {
         ...createLogicBlock("target_exists", "move_outward"),
-        conditions: [{ type: "target_exists", target: "opponent_grenade" }],
+        conditions: [{ type: "expression", left: "target.exists", leftTarget: "opponent_grenade", comparator: "eq", right: { type: "boolean", value: true } }],
         actionTarget: "opponent_grenade",
     };
     const selected = selectMeleeStrategyBlock({
@@ -723,7 +794,7 @@ test("opponent fireball target resolves the closest opponent fireball", () => {
     };
     const dodgeFireball = {
         ...createLogicBlock("target_exists", "move_outward"),
-        conditions: [{ type: "target_exists", target: "opponent_fireball" }],
+        conditions: [{ type: "expression", left: "target.exists", leftTarget: "opponent_fireball", comparator: "eq", right: { type: "boolean", value: true } }],
         actionTarget: "opponent_fireball",
     };
     const statePayload = payload({ objects: [farFireball, closeFireball] });
@@ -785,7 +856,7 @@ test("rotation variables use north-zero clockwise bearings and fighter-only faci
         id: `rotation-${index}`,
         conditions: [{ type: "expression", left, comparator: left === "target.bearingFromMe" ? "range" : "eq", target: "opponent", right: left === "target.bearingFromMe" ? { type: "range", min: value, max: value } : { type: "number", value } }],
     }));
-    const state = payload({ playerModel: { x: 400, y: 400, rotation: 0 }, opponentModel: { x: 500, y: 400, rotation: 0 } });
+    const state = payload({ playerModel: { x: 400, y: 400, rotation: 90 }, opponent: { x: 500, y: 400, rotation: 90 } });
     for (const rule of rules) assert.equal(selectMeleeStrategyBlock({ blocks: [rule] }, state)?.id, rule.id);
 });
 
@@ -799,7 +870,7 @@ test("relative bearing offers shortest, clockwise, and counterclockwise angle ch
         id: `bearing-mode-${index}`,
         conditions: [{ type: "expression", left, comparator: "eq", target: "opponent", right: { type: "number", value } }],
     }));
-    const state = payload({ playerModel: { x: 400, y: 400, rotation: 90 }, opponentModel: { x: 500, y: 400 } });
+    const state = payload({ playerModel: { x: 400, y: 400, rotation: 180 }, opponent: { x: 500, y: 400 } });
     for (const rule of rules) assert.equal(selectMeleeStrategyBlock({ blocks: [rule] }, state)?.id, rule.id);
 });
 
@@ -815,21 +886,21 @@ test("shortest target bearing difference is never negative", () => {
         }],
     };
     const targetWestWhileFacingNorth = payload({
-        playerModel: { x: 400, y: 400, rotation: -90 },
-        opponentModel: { x: 300, y: 400 },
+        playerModel: { x: 400, y: 400, rotation: 0 },
+        opponent: { x: 300, y: 400 },
     });
 
     assert.equal(selectMeleeStrategyBlock({ blocks: [facingToleranceRule] }, targetWestWhileFacingNorth), null);
 });
 
-test("edge-distance conditionals replace cornered rules with less-than and greater-than options", () => {
+test("edge-distance expression variables support less-than and greater-than comparisons", () => {
     const safeAtCenter = {
-        ...createLogicBlock("my_edge_distance_gt", "move_inward"),
-        conditions: [{ type: "my_edge_distance_gt", value: 250 }],
+        ...createLogicBlock("always", "move_inward"),
+        conditions: [{ type: "expression", left: "my.edgeDistance", comparator: "gt", right: { type: "number", value: 250 } }],
     };
     const nearEdgeTarget = {
-        ...createLogicBlock("target_edge_distance_lt", "move_outward"),
-        conditions: [{ type: "target_edge_distance_lt", value: 60 }],
+        ...createLogicBlock("always", "move_outward"),
+        conditions: [{ type: "expression", left: "target.edgeDistance", comparator: "lt", right: { type: "number", value: 60 } }],
     };
 
     assert.equal(selectMeleeStrategyBlock({
@@ -840,19 +911,11 @@ test("edge-distance conditionals replace cornered rules with less-than and great
         blocks: [nearEdgeTarget],
     }, payload({ opponent: { x: 45, y: 400 } })).id, nearEdgeTarget.id);
 
-    const legacy = normalizeMeleeStrategyConfiguration({
-        blocks: [{ conditions: [{ type: "my_cornered", value: 80 }], action: "move_outward" }],
+    const normalized = normalizeMeleeStrategyConfiguration({
+        blocks: [{ conditions: [{ type: "expression", left: "my.edgeDistance", comparator: "lt", right: { type: "number", value: 80 } }], action: "move_outward" }],
     });
-    assert.equal(legacy.blocks[0].conditions[0].type, "my_edge_distance_lt");
-});
-
-test("inside damage zone conditions match overlapping damage zones", () => {
-    const rule = createLogicBlock("inside_damage_zone", "move_outward");
-    const selected = selectMeleeStrategyBlock({
-        blocks: [rule],
-    }, payload({ objects: [{ id: "object_1", type: "damageZone", x: 400, y: 400, size: 128 }] }));
-
-    assert.equal(selected.id, rule.id);
+    assert.equal(normalized.blocks[0].conditions[0].type, "expression");
+    assert.equal(normalized.blocks[0].conditions[0].left, "my.edgeDistance");
 });
 
 test("expression conditions compare state variables and numeric literals", () => {
@@ -912,8 +975,8 @@ test("condition joins can use OR and expression variables expose x/y positions",
     const readyOrCoolingDown = {
         ...createLogicBlock("always", "move_stop"),
         conditions: [
-            { type: "my_dash_ready" },
-            { type: "my_dash_cooldown", join: "or" },
+            selectedAbilityCondition("dash"),
+            selectedAbilityCondition("dash", { field: "CooldownMs", comparator: "gt", value: 0, join: "or" }),
         ],
     };
     assert.deepEqual(validateMeleeStrategyConfiguration({ blocks: [readyOrCoolingDown] }).errors, []);
@@ -970,7 +1033,8 @@ test("cooldown expression variables use seconds and behavior shortcuts stay hidd
         ...createLogicBlock("always", "move_stop"),
         conditions: [{
             type: "expression",
-            left: "my.dashCooldownMs",
+            left: "my.selectedAbilityCooldownMs",
+            ability: "dash",
             comparator: "gt",
             right: { type: "number", value: 0.5 },
         }],
@@ -1111,7 +1175,7 @@ test("generic selected-ability ammo reads gun ammo, fireball charges, and block 
 });
 
 test("expression conditions normalize and compare boolean variables", () => {
-    const ready = createExpressionCondition("my.dashReady");
+    const ready = selectedAbilityCondition("dash");
     assert.deepEqual(ready.right, { type: "boolean", value: true });
     const dashWhenReady = {
         ...createLogicBlock("always", "dash"),
@@ -1121,7 +1185,8 @@ test("expression conditions normalize and compare boolean variables", () => {
         ...createLogicBlock("always", "move_stop"),
         conditions: [{
             type: "expression",
-            left: "my.dashReady",
+            left: "my.selectedAbilityReady",
+            ability: "dash",
             comparator: "eq",
             right: { type: "boolean", value: false },
         }],
@@ -1129,14 +1194,6 @@ test("expression conditions normalize and compare boolean variables", () => {
 
     assert.equal(selectMeleeStrategyBlock({ blocks: [dashWhenReady] }, payload({ playerModel: { dashAvailable: true } })).id, dashWhenReady.id);
     assert.equal(selectMeleeStrategyBlock({ blocks: [waitWhenOff] }, payload({ playerModel: { dashAvailable: false } })).id, waitWhenOff.id);
-});
-
-test("rushing and fleeing use signed velocity toward the player", () => {
-    const player = { x: 100, y: 100 };
-    const opponent = { x: 200, y: 100, velocityX: -80, velocityY: 0 };
-    assert.equal(radialVelocityTowardPlayer(player, opponent), 80);
-    opponent.velocityX = 80;
-    assert.equal(radialVelocityTowardPlayer(player, opponent), -80);
 });
 
 test("target support is limited to directional and dash-like actions", () => {
@@ -1360,7 +1417,9 @@ test("derived booleans consume variable slots and can gate combat actions", () =
     };
     const state = payload({ playerModel: { hp: 25 } });
 
-    assert.equal(selectMeleeStrategyActionPlan(configuration, state).movement?.action, "move_walk");
+    const plan = selectMeleeStrategyActionPlan(configuration, state);
+    assert.equal(plan.movement?.action, "move_walk");
+    assert.equal(plan.customVariables["custom.low_hp"], true);
     assert.equal(countVariableSlots(configuration), 2);
     assert.equal(countConditionSlots(configuration), 3); // one derivation plus the derived variable's two-slot use cost
     const tooExpensive = { ...configuration, customVariables: Array.from({ length: 51 }, (_, index) => ({ ...configuration.customVariables[0], id: `custom.v${index}`, name: `Variable ${index}` })) };

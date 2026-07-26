@@ -8,14 +8,16 @@ in services.
 ## Layer map
 
 All Java paths below are under
-`src/main/java/com/example/machiner/`.
+`src/main/java/com/example/botfight/`.
 
 - `controller/`: REST and STOMP boundaries for auth, training sessions,
   submissions, time, coordinates, and matchmaking messages.
 - `DTO/`: request/response and replay boundary shapes.
-- `service/`: authentication, current-user lookup, matchmaking state, training
+- `service/`: authentication, current-user lookup, FIFO matchmaking queue,
+  active-match lifecycle, match chat/rate limits, connection state, match persistence, training
   sessions, submission normalization/validation/rate limiting/persistence, and
-  match simulation orchestration.
+  match simulation orchestration. Keep queue pairing separate from active-match
+  rounds, reconnect deadlines, and result persistence.
 - `domain/`: JPA entities and persisted status/result enums.
 - `repository/`: JPA queries. Ownership-sensitive access must include or verify
   the authenticated user and return generic not-found behavior for private data.
@@ -33,7 +35,8 @@ All Java paths below are under
 | Concern | Start here | Also inspect |
 | --- | --- | --- |
 | Auth/session/CSRF | `controller/`, `service/`, `config/`, `security/` | auth tests and frontend auth/security areas |
-| Matchmaking, round draft, placement, surrender | matchmaking controller/service areas | matchmaking DTOs, repositories, and frontend client area |
+| Matchmaking queue | matchmaking controller and queue service areas | matchmaking DTOs and frontend client area |
+| Active match, reconnect, round draft, placement, surrender, match chat | match lifecycle, connection, and persistence service areas | matchmaking controller, DTOs, repositories, and frontend client area |
 | Training deadline/session | training controller/service areas | domain/repository and submission binding |
 | Submission endpoint/persistence | submission controller/service areas | DTO, repository, and domain areas |
 | Brain/loadout boundary validation | validation service area | combat catalog, frontend schema, and focused tests |
@@ -73,7 +76,7 @@ runtimes and add parity-focused tests.
 
 From `server/` on Windows, run the narrowest test with Maven's `-Dtest=...`
 selector, then `.\mvnw.cmd test` for contract or lifecycle changes. Relevant
-suites are grouped under `src/test/java/com/example/machiner/service/`,
+suites are grouped under `src/test/java/com/example/botfight/service/`,
 `simulation/`, and `simulation/combat/` or `simulation/ecs/`.
 
 There is no active `server/package.json`; do not use the obsolete Node

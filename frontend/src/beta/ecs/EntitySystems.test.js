@@ -109,7 +109,7 @@ test("hunter drone pursues targets at 4.5 units per arena tick", () => {
 });
 
 test("hunter drone retains the replay-matched shot visual timer", () => {
-    const drone = { ...hunterDroneEntity({ id: "owner", slot: 1, x: 100, y: 200, rotation: 0 }), shotCooldownMs: 0 };
+    const drone = { ...hunterDroneEntity({ id: "owner", slot: 1, x: 100, y: 200, rotation: 90 }), shotCooldownMs: 0 };
     const target = { id: "target", slot: 2, x: 200, y: 200, size: 60, hp: 100 };
     const result = tickAbilityEntityWorld({
         entities: [drone], fighters: [target], grenades: [], fireballs: [],
@@ -178,8 +178,8 @@ test("burn and bleed apply a final tick due exactly at expiration", () => {
 });
 
 test("another heavy slash refreshes bleed duration without resetting its pending tick", () => {
-    const attacker = { id: "owner", x: 100, y: 100, size: 60, rotation: 0, hp: 100, attackDamageMultiplier: 1, prototypeTriggered: "heavy_slash" };
-    const defender = { id: "target", x: 150, y: 100, size: 60, rotation: 180, hp: 100, maxHp: 100, bleedRemainingMs: 4000, bleedTickMs: 300, bleedDamage: 2 };
+    const attacker = { id: "owner", x: 100, y: 100, size: 60, rotation: 90, hp: 100, attackDamageMultiplier: 1, prototypeTriggered: "heavy_slash" };
+    const defender = { id: "target", x: 150, y: 100, size: 60, rotation: 270, hp: 100, maxHp: 100, bleedRemainingMs: 4000, bleedTickMs: 300, bleedDamage: 2 };
     const [, hit] = resolvePrototypeCombat(attacker, defender);
     assert.equal(hit.hp, 70);
     assert.equal(hit.bleedRemainingMs, 5000);
@@ -188,8 +188,8 @@ test("another heavy slash refreshes bleed duration without resetting its pending
 });
 
 test("a blocked heavy slash removes every shield charge without applying damage or bleed", () => {
-    const attacker = { id: "owner", x: 100, y: 100, size: 60, rotation: 0, hp: 100, attackDamageMultiplier: 1, prototypeTriggered: "heavy_slash" };
-    const defender = { id: "target", x: 190, y: 100, size: 60, rotation: 180, hp: 100, maxHp: 100, blockActiveMs: 1, blockCharges: 5, abilities: ["block"] };
+    const attacker = { id: "owner", x: 100, y: 100, size: 60, rotation: 90, hp: 100, attackDamageMultiplier: 1, prototypeTriggered: "heavy_slash" };
+    const defender = { id: "target", x: 190, y: 100, size: 60, rotation: 270, hp: 100, maxHp: 100, blockActiveMs: 1, blockCharges: 5, abilities: ["block"] };
     const [, blocked] = resolvePrototypeCombat(attacker, defender);
     assert.equal(blocked.hp, 100);
     assert.equal(blocked.blockCharges, 0);
@@ -198,8 +198,8 @@ test("a blocked heavy slash removes every shield charge without applying damage 
 
 test("blocked concussive and rail shots do not apply their attached effects", () => {
     for (const ability of ["concussive_shot", "rail_shot"]) {
-        const attacker = { id: "owner", x: 100, y: 100, size: 60, rotation: 0, hp: 100, attackDamageMultiplier: 1, prototypeTriggered: ability };
-        const defender = { id: "target", x: 190, y: 100, size: 60, rotation: 180, hp: 100, maxHp: 100, blockActiveMs: 1, blockCharges: 5, abilities: ["block"] };
+        const attacker = { id: "owner", x: 100, y: 100, size: 60, rotation: 90, hp: 100, attackDamageMultiplier: 1, prototypeTriggered: ability };
+        const defender = { id: "target", x: 190, y: 100, size: 60, rotation: 270, hp: 100, maxHp: 100, blockActiveMs: 1, blockCharges: 5, abilities: ["block"] };
         const [, blocked] = resolvePrototypeCombat(attacker, defender);
         assert.equal(blocked.hp, 100, ability);
         assert.equal(blocked.slowedMs ?? 0, 0, ability);
@@ -222,8 +222,8 @@ test("repulsor burst deals 20 damage and pushes 250 units, while blocking preven
 });
 
 test("thrust deals 15 damage and applies its 30-unit knockback", () => {
-    const attacker = { id: "owner", x: 100, y: 100, size: 60, rotation: 0, hp: 100, attackDamageMultiplier: 1, prototypeTriggered: "thrust" };
-    const defender = { id: "target", x: 180, y: 100, size: 60, rotation: 180, hp: 100, maxHp: 100 };
+    const attacker = { id: "owner", x: 100, y: 100, size: 60, rotation: 90, hp: 100, attackDamageMultiplier: 1, prototypeTriggered: "thrust" };
+    const defender = { id: "target", x: 180, y: 100, size: 60, rotation: 270, hp: 100, maxHp: 100 };
     const [, hit] = resolvePrototypeCombat(attacker, defender);
     assert.equal(hit.hp, 85);
     assert.equal(hit.x, 210);
@@ -343,12 +343,12 @@ test("sword swing keeps its full visual timer through the activation step", () =
 
 test("sword swing hit resolves only on its activation tick while its animation continues", () => {
     const defender = { x: 190, y: 100, size: 20 };
-    assert.equal(isSwingHitting({ x: 100, y: 100, rotation: 0, size: 60, swingActiveMs: 200, swingTriggered: true }, defender), true);
-    assert.equal(isSwingHitting({ x: 100, y: 100, rotation: 0, size: 60, swingActiveMs: 100, swingTriggered: false }, defender), false);
+    assert.equal(isSwingHitting({ x: 100, y: 100, rotation: 90, size: 60, swingActiveMs: 200, swingTriggered: true }, defender), true);
+    assert.equal(isSwingHitting({ x: 100, y: 100, rotation: 90, size: 60, swingActiveMs: 100, swingTriggered: false }, defender), false);
 });
 
 test("sword swing hitbox matches the displayed 100-degree, 92-unit sweep", () => {
-    const attacker = { x: 100, y: 100, rotation: 0, size: 60, swingActiveMs: 200 };
+    const attacker = { x: 100, y: 100, rotation: 90, size: 60, swingActiveMs: 200 };
     assert.equal(isSwingHitting(attacker, { x: 190, y: 100, size: 20 }), true);
     assert.equal(isSwingHitting(attacker, { x: 100, y: 190, size: 20 }), false);
     assert.equal(isSwingHitting(attacker, { x: 205, y: 100, size: 20 }), false);
@@ -577,7 +577,7 @@ test("shield blocks fireball damage and burn together", () => {
 });
 
 test("mine, gravity, silence, drone, and orbital effects use their shield rules", () => {
-    const shield = { id: "target", slot: 2, x: 150, y: 100, size: 60, rotation: 180, hp: 100, maxHp: 100, blockActiveMs: 1, blockCharges: 5, abilities: ["block"] };
+    const shield = { id: "target", slot: 2, x: 150, y: 100, size: 60, rotation: 270, hp: 100, maxHp: 100, blockActiveMs: 1, blockCharges: 5, abilities: ["block"] };
     const mine = { ...proximityMineEntity({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }), traveled: 176, armed: true, hitTriggered: true };
     const mineResult = tickAbilityEntityWorld({ entities: [mine], fighters: [shield], grenades: [], fireballs: [], stepMs: 100, width: 1000, height: 800 }, noDamageCombat);
     assert.equal(mineResult.fighters[0].hp, 100);
@@ -588,12 +588,12 @@ test("mine, gravity, silence, drone, and orbital effects use their shield rules"
     assert.equal(gravityResult.fighters[0].hp, 100);
     assert.equal(gravityResult.fighters[0].blockCharges, 0);
 
-    const silence = silenceWaveEntity({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 });
+    const silence = silenceWaveEntity({ id: "owner", slot: 1, x: 100, y: 100, rotation: 90 });
     const silenceResult = tickAbilityEntityWorld({ entities: [silence], fighters: [shield], stepMs: 100, width: 1000, height: 800 }, noDamageCombat);
     assert.equal(silenceResult.fighters[0].silencedMs ?? 0, 0);
     assert.equal(silenceResult.fighters[0].blockCharges, 4);
 
-    const drone = { ...hunterDroneEntity({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }), shotCooldownMs: 0 };
+    const drone = { ...hunterDroneEntity({ id: "owner", slot: 1, x: 100, y: 100, rotation: 90 }), shotCooldownMs: 0 };
     const droneResult = tickAbilityEntityWorld({ entities: [drone], fighters: [shield], stepMs: 100, width: 1000, height: 800 }, noDamageCombat);
     assert.equal(droneResult.fighters[0].hp, 100);
     assert.equal(droneResult.fighters[0].blockCharges, 4);

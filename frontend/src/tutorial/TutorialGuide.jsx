@@ -1,11 +1,12 @@
 import { useState } from "react";
 import MatchToolIcon from "../beta/MatchToolIcon.jsx";
+import { MAX_LOGIC_BLOCKS, MAX_TOTAL_CONDITIONS } from "../logic/BotBrain.js";
 
 const STEPS = [
     {
         eyebrow: "01 · RIGHT TOOLBAR",
-        title: "Your arena controls at a glance.",
-        body: "These controls change the training room, not the submitted brain.",
+        title: "Arena controls",
+        body: "These controls change the training room.",
         tools: [
             ["play", "Run or stop the brain"],
             ["stats", "Heal and clear cooldowns"],
@@ -24,21 +25,21 @@ const STEPS = [
         title: "Turn a simple idea into bot logic.",
         body: "Bot Fight is a fighting game where you program decisions instead of controlling the fighter directly. Start with the simplest possible idea:",
         example: "ALWAYS → Move toward target → Opponent 1",
-        task: "Click Open Bot Brain on the right. The in-workspace coach will guide your first node and show where Custom Variables live.",
+        task: "Click Open Bot Brain on the right. The in-workspace coach will guide your first node.",
         solution: true,
     },
     {
         eyebrow: "03 · DISTANCE + HP",
         title: "Make the same bot change its mind.",
-        body: "The opponent now uses Sword Swing. Approach while Target Distance is greater than its attack range. After taking a few hits, use My HP to switch the same movement head from approach to retreat.",
+        body: "The opponent now uses Sword Swing. Approach while Target Distance is greater than its attack range. After taking a few hits, use My HP to switch the same movement action from approach to retreat.",
         example: "IF My HP < 45 → Move away\nELSE IF Target Distance > 92 → Move toward",
         task: "Build both decisions, then press Play to watch the handoff.",
         solution: true,
     },
     {
         eyebrow: "04 · RANGE + BEARING",
-        title: "A ready attack is not necessarily a good attack.",
-        body: "Your bot starts facing backward and outside Heavy Slash range. Rotate toward Opponent 1, close to 105 units, and attack only when Relative Bearing is nearly zero. This protects the five-second cooldown from a wasted swing.",
+        title: "An attack that is ready does not necessarily mean it should be used immediately.",
+        body: "Your bot starts facing backward and outside Heavy Slash range. Rotate toward Opponent 1, close to 105 units, and attack only when Relative Bearing is within the swing arc. This prevents you from wasting Heavy Slash. Note: Heavy Slash has a 5 second cooldown, don't miss!",
         example: "Distance ≤ 105 AND Relative Bearing ≤ 89° → Heavy Slash",
         task: "Build it yourself or reveal the three-node solution.",
         solution: true,
@@ -68,11 +69,36 @@ const STEPS = [
         challenge: true,
     },
     {
-        eyebrow: "08 · ROUND ABILITIES",
+        eyebrow: "08 · CUSTOM VARIABLES",
+        title: "Reuse a rule and remember what already happened.",
+        body: "A derived boolean saves repeated setup: define one Attack Window and reuse it for every ability you want to spam. An integer adds memory that ordinary conditions do not have, such as how many confirmed hits your bot has landed.",
+        example: "Attack Window = Distance ≤ 350 AND My HP ≥ 50 AND Bearing ≤ 20°\n3 ability nodes: IF Attack Window = TRUE → use ability\nIF Opponent HP Change < 0 → Hits Landed + 1\nIF Hits Landed ≥ 3 → Move away",
+        task: "Create both custom variables and wire them into the brain. Play only checks your setup; combat success is not required.",
+        solution: true,
+        challenge: true,
+    },
+    {
+        eyebrow: "09 · SEARCH BRAIN NODES",
+        title: "Find and organize a large brain.",
+        body: "This workspace starts with 20 specifically named Brain Nodes and five priorities out of order. Open Search Nodes to filter by name, jump to a node, change its priority, or delete it without hunting across the canvas.",
+        example: "DELETE Node B, Node O, Node T\nORDER the remaining letters A → S\nSEARCH Node Q → rename it Retreating\nADD ALWAYS → Move: Walk → Toward → Opponent 1",
+        task: "Use Search Nodes for every change. Press Play when the 17 remaining nodes are alphabetized and Retreating moves toward the enemy.",
+        solution: true,
+        challenge: true,
+    },
+    {
+        eyebrow: "10 · ROUND ABILITIES",
         title: "Build your loadout as the match progresses.",
-        body: "Before each round, you choose from a random set of ability offers. Pick 3 of 6 in Round 1, 2 of 4 in Round 2, and 1 of 3 in Round 3. Earlier picks stay equipped, giving you six abilities by the final round.",
+        body: `Before each round, you choose from a random set of ability offers. Pick 3 of 6 in Round 1, 2 of 4 in Round 2, and 1 of 3 in Round 3. Earlier picks stay equipped, giving you six abilities by the final round. A brain can contain up to ${MAX_LOGIC_BLOCKS} action nodes.`,
         task: "The ability catalogue will let you review every ability and plan combinations.",
         abilityCatalogue: true,
+    },
+    {
+        eyebrow: "11 · CONDITIONALS",
+        title: "Decide when each action should run.",
+        body: `Conditionals read combat state such as HP, distance, bearing, cooldowns, and targets. Combine checks with AND or OR, and use IF / ELSE IF priority to decide which action wins. A brain can contain up to ${MAX_TOTAL_CONDITIONS} conditionals.`,
+        task: "Open the conditional catalogue to review every available check and plan how your abilities should react.",
+        conditionalCatalogue: true,
     },
 ];
 
@@ -81,11 +107,9 @@ const BRAIN_COACHES = {
         eyebrow: "FIRST BRAIN NODE",
         items: [
             ["ADD BRAIN NODE", "Creates an independent decision group. Each Brain Node can own several conditionals."],
-            ["+ CONDITIONAL", "Adds the first decision to the Brain Node. Keep it set to ALWAYS for this lesson."],
-            ["+ CHILD IF", "Nests a conditional beneath the current one. The child is considered only after its parent matches, so use it for a second decision that depends on the first."],
+            ["+ CONDITIONAL", "Keep it set to ALWAYS for this lesson."],
             ["+ ACTION", "Add Movement → Walk → Toward target → Opponent 1 to make this first brain move."],
-            ["EDITOR INPUTS", "Type to search dropdowns, press Tab to move forward, and press Enter to choose."],
-            ["CUSTOM VARIABLES", "Use the workspace toolbar later to create named counters, numbers, or flags for multi-step tactics."],
+            ["EDITOR INPUTS", "Type to search dropdowns, press Tab to move forward, and press Enter to choose."]
         ],
     },
     2: {
@@ -113,6 +137,26 @@ const BRAIN_COACHES = {
             ["PRIORITY STILL APPLIES", "If another Brain Node also supplies that action type, the higher-priority node wins the conflict."],
         ],
     },
+    8: {
+        eyebrow: "SEARCH, DELETE + PRIORITY",
+        items: [
+            ["SEARCH NODES", "Open the Search Nodes panel and type a node name to filter the list."],
+            ["DELETE", "Find Node B, Node O, and Node T, then delete each one with the X beside its result."],
+            ["PRIORITY", "Set each remaining node's priority so its original letter is alphabetical: A is 1, C is 2, and so on."],
+            ["NODE Q", "Search for Node Q, focus it, rename it Retreating, then add ALWAYS → Move: Walk → Toward → Opponent 1."],
+            ["PLAY", "Play validates the node names, deletions, exact order, and Node Q setup."],
+        ],
+    },
+    7: {
+        eyebrow: "BOOLEAN REUSE + INTEGER MEMORY",
+        items: [
+            ["ATTACK WINDOW", "Create a BOOLEAN named Attack Window. Add derived conditions for Target Distance ≤ 350, My HP ≥ 50, and Target Bearing Difference ≤ 20°."],
+            ["REUSE IT", "Create three ability nodes gated by Attack Window = TRUE: Pistol Shot, Concussive Shot, and Rail Shot."],
+            ["HITS LANDED", "Create an INTEGER named Hits Landed with a starting value of 0."],
+            ["COUNT HITS", "When Opponent Net HP Change Last Tick < 0, use a Variable action to add 1 to Hits Landed."],
+            ["USE THE HISTORY", "When Hits Landed ≥ 3, walk Away from Opponent 1. Press Play to validate the setup; you do not need to win."],
+        ],
+    },
 };
 
 export function TutorialBrainCoach({ step, onShowSolution }) {
@@ -132,7 +176,7 @@ export function TutorialBrainCoach({ step, onShowSolution }) {
     );
 }
 
-export default function TutorialGuide({ step, onStepChange, challenge, onShowSolution, solutionShown, onAbilityCatalogue }) {
+export default function TutorialGuide({ step, onStepChange, challenge, onShowSolution, solutionShown, onAbilityCatalogue, onConditionalCatalogue }) {
     const [minimized, setMinimized] = useState(false);
     const current = STEPS[step] ?? STEPS[0];
 
@@ -168,6 +212,7 @@ export default function TutorialGuide({ step, onStepChange, challenge, onShowSol
                     <div className="flex gap-2">
                         {current.solution && <button type="button" onClick={onShowSolution} className="flex-1 rounded border border-indigo-400/40 bg-indigo-950/35 px-3 py-1.5 text-[9px] font-bold text-indigo-100">{solutionShown ? "RESET TO EMPTY" : "SHOW SOLUTION"}</button>}
                         {current.abilityCatalogue && <button type="button" onClick={onAbilityCatalogue} className="flex-1 rounded border border-cyan-400/60 bg-cyan-900/50 px-3 py-1.5 text-[9px] font-bold text-cyan-50">ABILITY CATALOGUE →</button>}
+                        {current.conditionalCatalogue && <button type="button" onClick={onConditionalCatalogue} className="flex-1 rounded border border-cyan-400/60 bg-cyan-900/50 px-3 py-1.5 text-[9px] font-bold text-cyan-50">CONDITIONAL CATALOGUE →</button>}
                     </div>
                     <div className="mt-2 flex items-center gap-2">
                         <button type="button" disabled={step === 0} onClick={() => onStepChange(step - 1)} className="rounded border border-white/10 bg-white/5 px-3 py-1.5 text-[9px] font-bold text-slate-200 disabled:opacity-30">BACK</button>
@@ -190,6 +235,10 @@ const CHALLENGE_MESSAGES = {
     combo_timed_out: "Time expired before Heavy Slash landed. Press Play to restart.",
     survive_passed: "Ten seconds complete. Your bot stayed alive.",
     survive_defeated: "Your bot was defeated. Add an HP retreat rule and try again.",
+    search_passed: "All 17 nodes are correct. Search Nodes lesson passed.",
+    search_failed: "Not quite. Check the three deletions, alphabetical priorities, and Retreating node setup.",
+    variables_passed: "Both custom-variable tactics are wired correctly. Lesson passed.",
+    variables_failed: "Check Attack Window, its three ability uses, Hits Landed, the increment rule, and the three-hit retreat.",
 };
 
 function ChallengeStatus({ challenge }) {

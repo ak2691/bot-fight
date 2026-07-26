@@ -2,6 +2,7 @@ import { PROTOTYPE_ACTION_TO_ABILITY } from "../beta/loadout/BotLoadout.js";
 import { angleDelta, clamp } from "../beta/combat/geometry.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, ROTATION_STEP_DEG } from "../beta/modelPayloads/arenaConstants.js";
 import { resolveMeleeStrategyTarget, selectMeleeStrategyActionPlan } from "./BotBrain.js";
+import { compassDirection, vectorToCompassDegrees } from "./arenaAngles.js";
 
 /** Builds the action-component payload consumed by ActionExecutionSystem. */
 export function buildDeterministicLogicAction(configuration, stateSnapshot) {
@@ -28,7 +29,7 @@ export function buildDeterministicLogicAction(configuration, stateSnapshot) {
             targetX: specialTarget?.x ?? abilityBlock.targetX,
             targetY: specialTarget?.y ?? abilityBlock.targetY,
         } : null,
-        customVariables: { ...(stateSnapshot.playerModel.customVariables ?? {}) },
+        customVariables: { ...(plan.customVariables ?? stateSnapshot.playerModel.customVariables ?? {}) },
     };
 }
 
@@ -83,8 +84,8 @@ function movementVector(action, player, target) {
     if (!target) return { dx: 0, dy: 0 };
     let inward = { dx: target.x - player.x, dy: target.y - player.y };
     if (Math.hypot(inward.dx, inward.dy) <= 0.001) {
-        const facingRadians = Number(player.rotation ?? 0) * Math.PI / 180;
-        inward = { dx: Math.cos(facingRadians), dy: Math.sin(facingRadians) };
+        const facing = compassDirection(player.rotation);
+        inward = { dx: facing.x, dy: facing.y };
     }
     const outward = { dx: -inward.dx, dy: -inward.dy };
     const left = { dx: inward.dy, dy: -inward.dx };
@@ -102,7 +103,7 @@ function movementVector(action, player, target) {
 
 function turnToward(player, target) {
     if (!player || !target) return 0;
-    const bearing = Math.atan2(target.y - player.y, target.x - player.x) * 180 / Math.PI;
+    const bearing = vectorToCompassDegrees(target.x - player.x, target.y - player.y);
     return clamp(angleDelta(player.rotation ?? 0, bearing) / ROTATION_STEP_DEG, -1, 1);
 }
 

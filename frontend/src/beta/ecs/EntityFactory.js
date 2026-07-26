@@ -1,3 +1,5 @@
+import { compassDirection } from "../../logic/arenaAngles.js";
+
 let nextEntityId = 1;
 
 /** Creates the canonical component envelope used by browser arena systems. */
@@ -34,12 +36,12 @@ export function createEntity({ type, owner, transform, motion = {}, lifetime = {
 }
 
 export function thrownFieldEntity(fighter, type, abilityId, size, durationMs) {
-    const radians = Number(fighter.rotation ?? 0) * Math.PI / 180;
+    const direction = compassDirection(fighter.rotation);
     return createEntity({
         type,
         owner: { id: fighter.id, slot: fighter.slot, abilityId },
         transform: { x: fighter.x, y: fighter.y, rotation: fighter.rotation ?? 0 },
-        motion: { x: Math.cos(radians) * 22, y: Math.sin(radians) * 22, traveled: 0 },
+        motion: { x: direction.x * 22, y: direction.y * 22, traveled: 0 },
         lifetime: { ageMs: 0, remainingMs: durationMs },
         collider: { size },
         state: { fuseMs: type === "gravityField" ? 3000 : 0, armed: false },
@@ -63,12 +65,12 @@ export function proximityMineEntity(fighter) {
 }
 
 export function silenceWaveEntity(fighter) {
-    const radians = Number(fighter.rotation ?? 0) * Math.PI / 180;
+    const direction = compassDirection(fighter.rotation);
     return createEntity({
         type: "silenceWave",
         owner: { id: fighter.id, slot: fighter.slot, abilityId: "silence_pulse" },
         transform: { x: fighter.x, y: fighter.y, rotation: fighter.rotation ?? 0 },
-        motion: { x: Math.cos(radians) * 150, y: Math.sin(radians) * 150 },
+        motion: { x: direction.x * 150, y: direction.y * 150 },
         lifetime: { remainingMs: 1200 },
         collider: { size: 225 },
         state: { hitSlots: [] },

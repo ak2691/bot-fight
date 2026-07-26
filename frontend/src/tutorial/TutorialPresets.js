@@ -17,6 +17,9 @@ const always = () => ({ type: "always" });
 const compare = (left, comparator, value, leftTarget = undefined) => ({
     type: "expression", left, comparator, right: { type: "number", value }, ...(leftTarget ? { leftTarget } : {}),
 });
+const compareBoolean = (left, value = true) => ({
+    type: "expression", left, comparator: "eq", right: { type: "boolean", value },
+});
 const move = (direction, target = "opponent") => ({ action: "move_walk", movementMode: "target", movementDirection: direction, actionTarget: target });
 const face = (target = "opponent") => ({ action: "rotate_toward_enemy", actionTarget: target });
 
@@ -89,18 +92,138 @@ function stepSevenSolution() {
     ]);
 }
 
+const SEARCH_LESSON_LETTERS = "ABCDEFGHIJKLMNOPQRST".split("");
+const SEARCH_LESSON_START_ORDER = ["A", "E", "C", "D", "H", "F", "G", "K", "I", "J", "N", "L", "M", "B", "O", "P", "Q", "R", "S", "T"];
+const SEARCH_LESSON_DELETED_LETTERS = new Set(["B", "O", "T"]);
+
+function searchLessonColumn(letter, createdOrder, configured = false) {
+    return column(`lesson-search-node-${letter.toLowerCase()}`, configured ? "Retreating" : `Node ${letter}`, createdOrder, configured ? [
+        branch("lesson-search-node-q-if", [always()], [move("toward")]),
+    ] : []);
+}
+
+function searchLessonStartingBrain() {
+    return brain(SEARCH_LESSON_START_ORDER.map((letter, index) => searchLessonColumn(letter, index)));
+}
+
+function searchLessonSolution() {
+    return brain(SEARCH_LESSON_LETTERS
+        .filter((letter) => !SEARCH_LESSON_DELETED_LETTERS.has(letter))
+        .map((letter, index) => searchLessonColumn(letter, index, letter === "Q")));
+}
+
+export function validateSearchNodesLesson(configuration) {
+    const columns = Array.isArray(configuration?.columns) ? configuration.columns : [];
+    const expectedLetters = SEARCH_LESSON_LETTERS.filter((letter) => !SEARCH_LESSON_DELETED_LETTERS.has(letter));
+    if (columns.length !== expectedLetters.length) return false;
+    if (!columns.every((entry, index) => entry?.id === `lesson-search-node-${expectedLetters[index].toLowerCase()}`)) return false;
+
+    const nodeQ = columns.find((entry) => entry.id === "lesson-search-node-q");
+    const actions = (nodeQ?.branches ?? []).flatMap((entry) => entry.actions ?? []);
+    return nodeQ?.name === "Retreating" && actions.some((entry) => (
+        entry.action === "move_walk"
+        && entry.movementMode === "target"
+        && entry.movementDirection === "toward"
+        && entry.actionTarget === "opponent"
+    ));
+}
+
+const CUSTOM_VARIABLE_ATTACK_WINDOW = "custom.attack_window";
+const CUSTOM_VARIABLE_HITS_LANDED = "custom.hits_landed";
+
+function customVariablesLessonSolution() {
+    return {
+        ...brain([
+            column("lesson-variables-count", "Count confirmed hits", 0, [
+                branch("lesson-variables-count-if", [compare("opponent.hpNetChangeLastTick", "lt", 0)], [{
+                    action: "variable",
+                    variableId: CUSTOM_VARIABLE_HITS_LANDED,
+                    operation: "add",
+                    value: 1,
+                }]),
+            ]),
+            ...["pistol_shot", "concussive_shot", "rail_shot"].map((action, index) => (
+                column(`lesson-variables-spam-${action}`, `Spam ${action.replaceAll("_", " ")}`, index + 1, [
+                    branch(`lesson-variables-spam-${action}-if`, [compareBoolean(CUSTOM_VARIABLE_ATTACK_WINDOW)], [{ action, actionTarget: "opponent" }]),
+                ])
+            )),
+            column("lesson-variables-retreat", "Disengage after three hits", 4, [
+                branch("lesson-variables-retreat-if", [compare(CUSTOM_VARIABLE_HITS_LANDED, "gte", 3)], [move("away")]),
+            ]),
+        ]),
+        customVariables: [
+            {
+                id: CUSTOM_VARIABLE_ATTACK_WINDOW,
+                name: "Attack Window",
+                valueType: "boolean",
+                initialValue: false,
+                conditions: [
+                    compare("target.distance", "lte", 350, "opponent"),
+                    { ...compare("my.hp", "gte", 50), join: "and" },
+                    { ...compare("target.relativeBearing", "lte", 20, "opponent"), join: "and" },
+                ],
+            },
+            { id: CUSTOM_VARIABLE_HITS_LANDED, name: "Hits Landed", valueType: "number", initialValue: 0 },
+        ],
+    };
+}
+
+export function validateCustomVariablesLesson(configuration) {
+    const variables = Array.isArray(configuration?.customVariables) ? configuration.customVariables : [];
+    const attackWindow = variables.find((variable) => variable.name === "Attack Window" && variable.valueType === "boolean");
+    const hitsLanded = variables.find((variable) => variable.name === "Hits Landed" && variable.valueType === "number");
+    if (!attackWindow || attackWindow.initialValue !== false || !hitsLanded || Number(hitsLanded.initialValue) !== 0) return false;
+    const derivedConditions = attackWindow.conditions ?? [];
+    const hasDerivedCondition = (left, comparator, value, target) => derivedConditions.some((condition) => (
+        condition.type === "expression"
+        && condition.left === left
+        && condition.comparator === comparator
+        && Number(condition.right?.value) === value
+        && (!target || condition.leftTarget === target)
+    ));
+    const hasAttackWindow = derivedConditions.length === 3
+        && derivedConditions.every((condition, index) => index === 0 || condition.join !== "or")
+        && hasDerivedCondition("target.distance", "lte", 350, "opponent")
+        && hasDerivedCondition("my.hp", "gte", 50)
+        && hasDerivedCondition("target.relativeBearing", "lte", 20, "opponent");
+    if (!hasAttackWindow) return false;
+
+    const branches = (configuration?.columns ?? []).flatMap((entry) => entry.branches ?? []);
+    const attackWindowUses = branches.filter((entry) => (entry.conditions ?? []).some((condition) => (
+        condition.type === "expression"
+        && condition.left === attackWindow.id
+        && condition.comparator === "eq"
+        && condition.right?.value === true
+    )));
+    const abilityActions = new Set(attackWindowUses.flatMap((entry) => entry.actions ?? []).map((entry) => entry.action));
+    const usesThreeAbilities = attackWindowUses.length >= 3
+        && ["pistol_shot", "concussive_shot", "rail_shot"].every((action) => abilityActions.has(action));
+    const countsConfirmedHits = branches.some((entry) => (
+        (entry.conditions ?? []).some((condition) => condition.left === "opponent.hpNetChangeLastTick" && condition.comparator === "lt" && Number(condition.right?.value) === 0)
+        && (entry.actions ?? []).some((action) => action.action === "variable" && action.variableId === hitsLanded.id && (
+            action.operation === "add" && Number(action.value) === 1
+            || action.terms?.some((term) => term.operator === "add" && term.operand?.type === "number" && Number(term.operand.value) === 1)
+        ))
+    ));
+    const retreatsAfterThree = branches.some((entry) => (
+        (entry.conditions ?? []).some((condition) => condition.left === hitsLanded.id && condition.comparator === "gte" && Number(condition.right?.value) === 3)
+        && (entry.actions ?? []).some((action) => action.action === "move_walk" && action.movementDirection === "away")
+    ));
+    return usesThreeAbilities && countsConfirmedHits && retreatsAfterThree;
+}
+
 function passiveOpponent() {
     return createEmptyTutorialBrain();
 }
 
 function meleeOpponent() {
-    return brain([column("opponent-melee", "Stationary sword pressure", 0, [
-        branch("opponent-melee-if", [always()], [face(), { action: "swing", actionTarget: "opponent" }]),
+    return brain([column("opponent-sword", "Stationary sword pressure", 0, [
+        branch("opponent-sword-if", [always()], [face(), { action: "swing", actionTarget: "opponent" }]),
     ])]);
 }
 function meleeOpponentNoRot() {
-    return brain([column("opponent-melee", "Stationary sword pressure", 0, [
-        branch("opponent-melee-if", [always()], [{ action: "swing", actionTarget: "opponent" }]),
+    return brain([column("opponent-sword", "Stationary sword pressure", 0, [
+        branch("opponent-sword-if", [always()], [{ action: "swing", actionTarget: "opponent" }]),
     ])]);
 }
 
@@ -112,19 +235,24 @@ function grenadeOpponent() {
 }
 
 const SCENARIOS = [
-    { playerClass: loadout(), opponentClass: loadout(), solution: createEmptyTutorialBrain, opponentBrain: passiveOpponent, spawn: { playerY: 400, opponentY: 650, playerRotation: 90 } },
-    { playerClass: loadout(), opponentClass: loadout(), solution: stepOneSolution, opponentBrain: passiveOpponent, spawn: { playerY: 360, opponentY: 650, playerRotation: 90 } },
-    { playerClass: loadout(), opponentClass: loadout("swing"), solution: stepTwoSolution, opponentBrain: meleeOpponent, spawn: { playerY: 420, opponentY: 560, playerRotation: 90 } },
-    { playerClass: loadout("heavy_slash"), opponentClass: loadout(), solution: stepThreeSolution, opponentBrain: passiveOpponent, spawn: { playerY: 440, opponentY: 560, playerRotation: 270 } },
-    { playerClass: loadout("micro_dash"), opponentClass: loadout("throw_grenade"), solution: stepFourSolution, opponentBrain: grenadeOpponent, spawn: { playerY: 420, opponentY: 570, playerRotation: 90 } },
-    { playerClass: loadout("heavy_slash", "micro_dash"), opponentClass: loadout("throw_grenade"), solution: stepSixSolution, opponentBrain: grenadeOpponent, durationMs: 5000, goal: "combo", spawn: { playerY: 420, opponentY: 570, playerRotation: 270 } },
-    { playerClass: loadout("swing"), opponentClass: loadout("swing"), solution: stepSevenSolution, opponentBrain: meleeOpponentNoRot, durationMs: 10000, goal: "survive", opponentHp: 1000, spawn: { playerY: 440, opponentY: 560, playerRotation: 270 } },
-    { playerClass: loadout(), opponentClass: loadout(), solution: createEmptyTutorialBrain, opponentBrain: passiveOpponent, spawn: { playerY: 400, opponentY: 650, playerRotation: 90 } },
+    { playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialBrain, opponentBrain: passiveOpponent, spawn: { playerY: 400, opponentY: 650, playerRotation: 180 } },
+    { playerLoadout: loadout(), opponentLoadout: loadout(), solution: stepOneSolution, opponentBrain: passiveOpponent, spawn: { playerY: 360, opponentY: 650, playerRotation: 180 } },
+    { playerLoadout: loadout(), opponentLoadout: loadout("swing"), solution: stepTwoSolution, opponentBrain: meleeOpponent, spawn: { playerY: 420, opponentY: 560, playerRotation: 180 } },
+    { playerLoadout: loadout("heavy_slash"), opponentLoadout: loadout(), solution: stepThreeSolution, opponentBrain: passiveOpponent, spawn: { playerY: 440, opponentY: 560, playerRotation: 0 } },
+    { playerLoadout: loadout("micro_dash"), opponentLoadout: loadout("throw_grenade"), solution: stepFourSolution, opponentBrain: grenadeOpponent, spawn: { playerY: 420, opponentY: 570, playerRotation: 180 } },
+    { playerLoadout: loadout("heavy_slash", "micro_dash"), opponentLoadout: loadout("throw_grenade"), solution: stepSixSolution, opponentBrain: grenadeOpponent, durationMs: 5000, goal: "combo", spawn: { playerY: 420, opponentY: 570, playerRotation: 0 } },
+    { playerLoadout: loadout("swing"), opponentLoadout: loadout("swing"), solution: stepSevenSolution, opponentBrain: meleeOpponentNoRot, durationMs: 10000, goal: "survive", opponentHp: 1000, spawn: { playerY: 440, opponentY: 560, playerRotation: 0 } },
+    { playerLoadout: loadout("pistol_shot", "concussive_shot", "rail_shot"), opponentLoadout: loadout(), solution: customVariablesLessonSolution, opponentBrain: passiveOpponent, goal: "custom_variables", spawn: { playerY: 400, opponentY: 650, playerRotation: 180 } },
+    { playerLoadout: loadout(), opponentLoadout: loadout(), solution: searchLessonSolution, emptyBrain: searchLessonStartingBrain, opponentBrain: passiveOpponent, goal: "brain_search", spawn: { playerY: 400, opponentY: 650, playerRotation: 180 } },
+    { playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialBrain, opponentBrain: passiveOpponent, spawn: { playerY: 400, opponentY: 650, playerRotation: 180 } },
+    { playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialBrain, opponentBrain: passiveOpponent, spawn: { playerY: 400, opponentY: 650, playerRotation: 180 } },
 ];
+
+export const TUTORIAL_STEP_COUNT = SCENARIOS.length;
 
 export function getTutorialScenario(step) {
     const source = SCENARIOS[Math.max(0, Math.min(SCENARIOS.length - 1, Number(step) || 0))];
-    return { ...source, emptyBrain: createEmptyTutorialBrain(), solution: source.solution(), opponentBrain: source.opponentBrain() };
+    return { ...source, emptyBrain: (source.emptyBrain ?? createEmptyTutorialBrain)(), solution: source.solution(), opponentBrain: source.opponentBrain() };
 }
 
 export function buildTutorialArenaShapes(step = 0) {
@@ -132,12 +260,12 @@ export function buildTutorialArenaShapes(step = 0) {
     const { playerY, opponentY, playerRotation } = scenario.spawn;
     const player = resetFighterShape({
         ...MAIN_SHAPE, username: "Your tutorial bot", x: 500, y: playerY, spawnX: 500, spawnY: playerY,
-        rotation: playerRotation, combatClass: scenario.playerClass,
+        rotation: playerRotation, combatClass: scenario.playerLoadout,
     });
     const opponent = resetFighterShape({
-        ...buildOpponentShape({ username: "Tutorial opponent", selectedClass: scenario.opponentClass, slot: 2 }),
-        x: 500, y: opponentY, spawnX: 500, spawnY: opponentY, rotation: 270,
-        combatClass: scenario.opponentClass, locked: true,
+        ...buildOpponentShape({ username: "Tutorial opponent", selectedLoadout: scenario.opponentLoadout, slot: 2 }),
+        x: 500, y: opponentY, spawnX: 500, spawnY: opponentY, rotation: 0,
+        combatClass: scenario.opponentLoadout, locked: true,
     });
     return [player, scenario.opponentHp ? { ...opponent, hp: scenario.opponentHp, maxHp: scenario.opponentHp } : opponent];
 }

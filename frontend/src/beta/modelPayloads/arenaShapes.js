@@ -3,7 +3,7 @@ import {
     RANGED_AMMO_MAX,
     FIREBALL_CHARGES_MAX,
 } from "../combat/Moves.js";
-import { DEFAULT_BOT_LOADOUT, botStatsForLoadout, botStatsForSandboxLoadout, decodeBotLoadout, decodeSandboxLoadout, normalizedBotLoadout } from "../loadout/BotLoadout.js";
+import { DEFAULT_BOT_LOADOUT, botStatsForLoadout, botStatsForSandboxLoadout, decodeBotLoadout, decodeSandboxLoadout, encodeBotLoadout, normalizedBotLoadout } from "../loadout/BotLoadout.js";
 import { withoutFighterStatuses } from "../combat/DefensiveState.js";
 import {
     ARENA_HEIGHT_UNITS,
@@ -22,8 +22,8 @@ export const MAIN_SHAPE = {
     x: ARENA_WIDTH_UNITS / 2,
     y: ARENA_HEIGHT_UNITS / 2,
     size: 60,
-    rotation: 0,
-    combatClass: "custom",
+    rotation: 90,
+    combatClass: encodeBotLoadout(DEFAULT_BOT_LOADOUT),
     loadout: DEFAULT_BOT_LOADOUT,
     abilities: [],
     hp: 100,
@@ -66,8 +66,10 @@ export const MAIN_SHAPE = {
 };
 
 export function buildOpponentShape(opponent) {
-    const combatClass = opponent?.selectedClass ?? "melee";
-    const loadout = decodeBotLoadout(combatClass);
+    const loadout = opponent?.loadout
+        ? normalizedBotLoadout(opponent.loadout)
+        : decodeBotLoadout(opponent?.selectedLoadout ?? opponent?.selectedClass);
+    const loadoutId = encodeBotLoadout(loadout);
     const abilities = loadout.abilities;
     const stats = botStatsForLoadout(loadout);
     const slot = Number(opponent?.slot) === 1 ? 1 : 2;
@@ -79,8 +81,8 @@ export function buildOpponentShape(opponent) {
         x: DUEL_SLOT_TWO_X,
         y: DUEL_SLOT_TWO_Y,
         size: 64,
-        rotation: 270,
-        combatClass,
+        rotation: 0,
+        combatClass: loadoutId,
         loadout,
         abilities,
         hp: stats.maxHp,
@@ -89,19 +91,19 @@ export function buildOpponentShape(opponent) {
         swingActiveMs: 0,
         blockCooldownMs: 0,
         blockActiveMs: 0,
-        blockCharges: combatClass === "melee" ? BLOCK_MAX_CHARGES : 0,
+        blockCharges: abilities.includes("block") ? BLOCK_MAX_CHARGES : 0,
         blockRechargeMs: 0,
         gunCooldownMs: 0,
         gunActiveMs: 0,
         gunShotActive: false,
-        gunAmmo: combatClass === "ranged" ? RANGED_AMMO_MAX : 0,
+        gunAmmo: abilities.includes("fire_gun") ? RANGED_AMMO_MAX : 0,
         gunReloadMs: 0,
         grenadeCooldownMs: 0,
         grenadeSerial: 1,
         thrownGrenade: null,
         fireballCooldownMs: 0,
         fireballActiveMs: 0,
-        fireballCharges: combatClass === "mage" ? FIREBALL_CHARGES_MAX : 0,
+        fireballCharges: abilities.includes("shoot_fireball") ? FIREBALL_CHARGES_MAX : 0,
         fireballReloadMs: 0,
         fireballSerial: 1,
         thrownFireball: null,
@@ -139,28 +141,26 @@ export function buildInitialArenaShapes(matchContext) {
 }
 
 export function buildMatchSpawnShapes(matchContext) {
-    const playerClass = "custom";
-    const opponentClass = "custom";
     const playerSlot = Number(matchContext?.player?.slot) === 2 ? 2 : 1;
     const opponentSlot = playerSlot === 1 ? 2 : 1;
     const fighters = [
         resetFighterShape({
             ...MAIN_SHAPE,
-            combatClass: playerClass,
+            combatClass: encodeBotLoadout(matchContext?.loadout ?? DEFAULT_BOT_LOADOUT),
             loadout: matchContext?.loadout ?? DEFAULT_BOT_LOADOUT,
             x: playerSlot === 1 ? DUEL_SLOT_ONE_X : DUEL_SLOT_TWO_X,
             y: playerSlot === 1 ? DUEL_SLOT_ONE_Y : DUEL_SLOT_TWO_Y,
-            rotation: playerSlot === 1 ? 90 : 270,
+            rotation: playerSlot === 1 ? 180 : 0,
             slot: playerSlot,
             username: matchContext?.player?.username ?? "Player",
         }),
         resetFighterShape({
             ...buildOpponentShape(matchContext?.opponent),
-            combatClass: opponentClass,
+            combatClass: encodeBotLoadout(matchContext?.opponentLoadout ?? DEFAULT_BOT_LOADOUT),
             loadout: matchContext?.opponentLoadout ?? DEFAULT_BOT_LOADOUT,
             x: opponentSlot === 1 ? DUEL_SLOT_ONE_X : DUEL_SLOT_TWO_X,
             y: opponentSlot === 1 ? DUEL_SLOT_ONE_Y : DUEL_SLOT_TWO_Y,
-            rotation: opponentSlot === 1 ? 90 : 270,
+            rotation: opponentSlot === 1 ? 180 : 0,
             slot: opponentSlot,
             username: matchContext?.opponent?.username ?? "Opponent",
         }),
@@ -188,7 +188,7 @@ export function resetFighterShape(shape) {
     const stats = sandbox ? botStatsForSandboxLoadout(loadout) : botStatsForLoadout(loadout);
     return withoutFighterStatuses({
         ...shape,
-        combatClass: sandbox ? shape.combatClass : "custom",
+        combatClass: sandbox ? shape.combatClass : encodeBotLoadout(loadout),
         loadout,
         abilities,
         spawnX: shape.spawnX ?? shape.x,
@@ -258,11 +258,11 @@ export function buildAutoPlayStartShapes(currentShapes, matchContext, isMatchTra
     return nextShapes;
 }
 
-export function resetArenaStartShapes(shapes, selectedClass, opponentSelectedClass) {
+export function resetArenaStartShapes(shapes, selectedLoadout, opponentLoadout) {
     return shapes.map((shape) => {
-        if (shape.id === "main") return resetFighterShape({ ...shape, x: shape.spawnX ?? shape.x, y: shape.spawnY ?? shape.y, combatClass: selectedClass });
+        if (shape.id === "main") return resetFighterShape({ ...shape, x: shape.spawnX ?? shape.x, y: shape.spawnY ?? shape.y, combatClass: selectedLoadout });
         if (shape.id === "opponent-model") {
-            return resetFighterShape({ ...shape, x: shape.spawnX ?? shape.x, y: shape.spawnY ?? shape.y, combatClass: opponentSelectedClass, locked: false });
+            return resetFighterShape({ ...shape, x: shape.spawnX ?? shape.x, y: shape.spawnY ?? shape.y, combatClass: opponentLoadout, locked: false });
         }
         return cloneShape(shape);
     });

@@ -14,6 +14,7 @@ import { runEntityWorld, withComponentState } from "./EntityWorld.js";
 import { abilityContract, EFFECT_TYPES } from "../combat/AbilityContracts.js";
 import { resolveShieldInteraction } from "../combat/ShieldSystem.js";
 import { ignoresHostileEffects } from "../combat/DefensiveState.js";
+import { vectorToCompassDegrees } from "../../logic/arenaAngles.js";
 
 const ENTITY_TYPES = new Set([
     "proximityMine", "mineExplosion", "orbitalMarker", "orbitalExplosion",
@@ -245,7 +246,7 @@ function tickHunterDrone(entity, world, combat) {
         const dx = target.x - drone.x;
         const dy = target.y - drone.y;
         const distance = Math.max(1, Math.hypot(dx, dy));
-        const desiredRotation = Math.atan2(dy, dx) * 180 / Math.PI;
+        const desiredRotation = vectorToCompassDegrees(dx, dy);
         const rotation = normalizeAngle(Number(drone.rotation ?? 0) + clamp(angleDelta(Number(drone.rotation ?? 0), desiredRotation), -8, 8));
         drone = withComponentState(drone, {
             x: clamp(drone.x + dx / distance * Math.min(4.5, distance), 14, world.width - 14),

@@ -23,7 +23,7 @@ Route UI and navigation bugs here first. Authentication behavior usually spans
 | --- | --- | --- |
 | App route or page UI | `src/pages/` and the app shell | relevant styles and route-loading area |
 | Login/session/CSRF | `src/auth/`, `src/security/` | server auth/security areas |
-| Matchmaking lifecycle/draft/object placement | `src/pages/`, `src/matchmaking/` | server matchmaking areas |
+| Matchmaking lifecycle/draft/object placement or match chat | `src/pages/`, `src/matchmaking/` | server matchmaking areas |
 | WebSocket framing/reconnect | `src/matchmaking/` | server WebSocket configuration and controller areas |
 | Logic evaluation/normalization | `src/logic/` | nearby tests and arena payload/loadout contracts |
 | Movement planning | `src/logic/` | arena geometry and constants areas |
@@ -43,8 +43,8 @@ browser authoritative. Any payload change requires tracing the matching server
 DTO, validator, persistence mapping, and rated simulation consumer.
 
 The WebSocket client uses STOMP destinations under `/app/matchmaking.*` and
-receives user events from `/user/queue/matchmaking`. Treat destination or event
-shape changes as shared contracts.
+receives lifecycle and chat events from authenticated user queues. Treat
+destination or event shape changes as shared contracts.
 
 ## Arena boundary
 

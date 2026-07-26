@@ -9,9 +9,9 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.example</groupId>
-	<artifactId>machiner</artifactId>
+	<artifactId>botfight</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>machiner</name>
+	<name>botfight</name>
 	<description>ML game project</description>
 	<url/>
 	<licenses>

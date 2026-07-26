@@ -1,10 +1,11 @@
+import { compassDirection } from "../../logic/arenaAngles.js";
+
 export function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
 export function normalizeAngle(degrees) { return ((degrees % 360) + 360) % 360; }
 export function angleDelta(fromDeg, toDeg) { return ((toDeg - fromDeg + 540) % 360) - 180; }
 export function rayIntersectsCircle(origin, rotationDegrees, range, circle) {
     if (!origin || !circle || !Number.isFinite(range) || range <= 0) return false;
-    const radians = rotationDegrees * Math.PI / 180;
-    const directionX = Math.cos(radians), directionY = Math.sin(radians);
+    const { x: directionX, y: directionY } = compassDirection(rotationDegrees);
     const offsetX = circle.x - origin.x, offsetY = circle.y - origin.y;
     const projection = offsetX * directionX + offsetY * directionY;
     const radius = Number(circle.size ?? 0) / 2;

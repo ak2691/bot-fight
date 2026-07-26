@@ -6,8 +6,9 @@ import { MOVE_STATS } from "./combat/Moves.js";
 import { combatVisualRemainingMs, gunRayOpacity, healthBarPercent, prototypeVisualOpacity, swordSweepAngle, visualProgress } from "./combat/visualState.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "./modelPayloads/arenaConstants.js";
 import { interpolatePosition } from "./pixi/snapshotInterpolation.js";
-import { activeFighterVisual, entityCaption, fighterStatusLabels, isFighterShape, pixiLayerForShape, projectileTrailStyle, shapeInterpolationMs } from "./pixi/pixiVisualState.js";
+import { activeFighterVisual, entityCaption, fighterColorRole, fighterDashRotation, fighterStatusLabels, isFighterShape, pixiLayerForShape, projectileTrailStyle, shapeInterpolationMs } from "./pixi/pixiVisualState.js";
 import { centeredTextureFrame, createArenaTextureCache } from "./pixi/arenaTextureCache.js";
+import { compassDegreesToRadians } from "../logic/arenaAngles.js";
 import "./PixiCanvas.css";
 
 const FIGHTER_SIZE = 60;
@@ -34,6 +35,10 @@ export default function PixiCanvas({
     fillAvailable = false,
     abilityLayout = "split",
     showEmptyAbilitySlot = false,
+    showMissingOpponentStatus = true,
+    arenaSize = null,
+    fixedLayout = false,
+    lockCamera = false,
     measurementEnabled = false,
     measurementPoints = [],
     onMeasurementPointsChange = () => { },
@@ -51,12 +56,13 @@ export default function PixiCanvas({
             onDeselectAll,
             editable,
             placementSide,
+            lockCamera,
             measurementEnabled,
             measurementPoints,
             onMeasurementPointsChange,
         };
         runtimeRef.current?.syncShapes(shapes);
-    }, [editable, measurementEnabled, measurementPoints, onDeselectAll, onMeasurementPointsChange, onSelectShape, onUpdateShape, placementSide, selectedId, shapes]);
+    }, [editable, lockCamera, measurementEnabled, measurementPoints, onDeselectAll, onMeasurementPointsChange, onSelectShape, onUpdateShape, placementSide, selectedId, shapes]);
 
     useEffect(() => {
         let disposed = false;
@@ -96,19 +102,28 @@ export default function PixiCanvas({
     const fighters = shapes.filter(isFighterShape);
     const playerFighter = fighters.find((fighter) => fighter.id === "main");
     const opponentFighter = fighters.find((fighter) => fighter.id === "opponent-model");
-    const opponentStatusFighter = opponentFighter ?? { id: "opponent-model", abilities: [], opponentUsername: "OPPONENT" };
+    const opponentStatusFighter = opponentFighter
+        ?? (showMissingOpponentStatus ? { id: "opponent-model", slot: 2, abilities: [], opponentUsername: "OPPONENT" } : null);
+    const layoutClass = fixedLayout
+        ? abilityLayout === "right"
+            ? "pixi-combat-layout--fixed pixi-combat-layout--right max-w-[1120px]"
+            : "pixi-combat-layout--fixed pixi-combat-layout--split max-w-[1360px]"
+        : abilityLayout === "right"
+            ? "max-w-[1120px] grid-cols-1 lg:grid-cols-[minmax(0,880px)_220px]"
+            : "max-w-[1360px] grid-cols-1 lg:grid-cols-[220px_minmax(0,860px)_220px]";
 
     return (
-        <div className={`mx-auto grid w-full grid-cols-1 items-center justify-center gap-3 ${abilityLayout === "right" ? "max-w-[1120px] lg:grid-cols-[minmax(0,880px)_220px]" : "max-w-[1360px] lg:grid-cols-[220px_minmax(0,860px)_220px]"}`}>
+        <div className={`mx-auto grid w-full items-center justify-center gap-3 ${layoutClass}`}>
             {abilityLayout !== "right" && (
-                <div className="order-2 min-w-0 lg:order-1">
+                <div className={`${fixedLayout ? "order-1 min-w-0" : "order-2 min-w-0 lg:order-1"} ${fixedLayout ? "pixi-side-status" : ""}`}>
                     {playerFighter && <AbilityStatusPanel fighter={playerFighter} showEmptySlot={showEmptyAbilitySlot} />}
                 </div>
             )}
             <div
-                className="relative order-1 justify-self-center overflow-hidden rounded-xl border border-border-mid bg-[#0d1117] lg:order-2"
+                className={`relative justify-self-center overflow-hidden rounded-xl border border-border-mid bg-[#0d1117] ${fixedLayout ? "order-2" : "order-1 lg:order-2"}`}
                 style={{
-                    width: fillAvailable ? "min(100%, 860px, calc(100svh - 90px))" : "min(100%, 860px, calc(100svh - 140px))",
+                    width: arenaSize ?? (fillAvailable ? "min(100%, 860px, calc(100svh - 90px))" : "min(100%, 860px, calc(100svh - 140px))"),
+                    minWidth: fixedLayout ? "400px" : undefined,
                     aspectRatio: `${ARENA_WIDTH_UNITS} / ${ARENA_HEIGHT_UNITS}`,
                 }}
                 onContextMenu={(event) => event.preventDefault()}
@@ -120,13 +135,15 @@ export default function PixiCanvas({
                         <p role="status" className="font-mono text-[10px] tracking-[0.22em]">INITIALIZING PIXI ARENA...</p>
                     </div>
                 )}
-                <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded border border-slate-700/70 bg-zinc-950/75 px-2 py-1 font-mono text-[8px] tracking-widest text-slate-400">
-                    WHEEL TO ZOOM · RIGHT-DRAG TO PAN
-                </div>
+                {!lockCamera && (
+                    <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded border border-slate-700/70 bg-zinc-950/75 px-2 py-1 font-mono text-[8px] tracking-widest text-slate-400">
+                        WHEEL TO ZOOM · RIGHT-DRAG TO PAN
+                    </div>
+                )}
             </div>
-            <div className="order-3 min-w-0 space-y-3">
+            <div className={`order-3 min-w-0 space-y-3 ${fixedLayout ? "pixi-side-status" : ""}`}>
                 {abilityLayout === "right" && playerFighter && <AbilityStatusPanel fighter={playerFighter} showEmptySlot={showEmptyAbilitySlot} />}
-                <AbilityStatusPanel fighter={opponentStatusFighter} showEmptySlot={showEmptyAbilitySlot} />
+                {opponentStatusFighter && <AbilityStatusPanel fighter={opponentStatusFighter} showEmptySlot={showEmptyAbilitySlot} />}
             </div>
         </div>
     );
@@ -161,6 +178,10 @@ function createArenaRuntime(app, optionsRef) {
     let measurementHoverPoint = null;
 
     function updateCamera() {
+        if (optionsRef.current.lockCamera) {
+            zoom = MIN_ZOOM;
+            viewCenter = { x: ARENA_WIDTH_UNITS / 2, y: ARENA_HEIGHT_UNITS / 2 };
+        }
         const baseScale = Math.min(app.screen.width / ARENA_WIDTH_UNITS, app.screen.height / ARENA_HEIGHT_UNITS);
         const scale = baseScale * zoom;
         const halfWidth = app.screen.width / scale / 2;
@@ -229,7 +250,10 @@ function createArenaRuntime(app, optionsRef) {
             const current = sampleViewPosition(view, now);
             const durationMs = drag?.id === shape.id ? 0 : shapeInterpolationMs(shape);
             view.shape = shape;
-            view.motion = { from: current, to: { x: Number(shape.x), y: Number(shape.y) }, startedAt: now, durationMs };
+            const target = { x: Number(shape.x), y: Number(shape.y) };
+            if (target.x !== view.motion.to.x || target.y !== view.motion.to.y || durationMs !== view.motion.durationMs) {
+                view.motion = { from: current, to: target, startedAt: now, durationMs };
+            }
             view.container.cursor = shape.locked || !optionsRef.current.editable ? "default" : "grab";
             view.container.hitArea = new Circle(0, 0, Math.max(12, Number(shape.size ?? (isFighterShape(shape) ? FIGHTER_SIZE : 30)) / 2 + 6));
             if (Number(shape.hitFlashMs ?? 0) > 0 && Number(previousShape?.hitFlashMs ?? 0) <= 0) {
@@ -315,6 +339,7 @@ function createArenaRuntime(app, optionsRef) {
     app.stage.on("pointerdown", (event) => {
         if (event.target !== app.stage) return;
         if (event.button === 2 || event.button === 1) {
+            if (optionsRef.current.lockCamera) return;
             pan = { x: event.global.x, y: event.global.y, center: { ...viewCenter } };
             return;
         }
@@ -365,6 +390,7 @@ function createArenaRuntime(app, optionsRef) {
 
     const handleWheel = (event) => {
         event.preventDefault();
+        if (optionsRef.current.lockCamera) return;
         const bounds = app.canvas.getBoundingClientRect();
         const cursor = { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
         const before = camera.toLocal(cursor);
@@ -411,20 +437,20 @@ function drawArena(graphics) {
 
 function drawFighter(view, position, selected, effects, textureCache) {
     const { shape, baseSprite, graphics, caption } = view;
-    const opponent = shape.type === "opponentModel";
-    const tone = opponent ? COLORS.opponent : COLORS.player;
+    const colorRole = fighterColorRole(shape);
+    const tone = colorRole === "pink" ? COLORS.opponent : COLORS.player;
     const radius = Number(shape.size ?? FIGHTER_SIZE) / 2;
-    const rotation = radians(shape.rotation);
+    const rotation = compassDegreesToRadians(shape.rotation);
     const slowed = Number(shape.slowedMs ?? 0) > 0;
     const dashing = Number(shape.dashActiveMs ?? 0) > 0 || Number(shape.microDashActiveMs ?? 0) > 0;
     hideCachedEffects(view);
     graphics.clear();
 
-    baseSprite.texture = fighterTexture(textureCache, opponent, radius, tone);
+    baseSprite.texture = fighterTexture(textureCache, colorRole, radius, tone);
     baseSprite.rotation = rotation;
     const dead = Number(shape.hp ?? 0) <= 0;
     baseSprite.alpha = dead ? 0.45 : slowed ? 0.7 : 1;
-    if (dashing) showCachedEffect(view, "dash", dashTexture(textureCache, radius, tone), { rotation });
+    if (dashing) showCachedEffect(view, "dash", dashTexture(textureCache, radius, tone), { rotation: fighterDashRotation(shape) });
     if (selected) graphics.circle(0, 0, radius + 7).stroke({ color: COLORS.white, alpha: 0.72, width: 2 });
 
     if (shape.hp != null) {
@@ -472,12 +498,12 @@ function drawDeadMarker(graphics) {
     graphics.moveTo(5, 9).lineTo(5, 15).stroke({ color: 0x09090b, width: 2 });
 }
 
-function fighterTexture(textureCache, opponent, radius, tone) {
+function fighterTexture(textureCache, colorRole, radius, tone) {
     return textureCache.get(
-        `fighter:${opponent ? "opponent" : "player"}:${radius}`,
+        `fighter:${colorRole}:${radius}`,
         centeredTextureFrame(radius + 18),
         (graphics) => {
-            graphics.circle(0, 0, radius).fill({ color: opponent ? 0x2b122f : 0x0b2730, alpha: 0.9 }).stroke({ color: tone, width: 4 });
+            graphics.circle(0, 0, radius).fill({ color: colorRole === "pink" ? 0x2b122f : 0x0b2730, alpha: 0.9 }).stroke({ color: tone, width: 4 });
             graphics.poly([radius + 15, 0, radius + 4, 7, radius + 4, -7]).fill(tone);
         },
     );
@@ -490,18 +516,17 @@ function prewarmShapeTextures(textureCache, shape) {
         return;
     }
 
-    const opponent = shape.type === "opponentModel";
-    const tone = opponent ? COLORS.opponent : COLORS.player;
+    const colorRole = fighterColorRole(shape);
+    const tone = colorRole === "pink" ? COLORS.opponent : COLORS.player;
     const radius = Number(shape.size ?? FIGHTER_SIZE) / 2;
     const abilities = new Set(shape.abilities ?? []);
-    fighterTexture(textureCache, opponent, radius, tone);
+    fighterTexture(textureCache, colorRole, radius, tone);
     if (abilities.has("dash") || abilities.has("micro_dash")) dashTexture(textureCache, radius, tone);
     if (abilities.has("block")) shieldTexture(textureCache, radius);
     if (abilities.has("swing")) meleeTexture(textureCache, "swing", MOVE_STATS.swing.range, 0xfca5a5, 12);
     if (abilities.has("heavy_slash")) meleeTexture(textureCache, "heavy_slash", MOVE_STATS.swing.range, 0xfee2e2, 13);
     if (abilities.has("quick_jab")) meleeTexture(textureCache, "quick_jab", 52, 0xffe4e6, 8);
     if (abilities.has("thrust")) meleeTexture(textureCache, "thrust", 100, 0xfee2e2, 8);
-    if (abilities.has("micro_dash")) meleeTexture(textureCache, "micro_dash", 100, 0x67e8f9, 18);
     if (abilities.has("stun")) stunFanTexture(textureCache);
     if (abilities.has("repair_pulse")) prewarmRingAnimation(textureCache, "repair_pulse", 43, 0x6ee7b7, 5, 0.12, 1);
     if (abilities.has("repulsor_burst")) prewarmRingAnimation(textureCache, "repulsor_burst", Number(ABILITY_STATS.repulsor_burst.radius ?? 110), 0xddd6fe, 5, 0.12, 1);
@@ -649,7 +674,7 @@ function drawDroplet(graphics, x, y, size, color) {
 }
 
 function drawFighterWorldEffects(shape, position, effects, view, textureCache) {
-    const rotation = radians(shape.rotation);
+    const rotation = compassDegreesToRadians(shape.rotation);
     if (Number(shape.gunActiveMs ?? 0) > 0) {
         drawAnchoredRay(effects, shape, position, Number(shape.gunRayOriginX ?? shape.x), Number(shape.gunRayOriginY ?? shape.y), Number(shape.gunRayRotation ?? shape.rotation), MOVE_STATS.fire_gun.range, 0xfde68a, gunRayOpacity(shape), 3);
     }
@@ -678,7 +703,7 @@ function drawFighterWorldEffects(shape, position, effects, view, textureCache) {
     const originX = Number(shape.prototypeVisual?.x ?? shape.visualOriginX ?? position.x);
     const originY = Number(shape.prototypeVisual?.y ?? shape.visualOriginY ?? position.y);
     const originRotation = Number(shape.prototypeVisual?.rotation ?? shape.visualOriginRotation ?? shape.rotation);
-    const angle = radians(originRotation);
+    const angle = compassDegreesToRadians(originRotation);
     if (visual === "repair_pulse" || visual === "repulsor_burst") {
         const progress = quantizedProgress(visualProgress(remaining, duration));
         const maxRadius = visual === "repair_pulse" ? 43 : Number(stats.radius ?? 110);
@@ -697,8 +722,6 @@ function drawFighterWorldEffects(shape, position, effects, view, textureCache) {
     } else if (visual === "phase_strike") {
         const progress = quantizedProgress(visualProgress(remaining, duration));
         showCachedEffect(view, "ability", ringTexture(textureCache, visual, 42 + progress * 28, 0xf0abfc, 4), { alpha: opacity });
-    } else if (visual === "micro_dash") {
-        showCachedEffect(view, "ability", meleeTexture(textureCache, visual, 100, 0x67e8f9, 18), { rotation: angle + Math.PI, alpha: opacity * 0.6 });
     } else if (visual === "reactive_armor" || visual === "absolute_guard") {
         const progress = quantizedProgress(visualProgress(remaining, duration));
         const radius = 40 + progress * 16;
@@ -734,7 +757,7 @@ function stunFanTexture(textureCache) {
 function drawAnchoredRay(graphics, shape, position, originX, originY, rotation, length, color, alpha, width) {
     const x = Number.isFinite(originX) ? originX : position.x;
     const y = Number.isFinite(originY) ? originY : position.y;
-    drawRay(graphics, x, y, radians(rotation ?? shape.rotation), length, color, alpha, width);
+    drawRay(graphics, x, y, compassDegreesToRadians(rotation ?? shape.rotation), length, color, alpha, width);
 }
 
 function drawRay(graphics, x, y, angle, length, color, alpha = 1, width = 3) {
@@ -749,7 +772,7 @@ function drawEntity(view, selected, effects, textureCache) {
     const { shape, baseSprite, graphics, caption } = view;
     const size = Math.max(2, Number(shape.size ?? 30));
     const radius = size / 2;
-    const rotation = radians(shape.rotation);
+    const rotation = compassDegreesToRadians(shape.rotation);
     hideCachedEffects(view);
     graphics.clear();
     baseSprite.texture = entityTexture(textureCache, shape, size, radius);

@@ -8,3 +8,37 @@
 .pixi-arena-host canvas {
     touch-action: none;
 }
+
+.pixi-combat-layout--fixed.pixi-combat-layout--split {
+    min-width: 804px;
+    grid-template-columns: minmax(190px, 220px) minmax(400px, 860px) minmax(190px, 220px);
+}
+
+.pixi-combat-layout--fixed.pixi-combat-layout--right {
+    min-width: 602px;
+    grid-template-columns: minmax(400px, 880px) minmax(190px, 220px);
+}
+
+@media (max-width: 1400px) {
+    .pixi-combat-layout--fixed.pixi-combat-layout--split {
+        min-width: 764px;
+        grid-template-columns: minmax(170px, 190px) minmax(400px, 860px) minmax(170px, 190px);
+    }
+
+    .pixi-combat-layout--fixed.pixi-combat-layout--right {
+        min-width: 582px;
+        grid-template-columns: minmax(400px, 880px) minmax(170px, 190px);
+    }
+}
+
+@media (max-width: 1180px) {
+    .pixi-combat-layout--fixed {
+        min-width: 400px !important;
+        max-width: 860px;
+        grid-template-columns: minmax(400px, 860px) !important;
+    }
+
+    .pixi-combat-layout--fixed .pixi-side-status {
+        display: none;
+    }
+}

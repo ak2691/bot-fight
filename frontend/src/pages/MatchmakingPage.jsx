@@ -1,6 +1,8 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import BetaModel from "../beta/BetaModel";
+import AppNavbar from "../components/AppNavbar";
+import ArenaLoadingScreen from "../components/ArenaLoadingScreen";
 import PixiCanvas from "../beta/PixiCanvas";
 import {
     ASSAULT_BOOST_TYPE,
@@ -34,20 +36,35 @@ import {
     UTILITY_PLACEMENT_LIMIT,
 } from "../beta/modelPayloads/arenaConstants";
 import { MAIN_SHAPE, buildCoreShapes } from "../beta/modelPayloads/arenaShapes";
-import { createMatchmakingClient } from "../matchmaking/stompClient";
+import { getActiveMatchmakingClient } from "../matchmaking/stompClient";
+import MatchChat from "../matchmaking/MatchChat";
+import { useMatchmaking } from "../matchmaking/matchmaking-context";
 import { apiUrl } from "../config/api";
+import { localReplaySchedule } from "../replay/replayPresentation.js";
 
 const SimulationReplay = lazy(() => import("../replay/SimulationReplay"));
 
 const ROUND_RESULT_HOLD_MS = 3500;
-const MATCH_COUNTDOWN_SECONDS = 5;
 
-function ReplayLoadingFallback() {
-    return (
-        <main className="flex min-h-[calc(100vh-52px)] items-center justify-center bg-arena-deep text-ink-muted">
-            <p role="status" className="font-mono text-xs tracking-[0.25em]">LOADING REPLAY...</p>
-        </main>
-    );
+function LoadoutStatIcon({ stat }) {
+    const commonProps = {
+        fill: "none",
+        stroke: "currentColor",
+        strokeLinecap: "round",
+        strokeLinejoin: "round",
+        strokeWidth: 1.7,
+    };
+
+    if (stat === "maxHp") {
+        return <svg viewBox="0 0 24 24" aria-hidden="true" className="h-7 w-7" {...commonProps}><path d="M12 21s7-3.3 7-9.5V5.8L12 3 5 5.8v5.7C5 17.7 12 21 12 21Z" /><path d="M9 11.5h6M12 8.5v6" /></svg>;
+    }
+    if (stat === "moveSpeed") {
+        return <svg viewBox="0 0 24 24" aria-hidden="true" className="h-7 w-7" {...commonProps}><path d="M8 3h5l-1 5 2 4 5 2.5c1.2.6 1.6 2 .9 3.2-.4.8-1.2 1.3-2.1 1.3H7l-2-2 2-3V8l1-5Z" /><path d="M7 14h5M4 20h14" /></svg>;
+    }
+    if (stat === "attackDamage") {
+        return <svg viewBox="0 0 24 24" aria-hidden="true" className="h-7 w-7" {...commonProps}><path d="m14.5 3 6.5 6.5-8 8-2.5-.5-.5-2.5 8-8L14.5 3Z" /><path d="m10.5 16.5-5 5-3-3 5-5M15.5 5.5l3 3" /></svg>;
+    }
+    return <svg viewBox="0 0 24 24" aria-hidden="true" className="h-7 w-7" {...commonProps}><path d="m13 2-7 11h5l-1 9 8-12h-5V2Z" /></svg>;
 }
 
 function secondsRemaining(countdownEndsAt, maximum = Number.POSITIVE_INFINITY) {
@@ -153,17 +170,13 @@ function wasObjectPlacementSubmittedByCurrentPlayer(event) {
         && String(event.objectPlacementUserId) === String(event.player.userId);
 }
 
-function isSeriesComplete(event, currentPlayback) {
-    if (!currentPlayback?.result) return false;
-    if (currentPlayback.result === "RESIGNATION_WIN") return true;
-    const winsRequired = Math.max(1, Number(event?.winsRequired ?? 2));
-    const players = Array.isArray(event?.players) ? event.players : [event?.player, event?.opponent].filter(Boolean);
-    return Number(event?.roundNumber ?? 1) >= 3
-        || players.some((player) => Number(player?.roundWins ?? 0) >= winsRequired);
-}
-
 export default function MatchmakingPage() {
     const navigate = useNavigate();
+    const { clearFoundMatch } = useMatchmaking();
+    const location = useLocation();
+    const initialMatchEvent = location.state?.matchEvent
+        ? normalizeEventTimes(location.state.matchEvent, null)
+        : null;
     const clientRef = useRef(null);
     const serverClockOffsetRef = useRef(null);
     const playbackRef = useRef(null);
@@ -172,10 +185,12 @@ export default function MatchmakingPage() {
     const placementSubmittedRef = useRef(false);
     const placementSubmitPendingRef = useRef(false);
     const classSelectionSyncRequestedRef = useRef(false);
-    const queueStatusRef = useRef("CONNECTING");
+    const loadoutChoiceRef = useRef(normalizedBotLoadout(DEFAULT_BOT_LOADOUT));
+    const initialQueueStatus = initialMatchEvent?.status === "CLASS_SELECT" ? "CLASS_SELECT" : "CONNECTING";
+    const queueStatusRef = useRef(initialQueueStatus);
     const [socketStatus, setSocketStatus] = useState("IDLE");
-    const [queueStatus, setQueueStatus] = useState("CONNECTING");
-    const [matchEvent, setMatchEvent] = useState(null);
+    const [queueStatus, setQueueStatus] = useState(initialQueueStatus);
+    const [matchEvent, setMatchEvent] = useState(initialMatchEvent);
     const [playback, setPlayback] = useState(null);
     const [remaining, setRemaining] = useState(0);
     const [hasFinished, setHasFinished] = useState(false);
@@ -186,10 +201,28 @@ export default function MatchmakingPage() {
     const [placementSubmitPending, setPlacementSubmitPending] = useState(false);
     const [confirmedPlacementObjects, setConfirmedPlacementObjects] = useState([]);
     const [loadoutChoice, setLoadoutChoice] = useState(() => normalizedBotLoadout(DEFAULT_BOT_LOADOUT));
+    const [chatMessages, setChatMessages] = useState([]);
+    const [chatMinimized, setChatMinimized] = useState(false);
+    const [chatRateLimitNotice, setChatRateLimitNotice] = useState(null);
+    const [matchOver, setMatchOver] = useState(false);
+    const chatMinimizedRef = useRef(false);
+    const chatNoticeTimeoutRef = useRef(null);
+
+    useEffect(() => {
+        clearFoundMatch();
+    }, [clearFoundMatch]);
 
     useEffect(() => {
         playbackRef.current = playback;
     }, [playback]);
+
+    useEffect(() => {
+        loadoutChoiceRef.current = loadoutChoice;
+    }, [loadoutChoice]);
+
+    useEffect(() => {
+        chatMinimizedRef.current = chatMinimized;
+    }, [chatMinimized]);
 
     const updateQueueStatus = (status) => {
         queueStatusRef.current = status;
@@ -200,13 +233,7 @@ export default function MatchmakingPage() {
         setMatchEvent(event);
     };
     const exitToHome = () => {
-        const currentEvent = matchEventRef.current;
-        navigate("/home", {
-            state: {
-                activeMatch: Boolean(currentEvent?.matchId)
-                    && !isSeriesComplete(currentEvent, playbackRef.current),
-            },
-        });
+        navigate("/home");
     };
 
     useEffect(() => {
@@ -216,25 +243,42 @@ export default function MatchmakingPage() {
             serverClockOffsetRef.current = await estimateServerClockOffset();
             if (cancelled) return;
 
-            const client = createMatchmakingClient({
+            const client = getActiveMatchmakingClient({
+                onChatEvent: (event) => {
+                    if (event.matchId && matchEventRef.current?.matchId
+                        && String(event.matchId) !== String(matchEventRef.current.matchId)) return;
+                    if (event.type === "MATCH_CHAT_RATE_LIMITED") {
+                        setChatRateLimitNotice(event.message ?? "You are sending messages too quickly.");
+                        if (chatNoticeTimeoutRef.current != null) clearTimeout(chatNoticeTimeoutRef.current);
+                        chatNoticeTimeoutRef.current = setTimeout(() => setChatRateLimitNotice(null), 2500);
+                        return;
+                    }
+                    if (event.type !== "MATCH_CHAT_MESSAGE") return;
+                    setChatMessages((current) => current.some((message) => message.messageId === event.messageId)
+                        ? current
+                        : [...current, { ...event, unread: chatMinimizedRef.current }].slice(-100));
+                },
                 onStatus: (status) => {
                     setSocketStatus(status);
                     if (status === "ERROR" || status === "CLOSED") {
                         placementSubmitPendingRef.current = false;
                         setPlacementSubmitPending(false);
                         if (matchEventRef.current?.matchId) {
-                            const endsAtMs = Date.now() + 30_000;
                             setDisconnectNotice({
-                                endsAtMs,
-                                message: "Connection lost. Reconnect within 30 seconds or the match will be forfeited.",
+                                endsAtMs: null,
+                                message: "Connection lost. Reconnect now to remain in the match.",
                                 self: true,
                             });
-                            setDisconnectRemaining(30);
+                            setDisconnectRemaining(null);
                         }
                     }
                 },
                 onEvent: (rawEvent) => {
                     const event = normalizeEventTimes(rawEvent, serverClockOffsetRef.current);
+                    if (event.type === "NO_ACTIVE_MATCH") {
+                        navigate("/home", { replace: true });
+                        return;
+                    }
                     if (event.type === "QUEUE_WAITING") {
                         updateQueueStatus("WAITING");
                     }
@@ -245,16 +289,18 @@ export default function MatchmakingPage() {
                             roundReadyTimeoutRef.current = null;
                         }
                         setCurrentMatchEvent(event);
-                        updateQueueStatus(event.status === "CLASS_SELECT" ? "CLASS_SELECT" : "COUNTDOWN");
+                        updateQueueStatus(event.status === "CLASS_SELECT" ? "CLASS_SELECT" : "PREP");
                         setRemaining(event.status === "CLASS_SELECT"
                             ? secondsRemaining(event.classSelectionEndsAtMs)
-                            : secondsRemaining(event.countdownEndsAtMs, MATCH_COUNTDOWN_SECONDS));
+                            : 0);
                         setLoadoutChoice(decodeBotLoadout(event.player?.selectedClass));
                         playbackRef.current = null;
                         setPlayback(null);
                         setHasFinished(false);
                         setFinishError(null);
                         setHasSurrendered(false);
+                        setMatchOver(false);
+                        setChatMessages([]);
                         placementSubmittedRef.current = false;
                         placementSubmitPendingRef.current = false;
                         setPlacementSubmitPending(false);
@@ -264,12 +310,15 @@ export default function MatchmakingPage() {
                         setCurrentMatchEvent(event);
                         updateQueueStatus("CLASS_SELECT");
                         setRemaining(secondsRemaining(event.classSelectionEndsAtMs));
+                        if (event.player?.classSelected) {
+                            setLoadoutChoice(decodeBotLoadout(event.player.selectedClass));
+                        }
                     }
                     if (event.type === "MATCH_COUNTDOWN_READY") {
                         classSelectionSyncRequestedRef.current = false;
                         setCurrentMatchEvent(event);
-                        updateQueueStatus("COUNTDOWN");
-                        setRemaining(secondsRemaining(event.countdownEndsAtMs, MATCH_COUNTDOWN_SECONDS));
+                        updateQueueStatus("PREP");
+                        setRemaining(0);
                         setLoadoutChoice(decodeBotLoadout(event.player?.selectedClass));
                         placementSubmitPendingRef.current = false;
                         setPlacementSubmitPending(false);
@@ -301,10 +350,10 @@ export default function MatchmakingPage() {
                             setCurrentMatchEvent(event);
                             playbackRef.current = null;
                             setPlayback(null);
-                            updateQueueStatus(event.status === "CLASS_SELECT" ? "CLASS_SELECT" : "COUNTDOWN");
+                            updateQueueStatus(event.status === "CLASS_SELECT" ? "CLASS_SELECT" : "PREP");
                             setRemaining(event.status === "CLASS_SELECT"
                                 ? secondsRemaining(event.classSelectionEndsAtMs)
-                                : secondsRemaining(event.countdownEndsAtMs, MATCH_COUNTDOWN_SECONDS));
+                                : 0);
                             setHasFinished(false);
                             setHasSurrendered(false);
                             setLoadoutChoice(decodeBotLoadout(event.player?.selectedClass));
@@ -318,8 +367,10 @@ export default function MatchmakingPage() {
                             if (roundReadyTimeoutRef.current != null) {
                                 clearTimeout(roundReadyTimeoutRef.current);
                             }
-                            const holdEndsAtMs = Number(event.resultRevealsAtMs ?? 0) + ROUND_RESULT_HOLD_MS;
-                            const remainingHoldMs = event.resultRevealsAtMs == null
+                            const resultRevealsAtMs = playbackRef.current.resultRevealsAtMs
+                                ?? event.resultRevealsAtMs;
+                            const holdEndsAtMs = Number(resultRevealsAtMs ?? 0) + ROUND_RESULT_HOLD_MS;
+                            const remainingHoldMs = resultRevealsAtMs == null
                                 ? ROUND_RESULT_HOLD_MS
                                 : Math.max(0, holdEndsAtMs - Date.now());
                             roundReadyTimeoutRef.current = setTimeout(showNextRound, remainingHoldMs);
@@ -354,14 +405,33 @@ export default function MatchmakingPage() {
                         setFinishError(event.message ?? "The server rejected the bot submission. Review the bot and try again.");
                         updateQueueStatus("TRAINING");
                     }
+                    if (event.type === "SIMULATION_PREPARING") {
+                        setCurrentMatchEvent(event);
+                        updateQueueStatus("SIMULATION_PREPARING");
+                    }
                     if (event.type === "MATCH_PLAYBACK_READY") {
                         setCurrentMatchEvent(event);
+                        const localSchedule = localReplaySchedule(
+                            event.playbackStartsAtMs,
+                            event.resultRevealsAtMs,
+                        );
+                        const roundWinsBeforeResult = Object.fromEntries(
+                            (event.players ?? [event.player, event.opponent].filter(Boolean))
+                                .filter((participant) => participant?.userId != null)
+                                .map((participant) => [String(participant.userId), Number(participant.roundWins) || 0])
+                        );
                         const nextPlayback = {
                             ...event.playback,
+                            player: event.player,
+                            opponent: event.opponent,
+                            players: event.players,
+                            roundNumber: event.roundNumber,
+                            winsRequired: event.winsRequired,
+                            roundWinsBeforeResult,
                             playbackStartsAt: event.playbackStartsAt,
-                            playbackStartsAtMs: event.playbackStartsAtMs,
+                            playbackStartsAtMs: localSchedule.playbackStartsAtMs,
                             resultRevealsAt: event.resultRevealsAt,
-                            resultRevealsAtMs: event.resultRevealsAtMs,
+                            resultRevealsAtMs: localSchedule.resultRevealsAtMs,
                         };
                         playbackRef.current = nextPlayback;
                         setPlayback(nextPlayback);
@@ -370,19 +440,55 @@ export default function MatchmakingPage() {
                         placementSubmitPendingRef.current = false;
                         setPlacementSubmitPending(false);
                     }
+                    if (event.type === "MATCH_REPLAY_BATCH") {
+                        setPlayback((currentPlayback) => {
+                            if (!currentPlayback) return currentPlayback;
+                            const framesByTick = new Map(
+                                [...(currentPlayback.frames ?? []), ...(event.playback?.frames ?? [])]
+                                    .map((frame) => [`${frame.tick ?? ""}:${frame.elapsedMs ?? ""}`, frame])
+                            );
+                            const nextPlayback = {
+                                ...currentPlayback,
+                                frames: [...framesByTick.values()]
+                                    .sort((left, right) => Number(left.elapsedMs ?? 0) - Number(right.elapsedMs ?? 0)),
+                                batchSequence: event.playback?.batchSequence ?? currentPlayback.batchSequence,
+                                replayCursorElapsedMs: event.playback?.replayCursorElapsedMs
+                                    ?? currentPlayback.replayCursorElapsedMs,
+                                terminalBatch: Boolean(event.playback?.terminalBatch || currentPlayback.terminalBatch),
+                                status: event.playback?.status ?? currentPlayback.status,
+                                result: event.playback?.result ?? currentPlayback.result,
+                                winnerUserId: event.playback?.winnerUserId ?? currentPlayback.winnerUserId,
+                                message: event.playback?.message ?? currentPlayback.message,
+                            };
+                            playbackRef.current = nextPlayback;
+                            return nextPlayback;
+                        });
+                    }
                     if (event.type === "MATCH_RESULT_READY") {
                         setCurrentMatchEvent(event);
+                        setDisconnectNotice(null);
+                        setDisconnectRemaining(0);
+                        const seriesWon = (event.players ?? []).some((player) =>
+                            Number(player?.roundWins ?? 0) >= Number(event.winsRequired ?? 2));
+                        const terminalResult = ["RESIGNATION_WIN", "DISCONNECTION_WIN", "MATCH_CANCELLED"]
+                            .includes(event.playback?.result);
+                        if (seriesWon || terminalResult) setMatchOver(true);
                         setPlayback((currentPlayback) => {
                             const nextPlayback = {
                                 ...(currentPlayback ?? {}),
                                 playbackStartsAt: event.playbackStartsAt ?? currentPlayback?.playbackStartsAt,
-                                playbackStartsAtMs: event.playbackStartsAtMs ?? currentPlayback?.playbackStartsAtMs,
+                                playbackStartsAtMs: currentPlayback?.playbackStartsAtMs ?? event.playbackStartsAtMs,
                                 resultRevealsAt: event.resultRevealsAt ?? currentPlayback?.resultRevealsAt,
-                                resultRevealsAtMs: event.resultRevealsAtMs ?? currentPlayback?.resultRevealsAtMs,
+                                resultRevealsAtMs: currentPlayback?.resultRevealsAtMs ?? event.resultRevealsAtMs,
                                 status: event.playback?.status ?? currentPlayback?.status,
                                 result: event.playback?.result ?? currentPlayback?.result,
                                 winnerUserId: event.playback?.winnerUserId ?? currentPlayback?.winnerUserId,
                                 message: event.playback?.message ?? event.message ?? currentPlayback?.message,
+                                player: event.player ?? currentPlayback?.player,
+                                opponent: event.opponent ?? currentPlayback?.opponent,
+                                players: event.players ?? currentPlayback?.players,
+                                roundNumber: event.roundNumber ?? currentPlayback?.roundNumber,
+                                winsRequired: event.winsRequired ?? currentPlayback?.winsRequired,
                             };
                             playbackRef.current = nextPlayback;
                             return nextPlayback;
@@ -403,16 +509,16 @@ export default function MatchmakingPage() {
                 clearTimeout(roundReadyTimeoutRef.current);
                 roundReadyTimeoutRef.current = null;
             }
-            clientRef.current?.leaveQueue();
-            clientRef.current?.disconnect();
+            if (chatNoticeTimeoutRef.current != null) clearTimeout(chatNoticeTimeoutRef.current);
+            clientRef.current?.setHandlers();
         };
-    }, []);
+    }, [navigate]);
 
     useEffect(() => {
-        if (socketStatus === "CONNECTED") {
-            clientRef.current?.joinQueue();
+        if (queueStatus === "WAITING") {
+            navigate("/home", { replace: true });
         }
-    }, [socketStatus]);
+    }, [navigate, queueStatus]);
 
     useEffect(() => {
         if (!disconnectNotice?.endsAtMs) return;
@@ -427,24 +533,19 @@ export default function MatchmakingPage() {
             ? matchEvent?.classSelectionEndsAtMs
             : queueStatus === "OBJECT_PLACEMENT"
                 ? matchEvent?.objectPlacementEndsAtMs
-                : queueStatus === "COUNTDOWN"
-                ? matchEvent?.countdownEndsAtMs
-                : null;
+            : null;
         if (!deadlineMs) return;
 
         const interval = setInterval(() => {
             const nextRemaining = secondsRemaining(
                 deadlineMs,
-                queueStatus === "COUNTDOWN" ? MATCH_COUNTDOWN_SECONDS : Number.POSITIVE_INFINITY,
+                Number.POSITIVE_INFINITY,
             );
             setRemaining(nextRemaining);
-            if (queueStatus === "COUNTDOWN" && nextRemaining === 0) {
-                updateQueueStatus("PREP");
-            }
             if (queueStatus === "CLASS_SELECT" && nextRemaining === 0
                 && !classSelectionSyncRequestedRef.current) {
                 classSelectionSyncRequestedRef.current = true;
-                clientRef.current?.joinQueue();
+                clientRef.current?.selectClass(encodeBotLoadout(loadoutChoiceRef.current));
             }
             if (queueStatus === "OBJECT_PLACEMENT" && nextRemaining === 0) {
                 if (!placementSubmittedRef.current && !placementSubmitPendingRef.current) {
@@ -485,7 +586,26 @@ export default function MatchmakingPage() {
         clientRef.current?.placeObjects(objects);
     };
 
+    const sendChatMessage = (message) => {
+        if (!matchEventRef.current?.matchId || matchOver || socketStatus !== "CONNECTED") return;
+        clientRef.current?.sendChat(matchEventRef.current.matchId, message);
+    };
+
     const opponent = matchEvent?.opponent ?? null;
+    const chat = matchEvent?.matchId ? (
+        <MatchChat
+            messages={chatMessages}
+            minimized={chatMinimized}
+            onMinimizedChange={(next) => {
+                setChatMinimized(next);
+                if (!next) setChatMessages((current) => current.map((message) => ({ ...message, unread: false })));
+            }}
+            onSend={sendChatMessage}
+            disabled={matchOver || socketStatus !== "CONNECTED"}
+            rateLimitNotice={chatRateLimitNotice}
+            currentUsername={matchEvent?.player?.username}
+        />
+    ) : null;
     const matchContext = useMemo(() => ({
         matchId: matchEvent?.matchId,
         simulationSeed: matchEvent?.simulationSeed,
@@ -533,10 +653,11 @@ export default function MatchmakingPage() {
     if (playback) {
         return (
             <main className="min-h-screen bg-arena-deep text-ink-hi font-ui">
-                <MatchHeader onExit={exitToHome} socketStatus={socketStatus} disconnectNotice={disconnectNotice} disconnectRemaining={disconnectRemaining} />
-                <Suspense fallback={<ReplayLoadingFallback />}>
+                <MatchHeader onExit={exitToHome} disconnectNotice={disconnectNotice} disconnectRemaining={disconnectRemaining} />
+                <Suspense fallback={<ArenaLoadingScreen />}>
                     <SimulationReplay playback={playback} />
                 </Suspense>
+                {chat}
             </main>
         );
     }
@@ -544,7 +665,7 @@ export default function MatchmakingPage() {
     if (queueStatus === "CLASS_SELECT") {
         return (
             <main className="min-h-screen bg-arena-deep text-ink-hi font-ui">
-                <MatchHeader onExit={exitToHome} socketStatus={socketStatus} disconnectNotice={disconnectNotice} disconnectRemaining={disconnectRemaining} />
+                <MatchHeader onExit={exitToHome} disconnectNotice={disconnectNotice} disconnectRemaining={disconnectRemaining} />
                 <ClassSelectScreen
                     loadout={loadoutChoice}
                     onChange={setLoadoutChoice}
@@ -555,14 +676,19 @@ export default function MatchmakingPage() {
                     abilityOffers={matchEvent?.abilityOffers ?? []}
                     remaining={remaining}
                 />
+                {chat}
             </main>
         );
+    }
+
+    if (queueStatus === "SIMULATION_PREPARING") {
+        return <><ArenaLoadingScreen />{chat}</>;
     }
 
     if (queueStatus === "OBJECT_PLACEMENT") {
         return (
             <main className="min-h-screen bg-arena-deep text-ink-hi font-ui">
-                <MatchHeader onExit={exitToHome} socketStatus={socketStatus} disconnectNotice={disconnectNotice} disconnectRemaining={disconnectRemaining} />
+                <MatchHeader onExit={exitToHome} disconnectNotice={disconnectNotice} disconnectRemaining={disconnectRemaining} />
                 <ObjectPlacementScreen
                     key={`${matchEvent?.matchId ?? "match"}-${matchEvent?.roundNumber ?? 1}-${matchEvent?.player?.slot ?? 1}`}
                     player={matchEvent?.player}
@@ -574,6 +700,7 @@ export default function MatchmakingPage() {
                     submitting={placementSubmitPending}
                     roundNumber={matchEvent?.roundNumber ?? 1}
                 />
+                {chat}
             </main>
         );
     }
@@ -590,42 +717,12 @@ export default function MatchmakingPage() {
                     onExit={exitToHome}
                 />
                 <DisconnectNotice notice={disconnectNotice} remaining={disconnectRemaining} />
+                {chat}
             </>
         );
     }
 
-    return (
-        <main className="min-h-screen bg-arena-deep text-ink-hi font-ui">
-            <MatchHeader onExit={exitToHome} socketStatus={socketStatus} disconnectNotice={disconnectNotice} disconnectRemaining={disconnectRemaining} />
-            <section className="relative flex min-h-[calc(100vh-52px)] items-center justify-center px-6">
-                {queueStatus === "COUNTDOWN" ? (
-                    <div className="text-center">
-                        <p className="mb-3 font-mono text-xs tracking-[0.25em] text-cyan">MATCH FOUND</p>
-                        <div className="font-mono text-8xl font-bold text-ink-white">{remaining}</div>
-                        <p className="mt-4 text-sm text-ink-muted">
-                            Opponent: <span className="text-ink-white">{opponent?.username ?? "unknown"}</span>
-                        </p>
-                        {matchEvent?.roundNumber && (
-                            <p className="mt-2 font-mono text-xs tracking-widest text-ink-muted">
-                                ROUND {matchEvent.roundNumber} OF 3
-                            </p>
-                        )}
-                    </div>
-                ) : (
-                    <div className="w-full max-w-[520px] border border-border-lo bg-arena-panel p-6">
-                        <p className="font-mono text-xs tracking-[0.25em] text-cyan">CASUAL QUEUE</p>
-                        <h1 className="mt-3 text-2xl font-bold text-ink-white">Finding another player</h1>
-                        <p className="mt-3 text-sm leading-6 text-ink-muted">
-                            The first multiplayer pass uses random matching so the real-time lifecycle can be tested before Elo and validation rules are added.
-                        </p>
-                        <div className="mt-5 font-mono text-xs tracking-widest text-ink-muted">
-                            {queueStatus === "WAITING" ? "WAITING FOR OPPONENT" : "CONNECTING TO MATCHMAKING"}
-                        </div>
-                    </div>
-                )}
-            </section>
-        </main>
-    );
+    return null;
 }
 
 function ClassSelectScreen({ loadout, onChange, onLockClass, player, opponent, remaining, roundNumber, abilityOffers }) {
@@ -644,6 +741,7 @@ function ClassSelectScreen({ loadout, onChange, onLockClass, player, opponent, r
     const spent = Object.values(normalized.statPoints).reduce((sum, value) => sum + value, 0);
     const roundBudget = STAT_POINT_BUDGET_PER_ROUND * Math.max(1, Number(roundNumber) || 1);
     const stats = botStatsForLoadout(normalized);
+    const hasAllDraftPicks = draftedAbilities.length >= draftRule.picks;
     const toggleAbility = (id) => {
         if (inheritedAbilityIds.has(id) || !offeredAbilityIds.has(id)) return;
         const abilities = draftedAbilityIds.has(id)
@@ -657,37 +755,76 @@ function ClassSelectScreen({ loadout, onChange, onLockClass, player, opponent, r
     };
 
     return (
-        <section className="flex min-h-[calc(100vh-52px)] items-center justify-center px-6 py-8">
-            <div className="w-full max-w-[860px]">
+        <section className="flex min-h-[calc(100vh-72px)] items-center justify-center bg-[radial-gradient(circle_at_50%_25%,rgba(8,79,116,0.16),transparent_48%)] px-4 py-8 sm:px-6">
+            <div className="w-full max-w-[1080px]">
                 <div className="flex flex-wrap items-end justify-between gap-4">
                     <div>
                         <p className="font-mono text-xs tracking-[0.25em] text-cyan">ROUND LOADOUT</p>
-                        <h1 className="mt-3 text-3xl font-bold text-ink-white">Build your bot</h1>
+                        <h1 className="mt-2 font-display-action text-5xl uppercase tracking-wide text-white sm:text-6xl">Build your bot</h1>
                         <p className="mt-2 text-sm text-ink-muted">Choose {draftRule.picks} from your {draftRule.offered} random Round {roundNumber} offers. Your previous picks stay equipped.</p>
                     </div>
-                    <div className="font-mono text-5xl font-bold text-ink-white">{remaining}</div>
+                    <div className="text-right">
+                        <div className="font-mono text-[10px] tracking-[0.22em] text-cyan">ROUND TIMER</div>
+                        <div className="mt-1 font-mono text-5xl font-bold text-cyan-300 [text-shadow:0_0_22px_rgba(34,211,238,0.24)]">{remaining}</div>
+                    </div>
                 </div>
-                <div className="mt-6 grid gap-5 lg:grid-cols-[1.35fr_1fr]">
+                <div className="mt-6 grid gap-6 lg:grid-cols-[1.45fr_1fr]">
                     <div>
                         <div className="mb-4 grid grid-cols-3 gap-3" aria-label="Ability slots">
                             {Array.from({ length: MAX_EQUIPPED_ABILITIES }, (_, index) => {
                                 const abilityId = normalized.abilities[index];
                                 const ability = BOT_ABILITIES.find((candidate) => candidate.id === abilityId);
                                 const isDraft = draftedAbilityIds.has(abilityId);
-                                return <button type="button" key={index} disabled={!isDraft || playerLocked} onClick={isDraft ? () => toggleAbility(abilityId) : undefined} aria-label={isDraft ? `Remove ${ability?.label} from slot ${index + 1}` : `Ability slot ${index + 1}${ability ? `: ${ability.label}` : ": empty"}`} className={`min-h-20 rounded border p-3 text-left ${ability ? isDraft ? "cursor-pointer border-cyan bg-cyan-950/30 hover:border-red-300" : "cursor-default border-green-800/70 bg-green-950/20" : "cursor-default border-dashed border-border-lo bg-zinc-950/40"}`}><div className="font-mono text-[9px] tracking-widest text-ink-muted">SLOT {index + 1}</div><div className="mt-2 text-xs font-bold text-ink-white">{ability?.label ?? "EMPTY"}</div>{isDraft && <div className="mt-1 font-mono text-[8px] tracking-widest text-cyan">ROUND {roundNumber} PICK · CLICK TO REMOVE</div>}</button>;
+                                return <button type="button" key={index} disabled={!isDraft || playerLocked} onClick={isDraft ? () => toggleAbility(abilityId) : undefined} aria-label={isDraft ? `Remove ${ability?.label} from slot ${index + 1}` : `Ability slot ${index + 1}${ability ? `: ${ability.label}` : ": empty"}`} className={`min-h-20 rounded border border-b-cyan-500/80 p-3 text-left transition-colors disabled:opacity-100 ${ability ? isDraft ? "cursor-pointer border-cyan-700/70 bg-cyan-950/25 hover:border-red-300" : "cursor-default border-green-900/60 bg-green-950/15" : "cursor-default border-slate-700/70 bg-[#07111c]/65"}`}><div className="flex items-center justify-between gap-2 font-mono text-[9px] tracking-widest text-cyan-300/80"><span>SLOT {index + 1}</span><span className="flex h-4 w-4 items-center justify-center rounded-full border border-cyan-400 text-[10px]" aria-hidden="true">✓</span></div><div className="mt-2 truncate text-xs font-bold text-ink-white">{ability?.label ?? "EMPTY"}</div></button>;
                             })}
                         </div>
                         <div className="grid gap-3 sm:grid-cols-2">
-                            {BOT_ABILITIES.filter((ability) => offeredAbilityIds.has(ability.id)).map((ability) => { const active = draftedAbilityIds.has(ability.id); return <button key={ability.id} type="button" disabled={playerLocked || (!active && draftedAbilities.length >= draftRule.picks)} onClick={() => toggleAbility(ability.id)} className={`rounded border p-4 text-left transition ${active ? "border-cyan bg-cyan-950/30 -translate-y-1" : "border-border-lo bg-arena-panel"}`}><div className="flex items-center justify-between gap-2 font-mono text-xs tracking-widest text-ink-white"><span>{active ? "SELECTED - " : ""}{ability.label}</span><span className="text-[8px] text-cyan">{ability.kind.toUpperCase()}</span></div><p className="mt-2 text-xs text-ink-muted">{ability.summary}</p></button>; })}
+                            {BOT_ABILITIES.filter((ability) => offeredAbilityIds.has(ability.id)).map((ability) => {
+                                const active = draftedAbilityIds.has(ability.id);
+                                const unavailable = playerLocked || (!active && hasAllDraftPicks);
+                                return (
+                                    <button
+                                        key={ability.id}
+                                        type="button"
+                                        disabled={unavailable}
+                                        aria-pressed={active}
+                                        onClick={() => toggleAbility(ability.id)}
+                                        className={`min-h-24 rounded border p-4 text-left transition ${
+                                            active
+                                                ? "-translate-y-1 cursor-pointer border-cyan-400 bg-cyan-950/35 shadow-[0_8px_24px_rgba(8,145,178,0.12)] hover:border-cyan-300"
+                                                : unavailable
+                                                    ? "cursor-not-allowed border-slate-800 bg-slate-950/45 opacity-35 saturate-0"
+                                                    : "cursor-pointer border-slate-700/75 bg-[#091522]/85 hover:border-cyan-700 hover:bg-cyan-950/15"
+                                        }`}
+                                    >
+                                        <div className="flex items-center justify-between gap-2 font-mono text-xs tracking-widest text-ink-white">
+                                            <span>{active ? "SELECTED — " : ""}{ability.label}</span>
+                                            <span className="text-[8px] text-cyan">{ability.kind.toUpperCase()}</span>
+                                        </div>
+                                        <p className={`mt-2 text-xs ${unavailable ? "text-slate-600" : "text-ink-muted"}`}>{ability.summary}</p>
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
-                    <div className="border border-border-lo bg-arena-panel p-5">
+                    <div className="rounded border border-slate-700/70 bg-[#081522]/75 p-6 shadow-[inset_0_0_35px_rgba(8,47,73,0.1)]">
                         <div className="font-mono text-xs tracking-widest text-cyan">STAT POINTS {spent}/{roundBudget}</div>
-                        {[ ["maxHp", "HP", stats.maxHp], ["moveSpeed", "MOVE", stats.moveSpeed], ["attackDamage", "DAMAGE", `${stats.attackDamagePercent}%`], ["attackSpeed", "ATTACK SPEED", `${stats.attackSpeedPercent}%`] ].map(([key,label,value]) => <div key={key} className="mt-4 flex items-center justify-between gap-3"><span className="font-mono text-[10px] tracking-widest text-ink-muted">{label}</span><div className="flex items-center gap-3"><button type="button" disabled={playerLocked || normalized.statPoints[key] <= 0} onClick={() => changePoint(key,-1)} className="h-8 w-8 border border-border-lo">-</button><span className="w-14 text-center font-mono text-sm">{value}</span><button type="button" disabled={playerLocked || spent >= roundBudget} onClick={() => changePoint(key,1)} className="h-8 w-8 border border-border-lo">+</button></div></div>)}
+                        {[ ["maxHp", "HP", stats.maxHp], ["moveSpeed", "MOVE", stats.moveSpeed], ["attackDamage", "DAMAGE", `${stats.attackDamagePercent}%`], ["attackSpeed", "ATTACK SPEED", `${stats.attackSpeedPercent}%`] ].map(([key,label,value]) => (
+                            <div key={key} className="mt-6 grid grid-cols-[28px_1fr_auto] items-center gap-4">
+                                <span className="text-cyan-300"><LoadoutStatIcon stat={key} /></span>
+                                <span className="font-mono text-[10px] tracking-widest text-slate-300">{label}</span>
+                                <div className="flex items-center gap-3">
+                                    <button type="button" aria-label={`Decrease ${label}`} disabled={playerLocked || normalized.statPoints[key] <= 0} onClick={() => changePoint(key,-1)} className="h-10 w-10 rounded border border-slate-700 text-lg text-slate-300 transition hover:border-cyan-700 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-30">−</button>
+                                    <span className="w-14 text-center font-mono text-sm text-white">{value}</span>
+                                    <button type="button" aria-label={`Increase ${label}`} disabled={playerLocked || spent >= roundBudget} onClick={() => changePoint(key,1)} className="h-10 w-10 rounded border border-cyan-800 text-lg text-cyan-300 transition hover:border-cyan-400 hover:bg-cyan-950/30 disabled:cursor-not-allowed disabled:opacity-30">+</button>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
-                <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border border-border-lo bg-arena-panel p-4">
+                <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded border border-slate-700/70 bg-[#081522]/75 p-4">
                     <div className="font-mono text-[10px] tracking-widest text-ink-muted">
+                        <span className="mr-3 text-cyan">●</span>
                         YOU: <span className={playerLocked ? "text-green-300" : "text-amber-200"}>{playerLocked ? "LOCKED" : "CHOOSING"}</span>
                         <span className="mx-3 text-border-hi">/</span>
                         {opponent?.username ?? "OPP"}: <span className={opponentLocked ? "text-green-300" : "text-amber-200"}>{opponentLocked ? "LOCKED" : "CHOOSING"}</span>
@@ -695,10 +832,14 @@ function ClassSelectScreen({ loadout, onChange, onLockClass, player, opponent, r
                     <button
                         type="button"
                         onClick={onLockClass}
-                        disabled={playerLocked || draftedAbilities.length !== draftRule.picks || normalized.abilities.length > MAX_EQUIPPED_ABILITIES}
-                        className="h-10 rounded border border-green-700/60 bg-green-900/30 px-5 font-mono text-[11px] font-bold tracking-widest text-green-200 hover:bg-green-900/50 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={playerLocked || normalized.abilities.length > MAX_EQUIPPED_ABILITIES}
+                        className="h-11 min-w-52 rounded border border-cyan-600/80 bg-cyan-950/25 px-5 font-mono text-[11px] font-bold tracking-[0.16em] text-cyan-200 transition hover:border-cyan-300 hover:bg-cyan-900/30 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                        {playerLocked ? "LOADOUT LOCKED" : draftedAbilities.length === draftRule.picks ? "LOCK LOADOUT" : `SELECT ${draftRule.picks - draftedAbilities.length} MORE`}
+                        {playerLocked
+                            ? "LOADOUT LOCKED"
+                            : draftedAbilities.length === draftRule.picks
+                                ? "LOCK LOADOUT"
+                                : `LOCK + AUTO-PICK ${draftRule.picks - draftedAbilities.length}`}
                     </button>
                 </div>
             </div>
@@ -731,7 +872,7 @@ function ObjectPlacementScreen({
     const [selectedId, setSelectedId] = useState(null);
     const [objects, setObjects] = useState([]);
     if (player?.slot !== 2) {
-        return <section className="flex min-h-[calc(100vh-52px)] items-center justify-center px-6">
+        return <section className="flex min-h-[calc(100vh-72px)] items-center justify-center px-6">
             <div className="border border-emerald-800/70 bg-arena-panel px-10 py-12 text-center shadow-2xl">
                 <p className="font-mono text-xs tracking-[0.3em] text-emerald-300">DEFENDER</p>
                 <h1 className="mt-4 text-2xl font-bold text-ink-white">Waiting for attacker to choose objects</h1>
@@ -819,7 +960,7 @@ function ObjectPlacementScreen({
     };
 
     return (
-        <section className="flex min-h-[calc(100vh-52px)] flex-col items-center justify-center gap-5 px-6 py-5">
+        <section className="flex min-h-[calc(100vh-72px)] flex-col items-center justify-center gap-5 px-6 py-5">
             <div className="flex w-full max-w-[1900px] items-end justify-between gap-4">
                 <div>
                     <p className="font-mono text-xs tracking-[0.25em] text-cyan">{roundNumber === 3 ? "SIDES SWITCHED · NEW ATTACKER" : "ROUND OBJECT SETUP"}</p>
@@ -938,29 +1079,10 @@ function isNeutralMatchObject(object) {
     return object?.id === "object_center"
         || object?.type === VANGUARD_BEACON_TYPE;
 }
-function MatchHeader({ onExit, socketStatus, disconnectNotice, disconnectRemaining }) {
+function MatchHeader({ onExit, disconnectNotice, disconnectRemaining }) {
     return (
         <>
-        <header className="flex h-[52px] items-center justify-between border-b border-border-lo bg-arena-panel px-6">
-            <button
-                type="button"
-                onClick={onExit}
-                className="flex items-center gap-3 text-left hover:text-cyan-100"
-                aria-label="Go to home"
-            >
-                <span className="text-xl leading-none text-cyan">M</span>
-                <span className="text-lg font-bold tracking-[0.15em] text-ink-white">MACHINER</span>
-            </button>
-            <div className="flex items-center gap-3">
-                <span className="font-mono text-[10px] tracking-widest text-ink-muted">{socketStatus}</span>
-                <button
-                    onClick={onExit}
-                    className="rounded border border-border-lo bg-zinc-900 px-3 py-1 text-xs font-bold text-ink-muted hover:text-ink-white"
-                >
-                    EXIT
-                </button>
-            </div>
-        </header>
+        <AppNavbar onHome={onExit} />
         <DisconnectNotice notice={disconnectNotice} remaining={disconnectRemaining} />
         </>
     );
@@ -972,7 +1094,7 @@ function DisconnectNotice({ notice, remaining }) {
         <aside role="alert" className="fixed inset-x-4 top-16 z-[100] mx-auto max-w-xl rounded-xl border border-amber-400/60 bg-[#171208f2] px-5 py-4 shadow-[0_18px_60px_rgba(0,0,0,.5)] backdrop-blur">
             <div className="flex items-center gap-4">
                 <div className="grid h-11 w-11 flex-none place-items-center rounded-full border border-amber-400/50 font-mono text-lg font-bold text-amber-300">
-                    {remaining}
+                    {notice.endsAtMs ? remaining : "!"}
                 </div>
                 <div className="min-w-0 flex-1">
                     <p className="font-mono text-[10px] font-bold tracking-[.18em] text-amber-300">CONNECTION INTERRUPTED</p>

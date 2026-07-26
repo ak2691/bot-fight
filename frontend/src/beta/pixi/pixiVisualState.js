@@ -1,5 +1,6 @@
 import { abilityDefinition, VISUAL_INTERPOLATION } from "../loadout/BotLoadout.js";
 import { AUTO_STEP_MS } from "../modelPayloads/arenaConstants.js";
+import { compassDegreesToRadians } from "../../logic/arenaAngles.js";
 
 const ZONE_TYPES = new Set(["gravityField", "gravityExplosion", "nullZone", "orbitalMarker", "orbitalExplosion", "silenceWave", "temporalRewindZone"]);
 const PROJECTILE_TYPES = new Set(["grenade", "fireball"]);
@@ -11,6 +12,10 @@ const PROJECTILE_TRAILS = Object.freeze({
 
 export function isFighterShape(shape) {
     return shape?.id === "main" || shape?.type === "opponentModel";
+}
+
+export function fighterColorRole(fighter) {
+    return Number(fighter?.slot) === 2 ? "pink" : "blue";
 }
 
 export function pixiLayerForShape(shape) {
@@ -29,6 +34,18 @@ export function projectileTrailStyle(shape) {
     const style = PROJECTILE_TRAILS[shape?.type];
     const speed = Math.hypot(Number(shape?.velocityX ?? 0), Number(shape?.velocityY ?? 0));
     return style && speed > 0.01 ? style : null;
+}
+
+export function fighterDashRotation(shape) {
+    const microDashing = Number(shape?.microDashActiveMs ?? 0) > 0;
+    const dashDirectionX = Number(microDashing ? shape?.microDashDirectionX : shape?.dashDirectionX);
+    const dashDirectionY = Number(microDashing ? shape?.microDashDirectionY : shape?.dashDirectionY);
+    const hasDashDirection = Math.hypot(dashDirectionX, dashDirectionY) > 0.001;
+    const directionX = hasDashDirection ? dashDirectionX : Number(shape?.velocityX);
+    const directionY = hasDashDirection ? dashDirectionY : Number(shape?.velocityY);
+    return Math.hypot(directionX, directionY) > 0.001
+        ? Math.atan2(directionY, directionX)
+        : compassDegreesToRadians(shape?.rotation);
 }
 
 export function replayProjectileVelocity(shape, previousShape) {
@@ -61,9 +78,11 @@ export function fighterStatusLabels(shape) {
 
 export function activeFighterVisual(shape) {
     if (shape?.hp != null && Number(shape.hp) <= 0) return null;
-    const active = ["heavy_slash", "quick_jab", "thrust", "pistol_shot", "concussive_shot", "rail_shot", "repulsor_burst", "repair_pulse", "phase_strike", "micro_dash"]
+    const prototypeVisual = Number(shape?.prototypeVisual?.ms ?? 0) > 0 ? shape.prototypeVisual.ability : null;
+    if (prototypeVisual === "micro_dash") return null;
+    const active = ["heavy_slash", "quick_jab", "thrust", "pistol_shot", "concussive_shot", "rail_shot", "repulsor_burst", "repair_pulse", "phase_strike"]
         .find((id) => Number(shape?.abilityActiveMs?.[id] ?? 0) > 0);
-    return Number(shape?.prototypeVisual?.ms ?? 0) > 0 ? shape.prototypeVisual.ability : active ?? null;
+    return prototypeVisual ?? active ?? null;
 }
 
 export function entityCaption(shape) {

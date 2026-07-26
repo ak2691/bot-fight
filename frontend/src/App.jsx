@@ -5,22 +5,17 @@ import ProtectedRoute from './auth/ProtectedRoute'
 import HomePage from './pages/HomePage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
-import { loadBotRoom, loadMatchmaking, loadProfile } from './routeLoaders'
+import { loadAbilityCatalogue, loadBotRoom, loadConditionalCatalogue, loadMatchmaking, loadProfile } from './routeLoaders'
+import MatchmakingProvider from './matchmaking/MatchmakingProvider'
+import ArenaLoadingScreen from './components/ArenaLoadingScreen'
 import './App.css'
 
 const BetaModel = lazy(loadBotRoom)
+const AbilityCataloguePage = lazy(loadAbilityCatalogue)
+const ConditionalCataloguePage = lazy(loadConditionalCatalogue)
 const MatchmakingPage = lazy(loadMatchmaking)
 const ProfilePage = lazy(loadProfile)
 const TutorialPage = lazy(() => import('./tutorial/TutorialPage'))
-
-function RouteLoadingFallback() {
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-arena-deep text-ink-muted">
-      <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-700 border-t-cyan-300" aria-hidden="true" />
-      <p role="status" className="font-mono text-xs tracking-[0.25em]">LOADING ARENA...</p>
-    </main>
-  )
-}
 
 function App() {
 
@@ -29,8 +24,9 @@ function App() {
 
     <BrowserRouter>
       <AuthProvider>
-        <Suspense fallback={<RouteLoadingFallback />}>
-          <Routes>
+        <MatchmakingProvider>
+          <Suspense fallback={<ArenaLoadingScreen />}>
+            <Routes>
             <Route path="/" element={<Navigate to="/login" replace />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
@@ -47,6 +43,22 @@ function App() {
               element={(
                 <ProtectedRoute>
                   <BetaModel />
+                </ProtectedRoute>
+              )}
+            />
+            <Route
+              path="/ability-catalogue"
+              element={(
+                <ProtectedRoute>
+                  <AbilityCataloguePage />
+                </ProtectedRoute>
+              )}
+            />
+            <Route
+              path="/conditionals"
+              element={(
+                <ProtectedRoute>
+                  <ConditionalCataloguePage />
                 </ProtectedRoute>
               )}
             />
@@ -74,8 +86,9 @@ function App() {
                 </ProtectedRoute>
               )}
             />
-          </Routes>
-        </Suspense>
+            </Routes>
+          </Suspense>
+        </MatchmakingProvider>
       </AuthProvider>
     </BrowserRouter>
   )

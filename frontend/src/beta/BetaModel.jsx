@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import AppNavbar from "../components/AppNavbar";
 import PixiCanvas from "./PixiCanvas";
 import StrategyTrainingPanel from "./StrategyTrainingPanel";
 import { BOT_ABILITIES, PROTOTYPE_ACTION_TO_ABILITY, SANDBOX_MAX_STAT_POINTS, botStatsForSandboxLoadout, decodeSandboxLoadout, encodeSandboxLoadout, normalizedSandboxLoadout } from "./loadout/BotLoadout.js";
@@ -31,7 +32,7 @@ import {
     stunHits,
 } from "./combat/FighterCombatSystem.js";
 import {
-    actionIdsForCombatClass,
+    actionIdsForLoadoutConfiguration,
     DEFAULT_BOT_CONFIGURATION_ID,
 } from "./combat/CombatLoadouts.js";
 
@@ -54,6 +55,9 @@ import { buildStatePayload } from "./modelPayloads/strategyStatePayload.js";
 import {
     buildTutorialArenaShapes,
     getTutorialScenario,
+    TUTORIAL_STEP_COUNT,
+    validateCustomVariablesLesson,
+    validateSearchNodesLesson,
 } from "../tutorial/TutorialPresets.js";
 
 function finalizeTickMeasurements(shape, before) {
@@ -66,16 +70,16 @@ function finalizeTickMeasurements(shape, before) {
     };
 }
 
-function matchStrategyConfigurationKey(matchId, userId, combatClass) {
+function matchStrategyConfigurationKey(matchId, userId, loadoutId) {
     return matchId && userId
-        ? `arena-match-strategy-v1-${combatClass}-${matchId}-${userId}`
-        : `arena-training-strategy-v1-${combatClass}`;
+        ? `arena-match-strategy-v1-${loadoutId}-${matchId}-${userId}`
+        : `arena-training-strategy-v1-${loadoutId}`;
 }
 
-function opponentStrategyConfigurationKey(matchId, userId, combatClass) {
+function opponentStrategyConfigurationKey(matchId, userId, loadoutId) {
     return matchId && userId
-        ? `arena-match-opponent-strategy-v1-${combatClass}-${matchId}-${userId}`
-        : `arena-training-opponent-strategy-v1-${combatClass}`;
+        ? `arena-match-opponent-strategy-v1-${loadoutId}-${matchId}-${userId}`
+        : `arena-training-opponent-strategy-v1-${loadoutId}`;
 }
 
 function loadStoredStrategyConfiguration(key) {
@@ -145,11 +149,11 @@ function isStorageQuotaError(error) {
         || error?.code === 1014;
 }
 
-function sanitizeStrategyConfigurationForClass(configuration, combatClass) {
+function sanitizeStrategyConfigurationForLoadout(configuration, loadoutId) {
     const source = configuration && typeof configuration === "object"
         ? configuration
         : createDefaultMeleeStrategyConfiguration();
-    const allowedActionIds = new Set(actionIdsForCombatClass(combatClass));
+    const allowedActionIds = new Set(actionIdsForLoadoutConfiguration(loadoutId));
     const sanitizeBlock = (block) => {
         if (!block || typeof block !== "object") return block;
         return allowedActionIds.has(block.action)
@@ -180,13 +184,6 @@ function secondsRemaining(targetTime) {
     return Math.max(0, Math.ceil((targetMs - Date.now()) / 1000));
 }
 
-function formatClock(totalSeconds) {
-    if (totalSeconds == null) return "--:--";
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes}:${String(seconds).padStart(2, "0")}`;
-}
-
 function applyActionToShape(shape, action, elapsedMs) {
     return applyFighterAction(shape, action, elapsedMs, applyDamageToShape);
 }
@@ -198,22 +195,22 @@ export default function BetaModel({
     onFinishMatch = null,
     onSurrenderMatch = null,
     onExit = null,
-    roomLabel = null,
     tutorialMode = false,
 }) {
     const navigate = useNavigate();
     const location = useLocation();
-    const initialTutorialStep = Math.max(0, Math.min(7, Number(location.state?.tutorialStep) || 0));
+    const initialTutorialStep = Math.max(0, Math.min(TUTORIAL_STEP_COUNT - 1, Number(location.state?.tutorialStep) || 0));
     const initialTutorialScenario = getTutorialScenario(initialTutorialStep);
     const matchId = matchContext?.matchId;
     const matchUserId = matchContext?.player?.userId;
     const isMatchTraining = Boolean(matchId && matchUserId);
+    const usesArenaResponsiveLimits = !tutorialMode;
     const playerRoundWins = Math.max(0, Number(matchContext?.player?.roundWins) || 0);
     const opponentRoundWins = Math.max(0, Number(matchContext?.opponent?.roundWins) || 0);
-    const [selectedClass, setSelectedClass] = useState(() => tutorialMode ? initialTutorialScenario.playerClass : matchContext?.player?.selectedClass ?? DEFAULT_BOT_CONFIGURATION_ID);
-    const [opponentSelectedClass, setOpponentSelectedClass] = useState(() => tutorialMode ? initialTutorialScenario.opponentClass : matchContext?.opponent?.selectedClass ?? DEFAULT_BOT_CONFIGURATION_ID);
-    const strategyStorageKey = matchStrategyConfigurationKey(matchId, matchUserId, selectedClass);
-    const opponentStrategyStorageKey = opponentStrategyConfigurationKey(matchId, matchUserId, opponentSelectedClass);
+    const [selectedLoadout, setSelectedLoadout] = useState(() => tutorialMode ? initialTutorialScenario.playerLoadout : matchContext?.player?.selectedClass ?? DEFAULT_BOT_CONFIGURATION_ID);
+    const [opponentLoadout, setOpponentLoadout] = useState(() => tutorialMode ? initialTutorialScenario.opponentLoadout : matchContext?.opponent?.selectedClass ?? DEFAULT_BOT_CONFIGURATION_ID);
+    const strategyStorageKey = matchStrategyConfigurationKey(matchId, matchUserId, selectedLoadout);
+    const opponentStrategyStorageKey = opponentStrategyConfigurationKey(matchId, matchUserId, opponentLoadout);
     const [shapes, setShapes] = useState(() => tutorialMode ? buildTutorialArenaShapes(initialTutorialStep) : buildInitialArenaShapes(matchContext));
     const [selectedId, setSelectedId] = useState(null);
     const [submitStatus, setSubmitStatus] = useState(null);
@@ -226,14 +223,14 @@ export default function BetaModel({
     const [baseExportState] = useState("idle");
     const [isEditingArena, setIsEditingArena] = useState(true);
     const [trainingConfiguration, setTrainingConfiguration] = useState(() => (
-        sanitizeStrategyConfigurationForClass(
+        sanitizeStrategyConfigurationForLoadout(
             (tutorialMode ? initialTutorialScenario.emptyBrain : matchContext?.roundBrains?.at(-1)?.brain)
             ?? loadStoredStrategyConfiguration(strategyStorageKey),
-            selectedClass,
+            selectedLoadout,
         )
     ));
     const [opponentTrainingConfiguration, setOpponentTrainingConfiguration] = useState(() => (
-        sanitizeStrategyConfigurationForClass(tutorialMode ? initialTutorialScenario.opponentBrain : loadStoredStrategyConfiguration(opponentStrategyStorageKey), opponentSelectedClass)
+        sanitizeStrategyConfigurationForLoadout(tutorialMode ? initialTutorialScenario.opponentBrain : loadStoredStrategyConfiguration(opponentStrategyStorageKey), opponentLoadout)
     ));
     const [isStrategyTraining, setIsStrategyTraining] = useState(false);
     const [, setTrainingProgress] = useState(null);
@@ -271,10 +268,10 @@ export default function BetaModel({
         setIsAutoPlaying(false);
         setIsEditingArena(true);
         setSelectedId(null);
-        setSelectedClass(scenario.playerClass);
-        setOpponentSelectedClass(scenario.opponentClass);
-        setTrainingConfiguration(sanitizeStrategyConfigurationForClass(scenario.emptyBrain, scenario.playerClass));
-        setOpponentTrainingConfiguration(sanitizeStrategyConfigurationForClass(scenario.opponentBrain, scenario.opponentClass));
+        setSelectedLoadout(scenario.playerLoadout);
+        setOpponentLoadout(scenario.opponentLoadout);
+        setTrainingConfiguration(sanitizeStrategyConfigurationForLoadout(scenario.emptyBrain, scenario.playerLoadout));
+        setOpponentTrainingConfiguration(sanitizeStrategyConfigurationForLoadout(scenario.opponentBrain, scenario.opponentLoadout));
         setShapes(lessonShapes);
         originalArenaShapesRef.current = cloneShapes(lessonShapes);
         arenaCheckpointShapesRef.current = null;
@@ -287,11 +284,11 @@ export default function BetaModel({
         if (!originalArenaShapesRef.current) {
             originalArenaShapesRef.current = resetArenaStartShapes(
                 cloneShapes(shapes),
-                selectedClass,
-                opponentSelectedClass,
+                selectedLoadout,
+                opponentLoadout,
             );
         }
-    }, [opponentSelectedClass, selectedClass, shapes]);
+    }, [opponentLoadout, selectedLoadout, shapes]);
 
     const ensureTrainingSession = useCallback(async ({ required = false } = {}) => {
         try {
@@ -352,43 +349,15 @@ export default function BetaModel({
     }, [matchContext?.opponent, matchContext?.opponentLoadout]);
 
     const updateTrainingConfiguration = (configuration) => {
-        const sanitized = sanitizeStrategyConfigurationForClass(configuration, selectedClass);
+        const sanitized = sanitizeStrategyConfigurationForLoadout(configuration, selectedLoadout);
         setTrainingConfiguration(sanitized);
         saveStoredStrategyConfiguration(strategyStorageKey, sanitized);
     };
 
     const updateOpponentTrainingConfiguration = (configuration) => {
-        const sanitized = sanitizeStrategyConfigurationForClass(configuration, opponentSelectedClass);
+        const sanitized = sanitizeStrategyConfigurationForLoadout(configuration, opponentLoadout);
         setOpponentTrainingConfiguration(sanitized);
         saveStoredStrategyConfiguration(opponentStrategyStorageKey, sanitized);
-    };
-
-    const handleClassChange = (combatClass) => {
-        if (isMatchTraining || isAutoPlaying || isStrategyTraining) return;
-        setSelectedClass(combatClass);
-        setTrainingConfiguration(sanitizeStrategyConfigurationForClass(
-            loadStoredStrategyConfiguration(matchStrategyConfigurationKey(matchId, matchUserId, combatClass)),
-            combatClass,
-        ));
-        setShapes((prev) => prev.map((shape) => (
-            shape.id === "main"
-                ? resetFighterShape({ ...shape, combatClass })
-                : shape
-        )));
-    };
-
-    const handleOpponentClassChange = (combatClass) => {
-        if (isMatchTraining || isAutoPlaying || isStrategyTraining) return;
-        setOpponentSelectedClass(combatClass);
-        setOpponentTrainingConfiguration(sanitizeStrategyConfigurationForClass(
-            loadStoredStrategyConfiguration(opponentStrategyConfigurationKey(matchId, matchUserId, combatClass)),
-            combatClass,
-        ));
-        setShapes((prev) => prev.map((shape) => (
-            shape.id === "opponent-model"
-                ? resetFighterShape({ ...shape, combatClass })
-                : shape
-        )));
     };
 
     const openSandboxLoadout = (target) => {
@@ -404,8 +373,8 @@ export default function BetaModel({
     const applySandboxLoadout = () => {
         const id = sandboxLoadoutTarget === "opponent" ? "opponent-model" : "main";
         const encoded = encodeSandboxLoadout(sandboxLoadoutDraft);
-        if (id === "main") setSelectedClass(encoded);
-        else setOpponentSelectedClass(encoded);
+        if (id === "main") setSelectedLoadout(encoded);
+        else setOpponentLoadout(encoded);
         setShapes((current) => current.map((shape) => shape.id === id
             ? resetFighterShape({ ...shape, combatClass: encoded })
             : shape));
@@ -419,11 +388,11 @@ export default function BetaModel({
                 setSelectedId(existingOpponent.id);
                 return prev;
             }
-            const nextShape = buildOpponentShape({ selectedClass: opponentSelectedClass, slot: 2 });
+            const nextShape = buildOpponentShape({ selectedLoadout: opponentLoadout, slot: 2 });
             setSelectedId(nextShape.id);
             return [...prev, nextShape];
         });
-    }, [opponentSelectedClass]);
+    }, [opponentLoadout]);
 
     const handleUpdateShape = useCallback((id, updates) => {
         setShapes((previous) => previous.map((shape) => (
@@ -456,6 +425,12 @@ export default function BetaModel({
 
     const runAutoPlay = () => {
         if (isAutoPlaying) return;
+        const setupValidationGoal = tutorialMode && ["brain_search", "custom_variables"].includes(tutorialScenario.goal);
+        const setupValidationPassed = setupValidationGoal
+            ? tutorialScenario.goal === "brain_search"
+                ? validateSearchNodesLesson(trainingConfiguration)
+                : validateCustomVariablesLesson(trainingConfiguration)
+            : false;
         setIsEditingArena(false);
         setIsAutoPlaying(true);
         setSelectedId(null);
@@ -470,7 +445,13 @@ export default function BetaModel({
                 playerHp: main.hp,
                 opponentHp: opponent.hp,
             } : null;
-            setTutorialChallenge({
+            setTutorialChallenge(setupValidationGoal ? {
+                status: setupValidationPassed ? "passed" : "failed",
+                remainingMs: 0,
+                code: tutorialScenario.goal === "brain_search"
+                    ? setupValidationPassed ? "search_passed" : "search_failed"
+                    : setupValidationPassed ? "variables_passed" : "variables_failed",
+            } : {
                 status: tutorialScenario.durationMs ? "running" : "idle",
                 remainingMs: tutorialScenario.durationMs ?? 0,
                 code: tutorialScenario.durationMs ? "reading_brain" : "demonstration_running",
@@ -482,12 +463,12 @@ export default function BetaModel({
 
         autoIntervalRef.current = setInterval(() => {
             setShapes((prevShapes) => {
-                const stateSnapshot = buildStatePayload(prevShapes, selectedClass);
+                const stateSnapshot = buildStatePayload(prevShapes, selectedLoadout);
                 const mainBefore = prevShapes.find((s) => s.id === "main");
                 const opponentBefore = prevShapes.find((s) => s.id === "opponent-model");
                 const playerPredictedAction = buildDeterministicLogicAction(trainingConfiguration, stateSnapshot);
                 const opponentPredictedAction = opponentBefore && hasMeleeStrategyActions(opponentTrainingConfiguration)
-                    ? buildDeterministicLogicAction(opponentTrainingConfiguration, buildStatePayload(prevShapes, opponentSelectedClass, "opponent-model"))
+                    ? buildDeterministicLogicAction(opponentTrainingConfiguration, buildStatePayload(prevShapes, opponentLoadout, "opponent-model"))
                     : idleAction();
                 const playerAction = playerPredictedAction;
                 const opponentAction = opponentPredictedAction;
@@ -635,13 +616,13 @@ export default function BetaModel({
     const handleFullArenaReset = () => {
         if (isStrategyTraining || isBaseTraining) return;
         const originalShapes = tutorialMode ? buildTutorialArenaShapes(tutorialStep) : originalArenaShapesRef.current
-            ?? resetArenaStartShapes(buildInitialArenaShapes(matchContext), selectedClass, opponentSelectedClass);
+            ?? resetArenaStartShapes(buildInitialArenaShapes(matchContext), selectedLoadout, opponentLoadout);
         stopAutoPlay();
         setIsEditingArena(true);
         setSelectedId(null);
         const resetShapes = tutorialMode
             ? cloneShapes(originalShapes)
-            : resetArenaStartShapes(cloneShapes(originalShapes), selectedClass, opponentSelectedClass);
+            : resetArenaStartShapes(cloneShapes(originalShapes), selectedLoadout, opponentLoadout);
         arenaCheckpointShapesRef.current = null;
         setHasArenaCheckpoint(false);
         setShapes(resetShapes);
@@ -660,7 +641,7 @@ export default function BetaModel({
     const startStrategyTraining = async () => {
         if (isStrategyTraining || isBaseTraining) return;
         const configuration = normalizeMeleeStrategyConfiguration(
-            sanitizeStrategyConfigurationForClass(trainingConfiguration, selectedClass),
+            sanitizeStrategyConfigurationForLoadout(trainingConfiguration, selectedLoadout),
         );
         stopAutoPlay();
         const serverDeadline = matchContext?.trainingEndsAtMs ?? matchContext?.trainingEndsAt;
@@ -729,13 +710,13 @@ export default function BetaModel({
                 throw new Error("A server tuning session is required before submission.");
             }
             const configuration = normalizeMeleeStrategyConfiguration(
-                sanitizeStrategyConfigurationForClass(trainingConfiguration, selectedClass),
+                sanitizeStrategyConfigurationForLoadout(trainingConfiguration, selectedLoadout),
             );
             const payload = await buildModelSubmissionPayload({
                 brain: configuration,
                 matchId: isMatchTraining ? matchId : null,
                 trainingSessionId: activeTrainingSessionId,
-                selectedClass,
+                selectedClass: selectedLoadout,
                 loadout: matchContext?.loadout ?? null,
             });
 
@@ -799,7 +780,7 @@ export default function BetaModel({
     }, [matchContext?.trainingEndsAt, matchContext?.trainingEndsAtMs, onFinishMatch]);
 
     return (
-        <div className="flex h-screen flex-col bg-arena-deep text-ink-hi font-ui overflow-hidden">
+        <div className={`flex h-screen flex-col text-ink-hi font-ui overflow-hidden ${isMatchTraining ? "match-arena-shell" : "bg-arena-deep"}`}>
             {submitStatus && (
                 <div role="status" aria-live="polite" className={`
                     fixed bottom-6 left-1/2 -translate-x-1/2 z-50
@@ -815,54 +796,10 @@ export default function BetaModel({
                 </div>
             )}
 
-            <header className="flex items-center justify-between px-6 h-[52px] bg-arena-panel border-b border-border-lo flex-shrink-0">
-                <button
-                    type="button"
-                    onClick={() => onExit ? onExit() : navigate("/home")}
-                    className="flex items-center gap-3 text-left hover:text-cyan-100"
-                    aria-label="Go to home"
-                >
-                    <span className="text-xl text-cyan leading-none">M</span>
-                    <span className="font-ui text-lg font-bold tracking-[0.15em] text-ink-white">MACHINER</span>
-                </button>
-
-                <div className="flex items-center gap-4">
-                    {roomLabel && (
-                        <span className="hidden md:inline font-mono text-[10px] tracking-widest text-green-400">
-                            {roomLabel}
-                        </span>
-                    )}
-                    {isMatchTraining && (
-                        <span className="hidden lg:inline font-mono text-[10px] tracking-widest text-ink-muted">
-                            {formatClock(trainingRemaining)}
-                        </span>
-                    )}
-                    {matchContext?.opponent?.finished && finishStatus !== "FINISHED" && (
-                        <span className="hidden lg:inline font-mono text-[10px] tracking-widest text-green-400">
-                            OPPONENT FINISHED
-                        </span>
-                    )}
-                    {isMatchTraining && (
-                        <span className="font-mono text-[10px] tracking-widest text-ink-muted">
-                            ROUND {matchContext?.roundNumber ?? 1}/3
-                        </span>
-                    )}
-                    {isMatchTraining && (
-                        <div className="hidden md:flex items-center gap-2 rounded border border-border-lo bg-zinc-950/50 px-2 py-1 font-mono text-[10px] tracking-widest">
-                            <span className="text-cyan-200">
-                                YOU {playerRoundWins} WINS
-                            </span>
-                            <span className="text-ink-muted">/</span>
-                            <span className="text-fuchsia-200">
-                                {matchContext?.opponent?.username ?? "OPP"} {opponentRoundWins} WINS
-                            </span>
-                        </div>
-                    )}
-                </div>
-            </header>
+            <AppNavbar account={!matchContext && !tutorialMode} onHome={onExit} />
 
             <div className="flex min-h-0 flex-1 overflow-hidden">
-                <main className="min-w-0 flex-1 flex items-center justify-center bg-arena-deep overflow-hidden p-2">
+                <main className={`min-w-0 flex-1 flex items-center justify-center overflow-hidden p-2 ${isMatchTraining ? "match-arena-stage" : "bg-arena-deep"}`}>
                     <div
                         className="relative flex h-full w-full items-center justify-center"
                     >
@@ -874,6 +811,7 @@ export default function BetaModel({
                             onDeselectAll={isEditingArena && !tutorialMode ? () => setSelectedId(null) : () => { }}
                             editable={isEditingArena && !tutorialMode}
                             fillAvailable
+                            fixedLayout={usesArenaResponsiveLimits}
                             abilityLayout="split"
                             showEmptyAbilitySlot={!isMatchTraining}
                             measurementEnabled={measurementEnabled}
@@ -891,13 +829,10 @@ export default function BetaModel({
                     onStartTraining={startStrategyTraining}
                     onStopTraining={stopStrategyTraining}
                     isTraining={isStrategyTraining}
-                    selectedClass={selectedClass}
-                    onClassChange={handleClassChange}
-                    opponentSelectedClass={opponentSelectedClass}
-                    onOpponentClassChange={handleOpponentClassChange}
-                    canChangeClass={!isMatchTraining && !isAutoPlaying && !isStrategyTraining}
-                    canChangeOpponentClass={!isMatchTraining && !isAutoPlaying && !isStrategyTraining}
+                    selectedLoadout={selectedLoadout}
+                    opponentLoadout={opponentLoadout}
                     isMatchTraining={isMatchTraining}
+                    usesArenaResponsiveLimits={usesArenaResponsiveLimits}
                     matchContext={matchContext}
                     trainingRemaining={trainingRemaining}
                     playerRoundWins={playerRoundWins}
@@ -942,6 +877,7 @@ export default function BetaModel({
                         onStepChange: setTutorialStep,
                         challenge: tutorialChallenge,
                         onAbilityCatalogue: () => navigate("/ability-catalogue"),
+                        onConditionalCatalogue: () => navigate("/conditionals"),
                         onShowSolution: () => {
                             const nextShown = !solutionShown;
                             updateTrainingConfiguration(nextShown ? tutorialScenario.solution : tutorialScenario.emptyBrain);

@@ -1,5 +1,6 @@
 import { BOT_ABILITIES, PROTOTYPE_ABILITY_STATS } from "./loadout/BotLoadout.js";
 import { MOVE_STATS } from "./combat/Moves.js";
+import { fighterColorRole } from "./pixi/pixiVisualState.js";
 
 const ABILITY_STATUS = Object.freeze({
     swing: { icon: "SW", label: "Sword Swing", detail: (fighter) => cooldownText(fighter.swingCooldownMs) },
@@ -19,9 +20,10 @@ const ABILITY_STATUS = Object.freeze({
 export default function AbilityStatusPanel({ fighter, showEmptySlot = false }) {
     const abilities = Array.isArray(fighter.abilities) ? fighter.abilities : [];
     const opponent = fighter.id === "opponent-model";
+    const pink = fighterColorRole(fighter) === "pink";
     return (
-        <section className={`w-full rounded-lg border bg-zinc-950/80 p-3 ${opponent ? "border-fuchsia-800/70" : "border-cyan-800/70"}`} aria-label={`${opponent ? "Opponent" : "Player"} ability status`}>
-            <div className={`mb-2 flex items-center justify-between gap-2 font-mono text-[10px] font-bold tracking-widest ${opponent ? "text-fuchsia-200" : "text-cyan-200"}`}>
+        <section className={`ability-status-panel ${opponent ? "opponent-status-panel" : ""} w-full rounded-lg border bg-zinc-950/80 p-3 ${pink ? "border-fuchsia-800/70" : "border-cyan-800/70"}`} aria-label={`${opponent ? "Opponent" : "Player"} ability status`}>
+            <div className={`mb-2 flex items-center justify-between gap-2 font-mono text-[10px] font-bold tracking-widest ${pink ? "text-fuchsia-200" : "text-cyan-200"}`}>
                 <span className="truncate">{opponent ? fighter.opponentUsername ?? "OPPONENT" : "YOUR BOT"}</span>
                 {fighter.hp != null && <span className="shrink-0 tracking-normal text-lime">{Math.ceil(Math.max(0, Number(fighter.hp)))} / {Math.ceil(Math.max(1, Number(fighter.maxHp ?? 100)))} HP</span>}
             </div>

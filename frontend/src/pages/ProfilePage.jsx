@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/auth-context";
 import { apiUrl } from "../config/api";
+import AppNavbar from "../components/AppNavbar";
 
 const resultTone = {
     WIN: "border-emerald-400/60 bg-emerald-950/30 text-emerald-300",
@@ -38,8 +38,7 @@ function historyUrl(page, filters) {
 const emptyFilters = { query: "", from: "", to: "" };
 
 export default function ProfilePage() {
-    const navigate = useNavigate();
-    const { user, logout } = useAuth();
+    const { user } = useAuth();
     const [profile, setProfile] = useState(null);
     const [matches, setMatches] = useState([]);
     const [draftFilters, setDraftFilters] = useState(emptyFilters);
@@ -78,11 +77,6 @@ export default function ProfilePage() {
         void loadProfile();
     }, [loadProfile]);
 
-    const handleLogout = async () => {
-        await logout();
-        navigate("/login", { replace: true });
-    };
-
     const requestHistory = async (page, filters, append) => {
         setHistoryStatus(append ? "loading-more" : "loading");
         try {
@@ -118,20 +112,7 @@ export default function ProfilePage() {
 
     return (
         <main className="home-grid min-h-screen bg-[#050d16] font-interface text-slate-100">
-            <header className="relative z-10 flex min-h-[72px] items-center justify-between border-b border-slate-700/60 bg-[#07111bd9] px-5 backdrop-blur-xl sm:px-8">
-                <button type="button" onClick={() => navigate("/home")} className="group flex items-center gap-3 bg-transparent p-0 hover:border-transparent" aria-label="Go to home">
-                    <span className="grid h-11 w-11 place-items-center border border-cyan-400/70 bg-cyan-950/30 font-mono text-lg font-bold text-cyan-300 [clip-path:polygon(25%_0,75%_0,100%_25%,100%_75%,75%_100%,25%_100%,0_75%,0_25%)]">M</span>
-                    <span className="text-lg font-bold tracking-[.18em] text-white sm:text-xl">Bot Fight</span>
-                </button>
-                <nav className="flex items-center gap-2" aria-label="Account navigation">
-                    <button type="button" aria-current="page" className="border border-cyan-400/30 bg-cyan-950/20 px-4 py-2 text-sm font-bold text-cyan-200">
-                        Profile
-                    </button>
-                    <button type="button" onClick={handleLogout} className="border border-rose-400/20 bg-rose-950/10 px-4 py-2 text-sm font-bold text-rose-300 hover:border-rose-400/60">
-                        <span className="hidden sm:inline">Logout</span><span className="sm:hidden">Exit</span>
-                    </button>
-                </nav>
-            </header>
+            <AppNavbar account currentPage="profile" />
 
             <section className="relative z-[1] mx-auto w-full max-w-[1080px] px-5 py-12 sm:px-8">
                 <div className="text-center">

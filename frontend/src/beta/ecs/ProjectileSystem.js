@@ -15,10 +15,10 @@ import { clamp } from "../combat/geometry.js";
 import { abilityContract, EFFECT_TYPES } from "../combat/AbilityContracts.js";
 import { resolveShieldInteraction } from "../combat/ShieldSystem.js";
 import { ignoresHostileEffects, isProjectileHittable } from "../combat/DefensiveState.js";
+import { compassDirection } from "../../logic/arenaAngles.js";
 
 export function createGrenadeEntity(fighter, damageMultiplier = 1) {
-    const angle = Number(fighter.rotation ?? 0) * Math.PI / 180;
-    const directionX = Math.cos(angle), directionY = Math.sin(angle);
+    const { x: directionX, y: directionY } = compassDirection(fighter.rotation);
     const spawnDistance = Number(fighter.size ?? 60) / 2 + GRENADE_SIZE / 2 + 2;
     return {
         id: `grenade-${fighter.id}-${fighter.grenadeSerial ?? 1}`,
@@ -37,8 +37,7 @@ export function createGrenadeEntity(fighter, damageMultiplier = 1) {
 }
 
 export function createFireballEntity(fighter, damageMultiplier = 1) {
-    const angle = Number(fighter.rotation ?? 0) * Math.PI / 180;
-    const directionX = Math.cos(angle), directionY = Math.sin(angle);
+    const { x: directionX, y: directionY } = compassDirection(fighter.rotation);
     const spawnDistance = Number(fighter.size ?? 60) / 2 + FIREBALL_SIZE / 2 + 2;
     return {
         id: `fireball-${fighter.id}-${fighter.fireballSerial ?? 1}`,

@@ -6,6 +6,7 @@ import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../modelPayloads/arenaCon
 import { abilityContract, EFFECT_TYPES } from "./AbilityContracts.js";
 import { resolveShieldInteraction } from "./ShieldSystem.js";
 import { ignoresHostileEffects, isAliveFighter, withoutFighterStatuses } from "./DefensiveState.js";
+import { compassDegreesToRadians, vectorToCompassDegrees } from "../../logic/arenaAngles.js";
 
 export function resolveBasicCombat(first, second) {
     let nextFirst = { ...first, gunBounceRay: null, gunRayLength: GUN_RANGE };
@@ -86,7 +87,7 @@ export function isSwingHitting(attacker, defender) {
     const relX = defender.x - attacker.x, relY = defender.y - attacker.y;
     const defenderRadius = Number(defender.size ?? 60) / 2;
     const distance = Math.hypot(relX, relY);
-    const bearing = Math.atan2(relY, relX) * 180 / Math.PI;
+    const bearing = vectorToCompassDegrees(relX, relY);
     return distance <= Number(MOVE_STATS.swing.range) + defenderRadius
         && Math.abs(angleDelta(attacker.rotation ?? 0, bearing)) <= Number(MOVE_STATS.swing.arcDegrees) / 2;
 }
@@ -95,7 +96,7 @@ export function stunHits(attacker, defender) {
     if (!attacker?.stunCastActive || !hasAbility(attacker, "stun")) return false;
     const dx = defender.x - attacker.x, dy = defender.y - attacker.y;
     if (Math.hypot(dx, dy) > STUN_RANGE + Number(defender.size ?? 60) / 2) return false;
-    return Math.abs(angleDelta(attacker.rotation ?? 0, Math.atan2(dy, dx) * 180 / Math.PI)) <= 50;
+    return Math.abs(angleDelta(attacker.rotation ?? 0, vectorToCompassDegrees(dx, dy))) <= 50;
 }
 
 export function attackerDamageMultiplier(attacker) {
@@ -126,7 +127,7 @@ function applyPrototypeTrigger(attacker, defender) {
     if (!action || !ability) return [attacker, defender];
     const stats = PROTOTYPE_ABILITY_STATS[ability] ?? {};
     const distance = defender ? Math.hypot(defender.x - attacker.x, defender.y - attacker.y) : Infinity;
-    const bearing = defender ? Math.atan2(defender.y - attacker.y, defender.x - attacker.x) * 180 / Math.PI : Number(attacker.rotation ?? 0);
+    const bearing = defender ? vectorToCompassDegrees(defender.x - attacker.x, defender.y - attacker.y) : Number(attacker.rotation ?? 0);
     const facing = Math.abs(angleDelta(attacker.rotation ?? 0, bearing));
     const meleeArc = ["heavy_slash", "quick_jab", "thrust"].includes(ability);
     const inRange = Boolean(defender) && distance <= Number(stats.range ?? stats.radius ?? Infinity) + (meleeArc ? Number(defender.size ?? 60) / 2 : 0);
@@ -197,7 +198,7 @@ function applyPrototypeTrigger(attacker, defender) {
         temporalRewindPulseMs: 0,
     };
     if (ability === "phase_strike" && distance <= Number(stats.range ?? 160)) {
-        const radians = bearing * Math.PI / 180;
+        const radians = compassDegreesToRadians(bearing);
         const passThrough = Number(stats.passThroughDistance ?? 50);
         nextAttacker = { ...nextAttacker, x: clamp(defender.x + Math.cos(radians) * passThrough, attacker.size / 2, ARENA_WIDTH_UNITS - attacker.size / 2), y: clamp(defender.y + Math.sin(radians) * passThrough, attacker.size / 2, ARENA_HEIGHT_UNITS - attacker.size / 2) };
         if (action === "phase_strike" || action === "phase_strike_face_origin") nextAttacker.rotation = normalizeAngle(bearing + 180);

@@ -1,19 +1,27 @@
 import { useEffect, useState } from "react";
 import PixiCanvas from "../beta/PixiCanvas";
 import { PROJECTILE_WALL_LENGTH, PROJECTILE_WALL_TYPE } from "../beta/ArenaObjects";
-import { decodeBotLoadout } from "../beta/loadout/BotLoadout";
-import { DEFENSE_WALL_TYPE, ARENA_WIDTH_UNITS } from "../beta/modelPayloads/arenaConstants";
+import { decodeBotLoadout, encodeBotLoadout } from "../beta/loadout/BotLoadout";
+import { AUTO_STEP_MS, DEFENSE_WALL_TYPE, ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../beta/modelPayloads/arenaConstants";
 import { GUN_RANGE, MOVE_STATS } from "../beta/combat/Moves.js";
-import { replayProjectileVelocity } from "../beta/pixi/pixiVisualState.js";
+import { fighterColorRole, replayProjectileVelocity } from "../beta/pixi/pixiVisualState.js";
+import { compassDegreesToRadians } from "../logic/arenaAngles.js";
+import MatchToolIcon from "../beta/MatchToolIcon.jsx";
+import { displayedRoundWins, replayClockSeconds } from "./replayPresentation.js";
+
+const REPLAY_FRAME_INTERPOLATION_MS = AUTO_STEP_MS;
 
 export default function SimulationReplay({ playback }) {
     const frames = playback.frames ?? [];
+    const viewer = playback.player ?? null;
+    const opponent = playback.opponent ?? null;
+    const participants = playback.players?.length ? playback.players : [viewer, opponent].filter(Boolean);
+    const viewerUserId = viewer?.userId;
     const playbackStartMs = playback.playbackStartsAtMs
         ?? (playback.playbackStartsAt ? new Date(playback.playbackStartsAt).getTime() : null);
     const [nowMs, setNowMs] = useState(() => Date.now());
     const elapsedPlaybackMs = playbackStartMs == null ? 0 : Math.max(0, nowMs - playbackStartMs);
     const countdownRemainingMs = playbackStartMs == null ? 0 : Math.max(0, playbackStartMs - nowMs);
-    const countdownNumber = Math.max(1, Math.ceil(countdownRemainingMs / 1000));
     const entranceProgress = countdownRemainingMs <= 0
         ? 1
         : Math.max(0, Math.min(1, 1 - countdownRemainingMs / 3000));
@@ -22,21 +30,44 @@ export default function SimulationReplay({ playback }) {
     const frameIndex = frames.length === 0 ? 0 : frameIndexForElapsedMs(frames, displayElapsedMs);
     const activeFrame = frames[Math.min(frameIndex, Math.max(frames.length - 1, 0))];
     const initialFighters = playback.initialState?.fighters ?? [];
-    const fighters = countdownRemainingMs > 0 ? initialFighters : activeFrame?.fighters ?? initialFighters;
-    const obstacles = countdownRemainingMs > 0
+    const replayFighters = countdownRemainingMs > 0 ? initialFighters : activeFrame?.fighters ?? initialFighters;
+    const isForfeitResult = playback.result === "RESIGNATION_WIN" || playback.result === "DISCONNECTION_WIN";
+    const winnerParticipant = participants.find((participant) => sameId(participant?.userId, playback.winnerUserId));
+    const fighters = isForfeitResult && replayFighters.length === 0
+        ? winnerParticipant ? [forfeitWinnerFighter(winnerParticipant)] : []
+        : replayFighters;
+    const obstacles = isForfeitResult ? [] : countdownRemainingMs > 0
         ? playback.initialState?.obstacles ?? []
         : activeFrame?.obstacles ?? playback.initialState?.obstacles ?? [];
-    const winner = [...fighters, ...initialFighters].find((fighter) => String(fighter.userId) === String(playback.winnerUserId));
+    const winner = [...fighters, ...initialFighters, ...participants]
+        .find((fighter) => sameId(fighter?.userId, playback.winnerUserId));
     const winnerName = winner?.username ?? "A fighter";
-    const winnerHp = winner?.hp == null ? null : Math.max(0, Math.round(winner.hp));
-    const hasReachedFinalFrame = frames.length === 0 || frameIndex >= Math.max(frames.length - 1, 0);
-    const shouldRevealResult = Boolean(playback.result) && hasReachedFinalFrame;
-    const resultTitle = shouldRevealResult
-        ? playback.result === "FIGHTER_WIN" || playback.result === "WIN"
-            ? `${winnerName} won the round${winnerHp == null ? "" : ` with ${winnerHp} HP`}`
-            : playback.result === "DRAW" ? "Fight drawn"
-                : playback.result === "RESIGNATION_WIN" ? "Won by resignation" : "Simulation failed"
-        : hasReachedFinalFrame ? "Awaiting official result" : "Replay in progress";
+    const finalWinner = activeFrame?.fighters?.find((fighter) => sameId(fighter?.userId, playback.winnerUserId));
+    const winnerHp = finalWinner?.hp == null ? null : Math.max(0, Math.round(finalWinner.hp));
+    const hasPlaybackStarted = countdownRemainingMs <= 0;
+    const hasDisplayedFinalFrame = hasPlaybackStarted && (frames.length === 0
+        || elapsedPlaybackMs >= finalElapsedMs);
+    const hasAuthorizedTerminalFrame = playback.batchSequence == null || playback.terminalBatch;
+    const hasReachedReplayEnd = hasAuthorizedTerminalFrame && hasDisplayedFinalFrame;
+    const resultRevealMs = playback.resultRevealsAtMs
+        ?? (playback.resultRevealsAt ? new Date(playback.resultRevealsAt).getTime() : null);
+    const hasReachedResultReveal = resultRevealMs == null
+        || !Number.isFinite(Number(resultRevealMs))
+        || nowMs >= Number(resultRevealMs);
+    const shouldRevealResult = Boolean(playback.result)
+        && hasAuthorizedTerminalFrame
+        && hasDisplayedFinalFrame
+        && hasReachedResultReveal;
+    const winnerColorRole = fighterColorRole(winner);
+    const resultTitle = replayResultTitle({
+        shouldRevealResult,
+        hasReachedReplayEnd,
+        result: playback.result,
+        winnerName,
+        winnerHp,
+        winnerColorRole,
+    });
+    const replaySeconds = replayClockSeconds(activeFrame, hasPlaybackStarted);
 
     useEffect(() => {
         let animationFrameId = null;
@@ -59,27 +90,118 @@ export default function SimulationReplay({ playback }) {
     const activeElapsedMs = Number(activeFrame?.elapsedMs ?? 0);
     const recentFrames = frames.filter((frame) => Number(frame.elapsedMs ?? 0) >= activeElapsedMs - 200
         && Number(frame.elapsedMs ?? 0) < activeElapsedMs);
-    const shapes = replayArenaShapes(fighters, obstacles, recentFrames, entranceProgress, frames, frameIndex);
+    const shapes = replayArenaShapes(fighters, obstacles, recentFrames, entranceProgress, frames, frameIndex, viewerUserId);
 
-    return <section className="flex min-h-[calc(100vh-52px)] flex-col items-center justify-center gap-5 px-6 py-5">
-        <div className="text-center">
-            <p className="font-mono text-xs tracking-[0.25em] text-cyan">{playback.rulesetVersion ?? "duel-v1"}</p>
-            <h1 className="mt-2 text-2xl font-bold text-ink-white" aria-live="polite">
-                {countdownRemainingMs > 0 ? `Simulation starts in ${countdownNumber}...` : resultTitle}
-            </h1>
-            <p className="mt-2 text-sm text-ink-muted">
-                {countdownRemainingMs > 0 ? "Fighters entering the arena."
-                    : shouldRevealResult ? playback.message
-                        : hasReachedFinalFrame ? "Waiting for the server to publish the result."
-                            : "Watching the submitted bot brains fight."}
-            </p>
-        </div>
-        <PixiCanvas shapes={shapes} selectedId={null} onSelectShape={() => {}} onUpdateShape={() => {}}
-            onDeselectAll={() => {}} editable={false} fillAvailable />
+    return <section className="match-arena-shell flex h-[calc(100svh-72px)] min-h-0 overflow-hidden">
+        <main className="match-arena-stage flex min-w-0 flex-1 items-center justify-center overflow-hidden p-2">
+            <div className="relative flex h-full w-full items-center justify-center">
+                <PixiCanvas shapes={shapes} selectedId={null} onSelectShape={() => { }} onUpdateShape={() => { }}
+                    onDeselectAll={() => { }} editable={false} fillAvailable fixedLayout abilityLayout="split"
+                    showMissingOpponentStatus={false} lockCamera />
+            </div>
+        </main>
+        <ReplaySidebar
+            playback={playback}
+            player={viewer}
+            opponent={opponent}
+            replaySeconds={replaySeconds}
+            countdownRemainingMs={countdownRemainingMs}
+            resultTitle={resultTitle}
+            shouldRevealResult={shouldRevealResult}
+            hasReachedReplayEnd={hasReachedReplayEnd}
+        />
     </section>;
 }
 
-function replayArenaShapes(fighters, obstacles, recentFrames = [], entranceProgress = 1, frames = [], frameIndex = 0) {
+function ReplaySidebar({
+    playback,
+    player,
+    opponent,
+    replaySeconds,
+    countdownRemainingMs,
+    resultTitle,
+    shouldRevealResult,
+    hasReachedReplayEnd,
+}) {
+    const roundWinsBeforeResult = playback.roundWinsBeforeResult;
+    const revealCurrentRoundPoint = shouldRevealResult;
+    const playerWins = displayedRoundWins(player, roundWinsBeforeResult, revealCurrentRoundPoint);
+    const opponentWins = displayedRoundWins(opponent, roundWinsBeforeResult, revealCurrentRoundPoint);
+    const statusMessage = countdownRemainingMs > 0
+        ? "Fighters entering the arena."
+        : shouldRevealResult ? playback.message
+            : hasReachedReplayEnd ? "Waiting for the server to publish the result."
+                : "Watching the submitted bot brains fight.";
+
+    return (
+        <aside className="arena-right-toolbar training-mono h-full min-h-0 w-[23rem] flex-shrink-0 overflow-y-auto border-l border-slate-700/70 bg-[linear-gradient(180deg,rgba(12,22,31,.98),rgba(8,16,24,.98))] p-4 shadow-[-12px_0_30px_rgba(0,0,0,.28)]">
+            <div className="space-y-4">
+                <section className="rounded-xl border border-slate-600/70 bg-slate-900/55 p-4 text-[10px] shadow-[0_10px_30px_rgba(0,0,0,.2)]">
+                    <ReplayPanelHeading icon="status">MATCH STATUS</ReplayPanelHeading>
+                    <div className="flex items-center justify-between text-ink-muted">
+                        <span>ROUND</span>
+                        <strong className="font-interface-numeric text-ink-white">{playback.roundNumber ?? 1}/3</strong>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-ink-muted">
+                        <span>REPLAY TIMER</span>
+                        <strong className="font-interface-numeric text-amber-200">{formatReplayClock(replaySeconds)}</strong>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                        <ReplayScoreBox label="YOU" value={playerWins} tone={fighterColorRole(player)} />
+                        <ReplayScoreBox label={opponent?.username ?? "OPP"} value={opponentWins} tone={fighterColorRole(opponent)} opponent />
+                    </div>
+                </section>
+
+                <section className="rounded-xl border border-slate-600/70 bg-slate-900/55 p-4 shadow-[0_10px_30px_rgba(0,0,0,.2)]">
+                    <ReplayPanelHeading icon="brain">ROUND REPLAY</ReplayPanelHeading>
+                    <p className="mt-3 font-mono text-[9px] tracking-[0.22em] text-cyan">{playback.rulesetVersion ?? "duel-v1"}</p>
+                    <p className="mt-2 break-words text-base font-bold text-ink-white" aria-live="polite">
+                        {countdownRemainingMs > 0 ? "Preparing replay..." : resultTitle}
+                    </p>
+                    <p className="mt-2 text-xs leading-5 text-ink-muted">{statusMessage}</p>
+                </section>
+            </div>
+        </aside>
+    );
+}
+
+function ReplayScoreBox({ label, value, tone, opponent = false }) {
+    const color = tone === "pink" ? "text-fuchsia-200" : "text-cyan-200";
+    return (
+        <div className={`rounded border border-border-lo bg-zinc-950/50 p-2 ${opponent ? "replay-opponent-stats" : ""}`}>
+            <div className={`font-interface-semibold truncate ${color}`}>{label}</div>
+            <div className="font-interface-numeric mt-1 text-base text-ink-white">{value}</div>
+        </div>
+    );
+}
+
+function ReplayPanelHeading({ icon, children }) {
+    return <span className="font-display-action mb-3 flex items-center gap-2 text-base tracking-[.09em] text-sky-300">
+        <MatchToolIcon name={icon} />{children}
+    </span>;
+}
+
+function formatReplayClock(seconds) {
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function replayResultTitle({ shouldRevealResult, hasReachedReplayEnd, result, winnerName, winnerHp, winnerColorRole }) {
+    if (!shouldRevealResult) return hasReachedReplayEnd ? "Awaiting official result" : "Replay in progress";
+    if (result === "DRAW") return "Fight drawn";
+    if (result === "MATCH_CANCELLED") return "Match canceled";
+    if (!["FIGHTER_WIN", "WIN", "RESIGNATION_WIN", "DISCONNECTION_WIN"].includes(result)) return "Simulation failed";
+
+    const suffix = result === "RESIGNATION_WIN" ? " won by resignation"
+        : result === "DISCONNECTION_WIN" ? " won by disconnect"
+            : ` won the round${winnerHp == null ? "" : ` with ${winnerHp} HP`}`;
+    return <>
+        <span className={winnerColorRole === "pink" ? "text-fuchsia-300" : "text-cyan-300"}>{winnerName}</span>
+        {suffix}
+    </>;
+}
+
+function replayArenaShapes(fighters, obstacles, recentFrames = [], entranceProgress = 1, frames = [], frameIndex = 0, viewerUserId = null) {
     const recentlyDamagedIds = new Set();
     for (const frame of recentFrames) {
         for (const previous of [...(frame.fighters ?? []), ...(frame.obstacles ?? [])]) {
@@ -87,7 +209,14 @@ function replayArenaShapes(fighters, obstacles, recentFrames = [], entranceProgr
             if (current && Number(current.hp ?? 0) < Number(previous.hp ?? 0)) recentlyDamagedIds.add(String(current.id ?? current.userId));
         }
     }
-    const fighterShapes = fighters.map((fighter) => fighterReplayShape(fighter, recentlyDamagedIds, entranceProgress, frames, frameIndex));
+    const fighterShapes = fighters.map((fighter) => fighterReplayShape(
+        fighter,
+        recentlyDamagedIds,
+        entranceProgress,
+        frames,
+        frameIndex,
+        viewerUserId,
+    ));
     const previousFrame = frames[Math.max(0, frameIndex - 1)];
     const previousObstaclesById = new Map((previousFrame?.obstacles ?? [])
         .map((obstacle) => [String(obstacle.id), obstacle]));
@@ -104,7 +233,7 @@ function replayArenaShapes(fighters, obstacles, recentFrames = [], entranceProgr
             remainingMs: obstacle.timerMs,
             captureBySlot: { 1: obstacle.slotOneCaptureMs ?? 0, 2: obstacle.slotTwoCaptureMs ?? 0 },
             locked: true,
-            interpolationMs: 50,
+            interpolationMs: REPLAY_FRAME_INTERPOLATION_MS,
             hitFlashMs: recentlyDamagedIds.has(String(obstacle.id)) ? 200 : 0,
         };
     });
@@ -117,16 +246,17 @@ function replayArenaShapes(fighters, obstacles, recentFrames = [], entranceProgr
     ];
 }
 
-function fighterReplayShape(fighter, recentlyDamagedIds, entranceProgress, frames, frameIndex) {
-    const isMain = Number(fighter.slot) === 1;
+function fighterReplayShape(fighter, recentlyDamagedIds, entranceProgress, frames, frameIndex, viewerUserId) {
+    const isMain = sameId(fighter.userId, viewerUserId);
+    const isSlotOne = Number(fighter.slot) === 1;
     const easedEntrance = 1 - Math.pow(1 - entranceProgress, 3);
-    const entranceX = isMain ? -Number(fighter.size ?? 60) : ARENA_WIDTH_UNITS + Number(fighter.size ?? 60);
-    const combatClass = fighter.combatClass ?? "melee";
+    const entranceX = isSlotOne ? -Number(fighter.size ?? 60) : ARENA_WIDTH_UNITS + Number(fighter.size ?? 60);
+    const loadoutId = String(fighter.combatClass ?? "").startsWith("custom:")
+        ? fighter.combatClass
+        : encodeBotLoadout({ abilities: fighter.abilities ?? [], statPoints: {} });
     const abilities = Array.isArray(fighter.abilities) && fighter.abilities.length
         ? fighter.abilities
-        : String(combatClass).startsWith("custom:") ? decodeBotLoadout(combatClass).abilities
-            : combatClass === "ranged" ? ["fire_gun", "throw_grenade"]
-                : combatClass === "mage" ? ["shoot_fireball", "stun"] : ["swing", "block", "dash"];
+        : decodeBotLoadout(loadoutId).abilities;
     const legacyAttackActive = Boolean(fighter.attackActive);
     const gunShotActive = fighter.gunShotActive ?? (legacyAttackActive && abilities.includes("fire_gun"));
     const swingActive = fighter.swingActive ?? (legacyAttackActive && abilities.includes("swing") && !gunShotActive);
@@ -134,13 +264,19 @@ function fighterReplayShape(fighter, recentlyDamagedIds, entranceProgress, frame
     const stunActive = fighter.stunActive ?? (legacyAttackActive && abilities.includes("stun") && !fireballActive);
     const visualOrigin = replayRayOrigin(fighter, frames, frameIndex);
     const replaySwingActiveMs = replayActiveTimer(fighter, frames, frameIndex, "swingActive", MOVE_STATS.swing.activeMs);
+    const previousFighter = frames[Math.max(0, frameIndex - 1)]?.fighters
+        ?.find((candidate) => String(candidate.userId) === String(fighter.userId));
+    const replayVelocity = {
+        velocityX: Number(fighter.x ?? 0) - Number(previousFighter?.x ?? fighter.x ?? 0),
+        velocityY: Number(fighter.y ?? 0) - Number(previousFighter?.y ?? fighter.y ?? 0),
+    };
     return {
         ...fighter,
         x: entranceX + (Number(fighter.x ?? 0) - entranceX) * easedEntrance,
         id: isMain ? "main" : "opponent-model",
         type: isMain ? "circle" : "opponentModel",
         size: fighter.size ?? 60,
-        combatClass,
+        combatClass: loadoutId,
         abilities,
         maxHp: Number(fighter.maxHp ?? 100),
         swingActiveMs: swingActive ? replaySwingActiveMs : 0,
@@ -161,14 +297,35 @@ function fighterReplayShape(fighter, recentlyDamagedIds, entranceProgress, frame
         stunActiveMs: stunActive ? 100 : 0,
         stunCastActive: stunActive,
         dashActiveMs: fighter.dashActive ? 100 : 0,
+        microDashActiveMs: Number(fighter.abilityActiveMs?.micro_dash ?? 0),
         blockActiveMs: fighter.blockActive ? 100 : 0,
         locked: true,
-        interpolationMs: entranceProgress < 1 ? 0 : 50,
+        interpolationMs: entranceProgress < 1 ? 0 : REPLAY_FRAME_INTERPOLATION_MS,
         username: fighter.username,
         opponentUsername: fighter.username,
         hitFlashMs: recentlyDamagedIds.has(String(fighter.userId)) ? 200 : 0,
+        ...replayVelocity,
         ...visualOrigin,
     };
+}
+
+function forfeitWinnerFighter(winner) {
+    return {
+        userId: winner.userId,
+        username: winner.username,
+        slot: winner.slot,
+        x: ARENA_WIDTH_UNITS / 2,
+        y: ARENA_HEIGHT_UNITS / 2,
+        rotation: 0,
+        hp: 100,
+        maxHp: 100,
+        combatClass: winner.selectedClass ?? encodeBotLoadout({ abilities: [], statPoints: {} }),
+        abilities: decodeBotLoadout(winner.selectedClass).abilities,
+    };
+}
+
+function sameId(left, right) {
+    return left != null && right != null && String(left) === String(right);
 }
 
 function replayActiveTimer(fighter, frames, frameIndex, activeField, durationMs) {
@@ -216,12 +373,12 @@ function firstActiveFighter(fighter, frames, frameIndex, isActive) {
 function replayGunRayLength(fighter, obstacles) {
     const originX = Number(fighter.gunRayOriginX ?? fighter.x);
     const originY = Number(fighter.gunRayOriginY ?? fighter.y);
-    const radians = Number(fighter.gunRayRotation ?? fighter.rotation ?? 0) * Math.PI / 180;
+    const radians = compassDegreesToRadians(fighter.gunRayRotation ?? fighter.rotation);
     const directionX = Math.cos(radians);
     const directionY = Math.sin(radians);
     return obstacles.filter((wall) => wall.type === PROJECTILE_WALL_TYPE || wall.type === DEFENSE_WALL_TYPE)
         .reduce((nearest, wall) => {
-            const wallRadians = Number(wall.rotation ?? 0) * Math.PI / 180;
+            const wallRadians = compassDegreesToRadians(wall.rotation);
             const half = Number(wall.size ?? PROJECTILE_WALL_LENGTH) / 2;
             const ax = wall.x - Math.cos(wallRadians) * half;
             const ay = wall.y - Math.sin(wallRadians) * half;

@@ -13,6 +13,7 @@ import {
     SWING_COOLDOWN_MS,
 } from "../combat/Moves.js";
 import { GRENADE_COOLDOWN_MS, STUN_ACTIVE_MS, STUN_COOLDOWN_MS } from "../combat/Abilities.js";
+import { compassDegreesToRadians } from "../../logic/arenaAngles.js";
 import { clamp, normalizeAngle } from "../combat/geometry.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, DASH_DURATION_MS, DASH_SPEED, MOVE_ACCELERATION_PER_TICK, MOVE_BRAKE_ACCELERATION_PER_TICK, ROTATION_STEP_DEG } from "../modelPayloads/arenaConstants.js";
 import { hunterDroneEntity, nullZoneEntity, orbitalMarkerEntity, proximityMineEntity, silenceWaveEntity, temporalRewindZoneEntity, thrownFieldEntity } from "./EntityFactory.js";
@@ -140,7 +141,7 @@ function applyMovement(next, shape, action, movement) {
     const dashAvailable = hasAbility(shape, "dash") && Number(shape.dashCooldownMs ?? 0) <= 0;
     const dashRequested = Boolean(action?.dashAction?.startsWith?.("dash")) || Number(action?.dash ?? 0) > 0.5;
     if (dashRequested && dashAvailable) {
-        const angle = Number(next.rotation ?? 0) * Math.PI / 180;
+        const angle = compassDegreesToRadians(next.rotation);
         const dashX = magnitude > 0.001 ? dx : Math.cos(angle), dashY = magnitude > 0.001 ? dy : Math.sin(angle);
         return { ...next, x: clamp(shape.x + dashX * DASH_SPEED, shape.size / 2, ARENA_WIDTH_UNITS - shape.size / 2), y: clamp(shape.y + dashY * DASH_SPEED, shape.size / 2, ARENA_HEIGHT_UNITS - shape.size / 2), dashActiveMs: DASH_DURATION_MS, dashCooldownMs: DASH_COOLDOWN_MS, dashDirectionX: dashX, dashDirectionY: dashY, movementVelocityX: dashX * maxMoveSpeed, movementVelocityY: dashY * maxMoveSpeed, velocityX: dashX * DASH_SPEED * speedMultiplier / seconds, velocityY: dashY * DASH_SPEED * speedMultiplier / seconds };
     }
@@ -193,7 +194,7 @@ function spawnForSpecial(fighter, action, payload) {
 
 function startMicroDash(fighter, action, targetX, targetY) {
     const stats = PROTOTYPE_ABILITY_STATS.micro_dash;
-    const bearing = Number.isFinite(Number(targetX)) && Number.isFinite(Number(targetY)) ? Math.atan2(Number(targetY) - fighter.y, Number(targetX) - fighter.x) : Number(fighter.rotation ?? 0) * Math.PI / 180;
+    const bearing = Number.isFinite(Number(targetX)) && Number.isFinite(Number(targetY)) ? Math.atan2(Number(targetY) - fighter.y, Number(targetX) - fighter.x) : compassDegreesToRadians(fighter.rotation);
     const directions = { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0], northeast: [Math.SQRT1_2, -Math.SQRT1_2], northwest: [-Math.SQRT1_2, -Math.SQRT1_2], southeast: [Math.SQRT1_2, Math.SQRT1_2], southwest: [-Math.SQRT1_2, Math.SQRT1_2] };
     const suffix = Object.keys(directions).find((name) => action.endsWith(`_${name}`));
     const diagonal = action.includes("_toward_") || action.includes("_away_");

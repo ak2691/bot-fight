@@ -1,12 +1,13 @@
 import { BLOCK_MAX_CHARGES } from "./Moves.js";
 import { angleDelta } from "./geometry.js";
 import { SHIELD_CHARGE_COSTS, SHIELD_MODES } from "./AbilityContracts.js";
+import { vectorToCompassDegrees } from "../../logic/arenaAngles.js";
 
 export const BLOCK_REUSE_COOLDOWN_MS = 2000;
 
 export function isShieldBlockingSource(fighter, source, halfArcDegrees = 95) {
     if (Number(fighter?.blockActiveMs ?? 0) <= 0 || Number(fighter?.blockCharges ?? 0) <= 0 || !source) return false;
-    const sourceAngle = Math.atan2(Number(source.y) - Number(fighter.y), Number(source.x) - Number(fighter.x)) * 180 / Math.PI;
+    const sourceAngle = vectorToCompassDegrees(Number(source.x) - Number(fighter.x), Number(source.y) - Number(fighter.y));
     return Math.abs(angleDelta(Number(fighter.rotation ?? 0), sourceAngle)) <= Number(halfArcDegrees);
 }
 

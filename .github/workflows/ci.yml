@@ -77,9 +77,9 @@ jobs:
     strategy:
       matrix:
         image:
-          - name: machiner-backend
+          - name: botfight-backend
             context: ./server
-          - name: machiner-frontend
+          - name: botfight-frontend
             context: ./frontend
 
     steps:
