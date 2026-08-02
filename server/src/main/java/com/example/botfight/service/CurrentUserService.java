@@ -26,7 +26,11 @@ public class CurrentUserService {
         }
 
         UUID userId = principal.getId();
-        return userRepository.findById(userId)
+        AppUser user = userRepository.findById(userId)
                 .orElseThrow(() -> new AuthException("authenticated user was not found"));
+        if (!UsernamePolicy.isValid(user.getUsername())) {
+            throw new AuthException("username setup is required before using this account");
+        }
+        return user;
     }
 }

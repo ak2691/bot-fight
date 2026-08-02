@@ -8,8 +8,8 @@ public record MatchmakingPlayerDTO(
         int slot,
         boolean finished,
         int roundWins,
-        String selectedClass,
-        boolean classSelected,
+        String selectedLoadout,
+        boolean loadoutSelected,
         boolean objectPlacementSubmitted) {
     public MatchmakingPlayerDTO(
             UUID userId,
@@ -17,8 +17,8 @@ public record MatchmakingPlayerDTO(
             int slot,
             boolean finished,
             int roundWins,
-            String selectedClass,
-            boolean classSelected) {
-        this(userId, username, slot, finished, roundWins, selectedClass, classSelected, false);
+            String selectedLoadout,
+            boolean loadoutSelected) {
+        this(userId, username, slot, finished, roundWins, selectedLoadout, loadoutSelected, false);
     }
 }

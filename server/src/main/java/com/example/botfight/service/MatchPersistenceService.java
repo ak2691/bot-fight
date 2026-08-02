@@ -6,49 +6,80 @@ import com.example.botfight.domain.Match;
 import com.example.botfight.domain.MatchParticipant;
 import com.example.botfight.domain.MatchResult;
 import com.example.botfight.domain.MatchStatus;
-import com.example.botfight.domain.ModelSubmission;
-import com.example.botfight.domain.ModelSubmissionStatus;
+import com.example.botfight.domain.BotSubmission;
+import com.example.botfight.domain.BotSubmissionStatus;
+import com.example.botfight.domain.ValidationResult;
+import com.example.botfight.domain.ValidationStatus;
 import com.example.botfight.repository.MatchParticipantRepository;
 import com.example.botfight.repository.MatchRepository;
-import com.example.botfight.repository.ModelSubmissionRepository;
+import com.example.botfight.repository.BotSubmissionRepository;
 import com.example.botfight.repository.ProfileRepository;
 import com.example.botfight.repository.UserRepository;
+import com.example.botfight.repository.ValidationResultRepository;
 import com.example.botfight.service.MatchService.MatchPlayer;
 import com.example.botfight.service.MatchService.MatchSession;
 import java.time.Clock;
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.json.JsonMapper;
 
 @Service
 public class MatchPersistenceService {
 
     private static final String COMPLETION_REASON_SIMULATION = "SIMULATION";
+    public static final String COMPLETION_REASON_SERVER_RESTART = "SERVER_RESTART";
+    private static final String TIMEOUT_CLIENT_BUILD_VERSION = "server-testing-timeout-v1";
+    private static final String BRAIN_SCHEMA_VERSION = "bot-logic-tree-v1";
+    private static final String VALIDATOR_VERSION = "bot-brain-submission-v1";
+    private static final Map<String, String> ABILITY_BY_CODE = Map.ofEntries(
+            Map.entry("s", "swing"), Map.entry("b", "block"), Map.entry("d", "dash"),
+            Map.entry("g", "fire_gun"), Map.entry("r", "throw_grenade"), Map.entry("f", "shoot_fireball"),
+            Map.entry("t", "stun"), Map.entry("h", "heavy_slash"), Map.entry("u", "repulsor_burst"),
+            Map.entry("c", "concussive_shot"), Map.entry("e", "repair_pulse"), Map.entry("m", "proximity_mine"),
+            Map.entry("j", "quick_jab"), Map.entry("p", "pistol_shot"), Map.entry("R", "rail_shot"),
+            Map.entry("G", "gravity_grenade"), Map.entry("S", "silence_pulse"), Map.entry("A", "reactive_armor"),
+            Map.entry("H", "hunter_drone"), Map.entry("T", "thrust"), Map.entry("M", "micro_dash"),
+            Map.entry("w", "temporal_rewind"), Map.entry("o", "orbital_strike"), Map.entry("a", "absolute_guard"),
+            Map.entry("n", "null_zone"), Map.entry("P", "phase_strike"));
 
     private final MatchRepository matchRepository;
     private final MatchParticipantRepository matchParticipantRepository;
-    private final ModelSubmissionRepository modelSubmissionRepository;
+    private final BotSubmissionRepository botSubmissionRepository;
     private final ProfileRepository profileRepository;
     private final UserRepository userRepository;
+    private final ValidationResultRepository validationResultRepository;
     private final Clock clock;
+    private final JsonMapper jsonMapper;
 
     public MatchPersistenceService(
             MatchRepository matchRepository,
             MatchParticipantRepository matchParticipantRepository,
-            ModelSubmissionRepository modelSubmissionRepository,
+            BotSubmissionRepository botSubmissionRepository,
             ProfileRepository profileRepository,
             UserRepository userRepository,
-            Clock clock) {
+            ValidationResultRepository validationResultRepository,
+            Clock clock,
+            JsonMapper jsonMapper) {
         this.matchRepository = matchRepository;
         this.matchParticipantRepository = matchParticipantRepository;
-        this.modelSubmissionRepository = modelSubmissionRepository;
+        this.botSubmissionRepository = botSubmissionRepository;
         this.profileRepository = profileRepository;
         this.userRepository = userRepository;
+        this.validationResultRepository = validationResultRepository;
         this.clock = clock;
+        this.jsonMapper = jsonMapper;
     }
 
     public Match createMatch() {
@@ -60,6 +91,37 @@ public class MatchPersistenceService {
         return matchRepository.save(match);
     }
 
+    /**
+     * A match is persisted as RUNNING before its in-memory session is made
+     * visible. A process restart loses those sessions, so any RUNNING row
+     * found during the next startup represents an interrupted match.
+     */
+    @Transactional
+    public int cancelMatchesInterruptedByServerRestart() {
+        List<Match> runningMatches = matchRepository
+                .findByStatusOrderByCreatedAtAsc(MatchStatus.RUNNING);
+        if (runningMatches == null || runningMatches.isEmpty()) {
+            return 0;
+        }
+
+        Instant completedAt = Instant.now(clock);
+        List<Match> cancelledMatches = runningMatches.stream()
+                .filter(match -> match.getStatus() == MatchStatus.RUNNING)
+                .peek(match -> {
+                    match.setStatus(MatchStatus.CANCELLED);
+                    match.setCompletionReason(COMPLETION_REASON_SERVER_RESTART);
+                    match.setCompletedAt(completedAt);
+                    match.setWinnerUser(null);
+                })
+                .toList();
+        if (cancelledMatches.isEmpty()) {
+            return 0;
+        }
+
+        matchRepository.saveAll(cancelledMatches);
+        return cancelledMatches.size();
+    }
+
     public void createParticipants(Match match, MatchSession session) {
         List<MatchParticipant> participants = session.players().stream()
                 .map(player -> {
@@ -67,40 +129,40 @@ public class MatchPersistenceService {
                     participant.setMatch(match);
                     participant.setUser(userRepository.getReferenceById(player.userId()));
                     participant.setSlot((short) player.slot());
-                    participant.setSelectedClass(player.selectedClass());
+                    participant.setSelectedLoadout(player.selectedLoadout());
                     return participant;
                 })
                 .toList();
         matchParticipantRepository.saveAll(participants);
     }
 
-    public void updateParticipantSelectedClass(UUID matchId, MatchPlayer player) {
+    public void updateParticipantSelectedLoadout(UUID matchId, MatchPlayer player) {
         matchParticipantRepository.findByMatchIdAndUserId(matchId, player.userId())
                 .ifPresent(participant -> {
-                    participant.setSelectedClass(player.selectedClass());
+                    participant.setSelectedLoadout(player.selectedLoadout());
                     matchParticipantRepository.save(participant);
                 });
     }
 
-    public ModelSubmission requireValidatedSubmission(
+    public BotSubmission requireValidatedSubmission(
             UUID userId,
-            UUID modelSubmissionId,
+            UUID botSubmissionId,
             UUID matchId) {
-        if (modelSubmissionId == null) {
-            throw new AuthException("modelSubmissionId is required before finishing the match");
+        if (botSubmissionId == null) {
+            throw new AuthException("botSubmissionId is required before finishing the match");
         }
 
-        ModelSubmission submission = modelSubmissionRepository
-                .findByIdAndUserId(modelSubmissionId, userId)
+        BotSubmission submission = botSubmissionRepository
+                .findByIdAndUserId(botSubmissionId, userId)
                 .orElseThrow(() -> new AuthException(
-                        "model submission was not found for this player"));
-        if (submission.getStatus() != ModelSubmissionStatus.VALIDATED) {
+                        "bot submission was not found for this player"));
+        if (submission.getStatus() != BotSubmissionStatus.VALIDATED) {
             throw new AuthException(
-                    "model submission must be validated before finishing the match");
+                    "bot submission must be validated before finishing the match");
         }
         if (submission.getMatchId() == null
                 || !submission.getMatchId().equals(matchId)) {
-            throw new AuthException("model submission is not assigned to this match");
+            throw new AuthException("bot submission is not assigned to this match");
         }
         return submission;
     }
@@ -108,25 +170,148 @@ public class MatchPersistenceService {
     public void attachSubmission(
             UUID matchId,
             UUID userId,
-            ModelSubmission submission) {
+            BotSubmission submission) {
         MatchParticipant participant = matchParticipantRepository
                 .findByMatchIdAndUserId(matchId, userId)
                 .orElseThrow(() -> new AuthException(
                         "match participant was not found"));
-        participant.setModelSubmission(submission);
-        participant.setSelectedClass(submission.getSelectedClass());
+        participant.setBotSubmission(submission);
+        participant.setSelectedLoadout(submission.getSelectedLoadout());
         matchParticipantRepository.save(participant);
     }
 
-    public Map<UUID, ModelSubmission> loadFinishedSubmissions(
+    /**
+     * Resolves a player who missed the server-owned testing deadline. Later
+     * rounds inherit the prior accepted brain, while round one starts with a
+     * canonical empty brain. The derived row keeps the current round's
+     * selected loadout authoritative for simulation.
+     */
+    public BotSubmission resolveTestingTimeoutSubmission(
+            MatchSession session,
+            MatchPlayer player) {
+        BotSubmission previous = session.roundNumber() > 1
+                ? matchParticipantRepository.findByMatchIdAndUserId(session.matchId(), player.userId())
+                        .map(MatchParticipant::getBotSubmission)
+                        .filter(submission -> submission.getStatus() == BotSubmissionStatus.VALIDATED)
+                        .filter(submission -> session.matchId().equals(submission.getMatchId()))
+                        .orElse(null)
+                : null;
+
+        String fallbackKey = "server-timeout:" + session.matchId()
+                + ":" + session.roundNumber() + ":" + player.userId();
+        BotSubmission existing = botSubmissionRepository
+                .findByUserIdAndTestingSessionIdAndRequestFingerprintIsNotNull(
+                        player.userId(), fallbackKey)
+                .orElse(null);
+        if (existing != null && existing.getStatus() == BotSubmissionStatus.VALIDATED) {
+            return existing;
+        }
+
+        String brainPayload = resolvedBrainPayload(previous, player.selectedLoadout());
+        BotSubmission fallback = new BotSubmission();
+        fallback.setUser(userRepository.getReferenceById(player.userId()));
+        fallback.setMatchId(session.matchId());
+        fallback.setTestingSessionId(fallbackKey);
+        fallback.setRequestFingerprint(sha256Hex(fallbackKey + ":" + brainPayload));
+        fallback.setSelectedLoadout(player.selectedLoadout());
+        fallback.setClientBuildVersion(TIMEOUT_CLIENT_BUILD_VERSION);
+        fallback.setBrainSchemaVersion(BRAIN_SCHEMA_VERSION);
+        fallback.setBrainPayload(brainPayload);
+        fallback.setStatus(BotSubmissionStatus.VALIDATED);
+
+        BotSubmission saved = botSubmissionRepository.save(fallback);
+        ValidationResult validationResult = new ValidationResult();
+        validationResult.setBotSubmission(saved);
+        validationResult.setStatus(ValidationStatus.ACCEPTED);
+        validationResult.setValidatorVersion(VALIDATOR_VERSION);
+        validationResult.setDetails("{\"source\":\"SERVER_TESTING_TIMEOUT\",\"inherited\":"
+                + (previous != null) + "}");
+        validationResultRepository.save(validationResult);
+        return saved;
+    }
+
+    private String resolvedBrainPayload(BotSubmission previous, String selectedLoadout) {
+        ObjectNode brain = previous == null
+                ? emptyBrain()
+                : readBrain(previous.getBrainPayload());
+        ObjectNode currentLoadout = currentLoadout(selectedLoadout);
+        if (currentLoadout == null) {
+            brain.remove("loadout");
+        } else {
+            brain.set("loadout", currentLoadout);
+        }
+        try {
+            return jsonMapper.writeValueAsString(brain);
+        } catch (Exception exception) {
+            throw new AuthException("server timeout brain could not be serialized");
+        }
+    }
+
+    private ObjectNode readBrain(String payload) {
+        try {
+            JsonNode parsed = jsonMapper.readTree(payload == null ? "{}" : payload);
+            return parsed != null && parsed.isObject()
+                    ? (ObjectNode) parsed.deepCopy()
+                    : emptyBrain();
+        } catch (Exception exception) {
+            throw new AuthException("previous bot brain could not be read");
+        }
+    }
+
+    private ObjectNode emptyBrain() {
+        ObjectNode brain = jsonMapper.createObjectNode();
+        brain.put("version", BRAIN_SCHEMA_VERSION);
+        brain.putArray("columns");
+        brain.putArray("blocks");
+        brain.putArray("clusters");
+        brain.putArray("customVariables");
+        return brain;
+    }
+
+    private ObjectNode currentLoadout(String selectedLoadout) {
+        if (selectedLoadout == null || !selectedLoadout.startsWith("custom:")) return null;
+        String[] parts = selectedLoadout.split(":", -1);
+        if (parts.length != 3) return null;
+
+        ObjectNode loadout = jsonMapper.createObjectNode();
+        ArrayNode abilities = loadout.putArray("abilities");
+        for (int index = 0; index < parts[1].length(); index++) {
+            String ability = ABILITY_BY_CODE.get(String.valueOf(parts[1].charAt(index)));
+            if (ability != null) abilities.add(ability);
+        }
+        String[] points = parts[2].split(",", -1);
+        if (points.length != 4) return null;
+        ObjectNode statPoints = loadout.putObject("statPoints");
+        for (int index = 0; index < 4; index++) {
+            try {
+                statPoints.put(List.of("maxHp", "moveSpeed", "attackDamage", "attackSpeed").get(index),
+                        Math.max(0, Integer.parseInt(points[index])));
+            } catch (NumberFormatException exception) {
+                return null;
+            }
+        }
+        return loadout;
+    }
+
+    private String sha256Hex(String value) {
+        try {
+            return java.util.HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256")
+                            .digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
+    }
+
+    public Map<UUID, BotSubmission> loadFinishedSubmissions(
             MatchSession session) {
-        Map<UUID, ModelSubmission> submissions = new HashMap<>();
+        Map<UUID, BotSubmission> submissions = new HashMap<>();
         for (MatchPlayer player : session.players()) {
-            if (player.modelSubmissionId() == null) {
+            if (player.botSubmissionId() == null) {
                 continue;
             }
-            modelSubmissionRepository
-                    .findByIdAndUserId(player.modelSubmissionId(), player.userId())
+            botSubmissionRepository
+                    .findByIdAndUserId(player.botSubmissionId(), player.userId())
                     .ifPresent(submission ->
                             submissions.put(player.userId(), submission));
         }
@@ -168,8 +353,11 @@ public class MatchPersistenceService {
             MatchPlayer forfeitingPlayer,
             MatchPlayer winner,
             String completionReason) {
-        Match match = runningMatch(matchId);
-        if (match == null) return;
+        Match match = matchRepository.findById(matchId)
+                .orElseThrow(() -> new AuthException("match was not found"));
+        boolean alreadyCompletedBySimulation = match.getStatus() == MatchStatus.COMPLETED
+                && COMPLETION_REASON_SIMULATION.equals(match.getCompletionReason());
+        if (match.getStatus() != MatchStatus.RUNNING && !alreadyCompletedBySimulation) return;
         List<MatchParticipant> participants =
                 matchParticipantRepository.findByMatchId(matchId);
 
@@ -184,7 +372,9 @@ public class MatchPersistenceService {
             } else if (participant.getUser().getId().equals(winner.userId())) {
                 participant.setResult(MatchResult.WIN);
             }
-            incrementMatchesPlayed(participant.getUser());
+            if (!alreadyCompletedBySimulation) {
+                incrementMatchesPlayed(participant.getUser());
+            }
         }
         saveResult(match, participants);
     }

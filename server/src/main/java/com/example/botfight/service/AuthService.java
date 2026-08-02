@@ -21,12 +21,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuthService {
 
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
-    private static final Pattern USERNAME_PATTERN = Pattern.compile("^[A-Za-z0-9_-]+$");
-    private static final int MIN_USERNAME_LENGTH = 3;
-    private static final int MAX_USERNAME_LENGTH = 30;
-    private static final int MIN_PASSWORD_LENGTH = 8;
-    private static final int MAX_PASSWORD_LENGTH = 128;
-
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
 
@@ -39,12 +33,12 @@ public class AuthService {
     public AuthUserDTO register(AuthRequestDTO request, HttpServletRequest httpRequest) {
         String email = clean(request == null ? null : request.getEmail());
         String normalizedEmail = normalizeEmail(email);
-        String username = clean(request == null ? null : request.getUsername());
+        String username = UsernamePolicy.clean(request == null ? null : request.getUsername());
         String password = request == null ? null : request.getPassword();
 
         validateEmail(email);
-        validateUsername(username);
-        validatePassword(password);
+        UsernamePolicy.validate(username);
+        PasswordPolicy.validateForRegistration(password);
         if (userRepository.existsByNormalizedEmail(normalizedEmail)) {
             throw new AuthException("email is already registered");
         }
@@ -75,6 +69,9 @@ public class AuthService {
         if (user.getPasswordHash() == null || !passwordEncoder.matches(password, user.getPasswordHash())) {
             throw new AuthException("invalid email or password");
         }
+        if (!UsernamePolicy.isValid(user.getUsername())) {
+            throw new AuthException("username setup is required; continue with Google to choose one");
+        }
 
         authenticateSession(user, httpRequest);
         return toAuthUser(user);
@@ -89,6 +86,7 @@ public class AuthService {
         }
 
         return userRepository.findById(principal.getId())
+                .filter(user -> UsernamePolicy.isValid(user.getUsername()))
                 .map(this::toAuthUser)
                 .orElseGet(AuthUserDTO::guest);
     }
@@ -102,7 +100,7 @@ public class AuthService {
         return response;
     }
 
-    private void authenticateSession(AppUser user, HttpServletRequest request) {
+    public void authenticateSession(AppUser user, HttpServletRequest request) {
         AuthenticatedUserDetails principal = new AuthenticatedUserDetails(user);
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(new UsernamePasswordAuthenticationToken(
@@ -123,31 +121,8 @@ public class AuthService {
         }
     }
 
-    private void validateUsername(String username) {
-        if (username == null) {
-            throw new AuthException("username is required");
-        }
-        if (username.length() < MIN_USERNAME_LENGTH || username.length() > MAX_USERNAME_LENGTH) {
-            throw new AuthException("username must be between 3 and 30 characters");
-        }
-        if (!USERNAME_PATTERN.matcher(username).matches()) {
-            throw new AuthException("username may only contain letters, numbers, underscores, and hyphens");
-        }
-    }
-
-    private void validatePassword(String password) {
-        if (password == null || password.isBlank()) {
-            throw new AuthException("password is required");
-        }
-        if (password.length() < MIN_PASSWORD_LENGTH || password.length() > MAX_PASSWORD_LENGTH) {
-            throw new AuthException("password must be between 8 and 128 characters");
-        }
-    }
-
     private void requirePasswordForLogin(String password) {
-        if (password == null) {
-            throw new AuthException("password is required");
-        }
+        PasswordPolicy.requireForLogin(password);
     }
 
     private String normalizeEmail(String email) {

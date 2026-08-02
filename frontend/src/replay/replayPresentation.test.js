@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { displayedRoundWins, localReplaySchedule, replayClockSeconds } from "./replayPresentation.js";
+import { displayedRoundWins, localReplaySchedule, replayClockSeconds, replayElapsedMs, replayEntranceProgress, replayEntranceX } from "./replayPresentation.js";
 
-test("replay schedule preserves a full local preload countdown when the ready event arrives late", () => {
+test("replay schedule preserves the server deadlines when the ready event arrives late", () => {
     assert.deepEqual(localReplaySchedule(10_000, 30_000, 9_000), {
-        playbackStartsAtMs: 12_000,
-        resultRevealsAtMs: 32_000,
+        playbackStartsAtMs: 10_000,
+        resultRevealsAtMs: 30_000,
     });
 });
 
-test("replay schedule keeps a server start that already has enough preload time", () => {
+test("replay schedule keeps both absolute server deadlines", () => {
     assert.deepEqual(localReplaySchedule(15_000, 30_000, 9_000), {
         playbackStartsAtMs: 15_000,
         resultRevealsAtMs: 30_000,
@@ -31,4 +31,18 @@ test("replay clock follows the active payload frame and stays at zero before pla
     assert.equal(replayClockSeconds({ elapsedMs: 12_900 }), 12);
     assert.equal(replayClockSeconds({ elapsedMs: 12_900 }, false), 0);
     assert.equal(replayClockSeconds({ elapsedMs: -100 }), 0);
+});
+
+test("replay elapsed time starts at zero at the shared playback deadline", () => {
+    assert.equal(replayElapsedMs(20_000, 19_999), 0);
+    assert.equal(replayElapsedMs(20_000, 20_000), 0);
+    assert.equal(replayElapsedMs(20_000, 20_750), 750);
+});
+
+test("fighter entrance starts outside the arena and reaches its replay position at playback start", () => {
+    const fighter = { slot: 1, size: 60, x: 500 };
+    assert.equal(replayEntranceProgress(20_000, 17_000), 0);
+    assert.equal(replayEntranceX(fighter, 0), -60);
+    assert.equal(replayEntranceProgress(20_000, 20_000), 1);
+    assert.equal(replayEntranceX(fighter, 1), 500);
 });

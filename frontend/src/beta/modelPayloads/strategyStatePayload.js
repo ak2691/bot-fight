@@ -5,19 +5,19 @@ import {
     FIREBALL_CHARGES_MAX,
 } from "../combat/Moves.js";
 
-export function buildStatePayload(currentShapes, selectedClass, actorId = "main") {
+export function buildStatePayload(currentShapes, selectedLoadout, actorId = "main") {
     const main = currentShapes.find((shape) => shape.id === actorId);
     return {
-        selectedClass,
-        playerModel: fighterPayload(main, selectedClass),
+        selectedLoadout,
+        playerModel: fighterPayload(main, selectedLoadout),
         objects: currentShapes
             .filter((shape) => shape.id !== actorId)
             .map((shape) => objectPayload(shape, actorId)),
     };
 }
 
-function fighterPayload(shape, selectedClass) {
-    const combatClass = shape.combatClass ?? selectedClass;
+function fighterPayload(shape, selectedLoadout) {
+    const combatLoadout = shape.combatLoadout ?? selectedLoadout;
     return {
         id: shape.id,
         type: "model",
@@ -34,15 +34,15 @@ function fighterPayload(shape, selectedClass) {
         blockCooldownRemainingMs: Math.round(shape.blockCooldownMs ?? 0),
         blockRechargeRemainingMs: rechargeRemainingMs(shape),
         blockCharges: shape.blockCharges ?? 0,
-        combatClass,
-        gunAvailable: gunAvailable(shape, combatClass),
+        combatLoadout,
+        gunAvailable: gunAvailable(shape, combatLoadout),
         gunActive: (shape.gunActiveMs ?? 0) > 0,
         gunCooldownRemainingMs: Math.round(shape.gunCooldownMs ?? 0),
         gunAmmo: shape.gunAmmo ?? (hasAbility(shape, "fire_gun") ? RANGED_AMMO_MAX : 0),
         gunReloadRemainingMs: Math.round(shape.gunReloadMs ?? 0),
         grenadeAvailable: hasAbility(shape, "throw_grenade") && (shape.grenadeCooldownMs ?? 0) <= 0,
         grenadeCooldownRemainingMs: Math.round(shape.grenadeCooldownMs ?? 0),
-        fireballAvailable: fireballAvailable(shape, combatClass),
+        fireballAvailable: fireballAvailable(shape, combatLoadout),
         fireballCooldownRemainingMs: Math.round(shape.fireballCooldownMs ?? 0),
         fireballCharges: shape.fireballCharges ?? (hasAbility(shape, "shoot_fireball") ? FIREBALL_CHARGES_MAX : 0),
         fireballReloadRemainingMs: Math.round(shape.fireballReloadMs ?? 0),
@@ -66,7 +66,7 @@ function fighterPayload(shape, selectedClass) {
         preparingMs: Math.round(shape.preparingMs ?? 0),
         slot: shape.slot,
         size: shape.size,
-        dashAvailable: dashAvailable(shape, combatClass),
+        dashAvailable: dashAvailable(shape, combatLoadout),
         dashActive: (shape.dashActiveMs ?? 0) > 0,
         dashCooldownRemainingMs: Math.round(Math.max(shape.dashCooldownMs ?? 0, shape.dashActiveMs ?? 0)),
     };
@@ -90,7 +90,7 @@ function objectPayload(shape, actorId) {
         rotation: Math.round(shape.rotation),
         velocityX: shape.velocityX ?? 0,
         velocityY: shape.velocityY ?? 0,
-        combatClass: shape.combatClass,
+        combatLoadout: shape.combatLoadout,
         abilities: [...(shape.abilities ?? [])],
         hp: shape.hp ?? BASE_FIGHTER_HP,
         ...(shape.id === opponentFighterId ? {
@@ -116,13 +116,13 @@ function objectPayload(shape, actorId) {
         blockRechargeRemainingMs: rechargeRemainingMs(shape),
         blockCharges: shape.blockCharges ?? 0,
         gunActive: (shape.gunActiveMs ?? 0) > 0,
-        gunAvailable: gunAvailable(shape, shape.combatClass),
+        gunAvailable: gunAvailable(shape, shape.combatLoadout),
         gunCooldownRemainingMs: Math.round(shape.gunCooldownMs ?? 0),
         gunAmmo: shape.gunAmmo ?? (hasAbility(shape, "fire_gun") ? RANGED_AMMO_MAX : 0),
         gunReloadRemainingMs: Math.round(shape.gunReloadMs ?? 0),
         grenadeAvailable: hasAbility(shape, "throw_grenade") && (shape.grenadeCooldownMs ?? 0) <= 0,
         grenadeCooldownRemainingMs: Math.round(shape.grenadeCooldownMs ?? 0),
-        fireballAvailable: fireballAvailable(shape, shape.combatClass),
+        fireballAvailable: fireballAvailable(shape, shape.combatLoadout),
         fireballCooldownRemainingMs: Math.round(shape.fireballCooldownMs ?? 0),
         fireballCharges: shape.fireballCharges ?? (hasAbility(shape, "shoot_fireball") ? FIREBALL_CHARGES_MAX : 0),
         fireballReloadRemainingMs: Math.round(shape.fireballReloadMs ?? 0),
@@ -131,7 +131,7 @@ function objectPayload(shape, actorId) {
             && (shape.stunActiveMs ?? 0) <= 0,
         stunCooldownRemainingMs: Math.round(shape.stunCooldownMs ?? 0),
         dashActive: (shape.dashActiveMs ?? 0) > 0,
-        dashAvailable: dashAvailable(shape, shape.combatClass),
+        dashAvailable: dashAvailable(shape, shape.combatLoadout),
         dashCooldownRemainingMs: Math.round(Math.max(shape.dashCooldownMs ?? 0, shape.dashActiveMs ?? 0)),
     };
 }

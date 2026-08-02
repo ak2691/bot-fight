@@ -3,10 +3,12 @@ package com.example.botfight.service;
 import com.example.botfight.DTO.ProfileDTO;
 import com.example.botfight.DTO.MatchHistoryPageDTO;
 import com.example.botfight.DTO.ProfileDTO.RecentMatchDTO;
+import com.example.botfight.DTO.UsernameRequestDTO;
 import com.example.botfight.domain.AppUser;
 import com.example.botfight.domain.MatchParticipant;
 import com.example.botfight.domain.MatchResult;
 import com.example.botfight.repository.MatchParticipantRepository;
+import com.example.botfight.repository.UserRepository;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -14,6 +16,7 @@ import java.util.Locale;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -29,18 +32,43 @@ public class ProfileService {
     private static final int MAX_HISTORY_PAGE = 10_000;
     private static final int MAX_OPPONENT_QUERY_LENGTH = 50;
     private final CurrentUserService currentUserService;
+    private final UserRepository userRepository;
     private final MatchParticipantRepository matchParticipantRepository;
 
     public ProfileService(
             CurrentUserService currentUserService,
+            UserRepository userRepository,
             MatchParticipantRepository matchParticipantRepository) {
         this.currentUserService = currentUserService;
+        this.userRepository = userRepository;
         this.matchParticipantRepository = matchParticipantRepository;
     }
 
     @Transactional(readOnly = true)
     public ProfileDTO currentProfile(Authentication authentication) {
         AppUser user = currentUserService.requireCurrentUser(authentication);
+        return profileForUser(user);
+    }
+
+    @Transactional
+    public ProfileDTO updateUsername(Authentication authentication, UsernameRequestDTO request) {
+        AppUser user = currentUserService.requireCurrentUser(authentication);
+        String username = UsernamePolicy.clean(request == null ? null : request.getUsername());
+        UsernamePolicy.validate(username);
+        if (userRepository.existsByUsernameIgnoreCaseAndIdNot(username, user.getId())) {
+            throw new AuthException("username is already taken");
+        }
+
+        user.setUsername(username);
+        try {
+            userRepository.saveAndFlush(user);
+        } catch (DataIntegrityViolationException exception) {
+            throw new AuthException("username is already taken");
+        }
+        return profileForUser(user);
+    }
+
+    private ProfileDTO profileForUser(AppUser user) {
         long wins = matchParticipantRepository.countByUserIdAndResult(user.getId(), MatchResult.WIN);
         long losses = matchParticipantRepository.countByUserIdAndResultIn(
                 user.getId(),

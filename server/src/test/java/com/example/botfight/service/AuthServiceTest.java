@@ -72,6 +72,24 @@ class AuthServiceTest {
     }
 
     @Test
+    void rejectsRegistrationPasswordWithSpaces() {
+        assertThatThrownBy(() -> service.register(
+                authRequest("pilot@example.com", "pilot", "password 123"),
+                requestWithSession()))
+                .isInstanceOf(AuthException.class)
+                .hasMessage("password cannot contain spaces");
+    }
+
+    @Test
+    void rejectsRegistrationUsernameLongerThanTwentyCharacters() {
+        assertThatThrownBy(() -> service.register(
+                authRequest("pilot@example.com", "this_username_is_way_too_long", "password123"),
+                requestWithSession()))
+                .isInstanceOf(AuthException.class)
+                .hasMessage("username must be between 3 and 20 characters");
+    }
+
+    @Test
     void logsInWithExistingPasswordCredential() throws Exception {
         HttpServletRequest request = requestWithSession();
         AppUser user = user("pilot@example.com", "pilot", passwordEncoder.encode("password123"));

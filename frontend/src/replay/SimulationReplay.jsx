@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { monotonicEpochNowMs } from "../matchmaking/networkDelayEstimator.js";
 import PixiCanvas from "../beta/PixiCanvas";
 import { PROJECTILE_WALL_LENGTH, PROJECTILE_WALL_TYPE } from "../beta/ArenaObjects";
 import { decodeBotLoadout, encodeBotLoadout } from "../beta/loadout/BotLoadout";
@@ -7,24 +8,27 @@ import { GUN_RANGE, MOVE_STATS } from "../beta/combat/Moves.js";
 import { fighterColorRole, replayProjectileVelocity } from "../beta/pixi/pixiVisualState.js";
 import { compassDegreesToRadians } from "../logic/arenaAngles.js";
 import MatchToolIcon from "../beta/MatchToolIcon.jsx";
-import { displayedRoundWins, replayClockSeconds } from "./replayPresentation.js";
+import { displayedRoundWins, replayClockSeconds, replayElapsedMs, replayEntranceProgress, replayEntranceX } from "./replayPresentation.js";
 
 const REPLAY_FRAME_INTERPOLATION_MS = AUTO_STEP_MS;
+const EMPTY_PLAYBACK = Object.freeze({
+    frames: [],
+    initialState: { fighters: [], obstacles: [] },
+    players: [],
+});
 
-export default function SimulationReplay({ playback }) {
+export default function SimulationReplay({ playback: playbackInput, preloadShapes = [] }) {
+    const playback = playbackInput ?? EMPTY_PLAYBACK;
     const frames = playback.frames ?? [];
     const viewer = playback.player ?? null;
     const opponent = playback.opponent ?? null;
     const participants = playback.players?.length ? playback.players : [viewer, opponent].filter(Boolean);
-    const viewerUserId = viewer?.userId;
     const playbackStartMs = playback.playbackStartsAtMs
         ?? (playback.playbackStartsAt ? new Date(playback.playbackStartsAt).getTime() : null);
-    const [nowMs, setNowMs] = useState(() => Date.now());
-    const elapsedPlaybackMs = playbackStartMs == null ? 0 : Math.max(0, nowMs - playbackStartMs);
+    const [nowMs, setNowMs] = useState(() => monotonicEpochNowMs());
+    const elapsedPlaybackMs = playbackStartMs == null ? 0 : replayElapsedMs(playbackStartMs, nowMs);
     const countdownRemainingMs = playbackStartMs == null ? 0 : Math.max(0, playbackStartMs - nowMs);
-    const entranceProgress = countdownRemainingMs <= 0
-        ? 1
-        : Math.max(0, Math.min(1, 1 - countdownRemainingMs / 3000));
+    const entranceProgress = replayEntranceProgress(playbackStartMs, nowMs);
     const finalElapsedMs = frames.length === 0 ? 0 : frames[frames.length - 1].elapsedMs ?? 0;
     const displayElapsedMs = frames.length === 0 ? 0 : Math.min(elapsedPlaybackMs, finalElapsedMs);
     const frameIndex = frames.length === 0 ? 0 : frameIndexForElapsedMs(frames, displayElapsedMs);
@@ -49,15 +53,9 @@ export default function SimulationReplay({ playback }) {
         || elapsedPlaybackMs >= finalElapsedMs);
     const hasAuthorizedTerminalFrame = playback.batchSequence == null || playback.terminalBatch;
     const hasReachedReplayEnd = hasAuthorizedTerminalFrame && hasDisplayedFinalFrame;
-    const resultRevealMs = playback.resultRevealsAtMs
-        ?? (playback.resultRevealsAt ? new Date(playback.resultRevealsAt).getTime() : null);
-    const hasReachedResultReveal = resultRevealMs == null
-        || !Number.isFinite(Number(resultRevealMs))
-        || nowMs >= Number(resultRevealMs);
     const shouldRevealResult = Boolean(playback.result)
         && hasAuthorizedTerminalFrame
-        && hasDisplayedFinalFrame
-        && hasReachedResultReveal;
+        && hasDisplayedFinalFrame;
     const winnerColorRole = fighterColorRole(winner);
     const resultTitle = replayResultTitle({
         shouldRevealResult,
@@ -75,9 +73,9 @@ export default function SimulationReplay({ playback }) {
         let cancelled = false;
         const tick = () => {
             if (cancelled) return;
-            setNowMs(Date.now());
+            setNowMs(monotonicEpochNowMs());
             if (typeof requestAnimationFrame === "function" && !document.hidden) animationFrameId = requestAnimationFrame(tick);
-            else timeoutId = setTimeout(tick, 250);
+            else timeoutId = setTimeout(tick, 100);
         };
         tick();
         return () => {
@@ -90,9 +88,11 @@ export default function SimulationReplay({ playback }) {
     const activeElapsedMs = Number(activeFrame?.elapsedMs ?? 0);
     const recentFrames = frames.filter((frame) => Number(frame.elapsedMs ?? 0) >= activeElapsedMs - 200
         && Number(frame.elapsedMs ?? 0) < activeElapsedMs);
-    const shapes = replayArenaShapes(fighters, obstacles, recentFrames, entranceProgress, frames, frameIndex, viewerUserId);
+    const shapes = playbackInput
+        ? replayArenaShapes(fighters, obstacles, recentFrames, entranceProgress, frames, frameIndex)
+        : preloadShapes;
 
-    return <section className="match-arena-shell flex h-[calc(100svh-72px)] min-h-0 overflow-hidden">
+    return <section className="relative match-arena-shell flex h-[calc(100svh-72px)] min-h-0 overflow-hidden">
         <main className="match-arena-stage flex min-w-0 flex-1 items-center justify-center overflow-hidden p-2">
             <div className="relative flex h-full w-full items-center justify-center">
                 <PixiCanvas shapes={shapes} selectedId={null} onSelectShape={() => { }} onUpdateShape={() => { }}
@@ -134,7 +134,7 @@ function ReplaySidebar({
                 : "Watching the submitted bot brains fight.";
 
     return (
-        <aside className="arena-right-toolbar training-mono h-full min-h-0 w-[23rem] flex-shrink-0 overflow-y-auto border-l border-slate-700/70 bg-[linear-gradient(180deg,rgba(12,22,31,.98),rgba(8,16,24,.98))] p-4 shadow-[-12px_0_30px_rgba(0,0,0,.28)]">
+        <aside className="arena-right-toolbar testing-mono h-full min-h-0 w-[23rem] flex-shrink-0 overflow-y-auto border-l border-slate-700/70 bg-[linear-gradient(180deg,rgba(12,22,31,.98),rgba(8,16,24,.98))] p-4 shadow-[-12px_0_30px_rgba(0,0,0,.28)]">
             <div className="space-y-4">
                 <section className="rounded-xl border border-slate-600/70 bg-slate-900/55 p-4 text-[10px] shadow-[0_10px_30px_rgba(0,0,0,.2)]">
                     <ReplayPanelHeading icon="status">MATCH STATUS</ReplayPanelHeading>
@@ -201,7 +201,7 @@ function replayResultTitle({ shouldRevealResult, hasReachedReplayEnd, result, wi
     </>;
 }
 
-function replayArenaShapes(fighters, obstacles, recentFrames = [], entranceProgress = 1, frames = [], frameIndex = 0, viewerUserId = null) {
+function replayArenaShapes(fighters, obstacles, recentFrames = [], entranceProgress = 1, frames = [], frameIndex = 0) {
     const recentlyDamagedIds = new Set();
     for (const frame of recentFrames) {
         for (const previous of [...(frame.fighters ?? []), ...(frame.obstacles ?? [])]) {
@@ -215,7 +215,6 @@ function replayArenaShapes(fighters, obstacles, recentFrames = [], entranceProgr
         entranceProgress,
         frames,
         frameIndex,
-        viewerUserId,
     ));
     const previousFrame = frames[Math.max(0, frameIndex - 1)];
     const previousObstaclesById = new Map((previousFrame?.obstacles ?? [])
@@ -246,13 +245,9 @@ function replayArenaShapes(fighters, obstacles, recentFrames = [], entranceProgr
     ];
 }
 
-function fighterReplayShape(fighter, recentlyDamagedIds, entranceProgress, frames, frameIndex, viewerUserId) {
-    const isMain = sameId(fighter.userId, viewerUserId);
-    const isSlotOne = Number(fighter.slot) === 1;
-    const easedEntrance = 1 - Math.pow(1 - entranceProgress, 3);
-    const entranceX = isSlotOne ? -Number(fighter.size ?? 60) : ARENA_WIDTH_UNITS + Number(fighter.size ?? 60);
-    const loadoutId = String(fighter.combatClass ?? "").startsWith("custom:")
-        ? fighter.combatClass
+function fighterReplayShape(fighter, recentlyDamagedIds, entranceProgress, frames, frameIndex) {
+    const loadoutId = String(fighter.combatLoadout ?? "").startsWith("custom:")
+        ? fighter.combatLoadout
         : encodeBotLoadout({ abilities: fighter.abilities ?? [], statPoints: {} });
     const abilities = Array.isArray(fighter.abilities) && fighter.abilities.length
         ? fighter.abilities
@@ -272,11 +267,11 @@ function fighterReplayShape(fighter, recentlyDamagedIds, entranceProgress, frame
     };
     return {
         ...fighter,
-        x: entranceX + (Number(fighter.x ?? 0) - entranceX) * easedEntrance,
-        id: isMain ? "main" : "opponent-model",
-        type: isMain ? "circle" : "opponentModel",
+        x: replayEntranceX(fighter, entranceProgress, ARENA_WIDTH_UNITS),
+        id: fighter.userId != null ? `fighter-${fighter.userId}` : `fighter-slot-${fighter.slot}`,
+        type: "fighter",
         size: fighter.size ?? 60,
-        combatClass: loadoutId,
+        combatLoadout: loadoutId,
         abilities,
         maxHp: Number(fighter.maxHp ?? 100),
         swingActiveMs: swingActive ? replaySwingActiveMs : 0,
@@ -319,8 +314,8 @@ function forfeitWinnerFighter(winner) {
         rotation: 0,
         hp: 100,
         maxHp: 100,
-        combatClass: winner.selectedClass ?? encodeBotLoadout({ abilities: [], statPoints: {} }),
-        abilities: decodeBotLoadout(winner.selectedClass).abilities,
+        combatLoadout: winner.selectedLoadout ?? encodeBotLoadout({ abilities: [], statPoints: {} }),
+        abilities: decodeBotLoadout(winner.selectedLoadout).abilities,
     };
 }
 

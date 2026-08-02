@@ -1,82 +1,30 @@
 Machiner Match Components
 =========================
 
-Current ruleset
----------------
-- duel-v1: two equal fighters; win by reducing opponent HP to 0.
-- Timeout: draw.
-- Arena: 800 x 800.
-- Simulation step: 100 ms.
-- Max arena object slots: 5, named object_1 through object_5.
+Match format
+------------
+- A match is a best-of-three duel between two player-built bots.
+- Each round starts with an ability draft. Players choose from the abilities offered for that round and allocate the stat points available so far.
+- Drafted abilities and stat allocations carry forward into later rounds, with new choices added before each round.
+- The arena contains the two fighters and entities created by their abilities. There are no placeable arena objects, walls, cores, or pickups.
 
-Shared fighter controls
------------------------
-- Movement: move toward target, away from target, strafe left/right, diagonal in/out, cardinal and diagonal directions, move to center, or stop.
-- Rotation: face enemy.
-- Targets: opponent, opponent grenade, opponent fireball, or object_1 through object_5.
+Training and brain submission
+-----------------------------
+- After both players lock their round loadouts, each player receives a timed training session.
+- During training, players build and test a structured deterministic logic brain in the browser arena.
+- A brain is made from prioritized logic blocks and conditions that choose movement, facing, and drafted-ability actions.
+- Brains can target the opponent and supported entities created by abilities; arbitrary code and expression text are not executed.
+- At the training deadline, the normalized brain and loadout are submitted for the round.
 
-Classes
--------
-- Melee
-  - Stats: 125 HP, 12 move speed.
-  - Swing: 20 damage, 92 px range, 50 degree arc, 1000 ms cooldown, 200 ms active window.
-  - Block / shield: 5 max charges, 3000 ms recharge.
-  - Dash: 2 max charges, 4500 ms recharge, 1000 ms dash duration, 20 dash speed.
+Authoritative fight
+-------------------
+- The server runs the rated duel using the submitted brains, the deterministic match seed, and the same fixed-step gameplay contract mirrored by browser training.
+- Replay frames contain fighter state and transient ability-created entities needed to present and audit the fight.
+- Browser simulation is a preview; the server result is authoritative.
 
-- Ranged
-  - Stats: 90 HP, 8 move speed.
-  - Fire gun: 10 ammo, 3000 ms reload, 700 px max range, about 1000 ms cooldown.
-  - Gun damage falloff: 15 damage at 100 px, 10 at 300 px, 5 at 500 px, 2 at 700 px.
-  - Throw grenade: 12000 ms cooldown.
-
-- Mage
-  - Stats: 100 HP, 10 move speed.
-  - Fireball: 4 max charges, 1000 ms reload, 400 px range, 15 direct damage.
-  - Fireball burn: 2 damage per tick, 1000 ms tick, 5000 ms duration.
-  - Stun: 10 damage, 184 px range, 100 degree arc, 1500 ms stun duration, 200 ms active window.
-
-Persistent arena objects
-------------------------
-- Health Pack
-  - Type: healthPack.
-  - Default size: 42.
-  - Effect: heals the first overlapping fighter for 50 HP, capped at that fighter's class max HP.
-  - Lifetime: consumed when collected.
-
-- Damage Zone
-  - Type: damageZone.
-  - Default size: 128.
-  - Effect on entry: deals 25 damage when a fighter enters.
-  - Ongoing effect: fighter is marked inside the zone; incoming attack damage is multiplied by 1.5 while inside.
-  - Lifetime: remains in the arena.
-
-Transient ability objects
--------------------------
-- Grenade
-  - Created by ranged throw_grenade.
-  - Size: 12.
-  - Throw speed: 32.
-  - Decelerates by 1.6 per tick.
-  - Explodes after stopping for 1000 ms.
-  - Explosion radius: 50.
-  - Explosion damage: 50 at center, falling to 25 at edge.
-
-- Grenade Explosion
-  - Short-lived visual/effect object.
-  - Visible for 200 ms.
-  - Applies grenade damage in its radius.
-
-- Fireball
-  - Created by mage shoot_fireball.
-  - Size: 30.
-  - Speed: 36.
-  - Max travel/range: 400 px.
-  - On hit: 15 damage and burn application.
-
-Logic brain pieces
-------------------
-- Logic block: conditions plus one selected action.
-- Cluster: grouped logic blocks with shared conditions and priority.
-- Priorities: 1 through 10, lower number wins.
-- Limits: 50 logic blocks, 12 clusters, 4 conditions per block.
-- Conditions cover HP, target distance, edge distance, class cooldown/readiness state, object existence/type, damage-zone status, and expression comparisons.
+Win condition
+-------------
+- A round is won only by reducing the opposing fighter's HP to zero through damage.
+- If neither fighter is defeated before the round time limit, the round is a draw.
+- The first player to win two rounds wins the match. If all three rounds finish without either player reaching two wins, the match result follows the recorded round results and tie handling.
+- Disconnect forfeits and surrender can also end the match outside normal combat resolution.

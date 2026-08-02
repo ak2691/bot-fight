@@ -30,7 +30,7 @@ const noDamageCombat = {
 test("resetting fighter stats clears every transient status effect", () => {
     const reset = resetFighterShape({
         id: "main",
-        combatClass: "custom",
+        combatLoadout: "custom",
         x: 400,
         y: 400,
         bleedRemainingMs: 5000,
@@ -474,7 +474,7 @@ test("death removes every active fighter status while preserving preparation and
 
 test("an ALWAYS brain action reaches the real fire-gun executor", () => {
     const configuration = {
-        version: "melee-logic-tree-v1",
+        version: "bot-logic-tree-v1",
         blocks: [{ id: "always-fire", priority: 1, conditions: [{ type: "always" }], actions: [{ action: "fire_gun" }] }],
     };
     const snapshot = {
@@ -492,7 +492,7 @@ test("an ALWAYS brain action reaches the real fire-gun executor", () => {
 
 test("fireball and concussive shot hand off the shared ability head in either priority order", () => {
     const configuration = (first, second) => ({
-        version: "melee-logic-tree-v1",
+        version: "bot-logic-tree-v1",
         columns: [{ id: "abilities", createdOrder: 0, branches: [
             { id: first, branchType: "if", createdOrder: 0, conditions: [{ type: "always" }], actions: [{ action: first }] },
             { id: second, branchType: "else_if", createdOrder: 1, conditions: [{ type: "always" }], actions: [{ action: second }] },

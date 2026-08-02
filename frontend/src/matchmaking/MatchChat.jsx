@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 const MAX_MESSAGE_LENGTH = 280;
 
-export default function MatchChat({ messages, minimized, onMinimizedChange, onSend, disabled = false, rateLimitNotice = null, currentUsername = null }) {
+export default function MatchChat({ messages, minimized, onMinimizedChange, onSend, disabled = false, rateLimitNotice = null, closedNotice = null, currentUsername = null }) {
     const [draft, setDraft] = useState("");
     const messagesRef = useRef(null);
     const unread = minimized && messages.some((message) => message.unread && message.username !== currentUsername);
@@ -34,7 +34,7 @@ export default function MatchChat({ messages, minimized, onMinimizedChange, onSe
                 {messages.length === 0 && <p className="match-chat__empty">No messages yet.</p>}
                 {messages.map((message) => <p key={message.messageId} className="match-chat__message"><strong>{message.username}:</strong> {message.message}</p>)}
             </div>
-            {rateLimitNotice && <p role="status" className="match-chat__notice">{rateLimitNotice}</p>}
+            {(closedNotice || rateLimitNotice) && <p role="status" className="match-chat__notice">{closedNotice || rateLimitNotice}</p>}
             <form className="match-chat__form" onSubmit={submit}>
                 <input value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={MAX_MESSAGE_LENGTH} placeholder={disabled ? "Chat closed" : "Type a message..."} aria-label="Match chat message" disabled={disabled} />
                 <button type="submit" disabled={disabled || !draft.trim()} aria-label="Send chat message">➤</button>

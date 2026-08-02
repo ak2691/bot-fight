@@ -3,3 +3,8 @@ artifacts/
 **/.pytest_cache/
 *.pyc
 
+# Local environment files may contain secrets. Commit only example files.
+**/.env
+**/.env.local
+**/.env.*.local
+!**/.env.example

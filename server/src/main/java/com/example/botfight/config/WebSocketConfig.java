@@ -1,6 +1,7 @@
 package com.example.botfight.config;
 
 import com.example.botfight.security.SanitizedStompErrorHandler;
+import com.example.botfight.service.SingleUserWebSocketSessionRegistry;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -16,12 +17,15 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final BotFightSecurityProperties securityProperties;
     private final TaskScheduler matchmakingHeartbeatScheduler;
+    private final SingleUserWebSocketSessionRegistry singleUserWebSocketSessionRegistry;
 
     public WebSocketConfig(
             BotFightSecurityProperties securityProperties,
-            @Qualifier("matchmakingHeartbeatScheduler") TaskScheduler matchmakingHeartbeatScheduler) {
+            @Qualifier("matchmakingHeartbeatScheduler") TaskScheduler matchmakingHeartbeatScheduler,
+            SingleUserWebSocketSessionRegistry singleUserWebSocketSessionRegistry) {
         this.securityProperties = securityProperties;
         this.matchmakingHeartbeatScheduler = matchmakingHeartbeatScheduler;
+        this.singleUserWebSocketSessionRegistry = singleUserWebSocketSessionRegistry;
     }
 
     @Override
@@ -46,6 +50,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         registration
                 .setMessageSizeLimit(messageLimit)
                 .setSendBufferSizeLimit(securityProperties.getMaxWebSocketSendBufferBytes())
-                .setSendTimeLimit(10_000);
+                .setSendTimeLimit(10_000)
+                .addDecoratorFactory(singleUserWebSocketSessionRegistry.decoratorFactory());
     }
 }

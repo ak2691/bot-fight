@@ -26,7 +26,7 @@ public class ValidationResult {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "bot_brain_submission_id", nullable = false)
-    private ModelSubmission modelSubmission;
+    private BotSubmission botSubmission;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
@@ -53,12 +53,12 @@ public class ValidationResult {
         this.id = id;
     }
 
-    public ModelSubmission getModelSubmission() {
-        return modelSubmission;
+    public BotSubmission getBotSubmission() {
+        return botSubmission;
     }
 
-    public void setModelSubmission(ModelSubmission modelSubmission) {
-        this.modelSubmission = modelSubmission;
+    public void setBotSubmission(BotSubmission botSubmission) {
+        this.botSubmission = botSubmission;
     }
 
     public ValidationStatus getStatus() {

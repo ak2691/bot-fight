@@ -1,15 +1,15 @@
 # Arena and Pixi context
 
-This area is the browser training/runtime preview and presentation surface. It
+This area is the browser testing/runtime preview and presentation surface. It
 mirrors rated behavior for player feedback, but the Spring simulator decides
 rated results.
 
 ## Ownership map
 
-- `BetaModel.jsx`: training-room state, fixed-step arena loop, logic action
+- `BetaModel.jsx`: testing-room state, fixed-step arena loop, logic action
   application, entity ticking, submission coordination, and state snapshots.
-- `StrategyTrainingPanel.jsx`: logic-tree/strategy authoring controls and
-  training feedback. Brain schema behavior belongs in `../logic/`, not only UI.
+- `StrategyTestingPanel.jsx`: logic-tree/strategy authoring controls and
+  testing feedback. Brain schema behavior belongs in `../logic/`, not only UI.
 - `PixiCanvas.jsx` + `PixiCanvas.css`: Pixi scene lifecycle, layers, sprites,
   arena/fighter/entity rendering, overlays, and status presentation.
 - `AbilityStatusPanel.jsx`: player-facing cooldown/charge/status display.
@@ -22,7 +22,7 @@ rated results.
 - `ecs/`: transient/persistent arena entities and action/effect execution.
 - `pixi/`: renderer-only texture caching, snapshot interpolation, and mapping
   gameplay shapes/state to Pixi layers/captions/visual state.
-- `ArenaObjects.js`: arena object identifiers/defaults used by training/replay.
+- `ArenaObjects.js`: transient ability-entity identifiers and presentation geometry used by testing/replay.
 
 ## Route by symptom
 
@@ -36,7 +36,7 @@ rated results.
 | Action does not execute | `../logic/` and `ecs/` | loadout action mapping and brain selection |
 | Condition/target sees wrong data | `modelPayloads/` | `../logic/` and shape construction |
 | Ability draft/loadout/stat issue | `loadout/` | frontend and server matchmaking areas |
-| Training loop/state coordination | arena orchestrator | focused system/helper and submission area |
+| Testing loop/state coordination | arena orchestrator | focused system/helper and submission area |
 | Replay-only mismatch | `../replay/` | `pixi/` mapping and server replay DTO area |
 
 ## Boundaries to preserve

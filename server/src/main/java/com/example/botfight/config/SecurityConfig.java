@@ -3,6 +3,8 @@ package com.example.botfight.config;
 import static org.springframework.security.config.Customizer.withDefaults;
 
 import com.example.botfight.security.RequestPayloadLimitFilter;
+import com.example.botfight.security.GoogleOAuth2AuthenticationFailureHandler;
+import com.example.botfight.security.GoogleOAuth2AuthenticationSuccessHandler;
 import java.io.IOException;
 import java.util.List;
 import jakarta.servlet.FilterChain;
@@ -22,8 +24,6 @@ import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.filter.OncePerRequestFilter;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -35,9 +35,16 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 public class SecurityConfig {
 
     private final BotFightSecurityProperties securityProperties;
+    private final GoogleOAuth2AuthenticationSuccessHandler googleSuccessHandler;
+    private final GoogleOAuth2AuthenticationFailureHandler googleFailureHandler;
 
-    public SecurityConfig(BotFightSecurityProperties securityProperties) {
+    public SecurityConfig(
+            BotFightSecurityProperties securityProperties,
+            GoogleOAuth2AuthenticationSuccessHandler googleSuccessHandler,
+            GoogleOAuth2AuthenticationFailureHandler googleFailureHandler) {
         this.securityProperties = securityProperties;
+        this.googleSuccessHandler = googleSuccessHandler;
+        this.googleFailureHandler = googleFailureHandler;
     }
 
     @Bean
@@ -51,6 +58,9 @@ public class SecurityConfig {
                 .addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class)
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable())
+                .oauth2Login(oauth -> oauth
+                        .successHandler(googleSuccessHandler)
+                        .failureHandler(googleFailureHandler))
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint((request, response, authException) ->
                                 writeSecurityError(response, HttpServletResponse.SC_UNAUTHORIZED, "Authentication is required"))
@@ -71,6 +81,10 @@ public class SecurityConfig {
                                 "/api/auth/logout",
                                 "/api/auth/csrf",
                                 "/api/auth/me",
+                                "/api/auth/google/link-existing",
+                                "/api/auth/google/username",
+                                "/oauth2/authorization/**",
+                                "/login/oauth2/**",
                                 "/ws/**").permitAll()
                         .anyRequest().authenticated());
 
@@ -79,11 +93,6 @@ public class SecurityConfig {
         }
 
         return http.build();
-    }
-
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
     }
 
     private CookieCsrfTokenRepository csrfTokenRepository() {

@@ -32,13 +32,13 @@ public class MatchParticipant {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "bot_brain_submission_id")
-    private ModelSubmission modelSubmission;
+    private BotSubmission botSubmission;
 
     @Column(nullable = false)
     private short slot;
 
-    @Column(name = "selected_class", length = 40)
-    private String selectedClass;
+    @Column(name = "selected_loadout", length = 40)
+    private String selectedLoadout;
 
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
@@ -77,12 +77,12 @@ public class MatchParticipant {
         this.user = user;
     }
 
-    public ModelSubmission getModelSubmission() {
-        return modelSubmission;
+    public BotSubmission getBotSubmission() {
+        return botSubmission;
     }
 
-    public void setModelSubmission(ModelSubmission modelSubmission) {
-        this.modelSubmission = modelSubmission;
+    public void setBotSubmission(BotSubmission botSubmission) {
+        this.botSubmission = botSubmission;
     }
 
     public short getSlot() {
@@ -93,12 +93,12 @@ public class MatchParticipant {
         this.slot = slot;
     }
 
-    public String getSelectedClass() {
-        return selectedClass;
+    public String getSelectedLoadout() {
+        return selectedLoadout;
     }
 
-    public void setSelectedClass(String selectedClass) {
-        this.selectedClass = selectedClass;
+    public void setSelectedLoadout(String selectedLoadout) {
+        this.selectedLoadout = selectedLoadout;
     }
 
     public MatchResult getResult() {

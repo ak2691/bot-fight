@@ -37,7 +37,7 @@ class DuelSimulationServiceTest {
     @Test
     void customLoadoutUsesAllocatedHpAndArenaHasNoFixtures() throws Exception {
         JsonNode loadoutBrain = jsonMapper.readTree("""
-                {"version":"melee-logic-tree-v1",
+                {"version":"bot-logic-tree-v1",
                  "loadout":{"abilities":["swing"],"statPoints":{"maxHp":2,"moveSpeed":0,"attackDamage":0,"attackSpeed":0}},
                  "blocks":[]}
                 """);
@@ -584,7 +584,7 @@ class DuelSimulationServiceTest {
     void logicTreeUsesNestedFirstMatchAndEarliestCreatedColumnForConflicts() throws Exception {
         JsonNode tree = jsonMapper.readTree("""
                 {
-                  "version":"melee-logic-tree-v1",
+                  "version":"bot-logic-tree-v1",
                   "columns":[
                     {"id":"later","createdOrder":20,"branches":[
                       {"id":"later-root","branchType":"if","createdOrder":1,"conditions":[{"type":"always"}],"action":"move_west"}
@@ -896,12 +896,12 @@ class DuelSimulationServiceTest {
     void pistolAndConcussiveShotsUseTheFighterCircleInsteadOfAnAngularCone() throws Exception {
         for (String ability : List.of("pistol_shot", "concussive_shot")) {
             JsonNode attackerBrain = jsonMapper.readTree("""
-                    {"version":"melee-logic-tree-v1",
+                    {"version":"bot-logic-tree-v1",
                      "loadout":{"abilities":["%s"],"statPoints":{"maxHp":0,"moveSpeed":0,"attackDamage":0,"attackSpeed":0}},
                      "blocks":[{"priority":1,"conditions":[{"type":"always"}],"action":"%s"}]}
                     """.formatted(ability, ability));
             JsonNode defenderBrain = jsonMapper.readTree("""
-                    {"version":"melee-logic-tree-v1",
+                    {"version":"bot-logic-tree-v1",
                      "loadout":{"abilities":[],"statPoints":{"maxHp":0,"moveSpeed":0,"attackDamage":0,"attackSpeed":0}},
                      "blocks":[]}
                     """);
@@ -923,7 +923,7 @@ class DuelSimulationServiceTest {
     @Test
     void noDashDoesNotSuppressAnEligiblePistolShot() throws Exception {
         JsonNode attackerBrain = jsonMapper.readTree("""
-                {"version":"melee-logic-tree-v1",
+                {"version":"bot-logic-tree-v1",
                  "loadout":{"abilities":["pistol_shot"],"statPoints":{"maxHp":0,"moveSpeed":0,"attackDamage":0,"attackSpeed":0}},
                  "blocks":[
                    {"priority":1,"conditions":[{"type":"always"}],"action":"no_dash"},
@@ -931,7 +931,7 @@ class DuelSimulationServiceTest {
                  ]}
                 """);
         JsonNode defenderBrain = jsonMapper.readTree("""
-                {"version":"melee-logic-tree-v1",
+                {"version":"bot-logic-tree-v1",
                  "loadout":{"abilities":[],"statPoints":{"maxHp":0,"moveSpeed":0,"attackDamage":0,"attackSpeed":0}},
                  "blocks":[]}
                 """);
@@ -1068,7 +1068,7 @@ class DuelSimulationServiceTest {
         return fighter(id, username, slot, x, y, "melee", brain);
     }
 
-    private DuelFighterRequest fighter(String id, String username, int slot, double x, double y, String selectedClass, JsonNode brain) {
+    private DuelFighterRequest fighter(String id, String username, int slot, double x, double y, String selectedLoadout, JsonNode brain) {
         return new DuelFighterRequest(
                 UUID.nameUUIDFromBytes(id.getBytes()),
                 username,
@@ -1077,7 +1077,7 @@ class DuelSimulationServiceTest {
                 y,
                 slot == 1 ? 90.0 : 270.0,
                 60,
-                selectedClass,
+                selectedLoadout,
                 brain);
     }
 
@@ -1134,7 +1134,7 @@ class DuelSimulationServiceTest {
     void authoritativeSimulatorExecutesAndClampsCustomVariableNodes() throws Exception {
         JsonNode variableBrain = jsonMapper.readTree("""
                 {
-                  "version":"melee-logic-tree-v1",
+                  "version":"bot-logic-tree-v1",
                   "customVariables":[{"id":"custom.counter","name":"Counter","valueType":"number","initialValue":99990}],
                   "columns":[
                     {"createdOrder":0,"branches":[{"branchType":"if","createdOrder":0,"conditions":[{"type":"always"}],"actions":[{"action":"variable","variableId":"custom.counter","operation":"add","value":50}],"children":[]}]},
@@ -1154,7 +1154,7 @@ class DuelSimulationServiceTest {
     void authoritativeSimulatorActivatesAbilityFromIncrementedCustomVariable() throws Exception {
         JsonNode variableBrain = jsonMapper.readTree("""
                 {
-                  "version":"melee-logic-tree-v1",
+                  "version":"bot-logic-tree-v1",
                   "loadout":{"abilities":["swing"],"statPoints":{"maxHp":0,"moveSpeed":0,"attackDamage":0,"attackSpeed":0}},
                   "customVariables":[{"id":"custom.counter","name":"Counter","valueType":"number","initialValue":0}],
                   "columns":[

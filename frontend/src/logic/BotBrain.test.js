@@ -156,7 +156,7 @@ test("Bot Room resolves Opponent 1 by fighter id for Walk, Dash, and Micro Dash"
         { id: "opponent-model", type: "circle", slot: 2, x: 600, y: 500, rotation: 180, hp: 100, size: 60, abilities: [] },
     ], "custom");
     const configuration = {
-        version: "melee-logic-tree-v1",
+        version: "bot-logic-tree-v1",
         blocks: [{
             id: "target-actions",
             priority: 1,
@@ -178,7 +178,7 @@ test("Bot Room resolves Opponent 1 by fighter id for Walk, Dash, and Micro Dash"
 
 test("target-relative Away uses opposite facing when fighters occupy the same position", () => {
     const action = buildDeterministicLogicAction({
-        version: "melee-logic-tree-v1",
+        version: "bot-logic-tree-v1",
         blocks: [{
             id: "overlap-retreat",
             priority: 1,
@@ -206,22 +206,22 @@ test("step seven solution stops approaching inside Sword Swing range", () => {
     assert.equal(action.abilityAction?.action, "swing");
 });
 
-test("normalizes deterministic logic blocks without training knobs", () => {
+test("normalizes deterministic logic blocks without testing knobs", () => {
     const configuration = normalizeMeleeStrategyConfiguration({
         epochLimit: 999,
         blocks: [{ conditions: [{ type: "expression", left: "my.hp", comparator: "lt", right: { type: "number", value: 999 } }], action: "move_outward", sampleCount: 99999 }],
     });
 
-    assert.equal(configuration.version, "melee-logic-tree-v1");
+    assert.equal(configuration.version, "bot-logic-tree-v1");
     assert.equal(configuration.epochLimit, undefined);
     assert.equal(configuration.blocks[0].sampleCount, undefined);
     assert.equal(configuration.blocks[0].conditions[0].right.value, 100);
 });
 
-test("default strategy starts empty and requires at least one non-veto action", () => {
+test("default strategy starts as a valid empty brain while non-empty veto-only brains are rejected", () => {
     const empty = createDefaultMeleeStrategyConfiguration();
     assert.equal(empty.blocks.length, 0);
-    assert.ok(validateMeleeStrategyConfiguration(empty).errors.some((error) => error.includes("bot brain action")));
+    assert.deepEqual(validateMeleeStrategyConfiguration(empty).errors, []);
 
     const onlyVeto = { blocks: [createLogicBlock("enemy_distance_gt", "no_dash")] };
     assert.ok(validateMeleeStrategyConfiguration(onlyVeto).errors.some((error) => error.includes("bot brain action")));
@@ -286,7 +286,7 @@ test("always condition can drive arena-relative dash", () => {
 
 test("logic tree selects the first matching sibling and descends into nested scopes", () => {
     const configuration = {
-        version: "melee-logic-tree-v1",
+        version: "bot-logic-tree-v1",
         columns: [{
             id: "movement",
             name: "Movement",
@@ -310,7 +310,7 @@ test("logic tree selects the first matching sibling and descends into nested sco
 
 test("earliest-created matching column wins same-head conflicts without speculative warnings", () => {
     const configuration = {
-        version: "melee-logic-tree-v1",
+        version: "bot-logic-tree-v1",
         columns: [
             { id: "later", name: "Later", createdOrder: 20, branches: [{ id: "later-move", branchType: "if", createdOrder: 1, conditions: [{ type: "always" }], action: "move_west" }] },
             { id: "earlier", name: "Earlier", createdOrder: 10, branches: [{ id: "earlier-move", branchType: "if", createdOrder: 1, conditions: [{ type: "always" }], action: "move_east" }] },
@@ -351,7 +351,7 @@ test("brain-node priority controls reorder root columns and execution order", ()
 
     assert.deepEqual(reordered.map((column) => column.id), ["concussive", "fireball"]);
     assert.deepEqual(reordered.map((column) => column.createdOrder), [0, 1]);
-    assert.equal(selectMeleeStrategyActionPlan({ version: "melee-logic-tree-v1", columns: reordered }, state).ability.action, "concussive_shot");
+    assert.equal(selectMeleeStrategyActionPlan({ version: "bot-logic-tree-v1", columns: reordered }, state).ability.action, "concussive_shot");
 });
 
 test("setting a brain-node priority inserts it at that position and shifts displaced nodes", () => {
@@ -368,7 +368,7 @@ test("setting a brain-node priority inserts it at that position and shifts displ
 
 test("an unavailable higher-priority ability falls through without losing the ability head", () => {
     const configuration = {
-        version: "melee-logic-tree-v1",
+        version: "bot-logic-tree-v1",
         columns: [{
             id: "ability-priority",
             createdOrder: 1,
@@ -485,7 +485,7 @@ test("pistol shot remains executable alongside a standard dash", () => {
 
 test("current bot-brain columns count as executable opponent actions", () => {
     const configuration = {
-        version: "melee-logic-tree-v1",
+        version: "bot-logic-tree-v1",
         columns: [{
             id: "opponent-pistol-column",
             createdOrder: 1,
@@ -1253,7 +1253,7 @@ test("custom integer variable nodes persist and saturate at the hard limit", () 
     const state = payload();
     state.playerModel.customVariables = {};
     const configuration = {
-        version: "melee-logic-tree-v1",
+        version: "bot-logic-tree-v1",
         customVariables: [{ id: "custom.counter", name: "Counter", valueType: "number", initialValue: 99_990 }],
         columns: [{ id: "column", createdOrder: 0, branches: [{
             id: "branch", branchType: "if", createdOrder: 0, conditions: [{ type: "always" }],
@@ -1269,7 +1269,7 @@ test("custom integer variable nodes persist and saturate at the hard limit", () 
 test("custom variable increments persist across ticks and gate later actions", () => {
     const state = payload({ playerModel: { customVariables: {} } });
     const configuration = {
-        version: "melee-logic-tree-v1",
+        version: "bot-logic-tree-v1",
         customVariables: [{ id: "custom.counter", name: "Counter", valueType: "number", initialValue: 0 }],
         columns: [
             { id: "increment", createdOrder: 0, branches: [{
@@ -1292,7 +1292,7 @@ test("custom variable increments persist across ticks and gate later actions", (
 
 test("normalization restores declared custom-variable metadata for variable action references", () => {
     const normalized = normalizeMeleeStrategyConfiguration({
-        version: "melee-logic-tree-v1",
+        version: "bot-logic-tree-v1",
         columns: [{
             branches: [{
                 branchType: "if",
@@ -1370,7 +1370,7 @@ test("arena planner returns updated custom variables without mutating its source
     const fighter = { id: "main", x: 400, y: 400, hp: 100, customVariables: { "custom.counter": 2 } };
     const opponent = { id: "opponent-model", x: 600, y: 400, hp: 100 };
     const configuration = {
-        version: "melee-logic-tree-v1",
+        version: "bot-logic-tree-v1",
         customVariables: [{ id: "custom.counter", name: "Counter", valueType: "number", initialValue: 0 }],
         columns: [{ id: "increment", createdOrder: 0, branches: [{
             id: "increment-always", branchType: "if", createdOrder: 0,
@@ -1388,7 +1388,7 @@ test("arena planner returns updated custom variables without mutating its source
 test("legacy variable action with an empty id modifies the visually selected first variable", () => {
     const state = payload({ playerModel: { customVariables: {} } });
     const configuration = {
-        version: "melee-logic-tree-v1",
+        version: "bot-logic-tree-v1",
         customVariables: [{ id: "custom.variable_1", name: "Variable 1", valueType: "number", initialValue: 0 }],
         columns: [{ id: "increment", createdOrder: 0, branches: [{
             id: "increment-always", branchType: "if", createdOrder: 0,
@@ -1404,7 +1404,7 @@ test("legacy variable action with an empty id modifies the visually selected fir
 
 test("derived booleans consume variable slots and can gate combat actions", () => {
     const configuration = {
-        version: "melee-logic-tree-v1",
+        version: "bot-logic-tree-v1",
         customVariables: [{
             id: "custom.low_hp", name: "Low HP", valueType: "boolean", initialValue: false,
             conditions: [{ type: "expression", left: "my.hp", comparator: "lt", right: { type: "number", value: 50 } }],

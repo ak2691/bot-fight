@@ -3,7 +3,7 @@ package com.example.botfight.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.botfight.DTO.MatchPlaybackDTO;
-import com.example.botfight.domain.ModelSubmission;
+import com.example.botfight.domain.BotSubmission;
 import com.example.botfight.service.MatchService.MatchPlayer;
 import com.example.botfight.service.MatchService.MatchSession;
 import com.example.botfight.simulation.DuelSimulationService;
@@ -41,7 +41,7 @@ class MatchSimulationServiceTest {
                         new MatchPlaybackDTO.ObstaclePlacementDTO("object_center", "radarJammer", 400.0, 400.0, 92),
                         new MatchPlaybackDTO.ObstaclePlacementDTO("object_1", "healthPack", 300.0, 120.0, 42, 0.0)),
                 Map.of());
-        ModelSubmission firstSubmission = new ModelSubmission();
+        BotSubmission firstSubmission = new BotSubmission();
         firstSubmission.setBrainPayload("""
                 {"version":"melee-logic-blocks-v2","blocks":[{"action":"move_inward","conditions":[]}],"clusters":[]}
                 """);
@@ -52,7 +52,7 @@ class MatchSimulationServiceTest {
         assertThat(duelSimulationService.capturedRequest).isNotNull();
         assertThat(duelSimulationService.capturedRequest.matchId()).isEqualTo(session.matchId());
         assertThat(duelSimulationService.capturedRequest.seed()).isEqualTo(99L);
-        assertThat(duelSimulationService.capturedRequest.arena().durationMs()).isEqualTo(4_900);
+        assertThat(duelSimulationService.capturedRequest.arena().durationMs()).isEqualTo(60_000);
         assertThat(duelSimulationService.capturedRequest.arena().obstacles()).isEmpty();
         assertThat(duelSimulationService.capturedRequest.fighters()).hasSize(2);
         assertThat(duelSimulationService.capturedRequest.fighters().getFirst().x()).isEqualTo(500.0);
@@ -82,6 +82,47 @@ class MatchSimulationServiceTest {
         List<MatchPlaybackDTO.ObstaclePlacementDTO> obstacles = service.buildMatchObstacles(session);
 
         assertThat(obstacles).isEmpty();
+    }
+
+    @Test
+    void preparationPlaybackUsesAuthoritativeFighterIdsLoadoutsAndCooldownState() {
+        MatchSimulationService service = new MatchSimulationService(
+                new JsonMapper(),
+                new DuelSimulationService(new CombatCatalog()));
+        UUID firstUserId = UUID.nameUUIDFromBytes("preparation-first".getBytes());
+        UUID secondUserId = UUID.nameUUIDFromBytes("preparation-second".getBytes());
+        MatchSession session = new MatchSession(
+                UUID.nameUUIDFromBytes("preparation-match".getBytes()),
+                99L,
+                List.of(
+                        new MatchPlayer(firstUserId, "One", "one", 1, true, UUID.randomUUID(), 0,
+                                "custom:sb:2,1,0,0", true),
+                        new MatchPlayer(secondUserId, "Two", "two", 2, true, UUID.randomUUID(), 0,
+                                "custom:g:0,0,0,0", true)),
+                Instant.now(),
+                Instant.now(),
+                Instant.now(),
+                Instant.now(),
+                1,
+                1,
+                List.of(),
+                Map.of());
+
+        MatchPlaybackDTO playback = service.buildPreparationPlayback(session);
+
+        assertThat(playback.status()).isEqualTo("PREPARING");
+        assertThat(playback.initialState().fighters()).hasSize(2);
+        assertThat(playback.initialState().fighters())
+                .extracting(MatchPlaybackDTO.FighterPlacementDTO::userId)
+                .containsExactly(firstUserId, secondUserId);
+        assertThat(playback.initialState().fighters().getFirst().abilities())
+                .containsExactly("block", "swing");
+        assertThat(playback.initialState().fighters().getFirst().maxHp()).isEqualTo(120);
+        assertThat(playback.initialState().fighters().getFirst().swingCooldownMs()).isZero();
+        assertThat(playback.initialState().fighters().getFirst().blockCooldownMs()).isZero();
+        assertThat(playback.initialState().fighters().getLast().abilities())
+                .containsExactly("fire_gun");
+        assertThat(playback.initialState().fighters().getLast().gunAmmo()).isEqualTo(10);
     }
 
     private static final class CapturingDuelSimulationService extends DuelSimulationService {

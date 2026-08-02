@@ -9,5 +9,17 @@ public record MatchChatEventDTO(
         UUID matchId,
         String username,
         String message,
-        Instant sentAt) {
+        Instant sentAt,
+        Instant endsAt,
+        Instant serverNow) {
+
+    public MatchChatEventDTO(
+            String type,
+            UUID messageId,
+            UUID matchId,
+            String username,
+            String message,
+            Instant sentAt) {
+        this(type, messageId, matchId, username, message, sentAt, null, null);
+    }
 }

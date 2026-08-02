@@ -44,7 +44,7 @@ public record MatchPlaybackDTO(
             double y,
             double rotation,
             int hp,
-            String combatClass,
+            String combatLoadout,
             boolean attackActive,
             boolean blockActive,
             Integer gunAmmo,
@@ -91,12 +91,12 @@ public record MatchPlaybackDTO(
                 double y,
                 double rotation,
                 int hp,
-                String combatClass,
+                String combatLoadout,
                 boolean attackActive,
                 boolean blockActive,
                 Integer gunAmmo,
                 Integer gunReloadMs) {
-            this(userId, username, slot, x, y, rotation, hp, combatClass, attackActive, blockActive, gunAmmo, gunReloadMs, 0, 0, 0, 0, 0, 0, 100, List.of(), false, false, false, false, false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, Map.of(), Map.of(), null, 0, 0, 0, 0, x, y, 0);
+            this(userId, username, slot, x, y, rotation, hp, combatLoadout, attackActive, blockActive, gunAmmo, gunReloadMs, 0, 0, 0, 0, 0, 0, 100, List.of(), false, false, false, false, false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, Map.of(), Map.of(), null, 0, 0, 0, 0, x, y, 0);
         }
     }
 

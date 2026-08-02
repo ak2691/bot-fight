@@ -2,7 +2,7 @@ import { DEFAULT_INTENT, intentFromAction } from "./LegacyIntent.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../beta/modelPayloads/arenaConstants.js";
 import { BOT_ABILITIES, PROTOTYPE_ABILITY_STATS, PROTOTYPE_ACTION_TO_ABILITY, entityTargetDefinitions } from "../beta/loadout/BotLoadout.js";
 
-export const MELEE_STRATEGY_VERSION = "melee-logic-tree-v1";
+export const BOT_LOGIC_TREE_VERSION = "bot-logic-tree-v1";
 export const MAX_LOGIC_BLOCKS = 100;
 export const MAX_BRAIN_NODES = 100;
 export const MAX_TOTAL_CONDITIONS = 300;
@@ -184,7 +184,7 @@ const STATE_VARIABLE_BY_ID = new Map(STATE_VARIABLES.map((variable) => [variable
 
 export function createDefaultMeleeStrategyConfiguration() {
     return {
-        version: MELEE_STRATEGY_VERSION,
+        version: BOT_LOGIC_TREE_VERSION,
         columns: [],
         blocks: [],
         clusters: [],
@@ -256,7 +256,7 @@ export function normalizeMeleeStrategyConfiguration(configuration) {
         const columns = configuration.columns.slice(0, MAX_CLUSTERS).map((column, columnIndex) => {
             return normalizeColumn(column, columnIndex, remaining);
         });
-        return { version: MELEE_STRATEGY_VERSION, columns, blocks: [], clusters: [], customVariables, legacyMode: false };
+        return { version: BOT_LOGIC_TREE_VERSION, columns, blocks: [], clusters: [], customVariables, legacyMode: false };
     }
     const sourceBlocks = Array.isArray(configuration?.blocks)
         ? configuration.blocks
@@ -284,7 +284,7 @@ export function normalizeMeleeStrategyConfiguration(configuration) {
 
     const columns = migrateLegacyColumns(blocks, clusters);
     return {
-        version: MELEE_STRATEGY_VERSION,
+        version: BOT_LOGIC_TREE_VERSION,
         columns,
         blocks,
         clusters,
@@ -403,7 +403,7 @@ export function validateMeleeStrategyConfiguration(configuration) {
         }
     });
     const entries = normalizedBlockEntries(normalized);
-    if (!entries.some((entry) => isTrainableBlock(entry.block))) {
+    if (entries.length > 0 && !entries.some((entry) => isTrainableBlock(entry.block))) {
         errors.push("Add at least one bot brain action before submitting.");
     }
     return { configuration: normalized, errors, warnings };

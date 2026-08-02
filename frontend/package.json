@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "test": "node --test src/logic/BotBrain.test.js src/logic/MovementActions.test.js src/beta/ecs/EntitySystems.test.js src/beta/pixi/snapshotInterpolation.test.js src/beta/pixi/pixiVisualState.test.js src/replay/replayPresentation.test.js",
+    "test": "node --test src/logic/BotBrain.test.js src/logic/MovementActions.test.js src/beta/ecs/EntitySystems.test.js src/beta/pixi/snapshotInterpolation.test.js src/beta/pixi/pixiVisualState.test.js src/replay/replayPresentation.test.js src/replay/arenaLifecycle.test.js src/replay/preparationTiming.test.js src/matchmaking/networkDelayEstimator.test.js src/matchmaking/relativeMatchTiming.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

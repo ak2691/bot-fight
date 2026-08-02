@@ -10,7 +10,9 @@ import com.example.botfight.domain.AppUser;
 import com.example.botfight.domain.Match;
 import com.example.botfight.domain.MatchParticipant;
 import com.example.botfight.domain.MatchResult;
+import com.example.botfight.DTO.UsernameRequestDTO;
 import com.example.botfight.repository.MatchParticipantRepository;
+import com.example.botfight.repository.UserRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -24,8 +26,9 @@ import org.springframework.security.core.Authentication;
 class ProfileServiceTest {
 
     private final CurrentUserService currentUserService = mock(CurrentUserService.class);
+    private final UserRepository userRepository = mock(UserRepository.class);
     private final MatchParticipantRepository participantRepository = mock(MatchParticipantRepository.class);
-    private final ProfileService service = new ProfileService(currentUserService, participantRepository);
+    private final ProfileService service = new ProfileService(currentUserService, userRepository, participantRepository);
 
     @Test
     void returnsOwnedAggregate() {
@@ -80,6 +83,39 @@ class ProfileServiceTest {
             assertThat(recent.result()).isEqualTo("WIN");
             assertThat(recent.completedAt()).isEqualTo(Instant.parse("2026-07-22T10:15:00Z"));
         });
+    }
+
+    @Test
+    void updatesOwnedUsernameAfterCheckingUniqueness() {
+        Authentication authentication = mock(Authentication.class);
+        AppUser user = user("allan");
+        UsernameRequestDTO request = new UsernameRequestDTO();
+        request.setUsername("Allan_2");
+
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(user);
+        when(userRepository.existsByUsernameIgnoreCaseAndIdNot("Allan_2", user.getId())).thenReturn(false);
+
+        var profile = service.updateUsername(authentication, request);
+
+        assertThat(user.getUsername()).isEqualTo("Allan_2");
+        assertThat(profile.username()).isEqualTo("Allan_2");
+        org.mockito.Mockito.verify(userRepository).saveAndFlush(user);
+    }
+
+    @Test
+    void rejectsTakenUsernameBeforeChangingOwnedUser() {
+        Authentication authentication = mock(Authentication.class);
+        AppUser user = user("allan");
+        UsernameRequestDTO request = new UsernameRequestDTO();
+        request.setUsername("rival");
+
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(user);
+        when(userRepository.existsByUsernameIgnoreCaseAndIdNot("rival", user.getId())).thenReturn(true);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.updateUsername(authentication, request))
+                .isInstanceOf(AuthException.class)
+                .hasMessage("username is already taken");
+        assertThat(user.getUsername()).isEqualTo("allan");
     }
 
     private static AppUser user(String username) {

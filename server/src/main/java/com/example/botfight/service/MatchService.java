@@ -6,7 +6,7 @@ import com.example.botfight.DTO.MatchmakingEventDTO;
 import com.example.botfight.DTO.MatchmakingPlayerDTO;
 import com.example.botfight.DTO.MatchmakingEventDTO.RoundBrainDTO;
 import com.example.botfight.domain.Match;
-import com.example.botfight.domain.ModelSubmission;
+import com.example.botfight.domain.BotSubmission;
 import com.example.botfight.simulation.ArenaUnits;
 import java.time.Clock;
 import java.time.Instant;
@@ -29,11 +29,16 @@ import tools.jackson.databind.json.JsonMapper;
 public class MatchService {
 
     private static final long PLAYBACK_PREP_DELAY_MILLIS = 3_000L;
+    // Replay presentation is compressed after the authoritative duel is complete;
+    // this does not change the rated simulation or its timeout deadline.
+    private static final int REPLAY_PRESENTATION_DURATION_MILLIS = 5_000;
     private static final int REPLAY_BATCH_MILLIS = 1_000;
     private static final int REPLAY_BUFFER_MILLIS = 3_000;
-    private static final long ROUND_RESULT_HOLD_MILLIS = 3_500L;
-    private static final int CLASS_SELECTION_SECONDS = 60;
-    private static final int TRAINING_SECONDS = 600;
+    private static final long ROUND_RESULT_HOLD_MILLIS = 3_000L;
+    private static final int LOADOUT_SELECTION_SECONDS = 60;
+    private static final int TESTING_SECONDS = 30;
+    private static final int SUBMISSION_GRACE_SECONDS = 2;
+    private static final int TESTING_ROOM_PREPARATION_SECONDS = 2;
     private static final int WINS_REQUIRED = 2;
     private static final int TOTAL_ROUNDS = 3;
     private static final int MAX_EQUIPPED_ABILITIES = 6;
@@ -55,6 +60,8 @@ public class MatchService {
     private static final int MATCH_CHAT_MAX_CODE_POINTS = 280;
     private static final int MATCH_CHAT_BURST_LIMIT = 3;
     private static final long MATCH_CHAT_WINDOW_MILLIS = 5_000L;
+    private static final long MATCH_CHAT_RETENTION_MILLIS = 30_000L;
+    private static final String MATCH_CHAT_CLOSED_MESSAGE = "Match chat is now closed.";
     private static final String COMPLETION_REASON_RESIGNATION = "RESIGNATION";
     private static final String COMPLETION_REASON_DISCONNECTION = "DISCONNECTION";
     private static final String COMPLETION_REASON_MUTUAL_DISCONNECTION = "MUTUAL_DISCONNECTION";
@@ -65,10 +72,12 @@ public class MatchService {
     private final MatchConnectionService matchConnectionService;
     private final Clock clock;
     private final Map<UUID, MatchSession> activeSessionsByUserId = new HashMap<>();
-    private final Set<UUID> initialClassSelectionStartedMatchIds = new java.util.HashSet<>();
+    private final Set<UUID> initialLoadoutSelectionStartedMatchIds = new java.util.HashSet<>();
+    private final Set<UUID> invalidatedReplayMatchIds = new java.util.HashSet<>();
     private final Map<UUID, ReplayResumeState> replayResumeByUserId = new HashMap<>();
     private final Map<UUID, List<RoundSubmissionRecord>> roundHistoryByMatchId = new HashMap<>();
-    private final Map<UUID, Deque<Instant>> chatMessageTimesByUserId = new HashMap<>();
+    private final Map<UUID, Map<UUID, Deque<Instant>>> chatMessageTimesByMatchAndUserId = new HashMap<>();
+    private final Map<UUID, MatchChatWindow> matchChatWindowsByMatchId = new HashMap<>();
     private final JsonMapper jsonMapper = new JsonMapper();
 
     public MatchService(
@@ -117,8 +126,17 @@ public class MatchService {
         matchConnectionService.registerSocket(userId, socketSessionId);
         ReplayResumeState replayResume = replayResumeByUserId.get(userId);
         if (replayResume != null) {
-            List<OutboundMatchmakingEvent> replayEvents = replayEventsForReconnect(userId, replayResume);
-            if (!replayEvents.isEmpty()) return replayEvents;
+            Instant disconnectDeadline = matchConnectionService.reconnect(userId, socketSessionId);
+            List<OutboundMatchmakingEvent> events = new ArrayList<>(
+                    replayEventsForReconnect(userId, replayResume));
+            if (disconnectDeadline != null) {
+                MatchPlayer reconnectingPlayer = playerForUser(replayResume.replaySession(), userId);
+                events.addAll(playerReconnectedEvents(
+                        replayResume.replaySession(),
+                        reconnectingPlayer,
+                        replayResume.preparationPlayback()));
+            }
+            if (!events.isEmpty()) return events;
             replayResumeByUserId.remove(userId);
         }
         if (activeSessionsByUserId.containsKey(userId)) {
@@ -126,19 +144,11 @@ public class MatchService {
             MatchPlayer reconnectingPlayer = playerForUser(session, userId);
             Instant disconnectDeadline = matchConnectionService.reconnect(userId, socketSessionId);
             if (disconnectDeadline == null) {
-                return List.of(eventForPlayer(session, reconnectingPlayer, "MATCH_FOUND"));
+                return List.of(resumePhaseEvent(session, reconnectingPlayer, null));
             }
             List<OutboundMatchmakingEvent> events = new ArrayList<>();
-            events.add(eventForPlayer(session, reconnectingPlayer, "MATCH_FOUND"));
-            events.addAll(session.players().stream()
-                    .map(player -> disconnectEventForPlayer(
-                            session,
-                            player,
-                            reconnectingPlayer,
-                            "PLAYER_RECONNECTED",
-                            null,
-                            reconnectingPlayer.username() + " reconnected."))
-                    .toList());
+            events.add(resumePhaseEvent(session, reconnectingPlayer, null));
+            events.addAll(playerReconnectedEvents(session, reconnectingPlayer, null));
             return events;
         }
 
@@ -185,43 +195,53 @@ public class MatchService {
                 List.of(),
                 Map.of());
         matchPersistenceService.createParticipants(match, pendingSession);
-        MatchSession session = pendingSession.withClassSelection(
-                Instant.now(clock).plusSeconds(CLASS_SELECTION_SECONDS));
+        MatchSession session = pendingSession.withLoadoutSelection(
+                Instant.now(clock).plusSeconds(LOADOUT_SELECTION_SECONDS + SUBMISSION_GRACE_SECONDS));
         activeSessionsByUserId.put(opponent.userId(), session);
         activeSessionsByUserId.put(player.userId(), session);
         matchConnectionService.registerSocket(opponent.userId(), opponent.socketSessionId());
         matchConnectionService.registerSocket(player.userId(), player.socketSessionId());
 
         return new ArrayList<>(session.players().stream()
-                .map(matchPlayer -> eventForPlayer(session, matchPlayer, "MATCH_FOUND"))
+                .map(matchPlayer -> eventForPlayer(
+                        session,
+                        matchPlayer,
+                        "MATCH_STARTED",
+                        "LOADOUT_SELECT",
+                        null,
+                        "Match accepted. Choose your opening loadout."))
                 .toList());
     }
 
     @Transactional
-    public synchronized List<OutboundMatchmakingEvent> selectClass(UUID userId, String selectedClass) {
+    public synchronized List<OutboundMatchmakingEvent> selectLoadout(UUID userId, String selectedLoadout) {
         MatchSession session = activeSessionsByUserId.get(userId);
         if (session == null) {
             return List.of();
         }
         if (session.countdownEndsAt() != null) {
-            return List.of(eventForPlayer(session, playerForUser(session, userId), "MATCH_COUNTDOWN_READY"));
+            return List.of(eventForPlayer(session, playerForUser(session, userId), "BOT_TESTING_SESSION_READY"));
         }
-        if (session.classSelectionEndsAt() != null
-                && !Instant.now(clock).isBefore(session.classSelectionEndsAt())) {
-            return startExpiredClassSelection(session);
+        if (session.loadoutSelectionEndsAt() != null
+                && !Instant.now(clock).isBefore(session.loadoutSelectionEndsAt())) {
+            return startExpiredLoadoutSelection(session);
         }
 
         MatchPlayer selectingPlayer = playerForUser(session, userId);
-        if (selectingPlayer.classSelected()) {
-            return List.of(eventForPlayer(session, selectingPlayer, "MATCH_CLASS_SELECTED"));
+        if (selectingPlayer.loadoutSelected()) {
+            return List.of(eventForPlayer(session, selectingPlayer, "MATCH_LOADOUT_SELECTED"));
         }
-        String normalizedLoadout = normalizeSelectedClass(selectedClass);
+        String normalizedLoadout = normalizeSelectedLoadout(selectedLoadout);
         validateRoundLoadoutBudget(normalizedLoadout, session.roundNumber());
         String completedLoadout = completeRoundAbilityDraft(session, selectingPlayer, normalizedLoadout);
         validateRoundAbilityDraft(session, selectingPlayer, completedLoadout);
-        MatchSession selectedSession = session.withSelectedClass(userId, completedLoadout, true);
-        if (selectedSession.players().stream().allMatch(MatchPlayer::classSelected)) {
-            return startCountdown(selectedSession.withObstacles(List.of()), "MATCH_COUNTDOWN_READY", "Both loadouts locked.");
+        MatchSession selectedSession = session.withSelectedLoadout(userId, completedLoadout, true);
+        if (selectedSession.players().stream().allMatch(MatchPlayer::loadoutSelected)) {
+            return startCountdown(
+                    selectedSession.withObstacles(List.of()),
+                    "BOT_TESTING_SESSION_READY",
+                    "Both players have selected. Starting testing session.",
+                    false);
         }
 
         for (MatchPlayer player : selectedSession.players()) {
@@ -231,15 +251,15 @@ public class MatchService {
                 .map(player -> eventForPlayer(
                         selectedSession,
                         player,
-                        "MATCH_CLASS_SELECTED",
-                        "CLASS_SELECT",
+                        "MATCH_LOADOUT_SELECTED",
+                        "LOADOUT_SELECT",
                         null,
                         playerForUser(selectedSession, userId).username() + " locked a loadout."))
                 .toList();
     }
 
     @Transactional
-    public synchronized List<OutboundMatchmakingEvent> resolveClassSelectionTimeout(UUID matchId) {
+    public synchronized List<OutboundMatchmakingEvent> resolveLoadoutSelectionTimeout(UUID matchId) {
         MatchSession session = activeSessionsByUserId.values().stream()
                 .filter(candidate -> candidate.matchId().equals(matchId))
                 .findFirst()
@@ -247,113 +267,129 @@ public class MatchService {
         if (session == null || session.countdownEndsAt() != null) {
             return List.of();
         }
-        if (session.classSelectionEndsAt() != null && Instant.now(clock).isBefore(session.classSelectionEndsAt())) {
+        if (session.loadoutSelectionEndsAt() != null && Instant.now(clock).isBefore(session.loadoutSelectionEndsAt())) {
             return List.of();
         }
-        return startExpiredClassSelection(session);
+        return startExpiredLoadoutSelection(session);
     }
 
     @Transactional
-    public synchronized List<OutboundMatchmakingEvent> resolveExpiredClassSelections() {
+    public synchronized List<OutboundMatchmakingEvent> resolveExpiredLoadoutSelections() {
         Instant now = Instant.now(clock);
         List<MatchSession> expiredSessions = activeSessionsByUserId.values().stream()
                 .distinct()
                 .filter(session -> session.countdownEndsAt() == null)
-                .filter(session -> session.classSelectionEndsAt() != null)
-                .filter(session -> !now.isBefore(session.classSelectionEndsAt()))
+                .filter(session -> session.loadoutSelectionEndsAt() != null)
+                .filter(session -> !now.isBefore(session.loadoutSelectionEndsAt()))
                 .toList();
         List<OutboundMatchmakingEvent> events = new ArrayList<>();
         for (MatchSession session : expiredSessions) {
             MatchSession current = activeSessionsByUserId.get(session.players().getFirst().userId());
             if (current != null && current.countdownEndsAt() == null
-                    && current.classSelectionEndsAt() != null
-                    && !now.isBefore(current.classSelectionEndsAt())) {
-                events.addAll(startExpiredClassSelection(current));
+                    && current.loadoutSelectionEndsAt() != null
+                    && !now.isBefore(current.loadoutSelectionEndsAt())) {
+                events.addAll(startExpiredLoadoutSelection(current));
             }
         }
         return events;
     }
 
-    private List<OutboundMatchmakingEvent> startExpiredClassSelection(MatchSession session) {
-        return startCountdown(
-                withDefaultAbilitySelections(session).withObstacles(List.of()),
-                "MATCH_COUNTDOWN_READY",
-                "Loadout selection ended.");
-    }
-
     @Transactional
-    public synchronized List<OutboundMatchmakingEvent> submitObjectPlacements(
-            UUID userId,
-            List<MatchPlaybackDTO.ObstaclePlacementDTO> objects) {
-        MatchSession session = activeSessionsByUserId.get(userId);
-        if (session == null || session.objectPlacementEndsAt() == null || session.countdownEndsAt() != null) {
-            return List.of();
-        }
-        MatchPlayer submittingPlayer = playerForUser(session, userId);
-        if (submittingPlayer.slot() != 2) {
-            throw new AuthException("only the attacker may place match objects");
-        }
-        List<MatchPlaybackDTO.ObstaclePlacementDTO> normalizedObjects =
-                normalizeObjectPlacements(submittingPlayer, objects);
-        MatchSession placedSession = session.withObjectPlacements(
-                userId,
-                normalizedObjects);
-        boolean allSubmitted = placedSession.players().stream()
-                .allMatch(player -> placedSession.objectPlacementsByUserId().containsKey(player.userId()));
-        if (allSubmitted) {
-            return startCountdown(placedSession.withObstacles(combinedObjectPlacements(placedSession)),
-                    "MATCH_COUNTDOWN_READY",
-                    "Both object layouts locked.");
-        }
-        for (MatchPlayer player : placedSession.players()) {
-            activeSessionsByUserId.put(player.userId(), placedSession);
-        }
-        return placedSession.players().stream()
-                .map(player -> eventForPlayer(
-                        placedSession,
-                        player,
-                        "PLAYER_OBJECTS_PLACED",
-                        "OBJECT_PLACEMENT",
-                        null,
-                        submittingPlayer.username() + " placed objects.",
-                        submittingPlayer.userId(),
-                        player.userId().equals(submittingPlayer.userId()) ? normalizedObjects : List.of()))
-                .toList();
-    }
-
-    @Transactional
-    public synchronized List<OutboundMatchmakingEvent> resolveObjectPlacementTimeout(UUID matchId) {
+    public synchronized List<OutboundMatchmakingEvent> resolveTestingTimeout(
+            UUID matchId,
+            Instant expectedDeadline) {
         MatchSession session = activeSessionsByUserId.values().stream()
+                .distinct()
                 .filter(candidate -> candidate.matchId().equals(matchId))
                 .findFirst()
                 .orElse(null);
-        if (session == null || session.objectPlacementEndsAt() == null || session.countdownEndsAt() != null) {
+        if (session == null
+                || session.testingEndsAt() == null
+                || !session.testingEndsAt().equals(expectedDeadline)
+                || Instant.now(clock).isBefore(session.testingEndsAt())) {
             return List.of();
         }
-        if (Instant.now(clock).isBefore(session.objectPlacementEndsAt())) {
-            return List.of();
-        }
-        return startCountdown(session.withObstacles(combinedObjectPlacements(session)),
-                "MATCH_COUNTDOWN_READY",
-                "Object placement ended.");
+        return resolveExpiredTesting(session);
     }
 
-    public synchronized List<OutboundMatchmakingEvent> beginInitialClassSelection(UUID matchId) {
+    @Transactional
+    public synchronized List<OutboundMatchmakingEvent> resolveExpiredTestingSessions() {
+        Instant now = Instant.now(clock);
+        List<MatchSession> expiredSessions = activeSessionsByUserId.values().stream()
+                .distinct()
+                .filter(session -> session.testingEndsAt() != null)
+                .filter(session -> !now.isBefore(session.testingEndsAt()))
+                .toList();
+        List<OutboundMatchmakingEvent> events = new ArrayList<>();
+        for (MatchSession session : expiredSessions) {
+            MatchSession current = activeSessionsByUserId.get(session.players().getFirst().userId());
+            if (current != null
+                    && current.testingEndsAt() != null
+                    && !now.isBefore(current.testingEndsAt())) {
+                events.addAll(resolveExpiredTesting(current));
+            }
+        }
+        return events;
+    }
+
+    private List<OutboundMatchmakingEvent> resolveExpiredTesting(MatchSession session) {
+        MatchSession resolvedSession = session;
+        UUID firstTimedOutUserId = null;
+        for (MatchPlayer player : session.players()) {
+            if (player.finished()) continue;
+            BotSubmission submission = matchPersistenceService.resolveTestingTimeoutSubmission(session, player);
+            resolvedSession = resolvedSession.withFinishedPlayer(player.userId(), submission.getId());
+            matchPersistenceService.attachSubmission(session.matchId(), player.userId(), submission);
+            if (firstTimedOutUserId == null) firstTimedOutUserId = player.userId();
+        }
+        if (firstTimedOutUserId == null) return List.of();
+
+        for (MatchPlayer player : resolvedSession.players()) {
+            activeSessionsByUserId.put(player.userId(), resolvedSession);
+        }
+        return afterPlayerFinished(
+                resolvedSession,
+                "Testing ended; the server resolved the missing bot brain.");
+    }
+
+    private List<OutboundMatchmakingEvent> startExpiredLoadoutSelection(MatchSession session) {
+        return startCountdown(
+                withDefaultAbilitySelections(session).withObstacles(List.of()),
+                "BOT_TESTING_SESSION_READY",
+                "Testing session is starting with finalized loadouts.",
+                false);
+    }
+
+    /** Compatibility shim for callers compiled against the removed placement phase. */
+    @Deprecated(forRemoval = true)
+    public synchronized List<OutboundMatchmakingEvent> submitObjectPlacements(
+            UUID userId,
+            List<MatchPlaybackDTO.ObstaclePlacementDTO> ignoredObjects) {
+        return List.of();
+    }
+
+    /** Compatibility shim for callers compiled against the removed placement phase. */
+    @Deprecated(forRemoval = true)
+    public synchronized List<OutboundMatchmakingEvent> resolveObjectPlacementTimeout(UUID matchId) {
+        return List.of();
+    }
+
+    public synchronized List<OutboundMatchmakingEvent> beginInitialLoadoutSelection(UUID matchId) {
         MatchSession session = activeSessionsByUserId.values().stream()
                 .distinct()
                 .filter(candidate -> candidate.matchId().equals(matchId))
                 .findFirst()
                 .orElse(null);
         if (session == null || session.roundNumber() != 1 || session.countdownEndsAt() != null
-                || !initialClassSelectionStartedMatchIds.add(matchId)) {
+                || !initialLoadoutSelectionStartedMatchIds.add(matchId)) {
             return List.of();
         }
         return session.players().stream()
                 .map(player -> eventForPlayer(
                         session,
                         player,
-                        "MATCH_CLASS_SELECTION_READY",
-                        "CLASS_SELECT",
+                        "MATCH_LOADOUT_SELECTION_READY",
+                        "LOADOUT_SELECT",
                         null,
                         "Choose your opening loadout."))
                 .toList();
@@ -369,12 +405,7 @@ public class MatchService {
         if (principalName == null || principalName.isBlank()) {
             return List.of();
         }
-        MatchSession session = activeSessionsByUserId.values().stream()
-                .distinct()
-                .filter(candidate -> candidate.players().stream()
-                        .anyMatch(player -> player.principalName().equals(principalName)))
-                .findFirst()
-                .orElse(null);
+        MatchSession session = findSessionForPrincipal(principalName);
         if (session == null) {
             return List.of();
         }
@@ -404,12 +435,7 @@ public class MatchService {
     public synchronized List<OutboundMatchmakingEvent> resolveDisconnectTimeout(
             String principalName,
             Instant expectedDeadline) {
-        MatchSession session = activeSessionsByUserId.values().stream()
-                .distinct()
-                .filter(candidate -> candidate.players().stream()
-                        .anyMatch(player -> player.principalName().equals(principalName)))
-                .findFirst()
-                .orElse(null);
+        MatchSession session = findSessionForPrincipal(principalName);
         if (session == null) {
             return List.of();
         }
@@ -460,6 +486,7 @@ public class MatchService {
         }
 
         if (matchConnectionService.isDisconnected(winner.userId())) {
+            invalidatedReplayMatchIds.add(session.matchId());
             matchPersistenceService.completeMatchAsDraw(
                     session.matchId(),
                     COMPLETION_REASON_MUTUAL_DISCONNECTION);
@@ -489,6 +516,7 @@ public class MatchService {
                     .toList();
         }
 
+        invalidatedReplayMatchIds.add(session.matchId());
         matchPersistenceService.completeMatchByForfeit(
                 session.matchId(),
                 disconnectedPlayer,
@@ -520,10 +548,42 @@ public class MatchService {
                 .toList();
     }
 
+    /**
+     * Delayed replay batches are best-effort presentation events. Once the
+     * server has resolved a disconnect for a match, those old batches must not
+     * arrive after the authoritative disconnection result.
+     */
+    public synchronized boolean isDelayedReplayEventStillValid(UUID matchId, String eventType) {
+        if (matchId == null || !invalidatedReplayMatchIds.contains(matchId)) {
+            return true;
+        }
+        return !Set.of("MATCH_REPLAY_BATCH", "MATCH_RESULT_READY", "MATCH_ROUND_READY")
+                .contains(eventType);
+    }
+
     private boolean disconnectExpiredDuringInitialSelection(MatchSession session) {
         return session.roundNumber() == 1
-                && session.classSelectionEndsAt() != null
+                && session.loadoutSelectionEndsAt() != null
                 && session.countdownEndsAt() == null;
+    }
+
+    private MatchSession findSessionForPrincipal(String principalName) {
+        MatchSession activeSession = activeSessionsByUserId.values().stream()
+                .distinct()
+                .filter(candidate -> candidate.players().stream()
+                        .anyMatch(player -> player.principalName().equals(principalName)))
+                .findFirst()
+                .orElse(null);
+        if (activeSession != null) {
+            return activeSession;
+        }
+        return replayResumeByUserId.values().stream()
+                .distinct()
+                .filter(resume -> resume.replaySession().players().stream()
+                        .anyMatch(player -> player.principalName().equals(principalName)))
+                .map(ReplayResumeState::resultSession)
+                .findFirst()
+                .orElse(null);
     }
 
     public synchronized void requireActiveMatchForUser(UUID userId, UUID matchId) {
@@ -536,19 +596,34 @@ public class MatchService {
 
     public synchronized MatchChatSubmission submitChatMessage(UUID userId, UUID matchId, String rawMessage) {
         MatchSession session = activeSessionsByUserId.get(userId);
-        if (session == null || matchId == null || !session.matchId().equals(matchId)) {
-            return MatchChatSubmission.rejected(matchId, "Match chat is closed.");
+        Instant now = Instant.now(clock);
+        MatchChatParticipant sender;
+        List<String> recipientPrincipalNames;
+        if (session != null && matchId != null && session.matchId().equals(matchId)) {
+            MatchPlayer activeSender = playerForUser(session, userId);
+            sender = new MatchChatParticipant(activeSender.username(), activeSender.principalName());
+            recipientPrincipalNames = session.players().stream().map(MatchPlayer::principalName).toList();
+        } else {
+            MatchChatWindow chatWindow = matchChatWindowsByMatchId.get(matchId);
+            if (chatWindow == null || !now.isBefore(chatWindow.closesAt())
+                    || !chatWindow.participantsByUserId().containsKey(userId)) {
+                return MatchChatSubmission.rejected(matchId, "Match chat is closed.");
+            }
+            sender = chatWindow.participantsByUserId().get(userId);
+            recipientPrincipalNames = chatWindow.participantsByUserId().values().stream()
+                    .map(MatchChatParticipant::principalName)
+                    .toList();
         }
-        MatchPlayer sender = playerForUser(session, userId);
         String message = rawMessage == null ? "" : rawMessage.strip();
         if (message.isBlank() || message.codePointCount(0, message.length()) > MATCH_CHAT_MAX_CODE_POINTS
                 || message.codePoints().anyMatch(Character::isISOControl)) {
             return MatchChatSubmission.rejected(matchId, "Message was not accepted.");
         }
 
-        Instant now = Instant.now(clock);
         Instant windowStart = now.minusMillis(MATCH_CHAT_WINDOW_MILLIS);
-        Deque<Instant> acceptedTimes = chatMessageTimesByUserId.computeIfAbsent(userId, ignored -> new ArrayDeque<>());
+        Map<UUID, Deque<Instant>> messageTimesByUserId =
+                chatMessageTimesByMatchAndUserId.computeIfAbsent(matchId, ignored -> new HashMap<>());
+        Deque<Instant> acceptedTimes = messageTimesByUserId.computeIfAbsent(userId, ignored -> new ArrayDeque<>());
         while (!acceptedTimes.isEmpty() && !acceptedTimes.peekFirst().isAfter(windowStart)) {
             acceptedTimes.removeFirst();
         }
@@ -563,7 +638,24 @@ public class MatchService {
                 sender.username(),
                 message,
                 now,
-                session.players().stream().map(MatchPlayer::principalName).toList());
+                recipientPrincipalNames);
+    }
+
+    public synchronized Instant matchChatCloseAt(UUID matchId) {
+        MatchChatWindow chatWindow = matchChatWindowsByMatchId.get(matchId);
+        return chatWindow == null ? null : chatWindow.closesAt();
+    }
+
+    public synchronized MatchChatClosure closeMatchChat(UUID matchId) {
+        MatchChatWindow chatWindow = matchChatWindowsByMatchId.remove(matchId);
+        if (chatWindow == null) return null;
+        chatMessageTimesByMatchAndUserId.remove(matchId);
+        return new MatchChatClosure(
+                matchId,
+                MATCH_CHAT_CLOSED_MESSAGE,
+                chatWindow.participantsByUserId().values().stream()
+                        .map(MatchChatParticipant::principalName)
+                        .toList());
     }
 
     @Transactional
@@ -612,7 +704,7 @@ public class MatchService {
     }
 
     @Transactional
-    public synchronized List<OutboundMatchmakingEvent> markFinished(UUID userId, UUID modelSubmissionId) {
+    public synchronized List<OutboundMatchmakingEvent> markFinished(UUID userId, UUID botSubmissionId) {
         MatchSession session = activeSessionsByUserId.get(userId);
         if (session == null) {
             return List.of();
@@ -620,24 +712,24 @@ public class MatchService {
 
         MatchPlayer submittingPlayer = playerForUser(session, userId);
         if (submittingPlayer.finished()) {
-            if (!java.util.Objects.equals(submittingPlayer.modelSubmissionId(), modelSubmissionId)) {
-                throw new AuthException("this player already finished with a different model submission");
+            if (!java.util.Objects.equals(submittingPlayer.botSubmissionId(), botSubmissionId)) {
+                throw new AuthException("this player already finished with a different bot submission");
             }
             return List.of();
         }
 
-        ModelSubmission submission = matchPersistenceService.requireValidatedSubmission(
+        BotSubmission submission = matchPersistenceService.requireValidatedSubmission(
                 userId,
-                modelSubmissionId,
+                botSubmissionId,
                 session.matchId());
-        String submissionClass = normalizeSelectedClass(submission.getSelectedClass());
+        String submissionLoadout = normalizeSelectedLoadout(submission.getSelectedLoadout());
         String submittedLoadout = submissionLoadoutId(submission);
-        if (submittedLoadout != null && !submittedLoadout.equals(submittingPlayer.selectedClass())) {
-            throw new AuthException("model submission does not match the selected bot loadout");
+        if (submittedLoadout != null && !submittedLoadout.equals(submittingPlayer.selectedLoadout())) {
+            throw new AuthException("bot submission does not match the selected bot loadout");
         }
-        if (submittedLoadout == null && !"custom:bds:0,0,0,0".equals(submissionClass) && !"custom".equals(submissionClass)
-                && !submissionClass.equals(submittingPlayer.selectedClass())) {
-            throw new AuthException("model submission does not match the selected bot loadout");
+        if (submittedLoadout == null && !"custom:bds:0,0,0,0".equals(submissionLoadout) && !"custom".equals(submissionLoadout)
+                && !submissionLoadout.equals(submittingPlayer.selectedLoadout())) {
+            throw new AuthException("bot submission does not match the selected bot loadout");
         }
         MatchSession updatedSession = session.withFinishedPlayer(userId, submission.getId());
         for (MatchPlayer player : updatedSession.players()) {
@@ -649,8 +741,15 @@ public class MatchService {
                 userId,
                 submission);
 
-        boolean allFinished = updatedSession.players().stream().allMatch(MatchPlayer::finished);
-        if (!allFinished) {
+        return afterPlayerFinished(
+                updatedSession,
+                playerForUser(updatedSession, userId).username() + " finished testing.");
+    }
+
+    private List<OutboundMatchmakingEvent> afterPlayerFinished(
+            MatchSession updatedSession,
+            String waitingMessage) {
+        if (!updatedSession.players().stream().allMatch(MatchPlayer::finished)) {
             return updatedSession.players().stream()
                     .map(player -> eventForPlayer(
                             updatedSession,
@@ -658,7 +757,7 @@ public class MatchService {
                             "PLAYER_FINISHED",
                             "WAITING_FOR_FINISH",
                             null,
-                            playerForUser(updatedSession, userId).username() + " finished training."))
+                            waitingMessage))
                     .toList();
         }
 
@@ -666,10 +765,10 @@ public class MatchService {
                 .map(player -> eventForPlayer(
                         updatedSession,
                         player,
-                        "SIMULATION_PREPARING",
-                        "SIMULATION_PREPARING",
+                        "SIMULATION_LOADING",
+                        "SIMULATION_LOADING",
                         null,
-                        "Preparing the authoritative round replay."))
+                        "Loading the authoritative round replay."))
                 .toList();
     }
 
@@ -684,7 +783,7 @@ public class MatchService {
             return List.of();
         }
 
-        Map<UUID, ModelSubmission> submissionsByUserId =
+        Map<UUID, BotSubmission> submissionsByUserId =
                 matchPersistenceService.loadFinishedSubmissions(simulationSession);
         MatchPlaybackDTO playback = matchSimulationService.buildDuelPlayback(simulationSession, submissionsByUserId);
         MatchSession scoredSession = simulationSession.withRoundResult(playback.winnerUserId());
@@ -704,73 +803,89 @@ public class MatchService {
 
             for (MatchPlayer player : scoredSession.players()) {
                 activeSessionsByUserId.remove(player.userId());
-                chatMessageTimesByUserId.remove(player.userId());
             }
         }
-        MatchPlaybackDTO privateReplayPlayback = withoutResult(playback);
-        MatchPlaybackDTO replayOnlyPlayback = initialReplayBatch(playback);
-        MatchPlaybackDTO resultOnlyPlayback = resultOnly(playback);
-        long replayDurationMillis = resultRevealDelayMillis(playback);
-        long resultDelayMillis = PLAYBACK_PREP_DELAY_MILLIS + replayDurationMillis;
-        Instant playbackStartsAt = Instant.now(clock).plusMillis(PLAYBACK_PREP_DELAY_MILLIS);
+        PreparedReplay preparedReplay = prepareReplay(simulationSession, playback);
+        MatchPlaybackDTO replayOnlyPlayback = preparedReplay.initialReplayPlayback();
+        MatchPlaybackDTO preparationPlayback = preparedReplay.preparationPlayback();
+        long replayDurationMillis = preparedReplay.replayDurationMillis();
+
+        // Do not stamp the shared playback deadline until simulation, replay
+        // batching, result construction, and reconnect data are all ready.
+        Instant preparationCompletedAt = Instant.now(clock);
+        Instant playbackStartsAt = preparationCompletedAt.plusMillis(PLAYBACK_PREP_DELAY_MILLIS);
         Instant resultRevealsAt = playbackStartsAt.plusMillis(replayDurationMillis);
+        long playbackStartDelayMillis = Math.max(
+                0,
+                java.time.Duration.between(preparationCompletedAt, playbackStartsAt).toMillis());
         Instant roundReadyAt = resultRevealsAt.plusMillis(ROUND_RESULT_HOLD_MILLIS);
+        long roundReadyDelayMillis = Math.max(
+                0,
+                java.time.Duration.between(preparationCompletedAt, roundReadyAt).toMillis());
+        MatchSession preparedSession = simulationSession.withPlaybackStartsAt(playbackStartsAt);
+        if (seriesComplete) {
+            openMatchChatWindow(
+                    scoredSession,
+                    resultRevealsAt.plusMillis(MATCH_CHAT_RETENTION_MILLIS));
+        }
         List<OutboundMatchmakingEvent> events = new ArrayList<>();
         for (MatchPlayer player : scoredSession.players()) {
             MatchPlayer replayPlayer = playerForUser(simulationSession, player.userId());
             events.add(eventForPlayer(
-                    simulationSession,
+                    preparedSession,
                     replayPlayer,
-                    "MATCH_PLAYBACK_READY",
-                    "READY_FOR_PLAYBACK",
+                    "SIMULATION_PREPARING",
+                    "SIMULATION_PREPARING",
                     replayOnlyPlayback,
-                    "Replay ready.",
+                    "Preparing the authoritative round replay.",
                     0,
                     playbackStartsAt,
-                    resultRevealsAt));
-            events.addAll(replayBatchEvents(
-                    simulationSession,
-                    replayPlayer,
-                    playback,
-                    playbackStartsAt,
-                    resultRevealsAt));
-            events.add(eventForPlayer(
-                    scoredSession,
-                    player,
-                    "MATCH_RESULT_READY",
-                    "RESULT_READY",
-                    resultOnlyPlayback,
-                    playback.message(),
-                    resultDelayMillis,
-                    playbackStartsAt,
-                    resultRevealsAt));
+                    resultRevealsAt,
+                    roundReadyAt));
+            for (PreparedReplayBatch batch : preparedReplay.batches()) {
+                MatchSession batchSession = batch.terminalBatch() ? scoredSession : simulationSession;
+                MatchPlayer batchPlayer = batch.terminalBatch() ? player : replayPlayer;
+                events.add(eventForPlayer(
+                        batchSession,
+                        batchPlayer,
+                        "MATCH_REPLAY_BATCH",
+                        "READY_FOR_PLAYBACK",
+                        batch.playback(),
+                        batch.terminalBatch() ? "Terminal replay frame ready." : "Replay frames ready.",
+                        playbackStartDelayMillis + batch.delayAfterPlaybackStartMillis(),
+                        playbackStartsAt,
+                        resultRevealsAt,
+                        roundReadyAt));
+            }
         }
         MatchSession nextRoundSession = null;
         if (!seriesComplete) {
             nextRoundSession = scoredSession.nextRound()
-                    .withClassSelection(resultRevealsAt
+                    .withLoadoutSelection(resultRevealsAt
                             .plusMillis(ROUND_RESULT_HOLD_MILLIS)
-                            .plusSeconds(CLASS_SELECTION_SECONDS));
+                            .plusSeconds(LOADOUT_SELECTION_SECONDS + SUBMISSION_GRACE_SECONDS));
             for (MatchPlayer player : nextRoundSession.players()) {
                 activeSessionsByUserId.put(player.userId(), nextRoundSession);
                 events.add(eventForPlayer(
                         nextRoundSession,
                         player,
                         "MATCH_ROUND_READY",
-                        "CLASS_SELECT",
+                        "LOADOUT_SELECT",
                         null,
                         "Round " + nextRoundSession.roundNumber() + " loadout ready.",
-                        resultDelayMillis,
+                        roundReadyDelayMillis,
                         playbackStartsAt,
-                        resultRevealsAt));
+                        resultRevealsAt,
+                        roundReadyAt));
             }
         }
         ReplayResumeState replayResume = new ReplayResumeState(
-                simulationSession,
+                preparedSession,
                 scoredSession,
                 nextRoundSession,
-                privateReplayPlayback,
-                resultOnlyPlayback,
+                preparationPlayback,
+                replayOnlyPlayback,
+                preparedReplay.replayPlayback(),
                 playbackStartsAt,
                 resultRevealsAt,
                 roundReadyAt,
@@ -789,28 +904,43 @@ public class MatchService {
         Instant now = Instant.now(clock);
         MatchPlayer replayPlayer = playerForUser(resume.replaySession(), userId);
         if (now.isBefore(resume.resultRevealsAt())) {
-            return List.of(eventForPlayer(
-                    resume.replaySession(), replayPlayer, "MATCH_PLAYBACK_READY", "READY_FOR_PLAYBACK",
-                    visibleReplayForReconnect(resume, now), "Replay ready.", 0,
-                    resume.playbackStartsAt(), resume.resultRevealsAt()));
+            List<OutboundMatchmakingEvent> events = new ArrayList<>();
+            boolean playbackHasStarted = !now.isBefore(resume.playbackStartsAt());
+            MatchPlaybackDTO visibleReplay = playbackHasStarted
+                    ? visibleReplayForReconnect(resume, now)
+                    : resume.initialReplayPlayback();
+            events.add(eventForPlayer(
+                    resume.replaySession(), replayPlayer, "SIMULATION_PREPARING", "SIMULATION_PREPARING",
+                    visibleReplay, "Replay ready.", 0,
+                    resume.playbackStartsAt(), resume.resultRevealsAt(), resume.roundReadyAt()));
+            if (playbackHasStarted) {
+                MatchPlaybackDTO replayBuffer = replayBufferForReconnect(resume, now);
+                if (!replayBuffer.frames().isEmpty()) {
+                    events.add(eventForPlayer(
+                            resume.replaySession(), replayPlayer, "MATCH_REPLAY_BATCH", "READY_FOR_PLAYBACK",
+                            replayBuffer, "Replay buffer ready.", 0,
+                            resume.playbackStartsAt(), resume.resultRevealsAt(), resume.roundReadyAt()));
+                }
+            }
+            return events;
         }
         if (resume.seriesComplete()) return List.of();
-        if (!now.isBefore(resume.roundReadyAt()) || resume.nextRoundSession() == null) return List.of();
+        if (resume.nextRoundSession() == null) return List.of();
 
         MatchPlayer nextRoundPlayer = playerForUser(resume.nextRoundSession(), userId);
         MatchPlayer resultPlayer = playerForUser(resume.resultSession(), userId);
-        return List.of(
+        List<OutboundMatchmakingEvent> events = new ArrayList<>(List.of(
                 eventForPlayer(
-                        resume.replaySession(), replayPlayer, "MATCH_PLAYBACK_READY", "READY_FOR_PLAYBACK",
+                            resume.resultSession(), resultPlayer, "SIMULATION_PREPARING", "SIMULATION_PREPARING",
                         visibleReplayForReconnect(resume, now), "Replay ready.", 0,
-                        resume.playbackStartsAt(), resume.resultRevealsAt()),
-                eventForPlayer(
-                        resume.resultSession(), resultPlayer, "MATCH_RESULT_READY", "RESULT_READY",
-                        resume.resultPlayback(), resume.message(), 0, resume.playbackStartsAt(), resume.resultRevealsAt()),
-                eventForPlayer(
-                        resume.nextRoundSession(), nextRoundPlayer, "MATCH_ROUND_READY", "CLASS_SELECT",
-                        null, "Round " + resume.nextRoundSession().roundNumber() + " loadout ready.",
-                        0, resume.playbackStartsAt(), resume.resultRevealsAt()));
+                        resume.playbackStartsAt(), resume.resultRevealsAt(), resume.roundReadyAt())));
+        if (!now.isBefore(resume.roundReadyAt())) {
+            events.add(eventForPlayer(
+                    resume.nextRoundSession(), nextRoundPlayer, "MATCH_ROUND_READY", "LOADOUT_SELECT",
+                    null, "Round " + resume.nextRoundSession().roundNumber() + " loadout ready.",
+                    0, resume.playbackStartsAt(), resume.resultRevealsAt(), resume.roundReadyAt()));
+        }
+        return events;
     }
 
     private MatchPlaybackDTO visibleReplayForReconnect(ReplayResumeState resume, Instant now) {
@@ -833,16 +963,28 @@ public class MatchService {
                 terminalAuthorized && cursor >= finalElapsedMs);
     }
 
-    private MatchPlaybackDTO withoutResult(MatchPlaybackDTO playback) {
-        return new MatchPlaybackDTO(
-                playback.matchId(),
-                playback.rulesetVersion(),
-                playback.status(),
-                playback.initialState(),
-                playback.frames(),
-                null,
-                null,
-                null);
+    private MatchPlaybackDTO replayBufferForReconnect(ReplayResumeState resume, Instant now) {
+        MatchPlaybackDTO playback = resume.replayPlayback();
+        long visibleElapsedMs = Math.max(0, java.time.Duration.between(
+                resume.playbackStartsAt(), now).toMillis());
+        int finalElapsedMs = finalReplayElapsedMs(playback);
+        boolean terminalAuthorized = !now.isBefore(resume.resultRevealsAt());
+        long nextScheduledBatchStartMs = ((visibleElapsedMs + REPLAY_BUFFER_MILLIS)
+                / REPLAY_BATCH_MILLIS + 1) * REPLAY_BATCH_MILLIS;
+        long bufferEndMs = Math.max(
+                visibleElapsedMs + REPLAY_BUFFER_MILLIS,
+                nextScheduledBatchStartMs);
+        List<MatchPlaybackDTO.ReplayFrameDTO> frames = playback.frames().stream()
+                .filter(frame -> frame.elapsedMs() > visibleElapsedMs)
+                .filter(frame -> frame.elapsedMs() <= bufferEndMs)
+                .filter(frame -> terminalAuthorized || frame.elapsedMs() < finalElapsedMs)
+                .toList();
+        if (frames.isEmpty()) {
+            return replayBatch(playback, null, List.of(), 0, 0, false);
+        }
+        int currentCursor = Math.max(0, (int) Math.min(Integer.MAX_VALUE, visibleElapsedMs));
+        int sequence = Math.max(1, currentCursor / REPLAY_BATCH_MILLIS + 1);
+        return replayBatch(playback, null, frames, sequence, frames.getLast().elapsedMs(), false);
     }
 
     private MatchPlaybackDTO initialReplayBatch(MatchPlaybackDTO playback) {
@@ -855,15 +997,65 @@ public class MatchService {
         return replayBatch(playback, playback.initialState(), frames, 0, cursor, finalElapsedMs == 0);
     }
 
-    private List<OutboundMatchmakingEvent> replayBatchEvents(
+    private PreparedReplay prepareReplay(
             MatchSession session,
-            MatchPlayer player,
-            MatchPlaybackDTO playback,
-            Instant playbackStartsAt,
-            Instant resultRevealsAt) {
+            MatchPlaybackDTO playback) {
+        MatchPlaybackDTO replayPlayback = retimeReplay(playback);
+        MatchPlaybackDTO preparationPlayback = matchSimulationService.buildPreparationPlayback(session);
+        if (preparationPlayback == null) {
+            preparationPlayback = initialReplayBatch(replayPlayback);
+        }
+        MatchPlaybackDTO initialReplayPlayback = initialReplayBatch(replayPlayback);
+        int replayDurationMillis = finalReplayElapsedMs(replayPlayback);
+        List<PreparedReplayBatch> batches = prepareReplayBatches(replayPlayback);
+        return new PreparedReplay(
+                preparationPlayback,
+                initialReplayPlayback,
+                replayPlayback,
+                replayDurationMillis,
+                batches);
+    }
+
+    private MatchPlaybackDTO retimeReplay(MatchPlaybackDTO playback) {
+        if (playback == null || playback.frames() == null || playback.frames().isEmpty()) return playback;
+        int originalDurationMillis = finalReplayElapsedMs(playback);
+        if (originalDurationMillis <= 0) return playback;
+
+        List<MatchPlaybackDTO.ReplayFrameDTO> retimedFrames = new ArrayList<>(playback.frames().size());
+        int previousElapsedMs = 0;
+        for (int index = 0; index < playback.frames().size(); index++) {
+            MatchPlaybackDTO.ReplayFrameDTO frame = playback.frames().get(index);
+            int elapsedMs = index == playback.frames().size() - 1
+                    ? REPLAY_PRESENTATION_DURATION_MILLIS
+                    : (int) Math.round((double) frame.elapsedMs()
+                            * REPLAY_PRESENTATION_DURATION_MILLIS
+                            / originalDurationMillis);
+            elapsedMs = Math.max(previousElapsedMs, elapsedMs);
+            retimedFrames.add(new MatchPlaybackDTO.ReplayFrameDTO(
+                    frame.tick(),
+                    elapsedMs,
+                    frame.fighters(),
+                    frame.obstacles()));
+            previousElapsedMs = elapsedMs;
+        }
+        return new MatchPlaybackDTO(
+                playback.matchId(),
+                playback.rulesetVersion(),
+                playback.status(),
+                playback.initialState(),
+                List.copyOf(retimedFrames),
+                playback.result(),
+                playback.winnerUserId(),
+                playback.message(),
+                playback.batchSequence(),
+                playback.replayCursorElapsedMs(),
+                playback.terminalBatch());
+    }
+
+    private List<PreparedReplayBatch> prepareReplayBatches(MatchPlaybackDTO playback) {
         int finalElapsedMs = finalReplayElapsedMs(playback);
         if (finalElapsedMs <= 0) return List.of();
-        List<OutboundMatchmakingEvent> events = new ArrayList<>();
+        List<PreparedReplayBatch> batches = new ArrayList<>();
         int sequence = 1;
         for (int startMs = REPLAY_BUFFER_MILLIS; startMs < finalElapsedMs; startMs += REPLAY_BATCH_MILLIS) {
             int windowStartMs = startMs;
@@ -876,11 +1068,10 @@ public class MatchService {
             if (!frames.isEmpty()) {
                 MatchPlaybackDTO batch = replayBatch(
                         playback, null, frames, sequence, frames.getLast().elapsedMs(), false);
-                long delayMillis = PLAYBACK_PREP_DELAY_MILLIS
-                        + Math.max(0, windowStartMs - REPLAY_BUFFER_MILLIS);
-                events.add(eventForPlayer(
-                        session, player, "MATCH_REPLAY_BATCH", "READY_FOR_PLAYBACK",
-                        batch, "Replay frames ready.", delayMillis, playbackStartsAt, resultRevealsAt));
+                batches.add(new PreparedReplayBatch(
+                        batch,
+                        Math.max(0, windowStartMs - REPLAY_BUFFER_MILLIS),
+                        false));
             }
             sequence++;
         }
@@ -890,14 +1081,12 @@ public class MatchService {
         if (!terminalFrames.isEmpty()) {
             MatchPlaybackDTO terminal = replayBatch(
                     playback, null, terminalFrames, sequence, finalElapsedMs, true);
-            long terminalDelayMillis = PLAYBACK_PREP_DELAY_MILLIS
-                    + Math.max(0, finalElapsedMs - REPLAY_BUFFER_MILLIS);
-            events.add(eventForPlayer(
-                    session, player, "MATCH_REPLAY_BATCH", "READY_FOR_PLAYBACK",
-                    terminal, "Terminal replay frame ready.", terminalDelayMillis,
-                    playbackStartsAt, resultRevealsAt));
+            batches.add(new PreparedReplayBatch(
+                    terminal,
+                    Math.max(0, finalElapsedMs - REPLAY_BUFFER_MILLIS),
+                    true));
         }
-        return events;
+        return List.copyOf(batches);
     }
 
     private MatchPlaybackDTO replayBatch(
@@ -925,18 +1114,6 @@ public class MatchService {
         return playback.frames().isEmpty() ? 0 : playback.frames().getLast().elapsedMs();
     }
 
-    private MatchPlaybackDTO resultOnly(MatchPlaybackDTO playback) {
-        return new MatchPlaybackDTO(
-                playback.matchId(),
-                playback.rulesetVersion(),
-                playback.status(),
-                null,
-                List.of(),
-                playback.result(),
-                playback.winnerUserId(),
-                playback.message());
-    }
-
     private MatchPlaybackDTO withWinner(MatchPlaybackDTO playback, UUID winnerUserId, String message) {
         return new MatchPlaybackDTO(playback.matchId(), playback.rulesetVersion(), playback.status(),
                 playback.initialState(), playback.frames(), winnerUserId == null ? "DRAW" : "FIGHTER_WIN",
@@ -950,9 +1127,14 @@ public class MatchService {
         MatchPlayer winner = playerForUser(session, playback.winnerUserId());
         MatchPlayer loser = session.players().stream().filter(player -> !player.userId().equals(winner.userId())).findFirst().orElseThrow();
         if (loser.slot() == 2) {
-            int finalCoreHp = playback.frames().isEmpty() ? 250 : playback.frames().get(playback.frames().size() - 1).obstacles().stream()
-                    .filter(obstacle -> "core".equals(obstacle.type())).mapToInt(MatchPlaybackDTO.ObstaclePlacementDTO::hp).findFirst().orElse(250);
-            scores.put(loser.userId(), Math.max(0.0, Math.min(1.0, (250.0 - finalCoreHp) / 250.0)));
+            MatchPlaybackDTO.FighterPlacementDTO finalWinner = playback.frames().isEmpty() ? null
+                    : playback.frames().getLast().fighters().stream()
+                            .filter(fighter -> winner.userId().equals(fighter.userId()))
+                            .findFirst()
+                            .orElse(null);
+            double winnerMaxHp = finalWinner == null ? 100.0 : Math.max(1.0, finalWinner.maxHp());
+            double winnerHp = finalWinner == null ? winnerMaxHp : Math.max(0.0, finalWinner.hp());
+            scores.put(loser.userId(), Math.max(0.0, Math.min(1.0, (winnerMaxHp - winnerHp) / winnerMaxHp)));
         } else {
             int elapsedMs = playback.frames().isEmpty() ? 0 : playback.frames().get(playback.frames().size() - 1).elapsedMs();
             scores.put(loser.userId(), Math.max(0.0, Math.min(1.0, elapsedMs / 60_000.0)));
@@ -973,20 +1155,23 @@ public class MatchService {
         return firstScore > secondScore ? first.userId() : second.userId();
     }
 
-    private long resultRevealDelayMillis(MatchPlaybackDTO playback) {
-        int finalElapsedMs = playback.frames() == null || playback.frames().isEmpty()
-                ? 0
-                : playback.frames().get(playback.frames().size() - 1).elapsedMs();
-        return finalElapsedMs;
-    }
-
-    private List<OutboundMatchmakingEvent> startCountdown(MatchSession session, String type, String message) {
-        Instant countdownEndsAt = Instant.now(clock);
-        Instant trainingEndsAt = countdownEndsAt.plusSeconds(TRAINING_SECONDS);
-        MatchSession countdownSession = session.withCountdown(countdownEndsAt, trainingEndsAt);
+    private List<OutboundMatchmakingEvent> startCountdown(
+            MatchSession session,
+            String type,
+            String message,
+            boolean includePreparationHold) {
+        Instant now = Instant.now(clock);
+        Instant countdownEndsAt = now.plusSeconds(
+                includePreparationHold ? TESTING_ROOM_PREPARATION_SECONDS : 0);
+        if (session.loadoutSelectionEndsAt() != null
+                && countdownEndsAt.isAfter(session.loadoutSelectionEndsAt())) {
+            countdownEndsAt = session.loadoutSelectionEndsAt();
+        }
+        Instant testingEndsAt = countdownEndsAt.plusSeconds(TESTING_SECONDS + SUBMISSION_GRACE_SECONDS);
+        MatchSession countdownSession = session.withCountdown(countdownEndsAt, testingEndsAt);
         for (MatchPlayer player : countdownSession.players()) {
             activeSessionsByUserId.put(player.userId(), countdownSession);
-            matchPersistenceService.updateParticipantSelectedClass(
+            matchPersistenceService.updateParticipantSelectedLoadout(
                     countdownSession.matchId(),
                     player);
         }
@@ -1001,25 +1186,15 @@ public class MatchService {
                 .toList();
     }
 
-    private List<MatchPlaybackDTO.ObstaclePlacementDTO> normalizeObjectPlacements(
-            MatchPlayer player,
-            List<MatchPlaybackDTO.ObstaclePlacementDTO> objects) {
-        return List.of();
-    }
-
-    private List<MatchPlaybackDTO.ObstaclePlacementDTO> combinedObjectPlacements(MatchSession session) {
-        return List.of();
-    }
-
-    private String normalizeSelectedClass(String selectedClass) {
-        if (selectedClass != null && selectedClass.matches("custom:[A-Za-z0-9]{0,6}:(?:[0-9]|1[0-2])(?:,(?:[0-9]|1[0-2])){3}")) return selectedClass;
-        if ("custom".equals(selectedClass)) return "custom";
-        if ("ranged".equals(selectedClass)) return "ranged";
-        if ("mage".equals(selectedClass)) return "mage";
+    private String normalizeSelectedLoadout(String selectedLoadout) {
+        if (selectedLoadout != null && selectedLoadout.matches("custom:[A-Za-z0-9]{0,6}:(?:[0-9]|1[0-2])(?:,(?:[0-9]|1[0-2])){3}")) return selectedLoadout;
+        if ("custom".equals(selectedLoadout)) return "custom";
+        if ("ranged".equals(selectedLoadout)) return "ranged";
+        if ("mage".equals(selectedLoadout)) return "mage";
         return "melee";
     }
 
-    private String submissionLoadoutId(ModelSubmission submission) {
+    private String submissionLoadoutId(BotSubmission submission) {
         if (submission == null || submission.getBrainPayload() == null) return null;
         try {
             JsonNode loadout = jsonMapper.readTree(submission.getBrainPayload()).path("loadout");
@@ -1060,7 +1235,7 @@ public class MatchService {
         if (nextLoadout == null || !nextLoadout.startsWith("custom:")) return;
         int roundNumber = session.roundNumber();
         String nextCodes = nextLoadout.split(":", -1)[1];
-        String previousLoadout = player.selectedClass();
+        String previousLoadout = player.selectedLoadout();
         String previousCodes = previousLoadout != null && previousLoadout.startsWith("custom:")
                 ? previousLoadout.split(":", -1)[1]
                 : "";
@@ -1084,7 +1259,7 @@ public class MatchService {
         if (nextLoadout == null || !nextLoadout.startsWith("custom:")) return nextLoadout;
         String[] parts = nextLoadout.split(":", -1);
         String nextCodes = parts[1];
-        String previousLoadout = player.selectedClass();
+        String previousLoadout = player.selectedLoadout();
         String previousCodes = previousLoadout != null && previousLoadout.startsWith("custom:")
                 ? previousLoadout.split(":", -1)[1]
                 : "";
@@ -1125,10 +1300,10 @@ public class MatchService {
     private MatchSession withDefaultAbilitySelections(MatchSession session) {
         MatchSession result = session;
         for (MatchPlayer player : session.players()) {
-            if (player.classSelected()) continue;
-            String current = player.selectedClass() != null && player.selectedClass().startsWith("custom:")
-                    ? player.selectedClass() : "custom::0,0,0,0";
-            result = result.withSelectedClass(
+            if (player.loadoutSelected()) continue;
+            String current = player.selectedLoadout() != null && player.selectedLoadout().startsWith("custom:")
+                    ? player.selectedLoadout() : "custom::0,0,0,0";
+            result = result.withSelectedLoadout(
                     player.userId(),
                     completeRoundAbilityDraft(session, player, current),
                     true);
@@ -1153,16 +1328,36 @@ public class MatchService {
     }
 
     private void clearSession(MatchSession session) {
+        openMatchChatWindow(session);
         for (MatchPlayer player : session.players()) {
             activeSessionsByUserId.remove(player.userId());
             replayResumeByUserId.remove(player.userId());
-            chatMessageTimesByUserId.remove(player.userId());
             matchConnectionService.clear(player.userId());
         }
         roundHistoryByMatchId.remove(session.matchId());
     }
 
-    private void validateRoundBrainPolicy(MatchSession session, UUID userId, ModelSubmission submission) {
+    private void openMatchChatWindow(MatchSession session) {
+        openMatchChatWindow(
+                session,
+                Instant.now(clock).plusMillis(MATCH_CHAT_RETENTION_MILLIS));
+    }
+
+    private void openMatchChatWindow(MatchSession session, Instant closesAt) {
+        Map<UUID, MatchChatParticipant> participants = new HashMap<>();
+        for (MatchPlayer player : session.players()) {
+            participants.put(
+                    player.userId(),
+                    new MatchChatParticipant(player.username(), player.principalName()));
+        }
+        matchChatWindowsByMatchId.put(
+                session.matchId(),
+                new MatchChatWindow(
+                        closesAt,
+                        Map.copyOf(participants)));
+    }
+
+    private void validateRoundBrainPolicy(MatchSession session, UUID userId, BotSubmission submission) {
         JsonNode currentBrain = readSubmissionBrain(submission);
         Map<String, String> currentBlocks = blockFingerprints(currentBrain);
         List<RoundSubmissionRecord> history = roundHistoryByMatchId.getOrDefault(session.matchId(), List.of());
@@ -1183,7 +1378,7 @@ public class MatchService {
         Map<Integer, Map<String, String>> blocksByRound = new HashMap<>();
         Map<String, Integer> introducedRoundById = new HashMap<>();
         for (RoundSubmissionRecord round : history) {
-            ModelSubmission historicalSubmission = round.submissionsByUser().get(userId);
+            BotSubmission historicalSubmission = round.submissionsByUser().get(userId);
             if (historicalSubmission == null) continue;
             Map<String, String> blocks = blockFingerprints(readSubmissionBrain(historicalSubmission));
             blocksByRound.put(round.roundNumber(), blocks);
@@ -1223,7 +1418,7 @@ public class MatchService {
     private List<RoundBrainDTO> roundBrainsForPlayer(UUID matchId, UUID userId) {
         return roundHistoryByMatchId.getOrDefault(matchId, List.of()).stream()
                 .map(round -> {
-                    ModelSubmission submission = round.submissionsByUser().get(userId);
+                    BotSubmission submission = round.submissionsByUser().get(userId);
                     if (submission == null) return null;
                     return new RoundBrainDTO(
                             round.roundNumber(),
@@ -1240,7 +1435,7 @@ public class MatchService {
         return userId.equals(history.get(history.size() - 1).winnerUserId());
     }
 
-    private JsonNode readSubmissionBrain(ModelSubmission submission) {
+    private JsonNode readSubmissionBrain(BotSubmission submission) {
         try {
             return jsonMapper.readTree(submission.getBrainPayload());
         } catch (Exception exception) {
@@ -1306,15 +1501,42 @@ public class MatchService {
             String type,
             Instant deadline,
             String message) {
+        return disconnectEventForPlayer(session, recipient, disconnectedPlayer, type, deadline, message, null);
+    }
+
+    private OutboundMatchmakingEvent disconnectEventForPlayer(
+            MatchSession session,
+            MatchPlayer recipient,
+            MatchPlayer disconnectedPlayer,
+            String type,
+            Instant deadline,
+            String message,
+            MatchPlaybackDTO playback) {
         MatchPlayer opponent = session.players().stream()
                 .filter(candidate -> !candidate.userId().equals(recipient.userId()))
                 .findFirst()
                 .orElse(null);
-        String status = session.countdownEndsAt() != null
+        UUID activeDisconnectedUserId = deadline != null
+                ? disconnectedPlayer.userId()
+                : session.players().stream()
+                        .filter(candidate -> matchConnectionService.disconnectDeadline(candidate.userId()) != null)
+                        .map(MatchPlayer::userId)
+                        .findFirst()
+                        .orElse(null);
+        Instant activeDisconnectEndsAt = deadline != null
+                ? deadline
+                : activeDisconnectedUserId == null
+                        ? null
+                        : matchConnectionService.disconnectDeadline(activeDisconnectedUserId);
+        String status = session.playbackStartsAt() != null
+                ? "SIMULATION_PREPARING"
+                : session.players().stream().allMatch(MatchPlayer::finished)
+                ? "SIMULATION_LOADING"
+                : session.countdownEndsAt() != null
                 ? "PREP"
                 : session.objectPlacementEndsAt() != null
                         ? "OBJECT_PLACEMENT"
-                        : session.trainingEndsAt() != null ? "TRAINING" : "CLASS_SELECT";
+                        : session.testingEndsAt() != null ? "TESTING" : "LOADOUT_SELECT";
         return new OutboundMatchmakingEvent(
                 recipient.principalName(),
                 new MatchmakingEventDTO(
@@ -1330,14 +1552,14 @@ public class MatchService {
                                         session.objectPlacementsByUserId().containsKey(player.userId())))
                                 .toList(),
                         Instant.now(clock),
-                        session.classSelectionEndsAt(),
+                        session.loadoutSelectionEndsAt(),
                         session.objectPlacementEndsAt(),
                         session.countdownEndsAt(),
-                        session.trainingEndsAt(),
-                        null,
+                        session.testingEndsAt(),
+                        session.playbackStartsAt(),
                         null,
                         MatchSimulationService.DUEL_RULESET_VERSION,
-                        null,
+                        playback,
                         session.roundNumber(),
                         session.winsRequired(),
                         message,
@@ -1348,8 +1570,56 @@ public class MatchService {
                         previousRoundWon(session.matchId(), recipient.userId()),
                         abilityOffers(session),
                         ROUND_LOGIC_BLOCK_LIMIT,
-                        disconnectedPlayer.userId(),
-                        deadline));
+                        activeDisconnectedUserId,
+                        activeDisconnectEndsAt,
+                        null,
+                        null,
+                        matchChatCloseAt(session.matchId())));
+    }
+
+    private List<OutboundMatchmakingEvent> playerReconnectedEvents(
+            MatchSession session,
+            MatchPlayer reconnectingPlayer,
+            MatchPlaybackDTO preparationPlayback) {
+        return session.players().stream()
+                .map(player -> disconnectEventForPlayer(
+                        session,
+                        player,
+                        reconnectingPlayer,
+                        "PLAYER_RECONNECTED",
+                        null,
+                        reconnectingPlayer.username() + " reconnected.",
+                        preparationPlayback))
+                .toList();
+    }
+
+    private OutboundMatchmakingEvent resumePhaseEvent(
+            MatchSession session,
+            MatchPlayer player,
+            MatchPlaybackDTO preparationPlayback) {
+        if (session.playbackStartsAt() != null) {
+            return eventForPlayer(
+                    session,
+                    player,
+                    "SIMULATION_PREPARING",
+                    "SIMULATION_PREPARING",
+                    preparationPlayback,
+                    "Preparing the authoritative round replay.",
+                    0,
+                    session.playbackStartsAt(),
+                    null,
+                    null);
+        }
+        if (session.players().stream().allMatch(MatchPlayer::finished)) {
+            return eventForPlayer(
+                    session,
+                    player,
+                    "SIMULATION_LOADING",
+                    "SIMULATION_LOADING",
+                    null,
+                    "Loading the authoritative round replay.");
+        }
+        return eventForPlayer(session, player, "MATCH_FOUND");
     }
 
     private OutboundMatchmakingEvent noActiveMatchEvent(
@@ -1401,9 +1671,10 @@ public class MatchService {
                         ? "OBJECT_PLACEMENT"
                         : "MATCH_FOUND".equals(type)
                                 && session.roundNumber() == 1
-                                && !initialClassSelectionStartedMatchIds.contains(session.matchId())
+                                && session.loadoutSelectionEndsAt() == null
+                                && !initialLoadoutSelectionStartedMatchIds.contains(session.matchId())
                                 ? "MATCH_FOUND"
-                                : "CLASS_SELECT";
+                                : "LOADOUT_SELECT";
         return eventForPlayer(session, player, type, status, null, null);
     }
 
@@ -1470,6 +1741,7 @@ public class MatchService {
                 objectPlacements,
                 delayMillis,
                 null,
+                null,
                 null);
     }
 
@@ -1494,7 +1766,8 @@ public class MatchService {
                 List.of(),
                 delayMillis,
                 playbackStartsAt,
-                resultRevealsAt);
+                resultRevealsAt,
+                null);
     }
 
     private OutboundMatchmakingEvent eventForPlayer(
@@ -1509,10 +1782,106 @@ public class MatchService {
             long delayMillis,
             Instant playbackStartsAt,
             Instant resultRevealsAt) {
+        return eventForPlayer(
+                session,
+                player,
+                type,
+                status,
+                playback,
+                message,
+                objectPlacementUserId,
+                objectPlacements,
+                delayMillis,
+                playbackStartsAt,
+                resultRevealsAt,
+                null);
+    }
+
+    private OutboundMatchmakingEvent eventForPlayer(
+            MatchSession session,
+            MatchPlayer player,
+            String type,
+            String status,
+            MatchPlaybackDTO playback,
+            String message,
+            long delayMillis,
+            Instant playbackStartsAt,
+            Instant resultRevealsAt,
+            Instant roundReadyAt) {
+        return eventForPlayer(
+                session,
+                player,
+                type,
+                status,
+                playback,
+                message,
+                null,
+                List.of(),
+                delayMillis,
+                playbackStartsAt,
+                resultRevealsAt,
+                roundReadyAt);
+    }
+
+    private OutboundMatchmakingEvent eventForPlayer(
+            MatchSession session,
+            MatchPlayer player,
+            String type,
+            String status,
+            MatchPlaybackDTO playback,
+            String message,
+            UUID objectPlacementUserId,
+            List<MatchPlaybackDTO.ObstaclePlacementDTO> objectPlacements,
+            long delayMillis,
+            Instant playbackStartsAt,
+            Instant resultRevealsAt,
+            Instant roundReadyAt) {
+        if ("MATCH_REPLAY_BATCH".equals(type)) {
+            MatchmakingEventDTO replayBatchEvent = MatchmakingEventDTO.replayBatch(
+                    session.matchId(),
+                    MatchSimulationService.DUEL_RULESET_VERSION,
+                    playback);
+            if (playback != null && playback.terminalBatch()) {
+                MatchmakingPlayerDTO replayOpponent = session.players().stream()
+                        .filter(candidate -> !candidate.userId().equals(player.userId()))
+                        .findFirst()
+                        .map(candidate -> candidate.toDto(
+                                session.objectPlacementsByUserId().containsKey(candidate.userId())))
+                        .orElse(null);
+                replayBatchEvent = replayBatchEvent.withReplayParticipants(
+                        player.toDto(session.objectPlacementsByUserId().containsKey(player.userId())),
+                        replayOpponent,
+                        session.players().stream()
+                                .map(matchPlayer -> matchPlayer.toDto(
+                                        session.objectPlacementsByUserId().containsKey(matchPlayer.userId())))
+                                .toList());
+            }
+            return new OutboundMatchmakingEvent(
+                    player.principalName(),
+                    replayBatchEvent,
+                    delayMillis);
+        }
+
+        boolean replayPhaseEvent = Set.of(
+                "SIMULATION_PREPARING",
+                "MATCH_RESULT_READY").contains(type);
+        boolean simulationPreparingEvent = "SIMULATION_PREPARING".equals(type);
+        Instant eventNow = Instant.now(clock);
+        Long simulationPreparingDurationMs = simulationPreparingEvent && playbackStartsAt != null
+                ? Math.max(0, java.time.Duration.between(eventNow, playbackStartsAt).toMillis())
+                : null;
         MatchPlayer opponent = session.players().stream()
                 .filter(candidate -> !candidate.userId().equals(player.userId()))
                 .findFirst()
                 .orElse(null);
+        UUID disconnectedUserId = session.players().stream()
+                .filter(candidate -> matchConnectionService.disconnectDeadline(candidate.userId()) != null)
+                .map(MatchPlayer::userId)
+                .findFirst()
+                .orElse(null);
+        Instant disconnectEndsAt = disconnectedUserId == null
+                ? null
+                : matchConnectionService.disconnectDeadline(disconnectedUserId);
         return new OutboundMatchmakingEvent(
                 player.principalName(),
                 new MatchmakingEventDTO(
@@ -1526,13 +1895,13 @@ public class MatchService {
                                 .map(matchPlayer -> matchPlayer.toDto(
                                         session.objectPlacementsByUserId().containsKey(matchPlayer.userId())))
                                 .toList(),
-                        Instant.now(clock),
-                        session.classSelectionEndsAt(),
-                        session.objectPlacementEndsAt(),
-                        session.countdownEndsAt(),
-                        session.trainingEndsAt(),
-                        playbackStartsAt,
-                        resultRevealsAt,
+                        simulationPreparingEvent ? null : eventNow,
+                        simulationPreparingEvent ? null : session.loadoutSelectionEndsAt(),
+                        simulationPreparingEvent ? null : session.objectPlacementEndsAt(),
+                        simulationPreparingEvent ? null : session.countdownEndsAt(),
+                        simulationPreparingEvent ? null : session.testingEndsAt(),
+                        simulationPreparingEvent ? null : playbackStartsAt,
+                        simulationPreparingEvent ? null : resultRevealsAt,
                         MatchSimulationService.DUEL_RULESET_VERSION,
                         playback,
                         session.roundNumber(),
@@ -1541,10 +1910,21 @@ public class MatchService {
                         objectPlacementUserId,
                         objectPlacements != null ? List.copyOf(objectPlacements) : List.of(),
                         session.obstacles(),
-                        roundBrainsForPlayer(session.matchId(), player.userId()),
-                        previousRoundWon(session.matchId(), player.userId()),
-                        abilityOffers(session),
-                        ROUND_LOGIC_BLOCK_LIMIT),
+                        replayPhaseEvent
+                                ? List.of()
+                                : roundBrainsForPlayer(session.matchId(), player.userId()),
+                        replayPhaseEvent
+                                ? null
+                                : previousRoundWon(session.matchId(), player.userId()),
+                        replayPhaseEvent
+                                ? List.of()
+                                : abilityOffers(session),
+                        replayPhaseEvent ? null : ROUND_LOGIC_BLOCK_LIMIT,
+                        disconnectedUserId,
+                        disconnectEndsAt,
+                        simulationPreparingEvent ? simulationPreparingDurationMs : null,
+                        simulationPreparingEvent ? null : roundReadyAt,
+                        simulationPreparingEvent ? null : matchChatCloseAt(session.matchId())),
                 delayMillis);
     }
 
@@ -1556,6 +1936,20 @@ public class MatchService {
     }
 
     public enum MatchChatSubmissionStatus { ACCEPTED, RATE_LIMITED, REJECTED }
+
+    private record MatchChatParticipant(String username, String principalName) {
+    }
+
+    private record MatchChatWindow(
+            Instant closesAt,
+            Map<UUID, MatchChatParticipant> participantsByUserId) {
+    }
+
+    public record MatchChatClosure(
+            UUID matchId,
+            String message,
+            List<String> recipientPrincipalNames) {
+    }
 
     public record MatchChatSubmission(
             MatchChatSubmissionStatus status,
@@ -1586,16 +1980,31 @@ public class MatchService {
     private record RoundSubmissionRecord(
             int roundNumber,
             UUID winnerUserId,
-            Map<UUID, ModelSubmission> submissionsByUser,
+            Map<UUID, BotSubmission> submissionsByUser,
             Map<UUID, Double> lossScores) {
+    }
+
+    private record PreparedReplay(
+            MatchPlaybackDTO preparationPlayback,
+            MatchPlaybackDTO initialReplayPlayback,
+            MatchPlaybackDTO replayPlayback,
+            int replayDurationMillis,
+            List<PreparedReplayBatch> batches) {
+    }
+
+    private record PreparedReplayBatch(
+            MatchPlaybackDTO playback,
+            long delayAfterPlaybackStartMillis,
+            boolean terminalBatch) {
     }
 
     private record ReplayResumeState(
             MatchSession replaySession,
             MatchSession resultSession,
             MatchSession nextRoundSession,
+            MatchPlaybackDTO preparationPlayback,
+            MatchPlaybackDTO initialReplayPlayback,
             MatchPlaybackDTO replayPlayback,
-            MatchPlaybackDTO resultPlayback,
             Instant playbackStartsAt,
             Instant resultRevealsAt,
             Instant roundReadyAt,
@@ -1609,10 +2018,10 @@ public class MatchService {
             String principalName,
             int slot,
             boolean finished,
-            UUID modelSubmissionId,
+            UUID botSubmissionId,
             int roundWins,
-            String selectedClass,
-            boolean classSelected) {
+            String selectedLoadout,
+            boolean loadoutSelected) {
         MatchmakingPlayerDTO toDto() {
             return toDto(false);
         }
@@ -1624,8 +2033,8 @@ public class MatchService {
                     slot,
                     finished,
                     roundWins,
-                    selectedClass,
-                    classSelected,
+                    selectedLoadout,
+                    loadoutSelected,
                     objectPlacementSubmitted);
         }
     }
@@ -1634,30 +2043,59 @@ public class MatchService {
             UUID matchId,
             long simulationSeed,
             List<MatchPlayer> players,
-            Instant classSelectionEndsAt,
+            Instant loadoutSelectionEndsAt,
             Instant objectPlacementEndsAt,
             Instant countdownEndsAt,
-            Instant trainingEndsAt,
+            Instant testingEndsAt,
             int roundNumber,
             int winsRequired,
             List<MatchPlaybackDTO.ObstaclePlacementDTO> obstacles,
-            Map<UUID, List<MatchPlaybackDTO.ObstaclePlacementDTO>> objectPlacementsByUserId) {
+            Map<UUID, List<MatchPlaybackDTO.ObstaclePlacementDTO>> objectPlacementsByUserId,
+            Instant playbackStartsAt) {
+        MatchSession(
+                UUID matchId,
+                long simulationSeed,
+                List<MatchPlayer> players,
+                Instant loadoutSelectionEndsAt,
+                Instant objectPlacementEndsAt,
+                Instant countdownEndsAt,
+                Instant testingEndsAt,
+                int roundNumber,
+                int winsRequired,
+                List<MatchPlaybackDTO.ObstaclePlacementDTO> obstacles,
+                Map<UUID, List<MatchPlaybackDTO.ObstaclePlacementDTO>> objectPlacementsByUserId) {
+            this(
+                    matchId,
+                    simulationSeed,
+                    players,
+                    loadoutSelectionEndsAt,
+                    objectPlacementEndsAt,
+                    countdownEndsAt,
+                    testingEndsAt,
+                    roundNumber,
+                    winsRequired,
+                    obstacles,
+                    objectPlacementsByUserId,
+                    null);
+        }
+
         MatchSession withObstacles(List<MatchPlaybackDTO.ObstaclePlacementDTO> obstacles) {
             return new MatchSession(
                     matchId,
                     simulationSeed,
                     players,
-                    classSelectionEndsAt,
+                    loadoutSelectionEndsAt,
                     objectPlacementEndsAt,
                     countdownEndsAt,
-                    trainingEndsAt,
+                    testingEndsAt,
                     roundNumber,
                     winsRequired,
                     obstacles != null ? List.copyOf(obstacles) : List.of(),
-                    objectPlacementsByUserId);
+                    objectPlacementsByUserId,
+                    playbackStartsAt);
         }
 
-        MatchSession withFinishedPlayer(UUID userId, UUID modelSubmissionId) {
+        MatchSession withFinishedPlayer(UUID userId, UUID botSubmissionId) {
             return new MatchSession(
                     matchId,
                     simulationSeed,
@@ -1669,20 +2107,21 @@ public class MatchService {
                                             player.principalName(),
                                             player.slot(),
                                             true,
-                                            modelSubmissionId,
+                                            botSubmissionId,
                                             player.roundWins(),
-                                            player.selectedClass(),
-                                            player.classSelected())
+                                            player.selectedLoadout(),
+                                            player.loadoutSelected())
                     : player)
                             .toList(),
-                    classSelectionEndsAt,
+                    loadoutSelectionEndsAt,
                     objectPlacementEndsAt,
                     countdownEndsAt,
-                    trainingEndsAt,
+                    testingEndsAt,
                     roundNumber,
                     winsRequired,
                     obstacles,
-                    objectPlacementsByUserId);
+                    objectPlacementsByUserId,
+                    playbackStartsAt);
         }
 
         MatchSession withRoundResult(UUID winnerUserId) {
@@ -1697,20 +2136,21 @@ public class MatchService {
                                             player.principalName(),
                                             player.slot(),
                                             player.finished(),
-                                            player.modelSubmissionId(),
+                                            player.botSubmissionId(),
                                             player.roundWins() + 1,
-                                            player.selectedClass(),
-                                            player.classSelected())
+                                            player.selectedLoadout(),
+                                            player.loadoutSelected())
                     : player)
                             .toList(),
-                    classSelectionEndsAt,
+                    loadoutSelectionEndsAt,
                     objectPlacementEndsAt,
                     countdownEndsAt,
-                    trainingEndsAt,
+                    testingEndsAt,
                     roundNumber,
                     winsRequired,
                     obstacles,
-                    objectPlacementsByUserId);
+                    objectPlacementsByUserId,
+                    playbackStartsAt);
         }
 
         MatchSession nextRound() {
@@ -1726,25 +2166,26 @@ public class MatchService {
                                     false,
                                     null,
                                     player.roundWins(),
-                                    player.selectedClass(),
+                                    player.selectedLoadout(),
                                     false))
                             .toList(),
-                    classSelectionEndsAt,
+                    loadoutSelectionEndsAt,
                     null,
                     null,
                     null,
                     roundNumber + 1,
                     winsRequired,
                     List.of(),
-                    Map.of());
+                    Map.of(),
+                    null);
         }
 
-        MatchSession withClassSelection(Instant deadline) {
+        MatchSession withLoadoutSelection(Instant deadline) {
             return new MatchSession(matchId, simulationSeed, players, deadline, null, null, null,
-                    roundNumber, winsRequired, List.of(), Map.of());
+                    roundNumber, winsRequired, List.of(), Map.of(), null);
         }
 
-        MatchSession withSelectedClass(UUID userId, String selectedClass, boolean classSelected) {
+        MatchSession withSelectedLoadout(UUID userId, String selectedLoadout, boolean loadoutSelected) {
             return new MatchSession(
                     matchId,
                     simulationSeed,
@@ -1756,23 +2197,24 @@ public class MatchService {
                                             player.principalName(),
                                             player.slot(),
                                             player.finished(),
-                                            player.modelSubmissionId(),
+                                            player.botSubmissionId(),
                                             player.roundWins(),
-                                            selectedClass,
-                                            classSelected)
+                                            selectedLoadout,
+                                            loadoutSelected)
                     : player)
                             .toList(),
-                    classSelectionEndsAt,
+                    loadoutSelectionEndsAt,
                     objectPlacementEndsAt,
                     countdownEndsAt,
-                    trainingEndsAt,
+                    testingEndsAt,
                     roundNumber,
                     winsRequired,
                     obstacles,
-                    objectPlacementsByUserId);
+                    objectPlacementsByUserId,
+                    playbackStartsAt);
         }
 
-        MatchSession withDefaultClassSelections() {
+        MatchSession withDefaultLoadoutSelections() {
             return new MatchSession(
                     matchId,
                     simulationSeed,
@@ -1783,19 +2225,20 @@ public class MatchService {
                                     player.principalName(),
                                     player.slot(),
                                     player.finished(),
-                                    player.modelSubmissionId(),
+                                    player.botSubmissionId(),
                                     player.roundWins(),
-                                    player.selectedClass() != null ? player.selectedClass() : "custom::0,0,0,0",
+                                    player.selectedLoadout() != null ? player.selectedLoadout() : "custom::0,0,0,0",
                                     true))
                             .toList(),
-                    classSelectionEndsAt,
+                    loadoutSelectionEndsAt,
                     objectPlacementEndsAt,
                     countdownEndsAt,
-                    trainingEndsAt,
+                    testingEndsAt,
                     roundNumber,
                     winsRequired,
                     obstacles,
-                    objectPlacementsByUserId);
+                    objectPlacementsByUserId,
+                    playbackStartsAt);
         }
 
         MatchSession withObjectPlacement(Instant nextObjectPlacementEndsAt) {
@@ -1803,14 +2246,15 @@ public class MatchService {
                     matchId,
                     simulationSeed,
                     players,
-                    classSelectionEndsAt,
+                    loadoutSelectionEndsAt,
                     nextObjectPlacementEndsAt,
                     null,
                     null,
                     roundNumber,
                     winsRequired,
                     List.of(),
-                    Map.of());
+                    Map.of(),
+                    null);
         }
 
         MatchSession withObjectPlacements(UUID userId, List<MatchPlaybackDTO.ObstaclePlacementDTO> objects) {
@@ -1820,17 +2264,18 @@ public class MatchService {
                     matchId,
                     simulationSeed,
                     players,
-                    classSelectionEndsAt,
+                    loadoutSelectionEndsAt,
                     objectPlacementEndsAt,
                     countdownEndsAt,
-                    trainingEndsAt,
+                    testingEndsAt,
                     roundNumber,
                     winsRequired,
                     obstacles,
-                    Map.copyOf(placements));
+                    Map.copyOf(placements),
+                    playbackStartsAt);
         }
 
-        MatchSession withCountdown(Instant nextCountdownEndsAt, Instant nextTrainingEndsAt) {
+        MatchSession withCountdown(Instant nextCountdownEndsAt, Instant nextTestingEndsAt) {
             return new MatchSession(
                     matchId,
                     simulationSeed,
@@ -1841,19 +2286,36 @@ public class MatchService {
                                     player.principalName(),
                                     player.slot(),
                                     player.finished(),
-                                    player.modelSubmissionId(),
+                                    player.botSubmissionId(),
                                     player.roundWins(),
-                                    player.selectedClass() != null ? player.selectedClass() : "melee",
+                                    player.selectedLoadout() != null ? player.selectedLoadout() : "melee",
                                     true))
                             .toList(),
-                    classSelectionEndsAt,
+                    loadoutSelectionEndsAt,
                     null,
                     nextCountdownEndsAt,
-                    nextTrainingEndsAt,
+                    nextTestingEndsAt,
                     roundNumber,
                     winsRequired,
                     obstacles,
-                    objectPlacementsByUserId);
+                    objectPlacementsByUserId,
+                    null);
+        }
+
+        MatchSession withPlaybackStartsAt(Instant deadline) {
+            return new MatchSession(
+                    matchId,
+                    simulationSeed,
+                    players,
+                    loadoutSelectionEndsAt,
+                    objectPlacementEndsAt,
+                    countdownEndsAt,
+                    testingEndsAt,
+                    roundNumber,
+                    winsRequired,
+                    obstacles,
+                    objectPlacementsByUserId,
+                    deadline);
         }
     }
 

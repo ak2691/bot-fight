@@ -63,6 +63,34 @@ export function AuthProvider({ children }) {
         return registeredUser;
     }, []);
 
+    const linkGoogleAccount = useCallback(async ({ email, password }) => {
+        const linkedUser = await authFetch("/api/auth/google/link-existing", {
+            method: "POST",
+            body: JSON.stringify({ email, password }),
+        });
+        setUser(linkedUser);
+        return linkedUser;
+    }, []);
+
+    const completeGoogleUsername = useCallback(async ({ username }) => {
+        const completedUser = await authFetch("/api/auth/google/username", {
+            method: "POST",
+            body: JSON.stringify({ username }),
+        });
+        setUser(completedUser);
+        return completedUser;
+    }, []);
+
+    const updateUsername = useCallback(async ({ username }) => {
+        const updatedProfile = await authFetch("/api/profile/username", {
+            method: "PUT",
+            body: JSON.stringify({ username }),
+        });
+        const currentUser = await authFetch("/api/auth/me", { method: "GET" });
+        setUser(currentUser);
+        return updatedProfile;
+    }, []);
+
     const logout = useCallback(async () => {
         const guest = await authFetch("/api/auth/logout", { method: "POST" });
         setUser(guest);
@@ -75,9 +103,12 @@ export function AuthProvider({ children }) {
         isAuthenticated: user?.authenticated === true,
         login,
         register,
+        linkGoogleAccount,
+        completeGoogleUsername,
+        updateUsername,
         logout,
         refreshUser,
-    }), [user, isLoading, login, register, logout, refreshUser]);
+    }), [user, isLoading, login, register, linkGoogleAccount, completeGoogleUsername, updateUsername, logout, refreshUser]);
 
     return (
         <AuthContext.Provider value={value}>

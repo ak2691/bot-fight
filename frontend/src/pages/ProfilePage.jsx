@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../auth/auth-context";
+import { usernameError } from "../auth/validation";
 import { apiUrl } from "../config/api";
 import AppNavbar from "../components/AppNavbar";
 
@@ -38,7 +39,7 @@ function historyUrl(page, filters) {
 const emptyFilters = { query: "", from: "", to: "" };
 
 export default function ProfilePage() {
-    const { user } = useAuth();
+    const { user, updateUsername } = useAuth();
     const [profile, setProfile] = useState(null);
     const [matches, setMatches] = useState([]);
     const [draftFilters, setDraftFilters] = useState(emptyFilters);
@@ -47,6 +48,8 @@ export default function ProfilePage() {
     const [historyPage, setHistoryPage] = useState(0);
     const [hasMore, setHasMore] = useState(false);
     const [filteredTotal, setFilteredTotal] = useState(0);
+    const [googleLinked, setGoogleLinked] = useState(false);
+    const [googleStatus, setGoogleStatus] = useState("loading");
     const [status, setStatus] = useState("loading");
 
     const loadProfile = useCallback(async () => {
@@ -56,22 +59,32 @@ export default function ProfilePage() {
                 fetch(apiUrl("/api/profile"), { credentials: "include" }),
                 fetch(historyUrl(0, emptyFilters), { credentials: "include" }),
             ]);
-            if (!profileResponse.ok || !historyResponse.ok) throw new Error("profile request failed");
-            const [nextProfile, history] = await Promise.all([
+            const googleResponse = await fetch(apiUrl("/api/auth/google/status"), { credentials: "include" });
+            if (!profileResponse.ok || !historyResponse.ok || !googleResponse.ok) throw new Error("profile request failed");
+            const [nextProfile, history, google] = await Promise.all([
                 profileResponse.json(),
                 historyResponse.json(),
+                googleResponse.json(),
             ]);
             setProfile(nextProfile);
             setMatches(history.matches);
             setHistoryPage(0);
             setHasMore(history.hasMore);
             setFilteredTotal(history.totalMatches);
+            setGoogleLinked(google.linked === true);
+            setGoogleStatus("ready");
             setHistoryStatus("ready");
             setStatus("ready");
         } catch {
             setStatus("error");
         }
     }, []);
+
+    const saveUsername = useCallback(async (username) => {
+        const updatedProfile = await updateUsername({ username });
+        setProfile((current) => current ? { ...current, username: updatedProfile.username } : current);
+        return updatedProfile;
+    }, [updateUsername]);
 
     useEffect(() => {
         void loadProfile();
@@ -133,6 +146,9 @@ export default function ProfilePage() {
                         historyStatus={historyStatus}
                         hasMore={hasMore}
                         filteredTotal={filteredTotal}
+                        googleLinked={googleLinked}
+                        googleStatus={googleStatus}
+                        onUsernameSaved={saveUsername}
                         onApplyFilters={applyFilters}
                         onClearFilters={clearFilters}
                         onLoadMore={() => void requestHistory(historyPage + 1, activeFilters, true)}
@@ -178,6 +194,9 @@ function ProfileContent({
     historyStatus,
     hasMore,
     filteredTotal,
+    googleLinked,
+    googleStatus,
+    onUsernameSaved,
     onApplyFilters,
     onClearFilters,
     onLoadMore,
@@ -203,6 +222,32 @@ function ProfileContent({
                         <Stat label="Draws" value={profile.draws} tone="text-amber-300" />
                     </dl>
                 </div>
+                <UsernameEditor username={profile.username} onSave={onUsernameSaved} />
+            </section>
+
+            <section className="flex flex-col gap-5 rounded-2xl border border-slate-700/80 bg-[#091521ed] p-6 shadow-[0_18px_60px_rgba(0,0,0,.2)] sm:flex-row sm:items-center sm:justify-between sm:p-8">
+                <div>
+                    <p className="font-mono text-[10px] font-bold tracking-[.2em] text-cyan-400">CONNECTED SIGN-IN</p>
+                    <h2 className="mt-2 text-xl font-bold text-white">Google account</h2>
+                    <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-400">
+                        {googleLinked
+                            ? "Your Google account is linked and can be used to sign in."
+                            : "Link Google to this account so you can use either sign-in method."}
+                    </p>
+                </div>
+                {googleStatus === "ready" && (
+                    googleLinked ? (
+                        <span className="rounded border border-emerald-400/40 bg-emerald-950/30 px-4 py-2 text-sm font-bold text-emerald-300">Linked</span>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={() => window.location.assign(apiUrl("/api/auth/google/link"))}
+                            className="border border-cyan-400/50 bg-cyan-950/30 px-5 py-2.5 text-sm font-bold text-cyan-200 hover:border-cyan-300"
+                        >
+                            Link Google account
+                        </button>
+                    )
+                )}
             </section>
 
             <section className="overflow-hidden rounded-2xl border border-cyan-900/80 bg-[#091521ed] shadow-[0_18px_60px_rgba(0,0,0,.24)]">
@@ -291,6 +336,71 @@ function ProfileContent({
                     </div>
                 )}
             </section>
+        </div>
+    );
+}
+
+function UsernameEditor({ username, onSave }) {
+    const [isEditing, setIsEditing] = useState(false);
+    const [draft, setDraft] = useState(username ?? "");
+    const [error, setError] = useState(null);
+    const [isSaving, setIsSaving] = useState(false);
+
+    useEffect(() => {
+        setDraft(username ?? "");
+    }, [username]);
+
+    const handleSubmit = async (event) => {
+        event.preventDefault();
+        setError(null);
+        const validationError = usernameError(draft);
+        if (validationError) {
+            setError(validationError);
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            await onSave(draft.trim());
+            setIsEditing(false);
+        } catch (submissionError) {
+            setError(submissionError.message);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    return (
+        <div className="mt-7 border-t border-cyan-900/70 pt-5">
+            {!isEditing ? (
+                <button type="button" onClick={() => { setError(null); setIsEditing(true); }} className="border border-cyan-400/50 bg-cyan-950/30 px-4 py-2 text-sm font-bold text-cyan-200 hover:border-cyan-300">
+                    Change username
+                </button>
+            ) : (
+                <form onSubmit={handleSubmit} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <label className="block min-w-0 flex-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">New username</span>
+                        <input
+                            value={draft}
+                            onChange={(event) => setDraft(event.target.value)}
+                            maxLength={20}
+                            pattern="[A-Za-z0-9_-]+"
+                            autoFocus
+                            className="mt-1 h-11 w-full rounded-lg border border-slate-700 bg-[#07111b] px-4 text-sm text-white outline-none focus:border-cyan-400/70"
+                        />
+                    </label>
+                    <div className="flex gap-2">
+                        <button type="submit" disabled={isSaving} className="h-11 border border-cyan-400/50 bg-cyan-950/30 px-4 text-sm font-bold text-cyan-200 hover:border-cyan-300 disabled:opacity-50">
+                            {isSaving ? "Saving..." : "Save"}
+                        </button>
+                        <button type="button" onClick={() => { setDraft(username ?? ""); setError(null); setIsEditing(false); }} className="h-11 border border-slate-600 bg-slate-900/40 px-4 text-sm text-slate-300">
+                            Cancel
+                        </button>
+                    </div>
+                </form>
+            )}
+            {error && <p className="mt-2 text-sm text-rose-300">{error}</p>}
+            {!error && isEditing && <p className="mt-2 text-xs text-slate-500">3–20 characters: letters, numbers, underscores, and hyphens only.</p>}
         </div>
     );
 }

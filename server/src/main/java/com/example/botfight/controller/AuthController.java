@@ -2,8 +2,13 @@ package com.example.botfight.controller;
 
 import com.example.botfight.DTO.AuthRequestDTO;
 import com.example.botfight.DTO.AuthUserDTO;
+import com.example.botfight.DTO.GoogleAuthStatusDTO;
+import com.example.botfight.DTO.GoogleLinkRequestDTO;
+import com.example.botfight.DTO.UsernameRequestDTO;
 import com.example.botfight.service.AuthException;
 import com.example.botfight.service.AuthService;
+import com.example.botfight.service.GoogleAuthService;
+import java.io.IOException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.Map;
@@ -24,9 +29,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final GoogleAuthService googleAuthService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, GoogleAuthService googleAuthService) {
         this.authService = authService;
+        this.googleAuthService = googleAuthService;
     }
 
     @PostMapping("/register")
@@ -41,6 +48,34 @@ public class AuthController {
             @RequestBody AuthRequestDTO request,
             HttpServletRequest httpRequest) {
         return ResponseEntity.ok(authService.login(request, httpRequest));
+    }
+
+    @PostMapping("/google/link-existing")
+    public ResponseEntity<AuthUserDTO> linkExistingGoogleAccount(
+            @RequestBody GoogleLinkRequestDTO request,
+            HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(googleAuthService.completePendingLink(request, httpRequest));
+    }
+
+    @PostMapping("/google/username")
+    public ResponseEntity<AuthUserDTO> completeGoogleUsername(
+            @RequestBody UsernameRequestDTO request,
+            HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(googleAuthService.completePendingUsername(request, httpRequest));
+    }
+
+    @GetMapping("/google/link")
+    public void beginGoogleLink(
+            Authentication authentication,
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) throws IOException {
+        googleAuthService.beginLink(authentication, httpRequest);
+        httpResponse.sendRedirect("/oauth2/authorization/google");
+    }
+
+    @GetMapping("/google/status")
+    public GoogleAuthStatusDTO googleStatus(Authentication authentication) {
+        return new GoogleAuthStatusDTO(googleAuthService.isGoogleLinked(authentication));
     }
 
     @PostMapping("/logout")

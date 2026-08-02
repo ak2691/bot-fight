@@ -11,7 +11,9 @@ const PROJECTILE_TRAILS = Object.freeze({
 });
 
 export function isFighterShape(shape) {
-    return shape?.id === "main" || shape?.type === "opponentModel";
+    return shape?.id === "main"
+        || shape?.type === "opponentModel"
+        || (shape?.userId != null && shape?.slot != null);
 }
 
 export function fighterColorRole(fighter) {

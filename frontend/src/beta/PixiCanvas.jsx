@@ -100,8 +100,12 @@ export default function PixiCanvas({
     }, []);
 
     const fighters = shapes.filter(isFighterShape);
-    const playerFighter = fighters.find((fighter) => fighter.id === "main");
-    const opponentFighter = fighters.find((fighter) => fighter.id === "opponent-model");
+    const playerFighter = fighters.find((fighter) => fighter.id === "main")
+        ?? fighters.find((fighter) => Number(fighter.slot) === 1)
+        ?? fighters[0];
+    const opponentFighter = fighters.find((fighter) => fighter.id === "opponent-model")
+        ?? fighters.find((fighter) => Number(fighter.slot) === 2 && fighter.id !== playerFighter?.id)
+        ?? fighters.find((fighter) => fighter.id !== playerFighter?.id);
     const opponentStatusFighter = opponentFighter
         ?? (showMissingOpponentStatus ? { id: "opponent-model", slot: 2, abilities: [], opponentUsername: "OPPONENT" } : null);
     const layoutClass = fixedLayout

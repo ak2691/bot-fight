@@ -39,4 +39,4 @@ export const HEALTH_PACK_HEAL = 50;
 export const DAMAGE_ZONE_SIZE = 128;
 export const DAMAGE_ZONE_ENTRY_DAMAGE = 25;
 export const DAMAGE_ZONE_DAMAGE_MULTIPLIER = 1.5;
-export const SESSION_KEY = "arena-training-session-id";
+export const SESSION_KEY = "arena-testing-session-id";

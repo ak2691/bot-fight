@@ -23,7 +23,7 @@ export const MAIN_SHAPE = {
     y: ARENA_HEIGHT_UNITS / 2,
     size: 60,
     rotation: 90,
-    combatClass: encodeBotLoadout(DEFAULT_BOT_LOADOUT),
+    combatLoadout: encodeBotLoadout(DEFAULT_BOT_LOADOUT),
     loadout: DEFAULT_BOT_LOADOUT,
     abilities: [],
     hp: 100,
@@ -68,7 +68,7 @@ export const MAIN_SHAPE = {
 export function buildOpponentShape(opponent) {
     const loadout = opponent?.loadout
         ? normalizedBotLoadout(opponent.loadout)
-        : decodeBotLoadout(opponent?.selectedLoadout ?? opponent?.selectedClass);
+        : decodeBotLoadout(opponent?.selectedLoadout ?? opponent?.selectedLoadout);
     const loadoutId = encodeBotLoadout(loadout);
     const abilities = loadout.abilities;
     const stats = botStatsForLoadout(loadout);
@@ -82,7 +82,7 @@ export function buildOpponentShape(opponent) {
         y: DUEL_SLOT_TWO_Y,
         size: 64,
         rotation: 0,
-        combatClass: loadoutId,
+        combatLoadout: loadoutId,
         loadout,
         abilities,
         hp: stats.maxHp,
@@ -146,22 +146,24 @@ export function buildMatchSpawnShapes(matchContext) {
     const fighters = [
         resetFighterShape({
             ...MAIN_SHAPE,
-            combatClass: encodeBotLoadout(matchContext?.loadout ?? DEFAULT_BOT_LOADOUT),
+            combatLoadout: encodeBotLoadout(matchContext?.loadout ?? DEFAULT_BOT_LOADOUT),
             loadout: matchContext?.loadout ?? DEFAULT_BOT_LOADOUT,
             x: playerSlot === 1 ? DUEL_SLOT_ONE_X : DUEL_SLOT_TWO_X,
             y: playerSlot === 1 ? DUEL_SLOT_ONE_Y : DUEL_SLOT_TWO_Y,
             rotation: playerSlot === 1 ? 180 : 0,
             slot: playerSlot,
+            userId: matchContext?.player?.userId ?? null,
             username: matchContext?.player?.username ?? "Player",
         }),
         resetFighterShape({
             ...buildOpponentShape(matchContext?.opponent),
-            combatClass: encodeBotLoadout(matchContext?.opponentLoadout ?? DEFAULT_BOT_LOADOUT),
+            combatLoadout: encodeBotLoadout(matchContext?.opponentLoadout ?? DEFAULT_BOT_LOADOUT),
             loadout: matchContext?.opponentLoadout ?? DEFAULT_BOT_LOADOUT,
             x: opponentSlot === 1 ? DUEL_SLOT_ONE_X : DUEL_SLOT_TWO_X,
             y: opponentSlot === 1 ? DUEL_SLOT_ONE_Y : DUEL_SLOT_TWO_Y,
             rotation: opponentSlot === 1 ? 180 : 0,
             slot: opponentSlot,
+            userId: matchContext?.opponent?.userId ?? null,
             username: matchContext?.opponent?.username ?? "Opponent",
         }),
     ];
@@ -181,14 +183,14 @@ export function cloneShapes(shapes) {
 }
 
 export function resetFighterShape(shape) {
-    const sandbox = String(shape.combatClass).startsWith("sandbox:");
-    const loadout = sandbox ? decodeSandboxLoadout(shape.combatClass) : normalizedBotLoadout(shape.loadout
-        ?? (String(shape.combatClass).startsWith("custom:") ? decodeBotLoadout(shape.combatClass) : DEFAULT_BOT_LOADOUT));
+    const sandbox = String(shape.combatLoadout).startsWith("sandbox:");
+    const loadout = sandbox ? decodeSandboxLoadout(shape.combatLoadout) : normalizedBotLoadout(shape.loadout
+        ?? (String(shape.combatLoadout).startsWith("custom:") ? decodeBotLoadout(shape.combatLoadout) : DEFAULT_BOT_LOADOUT));
     const abilities = loadout.abilities;
     const stats = sandbox ? botStatsForSandboxLoadout(loadout) : botStatsForLoadout(loadout);
     return withoutFighterStatuses({
         ...shape,
-        combatClass: sandbox ? shape.combatClass : encodeBotLoadout(loadout),
+        combatLoadout: sandbox ? shape.combatLoadout : encodeBotLoadout(loadout),
         loadout,
         abilities,
         spawnX: shape.spawnX ?? shape.x,
@@ -248,8 +250,8 @@ export function resetFighterShape(shape) {
     });
 }
 
-export function buildAutoPlayStartShapes(currentShapes, matchContext, isMatchTraining) {
-    const fallbackShapes = isMatchTraining ? buildMatchSpawnShapes(matchContext) : [];
+export function buildAutoPlayStartShapes(currentShapes, matchContext, isMatchTesting) {
+    const fallbackShapes = isMatchTesting ? buildMatchSpawnShapes(matchContext) : [];
     const fallbackMain = fallbackShapes.find((shape) => shape.id === "main");
     const nextShapes = cloneShapes(currentShapes).filter((shape) => shape.id === "main" || shape.id === "opponent-model");
     if (!nextShapes.some((shape) => shape.id === "main")) {
@@ -260,9 +262,9 @@ export function buildAutoPlayStartShapes(currentShapes, matchContext, isMatchTra
 
 export function resetArenaStartShapes(shapes, selectedLoadout, opponentLoadout) {
     return shapes.map((shape) => {
-        if (shape.id === "main") return resetFighterShape({ ...shape, x: shape.spawnX ?? shape.x, y: shape.spawnY ?? shape.y, combatClass: selectedLoadout });
+        if (shape.id === "main") return resetFighterShape({ ...shape, x: shape.spawnX ?? shape.x, y: shape.spawnY ?? shape.y, combatLoadout: selectedLoadout });
         if (shape.id === "opponent-model") {
-            return resetFighterShape({ ...shape, x: shape.spawnX ?? shape.x, y: shape.spawnY ?? shape.y, combatClass: opponentLoadout, locked: false });
+            return resetFighterShape({ ...shape, x: shape.spawnX ?? shape.x, y: shape.spawnY ?? shape.y, combatLoadout: opponentLoadout, locked: false });
         }
         return cloneShape(shape);
     });

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/auth-context";
+import { apiUrl } from "../config/api";
+import { passwordError, usernameError } from "../auth/validation";
 import AuthLayout from "./AuthLayout";
 
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -32,12 +34,14 @@ export default function RegisterPage() {
             setError("Enter a valid email address.");
             return;
         }
-        if (username.trim().length < 3 || username.trim().length > 30) {
-            setError("Username must be between 3 and 30 characters.");
+        const usernameValidationError = usernameError(username);
+        if (usernameValidationError) {
+            setError(usernameValidationError);
             return;
         }
-        if (password.length === 0) {
-            setError("Enter a password.");
+        const passwordValidationError = passwordError(password);
+        if (passwordValidationError) {
+            setError(passwordValidationError);
             return;
         }
 
@@ -55,7 +59,7 @@ export default function RegisterPage() {
     return (
         <AuthLayout
             title="Register"
-            subtitle="Create a pilot account for model submissions and match history."
+            subtitle="Create a pilot account for bot submissions and match history."
             footer={<>Already registered? <Link className="text-cyan-300 hover:text-cyan-100" to="/login">Login</Link></>}
         >
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -73,6 +77,8 @@ export default function RegisterPage() {
                     <input
                         value={username}
                         onChange={(event) => setUsername(event.target.value)}
+                        maxLength={20}
+                        pattern="[A-Za-z0-9_-]+"
                         className="mt-1 w-full rounded border border-border-lo bg-zinc-950 px-3 py-2 text-sm text-ink-white outline-none focus:border-cyan-500"
                         autoComplete="username"
                     />
@@ -96,6 +102,17 @@ export default function RegisterPage() {
                     {isSubmitting ? "REGISTERING" : "REGISTER"}
                 </button>
             </form>
+            <div className="my-5 flex items-center gap-3 text-[11px] uppercase tracking-widest text-ink-muted">
+                <span className="h-px flex-1 bg-border-lo" />
+                <span>or</span>
+                <span className="h-px flex-1 bg-border-lo" />
+            </div>
+            <a
+                href={apiUrl("/oauth2/authorization/google")}
+                className="block w-full rounded border border-slate-600 bg-slate-900 px-4 py-2 text-center text-sm font-bold text-slate-100 hover:border-cyan-400 hover:text-cyan-100"
+            >
+                Sign up with Google
+            </a>
         </AuthLayout>
     );
 }

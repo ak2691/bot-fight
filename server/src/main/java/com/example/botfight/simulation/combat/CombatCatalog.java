@@ -14,7 +14,7 @@ public class CombatCatalog {
         return DUEL_V1;
     }
 
-    public CombatRules forSubmittedClass(String id) {
+    public CombatRules forSubmittedLoadout(String id) {
         return switch (id == null ? "custom" : id) {
             case "melee" -> LEGACY_MELEE;
             case "ranged" -> LEGACY_RANGED;

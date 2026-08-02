@@ -45,7 +45,6 @@ public class DuelSimulationService {
     private static final double MOVE_BRAKE_ACCELERATION_PER_TICK = 8.0;
     private static final double TURN_SPEED_DEGREES = 18.0;
     private static final int HEALTH_PACK_SIZE = 42;
-    private static final int HEALTH_PACK_HEAL = 50;
     private static final String VANGUARD_BEACON_TYPE = "vanguardBeacon";
     private static final String ASSAULT_BOOST_TYPE = "assaultBoost";
     private static final String TEMPO_BOOST_TYPE = "tempoBoost";
@@ -61,11 +60,9 @@ public class DuelSimulationService {
     private static final int HEALTH_PACK_MAX_CLAIMS = 2;
     private static final double PROJECTILE_WALL_HEAL_RANGE = 75.0;
     private static final int PROJECTILE_WALL_HEAL_PER_SECOND = 3;
-    private static final int DAMAGE_ZONE_SIZE = 128;
     private static final String PROJECTILE_WALL_TYPE = "projectileWall";
     private static final int PROJECTILE_WALL_LENGTH = 120;
     private static final double PROJECTILE_WALL_THICKNESS = 8.0;
-    private static final int DAMAGE_ZONE_ENTRY_DAMAGE = 25;
     private static final double DAMAGE_ZONE_DAMAGE_MULTIPLIER = 1.5;
     private static final int ATTACK_COOLDOWN_MS = 1000;
     private static final int ATTACK_ACTIVE_MS = 400;
@@ -81,9 +78,7 @@ public class DuelSimulationService {
     private static final int DASH_DURATION_MS = 1000;
     // Ten 100 ms movement steps over the one-second dash produce 400 arena units.
     private static final double DASH_SPEED = 40.0;
-    private static final int MAX_PLAYER_OBJECT_SLOTS = 6;
-    private static final int CENTER_OBJECT_COUNT = 1;
-    private static final int MAX_ARENA_OBJECTS = CENTER_OBJECT_COUNT + MAX_PLAYER_OBJECT_SLOTS;
+    private static final int MAX_ARENA_OBJECTS = 7;
     private static final int MAX_LOGIC_BLOCKS = 100;
     private static final int MAX_TOTAL_CONDITIONS = 300;
     private static final int CUSTOM_INTEGER_LIMIT = 99_999;
@@ -105,6 +100,28 @@ public class DuelSimulationService {
             int arenaHeight,
             List<DuelFighterRequest> fighterRequests) {
         return List.of();
+    }
+
+    /**
+     * Builds the server-authoritative state that exists before the first replay
+     * tick.  Preparation must use the same fighter initialization as the
+     * simulation itself so IDs, slots, loadouts, resources, and cooldown maps
+     * cannot drift between the preparation screen and replay frames.
+     */
+    public MatchPlaybackDTO.ArenaStateDTO buildInitialState(DuelSimulationRequest request) {
+        if (request == null || request.fighters() == null || request.fighters().size() != 2) {
+            throw new IllegalArgumentException("duel-v1 requires exactly two fighters");
+        }
+        int width = request.arena() != null ? request.arena().width() : ARENA_WIDTH_UNITS;
+        int height = request.arena() != null ? request.arena().height() : ARENA_HEIGHT_UNITS;
+        List<Fighter> fighters = request.fighters().stream()
+                .map(this::fighterFromRequest)
+                .toList();
+        return new MatchPlaybackDTO.ArenaStateDTO(
+                width,
+                height,
+                fighters.stream().map(DuelSimulationService::toPlacement).toList(),
+                List.of());
     }
 
     public MatchPlaybackDTO simulate(DuelSimulationRequest request) {
@@ -167,7 +184,6 @@ public class DuelSimulationService {
                     .map(fighter -> fighter.thrownFireball)
                     .filter(fireball -> fireball != null)
                     .forEach(fireballs::add);
-            obstacles = applyObstacleEffects(fighters, obstacles, firstAction, secondAction);
             GrenadeUpdate grenadeUpdate = updateGrenades(grenades, fighters, obstacles, arena);
             grenades = grenadeUpdate.grenades();
             obstacles = grenadeUpdate.obstacles();
@@ -188,14 +204,8 @@ public class DuelSimulationService {
                 applyDamageFrom(fighters.get(1), fighters.get(0), incomingAttackDamage(fighters.get(1), fighters.get(0)));
             }
 
-            GunReflection firstGunReflection = reflectGunShot(fighters.get(0), fighters, obstacles);
-            obstacles = firstGunReflection.obstacles();
-            GunReflection secondGunReflection = reflectGunShot(fighters.get(1), fighters, obstacles);
-            obstacles = secondGunReflection.obstacles();
-            applyGunReflectionDamage(fighters.get(0), firstGunReflection, fighters);
-            applyGunReflectionDamage(fighters.get(1), secondGunReflection, fighters);
-            boolean firstGunHit = !firstGunReflection.reflected() && gunHits(fighters.get(0), fighters.get(1), obstacles);
-            boolean secondGunHit = !secondGunReflection.reflected() && gunHits(fighters.get(1), fighters.get(0), obstacles);
+            boolean firstGunHit = gunHits(fighters.get(0), fighters.get(1));
+            boolean secondGunHit = gunHits(fighters.get(1), fighters.get(0));
             var firstGunShield = firstGunHit ? resolveShield(fighters.get(1), fighters.get(0).x, fighters.get(0).y, "fire_gun") : AbilityEntitySystem.ShieldResult.none();
             var secondGunShield = secondGunHit ? resolveShield(fighters.get(0), fighters.get(1).x, fighters.get(1).y, "fire_gun") : AbilityEntitySystem.ShieldResult.none();
             boolean firstGunLanded = firstGunHit && !firstGunShield.prevents(EffectType.DAMAGE);
@@ -265,8 +275,8 @@ public class DuelSimulationService {
         fighter.brain = request.brain();
         initializeCustomVariables(fighter);
         boolean hasLoadout = request.brain() != null && request.brain().path("loadout").isObject();
-        fighter.combatClass = hasLoadout ? "custom" : hasText(request.selectedClass()) ? request.selectedClass() : "melee";
-        fighter.abilities = readAbilities(request.brain(), fighter.combatClass);
+        fighter.combatLoadout = hasLoadout ? "custom" : hasText(request.selectedLoadout()) ? request.selectedLoadout() : "melee";
+        fighter.abilities = readAbilities(request.brain(), fighter.combatLoadout);
         fighter.maxHp = hasLoadout ? 100 + readStatPoints(request.brain(), "maxHp") * 10 : combatRules(fighter).maxHp();
         fighter.moveSpeed = hasLoadout ? 8.0 + readStatPoints(request.brain(), "moveSpeed") : combatRules(fighter).moveSpeed();
         fighter.attackDamageMultiplier = 1.0 + readStatPoints(request.brain(), "attackDamage") * 0.1;
@@ -355,7 +365,7 @@ public class DuelSimulationService {
     }
 
     private CombatRules combatRules(Fighter fighter) {
-        return combatCatalog.forSubmittedClass(fighter.combatClass);
+        return combatCatalog.forSubmittedLoadout(fighter.combatLoadout);
     }
 
     private static int selectedAbilityAmmo(Fighter fighter, String ability) {
@@ -868,8 +878,6 @@ public class DuelSimulationService {
             case "opponent.y" -> StateValue.number(opponent.y);
             case "my.slowedMs" -> StateValue.number(millisecondsToSeconds(player.slowedMs));
             case "opponent.slowedMs" -> StateValue.number(millisecondsToSeconds(opponent.slowedMs));
-            case "my.coreHp" -> StateValue.number(coreHp(obstacles, player.slot));
-            case "opponent.coreHp" -> StateValue.number(coreHp(obstacles, opponent.slot));
             case "target.distance" -> StateValue.number(target != null
                     ? Math.hypot(target.x() - player.x, target.y() - player.y)
                     : Double.POSITIVE_INFINITY);
@@ -976,9 +984,6 @@ public class DuelSimulationService {
             return candidates.size() >= ordinal ? candidates.get(ordinal - 1) : null;
         }
         if ("opponent".equals(target)) return opponent;
-        String resolvedTarget = "my_core".equals(target) ? "core_" + player.slot
-                : "opponent_core".equals(target) ? "core_" + opponent.slot
-                : "defender_core".equals(target) ? "core_1" : target;
         if ("opponent_grenade".equals(target)) {
             return grenades.stream()
                     .filter(grenade -> opponent.userId.equals(grenade.ownerUserId()))
@@ -1013,13 +1018,7 @@ public class DuelSimulationService {
                     .min(Comparator.comparingDouble(obstacle -> Math.hypot(obstacle.x() - player.x, obstacle.y() - player.y)))
                     .orElse(null);
         }
-        return obstacles.stream()
-                .filter(obstacle -> isPlaceableObstacleType(obstacle.type)
-                        || WALL_CORE_TYPE.equals(obstacle.type)
-                        || "core".equals(obstacle.type))
-                .filter(obstacle -> obstacle.id.equals(resolvedTarget))
-                .findFirst()
-                .orElse(null);
+        return null;
     }
 
     private static List<Entity> matchingTargets(String target, Fighter player, Fighter opponent, List<Obstacle> obstacles, List<Grenade> grenades, List<Fireball> fireballs) {
@@ -1075,9 +1074,6 @@ public class DuelSimulationService {
         return new TargetPoint(target.x() + block.targetOffsetX(), target.y() + block.targetOffsetY(), target.size());
     }
 
-    private static int coreHp(List<Obstacle> obstacles, int slot) {
-        return obstacles.stream().filter(obstacle -> obstacle.id.equals("core_" + slot)).mapToInt(Obstacle::hp).findFirst().orElse(0);
-    }
 
     private static boolean canDash(Fighter fighter) {
         return hasAbility(fighter, "dash");
@@ -1741,12 +1737,10 @@ public class DuelSimulationService {
     }
 
     private int incomingAttackDamage(Fighter attacker, Fighter defender) {
-        return (int) Math.round(combatRules(attacker).attackDamage()
-                * fighterDamageMultiplier(attacker)
-                * (defender.inDamageZone ? DAMAGE_ZONE_DAMAGE_MULTIPLIER : 1.0));
+        return (int) Math.round(combatRules(attacker).attackDamage() * fighterDamageMultiplier(attacker));
     }
 
-    private boolean gunHits(Fighter attacker, Fighter defender, List<Obstacle> obstacles) {
+    private boolean gunHits(Fighter attacker, Fighter defender) {
         if (!attacker.gunShotActive) return false;
         CombatRules spec = combatRules(attacker);
         if (!spec.canFireGun()) return false;
@@ -1762,8 +1756,7 @@ public class DuelSimulationService {
         double defenderRadius = defender.size / 2.0;
         return forwardDistance >= 0
                 && forwardDistance <= spec.gunRange() + defenderRadius
-                && Math.abs(sideDistance) <= defenderRadius
-                && !projectileWallBlocksSegment(attacker.x, attacker.y, defender.x, defender.y, 0, obstacles);
+                && Math.abs(sideDistance) <= defenderRadius;
     }
 
     private boolean stunHits(Fighter attacker, Fighter defender) {
@@ -2721,11 +2714,11 @@ public class DuelSimulationService {
                 round(fighter.y),
                 round(fighter.rotation),
                 fighter.hp,
-                fighter.combatClass,
+                fighter.combatLoadout,
                 fighter.attackActiveMs > 0 || fighter.gunShotActive || fighter.fireballActiveMs > 0 || fighter.stunActiveMs > 0,
                 fighter.blockActive,
-                "mage".equals(fighter.combatClass) ? fighter.fireballCharges : fighter.gunAmmo,
-                "mage".equals(fighter.combatClass) ? fighter.fireballReloadMs : fighter.gunReloadMs,
+                "mage".equals(fighter.combatLoadout) ? fighter.fireballCharges : fighter.gunAmmo,
+                "mage".equals(fighter.combatLoadout) ? fighter.fireballReloadMs : fighter.gunReloadMs,
                 fighter.shieldHp,
                 fighter.slowedMs,
                 fighter.stunnedMs,
@@ -3035,7 +3028,7 @@ public class DuelSimulationService {
             double y,
             Double rotation,
             int size,
-            String selectedClass,
+            String selectedLoadout,
             JsonNode brain) {
     }
 
@@ -3159,7 +3152,7 @@ public class DuelSimulationService {
         private double y;
         private double rotation;
         private int size;
-        private String combatClass;
+        private String combatLoadout;
         private JsonNode brain;
         private Set<String> abilities = Set.of();
         private int hp;

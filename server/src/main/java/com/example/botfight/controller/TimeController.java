@@ -2,7 +2,6 @@ package com.example.botfight.controller;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -18,7 +17,14 @@ public class TimeController {
     }
 
     @GetMapping
-    public Map<String, Instant> now() {
-        return Map.of("serverNow", Instant.now(clock));
+    public TimeSample now() {
+        Instant serverReceiveTime = Instant.now(clock);
+        Instant serverTransmitTime = Instant.now(clock);
+        return new TimeSample(serverReceiveTime, serverTransmitTime);
+    }
+
+    public record TimeSample(
+            Instant serverReceiveTime,
+            Instant serverTransmitTime) {
     }
 }

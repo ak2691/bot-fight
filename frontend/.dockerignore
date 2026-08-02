@@ -4,3 +4,6 @@ dist
 *.log
 npm-debug.log*
 pnpm-debug.log*
+.env
+.env.local
+.env.*.local

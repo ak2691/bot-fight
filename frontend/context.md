@@ -1,7 +1,7 @@
 # Frontend context
 
 Use this map for React, browser networking, deterministic brain editing, arena
-training, Pixi rendering, and replay presentation. For arena internals, continue
+testing, Pixi rendering, and replay presentation. For arena internals, continue
 to [`src/beta/context.md`](src/beta/context.md).
 
 ## Entry points and routes
@@ -23,11 +23,11 @@ Route UI and navigation bugs here first. Authentication behavior usually spans
 | --- | --- | --- |
 | App route or page UI | `src/pages/` and the app shell | relevant styles and route-loading area |
 | Login/session/CSRF | `src/auth/`, `src/security/` | server auth/security areas |
-| Matchmaking lifecycle/draft/object placement or match chat | `src/pages/`, `src/matchmaking/` | server matchmaking areas |
+| Matchmaking lifecycle/ability draft or match chat | `src/pages/`, `src/matchmaking/` | server matchmaking areas |
 | WebSocket framing/reconnect | `src/matchmaking/` | server WebSocket configuration and controller areas |
 | Logic evaluation/normalization | `src/logic/` | nearby tests and arena payload/loadout contracts |
 | Movement planning | `src/logic/` | arena geometry and constants areas |
-| Submission/training-session API | `src/logic/` API boundary modules | server DTO, controller, validation, and service areas |
+| Submission/testing-session API | `src/logic/` API boundary modules | server DTO, controller, validation, and service areas |
 | Arena, combat, loadout, Pixi | [`src/beta/context.md`](src/beta/context.md) | relevant docs via `docs/context.md` |
 | Authoritative replay display | `src/replay/` | arena presentation and server replay DTO areas |
 
@@ -48,7 +48,7 @@ destination or event shape changes as shared contracts.
 
 ## Arena boundary
 
-`src/beta/BetaModel.jsx` is the browser training orchestrator and
+`src/beta/BetaModel.jsx` is the browser testing orchestrator and
 `src/beta/PixiCanvas.jsx` presents arena state. Do not add gameplay authority to
 the renderer. The focused arena context maps combat, ECS, payload, loadout, and
 visual-state ownership.

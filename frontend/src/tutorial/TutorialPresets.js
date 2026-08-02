@@ -24,7 +24,7 @@ const move = (direction, target = "opponent") => ({ action: "move_walk", movemen
 const face = (target = "opponent") => ({ action: "rotate_toward_enemy", actionTarget: target });
 
 export function createEmptyTutorialBrain() {
-    return { version: "melee-logic-tree-v1", columns: [], blocks: [], clusters: [], customVariables: [] };
+    return { version: "bot-logic-tree-v1", columns: [], blocks: [], clusters: [], customVariables: [] };
 }
 
 function brain(columns) {
@@ -260,12 +260,12 @@ export function buildTutorialArenaShapes(step = 0) {
     const { playerY, opponentY, playerRotation } = scenario.spawn;
     const player = resetFighterShape({
         ...MAIN_SHAPE, username: "Your tutorial bot", x: 500, y: playerY, spawnX: 500, spawnY: playerY,
-        rotation: playerRotation, combatClass: scenario.playerLoadout,
+        rotation: playerRotation, combatLoadout: scenario.playerLoadout,
     });
     const opponent = resetFighterShape({
         ...buildOpponentShape({ username: "Tutorial opponent", selectedLoadout: scenario.opponentLoadout, slot: 2 }),
         x: 500, y: opponentY, spawnX: 500, spawnY: opponentY, rotation: 0,
-        combatClass: scenario.opponentLoadout, locked: true,
+        combatLoadout: scenario.opponentLoadout, locked: true,
     });
     return [player, scenario.opponentHp ? { ...opponent, hp: scenario.opponentHp, maxHp: scenario.opponentHp } : opponent];
 }

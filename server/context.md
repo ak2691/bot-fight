@@ -1,7 +1,7 @@
 # Server context
 
 The Java 21 / Spring Boot 4 application owns authenticated state, matchmaking,
-training deadlines, submission validation/persistence, and authoritative rated
+testing deadlines, submission validation/persistence, and authoritative rated
 simulation. Controllers should remain thin; business and ownership rules belong
 in services.
 
@@ -10,11 +10,11 @@ in services.
 All Java paths below are under
 `src/main/java/com/example/botfight/`.
 
-- `controller/`: REST and STOMP boundaries for auth, training sessions,
+- `controller/`: REST and STOMP boundaries for auth, testing sessions,
   submissions, time, coordinates, and matchmaking messages.
 - `DTO/`: request/response and replay boundary shapes.
 - `service/`: authentication, current-user lookup, FIFO matchmaking queue,
-  active-match lifecycle, match chat/rate limits, connection state, match persistence, training
+  active-match lifecycle, match chat/rate limits, connection state, match persistence, testing
   sessions, submission normalization/validation/rate limiting/persistence, and
   match simulation orchestration. Keep queue pairing separate from active-match
   rounds, reconnect deadlines, and result persistence.
@@ -36,8 +36,8 @@ All Java paths below are under
 | --- | --- | --- |
 | Auth/session/CSRF | `controller/`, `service/`, `config/`, `security/` | auth tests and frontend auth/security areas |
 | Matchmaking queue | matchmaking controller and queue service areas | matchmaking DTOs and frontend client area |
-| Active match, reconnect, round draft, placement, surrender, match chat | match lifecycle, connection, and persistence service areas | matchmaking controller, DTOs, repositories, and frontend client area |
-| Training deadline/session | training controller/service areas | domain/repository and submission binding |
+| Active match, reconnect, round draft, surrender, match chat | match lifecycle, connection, and persistence service areas | matchmaking controller, DTOs, repositories, and frontend client area |
+| Testing deadline/session | testing controller/service areas | domain/repository and submission binding |
 | Submission endpoint/persistence | submission controller/service areas | DTO, repository, and domain areas |
 | Brain/loadout boundary validation | validation service area | combat catalog, frontend schema, and focused tests |
 | Rated simulation orchestration | simulation service areas | replay DTO and matchmaking lifecycle |
@@ -48,7 +48,7 @@ All Java paths below are under
 ## Authority and validation rules
 
 - Bind rated submissions to the authenticated user, active match, and
-  server-issued training session.
+  server-issued testing session.
 - Normalize and bound schema versions, block/condition counts, priorities,
   identifiers, target/object slots, action/ability IDs, parameters, and payload
   lengths before persistence or simulation.

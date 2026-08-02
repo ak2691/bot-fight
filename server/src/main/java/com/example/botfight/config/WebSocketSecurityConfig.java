@@ -24,10 +24,9 @@ public class WebSocketSecurityConfig {
                 .simpDestMatchers(
                         "/app/matchmaking.join",
                         "/app/matchmaking.resume",
+                        "/app/matchmaking.accept",
                         "/app/matchmaking.leave",
-                        "/app/matchmaking.finish",
-                        "/app/matchmaking.selectClass",
-                        "/app/matchmaking.placeObjects",
+                        "/app/matchmaking.selectLoadout",
                         "/app/matchmaking.surrender",
                         "/app/matchmaking.chat").authenticated()
                 .simpSubscribeDestMatchers("/user/queue/matchmaking", "/user/queue/match-chat").authenticated()

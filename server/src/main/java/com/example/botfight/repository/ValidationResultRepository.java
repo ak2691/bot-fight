@@ -8,7 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ValidationResultRepository extends JpaRepository<ValidationResult, UUID> {
 
-    List<ValidationResult> findByModelSubmissionIdOrderByCreatedAtDesc(UUID modelSubmissionId);
+    List<ValidationResult> findByBotSubmissionIdOrderByCreatedAtDesc(UUID botSubmissionId);
 
     List<ValidationResult> findByStatusOrderByCreatedAtAsc(ValidationStatus status);
 }

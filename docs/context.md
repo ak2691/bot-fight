@@ -5,6 +5,8 @@ tests remain authoritative when a document is stale.
 
 ## Gameplay contract and implementation guides
 
+- [`MATCH_TIMING.md`](MATCH_TIMING.md): authoritative server deadlines,
+  Cristian clock conversion, and lifecycle countdown rules.
 - [`ABILITY_EFFECT_CONTRACT.md`](ABILITY_EFFECT_CONTRACT.md): declarative
   delivery/effect/shield model and browser/server ownership. Read for effect
   semantics, shield behavior, presentation boundaries, or contract review.
@@ -44,4 +46,3 @@ For a code review or audit, pair the checklist with the affected runtime map:
 - Keep each context file under 200 lines and use repository-relative links.
 - If code, tests, and docs disagree, verify current behavior and update the stale
   documentation in the same change when it is in scope.
-

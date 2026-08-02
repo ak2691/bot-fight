@@ -17,7 +17,7 @@ public class AppUser {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(nullable = false, length = 50)
+    @Column(length = 20)
     private String username;
 
     @Column(nullable = false, length = 255)

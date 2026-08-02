@@ -4,10 +4,14 @@ import { useAuth } from "../auth/auth-context";
 import { createMatchmakingClient } from "./stompClient";
 import { MatchmakingContext } from "./matchmaking-context";
 
+const QUEUE_ATTEMPT_BURST_LIMIT = 3;
+const QUEUE_ATTEMPT_WINDOW_MS = 5000;
+
 export default function MatchmakingProvider({ children }) {
     const navigate = useNavigate();
     const { isAuthenticated } = useAuth();
     const matchFoundRef = useRef(false);
+    const queueAttemptTimesRef = useRef([]);
     const [isQueueing, setIsQueueing] = useState(false);
     const [queueStartedAt, setQueueStartedAt] = useState(null);
     const [queueElapsed, setQueueElapsed] = useState(0);
@@ -15,9 +19,17 @@ export default function MatchmakingProvider({ children }) {
     const [foundMatch, setFoundMatch] = useState(null);
 
     const startQueue = useCallback(() => {
+        const now = Date.now();
+        const recentAttempts = queueAttemptTimesRef.current.filter(
+            (attemptedAt) => now - attemptedAt < QUEUE_ATTEMPT_WINDOW_MS);
+        if (recentAttempts.length >= QUEUE_ATTEMPT_BURST_LIMIT) {
+            setQueueError("Too many matchmaking attempts. Please wait before trying again.");
+            return;
+        }
+        queueAttemptTimesRef.current = [...recentAttempts, now];
         setQueueError(null);
         setQueueElapsed(0);
-        setQueueStartedAt(Date.now());
+        setQueueStartedAt(now);
         setIsQueueing(true);
     }, []);
 
@@ -71,13 +83,21 @@ export default function MatchmakingProvider({ children }) {
                     setIsQueueing(false);
                     return;
                 }
+                if (event.type === "MATCH_FOUND" && event.status === "MATCH_ACCEPT") {
+                    matchFoundRef.current = true;
+                    setQueueStartedAt(null);
+                    setQueueElapsed(0);
+                    setIsQueueing(false);
+                    navigate("/matchmaking", { state: { matchEvent: event } });
+                    return;
+                }
                 if (event.type === "MATCH_FOUND" && event.status === "MATCH_FOUND") {
                     matchFoundRef.current = true;
                     setFoundMatch(event);
                     return;
                 }
-                if (event.type === "MATCH_CLASS_SELECTION_READY"
-                    || (event.type === "MATCH_FOUND" && event.status === "CLASS_SELECT")) {
+                if (event.type === "MATCH_LOADOUT_SELECTION_READY"
+                    || (event.type === "MATCH_FOUND" && event.status === "LOADOUT_SELECT")) {
                     matchFoundRef.current = true;
                     setQueueStartedAt(null);
                     setQueueElapsed(0);

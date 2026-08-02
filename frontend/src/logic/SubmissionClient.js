@@ -1,17 +1,17 @@
 import {
     CLIENT_BUILD_VERSION,
-    MODEL_SUBMISSION_ENDPOINT,
-    TRAINING_SESSION_ENDPOINT,
+    BOT_SUBMISSION_ENDPOINT,
+    TESTING_SESSION_ENDPOINT,
 } from "./SubmissionContract.js";
 import { ensureCsrfHeaders } from "../security/csrf";
 import { API_BASE_URL } from "../config/api.js";
 import { normalizeMeleeStrategyConfiguration } from "./BotBrain.js";
 
-export async function buildModelSubmissionPayload({
+export async function buildBotSubmissionPayload({
     brain,
     matchId = null,
-    trainingSessionId,
-    selectedClass = "custom",
+    testingSessionId,
+    selectedLoadout = "custom",
     loadout = null,
 }) {
     const normalizedBrain = {
@@ -21,15 +21,15 @@ export async function buildModelSubmissionPayload({
 
     return {
         matchId,
-        trainingSessionId,
-        selectedClass,
+        testingSessionId,
+        selectedLoadout,
         clientBuildVersion: CLIENT_BUILD_VERSION,
         brain: normalizedBrain,
     };
 }
 
-export async function submitModelPayload(payload) {
-    const response = await fetch(MODEL_SUBMISSION_ENDPOINT, {
+export async function submitBotPayload(payload) {
+    const response = await fetch(BOT_SUBMISSION_ENDPOINT, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -45,16 +45,16 @@ export async function submitModelPayload(payload) {
         const validationErrors = Array.isArray(body.errors) && body.errors.length > 0
             ? `: ${body.errors.join(", ")}`
             : "";
-        throw new Error(`${body.message ?? `Model submission failed with ${response.status}`}${validationErrors}`);
+        throw new Error(`${body.message ?? `Bot submission failed with ${response.status}`}${validationErrors}`);
     }
 
     return body;
 }
 
-export async function createTrainingSession(matchId = null) {
+export async function createTestingSession(matchId = null) {
     const endpoint = matchId
-        ? `${TRAINING_SESSION_ENDPOINT}?matchId=${encodeURIComponent(matchId)}`
-        : TRAINING_SESSION_ENDPOINT;
+        ? `${TESTING_SESSION_ENDPOINT}?matchId=${encodeURIComponent(matchId)}`
+        : TESTING_SESSION_ENDPOINT;
     const response = await fetch(endpoint, {
         method: "POST",
         credentials: "include",
@@ -68,7 +68,7 @@ export async function createTrainingSession(matchId = null) {
     const body = responseText ? safeJson(responseText) : {};
 
     if (!response.ok) {
-        throw new Error(body.message ?? responseText ?? `Training session failed with ${response.status}`);
+        throw new Error(body.message ?? responseText ?? `Testing session failed with ${response.status}`);
     }
 
     return body;
@@ -82,12 +82,12 @@ function safeJson(text) {
     }
 }
 
-export async function fetchTrainingSessionDuration(trainingSessionId) {
-    const response = await fetch(`${TRAINING_SESSION_ENDPOINT}/${trainingSessionId}/duration`, {
+export async function fetchTestingSessionDuration(testingSessionId) {
+    const response = await fetch(`${TESTING_SESSION_ENDPOINT}/${testingSessionId}/duration`, {
         credentials: "include",
     });
     if (!response.ok) return null;
 
     const body = await response.json();
-    return body.trainingDurationMs ?? null;
+    return body.testingDurationMs ?? null;
 }

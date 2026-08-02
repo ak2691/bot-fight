@@ -18,7 +18,7 @@ class RequestPayloadLimitFilterTest {
     @Test
     void rejectsDeclaredPayloadLargerThanLimit() throws Exception {
         RequestPayloadLimitFilter filter = filterWithLimit(4);
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/model-submissions");
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/bot-submissions");
         request.setContent("12345".getBytes());
         MockHttpServletResponse response = new MockHttpServletResponse();
         MockFilterChain chain = new MockFilterChain();
@@ -33,7 +33,7 @@ class RequestPayloadLimitFilterTest {
     @Test
     void countsStreamingPayloadWhenContentLengthIsUnknown() throws Exception {
         RequestPayloadLimitFilter filter = filterWithLimit(4);
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/model-submissions") {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/bot-submissions") {
             @Override
             public long getContentLengthLong() {
                 return -1;

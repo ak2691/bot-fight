@@ -6,7 +6,7 @@ const STEPS = [
     {
         eyebrow: "01 · RIGHT TOOLBAR",
         title: "Arena controls",
-        body: "These controls change the training room.",
+        body: "These controls change the testing room.",
         tools: [
             ["play", "Run or stop the brain"],
             ["stats", "Heal and clear cooldowns"],

@@ -8,7 +8,7 @@ search within that area. Do not preload every context file.
 
 Bot Fight lets players assemble a structured deterministic bot brain, test it in
 a browser arena, and submit the normalized configuration for an authoritative
-fight. The React client owns editing, training feedback, matchmaking UI, Pixi
+fight. The React client owns editing, testing feedback, matchmaking UI, Pixi
 presentation, and replay display. The Spring application owns authentication,
 sessions, submissions, validation, matchmaking state, persistence, and rated
 `duel-v1` simulation.
@@ -22,10 +22,10 @@ timing, rounding, targeting, effects, loadout encoding, and replay shape.
 | Prompt concerns | Read next | Owning areas |
 | --- | --- | --- |
 | React routes, pages, auth, CSRF, frontend API calls | [`frontend/context.md`](frontend/context.md) | `frontend/src/pages/`, `auth/`, `security/` |
-| Training room, arena UI, Pixi, visuals, interpolation | [`frontend/context.md`](frontend/context.md), then [`frontend/src/beta/context.md`](frontend/src/beta/context.md) | `frontend/src/beta/` |
+| Testing room, arena UI, Pixi, visuals, interpolation | [`frontend/context.md`](frontend/context.md), then [`frontend/src/beta/context.md`](frontend/src/beta/context.md) | `frontend/src/beta/` |
 | Logic blocks, conditions, actions, targeting, brain normalization | [`frontend/context.md`](frontend/context.md); add [`server/context.md`](server/context.md) for submitted/rated behavior | `frontend/src/logic/`, server validation and simulation areas |
 | Matchmaking UI or WebSocket protocol | [`frontend/context.md`](frontend/context.md) and [`server/context.md`](server/context.md) | frontend matchmaking/page areas and server controller/service areas |
-| REST endpoints, auth, CSRF, training sessions, submissions | [`server/context.md`](server/context.md); add frontend context for callers | server controller, service, security, and DTO areas |
+| REST endpoints, auth, CSRF, testing sessions, submissions | [`server/context.md`](server/context.md); add frontend context for callers | server controller, service, security, and DTO areas |
 | Persistence, ownership, migrations | [`server/context.md`](server/context.md) | server domain, repository, and migration areas |
 | Rated fights, deterministic simulation, replay, combat parity | [`server/context.md`](server/context.md), [`frontend/src/beta/context.md`](frontend/src/beta/context.md), and [`docs/context.md`](docs/context.md) | server simulation and frontend arena/runtime areas |
 | Adding/changing abilities, effects, shields, arena entities | [`docs/context.md`](docs/context.md) first, then both runtime contexts | documentation and both gameplay runtime areas |

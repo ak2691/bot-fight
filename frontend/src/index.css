@@ -259,10 +259,10 @@ html,
   }
 }
 
-/* Keep the training controls and their editor modals on the same terminal-style
+/* Keep the testing controls and their editor modals on the same terminal-style
    typeface as the arena's bot stat readouts. */
-.training-mono,
-.training-mono * {
+.testing-mono,
+.testing-mono * {
   font-family: "Cousine", "Courier New", Courier, monospace !important;
 }
 

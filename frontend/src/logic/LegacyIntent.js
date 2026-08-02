@@ -15,33 +15,8 @@ export const INTENT_TYPES = Object.freeze([
 export const INTENT_TARGET_TYPES = Object.freeze([
     "none",
     "opponent",
-    "defender_core",
-    "wall_core_1",
-    "wall_core_2",
-    "wall_core_3",
     "opponent_grenade",
     "opponent_fireball",
-    "object_center",
-    "object_buff_1",
-    "object_buff_2",
-    "object_1",
-    "object_2",
-    "object_3",
-    "object_4",
-    "object_5",
-    "object_6",
-    "p1_object_1",
-    "p1_object_2",
-    "p1_object_3",
-    "p1_object_4",
-    "p1_object_5",
-    "p1_object_6",
-    "p2_object_1",
-    "p2_object_2",
-    "p2_object_3",
-    "p2_object_4",
-    "p2_object_5",
-    "p2_object_6",
 ]);
 
 export const MOVEMENT_STYLE_TYPES = Object.freeze([
@@ -118,11 +93,7 @@ const MOVEMENT_STYLE_BY_ACTION = Object.freeze({
 
 export function intentFromAction(actionId, actionTarget = "opponent") {
     const target = normalizeIntentTarget(actionTarget);
-    const objectTarget = target.startsWith("object_")
-        || /^p[12]_object_[1-6]$/.test(target)
-        || target.startsWith("wall_core_")
-        || target === "defender_core"
-        || target === "opponent_grenade"
+    const objectTarget = target === "opponent_grenade"
         || target === "opponent_fireball";
     const movementStyle = MOVEMENT_STYLE_BY_ACTION[actionId] ?? "stop";
     const dash = actionId?.startsWith("dash") ? 1 : 0;

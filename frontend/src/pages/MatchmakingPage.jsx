@@ -1,9 +1,12 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import BetaModel from "../beta/BetaModel";
 import AppNavbar from "../components/AppNavbar";
-import ArenaLoadingScreen from "../components/ArenaLoadingScreen";
+import ArenaLoadingScreen from "../components/ArenaLoadingScreen.jsx";
 import PixiCanvas from "../beta/PixiCanvas";
+import SimulationReplay from "../replay/SimulationReplay";
+import { matchReplayArenaLifecycle } from "../replay/arenaLifecycle.js";
+import { phaseDeadlineTimingForEvent, preparationTimingForEvent } from "../replay/preparationTiming.js";
 import {
     ASSAULT_BOOST_TYPE,
     BUFF_PICKUP_SIZE,
@@ -36,15 +39,20 @@ import {
     UTILITY_PLACEMENT_LIMIT,
 } from "../beta/modelPayloads/arenaConstants";
 import { MAIN_SHAPE, buildCoreShapes } from "../beta/modelPayloads/arenaShapes";
-import { getActiveMatchmakingClient } from "../matchmaking/stompClient";
+import {
+    disconnectActiveMatchmakingClient,
+    getEstimatedOneWayNetworkDelayMs,
+    getActiveMatchmakingClient,
+    getNetworkDelaySample,
+} from "../matchmaking/stompClient";
+import { monotonicEpochNowMs } from "../matchmaking/networkDelayEstimator.js";
+import { relativeLocalDeadlineMs } from "../matchmaking/relativeMatchTiming.js";
 import MatchChat from "../matchmaking/MatchChat";
 import { useMatchmaking } from "../matchmaking/matchmaking-context";
-import { apiUrl } from "../config/api";
 import { localReplaySchedule } from "../replay/replayPresentation.js";
 
-const SimulationReplay = lazy(() => import("../replay/SimulationReplay"));
-
-const ROUND_RESULT_HOLD_MS = 3500;
+const SUBMISSION_GRACE_MS = 2000;
+const COUNTDOWN_UPDATE_INTERVAL_MS = 250;
 
 function LoadoutStatIcon({ stat }) {
     const commonProps = {
@@ -69,144 +77,172 @@ function LoadoutStatIcon({ stat }) {
 
 function secondsRemaining(countdownEndsAt, maximum = Number.POSITIVE_INFINITY) {
     if (!countdownEndsAt) return 0;
-    return Math.min(maximum, Math.max(0, Math.ceil((countdownEndsAt - Date.now()) / 1000)));
+    return Math.min(maximum, Math.max(0, Math.ceil((countdownEndsAt - monotonicEpochNowMs()) / 1000)));
 }
 
-async function estimateServerClockOffset() {
-    try {
-        const startedAtMs = Date.now();
-        const response = await fetch(apiUrl("/api/time"), {
-            credentials: "include",
-        });
-        const receivedAtMs = Date.now();
-        if (!response.ok) return null;
-
-        const body = await response.json();
-        const serverNowMs = new Date(body.serverNow).getTime();
-        if (!Number.isFinite(serverNowMs)) return null;
-
-        const roundTripMs = receivedAtMs - startedAtMs;
-        const estimatedServerAtReceiveMs = serverNowMs + roundTripMs / 2;
-        return estimatedServerAtReceiveMs - receivedAtMs;
-    } catch {
-        return null;
-    }
+function visibleLoadoutSelectionDeadlineMs(deadlineMs, estimatedOneWayDelayMs = 0) {
+    if (deadlineMs == null) return deadlineMs;
+    const oneWayDelay = Number(estimatedOneWayDelayMs);
+    return Number(deadlineMs)
+        + (Number.isFinite(oneWayDelay) ? Math.max(0, oneWayDelay) : 0)
+        - SUBMISSION_GRACE_MS;
 }
 
-function toLocalDeadlineMs(targetTime, serverNow, receivedAtMs, serverClockOffsetMs) {
+function toLocalDeadlineMs(
+    targetTime,
+    serverNowTime,
+    localNowMs = monotonicEpochNowMs(),
+    estimatedOneWayDelayMs = 0,
+    visibleGraceMs = 0,
+) {
     if (!targetTime) return null;
 
-    const targetMs = new Date(targetTime).getTime();
-    const serverNowMs = serverNow ? new Date(serverNow).getTime() : null;
-    if (!Number.isFinite(targetMs)) return null;
-    if (Number.isFinite(serverClockOffsetMs)) return targetMs - serverClockOffsetMs;
-    if (!Number.isFinite(serverNowMs)) return targetMs;
-
-    return receivedAtMs + (targetMs - serverNowMs);
+    return relativeLocalDeadlineMs({
+        deadlineServerTime: targetTime,
+        serverTransmitTime: serverNowTime,
+        localReceiveTimeMs: localNowMs,
+        estimatedOneWayDelayMs,
+        visibleGraceMs,
+    });
 }
 
-function normalizeEventTimes(event, serverClockOffsetMs) {
-    const receivedAtMs = Date.now();
+function toLocalDurationDeadlineMs(durationMs, localNowMs, estimatedOneWayDelayMs = 0) {
+    const duration = Number(durationMs);
+    const oneWayDelay = Number(estimatedOneWayDelayMs);
+    if (!Number.isFinite(duration) || !Number.isFinite(Number(localNowMs))) return null;
+    return Number(localNowMs) + Math.max(0, duration - (Number.isFinite(oneWayDelay) ? Math.max(0, oneWayDelay) : 0));
+}
 
+function normalizeEventTimes(event, estimatedOneWayDelayMs, localNowMs = monotonicEpochNowMs()) {
     return {
         ...event,
-        classSelectionEndsAtMs: toLocalDeadlineMs(
-            event.classSelectionEndsAt,
+        matchAcceptanceEndsAtMs: toLocalDeadlineMs(
+            event.matchAcceptanceEndsAt,
             event.serverNow,
-            receivedAtMs,
-            serverClockOffsetMs
+            localNowMs,
+            estimatedOneWayDelayMs,
+            SUBMISSION_GRACE_MS,
+        ),
+        loadoutSelectionEndsAtMs: toLocalDeadlineMs(
+            event.loadoutSelectionEndsAt,
+            event.serverNow,
+            localNowMs,
+            estimatedOneWayDelayMs,
         ),
         objectPlacementEndsAtMs: toLocalDeadlineMs(
             event.objectPlacementEndsAt,
             event.serverNow,
-            receivedAtMs,
-            serverClockOffsetMs
+            localNowMs,
+            estimatedOneWayDelayMs,
         ),
         countdownEndsAtMs: toLocalDeadlineMs(
             event.countdownEndsAt,
             event.serverNow,
-            receivedAtMs,
-            serverClockOffsetMs
+            localNowMs,
+            estimatedOneWayDelayMs,
         ),
-        trainingEndsAtMs: toLocalDeadlineMs(
-            event.trainingEndsAt,
+        testingEndsAtMs: toLocalDeadlineMs(
+            event.testingEndsAt,
             event.serverNow,
-            receivedAtMs,
-            serverClockOffsetMs
+            localNowMs,
+            estimatedOneWayDelayMs,
+            SUBMISSION_GRACE_MS,
         ),
-        playbackStartsAtMs: toLocalDeadlineMs(
-            event.playbackStartsAt,
-            event.serverNow,
-            receivedAtMs,
-            serverClockOffsetMs
-        ),
+        playbackStartsAtMs: event.type === "SIMULATION_PREPARING"
+            ? toLocalDurationDeadlineMs(
+                event.simulationPreparingDurationMs,
+                localNowMs,
+                estimatedOneWayDelayMs,
+            )
+            : toLocalDeadlineMs(
+                event.playbackStartsAt,
+                event.serverNow,
+                localNowMs,
+                estimatedOneWayDelayMs,
+            ),
         resultRevealsAtMs: toLocalDeadlineMs(
             event.resultRevealsAt,
             event.serverNow,
-            receivedAtMs,
-            serverClockOffsetMs
+            localNowMs,
+            estimatedOneWayDelayMs,
+        ),
+        roundReadyAtMs: toLocalDeadlineMs(
+            event.roundReadyAt,
+            event.serverNow,
+            localNowMs,
+            estimatedOneWayDelayMs,
+        ),
+        matchChatEndsAtMs: toLocalDeadlineMs(
+            event.matchChatEndsAt,
+            event.serverNow,
+            localNowMs,
+            estimatedOneWayDelayMs,
         ),
         disconnectEndsAtMs: toLocalDeadlineMs(
             event.disconnectEndsAt,
             event.serverNow,
-            receivedAtMs,
-            serverClockOffsetMs
+            localNowMs,
+            estimatedOneWayDelayMs,
         ),
     };
-}
-
-function shouldApplyObjectPlacementEvent(event, currentStatus, currentEvent) {
-    if (event.type !== "PLAYER_OBJECTS_PLACED") return false;
-    if (event.status !== "OBJECT_PLACEMENT" || currentStatus !== "OBJECT_PLACEMENT") return false;
-    if (currentEvent?.matchId && event.matchId && event.matchId !== currentEvent.matchId) return false;
-    const currentRound = Number(currentEvent?.roundNumber ?? 1);
-    const eventRound = Number(event.roundNumber ?? currentRound);
-    if (Number.isFinite(currentRound) && Number.isFinite(eventRound) && eventRound < currentRound) return false;
-    return true;
-}
-
-function wasObjectPlacementSubmittedByCurrentPlayer(event) {
-    return Boolean(event?.objectPlacementUserId && event?.player?.userId)
-        && String(event.objectPlacementUserId) === String(event.player.userId);
 }
 
 export default function MatchmakingPage() {
     const navigate = useNavigate();
     const { clearFoundMatch } = useMatchmaking();
     const location = useLocation();
-    const initialMatchEvent = location.state?.matchEvent
-        ? normalizeEventTimes(location.state.matchEvent, null)
+    const initialMatchEventPayload = location.state?.matchEvent ?? null;
+    const initialMatchEvent = initialMatchEventPayload
+        ? normalizeEventTimes(initialMatchEventPayload, null)
         : null;
     const clientRef = useRef(null);
-    const serverClockOffsetRef = useRef(null);
     const playbackRef = useRef(null);
     const matchEventRef = useRef(null);
-    const roundReadyTimeoutRef = useRef(null);
+    const matchAcceptanceDeadlineRef = useRef(null);
+    const loadoutSelectionDeadlineRef = useRef(null);
+    const matchAcceptanceSubmitPendingRef = useRef(false);
+    const loadoutSubmitPendingRef = useRef(false);
     const placementSubmittedRef = useRef(false);
     const placementSubmitPendingRef = useRef(false);
-    const classSelectionSyncRequestedRef = useRef(false);
-    const loadoutChoiceRef = useRef(normalizedBotLoadout(DEFAULT_BOT_LOADOUT));
-    const initialQueueStatus = initialMatchEvent?.status === "CLASS_SELECT" ? "CLASS_SELECT" : "CONNECTING";
+    const initialQueueStatus = initialMatchEvent?.status === "MATCH_ACCEPT"
+        ? "MATCH_ACCEPT"
+        : initialMatchEvent?.status === "LOADOUT_SELECT" ? "LOADOUT_SELECT" : "CONNECTING";
     const queueStatusRef = useRef(initialQueueStatus);
     const [socketStatus, setSocketStatus] = useState("IDLE");
     const [queueStatus, setQueueStatus] = useState(initialQueueStatus);
     const [matchEvent, setMatchEvent] = useState(initialMatchEvent);
     const [playback, setPlayback] = useState(null);
     const [remaining, setRemaining] = useState(0);
+    const [matchAcceptanceState, setMatchAcceptanceState] = useState("READY");
+    const [matchAcceptanceError, setMatchAcceptanceError] = useState(null);
+    const [loadoutSubmitPending, setLoadoutSubmitPending] = useState(false);
     const [hasFinished, setHasFinished] = useState(false);
+    const [finishPending, setFinishPending] = useState(false);
     const [hasSurrendered, setHasSurrendered] = useState(false);
+    const [surrenderPending, setSurrenderPending] = useState(false);
     const [finishError, setFinishError] = useState(null);
     const [disconnectNotice, setDisconnectNotice] = useState(null);
     const [disconnectRemaining, setDisconnectRemaining] = useState(0);
-    const [placementSubmitPending, setPlacementSubmitPending] = useState(false);
-    const [confirmedPlacementObjects, setConfirmedPlacementObjects] = useState([]);
+    const [, setPlacementSubmitPending] = useState(false);
+    const [, setConfirmedPlacementObjects] = useState([]);
     const [loadoutChoice, setLoadoutChoice] = useState(() => normalizedBotLoadout(DEFAULT_BOT_LOADOUT));
     const [chatMessages, setChatMessages] = useState([]);
-    const [chatMinimized, setChatMinimized] = useState(false);
+    const [chatMinimized, setChatMinimized] = useState(true);
     const [chatRateLimitNotice, setChatRateLimitNotice] = useState(null);
-    const [matchOver, setMatchOver] = useState(false);
+    const [chatClosed, setChatClosed] = useState(false);
+    const [chatClosedNotice, setChatClosedNotice] = useState(null);
     const chatMinimizedRef = useRef(false);
     const chatNoticeTimeoutRef = useRef(null);
+    const intentionalSocketCloseRef = useRef(false);
+    const closeSocketAfterChatRef = useRef(false);
+    const disconnectNoticeResetAtRef = useRef(0);
+
+    const acceptanceStateForEvent = (event) => {
+        if (!event?.acceptedUserId) return "READY";
+        return String(event.acceptedUserId) === String(event.player?.userId)
+            ? "WAITING"
+            : "READY";
+    };
 
     useEffect(() => {
         clearFoundMatch();
@@ -215,10 +251,6 @@ export default function MatchmakingPage() {
     useEffect(() => {
         playbackRef.current = playback;
     }, [playback]);
-
-    useEffect(() => {
-        loadoutChoiceRef.current = loadoutChoice;
-    }, [loadoutChoice]);
 
     useEffect(() => {
         chatMinimizedRef.current = chatMinimized;
@@ -237,11 +269,26 @@ export default function MatchmakingPage() {
     };
 
     useEffect(() => {
-        let cancelled = false;
-
         async function startMatchmakingClient() {
-            serverClockOffsetRef.current = await estimateServerClockOffset();
-            if (cancelled) return;
+            if (initialMatchEventPayload) {
+                const initialEstimatedOneWayDelayMs = getEstimatedOneWayNetworkDelayMs();
+                const normalizedInitialEvent = normalizeEventTimes(
+                    initialMatchEventPayload,
+                    initialEstimatedOneWayDelayMs,
+                );
+                setCurrentMatchEvent(normalizedInitialEvent);
+                if (normalizedInitialEvent.status === "MATCH_ACCEPT") {
+                    matchAcceptanceDeadlineRef.current = normalizedInitialEvent.matchAcceptanceEndsAtMs;
+                    setMatchAcceptanceState(acceptanceStateForEvent(normalizedInitialEvent));
+                    setRemaining(secondsRemaining(matchAcceptanceDeadlineRef.current));
+                } else if (normalizedInitialEvent.status === "LOADOUT_SELECT") {
+                    loadoutSelectionDeadlineRef.current = visibleLoadoutSelectionDeadlineMs(
+                        normalizedInitialEvent.loadoutSelectionEndsAtMs,
+                        initialEstimatedOneWayDelayMs,
+                    );
+                    setRemaining(secondsRemaining(loadoutSelectionDeadlineRef.current));
+                }
+            }
 
             const client = getActiveMatchmakingClient({
                 onChatEvent: (event) => {
@@ -253,6 +300,15 @@ export default function MatchmakingPage() {
                         chatNoticeTimeoutRef.current = setTimeout(() => setChatRateLimitNotice(null), 2500);
                         return;
                     }
+                    if (event.type === "MATCH_CHAT_CLOSED") {
+                        setChatClosed(true);
+                        setChatClosedNotice(event.message ?? "Match chat is now closed.");
+                        intentionalSocketCloseRef.current = true;
+                        closeSocketAfterChatRef.current = true;
+                        const activeClient = clientRef.current;
+                        if (activeClient) void disconnectActiveMatchmakingClient(activeClient);
+                        return;
+                    }
                     if (event.type !== "MATCH_CHAT_MESSAGE") return;
                     setChatMessages((current) => current.some((message) => message.messageId === event.messageId)
                         ? current
@@ -261,8 +317,15 @@ export default function MatchmakingPage() {
                 onStatus: (status) => {
                     setSocketStatus(status);
                     if (status === "ERROR" || status === "CLOSED") {
+                        if (intentionalSocketCloseRef.current) return;
+                        matchAcceptanceSubmitPendingRef.current = false;
+                        setMatchAcceptanceState("READY");
+                        loadoutSubmitPendingRef.current = false;
+                        setLoadoutSubmitPending(false);
                         placementSubmitPendingRef.current = false;
                         setPlacementSubmitPending(false);
+                        setFinishPending(false);
+                        setSurrenderPending(false);
                         if (matchEventRef.current?.matchId) {
                             setDisconnectNotice({
                                 endsAtMs: null,
@@ -273,8 +336,80 @@ export default function MatchmakingPage() {
                         }
                     }
                 },
-                onEvent: (rawEvent) => {
-                    const event = normalizeEventTimes(rawEvent, serverClockOffsetRef.current);
+                onEvent: (rawEvent, eventReceivedAtMs = monotonicEpochNowMs()) => {
+                    const timedPhaseStarts = [
+                        "MATCH_FOUND",
+                        "MATCH_ACCEPTED",
+                        "MATCH_STARTED",
+                        "MATCH_LOADOUT_SELECTION_READY",
+                        "BOT_TESTING_SESSION_READY",
+                        "MATCH_ROUND_READY",
+                        "PLAYER_RECONNECTED",
+                        "SIMULATION_PREPARING",
+                        "MATCH_RESULT_READY",
+                    ];
+                    const networkDelaySample = getNetworkDelaySample();
+                    const estimatedOneWayDelayMs = getEstimatedOneWayNetworkDelayMs();
+                    if (timedPhaseStarts.includes(rawEvent.type)) {
+                        console.info("[match timing] network delay estimate", {
+                            phase: rawEvent.type,
+                            eventReceivedAtMs,
+                            eventServerTransmitTime: rawEvent.serverNow ?? null,
+                            networkDelayMs: networkDelaySample?.networkDelayMs ?? null,
+                            estimatedOneWayDelayMs,
+                            bestNetworkDelayMs: networkDelaySample?.bestNetworkDelayMs ?? null,
+                            selectedSampleCount: networkDelaySample?.selectedSampleCount ?? null,
+                        });
+                    }
+                    const event = normalizeEventTimes(
+                        rawEvent,
+                        estimatedOneWayDelayMs,
+                        eventReceivedAtMs,
+                    );
+                    const logPhaseDeadline = (label, phase, deadlineServerField, deadlineLocalField) => {
+                        const transitionProcessedAtMs = monotonicEpochNowMs();
+                        console.info(label, {
+                            ...phaseDeadlineTimingForEvent(
+                                event,
+                                deadlineServerField,
+                                deadlineLocalField,
+                                transitionProcessedAtMs,
+                                estimatedOneWayDelayMs,
+                            ),
+                            phase,
+                            eventType: event.type,
+                            eventReceivedAtMs,
+                            transitionProcessedAtMs,
+                            transitionDelayAfterReceiptMs:
+                                Math.max(0, transitionProcessedAtMs - eventReceivedAtMs),
+                        });
+                    };
+                    const enterTestingRoomAtDeadline = () => {
+                        logPhaseDeadline(
+                            "[match timing] testing countdown",
+                            "TESTING",
+                            "testingEndsAt",
+                            "testingEndsAtMs",
+                        );
+                        updateQueueStatus("PREP");
+                    };
+                    const eventServerNowMs = event.serverNow
+                        ? eventReceivedAtMs - estimatedOneWayDelayMs
+                        : eventReceivedAtMs;
+                    if (event.disconnectedUserId
+                        && event.disconnectEndsAtMs != null
+                        && eventServerNowMs >= disconnectNoticeResetAtRef.current) {
+                        const self = Boolean(event.player?.userId)
+                            && String(event.disconnectedUserId) === String(event.player.userId);
+                        setDisconnectNotice({
+                            endsAtMs: event.disconnectEndsAtMs,
+                            message: self
+                                ? "Connection lost. Reconnect within 30 seconds or the match will be forfeited."
+                                : `${event.opponent?.username ?? "Your opponent"} disconnected. They have 30 seconds to return.`,
+                            self,
+                        });
+                        setDisconnectRemaining(secondsRemaining(event.disconnectEndsAtMs, 30));
+                    }
                     if (event.type === "NO_ACTIVE_MATCH") {
                         navigate("/home", { replace: true });
                         return;
@@ -282,134 +417,209 @@ export default function MatchmakingPage() {
                     if (event.type === "QUEUE_WAITING") {
                         updateQueueStatus("WAITING");
                     }
-                    if (event.type === "MATCH_FOUND") {
-                        classSelectionSyncRequestedRef.current = false;
-                        if (roundReadyTimeoutRef.current != null) {
-                            clearTimeout(roundReadyTimeoutRef.current);
-                            roundReadyTimeoutRef.current = null;
+                    if (event.type === "MATCH_FOUND" && event.status === "MATCH_ACCEPT") {
+                        if (queueStatusRef.current !== "MATCH_ACCEPT"
+                            && queueStatusRef.current !== "CONNECTING") return;
+                        matchAcceptanceDeadlineRef.current = event.matchAcceptanceEndsAtMs;
+                        setCurrentMatchEvent(event);
+                        setMatchAcceptanceState(acceptanceStateForEvent(event));
+                        setMatchAcceptanceError(null);
+                        matchAcceptanceSubmitPendingRef.current = false;
+                        updateQueueStatus("MATCH_ACCEPT");
+                        setRemaining(secondsRemaining(matchAcceptanceDeadlineRef.current));
+                        return;
+                    }
+                    if (event.type === "MATCH_ACCEPTED" && event.status === "MATCH_ACCEPT") {
+                        if (queueStatusRef.current !== "MATCH_ACCEPT") return;
+                        matchAcceptanceDeadlineRef.current = event.matchAcceptanceEndsAtMs;
+                        setCurrentMatchEvent(event);
+                        setMatchAcceptanceState(acceptanceStateForEvent(event));
+                        setMatchAcceptanceError(null);
+                        matchAcceptanceSubmitPendingRef.current = false;
+                        updateQueueStatus("MATCH_ACCEPT");
+                        setRemaining(secondsRemaining(matchAcceptanceDeadlineRef.current));
+                        return;
+                    }
+                    if (event.type === "MATCH_ACCEPTANCE_EXPIRED"
+                        || event.type === "MATCH_ACCEPTANCE_CANCELLED") {
+                        if (queueStatusRef.current !== "MATCH_ACCEPT") return;
+                        navigate("/home", { replace: true });
+                        return;
+                    }
+                    if (event.type === "MATCH_STARTED"
+                        || (event.type === "MATCH_FOUND" && event.status !== "MATCH_ACCEPT")) {
+                        matchAcceptanceDeadlineRef.current = null;
+                        setMatchAcceptanceState("READY");
+                        setMatchAcceptanceError(null);
+                        matchAcceptanceSubmitPendingRef.current = false;
+                        loadoutSubmitPendingRef.current = false;
+                        setLoadoutSubmitPending(false);
+                        loadoutSelectionDeadlineRef.current = event.status === "LOADOUT_SELECT"
+                            ? visibleLoadoutSelectionDeadlineMs(
+                                event.loadoutSelectionEndsAtMs,
+                                estimatedOneWayDelayMs,
+                            )
+                            : null;
+                        if (event.status === "LOADOUT_SELECT") {
+                            logPhaseDeadline(
+                                "[match timing] ability selection countdown",
+                                "LOADOUT_SELECT",
+                                "loadoutSelectionEndsAt",
+                                "loadoutSelectionEndsAtMs",
+                            );
                         }
                         setCurrentMatchEvent(event);
-                        updateQueueStatus(event.status === "CLASS_SELECT" ? "CLASS_SELECT" : "PREP");
-                        setRemaining(event.status === "CLASS_SELECT"
-                            ? secondsRemaining(event.classSelectionEndsAtMs)
+                        if (event.status === "LOADOUT_SELECT") updateQueueStatus("LOADOUT_SELECT");
+                        else if (event.status === "PREP") enterTestingRoomAtDeadline();
+                        else updateQueueStatus(event.status);
+                        setRemaining(event.status === "LOADOUT_SELECT"
+                            ? secondsRemaining(loadoutSelectionDeadlineRef.current)
                             : 0);
-                        setLoadoutChoice(decodeBotLoadout(event.player?.selectedClass));
+                        setLoadoutChoice(decodeBotLoadout(event.player?.selectedLoadout));
                         playbackRef.current = null;
                         setPlayback(null);
                         setHasFinished(false);
+                        setFinishPending(false);
                         setFinishError(null);
                         setHasSurrendered(false);
-                        setMatchOver(false);
+                        setSurrenderPending(false);
+                        setChatClosed(false);
+                        setChatClosedNotice(null);
                         setChatMessages([]);
                         placementSubmittedRef.current = false;
                         placementSubmitPendingRef.current = false;
                         setPlacementSubmitPending(false);
                         setConfirmedPlacementObjects([]);
                     }
-                    if (event.type === "MATCH_CLASS_SELECTED") {
+                    if (event.type === "MATCH_LOADOUT_SELECTION_READY") {
+                        loadoutSubmitPendingRef.current = false;
+                        setLoadoutSubmitPending(false);
+                        loadoutSelectionDeadlineRef.current = visibleLoadoutSelectionDeadlineMs(
+                            event.loadoutSelectionEndsAtMs,
+                            estimatedOneWayDelayMs,
+                        );
+                        logPhaseDeadline(
+                            "[match timing] ability selection countdown",
+                            "LOADOUT_SELECT",
+                            "loadoutSelectionEndsAt",
+                            "loadoutSelectionEndsAtMs",
+                        );
                         setCurrentMatchEvent(event);
-                        updateQueueStatus("CLASS_SELECT");
-                        setRemaining(secondsRemaining(event.classSelectionEndsAtMs));
-                        if (event.player?.classSelected) {
-                            setLoadoutChoice(decodeBotLoadout(event.player.selectedClass));
+                        updateQueueStatus("LOADOUT_SELECT");
+                        setRemaining(secondsRemaining(loadoutSelectionDeadlineRef.current));
+                    }
+                    if (event.type === "MATCH_LOADOUT_SELECTED") {
+                        setCurrentMatchEvent(event);
+                        updateQueueStatus("LOADOUT_SELECT");
+                        if (event.player?.loadoutSelected) {
+                            loadoutSubmitPendingRef.current = false;
+                            setLoadoutSubmitPending(false);
+                            setLoadoutChoice(decodeBotLoadout(event.player.selectedLoadout));
                         }
                     }
-                    if (event.type === "MATCH_COUNTDOWN_READY") {
-                        classSelectionSyncRequestedRef.current = false;
+                    if (event.type === "BOT_TESTING_SESSION_READY") {
+                        loadoutSubmitPendingRef.current = false;
+                        setLoadoutSubmitPending(false);
+                        loadoutSelectionDeadlineRef.current = null;
                         setCurrentMatchEvent(event);
-                        updateQueueStatus("PREP");
+                        enterTestingRoomAtDeadline();
                         setRemaining(0);
-                        setLoadoutChoice(decodeBotLoadout(event.player?.selectedClass));
+                        setLoadoutChoice(decodeBotLoadout(event.player?.selectedLoadout));
                         placementSubmitPendingRef.current = false;
                         setPlacementSubmitPending(false);
                     }
-                    if (event.type === "MATCH_OBJECT_PLACEMENT_READY"
-                        || shouldApplyObjectPlacementEvent(event, queueStatusRef.current, matchEventRef.current)) {
-                        setCurrentMatchEvent(event);
-                        updateQueueStatus("OBJECT_PLACEMENT");
-                        setRemaining(secondsRemaining(event.objectPlacementEndsAtMs));
-                        setLoadoutChoice(decodeBotLoadout(event.player?.selectedClass));
-                        if (event.type === "MATCH_OBJECT_PLACEMENT_READY") {
-                            placementSubmittedRef.current = false;
-                            placementSubmitPendingRef.current = false;
-                            setPlacementSubmitPending(false);
-                            setConfirmedPlacementObjects([]);
-                        } else if (wasObjectPlacementSubmittedByCurrentPlayer(event)) {
-                            placementSubmittedRef.current = true;
-                            placementSubmitPendingRef.current = false;
-                            setPlacementSubmitPending(false);
-                            setConfirmedPlacementObjects(Array.isArray(event.objectPlacements)
-                                ? event.objectPlacements
-                                : []);
-                        }
-                    }
                     if (event.type === "MATCH_ROUND_READY") {
-                        const showNextRound = () => {
-                            classSelectionSyncRequestedRef.current = false;
-                            roundReadyTimeoutRef.current = null;
-                            setCurrentMatchEvent(event);
-                            playbackRef.current = null;
-                            setPlayback(null);
-                            updateQueueStatus(event.status === "CLASS_SELECT" ? "CLASS_SELECT" : "PREP");
-                            setRemaining(event.status === "CLASS_SELECT"
-                                ? secondsRemaining(event.classSelectionEndsAtMs)
-                                : 0);
-                            setHasFinished(false);
-                            setHasSurrendered(false);
-                            setLoadoutChoice(decodeBotLoadout(event.player?.selectedClass));
-                            placementSubmittedRef.current = false;
-                            placementSubmitPendingRef.current = false;
-                            setPlacementSubmitPending(false);
-                            setConfirmedPlacementObjects([]);
-                        };
-
-                        if (playbackRef.current) {
-                            if (roundReadyTimeoutRef.current != null) {
-                                clearTimeout(roundReadyTimeoutRef.current);
-                            }
-                            const resultRevealsAtMs = playbackRef.current.resultRevealsAtMs
-                                ?? event.resultRevealsAtMs;
-                            const holdEndsAtMs = Number(resultRevealsAtMs ?? 0) + ROUND_RESULT_HOLD_MS;
-                            const remainingHoldMs = resultRevealsAtMs == null
-                                ? ROUND_RESULT_HOLD_MS
-                                : Math.max(0, holdEndsAtMs - Date.now());
-                            roundReadyTimeoutRef.current = setTimeout(showNextRound, remainingHoldMs);
-                        } else {
-                            showNextRound();
+                        loadoutSubmitPendingRef.current = false;
+                        setLoadoutSubmitPending(false);
+                        loadoutSelectionDeadlineRef.current = visibleLoadoutSelectionDeadlineMs(
+                            event.loadoutSelectionEndsAtMs,
+                            estimatedOneWayDelayMs,
+                        );
+                        if (event.status === "LOADOUT_SELECT") {
+                            logPhaseDeadline(
+                                "[match timing] ability selection countdown",
+                                "LOADOUT_SELECT",
+                                "loadoutSelectionEndsAt",
+                                "loadoutSelectionEndsAtMs",
+                            );
                         }
+                        setCurrentMatchEvent(event);
+                        playbackRef.current = null;
+                        setPlayback(null);
+                        updateQueueStatus(event.status === "LOADOUT_SELECT" ? "LOADOUT_SELECT" : "PREP");
+                        setRemaining(event.status === "LOADOUT_SELECT"
+                            ? secondsRemaining(loadoutSelectionDeadlineRef.current)
+                            : 0);
+                        setHasFinished(false);
+                        setFinishPending(false);
+                        setHasSurrendered(false);
+                        setSurrenderPending(false);
+                        setLoadoutChoice(decodeBotLoadout(event.player?.selectedLoadout));
+                        placementSubmittedRef.current = false;
+                        placementSubmitPendingRef.current = false;
+                        setPlacementSubmitPending(false);
+                        setConfirmedPlacementObjects([]);
                     }
                     if (event.type === "PLAYER_FINISHED") {
                         setCurrentMatchEvent(event);
                         updateQueueStatus(event.status);
-                    }
-                    if (event.type === "PLAYER_DISCONNECTED") {
-                        const disconnectedUserId = event.disconnectedUserId;
-                        const self = Boolean(disconnectedUserId && event.player?.userId)
-                            && String(disconnectedUserId) === String(event.player.userId);
-                        const endsAtMs = event.disconnectEndsAtMs ?? Date.now() + 30_000;
-                        setDisconnectNotice({
-                            endsAtMs,
-                            message: self
-                                ? "Connection lost. Reconnect within 30 seconds or the match will be forfeited."
-                                : `${event.opponent?.username ?? "Your opponent"} disconnected. They have 30 seconds to return.`,
-                            self,
-                        });
-                        setDisconnectRemaining(secondsRemaining(endsAtMs, 30));
+                        if (event.player?.finished) {
+                            setHasFinished(true);
+                            setFinishPending(false);
+                        }
                     }
                     if (event.type === "PLAYER_RECONNECTED") {
+                        disconnectNoticeResetAtRef.current = eventServerNowMs;
                         setDisconnectNotice(null);
                         setDisconnectRemaining(0);
+                        const playbackStartsAtMs = event.playbackStartsAtMs;
+                        if (playbackStartsAtMs != null
+                            && playbackStartsAtMs > monotonicEpochNowMs()) {
+                            setCurrentMatchEvent(event);
+                            const preparationPlayback = buildPreparationPlayback(event);
+                            if (preparationPlayback && !playbackRef.current) {
+                                playbackRef.current = preparationPlayback;
+                                setPlayback(preparationPlayback);
+                                updateQueueStatus("PLAYBACK");
+                            }
+                        }
+                    }
+                    if (event.type === "SIMULATION_LOADING") {
+                        setCurrentMatchEvent(event);
+                        playbackRef.current = null;
+                        setPlayback(null);
+                        updateQueueStatus("SIMULATION_LOADING");
+                        setRemaining(0);
                     }
                     if (event.type === "MATCH_ERROR") {
+                        matchAcceptanceSubmitPendingRef.current = false;
+                        setMatchAcceptanceState("READY");
+                        setMatchAcceptanceError(event.message ?? "The server rejected the match action.");
+                        loadoutSubmitPendingRef.current = false;
+                        setLoadoutSubmitPending(false);
+                        setFinishPending(false);
+                        setSurrenderPending(false);
                         setHasFinished(false);
                         setFinishError(event.message ?? "The server rejected the bot submission. Review the bot and try again.");
-                        updateQueueStatus("TRAINING");
+                        if (queueStatusRef.current !== "MATCH_ACCEPT") {
+                            updateQueueStatus("TESTING");
+                        }
                     }
                     if (event.type === "SIMULATION_PREPARING") {
-                        setCurrentMatchEvent(event);
-                        updateQueueStatus("SIMULATION_PREPARING");
-                    }
-                    if (event.type === "MATCH_PLAYBACK_READY") {
+                        const timing = preparationTimingForEvent(
+                            event,
+                            monotonicEpochNowMs(),
+                            estimatedOneWayDelayMs,
+                        );
+                        console.info(
+                            "[match timing] preparation countdown",
+                            {
+                                ...timing,
+                                rawPreparationSeconds: timing.rawSecondsRemaining,
+                                roundedPreparationSeconds: timing.secondsRemaining,
+                                phase: event.type,
+                            },
+                        );
                         setCurrentMatchEvent(event);
                         const localSchedule = localReplaySchedule(
                             event.playbackStartsAtMs,
@@ -420,40 +630,58 @@ export default function MatchmakingPage() {
                                 .filter((participant) => participant?.userId != null)
                                 .map((participant) => [String(participant.userId), Number(participant.roundWins) || 0])
                         );
-                        const nextPlayback = {
-                            ...event.playback,
-                            player: event.player,
-                            opponent: event.opponent,
-                            players: event.players,
-                            roundNumber: event.roundNumber,
-                            winsRequired: event.winsRequired,
-                            roundWinsBeforeResult,
-                            playbackStartsAt: event.playbackStartsAt,
-                            playbackStartsAtMs: localSchedule.playbackStartsAtMs,
-                            resultRevealsAt: event.resultRevealsAt,
-                            resultRevealsAtMs: localSchedule.resultRevealsAtMs,
-                        };
-                        playbackRef.current = nextPlayback;
-                        setPlayback(nextPlayback);
-                        updateQueueStatus("PLAYBACK");
-                        placementSubmittedRef.current = false;
-                        placementSubmitPendingRef.current = false;
-                        setPlacementSubmitPending(false);
+                        const nextPlayback = buildPreparationPlayback(event);
+                        if (nextPlayback) {
+                            Object.assign(nextPlayback, {
+                                roundWinsBeforeResult,
+                                playbackStartsAtMs: localSchedule.playbackStartsAtMs,
+                                resultRevealsAt: event.resultRevealsAt,
+                                resultRevealsAtMs: localSchedule.resultRevealsAtMs,
+                                roundReadyAt: event.roundReadyAt,
+                                roundReadyAtMs: event.roundReadyAtMs,
+                                matchChatEndsAt: event.matchChatEndsAt,
+                                matchChatEndsAtMs: event.matchChatEndsAtMs,
+                            });
+                            playbackRef.current = nextPlayback;
+                            setPlayback(nextPlayback);
+                            updateQueueStatus("PLAYBACK");
+                            placementSubmittedRef.current = false;
+                            placementSubmitPendingRef.current = false;
+                            setPlacementSubmitPending(false);
+                        }
                     }
                     if (event.type === "MATCH_REPLAY_BATCH") {
                         setPlayback((currentPlayback) => {
                             if (!currentPlayback) return currentPlayback;
+                            const incomingSequence = Number(event.playback?.batchSequence);
+                            const currentSequence = Number(currentPlayback.batchSequence);
+                            const incomingBatchIsStale = Number.isFinite(incomingSequence)
+                                && Number.isFinite(currentSequence)
+                                && incomingSequence < currentSequence;
                             const framesByTick = new Map(
                                 [...(currentPlayback.frames ?? []), ...(event.playback?.frames ?? [])]
                                     .map((frame) => [`${frame.tick ?? ""}:${frame.elapsedMs ?? ""}`, frame])
                             );
                             const nextPlayback = {
                                 ...currentPlayback,
+                                player: event.playback?.terminalBatch
+                                    ? event.player ?? currentPlayback.player
+                                    : currentPlayback.player,
+                                opponent: event.playback?.terminalBatch
+                                    ? event.opponent ?? currentPlayback.opponent
+                                    : currentPlayback.opponent,
+                                players: event.playback?.terminalBatch && event.players?.length
+                                    ? event.players
+                                    : currentPlayback.players,
                                 frames: [...framesByTick.values()]
                                     .sort((left, right) => Number(left.elapsedMs ?? 0) - Number(right.elapsedMs ?? 0)),
-                                batchSequence: event.playback?.batchSequence ?? currentPlayback.batchSequence,
-                                replayCursorElapsedMs: event.playback?.replayCursorElapsedMs
-                                    ?? currentPlayback.replayCursorElapsedMs,
+                                batchSequence: incomingBatchIsStale
+                                    ? currentPlayback.batchSequence
+                                    : event.playback?.batchSequence ?? currentPlayback.batchSequence,
+                                replayCursorElapsedMs: incomingBatchIsStale
+                                    ? currentPlayback.replayCursorElapsedMs
+                                    : event.playback?.replayCursorElapsedMs
+                                        ?? currentPlayback.replayCursorElapsedMs,
                                 terminalBatch: Boolean(event.playback?.terminalBatch || currentPlayback.terminalBatch),
                                 status: event.playback?.status ?? currentPlayback.status,
                                 result: event.playback?.result ?? currentPlayback.result,
@@ -465,21 +693,48 @@ export default function MatchmakingPage() {
                         });
                     }
                     if (event.type === "MATCH_RESULT_READY") {
+                        setSurrenderPending(false);
+                        if (event.playback?.result === "RESIGNATION_WIN"
+                            && event.playback?.winnerUserId
+                            && event.player?.userId
+                            && String(event.playback.winnerUserId) !== String(event.player.userId)) {
+                            setHasSurrendered(true);
+                        }
                         setCurrentMatchEvent(event);
-                        setDisconnectNotice(null);
-                        setDisconnectRemaining(0);
-                        const seriesWon = (event.players ?? []).some((player) =>
-                            Number(player?.roundWins ?? 0) >= Number(event.winsRequired ?? 2));
-                        const terminalResult = ["RESIGNATION_WIN", "DISCONNECTION_WIN", "MATCH_CANCELLED"]
-                            .includes(event.playback?.result);
-                        if (seriesWon || terminalResult) setMatchOver(true);
+                        if (event.playback?.result === "DISCONNECTION_WIN") {
+                            setDisconnectNotice(null);
+                            setDisconnectRemaining(0);
+                        }
                         setPlayback((currentPlayback) => {
-                            const nextPlayback = {
+                            const isDisconnectResult = event.playback?.result === "DISCONNECTION_WIN";
+                            const nextPlayback = isDisconnectResult
+                                ? {
+                                    ...(event.playback ?? {}),
+                                    player: event.player,
+                                    opponent: event.opponent,
+                                    players: event.players,
+                                    roundNumber: event.roundNumber,
+                                    winsRequired: event.winsRequired,
+                                    playbackStartsAt: event.playbackStartsAt,
+                                    playbackStartsAtMs: event.playbackStartsAtMs,
+                                    resultRevealsAt: event.resultRevealsAt,
+                                    resultRevealsAtMs: event.resultRevealsAtMs,
+                                    roundReadyAt: event.roundReadyAt,
+                                    roundReadyAtMs: event.roundReadyAtMs,
+                                    matchChatEndsAt: event.matchChatEndsAt,
+                                    matchChatEndsAtMs: event.matchChatEndsAtMs,
+                                }
+                                : {
+                                ...(event.playback ?? {}),
                                 ...(currentPlayback ?? {}),
                                 playbackStartsAt: event.playbackStartsAt ?? currentPlayback?.playbackStartsAt,
                                 playbackStartsAtMs: currentPlayback?.playbackStartsAtMs ?? event.playbackStartsAtMs,
                                 resultRevealsAt: event.resultRevealsAt ?? currentPlayback?.resultRevealsAt,
                                 resultRevealsAtMs: currentPlayback?.resultRevealsAtMs ?? event.resultRevealsAtMs,
+                                roundReadyAt: event.roundReadyAt ?? currentPlayback?.roundReadyAt,
+                                roundReadyAtMs: currentPlayback?.roundReadyAtMs ?? event.roundReadyAtMs,
+                                matchChatEndsAt: event.matchChatEndsAt ?? currentPlayback?.matchChatEndsAt,
+                                matchChatEndsAtMs: currentPlayback?.matchChatEndsAtMs ?? event.matchChatEndsAtMs,
                                 status: event.playback?.status ?? currentPlayback?.status,
                                 result: event.playback?.result ?? currentPlayback?.result,
                                 winnerUserId: event.playback?.winnerUserId ?? currentPlayback?.winnerUserId,
@@ -498,21 +753,24 @@ export default function MatchmakingPage() {
             });
 
             clientRef.current = client;
+            if (closeSocketAfterChatRef.current) {
+                void disconnectActiveMatchmakingClient(client);
+                return;
+            }
             client.connect();
         }
 
-        startMatchmakingClient();
+        void startMatchmakingClient();
 
         return () => {
-            cancelled = true;
-            if (roundReadyTimeoutRef.current != null) {
-                clearTimeout(roundReadyTimeoutRef.current);
-                roundReadyTimeoutRef.current = null;
-            }
+            loadoutSelectionDeadlineRef.current = null;
             if (chatNoticeTimeoutRef.current != null) clearTimeout(chatNoticeTimeoutRef.current);
-            clientRef.current?.setHandlers();
+            const activeClient = clientRef.current;
+            clientRef.current = null;
+            activeClient?.setHandlers();
+            void disconnectActiveMatchmakingClient(activeClient);
         };
-    }, [navigate]);
+    }, [initialMatchEventPayload, navigate]);
 
     useEffect(() => {
         if (queueStatus === "WAITING") {
@@ -524,75 +782,64 @@ export default function MatchmakingPage() {
         if (!disconnectNotice?.endsAtMs) return;
         const update = () => setDisconnectRemaining(secondsRemaining(disconnectNotice.endsAtMs, 30));
         update();
-        const interval = setInterval(update, 250);
+        const interval = setInterval(update, 100);
         return () => clearInterval(interval);
     }, [disconnectNotice]);
 
     useEffect(() => {
-        const deadlineMs = queueStatus === "CLASS_SELECT"
-            ? matchEvent?.classSelectionEndsAtMs
-            : queueStatus === "OBJECT_PLACEMENT"
-                ? matchEvent?.objectPlacementEndsAtMs
-            : null;
-        if (!deadlineMs) return;
+        if (queueStatus !== "MATCH_ACCEPT" && queueStatus !== "LOADOUT_SELECT") return;
 
         const interval = setInterval(() => {
-            const nextRemaining = secondsRemaining(
-                deadlineMs,
-                Number.POSITIVE_INFINITY,
-            );
+            const deadlineRef = queueStatus === "MATCH_ACCEPT"
+                ? matchAcceptanceDeadlineRef
+                : loadoutSelectionDeadlineRef;
+            const nextRemaining = secondsRemaining(deadlineRef.current);
             setRemaining(nextRemaining);
-            if (queueStatus === "CLASS_SELECT" && nextRemaining === 0
-                && !classSelectionSyncRequestedRef.current) {
-                classSelectionSyncRequestedRef.current = true;
-                clientRef.current?.selectClass(encodeBotLoadout(loadoutChoiceRef.current));
-            }
-            if (queueStatus === "OBJECT_PLACEMENT" && nextRemaining === 0) {
-                if (!placementSubmittedRef.current && !placementSubmitPendingRef.current) {
-                    placementSubmitPendingRef.current = true;
-                    setPlacementSubmitPending(true);
-                    clientRef.current?.placeObjects([]);
-                }
-            }
-        }, 250);
+        }, COUNTDOWN_UPDATE_INTERVAL_MS);
+        const deadlineRef = queueStatus === "MATCH_ACCEPT"
+            ? matchAcceptanceDeadlineRef
+            : loadoutSelectionDeadlineRef;
+        setRemaining(secondsRemaining(deadlineRef.current));
 
         return () => clearInterval(interval);
-    }, [matchEvent?.classSelectionEndsAtMs, matchEvent?.countdownEndsAtMs, matchEvent?.objectPlacementEndsAtMs, queueStatus]);
+    }, [queueStatus]);
 
-    const finishMatch = (modelSubmissionId) => {
+    const finishMatch = () => {
+        if (finishPending || hasFinished || socketStatus !== "CONNECTED") return;
         setFinishError(null);
-        setHasFinished(true);
-        clientRef.current?.finish(modelSubmissionId);
+        setFinishPending(true);
     };
 
     const surrenderMatch = () => {
-        setHasSurrendered(true);
+        if (surrenderPending || hasSurrendered || socketStatus !== "CONNECTED") return;
+        setSurrenderPending(true);
         clientRef.current?.surrender();
     };
 
-    const lockClass = () => {
-        clientRef.current?.selectClass(encodeBotLoadout(loadoutChoice));
+    const lockLoadout = () => {
+        if (loadoutSubmitPending || matchEvent?.player?.loadoutSelected || socketStatus !== "CONNECTED") return;
+        loadoutSubmitPendingRef.current = true;
+        setLoadoutSubmitPending(true);
+        clientRef.current?.selectLoadout(encodeBotLoadout(loadoutChoice));
     };
 
-    const placeObjects = (objects) => {
-        if (queueStatusRef.current !== "OBJECT_PLACEMENT"
-            || placementSubmittedRef.current
-            || placementSubmitPendingRef.current
-            || socketStatus !== "CONNECTED") {
-            return;
-        }
-        placementSubmitPendingRef.current = true;
-        setPlacementSubmitPending(true);
-        clientRef.current?.placeObjects(objects);
+    const acceptMatch = () => {
+        if (matchAcceptanceState !== "READY"
+            || !matchEventRef.current?.matchId
+            || socketStatus !== "CONNECTED") return;
+        setMatchAcceptanceError(null);
+        matchAcceptanceSubmitPendingRef.current = true;
+        setMatchAcceptanceState("ACCEPTING");
+        clientRef.current?.acceptMatch(matchEventRef.current.matchId);
     };
 
     const sendChatMessage = (message) => {
-        if (!matchEventRef.current?.matchId || matchOver || socketStatus !== "CONNECTED") return;
+        if (!matchEventRef.current?.matchId || chatClosed || socketStatus !== "CONNECTED") return;
         clientRef.current?.sendChat(matchEventRef.current.matchId, message);
     };
 
     const opponent = matchEvent?.opponent ?? null;
-    const chat = matchEvent?.matchId ? (
+    const chat = matchEvent?.matchId && queueStatus !== "MATCH_ACCEPT" ? (
         <MatchChat
             messages={chatMessages}
             minimized={chatMinimized}
@@ -601,8 +848,9 @@ export default function MatchmakingPage() {
                 if (!next) setChatMessages((current) => current.map((message) => ({ ...message, unread: false })));
             }}
             onSend={sendChatMessage}
-            disabled={matchOver || socketStatus !== "CONNECTED"}
+            disabled={chatClosed || socketStatus !== "CONNECTED"}
             rateLimitNotice={chatRateLimitNotice}
+            closedNotice={chatClosedNotice}
             currentUsername={matchEvent?.player?.username}
         />
     ) : null;
@@ -612,8 +860,12 @@ export default function MatchmakingPage() {
         player: matchEvent?.player,
         opponent,
         players: matchEvent?.players ?? [],
-        trainingEndsAt: matchEvent?.trainingEndsAt,
-        trainingEndsAtMs: matchEvent?.trainingEndsAtMs,
+        testingEndsAt: matchEvent?.testingEndsAt,
+        testingEndsAtMs: matchEvent?.testingEndsAtMs,
+        roundReadyAt: matchEvent?.roundReadyAt,
+        roundReadyAtMs: matchEvent?.roundReadyAtMs,
+        matchChatEndsAt: matchEvent?.matchChatEndsAt,
+        matchChatEndsAtMs: matchEvent?.matchChatEndsAtMs,
         objectPlacementEndsAt: matchEvent?.objectPlacementEndsAt,
         objectPlacementEndsAtMs: matchEvent?.objectPlacementEndsAtMs,
         rulesetVersion: matchEvent?.rulesetVersion,
@@ -626,15 +878,19 @@ export default function MatchmakingPage() {
         message: matchEvent?.message,
         status: matchEvent?.status,
         loadout: loadoutChoice,
-        opponentLoadout: decodeBotLoadout(matchEvent?.opponent?.selectedClass),
+        opponentLoadout: decodeBotLoadout(matchEvent?.opponent?.selectedLoadout),
     }), [
         matchEvent?.matchId,
         matchEvent?.simulationSeed,
         matchEvent?.player,
         opponent,
         matchEvent?.players,
-        matchEvent?.trainingEndsAt,
-        matchEvent?.trainingEndsAtMs,
+        matchEvent?.testingEndsAt,
+        matchEvent?.testingEndsAtMs,
+        matchEvent?.roundReadyAt,
+        matchEvent?.roundReadyAtMs,
+        matchEvent?.matchChatEndsAt,
+        matchEvent?.matchChatEndsAtMs,
         matchEvent?.objectPlacementEndsAt,
         matchEvent?.objectPlacementEndsAtMs,
         matchEvent?.rulesetVersion,
@@ -646,30 +902,59 @@ export default function MatchmakingPage() {
         matchEvent?.roundBlockLimit,
         matchEvent?.message,
         matchEvent?.status,
-        matchEvent?.opponent?.selectedClass,
+        matchEvent?.opponent?.selectedLoadout,
         loadoutChoice,
     ]);
 
-    if (playback) {
+    if (queueStatus === "SIMULATION_LOADING") {
+        return <ArenaLoadingScreen />;
+    }
+
+    if (queueStatus === "MATCH_ACCEPT") {
+        const opponentAccepted = Boolean(
+            matchEvent?.acceptedUserId
+            && matchEvent?.player?.userId
+            && String(matchEvent.acceptedUserId) !== String(matchEvent.player.userId));
         return (
             <main className="min-h-screen bg-arena-deep text-ink-hi font-ui">
                 <MatchHeader onExit={exitToHome} disconnectNotice={disconnectNotice} disconnectRemaining={disconnectRemaining} />
-                <Suspense fallback={<ArenaLoadingScreen />}>
-                    <SimulationReplay playback={playback} />
-                </Suspense>
+                <MatchAcceptanceScreen
+                    player={matchEvent?.player}
+                    opponent={opponent}
+                    remaining={remaining}
+                    acceptanceState={matchAcceptanceState}
+                    opponentAccepted={opponentAccepted}
+                    error={matchAcceptanceError}
+                    onAccept={acceptMatch}
+                />
+            </main>
+        );
+    }
+
+    const replayArena = matchReplayArenaLifecycle(queueStatus, playback);
+    if (replayArena.mounted) {
+        return (
+            <main className="min-h-screen bg-arena-deep text-ink-hi font-ui">
+                <MatchHeader onExit={exitToHome} disconnectNotice={disconnectNotice} disconnectRemaining={disconnectRemaining} />
+                <SimulationReplay
+                    key={replayArena.key}
+                    playback={playback}
+                    preloadShapes={arenaPreloadShapes(matchEvent)}
+                />
                 {chat}
             </main>
         );
     }
 
-    if (queueStatus === "CLASS_SELECT") {
+    if (queueStatus === "LOADOUT_SELECT") {
         return (
             <main className="min-h-screen bg-arena-deep text-ink-hi font-ui">
                 <MatchHeader onExit={exitToHome} disconnectNotice={disconnectNotice} disconnectRemaining={disconnectRemaining} />
-                <ClassSelectScreen
+                <LoadoutSelectScreen
                     loadout={loadoutChoice}
                     onChange={setLoadoutChoice}
-                    onLockClass={lockClass}
+                    onLockLoadout={lockLoadout}
+                    submitting={loadoutSubmitPending}
                     player={matchEvent?.player}
                     opponent={opponent}
                     roundNumber={matchEvent?.roundNumber ?? 1}
@@ -681,36 +966,20 @@ export default function MatchmakingPage() {
         );
     }
 
-    if (queueStatus === "SIMULATION_PREPARING") {
-        return <><ArenaLoadingScreen />{chat}</>;
-    }
-
-    if (queueStatus === "OBJECT_PLACEMENT") {
-        return (
-            <main className="min-h-screen bg-arena-deep text-ink-hi font-ui">
-                <MatchHeader onExit={exitToHome} disconnectNotice={disconnectNotice} disconnectRemaining={disconnectRemaining} />
-                <ObjectPlacementScreen
-                    key={`${matchEvent?.matchId ?? "match"}-${matchEvent?.roundNumber ?? 1}-${matchEvent?.player?.slot ?? 1}`}
-                    player={matchEvent?.player}
-                    placedObjects={matchEvent?.obstacles ?? []}
-                    confirmedObjects={confirmedPlacementObjects}
-                    remaining={remaining}
-                    onSubmit={placeObjects}
-                    submitted={Boolean(matchEvent?.player?.objectPlacementSubmitted)}
-                    submitting={placementSubmitPending}
-                    roundNumber={matchEvent?.roundNumber ?? 1}
-                />
-                {chat}
-            </main>
-        );
-    }
-
     if (queueStatus === "PREP" || queueStatus === "WAITING_FOR_FINISH" || queueStatus === "READY_FOR_PLAYBACK") {
         return (
             <>
                 <BetaModel
                     matchContext={matchContext}
-                    finishStatus={hasSurrendered ? "SURRENDERED" : hasFinished ? "FINISHED" : "TRAINING"}
+                    finishStatus={hasSurrendered
+                        ? "SURRENDERED"
+                        : surrenderPending
+                            ? "SURRENDERING"
+                            : hasFinished
+                                ? "FINISHED"
+                                : finishPending
+                                    ? "SUBMITTING"
+                                    : "TESTING"}
                     finishError={finishError}
                     onFinishMatch={finishMatch}
                     onSurrenderMatch={surrenderMatch}
@@ -725,11 +994,115 @@ export default function MatchmakingPage() {
     return null;
 }
 
-function ClassSelectScreen({ loadout, onChange, onLockClass, player, opponent, remaining, roundNumber, abilityOffers }) {
-    const playerLocked = Boolean(player?.classSelected);
-    const opponentLocked = Boolean(opponent?.classSelected);
+function buildPreparationPlayback(event) {
+    const playback = event.playback;
+    if (!playback?.initialState?.fighters?.length) return null;
+    const participants = Array.isArray(event.players) && event.players.length > 0
+        ? event.players
+        : [event.player, event.opponent].filter(Boolean);
+    return {
+        ...playback,
+        matchId: event.matchId,
+        rulesetVersion: event.rulesetVersion,
+        player: event.player ?? playback.player,
+        opponent: event.opponent ?? playback.opponent,
+        players: participants,
+        roundNumber: event.roundNumber,
+        winsRequired: event.winsRequired,
+        playbackStartsAt: event.playbackStartsAt,
+        playbackStartsAtMs: event.playbackStartsAtMs,
+    };
+}
+
+function arenaPreloadShapes(event) {
+    return [event?.player, event?.opponent]
+        .filter((participant) => participant?.userId != null)
+        .map((participant) => {
+            const loadout = decodeBotLoadout(participant.selectedLoadout);
+            const slotOne = Number(participant.slot) === 1;
+            return {
+                id: `fighter-${participant.userId}`,
+                type: "fighter",
+                userId: participant.userId,
+                username: participant.username,
+                opponentUsername: participant.username,
+                slot: participant.slot,
+                x: slotOne ? -60 : ARENA_WIDTH_UNITS + 60,
+                y: slotOne ? DUEL_SLOT_ONE_Y : DUEL_SLOT_TWO_Y,
+                rotation: slotOne ? 180 : 0,
+                size: 60,
+                hp: 100,
+                maxHp: 100,
+                combatLoadout: participant.selectedLoadout ?? "melee",
+                abilities: loadout.abilities,
+                locked: true,
+            };
+        });
+}
+
+function MatchAcceptanceScreen({
+    player,
+    opponent,
+    remaining,
+    acceptanceState,
+    opponentAccepted,
+    error,
+    onAccept,
+}) {
+    const closing = remaining === 0;
+    const statusMessage = acceptanceState === "WAITING"
+        ? "Waiting for the other player."
+        : acceptanceState === "ACCEPTING"
+            ? "Accepting..."
+            : opponentAccepted
+                ? "Your opponent accepted. Accept to enter the match."
+                : "Both players must accept before the match starts.";
+    const buttonLabel = acceptanceState === "WAITING"
+        ? "WAITING FOR PLAYER"
+        : acceptanceState === "ACCEPTING"
+            ? "ACCEPTING..."
+            : "ACCEPT MATCH";
+
+    return (
+        <section className="flex min-h-[calc(100vh-72px)] items-center justify-center px-6 py-10">
+            <div className="w-full max-w-2xl rounded border border-cyan-800/70 bg-[#081522]/85 p-8 text-center shadow-[0_20px_80px_rgba(8,47,73,.25)]">
+                <p className="font-mono text-xs tracking-[0.3em] text-cyan-300">MATCH FOUND</p>
+                <h1 className="mt-4 text-4xl font-bold uppercase tracking-wide text-white">Ready to fight?</h1>
+                <div className="mt-8 grid grid-cols-[1fr_auto_1fr] items-center gap-4 font-mono">
+                    <div className="rounded border border-cyan-700/60 bg-cyan-950/25 px-4 py-5 text-cyan-100">
+                        <div className="text-[10px] tracking-widest text-cyan-300/80">YOU</div>
+                        <div className="mt-2 truncate text-lg font-bold">{player?.username ?? "YOU"}</div>
+                    </div>
+                    <div className="text-sm tracking-[0.3em] text-fuchsia-300">VS</div>
+                    <div className="rounded border border-fuchsia-700/60 bg-fuchsia-950/20 px-4 py-5 text-fuchsia-100">
+                        <div className="text-[10px] tracking-widest text-fuchsia-300/80">OPPONENT</div>
+                        <div className="mt-2 truncate text-lg font-bold">{opponent?.username ?? "OPPONENT"}</div>
+                    </div>
+                </div>
+                <div className="mt-8 font-mono text-[10px] tracking-[0.25em] text-slate-400">ACCEPTANCE WINDOW</div>
+                <div className={`mt-2 font-mono text-5xl font-bold ${closing ? "text-amber-300" : "text-cyan-300"}`}>
+                    {closing ? "CLOSING..." : remaining}
+                </div>
+                <p className="mt-5 text-sm text-slate-300">{statusMessage}</p>
+                {error && <p role="alert" className="mt-3 text-sm text-red-300">{error}</p>}
+                <button
+                    type="button"
+                    onClick={onAccept}
+                    disabled={acceptanceState !== "READY"}
+                    className="mt-7 h-12 min-w-56 rounded border border-cyan-500/80 bg-cyan-950/35 px-6 font-mono text-xs font-bold tracking-[0.18em] text-cyan-100 transition hover:border-cyan-200 hover:bg-cyan-900/40 disabled:cursor-wait disabled:opacity-55"
+                >
+                    {buttonLabel}
+                </button>
+            </div>
+        </section>
+    );
+}
+
+function LoadoutSelectScreen({ loadout, onChange, onLockLoadout, player, opponent, remaining, roundNumber, abilityOffers, submitting }) {
+    const playerLocked = Boolean(player?.loadoutSelected);
+    const opponentLocked = Boolean(opponent?.loadoutSelected);
     const normalized = normalizedBotLoadout(loadout);
-    const inheritedLoadout = decodeBotLoadout(player?.selectedClass);
+    const inheritedLoadout = decodeBotLoadout(player?.selectedLoadout);
     const inheritedAbilities = playerLocked
         ? normalized.abilities
         : Number(roundNumber) > 1 ? inheritedLoadout.abilities : [];
@@ -768,6 +1141,12 @@ function ClassSelectScreen({ loadout, onChange, onLockClass, player, opponent, r
                         <div className="mt-1 font-mono text-5xl font-bold text-cyan-300 [text-shadow:0_0_22px_rgba(34,211,238,0.24)]">{remaining}</div>
                     </div>
                 </div>
+                {remaining === 0 && (
+                    <div role="status" aria-live="polite" className="mt-4 flex items-center gap-3 rounded border border-cyan-900/60 bg-cyan-950/15 px-4 py-3 font-mono text-[10px] tracking-widest text-cyan-200/80">
+                        <span className="h-2 w-2 animate-pulse rounded-full bg-cyan-300/80" aria-hidden="true" />
+                        <span>PREPARING TESTING SESSION · FINALIZING LOADOUTS</span>
+                    </div>
+                )}
                 <div className="mt-6 grid gap-6 lg:grid-cols-[1.45fr_1fr]">
                     <div>
                         <div className="mb-4 grid grid-cols-3 gap-3" aria-label="Ability slots">
@@ -831,11 +1210,13 @@ function ClassSelectScreen({ loadout, onChange, onLockClass, player, opponent, r
                     </div>
                     <button
                         type="button"
-                        onClick={onLockClass}
-                        disabled={playerLocked || normalized.abilities.length > MAX_EQUIPPED_ABILITIES}
+                        onClick={onLockLoadout}
+                        disabled={submitting || playerLocked || normalized.abilities.length > MAX_EQUIPPED_ABILITIES}
                         className="h-11 min-w-52 rounded border border-cyan-600/80 bg-cyan-950/25 px-5 font-mono text-[11px] font-bold tracking-[0.16em] text-cyan-200 transition hover:border-cyan-300 hover:bg-cyan-900/30 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                        {playerLocked
+                        {submitting
+                            ? "LOCKING LOADOUT"
+                            : playerLocked
                             ? "LOADOUT LOCKED"
                             : draftedAbilities.length === draftRule.picks
                                 ? "LOCK LOADOUT"
@@ -885,7 +1266,7 @@ function ObjectPlacementScreen({
         x: player?.slot === 2 ? DUEL_SLOT_TWO_X : DUEL_SLOT_ONE_X,
         y: spawnY,
         rotation: spawnRotation,
-        combatClass: player?.selectedClass ?? "melee",
+        combatLoadout: player?.selectedLoadout ?? "melee",
         locked: true,
     };
     const serverObjects = confirmedObjects.map((object, index) => ({
