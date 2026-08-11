@@ -10,7 +10,7 @@ public record MatchmakingPlayerDTO(
         int roundWins,
         String selectedLoadout,
         boolean loadoutSelected,
-        boolean objectPlacementSubmitted) {
+        boolean entityPlacementSubmitted) {
     public MatchmakingPlayerDTO(
             UUID userId,
             String username,

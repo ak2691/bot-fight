@@ -6,30 +6,47 @@ Start with [Adding an Ability or Move](ADDING_AN_ABILITY_OR_MOVE.md) and [Abilit
 
 ## Definitions and draft identity
 
-- `simulation/combat/Abilities.java` and `Moves.java`: numeric definitions.
-- `CombatRules.java`: shared simulator access.
-- `AbilityContracts.java`: delivery, ordered effects, and shield policy.
-- `CombatCatalog.java`: ruleset selection and boundary compatibility only.
+- `simulation/gameconfig/AbilityRegistry.java`: permanent positive numeric IDs and the only server-side ID/name mapping. Never derive IDs from catalog position or reuse a retired ID.
+- `simulation/gameconfig/Abilities.java`: numeric definitions for all abilities.
+- `simulation/gameconfig/GameConfig.java`: shared duel configuration access.
+- `simulation/gameconfig/AbilityContracts.java`: delivery, ordered effects, and shield policy.
+- `simulation/gameconfig/GameConfigCatalog.java`: active ruleset selection.
 
-Match browser IDs, milliseconds, arena units, ranges/arcs, damage rounding, resources, and compact loadout code. Update the round pool and enforce cumulative picks, issued offers, selection limits, and stat budget on the server. Timeout picks must come from the same deterministic offer list.
+Match browser IDs, milliseconds, arena units, ranges/arcs, damage rounding, resources, and compact loadout code. Runtime definitions, actions, state maps, entities, DTOs, and replay fields use the numeric ID. Ability names are limited to presentation metadata and explicit legacy migration through `LegacyAbilityPayloadMigration`. Update the round pool and enforce cumulative picks, issued offers, selection limits, and stat budget on the server. Timeout picks must come from the same deterministic offer list.
 
 ## Hostile-input validation
 
 Update `BotSubmissionValidationService.java` allowlists and ownership checks for abilities, actions, preparing abilities, variables, targets, offsets, coordinates, identifiers, and payload bounds.
 
-Reject actions outside the loadout, targets the loadout cannot produce, preparing queries for instant abilities, and malformed/out-of-range data. Never trust client-selected actions, targets, collision, damage, seeds, or outcomes.
+Reject actions outside the loadout, targets the loadout cannot produce, preparing queries for instant abilities, and unknown, fractional, duplicate, or out-of-range ability IDs. Never trust client-selected actions, targets, collision, damage, seeds, or outcomes.
 
 ## Simulation flow
 
-`DuelSimulationService.java` should:
+`DuelSimulationService.java` remains the fixed-step coordinator. Its focused
+services own the corresponding decisions and state transitions:
+
+- `ConditionResolutionService`: normalized conditions, state variables, and
+  target resolution;
+- `ActionExecutionService`: readiness/resources, preparation, movement, and
+  immediate or entity-backed actions;
+- `BotStateService`: initialization, timed bot effects, damage/healing,
+  and same-tick settlement;
+- `ProjectileSimulationService`: generic short-lived projectile motion,
+  collision, explosions, and contract-declared projectile effects;
+- `TargetingService` and `ReplayMappingService`: target offsets and replay
+  state conversion.
+
+The coordinator should:
 
 1. select a normalized action from the brain;
 2. resolve its live target and offsets;
-3. check ownership, readiness, resources, preparation, silence, and target existence;
+3. ask the action service to check ownership, readiness, resources, preparation,
+   silence, and target existence;
 4. activate it and record state;
 5. apply an immediate effect or spawn an entity;
 6. tick effects/entities in deterministic order;
-7. settle accumulated HP changes and emit replay state.
+7. ask the bot-state service to settle accumulated HP changes and emit replay
+   state through the replay mapper.
 
 Use generic variables, targets, deliveries, and effects where available. Keep the service as orchestrator; persistent behavior belongs in the ECS, not a second simulation loop.
 
@@ -37,7 +54,7 @@ Use generic variables, targets, deliveries, and effects where available. Keep th
 
 - `ArenaEntity.java`: deterministic transform, motion, lifetime, collider, owner, optional HP, and phase state.
 - `AbilityEntityFactory.java`: initial state only; no targeting, damage, or ticking.
-- `AbilityEntityCombatant.java`: minimal reusable fighter interface.
+- `AbilityEntityBot.java`: minimal reusable bot interface.
 - `AbilityEntitySystem.java`: deterministic lifecycle, collision, effects, phase changes, chain reactions, and removal.
 - `ArenaBounds.java`: shared clamping and expiry bounds.
 
@@ -45,7 +62,7 @@ Resolve `shieldInteraction` once per impact, then apply remaining effects in dec
 
 ## Replay
 
-Emit state, not client-side gameplay instructions: stable entity ID/type/owner, position, needed motion/rotation, size, phase, timer/lifetime, HP, and fighter preparation/cooldown/resource/status fields. Include only timing needed to reconstruct presentation.
+Emit state, not client-side gameplay instructions: stable entity ID/type/owner, position, needed motion/rotation, size, phase, timer/lifetime, HP, and bot preparation/cooldown/resource/status fields. Include only timing needed to reconstruct presentation.
 
 ## Regression tests
 

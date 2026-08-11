@@ -37,7 +37,7 @@ public class BotSubmissionController {
         log.info(
                 "Bot brain submission persisted. accepted={}, session={}, brainSchemaVersion={}",
                 validation.isAccepted(),
-                payload == null ? null : payload.getTestingSessionId(),
+                payload == null ? null : payload.getBuildingSessionId(),
                 payload == null || payload.getBrain() == null ? null : payload.getBrain().path("version").asText(null));
 
         return ResponseEntity

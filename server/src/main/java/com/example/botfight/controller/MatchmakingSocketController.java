@@ -25,6 +25,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import jakarta.annotation.PostConstruct;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,6 +38,7 @@ import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.security.core.Authentication;
+import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.socket.messaging.SessionDisconnectEvent;
@@ -52,21 +54,41 @@ public class MatchmakingSocketController {
     private final SimpMessagingTemplate messagingTemplate;
     private final CurrentUserService currentUserService;
     private final TaskScheduler matchmakingLifecycleScheduler;
+    private final AsyncTaskExecutor matchSimulationExecutor;
     private final Set<UUID> scheduledMatchChatClosures = new HashSet<>();
     private final Set<String> scheduledSimulations = new HashSet<>();
-    private final Set<String> scheduledTestingTimeouts = new HashSet<>();
+    private final Set<String> scheduledBuildingTimeouts = new HashSet<>();
+    private final Set<String> scheduledLoadoutSelectionTimeouts = new HashSet<>();
 
+    @Autowired
     public MatchmakingSocketController(
             MatchmakingService matchmakingService,
             MatchService matchService,
             SimpMessagingTemplate messagingTemplate,
             CurrentUserService currentUserService,
-            @Qualifier("matchmakingLifecycleScheduler") TaskScheduler matchmakingLifecycleScheduler) {
+            @Qualifier("matchmakingLifecycleScheduler") TaskScheduler matchmakingLifecycleScheduler,
+            @Qualifier("matchSimulationExecutor") AsyncTaskExecutor matchSimulationExecutor) {
         this.matchmakingService = matchmakingService;
         this.matchService = matchService;
         this.messagingTemplate = messagingTemplate;
         this.currentUserService = currentUserService;
         this.matchmakingLifecycleScheduler = matchmakingLifecycleScheduler;
+        this.matchSimulationExecutor = matchSimulationExecutor;
+    }
+
+    MatchmakingSocketController(
+            MatchmakingService matchmakingService,
+            MatchService matchService,
+            SimpMessagingTemplate messagingTemplate,
+            CurrentUserService currentUserService,
+            TaskScheduler matchmakingLifecycleScheduler) {
+        this(
+                matchmakingService,
+                matchService,
+                messagingTemplate,
+                currentUserService,
+                matchmakingLifecycleScheduler,
+                task -> matchmakingLifecycleScheduler.schedule(task, Instant.now()));
     }
 
     @PostConstruct
@@ -75,7 +97,7 @@ public class MatchmakingSocketController {
                 () -> {
                     try {
                         publish(matchService.resolveExpiredLoadoutSelections());
-                        publish(matchService.resolveExpiredTestingSessions());
+                        publish(matchService.resolveExpiredBuildingSessions());
                     } catch (RuntimeException exception) {
                         log.error("Matchmaking lifecycle deadline sweep failed", exception);
                     }
@@ -135,6 +157,19 @@ public class MatchmakingSocketController {
         scheduleLoadoutSelectionTimeouts(events);
     }
 
+    @MessageMapping("/matchmaking.cancel")
+    public void cancelMatch(
+            @Payload MatchAcceptanceDTO payload,
+            Principal principal,
+            SimpMessageHeaderAccessor headers) {
+        AppUser user = requireUser(principal);
+        List<OutboundMatchmakingEvent> events = matchmakingService.cancelPendingMatch(
+                payload == null ? null : payload.matchId(),
+                user.getId(),
+                headers.getSessionId());
+        publish(events);
+    }
+
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handleMatchmakingEventsReady(MatchmakingEventsReady ready) {
         List<OutboundMatchmakingEvent> events = ready.events();
@@ -171,7 +206,7 @@ public class MatchmakingSocketController {
                         "MATCH_ERROR",
                         null,
                         null,
-                        "TESTING",
+                        "BUILDING",
                         null,
                         null,
                         List.of(),
@@ -306,12 +341,14 @@ public class MatchmakingSocketController {
     }
 
     private void publish(List<OutboundMatchmakingEvent> events) {
-        scheduleTestingTimeouts(events);
+        scheduleBuildingTimeouts(events);
         scheduleMatchChatClosures(events);
         for (OutboundMatchmakingEvent event : events) {
             if (event.delayMillis() > 0) {
                 scheduleSafely(
-                        Instant.now().plusMillis(event.delayMillis()),
+                        event.publishAt() != null
+                                ? event.publishAt()
+                                : Instant.now().plusMillis(event.delayMillis()),
                         "delayed matchmaking event",
                         () -> publish(event));
             } else {
@@ -321,25 +358,25 @@ public class MatchmakingSocketController {
         scheduleAuthoritativeSimulations(events);
     }
 
-    private void scheduleTestingTimeouts(List<OutboundMatchmakingEvent> events) {
+    private void scheduleBuildingTimeouts(List<OutboundMatchmakingEvent> events) {
         events.stream()
                 .map(OutboundMatchmakingEvent::event)
                 .filter(event -> event.matchId() != null
-                        && event.testingEndsAt() != null
+                        && event.buildingEndsAt() != null
                         && "PREP".equals(event.status()))
                 .collect(java.util.stream.Collectors.toMap(
-                        event -> event.matchId() + ":" + event.testingEndsAt(),
+                        event -> event.matchId() + ":" + event.buildingEndsAt(),
                         event -> event,
                         (first, second) -> first))
                 .forEach((key, event) -> {
-                    synchronized (scheduledTestingTimeouts) {
-                        if (!scheduledTestingTimeouts.add(key)) return;
+                    synchronized (scheduledBuildingTimeouts) {
+                        if (!scheduledBuildingTimeouts.add(key)) return;
                     }
-                    Instant deadline = event.testingEndsAt();
+                    Instant deadline = event.buildingEndsAt();
                     scheduleSafely(
                             deadline.plusMillis(DEADLINE_CALLBACK_BUFFER_MILLIS),
-                            "testing timeout",
-                            () -> publish(matchService.resolveTestingTimeout(event.matchId(), deadline)));
+                            "building timeout",
+                            () -> publish(matchService.resolveBuildingTimeout(event.matchId(), deadline)));
                 });
     }
 
@@ -400,7 +437,8 @@ public class MatchmakingSocketController {
                 .map(OutboundMatchmakingEvent::event)
                 .filter(event -> ("MATCH_STARTED".equals(event.type())
                         || "MATCH_LOADOUT_SELECTION_READY".equals(event.type())
-                        || "MATCH_ROUND_READY".equals(event.type()))
+                        || ("MATCH_ROUND_READY".equals(event.type())
+                                && event.loadoutSelectionEndsAt() != null))
                         && "LOADOUT_SELECT".equals(event.status()))
                 .filter(event -> event.matchId() != null)
                 .collect(java.util.stream.Collectors.toMap(
@@ -408,6 +446,10 @@ public class MatchmakingSocketController {
                         event -> event,
                         (first, second) -> first))
                 .forEach((matchId, event) -> {
+                    String scheduleKey = matchId + ":" + event.loadoutSelectionEndsAt();
+                    synchronized (scheduledLoadoutSelectionTimeouts) {
+                        if (!scheduledLoadoutSelectionTimeouts.add(scheduleKey)) return;
+                    }
                     long delayMillis = event.loadoutSelectionEndsAt() == null
                             ? TimeUnit.SECONDS.toMillis(60)
                             : delayUntil(event.loadoutSelectionEndsAt());
@@ -452,16 +494,19 @@ public class MatchmakingSocketController {
     }
 
     private void publish(OutboundMatchmakingEvent event) {
-        if (event.delayMillis() <= 0
-                || event.event().matchId() == null
-                || matchService.isDelayedReplayEventStillValid(event.event().matchId(), event.event().type())) {
-            MatchmakingEventDTO payload = "SIMULATION_PREPARING".equals(event.event().type())
-                    ? event.event()
-                    : event.event().withServerNow(Instant.now());
-            messagingTemplate.convertAndSendToUser(
-                    event.principalName(),
-                    "/queue/matchmaking",
-                    payload);
+        OutboundMatchmakingEvent eventAtPhaseBoundary = "MATCH_ROUND_READY".equals(event.event().type())
+                ? matchService.activateRoundLoadoutSelection(event)
+                : event;
+        if (eventAtPhaseBoundary == null) return;
+        MatchmakingEventDTO payload = "SIMULATION_PREPARING".equals(eventAtPhaseBoundary.event().type())
+                    ? eventAtPhaseBoundary.event()
+                    : eventAtPhaseBoundary.event().withServerNow(Instant.now());
+        messagingTemplate.convertAndSendToUser(
+                eventAtPhaseBoundary.principalName(),
+                "/queue/matchmaking",
+                payload);
+        if ("MATCH_ROUND_READY".equals(eventAtPhaseBoundary.event().type())) {
+            scheduleLoadoutSelectionTimeouts(List.of(eventAtPhaseBoundary));
         }
     }
 
@@ -478,14 +523,15 @@ public class MatchmakingSocketController {
                     synchronized (scheduledSimulations) {
                         if (!scheduledSimulations.add(key)) return;
                     }
-                    scheduleSafely(
-                            Instant.now(),
-                            "authoritative replay simulation",
-                            () -> {
+                    matchSimulationExecutor.execute(() -> {
+                        try {
                                 List<OutboundMatchmakingEvent> replayEvents = matchService.completeSimulation(event.matchId());
                                 publish(replayEvents);
                                 scheduleLoadoutSelectionTimeouts(replayEvents);
-                            });
+                        } catch (RuntimeException exception) {
+                            log.error("Matchmaking authoritative replay simulation failed", exception);
+                        }
+                    });
                 });
     }
 

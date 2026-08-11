@@ -104,8 +104,7 @@ public class MatchmakingService {
         return pendingEvents(
                 updated,
                 "MATCH_FOUND",
-                "Match found. Accept within 20 seconds.",
-                acceptedUserId(updated));
+                "Match found. Accept within 20 seconds.");
     }
 
     public synchronized List<OutboundMatchmakingEvent> acceptMatch(
@@ -127,16 +126,14 @@ public class MatchmakingService {
             return pendingEvents(
                     pending,
                     "MATCH_ACCEPTANCE_EXPIRED",
-                    "The match acceptance window has closed.",
-                    acceptedUserId(pending));
+                    "The match acceptance window has closed.");
         }
 
         if (pending.acceptedUserIds().contains(userId)) {
             return pendingEvents(
                     pending,
                     "MATCH_ACCEPTED",
-                    "You already accepted. Waiting for the other player.",
-                    userId);
+                    "You already accepted. Waiting for the other player.");
         }
 
         PendingMatch accepted = pending.withAcceptedUser(userId);
@@ -152,8 +149,28 @@ public class MatchmakingService {
         return pendingEvents(
                 accepted,
                 "MATCH_ACCEPTED",
-                "A player accepted the match. Waiting for the other player.",
-                userId);
+                "A player accepted the match. Waiting for the other player.");
+    }
+
+    public synchronized List<OutboundMatchmakingEvent> cancelPendingMatch(
+            UUID pendingMatchId,
+            UUID userId,
+            String socketSessionId) {
+        PendingMatch pending = pendingMatchesById.get(pendingMatchId);
+        if (pending == null) {
+            throw new AuthException("The match acceptance window is no longer available.");
+        }
+
+        MatchEntrant cancellingPlayer = pending.entrantFor(userId);
+        if (cancellingPlayer == null || !socketMatches(cancellingPlayer.socketSessionId(), socketSessionId)) {
+            throw new AuthException("This match acceptance belongs to another connection.");
+        }
+
+        pendingMatchesById.remove(pending.matchId());
+        return pendingEvents(
+                pending,
+                "MATCH_ACCEPTANCE_CANCELLED",
+                "The match was cancelled before both players accepted.");
     }
 
     public synchronized List<OutboundMatchmakingEvent> resolvePendingMatchTimeout(
@@ -169,8 +186,7 @@ public class MatchmakingService {
         return pendingEvents(
                 pending,
                 "MATCH_ACCEPTANCE_EXPIRED",
-                "The match was closed because both players did not accept in time.",
-                acceptedUserId(pending));
+                "The match was closed because both players did not accept in time.");
     }
 
     private List<OutboundMatchmakingEvent> createPendingMatch(
@@ -186,30 +202,22 @@ public class MatchmakingService {
         return pendingEvents(
                 pending,
                 "MATCH_FOUND",
-                "Match found. Accept within 20 seconds.",
-                null);
+                "Match found. Accept within 20 seconds.");
     }
 
     private List<OutboundMatchmakingEvent> pendingEvents(
             PendingMatch pending,
             String type,
-            String message,
-            UUID acceptedUserId) {
+            String message) {
         Instant now = Instant.now(clock);
-        List<PendingPlayer> players = List.of(
-                new PendingPlayer(pending.opponent(), 1),
-                new PendingPlayer(pending.player(), 2));
-        return players.stream()
+        List<PendingRecipient> recipients = List.of(
+                new PendingRecipient(pending.opponent(), 1),
+                new PendingRecipient(pending.player(), 2));
+        return recipients.stream()
                 .map(recipient -> {
-                    PendingPlayer opponent = players.stream()
-                            .filter(candidate -> !candidate.entrant().userId().equals(recipient.entrant().userId()))
-                            .findFirst()
-                            .orElse(null);
-                    MatchmakingPlayerDTO playerDto = pendingPlayerDto(recipient);
-                    MatchmakingPlayerDTO opponentDto = opponent == null ? null : pendingPlayerDto(opponent);
-                    List<MatchmakingPlayerDTO> playerDtos = players.stream()
-                            .map(this::pendingPlayerDto)
-                            .toList();
+                    boolean acceptedByMe = pending.acceptedUserIds().contains(recipient.entrant().userId());
+                    boolean otherPlayerAccepted = pending.acceptedUserIds().stream()
+                            .anyMatch(acceptedUserId -> !acceptedUserId.equals(recipient.entrant().userId()));
                     return new OutboundMatchmakingEvent(
                             recipient.entrant().principalName(),
                             new MatchmakingEventDTO(
@@ -217,9 +225,9 @@ public class MatchmakingService {
                                     pending.matchId(),
                                     null,
                                     "MATCH_ACCEPT",
-                                    playerDto,
-                                    opponentDto,
-                                    playerDtos,
+                                    null,
+                                    null,
+                                    List.of(),
                                     now,
                                     null,
                                     null,
@@ -227,10 +235,10 @@ public class MatchmakingService {
                                     null,
                                     null,
                                     null,
-                                    MatchSimulationService.DUEL_RULESET_VERSION,
                                     null,
-                                    1,
-                                    2,
+                                    null,
+                                    null,
+                                    null,
                                     message,
                                     null,
                                     List.of(),
@@ -238,29 +246,17 @@ public class MatchmakingService {
                                     List.of(),
                                     null,
                                     List.of(),
-                                    ROUND_LOGIC_BLOCK_LIMIT,
+                                    null,
                                     null,
                                     null,
                                     null,
                                     null,
                                     null,
                                     pending.acceptanceEndsAt(),
-                                    acceptedUserId));
+                                    acceptedByMe,
+                                    otherPlayerAccepted));
                 })
                 .toList();
-    }
-
-    private MatchmakingPlayerDTO pendingPlayerDto(PendingPlayer player) {
-        MatchEntrant entrant = player.entrant();
-        return new MatchmakingPlayerDTO(
-                entrant.userId(),
-                entrant.username(),
-                player.slot(),
-                false,
-                0,
-                "custom::0,0,0,0",
-                false,
-                false);
     }
 
     private PendingMatch pendingMatchForUser(UUID userId) {
@@ -268,10 +264,6 @@ public class MatchmakingService {
                 .filter(candidate -> candidate.containsUser(userId))
                 .findFirst()
                 .orElse(null);
-    }
-
-    private static UUID acceptedUserId(PendingMatch pending) {
-        return pending.acceptedUserIds().stream().findFirst().orElse(null);
     }
 
     private static boolean socketMatches(String expectedSocketSessionId, String actualSocketSessionId) {
@@ -343,7 +335,7 @@ public class MatchmakingService {
         }
     }
 
-    private record PendingPlayer(MatchEntrant entrant, int slot) {
+    private record PendingRecipient(MatchEntrant entrant, int slot) {
     }
 
     private record PendingMatch(

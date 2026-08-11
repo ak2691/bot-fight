@@ -11,13 +11,13 @@ import com.example.botfight.DTO.BotSubmissionPayloadDTO;
 import com.example.botfight.domain.AppUser;
 import com.example.botfight.domain.BotSubmission;
 import com.example.botfight.domain.BotSubmissionStatus;
-import com.example.botfight.domain.TestingSession;
+import com.example.botfight.domain.BuildingSession;
 import com.example.botfight.domain.ValidationResult;
 import com.example.botfight.domain.ValidationStatus;
 import com.example.botfight.repository.BotSubmissionRepository;
-import com.example.botfight.repository.TestingSessionRepository;
+import com.example.botfight.repository.BuildingSessionRepository;
 import com.example.botfight.repository.ValidationResultRepository;
-import com.example.botfight.simulation.combat.CombatCatalog;
+import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import java.lang.reflect.Field;
 import java.time.Instant;
 import java.util.List;
@@ -36,8 +36,8 @@ class BotSubmissionServiceTest {
     private final JsonMapper jsonMapper = new JsonMapper();
     private final BotSubmissionRepository botSubmissionRepository =
             org.mockito.Mockito.mock(BotSubmissionRepository.class);
-    private final TestingSessionRepository testingSessionRepository =
-            org.mockito.Mockito.mock(TestingSessionRepository.class);
+    private final BuildingSessionRepository buildingSessionRepository =
+            org.mockito.Mockito.mock(BuildingSessionRepository.class);
     private final ValidationResultRepository validationResultRepository =
             org.mockito.Mockito.mock(ValidationResultRepository.class);
     private final CurrentUserService currentUserService = org.mockito.Mockito.mock(CurrentUserService.class);
@@ -47,9 +47,9 @@ class BotSubmissionServiceTest {
     private final BotSubmissionService service = new BotSubmissionService(
             new BotSubmissionValidationService(
                     jsonMapper,
-                    new CombatCatalog()),
+                    new GameConfigCatalog()),
             botSubmissionRepository,
-            testingSessionRepository,
+            buildingSessionRepository,
             validationResultRepository,
             currentUserService,
             rateLimiter,
@@ -60,25 +60,25 @@ class BotSubmissionServiceTest {
     @Test
     void persistsAcceptedSubmissionWithFullBrainPayload() throws Exception {
         UUID submissionId = UUID.randomUUID();
-        AppUser user = prototypeUser();
+        AppUser user = testUser();
         Authentication authentication = authenticatedUser(user);
         stubSavedSubmissionId(submissionId);
 
-        UUID testingSessionId = UUID.randomUUID();
-        stubOwnedTestingSession(testingSessionId, user);
-        BotSubmissionPayloadDTO payload = validPayload(testingSessionId);
+        UUID buildingSessionId = UUID.randomUUID();
+        stubOwnedBuildingSession(buildingSessionId, user);
+        BotSubmissionPayloadDTO payload = validPayload(buildingSessionId);
         var response = service.submit(payload, authentication);
 
         assertThat(response.isAccepted()).isTrue();
-        assertThat(response.isTestingDurationTrusted()).isTrue();
+        assertThat(response.isBuildingDurationTrusted()).isTrue();
 
         ArgumentCaptor<BotSubmission> submissionCaptor = ArgumentCaptor.forClass(BotSubmission.class);
         verify(botSubmissionRepository).save(submissionCaptor.capture());
         BotSubmission savedSubmission = submissionCaptor.getValue();
         assertThat(savedSubmission.getUser()).isSameAs(user);
         assertThat(savedSubmission.getBrainSchemaVersion()).isEqualTo("bot-logic-tree-v1");
-        assertThat(savedSubmission.getTestingSessionId()).isEqualTo(testingSessionId.toString());
-        assertThat(savedSubmission.getBrainPayload()).contains("\"move_inward\"");
+        assertThat(savedSubmission.getBuildingSessionId()).isEqualTo(buildingSessionId.toString());
+        assertThat(savedSubmission.getBrainPayload()).contains("\"move_walk\"");
         assertThat(savedSubmission.getStatus()).isEqualTo(BotSubmissionStatus.VALIDATED);
 
         ArgumentCaptor<ValidationResult> resultCaptor = ArgumentCaptor.forClass(ValidationResult.class);
@@ -87,24 +87,23 @@ class BotSubmissionServiceTest {
         assertThat(savedResult.getBotSubmission()).isSameAs(savedSubmission);
         assertThat(savedResult.getStatus()).isEqualTo(ValidationStatus.ACCEPTED);
         assertThat(savedResult.getValidatorVersion()).isEqualTo("bot-brain-submission-v1");
-        assertThat(savedResult.getDetails()).doesNotContain("ModelHash");
     }
 
     @Test
-    void rejectsSubmissionForTestingSessionOwnedByAnotherUser() throws Exception {
+    void rejectsSubmissionForBuildingSessionOwnedByAnotherUser() throws Exception {
         UUID submissionId = UUID.randomUUID();
-        AppUser user = prototypeUser();
+        AppUser user = testUser();
         Authentication authentication = authenticatedUser(user);
         stubSavedSubmissionId(submissionId);
 
-        UUID testingSessionId = UUID.randomUUID();
-        when(testingSessionRepository.findByIdAndUserIdForSubmission(testingSessionId, user.getId()))
+        UUID buildingSessionId = UUID.randomUUID();
+        when(buildingSessionRepository.findByIdAndUserIdForSubmission(buildingSessionId, user.getId()))
                 .thenReturn(Optional.empty());
 
-        var response = service.submit(validPayload(testingSessionId), authentication);
+        var response = service.submit(validPayload(buildingSessionId), authentication);
 
         assertThat(response.isAccepted()).isFalse();
-        assertThat(response.getErrors()).contains("testingSessionId was not found for this user");
+        assertThat(response.getErrors()).contains("buildingSessionId was not found for this user");
 
         ArgumentCaptor<BotSubmission> submissionCaptor = ArgumentCaptor.forClass(BotSubmission.class);
         verify(botSubmissionRepository).save(submissionCaptor.capture());
@@ -114,17 +113,12 @@ class BotSubmissionServiceTest {
     @Test
     void persistsRejectedSubmissionWithoutViolatingRequiredColumns() throws Exception {
         UUID submissionId = UUID.randomUUID();
-        AppUser user = prototypeUser();
+        AppUser user = testUser();
         Authentication authentication = authenticatedUser(user);
         stubSavedSubmissionId(submissionId);
 
         BotSubmissionPayloadDTO payload = new BotSubmissionPayloadDTO();
-        payload.setArchitectureVersion(null);
-        payload.setFeatureSchemaVersion(null);
-        payload.setActionSchemaVersion(null);
-        payload.setTestingSessionId("x".repeat(150));
-        payload.setTestingSteps(-1);
-        payload.setTestingMetrics(jsonMapper.readTree("{}"));
+        payload.setBuildingSessionId("x".repeat(150));
 
         var response = service.submit(payload, authentication);
 
@@ -134,7 +128,7 @@ class BotSubmissionServiceTest {
         verify(botSubmissionRepository).save(submissionCaptor.capture());
         BotSubmission savedSubmission = submissionCaptor.getValue();
         assertThat(savedSubmission.getBrainSchemaVersion()).isEqualTo("missing-brain-schema");
-        assertThat(savedSubmission.getTestingSessionId()).hasSize(100);
+        assertThat(savedSubmission.getBuildingSessionId()).hasSize(100);
         assertThat(savedSubmission.getStatus()).isEqualTo(BotSubmissionStatus.REJECTED);
 
         ArgumentCaptor<ValidationResult> resultCaptor = ArgumentCaptor.forClass(ValidationResult.class);
@@ -146,7 +140,7 @@ class BotSubmissionServiceTest {
     @Test
     void persistsValidatorErrorsAsValidationResults() throws Exception {
         UUID submissionId = UUID.randomUUID();
-        AppUser user = prototypeUser();
+        AppUser user = testUser();
         Authentication authentication = authenticatedUser(user);
         stubSavedSubmissionId(submissionId);
         BotSubmissionValidationService failingValidationService =
@@ -156,7 +150,7 @@ class BotSubmissionServiceTest {
         BotSubmissionService serviceWithFailingValidator = new BotSubmissionService(
                 failingValidationService,
             botSubmissionRepository,
-            testingSessionRepository,
+            buildingSessionRepository,
                 validationResultRepository,
                 currentUserService,
             rateLimiter,
@@ -185,12 +179,12 @@ class BotSubmissionServiceTest {
     @Test
     void acceptsDuplicateBrainHash() throws Exception {
         UUID submissionId = UUID.randomUUID();
-        AppUser user = prototypeUser();
+        AppUser user = testUser();
         Authentication authentication = authenticatedUser(user);
         stubSavedSubmissionId(submissionId);
-        UUID testingSessionId = UUID.randomUUID();
-        stubOwnedTestingSession(testingSessionId, user);
-        var response = service.submit(validPayload(testingSessionId), authentication);
+        UUID buildingSessionId = UUID.randomUUID();
+        stubOwnedBuildingSession(buildingSessionId, user);
+        var response = service.submit(validPayload(buildingSessionId), authentication);
 
         assertThat(response.isAccepted()).isTrue();
 
@@ -202,18 +196,18 @@ class BotSubmissionServiceTest {
     @Test
     void exactSubmissionRetryReturnsOriginalSubmissionWithoutAnotherWrite() throws Exception {
         UUID submissionId = UUID.randomUUID();
-        AppUser user = prototypeUser();
+        AppUser user = testUser();
         Authentication authentication = authenticatedUser(user);
         stubSavedSubmissionId(submissionId);
-        UUID testingSessionId = UUID.randomUUID();
-        stubOwnedTestingSession(testingSessionId, user);
-        BotSubmissionPayloadDTO payload = validPayload(testingSessionId);
+        UUID buildingSessionId = UUID.randomUUID();
+        stubOwnedBuildingSession(buildingSessionId, user);
+        BotSubmissionPayloadDTO payload = validPayload(buildingSessionId);
 
         service.submit(payload, authentication);
         ArgumentCaptor<BotSubmission> submissionCaptor = ArgumentCaptor.forClass(BotSubmission.class);
         verify(botSubmissionRepository).save(submissionCaptor.capture());
-        when(botSubmissionRepository.findByUserIdAndTestingSessionIdAndRequestFingerprintIsNotNull(
-                user.getId(), testingSessionId.toString()))
+        when(botSubmissionRepository.findByUserIdAndBuildingSessionIdAndRequestFingerprintIsNotNull(
+                user.getId(), buildingSessionId.toString()))
                 .thenReturn(Optional.of(submissionCaptor.getValue()));
 
         var retryResponse = service.submit(payload, authentication);
@@ -225,28 +219,28 @@ class BotSubmissionServiceTest {
     }
 
     @Test
-    void reusedTestingSessionWithDifferentPayloadIsRejectedAsConflict() throws Exception {
+    void reusedBuildingSessionWithDifferentPayloadIsRejectedAsConflict() throws Exception {
         UUID submissionId = UUID.randomUUID();
-        AppUser user = prototypeUser();
+        AppUser user = testUser();
         Authentication authentication = authenticatedUser(user);
         stubSavedSubmissionId(submissionId);
-        UUID testingSessionId = UUID.randomUUID();
-        stubOwnedTestingSession(testingSessionId, user);
-        BotSubmissionPayloadDTO originalPayload = validPayload(testingSessionId);
+        UUID buildingSessionId = UUID.randomUUID();
+        stubOwnedBuildingSession(buildingSessionId, user);
+        BotSubmissionPayloadDTO originalPayload = validPayload(buildingSessionId);
 
         service.submit(originalPayload, authentication);
         ArgumentCaptor<BotSubmission> submissionCaptor = ArgumentCaptor.forClass(BotSubmission.class);
         verify(botSubmissionRepository).save(submissionCaptor.capture());
-        when(botSubmissionRepository.findByUserIdAndTestingSessionIdAndRequestFingerprintIsNotNull(
-                user.getId(), testingSessionId.toString()))
+        when(botSubmissionRepository.findByUserIdAndBuildingSessionIdAndRequestFingerprintIsNotNull(
+                user.getId(), buildingSessionId.toString()))
                 .thenReturn(Optional.of(submissionCaptor.getValue()));
-        BotSubmissionPayloadDTO conflictingPayload = validPayload(testingSessionId);
-        conflictingPayload.setTestingSteps(1);
+        BotSubmissionPayloadDTO conflictingPayload = validPayload(buildingSessionId);
+        conflictingPayload.setClientBuildVersion("different-build");
 
         org.assertj.core.api.Assertions.assertThatThrownBy(
                         () -> service.submit(conflictingPayload, authentication))
                 .isInstanceOf(SubmissionConflictException.class)
-                .hasMessage("This testing session already has a different bot submission");
+                .hasMessage("This building session already has a different bot submission");
         verify(botSubmissionRepository, times(1)).save(any(BotSubmission.class));
     }
 
@@ -254,13 +248,13 @@ class BotSubmissionServiceTest {
     void persistsAcceptedMatchBoundSubmission() throws Exception {
         UUID submissionId = UUID.randomUUID();
         UUID matchId = UUID.randomUUID();
-        AppUser user = prototypeUser();
+        AppUser user = testUser();
         Authentication authentication = authenticatedUser(user);
         stubSavedSubmissionId(submissionId);
-        UUID testingSessionId = UUID.randomUUID();
-        stubOwnedTestingSession(testingSessionId, user, matchId);
+        UUID buildingSessionId = UUID.randomUUID();
+        stubOwnedBuildingSession(buildingSessionId, user, matchId);
 
-        BotSubmissionPayloadDTO payload = validPayload(testingSessionId);
+        BotSubmissionPayloadDTO payload = validPayload(buildingSessionId);
         payload.setMatchId(matchId);
         var response = service.submit(payload, authentication);
 
@@ -274,26 +268,26 @@ class BotSubmissionServiceTest {
     }
 
     @Test
-    void rejectsMatchSubmissionUsingTestingSessionFromAnotherContext() throws Exception {
+    void rejectsMatchSubmissionUsingBuildingSessionFromAnotherContext() throws Exception {
         UUID submissionId = UUID.randomUUID();
         UUID matchId = UUID.randomUUID();
-        AppUser user = prototypeUser();
+        AppUser user = testUser();
         Authentication authentication = authenticatedUser(user);
         stubSavedSubmissionId(submissionId);
-        UUID testingSessionId = UUID.randomUUID();
-        stubOwnedTestingSession(testingSessionId, user, null);
+        UUID buildingSessionId = UUID.randomUUID();
+        stubOwnedBuildingSession(buildingSessionId, user, null);
 
-        BotSubmissionPayloadDTO payload = validPayload(testingSessionId);
+        BotSubmissionPayloadDTO payload = validPayload(buildingSessionId);
         payload.setMatchId(matchId);
         var response = service.submit(payload, authentication);
 
         assertThat(response.isAccepted()).isFalse();
-        assertThat(response.getErrors()).contains("testingSessionId is not assigned to this match");
+        assertThat(response.getErrors()).contains("buildingSessionId is not assigned to this match");
     }
 
     @Test
     void rateLimitStopsSubmissionBeforePersistence() {
-        AppUser user = prototypeUser();
+        AppUser user = testUser();
         Authentication authentication = authenticatedUser(user);
         org.mockito.Mockito.doThrow(new RateLimitExceededException(
                 "Too many bot submissions. Please retry shortly.",
@@ -307,27 +301,17 @@ class BotSubmissionServiceTest {
         verify(validationResultRepository, never()).save(any(ValidationResult.class));
     }
 
-    private BotSubmissionPayloadDTO validPayload(UUID testingSessionId) throws Exception {
+    private BotSubmissionPayloadDTO validPayload(UUID buildingSessionId) throws Exception {
         BotSubmissionPayloadDTO payload = new BotSubmissionPayloadDTO();
-        payload.setArchitectureVersion("deterministic-logic-v1");
-        payload.setFeatureSchemaVersion("duel-logic-features-v1");
-        payload.setActionSchemaVersion("melee-logic-actions-v1");
-        payload.setModelFormat("logic-blocks-v1");
-        payload.setTestingSessionId(testingSessionId.toString());
-        payload.setTestingDurationMs(null);
-        payload.setTestingSteps(0);
+        payload.setBuildingSessionId(buildingSessionId.toString());
         payload.setSelectedLoadout("melee");
-        payload.setBaseModelArtifactId("logic-brain-v1");
-        payload.setTestingMetrics(jsonMapper.readTree("""
-                {"version":"deterministic-logic-check-v1","testingSamples":0,"epochsCompleted":0}
-                """));
 
         JsonNode brain = jsonMapper.readTree("""
                 {
                   "version": "bot-logic-tree-v1",
-                  "blocks": [
-                    {"id":"block-1","action":"move_inward","conditions":[]}
-                  ]
+                  "roots": [{"createdOrder":0,"branches":[
+                    {"id":"node-1","createdOrder":0,"branchType":"if","actions":[{"action":"move_walk","movementMode":"target","movementDirection":"toward"}],"conditions":[],"children":[]}
+                  ]}]
                 }
                 """);
         payload.setBrain(brain);
@@ -335,12 +319,12 @@ class BotSubmissionServiceTest {
         return payload;
     }
 
-    private AppUser prototypeUser() {
+    private AppUser testUser() {
         AppUser user = new AppUser();
         user.setId(UUID.randomUUID());
-        user.setUsername("prototype-local-player");
-        user.setEmail("prototype@example.test");
-        user.setNormalizedEmail("prototype@example.test");
+        user.setUsername("test-local-player");
+        user.setEmail("test@example.test");
+        user.setNormalizedEmail("test@example.test");
         return user;
     }
 
@@ -358,19 +342,19 @@ class BotSubmissionServiceTest {
         });
     }
 
-    private void stubOwnedTestingSession(UUID testingSessionId, AppUser user) throws Exception {
-        stubOwnedTestingSession(testingSessionId, user, null);
+    private void stubOwnedBuildingSession(UUID buildingSessionId, AppUser user) throws Exception {
+        stubOwnedBuildingSession(buildingSessionId, user, null);
     }
 
-    private void stubOwnedTestingSession(UUID testingSessionId, AppUser user, UUID matchId) throws Exception {
-        TestingSession session = new TestingSession();
-        setId(session, testingSessionId);
+    private void stubOwnedBuildingSession(UUID buildingSessionId, AppUser user, UUID matchId) throws Exception {
+        BuildingSession session = new BuildingSession();
+        setId(session, buildingSessionId);
         session.setUser(user);
         session.setMatchId(matchId);
         session.setStartedAt(Instant.now().minusSeconds(2));
-        when(testingSessionRepository.findByIdAndUserId(testingSessionId, user.getId()))
+        when(buildingSessionRepository.findByIdAndUserId(buildingSessionId, user.getId()))
                 .thenReturn(Optional.of(session));
-        when(testingSessionRepository.findByIdAndUserIdForSubmission(testingSessionId, user.getId()))
+        when(buildingSessionRepository.findByIdAndUserIdForSubmission(buildingSessionId, user.getId()))
                 .thenReturn(Optional.of(session));
     }
 
@@ -380,8 +364,8 @@ class BotSubmissionServiceTest {
         idField.set(submission, id);
     }
 
-    private void setId(TestingSession session, UUID id) throws Exception {
-        Field idField = TestingSession.class.getDeclaredField("id");
+    private void setId(BuildingSession session, UUID id) throws Exception {
+        Field idField = BuildingSession.class.getDeclaredField("id");
         idField.setAccessible(true);
         idField.set(session, id);
     }

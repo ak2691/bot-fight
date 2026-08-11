@@ -5,6 +5,8 @@ import java.util.UUID;
 
 public record ProfileDTO(
         String username,
+        Instant joinedAt,
+        String aboutMe,
         long matchesPlayed,
         long wins,
         long losses,

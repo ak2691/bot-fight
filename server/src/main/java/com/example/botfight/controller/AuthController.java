@@ -2,8 +2,10 @@ package com.example.botfight.controller;
 
 import com.example.botfight.DTO.AuthRequestDTO;
 import com.example.botfight.DTO.AuthUserDTO;
+import com.example.botfight.DTO.EmailVerificationRequestDTO;
 import com.example.botfight.DTO.GoogleAuthStatusDTO;
 import com.example.botfight.DTO.GoogleLinkRequestDTO;
+import com.example.botfight.DTO.RegistrationResponseDTO;
 import com.example.botfight.DTO.UsernameRequestDTO;
 import com.example.botfight.service.AuthException;
 import com.example.botfight.service.AuthService;
@@ -37,10 +39,23 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<AuthUserDTO> register(
+    public ResponseEntity<RegistrationResponseDTO> register(
             @RequestBody AuthRequestDTO request,
             HttpServletRequest httpRequest) {
         return ResponseEntity.status(HttpStatus.CREATED).body(authService.register(request, httpRequest));
+    }
+
+    @PostMapping("/verify-email")
+    public ResponseEntity<AuthUserDTO> verifyEmail(
+            @RequestBody EmailVerificationRequestDTO request,
+            HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(authService.verifyEmail(request, httpRequest));
+    }
+
+    @PostMapping("/resend-verification")
+    public ResponseEntity<RegistrationResponseDTO> resendVerification(
+            @RequestBody EmailVerificationRequestDTO request) {
+        return ResponseEntity.ok(authService.resendVerification(request == null ? null : request.getEmail()));
     }
 
     @PostMapping("/login")

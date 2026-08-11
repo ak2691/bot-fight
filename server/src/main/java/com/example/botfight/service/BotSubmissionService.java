@@ -5,14 +5,12 @@ import com.example.botfight.DTO.BotSubmissionValidationResponseDTO;
 import com.example.botfight.domain.AppUser;
 import com.example.botfight.domain.BotSubmission;
 import com.example.botfight.domain.BotSubmissionStatus;
-import com.example.botfight.domain.TestingSession;
+import com.example.botfight.domain.BuildingSession;
 import com.example.botfight.domain.ValidationResult;
 import com.example.botfight.domain.ValidationStatus;
 import com.example.botfight.repository.BotSubmissionRepository;
-import com.example.botfight.repository.TestingSessionRepository;
+import com.example.botfight.repository.BuildingSessionRepository;
 import com.example.botfight.repository.ValidationResultRepository;
-import java.time.Duration;
-import java.time.Instant;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -33,14 +31,14 @@ import tools.jackson.databind.json.JsonMapper;
 public class BotSubmissionService {
 
     private static final int MAX_VERSION_LENGTH = 50;
-    private static final int MAX_TESTING_SESSION_ID_LENGTH = 100;
+    private static final int MAX_BUILDING_SESSION_ID_LENGTH = 100;
     private static final int MAX_CLIENT_BUILD_VERSION_LENGTH = 100;
     private static final int MAX_SELECTED_LOADOUT_LENGTH = 40;
     private static final String VALIDATOR_VERSION = "bot-submission-v1";
 
     private final BotSubmissionValidationService validationService;
     private final BotSubmissionRepository botSubmissionRepository;
-    private final TestingSessionRepository testingSessionRepository;
+    private final BuildingSessionRepository buildingSessionRepository;
     private final ValidationResultRepository validationResultRepository;
     private final CurrentUserService currentUserService;
     private final BotSubmissionRateLimiter rateLimiter;
@@ -51,7 +49,7 @@ public class BotSubmissionService {
     public BotSubmissionService(
             BotSubmissionValidationService validationService,
             BotSubmissionRepository botSubmissionRepository,
-            TestingSessionRepository testingSessionRepository,
+            BuildingSessionRepository buildingSessionRepository,
             ValidationResultRepository validationResultRepository,
             CurrentUserService currentUserService,
             BotSubmissionRateLimiter rateLimiter,
@@ -60,7 +58,7 @@ public class BotSubmissionService {
             JsonMapper jsonMapper) {
         this.validationService = validationService;
         this.botSubmissionRepository = botSubmissionRepository;
-        this.testingSessionRepository = testingSessionRepository;
+        this.buildingSessionRepository = buildingSessionRepository;
         this.validationResultRepository = validationResultRepository;
         this.currentUserService = currentUserService;
         this.rateLimiter = rateLimiter;
@@ -79,7 +77,7 @@ public class BotSubmissionService {
         }
 
         BotSubmissionValidationResponseDTO validation = validateSafely(payload);
-        Integer trustedTestingDurationMs = validateOwnedTestingSession(payload, user, validation);
+        validateOwnedBuildingSession(payload, user, validation);
         validateMatchBinding(payload, user, validation);
 
         rateLimiter.requireAllowed(user.getId());
@@ -87,9 +85,7 @@ public class BotSubmissionService {
         BotSubmission submission = toSubmission(
                 payload,
                 validation,
-                user,
-                trustedTestingDurationMs,
-                requestFingerprint);
+                user, requestFingerprint);
 
         BotSubmission savedSubmission = botSubmissionRepository.save(submission);
         validationResultRepository.save(toValidationResult(savedSubmission, validation));
@@ -103,12 +99,12 @@ public class BotSubmissionService {
     }
 
     private Optional<BotSubmission> findExistingSubmission(BotSubmissionPayloadDTO payload, AppUser user) {
-        if (payload == null || !hasText(payload.getTestingSessionId())) {
+        if (payload == null || !hasText(payload.getBuildingSessionId())) {
             return Optional.empty();
         }
-        return botSubmissionRepository.findByUserIdAndTestingSessionIdAndRequestFingerprintIsNotNull(
+        return botSubmissionRepository.findByUserIdAndBuildingSessionIdAndRequestFingerprintIsNotNull(
                 user.getId(),
-                submissionTestingSessionKey(payload));
+                submissionBuildingSessionKey(payload));
     }
 
     private BotSubmissionValidationResponseDTO existingSubmissionResponse(
@@ -117,7 +113,7 @@ public class BotSubmissionService {
         if (existing.getRequestFingerprint() == null
                 || !existing.getRequestFingerprint().equals(requestFingerprint)) {
             throw new SubmissionConflictException(
-                    "This testing session already has a different bot submission");
+                    "This building session already has a different bot submission");
         }
 
         boolean accepted = existing.getStatus() == BotSubmissionStatus.VALIDATED;
@@ -143,7 +139,7 @@ public class BotSubmissionService {
             response.setStatus("ERROR");
             response.setMessage("Bot brain validation failed unexpectedly");
             response.setValidatorVersion(VALIDATOR_VERSION);
-            response.setTestingDurationTrusted(false);
+            response.setBuildingDurationTrusted(false);
             response.setErrors(List.of("validator error: " + ex.getClass().getSimpleName()));
             response.setWarnings(List.of());
             return response;
@@ -154,7 +150,6 @@ public class BotSubmissionService {
             BotSubmissionPayloadDTO payload,
             BotSubmissionValidationResponseDTO validation,
             AppUser user,
-            Integer trustedTestingDurationMs,
             String requestFingerprint) {
         BotSubmission submission = new BotSubmission();
         submission.setUser(user);
@@ -162,7 +157,7 @@ public class BotSubmissionService {
 
         if (payload != null) {
             submission.setMatchId(payload.getMatchId());
-            submission.setTestingSessionId(submissionTestingSessionKey(payload));
+            submission.setBuildingSessionId(submissionBuildingSessionKey(payload));
             submission.setSelectedLoadout(cleanNullableText(
                     payload.getSelectedLoadout(), MAX_SELECTED_LOADOUT_LENGTH));
             submission.setClientBuildVersion(cleanNullableText(
@@ -197,11 +192,11 @@ public class BotSubmissionService {
         }
     }
 
-    private String submissionTestingSessionKey(BotSubmissionPayloadDTO payload) {
-        if (payload == null || !hasText(payload.getTestingSessionId())) {
+    private String submissionBuildingSessionKey(BotSubmissionPayloadDTO payload) {
+        if (payload == null || !hasText(payload.getBuildingSessionId())) {
             return null;
         }
-        return truncate(payload.getTestingSessionId().trim(), MAX_TESTING_SESSION_ID_LENGTH);
+        return truncate(payload.getBuildingSessionId().trim(), MAX_BUILDING_SESSION_ID_LENGTH);
     }
 
     private void validateMatchBinding(
@@ -222,62 +217,59 @@ public class BotSubmissionService {
             }
         }
 
-        if (!hasText(payload.getTestingSessionId())) {
+        if (!hasText(payload.getBuildingSessionId())) {
             return;
         }
 
-        UUID testingSessionId;
+        UUID buildingSessionId;
         try {
-            testingSessionId = UUID.fromString(payload.getTestingSessionId().trim());
+            buildingSessionId = UUID.fromString(payload.getBuildingSessionId().trim());
         } catch (IllegalArgumentException ex) {
             return;
         }
 
-        Optional<TestingSession> session = testingSessionRepository.findByIdAndUserId(testingSessionId, user.getId());
+        Optional<BuildingSession> session = buildingSessionRepository.findByIdAndUserId(buildingSessionId, user.getId());
         if (session.isEmpty()) {
             return;
         }
 
         UUID sessionMatchId = session.get().getMatchId();
         if (sessionMatchId != null && matchId == null) {
-            rejectValidation(validation, "matchId is required for match testing sessions");
+            rejectValidation(validation, "matchId is required for match building sessions");
             return;
         }
         if (matchId != null && !matchId.equals(sessionMatchId)) {
-            rejectValidation(validation, "testingSessionId is not assigned to this match");
+            rejectValidation(validation, "buildingSessionId is not assigned to this match");
         }
     }
 
-    private Integer validateOwnedTestingSession(
+    private void validateOwnedBuildingSession(
             BotSubmissionPayloadDTO payload,
             AppUser user,
             BotSubmissionValidationResponseDTO validation) {
-        if (payload == null || !hasText(payload.getTestingSessionId())) {
-            return null;
+        if (payload == null || !hasText(payload.getBuildingSessionId())) {
+            return;
         }
 
-        UUID testingSessionId;
+        UUID buildingSessionId;
         try {
-            testingSessionId = UUID.fromString(payload.getTestingSessionId().trim());
+            buildingSessionId = UUID.fromString(payload.getBuildingSessionId().trim());
         } catch (IllegalArgumentException ex) {
-            rejectValidation(validation, "testingSessionId must be a server-issued UUID");
-            return null;
+            rejectValidation(validation, "buildingSessionId must be a server-issued UUID");
+            return;
         }
 
-        Optional<TestingSession> session = testingSessionRepository.findByIdAndUserIdForSubmission(
-                testingSessionId,
+        Optional<BuildingSession> session = buildingSessionRepository.findByIdAndUserIdForSubmission(
+                buildingSessionId,
                 user.getId());
         if (session.isEmpty()) {
             if (!"ERROR".equals(validation.getStatus())) {
-                rejectValidation(validation, "testingSessionId was not found for this user");
+                rejectValidation(validation, "buildingSessionId was not found for this user");
             }
-            return null;
+            return;
         }
 
-        validation.setTestingDurationTrusted(true);
-        return clampToInteger(Math.max(
-                0,
-                Duration.between(session.get().getStartedAt(), Instant.now()).toMillis()));
+        validation.setBuildingDurationTrusted(true);
     }
 
     private void rejectValidation(BotSubmissionValidationResponseDTO validation, String error) {
@@ -294,20 +286,6 @@ public class BotSubmissionService {
         validation.setErrors(errors);
     }
 
-    private void addWarning(BotSubmissionValidationResponseDTO validation, String warning) {
-        List<String> warnings = validation.getWarnings() == null
-                ? new ArrayList<>()
-                : new ArrayList<>(validation.getWarnings());
-        if (!warnings.contains(warning)) {
-            warnings.add(warning);
-        }
-        validation.setWarnings(warnings);
-    }
-
-    private Integer clampToInteger(long value) {
-        return value > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) value;
-    }
-
     private ValidationResult toValidationResult(
             BotSubmission submission,
             BotSubmissionValidationResponseDTO validation) {
@@ -319,7 +297,7 @@ public class BotSubmissionService {
 
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("message", validation.getMessage());
-        details.put("testingDurationTrusted", validation.isTestingDurationTrusted());
+        details.put("buildingDurationTrusted", validation.isBuildingDurationTrusted());
         details.put("errors", validation.getErrors());
         details.put("warnings", validation.getWarnings());
         result.setDetails(toJson(details, "{}"));
@@ -383,11 +361,4 @@ public class BotSubmissionService {
         return value != null && !value.isBlank();
     }
 
-    private Integer cleanNonNegative(Integer value) {
-        if (value == null || value < 0) {
-            return null;
-        }
-
-        return value;
-    }
 }

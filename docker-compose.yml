@@ -50,7 +50,6 @@ services:
             - "5173:5173"
         volumes:
             - ./frontend:/app
-            - ./artifacts/base-models:/app/public/artifacts/base-models:ro
             - /app/node_modules
         env_file:
             - ./frontend/.env

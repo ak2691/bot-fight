@@ -3,7 +3,7 @@ package com.example.botfight.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.botfight.DTO.BotSubmissionPayloadDTO;
-import com.example.botfight.simulation.combat.CombatCatalog;
+import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Disabled;
@@ -15,7 +15,7 @@ class BotSubmissionValidationServiceTest {
     private final JsonMapper jsonMapper = new JsonMapper();
     private final BotSubmissionValidationService service = new BotSubmissionValidationService(
             jsonMapper,
-            new CombatCatalog());
+            new GameConfigCatalog());
 
     @Test
     void acceptsValidDeterministicBrainContract() throws Exception {
@@ -25,21 +25,77 @@ class BotSubmissionValidationServiceTest {
 
         assertThat(result.isAccepted()).isTrue();
         assertThat(result.getStatus()).isEqualTo("ACCEPTED");
-        assertThat(result.getComputedModelHash()).isNull();
-        assertThat(result.getWarnings()).contains(
-                "testingDurationMs will be computed from the server-owned testing session");
+        assertThat(result.getWarnings()).isEmpty();
     }
 
     @Test
-    void acceptsEmptyLogicBlockList() throws Exception {
+    void rejectsStandardAbilitiesInClientLoadoutsBecauseTheyAreGrantedByTheServer() throws Exception {
         BotSubmissionPayloadDTO payload = validPayload();
         payload.setBrain(jsonMapper.readTree("""
-                {"version":"bot-logic-tree-v1","blocks":[]}
+                {
+                  "version":"bot-logic-tree-v1",
+                  "loadout":{
+                    "abilities":["dash","lock_on"],
+                    "statPoints":{"maxHp":0,"moveSpeed":0,"attackDamage":0,"attackSpeed":0}
+                  },
+                  "roots":[]
+                }
+                """));
+
+        var result = service.validate(payload);
+
+        assertThat(result.isAccepted()).isFalse();
+        assertThat(result.getErrors()).contains(
+                "brain.loadout.abilities contains an invalid or duplicate ability");
+    }
+
+    @Test
+    void rejectsTheLegacyBasicHealIdFromNewSubmissions() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {
+                  "version":"bot-logic-tree-v1",
+                  "loadout":{
+                    "abilities":["repair_pulse"],
+                    "statPoints":{"maxHp":0,"moveSpeed":0,"attackDamage":0,"attackSpeed":0}
+                  },
+                  "roots":[]
+                }
+                """));
+
+        var result = service.validate(payload);
+
+        assertThat(result.isAccepted()).isFalse();
+        assertThat(result.getErrors()).contains(
+                "brain.loadout.abilities contains an invalid or duplicate ability");
+    }
+
+    @Test
+    void acceptsEmptyRootList() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","roots":[]}
                 """));
 
         var result = service.validate(payload);
 
         assertThat(result.isAccepted()).isTrue();
+    }
+
+    @Test
+    void rejectsRetiredBlocksSchema() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","blocks":[],"clusters":[]}
+                """));
+
+        var result = service.validate(payload);
+
+        assertThat(result.isAccepted()).isFalse();
+        assertThat(result.getErrors()).contains(
+                "brain.blocks is no longer supported",
+                "brain.clusters is no longer supported",
+                "brain.roots must be an array");
     }
 
     @Test
@@ -49,56 +105,30 @@ class BotSubmissionValidationServiceTest {
                 {
                   "version":"bot-logic-tree-v1",
                   "loadout":{
-                    "abilities":["swing","block","rail_shot","micro_dash","orbital_strike","null_zone"],
+                    "abilities":["swing","block","rail_shot","phase_strike","orbital_strike","null_zone"],
                     "statPoints":{"maxHp":3,"moveSpeed":3,"attackDamage":3,"attackSpeed":3}
                   },
-                  "blocks":[]
+                  "roots":[]
                 }
                 """));
 
         assertThat(service.validate(payload).isAccepted()).isTrue();
     }
 
-    @Disabled("Removed arena-object contract")
     @Test
-    void acceptsClusteredLogicBlocksWithinLimit() throws Exception {
+    void acceptsNestedLogicRoots() throws Exception {
         BotSubmissionPayloadDTO payload = validPayload();
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
-                  "blocks":[],
-                  "clusters":[
-                    {
-                      "id":"cluster-1",
-                      "priority":4,
-                      "conditions":[{"type":"my_hp_lt","value":50}],
-                      "blocks":[
-                        {"id":"block-1","priority":1,"action":"move_inward","conditions":[{"type":"target_health_pack","target":"object_1"}]}
-                      ]
-                    }
-                  ]
-                }
-                """));
-
-        var result = service.validate(payload);
-
-        assertThat(result.isAccepted()).isTrue();
-    }
-
-    @Test
-    void acceptsNestedLogicColumns() throws Exception {
-        BotSubmissionPayloadDTO payload = validPayload();
-        payload.setBrain(jsonMapper.readTree("""
-                {
-                  "version":"bot-logic-tree-v1",
-                  "columns":[{
-                    "id":"column-1","createdOrder":1,
+                  "roots":[{
+                    "createdOrder":1,
                     "branches":[{
                       "id":"branch-1","branchType":"if","createdOrder":1,
-                      "action":"move_inward","conditions":[{"type":"always"}],
+                      "action":"move_walk","movementMode":"target","movementDirection":"toward","conditions":[{"type":"always"}],
                       "children":[
-                        {"id":"nested-1","branchType":"if","createdOrder":2,"action":"dash","conditions":[{"type":"always"}],"children":[]},
-                        {"id":"nested-2","branchType":"else","createdOrder":3,"action":"move_stop","conditions":[],"children":[]}
+                        {"id":"nested-1","branchType":"if","createdOrder":2,"action":"dash","movementMode":"absolute","movementDirection":"north","conditions":[{"type":"always"}],"children":[]},
+                        {"id":"nested-2","branchType":"else","createdOrder":3,"action":"move_walk","movementMode":"absolute","movementDirection":"stop","conditions":[],"children":[]}
                       ]
                     }]
                   }]
@@ -111,13 +141,13 @@ class BotSubmissionValidationServiceTest {
     }
 
     @Test
-    void rejectsElseBeforeElseIfInLogicColumn() throws Exception {
+    void rejectsElseBeforeLaterConditionalInLogicRoot() throws Exception {
         BotSubmissionPayloadDTO payload = validPayload();
         payload.setBrain(jsonMapper.readTree("""
-                {"version":"bot-logic-tree-v1","columns":[{"id":"column-1","branches":[
-                  {"id":"first","branchType":"if","action":"move_inward","conditions":[{"type":"always"}],"children":[]},
+                {"version":"bot-logic-tree-v1","roots":[{"branches":[
+                  {"id":"first","branchType":"if","action":"move_walk","movementMode":"target","movementDirection":"toward","conditions":[{"type":"always"}],"children":[]},
                   {"id":"fallback","branchType":"else","action":"stop","conditions":[],"children":[]},
-                  {"id":"late","branchType":"else_if","action":"move_outward","conditions":[{"type":"always"}],"children":[]}
+                  {"id":"late","branchType":"if","action":"move_walk","movementMode":"target","movementDirection":"away","conditions":[{"type":"always"}],"children":[]}
                 ]}]}
                 """));
 
@@ -133,11 +163,11 @@ class BotSubmissionValidationServiceTest {
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
-                  "blocks":[
+                  "roots":[{"branches":[
                     {
-                      "id":"block-1",
+                      "id":"node-1",
                       "priority":1,
-                      "action":"move_center",
+                      "action":"move_walk","movementMode":"coordinates","movementDirection":"toward","targetX":500,"targetY":400,
                       "conditions":[
                         {
                           "type":"expression",
@@ -165,8 +195,7 @@ class BotSubmissionValidationServiceTest {
                         }
                       ]
                     }
-                  ],
-                  "clusters":[]
+                  ]}]
                 }
                 """));
 
@@ -181,11 +210,11 @@ class BotSubmissionValidationServiceTest {
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
-                  "blocks":[
+                  "roots":[{"branches":[
                     {
-                      "id":"block-1",
+                      "id":"node-1",
                       "priority":1,
-                      "action":"move_inward",
+                      "action":"move_walk","movementMode":"target","movementDirection":"toward",
                       "conditions":[
                         {
                           "type":"expression",
@@ -203,14 +232,13 @@ class BotSubmissionValidationServiceTest {
                           "type":"expression",
                           "join":"or",
                           "left":"my.selectedAbilityReady",
-                          "ability":"dash",
+                          "ability":"lock_on",
                           "comparator":"eq",
                           "right":{"type":"boolean","value":true}
                         }
                       ]
                     }
-                  ],
-                  "clusters":[]
+                  ]}]
                 }
                 """));
 
@@ -226,22 +254,21 @@ class BotSubmissionValidationServiceTest {
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
-                  "blocks":[
+                  "roots":[{"branches":[
                     {
-                      "id":"block-1",
+                      "id":"node-1",
                       "priority":1,
-                      "action":"move_inward",
+                      "action":"move_walk","movementMode":"target","movementDirection":"toward",
                       "conditions":[
                         {
                           "type":"expression",
-                          "left":"my.dashReady",
+                          "left":"my.swingReady",
                           "comparator":"lt",
                           "right":{"type":"number","value":1}
                         }
                       ]
                     }
-                  ],
-                  "clusters":[]
+                  ]}]
                 }
                 """));
 
@@ -249,19 +276,7 @@ class BotSubmissionValidationServiceTest {
 
         assertThat(result.isAccepted()).isFalse();
         assertThat(result.getErrors()).contains(
-                "brain.blocks[0].conditions[0].left is not an allowed variable");
-    }
-
-    @Test
-    void ignoresLegacyClientModelHash() throws Exception {
-        BotSubmissionPayloadDTO payload = validPayload();
-        payload.setModelHash("sha256:tampered");
-
-        var result = service.validate(payload);
-
-        assertThat(result.isAccepted()).isTrue();
-        assertThat(result.getComputedModelHash()).isNull();
-        assertThat(result.getWarnings()).noneMatch(warning -> warning.contains("modelHash"));
+                "brain.roots[0].branches[0].conditions[0].left is not an allowed variable");
     }
 
     @Test
@@ -276,50 +291,15 @@ class BotSubmissionValidationServiceTest {
     }
 
     @Test
-    void ignoresLegacyTestingFields() throws Exception {
-        BotSubmissionPayloadDTO payload = validPayload();
-        payload.setTestingSteps(1);
-        payload.setTestingMetrics(jsonMapper.readTree("""
-                {"testingSamples":1,"epochsCompleted":1}
-                """));
-
-        var result = service.validate(payload);
-
-        assertThat(result.isAccepted()).isTrue();
-        assertThat(result.getErrors()).isEmpty();
-    }
-
-    @Disabled("Actions are loadout-gated instead of loadout-gated")
-    @Test
-    void rejectsRangedDashActionsAndOwnDashConditions() throws Exception {
-        BotSubmissionPayloadDTO payload = validPayload();
-        payload.setSelectedLoadout("ranged");
-        payload.setBrain(jsonMapper.readTree("""
-                {
-                  "version":"bot-logic-tree-v1",
-                  "blocks":[
-                    {"id":"block-1","priority":1,"action":"dash","conditions":[{"type":"always"}]}
-                  ]
-                }
-                """));
-
-        var result = service.validate(payload);
-
-        assertThat(result.isAccepted()).isFalse();
-        assertThat(result.getErrors()).contains(
-                "brain.blocks[0].action is not allowed for ranged");
-    }
-
-    @Test
     void rejectsRemovedDirectAbilityConditions() throws Exception {
         BotSubmissionPayloadDTO payload = validPayload();
         payload.setSelectedLoadout("melee");
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
-                  "blocks":[
-                    {"id":"block-1","priority":1,"action":"dash","conditions":[{"type":"my_dash_ready"}]}
-                  ]
+                  "roots":[{"branches":[
+                    {"id":"node-1","action":"lock_on","conditions":[{"type":"my_selected_ability_ready"}]}
+                  ]}]
                 }
                 """));
 
@@ -327,7 +307,7 @@ class BotSubmissionValidationServiceTest {
 
         assertThat(result.isAccepted()).isFalse();
         assertThat(result.getErrors()).contains(
-                "brain.blocks[0].conditions[0].type must be always or expression");
+                "brain.roots[0].branches[0].conditions[0].type must be always or expression");
     }
 
     @Test
@@ -337,9 +317,9 @@ class BotSubmissionValidationServiceTest {
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
-                  "blocks":[
-                    {"id":"block-1","priority":1,"action":"move_outward","conditions":[{"type":"opponent_shield_up"}]}
-                  ]
+                  "roots":[{"branches":[
+                    {"id":"node-1","action":"move_walk","movementMode":"target","movementDirection":"away","conditions":[{"type":"opponent_shield_up"}]}
+                  ]}]
                 }
                 """));
 
@@ -347,43 +327,7 @@ class BotSubmissionValidationServiceTest {
 
         assertThat(result.isAccepted()).isFalse();
         assertThat(result.getErrors()).contains(
-                "brain.blocks[0].conditions[0].type must be always or expression");
-    }
-
-    @Disabled("Actions are loadout-gated instead of loadout-gated")
-    @Test
-    void acceptsRangedGrenadeActionAndRejectsItForMelee() throws Exception {
-        BotSubmissionPayloadDTO rangedPayload = validPayload();
-        rangedPayload.setSelectedLoadout("ranged");
-        rangedPayload.setBrain(jsonMapper.readTree("""
-                {
-                  "version":"bot-logic-tree-v1",
-                  "blocks":[
-                    {"id":"block-1","priority":1,"action":"throw_grenade","conditions":[{"type":"always"}]}
-                  ]
-                }
-                """));
-
-        var rangedResult = service.validate(rangedPayload);
-
-        assertThat(rangedResult.isAccepted()).isTrue();
-
-        BotSubmissionPayloadDTO meleePayload = validPayload();
-        meleePayload.setSelectedLoadout("melee");
-        meleePayload.setBrain(jsonMapper.readTree("""
-                {
-                  "version":"bot-logic-tree-v1",
-                  "blocks":[
-                    {"id":"block-1","priority":1,"action":"throw_grenade","conditions":[{"type":"always"}]}
-                  ]
-                }
-                """));
-
-        var meleeResult = service.validate(meleePayload);
-
-        assertThat(meleeResult.isAccepted()).isFalse();
-        assertThat(meleeResult.getErrors()).contains(
-                "brain.blocks[0].action is not allowed for melee");
+                "brain.roots[0].branches[0].conditions[0].type must be always or expression");
     }
 
     @Test
@@ -392,9 +336,9 @@ class BotSubmissionValidationServiceTest {
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
-                  "blocks":[
-                    {"id":"block-1","priority":1,"action":"move_north","conditions":[{"type":"always"}]}
-                  ]
+                  "roots":[{"branches":[
+                    {"id":"node-1","action":"move_walk","movementMode":"absolute","movementDirection":"north","conditions":[{"type":"always"}]}
+                  ]}]
                 }
                 """));
 
@@ -404,15 +348,32 @@ class BotSubmissionValidationServiceTest {
     }
 
     @Test
-    void acceptsAlwaysConditionAndArenaRelativeDashForMelee() throws Exception {
+    void rejectsRetiredDirectionalActionIds() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","roots":[{"branches":[{
+                  "branchType":"if","actions":[{"action":"move_inward"}],
+                  "conditions":[{"type":"always"}],"children":[]
+                }]}]}
+                """));
+
+        var result = service.validate(payload);
+
+        assertThat(result.isAccepted()).isFalse();
+        assertThat(result.getErrors()).contains(
+                "brain.roots[0].branches[0].actions[0].action is not allowed for duel-v1");
+    }
+
+    @Test
+    void acceptsAlwaysConditionAndStandardMicroDashForMelee() throws Exception {
         BotSubmissionPayloadDTO payload = validPayload();
         payload.setSelectedLoadout("melee");
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
-                  "blocks":[
-                    {"id":"block-1","priority":1,"action":"dash_north","conditions":[{"type":"always"}]}
-                  ]
+                  "roots":[{"branches":[
+                    {"id":"node-1","action":"dash","movementMode":"absolute","movementDirection":"north","conditions":[{"type":"always"}]}
+                  ]}]
                 }
                 """));
 
@@ -427,10 +388,10 @@ class BotSubmissionValidationServiceTest {
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
-                  "columns":[{"branches":[{
+                  "roots":[{"branches":[{
                     "branchType":"if",
                     "actions":[
-                      {"action":"move_inward","actionTarget":"opponent"},
+                      {"action":"move_walk","movementMode":"target","movementDirection":"toward","actionTarget":"opponent"},
                       {"action":"rotate_toward_enemy","actionTarget":"opponent"},
                       {"action":"swing"}
                     ],
@@ -449,9 +410,9 @@ class BotSubmissionValidationServiceTest {
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
-                  "columns":[{"branches":[{
+                  "roots":[{"branches":[{
                     "branchType":"if",
-                    "actions":[{"action":"move_inward"},{"action":"move_outward"}],
+                    "actions":[{"action":"move_walk","movementMode":"target","movementDirection":"toward"},{"action":"move_walk","movementMode":"target","movementDirection":"away"}],
                     "conditions":[{"type":"always"}],
                     "children":[]
                   }]}]
@@ -459,7 +420,7 @@ class BotSubmissionValidationServiceTest {
                 """));
 
         assertThat(service.validate(payload).getErrors()).contains(
-                "brain.columns[0].branches[0] has multiple movement actions");
+                "brain.roots[0].branches[0] has multiple movement actions");
     }
 
     @Test
@@ -469,10 +430,10 @@ class BotSubmissionValidationServiceTest {
                 {
                   "version":"bot-logic-tree-v1",
                   "loadout":{
-                    "abilities":["swing","dash","block"],
+                    "abilities":["swing","block"],
                     "statPoints":{"maxHp":5,"moveSpeed":4,"attackDamage":4,"attackSpeed":0}
                   },
-                  "columns":[{"branches":[{
+                  "roots":[{"branches":[{
                     "branchType":"if","action":"fire_gun","actionTarget":"defender_core",
                     "conditions":[{"type":"always"}],"children":[]
                   }]}]
@@ -481,8 +442,8 @@ class BotSubmissionValidationServiceTest {
 
         assertThat(service.validate(payload).getErrors()).contains(
                 "brain.loadout.statPoints exceeds the match budget of 12",
-                "brain.columns[0].branches[0].actionTarget is not an allowed fight target",
-                "brain.columns[0].branches[0].action requires equipped ability fire_gun");
+                "brain.roots[0].branches[0].actionTarget is not an allowed fight target",
+                "brain.roots[0].branches[0].action requires equipped ability 3");
     }
 
     @Test
@@ -493,7 +454,7 @@ class BotSubmissionValidationServiceTest {
                 {
                   "version":"bot-logic-tree-v1",
                   "loadout":{"abilities":["fire_gun"],"statPoints":{"maxHp":0,"moveSpeed":0,"attackDamage":0,"attackSpeed":0}},
-                  "columns":[{"branches":[{
+                  "roots":[{"branches":[{
                     "branchType":"if","action":"fire_gun",
                     "conditions":[{"type":"expression","left":"my.selectedAbilityAmmo","ability":"fire_gun","comparator":"gt","right":{"type":"number","value":0}}],
                     "children":[]
@@ -505,14 +466,82 @@ class BotSubmissionValidationServiceTest {
     }
 
     @Test
-    void acceptsEquippedDuelV1AbilityActionInColumnBrain() throws Exception {
+    void acceptsAndValidatesGenericSelectedStatusEffectCondition() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setSelectedLoadout("custom");
+        payload.setBrain(jsonMapper.readTree("""
+                {
+                  "version":"bot-logic-tree-v1",
+                  "loadout":{"abilities":["shoot_fireball"],"statPoints":{"maxHp":0,"moveSpeed":0,"attackDamage":0,"attackSpeed":0}},
+                  "roots":[{"branches":[{
+                    "branchType":"if","action":"move_walk","movementMode":"absolute","movementDirection":"stop",
+                    "conditions":[{"type":"expression","left":"my.selectedStatusEffectActive","statusEffect":"burn","comparator":"eq","right":{"type":"boolean","value":true}}],
+                    "children":[]
+                  }]}]
+                }
+                """));
+
+        assertThat(service.validate(payload).getErrors()).isEmpty();
+
+        payload.setBrain(jsonMapper.readTree("""
+                {
+                  "version":"bot-logic-tree-v1",
+                  "loadout":{"abilities":["shoot_fireball"],"statPoints":{"maxHp":0,"moveSpeed":0,"attackDamage":0,"attackSpeed":0}},
+                  "roots":[{"branches":[{
+                    "branchType":"if","action":"move_walk","movementMode":"absolute","movementDirection":"stop",
+                    "conditions":[{"type":"expression","left":"my.selectedStatusEffectActive","statusEffect":"not-real","comparator":"eq","right":{"type":"boolean","value":true}}],
+                    "children":[]
+                  }]}]
+                }
+                """));
+
+        assertThat(service.validate(payload).getErrors()).contains(
+                "brain.roots[0].branches[0].conditions[0].statusEffect must identify an allowed status effect");
+    }
+
+    @Test
+    void acceptsStatusEffectDurationComparisonsOnlyAtOneDecimalPrecision() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setSelectedLoadout("custom");
+        payload.setBrain(jsonMapper.readTree("""
+                {
+                  "version":"bot-logic-tree-v1",
+                  "loadout":{"abilities":["shoot_fireball"],"statPoints":{"maxHp":0,"moveSpeed":0,"attackDamage":0,"attackSpeed":0}},
+                  "roots":[{"branches":[{
+                    "branchType":"if","action":"move_walk","movementMode":"absolute","movementDirection":"stop",
+                    "conditions":[{"type":"expression","left":"my.selectedStatusEffectDurationMs","statusEffect":"burn","comparator":"gte","right":{"type":"number","value":1.2}}],
+                    "children":[]
+                  }]}]
+                }
+                """));
+
+        assertThat(service.validate(payload).getErrors()).isEmpty();
+
+        payload.setBrain(jsonMapper.readTree("""
+                {
+                  "version":"bot-logic-tree-v1",
+                  "loadout":{"abilities":["shoot_fireball"],"statPoints":{"maxHp":0,"moveSpeed":0,"attackDamage":0,"attackSpeed":0}},
+                  "roots":[{"branches":[{
+                    "branchType":"if","action":"move_walk","movementMode":"absolute","movementDirection":"stop",
+                    "conditions":[{"type":"expression","left":"my.selectedStatusEffectDurationMs","statusEffect":"burn","comparator":"gte","right":{"type":"number","value":1.23}}],
+                    "children":[]
+                  }]}]
+                }
+                """));
+
+        assertThat(service.validate(payload).getErrors()).contains(
+                "brain.roots[0].branches[0].conditions[0].right.value for status-effect duration must use 0.1 second increments");
+    }
+
+    @Test
+    void acceptsEquippedDuelV1AbilityActionInRootBrain() throws Exception {
         BotSubmissionPayloadDTO payload = validPayload();
         payload.setSelectedLoadout("duel-v1");
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
                   "loadout":{"abilities":["concussive_shot"],"statPoints":{"maxHp":0,"moveSpeed":0,"attackDamage":0,"attackSpeed":0}},
-                  "columns":[{"branches":[{
+                  "roots":[{"branches":[{
                     "branchType":"if","actions":[{"action":"concussive_shot"}],
                     "conditions":[{"type":"always"}],"children":[]
                   }]}]
@@ -523,14 +552,14 @@ class BotSubmissionValidationServiceTest {
     }
 
     @Test
-    void rejectsUnequippedDuelV1VariantAction() throws Exception {
+    void rejectsRetiredConfiguredAbilityVariantAction() throws Exception {
         BotSubmissionPayloadDTO payload = validPayload();
         payload.setSelectedLoadout("duel-v1");
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
                   "loadout":{"abilities":[],"statPoints":{"maxHp":0,"moveSpeed":0,"attackDamage":0,"attackSpeed":0}},
-                  "columns":[{"branches":[{
+                  "roots":[{"branches":[{
                     "branchType":"if","actions":[{"action":"phase_strike_keep_facing"}],
                     "conditions":[{"type":"always"}],"children":[]
                   }]}]
@@ -538,7 +567,7 @@ class BotSubmissionValidationServiceTest {
                 """));
 
         assertThat(service.validate(payload).getErrors())
-                .contains("brain.columns[0].branches[0].actions[0].action requires equipped ability phase_strike");
+                .contains("brain.roots[0].branches[0].actions[0].action is not allowed for duel-v1");
     }
 
     @Test
@@ -546,10 +575,59 @@ class BotSubmissionValidationServiceTest {
         BotSubmissionPayloadDTO payload = validPayload();
         payload.setBrain(jsonMapper.readTree("""
                 {"version":"bot-logic-tree-v1","customVariables":[{"id":"custom.counter","name":"Counter","valueType":"number","initialValue":0}],
-                 "columns":[{"branches":[{"branchType":"if","conditions":[{"type":"expression","left":"custom.counter","comparator":"lt","right":{"type":"number","value":10}}],"actions":[{"action":"variable","variableId":"custom.counter","operation":"add","value":1}],"children":[]}]}]}
+                 "roots":[{"branches":[{"branchType":"if","conditions":[{"type":"expression","left":"custom.counter","comparator":"lt","right":{"type":"number","value":10}}],"actions":[{"action":"variable","variableId":"custom.counter","operation":"add","value":1}],"children":[]}]}]}
                 """));
 
         assertThat(service.validate(payload).getErrors()).isEmpty();
+    }
+
+    @Test
+    void acceptsModuloConditionsWithNegativeDivisorsAndFloorsDecimalOperands() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {
+                  "version":"bot-logic-tree-v1",
+                  "customVariables":[{"id":"custom.counter","name":"Counter","valueType":"number","initialValue":-10}],
+                  "roots":[{"branches":[{"branchType":"if","conditions":[
+                    {"type":"expression","left":"custom.counter","comparator":"modulo",
+                     "modulo":{"divisor":-3.5,"comparator":"eq"},"right":{"type":"number","value":-1.5}}
+                  ],"actions":[{"action":"move_walk","movementMode":"target","movementDirection":"toward"}],"children":[]}]}]
+                }
+                """));
+
+        var result = service.validate(payload);
+
+        assertThat(result.isAccepted()).isTrue();
+        assertThat(result.getErrors()).isEmpty();
+    }
+
+    @Test
+    void rejectsZeroAndRecursiveModuloOperatorsAtTheSubmissionBoundary() throws Exception {
+        BotSubmissionPayloadDTO zeroPayload = validPayload();
+        zeroPayload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","roots":[{"branches":[{"branchType":"if",
+                  "conditions":[{"type":"expression","left":"my.hp","comparator":"modulo",
+                    "modulo":{"divisor":0,"comparator":"eq"},"right":{"type":"number","value":0}}],
+                  "actions":[{"action":"move_walk","movementMode":"target","movementDirection":"toward"}],"children":[]}]}]}
+                """));
+        var zeroResult = service.validate(zeroPayload);
+
+        assertThat(zeroResult.isAccepted()).isFalse();
+        assertThat(zeroResult.getErrors()).contains(
+                "brain.roots[0].branches[0].conditions[0].modulo.divisor cannot be 0");
+
+        BotSubmissionPayloadDTO recursivePayload = validPayload();
+        recursivePayload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","roots":[{"branches":[{"branchType":"if",
+                  "conditions":[{"type":"expression","left":"my.hp","comparator":"modulo",
+                    "modulo":{"divisor":5,"comparator":"modulo"},"right":{"type":"number","value":0}}],
+                  "actions":[{"action":"move_walk","movementMode":"target","movementDirection":"toward"}],"children":[]}]}]}
+                """));
+        var recursiveResult = service.validate(recursivePayload);
+
+        assertThat(recursiveResult.isAccepted()).isFalse();
+        assertThat(recursiveResult.getErrors()).contains(
+                "brain.roots[0].branches[0].conditions[0].modulo.comparator must be an ordinary numeric comparison operator");
     }
 
     @Test
@@ -558,20 +636,20 @@ class BotSubmissionValidationServiceTest {
                 .mapToObj(index -> "{\"id\":\"custom.v" + index + "\",\"name\":\"Variable " + index + "\",\"valueType\":\"boolean\",\"initialValue\":false,\"conditions\":[{\"type\":\"always\"}]}")
                 .collect(java.util.stream.Collectors.joining(","));
         BotSubmissionPayloadDTO payload = validPayload();
-        payload.setBrain(jsonMapper.readTree("{\"version\":\"bot-logic-tree-v1\",\"customVariables\":[" + variables + "],\"columns\":[]}"));
+        payload.setBrain(jsonMapper.readTree("{\"version\":\"bot-logic-tree-v1\",\"customVariables\":[" + variables + "],\"roots\":[]}"));
 
         assertThat(service.validate(payload).getErrors()).contains("brain.customVariables exceeds the 100 variable-slot limit");
     }
 
     @Test
     void rejectsMoreThanOneHundredEmptyBrainNodes() throws Exception {
-        String columns = java.util.stream.IntStream.range(0, 101)
-                .mapToObj(index -> "{\"id\":\"column-" + index + "\",\"name\":\"Node " + index + "\",\"branches\":[]}")
+        String roots = java.util.stream.IntStream.range(0, 101)
+                .mapToObj(index -> "{\"branches\":[]}")
                 .collect(java.util.stream.Collectors.joining(","));
         BotSubmissionPayloadDTO payload = validPayload();
-        payload.setBrain(jsonMapper.readTree("{\"version\":\"bot-logic-tree-v1\",\"customVariables\":[],\"columns\":[" + columns + "]}"));
+        payload.setBrain(jsonMapper.readTree("{\"version\":\"bot-logic-tree-v1\",\"customVariables\":[],\"roots\":[" + roots + "]}"));
 
-        assertThat(service.validate(payload).getErrors()).contains("brain.columns exceeds the column limit");
+        assertThat(service.validate(payload).getErrors()).contains("brain.roots exceeds the root limit");
     }
 
     @Test
@@ -580,34 +658,25 @@ class BotSubmissionValidationServiceTest {
                 .mapToObj(index -> "{\"type\":\"always\"}")
                 .collect(java.util.stream.Collectors.joining(","));
         String uses = java.util.stream.IntStream.range(0, 3)
-                .mapToObj(index -> "{\"branchType\":\"" + (index == 0 ? "if" : "else_if") + "\",\"conditions\":[{\"type\":\"expression\",\"left\":\"custom.derived\",\"comparator\":\"eq\",\"right\":{\"type\":\"boolean\",\"value\":true}}],\"actions\":[],\"children\":[]}")
+                .mapToObj(index -> "{\"branchType\":\"" + (index == 0 ? "if" : "if") + "\",\"conditions\":[{\"type\":\"expression\",\"left\":\"custom.derived\",\"comparator\":\"eq\",\"right\":{\"type\":\"boolean\",\"value\":true}}],\"actions\":[],\"children\":[]}")
                 .collect(java.util.stream.Collectors.joining(","));
         BotSubmissionPayloadDTO payload = validPayload();
-        payload.setBrain(jsonMapper.readTree("{\"version\":\"bot-logic-tree-v1\",\"customVariables\":[{\"id\":\"custom.derived\",\"name\":\"Derived\",\"valueType\":\"boolean\",\"initialValue\":false,\"conditions\":[" + derived + "]}],\"columns\":[{\"branches\":[" + uses + "]}]}"));
+        payload.setBrain(jsonMapper.readTree("{\"version\":\"bot-logic-tree-v1\",\"customVariables\":[{\"id\":\"custom.derived\",\"name\":\"Derived\",\"valueType\":\"boolean\",\"initialValue\":false,\"conditions\":[" + derived + "]}],\"roots\":[{\"branches\":[" + uses + "]}]}"));
 
         assertThat(service.validate(payload).getErrors()).contains("brain exceeds the total condition limit including derived custom variables");
     }
 
     private BotSubmissionPayloadDTO validPayload() throws Exception {
         BotSubmissionPayloadDTO payload = new BotSubmissionPayloadDTO();
-        payload.setArchitectureVersion("deterministic-logic-v1");
-        payload.setFeatureSchemaVersion("duel-logic-features-v1");
-        payload.setActionSchemaVersion("melee-logic-actions-v1");
-        payload.setModelFormat("logic-blocks-v1");
-        payload.setTestingSessionId("11111111-1111-1111-1111-111111111111");
-        payload.setTestingDurationMs(null);
-        payload.setTestingSteps(0);
-        payload.setTestingMetrics(jsonMapper.readTree("""
-                {"version":"deterministic-logic-check-v1","testingSamples":0,"epochsCompleted":0}
-                """));
+        payload.setBuildingSessionId("11111111-1111-1111-1111-111111111111");
         payload.setSelectedLoadout("melee");
 
         JsonNode brain = jsonMapper.readTree("""
                 {
                   "version": "bot-logic-tree-v1",
-                  "blocks": [
-                    {"id":"block-1","action":"move_inward","conditions":[]}
-                  ]
+                  "roots": [{"branches":[
+                    {"id":"node-1","action":"move_walk","movementMode":"target","movementDirection":"toward","conditions":[]}
+                  ]}]
                 }
                 """);
         payload.setBrain(brain);

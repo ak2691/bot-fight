@@ -34,8 +34,8 @@ public class BotSubmission {
     @Column(name = "brain_schema_version", nullable = false, length = 50)
     private String brainSchemaVersion;
 
-    @Column(name = "testing_session_id", length = 100)
-    private String testingSessionId;
+    @Column(name = "building_session_id", length = 100)
+    private String buildingSessionId;
 
     @Column(name = "submission_fingerprint", length = 64)
     private String requestFingerprint;
@@ -92,12 +92,12 @@ public class BotSubmission {
         this.brainSchemaVersion = brainSchemaVersion;
     }
 
-    public String getTestingSessionId() {
-        return testingSessionId;
+    public String getBuildingSessionId() {
+        return buildingSessionId;
     }
 
-    public void setTestingSessionId(String testingSessionId) {
-        this.testingSessionId = testingSessionId;
+    public void setBuildingSessionId(String buildingSessionId) {
+        this.buildingSessionId = buildingSessionId;
     }
 
     public String getRequestFingerprint() {

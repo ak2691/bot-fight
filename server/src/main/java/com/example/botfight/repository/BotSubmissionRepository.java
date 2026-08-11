@@ -9,8 +9,8 @@ public interface BotSubmissionRepository extends JpaRepository<BotSubmission, UU
 
     Optional<BotSubmission> findByIdAndUserId(UUID id, UUID userId);
 
-    Optional<BotSubmission> findByUserIdAndTestingSessionIdAndRequestFingerprintIsNotNull(
+    Optional<BotSubmission> findByUserIdAndBuildingSessionIdAndRequestFingerprintIsNotNull(
             UUID userId,
-            String testingSessionId);
+            String buildingSessionId);
 
 }

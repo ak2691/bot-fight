@@ -58,6 +58,7 @@ export function createMatchmakingClient({
     let currentStatus = "IDLE";
     let eventDelivery = Promise.resolve();
     let networkDelayIntervalId = null;
+    let resumeOnConnect = false;
     const pendingEvents = [];
     const pendingChatEvents = [];
 
@@ -186,6 +187,10 @@ export function createMatchmakingClient({
                 startPeriodicNetworkDelaySampling(generation);
                 updateStatus("CONNECTED");
                 if (autoJoinOnConnect) client.resumeMatch();
+                if (resumeOnConnect && !autoJoinOnConnect) {
+                    resumeOnConnect = false;
+                    client.resumeMatch();
+                }
             };
             stompClient.onStompError = () => {
                 updateStatus("ERROR");
@@ -223,8 +228,19 @@ export function createMatchmakingClient({
         resumeMatch() {
             publish("/app/matchmaking.resume");
         },
+        resumeWhenConnected() {
+            if (autoJoinOnConnect) return;
+            if (stompClient?.connected) {
+                client.resumeMatch();
+                return;
+            }
+            resumeOnConnect = true;
+        },
         acceptMatch(matchId) {
             publish("/app/matchmaking.accept", { matchId });
+        },
+        cancelMatch(matchId) {
+            publish("/app/matchmaking.cancel", { matchId });
         },
         leaveQueue() {
             publish("/app/matchmaking.leave");
@@ -255,12 +271,12 @@ export function createMatchmakingClient({
 
 let activeMatchmakingClient = null;
 
-export function getActiveMatchmakingClient(handlers) {
+export function getActiveMatchmakingClient(handlers, options = {}) {
     if (!activeMatchmakingClient) {
         activeMatchmakingClient = createMatchmakingClient({
             ...handlers,
-            autoReconnect: true,
-            autoJoinOnConnect: true,
+            autoReconnect: options.autoReconnect ?? true,
+            autoJoinOnConnect: options.autoJoinOnConnect ?? true,
         });
     } else {
         activeMatchmakingClient.setHandlers(handlers);

@@ -36,7 +36,7 @@ export default function MatchChat({ messages, minimized, onMinimizedChange, onSe
             </div>
             {(closedNotice || rateLimitNotice) && <p role="status" className="match-chat__notice">{closedNotice || rateLimitNotice}</p>}
             <form className="match-chat__form" onSubmit={submit}>
-                <input value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={MAX_MESSAGE_LENGTH} placeholder={disabled ? "Chat closed" : "Type a message..."} aria-label="Match chat message" disabled={disabled} />
+                <input id="match-chat-message" name="message" type="text" value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={MAX_MESSAGE_LENGTH} placeholder={disabled ? "Chat closed" : "Type a message..."} aria-label="Match chat message" autoComplete="off" disabled={disabled} />
                 <button type="submit" disabled={disabled || !draft.trim()} aria-label="Send chat message">➤</button>
             </form>
         </aside>

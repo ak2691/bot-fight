@@ -1,6 +1,8 @@
 package com.example.botfight.simulation.ecs;
 
-import com.example.botfight.simulation.combat.AbilityContracts.EffectType;
+import com.example.botfight.simulation.gameconfig.Abilities;
+import com.example.botfight.simulation.gameconfig.AbilityContracts;
+import com.example.botfight.simulation.gameconfig.AbilityContracts.EffectType;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -16,30 +18,30 @@ public final class AbilityEntitySystem {
         public boolean prevents(EffectType effect) { return preventedEffects.contains(effect); }
     }
 
-    public interface Combat<F extends AbilityEntityCombatant> {
-        void damage(F fighter, int amount);
-        void damageFromOwner(List<F> fighters, int ownerSlot, F target, int amount);
-        int damageToEntity(ArenaEntity entity, List<F> fighters, List<ArenaEntity> entities);
-        boolean entityHitByCurrentAttack(ArenaEntity entity, List<F> fighters, List<ArenaEntity> entities);
-        default ShieldResult shield(F fighter, double sourceX, double sourceY, String abilityId) { return ShieldResult.none(); }
+    public interface Combat<F extends AbilityEntityBot> {
+        void damage(F bot, int amount);
+        void damageFromOwner(List<F> bots, int ownerSlot, F target, int amount);
+        int damageToEntity(ArenaEntity entity, List<F> bots, List<ArenaEntity> entities);
+        boolean entityHitByCurrentAttack(ArenaEntity entity, List<F> bots, List<ArenaEntity> entities);
+        default ShieldResult shield(F bot, double sourceX, double sourceY, int abilityId) { return ShieldResult.none(); }
     }
 
-    public static <F extends AbilityEntityCombatant> List<ArenaEntity> tick(
+    public static <F extends AbilityEntityBot> List<ArenaEntity> tick(
             List<ArenaEntity> entities,
-            List<F> fighters,
+            List<F> bots,
             ArenaBounds arena,
             int stepMs,
             Combat<F> combat) {
-        fighters.forEach(fighter -> fighter.setZoneSilenced(false));
+        bots.forEach(bot -> bot.setZoneSilenced(false));
         List<ArenaEntity> next = new ArrayList<>();
-        tickTravelingAndPersistent(entities, fighters, arena, stepMs, combat, next);
-        tickMines(entities, fighters, arena, stepMs, combat, next);
-        tickMarkersAndEffects(entities, fighters, stepMs, combat, next);
+        tickTravelingAndPersistent(entities, bots, arena, stepMs, combat, next);
+        tickMines(entities, bots, arena, stepMs, combat, next);
+        tickMarkersAndEffects(entities, bots, stepMs, combat, next);
         return next;
     }
 
-    private static <F extends AbilityEntityCombatant> void tickTravelingAndPersistent(
-            List<ArenaEntity> entities, List<F> fighters, ArenaBounds arena, int stepMs,
+    private static <F extends AbilityEntityBot> void tickTravelingAndPersistent(
+            List<ArenaEntity> entities, List<F> bots, ArenaBounds arena, int stepMs,
             Combat<F> combat, List<ArenaEntity> next) {
         for (ArenaEntity entity : entities) {
             if ("silenceWave".equals(entity.type())) {
@@ -47,61 +49,121 @@ public final class AbilityEntitySystem {
                 double nextX = clamp(entity.x() + entity.velocityX(), 0, arena.width());
                 double nextY = clamp(entity.y() + entity.velocityY(), 0, arena.height());
                 boolean blocked = false;
-                for (F fighter : fighters) {
-                    if (fighter.entitySlot() == entity.ownerSlot()) continue;
+                for (F bot : bots) {
+                    if (bot.entitySlot() == entity.ownerSlot()) continue;
                     if (segmentIntersectsCircle(entity.x(), entity.y(), nextX, nextY,
-                            fighter.entityX(), fighter.entityY(), fighter.entitySize() / 2.0 + entity.size() / 2.0)) {
-                        if (fighter.ignoresHostileEffects()) continue;
-                        if (combat.shield(fighter, entity.x(), entity.y(), "silence_pulse").prevents(EffectType.DEBUFF)) {
+                            bot.entityX(), bot.entityY(), bot.entitySize() / 2.0 + entity.size() / 2.0)) {
+                        if (bot.ignoresHostileEffects()) continue;
+                        if (combat.shield(bot, entity.x(), entity.y(), 15).prevents(EffectType.DEBUFF)) {
                             blocked = true;
                             continue;
                         }
-                        fighter.applySilence(2000);
-                        fighter.applyStun(stepMs);
-                        fighter.cancelPreparation();
+                        bot.applySilence(AbilityContracts.effectDurationMs(15, "silence"));
+                        bot.applyStun(stepMs);
+                        bot.cancelPreparation();
                     }
                 }
                 boolean atEdge = nextX <= 0 || nextX >= arena.width() || nextY <= 0 || nextY >= arena.height();
                 if (remainingMs > 0 && !atEdge && !blocked) next.add(new ArenaEntity(entity.id(), entity.type(), entity.ownerSlot(), nextX, nextY,
-                        entity.size(), entity.velocityX(), entity.velocityY(), entity.traveled() + 150, remainingMs, true));
+                        entity.size(), entity.velocityX(), entity.velocityY(), entity.traveled()
+                                + Abilities.stat(15, "speed", 150), remainingMs, true));
+                continue;
+            }
+            if ("windburstProjectile".equals(entity.type())) {
+                tickWindburstProjectile(entity, bots, arena, stepMs, combat, next);
                 continue;
             }
             if ("gravityField".equals(entity.type()) || "nullZone".equals(entity.type())) {
-                tickField(entity, fighters, arena, stepMs, combat, next);
+                tickField(entity, bots, arena, stepMs, combat, next);
                 continue;
             }
-            if ("hunterDrone".equals(entity.type())) tickDrone(entity, entities, fighters, arena, stepMs, combat, next);
+            if ("hunterDrone".equals(entity.type())) tickDrone(entity, entities, bots, arena, stepMs, combat, next);
         }
     }
 
-    private static <F extends AbilityEntityCombatant> void tickField(
-            ArenaEntity entity, List<F> fighters, ArenaBounds arena, int stepMs,
+    private static <F extends AbilityEntityBot> void tickWindburstProjectile(
+            ArenaEntity entity, List<F> bots, ArenaBounds arena, int stepMs,
             Combat<F> combat, List<ArenaEntity> next) {
-        boolean moving = entity.traveled() < 176;
+        double speed = Abilities.stat(18, "speed", 44);
+        double maxRange = Abilities.range(18);
+        double stepScale = Math.max(0, stepMs) / 100.0;
+        double stepDistance = Math.min(Math.max(0, maxRange - entity.traveled()), speed * stepScale);
+        double nextX = clamp(entity.x() + entity.velocityX() * stepScale, 0, arena.width());
+        double nextY = clamp(entity.y() + entity.velocityY() * stepScale, 0, arena.height());
+        F target = bots.stream()
+                .filter(bot -> bot.entitySlot() != entity.ownerSlot()
+                        && bot.entityHp() > 0
+                        && !bot.ignoresHostileEffects())
+                .filter(bot -> segmentIntersectsCircle(entity.x(), entity.y(), nextX, nextY,
+                        bot.entityX(), bot.entityY(), bot.entitySize() / 2.0 + entity.size() / 2.0))
+                .min(java.util.Comparator.comparingDouble(bot -> Math.hypot(bot.entityX() - entity.x(), bot.entityY() - entity.y())))
+                .orElse(null);
+        if (target != null) {
+            ShieldResult shield = combat.shield(target, entity.x(), entity.y(), 18);
+            if (!shield.prevents(EffectType.DAMAGE)) {
+                combat.damageFromOwner(bots, entity.ownerSlot(), target,
+                        (int) Math.round(AbilityContracts.effectAmount(18, EffectType.DAMAGE)
+                                * Math.max(0, entity.damageMultiplier())));
+            }
+            if (!shield.prevents(EffectType.KNOCKBACK)) {
+                double velocityLength = Math.max(0.001, Math.hypot(entity.velocityX(), entity.velocityY()));
+                double knockback = AbilityContracts.get(18).effects().stream()
+                        .filter(effect -> effect.type() == EffectType.KNOCKBACK)
+                        .mapToDouble(AbilityContracts.Effect::amount)
+                        .findFirst()
+                        .orElseThrow();
+                target.setEntityPosition(
+                        clamp(target.entityX() + entity.velocityX() / velocityLength * knockback,
+                                target.entitySize() / 2.0, arena.width() - target.entitySize() / 2.0),
+                        clamp(target.entityY() + entity.velocityY() / velocityLength * knockback,
+                                target.entitySize() / 2.0, arena.height() - target.entitySize() / 2.0));
+            }
+            return;
+        }
+        double traveled = entity.traveled() + stepDistance;
+        int remainingMs = entity.timerMs() - stepMs;
+        boolean atEdge = nextX <= 0 || nextX >= arena.width() || nextY <= 0 || nextY >= arena.height();
+        if (stepDistance <= 0 || traveled >= maxRange || remainingMs <= 0 || atEdge) return;
+        next.add(new ArenaEntity(entity.id(), entity.type(), entity.ownerSlot(), nextX, nextY, entity.size(),
+                entity.velocityX(), entity.velocityY(), traveled, remainingMs, true, entity.hp(),
+                entity.shotVisualMs(), entity.damageMultiplier()));
+    }
+
+    private static <F extends AbilityEntityBot> void tickField(
+            ArenaEntity entity, List<F> bots, ArenaBounds arena, int stepMs,
+            Combat<F> combat, List<ArenaEntity> next) {
+        double travelDistance = Abilities.stat(14, "travelDistance", 176);
+        boolean moving = entity.traveled() < travelDistance;
         int ageMs = entity.timerMs() + stepMs;
         double x = moving ? clamp(entity.x() + entity.velocityX(), entity.size() / 2.0, arena.width() - entity.size() / 2.0) : entity.x();
         double y = moving ? clamp(entity.y() + entity.velocityY(), entity.size() / 2.0, arena.height() - entity.size() / 2.0) : entity.y();
         double traveled = moving ? entity.traveled() + Math.hypot(entity.velocityX(), entity.velocityY()) : entity.traveled();
-        boolean gravityDetonates = "gravityField".equals(entity.type()) && !moving && ageMs >= 3900;
+        boolean gravityDetonates = "gravityField".equals(entity.type()) && !moving
+                && ageMs >= Abilities.stat(14, "fuseMs", 3_900);
         boolean armed = !moving && !"gravityField".equals(entity.type());
-        int lifetimeMs = "gravityField".equals(entity.type()) ? 4000 : 5400;
+        int lifetimeMs = "gravityField".equals(entity.type())
+                ? (int) Abilities.stat(14, "lifetimeMs", 4_000)
+                : (int) Abilities.stat(24, "lifetimeMs", 5_400);
         if (ageMs >= lifetimeMs) return;
         ArenaEntity field = new ArenaEntity(entity.id(), entity.type(), entity.ownerSlot(), x, y, entity.size(),
                 moving ? entity.velocityX() : 0, moving ? entity.velocityY() : 0, traveled, ageMs, armed);
-        if (!moving) for (F fighter : fighters) {
-            double dx = x - fighter.entityX();
-            double dy = y - fighter.entityY();
+        if (!moving) for (F bot : bots) {
+            double dx = x - bot.entityX();
+            double dy = y - bot.entityY();
             double distance = Math.hypot(dx, dy);
-            if (distance > entity.size() / 2.0 + fighter.entitySize() / 2.0) continue;
-            if (fighter.ignoresHostileEffects()) continue;
-            if ("nullZone".equals(entity.type())) fighter.setZoneSilenced(true);
+            if (distance > entity.size() / 2.0) continue;
+            if (bot.ignoresHostileEffects()) continue;
+            if ("nullZone".equals(entity.type())) bot.setZoneSilenced(true);
             else if (!gravityDetonates && distance > 0.001) {
-                fighter.setEntityPosition(
-                        clamp(fighter.entityX() + dx / distance * 6, fighter.entitySize() / 2.0, arena.width() - fighter.entitySize() / 2.0),
-                        clamp(fighter.entityY() + dy / distance * 6, fighter.entitySize() / 2.0, arena.height() - fighter.entitySize() / 2.0));
+                double pull = AbilityContracts.effectAmount(14, EffectType.PULL);
+                bot.setEntityPosition(
+                        clamp(bot.entityX() + dx / distance * pull, bot.entitySize() / 2.0, arena.width() - bot.entitySize() / 2.0),
+                        clamp(bot.entityY() + dy / distance * pull, bot.entitySize() / 2.0, arena.height() - bot.entitySize() / 2.0));
             } else if (gravityDetonates) {
-                int band = Math.min(3, (int) Math.floor(distance / 30.0));
-                if (!combat.shield(fighter, x, y, "gravity_grenade").prevents(EffectType.DAMAGE)) combat.damage(fighter, 35 - band * 5);
+                if (!combat.shield(bot, x, y, 14).prevents(EffectType.DAMAGE)) {
+                    combat.damageFromOwner(bots, entity.ownerSlot(), bot,
+                            Abilities.damageAtDistance(14, distance));
+                }
             }
         }
         if (!gravityDetonates) next.add(field);
@@ -109,15 +171,15 @@ public final class AbilityEntitySystem {
                 entity.size(), 0, 0, 0, 300, true));
     }
 
-    private static <F extends AbilityEntityCombatant> void tickDrone(
-            ArenaEntity entity, List<ArenaEntity> entities, List<F> fighters, ArenaBounds arena, int stepMs,
+    private static <F extends AbilityEntityBot> void tickDrone(
+            ArenaEntity entity, List<ArenaEntity> entities, List<F> bots, ArenaBounds arena, int stepMs,
             Combat<F> combat, List<ArenaEntity> next) {
         int ageMs = entity.timerMs() + stepMs;
-        if (ageMs >= 6000) return;
-        int hp = entity.hp() - combat.damageToEntity(entity, fighters, entities);
+        if (ageMs >= Abilities.stat(17, "durationMs", 6_000)) return;
+        int hp = entity.hp() - combat.damageToEntity(entity, bots, entities);
         if (hp <= 0) return;
-        F target = fighters.stream().filter(fighter -> fighter.entitySlot() != entity.ownerSlot() && fighter.entityHp() > 0)
-                .min(java.util.Comparator.comparingDouble(fighter -> Math.hypot(fighter.entityX() - entity.x(), fighter.entityY() - entity.y())))
+        F target = bots.stream().filter(bot -> bot.entitySlot() != entity.ownerSlot() && bot.entityHp() > 0)
+                .min(java.util.Comparator.comparingDouble(bot -> Math.hypot(bot.entityX() - entity.x(), bot.entityY() - entity.y())))
                 .orElse(null);
         double x = entity.x(), y = entity.y();
         if (target == null) {
@@ -126,45 +188,54 @@ public final class AbilityEntitySystem {
             return;
         }
         double dx = target.entityX() - x, dy = target.entityY() - y, distance = Math.max(1, Math.hypot(dx, dy));
-        x = clamp(x + dx / distance * Math.min(4.5, distance), 14, arena.width() - 14);
-        y = clamp(y + dy / distance * Math.min(4.5, distance), 14, arena.height() - 14);
+        double moveSpeed = Abilities.stat(17, "moveSpeed", 4.5);
+        double halfSize = Abilities.stat(17, "size", 28) / 2.0;
+        x = clamp(x + dx / distance * Math.min(moveSpeed, distance), halfSize, arena.width() - halfSize);
+        y = clamp(y + dy / distance * Math.min(moveSpeed, distance), halfSize, arena.height() - halfSize);
         double desired = vectorBearing(dx, dy);
         double current = vectorBearing(entity.velocityX(), entity.velocityY());
         double rotation = normalizeDegrees(current + clamp(angleDelta(current, desired), -8, 8));
         double radians = Math.toRadians(rotation - 90.0);
         double directionX = Math.cos(radians), directionY = Math.sin(radians);
-        boolean fired = ageMs % 1000 < stepMs && rayIntersectsCircle(x, y, directionX, directionY, 200,
+        int shotCooldownMs = (int) Abilities.stat(17, "shotCooldownMs", 1_000);
+        boolean fired = (entity.timerMs() <= 0 || ageMs % shotCooldownMs < stepMs)
+                && rayIntersectsCircle(x, y, directionX, directionY,
+                Abilities.stat(17, "range", 200),
                 target.entityX(), target.entityY(), target.entitySize() / 2.0);
         if (fired) {
             if (!target.ignoresHostileEffects()
-                    && !combat.shield(target, x, y, "hunter_drone").prevents(EffectType.DAMAGE)) {
-                combat.damageFromOwner(fighters, entity.ownerSlot(), target, 3);
+                    && !combat.shield(target, x, y, 17).prevents(EffectType.DAMAGE)) {
+                combat.damageFromOwner(bots, entity.ownerSlot(), target,
+                        (int) Math.round(AbilityContracts.effectAmount(17, EffectType.DAMAGE)));
             }
         }
         next.add(new ArenaEntity(entity.id(), entity.type(), entity.ownerSlot(), x, y, entity.size(),
                 directionX, directionY, entity.traveled(), ageMs, true, hp,
-                fired ? 300 : Math.max(0, entity.shotVisualMs() - stepMs)));
+                fired ? (int) Abilities.stat(17, "shotVisualMs", 300)
+                        : Math.max(0, entity.shotVisualMs() - stepMs)));
     }
 
-    private static <F extends AbilityEntityCombatant> void tickMines(
-            List<ArenaEntity> entities, List<F> fighters, ArenaBounds arena, int stepMs,
+    private static <F extends AbilityEntityBot> void tickMines(
+            List<ArenaEntity> entities, List<F> bots, ArenaBounds arena, int stepMs,
             Combat<F> combat, List<ArenaEntity> next) {
         List<ArenaEntity> mines = entities.stream().filter(entity -> "proximityMine".equals(entity.type())).map(entity -> {
-            boolean moving = entity.traveled() < 176;
+            double mineRadius = Abilities.range(11);
+            int mineSize = (int) Abilities.stat(11, "size", 24);
+            boolean moving = entity.traveled() < mineRadius * 2;
             return moving
                     ? new ArenaEntity(entity.id(), entity.type(), entity.ownerSlot(),
-                    clamp(entity.x() + entity.velocityX(), 12, arena.width() - 12),
-                    clamp(entity.y() + entity.velocityY(), 12, arena.height() - 12), entity.size(),
+                    clamp(entity.x() + entity.velocityX(), mineSize / 2.0, arena.width() - mineSize / 2.0),
+                    clamp(entity.y() + entity.velocityY(), mineSize / 2.0, arena.height() - mineSize / 2.0), entity.size(),
                     entity.velocityX(), entity.velocityY(), entity.traveled() + Math.hypot(entity.velocityX(), entity.velocityY()), entity.timerMs() + stepMs, false)
                     : new ArenaEntity(entity.id(), entity.type(), entity.ownerSlot(), entity.x(), entity.y(), entity.size(),
                     0, 0, entity.traveled(), entity.timerMs() + stepMs, true);
         }).toList();
         Set<String> triggered = new HashSet<>();
         for (ArenaEntity mine : mines) {
-            if (mine.timerMs() >= 20_000
-                    || combat.entityHitByCurrentAttack(mine, fighters, entities)
-                    || (mine.armed() && fighters.stream().anyMatch(fighter -> fighter.entitySlot() != mine.ownerSlot()
-                    && Math.hypot(fighter.entityX() - mine.x(), fighter.entityY() - mine.y()) <= 70 + fighter.entitySize() / 2.0))) {
+            if (mine.timerMs() >= Abilities.stat(11, "lifetimeMs", 20_000)
+                    || combat.entityHitByCurrentAttack(mine, bots, entities)
+                    || (mine.armed() && bots.stream().anyMatch(bot -> bot.entitySlot() != mine.ownerSlot()
+                    && Math.hypot(bot.entityX() - mine.x(), bot.entityY() - mine.y()) <= Abilities.range(11)))) {
                 triggered.add(mine.id());
             }
         }
@@ -173,7 +244,7 @@ public final class AbilityEntitySystem {
             changed = false;
             for (ArenaEntity source : mines.stream().filter(mine -> triggered.contains(mine.id())).toList()) {
                 for (ArenaEntity target : mines) {
-                    if (!triggered.contains(target.id()) && Math.hypot(target.x() - source.x(), target.y() - source.y()) <= 70 + target.size() / 2.0) {
+                    if (!triggered.contains(target.id()) && Math.hypot(target.x() - source.x(), target.y() - source.y()) <= Abilities.range(11)) {
                         triggered.add(target.id());
                         changed = true;
                     }
@@ -185,31 +256,39 @@ public final class AbilityEntitySystem {
                 next.add(mine);
                 continue;
             }
-            fighters.stream().filter(fighter -> Math.hypot(fighter.entityX() - mine.x(), fighter.entityY() - mine.y()) <= 70 + fighter.entitySize() / 2.0)
-                    .forEach(fighter -> {
-                        if (fighter.ignoresHostileEffects()) return;
-                        if (!combat.shield(fighter, mine.x(), mine.y(), "proximity_mine").prevents(EffectType.DAMAGE)) combat.damage(fighter, 18);
+            bots.stream().filter(bot -> Math.hypot(bot.entityX() - mine.x(), bot.entityY() - mine.y()) <= Abilities.range(11))
+                    .forEach(bot -> {
+                        if (bot.ignoresHostileEffects()) return;
+                        if (!combat.shield(bot, mine.x(), mine.y(), 11).prevents(EffectType.DAMAGE)) {
+                            combat.damageFromOwner(bots, mine.ownerSlot(), bot,
+                                    (int) Math.round(AbilityContracts.effectAmount(11, EffectType.DAMAGE)));
+                        }
                     });
-            next.add(new ArenaEntity(mine.id() + "-blast", "mineExplosion", mine.ownerSlot(), mine.x(), mine.y(), 140, 0, 0, 0, 300, true));
+            next.add(new ArenaEntity(mine.id() + "-blast", "mineExplosion", mine.ownerSlot(), mine.x(), mine.y(),
+                    (int) (Abilities.range(11) * 2), 0, 0, 0,
+                    (int) Abilities.stat(11, "explosionVisibleMs", 300), true));
         }
     }
 
-    private static <F extends AbilityEntityCombatant> void tickMarkersAndEffects(
-            List<ArenaEntity> entities, List<F> fighters, int stepMs, Combat<F> combat, List<ArenaEntity> next) {
+    private static <F extends AbilityEntityBot> void tickMarkersAndEffects(
+            List<ArenaEntity> entities, List<F> bots, int stepMs, Combat<F> combat, List<ArenaEntity> next) {
         for (ArenaEntity entity : entities) {
-            if (Set.of("proximityMine", "gravityField", "nullZone", "hunterDrone", "silenceWave").contains(entity.type())) continue;
+            if (Set.of("proximityMine", "gravityField", "nullZone", "hunterDrone", "silenceWave", "windburstProjectile").contains(entity.type())) continue;
             if ("orbitalMarker".equals(entity.type())) {
                 int fuse = entity.timerMs() - stepMs;
                 if (fuse > 0) next.add(new ArenaEntity(entity.id(), entity.type(), entity.ownerSlot(), entity.x(), entity.y(), entity.size(), 0, 0, 0, fuse, true));
                 else {
-                    fighters.forEach(fighter -> {
-                        double distance = Math.hypot(fighter.entityX() - entity.x(), fighter.entityY() - entity.y());
-                        if (distance <= 130 + fighter.entitySize() / 2.0 && !fighter.ignoresHostileEffects()) {
-                            combat.shield(fighter, entity.x(), entity.y(), "orbital_strike");
-                            combat.damage(fighter, (int) Math.round(50 * Math.max(0.25, 1 - distance / 130)));
+                    bots.forEach(bot -> {
+                        double distance = Math.hypot(bot.entityX() - entity.x(), bot.entityY() - entity.y());
+                        if (distance <= Abilities.range(22) && !bot.ignoresHostileEffects()) {
+                            combat.shield(bot, entity.x(), entity.y(), 22);
+                            combat.damageFromOwner(bots, entity.ownerSlot(), bot,
+                                    Abilities.damageAtDistance(22, distance));
                         }
                     });
-                    next.add(new ArenaEntity(entity.id() + "-blast", "orbitalExplosion", entity.ownerSlot(), entity.x(), entity.y(), 260, 0, 0, 0, 400, true));
+                    next.add(new ArenaEntity(entity.id() + "-blast", "orbitalExplosion", entity.ownerSlot(), entity.x(), entity.y(),
+                            (int) Abilities.stat(22, "markerSize", 260), 0, 0, 0,
+                            (int) Abilities.stat(22, "explosionVisibleMs", 400), true));
                 }
             } else {
                 int timer = entity.timerMs() - stepMs;

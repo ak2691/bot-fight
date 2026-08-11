@@ -1,5 +1,5 @@
-import BetaModel from "../beta/BetaModel";
+import Arena from "../gameArena/Arena";
 
 export default function TutorialPage() {
-    return <BetaModel tutorialMode />;
+    return <Arena tutorialMode />;
 }

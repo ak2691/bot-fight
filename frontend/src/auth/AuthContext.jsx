@@ -55,12 +55,26 @@ export function AuthProvider({ children }) {
     }, []);
 
     const register = useCallback(async ({ email, username, password }) => {
-        const registeredUser = await authFetch("/api/auth/register", {
+        return authFetch("/api/auth/register", {
             method: "POST",
             body: JSON.stringify({ email, username, password }),
         });
-        setUser(registeredUser);
-        return registeredUser;
+    }, []);
+
+    const verifyEmail = useCallback(async ({ email, code }) => {
+        const verifiedUser = await authFetch("/api/auth/verify-email", {
+            method: "POST",
+            body: JSON.stringify({ email, code }),
+        });
+        setUser(verifiedUser);
+        return verifiedUser;
+    }, []);
+
+    const resendVerification = useCallback(async ({ email }) => {
+        return authFetch("/api/auth/resend-verification", {
+            method: "POST",
+            body: JSON.stringify({ email }),
+        });
     }, []);
 
     const linkGoogleAccount = useCallback(async ({ email, password }) => {
@@ -91,6 +105,11 @@ export function AuthProvider({ children }) {
         return updatedProfile;
     }, []);
 
+    const updateAboutMe = useCallback(async ({ aboutMe }) => authFetch("/api/profile/about-me", {
+        method: "PUT",
+        body: JSON.stringify({ aboutMe }),
+    }), []);
+
     const logout = useCallback(async () => {
         const guest = await authFetch("/api/auth/logout", { method: "POST" });
         setUser(guest);
@@ -103,12 +122,15 @@ export function AuthProvider({ children }) {
         isAuthenticated: user?.authenticated === true,
         login,
         register,
+        verifyEmail,
+        resendVerification,
         linkGoogleAccount,
         completeGoogleUsername,
         updateUsername,
+        updateAboutMe,
         logout,
         refreshUser,
-    }), [user, isLoading, login, register, linkGoogleAccount, completeGoogleUsername, updateUsername, logout, refreshUser]);
+    }), [user, isLoading, login, register, verifyEmail, resendVerification, linkGoogleAccount, completeGoogleUsername, updateUsername, updateAboutMe, logout, refreshUser]);
 
     return (
         <AuthContext.Provider value={value}>

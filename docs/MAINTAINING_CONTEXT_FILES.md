@@ -62,19 +62,19 @@ Do not create a context file merely because a directory exists.
 
 ### New file inside an existing subsystem
 
-Adding `frontend/src/beta/pixi/particleEffects.js` does not require a context
+Adding `frontend/src/gameArena/pixi/particleEffects.js` does not require a context
 entry. The existing Pixi directory route already tells agents where to search.
 
 ### New directory with an existing responsibility
 
-Splitting Pixi texture helpers into `frontend/src/beta/pixi/textures/` may need
+Splitting Pixi texture helpers into `frontend/src/gameArena/pixi/textures/` may need
 one short update to the arena context's Pixi directory description. It does not
 need a root route or a list of files in `textures/`.
 
 ### New independently owned subsystem
 
-If `frontend/src/beta/pixi/` grows into several substantial rendering systems
-with different debugging paths, create `frontend/src/beta/pixi/context.md`.
+If `frontend/src/gameArena/pixi/` grows into several substantial rendering systems
+with different debugging paths, create `frontend/src/gameArena/pixi/context.md`.
 Change the arena context to route rendering work there and move Pixi-specific
 detail out of the parent.
 

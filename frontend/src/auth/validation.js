@@ -18,3 +18,11 @@ export function passwordError(value, { required = true } = {}) {
     if (/\s/.test(value)) return "Password cannot contain spaces.";
     return null;
 }
+
+export function userFacingAuthError(error, fallback) {
+    const message = String(error?.message ?? "").trim();
+    if (!message || /request failed with \d{3}|exception|stack trace|java\.|org\.|sql|database error/i.test(message)) {
+        return fallback;
+    }
+    return message;
+}

@@ -12,7 +12,7 @@
 	<artifactId>botfight</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>botfight</name>
-	<description>ML game project</description>
+	<description>programming game project</description>
 	<url/>
 	<licenses>
 		<license/>
@@ -63,6 +63,10 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-websocket</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-mail</artifactId>
 		</dependency>
 
 		<dependency>

@@ -12,12 +12,16 @@ Use capability tags only for real gameplay contracts consumed by targeting, cond
 
 ## 2. Browser catalog and logic
 
-- `beta/loadout/BotLoadout.js`: catalog entry, actions, draft metadata, compact loadout code, interpolation, and entity capabilities.
-- `beta/combat/Abilities.js` or `Moves.js`: numeric definition.
-- `beta/combat/AbilityContracts.js`: delivery, ordered effects, and shield interaction.
-- `logic/BotBrain.js`: edit only for a new condition variable, target mode, payload shape, or action head; catalog-derived actions and targets need no duplicate list.
-- `beta/StrategyTestingPanel.jsx`: verify loadout/tag filtering.
-- `beta/modelPayloads/strategyStatePayload.js`: expose only state the brain is allowed to observe.
+- `gameArena/gameconfig/AbilityRegistry.js`: permanent numeric ID plus the
+  current protocol name, display label, and type. The `ABILITIES` object is a
+  numeric-keyed map, not an array; never reuse a deleted ID or renumber later
+  entries. Runtime configuration should use `ABILITIES[id]` and numeric-keyed
+  tuning/contracts rather than name-based property access.
+- `gameArena/loadout/BotLoadout.js`: catalog entry, actions, draft metadata, compact loadout code, interpolation, and entity capabilities.
+- `gameArena/gameconfig/Abilities.js`: numeric definition.
+- `gameArena/gameconfig/AbilityContracts.js`: delivery, ordered effects, and shield interaction.
+- `gameArena/botlogic/code/BotCode.js`: edit only for a new condition variable, target mode, payload shape, or action head; catalog-derived actions and targets need no duplicate list.
+- `gameArena/modelPayloads/strategyStatePayload.js`: expose only state the brain is allowed to observe.
 
 Target-dependent actions must fall through when no live target exists. Keep retired IDs only in explicit migration code.
 
@@ -29,31 +33,29 @@ snapshot -> brain selection -> action payload -> executor -> combat/entities -> 
 
 | Concern | Owner |
 | --- | --- |
-| Selected action payload | `logic/ArenaActionPlanner.js` |
-| Readiness, resources, preparation, spawn request | `beta/ecs/ActionExecutionSystem.js` |
-| Immediate fighter combat | `beta/combat/FighterCombatSystem.js` |
-| Short-lived projectiles | `beta/ecs/ProjectileSystem.js` |
-| Persistent/targetable entities | `beta/ecs/EntityFactory.js`, `AbilityEntitySystem.js` |
-| Generic entity motion/lifetime | `beta/ecs/EntityWorld.js` |
-| Timed fighter effects | `beta/ecs/FighterStatusSystem.js` |
+| Selected action payload | `gameArena/botlogic/planner/ArenaActionPlanner.js` |
+| Readiness, resources, preparation, spawn request | `gameArena/ecs/ActionExecutionSystem.js` |
+| Immediate bot combat | `gameArena/gameconfig/BotCombatSystem.js` |
+| Short-lived projectiles | `gameArena/ecs/ProjectileSystem.js` |
+| Persistent/targetable entities | `gameArena/ecs/EntityFactory.js`, `AbilityEntitySystem.js` |
+| Timed bot effects | `gameArena/ecs/BotStatusSystem.js` |
 
-`BetaModel.jsx` orchestrates returned state; it should not own ability geometry or damage. Factories create initial state; systems own ticking, collision, effects, and removal.
+`Arena.jsx` orchestrates returned state; it should not own ability geometry or damage. Factories create initial state; systems own ticking, collision, effects, and removal.
 
 ## 4. Visuals
 
-- `FighterVisual.jsx`: fighter-owned attacks/casts and anchored HP/status UI.
-- `ArenaEntityVisual.jsx`: projectiles, fields, traps, summons, markers, and explosions.
-- `visualState.js`: pure opacity/progress/shape calculations.
-- `ShapeObject.jsx`: positioning and visual selection.
+- `gameArena/pixi/PixiCanvas.jsx`: bot/entity rendering and anchored HP/status UI.
+- `gameArena/gameconfig/visualState.js`: pure opacity/progress calculations.
+- `gameArena/pixi/pixiVisualState.js`: presentation selection and replay normalization.
 
 Visuals may derive presentation from authoritative state, but never decide hits, damage, cooldowns, or movement.
 
 Set `visualInterpolation` explicitly:
 
 - `none`: instantaneous gameplay such as melee, rays, and teleports. Cosmetic sweeps/fades may use a timer but cannot move hit geometry.
-- `linear`: physical motion such as fighters, dashes, projectiles, waves, and summons. Interpolate only between authoritative positions.
+- `linear`: physical motion such as bots, dashes, projectiles, waves, and summons. Interpolate only between authoritative positions.
 
-Keep rotating fighter content separate from anchored bars/icons. Keep a cast glow timer separate from the gameplay effect duration. Verify Bot Room, match testing, and replay.
+Keep rotating bot content separate from anchored bars/icons. Keep a cast glow timer separate from the gameplay effect duration. Verify Bot Room, match testing, and replay.
 
 ## 5. Authoritative mirror
 
@@ -67,7 +69,7 @@ Browser:
 
 - catalog/normalization and target eligibility;
 - an `ALWAYS` brain reaching the real executor;
-- both fighter slots when symmetry matters;
+- both bot slots when symmetry matters;
 - missing-target priority fallthrough;
 - entity lifecycle/collision/status timing;
 - pure visual-state timing tests.

@@ -1,7 +1,7 @@
 # Ability List poster images
 
-Place one WebP poster image here for each ability or named move. The same image
-appears on its Ability List card and as the video's loading poster.
+Place one WebP poster image here for each ability or named move. The image
+appears on its Ability List card.
 
 ## Naming scheme
 
@@ -46,7 +46,7 @@ stun
 heavy_slash
 repulsor_burst
 concussive_shot
-repair_pulse
+basic_heal
 proximity_mine
 quick_jab
 pistol_shot
@@ -61,7 +61,7 @@ silence_pulse
 reactive_armor
 hunter_drone
 thrust
-micro_dash
+dash
 ```
 
 Round 3:

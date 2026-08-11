@@ -10,7 +10,7 @@ import tools.jackson.databind.json.JsonMapper;
 public class BotSubmissionValidator {
 
     private static final int MAX_VERSION_LENGTH = 50;
-    private static final int MAX_TESTING_SESSION_ID_LENGTH = 100;
+    private static final int MAX_BUILDING_SESSION_ID_LENGTH = 100;
     private static final int MAX_CLIENT_BUILD_VERSION_LENGTH = 100;
     private static final int MAX_SELECTED_LOADOUT_LENGTH = 40;
 
@@ -34,7 +34,7 @@ public class BotSubmissionValidator {
 
         requireText(errors, submission.getBrainSchemaVersion(), "brainSchemaVersion", MAX_VERSION_LENGTH);
 
-        rejectTooLong(errors, submission.getTestingSessionId(), "testingSessionId", MAX_TESTING_SESSION_ID_LENGTH);
+        rejectTooLong(errors, submission.getBuildingSessionId(), "buildingSessionId", MAX_BUILDING_SESSION_ID_LENGTH);
         rejectTooLong(errors, submission.getSelectedLoadout(), "selectedLoadout", MAX_SELECTED_LOADOUT_LENGTH);
         rejectTooLong(errors, submission.getClientBuildVersion(), "clientBuildVersion", MAX_CLIENT_BUILD_VERSION_LENGTH);
 

@@ -1,3 +1,5 @@
+export const LOADOUT_SELECTION_VISIBLE_GRACE_MS = 2_000;
+
 export function relativeLocalDeadlineMs({
     deadlineServerTime,
     serverTransmitTime,
@@ -23,4 +25,15 @@ export function relativeLocalDeadlineMs({
         + (deadlineServerMs - serverTransmitMs)
         - oneWayDelayMs
         - graceMs;
+}
+
+export function visibleLoadoutSelectionDeadlineMs(
+    localAuthoritativeDeadlineMs,
+    estimatedOneWayDelayMs = 0,
+) {
+    if (localAuthoritativeDeadlineMs == null) return localAuthoritativeDeadlineMs;
+    const oneWayDelayMs = Number(estimatedOneWayDelayMs);
+    return Number(localAuthoritativeDeadlineMs)
+        + (Number.isFinite(oneWayDelayMs) ? Math.max(0, oneWayDelayMs) : 0)
+        - LOADOUT_SELECTION_VISIBLE_GRACE_MS;
 }

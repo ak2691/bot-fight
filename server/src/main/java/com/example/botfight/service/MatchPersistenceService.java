@@ -16,6 +16,7 @@ import com.example.botfight.repository.BotSubmissionRepository;
 import com.example.botfight.repository.ProfileRepository;
 import com.example.botfight.repository.UserRepository;
 import com.example.botfight.repository.ValidationResultRepository;
+import com.example.botfight.simulation.gameconfig.CompactAbilityCode;
 import com.example.botfight.service.MatchService.MatchPlayer;
 import com.example.botfight.service.MatchService.MatchSession;
 import java.time.Clock;
@@ -40,20 +41,9 @@ public class MatchPersistenceService {
 
     private static final String COMPLETION_REASON_SIMULATION = "SIMULATION";
     public static final String COMPLETION_REASON_SERVER_RESTART = "SERVER_RESTART";
-    private static final String TIMEOUT_CLIENT_BUILD_VERSION = "server-testing-timeout-v1";
+    private static final String TIMEOUT_CLIENT_BUILD_VERSION = "server-building-timeout-v1";
     private static final String BRAIN_SCHEMA_VERSION = "bot-logic-tree-v1";
     private static final String VALIDATOR_VERSION = "bot-brain-submission-v1";
-    private static final Map<String, String> ABILITY_BY_CODE = Map.ofEntries(
-            Map.entry("s", "swing"), Map.entry("b", "block"), Map.entry("d", "dash"),
-            Map.entry("g", "fire_gun"), Map.entry("r", "throw_grenade"), Map.entry("f", "shoot_fireball"),
-            Map.entry("t", "stun"), Map.entry("h", "heavy_slash"), Map.entry("u", "repulsor_burst"),
-            Map.entry("c", "concussive_shot"), Map.entry("e", "repair_pulse"), Map.entry("m", "proximity_mine"),
-            Map.entry("j", "quick_jab"), Map.entry("p", "pistol_shot"), Map.entry("R", "rail_shot"),
-            Map.entry("G", "gravity_grenade"), Map.entry("S", "silence_pulse"), Map.entry("A", "reactive_armor"),
-            Map.entry("H", "hunter_drone"), Map.entry("T", "thrust"), Map.entry("M", "micro_dash"),
-            Map.entry("w", "temporal_rewind"), Map.entry("o", "orbital_strike"), Map.entry("a", "absolute_guard"),
-            Map.entry("n", "null_zone"), Map.entry("P", "phase_strike"));
-
     private final MatchRepository matchRepository;
     private final MatchParticipantRepository matchParticipantRepository;
     private final BotSubmissionRepository botSubmissionRepository;
@@ -136,6 +126,13 @@ public class MatchPersistenceService {
         matchParticipantRepository.saveAll(participants);
     }
 
+    public boolean isTerminalMatch(UUID matchId) {
+        return matchRepository.findById(matchId)
+                .map(match -> match.getStatus() != MatchStatus.PENDING
+                        && match.getStatus() != MatchStatus.RUNNING)
+                .orElse(false);
+    }
+
     public void updateParticipantSelectedLoadout(UUID matchId, MatchPlayer player) {
         matchParticipantRepository.findByMatchIdAndUserId(matchId, player.userId())
                 .ifPresent(participant -> {
@@ -181,12 +178,12 @@ public class MatchPersistenceService {
     }
 
     /**
-     * Resolves a player who missed the server-owned testing deadline. Later
+     * Resolves a player who missed the server-owned building deadline. Later
      * rounds inherit the prior accepted brain, while round one starts with a
      * canonical empty brain. The derived row keeps the current round's
      * selected loadout authoritative for simulation.
      */
-    public BotSubmission resolveTestingTimeoutSubmission(
+    public BotSubmission resolveBuildingTimeoutSubmission(
             MatchSession session,
             MatchPlayer player) {
         BotSubmission previous = session.roundNumber() > 1
@@ -200,7 +197,7 @@ public class MatchPersistenceService {
         String fallbackKey = "server-timeout:" + session.matchId()
                 + ":" + session.roundNumber() + ":" + player.userId();
         BotSubmission existing = botSubmissionRepository
-                .findByUserIdAndTestingSessionIdAndRequestFingerprintIsNotNull(
+                .findByUserIdAndBuildingSessionIdAndRequestFingerprintIsNotNull(
                         player.userId(), fallbackKey)
                 .orElse(null);
         if (existing != null && existing.getStatus() == BotSubmissionStatus.VALIDATED) {
@@ -211,7 +208,7 @@ public class MatchPersistenceService {
         BotSubmission fallback = new BotSubmission();
         fallback.setUser(userRepository.getReferenceById(player.userId()));
         fallback.setMatchId(session.matchId());
-        fallback.setTestingSessionId(fallbackKey);
+        fallback.setBuildingSessionId(fallbackKey);
         fallback.setRequestFingerprint(sha256Hex(fallbackKey + ":" + brainPayload));
         fallback.setSelectedLoadout(player.selectedLoadout());
         fallback.setClientBuildVersion(TIMEOUT_CLIENT_BUILD_VERSION);
@@ -250,9 +247,11 @@ public class MatchPersistenceService {
     private ObjectNode readBrain(String payload) {
         try {
             JsonNode parsed = jsonMapper.readTree(payload == null ? "{}" : payload);
-            return parsed != null && parsed.isObject()
-                    ? (ObjectNode) parsed.deepCopy()
-                    : emptyBrain();
+            JsonNode normalized = LegacyAbilityPayloadMigration.normalize(parsed);
+            if (normalized instanceof ObjectNode object) return object;
+            throw new AuthException("previous bot brain must be a JSON object");
+        } catch (AuthException exception) {
+            throw exception;
         } catch (Exception exception) {
             throw new AuthException("previous bot brain could not be read");
         }
@@ -261,9 +260,7 @@ public class MatchPersistenceService {
     private ObjectNode emptyBrain() {
         ObjectNode brain = jsonMapper.createObjectNode();
         brain.put("version", BRAIN_SCHEMA_VERSION);
-        brain.putArray("columns");
-        brain.putArray("blocks");
-        brain.putArray("clusters");
+        brain.putArray("roots");
         brain.putArray("customVariables");
         return brain;
     }
@@ -276,7 +273,7 @@ public class MatchPersistenceService {
         ObjectNode loadout = jsonMapper.createObjectNode();
         ArrayNode abilities = loadout.putArray("abilities");
         for (int index = 0; index < parts[1].length(); index++) {
-            String ability = ABILITY_BY_CODE.get(String.valueOf(parts[1].charAt(index)));
+            Integer ability = CompactAbilityCode.idForCode(String.valueOf(parts[1].charAt(index)));
             if (ability != null) abilities.add(ability);
         }
         String[] points = parts[2].split(",", -1);

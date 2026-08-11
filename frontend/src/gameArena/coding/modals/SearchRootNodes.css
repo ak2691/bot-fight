@@ -1,0 +1,107 @@
+.code-node-picker--roots {
+    border-color: rgba(148, 163, 184, .52);
+}
+
+.code-root-search-results {
+    display: block;
+}
+
+.code-root-search-row {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr) 28px;
+    min-height: 36px;
+    align-items: stretch;
+}
+
+.code-root-search-row:hover {
+    background: rgba(203, 213, 225, .16);
+}
+
+.search-root-node-priority {
+    width: 28px;
+    min-width: 0;
+    border: 0;
+    border-right: 1px solid rgba(148, 163, 184, .22);
+    border-radius: 0;
+    background: transparent;
+    color: #bae6fd;
+    font: 700 9px/1 "Cousine", "Courier New", monospace;
+    text-align: center;
+}
+
+.search-root-node-root-label {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding-left: 8px;
+    color: #bae6fd;
+    font-weight: 700;
+}
+
+.search-root-node-priority:focus {
+    outline: 1px solid #67e8f9;
+    outline-offset: -1px;
+}
+
+.search-root-node-option {
+    min-width: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 9px 10px;
+    overflow: hidden;
+    text-align: left;
+}
+
+.search-root-node-option strong {
+    display: block;
+    overflow: hidden;
+    color: #e2e8f0;
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.search-root-node-delete {
+    width: 28px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+    color: #fca5a5;
+    font: 700 16px/1 "Cousine", monospace;
+}
+
+.search-root-node-delete:hover:not(:disabled) {
+    background: rgba(127, 29, 29, .38);
+    color: #fff;
+}
+
+.search-root-node-delete:disabled,
+.search-root-node-priority:disabled,
+.search-root-delete-all:disabled {
+    opacity: .35;
+}
+
+.code-root-search-footer {
+    display: flex;
+    min-height: 34px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 8px;
+    color: #64748b;
+    font-size: 8px;
+}
+
+.search-root-delete-all {
+    border: 0;
+    background: transparent;
+    padding: 6px 0 6px 8px;
+    color: #fca5a5;
+    font: 700 8px/1 "Cousine", monospace;
+}
+
+.search-root-delete-all:hover:not(:disabled) {
+    color: #fff;
+}

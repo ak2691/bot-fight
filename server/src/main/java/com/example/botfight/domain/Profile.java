@@ -27,6 +27,9 @@ public class Profile {
     @Column(name = "matches_played", nullable = false)
     private int matchesPlayed;
 
+    @Column(name = "about_me", nullable = false, length = 500)
+    private String aboutMe = "";
+
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     private Instant createdAt;
 
@@ -55,6 +58,14 @@ public class Profile {
 
     public void setMatchesPlayed(int matchesPlayed) {
         this.matchesPlayed = matchesPlayed;
+    }
+
+    public String getAboutMe() {
+        return aboutMe;
+    }
+
+    public void setAboutMe(String aboutMe) {
+        this.aboutMe = aboutMe;
     }
 
     public Instant getCreatedAt() {

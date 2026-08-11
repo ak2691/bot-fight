@@ -1,8 +1,8 @@
 # Frontend context
 
-Use this map for React, browser networking, deterministic brain editing, arena
+Use this map for React, browser networking, deterministic code editing, arena
 testing, Pixi rendering, and replay presentation. For arena internals, continue
-to [`src/beta/context.md`](src/beta/context.md).
+to [`src/gameArena/context.md`](src/gameArena/context.md).
 
 ## Entry points and routes
 
@@ -25,20 +25,20 @@ Route UI and navigation bugs here first. Authentication behavior usually spans
 | Login/session/CSRF | `src/auth/`, `src/security/` | server auth/security areas |
 | Matchmaking lifecycle/ability draft or match chat | `src/pages/`, `src/matchmaking/` | server matchmaking areas |
 | WebSocket framing/reconnect | `src/matchmaking/` | server WebSocket configuration and controller areas |
-| Logic evaluation/normalization | `src/logic/` | nearby tests and arena payload/loadout contracts |
-| Movement planning | `src/logic/` | arena geometry and constants areas |
-| Submission/testing-session API | `src/logic/` API boundary modules | server DTO, controller, validation, and service areas |
-| Arena, combat, loadout, Pixi | [`src/beta/context.md`](src/beta/context.md) | relevant docs via `docs/context.md` |
+| Logic evaluation/normalization | `src/gameArena/botlogic/code/` | nearby tests and arena payload/loadout contracts |
+| Movement planning | `src/gameArena/botlogic/planner/` | arena geometry and constants areas |
+| Submission/building-session API | `src/gameArena/botlogic/submission/` | server DTO, controller, validation, and service areas |
+| Arena, combat, loadout, Pixi | [`src/gameArena/context.md`](src/gameArena/context.md) | relevant docs via `docs/context.md` |
 | Authoritative replay display | `src/replay/` | arena presentation and server replay DTO areas |
 
 ## Logic and API boundaries
 
-`src/logic/` owns the structured brain contract and deterministic browser-side
+`src/gameArena/botlogic/` owns the structured code contract and deterministic browser-side
 selection/planning helpers. Keep schema normalization pure and bounded. Stable
 action, target, condition, comparator, and ability IDs must match server
 validation and simulation.
 
-`SubmissionClient.js` sends normalized brain/loadout data; it does not make the
+`SubmissionClient.js` sends normalized code/loadout data; it does not make the
 browser authoritative. Any payload change requires tracing the matching server
 DTO, validator, persistence mapping, and rated simulation consumer.
 
@@ -48,19 +48,19 @@ destination or event shape changes as shared contracts.
 
 ## Arena boundary
 
-`src/beta/BetaModel.jsx` is the browser testing orchestrator and
-`src/beta/PixiCanvas.jsx` presents arena state. Do not add gameplay authority to
-the renderer. The focused arena context maps combat, ECS, payload, loadout, and
-visual-state ownership.
+`src/gameArena/Arena.jsx` is the browser testing orchestrator and
+`src/gameArena/pixi/PixiCanvas.jsx` presents arena state. Do not add gameplay
+authority to the renderer. The focused arena context maps combat, ECS, payload,
+loadout, and visual-state ownership.
 
 ## Checks
 
 Run the narrowest matching test first:
 
-- brain/conditions/targeting: `src/logic/BotBrain.test.js`;
-- movement: `src/logic/MovementActions.test.js`;
-- entity/combat execution: `src/beta/ecs/EntitySystems.test.js`;
-- interpolation/visual mapping: `src/beta/pixi/*.test.js`.
+- code/conditions/targeting: `src/gameArena/botlogic/code/BotCode.test.js`;
+- movement and action planning: `src/gameArena/ecs/EntitySystems.test.js`;
+- entity/combat execution: `src/gameArena/ecs/EntitySystems.test.js`;
+- interpolation/visual mapping: `src/gameArena/pixi/*.test.js`.
 
 Then use `npm test`. For UI, import, or build changes also run `npm run lint` and
 `npm run build`.

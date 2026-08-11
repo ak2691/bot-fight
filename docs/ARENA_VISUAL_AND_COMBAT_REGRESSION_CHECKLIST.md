@@ -1,10 +1,10 @@
 # Arena visual and combat regression checklist
 
-Use this when an ability, entity, replay field, or fighter visual changes.
+Use this when an ability, entity, replay field, or bot visual changes.
 
 ## Transforms
 
-- Do not CSS-transition normalized fighter rotation; `359 -> 0` may spin the long way.
+- Do not CSS-transition normalized bot rotation; `359 -> 0` may spin the long way.
 - Teleports and Phase Strike are discrete; do not reuse movement interpolation.
 - Do not animate `transform` on the element that owns centering/positioning. Use a stationary wrapper and animate a child.
 - Centered pulses begin at the caster center and expand outward.
@@ -18,9 +18,9 @@ Use this when an ability, entity, replay field, or fighter visual changes.
 
 ## Combat state
 
-- Each source in a tick reads the latest accumulated fighter state, never a stale pre-hit snapshot.
+- Each source in a tick reads the latest accumulated bot state, never a stale pre-hit snapshot.
 - DOT, direct damage, projectiles, explosions, reflection, and healing settle as one net HP result.
-- Arena fighters show a compact `hp / maxHp` bar; numeric HP belongs in the side panel.
+- Arena bots show a compact `hp / maxHp` bar; numeric HP belongs in the side panel.
 - Timed silence and Null Zone presence are distinct; clear zone presence after leaving every active zone.
 
 ## Required surfaces and tests

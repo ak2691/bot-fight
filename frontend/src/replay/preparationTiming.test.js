@@ -62,9 +62,9 @@ test("phase deadline timing preserves a signed late transition measurement", () 
         matchId: "match-1",
         roundNumber: 3,
         serverNow: "2026-07-30T12:00:00.000Z",
-        testingEndsAt: "2026-07-30T12:00:30.000Z",
-        testingEndsAtMs: 29_800,
-    }, "testingEndsAt", "testingEndsAtMs", 31_000, 250);
+        buildingEndsAt: "2026-07-30T12:00:30.000Z",
+        buildingEndsAtMs: 29_800,
+    }, "buildingEndsAt", "buildingEndsAtMs", 31_000, 250);
 
     assert.equal(timing.serverIntervalSeconds, 30);
     assert.equal(timing.signedSecondsRemaining, -1.2);

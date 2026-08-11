@@ -8,9 +8,7 @@ public class BotSubmissionValidationResponseDTO {
     private String status;
     private String message;
     private String validatorVersion;
-    private String submittedBrainHash;
-    private String computedModelHash;
-    private boolean testingDurationTrusted;
+    private boolean buildingDurationTrusted;
     private List<String> errors;
     private List<String> warnings;
 
@@ -46,28 +44,12 @@ public class BotSubmissionValidationResponseDTO {
         this.validatorVersion = validatorVersion;
     }
 
-    public String getSubmittedBrainHash() {
-        return submittedBrainHash;
+    public boolean isBuildingDurationTrusted() {
+        return buildingDurationTrusted;
     }
 
-    public void setSubmittedBrainHash(String submittedBrainHash) {
-        this.submittedBrainHash = submittedBrainHash;
-    }
-
-    public String getComputedModelHash() {
-        return computedModelHash;
-    }
-
-    public void setComputedModelHash(String computedModelHash) {
-        this.computedModelHash = computedModelHash;
-    }
-
-    public boolean isTestingDurationTrusted() {
-        return testingDurationTrusted;
-    }
-
-    public void setTestingDurationTrusted(boolean testingDurationTrusted) {
-        this.testingDurationTrusted = testingDurationTrusted;
+    public void setBuildingDurationTrusted(boolean buildingDurationTrusted) {
+        this.buildingDurationTrusted = buildingDurationTrusted;
     }
 
     public List<String> getErrors() {

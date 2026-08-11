@@ -5,8 +5,9 @@ import com.example.botfight.domain.BotSubmission;
 import com.example.botfight.simulation.ArenaUnits;
 import com.example.botfight.simulation.DuelSimulationService;
 import com.example.botfight.simulation.DuelSimulationService.DuelArenaRequest;
-import com.example.botfight.simulation.DuelSimulationService.DuelFighterRequest;
+import com.example.botfight.simulation.DuelSimulationService.DuelBotRequest;
 import com.example.botfight.simulation.DuelSimulationService.DuelSimulationRequest;
+import com.example.botfight.simulation.gameconfig.CompactAbilityCode;
 import com.example.botfight.service.MatchService.MatchPlayer;
 import com.example.botfight.service.MatchService.MatchSession;
 import java.util.List;
@@ -22,24 +23,13 @@ public class MatchSimulationService {
     public static final String DUEL_RULESET_VERSION = "duel-v1";
     private static final int ARENA_WIDTH_UNITS = ArenaUnits.WIDTH;
     private static final int ARENA_HEIGHT_UNITS = ArenaUnits.HEIGHT;
-    private static final int FIGHTER_SIZE = 60;
+    private static final int BOT_SIZE = 60;
     // Rated rounds run for a full minute unless HP damage ends them sooner.
     private static final int SIMULATION_DURATION_MS = 60_000;
     private static final double SLOT_ONE_X = ARENA_WIDTH_UNITS / 2.0;
     private static final double SLOT_ONE_Y = ARENA_HEIGHT_UNITS * 0.15;
     private static final double SLOT_TWO_X = ARENA_WIDTH_UNITS / 2.0;
     private static final double SLOT_TWO_Y = ARENA_HEIGHT_UNITS * 0.85;
-    private static final Map<Character, String> ABILITY_BY_CODE = Map.ofEntries(
-            Map.entry('s', "swing"), Map.entry('b', "block"), Map.entry('d', "dash"),
-            Map.entry('g', "fire_gun"), Map.entry('r', "throw_grenade"), Map.entry('f', "shoot_fireball"),
-            Map.entry('t', "stun"), Map.entry('h', "heavy_slash"), Map.entry('u', "repulsor_burst"),
-            Map.entry('c', "concussive_shot"), Map.entry('e', "repair_pulse"), Map.entry('m', "proximity_mine"),
-            Map.entry('j', "quick_jab"), Map.entry('p', "pistol_shot"), Map.entry('R', "rail_shot"),
-            Map.entry('G', "gravity_grenade"), Map.entry('S', "silence_pulse"), Map.entry('A', "reactive_armor"),
-            Map.entry('H', "hunter_drone"), Map.entry('T', "thrust"), Map.entry('M', "micro_dash"),
-            Map.entry('w', "temporal_rewind"), Map.entry('o', "orbital_strike"), Map.entry('a', "absolute_guard"),
-            Map.entry('n', "null_zone"), Map.entry('P', "phase_strike"));
-
     private final JsonMapper jsonMapper;
     private final DuelSimulationService duelSimulationService;
 
@@ -77,33 +67,29 @@ public class MatchSimulationService {
         }
     }
 
-    public List<MatchPlaybackDTO.ObstaclePlacementDTO> buildMatchObstacles(MatchSession session) {
-        return List.of();
-    }
-
     private DuelSimulationRequest toRequest(
             MatchSession session,
             Map<UUID, BotSubmission> submissionsByUserId) {
-        List<DuelFighterRequest> fighters = session.players().stream()
-                .map(player -> toFighterRequest(player, submissionsByUserId.get(player.userId())))
+        List<DuelBotRequest> bots = session.players().stream()
+                .map(player -> toBotRequest(player, submissionsByUserId.get(player.userId())))
                 .toList();
         return new DuelSimulationRequest(
                 session.matchId(),
                 DUEL_RULESET_VERSION,
                 session.simulationSeed(),
-                new DuelArenaRequest(ARENA_WIDTH_UNITS, ARENA_HEIGHT_UNITS, SIMULATION_DURATION_MS, List.of()),
-                fighters);
+                new DuelArenaRequest(ARENA_WIDTH_UNITS, ARENA_HEIGHT_UNITS, SIMULATION_DURATION_MS),
+                bots);
     }
 
-    private DuelFighterRequest toFighterRequest(MatchPlayer player, BotSubmission submission) {
-        return new DuelFighterRequest(
+    private DuelBotRequest toBotRequest(MatchPlayer player, BotSubmission submission) {
+        return new DuelBotRequest(
                 player.userId(),
                 player.username(),
                 player.slot(),
                 player.slot() == 1 ? SLOT_ONE_X : SLOT_TWO_X,
                 player.slot() == 1 ? SLOT_ONE_Y : SLOT_TWO_Y,
                 player.slot() == 1 ? 180.0 : 0.0,
-                FIGHTER_SIZE,
+                BOT_SIZE,
                 hasText(submission != null ? submission.getSelectedLoadout() : null)
                         ? submission.getSelectedLoadout()
                         : hasText(player.selectedLoadout()) ? player.selectedLoadout() : "melee",
@@ -117,10 +103,9 @@ public class MatchSimulationService {
     private JsonNode readBrain(MatchPlayer player, BotSubmission submission) {
         if (submission != null && submission.getBrainPayload() != null && !submission.getBrainPayload().isBlank()) {
             try {
-                return jsonMapper.readTree(submission.getBrainPayload());
-            } catch (Exception ignored) {
-                // A validated submission should already be parseable. Keep the
-                // preparation path bounded if a legacy row is malformed.
+                return LegacyAbilityPayloadMigration.normalize(jsonMapper.readTree(submission.getBrainPayload()));
+            } catch (Exception exception) {
+                throw new IllegalStateException("Persisted bot brain could not be normalized", exception);
             }
         }
         return readSelectedLoadoutBrain(player != null ? player.selectedLoadout() : null);
@@ -137,7 +122,7 @@ public class MatchSimulationService {
         boolean validEncoding = parts.length == 3 && parts[2].split(",", -1).length == 4;
         if (validEncoding) {
             for (int index = 0; index < parts[1].length(); index++) {
-                String ability = ABILITY_BY_CODE.get(parts[1].charAt(index));
+                Integer ability = CompactAbilityCode.idForCode(String.valueOf(parts[1].charAt(index)));
                 if (ability != null) abilities.add(ability);
             }
         }
@@ -156,8 +141,8 @@ public class MatchSimulationService {
     }
 
     private MatchPlaybackDTO failedPlayback(MatchSession session, String message) {
-        List<MatchPlaybackDTO.FighterPlacementDTO> fighters = session.players().stream()
-                .map(player -> new MatchPlaybackDTO.FighterPlacementDTO(
+        List<MatchPlaybackDTO.BotStateDTO> bots = session.players().stream()
+                .map(player -> new MatchPlaybackDTO.BotStateDTO(
                         player.userId(),
                         player.username(),
                         player.slot(),
@@ -165,11 +150,15 @@ public class MatchSimulationService {
                         player.slot() == 1 ? SLOT_ONE_Y : SLOT_TWO_Y,
                         player.slot() == 1 ? 90 : 270,
                         100,
+                        100,
                         hasText(player.selectedLoadout()) ? player.selectedLoadout() : "melee",
-                        false,
-                        false,
-                        null,
-                        null))
+                        List.of(),
+                        0, 0, 0, 0, 0, 0,
+                        Map.of(), Map.of(), Map.of(), Map.of(),
+                        null, null, 0, 0, 0, 0,
+                        player.slot() == 1 ? SLOT_ONE_X : SLOT_TWO_X,
+                        player.slot() == 1 ? SLOT_ONE_Y : SLOT_TWO_Y,
+                        0))
                 .toList();
         return new MatchPlaybackDTO(
                 session.matchId(),
@@ -178,8 +167,8 @@ public class MatchSimulationService {
                 new MatchPlaybackDTO.ArenaStateDTO(
                         ARENA_WIDTH_UNITS,
                         ARENA_HEIGHT_UNITS,
-                        fighters,
-                        session.obstacles() != null ? session.obstacles() : List.of()),
+                        bots,
+                        List.of()),
                 List.of(),
                 "ERROR",
                 null,

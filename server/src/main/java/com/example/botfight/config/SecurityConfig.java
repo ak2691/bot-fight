@@ -81,6 +81,8 @@ public class SecurityConfig {
                                 "/api/auth/logout",
                                 "/api/auth/csrf",
                                 "/api/auth/me",
+                                "/api/auth/verify-email",
+                                "/api/auth/resend-verification",
                                 "/api/auth/google/link-existing",
                                 "/api/auth/google/username",
                                 "/oauth2/authorization/**",

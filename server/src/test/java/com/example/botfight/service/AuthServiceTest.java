@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.example.botfight.DTO.AuthRequestDTO;
+import com.example.botfight.DTO.EmailVerificationRequestDTO;
 import com.example.botfight.domain.AppUser;
 import com.example.botfight.repository.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,6 +15,7 @@ import jakarta.servlet.http.HttpSession;
 import java.lang.reflect.Field;
 import java.util.Optional;
 import java.util.UUID;
+import static org.mockito.ArgumentMatchers.eq;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -22,7 +24,8 @@ class AuthServiceTest {
 
     private final UserRepository userRepository = org.mockito.Mockito.mock(UserRepository.class);
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
-    private final AuthService service = new AuthService(userRepository, passwordEncoder);
+    private final EmailVerificationService emailVerificationService = org.mockito.Mockito.mock(EmailVerificationService.class);
+    private final AuthService service = new AuthService(userRepository, passwordEncoder, emailVerificationService);
 
     @Test
     void registersUserWithNormalizedEmailAndHashedPassword() throws Exception {
@@ -37,13 +40,14 @@ class AuthServiceTest {
 
         var response = service.register(authRequest("Pilot@Example.com", "pilot", "password123"), request);
 
-        assertThat(response.isAuthenticated()).isTrue();
+        assertThat(response.isVerificationRequired()).isTrue();
         assertThat(response.getEmail()).isEqualTo("Pilot@Example.com");
-        assertThat(response.getUsername()).isEqualTo("pilot");
 
         verify(userRepository).save(org.mockito.ArgumentMatchers.argThat(user ->
                 user.getNormalizedEmail().equals("pilot@example.com")
-                        && passwordEncoder.matches("password123", user.getPasswordHash())));
+                        && passwordEncoder.matches("password123", user.getPasswordHash())
+                        && !user.isEmailVerified()));
+        verify(emailVerificationService).sendVerificationCode(any(AppUser.class), eq(false));
     }
 
     @Test
@@ -110,6 +114,36 @@ class AuthServiceTest {
         assertThatThrownBy(() -> service.login(authRequest("pilot@example.com", null, "wrong"), requestWithSession()))
                 .isInstanceOf(AuthException.class)
                 .hasMessage("invalid email or password");
+    }
+
+    @Test
+    void rejectsLoginUntilEmailIsVerified() throws Exception {
+        AppUser user = user("pilot@example.com", "pilot", passwordEncoder.encode("password123"));
+        user.setEmailVerified(false);
+        when(userRepository.findByNormalizedEmail("pilot@example.com")).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> service.login(authRequest("pilot@example.com", null, "password123"), requestWithSession()))
+                .isInstanceOf(AuthException.class)
+                .hasMessage("email verification is required; check your inbox");
+    }
+
+    @Test
+    void verifiesEmailAndAuthenticatesTheUser() throws Exception {
+        HttpServletRequest request = requestWithSession();
+        AppUser user = user("pilot@example.com", "pilot", passwordEncoder.encode("password123"));
+        user.setEmailVerified(false);
+        when(userRepository.findByNormalizedEmail("pilot@example.com")).thenReturn(Optional.of(user));
+
+        EmailVerificationRequestDTO verificationRequest = new EmailVerificationRequestDTO();
+        verificationRequest.setEmail("PILOT@example.com");
+        verificationRequest.setCode("123456");
+
+        var response = service.verifyEmail(verificationRequest, request);
+
+        assertThat(response.isAuthenticated()).isTrue();
+        assertThat(user.isEmailVerified()).isTrue();
+        verify(emailVerificationService).consumeCode(user, "123456");
+        verify(userRepository).save(user);
     }
 
     private AuthRequestDTO authRequest(String email, String username, String password) {

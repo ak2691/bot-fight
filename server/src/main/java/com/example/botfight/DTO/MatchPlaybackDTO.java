@@ -18,25 +18,20 @@ public record MatchPlaybackDTO(
         boolean terminalBatch) {
 
     public MatchPlaybackDTO(
-            UUID matchId,
-            String rulesetVersion,
-            String status,
-            ArenaStateDTO initialState,
-            List<ReplayFrameDTO> frames,
-            String result,
-            UUID winnerUserId,
-            String message) {
-        this(matchId, rulesetVersion, status, initialState, frames, result, winnerUserId, message, null, null, false);
+            UUID matchId, String rulesetVersion, String status, ArenaStateDTO initialState,
+            List<ReplayFrameDTO> frames, String result, UUID winnerUserId, String message) {
+        this(matchId, rulesetVersion, status, initialState, frames, result, winnerUserId, message,
+                null, null, false);
     }
 
     public record ArenaStateDTO(
             int width,
             int height,
-            List<FighterPlacementDTO> fighters,
-            List<ObstaclePlacementDTO> obstacles) {
+            List<BotStateDTO> bots,
+            List<ArenaEntityDTO> entities) {
     }
 
-    public record FighterPlacementDTO(
+    public record BotStateDTO(
             UUID userId,
             String username,
             int slot,
@@ -44,38 +39,21 @@ public record MatchPlaybackDTO(
             double y,
             double rotation,
             int hp,
+            int maxHp,
             String combatLoadout,
-            boolean attackActive,
-            boolean blockActive,
-            Integer gunAmmo,
-            Integer gunReloadMs,
+            List<Integer> abilities,
             int shieldHp,
             int slowedMs,
             int stunnedMs,
             int silencedMs,
             int shockRemainingMs,
             int movementLockMs,
-            int maxHp,
-            List<String> abilities,
-            boolean gunShotActive,
-            boolean swingActive,
-            boolean fireballActive,
-            boolean stunActive,
-            boolean dashActive,
-            int fireballCharges,
-            int fireballReloadMs,
-            int swingCooldownMs,
-            int blockCharges,
-            int blockCooldownMs,
-            int blockRechargeMs,
-            int dashCooldownMs,
-            int gunCooldownMs,
-            int grenadeCooldownMs,
-            int fireballCooldownMs,
-            int stunCooldownMs,
-            Map<String, Integer> abilityCooldowns,
-            Map<String, Integer> abilityActiveMs,
-            String preparingAbility,
+            Map<Integer, Integer> abilityCooldowns,
+            Map<Integer, Integer> abilityActiveMs,
+            Map<Integer, Integer> abilityCharges,
+            Map<Integer, Integer> abilityRechargeMs,
+            Integer triggeredAbility,
+            Integer preparingAbility,
             int preparingMs,
             int burnRemainingMs,
             int bleedRemainingMs,
@@ -83,61 +61,39 @@ public record MatchPlaybackDTO(
             double temporalRewindX,
             double temporalRewindY,
             int temporalRewindPulseMs) {
-        public FighterPlacementDTO(
-                UUID userId,
-                String username,
-                int slot,
-                double x,
-                double y,
-                double rotation,
-                int hp,
-                String combatLoadout,
-                boolean attackActive,
-                boolean blockActive,
-                Integer gunAmmo,
-                Integer gunReloadMs) {
-            this(userId, username, slot, x, y, rotation, hp, combatLoadout, attackActive, blockActive, gunAmmo, gunReloadMs, 0, 0, 0, 0, 0, 0, 100, List.of(), false, false, false, false, false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, Map.of(), Map.of(), null, 0, 0, 0, 0, x, y, 0);
-        }
     }
 
-    public record ObstaclePlacementDTO(
+    public record ArenaEntityDTO(
             String id,
             String type,
+            Integer abilityId,
             double x,
             double y,
             int size,
             double rotation,
             int hp,
-            int slotOneCaptureMs,
-            int slotTwoCaptureMs,
             Boolean armed,
             Integer timerMs,
             Double velocityX,
             Double velocityY,
             Integer shotVisualMs) {
-        public ObstaclePlacementDTO(String id, String type, double x, double y, int size, double rotation, int hp, int slotOneCaptureMs, int slotTwoCaptureMs, Boolean armed, Integer timerMs) {
-            this(id, type, x, y, size, rotation, hp, slotOneCaptureMs, slotTwoCaptureMs, armed, timerMs, null, null, null);
-        }
-        public ObstaclePlacementDTO(String id, String type, double x, double y, int size, double rotation, int hp, int slotOneCaptureMs, int slotTwoCaptureMs) {
-            this(id, type, x, y, size, rotation, hp, slotOneCaptureMs, slotTwoCaptureMs, null, null, null, null, null);
-        }
-        public ObstaclePlacementDTO(String id, String type, double x, double y, int size) {
-            this(id, type, x, y, size, 0.0, 0, 0, 0, null, null, null, null, null);
+        public ArenaEntityDTO(String id, String type, double x, double y, int size) {
+            this(id, type, null, x, y, size, 0, 0, null, null, null, null, null);
         }
 
-        public ObstaclePlacementDTO(String id, String type, double x, double y, int size, double rotation) {
-            this(id, type, x, y, size, rotation, 0, 0, 0, null, null, null, null, null);
+        public ArenaEntityDTO(String id, String type, double x, double y, int size, double rotation) {
+            this(id, type, null, x, y, size, rotation, 0, null, null, null, null, null);
         }
 
-        public ObstaclePlacementDTO(String id, String type, double x, double y, int size, double rotation, int hp) {
-            this(id, type, x, y, size, rotation, hp, 0, 0, null, null, null, null, null);
+        public ArenaEntityDTO(String id, String type, double x, double y, int size, double rotation, int hp) {
+            this(id, type, null, x, y, size, rotation, hp, null, null, null, null, null);
         }
     }
 
     public record ReplayFrameDTO(
             int tick,
             int elapsedMs,
-            List<FighterPlacementDTO> fighters,
-            List<ObstaclePlacementDTO> obstacles) {
+            List<BotStateDTO> bots,
+            List<ArenaEntityDTO> entities) {
     }
 }

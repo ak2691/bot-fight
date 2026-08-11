@@ -60,34 +60,40 @@ but it cannot introduce a wall-clock offset error.
 - Ability selection displays 60 seconds. `loadoutSelectionEndsAt` is the
   authoritative deadline 62 seconds after the phase begins, including the
   hidden two-second submission grace. If both players select early,
-  testing-room preparation lasts up to two seconds but never extends beyond
+  building-room preparation lasts up to two seconds but never extends beyond
   that authoritative selection deadline.
-- During testing-room preparation the client displays "Both players have
-  selected, preparing testing room." Testing then displays 30 seconds.
-  `testingEndsAt` is two seconds later than the visible deadline so an in-flight
+  This WebSocket countdown is a critical timing contract: do not change the
+  60-second visible interval, 62-second server interval, or two-second grace
+  without an explicit timing-contract change.
+- During building-room preparation the client displays "Both players have
+  selected, preparing building room." Building then displays 30 seconds.
+  `buildingEndsAt` is two seconds later than the visible deadline so an in-flight
   final submission can still be accepted before the server creates its fallback.
 - After both submissions are accepted, the client enters `SIMULATION_LOADING`.
   This phase has no deadline: the backend calculates the complete authoritative
-  replay before publishing a playback schedule.
+  replay before publishing a playback schedule. Simulation runs on a dedicated
+  executor and uses a match-scoped claim; it must not occupy the lifecycle
+  scheduler or serialize state transitions for unrelated matches.
 - Once calculation finishes, the server publishes `SIMULATION_PREPARING` with
-  the initial replay buffer and a relative `simulationPreparingDurationMs`
-  countdown (normally 3,000 ms). This presentation countdown is anchored at
-  event receipt and reduced by the estimated downstream network delay; it does
-  not require server/client clock timestamps. The simulation calculation is
-  never scheduled from, or delayed by, this playback countdown.
-- Replay starts after that local preparation countdown and is retimed to a
-  five-second presentation. The terminal replay batch reaches the final frame
-  at that deadline and carries the authoritative result payload, so the client
-  reveals it when the terminal frame is displayed. Replay batches may arrive
-  buffered before their display time; the client must not shift the local
-  preparation countdown when a WebSocket event arrives late. Immediate
+  the initial arena state, `serverNow`, and the absolute replay deadlines. A
+  three-second server-authored preparation window preserves the arena entrance
+  animation before playback begins.
+- Authoritative replay frames are delivered in one-second windows with two
+  seconds of lookahead. The first window is sent two seconds into preparation,
+  so the two-second buffer is built through consecutive one-second messages,
+  not an initial two-second burst. Every window has an absolute publication
+  timestamp derived from `playbackStartsAt`; delivery never waits for a client
+  acknowledgement and never derives the next deadline from the prior send.
+- Replay uses the original authoritative simulation `elapsedMs` values. The
+  terminal window carries the authoritative result, which the client reveals
+  only when its monotonic replay clock displays the terminal frame. A reconnect
+  receives the authorized replay prefix and original `playbackStartsAt`, allowing
+  the client to select the current frame from server-authoritative elapsed time.
+  There is no separate result-reveal socket event for a replay.
+  Immediate
   non-replay outcomes such as surrender or a disconnect still use
-  `MATCH_RESULT_READY` because there is no terminal replay batch to carry their
+  `MATCH_RESULT_READY` because there is no replay payload to carry their
   result.
-- Replay batches carry only their match identity, ruleset, and authoritative
-  playback snapshot batch. Player, bot-brain, draft, and other editor metadata
-  belongs to phase or round-configuration events and must not be repeated in
-  every replay batch.
 - The post-result hold ends at `roundReadyAt`, normally three seconds after
   `resultRevealsAt`. The backend schedules `MATCH_ROUND_READY` for that
   deadline; the client switches to the next ability selection when that event
@@ -95,7 +101,10 @@ but it cannot introduce a wall-clock offset error.
 - Terminal match chat closes at `matchChatEndsAt`, normally 30 seconds after
   `resultRevealsAt`. The backend schedules removal of the chat window at that
   instant, broadcasts the closure notice, and rejects later messages.
-- Connection recovery uses `disconnectEndsAt`.
+- Connection recovery uses `disconnectEndsAt` only while the persisted match is
+  still active. Terminal result events carry the server-authored `matchTerminal`
+  flag; disconnect handling after that boundary clears any stale connection
+  state and cannot start a new grace period.
 
 The server remains authoritative for all expiry checks and scheduled tasks.
 Adding an authoritative lifecycle deadline requires an absolute server deadline
@@ -103,3 +112,32 @@ in its event, client clock normalization, a deadline-based 250 ms update loop,
 and a server test covering delayed event delivery or an already-expired
 deadline. A client-only presentation countdown may instead carry a bounded
 relative duration, as `SIMULATION_PREPARING` does.
+
+## Round-transition regression checklist
+
+Run this sequence whenever round lifecycle, loadouts, building sessions, or
+submission ownership changes:
+
+1. Finish round one and verify `MATCH_ROUND_READY` for round two has
+   `loadoutSelected: false`; inherited prior-round abilities may be carried as
+   the base, but round-two offered abilities must be an empty draft.
+2. Let round two expire without selecting anything. The server must deterministically
+   add exactly two round-two offers, enter `PREP`, and allow a bot submission
+   even if the client still holds the pre-timeout brain. The server-owned
+   finalized loadout must be the loadout used by the submission and simulation.
+3. Repeat immediately for round three: start with no round-three picks, add
+   exactly one offer on timeout, and submit successfully. Do not stop after
+   proving only the round-two transition.
+4. Exercise reconnect during the result hold and at `MATCH_ROUND_READY`; the
+   resumed round must expose the same active deadline and draft state.
+
+Recurring mistakes to guard against:
+
+- Reusing the previous encoded loadout as if it were the new round's draft;
+- Creating the next deadline when replay preparation finishes instead of when
+  the next selection phase actually activates;
+- Treating a client-echoed loadout as authority after the server auto-picks;
+- Testing only the first non-opening round, which lets round-three state leaks
+  survive unnoticed; and
+- Verifying timer values without verifying `loadoutSelected`, inherited picks,
+  automatic pick counts, and submission ownership together.

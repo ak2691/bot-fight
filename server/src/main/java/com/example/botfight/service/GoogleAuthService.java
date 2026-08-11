@@ -64,6 +64,7 @@ public class GoogleAuthService {
         if (linkUserId != null) {
             AppUser linkUser = userRepository.findById(linkUserId)
                     .orElseThrow(() -> new AuthException("authenticated user was not found"));
+            linkUser.setEmailVerified(true);
             identityService.linkIdentity(
                     linkUser,
                     GOOGLE_PROVIDER,
@@ -111,6 +112,7 @@ public class GoogleAuthService {
         newUser.setNormalizedEmail(googleIdentity.normalizedEmail());
         newUser.setUsername(null);
         newUser.setPasswordHash(null);
+        newUser.setEmailVerified(true);
         AppUser savedUser = userRepository.save(newUser);
         identityService.linkIdentity(
                 savedUser,
@@ -152,6 +154,7 @@ public class GoogleAuthService {
                 pending.subject(),
                 pending.providerEmail(),
                 pending.emailVerified());
+        user.setEmailVerified(true);
         clearGoogleFlowState(session);
         authService.authenticateSession(user, httpRequest);
         return authService.toAuthUser(user);
@@ -259,6 +262,7 @@ public class GoogleAuthService {
         if (user == null) {
             throw new AuthException("Google account link is invalid");
         }
+        user.setEmailVerified(true);
         authService.authenticateSession(user, request);
     }
 

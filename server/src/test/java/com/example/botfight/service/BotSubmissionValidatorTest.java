@@ -59,7 +59,7 @@ class BotSubmissionValidatorTest {
         BotSubmission submission = new BotSubmission();
         submission.setUser(new AppUser());
         submission.setBrainSchemaVersion("bot-logic-tree-v1");
-        submission.setTestingSessionId("local-session-1");
+        submission.setBuildingSessionId("local-session-1");
         submission.setBrainPayload("{\"version\":\"bot-logic-tree-v1\"}");
         submission.setClientBuildVersion("local-dev");
         return submission;

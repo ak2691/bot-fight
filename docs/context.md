@@ -22,11 +22,11 @@ tests remain authoritative when a document is stale.
 - [`ARENA_VISUAL_AND_COMBAT_REGRESSION_CHECKLIST.md`](ARENA_VISUAL_AND_COMBAT_REGRESSION_CHECKLIST.md):
   recurring failures involving transform ownership, timer-driven visuals,
   accumulated combat state, statuses, and browser/server parity. Use for any
-  arena visual, ability, move, entity, replay field, or fighter-state change.
+  arena visual, ability, move, entity, replay field, or bot-state change.
 
 For a code review or audit, pair the checklist with the affected runtime map:
 
-- browser arena/Pixi: [`../frontend/src/beta/context.md`](../frontend/src/beta/context.md);
+- browser arena/Pixi: [`../frontend/src/gameArena/context.md`](../frontend/src/gameArena/context.md);
 - server authority/security/persistence: [`../server/context.md`](../server/context.md);
 - cross-boundary/API/logic: both runtime contexts plus root
   [`../context.md`](../context.md)'s end-to-end trace.

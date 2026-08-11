@@ -237,4 +237,136 @@ class MatchmakingSocketControllerTest {
 
         verify(matchService).completeSimulation(matchId);
     }
+
+    @Test
+    void delayedReplayBatchesUseTheirAbsolutePublishTimeline() {
+        MatchmakingService matchmakingService = mock(MatchmakingService.class);
+        MatchService matchService = mock(MatchService.class);
+        SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
+        CurrentUserService currentUserService = mock(CurrentUserService.class);
+        TaskScheduler scheduler = mock(TaskScheduler.class);
+        @SuppressWarnings("unchecked")
+        ScheduledFuture<Object> scheduledFuture = mock(ScheduledFuture.class);
+        ArgumentCaptor<Instant> runAtCaptor = ArgumentCaptor.forClass(Instant.class);
+        doReturn(scheduledFuture).when(scheduler).schedule(any(Runnable.class), runAtCaptor.capture());
+        MatchmakingSocketController controller = new MatchmakingSocketController(
+                matchmakingService, matchService, messagingTemplate, currentUserService, scheduler);
+        MatchmakingEventDTO firstBatch = mock(MatchmakingEventDTO.class);
+        MatchmakingEventDTO secondBatch = mock(MatchmakingEventDTO.class);
+        when(firstBatch.type()).thenReturn("MATCH_REPLAY_BATCH");
+        when(secondBatch.type()).thenReturn("MATCH_REPLAY_BATCH");
+        Instant firstPublishAt = Instant.parse("2026-07-25T12:00:01Z");
+        Instant secondPublishAt = firstPublishAt.plusSeconds(1);
+
+        controller.handleMatchmakingEventsReady(new MatchmakingEventsReady(List.of(
+                new MatchService.OutboundMatchmakingEvent(
+                        "pilot@example.com", firstBatch, 1_100L, firstPublishAt),
+                new MatchService.OutboundMatchmakingEvent(
+                        "pilot@example.com", secondBatch, 2_200L, secondPublishAt))));
+
+        assertThat(runAtCaptor.getAllValues()).containsExactly(firstPublishAt, secondPublishAt);
+        verify(messagingTemplate, never()).convertAndSendToUser(any(), any(), any());
+    }
+
+    @Test
+    void delayedRoundReadyActivatesTheSelectionDeadlineBeforeWebSocketDelivery() {
+        MatchmakingService matchmakingService = mock(MatchmakingService.class);
+        MatchService matchService = mock(MatchService.class);
+        SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
+        CurrentUserService currentUserService = mock(CurrentUserService.class);
+        TaskScheduler scheduler = mock(TaskScheduler.class);
+        @SuppressWarnings("unchecked")
+        ScheduledFuture<Object> scheduledFuture = mock(ScheduledFuture.class);
+        ArgumentCaptor<Runnable> taskCaptor = ArgumentCaptor.forClass(Runnable.class);
+        doReturn(scheduledFuture).when(scheduler).schedule(taskCaptor.capture(), any(Instant.class));
+        UUID matchId = UUID.randomUUID();
+        Instant phaseStart = Instant.parse("2026-07-25T12:01:00Z");
+        Instant deadline = phaseStart.plusSeconds(62);
+        MatchmakingEventDTO pending = new MatchmakingEventDTO(
+                "MATCH_ROUND_READY",
+                matchId,
+                42L,
+                "LOADOUT_SELECT",
+                null,
+                null,
+                List.of(),
+                phaseStart.minusSeconds(20),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "duel-v1",
+                null,
+                2,
+                2,
+                "Round 2 loadout ready.",
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                phaseStart,
+                null,
+                null,
+                null,
+                null);
+        MatchmakingEventDTO activated = new MatchmakingEventDTO(
+                "MATCH_ROUND_READY",
+                matchId,
+                42L,
+                "LOADOUT_SELECT",
+                null,
+                null,
+                List.of(),
+                phaseStart,
+                deadline,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "duel-v1",
+                null,
+                2,
+                2,
+                "Round 2 loadout ready.",
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                phaseStart,
+                null,
+                null,
+                null,
+                null);
+        MatchService.OutboundMatchmakingEvent pendingOutbound =
+                new MatchService.OutboundMatchmakingEvent("pilot@example.com", pending, 5_000);
+        when(matchService.activateRoundLoadoutSelection(any()))
+                .thenReturn(new MatchService.OutboundMatchmakingEvent("pilot@example.com", activated));
+        MatchmakingSocketController controller = new MatchmakingSocketController(
+                matchmakingService, matchService, messagingTemplate, currentUserService, scheduler);
+
+        controller.handleMatchmakingEventsReady(new MatchmakingEventsReady(List.of(pendingOutbound)));
+        assertThat(taskCaptor.getAllValues()).hasSize(1);
+        taskCaptor.getAllValues().getFirst().run();
+
+        ArgumentCaptor<MatchmakingEventDTO> payloadCaptor = ArgumentCaptor.forClass(MatchmakingEventDTO.class);
+        verify(matchService).activateRoundLoadoutSelection(pendingOutbound);
+        verify(messagingTemplate).convertAndSendToUser(
+                eq("pilot@example.com"), eq("/queue/matchmaking"), payloadCaptor.capture());
+        assertThat(payloadCaptor.getValue().loadoutSelectionEndsAt()).isEqualTo(deadline);
+    }
 }
