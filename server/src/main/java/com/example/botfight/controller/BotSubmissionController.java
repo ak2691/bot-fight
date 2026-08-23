@@ -2,8 +2,8 @@ package com.example.botfight.controller;
 
 import com.example.botfight.DTO.BotSubmissionPayloadDTO;
 import com.example.botfight.DTO.BotSubmissionValidationResponseDTO;
-import com.example.botfight.service.BotSubmissionService;
-import com.example.botfight.service.RateLimitExceededException;
+import com.example.botfight.service.limits.RateLimitExceededException;
+import com.example.botfight.service.submission.BotSubmissionService;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,9 +35,9 @@ public class BotSubmissionController {
         BotSubmissionValidationResponseDTO validation = botSubmissionService.submit(payload, authentication);
 
         log.info(
-                "Bot brain submission persisted. accepted={}, session={}, brainSchemaVersion={}",
+                "Match bot brain submission handled. accepted={}, matchId={}, brainSchemaVersion={}",
                 validation.isAccepted(),
-                payload == null ? null : payload.getBuildingSessionId(),
+                payload == null ? null : payload.getMatchId(),
                 payload == null || payload.getBrain() == null ? null : payload.getBrain().path("version").asText(null));
 
         return ResponseEntity
@@ -50,6 +50,6 @@ public class BotSubmissionController {
         long retryAfterSeconds = Math.max(1, ex.getRetryAfter().toSeconds());
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .header(HttpHeaders.RETRY_AFTER, Long.toString(retryAfterSeconds))
-                .body(Map.of("message", ex.getMessage()));
+                .body(Map.of("message", RateLimitExceededException.GENERIC_MESSAGE));
     }
 }

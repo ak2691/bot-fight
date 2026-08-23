@@ -7,8 +7,11 @@ import static org.mockito.Mockito.when;
 
 import com.example.botfight.DTO.ActiveMatchStatusDTO;
 import com.example.botfight.domain.AppUser;
-import com.example.botfight.service.CurrentUserService;
-import com.example.botfight.service.MatchService;
+import com.example.botfight.service.auth.CurrentUserService;
+import com.example.botfight.service.limits.TokenBucketRateLimiter;
+import com.example.botfight.service.match.MatchService;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -26,7 +29,7 @@ class MatchStatusControllerTest {
         UUID matchId = UUID.randomUUID();
         Instant disconnectEndsAt = Instant.parse("2026-07-24T12:00:30Z");
         user.setId(userId);
-        when(currentUserService.requireCurrentUser(authentication)).thenReturn(user);
+        when(currentUserService.requireCurrentUserId(authentication)).thenReturn(userId);
         when(matchService.activeMatchStatus(userId)).thenReturn(
                 new ActiveMatchStatusDTO(
                         true,
@@ -36,12 +39,15 @@ class MatchStatusControllerTest {
 
         ActiveMatchStatusDTO status = new MatchStatusController(
                 currentUserService,
-                matchService).activeMatch(authentication);
+                matchService,
+                new TokenBucketRateLimiter<String>(Clock.systemUTC(), 1, Duration.ofSeconds(1)))
+                .activeMatch(authentication);
 
         assertThat(status.activeMatch()).isTrue();
         assertThat(status.disconnected()).isTrue();
         assertThat(status.matchId()).isEqualTo(matchId);
         assertThat(status.disconnectEndsAt()).isEqualTo(disconnectEndsAt);
+        verify(currentUserService).requireCurrentUserId(authentication);
         verify(matchService).activeMatchStatus(userId);
     }
 }

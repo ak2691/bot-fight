@@ -1,0 +1,48 @@
+package com.example.botfight.controller;
+
+import com.example.botfight.DTO.PuzzleAdminResponseDTO;
+import com.example.botfight.DTO.PuzzleSaveRequestDTO;
+import com.example.botfight.service.puzzle.PuzzleService;
+import com.example.botfight.service.puzzle.PuzzleValidationException;
+import java.util.List;
+import java.util.Map;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/admin/puzzles")
+public class AdminPuzzleController {
+
+    private final PuzzleService puzzleService;
+
+    public AdminPuzzleController(PuzzleService puzzleService) {
+        this.puzzleService = puzzleService;
+    }
+
+    @PostMapping
+    public ResponseEntity<PuzzleAdminResponseDTO> create(
+            @RequestBody PuzzleSaveRequestDTO request,
+            Authentication authentication) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(puzzleService.create(request, authentication));
+    }
+
+    @ExceptionHandler(PuzzleValidationException.class)
+    public ResponseEntity<Map<String, Object>> handleValidation(PuzzleValidationException exception) {
+        List<String> errors = exception.getErrors();
+        return ResponseEntity.badRequest().body(Map.of(
+                "message", "Puzzle validation failed",
+                "errors", errors));
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, String>> handleAccessDenied() {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "Admin role is required"));
+    }
+}

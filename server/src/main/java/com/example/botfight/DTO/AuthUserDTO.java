@@ -8,6 +8,7 @@ public class AuthUserDTO {
     private UUID id;
     private String email;
     private String username;
+    private boolean admin;
 
     public boolean isAuthenticated() {
         return authenticated;
@@ -39,6 +40,14 @@ public class AuthUserDTO {
 
     public void setUsername(String username) {
         this.username = username;
+    }
+
+    public boolean isAdmin() {
+        return admin;
+    }
+
+    public void setAdmin(boolean admin) {
+        this.admin = admin;
     }
 
     public static AuthUserDTO guest() {

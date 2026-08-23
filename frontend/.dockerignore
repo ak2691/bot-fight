@@ -1,9 +1,7 @@
-node_modules
-dist
-.vite
-*.log
-npm-debug.log*
-pnpm-debug.log*
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+.git/
+node_modules/
+dist/
+*.log

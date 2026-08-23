@@ -1,12 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import {
-    disconnectActiveMatchmakingClient,
-    getActiveMatchmakingClient,
-} from "../../../matchmaking/stompClient";
+import { getActiveMatchmakingClient } from "../../../matchmaking/stompClient";
 
 export default function useMatchmakingSocket({
     clientRef,
-    closeSocketAfterChatRef,
     onEvent,
     onChatEvent,
     onStatus,
@@ -32,23 +28,27 @@ export default function useMatchmakingSocket({
                 setSocketStatus(status);
                 callbackRef.current.onStatus?.(status);
             },
-        }, { autoReconnect: true, autoJoinOnConnect: false });
+        }, { autoReconnect: true, autoJoinOnConnect: false, clearPendingEvents: true });
 
         clientRef.current = client;
+        client.resumeReconnect?.();
+        client.clearPendingEvents?.();
+        client.subscribeMatch?.();
         client.resumeWhenConnected?.();
-        if (closeSocketAfterChatRef.current) {
-            void disconnectActiveMatchmakingClient(client);
-            return undefined;
-        }
         void client.connect();
 
         return () => {
             disposed = true;
             clientRef.current = null;
+            client.unsubscribeMatch?.();
             client.setHandlers();
-            void disconnectActiveMatchmakingClient(client);
+            client.clearPendingEvents?.();
+            // This is a route-level consumer of a shared client. StrictMode and
+            // route handoffs may run this cleanup while the session is active;
+            // leave transport lifetime and notification reconnects to the
+            // notification owner.
         };
-    }, [clientRef, closeSocketAfterChatRef]);
+    }, [clientRef]);
 
     return { socketStatus };
 }

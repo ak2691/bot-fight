@@ -1,15 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import AppNavbar from "../../components/AppNavbar";
-import { getAbilityCatalogueIcon } from "../../abilityCatalogueIcons.js";
+import { getAbilityCatalogueIcon, getAbilityCatalogueIconLayout } from "../../abilityCatalogueIcons.js";
 import { ABILITY_STATS } from "../../gameArena/gameconfig/Abilities.js";
 import { ALL_ABILITY_DEFINITIONS } from "../../gameArena/loadout/BotLoadout.js";
 import { useDialogFocus } from "../../components/useDialogFocus.js";
 import { abilityStatsForDisplay } from "./abilityStatsPresentation.js";
 
 const ROUNDS = [0, 1, 2, 3];
-
-const DEFENSIVE_ABILITIES = new Set([2, 16, 23]);
 
 const ABILITY_TYPE_GUIDE = Object.freeze([
     {
@@ -28,21 +26,48 @@ const ABILITY_TYPE_GUIDE = Object.freeze([
         description: "A moving object travels through the arena before applying its effect. It can be dodged, and some projectiles can be intercepted or destroyed.",
     },
     {
-        label: "Entity",
-        alias: "Additional tag",
-        description: "The ability leaves an object, zone, trap, or summon in the arena. Entity is not exclusive with projectile: a grenade is both a projectile and an entity.",
+        label: "Self",
+        alias: "Self-targeted",
+        description: "The ability applies its effect to the user. Self is independent from whether the status effect is positive or negative.",
     },
     {
-        label: "Area / field",
-        alias: "Radial, zone, or trap",
-        description: "The effect applies to a region instead of one direct target. Some regions resolve immediately; fields and traps remain active for a duration.",
+        label: "Status Effect",
+        alias: "Timed modifier",
+        description: "The ability applies a positive or negative status effect. A self-targeted status effect is positive in the current catalogue.",
     },
     {
-        label: "Armor / defense",
-        alias: "Self-targeted effect",
-        description: "A defensive ability changes what happens to its user, such as reducing, reflecting, blocking, or ignoring hostile effects. It is not a hitbox type.",
+        label: "Radial",
+        alias: "Centered effect",
+        description: "The effect resolves around a point or bot instead of following a single line or facing arc.",
+    },
+    {
+        label: "Summon",
+        alias: "Ally entity",
+        description: "The ability creates a controllable or targetable ally entity that persists in the arena.",
+    },
+    {
+        label: "Zone",
+        alias: "Persistent region",
+        description: "The ability creates a persistent region in the arena. Zones can damage, control, or otherwise affect bots inside them.",
+    },
+    {
+        label: "Trap",
+        alias: "Triggered entity",
+        description: "The ability creates an entity that waits for an attack, projectile, or bot contact before resolving.",
     },
 ]);
+
+const TAG_LABELS = Object.freeze({
+    melee: "Melee",
+    ray: "Hitscan",
+    projectile: "Projectile",
+    self: "Self",
+    "status-effect": "Status Effect",
+    radial: "Radial",
+    summon: "Summon",
+    zone: "Zone",
+    trap: "Trap",
+});
 
 function statsForAbility(ability) {
     return abilityStatsForDisplay({
@@ -59,19 +84,14 @@ function titleCase(value) {
 
 function deliveryDetails(ability) {
     const type = ability.delivery?.type;
-    if (type === "ray") return { label: "Hitscan", description: ABILITY_TYPE_GUIDE[1].description };
-    if (type === "melee") return { label: "Melee", description: ABILITY_TYPE_GUIDE[0].description };
-    if (type === "projectile") return { label: "Projectile", description: ABILITY_TYPE_GUIDE[2].description };
-    if (["radial", "field", "trap"].includes(type)) return { label: titleCase(type), description: ABILITY_TYPE_GUIDE[4].description };
-    if (DEFENSIVE_ABILITIES.has(ability.id)) return { label: "Self / Defense", description: ABILITY_TYPE_GUIDE[5].description };
+    const tag = type === "ray" ? "ray" : type;
+    const guide = ABILITY_TYPE_GUIDE.find(({ label }) => label.toLowerCase() === TAG_LABELS[tag]?.toLowerCase());
+    if (TAG_LABELS[tag]) return { label: TAG_LABELS[tag], description: guide?.description ?? "The ability applies its effects through the delivery method shown here." };
     return { label: titleCase(type), description: "The ability applies its effects through the delivery method shown here." };
 }
 
 function abilityTypeLabels(ability) {
-    const labels = [deliveryDetails(ability).label];
-    if (ability.effects.some((effect) => effect.type === "spawn_entity")) labels.push("Entity");
-    if (DEFENSIVE_ABILITIES.has(ability.id)) labels.push("Defense");
-    return [...new Set(labels)];
+    return (ability.catalogueTags ?? []).map((tag) => TAG_LABELS[tag] ?? titleCase(tag));
 }
 
 function playerFacingEffects(ability) {
@@ -83,7 +103,7 @@ function playerFacingEffects(ability) {
     return [...new Set(effects)];
 }
 
-export function AbilityModal({ ability, onClose, onTestAbility }) {
+export function AbilityModal({ ability, onClose, onTestAbility = null }) {
     const closeButtonRef = useRef(null);
     const dialogRef = useRef(null);
     const stats = statsForAbility(ability);
@@ -139,9 +159,9 @@ export function AbilityModal({ ability, onClose, onTestAbility }) {
                             type="button"
                             onClick={onClose}
                             aria-label={`Close ${ability.label} details`}
-                            className="grid h-11 min-h-11 min-w-11 w-11 flex-none place-items-center rounded-none border border-green-400/40 bg-slate-950/60 p-0 text-xl text-slate-300 hover:border-green-300/70 hover:text-white"
+                            className="gray-button-surface modal-close-button"
                         >
-                            ×
+                            <span aria-hidden="true">×</span>
                         </button>
                     </div>
                 </div>
@@ -210,7 +230,7 @@ export default function AbilityCataloguePage() {
     };
 
     const testAbility = (ability) => {
-        navigate(`/beta?ability=${encodeURIComponent(ability.id)}`);
+        navigate(`/practice?ability=${encodeURIComponent(ability.id)}`);
     };
 
     return (
@@ -223,7 +243,7 @@ export default function AbilityCataloguePage() {
                     <p className="font-mono text-[10px] font-bold tracking-[.32em] text-green-300">COMBAT DATABASE</p>
                     <h1 className="mt-3 font-display-action text-5xl uppercase tracking-wide text-white sm:text-7xl">Ability List</h1>
                     <p className="mt-4 max-w-2xl text-base leading-7 text-slate-400">
-                        Explore the two standard abilities every bot receives and every move available in the three-round draft. Select one to inspect its current arena stats.
+                        Explore the four standard abilities every bot receives and every move available in the three-round draft. Select one to inspect its current arena stats.
                     </p>
                 </div>
             </header>
@@ -234,7 +254,7 @@ export default function AbilityCataloguePage() {
                         <p className="font-mono text-[9px] font-bold tracking-[.28em] text-green-300">HOW TO READ THE LIST</p>
                         <h2 id="ability-types-title" className="mt-2 font-display-action text-3xl uppercase tracking-wider text-white">Ability types</h2>
                         <p className="mt-3 text-sm leading-6 text-slate-400">
-                            Delivery describes how an effect reaches a target. Entity and Defense are additional tags: they describe what the ability leaves behind or how it changes incoming effects.
+                            Delivery describes how an effect reaches a target. Self, Buff, Radial, Summon, Zone, and Trap are additive catalogue tags that describe who receives the effect or what remains in the arena.
                         </p>
                     </div>
                     <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -283,13 +303,19 @@ export default function AbilityCataloguePage() {
                                                 src={iconPath}
                                                 alt=""
                                                 aria-hidden="true"
-                                                className="ability-card-art"
+                                                className={`ability-card-art ability-card-art-${getAbilityCatalogueIconLayout(ability.id)}`}
                                                 onError={(event) => {
                                                     event.currentTarget.hidden = true;
                                                 }}
                                             />
                                         )}
                                         <span className="ability-card-gradient" aria-hidden="true" />
+                                        <img
+                                            src="/assets/arena-toolbar/info-circle-icon.png"
+                                            alt=""
+                                            aria-hidden="true"
+                                            className="info-circle-icon absolute left-4 top-4 z-10 h-5 w-5 opacity-80 transition duration-150 group-hover:scale-110 group-hover:opacity-100"
+                                        />
                                         <span className="absolute right-4 top-2 font-display-action text-6xl text-white/[.035]" aria-hidden="true">
                                             {String(index + 1).padStart(2, "0")}
                                         </span>

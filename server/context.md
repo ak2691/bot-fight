@@ -1,7 +1,7 @@
 # Server context
 
 The Java 21 / Spring Boot 4 application owns authenticated state, matchmaking,
-building deadlines, submission validation/persistence, and authoritative rated
+in-memory match deadlines, submission validation/history, and authoritative rated
 simulation. Controllers should remain thin; business and ownership rules belong
 in services.
 
@@ -10,38 +10,41 @@ in services.
 All Java paths below are under
 `src/main/java/com/example/botfight/`.
 
-- `controller/`: REST and STOMP boundaries for auth, building sessions,
-  submissions, time, and matchmaking messages.
+- `controller/`: REST and STOMP boundaries for auth, submissions, time, and
+  matchmaking messages, notifications, and duel invites.
 - `DTO/`: request/response and replay boundary shapes.
-- `service/`: authentication, current-user lookup, FIFO matchmaking queue,
-  active-match lifecycle, match chat/rate limits, connection state, match persistence, building
-  sessions, submission normalization/validation/rate limiting/persistence, and
-  match simulation orchestration. Keep queue pairing separate from active-match
-  rounds, reconnect deadlines, and result persistence.
+- `service/`: business services grouped by responsibility: `auth/`,
+  `submission/`, `limits/`, `matchmaking/`, `match/`, `profile/`,
+  `puzzle/`, `invite/`, `block/`, `notification/`, `websocket/`, and `system/`. Puzzle authoring/listing owns admin
+  validation, puzzle persistence, and the public published-list contract.
+  Shared bounded database read-model caching and write invalidation lives in
+  `cache/`; cache DTO/read-model snapshots rather than managed JPA entities.
+  Within `match/`, keep `connection/`,
+  `coordination/`, `event/`, `lifecycle/`, `phase/`, `chat/`, `loadout/`,
+  `persistence/`, `replay/`, `resolution/`, `simulation/`, `state/`,
+  `submission/`, and `timing/` focused on one active-match concern. Keep FIFO
+  queue pairing in `matchmaking/` separate from active-match rounds, reconnect
+  deadlines, simulation, and result persistence in `match/`.
 - `domain/`: JPA entities and persisted status/result enums.
 - `repository/`: JPA queries. Ownership-sensitive access must include or verify
   the authenticated user and return generic not-found behavior for private data.
 - `security/` and `config/`: session identity, Spring Security/CSRF, time, and
   WebSocket configuration.
-- `simulation/DuelSimulationService.java`: authoritative `duel-v1` fixed-step
-  orchestration, normalized strategy selection, result settlement, and replay
-  production.
-- `simulation/ConditionResolutionService.java`: bounded condition
-  normalization, state-variable reads, target resolution, and comparisons.
-- `simulation/ActionExecutionService.java`: readiness/resources, movement,
-  preparation, direct ability effects, and bot/ability-entity actions.
-- `simulation/ProjectileSimulationService.java`: short-lived ability-projectile
-  motion, collision, impact effects, damage-over-time, and hit settlement.
-- `simulation/BotStateService.java`: bot initialization, tick effects,
-  damage/healing settlement, cooldowns, charges, and transient statuses.
-- `simulation/TargetingService.java` and `ReplayMappingService.java`: shared
-  target selection/offsets and authoritative replay state mapping.
-- `simulation/bot/`: submitted bot configuration reading and normalized
-  condition evaluation.
-- `simulation/geometry/`: pure authoritative distance and angle calculations.
+- `simulation/core/`: the package-coupled authoritative duel runtime, organized
+  by role into `orchestration/` (fixed-step duel flow), `logic/`
+  (conditions, targeting, and custom-variable actions), `combat/`
+  (actions, abilities, projectiles, and entity hits), `state/` (bot state,
+  movement, and deferred transitions), and `replay/` (authoritative replay
+  mapping). The role packages communicate through explicit authoritative types
+  owned by the orchestration package.
+- `simulation/bots/`: submitted bot configuration reading, the declarative
+  bot-code contract registry, and normalized condition evaluation.
+- `simulation/geometry/`: pure authoritative distance, angle, and arena-unit
+  calculations.
 - `simulation/gameconfig/`: authoritative ability definitions, effect/shield
   contracts, and the active duel configuration.
-- `simulation/ecs/`: authoritative ability-entity model and systems.
+- `simulation/ecs/`: authoritative ability-entity model, split into
+  `contracts/`, `abilities/`, and `entities/`.
 - `src/main/resources/db/migration/`: append-only Flyway schema history.
 
 ## Route by task
@@ -49,20 +52,24 @@ All Java paths below are under
 | Concern | Start here | Also inspect |
 | --- | --- | --- |
 | Auth/session/CSRF | `controller/`, `service/`, `config/`, `security/` | auth tests and frontend auth/security areas |
+| Duel invites, blocks, and notifications | invite/block/notification controllers and services, `domain/`, `repository/` | frontend notification/profile/matchmaking/chat areas |
 | Matchmaking queue | matchmaking controller and queue service areas | matchmaking DTOs and frontend client area |
 | Active match, reconnect, round draft, surrender, match chat | match lifecycle, connection, and persistence service areas | matchmaking controller, DTOs, repositories, and frontend client area |
-| Building deadline/session | building-session controller/service areas | domain/repository and submission binding |
+| Building deadline/match timing | `service/match/timing/` | match state, matchmaking controller, and frontend lifecycle |
 | Submission endpoint/persistence | submission controller/service areas | DTO, repository, and domain areas |
+| Puzzle authoring, published list, and admin role boundary | puzzle controller/service areas | auth/security, puzzle domain/repository, migration, and frontend puzzle page |
 | Brain/loadout boundary validation | validation service area | combat catalog, frontend schema, and focused tests |
-| Rated simulation orchestration | `simulation/DuelSimulationService.java`, `simulation/*Service.java` | replay DTO and matchmaking lifecycle |
-| Combat/ability/effect parity | `simulation/gameconfig/`, `simulation/ecs/`, focused simulation services | duel orchestration, frontend Game Arena context, docs index |
-| Replay/result mismatch | `simulation/`, `DTO/` | match orchestration/matchmaking and frontend replay areas |
+| Rated simulation orchestration | `simulation/core/orchestration/DuelSimulationService.java` | replay DTO and matchmaking lifecycle |
+| Combat/ability/effect parity | `simulation/gameconfig/`, `simulation/core/combat/`, `simulation/core/logic/`, `simulation/core/state/`, `simulation/ecs/` | duel orchestration, frontend Game Arena context, docs index |
+| Replay/result mismatch | `simulation/core/replay/`, `DTO/` | match orchestration/matchmaking and frontend replay areas |
 | Database/schema | `domain/`, `repository/`, `resources/db/migration/` | services enforcing ownership/state transitions |
 
 ## Authority and validation rules
 
-- Bind rated submissions to the authenticated user, active match, and
-  server-issued building session.
+- Bind match submissions to the authenticated user, active match, server-owned
+  round, and canonical phase. During a live match, the
+  `matchId/round/phase/userId` key is authoritative in memory under the match
+  lock; copy accepted round code to history storage only when the match ends.
 - Normalize and bound schema versions, block/condition counts, priorities,
   identifiers, target/object slots, action/ability IDs, parameters, and payload
   lengths before persistence or simulation.

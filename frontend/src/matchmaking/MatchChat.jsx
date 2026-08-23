@@ -21,7 +21,7 @@ export default function MatchChat({ messages, minimized, onMinimizedChange, onSe
 
     if (minimized) return (
         <aside className="match-chat match-chat--minimized" aria-label="Match chat minimized">
-            <button type="button" className="match-chat__restore" onClick={() => onMinimizedChange(false)} aria-label="Open match chat">
+            <button type="button" className="gray-button-surface match-chat__restore" onClick={() => onMinimizedChange(false)} aria-label="Open match chat">
                 <ChatIcon /><span>MATCH CHAT</span>{unread && <span className="match-chat__unread" aria-label="New opponent message" />}
             </button>
         </aside>
@@ -29,7 +29,7 @@ export default function MatchChat({ messages, minimized, onMinimizedChange, onSe
 
     return (
         <aside className="match-chat" aria-label="Match chat">
-            <header className="match-chat__header"><span><ChatIcon /> MATCH CHAT</span><button type="button" onClick={() => onMinimizedChange(true)} aria-label="Minimize match chat">−</button></header>
+            <header className="match-chat__header"><span><ChatIcon /> MATCH CHAT</span><button type="button" className="gray-button-surface" onClick={() => onMinimizedChange(true)} aria-label="Minimize match chat">−</button></header>
             <div ref={messagesRef} className="match-chat__messages" aria-live="polite">
                 {messages.length === 0 && <p className="match-chat__empty">No messages yet.</p>}
                 {messages.map((message) => <p key={message.messageId} className="match-chat__message"><strong>{message.username}:</strong> {message.message}</p>)}
@@ -37,7 +37,7 @@ export default function MatchChat({ messages, minimized, onMinimizedChange, onSe
             {(closedNotice || rateLimitNotice) && <p role="status" className="match-chat__notice">{closedNotice || rateLimitNotice}</p>}
             <form className="match-chat__form" onSubmit={submit}>
                 <input id="match-chat-message" name="message" type="text" value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={MAX_MESSAGE_LENGTH} placeholder={disabled ? "Chat closed" : "Type a message..."} aria-label="Match chat message" autoComplete="off" disabled={disabled} />
-                <button type="submit" disabled={disabled || !draft.trim()} aria-label="Send chat message">➤</button>
+                <button type="submit" className="gray-button-surface" disabled={disabled || !draft.trim()} aria-label="Send chat message">➤</button>
             </form>
         </aside>
     );

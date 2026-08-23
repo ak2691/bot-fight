@@ -27,4 +27,9 @@ public final class AngleCalculator {
     public static double normalizeDegrees(double value) {
         return ((value % 360.0) + 360.0) % 360.0;
     }
+
+    public static double normalizeRelativeDegrees(double value) {
+        double normalized = normalizeDegrees(value);
+        return normalized > 180.0 ? normalized - 360.0 : normalized;
+    }
 }

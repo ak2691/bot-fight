@@ -1,6 +1,6 @@
 package com.example.botfight.security;
 
-import com.example.botfight.service.StartupReadinessService;
+import com.example.botfight.service.system.StartupReadinessService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;

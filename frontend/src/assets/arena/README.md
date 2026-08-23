@@ -33,5 +33,5 @@ never modified.
 The renderer scales these textures relative to each move's range and bot
 size; it does not use source image dimensions as gameplay hitboxes. Grenades
 and mines share `explosions/grenade-mine-explosions.png`, while Wind Burst,
-Fireball, Phase Strike, and the field/support abilities each use their named
+ Fireball, Phase Strike, and the zone/support abilities each use their named
 folders. Retired ability names are not part of the asset or ability catalog.

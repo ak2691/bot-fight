@@ -22,3 +22,100 @@ export function segmentIntersectsCircle(start, end, circle) {
     const nearestX = start.x + dx * t, nearestY = start.y + dy * t;
     return Math.hypot(circle.x - nearestX, circle.y - nearestY) <= Number(circle.size ?? 0) / 2;
 }
+
+/** Returns whether two circular colliders overlap at any point in one tick. */
+export function movingCirclesIntersect(firstStart, firstEnd, firstRadius, secondStart, secondEnd, secondRadius) {
+    const relativeStart = {
+        x: Number(firstStart.x) - Number(secondStart.x),
+        y: Number(firstStart.y) - Number(secondStart.y),
+    };
+    const relativeEnd = {
+        x: Number(firstEnd.x) - Number(secondEnd.x),
+        y: Number(firstEnd.y) - Number(secondEnd.y),
+    };
+    return segmentIntersectsCircle(relativeStart, relativeEnd, {
+        x: 0,
+        y: 0,
+        size: (Number(firstRadius) + Number(secondRadius)) * 2,
+    });
+}
+
+/** Returns the closest center-to-center distance during one tick. */
+export function movingCirclesDistance(firstStart, firstEnd, secondStart, secondEnd) {
+    const relativeStart = {
+        x: Number(firstStart.x) - Number(secondStart.x),
+        y: Number(firstStart.y) - Number(secondStart.y),
+    };
+    const relativeEnd = {
+        x: Number(firstEnd.x) - Number(secondEnd.x),
+        y: Number(firstEnd.y) - Number(secondEnd.y),
+    };
+    const dx = relativeEnd.x - relativeStart.x;
+    const dy = relativeEnd.y - relativeStart.y;
+    const lengthSquared = dx * dx + dy * dy;
+    const t = lengthSquared > 0
+        ? clamp(-(relativeStart.x * dx + relativeStart.y * dy) / lengthSquared, 0, 1)
+        : 0;
+    return Math.hypot(relativeStart.x + dx * t, relativeStart.y + dy * t);
+}
+
+/**
+ * Resolves one generic moving-circle hit. A hit at the final pose is an
+ * ordinary contact; otherwise the movement paths are treated as swept
+ * hitboxes. Callers provide movement paths, so teleports must pass the same
+ * point for start and end.
+ */
+export function movingCircleCollision(firstStart, firstEnd, firstRadius, secondStart, secondEnd, secondRadius) {
+    const collisionRadius = Number(firstRadius) + Number(secondRadius);
+    const endDistance = Math.hypot(
+        Number(firstEnd.x) - Number(secondEnd.x),
+        Number(firstEnd.y) - Number(secondEnd.y),
+    );
+    if (endDistance <= collisionRadius) return { hit: true, swept: false, distance: endDistance };
+    const distance = movingCirclesDistance(firstStart, firstEnd, secondStart, secondEnd);
+    return { hit: distance <= collisionRadius, swept: true, distance };
+}
+
+/** Returns whether two line segments come within the supplied distance. */
+export function segmentsWithinDistance(firstStart, firstEnd, secondStart, secondEnd, maxDistance = 0) {
+    if (segmentsIntersect(firstStart, firstEnd, secondStart, secondEnd)) return true;
+    return Math.min(
+        pointToSegmentDistance(firstStart, secondStart, secondEnd),
+        pointToSegmentDistance(firstEnd, secondStart, secondEnd),
+        pointToSegmentDistance(secondStart, firstStart, firstEnd),
+        pointToSegmentDistance(secondEnd, firstStart, firstEnd),
+    ) <= Number(maxDistance);
+}
+
+function pointToSegmentDistance(point, start, end) {
+    const dx = Number(end.x) - Number(start.x);
+    const dy = Number(end.y) - Number(start.y);
+    const lengthSquared = dx * dx + dy * dy;
+    const t = lengthSquared > 0
+        ? clamp(((Number(point.x) - Number(start.x)) * dx + (Number(point.y) - Number(start.y)) * dy) / lengthSquared, 0, 1)
+        : 0;
+    return Math.hypot(Number(point.x) - Number(start.x) - dx * t, Number(point.y) - Number(start.y) - dy * t);
+}
+
+function segmentsIntersect(firstStart, firstEnd, secondStart, secondEnd) {
+    const orientation = (a, b, c) => (Number(b.x) - Number(a.x)) * (Number(c.y) - Number(a.y))
+        - (Number(b.y) - Number(a.y)) * (Number(c.x) - Number(a.x));
+    const first = orientation(firstStart, firstEnd, secondStart);
+    const second = orientation(firstStart, firstEnd, secondEnd);
+    const third = orientation(secondStart, secondEnd, firstStart);
+    const fourth = orientation(secondStart, secondEnd, firstEnd);
+    const epsilon = 1e-9;
+    return ((first > epsilon && second < -epsilon) || (first < -epsilon && second > epsilon))
+        && ((third > epsilon && fourth < -epsilon) || (third < -epsilon && fourth > epsilon))
+        || Math.abs(first) <= epsilon && onSegment(firstStart, firstEnd, secondStart)
+        || Math.abs(second) <= epsilon && onSegment(firstStart, firstEnd, secondEnd)
+        || Math.abs(third) <= epsilon && onSegment(secondStart, secondEnd, firstStart)
+        || Math.abs(fourth) <= epsilon && onSegment(secondStart, secondEnd, firstEnd);
+}
+
+function onSegment(start, end, point) {
+    return Number(point.x) >= Math.min(Number(start.x), Number(end.x)) - 1e-9
+        && Number(point.x) <= Math.max(Number(start.x), Number(end.x)) + 1e-9
+        && Number(point.y) >= Math.min(Number(start.y), Number(end.y)) - 1e-9
+        && Number(point.y) <= Math.max(Number(start.y), Number(end.y)) + 1e-9;
+}

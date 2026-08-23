@@ -2,6 +2,8 @@ package com.example.botfight.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -28,6 +30,10 @@ public class AppUser {
 
     @Column(name = "password_hash")
     private String passwordHash;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private UserRole role = UserRole.USER;
 
     @Column(name = "email_verified", nullable = false)
     private boolean emailVerified = true;
@@ -76,6 +82,14 @@ public class AppUser {
 
     public void setPasswordHash(String passwordHash) {
         this.passwordHash = passwordHash;
+    }
+
+    public UserRole getRole() {
+        return role == null ? UserRole.USER : role;
+    }
+
+    public void setRole(UserRole role) {
+        this.role = role;
     }
 
     public boolean isEmailVerified() {

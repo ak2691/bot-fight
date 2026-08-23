@@ -1,0 +1,544 @@
+TAP version 13
+# Subtest: resetting bot stats clears every transient status effect
+ok 1 - resetting bot stats clears every transient status effect
+  ---
+  duration_ms: 1.2589
+  type: 'test'
+  ...
+# Subtest: target-relative walk uses a normalized vector from the bot to the target
+ok 2 - target-relative walk uses a normalized vector from the bot to the target
+  ---
+  duration_ms: 1.717
+  type: 'test'
+  ...
+# Subtest: ability metadata separates instantaneous effects from interpolated motion
+ok 3 - ability metadata separates instantaneous effects from interpolated motion
+  ---
+  duration_ms: 0.1297
+  type: 'test'
+  ...
+# Subtest: every selectable ability exposes delivery, effects, and a shield policy
+ok 4 - every selectable ability exposes delivery, effects, and a shield policy
+  ---
+  duration_ms: 0.1411
+  type: 'test'
+  ...
+# Subtest: active ability contracts never block or filter effects
+ok 5 - active ability contracts never block or filter effects
+  ---
+  duration_ms: 0.543
+  type: 'test'
+  ...
+# Subtest: stale retired Block state cannot suppress an ability effect
+ok 6 - stale retired Block state cannot suppress an ability effect
+  ---
+  duration_ms: 0.1132
+  type: 'test'
+  ...
+# Subtest: hunter drone spawns with component health and 50 hp
+ok 7 - hunter drone spawns with component health and 50 hp
+  ---
+  duration_ms: 0.5599
+  type: 'test'
+  ...
+# Subtest: hunter drone pursues targets at 4.5 units per arena tick
+ok 8 - hunter drone pursues targets at 4.5 units per arena tick
+  ---
+  duration_ms: 0.6732
+  type: 'test'
+  ...
+# Subtest: hunter drone retains the replay-matched shot visual timer
+ok 9 - hunter drone retains the replay-matched shot visual timer
+  ---
+  duration_ms: 0.4882
+  type: 'test'
+  ...
+# Subtest: Tether Bolt uses one generic segment hit for damage, pull, and slow
+ok 10 - Tether Bolt uses one generic segment hit for damage, pull, and slow
+  ---
+  duration_ms: 0.7798
+  type: 'test'
+  ...
+# Subtest: generic segment hitboxes sweep across a bot's dash segment
+ok 11 - generic segment hitboxes sweep across a bot's dash segment
+  ---
+  duration_ms: 0.3185
+  type: 'test'
+  ...
+# Subtest: Static Snare can be destroyed through the generic hittable-entity path
+ok 12 - Static Snare can be destroyed through the generic hittable-entity path
+  ---
+  duration_ms: 0.5799
+  type: 'test'
+  ...
+# Subtest: Static Snare triggers once without chaining to its owner
+ok 13 - Static Snare triggers once without chaining to its owner
+  ---
+  duration_ms: 0.5145
+  type: 'test'
+  ...
+# Subtest: Repeller Drone uses the hunter drone body with low-damage knockback shots
+ok 14 - Repeller Drone uses the hunter drone body with low-damage knockback shots
+  ---
+  duration_ms: 0.163
+  type: 'test'
+  ...
+# Subtest: drones use a short bot action lock while their entities keep their duration
+ok 15 - drones use a short bot action lock while their entities keep their duration
+  ---
+  duration_ms: 1.1799
+  type: 'test'
+  ...
+# Subtest: entity-hit records trigger an armed mine through the entity system
+ok 16 - entity-hit records trigger an armed mine through the entity system
+  ---
+  duration_ms: 0.2327
+  type: 'test'
+  ...
+# Subtest: proximity mine triggers and damages within its increased radius
+ok 17 - proximity mine triggers and damages within its increased radius
+  ---
+  duration_ms: 0.2078
+  type: 'test'
+  ...
+# Subtest: an untriggered proximity mine advances once without duplicating
+ok 18 - an untriggered proximity mine advances once without duplicating
+  ---
+  duration_ms: 0.1813
+  type: 'test'
+  ...
+# Subtest: proximity mine switches from throw duration to armed lifetime
+ok 19 - proximity mine switches from throw duration to armed lifetime
+  ---
+  duration_ms: 0.2521
+  type: 'test'
+  ...
+# Subtest: status effects are accumulated before the bot hp snapshot is returned
+ok 20 - status effects are accumulated before the bot hp snapshot is returned
+  ---
+  duration_ms: 0.252
+  type: 'test'
+  ...
+# Subtest: DOT, direct damage, and healing on one tick resolve as one net hp change
+ok 21 - DOT, direct damage, and healing on one tick resolve as one net hp change
+  ---
+  duration_ms: 0.2663
+  type: 'test'
+  ...
+# Subtest: successful damage advances the renderer hit event for consecutive hits
+ok 22 - successful damage advances the renderer hit event for consecutive hits
+  ---
+  duration_ms: 0.0661
+  type: 'test'
+  ...
+# Subtest: burn and bleed discard a pending tick when duration expires first
+ok 23 - burn and bleed discard a pending tick when duration expires first
+  ---
+  duration_ms: 0.0831
+  type: 'test'
+  ...
+# Subtest: burn and bleed apply a final tick due exactly at expiration
+ok 24 - burn and bleed apply a final tick due exactly at expiration
+  ---
+  duration_ms: 0.0689
+  type: 'test'
+  ...
+# Subtest: another heavy slash refreshes bleed duration without resetting its pending tick
+ok 25 - another heavy slash refreshes bleed duration without resetting its pending tick
+  ---
+  duration_ms: 0.7234
+  type: 'test'
+  ...
+# Subtest: successful hostile HP damage starts, refreshes, and never stacks hit stagger
+ok 26 - successful hostile HP damage starts, refreshes, and never stacks hit stagger
+  ---
+  duration_ms: 0.2334
+  type: 'test'
+  ...
+# Subtest: damage is never absorbed by stale retired Block state
+ok 27 - damage is never absorbed by stale retired Block state
+  ---
+  duration_ms: 0.1865
+  type: 'test'
+  ...
+# Subtest: hit stagger scales allocated movement and rotation for exactly three 100 ms ticks
+ok 28 - hit stagger scales allocated movement and rotation for exactly three 100 ms ticks
+  ---
+  duration_ms: 1.0804
+  type: 'test'
+  ...
+# Subtest: movement acceleration is half top speed and steering follows the velocity angle
+ok 29 - movement acceleration is half top speed and steering follows the velocity angle
+  ---
+  duration_ms: 0.4497
+  type: 'test'
+  ...
+# Subtest: Dash uses post-active recovery and reactivates on the exact boundary
+ok 30 - Dash uses post-active recovery and reactivates on the exact boundary
+  ---
+  duration_ms: 0.4887
+  type: 'test'
+  ...
+# Subtest: declared spawned abilities resolve through normalized entity contracts
+ok 31 - declared spawned abilities resolve through normalized entity contracts
+  ---
+  duration_ms: 0.3872
+  type: 'test'
+  ...
+# Subtest: Fire Gun can reactivate at the active boundary and starts half-second recovery
+ok 32 - Fire Gun can reactivate at the active boundary and starts half-second recovery
+  ---
+  duration_ms: 0.3333
+  type: 'test'
+  ...
+# Subtest: Fireball holds recovery through its active window and starts it afterward
+ok 33 - Fireball holds recovery through its active window and starts it afterward
+  ---
+  duration_ms: 0.2864
+  type: 'test'
+  ...
+# Subtest: Fireball reload waits until its active window ends after the final charge
+ok 34 - Fireball reload waits until its active window ends after the final charge
+  ---
+  duration_ms: 0.2324
+  type: 'test'
+  ...
+# Subtest: Lock On prepares for two ticks before facing its target and respects its 10 second cooldown
+ok 35 - Lock On prepares for two ticks before facing its target and respects its 10 second cooldown
+  ---
+  duration_ms: 0.3573
+  type: 'test'
+  ...
+# Subtest: entity damage and hostile DOT use the same HP-loss stagger settlement
+ok 36 - entity damage and hostile DOT use the same HP-loss stagger settlement
+  ---
+  duration_ms: 0.5637
+  type: 'test'
+  ...
+# Subtest: Concussive Shot remains independent and wins the combined movement multiplier
+ok 37 - Concussive Shot remains independent and wins the combined movement multiplier
+  ---
+  duration_ms: 0.4154
+  type: 'test'
+  ...
+# Subtest: damage to an arena entity does not stagger either bot
+ok 38 - damage to an arena entity does not stagger either bot
+  ---
+  duration_ms: 0.1669
+  type: 'test'
+  ...
+# Subtest: a heavy slash damages normally while its attached bleed still applies
+ok 39 - a heavy slash damages normally while its attached bleed still applies
+  ---
+  duration_ms: 0.1514
+  type: 'test'
+  ...
+# Subtest: Concussive and rail shots apply damage and attached effects without blocking
+ok 40 - Concussive and rail shots apply damage and attached effects without blocking
+  ---
+  duration_ms: 0.2452
+  type: 'test'
+  ...
+# Subtest: repulsor burst deals 20 damage and pushes 250 units without blocking
+ok 41 - repulsor burst deals 20 damage and pushes 250 units without blocking
+  ---
+  duration_ms: 0.2621
+  type: 'test'
+  ...
+# Subtest: Frost Ring composes damage, slow, and knockback without blocking
+ok 42 - Frost Ring composes damage, slow, and knockback without blocking
+  ---
+  duration_ms: 0.1619
+  type: 'test'
+  ...
+# Subtest: Singularity pulls during its fuse and applies one generic zone detonation
+ok 43 - Singularity pulls during its fuse and applies one generic zone detonation
+  ---
+  duration_ms: 0.5604
+  type: 'test'
+  ...
+# Subtest: wind burst is a five-tick projectile with 15 damage and 90 knockback
+ok 44 - wind burst is a five-tick projectile with 15 damage and 90 knockback
+  ---
+  duration_ms: 0.2912
+  type: 'test'
+  ...
+# Subtest: absolute guard rejects damage, statuses, and displacement without changing stale state
+ok 45 - absolute guard rejects damage, statuses, and displacement without changing stale state
+  ---
+  duration_ms: 0.1922
+  type: 'test'
+  ...
+# Subtest: absolute guard rejects persistent entity zones, pulses, mines, and strikes
+ok 46 - absolute guard rejects persistent entity zones, pulses, mines, and strikes
+  ---
+  duration_ms: 0.3549
+  type: 'test'
+  ...
+# Subtest: retired Block cannot activate or create a charge resource
+ok 47 - retired Block cannot activate or create a charge resource
+  ---
+  duration_ms: 0.1137
+  type: 'test'
+  ...
+# Subtest: bot resources and lifecycle advance through their own generic component contracts
+ok 48 - bot resources and lifecycle advance through their own generic component contracts
+  ---
+  duration_ms: 0.099
+  type: 'test'
+  ...
+# Subtest: null zone silence is presence-based while silence pulse remains timed
+ok 49 - null zone silence is presence-based while silence pulse remains timed
+  ---
+  duration_ms: 0.1596
+  type: 'test'
+  ...
+# Subtest: combat visual timing preserves centered pulses, sword sweeps, and pistol fade
+ok 50 - combat visual timing preserves centered pulses, sword sweeps, and pistol fade
+  ---
+  duration_ms: 0.1329
+  type: 'test'
+  ...
+# Subtest: repulsor burst presentation advances all ten frames over 500 ms without exceeding its hitbox
+ok 51 - repulsor burst presentation advances all ten frames over 500 ms without exceeding its hitbox
+  ---
+  duration_ms: 0.3021
+  type: 'test'
+  ...
+# Subtest: Basic Heal particle specs are deterministic, staggered, and upward
+ok 52 - Basic Heal particle specs are deterministic, staggered, and upward
+  ---
+  duration_ms: 0.1155
+  type: 'test'
+  ...
+# Subtest: Basic Heal applies 15 self-healing and respects the HP cap
+ok 53 - Basic Heal applies 15 self-healing and respects the HP cap
+  ---
+  duration_ms: 0.1356
+  type: 'test'
+  ...
+# Subtest: Siphon Lance heals its source only after confirmed HP damage
+ok 54 - Siphon Lance heals its source only after confirmed HP damage
+  ---
+  duration_ms: 0.1865
+  type: 'test'
+  ...
+# Subtest: Overclock applies a non-stacking timed buff for cooldown recovery
+ok 55 - Overclock applies a non-stacking timed buff for cooldown recovery
+  ---
+  duration_ms: 0.7899
+  type: 'test'
+  ...
+# Subtest: ability animations keep their full starting frame without an opponent
+ok 56 - ability animations keep their full starting frame without an opponent
+  ---
+  duration_ms: 0.1318
+  type: 'test'
+  ...
+# Subtest: sword swing keeps its full visual timer through the activation step
+ok 57 - sword swing keeps its full visual timer through the activation step
+  ---
+  duration_ms: 0.1504
+  type: 'test'
+  ...
+# Subtest: sword swing hit resolves only on its activation tick while its animation continues
+ok 58 - sword swing hit resolves only on its activation tick while its animation continues
+  ---
+  duration_ms: 0.0987
+  type: 'test'
+  ...
+# Subtest: sword swing hitbox matches the inclusive 120-degree, 92-unit sweep
+ok 59 - sword swing hitbox matches the inclusive 120-degree, 92-unit sweep
+  ---
+  duration_ms: 0.1457
+  type: 'test'
+  ...
+# Subtest: Basic Strike reaches the executor with its 5-damage, 80-range, 60-degree hitbox
+ok 60 - Basic Strike reaches the executor with its 5-damage, 80-range, 60-degree hitbox
+  ---
+  duration_ms: 0.1853
+  type: 'test'
+  ...
+# Subtest: heavy slash hitbox matches the inclusive 150-degree, 115-unit sweep
+ok 61 - heavy slash hitbox matches the inclusive 150-degree, 115-unit sweep
+  ---
+  duration_ms: 0.1399
+  type: 'test'
+  ...
+# Subtest: every browser melee hitbox reaches the defender's edge at max range
+ok 62 - every browser melee hitbox reaches the defender's edge at max range
+  ---
+  duration_ms: 0.2479
+  type: 'test'
+  ...
+# Subtest: direct melee hitboxes sweep across a moving defender
+ok 63 - direct melee hitboxes sweep across a moving defender
+  ---
+  duration_ms: 0.0897
+  type: 'test'
+  ...
+# Subtest: a prepared ability cannot be replaced by another ready ability
+ok 64 - a prepared ability cannot be replaced by another ready ability
+  ---
+  duration_ms: 0.174
+  type: 'test'
+  ...
+# Subtest: ability preparation does not interrupt movement or rotation
+ok 65 - ability preparation does not interrupt movement or rotation
+  ---
+  duration_ms: 0.1043
+  type: 'test'
+  ...
+# Subtest: special activation keeps the full authoritative active and cooldown timers
+ok 66 - special activation keeps the full authoritative active and cooldown timers
+  ---
+  duration_ms: 0.0761
+  type: 'test'
+  ...
+# Subtest: repulsor burst browser activation keeps its 500 ms presentation timer
+ok 67 - repulsor burst browser activation keeps its 500 ms presentation timer
+  ---
+  duration_ms: 0.0673
+  type: 'test'
+  ...
+# Subtest: Phase Strike damages normally and still teleports through stale retired state
+ok 68 - Phase Strike damages normally and still teleports through stale retired state
+  ---
+  duration_ms: 0.119
+  type: 'test'
+  ...
+# Subtest: temporal rewind creates a passive targetable clock zone
+ok 69 - temporal rewind creates a passive targetable clock zone
+  ---
+  duration_ms: 0.1237
+  type: 'test'
+  ...
+# Subtest: deferred state contracts restore a snapshot and finish their presentation pulse
+ok 70 - deferred state contracts restore a snapshot and finish their presentation pulse
+  ---
+  duration_ms: 0.1472
+  type: 'test'
+  ...
+# Subtest: health bar fill is the clamped fraction of current hp
+ok 71 - health bar fill is the clamped fraction of current hp
+  ---
+  duration_ms: 0.0473
+  type: 'test'
+  ...
+# Subtest: fire gun activation retains a fading ray for the active duration
+ok 72 - fire gun activation retains a fading ray for the active duration
+  ---
+  duration_ms: 0.1795
+  type: 'test'
+  ...
+# Subtest: a dead bot clears one-tick attacks while their visuals finish
+ok 73 - a dead bot clears one-tick attacks while their visuals finish
+  ---
+  duration_ms: 0.0753
+  type: 'test'
+  ...
+# Subtest: a ray from a bot killed after firing cannot damage again
+ok 74 - a ray from a bot killed after firing cannot damage again
+  ---
+  duration_ms: 0.0692
+  type: 'test'
+  ...
+# Subtest: death removes every active bot status while preserving preparation and cooldowns
+ok 75 - death removes every active bot status while preserving preparation and cooldowns
+  ---
+  duration_ms: 0.153
+  type: 'test'
+  ...
+# Subtest: an ALWAYS code action reaches the real fire-gun executor
+ok 76 - an ALWAYS code action reaches the real fire-gun executor
+  ---
+  duration_ms: 0.4743
+  type: 'test'
+  ...
+# Subtest: a global ability lock blocks a different ability until the active phase ends
+ok 77 - a global ability lock blocks a different ability until the active phase ends
+  ---
+  duration_ms: 2.4931
+  type: 'test'
+  ...
+# Subtest: a higher-priority fireball yields to grenade during its one-tick recovery
+ok 78 - a higher-priority fireball yields to grenade during its one-tick recovery
+  ---
+  duration_ms: 1.06
+  type: 'test'
+  ...
+# Subtest: projectile system returns net bot damage and removes a colliding fireball
+ok 79 - projectile system returns net bot damage and removes a colliding fireball
+  ---
+  duration_ms: 0.1841
+  type: 'test'
+  ...
+# Subtest: projectile collision sweeps across a bot's dash segment
+ok 80 - projectile collision sweeps across a bot's dash segment
+  ---
+  duration_ms: 0.1933
+  type: 'test'
+  ...
+# Subtest: grenades become ability-system explosions on contact and fuse expiry
+ok 81 - grenades become ability-system explosions on contact and fuse expiry
+  ---
+  duration_ms: 0.2778
+  type: 'test'
+  ...
+# Subtest: grenade damage falls linearly between its configured endpoints
+ok 82 - grenade damage falls linearly between its configured endpoints
+  ---
+  duration_ms: 0.052
+  type: 'test'
+  ...
+# Subtest: ranged damage profiles use max and min plateaus around linear falloff
+ok 83 - ranged damage profiles use max and min plateaus around linear falloff
+  ---
+  duration_ms: 0.0571
+  type: 'test'
+  ...
+# Subtest: projectiles pass through dead bots without applying damage or status
+ok 84 - projectiles pass through dead bots without applying damage or status
+  ---
+  duration_ms: 0.3362
+  type: 'test'
+  ...
+# Subtest: fireball lifetime, rather than traveled range, controls projectile removal
+ok 85 - fireball lifetime, rather than traveled range, controls projectile removal
+  ---
+  duration_ms: 0.1262
+  type: 'test'
+  ...
+# Subtest: Fireball damages normally while its burn effect remains attached
+ok 86 - Fireball damages normally while its burn effect remains attached
+  ---
+  duration_ms: 0.1605
+  type: 'test'
+  ...
+# Subtest: mine, gravity, silence, drone, and orbital effects are never blocked
+ok 87 - mine, gravity, silence, drone, and orbital effects are never blocked
+  ---
+  duration_ms: 0.4506
+  type: 'test'
+  ...
+# Subtest: radial effects use bot-center distance instead of outer-edge overlap
+ok 88 - radial effects use bot-center distance instead of outer-edge overlap
+  ---
+  duration_ms: 0.162
+  type: 'test'
+  ...
+# Subtest: another fireball refreshes burn duration without resetting its pending damage tick
+ok 89 - another fireball refreshes burn duration without resetting its pending damage tick
+  ---
+  duration_ms: 0.1672
+  type: 'test'
+  ...
+1..89
+# tests 89
+# suites 0
+# pass 89
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 176.7876

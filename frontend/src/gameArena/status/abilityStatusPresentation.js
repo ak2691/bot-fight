@@ -1,4 +1,5 @@
 import { abilityDefinition } from "../loadout/BotLoadout.js";
+import { abilityChargeCount, abilityRechargeRemainingMs } from "../gameconfig/AbilityResourceSystem.js";
 
 export const ABILITY_RING_COLORS = Object.freeze({
     active: "#7dd3fc",
@@ -26,12 +27,13 @@ export function abilityStatusFor(bot, abilityId) {
     const activeMs = abilityActiveMs;
     const configuredActiveDurationMs = positiveNumber(stats.statusDurationMs ?? stats.durationMs ?? stats.activeMs ?? stats.visualMs);
     const activeDurationMs = configuredActiveDurationMs || (activeMs > 0 ? 300 : 0);
-    const preparing = bot?.preparingAbility === abilityId;
+    const preparing = bot?.preparingAbility === abilityId
+        && positiveNumber(bot?.preparingMs) > 0;
     const windupMs = positiveNumber(stats.windupMs);
 
     if (preparing && windupMs) {
-        const elapsedMs = Math.min(windupMs, positiveNumber(bot?.preparingMs));
-        return timedStatus("preparing", Math.max(0, windupMs - elapsedMs), windupMs, elapsedMs / windupMs);
+        const remainingMs = Math.min(windupMs, positiveNumber(bot?.preparingMs));
+        return timedStatus("preparing", remainingMs, windupMs, 1 - remainingMs / windupMs);
     }
 
     if (activeMs > 0) {
@@ -39,17 +41,14 @@ export function abilityStatusFor(bot, abilityId) {
         return timedStatus("active", activeMs, activeDurationMs, progress);
     }
 
-    const chargeMs = positiveNumber(bot?.abilityRechargeMs?.[abilityId]);
-    if (chargeMs > 0) {
-        const chargeDurationMs = positiveNumber(stats.rechargeMs ?? stats.reloadMs);
-        return timedStatus("preparing", chargeMs, chargeDurationMs, chargeDurationMs ? 1 - Math.min(1, chargeMs / chargeDurationMs) : null);
-    }
-
-    const cooldownMs = positiveNumber(bot?.abilityCooldowns?.[abilityId]);
-    if (cooldownMs > 0) {
-        const cooldownDurationMs = positiveNumber(stats.cooldownMs);
-        const visualCooldownDurationMs = Math.max(1, cooldownDurationMs - Math.min(cooldownDurationMs, activeDurationMs));
-        return timedStatus("cooldown", cooldownMs, visualCooldownDurationMs, 1 - Math.min(1, cooldownMs / visualCooldownDurationMs));
+    const cooldown = abilityCooldownFor(bot, abilityId, stats);
+    if (cooldown.remainingMs > 0) {
+        return timedStatus(
+            "cooldown",
+            cooldown.remainingMs,
+            cooldown.durationMs,
+            cooldown.durationMs ? 1 - Math.min(1, cooldown.remainingMs / cooldown.durationMs) : null,
+        );
     }
 
     return {
@@ -57,6 +56,28 @@ export function abilityStatusFor(bot, abilityId) {
         remainingMs: null,
         durationMs: null,
         progress: isReady(bot, abilityId) ? 1 : 0,
+    };
+}
+
+export function abilityChargeCountFor(bot, abilityId) {
+    return abilityChargeCount(bot, abilityId);
+}
+
+export function abilityCooldownFor(bot, abilityId, stats = abilityDefinition(abilityId)?.stats ?? {}) {
+    const configuredCooldownMs = positiveNumber(stats.cooldownMs ?? stats.reuseCooldownMs);
+    const cooldownMs = positiveNumber(bot?.abilityCooldowns?.[abilityId]);
+    // Cooldown is the recovery phase after active time; it is no longer a
+    // parallel timer whose active portion needs to be subtracted for display.
+    const cooldownDurationMs = Math.max(1, configuredCooldownMs);
+    const rechargeMs = abilityRechargeRemainingMs(bot, abilityId);
+    const rechargeDurationMs = positiveNumber(stats.rechargeMs ?? stats.reloadMs);
+    const remainingMs = Math.max(cooldownMs, rechargeMs);
+    return {
+        remainingMs,
+        durationMs: Math.max(
+            cooldownMs > 0 ? cooldownDurationMs : 0,
+            rechargeMs > 0 ? rechargeDurationMs : 0,
+        ),
     };
 }
 
@@ -97,10 +118,12 @@ function timedStatus(state, remainingMs, durationMs, progress) {
 }
 
 function isReady(bot, abilityId) {
-    const charges = bot?.abilityCharges?.[abilityId];
+    if (positiveNumber(bot?.abilityActiveMs?.[abilityId]) > 0
+        || (bot?.preparingAbility != null && positiveNumber(bot?.preparingMs) > 0)) return false;
+    const stats = abilityDefinition(abilityId)?.stats ?? {};
+    const charges = abilityChargeCountFor(bot, abilityId);
     if (charges != null && Number(charges) <= 0) return false;
-    return Number(bot?.abilityCooldowns?.[abilityId] ?? 0) <= 0
-        && Number(bot?.abilityRechargeMs?.[abilityId] ?? 0) <= 0;
+    return abilityCooldownFor(bot, abilityId, stats).remainingMs <= 0;
 }
 
 function positiveNumber(value) {

@@ -1,18 +1,23 @@
 import { useEffect, useRef, useState } from "react";
-import { Application, Circle, Container, Graphics, Rectangle, Sprite, Text } from "pixi.js";
+import { Circle, Container, Graphics, Rectangle, Sprite, Text } from "pixi.js";
+import ArenaLoadingScreen from "../../components/ArenaLoadingScreen.jsx";
 import AbilityStatusPanel from "../status/AbilityStatusPanel.jsx";
 import { ABILITY_STATS } from "../gameconfig/Abilities.js";
 import { ABILITIES } from "../gameconfig/AbilityRegistry.js";
+import { CLOSING_ZONE_TYPE } from "../gameconfig/ArenaHazardConfig.js";
 import { abilityActiveOpacity, basicHealParticleSpec, combatVisualRemainingMs, healthBarPercent, abilityVisualOpacity, BASIC_HEAL_PARTICLE_COUNT, REPULSOR_BURST_VISUAL_MS, repulsorBurstDiameter, repulsorBurstFrameIndex, repulsorBurstProgress, sweepAngle, visualProgress } from "../gameconfig/visualState.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../modelPayloads/arenaConstants.js";
+import { toSimulationBotShape } from "../modelPayloads/arenaShapes.js";
 import { interpolatePosition } from "./snapshotInterpolation.js";
-import { activeBotVisual, entityCaption, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, grenadeDetonateProgress, heavySlashRotation, isBotShape, LOCK_ON_PRESENTATION, lockOnTargetPoint, pixiLayerForShape, presentationDefinitionForShape, projectileTrailStyle, shapeInterpolationMs, shieldFrameIndex } from "./pixiVisualState.js";
+import { activeBotVisual, closingZoneDamageOccurred, entityCaption, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, grenadeDetonateProgress, heavySlashRotation, isBotShape, LOCK_ON_PRESENTATION, lockOnTargetPoint, pixiLayerForShape, presentationDefinitionForShape, projectileTrailStyle, shapeInterpolationMs } from "./pixiVisualState.js";
 import { spriteFrame, spriteFrameAtProgress } from "./arenaSpriteAssets.js";
 import { loadArenaPresentationAssets, retryArenaPresentationAssets } from "./arenaPresentationAssets.js";
 import { textureMuzzleAnchor } from "./abilitySpriteAssets.js";
 import { advanceParticle } from "./particleMotion.js";
 import { createPresentationClock } from "./presentationClock.js";
-import { compassDegreesToRadians } from "../botlogic/planner/arenaAngles.js";
+import { compassDegreesToRadians, vectorToCompassDegrees } from "../botlogic/planner/arenaAngles.js";
+import { acquirePixiApplication, attachPixiApplication, releasePixiApplication } from "./pixiApplication.js";
+import { statusIsActive } from "../ecs/contracts/StatusContracts.js";
 import "./PixiCanvas.css";
 
 const BOT_SIZE = 60;
@@ -22,6 +27,7 @@ const COLORS = Object.freeze({
     arena: 0x0d1117,
     grid: 0x253442,
     gridMajor: 0x3b4c5e,
+    closingZone: 0x8b5cf6,
     player: 0x57b8ff,
     opponent: 0xff7166,
     white: 0xf8fafc,
@@ -47,16 +53,18 @@ export default function PixiCanvas({
     measurementEnabled = false,
     measurementPoints = [],
     onMeasurementPointsChange = () => { },
+    allowBotRotation = false,
 }) {
+    const presentationShapes = shapes.map(toSimulationBotShape);
     const hostRef = useRef(null);
     const runtimeRef = useRef(null);
     const optionsRef = useRef({});
-    const [isRendererReady, setIsRendererReady] = useState(false);
     const [assetError, setAssetError] = useState(null);
+    const [arenaReady, setArenaReady] = useState(false);
     const [assetRetryToken, setAssetRetryToken] = useState(0);
     useEffect(() => {
         optionsRef.current = {
-            shapes,
+            shapes: presentationShapes,
             selectedId,
             onSelectShape,
             onUpdateShape,
@@ -68,43 +76,40 @@ export default function PixiCanvas({
             measurementEnabled,
             measurementPoints,
             onMeasurementPointsChange,
+            allowBotRotation,
         };
         runtimeRef.current?.setPlaying(isPlaying);
-        runtimeRef.current?.syncShapes(shapes);
-    }, [editable, isPlaying, lockCamera, measurementEnabled, measurementPoints, onDeselectAll, onMeasurementPointsChange, onSelectShape, onUpdateShape, placementSide, selectedId, shapes]);
+        runtimeRef.current?.syncShapes(presentationShapes);
+    }, [allowBotRotation, editable, isPlaying, lockCamera, measurementEnabled, measurementPoints, onDeselectAll, onMeasurementPointsChange, onSelectShape, onUpdateShape, placementSide, selectedId, presentationShapes]);
 
     useEffect(() => {
         let disposed = false;
         let app = null;
+        let detachResizeObserver = () => { };
 
         async function mount() {
             const host = hostRef.current;
             if (!host) return;
+            setArenaReady(false);
             try {
                 const arenaSprites = await loadArenaPresentationAssets();
                 if (disposed) return;
-                app = new Application();
-                await app.init({
-                    preference: "webgl",
-                    resizeTo: host,
-                    autoDensity: true,
-                    antialias: true,
-                    backgroundAlpha: 0,
-                });
+                app = await acquirePixiApplication();
                 if (disposed) {
-                    app.destroy({ removeView: true }, { children: true, texture: false, textureSource: false });
+                    releasePixiApplication(app);
+                    app = null;
                     return;
                 }
                 app.canvas.setAttribute("aria-label", "PixiJS bot-room arena");
-                host.appendChild(app.canvas);
+                detachResizeObserver = attachPixiApplication(app, host);
                 runtimeRef.current = createArenaRuntime(app, optionsRef, arenaSprites);
                 runtimeRef.current.syncShapes(optionsRef.current.shapes ?? []);
                 setAssetError(null);
-                setIsRendererReady(true);
+                setArenaReady(true);
             } catch (error) {
                 if (!disposed) {
-                    setIsRendererReady(false);
                     setAssetError(error);
+                    setArenaReady(false);
                 }
             }
         }
@@ -114,21 +119,19 @@ export default function PixiCanvas({
             disposed = true;
             runtimeRef.current?.destroy();
             runtimeRef.current = null;
-            // The application owns only this canvas' display tree. The shared
-            // arena catalogue is owned by arenaPresentationAssets and must
-            // remain alive for later routes, replays, and remounts.
-            if (app?.renderer) app.destroy({ removeView: true }, { children: true, texture: false, textureSource: false });
+            detachResizeObserver();
+            if (app) releasePixiApplication(app);
         };
     }, [assetRetryToken]);
 
     const retryAssetLoad = () => {
         setAssetError(null);
-        setIsRendererReady(false);
+        setArenaReady(false);
         void retryArenaPresentationAssets().catch(() => { });
         setAssetRetryToken((current) => current + 1);
     };
 
-    const bots = shapes.filter(isBotShape);
+    const bots = presentationShapes.filter(isBotShape);
     const playerBot = bots.find((bot) => bot.id === "main")
         ?? bots.find((bot) => Number(bot.slot) === 1)
         ?? bots[0];
@@ -146,7 +149,8 @@ export default function PixiCanvas({
             : "max-w-[1360px] grid-cols-1 lg:grid-cols-[220px_minmax(0,860px)_220px]";
 
     return (
-        <div className={`mx-auto grid w-full items-center justify-center gap-3 ${layoutClass}`}>
+        <div className={`relative mx-auto grid w-full items-center justify-center gap-3 ${layoutClass}`}>
+            {!arenaReady && !assetError && <ArenaLoadingScreen overlay label="Loading arena..." />}
             {abilityLayout !== "right" && (
                 <div className={`${fixedLayout ? "order-1 min-w-0" : "order-2 min-w-0 lg:order-1"} ${fixedLayout ? "pixi-side-status" : ""}`}>
                     {playerBot && <AbilityStatusPanel bot={playerBot} showEmptySlot={showEmptyAbilitySlot} />}
@@ -162,7 +166,7 @@ export default function PixiCanvas({
                 onContextMenu={(event) => event.preventDefault()}
             >
                 <div ref={hostRef} className="pixi-arena-host absolute inset-0" />
-                {assetError ? (
+                {assetError && (
                     <div role="alert" className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-[#0d1117] px-6 text-center text-slate-300">
                         <p className="font-mono text-[11px] font-bold tracking-[0.18em] text-red-300">ARENA ASSETS UNAVAILABLE</p>
                         <p className="max-w-md text-xs leading-5 text-slate-400">
@@ -173,15 +177,10 @@ export default function PixiCanvas({
                             RETRY ARENA ASSETS
                         </button>
                     </div>
-                ) : !isRendererReady && (
-                    <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-[#0d1117] text-slate-400">
-                        <div className="h-9 w-9 animate-spin rounded-full border-2 border-slate-700 border-t-cyan-300" aria-hidden="true" />
-                        <p role="status" className="font-mono text-[10px] tracking-[0.22em]">Loading assets...</p>
-                    </div>
                 )}
                 {!lockCamera && (
                     <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded border border-slate-700/70 bg-zinc-950/75 px-2 py-1 font-mono text-[8px] tracking-widest text-slate-400">
-                        WHEEL TO ZOOM · RIGHT-DRAG TO PAN
+                        WHEEL TO ZOOM · RIGHT-DRAG EMPTY SPACE TO PAN{allowBotRotation ? " · RIGHT-DRAG BOT TO ROTATE" : ""}
                     </div>
                 )}
             </div>
@@ -218,6 +217,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     let zoom = MIN_ZOOM;
     let viewCenter = { x: ARENA_WIDTH_UNITS / 2, y: ARENA_HEIGHT_UNITS / 2 };
     let drag = null;
+    let rotationDrag = null;
     let pan = null;
     let measurementSignature = null;
     let measurementHoverPoint = null;
@@ -251,7 +251,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         caption.anchor.set(0.5);
         caption.eventMode = "none";
         container.addChild(baseSprite, graphics, caption);
-        container.eventMode = "static";
+        container.eventMode = shape.type === CLOSING_ZONE_TYPE ? "none" : "static";
         container.cursor = shape.locked || !optionsRef.current.editable ? "default" : "grab";
         container.hitArea = new Circle(0, 0, Math.max(12, Number(shape.size ?? (isBotShape(shape) ? BOT_SIZE : 30)) / 2 + 6));
         const view = {
@@ -262,9 +262,9 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             caption,
             shape,
             blockHeldStartedAt: null,
-            microDashSmokeOrigin: null,
-            microDashSmokeRotation: 0,
-            microDashSmokeStartedAt: null,
+            dashSmokeOrigin: null,
+            dashSmokeRotation: 0,
+            dashSmokeStartedAt: null,
             repulsorBurstStartedAt: repulsorBurstStartTime(shape, now),
             entityAnimationStartedAt: entityAnimationStartTime(shape, now),
             motion: { from: { x: shape.x, y: shape.y }, to: { x: shape.x, y: shape.y }, startedAt: now, durationMs: 0 },
@@ -298,24 +298,45 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             }
             const previousShape = view.shape;
             const current = sampleViewPosition(view, now);
-            const wasMicroDashing = Number(previousShape?.microDashActiveMs ?? 0) > 0;
-            const startsMicroDashing = Number(shape.microDashActiveMs ?? 0) > 0;
-            if (startsMicroDashing && !wasMicroDashing) {
-                view.microDashSmokeOrigin = { ...current };
+            const wasDashing = Number(previousShape?.dashActiveMs ?? 0) > 0;
+            const startsDashing = Number(shape.dashActiveMs ?? 0) > 0;
+            if (startsDashing && !wasDashing) {
+                view.dashSmokeOrigin = { ...current };
                 // The supplied smoke frames face north before rotation.
-                view.microDashSmokeRotation = botMovementRotation(shape) + Math.PI / 2;
-                view.microDashSmokeStartedAt = now;
+                view.dashSmokeRotation = botMovementRotation(shape) + Math.PI / 2;
+                view.dashSmokeStartedAt = now;
             }
-            const durationMs = drag?.id === shape.id ? 0 : shapeInterpolationMs(shape);
+            const previousReplayFrameIndex = Number(previousShape?.replayFrameIndex);
+            const replayFrameIndex = Number(shape.replayFrameIndex);
+            const hasReplayFrameIndices = Number.isFinite(previousReplayFrameIndex) && Number.isFinite(replayFrameIndex);
+            const replayFrameGap = hasReplayFrameIndices ? replayFrameIndex - previousReplayFrameIndex : 0;
+            const shouldSnapReplayTransition = hasReplayFrameIndices && (
+                replayFrameGap > 1
+                || replayFrameIndex <= 0
+                || shape.replayPhase !== "playback"
+                || previousShape?.replayPhase !== "playback"
+            );
+            const durationMs = drag?.id === shape.id || shouldSnapReplayTransition
+                ? 0
+                : shapeInterpolationMs(shape);
             view.shape = shape;
             const target = { x: Number(shape.x), y: Number(shape.y) };
-            if (target.x !== view.motion.to.x || target.y !== view.motion.to.y || durationMs !== view.motion.durationMs) {
+            if (target.x !== view.motion.to.x || target.y !== view.motion.to.y) {
                 view.motion = { from: current, to: target, startedAt: now, durationMs };
             }
             view.container.cursor = shape.locked || !optionsRef.current.editable ? "default" : "grab";
             view.container.hitArea = new Circle(0, 0, Math.max(12, Number(shape.size ?? (isBotShape(shape) ? BOT_SIZE : 30)) / 2 + 6));
-            if (Number(shape.hitFlashMs ?? 0) > 0 && Number(previousShape?.hitFlashMs ?? 0) <= 0) {
-                spawnBurst(shape.x, shape.y, 0xfca5a5, 8);
+            const hitParticleEvent = shape.hitParticleEvent;
+            const hasHitParticleEvent = hitParticleEvent != null
+                && hitParticleEvent !== previousShape?.hitParticleEvent;
+            const hasLegacyHitFlash = hitParticleEvent == null
+                && Number(shape.hitFlashMs ?? 0) > 0
+                && Number(previousShape?.hitFlashMs ?? 0) <= 0;
+            if (hasHitParticleEvent || hasLegacyHitFlash) {
+                spawnBurst(current.x, current.y, 0xfca5a5, 12);
+            }
+            if (isBotShape(shape) && closingZoneDamageOccurred(shape, previousShape)) {
+                spawnBurst(current.x, current.y, 0xc084fc, 6);
             }
             const previousAbility = activeBotVisual(previousShape);
             const nextAbility = activeBotVisual(shape);
@@ -336,6 +357,18 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     }
 
     function beginDrag(event, view) {
+        if (event.button === 2) {
+            if (!optionsRef.current.allowBotRotation
+                || !optionsRef.current.editable
+                || !isBotShape(view.shape)
+                || view.shape.locked) return;
+            event.stopPropagation();
+            optionsRef.current.onSelectShape?.(view.shape.id);
+            rotationDrag = { id: view.shape.id };
+            view.container.cursor = "crosshair";
+            updateBotRotation(event, view);
+            return;
+        }
         if (event.button !== 0) return;
         event.stopPropagation();
         optionsRef.current.onSelectShape?.(view.shape.id);
@@ -344,6 +377,17 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         const position = sampleViewPosition(view);
         drag = { id: view.shape.id, offsetX: point.x - position.x, offsetY: point.y - position.y };
         view.container.cursor = "grabbing";
+    }
+
+    function updateBotRotation(event, view) {
+        const point = camera.toLocal(event.global);
+        const position = sampleViewPosition(view);
+        const deltaX = point.x - position.x;
+        const deltaY = point.y - position.y;
+        if (Math.hypot(deltaX, deltaY) < 1) return;
+        const rotation = vectorToCompassDegrees(deltaX, deltaY);
+        view.shape = { ...view.shape, rotation };
+        optionsRef.current.onUpdateShape?.(view.shape.id, { rotation });
     }
 
     function spawnBurst(x, y, color, count) {
@@ -431,7 +475,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         }
     }
 
-    app.stage.on("pointerdown", (event) => {
+    const handleStagePointerDown = (event) => {
         if (event.target !== app.stage) return;
         if (event.button === 2 || event.button === 1) {
             if (optionsRef.current.lockCamera) return;
@@ -447,9 +491,16 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         } else {
             optionsRef.current.onDeselectAll?.();
         }
-    });
-    app.stage.on("globalpointermove", (event) => {
-        if (drag) {
+    };
+    const handleGlobalPointerMove = (event) => {
+        if (rotationDrag) {
+            const view = views.get(rotationDrag.id);
+            if (!view) {
+                rotationDrag = null;
+                return;
+            }
+            updateBotRotation(event, view);
+        } else if (drag) {
             const view = views.get(drag.id);
             if (!view) return;
             const point = camera.toLocal(event.global);
@@ -471,15 +522,22 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
                 y: Math.round(clamp(point.y, 0, ARENA_HEIGHT_UNITS)),
             };
         }
-    });
+    };
     const endPointer = () => {
+        if (rotationDrag) {
+            const view = views.get(rotationDrag.id);
+            if (view) view.container.cursor = "grab";
+        }
         if (drag) {
             const view = views.get(drag.id);
             if (view) view.container.cursor = "grab";
         }
+        rotationDrag = null;
         drag = null;
         pan = null;
     };
+    app.stage.on("pointerdown", handleStagePointerDown);
+    app.stage.on("globalpointermove", handleGlobalPointerMove);
     app.stage.on("pointerup", endPointer);
     app.stage.on("pointerupoutside", endPointer);
 
@@ -512,6 +570,10 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         },
         destroy() {
             app.ticker.remove(tick);
+            app.stage.off("pointerdown", handleStagePointerDown);
+            app.stage.off("globalpointermove", handleGlobalPointerMove);
+            app.stage.off("pointerup", endPointer);
+            app.stage.off("pointerupoutside", endPointer);
             app.canvas.removeEventListener("wheel", handleWheel);
             app.canvas.removeEventListener("contextmenu", preventContextMenu);
             app.canvas.removeEventListener("pointerleave", clearMeasurementHover);
@@ -565,25 +627,7 @@ function drawBot(view, position, selected, now, arenaSprites, overlapping = fals
         graphics.circle(0, 0, radius + 12).stroke({ color: 0xfde68a, alpha: pulse, width: 3 });
     }
     if (hitFlash) graphics.circle(0, 0, radius + 2).fill({ color: 0xef4444, alpha: 0.5 }).stroke({ color: 0xfca5a5, width: 3 });
-    if (!dead) drawMicroDashSmoke(view, position, radius, now, arenaSprites);
-    const blockActive = Number(shape.abilityActiveMs?.[2] ?? 0) > 0;
-    const blockCooldownMs = Number(shape.blockCooldownMs ?? 0);
-    if (blockActive && view.blockHeldStartedAt == null) view.blockHeldStartedAt = now;
-    const shieldFrames = arenaSprites.abilities.shield;
-    const shieldIndex = shieldFrameIndex({
-        active: blockActive,
-        cooldownMs: blockCooldownMs,
-        heldElapsedMs: blockActive ? now - view.blockHeldStartedAt : 0,
-        frameCount: shieldFrames.length,
-    });
-    if (!blockActive) view.blockHeldStartedAt = null;
-    if (shieldIndex != null) {
-        showCachedEffect(view, "block", shieldFrames[shieldIndex], {
-            rotation: rotation + Math.PI,
-            width: radius * 3.5,
-            height: radius * 3.5,
-        });
-    }
+    if (!dead) drawDashSmoke(view, position, radius, now, arenaSprites);
     const swingActiveMs = Number(shape.abilityActiveMs?.[1] ?? 0);
     if (swingActiveMs > 0) {
         const halfArc = Number(ABILITY_STATS[1].arcDegrees) / 2;
@@ -715,20 +759,20 @@ function showCachedEffect(view, slot, texture, { x = 0, y = 0, rotation = 0, alp
     return sprite;
 }
 
-function drawMicroDashSmoke(view, position, radius, now, arenaSprites) {
-    const frames = arenaSprites.abilities.microDashSmoke;
-    if (!frames?.length || view.microDashSmokeStartedAt == null) return;
-    const elapsedMs = now - view.microDashSmokeStartedAt;
+function drawDashSmoke(view, position, radius, now, arenaSprites) {
+    const frames = arenaSprites.abilities.dashSmoke;
+    if (!frames?.length || view.dashSmokeStartedAt == null) return;
+    const elapsedMs = now - view.dashSmokeStartedAt;
     if (elapsedMs >= 500) {
-        view.microDashSmokeOrigin = null;
-        view.microDashSmokeStartedAt = null;
+        view.dashSmokeOrigin = null;
+        view.dashSmokeStartedAt = null;
         return;
     }
-    const origin = view.microDashSmokeOrigin ?? position;
-    showCachedEffect(view, "micro-dash-smoke", spriteFrame(frames, elapsedMs, 100, false), {
+    const origin = view.dashSmokeOrigin ?? position;
+    showCachedEffect(view, "dash-smoke", spriteFrame(frames, elapsedMs, 100, false), {
         x: origin.x - position.x,
         y: origin.y - position.y,
-        rotation: view.microDashSmokeRotation,
+        rotation: view.dashSmokeRotation,
         alpha: 0.92,
         width: radius * 3.8,
         height: radius * 1.9,
@@ -746,6 +790,7 @@ const STATUS_ICON_STYLE = Object.freeze({
     SIL: { foreground: 0xbfdbfe, background: 0x1e40af, border: 0x1e3a8a },
     SHOCK: { foreground: 0xfef08a, background: 0x155e75, border: 0x164e63 },
     STUN: { foreground: 0xfef9c3, background: 0x854d0e, border: 0x713f12 },
+    OVERCLOCK: { foreground: 0xa7f3d0, background: 0x022c22, border: 0x34d399 },
 });
 
 function drawStatusIcons(graphics, shape, radius) {
@@ -786,6 +831,14 @@ function drawStatusSymbol(graphics, status, x, y, color) {
         graphics.moveTo(x - 1, y - 3).lineTo(x + 1, y + 3).moveTo(x - 1, y + 3).lineTo(x + 1, y - 3).stroke({ color, width: 2 });
     } else if (status === "STUN") {
         graphics.poly([x, y - 8, x + 2, y - 2, x + 8, y, x + 2, y + 2, x, y + 8, x - 2, y + 2, x - 8, y, x - 2, y - 2]).fill(color);
+    } else if (status === "OVERCLOCK") {
+        graphics.circle(x, y, 8.5).stroke({ color, width: 1.8 });
+        graphics.moveTo(x, y - 5).lineTo(x, y).lineTo(x + 3.5, y + 2).stroke({ color, width: 1.8 });
+        graphics.moveTo(x, y - 9.5).lineTo(x, y - 7.5)
+            .moveTo(x, y + 7.5).lineTo(x, y + 9.5)
+            .moveTo(x - 9.5, y).lineTo(x - 7.5, y)
+            .moveTo(x + 7.5, y).lineTo(x + 9.5, y)
+            .stroke({ color, width: 1.4 });
     }
 }
 
@@ -797,21 +850,21 @@ function repulsorBurstStartTime(shape, now) {
 
 function drawStatusAnimations(graphics, shape, radius, now) {
     const frame = Math.floor(now / 120) % 4;
-    if (Number(shape.burnRemainingMs ?? 0) > 0) {
+    if (statusIsActive(shape, "burn")) {
         const heights = [[7, 11, 8], [10, 7, 12], [8, 12, 6], [11, 8, 10]][frame];
         [-13, 0, 13].forEach((x, index) => {
             const baseY = radius + 4;
             graphics.poly([x, baseY - heights[index], x + 5, baseY - 2, x + 2, baseY + 5, x - 4, baseY + 4, x - 5, baseY - 1]).fill(index === 1 ? 0xfde047 : 0xfb923c);
         });
     }
-    if (Number(shape.bleedRemainingMs ?? 0) > 0) {
+    if (statusIsActive(shape, "bleed")) {
         const drops = [[-18, 5], [-6, 11], [8, 2], [18, 8]];
         drops.forEach(([x, offset], index) => {
             const fall = (frame + index) % 4 * 4;
             drawDroplet(graphics, x, radius - 3 + offset + fall, 3, 0xef4444);
         });
     }
-    if (Number(shape.shockRemainingMs ?? 0) > 0) {
+    if (statusIsActive(shape, "shock")) {
         const angles = [0.2, 1.8, 3.3, 4.8];
         angles.forEach((angle, index) => {
             const activeAngle = angle + frame * 0.28 + index * 0.04;
@@ -827,6 +880,7 @@ function drawDroplet(graphics, x, y, size, color) {
 }
 
 function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
+    const { graphics } = view;
     const rotation = compassDegreesToRadians(shape.rotation);
     if (Number(shape.abilityActiveMs?.[3] ?? 0) > 0) {
         const alpha = abilityActiveOpacity(shape, 3);
@@ -915,6 +969,19 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
         const height = visual === 13 ? 100 : visual === 9 ? 76 : 14;
         showAbilityRayEffect(view, "ability", arenaSprites, position, originX, originY, originRotation, visual, Number(stats.range ?? 500), opacity, height);
         showMuzzleFlash(view, arenaSprites, position, originX, originY, originRotation, opacity, Number(shape.size ?? 60));
+    } else if ([30, 32].includes(visual)) {
+        drawProceduralAbilityRay(graphics, position, originX, originY, originRotation,
+            Number(stats.range ?? 500), visual === 30 ? 0x22d3ee : 0xa78bfa, opacity,
+            visual === 30 ? 8 : 10);
+        showMuzzleFlash(view, arenaSprites, position, originX, originY, originRotation, opacity, Number(shape.size ?? 60));
+    } else if (visual === 34) {
+        drawProceduralAbilityRay(graphics, position, originX, originY, originRotation,
+            Number(stats.range ?? 80), 0xf8fafc, opacity, 6);
+    } else if (visual === 33) {
+        const radius = Number(shape.size ?? BOT_SIZE) / 2;
+        const pulse = 0.55 + Math.sin(now / 100) * 0.18;
+        graphics.circle(0, 0, radius + 12).stroke({ color: 0xfbbf24, alpha: pulse, width: 3 });
+        graphics.circle(0, 0, radius + 20).stroke({ color: 0xfef3c7, alpha: pulse * 0.45, width: 2 });
     } else if (visual === 25) {
         const progress = visualProgress(remaining, duration);
         showCachedEffect(view, "ability", spriteFrameAtProgress(arenaSprites.abilities.phaseStrike, progress), {
@@ -926,12 +993,40 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
             anchorX: 0.05,
             blendMode: "screen",
         });
+    } else if (visual === 26) {
+        const progress = visualProgress(remaining, duration);
+        const centerX = originX - position.x;
+        const centerY = originY - position.y;
+        const ringRadius = Number(stats.radius ?? 120) * (0.34 + progress * 0.66);
+        graphics.circle(centerX, centerY, ringRadius)
+            .stroke({ color: 0x93c5fd, alpha: opacity, width: 5 });
+        graphics.circle(centerX, centerY, ringRadius * 0.72)
+            .stroke({ color: 0x67e8f9, alpha: opacity * 0.5, width: 2 });
+        for (let index = 0; index < 8; index += 1) {
+            const shardAngle = index * Math.PI / 4 + progress * Math.PI * 0.5;
+            const inner = ringRadius * 0.72;
+            const outer = ringRadius * (0.9 + (index % 2) * 0.08);
+            graphics.moveTo(centerX + Math.cos(shardAngle) * inner, centerY + Math.sin(shardAngle) * inner)
+                .lineTo(centerX + Math.cos(shardAngle) * outer, centerY + Math.sin(shardAngle) * outer)
+                .stroke({ color: 0xe0f2fe, alpha: opacity * 0.8, width: 3 });
+        }
     } else if (visual === 16 || visual === 23) {
         const progress = visualProgress(remaining, duration);
         const radius = 40 + progress * 16;
         const color = visual === 16 ? 0xfbbf24 : 0xe2e8f0;
-        showCachedEffect(view, "ability", spriteFrameAtProgress(arenaSprites.abilities.shield, progress), { alpha: 1 - progress, tint: color, width: radius * 2, height: radius * 2 });
+        showCachedEffect(view, "ability", spriteFrameAtProgress(arenaSprites.abilities.shield, progress), { rotation: angle + Math.PI, alpha: 1 - progress, tint: color, width: radius * 2, height: radius * 2 });
     }
+}
+
+function drawProceduralAbilityRay(graphics, position, originX, originY, rotation, range, color, alpha, width) {
+    const startX = Number(originX) - Number(position.x);
+    const startY = Number(originY) - Number(position.y);
+    const angle = compassDegreesToRadians(rotation);
+    const endX = startX + Math.cos(angle) * range;
+    const endY = startY + Math.sin(angle) * range;
+    graphics.moveTo(startX, startY).lineTo(endX, endY).stroke({ color, alpha: alpha * 0.26, width: width * 2.6 });
+    graphics.moveTo(startX, startY).lineTo(endX, endY).stroke({ color, alpha, width });
+    graphics.circle(endX, endY, width * 1.8).fill({ color, alpha: alpha * 0.65 });
 }
 
 function showSlashEffect(view, frames, remaining, duration, rotation, size, tint, alpha) {
@@ -977,11 +1072,37 @@ function showMuzzleFlash(view, arenaSprites, position, originX, originY, rotatio
 
 function drawEntity(view, selected, now, arenaSprites) {
     const { shape, baseSprite, graphics, caption } = view;
+    if (shape.type === CLOSING_ZONE_TYPE) {
+        drawClosingZone(graphics, shape);
+        baseSprite.visible = false;
+        caption.text = "";
+        caption.visible = false;
+        return;
+    }
     const size = Math.max(2, Number(shape.size ?? 30));
     const radius = size / 2;
     const rotation = compassDegreesToRadians(shape.rotation);
     hideCachedEffects(view);
     graphics.clear();
+    if (["singularityZone", "singularityExplosion"].includes(shape.type)) {
+        baseSprite.visible = false;
+        caption.text = "";
+        caption.visible = false;
+        drawGeneratedSingularity(graphics, shape, now);
+        if (selected) graphics.circle(0, 0, radius + 6).stroke({ color: COLORS.white, alpha: 0.8, width: 2 });
+        if (Number(shape.hitFlashMs ?? 0) > 0) graphics.circle(0, 0, radius + 2).fill({ color: 0xef4444, alpha: 0.5 });
+        return;
+    }
+    if (["tetherBolt", "staticSnare", "staticSnareBurst"].includes(shape.type)) {
+        baseSprite.visible = false;
+        drawGeneratedAbilityEntity(graphics, shape, now);
+        caption.text = entityCaption(shape);
+        caption.visible = Boolean(caption.text);
+        caption.position.set(0, -radius - 10);
+        if (selected) graphics.circle(0, 0, radius + 6).stroke({ color: COLORS.white, alpha: 0.8, width: 2 });
+        if (Number(shape.hitFlashMs ?? 0) > 0) graphics.circle(0, 0, radius + 2).fill({ color: 0xef4444, alpha: 0.5 });
+        return;
+    }
     const orbitalRemaining = Number(shape.visibleMs ?? shape.remainingMs ?? shape.timerMs ?? 400);
     const texture = entityTexture(shape, arenaSprites, orbitalRemaining, now, view.entityAnimationStartedAt);
     baseSprite.visible = texture != null;
@@ -1001,9 +1122,9 @@ function drawEntity(view, selected, now, arenaSprites) {
 
     if (shape.type === "orbitalExplosion") {
         baseSprite.alpha = clamp(orbitalRemaining / 400, 0, 1);
-    } else if (shape.type === "gravityField") {
+    } else if (shape.type === "gravityZone") {
         if (shape.armed) baseSprite.alpha = 0.72 + Math.sin(now / 100) * 0.12;
-    } else if (shape.type === "hunterDrone") {
+    } else if (["hunterDrone", "repellerDrone"].includes(shape.type)) {
         if (Number(shape.shotVisualMs ?? 0) > 0) {
             const alpha = clamp(Number(shape.shotVisualMs) / 300, 0.2, 1);
                 showAbilityRayEffect(view, "drone-shot", arenaSprites, { x: shape.x, y: shape.y }, shape.x, shape.y, shape.rotation, 3, 200, alpha, 16, 0x6ee7b7);
@@ -1011,6 +1132,103 @@ function drawEntity(view, selected, now, arenaSprites) {
     }
     if (selected) graphics.circle(0, 0, radius + 6).stroke({ color: COLORS.white, alpha: 0.8, width: 2 });
     if (Number(shape.hitFlashMs ?? 0) > 0) graphics.circle(0, 0, radius + 2).fill({ color: 0xef4444, alpha: 0.5 });
+}
+
+function drawClosingZone(graphics, shape) {
+    const safeRadius = Math.max(0, Number(shape.safeRadius ?? Number(shape.size ?? 0) / 2));
+    const arenaRadius = Math.hypot(ARENA_WIDTH_UNITS, ARENA_HEIGHT_UNITS) / 2;
+    graphics.clear();
+    if (safeRadius <= 0.5) {
+        graphics.rect(-ARENA_WIDTH_UNITS / 2, -ARENA_HEIGHT_UNITS / 2, ARENA_WIDTH_UNITS, ARENA_HEIGHT_UNITS)
+            .fill({ color: COLORS.closingZone, alpha: 0.28 });
+        return;
+    }
+    if (safeRadius >= arenaRadius) {
+        graphics.circle(0, 0, safeRadius).stroke({ color: COLORS.closingZone, alpha: 0.55, width: 3 });
+        return;
+    }
+    const segmentCount = 96;
+    for (let index = 0; index < segmentCount; index += 1) {
+        const start = index / segmentCount * Math.PI * 2;
+        const end = (index + 1) / segmentCount * Math.PI * 2;
+        graphics
+            .moveTo(Math.cos(start) * safeRadius, Math.sin(start) * safeRadius)
+            .lineTo(Math.cos(start) * arenaRadius, Math.sin(start) * arenaRadius)
+            .lineTo(Math.cos(end) * arenaRadius, Math.sin(end) * arenaRadius)
+            .lineTo(Math.cos(end) * safeRadius, Math.sin(end) * safeRadius)
+            .fill({ color: COLORS.closingZone, alpha: 0.28 });
+    }
+    graphics.circle(0, 0, safeRadius).stroke({ color: COLORS.closingZone, alpha: 0.86, width: 3 });
+}
+
+function drawGeneratedSingularity(graphics, shape, now) {
+    const radius = Math.max(12, Number(shape.size ?? 280) / 2);
+    const explosion = shape.type === "singularityExplosion";
+    const remaining = Number(shape.visibleMs ?? 0);
+    const visibleMs = Number(ABILITY_STATS[27]?.explosionVisibleMs ?? 400);
+    const progress = explosion ? 1 - clamp(remaining / visibleMs, 0, 1) : 0;
+    const pulse = 0.62 + Math.sin(now / 90) * 0.14;
+    if (explosion) {
+        const waveRadius = radius * (0.35 + progress * 0.9);
+        graphics.circle(0, 0, waveRadius).stroke({ color: 0xc4b5fd, alpha: 0.9 - progress * 0.45, width: 8 });
+        graphics.circle(0, 0, waveRadius * 0.5).fill({ color: 0x7c3aed, alpha: 0.24 * (1 - progress) });
+        return;
+    }
+    const armed = Boolean(shape.armed) || Number(shape.fuseMs ?? 0) <= 0;
+    graphics.circle(0, 0, radius).stroke({ color: 0xa78bfa, alpha: armed ? 0.84 : pulse, width: 3 });
+    graphics.circle(0, 0, radius * 0.72).stroke({ color: 0x67e8f9, alpha: armed ? 0.5 : 0.3, width: 2 });
+    graphics.circle(0, 0, radius * 0.14).fill({ color: 0x312e81, alpha: 0.92 });
+    for (let index = 0; index < 8; index += 1) {
+        const angle = now / 700 + index * Math.PI / 4;
+        const inner = radius * 0.2;
+        const outer = radius * (0.55 + (index % 2) * 0.12);
+        graphics.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner)
+            .lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer)
+            .stroke({ color: 0x67e8f9, alpha: armed ? 0.48 : 0.24, width: 2 });
+    }
+}
+
+function drawGeneratedAbilityEntity(graphics, shape, now) {
+    const type = shape.type;
+    if (type === "tetherBolt") {
+        const speed = Math.max(0.001, Math.hypot(Number(shape.velocityX ?? 0), Number(shape.velocityY ?? 0)));
+        const ux = Number(shape.velocityX ?? 0) / speed;
+        const uy = Number(shape.velocityY ?? 0) / speed;
+        const length = Math.max(28, speed * 1.45);
+        graphics.moveTo(-ux * length * 0.55, -uy * length * 0.55)
+            .lineTo(ux * length * 0.55, uy * length * 0.55)
+            .stroke({ color: 0x67e8f9, alpha: 0.28, width: 10 });
+        graphics.moveTo(-ux * length * 0.5, -uy * length * 0.5)
+            .lineTo(ux * length * 0.5, uy * length * 0.5)
+            .stroke({ color: 0xe0f2fe, alpha: 0.95, width: 3 });
+        graphics.circle(ux * length * 0.54, uy * length * 0.54, 5).fill({ color: 0x22d3ee, alpha: 0.95 });
+        return;
+    }
+    if (type === "staticSnare") {
+        const triggerRadius = Number(ABILITY_STATS[29]?.triggerRadius ?? 75);
+        const pulse = 0.62 + Math.sin(now / 180) * 0.14;
+        graphics.circle(0, 0, triggerRadius).stroke({ color: 0xfacc15, alpha: 0.22, width: 2 });
+        graphics.circle(0, 0, Math.max(8, Number(shape.size ?? 24) / 2)).fill({ color: 0x713f12, alpha: 0.9 })
+            .stroke({ color: 0xfde047, alpha: pulse, width: 3 });
+        graphics.moveTo(-8, 0).lineTo(8, 0).moveTo(0, -8).lineTo(0, 8).stroke({ color: 0xfef08a, alpha: 0.9, width: 2 });
+        return;
+    }
+    if (type === "staticSnareBurst") {
+        const radius = Math.max(12, Number(shape.size ?? 150) / 2);
+        const remaining = Math.max(0, Number(shape.visibleMs ?? 300));
+        const progress = 1 - clamp(remaining / Number(ABILITY_STATS[29]?.explosionVisibleMs ?? 300), 0, 1);
+        graphics.circle(0, 0, radius * (0.35 + progress * 0.7))
+            .stroke({ color: 0xfacc15, alpha: 0.9 - progress * 0.5, width: 6 });
+        graphics.circle(0, 0, radius * 0.35).fill({ color: 0xf59e0b, alpha: 0.28 * (1 - progress) });
+        return;
+    }
+    const radius = Math.max(10, Number(shape.size ?? 28) / 2);
+    const pulse = 0.72 + Math.sin(now / 120) * 0.14;
+    graphics.circle(0, 0, radius).fill({ color: 0x164e63, alpha: 0.95 }).stroke({ color: 0x67e8f9, alpha: pulse, width: 3 });
+    graphics.circle(0, 0, radius * 0.45).fill({ color: 0x0e7490, alpha: 0.85 });
+    graphics.moveTo(-radius - 5, 0).lineTo(radius + 5, 0).moveTo(0, -radius - 5).lineTo(0, radius + 5)
+        .stroke({ color: 0xa5f3fc, alpha: 0.8, width: 2 });
+    graphics.circle(0, 0, radius + 7).stroke({ color: 0x22d3ee, alpha: 0.24, width: 2 });
 }
 
 function entityTexture(shape, arenaSprites, orbitalRemaining, now, animationStartedAt) {
@@ -1063,7 +1281,7 @@ function entitySpriteSize(shape, size) {
     // communicates the full gameplay range.
     if (shape.type === "nullZone") return { width: size * 1.1, height: size * 0.88 };
     if (shape.type === "temporalRewindZone") return { width: size * 1.7, height: size * 1.7 };
-    if (shape.type === "silenceWave" || shape.type === "gravityField") return { width: size, height: size };
+    if (shape.type === "silenceWave" || shape.type === "gravityZone") return { width: size, height: size };
     if (shape.type === "windburstProjectile") return { width: size * 6, height: size * 4 };
     return { width: size * 1.5, height: size * 1.5 };
 }

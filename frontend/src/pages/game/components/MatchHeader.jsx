@@ -22,7 +22,7 @@ export function DisconnectNotice({ notice, remaining }) {
                     <p className="mt-1 text-sm leading-5 text-slate-200">{notice.message}</p>
                 </div>
                 {notice.self && (
-                    <button type="button" onClick={() => window.location.reload()} className="flex-none border border-cyan-400/50 bg-cyan-950/30 px-3 py-2 text-xs font-bold text-cyan-200">
+                    <button type="button" onClick={() => window.location.reload()} className="gray-button-surface flex-none border border-cyan-400/50 px-3 py-2 text-xs font-bold text-cyan-200">
                         Reconnect
                     </button>
                 )}

@@ -1,11 +1,12 @@
-export const loadGameArena = () => import("./gameArena/Arena");
 export const loadAbilityCatalogue = () => import("./pages/catalogue/AbilityCataloguePage");
-export const loadAbilityTesting = () => import("./pages/testing/AbilityTestingPage");
-export const loadAbilityTestingReplay = () => import("./pages/testing/AbilityTestingReplayPage");
 export const loadConditionalCatalogue = () => import("./pages/catalogue/ConditionalCataloguePage");
-export const loadMatchmaking = () => import("./pages/game/GamePage");
+export const loadMatch = () => import("./pages/game/GamePage");
 export const loadProfile = () => import("./pages/profile/ProfilePage");
 export const loadProfileSearch = () => import("./pages/profile/ProfileSearchPage");
+export const loadTutorial = () => import("./tutorial/TutorialPage");
+export const loadPuzzles = () => import("./pages/puzzles/PuzzleListPage.jsx");
+export const loadPuzzlePlay = () => import("./pages/puzzles/PuzzlePlayPage.jsx");
+export const loadPuzzleBuilder = () => import("./pages/puzzles/PuzzleBuilderPage.jsx");
 
 export function createBrowserPreloader(loader) {
     let inFlight = null;
@@ -24,9 +25,9 @@ export function createBrowserPreloader(loader) {
     };
 }
 
-export const preloadPixiAndArenaAssets = createBrowserPreloader(() => Promise.all([
-    // Keep this bare specifier identical to PixiCanvas so the browser and
-    // bundler can reuse the gameplay module cache entry.
-    import("pixi.js"),
-    import("./gameArena/pixi/arenaPresentationAssets.js"),
-]).then(([, { preloadArenaPresentationAssets }]) => preloadArenaPresentationAssets()));
+export const preloadPixiRoutes = createBrowserPreloader(() => Promise.all([
+    // These routes mount PixiCanvas directly or through SimulationReplay and
+    // should be warm before the protected home surface becomes interactive.
+    loadMatch(),
+    loadTutorial(),
+]));

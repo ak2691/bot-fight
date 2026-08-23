@@ -1,7 +1,7 @@
 package com.example.botfight.config;
 
 import com.example.botfight.security.SanitizedStompErrorHandler;
-import com.example.botfight.service.SingleUserWebSocketSessionRegistry;
+import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -10,6 +10,8 @@ import org.springframework.web.socket.config.annotation.WebSocketTransportRegist
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
+import org.springframework.web.socket.server.standard.StandardWebSocketUpgradeStrategy;
+import org.springframework.web.socket.server.support.DefaultHandshakeHandler;
 
 @Configuration
 @EnableWebSocketMessageBroker
@@ -41,6 +43,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.setErrorHandler(new SanitizedStompErrorHandler());
         registry.addEndpoint("/ws")
+                // Tomcat advertises permessage-deflate through the standard JSR-356 strategy.
+                .setHandshakeHandler(new DefaultHandshakeHandler(new StandardWebSocketUpgradeStrategy()))
                 .setAllowedOrigins(securityProperties.getAllowedOrigins().toArray(String[]::new));
     }
 

@@ -1,4 +1,4 @@
-import { ABILITY_STATS } from "./Abilities.js";
+import { ABILITY_STATS, statusDurationMs } from "./Abilities.js";
 import { abilityId as resolveAbilityId } from "./AbilityRegistry.js";
 
 export const EFFECT_TYPES = Object.freeze({
@@ -7,6 +7,7 @@ export const EFFECT_TYPES = Object.freeze({
     KNOCKBACK: "knockback",
     PULL: "pull",
     DEBUFF: "debuff",
+    BUFF: "buff",
     INTERRUPT: "interrupt",
     MOVEMENT: "movement",
     TELEPORT: "teleport",
@@ -23,7 +24,7 @@ export const DELIVERY_TYPES = Object.freeze({
     RAY: "ray",
     PROJECTILE: "projectile",
     RADIAL: "radial",
-    FIELD: "field",
+    ZONE: "zone",
     TRAP: "trap",
     SUMMON: "summon",
 });
@@ -37,15 +38,8 @@ export const SHIELD_MODES = Object.freeze({
 export const SHIELD_CHARGE_COSTS = Object.freeze({ ONE: 1, ALL: "all", DISTANCE_SCALED: "distance_scaled" });
 
 const effect = (type, values = {}) => Object.freeze({ type, ...values });
-const block = (prevents, values = {}) => Object.freeze({
-    mode: SHIELD_MODES.BLOCK,
-    halfArcDegrees: 95,
-    chargeCost: SHIELD_CHARGE_COSTS.ONE,
-    prevents: Object.freeze([...prevents]),
-    ...values,
-});
+const execution = (values = {}) => Object.freeze(values);
 const ignore = Object.freeze({ mode: SHIELD_MODES.IGNORE, prevents: Object.freeze([]) });
-const drainWhileActive = Object.freeze({ mode: SHIELD_MODES.DRAIN_WHILE_ACTIVE, chargeCost: SHIELD_CHARGE_COSTS.ALL, prevents: Object.freeze([]) });
 
 const A = ABILITY_STATS;
 
@@ -55,40 +49,101 @@ const A = ABILITY_STATS;
  * effects. Visuals intentionally live outside this catalog.
  */
 const ABILITY_CONTRACTS_BY_ID = Object.freeze({
-    1: contract({ type: DELIVERY_TYPES.MELEE, includeTargetRadius: true }, [effect(EFFECT_TYPES.DAMAGE, { amount: A[1].damage })], block([EFFECT_TYPES.DAMAGE])),
-    2: contract(DELIVERY_TYPES.SELF, [], ignore),
-    3: contract(DELIVERY_TYPES.RAY, [effect(EFFECT_TYPES.DAMAGE, { falloff: true })], block([EFFECT_TYPES.DAMAGE])),
-    4: contract(DELIVERY_TYPES.PROJECTILE, [effect(EFFECT_TYPES.DAMAGE, { falloff: true }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "grenade" })], block([EFFECT_TYPES.DAMAGE], { halfArcDegrees: 180, chargeCost: SHIELD_CHARGE_COSTS.DISTANCE_SCALED })),
-    5: contract(DELIVERY_TYPES.PROJECTILE, [effect(EFFECT_TYPES.DAMAGE, { amount: A[5].damage }), effect(EFFECT_TYPES.DEBUFF, { debuff: "burn", durationMs: A[5].burnDurationMs }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "fireball" })], block([EFFECT_TYPES.DAMAGE, EFFECT_TYPES.DEBUFF])),
-    6: contract({ type: DELIVERY_TYPES.MELEE, includeTargetRadius: true }, [effect(EFFECT_TYPES.DAMAGE, { amount: A[6].damage }), effect(EFFECT_TYPES.DEBUFF, { debuff: "stun", durationMs: A[6].durationMs })], block([EFFECT_TYPES.DAMAGE, EFFECT_TYPES.DEBUFF])),
-    7: contract({ type: DELIVERY_TYPES.MELEE, includeTargetRadius: true }, [effect(EFFECT_TYPES.DAMAGE, { amount: A[7].damage }), effect(EFFECT_TYPES.DEBUFF, { debuff: "bleed", durationMs: A[7].bleedDurationMs })], block([EFFECT_TYPES.DAMAGE, EFFECT_TYPES.DEBUFF], { chargeCost: SHIELD_CHARGE_COSTS.ALL })),
-    8: contract(DELIVERY_TYPES.RADIAL, [effect(EFFECT_TYPES.DAMAGE, { amount: A[8].damage }), effect(EFFECT_TYPES.KNOCKBACK, { distance: A[8].knockback })], block([EFFECT_TYPES.DAMAGE])),
-    9: contract(DELIVERY_TYPES.RAY, [effect(EFFECT_TYPES.DAMAGE, { amount: A[9].damage }), effect(EFFECT_TYPES.DEBUFF, { debuff: "slow", durationMs: A[9].slowDurationMs })], block([EFFECT_TYPES.DAMAGE, EFFECT_TYPES.DEBUFF])),
+    1: contract({ type: DELIVERY_TYPES.MELEE, includeTargetRadius: true }, [effect(EFFECT_TYPES.DAMAGE, { amount: A[1].damage })], ignore),
+    3: contract(DELIVERY_TYPES.RAY, [effect(EFFECT_TYPES.DAMAGE, { falloff: true })], ignore, execution({
+        capture: Object.freeze({ gunRayOriginX: "x", gunRayOriginY: "y", gunRayRotation: "rotation" }),
+    })),
+    4: contract(DELIVERY_TYPES.PROJECTILE, [effect(EFFECT_TYPES.DAMAGE, { falloff: true }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "grenade" })], ignore, execution({ activeMs: 1 })),
+    5: contract(DELIVERY_TYPES.PROJECTILE, [effect(EFFECT_TYPES.DAMAGE, { amount: A[5].damage }), effect(EFFECT_TYPES.DEBUFF, { debuff: "burn", durationMs: statusDurationMs(5, "burn") }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "fireball" })], ignore),
+    6: contract({ type: DELIVERY_TYPES.MELEE, includeTargetRadius: true }, [effect(EFFECT_TYPES.DAMAGE, { amount: A[6].damage }), effect(EFFECT_TYPES.DEBUFF, { debuff: "stun", durationMs: statusDurationMs(6, "stun") })], ignore),
+    7: contract({ type: DELIVERY_TYPES.MELEE, includeTargetRadius: true }, [effect(EFFECT_TYPES.DAMAGE, { amount: A[7].damage }), effect(EFFECT_TYPES.DEBUFF, { debuff: "bleed", durationMs: statusDurationMs(7, "bleed") })], ignore),
+    8: contract(DELIVERY_TYPES.RADIAL, [effect(EFFECT_TYPES.DAMAGE, { amount: A[8].damage }), effect(EFFECT_TYPES.KNOCKBACK, { distance: A[8].knockback })], ignore),
+    9: contract(DELIVERY_TYPES.RAY, [effect(EFFECT_TYPES.DAMAGE, { amount: A[9].damage }), effect(EFFECT_TYPES.DEBUFF, { debuff: "slow", durationMs: statusDurationMs(9, "slow") })], ignore),
     10: contract(DELIVERY_TYPES.SELF, [effect(EFFECT_TYPES.HEALING, { amount: A[10].healing })], ignore),
-    11: contract(DELIVERY_TYPES.TRAP, [effect(EFFECT_TYPES.DAMAGE, { amount: A[11].damage }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "proximity_mine" })], block([EFFECT_TYPES.DAMAGE], { halfArcDegrees: 45, chargeCost: SHIELD_CHARGE_COSTS.ALL })),
-    12: contract(DELIVERY_TYPES.RAY, [effect(EFFECT_TYPES.DAMAGE, { falloff: true })], block([EFFECT_TYPES.DAMAGE])),
-    13: contract(DELIVERY_TYPES.RAY, [effect(EFFECT_TYPES.DAMAGE, { amount: A[13].damage }), effect(EFFECT_TYPES.DEBUFF, { debuff: "shock", durationMs: A[13].shockDurationMs })], block([EFFECT_TYPES.DAMAGE, EFFECT_TYPES.DEBUFF])),
-    14: contract(DELIVERY_TYPES.FIELD, [effect(EFFECT_TYPES.PULL, { perTick: 6 }), effect(EFFECT_TYPES.DAMAGE, { falloff: true }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "gravity_field" })], block([EFFECT_TYPES.DAMAGE], { halfArcDegrees: 45, chargeCost: SHIELD_CHARGE_COSTS.ALL })),
-    15: contract(DELIVERY_TYPES.PROJECTILE, [effect(EFFECT_TYPES.DEBUFF, { debuff: "silence", durationMs: A[15].durationMs }), effect(EFFECT_TYPES.INTERRUPT, { durationMs: A[15].interruptMs }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "silence_wave" })], block([EFFECT_TYPES.DEBUFF, EFFECT_TYPES.INTERRUPT])),
-    16: contract(DELIVERY_TYPES.SELF, [effect(EFFECT_TYPES.DAMAGE_REDUCTION, { multiplier: 0.5 }), effect(EFFECT_TYPES.DAMAGE_REFLECTION, { multiplier: 0.5 })], ignore),
-    17: contract(DELIVERY_TYPES.SUMMON, [effect(EFFECT_TYPES.DAMAGE, { amount: A[17].damage }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "hunter_drone" })], block([EFFECT_TYPES.DAMAGE])),
-    18: contract(DELIVERY_TYPES.PROJECTILE, [effect(EFFECT_TYPES.DAMAGE, { amount: A[18].damage }), effect(EFFECT_TYPES.KNOCKBACK, { distance: A[18].knockback })], ignore),
-    19: contract(DELIVERY_TYPES.SELF, [effect(EFFECT_TYPES.MOVEMENT, { distance: A[19].distance })], ignore),
-    20: contract(DELIVERY_TYPES.SELF, [], ignore),
+    11: contract(DELIVERY_TYPES.TRAP, [effect(EFFECT_TYPES.DAMAGE, { amount: A[11].damage }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "proximity_mine" })], ignore),
+    12: contract(DELIVERY_TYPES.RAY, [effect(EFFECT_TYPES.DAMAGE, { falloff: true })], ignore),
+    13: contract(DELIVERY_TYPES.RAY, [effect(EFFECT_TYPES.DAMAGE, { amount: A[13].damage }), effect(EFFECT_TYPES.DEBUFF, { debuff: "shock", durationMs: statusDurationMs(13, "shock") })], ignore),
+    14: contract(DELIVERY_TYPES.PROJECTILE, [effect(EFFECT_TYPES.PULL, { perTick: A[14].pullPerTick }), effect(EFFECT_TYPES.DAMAGE, { falloff: true }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "gravity_zone" })], ignore),
+    15: contract(DELIVERY_TYPES.PROJECTILE, [effect(EFFECT_TYPES.DEBUFF, { debuff: "silence", durationMs: statusDurationMs(15, "silence") }), effect(EFFECT_TYPES.INTERRUPT, { durationMs: A[15].interruptMs }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "silence_wave" })], ignore),
+    16: contract(DELIVERY_TYPES.SELF, [
+        effect(EFFECT_TYPES.DAMAGE_REDUCTION, { amount: 0.5, multiplier: 0.5, durationMs: statusDurationMs(16, "damage_reduction") }),
+        effect(EFFECT_TYPES.DAMAGE_REFLECTION, { amount: 0.5, multiplier: 0.5, durationMs: statusDurationMs(16, "damage_reflection") }),
+    ], ignore),
+    17: contract(DELIVERY_TYPES.SUMMON, [effect(EFFECT_TYPES.DAMAGE, { amount: A[17].damage }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "hunter_drone" })], ignore),
+    18: contract(DELIVERY_TYPES.PROJECTILE, [effect(EFFECT_TYPES.DAMAGE, { amount: A[18].damage }), effect(EFFECT_TYPES.KNOCKBACK, { distance: A[18].knockback }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "windburst_projectile" })], ignore),
+    19: contract(DELIVERY_TYPES.SELF, [effect(EFFECT_TYPES.MOVEMENT, { distance: A[19].distance })], ignore, execution({
+        blockedByStatus: "slow",
+        movement: Object.freeze({
+            distanceStat: "distance",
+            durationStat: "durationMs",
+            stepDistanceStat: "speedPerTick",
+            trailDurationStat: "trailMs",
+        }),
+    })),
+    20: contract(DELIVERY_TYPES.SELF, [], ignore, execution({
+        targetMode: "target",
+        faceTargetFromPayload: true,
+    })),
     21: contract(DELIVERY_TYPES.SELF, [effect(EFFECT_TYPES.RESTORE_STATE, { delayMs: A[21].delayMs }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "temporal_rewind_zone" })], ignore),
-    22: contract(DELIVERY_TYPES.FIELD, [effect(EFFECT_TYPES.DAMAGE, { amount: A[22].damage, falloff: true }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "orbital_zone" })], drainWhileActive),
-    23: contract(DELIVERY_TYPES.SELF, [effect(EFFECT_TYPES.DAMAGE_IMMUNITY, { durationMs: A[23].durationMs })], ignore),
-    24: contract(DELIVERY_TYPES.FIELD, [effect(EFFECT_TYPES.DEBUFF, { debuff: "silence", whileInside: true }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "null_zone" })], ignore),
-    25: contract(DELIVERY_TYPES.MELEE, [effect(EFFECT_TYPES.TELEPORT, { passThroughDistance: A[25].passThroughDistance }), effect(EFFECT_TYPES.DAMAGE, { amount: A[25].damage })], block([EFFECT_TYPES.TELEPORT, EFFECT_TYPES.DAMAGE])),
+    22: contract(DELIVERY_TYPES.ZONE, [effect(EFFECT_TYPES.DAMAGE, { amount: A[22].damage }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "orbital_zone" })], ignore),
+    23: contract(DELIVERY_TYPES.SELF, [effect(EFFECT_TYPES.DAMAGE_IMMUNITY, { amount: 1, durationMs: statusDurationMs(23, "damage_immunity") })], ignore),
+    24: contract(DELIVERY_TYPES.ZONE, [effect(EFFECT_TYPES.DEBUFF, { debuff: "silence", whileInside: true }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "null_zone" })], ignore),
+    25: contract(DELIVERY_TYPES.MELEE, [effect(EFFECT_TYPES.TELEPORT, { passThroughDistance: A[25].passThroughDistance }), effect(EFFECT_TYPES.DAMAGE, { amount: A[25].damage })], ignore, execution({
+        phaseFacingDefault: "face_target",
+    })),
+    26: contract(DELIVERY_TYPES.RADIAL, [effect(EFFECT_TYPES.DAMAGE, { amount: A[26].damage }), effect(EFFECT_TYPES.DEBUFF, { debuff: "slow", durationMs: statusDurationMs(26, "slow") }), effect(EFFECT_TYPES.KNOCKBACK, { distance: A[26].knockback })], ignore),
+    27: contract(DELIVERY_TYPES.ZONE, [effect(EFFECT_TYPES.PULL, { perTick: A[27].pullPerTick }), effect(EFFECT_TYPES.DAMAGE, { falloff: true }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "singularity_zone" })], ignore),
+    28: contract(DELIVERY_TYPES.PROJECTILE, [
+        effect(EFFECT_TYPES.DAMAGE, { amount: A[28].damage }),
+        effect(EFFECT_TYPES.PULL, { amount: A[28].pullPerTick, perTick: A[28].pullPerTick }),
+        effect(EFFECT_TYPES.DEBUFF, { debuff: "slow", durationMs: statusDurationMs(28, "slow") }),
+        effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "tether_bolt" }),
+    ], ignore),
+    29: contract(DELIVERY_TYPES.TRAP, [
+        effect(EFFECT_TYPES.DAMAGE, { amount: A[29].damage }),
+        effect(EFFECT_TYPES.DEBUFF, { debuff: "slow", durationMs: statusDurationMs(29, "slow") }),
+        effect(EFFECT_TYPES.INTERRUPT, { durationMs: A[29].interruptMs }),
+        effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "static_snare" }),
+    ], ignore),
+    30: contract(DELIVERY_TYPES.RAY, [
+        effect(EFFECT_TYPES.DAMAGE, { amount: A[30].damage }),
+        effect(EFFECT_TYPES.INTERRUPT, { durationMs: A[30].interruptMs }),
+        effect(EFFECT_TYPES.DEBUFF, { debuff: "slow", durationMs: statusDurationMs(30, "slow") }),
+    ], ignore),
+    31: contract(DELIVERY_TYPES.SUMMON, [
+        effect(EFFECT_TYPES.DAMAGE, { amount: A[31].damage }),
+        effect(EFFECT_TYPES.KNOCKBACK, { distance: A[31].knockback }),
+        effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "repeller_drone" }),
+    ], ignore),
+    32: contract(DELIVERY_TYPES.RAY, [
+        effect(EFFECT_TYPES.DAMAGE, { falloff: true }),
+        effect(EFFECT_TYPES.HEALING, {
+            recipient: "source",
+            requiresConfirmedDamage: true,
+            mirrorsDamage: true,
+        }),
+    ], ignore),
+    33: contract(DELIVERY_TYPES.SELF, [
+        effect(EFFECT_TYPES.BUFF, {
+            buff: "overclock",
+            amount: A[33].cooldownRecoveryPercent / 100,
+            multiplier: A[33].cooldownRecoveryMultiplier,
+            durationMs: statusDurationMs(33, "overclock"),
+        }),
+    ], ignore),
+    34: contract({ type: DELIVERY_TYPES.MELEE, includeTargetRadius: true }, [
+        effect(EFFECT_TYPES.DAMAGE, { amount: A[34].damage }),
+    ], ignore),
 });
 
 export const ABILITY_CONTRACTS = ABILITY_CONTRACTS_BY_ID;
 
-function contract(delivery, effects, shieldInteraction) {
+function contract(delivery, effects, shieldInteraction, executionMetadata = {}) {
     return Object.freeze({
         delivery: Object.freeze(typeof delivery === "string" ? { type: delivery } : delivery),
         effects: Object.freeze(effects),
         shieldInteraction,
+        execution: executionMetadata,
     });
 }
 

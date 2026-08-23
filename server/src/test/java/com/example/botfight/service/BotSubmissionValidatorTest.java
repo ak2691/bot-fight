@@ -1,5 +1,8 @@
 package com.example.botfight.service;
 
+import com.example.botfight.service.submission.BotSubmissionValidationResult;
+import com.example.botfight.service.submission.BotSubmissionValidator;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.botfight.domain.AppUser;
@@ -59,7 +62,6 @@ class BotSubmissionValidatorTest {
         BotSubmission submission = new BotSubmission();
         submission.setUser(new AppUser());
         submission.setBrainSchemaVersion("bot-logic-tree-v1");
-        submission.setBuildingSessionId("local-session-1");
         submission.setBrainPayload("{\"version\":\"bot-logic-tree-v1\"}");
         submission.setClientBuildVersion("local-dev");
         return submission;

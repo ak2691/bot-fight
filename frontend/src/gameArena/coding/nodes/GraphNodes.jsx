@@ -9,35 +9,48 @@ import {
     actionSupportsTarget,
     createLogicBlock as createConditional,
     createExpressionCondition,
-    CUSTOM_INTEGER_MIN,
-    CUSTOM_INTEGER_MAX,
+    defaultTargetForVariable,
+    normalizeConditionSelections,
+    CUSTOM_NUMBER_MIN,
+    CUSTOM_NUMBER_MAX,
+    NUMBER_STEP,
+    truncateToNumberPrecision,
+    CUSTOM_VARIABLE_OPERATIONS,
+    VARIABLE_TAGS,
+    TARGET_CAPABILITIES,
+    BOT_CODE_ACTIONS,
     MAX_CONDITIONS_PER_BRANCH,
     MAX_LOGIC_BLOCKS,
+    MAX_VARIABLE_ACTION_TERMS,
+    countActionSlots,
     countConditionSlots,
 } from "../../botlogic/code/BotCode.js";
+import { absoluteMovementAngle, relativeMovementAngle } from "../../botlogic/planner/arenaAngles.js";
+import { MOVEMENT_DIRECTION_MAX, MOVEMENT_DIRECTION_MIN } from "../../botlogic/code/contracts/BotLogicContracts.js";
 import { actionTypesForLoadout } from "../../gameconfig/CombatLoadouts.js";
-import { decodeBotLoadout, decodeSandboxLoadout } from "../../loadout/BotLoadout.js";
+import { abilityIdFromBoundary } from "../../gameconfig/AbilityCompatibility.js";
+import { STANDARD_ABILITY_IDS, decodeBotLoadout, decodeSandboxLoadout } from "../../loadout/BotLoadout.js";
+import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
 import { useDialogFocus } from "../../../components/useDialogFocus.js";
 import { useExclusiveSearchMenu } from "../utils/codeMenuEvents.js";
 import RootNodePriorityInput from "../controls/RootNodePriorityInput.jsx";
 import MatchToolIcon from "../controls/MatchToolIcon.jsx";
 
-const LEGACY_MOVEMENT_ACTION = /^(move_(?!walk$)|dash_)/;
-
-function clampNumber(value, min, max, fallback, step = 1, roundDown = false) {
+function clampNumber(value, min, max, fallback, step = NUMBER_STEP, roundDown = false, integerOnly = false) {
+    void roundDown;
     const text = String(value ?? "").trim();
     if (!text) return fallback;
     const numeric = Number(text);
     if (!Number.isFinite(numeric)) return text.startsWith("-") ? min : max;
     const bounded = Math.max(min, Math.min(max, numeric));
-    return Number(((roundDown ? Math.floor(bounded / step) : Math.round(bounded / step)) * step).toFixed(10));
+    return integerOnly || step >= 1 ? Math.trunc(bounded) : truncateToNumberPrecision(bounded);
 }
 
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
 }
 
-function DeferredNumberInput({ value, onCommit, min = CUSTOM_INTEGER_MIN, max = CUSTOM_INTEGER_MAX, fallback = 0, step = 1, roundDown = false, integerOnly = false, digitsOnly = false, ...props }) {
+function DeferredNumberInput({ value, onCommit, min = CUSTOM_NUMBER_MIN, max = CUSTOM_NUMBER_MAX, fallback = 0, step = NUMBER_STEP, roundDown = false, integerOnly = false, digitsOnly = false, ...props }) {
     const [draft, setDraft] = useState(String(value ?? fallback));
     const inputRef = useRef(null);
     const externalValueRef = useRef(String(value ?? fallback));
@@ -50,7 +63,7 @@ function DeferredNumberInput({ value, onCommit, min = CUSTOM_INTEGER_MIN, max = 
         if (document.activeElement !== inputRef.current) setDraft(nextValue);
     }, [fallback, value]);
     const commit = () => {
-        const normalized = clampNumber(draft, min, max, fallback, step, roundDown);
+        const normalized = clampNumber(draft, min, max, fallback, step, roundDown, integerOnly);
         setDraft(String(normalized));
         onCommit(normalized);
     };
@@ -72,9 +85,13 @@ function conditionNodeWidth(branch, stateVariables) {
     return clamp(Math.max(...(branch.conditions ?? []).map((condition) => {
         if (condition.type === "always") return GRAPH_NODE_WIDTH;
         const leftLength = labelFor(condition.left).length;
-        const rightLength = condition.right?.type === "variable" ? labelFor(condition.right.value).length : 8;
+        const rightLength = condition.right?.type === "variable"
+            ? labelFor(condition.right.value).length
+            : 8;
         const leftWidth = 39 + leftLength * 5.5;
-        const rightWidth = condition.right?.type === "variable" ? 39 + rightLength * 5.5 : 110;
+        const rightWidth = condition.right?.type === "variable"
+            ? 39 + rightLength * 5.5
+            : 110;
         return 175 + leftWidth + rightWidth;
     }), GRAPH_NODE_WIDTH), GRAPH_NODE_WIDTH, 1200);
 }
@@ -82,13 +99,9 @@ function conditionNodeWidth(branch, stateVariables) {
 function actionNodeWidth(entry, selectedLoadout, targetTypes) {
     const actionTypes = actionTypesForLoadout(ACTION_TYPES, selectedLoadout);
     const selected = actionTypes.find((action) => action.id === entry.action) ?? actionTypes[0];
-    const targetRequired = selected?.movementConfig ? entry.movementMode !== "absolute" : actionSupportsTarget(selected);
+    const describedTarget = formatActionTargetLabel(entry, selected, targetTypes);
     const actionLabel = formatActionNodeLabel(selected?.label ?? "Action");
-    if (!targetRequired) return Math.max(160, Math.ceil(actionLabel.length * 6.6 + 63));
-    const targetLabel = formatTargetLabel(entry.actionTarget ?? "opponent", targetTypes);
-    const describedTarget = selected?.movementConfig
-        ? formatMovementTargetLabel(entry.movementDirection ?? "toward", targetLabel)
-        : targetLabel;
+    if (!describedTarget) return Math.max(160, Math.ceil(actionLabel.length * 6.6 + 63));
     return Math.max(160, Math.ceil(Math.max(actionLabel.length, `Target: ${describedTarget}`.length) * 6.6 + 63));
 }
 
@@ -220,67 +233,152 @@ function addGraphAction(branch, selectedLoadout, requestedAction = null, customV
         ...(next.variableAction ? {
             variableId: customVariables[0]?.id ?? "",
             operation: "set",
-            value: customVariables[0]?.valueType === "boolean" ? false : 0,
+            ...(customVariables[0]?.valueType === "boolean"
+                ? { value: false }
+                : { terms: [{ operator: "set", operand: { type: "number", value: 0 } }] }),
         } : {}),
     }]);
 }
 
 function NodeKindPicker({ selectedLoadout, onCancel, onChooseAction }) {
     const [query, setQuery] = useState("");
+    const [activeIndex, setActiveIndex] = useState(-1);
     const pickerRef = useRef(null);
     const searchInputRef = useRef(null);
+    const optionRefs = useRef([]);
     useExclusiveSearchMenu(pickerRef, true, onCancel);
     useEffect(() => {
         searchInputRef.current?.focus();
         searchInputRef.current?.select();
     }, []);
-    const actionOptions = actionTypesForLoadout(ACTION_TYPES, selectedLoadout).filter((action) => action.id !== "none" && !LEGACY_MOVEMENT_ACTION.test(action.id));
+    const actionOptions = actionTypesForLoadout(ACTION_TYPES, selectedLoadout).filter((action) => action.id !== "none");
     const normalizedQuery = query.trim().toLocaleLowerCase();
     const filteredActions = actionOptions.filter((action) => !normalizedQuery || `${action.label} ${action.id}`.toLocaleLowerCase().includes(normalizedQuery));
+    const moveFromSearch = (event) => {
+        if (event.key === "Enter" && filteredActions.length) {
+            event.preventDefault();
+            onChooseAction(filteredActions[0].id);
+            return;
+        }
+        if (event.key !== "ArrowDown" || !filteredActions.length) return;
+        event.preventDefault();
+        setActiveIndex(0);
+        optionRefs.current[0]?.focus();
+    };
+    const moveFromOption = (event, index) => {
+        if (event.key === "ArrowDown") {
+            event.preventDefault();
+            const nextIndex = (index + 1) % filteredActions.length;
+            setActiveIndex(nextIndex);
+            optionRefs.current[nextIndex]?.focus();
+            return;
+        }
+        if (event.key === "ArrowUp") {
+            event.preventDefault();
+            if (index === 0) {
+                setActiveIndex(-1);
+                searchInputRef.current?.focus();
+                return;
+            }
+            const nextIndex = index - 1;
+            setActiveIndex(nextIndex);
+            optionRefs.current[nextIndex]?.focus();
+            return;
+        }
+        if (event.key === "Enter") {
+            event.preventDefault();
+            const action = filteredActions[index];
+            if (action) onChooseAction(action.id);
+        }
+    };
     const title = "ADD ACTION NODE";
     return <div ref={pickerRef} className="code-node-picker code-node-picker--action absolute left-20 top-4 z-40 w-80 border bg-[#15191d] p-4 font-mono text-[10px] text-white shadow-2xl" role="dialog" aria-label={title} data-node-drag-ignore="true" onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onCancel(); } }} onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>
-        <div className="mb-3 flex items-center justify-between gap-3"><strong className="tracking-[.12em] text-cyan-200">{title}</strong><button type="button" onClick={onCancel} className="text-slate-400 hover:text-white" aria-label={`Close ${title}`}>×</button></div>
-        <label className="code-node-search-label"><span className="sr-only">Search actions</span><input ref={searchInputRef} autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onCancel(); } }} placeholder="Search actions…" /></label>
-        <div className="code-node-search-results">{filteredActions.map((action) => <button key={action.id} type="button" onClick={() => onChooseAction(action.id)}><strong>{action.label}</strong></button>)}{!filteredActions.length && <p>No actions match “{query}”.</p>}</div>
+        <div className="mb-3 flex items-center justify-between gap-3"><strong className="tracking-[.12em] text-cyan-200">{title}</strong><button type="button" onClick={onCancel} className="modal-close-button" aria-label={`Close ${title}`}><span aria-hidden="true">×</span></button></div>
+        <label className="code-node-search-label"><span className="sr-only">Search actions</span><input ref={searchInputRef} autoFocus value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(-1); optionRefs.current = []; }} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onCancel(); } else moveFromSearch(event); }} placeholder="Search actions…" /></label>
+        <div className="code-node-search-results">{filteredActions.map((action, index) => <button ref={(element) => { optionRefs.current[index] = element; }} key={action.id} tabIndex={index === activeIndex ? 0 : -1} className={index === activeIndex ? "is-keyboard-active" : ""} type="button" onKeyDown={(event) => moveFromOption(event, index)} onClick={() => onChooseAction(action.id)}><strong>{action.label}</strong></button>)}{!filteredActions.length && <p>No actions match “{query}”.</p>}</div>
     </div>;
 }
 
-function VariableOperandPicker({ operand, stateVariables, onChoose, onClose }) {
+function VariableOperandPicker({ operand, stateVariables, numericOnly = false, onChoose, onClose }) {
     const [query, setQuery] = useState("");
+    const [activeIndex, setActiveIndex] = useState(-1);
     const pickerRef = useRef(null);
     const searchInputRef = useRef(null);
+    const optionRefs = useRef([]);
     useExclusiveSearchMenu(pickerRef, true, onClose);
     useEffect(() => {
         searchInputRef.current?.focus();
         searchInputRef.current?.select();
     }, []);
     const normalized = query.trim().toLocaleLowerCase();
-    const compatibleDefinitions = stateVariables.filter((variable) => operand !== 2 || variable.valueType === "number");
+    const compatibleDefinitions = stateVariables.filter((variable) => !numericOnly && operand !== 2 || variable.valueType === "number");
     const matches = (label, id) => !normalized || `${label} ${id}`.toLocaleLowerCase().includes(normalized);
-    const showAlways = operand === 1 && matches("ALWAYS", "always");
+    const showAlways = operand === 1 && !numericOnly && matches("ALWAYS", "always");
     const definitions = [
         ...(showAlways ? [{ id: "always", label: "ALWAYS", valueType: "boolean" }] : []),
         ...compatibleDefinitions.filter((definition) => matches(definition.label, definition.id)),
     ];
+    const groupedDefinitions = groupedConditionPickerOptions(definitions);
+    const moveFromSearch = (event) => {
+        if (event.key === "Enter" && definitions.length) {
+            event.preventDefault();
+            onChoose(definitions[0].id);
+            return;
+        }
+        if (event.key !== "ArrowDown" || !definitions.length) return;
+        event.preventDefault();
+        setActiveIndex(0);
+        optionRefs.current[0]?.focus();
+    };
+    const moveFromOption = (event, index) => {
+        if (event.key === "ArrowDown") {
+            event.preventDefault();
+            const nextIndex = (index + 1) % definitions.length;
+            setActiveIndex(nextIndex);
+            optionRefs.current[nextIndex]?.focus();
+            return;
+        }
+        if (event.key === "ArrowUp") {
+            event.preventDefault();
+            if (index === 0) {
+                setActiveIndex(-1);
+                searchInputRef.current?.focus();
+                return;
+            }
+            const nextIndex = index - 1;
+            setActiveIndex(nextIndex);
+            optionRefs.current[nextIndex]?.focus();
+            return;
+        }
+        if (event.key === "Enter") {
+            event.preventDefault();
+            const definition = definitions[index];
+            if (definition) onChoose(definition.id);
+        }
+    };
     const title = "ADD VARIABLE INPUT";
     return <div ref={pickerRef} className="code-node-picker code-node-picker--variable absolute left-20 top-4 z-40 w-80 border bg-[#15191d] p-4 font-mono text-[10px] text-white shadow-2xl" role="dialog" aria-label={title} data-node-drag-ignore="true" onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } }} onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>
-        <div className="mb-3 flex items-center justify-between gap-3"><strong className="tracking-[.12em] text-cyan-200">{title}</strong><button type="button" onClick={onClose} className="text-slate-400 hover:text-white" aria-label="Close variable search">×</button></div>
-        <label className="code-node-search-label"><span className="sr-only">Search variables</span><input ref={searchInputRef} autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } }} placeholder="Search variables…" /></label>
-        <div className="code-node-search-results">{definitions.map((definition) => <button key={definition.id} type="button" onClick={() => onChoose(definition.id)}><strong>{definition.label}</strong><small>{definition.valueType === "boolean" ? "TRUE / FALSE" : "NUMBER"}</small></button>)}{!definitions.length && <p>No variables match “{query}”.</p>}</div>
+        <div className="mb-3 flex items-center justify-between gap-3"><strong className="tracking-[.12em] text-cyan-200">{title}</strong><button type="button" onClick={onClose} className="modal-close-button" aria-label="Close variable search"><span aria-hidden="true">×</span></button></div>
+        <label className="code-node-search-label"><span className="sr-only">Search variables</span><input ref={searchInputRef} autoFocus value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(-1); optionRefs.current = []; }} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } else moveFromSearch(event); }} placeholder="Search variables…" /></label>
+        <div className="code-node-search-results">{groupedDefinitions.map((group) => <section className="code-node-search-group" key={group.category}><h3 className="code-node-search-group-title">{group.category}</h3>{group.options.map((definition) => { const index = definitions.indexOf(definition); return <button ref={(element) => { optionRefs.current[index] = element; }} key={definition.id} tabIndex={index === activeIndex ? 0 : -1} className={index === activeIndex ? "is-keyboard-active" : ""} type="button" onKeyDown={(event) => moveFromOption(event, index)} onClick={() => onChoose(definition.id)}><strong>{definition.label}</strong><small>{definition.valueType === "boolean" ? "TRUE / FALSE" : "NUMBER"}</small></button>; })}</section>)}{!definitions.length && <p>No variables match “{query}”.</p>}</div>
     </div>;
 }
 
-function ConditionalOperandBox({ operand, condition, stateVariables, disabled, selected, onPickVariable, onInspectVariable, onUseRawNumber, onNumberChange, onBooleanChange, tutorialFocus = false }) {
+function ConditionalOperandBox({ operand, condition, stateVariables, disabled, selected, onPickVariable, onInspectVariable, onOpenVariablePicker, onUseRawNumber, onNumberChange, onBooleanChange, numberDefinition = null, tutorialFocus = false }) {
     const variableDefinition = operand === 1
         ? stateVariables.find((variable) => variable.id === condition.left)
         : condition.right?.type === "variable" ? stateVariables.find((variable) => variable.id === condition.right.value) : null;
     const variableLabel = variableDefinition?.label;
     const rawBoolean = operand === 2 && condition.right?.type === "boolean";
     const rawNumber = operand === 2 && condition.right?.type === "number";
+    const numberSuffix = numberDefinition?.suffix;
+    const signedNumber = numberSuffix === "deg" || numberDefinition?.tags?.includes(VARIABLE_TAGS.ALLOW_NEGATIVE_INTEGER);
+    const numberStep = numberDefinition?.step ?? NUMBER_STEP;
+    const integerNumber = numberStep >= 1;
     return <div className={`code-condition-input ${variableLabel ? "is-variable" : "is-raw"} ${tutorialFocus ? "tutorial-control-focus" : ""}`} data-node-drag-ignore="true" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
-        {variableLabel ? <button type="button" className={`code-condition-input-value ${selected ? "is-selected" : ""}`} onClick={onInspectVariable} aria-label={`Configure ${variableLabel}`}>{variableLabel}</button>
-            : rawBoolean ? <select data-node-drag-ignore="true" aria-label={`Input ${operand} boolean value`} disabled={disabled} value={String(condition.right.value)} onChange={(event) => onBooleanChange(event.target.value === "true")}><option value="true">TRUE</option><option value="false">FALSE</option></select>
-            : rawNumber ? <DeferredNumberInput digitsOnly data-node-drag-ignore="true" aria-label={`Input ${operand} number`} disabled={disabled} value={condition.right.value} onCommit={onNumberChange} />
+        {variableLabel ? <button type="button" className={`code-condition-input-value ${selected ? "is-selected" : ""}`} onClick={onOpenVariablePicker ?? onInspectVariable} aria-label={`Configure ${variableLabel}`}>{variableLabel}{operand === 2 && variableDefinition.suffix && <span className="code-condition-input-unit">{variableDefinition.suffix}</span>}</button>
+            : rawBoolean ? <select data-node-drag-ignore="true" aria-label={`Input ${operand} boolean value`} disabled={disabled} value={String(condition.right.value)} onChange={(event) => onBooleanChange(event.target.value === "true")} className="code-operator-socket code-condition-boolean-input"><option value="true">TRUE</option><option value="false">FALSE</option></select>
+            : rawNumber ? <><DeferredNumberInput digitsOnly={integerNumber && !signedNumber} integerOnly={integerNumber} data-node-drag-ignore="true" aria-label={`Input ${operand} number`} disabled={disabled} min={numberDefinition?.min ?? CUSTOM_NUMBER_MIN} max={numberDefinition?.max ?? CUSTOM_NUMBER_MAX} step={numberStep} value={condition.right.value} onCommit={onNumberChange} />{numberSuffix && <span className="code-condition-input-unit">{numberSuffix}</span>}</>
             : <span className="code-condition-input-placeholder">INPUT {operand}</span>}
         {variableLabel && operand === 2
             ? <button type="button" className="code-condition-input-toggle" disabled={disabled} onClick={onUseRawNumber} aria-label={`Use a raw number for input ${operand}`} title="Use a raw number"><span aria-hidden="true">−</span></button>
@@ -288,61 +386,168 @@ function ConditionalOperandBox({ operand, condition, stateVariables, disabled, s
     </div>;
 }
 
-function GraphConditionNode({ node, branch, disabled, canRemove, canAddAction, canAddCondition, stateVariables, defaultVariable, nodeOffsets, beginNodeDrag, selected, onSelect, onPriorityChange, onPickVariable, onInspectVariable, onUseRawNumber, onRemoveCondition, inspectedVariable, onChange, onRemove, onAddParentConditional, onAddChildConditional, onAddAction, tutorialFocus }) {
+function GraphConditionNode({ node, branch, disabled, canRemove, canAddAction, canAddCondition, maxConditions = MAX_CONDITIONS_PER_BRANCH, stateVariables, defaultVariable, targetTypes, nodeOffsets, beginNodeDrag, selected, standalone = false, puzzleMode = false, puzzleLabel = "Conditional", onSelect, onPriorityChange, onPickVariable, onOpenVariablePicker, onInspectVariable, onUseRawNumber, onRemoveCondition, inspectedVariable, onChange, onRemove, onAddParentConditional, onAddChildConditional, onAddAction, tutorialFocus }) {
     const conditions = Array.isArray(branch.conditions) ? branch.conditions : [];
     const updateCondition = (rowIndex, updater) => onChange({ conditions: conditions.map((condition, index) => index === rowIndex ? updater(condition) : condition) });
-    const addJoinedCondition = (join) => onChange({ conditions: [...conditions, { ...createExpressionCondition(defaultVariable.id), ...(join === "or" ? { join: "or" } : {}) }] });
-    return <section onClick={onSelect} onPointerDown={(event) => beginNodeDrag(event, node.id)} className={`code-graph-node code-graph-node--conditional absolute rounded-sm border bg-zinc-950 shadow-2xl ${selected ? "is-inspected" : ""}`} style={{ ...graphNodeStyle(node, nodeOffsets), width: node.width }}>
+    const addJoinedCondition = (join) => onChange({ conditions: [...conditions, { ...createExpressionCondition(defaultVariable, targetTypes), ...(join === "or" ? { join: "or" } : {}) }] });
+    return <section onClick={onSelect} onPointerDown={(event) => { if (!standalone) beginNodeDrag(event, node.id); }} className={`code-graph-node code-graph-node--conditional ${standalone ? "relative w-full" : "absolute"} rounded-sm border bg-zinc-950 shadow-2xl ${selected ? "is-inspected" : ""}`} style={standalone ? { width: "100%" } : { ...graphNodeStyle(node, nodeOffsets), width: node.width }}>
         <header className="code-compact-header code-node-header--conditional">
-            <span className="code-node-badge">{node.path.length}</span><span className="min-w-0 flex flex-1 items-center gap-1 truncate text-sky-100">Conditional <RootNodePriorityInput priority={Number(branch.createdOrder) + 1} max={MAX_LOGIC_BLOCKS} disabled={disabled} onCommit={onPriorityChange} ariaLabel={`Priority for Conditional ${Number(branch.createdOrder) + 1}`} className="code-conditional-priority" /></span><button type="button" data-node-drag-ignore="true" className="code-conditional-add-button" disabled={disabled || !canAddCondition} onClick={(event) => { event.stopPropagation(); onAddParentConditional(); }}>+IF</button>
+            {standalone || puzzleMode ? <span className="min-w-0 flex-1 truncate text-sky-100">{puzzleLabel}</span> : <><span className="code-node-badge">{node.path.length}</span><span className="min-w-0 flex flex-1 items-center gap-1 truncate text-sky-100">Conditional <RootNodePriorityInput priority={Number(branch.createdOrder) + 1} max={MAX_LOGIC_BLOCKS} disabled={disabled} onCommit={onPriorityChange} ariaLabel={`Priority for Conditional ${Number(branch.createdOrder) + 1}`} className="code-conditional-priority" /></span><button type="button" data-node-drag-ignore="true" className="code-conditional-add-button" disabled={disabled || !canAddCondition} onClick={(event) => { event.stopPropagation(); onAddParentConditional(); }}>+IF</button></>}
         </header>
         <div className="space-y-2 p-3">
             {conditions.map((condition, index) => {
                 const leftDefinition = stateVariables.find((variable) => variable.id === condition.left) ?? defaultVariable;
-                const comparators = CONDITION_COMPARATORS.filter((candidate) => candidate.id !== "modulo" && candidate.valueTypes.includes(leftDefinition.valueType));
+                const comparators = CONDITION_COMPARATORS.filter((candidate) => candidate.valueTypes.includes(leftDefinition.valueType));
                 const comparator = comparators.some((candidate) => candidate.id === condition.comparator) ? condition.comparator : comparators[0]?.id ?? "eq";
                 return <div key={`${index}-${condition.type}`} className="code-compact-condition-wrap">
                     <div className="code-compact-condition">
                     <span data-node-drag-ignore="true" className="code-condition-prefix font-mono text-[9px] text-amber-200">{index ? (condition.join === "or" ? "OR" : "AND") : "IF"}</span>
-                    {condition.type === "always" ? <button type="button" data-node-drag-ignore="true" className="code-condition-socket col-span-3" disabled={disabled} onClick={(event) => { event.stopPropagation(); onPickVariable(index, 1); }} aria-label={`Choose a variable for condition ${index + 1}`}>ALWAYS</button> : <><ConditionalOperandBox operand={1} condition={condition} stateVariables={stateVariables} disabled={disabled} selected={inspectedVariable?.rowIndex === index && inspectedVariable?.operand === 1} onPickVariable={() => onPickVariable(index, 1)} onInspectVariable={() => onInspectVariable(index, 1)} tutorialFocus={tutorialFocus === "add-condition" && index === 0} /><select data-node-drag-ignore="true" aria-label="Comparator" disabled={disabled} value={comparator} onClick={(event) => event.stopPropagation()} onChange={(event) => updateCondition(index, (current) => ({ ...current, comparator: event.target.value }))} className="code-operator-socket">{comparators.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}</select><ConditionalOperandBox operand={2} condition={condition} stateVariables={stateVariables} disabled={disabled} selected={inspectedVariable?.rowIndex === index && inspectedVariable?.operand === 2} onPickVariable={() => onPickVariable(index, 2)} onInspectVariable={() => onInspectVariable(index, 2)} onUseRawNumber={() => onUseRawNumber(index)} onNumberChange={(value) => updateCondition(index, (current) => ({ ...current, right: { type: "number", value } }))} onBooleanChange={(value) => updateCondition(index, (current) => ({ ...current, right: { type: "boolean", value } }))} /></>}
+                    {condition.type === "always" ? <button type="button" data-node-drag-ignore="true" className="code-condition-socket col-span-3" disabled={disabled} onClick={(event) => { event.stopPropagation(); onPickVariable(index, 1); }} aria-label={`Choose a variable for condition ${index + 1}`}>ALWAYS</button> : <><ConditionalOperandBox operand={1} condition={condition} stateVariables={stateVariables} disabled={disabled} selected={inspectedVariable?.rowIndex === index && inspectedVariable?.operand === 1} onPickVariable={() => onPickVariable(index, 1)} onOpenVariablePicker={onOpenVariablePicker ? () => onOpenVariablePicker(index, 1) : null} onInspectVariable={() => onInspectVariable(index, 1)} tutorialFocus={tutorialFocus === "add-condition" && index === 0} /><select data-node-drag-ignore="true" aria-label="Comparator" disabled={disabled} value={comparator} onClick={(event) => event.stopPropagation()} onChange={(event) => updateCondition(index, (current) => ({ ...current, comparator: event.target.value }))} className="code-operator-socket">{comparators.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}</select><ConditionalOperandBox operand={2} condition={condition} stateVariables={stateVariables} numberDefinition={leftDefinition} disabled={disabled} selected={inspectedVariable?.rowIndex === index && inspectedVariable?.operand === 2} onPickVariable={() => onPickVariable(index, 2)} onOpenVariablePicker={onOpenVariablePicker ? () => onOpenVariablePicker(index, 2) : null} onInspectVariable={() => onInspectVariable(index, 2)} onUseRawNumber={() => onUseRawNumber(index)} onNumberChange={(value) => updateCondition(index, (current) => ({ ...current, right: { type: "number", value } }))} onBooleanChange={(value) => updateCondition(index, (current) => ({ ...current, right: { type: "boolean", value } }))} /></>}
                     <button type="button" data-node-drag-ignore="true" className="code-condition-row-remove" disabled={disabled} onClick={(event) => { event.stopPropagation(); onRemoveCondition(index); }} aria-label={`Remove condition ${index + 1}`} title="Remove condition">×</button>
                     </div>
                 </div>;
             })}
         </div>
         <footer className="code-compact-footer">
-            <button type="button" data-node-drag-ignore="true" disabled={disabled || !canAddCondition || conditions.length >= MAX_CONDITIONS_PER_BRANCH} onClick={(event) => { event.stopPropagation(); addJoinedCondition("and"); }}>+ AND</button>
-            <button type="button" data-node-drag-ignore="true" disabled={disabled || !canAddCondition || conditions.length >= MAX_CONDITIONS_PER_BRANCH} onClick={(event) => { event.stopPropagation(); addJoinedCondition("or"); }}>+ OR</button>
-            <button type="button" data-node-drag-ignore="true" className="code-conditional-add-button" disabled={disabled || !canAddCondition} onClick={(event) => { event.stopPropagation(); onAddChildConditional(); }}>+ IF</button>
-            <button type="button" data-node-drag-ignore="true" className={`code-action-add-button ${tutorialFocus === "add-action" && !graphBranchActions(branch).length ? "tutorial-control-focus" : ""}`} disabled={disabled || !canAddAction} onClick={(event) => { event.stopPropagation(); onAddAction(); }}>+ ACTION</button>
-            <button type="button" data-node-drag-ignore="true" disabled={!canRemove} onClick={(event) => { event.stopPropagation(); onRemove(); }} className="code-condition-node-remove" aria-label="Remove conditional node" title="Remove conditional node">×</button>
+            <button type="button" data-node-drag-ignore="true" disabled={disabled || !canAddCondition || conditions.length >= maxConditions} onClick={(event) => { event.stopPropagation(); addJoinedCondition("and"); }}>+ AND</button>
+            <button type="button" data-node-drag-ignore="true" disabled={disabled || !canAddCondition || conditions.length >= maxConditions} onClick={(event) => { event.stopPropagation(); addJoinedCondition("or"); }}>+ OR</button>
+            {!standalone && !puzzleMode && <><button type="button" data-node-drag-ignore="true" className="code-conditional-add-button" disabled={disabled || !canAddCondition} onClick={(event) => { event.stopPropagation(); onAddChildConditional(); }}>+ IF</button>
+                <button type="button" data-node-drag-ignore="true" className={`code-action-add-button ${tutorialFocus === "add-action" && !graphBranchActions(branch).length ? "tutorial-control-focus" : ""}`} disabled={disabled || !canAddAction} onClick={(event) => { event.stopPropagation(); onAddAction(); }}>+ ACTION</button>
+                <button type="button" data-node-drag-ignore="true" disabled={!canRemove} onClick={(event) => { event.stopPropagation(); onRemove(); }} className="code-condition-node-remove" aria-label="Remove conditional node" title="Remove conditional node">×</button></>}
+            {!standalone && puzzleMode && <button type="button" data-node-drag-ignore="true" disabled={!canRemove} onClick={(event) => { event.stopPropagation(); onRemove(); }} className="code-condition-node-remove" aria-label="Remove puzzle condition" title="Remove puzzle condition">×</button>}
         </footer>
     </section>;
 }
 
-function GraphActionNode({ node, entry, disabled, selectedLoadout, targetTypes, nodeOffsets, beginNodeDrag, selectedNode, onInspect, onRemove }) {
+function PuzzleConditionNode({ title, conditions = [], stateVariables = STATE_VARIABLES, defaultVariable = STATE_VARIABLES[0], targetTypes = TARGET_TYPES, maxConditions = MAX_CONDITIONS_PER_BRANCH, onChange, onRemoveCondition }) {
+    const [operandPicker, setOperandPicker] = useState(null);
+    const [inspectedVariable, setInspectedVariable] = useState(null);
+    const node = { id: `puzzle-condition:${title}`, rootId: `puzzle-condition:${title}`, rootIndex: 0, path: [0], width: 0 };
+    const branch = { id: `puzzle-condition-branch:${title}`, branchType: "if", createdOrder: 0, conditions, actions: [], children: [] };
+    const graph = { conditions: [node], actions: [] };
+    const roots = [{ branches: [branch] }];
+
+    const updateConditions = (nextConditions) => {
+        if (Array.isArray(nextConditions)) onChange?.(nextConditions);
+    };
+    const openVariablePicker = (rowIndex, operand) => {
+        setInspectedVariable(null);
+        setOperandPicker({ rowIndex, operand });
+    };
+    const chooseOperandVariable = (variableId) => {
+        if (!operandPicker) return;
+        const { rowIndex, operand } = operandPicker;
+        if (operand === 1 && variableId === "always") {
+            updateConditions(conditions.map((condition, index) => index === rowIndex
+                ? { type: "always", ...(condition.join === "or" ? { join: "or" } : {}) }
+                : condition));
+            setOperandPicker(null);
+            return;
+        }
+        const definition = stateVariables.find((variable) => variable.id === variableId);
+        if (!definition || (operand === 2 && definition.valueType !== "number")) return;
+        updateConditions(conditions.map((condition, index) => {
+            if (index !== rowIndex) return condition;
+            if (operand === 2) {
+                return {
+                    ...condition,
+                    right: { type: "variable", value: definition.id },
+                    ...(definition.supportsTarget ? { rightTarget: defaultTargetForVariable(definition, targetTypes) } : {}),
+                };
+            }
+            const replacement = createExpressionCondition(definition, targetTypes);
+            const keepRight = definition.valueType === "number" && ["number", "variable"].includes(condition.right?.type)
+                ? condition.right
+                : definition.valueType === "boolean" && condition.right?.type === "boolean" ? condition.right : replacement.right;
+            return { ...replacement, ...(condition.join === "or" ? { join: "or" } : {}), right: keepRight };
+        }));
+        setOperandPicker(null);
+    };
+    const updateBranch = (_rootIndex, _path, updater) => {
+        const nextBranch = updater(branch);
+        updateConditions(nextBranch.conditions);
+    };
+    const removeCondition = (rowIndex) => {
+        setInspectedVariable(null);
+        setOperandPicker(null);
+        onRemoveCondition?.(rowIndex);
+        if (!onRemoveCondition) updateConditions(conditions.filter((_, index) => index !== rowIndex));
+    };
+
+    return <div className="relative overflow-visible">
+        <GraphConditionNode
+            node={node}
+            branch={branch}
+            disabled={false}
+            canRemove={false}
+            canAddAction={false}
+            canAddCondition={conditions.length < maxConditions}
+            maxConditions={maxConditions}
+            stateVariables={stateVariables}
+            defaultVariable={defaultVariable}
+            targetTypes={targetTypes}
+            nodeOffsets={{}}
+            beginNodeDrag={() => {}}
+            selected={false}
+            standalone
+            puzzleLabel={title}
+            onSelect={() => {}}
+            onPriorityChange={() => {}}
+            onPickVariable={openVariablePicker}
+            onInspectVariable={(rowIndex, operand) => { setOperandPicker(null); setInspectedVariable({ kind: "condition-variable", id: node.id, rowIndex, operand }); }}
+            onUseRawNumber={(rowIndex) => updateConditions(conditions.map((condition, index) => {
+                if (index !== rowIndex) return condition;
+                const next = { ...condition, right: { type: "number", value: 0 } };
+                delete next.rightTarget;
+                return next;
+            }))}
+            onRemoveCondition={removeCondition}
+            inspectedVariable={inspectedVariable}
+            onChange={({ conditions: nextConditions }) => updateConditions(nextConditions)}
+            onRemove={() => {}}
+            onAddParentConditional={() => {}}
+            onAddChildConditional={() => {}}
+            onAddAction={() => {}}
+        />
+        {operandPicker && <VariableOperandPicker operand={operandPicker.operand} stateVariables={stateVariables} numericOnly={operandPicker.operand === 2} onChoose={chooseOperandVariable} onClose={() => setOperandPicker(null)} />}
+        {inspectedVariable && <LogicNodeInspector
+            inspectedNode={inspectedVariable}
+            graph={graph}
+            roots={roots}
+            stateVariables={stateVariables}
+            targetTypes={targetTypes}
+            selectedLoadout={null}
+            customVariables={[]}
+            disabled={false}
+            canRemove={false}
+            canAddAction={false}
+            onClose={() => setInspectedVariable(null)}
+            updateBranch={updateBranch}
+            onChangeConditionVariable={openVariablePicker}
+            onDismissOperandPicker={() => setOperandPicker(null)}
+        />}
+    </div>;
+}
+
+function GraphActionNode({ node, entry, disabled, selectedLoadout, targetTypes, nodeOffsets, beginNodeDrag, selectedNode, onInspect, onRemove, canRemove = true, puzzleMode = false }) {
     const actionTypes = actionTypesForLoadout(ACTION_TYPES, selectedLoadout);
     const selected = actionTypes.find((action) => action.id === entry.action) ?? actionTypes[0];
-    const targetRequired = selected?.movementConfig ? entry.movementMode !== "absolute" : actionSupportsTarget(selected);
-    const targetLabel = targetRequired ? formatTargetLabel(entry.actionTarget ?? "opponent", targetTypes) : "";
-    const describedTarget = selected?.movementConfig
-        ? formatMovementTargetLabel(entry.movementDirection ?? "toward", targetLabel)
-        : targetLabel;
+    const describedTarget = formatActionTargetLabel(entry, selected, targetTypes);
     return <section onClick={onInspect} onPointerDown={(event) => beginNodeDrag(event, node.id)} className={`code-graph-node code-graph-node--action absolute rounded-sm border shadow-2xl ${selectedNode ? "is-inspected" : ""}`} style={{ ...graphNodeStyle(node, nodeOffsets), width: node.width }}>
         <header className="code-action-bar code-node-header--action">
             <span className="code-action-label">{formatActionNodeLabel(selected?.label ?? "Action")}</span>
-            {targetRequired && <span className="code-action-target">Target: {describedTarget}</span>}
+            {describedTarget && <span className="code-action-target">Target: {describedTarget}</span>}
         </header>
-        <button type="button" data-node-drag-ignore="true" disabled={disabled} onClick={(event) => { event.stopPropagation(); onRemove(); }} className="code-compact-remove code-condition-node-remove" aria-label="Remove action">×</button>
+        {(!puzzleMode || canRemove) && <button type="button" data-node-drag-ignore="true" disabled={disabled || (puzzleMode && !canRemove)} onClick={(event) => { event.stopPropagation(); onRemove(); }} className="code-compact-remove code-condition-node-remove" aria-label="Remove action">×</button>}
     </section>;
 }
 
-function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, targetTypes, selectedLoadout, customVariables, disabled, canRemove, onClose, updateBranch }) {
+function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, targetTypes, selectedLoadout, customVariables, disabled, canRemove, canAddAction, puzzleMode = false, onClose, updateBranch, onPickActionOperand, onInspectActionOperand, onDismissOperandPicker, onChangeConditionVariable, onRemoveAction }) {
     const dialogRef = useRef(null);
     useDialogFocus(dialogRef, { onClose });
     const panel = (eyebrow, title, body, removeLabel = "", onRemove = null) => <aside ref={dialogRef} className="code-inspector" data-node-drag-ignore="true" role="dialog" aria-modal="true" onPointerDown={(event) => event.stopPropagation()}>
-        <header className="code-inspector-header"><div><span>{eyebrow}</span><h2>{title}</h2></div><button type="button" onClick={onClose} aria-label="Close inspector">×</button></header>
-        <div className="code-inspector-body">{body}</div>
+        <header className="code-inspector-header"><div><span>{eyebrow}</span><h2>{title}</h2></div><button type="button" onClick={onClose} className="modal-close-button" aria-label="Close inspector"><span aria-hidden="true">×</span></button></header>
+        <div className="code-inspector-body" onClick={(event) => { if (event.target === event.currentTarget) onDismissOperandPicker?.(); }}>{body}</div>
         {onRemove && <footer className="code-inspector-footer"><button type="button" disabled={disabled || !canRemove} onClick={() => { onRemove(); onClose(); }}>{removeLabel}</button></footer>}
     </aside>;
     const field = (label, control, hint = "") => <label className="code-inspector-field"><span>{label}</span>{control}{hint && <small>{hint}</small>}</label>;
@@ -359,14 +564,18 @@ function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, targe
             conditions: (current.conditions ?? []).map((item, index) => index === inspectedNode.rowIndex ? { ...item, ...updates } : item),
         }));
         const targetField = inspectedNode.operand === 1 ? "leftTarget" : "rightTarget";
-        const targetOptions = definition.botTargetOnly
-            ? targetTypes.filter((target) => target.id === "opponent")
-            : definition.targetGroup === "objects" ? objectTargetTypes(targetTypes) : targetTypes;
+        const targetOptions = targetOptionsForDefinition(definition, targetTypes);
+        const rightDefinition = condition.right?.type === "variable"
+            ? stateVariables.find((variable) => variable.id === condition.right.value)
+                ?? STATE_VARIABLES.find((variable) => variable.id === condition.right.value)
+            : null;
+        const selectedCondition = normalizeConditionSelections(condition, definition, rightDefinition);
         return panel(`INPUT ${inspectedNode.operand} VARIABLE`, definition.label, <>
             <p className="code-inspector-note">Configure this variable without adding controls to the conditional node.</p>
-            {definition.supportsAbility && definition.abilityOptions?.length > 0 && field("Ability", <select disabled={disabled} value={condition.ability ?? definition.abilityOptions[0].id} onChange={(event) => update({ ability: event.target.value })}>{definition.abilityOptions.map((ability) => <option key={ability.id} value={ability.id}>{ability.label}</option>)}</select>)}
-            {definition.supportsStatusEffect && definition.statusEffectOptions?.length > 0 && field("Status effect", <select disabled={disabled} value={condition.statusEffect ?? definition.statusEffectOptions[0].id} onChange={(event) => update({ statusEffect: event.target.value })}>{definition.statusEffectOptions.map((effect) => <option key={effect.id} value={effect.id}>{effect.label}</option>)}</select>)}
-            {definition.supportsTarget && field("Target", <OrderedTargetPicker value={condition[targetField] ?? definition.defaultTarget ?? (definition.targetGroup === "objects" ? "object_1" : "opponent")} targetTypes={targetOptions} onChange={(target) => update({ [targetField]: target })} />)}
+            {onChangeConditionVariable && <button type="button" onClick={() => onChangeConditionVariable(inspectedNode.rowIndex, inspectedNode.operand)} className="mb-4 min-h-9 w-full border border-cyan-700/70 bg-cyan-950/40 px-3 font-mono text-[9px] font-bold tracking-[.12em] text-cyan-200 hover:border-cyan-400 hover:bg-cyan-900/50">CHANGE VARIABLE</button>}
+            {definition.supportsAbility && definition.abilityOptions?.length > 0 && field("Ability", <select disabled={disabled} value={selectedCondition.ability ?? definition.abilityOptions[0].id} onChange={(event) => update({ ability: abilityIdFromBoundary(event.target.value) })}>{definition.abilityOptions.map((ability) => <option key={ability.id} value={ability.id}>{ability.label}</option>)}</select>)}
+            {definition.supportsStatusEffect && definition.statusEffectOptions?.length > 0 && field("Status effect", <select disabled={disabled} value={selectedCondition.statusEffect ?? ""} onChange={(event) => update({ statusEffect: normalizeStatusEffectSelection(event.target.value, definition.statusEffectOptions) })}><option value="" disabled>Choose status effect</option>{definition.statusEffectOptions.map((effect) => <option key={effect.id} value={effect.id}>{effect.label}</option>)}</select>)}
+            {definition.supportsTarget && field("Target", <OrderedTargetPicker value={condition[targetField] ?? defaultTargetForVariable(definition, targetTypes)} targetTypes={targetOptions} allowOrdering={definition.targetOrderable !== false} onChange={(target) => update({ [targetField]: target })} />)}
             {!definition.supportsAbility && !definition.supportsStatusEffect && !definition.supportsTarget && <p className="code-inspector-note">This variable has no additional configuration.</p>}
         </>);
     }
@@ -380,38 +589,208 @@ function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, targe
         const actionTypes = actionTypesForLoadout(ACTION_TYPES, selectedLoadout);
         const definition = actionTypes.find((action) => action.id === entry.action) ?? actionTypes[0];
         const update = (nextEntry) => updateBranch(node.rootIndex, node.path, (current) => setGraphActions(current, actions.map((item, index) => index === node.actionIndex ? nextEntry : item)));
-        const needsTarget = definition?.movementConfig ? entry.movementMode !== "absolute" : actionSupportsTarget(definition);
+        const remove = () => {
+            if (onRemoveAction) {
+                onRemoveAction(node.rootIndex, node.path, node.actionIndex);
+                return;
+            }
+            updateBranch(node.rootIndex, node.path, (current) => setGraphActions(current, actions.filter((_, index) => index !== node.actionIndex)));
+        };
+        const targetMode = actionTargetMode(entry, definition);
+        const needsTarget = targetMode !== null && targetMode !== "absolute";
         return panel("ACTION", definition?.label ?? "Action", <>
             <p className="code-inspector-note">Canvas nodes show the sentence; detailed movement and ability options live here.</p>
-            {definition?.variableAction && <VariableActionControls entry={entry} variables={customVariables} stateVariables={stateVariables} onChange={update} />}
-            {definition?.movementConfig && <MovementConfigurationControls entry={entry} onChange={update} />}
+            {definition?.variableAction && <VariableActionControls entry={entry} variables={customVariables} stateVariables={stateVariables} disabled={disabled} canAddAction={canAddAction} allowRemoveAction={!puzzleMode || canRemove} onChange={update} onPickOperand={(termIndex) => onPickActionOperand?.(node.rootIndex, node.path, node.actionIndex, termIndex)} onInspectOperand={(termIndex) => onInspectActionOperand?.(node.rootIndex, node.path, node.actionIndex, termIndex)} onRemoveAction={() => { remove(); onClose(); }} />}
+            {definition?.movementConfig && <MovementConfigurationControls entry={entry} disabled={disabled} onChange={update} />}
             {definition?.orientationConfig && <PhaseOrientationControls entry={entry} onChange={update} />}
-            {needsTarget && field("Target", <OrderedTargetPicker value={entry.actionTarget ?? "opponent"} targetTypes={targetTypes} onChange={(actionTarget) => update({ ...entry, actionTarget, targetMode: "target" })} />)}
-        </>, "REMOVE ACTION", () => updateBranch(node.rootIndex, node.path, (current) => setGraphActions(current, actions.filter((_, index) => index !== node.actionIndex))));
+            {needsTarget && <ActionTargetControls entry={entry} definition={definition} targetTypes={targetTypes} disabled={disabled} onChange={update} />}
+        </>, "REMOVE ACTION", remove);
     }
     return null;
 }
 
-function VariableActionControls({ entry, variables, stateVariables, onChange }) {
-    const selected = variables.find((variable) => variable.id === entry.variableId) ?? variables[0];
-    if (!selected) return <div className="font-mono text-[9px] text-amber-300">CREATE A CUSTOM VARIABLE FIRST</div>;
-    const derived = Boolean(selected.conditions?.length);
-    const operation = selected.valueType === "boolean" ? "set" : entry.operation ?? "set";
-    const terms = entry.terms?.length ? entry.terms : [{ operator: operation, operand: { type: "number", value: entry.value ?? 0 } }];
-    const operands = [...stateVariables.filter((variable) => variable.valueType === "number"), ...variables.filter((variable) => variable.valueType === "number").map((variable) => ({ ...variable, label: variable.name }))];
-    const updateTerm = (index, updates) => onChange({ ...entry, variableId: selected.id, terms: terms.map((term, candidate) => candidate === index ? { ...term, ...updates } : term) });
-    return <div className="min-w-0 space-y-2 overflow-hidden">
-        <select value={selected.id} onChange={(event) => onChange({ ...entry, variableId: event.target.value, operation: "set", value: 0, terms: [{ operator: "set", operand: { type: "number", value: 0 } }] })} className="h-8 w-full min-w-0 rounded border border-border-lo bg-zinc-950 px-2 text-white">{variables.map((variable) => <option key={variable.id} value={variable.id}>{variable.name}</option>)}</select>
-        {selected.valueType === "boolean" ? <div className="grid grid-cols-[44px_minmax(0,1fr)] gap-2"><span className="flex h-8 items-center justify-center text-white">=</span><select disabled={derived} value={String(entry.value ?? false)} onChange={(event) => onChange({ ...entry, variableId: selected.id, operation: "set", value: event.target.value === "true" })} className="h-8 min-w-0 rounded border border-border-lo bg-zinc-950 px-2 text-white"><option value="false">FALSE</option><option value="true">TRUE</option></select></div> : <div className="space-y-2">{terms.map((term, index) => <div key={index} className="grid max-w-full grid-cols-[44px_76px_104px_28px] gap-1 overflow-hidden"><select value={term.operator} onChange={(event) => updateTerm(index, { operator: event.target.value })} className="h-8 min-w-0 rounded border border-border-lo bg-zinc-950 px-1 text-white">{index === 0 && <option value="set">=</option>}<option value="add">+</option><option value="subtract">-</option></select><select value={term.operand?.type ?? "number"} onChange={(event) => updateTerm(index, { operand: event.target.value === "variable" ? { type: "variable", value: operands[0]?.id ?? "my.hp" } : { type: "number", value: 0 } })} className="h-8 min-w-0 rounded border border-border-lo bg-zinc-950 px-1 text-white"><option value="number">NUMBER</option><option value="variable">VARIABLE</option></select>{term.operand?.type === "variable" ? <select value={term.operand.value} onChange={(event) => updateTerm(index, { operand: { type: "variable", value: event.target.value } })} className="h-8 min-w-0 rounded border border-border-lo bg-zinc-950 px-1 text-white">{operands.map((operand) => <option key={operand.id} value={operand.id}>{operand.label}</option>)}</select> : <DeferredNumberInput min={CUSTOM_INTEGER_MIN} max={CUSTOM_INTEGER_MAX} value={term.operand?.value ?? 0} onCommit={(value) => updateTerm(index, { operand: { type: "number", value } })} className="h-8 min-w-0 rounded border border-border-lo bg-zinc-950 px-2 text-white" />}<button type="button" disabled={terms.length === 1} onClick={() => onChange({ ...entry, terms: terms.filter((_, candidate) => candidate !== index).map((item, candidate) => candidate === 0 && item.operator === "set" ? item : item) })} className="flex h-8 w-7 items-center justify-center text-red-300">×</button></div>)}<button type="button" onClick={() => onChange({ ...entry, variableId: selected.id, terms: [...terms, { operator: "add", operand: { type: "number", value: 0 } }] })} className="text-emerald-300">+ OPERAND</button></div>}
-        {derived && <span className="block font-mono text-[9px] text-amber-300">Derived booleans are read-only.</span>}
+function actionTargetMode(entry, definition) {
+    if (definition?.movementConfig) {
+        if (entry?.movementMode === "absolute") return "absolute";
+        return entry?.movementMode === "coordinates" ? "coordinates" : "target";
+    }
+    if (definition?.angleTarget) {
+        return ["target", "angle", "coordinates"].includes(entry?.targetMode) ? entry.targetMode : "target";
+    }
+    if (definition?.coordinateTarget) return entry?.targetMode === "coordinates" ? "coordinates" : "target";
+    return actionSupportsTarget(definition) ? "target" : null;
+}
+
+function formatCoordinateTargetLabel(entry) {
+    const x = Number.isFinite(Number(entry?.targetX)) ? Number(entry.targetX) : ARENA_WIDTH_UNITS / 2;
+    const y = Number.isFinite(Number(entry?.targetY)) ? Number(entry.targetY) : ARENA_HEIGHT_UNITS / 2;
+    return `Coordinates (${x}, ${y})`;
+}
+
+function formatActionTargetLabel(entry, definition, targetTypes) {
+    const mode = actionTargetMode(entry, definition);
+    if (!mode || mode === "absolute") return "";
+    if (mode === "angle") return `Angle (${Number(entry?.targetAngle ?? 0)} deg)`;
+    if (mode === "coordinates") {
+        const coordinateLabel = formatCoordinateTargetLabel(entry);
+        return definition?.movementConfig
+            ? formatMovementTargetLabel(entry?.movementDirection ?? 0, coordinateLabel)
+            : coordinateLabel;
+    }
+    const targetLabel = formatTargetLabel(entry?.actionTarget ?? "opponent", targetTypes);
+    return definition?.movementConfig
+        ? formatMovementTargetLabel(entry?.movementDirection ?? 0, targetLabel)
+        : targetLabel;
+}
+
+function ActionTargetControls({ entry, definition, targetTypes, disabled, onChange }) {
+    const mode = actionTargetMode(entry, definition);
+    const canChooseCoordinates = Boolean(definition?.coordinateTarget && !definition?.movementConfig);
+    const modeControl = canChooseCoordinates && <label className="code-inspector-field">
+        <span>TARGET MODE</span>
+        <select disabled={disabled} value={mode} onChange={(event) => onChange({ ...entry, targetMode: event.target.value })}><option value="target">Relative to target</option>{definition?.angleTarget && <option value="angle">Absolute angle</option>}<option value="coordinates">{definition?.angleTarget ? "Absolute coordinates" : "Relative to coordinates"}</option></select>
+    </label>;
+    if (mode === "angle") {
+        return <div>
+            {modeControl}
+            <label className="code-inspector-field"><span>ANGLE</span><DeferredNumberInput disabled={disabled} min={-360} max={360} value={entry.targetAngle ?? 0} fallback={0} aria-label="Absolute rotation angle" onCommit={(targetAngle) => onChange({ ...entry, targetAngle })} /><span className="code-inspector-field-unit">deg</span></label>
+            <small>0 deg = north · 90 deg = east · 180 deg = south · 270 deg = west. Negative angles are also valid.</small>
+        </div>;
+    }
+    if (mode === "coordinates") {
+        return <div>
+            {modeControl}
+            <div className="grid grid-cols-2 gap-2">
+                <label className="code-inspector-field"><span>X COORDINATE</span><DeferredNumberInput disabled={disabled} min={0} max={ARENA_WIDTH_UNITS} value={entry.targetX ?? ARENA_WIDTH_UNITS / 2} fallback={ARENA_WIDTH_UNITS / 2} aria-label="Target X coordinate" onCommit={(targetX) => onChange({ ...entry, targetX })} /></label>
+                <label className="code-inspector-field"><span>Y COORDINATE</span><DeferredNumberInput disabled={disabled} min={0} max={ARENA_HEIGHT_UNITS} value={entry.targetY ?? ARENA_HEIGHT_UNITS / 2} fallback={ARENA_HEIGHT_UNITS / 2} aria-label="Target Y coordinate" onCommit={(targetY) => onChange({ ...entry, targetY })} /></label>
+            </div>
+        </div>;
+    }
+    return <div>
+        {modeControl}
+        <label className="code-inspector-field"><span>TARGET</span><OrderedTargetPicker disabled={disabled} value={entry.actionTarget ?? "opponent"} targetTypes={targetTypes} onChange={(actionTarget) => onChange({ ...entry, actionTarget, ...(definition?.movementConfig ? {} : { targetMode: "target" }) })} /></label>
+        {!definition?.movementConfig && <div className="grid grid-cols-2 gap-2">
+            <label className="code-inspector-field"><span>OFFSET X</span><DeferredNumberInput disabled={disabled} min={-ARENA_WIDTH_UNITS} max={ARENA_WIDTH_UNITS} value={entry.targetOffsetX ?? 0} fallback={0} aria-label="Target X offset" onCommit={(targetOffsetX) => onChange({ ...entry, targetOffsetX })} /></label>
+            <label className="code-inspector-field"><span>OFFSET Y</span><DeferredNumberInput disabled={disabled} min={-ARENA_HEIGHT_UNITS} max={ARENA_HEIGHT_UNITS} value={entry.targetOffsetY ?? 0} fallback={0} aria-label="Target Y offset" onCommit={(targetOffsetY) => onChange({ ...entry, targetOffsetY })} /></label>
+        </div>}
     </div>;
 }
 
-function MovementConfigurationControls({ entry, onChange }) {
+function ActionVariableInspector({ definition, operand, targetTypes, disabled, onChange, onClose }) {
+    const dialogRef = useRef(null);
+    useDialogFocus(dialogRef, { onClose });
+    if (!definition) return null;
+    const targetOptions = targetOptionsForDefinition(definition, targetTypes);
+    const target = operand?.target ?? defaultTargetForVariable(definition, targetTypes);
+    const update = (updates) => onChange({ ...operand, ...updates });
+    return <aside ref={dialogRef} className="code-inspector code-inspector--secondary" data-node-drag-ignore="true" role="dialog" aria-modal="true" onPointerDown={(event) => event.stopPropagation()}>
+        <header className="code-inspector-header"><div><span>MODIFY INPUT VARIABLE</span><h2>{definition.label}</h2></div><button type="button" onClick={onClose} className="modal-close-button" aria-label="Close variable inspector"><span aria-hidden="true">×</span></button></header>
+        <div className="code-inspector-body">
+            <p className="code-inspector-note">Configure this action input without closing the modify custom variable action.</p>
+            {definition.supportsAbility && definition.abilityOptions?.length > 0 && <label className="code-inspector-field"><span>ABILITY</span><select disabled={disabled} value={selectedAbilityOptionValue(operand?.ability, definition.abilityOptions)} onChange={(event) => update({ ability: abilityIdFromBoundary(event.target.value) })}>{definition.abilityOptions.map((ability) => <option key={ability.id} value={ability.id}>{ability.label}</option>)}</select></label>}
+            {definition.supportsStatusEffect && definition.statusEffectOptions?.length > 0 && <label className="code-inspector-field"><span>STATUS EFFECT</span><select disabled={disabled} value={selectedStatusOptionValue(operand?.statusEffect, definition.statusEffectOptions)} onChange={(event) => update({ statusEffect: normalizeStatusEffectSelection(event.target.value, definition.statusEffectOptions) })}><option value="" disabled>Choose status effect</option>{definition.statusEffectOptions.map((effect) => <option key={effect.id} value={effect.id}>{effect.label}</option>)}</select></label>}
+            {definition.supportsTarget && <label className="code-inspector-field"><span>TARGET</span><OrderedTargetPicker disabled={disabled} value={target} targetTypes={targetOptions} allowOrdering={definition.targetOrderable !== false} onChange={(nextTarget) => update({ target: nextTarget })} /></label>}
+            {!definition.supportsAbility && !definition.supportsStatusEffect && !definition.supportsTarget && <p className="code-inspector-note">This variable has no additional configuration.</p>}
+        </div>
+    </aside>;
+}
+
+function variableActionTerms(entry) {
+    if (Array.isArray(entry?.terms) && entry.terms.length) return entry.terms;
+    return [{
+        operator: entry?.operation ?? CUSTOM_VARIABLE_OPERATIONS.SET,
+        operand: entry?.operand ?? { type: "number", value: entry?.value ?? 0 },
+    }];
+}
+
+function VariableActionControls({ entry, variables, stateVariables, disabled, canAddAction, allowRemoveAction = true, onChange, onPickOperand, onInspectOperand, onRemoveAction }) {
+    const selected = variables.find((variable) => variable.id === entry.variableId) ?? variables[0];
+    if (!selected) return <div className="font-mono text-[9px] text-amber-300">CREATE A CUSTOM VARIABLE FIRST</div>;
+    const terms = variableActionTerms(entry);
+    const updateTerms = (nextTerms) => {
+        const next = { ...entry, terms: nextTerms };
+        delete next.operation;
+        delete next.operand;
+        delete next.value;
+        onChange(next);
+    };
+    const changeVariable = (variableId) => {
+        const nextVariable = variables.find((variable) => variable.id === variableId) ?? selected;
+        const next = { ...entry, variableId: nextVariable.id, operation: CUSTOM_VARIABLE_OPERATIONS.SET };
+        delete next.terms;
+        if (nextVariable.valueType === "boolean") {
+            next.value = false;
+            delete next.operand;
+        } else {
+            next.terms = [{ operator: CUSTOM_VARIABLE_OPERATIONS.SET, operand: { type: "number", value: 0 } }];
+            delete next.value;
+            delete next.operand;
+        }
+        onChange(next);
+    };
+    const removeTerm = (termIndex) => {
+        if (!allowRemoveAction) return;
+        if (terms.length <= 1) {
+            onRemoveAction();
+            return;
+        }
+        updateTerms(terms.filter((_, index) => index !== termIndex));
+    };
+    const addTerm = () => {
+        if (!canAddAction || terms.length >= MAX_VARIABLE_ACTION_TERMS) return;
+        updateTerms([...terms, { operator: CUSTOM_VARIABLE_OPERATIONS.ADD, operand: { type: "number", value: 0 } }]);
+    };
+    return <div className="min-w-0 space-y-2 overflow-hidden">
+        <select disabled={disabled} value={selected.id} onChange={(event) => changeVariable(event.target.value)} className="h-8 w-full min-w-0 rounded border border-border-lo bg-zinc-950 px-2 text-white">{variables.map((variable) => <option key={variable.id} value={variable.id}>{variable.name}</option>)}</select>
+        {selected.valueType === "boolean" ? <div className="code-variable-action-row"><select disabled={disabled} aria-label="Variable action operator" value={CUSTOM_VARIABLE_OPERATIONS.SET} className="code-operator-socket code-variable-action-operator"><option value={CUSTOM_VARIABLE_OPERATIONS.SET}>=</option></select><select disabled={disabled} aria-label="Boolean value" value={String(entry.value ?? false)} onChange={(event) => onChange({ ...entry, variableId: selected.id, operation: CUSTOM_VARIABLE_OPERATIONS.SET, value: event.target.value === "true" })}><option value="false">FALSE</option><option value="true">TRUE</option></select>{allowRemoveAction && <button type="button" className="code-condition-row-remove" disabled={disabled} onClick={onRemoveAction} aria-label="Remove variable action">×</button>}</div> : <div className="space-y-2">
+            {terms.map((term, termIndex) => {
+                const operand = term?.operand ?? { type: "number", value: 0 };
+                const operandDefinition = operand.type === "variable" ? stateVariables.find((variable) => variable.id === operand.value) : null;
+                const operation = term?.operator ?? (termIndex === 0 ? CUSTOM_VARIABLE_OPERATIONS.SET : CUSTOM_VARIABLE_OPERATIONS.ADD);
+                const updateTerm = (updates) => updateTerms(terms.map((current, index) => index === termIndex ? { ...current, ...updates } : current));
+                const changeOperandType = () => {
+                    if (operand.type === "variable") updateTerm({ operand: { type: "number", value: 0 } });
+                    else onPickOperand?.(termIndex);
+                };
+                return <div className="code-variable-action-row" key={`variable-term-${termIndex}`}><select disabled={disabled} aria-label={`Variable action operator ${termIndex + 1}`} value={operation} onChange={(event) => updateTerm({ operator: event.target.value })} className="code-operator-socket code-variable-action-operator">{termIndex === 0 && <option value={CUSTOM_VARIABLE_OPERATIONS.SET}>=</option>}<option value={CUSTOM_VARIABLE_OPERATIONS.ADD}>+</option><option value={CUSTOM_VARIABLE_OPERATIONS.SUBTRACT}>−</option><option value={CUSTOM_VARIABLE_OPERATIONS.MODULO}>%</option></select><div className={`code-condition-input code-variable-action-input ${operandDefinition ? "is-variable" : "is-raw"}`} data-node-drag-ignore="true" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}><>{operandDefinition ? <button type="button" className="code-condition-input-value code-variable-action-input-value" onClick={() => onInspectOperand?.(termIndex)} disabled={disabled}><span className="code-variable-action-input-label">{operandDefinition.label}</span></button> : <DeferredNumberInput disabled={disabled} min={CUSTOM_NUMBER_MIN} max={CUSTOM_NUMBER_MAX} value={operand.value ?? 0} onCommit={(value) => updateTerm({ operand: { type: "number", value } })} />}</><button type="button" className="code-condition-input-toggle" disabled={disabled} onClick={changeOperandType} aria-label={operandDefinition ? "Use a raw number" : "Choose a variable"} title={operandDefinition ? "Use a raw number" : "Choose a variable"}><span aria-hidden="true">{operandDefinition ? "−" : "+"}</span></button></div>{allowRemoveAction && <button type="button" className="code-condition-row-remove" disabled={disabled} onClick={() => removeTerm(termIndex)} aria-label={`Remove variable operand ${termIndex + 1}`}>×</button>}</div>;
+            })}
+            <button type="button" disabled={disabled || !canAddAction || terms.length >= MAX_VARIABLE_ACTION_TERMS} onClick={addTerm} className="text-emerald-300">+ OPERAND</button>
+        </div>}
+    </div>;
+}
+
+function MovementConfigurationControls({ entry, disabled, onChange }) {
     const mode = entry.movementMode ?? "target";
+    const isWalk = entry.action === BOT_CODE_ACTIONS.MOVE_WALK;
     const absolute = ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest", "stop"];
-    const relative = [["toward", "Toward"], ["away", "Away"], ["left", "Left perpendicular"], ["right", "Right perpendicular"], ["toward_left", "Toward + left"], ["toward_right", "Toward + right"], ["away_left", "Away + left"], ["away_right", "Away + right"]];
-    return <div className="space-y-2"><label className="block font-mono text-[9px] text-ink-muted">MOVEMENT MODE<select value={mode} onChange={(event) => onChange({ ...entry, movementMode: event.target.value, movementDirection: event.target.value === "absolute" ? "north" : "toward" })} className="mt-1 h-9 w-full rounded border border-border-lo bg-zinc-900 px-2 font-mono text-[9px] text-white"><option value="target">Relative to target</option><option value="coordinates">Relative to coordinates</option><option value="absolute">Absolute arena direction</option></select></label><label className="block font-mono text-[9px] text-ink-muted">MOVEMENT DIRECTION<select value={entry.movementDirection ?? (mode === "absolute" ? "north" : "toward")} onChange={(event) => onChange({ ...entry, movementDirection: event.target.value })} className="mt-1 h-9 w-full rounded border border-border-lo bg-zinc-900 px-2 font-mono text-[9px] text-white">{mode === "absolute" ? absolute.map((direction) => <option key={direction} value={direction}>{direction.replace("stop", "hold ground").replaceAll("_", " ").toUpperCase()}</option>) : relative.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label></div>;
+    const relativeDirection = relativeMovementAngle(entry.movementDirection);
+    const absoluteDegreeDirection = absoluteMovementAngle(entry.movementDirection);
+    const absoluteDirection = absolute.includes(entry.movementDirection) ? entry.movementDirection : "north";
+    const changeMode = (nextMode) => onChange({
+        ...entry,
+        movementMode: nextMode,
+        movementDirection: nextMode === "absolute" ? (isWalk ? absoluteDegreeDirection : "north") : relativeDirection,
+    });
+    return <div className="space-y-2">
+        <label className="block font-mono text-[9px] text-ink-muted">MOVEMENT MODE
+            <select disabled={disabled} value={mode} onChange={(event) => changeMode(event.target.value)} className="mt-1 h-9 w-full rounded border border-border-lo bg-zinc-900 px-2 font-mono text-[9px] text-white"><option value="target">Relative to target</option><option value="coordinates">Relative to coordinates</option><option value="absolute">Absolute arena direction</option></select>
+        </label>
+        {mode === "absolute" && isWalk ? <label className="block font-mono text-[9px] text-ink-muted">MOVEMENT DIRECTION
+            <div className="code-movement-angle-input">
+                <DeferredNumberInput disabled={disabled} min={MOVEMENT_DIRECTION_MIN} max={MOVEMENT_DIRECTION_MAX} step={NUMBER_STEP} value={absoluteDegreeDirection} fallback={0} aria-label="Absolute arena movement direction in degrees" onCommit={(movementDirection) => onChange({ ...entry, movementDirection })} />
+                <span>deg</span>
+            </div>
+            <small>0 deg = north · 90 deg = east · 180 deg = south · 270 deg = west. Negative angles are also valid.</small>
+        </label> : mode === "absolute" ? <label className="block font-mono text-[9px] text-ink-muted">MOVEMENT DIRECTION
+            <select disabled={disabled} value={absoluteDirection} onChange={(event) => onChange({ ...entry, movementDirection: event.target.value })} className="mt-1 h-9 w-full rounded border border-border-lo bg-zinc-900 px-2 font-mono text-[9px] text-white">{absolute.map((direction) => <option key={direction} value={direction}>{direction.replace("stop", "hold ground").replaceAll("_", " ").toUpperCase()}</option>)}</select>
+        </label> : <label className="block font-mono text-[9px] text-ink-muted">MOVEMENT DIRECTION
+            <div className="code-movement-angle-input">
+                <DeferredNumberInput disabled={disabled} min={MOVEMENT_DIRECTION_MIN} max={MOVEMENT_DIRECTION_MAX} step={NUMBER_STEP} value={relativeDirection} fallback={0} aria-label="Movement direction in degrees" onCommit={(movementDirection) => onChange({ ...entry, movementDirection })} />
+                <span>deg</span>
+            </div>
+            <small>0 deg = toward · 90 deg = right perpendicular · 180 deg = away · 270 deg = left perpendicular. Negative angles are also valid.</small>
+        </label>}
+    </div>;
 }
 
 function PhaseOrientationControls({ entry, onChange }) {
@@ -424,7 +803,7 @@ function newTreeBranch(branchType, defaultVariable, createdOrder = 0) {
         ...conditional,
         branchType,
         createdOrder,
-        conditions: branchType === "else" ? [] : [createExpressionCondition(defaultVariable.id)],
+        conditions: branchType === "else" ? [] : [createExpressionCondition(defaultVariable)],
         actions: [],
         children: [],
     };
@@ -434,547 +813,71 @@ function nextBranchOrder(branches) {
     return (branches ?? []).reduce((highest, branch) => Math.max(highest, Number(branch?.createdOrder) + 1 || 0), 0);
 }
 
-function SearchablePicker({ value, onChange, options, placeholder = "Search...", compact = false }) {
-    const [open, setOpen] = useState(false);
-    const [query, setQuery] = useState("");
-    const rootRef = useRef(null);
-    useExclusiveSearchMenu(rootRef, open, () => setOpen(false));
-    const selected = options.find((option) => option.id === value);
-    const normalized = query.trim().toLocaleLowerCase();
-    const filtered = normalized
-        ? options.filter((option) => `${option.label} ${option.id}`.toLocaleLowerCase().includes(normalized))
-        : options;
-    useEffect(() => {
-        if (!open) return undefined;
-        const close = (event) => {
-            if (!rootRef.current?.contains(event.target)) setOpen(false);
-        };
-        window.addEventListener("pointerdown", close);
-        return () => window.removeEventListener("pointerdown", close);
-    }, [open]);
-    return (
-        <div ref={rootRef} className={`relative min-w-0 ${compact ? "w-full max-w-56 flex-none" : "flex-1"}`}>
-            <button type="button" onClick={() => { setOpen((current) => !current); setQuery(""); }} className="flex h-8 w-full items-center justify-between rounded border border-border-lo bg-zinc-950 px-2 text-left font-mono text-[10px] text-ink-white">
-                <span className="truncate">{selected?.label ?? "Choose..."}</span><span className="text-ink-muted">⌄</span>
-            </button>
-            {open && <div onWheel={(event) => event.stopPropagation()} className="absolute left-0 top-full z-50 mt-1 w-full min-w-56 rounded border border-border-mid bg-zinc-950 p-2 shadow-2xl">
-                <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setOpen(false); } }} placeholder={placeholder} className="h-8 w-full rounded border border-cyan-900 bg-zinc-900 px-2 font-mono text-[10px] text-white outline-none focus:border-cyan-500" />
-                <div className="mt-1 max-h-52 overflow-y-auto">
-                    {filtered.map((option) => <button key={option.id} type="button" onClick={() => { onChange(option.id); setOpen(false); }} className={`block w-full rounded px-2 py-1.5 text-left font-mono text-[10px] hover:bg-cyan-950 ${option.id === value ? "text-cyan-200" : "text-ink-white"}`}>{option.label}</button>)}
-                    {!filtered.length && <div className="px-2 py-3 font-mono text-[9px] text-ink-muted">NO MATCHES</div>}
-                </div>
-            </div>}
-        </div>
-    );
+const CONDITION_PICKER_CATEGORY_ORDER = Object.freeze([
+    "Basic",
+    "Health & Combat",
+    "Abilities & Status",
+    "Position & Movement",
+    "Objects",
+    "Match",
+    "Custom Variables",
+    "Other",
+]);
+
+function conditionPickerCategory(option) {
+    const id = String(option?.id ?? "");
+    if (id === "always") return "Basic";
+    if (option?.group === "Custom Variables" || id.startsWith("custom.")) return "Custom Variables";
+    if (option?.supportsAbility || option?.supportsStatusEffect) return "Abilities & Status";
+    if (option?.targetGroup === "objects" || option?.group === "Objects" || /\.(exists|count|age)$/.test(id)) return "Objects";
+    if (option?.group === "General") return "Match";
+    if (option?.group === "Movement"
+        || option?.group === "Rotation"
+        || ["my.x", "my.y", "opponent.x", "opponent.y", "target.distance"].includes(id)
+        || id.endsWith("edgeDistance")) return "Position & Movement";
+    if (/(hp|damage|alive)/.test(id)) return "Health & Combat";
+    return "Other";
 }
 
-function ConditionEditor({
-    condition,
-    prefix,
-    canChangeJoin = false,
-    compact = false,
-    onChange,
-    onRemove,
-    removable,
-    stateVariables = STATE_VARIABLES,
-    defaultVariable = STATE_VARIABLES[0],
-    targetTypes = TARGET_TYPES,
-    editorMode = false,
-    disabled = false,
-    operandOneConnectionLabel = "",
-    operandTwoConnectionLabel = "",
-    operandOnePortId = "",
-    operandTwoPortId = "",
-    connecting = null,
-    onSelectOperand,
-    onDisconnectOperand,
-}) {
-    return (
-        <ExpressionConditionEditor
-            condition={condition?.type === "expression" || condition?.type === "always"
-                ? condition
-                : { type: "always", ...(condition?.join === "or" ? { join: "or" } : {}) }}
-            prefix={prefix}
-            canChangeJoin={canChangeJoin}
-            compact={compact}
-            onChange={onChange}
-            onRemove={onRemove}
-            removable={removable}
-            stateVariables={stateVariables}
-            defaultVariable={defaultVariable}
-            targetTypes={targetTypes}
-            editorMode={editorMode}
-            disabled={disabled}
-            operandOneConnectionLabel={operandOneConnectionLabel}
-            operandTwoConnectionLabel={operandTwoConnectionLabel}
-            operandOnePortId={operandOnePortId}
-            operandTwoPortId={operandTwoPortId}
-            connecting={connecting}
-            onSelectOperand={onSelectOperand}
-            onDisconnectOperand={onDisconnectOperand}
-        />
-    );
+function groupedConditionPickerOptions(options) {
+    const groups = new Map();
+    options.forEach((option) => {
+        const category = conditionPickerCategory(option);
+        const group = groups.get(category) ?? [];
+        group.push(option);
+        groups.set(category, group);
+    });
+    return CONDITION_PICKER_CATEGORY_ORDER
+        .map((category) => ({ category, options: groups.get(category) ?? [] }))
+        .filter((group) => group.options.length > 0);
 }
 
-function ConditionOperandInput({
-    label = "Variable",
-    kind = "variable",
-    connectedLabel = "",
-    selected = false,
-    disabled = false,
-    allowNumber = false,
-    allowKindChange = allowNumber,
-    numberValue = 0,
-    numberMin = CUSTOM_INTEGER_MIN,
-    numberMax = CUSTOM_INTEGER_MAX,
-    numberStep = 1,
-    numberFallback = 0,
-    numberRoundDown = false,
-    numberIntegerOnly = false,
-    onNumberCommit,
-    onKindChange,
-    onSelect,
-    onDisconnect,
-    ariaLabel = "Condition operand",
-}) {
-    const variable = kind === "variable";
-    return <div className={`code-condition-operand ${selected ? "is-selecting" : ""}`}>
-        {variable ? <button
-            type="button"
-            data-node-drag-ignore="true"
-            disabled={disabled}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={onSelect}
-            onDoubleClick={onDisconnect}
-            aria-label={`${ariaLabel}: Variable${connectedLabel ? ` attached to ${connectedLabel}` : ""}`}
-            title={connectedLabel ? `Attached to ${connectedLabel}; double-click to disconnect` : "Select Variable, then click a variable node"}
-            className="code-condition-operand-button"
-        >
-            <span className="truncate">{label}</span>
-            {connectedLabel && <span className="sr-only">Attached to {connectedLabel}</span>}
-        </button> : <DeferredNumberInput
-            data-node-drag-ignore="true"
-            aria-label={`${ariaLabel}: Number`}
-            disabled={disabled}
-            min={numberMin}
-            max={numberMax}
-            step={numberStep}
-            value={numberValue}
-            fallback={numberFallback}
-            roundDown={numberRoundDown}
-            integerOnly={numberIntegerOnly}
-            onCommit={onNumberCommit}
-            className="code-condition-operand-number"
-        />}
-        <select
-            data-node-drag-ignore="true"
-            aria-label={`${ariaLabel} type`}
-            disabled={disabled || !allowKindChange}
-            value={kind}
-            onPointerDown={(event) => event.stopPropagation()}
-            onChange={(event) => onKindChange?.(event.target.value)}
-            className="code-condition-operand-kind"
-        >
-            <option value="variable">■</option>
-            {allowNumber && <option value="number">#</option>}
-        </select>
-    </div>;
-}
-
-function ExpressionConditionEditor({
-    condition,
-    prefix,
-    canChangeJoin = false,
-    compact = false,
-    onChange,
-    onRemove,
-    removable,
-    stateVariables,
-    defaultVariable,
-    targetTypes,
-    editorMode = false,
-    disabled = false,
-    operandOneConnectionLabel = "",
-    operandTwoConnectionLabel = "",
-    operandOnePortId = "",
-    operandTwoPortId = "",
-    connecting = null,
-    onSelectOperand,
-    onDisconnectOperand,
-}) {
-    const isAlways = condition?.type === "always";
-    const variables = stateVariables.length ? stateVariables : STATE_VARIABLES;
-    const leftDefinition = variables.find((variable) => variable.id === condition.left)
-        ?? defaultVariable
-        ?? variables[0]
-        ?? STATE_VARIABLES[0];
-    const rightVariableDefinition = condition.right?.type === "variable"
-        ? variables.find((variable) => variable.id === condition.right.value)
-        : null;
-    const valueType = leftDefinition.valueType;
-    const comparators = CONDITION_COMPARATORS.filter((comparator) => comparator.id !== "modulo" && comparator.valueTypes.includes(valueType));
-    const comparator = comparators.some((candidate) => candidate.id === condition.comparator)
-        ? condition.comparator
-        : comparators[0]?.id ?? "eq";
-    const moduloComparators = comparators.filter((candidate) => candidate.id !== "modulo");
-    const moduloComparator = moduloComparators.some((candidate) => candidate.id === condition.modulo?.comparator)
-        ? condition.modulo.comparator
-        : "eq";
-    const moduloDivisor = condition.modulo?.divisor ?? 1;
-    const numericVariables = variables.filter((variable) => variable.valueType === "number");
-    const canUseVariableOperand = valueType === "number" && numericVariables.length > 0;
-    const selectionField = editorMode ? null : leftDefinition.supportsAbility ? "ability" : leftDefinition.supportsStatusEffect ? "statusEffect" : null;
-    const selectionOptions = leftDefinition.supportsAbility ? (leftDefinition.abilityOptions ?? []) : (leftDefinition.statusEffectOptions ?? []);
-    const selectionLabel = leftDefinition.supportsAbility ? "Selected ability" : "Selected status effect";
-    const targetOptionsFor = (definition) => definition?.botTargetOnly
-        ? targetTypes.filter((target) => target.id === "opponent")
-        : definition?.targetGroup === "objects"
-        ? objectTargetTypes(targetTypes)
-        : targetTypes;
-    const selectedTargetFor = (definition, field) => {
-        const options = targetOptionsFor(definition);
-        const requested = condition[field] ?? condition.target;
-        return options.some((target) => target.id === String(requested).split(":")[0])
-            ? requested
-            : definition?.defaultTarget ?? (definition?.targetGroup === "objects" ? "object_1" : "opponent");
-    };
-
-    const changeLeft = (left) => {
-        if (left === "always") {
-            onChange({
-                type: "always",
-                ...(condition.join === "or" ? { join: "or" } : {}),
-            });
-            return;
-        }
-        const nextLeft = variables.find((variable) => variable.id === left) ?? variables[0];
-        onChange({
-            ...createExpressionCondition(nextLeft),
-            ...(nextLeft.supportsAbility && nextLeft.abilityOptions?.length ? { ability: nextLeft.abilityOptions[0].id } : {}),
-            ...(nextLeft.supportsStatusEffect && nextLeft.statusEffectOptions?.length ? { statusEffect: nextLeft.statusEffectOptions[0].id } : {}),
-            ...(condition.join === "or" ? { join: "or" } : {}),
-        });
-    };
-    const changeRightType = (type) => {
-        if (type === "variable") {
-            onChange({
-                ...condition,
-                right: { type: "variable", value: numericVariables[0]?.id ?? "my.hp" },
-            });
-            return;
-        }
-        onChange({
-            ...condition,
-            right: { type: "number", value: leftDefinition.defaultValue },
-        });
-    };
-    const changeComparator = (nextComparator) => {
-        if (nextComparator === "modulo") {
-            const expectedResult = condition.right?.type === "variable"
-                ? condition.right
-                : {
-                    type: "number",
-                    value: Number.isInteger(condition.right?.value) ? condition.right.value : 0,
-                };
-            onChange({
-                ...condition,
-                comparator: "modulo",
-                modulo: {
-                    divisor: Number.isInteger(condition.modulo?.divisor) ? condition.modulo.divisor : 1,
-                    comparator: moduloComparator,
-                },
-                right: expectedResult,
-            });
-            return;
-        }
-        const nextCondition = { ...condition, comparator: nextComparator };
-        delete nextCondition.modulo;
-        onChange(nextCondition);
-    };
-
-    return (
-        <div className={`${compact ? "flex flex-wrap items-center gap-2" : "code-condition-row grid grid-cols-[42px_1fr_auto] items-center gap-2"} text-[10px] [&_button]:!text-[10px] [&_input]:!text-[10px] [&_select]:!text-[10px] [&_span]:!text-[10px]`}>
-            <ConditionJoinControl
-                prefix={prefix}
-                canChangeJoin={canChangeJoin}
-                condition={condition}
-                onChange={onChange}
-            />
-            <div className={`${compact ? "flex min-w-0 flex-1 flex-wrap items-center gap-2" : `grid min-w-0 gap-1 ${editorMode ? "grid-cols-[minmax(104px,150px)_auto_minmax(0,1fr)]" : "grid-cols-[1fr_auto_1fr]"}`}`}>
-                {editorMode ? (isAlways ? <span className="flex min-h-8 min-w-0 items-center rounded border border-border-lo bg-zinc-950 px-2 font-mono text-[9px] text-cyan-100">ALWAYS</span> : <ConditionOperandInput
-                    label="Variable"
-                    disabled={disabled}
-                    connectedLabel={operandOneConnectionLabel}
-                    selected={connecting?.targetId === operandOnePortId && connecting.port === "operand-1"}
-                    allowKindChange
-                    onSelect={() => onSelectOperand?.(1)}
-                    onDisconnect={() => onDisconnectOperand?.(1)}
-                    ariaLabel="Left condition input"
-                />) : <SearchablePicker
-                    value={isAlways ? "always" : leftDefinition.id}
-                    onChange={changeLeft}
-                    options={[{ id: "always", label: "ALWAYS" }, ...variables]}
-                    placeholder="Search conditionals..."
-                    compact={compact}
-                />}
-                {!isAlways && selectionField && (
-                    <select
-                        aria-label={selectionLabel}
-                        value={selectionOptions.some((option) => option.id === condition[selectionField]) ? condition[selectionField] : selectionOptions[0]?.id ?? ""}
-                        onChange={(event) => onChange({ ...condition, [selectionField]: event.target.value })}
-                        className="h-8 min-w-36 rounded border border-border-lo bg-zinc-950 px-1 font-mono text-[9px] text-ink-white"
-                    >
-                        {selectionOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-                    </select>
-                )}
-                {!isAlways && (leftDefinition.rangeOnly ? (
-                    <span className="flex h-8 items-center rounded border border-border-lo bg-zinc-950 px-2 font-mono text-[9px] text-ink-muted">BETWEEN</span>
-                ) : valueType === "boolean" ? (
-                    <span className="flex h-8 items-center rounded border border-border-lo bg-zinc-950 px-2 font-mono text-[9px] text-ink-muted">IS</span>
-                ) : editorMode && comparator === "modulo" ? (
-                    <span className="code-condition-modulo-symbol" aria-label="Modulo">%</span>
-                ) : (
-                    <select
-                        value={comparator}
-                        onChange={(event) => changeComparator(event.target.value)}
-                        className="h-8 rounded border border-border-lo bg-zinc-950 px-1 font-mono text-[9px] text-ink-white"
-                    >
-                        {comparators.map((candidate) => (
-                            <option key={candidate.id} value={candidate.id}>{candidate.label}</option>
-                        ))}
-                    </select>
-                ))}
-                {!isAlways && (leftDefinition.rangeOnly ? (
-                    <div className="flex min-w-0 items-center gap-1">
-                        <DeferredNumberInput
-                            aria-label="Minimum target direction"
-                            min={leftDefinition.min}
-                            max={leftDefinition.max}
-                            step={1}
-                            value={condition.right?.min ?? leftDefinition.defaultMin}
-                            fallback={leftDefinition.defaultMin}
-                            onCommit={(min) => onChange({ ...condition, comparator: "range", right: { type: "range", min, max: condition.right?.max ?? leftDefinition.defaultMax } })}
-                            className="h-8 min-w-0 flex-1 rounded border border-border-lo bg-zinc-950 px-1 font-mono text-[9px] text-ink-white"
-                        />
-                        <span className="font-mono text-[9px] text-ink-muted">° TO</span>
-                        <DeferredNumberInput
-                            aria-label="Maximum target direction"
-                            min={leftDefinition.min}
-                            max={leftDefinition.max}
-                            step={1}
-                            value={condition.right?.max ?? leftDefinition.defaultMax}
-                            fallback={leftDefinition.defaultMax}
-                            onCommit={(max) => onChange({ ...condition, comparator: "range", right: { type: "range", min: condition.right?.min ?? leftDefinition.defaultMin, max } })}
-                            className="h-8 min-w-0 flex-1 rounded border border-border-lo bg-zinc-950 px-1 font-mono text-[9px] text-ink-white"
-                        />
-                        <span className="font-mono text-[9px] text-ink-muted">°</span>
-                    </div>
-                ) : valueType === "boolean" ? (
-                    <select
-                        value={String(condition.right?.value ?? true)}
-                        onChange={(event) => onChange({
-                            ...condition,
-                            comparator: "eq",
-                            right: { type: "boolean", value: event.target.value === "true" },
-                        })}
-                        className={`h-8 rounded border border-border-lo bg-zinc-950 px-1 font-mono text-[9px] text-ink-white ${compact ? "w-16 shrink-0" : "min-w-0"}`}
-                    >
-                        <option value="true">TRUE</option>
-                        <option value="false">FALSE</option>
-                    </select>
-                ) : comparator === "modulo" ? (
-                    editorMode ? <div className="code-condition-modulo-inputs">
-                        <ConditionOperandInput
-                            kind="number"
-                            disabled={disabled}
-                            numberValue={moduloDivisor}
-                            numberFallback={1}
-                            numberRoundDown
-                            numberIntegerOnly
-                            onNumberCommit={(divisor) => onChange({ ...condition, modulo: { ...condition.modulo, divisor } })}
-                            ariaLabel="Modulo divisor"
-                        />
-                        <select
-                            aria-label="Modulo comparison operator"
-                            value={moduloComparator}
-                            onChange={(event) => onChange({ ...condition, modulo: { ...condition.modulo, comparator: event.target.value } })}
-                            className="code-condition-modulo-comparator"
-                        >
-                            {moduloComparators.map((candidate) => (
-                                <option key={candidate.id} value={candidate.id}>{candidate.label}</option>
-                            ))}
-                        </select>
-                        <ConditionOperandInput
-                            kind={condition.right?.type === "variable" ? "variable" : "number"}
-                            disabled={disabled}
-                            connectedLabel={operandTwoConnectionLabel}
-                            selected={connecting?.targetId === operandTwoPortId && connecting.port === "operand-2"}
-                            allowNumber={canUseVariableOperand}
-                            numberValue={condition.right?.value ?? 0}
-                            numberFallback={0}
-                            numberRoundDown
-                            numberIntegerOnly
-                            onNumberCommit={(value) => onChange({ ...condition, right: { type: "number", value } })}
-                            onKindChange={changeRightType}
-                            onSelect={() => onSelectOperand?.(2)}
-                            onDisconnect={() => onDisconnectOperand?.(2)}
-                            ariaLabel="Modulo expected value"
-                        />
-                        {Number(moduloDivisor) === 0 && <span role="alert" className="col-span-3 font-mono text-[9px] text-red-300">MODULO VALUE CANNOT BE 0</span>}
-                    </div> : <div className="col-span-3 flex min-w-0 flex-wrap items-center gap-1">
-                        <label className="flex h-8 items-center gap-1 rounded border border-border-lo bg-zinc-950 px-1 font-mono text-[9px] text-ink-muted">
-                            DIVISOR
-                            <DeferredNumberInput
-                                aria-label="Modulo divisor"
-                                min={CUSTOM_INTEGER_MIN}
-                                max={CUSTOM_INTEGER_MAX}
-                                value={moduloDivisor}
-                                fallback={1}
-                                roundDown
-                                integerOnly
-                                onCommit={(divisor) => onChange({ ...condition, modulo: { ...condition.modulo, divisor } })}
-                                className="h-7 w-16 min-w-0 bg-transparent px-1 text-right text-ink-white outline-none"
-                            />
-                        </label>
-                        <select
-                            aria-label="Modulo comparison operator"
-                            value={moduloComparator}
-                            onChange={(event) => onChange({ ...condition, modulo: { ...condition.modulo, comparator: event.target.value } })}
-                            className="h-8 rounded border border-border-lo bg-zinc-950 px-1 font-mono text-[9px] text-ink-white"
-                        >
-                            {moduloComparators.map((candidate) => (
-                                <option key={candidate.id} value={candidate.id}>{candidate.label}</option>
-                            ))}
-                        </select>
-                        <select
-                            aria-label="Modulo expected value type"
-                            value={condition.right?.type === "variable" ? "variable" : "number"}
-                            onChange={(event) => changeRightType(event.target.value)}
-                            className="h-8 w-16 rounded border border-border-lo bg-zinc-950 px-1 font-mono text-[9px] text-ink-white"
-                        >
-                            <option value="number">#</option>
-                            {canUseVariableOperand && <option value="variable">VAR</option>}
-                        </select>
-                        {condition.right?.type === "variable" ? <SearchablePicker
-                            value={rightVariableDefinition?.id ?? numericVariables[0]?.id}
-                            onChange={(value) => onChange({ ...condition, right: { type: "variable", value } })}
-                            options={numericVariables}
-                            placeholder="Search variables..."
-                            compact={compact}
-                        /> : <DeferredNumberInput
-                            aria-label="Modulo expected result"
-                            min={CUSTOM_INTEGER_MIN}
-                            max={CUSTOM_INTEGER_MAX}
-                            step={1}
-                            roundDown
-                            integerOnly
-                            value={condition.right?.value ?? 0}
-                            fallback={0}
-                            onCommit={(value) => onChange({ ...condition, right: { type: "number", value } })}
-                            className="h-8 min-w-16 flex-1 rounded border border-border-lo bg-zinc-950 px-1 font-mono text-[9px] text-ink-white"
-                        />}
-                        {Number(moduloDivisor) === 0 && <span role="alert" className="basis-full font-mono text-[9px] text-red-300">DIVISOR CANNOT BE 0</span>}
-                    </div>
-                ) : editorMode ? (
-                    <ConditionOperandInput
-                        kind={condition.right?.type === "variable" ? "variable" : "number"}
-                        disabled={disabled}
-                        connectedLabel={operandTwoConnectionLabel}
-                        selected={connecting?.targetId === operandTwoPortId && connecting.port === "operand-2"}
-                        allowNumber={canUseVariableOperand}
-                        numberValue={condition.right?.value ?? leftDefinition.defaultValue}
-                        numberMin={leftDefinition.min ?? CUSTOM_INTEGER_MIN}
-                        numberMax={leftDefinition.max ?? CUSTOM_INTEGER_MAX}
-                        numberStep={leftDefinition.step ?? 1}
-                        numberFallback={leftDefinition.defaultValue}
-                        onNumberCommit={(value) => onChange({ ...condition, right: { type: "number", value } })}
-                        onKindChange={changeRightType}
-                        onSelect={() => onSelectOperand?.(2)}
-                        onDisconnect={() => onDisconnectOperand?.(2)}
-                        ariaLabel="Right condition input"
-                    />
-                ) : (
-                    <div className="flex min-w-0 gap-1">
-                        <select
-                            value={condition.right?.type === "variable" ? "variable" : "number"}
-                            onChange={(event) => changeRightType(event.target.value)}
-                            className="h-8 w-16 rounded border border-border-lo bg-zinc-950 px-1 font-mono text-[9px] text-ink-white"
-                        >
-                            <option value="number">#</option>
-                            {canUseVariableOperand && <option value="variable">VAR</option>}
-                        </select>
-                        {condition.right?.type === "variable" ? <SearchablePicker
-                            value={rightVariableDefinition?.id ?? numericVariables[0]?.id}
-                            onChange={(value) => onChange({
-                                ...condition,
-                                right: { type: "variable", value },
-                            })}
-                            options={numericVariables}
-                            placeholder="Search variables..."
-                        /> : <div className="flex min-w-0 flex-1 items-center gap-1">
-                            <DeferredNumberInput
-                                min={leftDefinition.min ?? CUSTOM_INTEGER_MIN}
-                                max={leftDefinition.max ?? CUSTOM_INTEGER_MAX}
-                                step={leftDefinition.step ?? 1}
-                                value={condition.right?.value ?? leftDefinition.defaultValue}
-                                fallback={leftDefinition.defaultValue}
-                                onCommit={(value) => onChange({ ...condition, right: { type: "number", value } })}
-                                className="h-8 min-w-0 flex-1 rounded border border-border-lo bg-zinc-950 px-1 font-mono text-[9px] text-ink-white"
-                            />
-                            {leftDefinition.suffix && <span className="font-mono text-[9px] text-ink-muted">{leftDefinition.suffix}</span>}
-                        </div>}
-                    </div>
-                ))}
-                {!editorMode && !isAlways && leftDefinition.supportsTarget && (
-                    <label className="col-span-3 grid grid-cols-[72px_1fr] items-center gap-1 font-mono text-[9px] text-ink-muted">
-                        <span>LEFT TARGET</span>
-                        <OrderedTargetPicker value={selectedTargetFor(leftDefinition, "leftTarget")} targetTypes={targetOptionsFor(leftDefinition)} onChange={(leftTarget) => onChange({ ...condition, leftTarget })} />
-                    </label>
-                )}
-                {!editorMode && !isAlways && rightVariableDefinition?.supportsTarget && (
-                    <label className="col-span-3 grid grid-cols-[72px_1fr] items-center gap-1 font-mono text-[9px] text-ink-muted">
-                        <span>RIGHT TARGET</span>
-                        <OrderedTargetPicker value={selectedTargetFor(rightVariableDefinition, "rightTarget")} targetTypes={targetOptionsFor(rightVariableDefinition)} onChange={(rightTarget) => onChange({ ...condition, rightTarget })} />
-                    </label>
-                )}
-            </div>
-            {removable ? <button type="button" onClick={onRemove} className="text-red-300">x</button> : <span />}
-        </div>
-    );
-}
-
-function ConditionJoinControl({ prefix, canChangeJoin, condition, onChange }) {
-    if (!canChangeJoin) {
-        return <span data-node-drag-ignore="true" className="code-condition-prefix font-mono text-[9px] text-amber-200">{prefix}</span>;
-    }
-    return (
-        <select
-            data-node-drag-ignore="true"
-            value={condition.join === "or" ? "or" : "and"}
-            onChange={(event) => onChange({
-                ...condition,
-                ...(event.target.value === "or" ? { join: "or" } : { join: undefined }),
-            })}
-            className="h-8 rounded border border-border-lo bg-zinc-950 px-0.5 font-mono text-[8px] text-amber-200"
-        >
-            <option value="and">AND</option>
-            <option value="or">OR</option>
-        </select>
-    );
-}
-
-function sanitizeConfigurationConditions(configuration, conditionTypes, defaultCondition) {
+function sanitizeConfigurationConditions(configuration, conditionTypes, defaultCondition, targetTypes = null, stateVariables = STATE_VARIABLES) {
     const allowedIds = new Set(conditionTypes.map((condition) => condition.id));
     const sanitizeConditions = (conditions) => {
         if (!Array.isArray(conditions)) return conditions;
         let changed = false;
         const nextConditions = conditions.map((condition) => {
             if (condition?.type === "expression") {
-                return condition;
+                const leftDefinition = stateVariables.find((variable) => variable.id === condition.left)
+                    ?? STATE_VARIABLES.find((variable) => variable.id === condition.left);
+                const rightDefinition = condition.right?.type === "variable"
+                    ? stateVariables.find((variable) => variable.id === condition.right.value)
+                        ?? STATE_VARIABLES.find((variable) => variable.id === condition.right.value)
+                    : null;
+                let nextCondition = normalizeConditionSelections(condition, leftDefinition, rightDefinition);
+                if (leftDefinition?.supportsTarget) {
+                    nextCondition = sanitizeExpressionTarget(nextCondition, "leftTarget", leftDefinition, targetTypes);
+                }
+                if (rightDefinition?.supportsTarget) {
+                    nextCondition = sanitizeExpressionTarget(nextCondition, "rightTarget", rightDefinition, targetTypes);
+                }
+                changed ||= nextCondition !== condition;
+                return nextCondition;
             }
             if (allowedIds.has(condition?.type)) return condition;
             changed = true;
-            return createDefaultCondition(defaultCondition);
+            return createDefaultCondition(defaultCondition, targetTypes);
         });
         return changed ? nextConditions : conditions;
     };
@@ -1007,6 +910,20 @@ function sanitizeConfigurationConditions(configuration, conditionTypes, defaultC
     return changed ? { ...configuration, roots: roots } : configuration;
 }
 
+function sanitizeExpressionTarget(condition, field, definition, targetTypes) {
+    if (!Array.isArray(targetTypes)) return condition;
+    const options = targetOptionsForDefinition(definition, targetTypes);
+    if (!options.length) return condition;
+    const requested = condition[field] ?? condition.target;
+    const baseRequested = String(requested ?? "").split(":")[0];
+    if (options.some((target) => target.id === baseRequested)) {
+        const normalized = definition.targetOrderable === false ? baseRequested : requested;
+        return normalized === condition[field] ? condition : { ...condition, [field]: normalized };
+    }
+    const fallback = options.find((target) => target.kind === "entity")?.id ?? options[0]?.id;
+    return fallback && fallback !== condition[field] ? { ...condition, [field]: fallback } : condition;
+}
+
 function ScoreBox({ label, value, tone }) {
     const color = tone === "red" ? "text-[#ff7166]" : "text-[#57b8ff]";
     return (
@@ -1027,12 +944,12 @@ function ToolIcon({ name }) {
 
 function ControlButton({ children, icon, label, onClick, disabled, tone = "neutral", className = "" }) {
     const tones = {
-        neutral: "border-slate-600/70 bg-slate-950/25 text-slate-300 hover:border-slate-500 hover:bg-slate-800/60 hover:text-white",
-        blue: "border-blue-700/60 bg-blue-950/25 text-blue-300 hover:bg-blue-900/40",
-        green: "border-emerald-700/60 bg-emerald-950/25 text-emerald-300 hover:bg-emerald-900/35",
-        red: "border-red-700/60 bg-red-950/25 text-red-300 hover:bg-red-900/35",
-        violet: "border-violet-700/60 bg-violet-950/25 text-violet-300 hover:bg-violet-900/35",
-        amber: "border-amber-700/60 bg-amber-950/25 text-amber-300 hover:bg-amber-900/35",
+        neutral: "arena-toolbar-button--neutral",
+        blue: "arena-toolbar-button--blue",
+        green: "arena-toolbar-button--green",
+        red: "arena-toolbar-button--red",
+        violet: "arena-toolbar-button--violet",
+        amber: "arena-toolbar-button--amber",
     };
     const accessibleLabel = label ?? (typeof children === "string" || typeof children === "number" ? String(children) : "Tool");
     return (
@@ -1042,7 +959,7 @@ function ControlButton({ children, icon, label, onClick, disabled, tone = "neutr
             title={accessibleLabel}
             onClick={onClick}
             disabled={disabled}
-            className={`font-display-action flex min-h-11 w-56 items-center justify-center gap-2 whitespace-nowrap rounded-lg border px-3 py-2 text-base shadow-[0_5px_15px_rgba(0,0,0,.12)] transition disabled:cursor-not-allowed disabled:opacity-30 ${tones[tone] ?? tones.neutral} ${className}`}
+            className={`arena-toolbar-button ${tones[tone] ?? tones.neutral} ${className}`}
         >
             {icon && <ToolIcon name={icon} />}<span>{children}</span>
         </button>
@@ -1062,35 +979,29 @@ function CodeTab({ active, onClick, children }) {
 }
 
 function countActions(configuration) {
-    return (configuration.roots ?? []).reduce((total, root) => total + countTreeBranches(root.branches), 0);
+    return countActionSlots(configuration);
 }
 
 function countLogicConditions(configuration) {
     return countConditionSlots(configuration);
 }
 
-function countTreeBranches(branches = []) {
-    return branches.reduce((total, branch) => {
-        const actions = Array.isArray(branch.actions) && branch.actions.length ? branch.actions : [branch];
-        return total + actions.filter((entry) => entry.action !== "none").length + countTreeBranches(branch.children);
-    }, 0);
-}
-
-function createDefaultCondition(definition) {
+function createDefaultCondition(definition, targetTypes = TARGET_TYPES) {
     if (definition.id === "expression") {
         return createExpressionCondition("target.distance");
     }
     return {
         type: definition.id,
         ...(definition.requiresValue ? { value: definition.defaultValue } : {}),
-        ...(definition.supportsTarget ? { target: definition.defaultTarget ?? "opponent" } : {}),
+        ...(definition.supportsTarget ? { target: defaultTargetForVariable(definition, targetTypes) } : {}),
     };
 }
 
 function abilityIdsForConfiguration(configuration) {
     const encoded = String(configuration);
-    return encoded.startsWith("sandbox:") ? new Set(decodeSandboxLoadout(encoded).abilities)
-        : encoded.startsWith("custom:") ? new Set(decodeBotLoadout(encoded).abilities) : new Set();
+    const selected = encoded.startsWith("sandbox:") ? decodeSandboxLoadout(encoded).abilities
+        : encoded.startsWith("custom:") ? decodeBotLoadout(encoded).abilities : [];
+    return new Set([...STANDARD_ABILITY_IDS, ...selected]);
 }
 
 function targetTypesForLoadouts(ownLoadout, opponentLoadout) {
@@ -1102,23 +1013,19 @@ function targetTypesForLoadouts(ownLoadout, opponentLoadout) {
         });
 }
 
-function OrderedTargetPicker({ value = "opponent", targetTypes = TARGET_TYPES, onChange }) {
+function OrderedTargetPicker({ value = "opponent", targetTypes = TARGET_TYPES, disabled = false, allowOrdering = true, onChange }) {
     const [baseValue, encodedOrder, encodedOrdinal] = String(value).split(":");
     const base = targetTypes.some((target) => target.id === baseValue) ? baseValue : targetTypes[0]?.id ?? "opponent";
     const order = ["closest", "farthest", "oldest", "newest"].includes(encodedOrder) ? encodedOrder : "closest";
     const ordinal = Math.max(1, Math.min(100, Number(encodedOrdinal) || 1));
-    const ordered = base !== "opponent";
-    const encode = (nextBase, nextOrder = order, nextOrdinal = ordinal) => nextBase === "opponent"
-        ? "opponent"
+    const ordered = allowOrdering && base !== "opponent";
+    const encode = (nextBase, nextOrder = order, nextOrdinal = ordinal) => !allowOrdering || nextBase === "opponent"
+        ? nextBase
         : `${nextBase}:${nextOrder}:${Math.max(1, Math.min(100, Number(nextOrdinal) || 1))}`;
     return <div className={`grid gap-1 ${ordered ? "grid-cols-[minmax(0,1fr)_6rem_4rem]" : "grid-cols-1"}`}>
-        <select value={base} onChange={(event) => onChange(encode(event.target.value))} className="h-8 min-w-0 rounded border border-border-lo bg-zinc-950 px-1 font-mono text-[9px] text-ink-white">
-            {targetTypes.map((target) => <option key={target.id} value={target.id}>{target.label.replace(/^Closest /, "")}</option>)}
-        </select>
-        {ordered && <select aria-label="Target ordering" value={order} onChange={(event) => onChange(encode(base, event.target.value))} className="h-8 rounded border border-border-lo bg-zinc-950 px-1 font-mono text-[9px] text-ink-white">
-            <option value="closest">Closest</option><option value="farthest">Farthest</option><option value="oldest">Oldest</option><option value="newest">Newest</option>
-        </select>}
-        {ordered && <DeferredNumberInput aria-label="Target ordinal" min={1} max={100} value={ordinal} fallback={1} onCommit={(value) => onChange(encode(base, order, value))} className="h-8 rounded border border-border-lo bg-zinc-950 px-1 font-mono text-[9px] text-ink-white" />}
+        <select disabled={disabled} value={base} onChange={(event) => onChange(encode(event.target.value))} className="h-8 min-w-0 rounded border border-border-lo bg-zinc-950 px-1 font-mono text-[9px] text-ink-white">{targetTypes.map((target) => <option key={target.id} value={target.id}>{target.label.replace(/^Closest /, "")}</option>)}</select>
+        {ordered && <select disabled={disabled} aria-label="Target ordering" value={order} onChange={(event) => onChange(encode(base, event.target.value))} className="h-8 rounded border border-border-lo bg-zinc-950 px-1 font-mono text-[9px] text-ink-white"><option value="closest">Closest</option><option value="farthest">Farthest</option><option value="oldest">Oldest</option><option value="newest">Newest</option></select>}
+        {ordered && <DeferredNumberInput disabled={disabled} aria-label="Target ordinal" min={1} max={100} value={ordinal} fallback={1} onCommit={(value) => onChange(encode(base, order, value))} className="h-8 rounded border border-border-lo bg-zinc-950 px-1 font-mono text-[9px] text-ink-white" />}
     </div>;
 }
 
@@ -1139,17 +1046,7 @@ function formatOrdinal(value) {
 }
 
 function formatMovementTargetLabel(direction, targetLabel) {
-    const directionPhrase = {
-        toward: "Toward",
-        away: "Away From",
-        left: "Left of",
-        right: "Right of",
-        toward_left: "Toward + Left of",
-        toward_right: "Toward + Right of",
-        away_left: "Away + Left of",
-        away_right: "Away + Right of",
-    }[direction] ?? "Toward";
-    return `${directionPhrase} ${targetLabel}`;
+    return String(relativeMovementAngle(direction)) + " deg from " + targetLabel;
 }
 
 function formatActionNodeLabel(label) {
@@ -1165,6 +1062,31 @@ function objectTargetTypes(targetTypes = TARGET_TYPES) {
         target.id.startsWith("object_")
         || /^p[12]_object_[1-6]$/.test(target.id)
     ));
+}
+
+function targetOptionsForDefinition(definition, targetTypes = TARGET_TYPES) {
+    const scoped = definition?.botTargetOnly
+        ? targetTypes.filter((target) => target.id === "opponent")
+        : definition?.targetGroup === "objects"
+            ? objectTargetTypes(targetTypes)
+            : targetTypes;
+    if (definition?.targetCapability === TARGET_CAPABILITIES.HEALTH) return scoped.filter((target) => target.healthBearing);
+    return scoped;
+}
+
+function selectedAbilityOptionValue(value, options = []) {
+    const selected = abilityIdFromBoundary(value);
+    return options.some((option) => option.id === selected) ? selected : options[0]?.id ?? "";
+}
+
+function selectedStatusOptionValue(value, options = []) {
+    const selected = String(value ?? "").trim().toLowerCase();
+    return options.find((option) => option.id === selected || option.label.toLowerCase() === selected)?.id
+        ?? options[0]?.id ?? "";
+}
+
+function normalizeStatusEffectSelection(value, options = []) {
+    return selectedStatusOptionValue(value, options);
 }
 
 function formatClock(value) {
@@ -1187,8 +1109,11 @@ export {
     addGraphAction,
     NodeKindPicker,
     VariableOperandPicker,
+    variableActionTerms,
     ConditionalOperandBox,
+    ActionVariableInspector,
     GraphConditionNode,
+    PuzzleConditionNode,
     GraphActionNode,
     LogicNodeInspector,
     conditionGraphNodeId,
@@ -1196,7 +1121,6 @@ export {
     graphEdgePath,
     newTreeBranch,
     nextBranchOrder,
-    ConditionEditor,
     countActions,
     countLogicConditions,
     abilityIdsForConfiguration,

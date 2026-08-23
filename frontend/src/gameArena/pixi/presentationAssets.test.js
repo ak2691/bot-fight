@@ -10,6 +10,10 @@ import { compassDegreesToRadians } from "../botlogic/planner/arenaAngles.js";
 
 const CROSSHAIR_PATH = fileURLToPath(new URL("../../assets/arena/abilities/support/crosshair.png", import.meta.url));
 const PIXI_CANVAS_PATH = fileURLToPath(new URL("./PixiCanvas.jsx", import.meta.url));
+const PIXI_APPLICATION_PATH = fileURLToPath(new URL("./pixiApplication.js", import.meta.url));
+const PRESENTATION_ASSET_HOOK_PATH = fileURLToPath(new URL("./useArenaPresentationAssets.js", import.meta.url));
+const PRESENTATION_ASSET_PROVIDER_PATH = fileURLToPath(new URL("./ArenaPresentationAssetsProvider.jsx", import.meta.url));
+const PROTECTED_ROUTE_PATH = fileURLToPath(new URL("../../auth/ProtectedRoute.jsx", import.meta.url));
 
 function closeTo(actual, expected) {
     assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} !== ${expected}`);
@@ -74,4 +78,66 @@ test("Lock On uses the supplied white crosshair and hides the marker when its ac
     assert.match(source, /crosshair\.tint = 0xffffff/);
     assert.doesNotMatch(source, /halo\.circle/);
     assert.doesNotMatch(source, /LOCK_ON_PRESENTATION\.accentColor/);
+});
+
+test("Overclock uses the emerald clock status icon above the bot name", () => {
+    const source = readFileSync(PIXI_CANVAS_PATH, "utf8");
+    assert.match(source, /OVERCLOCK: \{ foreground: 0xa7f3d0, background: 0x022c22, border: 0x34d399 \}/);
+    assert.match(source, /status === "OVERCLOCK"/);
+    assert.match(source, /graphics\.circle\(x, y, 8\.5\)\.stroke\(\{ color, width: 1\.8 \}\)/);
+    assert.match(source, /graphics\.moveTo\(x, y - 5\)\.lineTo\(x, y\)\.lineTo\(x \+ 3\.5, y \+ 2\)/);
+});
+
+test("PixiCanvas consumes the shared application instead of owning a second asset loader", () => {
+    const source = readFileSync(PIXI_CANVAS_PATH, "utf8");
+    assert.match(source, /import ArenaLoadingScreen from ["']\.\.\/\.\.\/components\/ArenaLoadingScreen\.jsx["']/);
+    assert.match(source, /acquirePixiApplication/);
+    assert.match(source, /attachPixiApplication/);
+    assert.match(source, /releasePixiApplication/);
+    assert.match(source, /const \[arenaReady, setArenaReady\] = useState\(false\)/);
+    assert.match(source, /!arenaReady && !assetError && <ArenaLoadingScreen overlay label="Loading arena\.\.\." \/>/);
+    assert.doesNotMatch(source, /Loading assets\.\.\./);
+});
+
+test("Pixi warmup renders into a disposable target instead of the visible canvas", () => {
+    const source = readFileSync(PIXI_APPLICATION_PATH, "utf8");
+    assert.match(source, /RenderTexture\.create\(\{ width: 1, height: 1 \}\)/);
+    assert.match(source, /target: warmupTexture/);
+    assert.match(source, /warmupTexture\.destroy\(true\)/);
+});
+
+test("Pixi modules stay out of login until the authenticated asset gate starts", () => {
+    const hookSource = readFileSync(PRESENTATION_ASSET_HOOK_PATH, "utf8");
+    const providerSource = readFileSync(PRESENTATION_ASSET_PROVIDER_PATH, "utf8");
+    const protectedRouteSource = readFileSync(PROTECTED_ROUTE_PATH, "utf8");
+    assert.doesNotMatch(hookSource, /from ["']\.\/arenaPresentationAssets\.js["']/);
+    assert.doesNotMatch(hookSource, /from ["']\.\/pixiApplication\.js["']/);
+    assert.match(hookSource, /import\("\.\/arenaPresentationAssets\.js"\)/);
+    assert.match(hookSource, /import\("\.\/pixiApplication\.js"\)/);
+    assert.match(providerSource, /useArenaPresentationAssets\(\{ enabled: isAuthenticated && !isLoading \}\)/);
+    assert.doesNotMatch(providerSource, /showDetailedProgress/);
+    assert.match(protectedRouteSource, /useArenaPresentationAssetsContext/);
+    assert.doesNotMatch(protectedRouteSource, /AssetsLoadingScreen/);
+    assert.doesNotMatch(protectedRouteSource, /assets\.showDetailedProgress/);
+    assert.match(protectedRouteSource, /isArenaPresentationGateReady/);
+    assert.match(protectedRouteSource, /Initializing game renderer\.\.\./);
+    assert.doesNotMatch(protectedRouteSource, /Preparing ability icons\.\.\./);
+    assert.match(protectedRouteSource, /onRetry=\{assets\.error \? assets\.retry : null\}/);
+});
+
+test("asset preload completion keeps the owner state instead of storing the texture catalogue", () => {
+    const hookSource = readFileSync(PRESENTATION_ASSET_HOOK_PATH, "utf8");
+    assert.doesNotMatch(hookSource, /assetsPromise\.then\(update,\s*update\)/);
+    assert.match(hookSource, /update\(assetsApi\.getArenaPresentationAssetsState\(\)\)/);
+});
+
+test("asset decoding, Pixi initialization, and route preloading start concurrently", () => {
+    const hookSource = readFileSync(PRESENTATION_ASSET_HOOK_PATH, "utf8");
+    assert.match(hookSource, /startPixiPreload\(assetsPromise, active,/);
+    assert.match(hookSource, /Promise\.all\(\[cataloguePromise, pixiPromise\]\)/);
+    assert.match(hookSource, /rendererReady/);
+    assert.match(hookSource, /gpuWarmupReady/);
+    assert.match(hookSource, /backgroundError/);
+    assert.doesNotMatch(hookSource, /preloadAbilityCatalogueIcons|iconsReady|iconsError/);
+    assert.doesNotMatch(hookSource, /assetsPromise\.then\(async \(catalogue\)/);
 });

@@ -1,5 +1,6 @@
 package com.example.botfight.DTO;
 
+import com.example.botfight.simulation.core.state.StatusEffectState;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -38,16 +39,11 @@ public record MatchPlaybackDTO(
             double x,
             double y,
             double rotation,
-            int hp,
-            int maxHp,
+            double hp,
+            double maxHp,
             String combatLoadout,
             List<Integer> abilities,
-            int shieldHp,
-            int slowedMs,
-            int stunnedMs,
-            int silencedMs,
-            int shockRemainingMs,
-            int movementLockMs,
+            List<StatusEffectState> statusEffects,
             Map<Integer, Integer> abilityCooldowns,
             Map<Integer, Integer> abilityActiveMs,
             Map<Integer, Integer> abilityCharges,
@@ -55,12 +51,11 @@ public record MatchPlaybackDTO(
             Integer triggeredAbility,
             Integer preparingAbility,
             int preparingMs,
-            int burnRemainingMs,
-            int bleedRemainingMs,
             int temporalRewindMs,
             double temporalRewindX,
             double temporalRewindY,
-            int temporalRewindPulseMs) {
+            int temporalRewindPulseMs,
+            int closingZoneDamageCount) {
     }
 
     public record ArenaEntityDTO(

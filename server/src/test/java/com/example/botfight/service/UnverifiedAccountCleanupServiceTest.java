@@ -1,5 +1,7 @@
 package com.example.botfight.service;
 
+import com.example.botfight.service.auth.UnverifiedAccountCleanupService;
+
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;

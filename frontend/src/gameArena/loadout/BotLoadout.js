@@ -1,85 +1,145 @@
 import { ABILITY_STATS, abilityStats } from "../gameconfig/Abilities.js";
 import { abilityIdentity } from "../gameconfig/AbilityRegistry.js";
 import { abilityIdFromBoundary } from "../gameconfig/AbilityCompatibility.js";
-import { abilityContract } from "../gameconfig/AbilityContracts.js";
+import { abilityContract, DELIVERY_TYPES, EFFECT_TYPES } from "../gameconfig/AbilityContracts.js";
+import { entityContractForAbility } from "../ecs/contracts/EntityContracts.js";
 
 export { ABILITY_STATS };
 
 export const BASE_BOT_STATS = Object.freeze({
-    maxHp: 100,
+    maxHp: 150,
     moveSpeed: 8,
     attackDamagePercent: 100,
     attackSpeedPercent: 100,
 });
 
-export const STAT_POINT_BUDGET_PER_ROUND = 4;
-export const MAX_MATCH_STAT_POINTS = 12;
 export const MAX_EQUIPPED_ABILITIES = 6;
 export const ROUND_ABILITY_DRAFT = Object.freeze({
     1: Object.freeze({ offered: 6, picks: 3 }),
     2: Object.freeze({ offered: 4, picks: 2 }),
     3: Object.freeze({ offered: 3, picks: 1 }),
 });
-export const SANDBOX_MAX_STAT_POINTS = 100;
 
 export const VISUAL_INTERPOLATION = Object.freeze({
     NONE: "none",
     LINEAR: "linear",
 });
 
+export const ABILITY_TAGS = Object.freeze({
+    CHARGES: "charges",
+    HP_CHARGES: "hp-charges",
+    AMMUNITION_CHARGES: "ammunition-charges",
+    STATUS_EFFECT: "status-effect",
+});
+
 const BOT_ABILITY_CATALOG = [
     { id: 1, round: 1, visualInterpolation: "none", summary: "Dependable 92-range sword sweep covering a 120° arc." },
-    { id: 2, round: 1, visualInterpolation: "none", summary: "Directional defense using rechargeable charges." },
     { id: 3, round: 1, visualInterpolation: "none", summary: "Hitscan fire with ammunition and distance falloff." },
     { id: 4, round: 1, visualInterpolation: "linear", summary: "A slowing explosive projectile." },
     { id: 5, round: 1, visualInterpolation: "linear", summary: "Charge-based projectile that burns its target." },
-    { id: 6, round: 1, visualInterpolation: "none", summary: "Visible short-range control cast." },
+    { id: 6, round: 2, visualInterpolation: "none", summary: "Visible short-range control cast." },
     { id: 7, round: 1, visualInterpolation: "none", summary: "Wind up a 30-damage, 115-range sword punish across a 150° arc that also causes bleed." },
-    { id: 8, round: 1, visualInterpolation: "none", summary: "Deal 20 damage and push nearby bots 250 units; blocking prevents only the damage." },
-    { id: 9, round: 1, visualInterpolation: "none", summary: "A blockable projectile that slows on hit." },
+    { id: 8, round: 2, visualInterpolation: "none", summary: "Deal 20 damage and push nearby bots 250 units." },
+    { id: 9, round: 1, visualInterpolation: "none", summary: "A projectile that slows on hit." },
     { id: 10, round: 1, visualInterpolation: "none", summary: "Channel briefly to restore 15 HP." },
     { id: 11, round: 1, visualInterpolation: "linear", summary: "Place one visible, destructible proximity trap." },
     { id: 12, round: 1, visualInterpolation: "none", summary: "Reliable 500-range low-damage hitscan shot." },
     { id: 13, round: 2, visualInterpolation: "none", summary: "Charge a visible 900-range, 40-damage beam that also shocks its target." },
-    { id: 14, round: 2, visualInterpolation: "linear", summary: "Deploy a deterministic pulling damage field." },
+    { id: 14, round: 2, visualInterpolation: "linear", summary: "Deploy a deterministic pulling damage zone." },
     { id: 15, round: 2, visualInterpolation: "linear", summary: "Prevent nearby enemies from starting abilities." },
     { id: 16, round: 2, visualInterpolation: "none", summary: "Reduce damage and retaliate up to three times." },
     { id: 17, round: 2, visualInterpolation: "linear", summary: "Deploy a targetable deterministic firing drone." },
     { id: 18, round: 2, visualInterpolation: "linear", summary: "Fast windburst projectile with 220 range, 15 damage, and 90 knockback." },
-    { id: 19, round: 0, visualInterpolation: "linear", standard: true, summary: "Standard one-charge 150-unit burst with a 1.5-second cooldown; aim it relative to a target or in an arena direction." },
+    { id: 19, round: 0, visualInterpolation: "linear", standard: true, summary: "Standard 150-unit burst with a 1.5-second cooldown; aim it relative to a target or in an arena direction." },
     { id: 20, round: 0, visualInterpolation: "none", standard: true, summary: "Standard targeting ability that prepares for 0.2 seconds, then faces the resolved target; 10-second cooldown." },
     { id: 21, round: 3, visualInterpolation: "none", summary: "Snapshot position and HP, then return to them after three seconds." },
-    { id: 22, round: 3, visualInterpolation: "none", summary: "Mark a visible zone that detonates after 1.5 seconds." },
+    { id: 22, round: 3, visualInterpolation: "none", summary: "Mark a visible zone that detonates every 0.5 seconds for 1.5 seconds." },
     { id: 23, round: 3, visualInterpolation: "none", summary: "Ignore all hostile damage, statuses, interrupts, and displacement for 1.5 seconds." },
-    { id: 24, round: 3, visualInterpolation: "none", summary: "Deploy an area where new abilities cannot begin." },
-    { id: 25, round: 3, visualInterpolation: "linear", summary: "Pass through the opponent and choose the landing facing inside the action." },
+    { id: 24, round: 3, visualInterpolation: "none", summary: "Deploy a zone where new abilities cannot begin." },
+    { id: 25, round: 2, visualInterpolation: "linear", summary: "Pass through the opponent and choose the landing facing inside the action." },
+    { id: 26, round: 1, visualInterpolation: "none", summary: "Burst in a 120-radius ring for 8 damage, a 1.5-second slow, and a 60-unit knockback." },
+    { id: 27, round: 3, visualInterpolation: "none", summary: "Mark a 280-unit zone that pulls nearby enemies before a single 35-to-15 damage detonation." },
+    { id: 28, round: 1, visualInterpolation: "linear", summary: "Launch a 450-range bolt that deals light damage, pulls once, and slows on contact." },
+    { id: 29, round: 1, visualInterpolation: "linear", summary: "Place a destructible 16-second snare with a 75-unit trigger radius. When triggered, it deals 15 damage, slows for 2.2 seconds, and interrupts; if an attack destroys it first, its second phase detonates in a larger 120-unit radius for 20 damage, a 3-second slow, and an interrupt." },
+    { id: 30, round: 2, visualInterpolation: "none", summary: "Charge a 600-range dart that deals 10 damage, interrupts, and slows." },
+    { id: 31, round: 2, visualInterpolation: "linear", summary: "Deploy a targetable five-second drone whose shots push enemies instead of stacking damage." },
+    { id: 32, round: 2, visualInterpolation: "none", summary: "Fire a 500-range lance for 15–25 damage with range falloff and recover the same amount as HP lifesteal." },
+    { id: 33, round: 3, visualInterpolation: "none", summary: "Reduce the starting cooldown or charge reload timer by 50% for four seconds on abilities activated while the buff is active; existing timers are unchanged." },
+    { id: 34, round: 0, standard: true, visualInterpolation: "none", summary: "A dependable 5-damage strike with an 80-unit range, 60° arc, and 0.5-second cooldown." },
 ];
 
-const ENTITY_CAPABILITIES = Object.freeze({
-    4: { entityType: "grenade", entityLabel: "Grenade", tags: ["projectile", "entity", "hittable"] },
-    5: { entityType: "fireball", entityLabel: "Fireball", tags: ["projectile", "entity", "hittable", "chainable"] },
-    9: { entityType: "concussive_shot", entityLabel: "Concussive Shot", tags: ["projectile", "entity", "hittable", "chainable"] },
-    11: { entityType: "proximity_mine", entityLabel: "Proximity Mine", tags: ["trap", "entity", "hittable", "chainable", "destructible"] },
-    14: { entityType: "gravity_field", entityLabel: "Gravity Field", tags: ["projectile", "zone", "entity"] },
-    15: { entityType: "silence_wave", entityLabel: "Silence Pulse", tags: ["projectile", "entity", "hittable", "chainable"] },
-    17: { entityType: "hunter_drone", entityLabel: "Hunter Drone", tags: ["summon", "entity", "hittable", "chainable", "destructible"] },
-    18: { entityType: "windburst_projectile", entityLabel: "Wind Burst", tags: ["projectile", "entity", "hittable"] },
-    21: { entityType: "temporal_rewind_zone", entityLabel: "Temporal Rewind Clock", tags: ["zone", "entity"] },
-    22: { entityType: "orbital_zone", entityLabel: "Orbital Strike Zone", tags: ["zone", "entity"] },
-    24: { entityType: "null_zone", entityLabel: "Null Zone", tags: ["zone", "entity"] },
+const DELIVERY_TAGS = Object.freeze({
+    [DELIVERY_TYPES.SELF]: "self",
+    [DELIVERY_TYPES.MELEE]: "melee",
+    [DELIVERY_TYPES.RAY]: "ray",
+    [DELIVERY_TYPES.PROJECTILE]: "projectile",
+    [DELIVERY_TYPES.RADIAL]: "radial",
+    [DELIVERY_TYPES.ZONE]: "zone",
+    [DELIVERY_TYPES.TRAP]: "trap",
+    [DELIVERY_TYPES.SUMMON]: "summon",
 });
+
+const CATALOGUE_ENTITY_TAGS = new Set(["zone", "trap", "summon"]);
+const STATUS_EFFECT_TYPES = new Set([EFFECT_TYPES.DEBUFF, EFFECT_TYPES.BUFF]);
+const POSITIVE_EFFECT_TYPES = new Set([
+    EFFECT_TYPES.BUFF,
+    EFFECT_TYPES.DAMAGE_REDUCTION,
+    EFFECT_TYPES.DAMAGE_IMMUNITY,
+    EFFECT_TYPES.DAMAGE_REFLECTION,
+]);
+
+function percent(value) {
+    const numeric = Number(value) * 100;
+    return `${Number.isInteger(numeric) ? numeric : numeric.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}%`;
+}
+
+function positiveEffectDetailsForEffects(effects) {
+    return Object.freeze((effects ?? [])
+        .filter((effect) => POSITIVE_EFFECT_TYPES.has(effect.type))
+        .map((effect) => {
+            if (effect.type === EFFECT_TYPES.DAMAGE_REDUCTION) {
+                return Object.freeze({ label: "Damage reduction", value: percent(1 - Number(effect.multiplier ?? effect.amount ?? 0)) });
+            }
+            if (effect.type === EFFECT_TYPES.DAMAGE_REFLECTION) {
+                return Object.freeze({ label: "Damage reflection", value: percent(effect.multiplier ?? effect.amount ?? 0) });
+            }
+            if (effect.type === EFFECT_TYPES.BUFF && effect.buff === "overclock") {
+                return Object.freeze({ label: "Cooldown recovery", value: percent(effect.amount ?? 0) });
+            }
+            return Object.freeze({ label: "Damage immunity", value: percent(effect.amount ?? 1) });
+        }));
+}
 
 function abilityCapabilities(ability) {
     const identity = abilityIdentity(ability.id);
     if (!identity) throw new Error(`Unknown ability in catalog: ${ability.id}`);
     const stats = abilityStats(identity.id) ?? {};
-    const entity = ENTITY_CAPABILITIES[identity.id] ?? {};
-    const tags = new Set([identity.type, ...(entity.tags ?? [])]);
+    const entity = entityContractForAbility(identity.id);
+    const entityMetadata = entity ? {
+        entityType: entity.entityType,
+        entityLabel: identity.label,
+        entityCategory: entity.category.toLocaleLowerCase(),
+    } : {};
+    const gameplay = abilityContract(ability.id);
+    const catalogueTags = new Set();
+    const deliveryTag = DELIVERY_TAGS[gameplay?.delivery?.type];
+    if (deliveryTag) catalogueTags.add(deliveryTag);
+    if (entityMetadata.entityCategory && CATALOGUE_ENTITY_TAGS.has(entityMetadata.entityCategory)) {
+        catalogueTags.add(entityMetadata.entityCategory);
+    }
+    const effects = gameplay?.effects ?? Object.freeze([]);
+    if (effects.some(isStatusEffect)) catalogueTags.add(ABILITY_TAGS.STATUS_EFFECT);
+    if (Number(stats.maxCharges) > 0) {
+        catalogueTags.add(ABILITY_TAGS.CHARGES);
+        catalogueTags.add(stats.chargeType === "hp"
+            ? ABILITY_TAGS.HP_CHARGES
+            : ABILITY_TAGS.AMMUNITION_CHARGES);
+    }
+    const tags = new Set([identity.type, ...catalogueTags]);
     if (stats.windupMs) tags.add("wind-up");
     if (stats.beam) tags.add("ray");
     if (stats.durationMs) tags.add("duration");
     tags.add(ability.visualInterpolation === VISUAL_INTERPOLATION.LINEAR ? "interpolated-visual" : "instant-visual");
-    const gameplay = abilityContract(ability.id);
     return Object.freeze({
         ...ability,
         id: identity.id,
@@ -87,24 +147,27 @@ function abilityCapabilities(ability) {
         name: identity.name,
         label: identity.label,
         kind: identity.type,
-        ...entity,
+        ...entityMetadata,
         stats: Object.freeze({ ...stats }),
         delivery: gameplay?.delivery ?? null,
-        effects: gameplay?.effects ?? Object.freeze([]),
+        effects,
         shieldInteraction: gameplay?.shieldInteraction ?? null,
+        catalogueTags: Object.freeze([...catalogueTags]),
+        buffDetails: positiveEffectDetailsForEffects(effects),
         tags: Object.freeze([...tags]),
     });
 }
 
 /** Full runtime metadata, including standard abilities that are not loadout choices. */
 export const ALL_ABILITY_DEFINITIONS = Object.freeze(BOT_ABILITY_CATALOG.map(abilityCapabilities));
-export const STANDARD_ABILITY_IDS = Object.freeze([19, 20]);
+export const STANDARD_ABILITY_IDS = Object.freeze([19, 20, 34]);
 const STANDARD_ABILITY_SET = new Set(STANDARD_ABILITY_IDS);
 /** Selectable/configurable ability catalog. Standard abilities are granted separately. */
 export const BOT_ABILITIES = Object.freeze(ALL_ABILITY_DEFINITIONS.filter(({ id }) => !STANDARD_ABILITY_SET.has(id)));
 export const SELECTABLE_BOT_ABILITIES = BOT_ABILITIES;
 
 const STATUS_EFFECT_LABELS = Object.freeze({
+    overclock: "Overclock",
     burn: "Burn",
     stun: "Stun",
     bleed: "Bleed",
@@ -115,18 +178,26 @@ const STATUS_EFFECT_LABELS = Object.freeze({
 
 export const STATUS_EFFECT_DEFINITIONS = Object.freeze([
     ...new Set(ALL_ABILITY_DEFINITIONS.flatMap((ability) => ability.effects
-        .filter((effect) => effect.type === "debuff" && STATUS_EFFECT_LABELS[effect.debuff])
-        .map((effect) => effect.debuff))),
+        .filter((effect) => isStatusEffect(effect) && STATUS_EFFECT_LABELS[statusEffectId(effect)])
+        .map(statusEffectId))),
 ].map((id) => Object.freeze({ id, label: STATUS_EFFECT_LABELS[id] })));
 
 export function statusEffectDefinitionsForAbilities(abilityIds) {
     const selected = abilityIds instanceof Set ? abilityIds : new Set(abilityIds ?? []);
     const possible = new Set(ALL_ABILITY_DEFINITIONS
-        .filter((ability) => selected.has(ability.id))
+        .filter((ability) => selected.has(ability.id) && ability.tags.includes(ABILITY_TAGS.STATUS_EFFECT))
         .flatMap((ability) => ability.effects
-            .filter((effect) => effect.type === "debuff")
-            .map((effect) => effect.debuff)));
+            .filter(isStatusEffect)
+            .map(statusEffectId)));
     return STATUS_EFFECT_DEFINITIONS.filter(({ id }) => possible.has(id));
+}
+
+function isStatusEffect(effect) {
+    return STATUS_EFFECT_TYPES.has(effect?.type);
+}
+
+function statusEffectId(effect) {
+    return effect?.type === EFFECT_TYPES.BUFF ? effect.buff : effect.debuff;
 }
 
 export function abilityDefinition(id) {
@@ -139,7 +210,7 @@ export function shouldInterpolateAbilityVisual(id) {
 }
 
 export function entityTargetDefinitions() {
-    return ALL_ABILITY_DEFINITIONS.filter((ability) => ability.tags.includes("entity") && ability.entityType);
+    return ALL_ABILITY_DEFINITIONS.filter((ability) => entityContractForAbility(ability.id));
 }
 
 export const ACTION_TO_ABILITY = Object.freeze({
@@ -148,7 +219,6 @@ export const ACTION_TO_ABILITY = Object.freeze({
 
 export const DEFAULT_BOT_LOADOUT = Object.freeze({
     abilities: Object.freeze([]),
-    statPoints: Object.freeze({ maxHp: 0, moveSpeed: 0, attackDamage: 0, attackSpeed: 0 }),
 });
 
 export function normalizedBotLoadout(loadout) {
@@ -156,26 +226,7 @@ export function normalizedBotLoadout(loadout) {
     const abilities = [...new Set(normalizeAbilityInputList(loadout?.abilities ?? DEFAULT_BOT_LOADOUT.abilities))]
         .filter((ability) => known.has(ability))
         .slice(0, MAX_EQUIPPED_ABILITIES);
-    const rawPoints = loadout?.statPoints ?? {};
-    const pointKeys = ["maxHp", "moveSpeed", "attackDamage", "attackSpeed"];
-    const statPoints = Object.fromEntries(pointKeys.map((key) => [key, Math.max(0, Math.floor(Number(rawPoints[key]) || 0))]));
-    let overflow = Math.max(0, Object.values(statPoints).reduce((sum, value) => sum + value, 0) - MAX_MATCH_STAT_POINTS);
-    for (const key of [...pointKeys].reverse()) {
-        const removed = Math.min(statPoints[key], overflow);
-        statPoints[key] -= removed;
-        overflow -= removed;
-    }
-    return { abilities, statPoints };
-}
-
-export function botStatsForLoadout(loadout) {
-    const { statPoints } = normalizedBotLoadout(loadout);
-    return {
-        maxHp: BASE_BOT_STATS.maxHp + statPoints.maxHp * 10,
-        moveSpeed: BASE_BOT_STATS.moveSpeed + statPoints.moveSpeed,
-        attackDamagePercent: BASE_BOT_STATS.attackDamagePercent + statPoints.attackDamage * 10,
-        attackSpeedPercent: BASE_BOT_STATS.attackSpeedPercent + statPoints.attackSpeed * 10,
-    };
+    return { abilities };
 }
 
 export function actionIdsForLoadout(loadout) {
@@ -194,58 +245,45 @@ export function actionIdsForSandboxLoadout(loadout) {
     ];
 }
 
-const ABILITY_CODES = Object.freeze({ 1: "s", 2: "b", 3: "g", 4: "r", 5: "f", 6: "t", 7: "h", 8: "u", 9: "c", 10: "e", 11: "m", 12: "p", 13: "R", 14: "G", 15: "S", 16: "A", 17: "H", 18: "T", 21: "w", 22: "o", 23: "a", 24: "n", 25: "P" });
+const ABILITY_CODES = Object.freeze({ 1: "s", 3: "g", 4: "r", 5: "f", 6: "t", 7: "h", 8: "u", 9: "c", 10: "e", 11: "m", 12: "p", 13: "R", 14: "G", 15: "S", 16: "A", 17: "H", 18: "T", 21: "w", 22: "o", 23: "a", 24: "n", 25: "P", 26: "F", 27: "Q", 28: "v", 29: "k", 30: "D", 31: "d", 32: "L", 33: "O" });
 const ABILITY_BY_CODE = Object.freeze(Object.fromEntries(Object.entries(ABILITY_CODES).map(([id, code]) => [code, id])));
 
 export function encodeBotLoadout(loadout) {
     const normalized = normalizedBotLoadout(loadout);
-    const abilities = normalized.abilities.map((id) => ABILITY_CODES[id]).filter(Boolean).sort().join("");
-    const points = ["maxHp", "moveSpeed", "attackDamage", "attackSpeed"].map((key) => normalized.statPoints[key]).join(",");
-    return `custom:${abilities}:${points}`;
+    // The compact ID is also the match/replay presentation order. Preserve
+    // the normalized selection order so later round picks stay after earlier
+    // picks in the ability status panel.
+    const abilities = normalized.abilities.map((id) => ABILITY_CODES[id]).filter(Boolean).join("");
+    return `custom:${abilities}`;
 }
 
 export function decodeBotLoadout(value) {
     if (typeof value !== "string" || !value.startsWith("custom:")) return normalizedBotLoadout(DEFAULT_BOT_LOADOUT);
-    const [, abilityCodes = "", points = "0,0,0,0"] = value.split(":");
+    const [, abilityCodes = ""] = value.split(":");
     const abilities = [...abilityCodes].map((code) => ABILITY_BY_CODE[code]).filter(Boolean);
-    const [maxHp = 0, moveSpeed = 0, attackDamage = 0, attackSpeed = 0] = points.split(",").map(Number);
-    return normalizedBotLoadout({ abilities, statPoints: { maxHp, moveSpeed, attackDamage, attackSpeed } });
+    return normalizedBotLoadout({ abilities });
 }
 
 export function normalizedSandboxLoadout(loadout) {
     const known = new Set(SELECTABLE_BOT_ABILITIES.map((ability) => ability.id));
     const abilities = [...new Set(normalizeAbilityInputList(loadout?.abilities))]
         .filter((ability) => known.has(ability));
-    const rawPoints = loadout?.statPoints ?? {};
-    const keys = ["maxHp", "moveSpeed", "attackDamage", "attackSpeed"];
-    const statPoints = Object.fromEntries(keys.map((key) => [key, Math.max(0, Math.min(SANDBOX_MAX_STAT_POINTS, Math.floor(Number(rawPoints[key]) || 0)))]));
-    return { abilities, statPoints };
+    return { abilities };
 }
 
 export function encodeSandboxLoadout(loadout) {
     const normalized = normalizedSandboxLoadout(loadout);
-    return `sandbox:${normalized.abilities.join(",")}:${["maxHp", "moveSpeed", "attackDamage", "attackSpeed"].map((key) => normalized.statPoints[key]).join(",")}`;
+    return `sandbox:${normalized.abilities.join(",")}`;
 }
 
 export function decodeSandboxLoadout(value) {
     if (typeof value !== "string" || !value.startsWith("sandbox:")) return normalizedSandboxLoadout(DEFAULT_BOT_LOADOUT);
-    const [, abilities = "", points = "0,0,0,0"] = value.split(":");
-    const [maxHp = 0, moveSpeed = 0, attackDamage = 0, attackSpeed = 0] = points.split(",").map(Number);
-    return normalizedSandboxLoadout({ abilities: abilities ? abilities.split(",") : [], statPoints: { maxHp, moveSpeed, attackDamage, attackSpeed } });
+    const [, abilities = ""] = value.split(":");
+    return normalizedSandboxLoadout({ abilities: abilities ? abilities.split(",") : [] });
 }
 
 /** Legacy names are accepted only while decoding persisted/API-era loadouts. */
 function normalizeAbilityInputList(values) {
     if (!Array.isArray(values)) return [];
     return values.map(abilityIdFromBoundary).filter((id) => id != null);
-}
-
-export function botStatsForSandboxLoadout(loadout) {
-    const { statPoints } = normalizedSandboxLoadout(loadout);
-    return {
-        maxHp: BASE_BOT_STATS.maxHp + statPoints.maxHp * 10,
-        moveSpeed: BASE_BOT_STATS.moveSpeed + statPoints.moveSpeed,
-        attackDamagePercent: BASE_BOT_STATS.attackDamagePercent + statPoints.attackDamage * 10,
-        attackSpeedPercent: BASE_BOT_STATS.attackSpeedPercent + statPoints.attackSpeed * 10,
-    };
 }

@@ -43,7 +43,6 @@ export default function MatchView({
         <>
             <Arena
                 matchContext={matchContext}
-                autoSubmitEnabled={socketStatus === "CONNECTED"}
                 finishStatus={hasSurrendered
                     ? "SURRENDERED"
                     : surrenderPending

@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { getAbilityCatalogueIcon } from "../../abilityCatalogueIcons.js";
 import { abilityDefinition } from "../loadout/BotLoadout.js";
+import { BASE_BOT_HP } from "../modelPayloads/arenaConstants.js";
+import { formatHp } from "../gameconfig/visualState.js";
 import { botColorRole } from "../pixi/pixiVisualState.js";
-import { ABILITY_RING_COLORS, abilityRingArcPath, abilityRingColorFor, abilityStatusFor, fallbackAbilityText, formatAbilityTimer } from "./abilityStatusPresentation.js";
+import { ABILITY_RING_COLORS, abilityChargeCountFor, abilityRingArcPath, abilityRingColorFor, abilityStatusFor, fallbackAbilityText, formatAbilityTimer } from "./abilityStatusPresentation.js";
 
 const ABILITY_RING_CENTER = 18;
 const ABILITY_RING_RADIUS = 15.5;
@@ -17,7 +19,6 @@ export default function AbilityStatusPanel({ bot }) {
             ? "YOUR BOT"
             : bot?.username ?? `SLOT ${bot?.slot ?? "?"}`;
     const red = botColorRole(bot) === "red";
-
     return (
         <section
             className="ability-status-panel h-[17.5rem] w-full rounded-lg border border-slate-700/80 bg-zinc-950/90 p-3"
@@ -25,11 +26,13 @@ export default function AbilityStatusPanel({ bot }) {
         >
             <div className="mb-2 flex min-h-4 items-center justify-between gap-2 font-mono text-[10px] font-bold tracking-widest">
                 <span className={`truncate ${red ? "text-[#ff7166]" : "text-[#57b8ff]"}`}>{botName}</span>
-                {bot?.hp != null && (
-                    <span className="shrink-0 tracking-normal text-lime">
-                        {Math.ceil(Math.max(0, Number(bot.hp)))} / {Math.ceil(Math.max(1, Number(bot.maxHp ?? 100)))} HP
-                    </span>
-                )}
+                <div className="flex shrink-0 items-center gap-2">
+                    {bot?.hp != null && (
+                        <span className="tracking-normal text-lime">
+                            {formatHp(bot.hp)} / {formatHp(Math.max(1, Number(bot.maxHp ?? BASE_BOT_HP)))} HP
+                        </span>
+                    )}
+                </div>
             </div>
             <div className="grid h-[14.5rem] auto-rows-[4.5rem] grid-cols-3 gap-x-1 gap-y-2 overflow-y-auto pr-1">
                 {abilities.map((abilityId, index) => (
@@ -47,6 +50,7 @@ function AbilityStatusCircle({ bot, abilityId }) {
     const status = abilityStatusFor(bot, abilityId);
     const [imageFailed, setImageFailed] = useState(false);
     const timer = formatAbilityTimer(status.remainingMs);
+    const charges = abilityChargeCountFor(bot, abilityId);
     const stateLabel = timer ? `${status.state}, ${timer} remaining` : status.state;
 
     return (
@@ -59,7 +63,7 @@ function AbilityStatusCircle({ bot, abilityId }) {
             <div className="flex h-4 w-full items-end justify-center overflow-hidden whitespace-nowrap font-mono text-[9px] leading-3 text-slate-300" aria-hidden="true">
                 {timer}
             </div>
-            <AbilityRing status={status} abilityId={abilityId} label={label} iconPath={iconPath} imageFailed={imageFailed} onImageError={(event) => {
+            <AbilityRing status={status} abilityId={abilityId} label={label} iconPath={iconPath} imageFailed={imageFailed} charges={charges} onImageError={(event) => {
                 setImageFailed(true);
                 event.currentTarget.hidden = true;
             }} />
@@ -67,7 +71,7 @@ function AbilityStatusCircle({ bot, abilityId }) {
     );
 }
 
-function AbilityRing({ status, abilityId, label, iconPath, imageFailed, onImageError }) {
+function AbilityRing({ status, abilityId, label, iconPath, imageFailed, charges, onImageError }) {
     const statusProgress = Math.max(0, Math.min(1, Number(status.progress ?? 0)));
     const ringProgress = ["active", "preparing", "ready"].includes(status.state) ? 1 : statusProgress;
     const ringColor = abilityRingColorFor(abilityId, status);
@@ -104,6 +108,11 @@ function AbilityRing({ status, abilityId, label, iconPath, imageFailed, onImageE
                     />
                 )}
             </div>
+            {charges != null && (
+                <span className="absolute -bottom-1 -right-2 min-w-4 rounded bg-zinc-950 px-0.5 text-center font-mono text-[10px] font-bold leading-4 text-slate-100" aria-hidden="true">
+                    {charges}
+                </span>
+            )}
         </div>
     );
 }

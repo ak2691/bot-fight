@@ -1,7 +1,6 @@
 /** Canonical ability map. Keys are permanent IDs, never array positions. */
 export const ABILITIES = Object.freeze({
     1: Object.freeze({ id: 1, name: "swing", label: "Sword Swing", type: "ability" }),
-    2: Object.freeze({ id: 2, name: "block", label: "Shield Block", type: "ability" }),
     3: Object.freeze({ id: 3, name: "fire_gun", label: "Fire Gun", type: "ability" }),
     4: Object.freeze({ id: 4, name: "throw_grenade", label: "Throw Grenade", type: "ability" }),
     5: Object.freeze({ id: 5, name: "shoot_fireball", label: "Shoot Fireball", type: "ability" }),
@@ -25,6 +24,15 @@ export const ABILITIES = Object.freeze({
     23: Object.freeze({ id: 23, name: "absolute_guard", label: "Absolute Guard", type: "ability" }),
     24: Object.freeze({ id: 24, name: "null_zone", label: "Null Zone", type: "ability" }),
     25: Object.freeze({ id: 25, name: "phase_strike", label: "Phase Strike", type: "ability" }),
+    26: Object.freeze({ id: 26, name: "frost_ring", label: "Frost Ring", type: "ability" }),
+    27: Object.freeze({ id: 27, name: "singularity", label: "Singularity", type: "ability" }),
+    28: Object.freeze({ id: 28, name: "tether_bolt", label: "Tether Bolt", type: "ability" }),
+    29: Object.freeze({ id: 29, name: "static_snare", label: "Snare Bomb", type: "ability" }),
+    30: Object.freeze({ id: 30, name: "disruptor_dart", label: "Disruptor Dart", type: "ability" }),
+    31: Object.freeze({ id: 31, name: "repeller_drone", label: "Repeller Drone", type: "ability" }),
+    32: Object.freeze({ id: 32, name: "siphon_lance", label: "Siphon Lance", type: "ability" }),
+    33: Object.freeze({ id: 33, name: "overclock", label: "Overclock", type: "ability" }),
+    34: Object.freeze({ id: 34, name: "basic_strike", label: "Basic Strike", type: "ability" }),
 });
 
 const ABILITY_ID_BY_NAME = new Map(Object.values(ABILITIES).map(({ id, name }) => [name, id]));

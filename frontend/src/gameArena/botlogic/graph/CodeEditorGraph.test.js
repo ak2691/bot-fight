@@ -16,7 +16,7 @@ import {
 } from "./CodeEditorGraph.js";
 import { normalizeAbilityStrategyConfiguration, STATE_VARIABLES } from "../code/BotCode.js";
 
-function configuration(condition, action = { action: "move_walk", movementMode: "target", movementDirection: "toward", actionTarget: "opponent" }) {
+function configuration(condition, action = { action: "move_walk", movementMode: "target", movementDirection: 0, actionTarget: "opponent" }) {
     return {
         version: "bot-logic-tree-v1",
         roots: [{ branches: [{ id: "branch", branchType: "if", conditions: [condition], actions: [action], children: [] }] }],
@@ -86,12 +86,30 @@ test("action targets compile from a target node without changing normalized acti
     assert.equal(normalizeAbilityStrategyConfiguration(compiled).roots[0].branches[0].actions[0].actionTarget, "opponent");
 });
 
+test("movement target connections do not copy target offsets", () => {
+    const source = configuration(
+        { type: "expression", left: "my.hp", comparator: "lt", right: { type: "number", value: 30 } },
+        { action: "move_walk", movementMode: "target", movementDirection: 90, actionTarget: "opponent", targetOffsetX: 25, targetOffsetY: -15 },
+    );
+    const graph = {
+        ...createCodeEditorGraph(),
+        targets: [{ id: "target-node", kind: "target", targetKind: "entity", target: "opponent", targetOffsetX: 80, targetOffsetY: -60 }],
+    };
+    const connected = connectCodeEditorPorts(graph, "target-node", "action:branch:0:target", "target", STATE_VARIABLES);
+    const compiled = compileCodeEditorGraph(source, connected);
+    const normalized = normalizeAbilityStrategyConfiguration(compiled).roots[0].branches[0].actions[0];
+
+    assert.equal(normalized.movementDirection, 90);
+    assert.equal("targetOffsetX" in normalized, false);
+    assert.equal("targetOffsetY" in normalized, false);
+});
+
 test("target nodes connect to target-aware variables and actions, never conditionals", () => {
     const source = configuration({ type: "expression", left: "target.distance", comparator: "lt", right: { type: "number", value: 30 }, leftTarget: "opponent" });
     const graph = {
         ...createCodeEditorGraph(),
         variables: [{ id: "variable-node", kind: "variable", variableId: "target.distance" }],
-        targets: [{ id: "target-node", kind: "target", targetKind: "entity", target: "opponent_gravity_field" }],
+        targets: [{ id: "target-node", kind: "target", targetKind: "entity", target: "opponent_gravity_zone" }],
     };
     const variableConnection = connectCodeEditorPorts(graph, "variable-node", conditionOperandPortId("branch", 0, 1), "operand-1", STATE_VARIABLES);
     const targetConnection = connectCodeEditorPorts(variableConnection, "target-node", variableTargetPortId("variable-node"), "target", STATE_VARIABLES);
@@ -103,6 +121,6 @@ test("target nodes connect to target-aware variables and actions, never conditio
     const compiled = compileCodeEditorGraph(source, reconciled);
     const normalized = normalizeAbilityStrategyConfiguration(compiled);
     assert.equal(normalized.roots[0].branches[0].conditions[0].left, "target.distance");
-    assert.equal(normalized.roots[0].branches[0].conditions[0].leftTarget, "opponent_gravity_field");
-    assert.equal(normalized.roots[0].branches[0].actions[0].actionTarget, "opponent_gravity_field");
+    assert.equal(normalized.roots[0].branches[0].conditions[0].leftTarget, "opponent_gravity_zone");
+    assert.equal(normalized.roots[0].branches[0].actions[0].actionTarget, "opponent_gravity_zone");
 });

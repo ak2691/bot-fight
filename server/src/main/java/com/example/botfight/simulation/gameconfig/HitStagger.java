@@ -8,6 +8,7 @@ public final class HitStagger {
     public static final double MOVEMENT_MULTIPLIER = 0.85;
     public static final double ROTATION_MULTIPLIER = 0.85;
 
-    public static final int CONCUSSIVE_SLOW_DURATION_MS = 2_000;
-    public static final double CONCUSSIVE_MOVEMENT_MULTIPLIER = 0.60;
+    public static final int CONCUSSIVE_SLOW_DURATION_MS = 1_000;
+    public static final double CONCUSSIVE_MOVEMENT_MULTIPLIER = 0.50;
+    public static final double CONCUSSIVE_ROTATION_MULTIPLIER = 0.50;
 }

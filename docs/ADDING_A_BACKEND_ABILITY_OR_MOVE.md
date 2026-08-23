@@ -9,10 +9,11 @@ Start with [Adding an Ability or Move](ADDING_AN_ABILITY_OR_MOVE.md) and [Abilit
 - `simulation/gameconfig/AbilityRegistry.java`: permanent positive numeric IDs and the only server-side ID/name mapping. Never derive IDs from catalog position or reuse a retired ID.
 - `simulation/gameconfig/Abilities.java`: numeric definitions for all abilities.
 - `simulation/gameconfig/GameConfig.java`: shared duel configuration access.
-- `simulation/gameconfig/AbilityContracts.java`: delivery, ordered effects, and shield policy.
+- `simulation/gameconfig/AbilityContracts.java`: delivery, ordered effects,
+  shield policy, and declarative activation payload metadata.
 - `simulation/gameconfig/GameConfigCatalog.java`: active ruleset selection.
 
-Match browser IDs, milliseconds, arena units, ranges/arcs, damage rounding, resources, and compact loadout code. Runtime definitions, actions, state maps, entities, DTOs, and replay fields use the numeric ID. Ability names are limited to presentation metadata and explicit legacy migration through `LegacyAbilityPayloadMigration`. Update the round pool and enforce cumulative picks, issued offers, selection limits, and stat budget on the server. Timeout picks must come from the same deterministic offer list.
+Match browser IDs, milliseconds, arena units, ranges/arcs, damage rounding, resources, and compact loadout code. Runtime definitions, actions, state maps, entities, DTOs, and replay fields use the numeric ID. Ability names are limited to presentation metadata and explicit legacy migration through `LegacyAbilityPayloadMigration`. Update the round pool and enforce cumulative picks, issued offers, and selection limits on the server. Timeout picks must come from the same deterministic offer list.
 
 ## Hostile-input validation
 
@@ -22,18 +23,20 @@ Reject actions outside the loadout, targets the loadout cannot produce, preparin
 
 ## Simulation flow
 
-`DuelSimulationService.java` remains the fixed-step coordinator. Its focused
+`simulation/core/orchestration/DuelSimulationService.java` remains the fixed-step coordinator. Its focused
 services own the corresponding decisions and state transitions:
 
-- `ConditionResolutionService`: normalized conditions, state variables, and
+- `simulation/core/logic/ConditionResolutionService.java`: normalized conditions, state variables, and
   target resolution;
-- `ActionExecutionService`: readiness/resources, preparation, movement, and
+- `simulation/core/combat/ActionExecutionService.java`: readiness/resources, preparation, movement, and
   immediate or entity-backed actions;
-- `BotStateService`: initialization, timed bot effects, damage/healing,
+- `simulation/core/state/BotStateService.java`: initialization, timed bot effects, damage/healing,
   and same-tick settlement;
-- `ProjectileSimulationService`: generic short-lived projectile motion,
+- `simulation/core/state/DeferredStateSystem.java`: snapshot-based bot transitions that resolve after a
+  future delay;
+- `simulation/core/combat/ProjectileSimulationService.java`: generic short-lived projectile motion,
   collision, explosions, and contract-declared projectile effects;
-- `TargetingService` and `ReplayMappingService`: target offsets and replay
+- `simulation/core/logic/TargetingService.java` and `simulation/core/replay/ReplayMappingService.java`: target offsets and replay
   state conversion.
 
 The coordinator should:
@@ -42,21 +45,28 @@ The coordinator should:
 2. resolve its live target and offsets;
 3. ask the action service to check ownership, readiness, resources, preparation,
    silence, and target existence;
-4. activate it and record state;
+4. build the server-owned execution payload, activate it, and record the
+   executed payload alongside the replay-facing ability ID;
 5. apply an immediate effect or spawn an entity;
 6. tick effects/entities in deterministic order;
 7. ask the bot-state service to settle accumulated HP changes and emit replay
    state through the replay mapper.
 
-Use generic variables, targets, deliveries, and effects where available. Keep the service as orchestrator; persistent behavior belongs in the ECS, not a second simulation loop.
+Use generic variables, targets, deliveries, and effects where available. Keep the service as orchestrator; persistent zone, trap, summon, and projectile behavior belongs in the ECS, not a second simulation loop.
+
+Before adding a timer or delayed behavior, classify it as action preparation,
+an ability entity lifecycle, a bot status, a resource timer, bot lifecycle
+cleanup, or a deferred snapshot transition. Mirror the browser contract and
+extend the corresponding generic system. Do not add an ability-ID branch to a
+tick method for behavior that belongs to an existing contract family.
 
 ## Persistent entities
 
-- `ArenaEntity.java`: deterministic transform, motion, lifetime, collider, owner, optional HP, and phase state.
-- `AbilityEntityFactory.java`: initial state only; no targeting, damage, or ticking.
-- `AbilityEntityBot.java`: minimal reusable bot interface.
-- `AbilityEntitySystem.java`: deterministic lifecycle, collision, effects, phase changes, chain reactions, and removal.
-- `ArenaBounds.java`: shared clamping and expiry bounds.
+- `simulation/ecs/entities/ArenaEntity.java`: deterministic transform, motion, lifetime, collider, owner, optional HP, and phase state.
+- `simulation/ecs/entities/AbilityEntityFactory.java`: initial state only; no targeting, damage, or ticking.
+- `simulation/ecs/entities/AbilityEntityBot.java`: minimal reusable bot interface.
+- `simulation/ecs/abilities/AbilityEntitySystem.java`: deterministic lifecycle, collision, effects, phase changes, chain reactions, and removal.
+- `simulation/ecs/entities/ArenaBounds.java`: shared clamping and expiry bounds.
 
 Resolve `shieldInteraction` once per impact, then apply remaining effects in declared order. Specify friendly-fire eligibility, swept versus point collision, impact timing, status refresh/stack rules, and rounding. Settle simultaneous damage and healing as one net HP change.
 
@@ -70,6 +80,7 @@ Emit state, not client-side gameplay instructions: stable entity ID/type/owner, 
 - an `ALWAYS` action reaching real activation/effect;
 - both slots where symmetry matters;
 - readiness, resource, cooldown, preparation, and missing-target fallthrough;
+- deferred-state completion, snapshot restoration, and completion presentation;
 - deterministic collision, same-tick settlement, KO/timeout, and replay fields;
 - ECS factory, lifetime, interaction, HP, removal, and chain-reaction tests;
 - repeated runs producing the same result.

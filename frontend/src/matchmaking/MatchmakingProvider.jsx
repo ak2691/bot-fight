@@ -13,8 +13,9 @@ import {
 } from "./matchAcceptance.js";
 import { monotonicEpochNowMs } from "./networkDelayEstimator.js";
 import { relativeLocalDeadlineMs } from "./relativeMatchTiming.js";
+import { apiUrl } from "../config/api";
+import { serverErrorMessage } from "../auth/serverError.js";
 import {
-    disconnectActiveMatchmakingClient,
     getActiveMatchmakingClient,
     getEstimatedOneWayNetworkDelayMs,
 } from "./stompClient";
@@ -22,8 +23,16 @@ import { MatchmakingContext } from "./matchmaking-context";
 
 const QUEUE_ATTEMPT_BURST_LIMIT = 3;
 const QUEUE_ATTEMPT_WINDOW_MS = 5000;
+const ACTIVE_MATCH_REQUEST_REUSE_MS = 1_000;
+const TOO_MANY_REQUESTS_MESSAGE = "Too many requests. Try again later.";
 const ACCEPTANCE_VISIBLE_GRACE_MS = 2_000;
 const COUNTDOWN_UPDATE_INTERVAL_MS = 250;
+const INITIAL_ACTIVE_MATCH_STATUS = {
+    loading: true,
+    activeMatch: false,
+    matchId: null,
+    error: null,
+};
 
 function secondsRemaining(deadlineMs, nowMs = monotonicEpochNowMs()) {
     if (deadlineMs == null) return 0;
@@ -40,6 +49,14 @@ function localAcceptanceDeadlineForEvent(event, visibleGraceMs = ACCEPTANCE_VISI
     });
 }
 
+function queueStatusErrorMessage(error) {
+    if (Number(error?.status) === 429) return TOO_MANY_REQUESTS_MESSAGE;
+    if (Number(error?.status) >= 500 || !Number.isFinite(Number(error?.status))) {
+        return "The active match could not be checked right now. Try again later.";
+    }
+    return "The active match could not be checked. Try again.";
+}
+
 export default function MatchmakingProvider({ children }) {
     const navigate = useNavigate();
     const { isAuthenticated } = useAuth();
@@ -52,6 +69,9 @@ export default function MatchmakingProvider({ children }) {
     const acceptanceStartDeadlineRef = useRef(null);
     const acceptanceSubmitPendingRef = useRef(false);
     const queueAttemptTimesRef = useRef([]);
+    const queueStartInFlightRef = useRef(false);
+    const activeMatchRequestRef = useRef(null);
+    const activeMatchSnapshotRef = useRef(null);
     const [isQueueing, setIsQueueing] = useState(false);
     const [queueStartedAt, setQueueStartedAt] = useState(null);
     const [queueElapsed, setQueueElapsed] = useState(0);
@@ -66,6 +86,122 @@ export default function MatchmakingProvider({ children }) {
     const [acceptanceStartDeadlineMs, setAcceptanceStartDeadlineMs] = useState(null);
     const [acceptanceError, setAcceptanceError] = useState(null);
     const [connectionStatus, setConnectionStatus] = useState("IDLE");
+    const [activeMatchStatus, setActiveMatchStatus] = useState(INITIAL_ACTIVE_MATCH_STATUS);
+
+    const requestActiveMatchStatus = useCallback((signal) => {
+        const now = Date.now();
+        const inFlight = activeMatchRequestRef.current;
+        if (inFlight) return inFlight.promise;
+
+        const cached = activeMatchSnapshotRef.current;
+        if (cached && now - cached.checkedAt < ACTIVE_MATCH_REQUEST_REUSE_MS) {
+            return Promise.resolve(cached.result);
+        }
+
+        const promise = (async () => {
+            try {
+                const response = await fetch(apiUrl("/api/matches/active"), {
+                    credentials: "include",
+                    cache: "no-store",
+                    signal,
+                });
+                if (!response.ok) {
+                    const requestError = new Error(`active match status request failed with ${response.status}`);
+                    requestError.status = response.status;
+                    throw requestError;
+                }
+                const matchStatus = await response.json();
+                return {
+                    status: {
+                        loading: false,
+                        activeMatch: matchStatus.activeMatch === true,
+                        matchId: matchStatus.matchId ?? null,
+                        error: null,
+                    },
+                    error: null,
+                };
+            } catch (error) {
+                if (error.name === "AbortError") throw error;
+                return { status: null, error };
+            }
+        })();
+        const trackedRequest = { promise, startedAt: now };
+        activeMatchRequestRef.current = trackedRequest;
+        void promise.then(
+            (result) => {
+                activeMatchSnapshotRef.current = { checkedAt: Date.now(), result };
+                if (activeMatchRequestRef.current === trackedRequest) {
+                    activeMatchRequestRef.current = null;
+                }
+            },
+            () => {
+                if (activeMatchRequestRef.current === trackedRequest) {
+                    activeMatchRequestRef.current = null;
+                }
+            },
+        );
+        return promise;
+    }, []);
+
+    const refreshActiveMatchStatus = useCallback(async (signal) => {
+        setActiveMatchStatus((current) => ({ ...current, loading: true, error: null }));
+        try {
+            const result = await requestActiveMatchStatus(signal);
+            if (result.error) throw result.error;
+            setActiveMatchStatus(result.status);
+            return result.status;
+        } catch (error) {
+            if (error.name === "AbortError") return null;
+            const nextStatus = {
+                loading: false,
+                activeMatch: false,
+                matchId: null,
+                error: serverErrorMessage(error),
+            };
+            setActiveMatchStatus(nextStatus);
+            return nextStatus;
+        }
+    }, [requestActiveMatchStatus]);
+
+    const verifyActiveMatchForQueue = useCallback(async () => {
+        try {
+            const result = await requestActiveMatchStatus();
+            if (result.error) {
+                return {
+                    loading: false,
+                    activeMatch: false,
+                    matchId: null,
+                    error: queueStatusErrorMessage(result.error),
+                };
+            }
+            return result.status;
+        } catch (error) {
+            return {
+                loading: false,
+                activeMatch: false,
+                matchId: null,
+                error: queueStatusErrorMessage(error),
+            };
+        }
+    }, [requestActiveMatchStatus]);
+
+    const markActiveMatch = useCallback((matchId = null) => {
+        setActiveMatchStatus({ loading: false, activeMatch: true, matchId, error: null });
+    }, []);
+
+    const clearActiveMatch = useCallback(() => {
+        setActiveMatchStatus({ loading: false, activeMatch: false, matchId: null, error: null });
+    }, []);
+
+    useEffect(() => {
+        if (!isAuthenticated) {
+            setActiveMatchStatus({ loading: false, activeMatch: false, matchId: null, error: null });
+            return undefined;
+        }
+        const controller = new AbortController();
+        void refreshActiveMatchStatus(controller.signal);
+        return () => controller.abort();
+    }, [isAuthenticated, refreshActiveMatchStatus]);
 
     const clearPendingAcceptance = useCallback((message = null) => {
         pendingAcceptanceRef.current = null;
@@ -90,7 +226,8 @@ export default function MatchmakingProvider({ children }) {
         setIsQueueing(false);
         setConnectionStatus("IDLE");
         if (message) setQueueError(message);
-        void disconnectActiveMatchmakingClient(matchmakingClientRef.current);
+        matchmakingClientRef.current?.unsubscribeMatchmaking?.();
+        matchmakingClientRef.current?.unsubscribeMatch?.();
     }, []);
 
     const cancelPendingAcceptance = useCallback(() => {
@@ -100,26 +237,51 @@ export default function MatchmakingProvider({ children }) {
         clearPendingAcceptance();
     }, [clearPendingAcceptance]);
 
-    const startQueue = useCallback(() => {
+    const startQueue = useCallback(async () => {
+        if (queueStartInFlightRef.current) return;
         const now = Date.now();
         const recentAttempts = queueAttemptTimesRef.current.filter(
             (attemptedAt) => now - attemptedAt < QUEUE_ATTEMPT_WINDOW_MS);
         if (recentAttempts.length >= QUEUE_ATTEMPT_BURST_LIMIT) {
-            setQueueError("Too many matchmaking attempts. Please wait before trying again.");
+            setQueueError(TOO_MANY_REQUESTS_MESSAGE);
             return;
         }
+        queueStartInFlightRef.current = true;
         queueAttemptTimesRef.current = [...recentAttempts, now];
-        setQueueError(null);
-        setQueueElapsed(0);
-        setQueueStartedAt(now);
-        setIsQueueing(true);
-    }, []);
+        try {
+            setQueueError(null);
+            const status = await verifyActiveMatchForQueue();
+            if (!status || status.error) {
+                setQueueError(status?.error ?? "The active match could not be checked. Try again.");
+                return;
+            }
+            if (status.activeMatch === true) {
+                markActiveMatch(status.matchId);
+                navigate("/match", {
+                    state: {
+                        activeMatchVerified: true,
+                        matchId: status.matchId,
+                    },
+                });
+                return;
+            }
+            setQueueError(null);
+            setQueueElapsed(0);
+            setQueueStartedAt(now);
+            setIsQueueing(true);
+        } finally {
+            queueStartInFlightRef.current = false;
+        }
+    }, [markActiveMatch, navigate, verifyActiveMatchForQueue]);
 
     const cancelQueue = useCallback(() => {
         if (pendingAcceptanceRef.current) {
             cancelPendingAcceptance();
             return;
         }
+        matchmakingClientRef.current?.leaveQueue?.();
+        matchmakingClientRef.current?.unsubscribeMatchmaking?.();
+        matchmakingClientRef.current?.unsubscribeMatch?.();
         setQueueError(null);
         setQueueElapsed(0);
         setQueueStartedAt(null);
@@ -275,6 +437,8 @@ export default function MatchmakingProvider({ children }) {
                 }
                 if (event.type === "MATCH_STARTED" && event.status === "LOADOUT_SELECT") {
                     // Only this authoritative transition may introduce participant data.
+                    client.unsubscribeMatchmaking?.();
+                    client.subscribeMatch?.();
                     client.setHandlers();
                     matchFoundRef.current = true;
                     pendingAcceptanceRef.current = null;
@@ -294,20 +458,24 @@ export default function MatchmakingProvider({ children }) {
                     setQueueStartedAt(null);
                     setQueueElapsed(0);
                     setIsQueueing(false);
-                    navigate("/matchmaking", { state: { matchEvent: event } });
+                    markActiveMatch(event.matchId);
+                    navigate("/match");
                 }
             },
         }, { autoReconnect: true, autoJoinOnConnect: false });
         matchmakingClientRef.current = client;
+        client.subscribeMatchmaking?.();
+        client.resumeReconnect?.();
         void client.connect();
 
         return () => {
             if (matchFoundRef.current) return;
             disposed = true;
             client.leaveQueue();
-            void disconnectActiveMatchmakingClient(client);
+            client.unsubscribeMatchmaking?.();
+            client.unsubscribeMatch?.();
         };
-    }, [clearPendingAcceptance, isQueueing, navigate]);
+    }, [clearPendingAcceptance, isQueueing, markActiveMatch, navigate]);
 
     const acceptPendingMatch = useCallback(() => {
         const pending = pendingAcceptanceRef.current;
@@ -321,6 +489,7 @@ export default function MatchmakingProvider({ children }) {
         acceptanceSubmitPendingRef.current = true;
         setAcceptanceError(null);
         setAcceptanceState("ACCEPTING");
+        matchmakingClientRef.current.subscribeMatch?.();
         matchmakingClientRef.current.acceptMatch(pending.matchId);
     }, [acceptanceState, connectionStatus]);
 
@@ -328,9 +497,23 @@ export default function MatchmakingProvider({ children }) {
         isQueueing,
         queueElapsed,
         queueError,
+        activeMatchStatus,
+        refreshActiveMatchStatus,
+        markActiveMatch,
+        clearActiveMatch,
         startQueue,
         cancelQueue,
-    }), [cancelQueue, isQueueing, queueElapsed, queueError, startQueue]);
+    }), [
+        activeMatchStatus,
+        cancelQueue,
+        clearActiveMatch,
+        isQueueing,
+        markActiveMatch,
+        queueElapsed,
+        queueError,
+        refreshActiveMatchStatus,
+        startQueue,
+    ]);
 
     return (
         <MatchmakingContext.Provider value={value}>
@@ -348,6 +531,15 @@ export default function MatchmakingProvider({ children }) {
                     onAccept={acceptPendingMatch}
                     onClose={cancelPendingAcceptance}
                 />
+            )}
+            {queueError && !pendingAcceptance && (
+                <div
+                    role="alert"
+                    aria-live="assertive"
+                    className="fixed bottom-6 left-1/2 z-[1000] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded border border-red-700 bg-red-950 px-4 py-2 text-center font-mono text-xs tracking-widest text-red-400 shadow-lg"
+                >
+                    {queueError}
+                </div>
             )}
         </MatchmakingContext.Provider>
     );

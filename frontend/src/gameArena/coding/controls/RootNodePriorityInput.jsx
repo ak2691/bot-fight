@@ -7,6 +7,7 @@ export default function RootNodePriorityInput({
     onCommit,
     className = "",
     ariaLabel = "Root node priority",
+    ...inputProps
 }) {
     const [draft, setDraft] = useState(String(priority));
 
@@ -23,9 +24,9 @@ export default function RootNodePriorityInput({
         setDraft(String(nextPriority));
         if (nextPriority !== priority) onCommit(nextPriority);
     };
-
     return (
         <input
+            {...inputProps}
             type="text"
             inputMode="numeric"
             aria-label={ariaLabel}

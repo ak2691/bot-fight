@@ -9,35 +9,132 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.example.botfight.service.CurrentUserService;
+import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.DTO.MatchChatEventDTO;
 import com.example.botfight.DTO.MatchChatRequestDTO;
 import com.example.botfight.DTO.MatchmakingEventDTO;
 import com.example.botfight.domain.AppUser;
-import com.example.botfight.service.MatchService;
-import com.example.botfight.service.MatchService.MatchChatClosure;
-import com.example.botfight.service.MatchService.MatchChatSubmission;
-import com.example.botfight.service.MatchService.MatchChatSubmissionStatus;
-import com.example.botfight.service.MatchmakingEventsReady;
-import com.example.botfight.service.MatchmakingService;
+import com.example.botfight.service.match.MatchService;
+import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
+import com.example.botfight.service.match.model.MatchChatClosure;
+import com.example.botfight.service.match.model.MatchChatSubmission;
+import com.example.botfight.service.match.model.MatchChatSubmissionStatus;
+import com.example.botfight.service.matchmaking.MatchmakingEventsReady;
+import com.example.botfight.service.matchmaking.MatchmakingService;
+import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
 import java.security.Principal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 import org.junit.jupiter.api.Test;
+import org.springframework.messaging.Message;
+import org.springframework.messaging.simp.SimpMessageType;
 import org.mockito.ArgumentCaptor;
+import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.security.core.Authentication;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.web.socket.messaging.SessionDisconnectEvent;
+import org.springframework.web.socket.messaging.SessionSubscribeEvent;
+import org.springframework.web.socket.messaging.SessionUnsubscribeEvent;
 
 class MatchmakingSocketControllerTest {
+
+    @Test
+    void matchSubscriptionRecognizesClientFacingUserDestination() {
+        assertThat(MatchmakingSocketDestinations.isMatchSubscription(
+                "/user" + MatchmakingSocketDestinations.MATCH)).isTrue();
+    }
+
+    @Test
+    void removingTheMatchSubscriptionStartsConnectionLossDetection() {
+        MatchmakingService matchmakingService = mock(MatchmakingService.class);
+        MatchService matchService = mock(MatchService.class);
+        SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
+        CurrentUserService currentUserService = mock(CurrentUserService.class);
+        TaskScheduler scheduler = mock(TaskScheduler.class);
+        @SuppressWarnings("unchecked")
+        ScheduledFuture<Object> scheduledFuture = mock(ScheduledFuture.class);
+        doReturn(scheduledFuture).when(scheduler).schedule(any(Runnable.class), any(Instant.class));
+        when(matchService.markDisconnected("pilot@example.com", "socket-1"))
+                .thenReturn(List.of());
+        MatchmakingSocketController controller = new MatchmakingSocketController(
+                matchmakingService, matchService, messagingTemplate, currentUserService, scheduler);
+        Principal principal = () -> "pilot@example.com";
+        Message<byte[]> subscribeMessage = stompMessage(
+                SimpMessageType.SUBSCRIBE,
+                MatchmakingSocketDestinations.MATCH,
+                "socket-1",
+                "match-subscription");
+        SessionSubscribeEvent subscribeEvent = mock(SessionSubscribeEvent.class);
+        when(subscribeEvent.getMessage()).thenReturn(subscribeMessage);
+        controller.handleSubscribe(subscribeEvent);
+
+        Message<byte[]> unsubscribeMessage = stompMessage(
+                SimpMessageType.UNSUBSCRIBE,
+                null,
+                "socket-1",
+                "match-subscription");
+        SessionUnsubscribeEvent unsubscribeEvent = mock(SessionUnsubscribeEvent.class);
+        when(unsubscribeEvent.getMessage()).thenReturn(unsubscribeMessage);
+        when(unsubscribeEvent.getUser()).thenReturn(principal);
+        controller.handleUnsubscribe(unsubscribeEvent);
+
+        verify(scheduler).schedule(any(Runnable.class), any(Instant.class));
+    }
+
+    @Test
+    void restoredMatchSubscriptionSkipsConnectionLossDetection() {
+        MatchmakingService matchmakingService = mock(MatchmakingService.class);
+        MatchService matchService = mock(MatchService.class);
+        SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
+        CurrentUserService currentUserService = mock(CurrentUserService.class);
+        TaskScheduler scheduler = mock(TaskScheduler.class);
+        ArgumentCaptor<Runnable> taskCaptor = ArgumentCaptor.forClass(Runnable.class);
+        doReturn(mock(ScheduledFuture.class))
+                .when(scheduler).schedule(taskCaptor.capture(), any(Instant.class));
+        MatchmakingSocketController controller = new MatchmakingSocketController(
+                matchmakingService, matchService, messagingTemplate, currentUserService, scheduler);
+        Principal principal = () -> "pilot@example.com";
+
+        SessionSubscribeEvent initialSubscribe = mock(SessionSubscribeEvent.class);
+        when(initialSubscribe.getMessage()).thenReturn(stompMessage(
+                SimpMessageType.SUBSCRIBE,
+                MatchmakingSocketDestinations.MATCH,
+                "socket-1",
+                "match-subscription-1"));
+        controller.handleSubscribe(initialSubscribe);
+
+        SessionUnsubscribeEvent unsubscribe = mock(SessionUnsubscribeEvent.class);
+        when(unsubscribe.getMessage()).thenReturn(stompMessage(
+                SimpMessageType.UNSUBSCRIBE,
+                null,
+                "socket-1",
+                "match-subscription-1"));
+        when(unsubscribe.getUser()).thenReturn(principal);
+        controller.handleUnsubscribe(unsubscribe);
+
+        SessionSubscribeEvent restoredSubscribe = mock(SessionSubscribeEvent.class);
+        when(restoredSubscribe.getMessage()).thenReturn(stompMessage(
+                SimpMessageType.SUBSCRIBE,
+                MatchmakingSocketDestinations.MATCH,
+                "socket-1",
+                "match-subscription-2"));
+        controller.handleSubscribe(restoredSubscribe);
+
+        taskCaptor.getValue().run();
+
+        verify(matchService, never()).markDisconnected(any(), any());
+    }
 
     @Test
     void acceptedChatIsPublishedOnlyAfterServerConfirmation() {
         MatchmakingService matchmakingService = mock(MatchmakingService.class);
         MatchService matchService = mock(MatchService.class);
+        when(matchService.isCurrentEvent(any())).thenReturn(true);
         SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
         CurrentUserService currentUserService = mock(CurrentUserService.class);
         TaskScheduler scheduler = mock(TaskScheduler.class);
@@ -73,6 +170,7 @@ class MatchmakingSocketControllerTest {
     void socketCloseWaitsForHeartbeatWindowBeforeStartingDisconnectGracePeriod() {
         MatchmakingService matchmakingService = mock(MatchmakingService.class);
         MatchService matchService = mock(MatchService.class);
+        when(matchService.isCurrentEvent(any())).thenReturn(true);
         SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
         CurrentUserService currentUserService = mock(CurrentUserService.class);
         TaskScheduler scheduler = mock(TaskScheduler.class);
@@ -111,19 +209,31 @@ class MatchmakingSocketControllerTest {
     void terminalMatchSchedulesBackendChatClosureAndNotifiesBothPlayers() {
         MatchmakingService matchmakingService = mock(MatchmakingService.class);
         MatchService matchService = mock(MatchService.class);
+        when(matchService.isCurrentEvent(any())).thenReturn(true);
         SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
         CurrentUserService currentUserService = mock(CurrentUserService.class);
         TaskScheduler scheduler = mock(TaskScheduler.class);
+        SingleUserWebSocketSessionRegistry webSocketSessionRegistry =
+                mock(SingleUserWebSocketSessionRegistry.class);
         @SuppressWarnings("unchecked")
         ScheduledFuture<Object> scheduledFuture = mock(ScheduledFuture.class);
         ArgumentCaptor<Runnable> taskCaptor = ArgumentCaptor.forClass(Runnable.class);
         ArgumentCaptor<Instant> runAtCaptor = ArgumentCaptor.forClass(Instant.class);
         doReturn(scheduledFuture).when(scheduler).schedule(taskCaptor.capture(), runAtCaptor.capture());
         MatchmakingSocketController controller = new MatchmakingSocketController(
-                matchmakingService, matchService, messagingTemplate, currentUserService, scheduler);
+                matchmakingService,
+                matchService,
+                messagingTemplate,
+                currentUserService,
+                scheduler,
+                webSocketSessionRegistry);
         UUID matchId = UUID.randomUUID();
         Instant closesAt = Instant.parse("2026-07-25T12:00:30Z");
         when(matchService.matchChatCloseAt(matchId)).thenReturn(closesAt.plusSeconds(1));
+        when(webSocketSessionRegistry.currentSessionIdForPrincipal("pilot-one@example.com"))
+                .thenReturn("socket-one");
+        when(webSocketSessionRegistry.currentSessionIdForPrincipal("pilot-two@example.com"))
+                .thenReturn("socket-two");
         when(matchService.closeMatchChat(matchId)).thenReturn(new MatchChatClosure(
                 matchId,
                 "Match chat is now closed.",
@@ -162,22 +272,45 @@ class MatchmakingSocketControllerTest {
                 closesAt);
 
         controller.handleMatchmakingEventsReady(new MatchmakingEventsReady(List.of(
-                new MatchService.OutboundMatchmakingEvent("pilot-one@example.com", resultEvent))));
+                new OutboundMatchmakingEvent("pilot-one@example.com", resultEvent),
+                new OutboundMatchmakingEvent("pilot-two@example.com", resultEvent))));
 
         assertThat(runAtCaptor.getValue()).isEqualTo(closesAt);
         taskCaptor.getValue().run();
 
         verify(matchService).closeMatchChat(matchId);
         verify(messagingTemplate).convertAndSendToUser(
-                eq("pilot-one@example.com"), eq("/queue/match-chat"), any(MatchChatEventDTO.class));
+                eq("pilot-one@example.com"),
+                eq("/queue/match-chat"),
+                any(MatchChatEventDTO.class),
+                eq(Map.of(SimpMessageHeaderAccessor.SESSION_ID_HEADER, "socket-one")));
         verify(messagingTemplate).convertAndSendToUser(
-                eq("pilot-two@example.com"), eq("/queue/match-chat"), any(MatchChatEventDTO.class));
+                eq("pilot-two@example.com"),
+                eq("/queue/match-chat"),
+                any(MatchChatEventDTO.class),
+                eq(Map.of(SimpMessageHeaderAccessor.SESSION_ID_HEADER, "socket-two")));
+    }
+
+    private static Message<byte[]> stompMessage(
+            SimpMessageType messageType,
+            String destination,
+            String sessionId,
+            String subscriptionId) {
+        MessageBuilder<byte[]> builder = MessageBuilder.withPayload(new byte[0])
+                .setHeader(SimpMessageHeaderAccessor.MESSAGE_TYPE_HEADER, messageType)
+                .setHeader(SimpMessageHeaderAccessor.SESSION_ID_HEADER, sessionId)
+                .setHeader(SimpMessageHeaderAccessor.SUBSCRIPTION_ID_HEADER, subscriptionId);
+        if (destination != null) {
+            builder.setHeader(SimpMessageHeaderAccessor.DESTINATION_HEADER, destination);
+        }
+        return builder.build();
     }
 
     @Test
     void simulationLoadingSchedulesAuthoritativeSimulationAfterPublishingTheLoadingEvent() {
         MatchmakingService matchmakingService = mock(MatchmakingService.class);
         MatchService matchService = mock(MatchService.class);
+        when(matchService.isCurrentEvent(any())).thenReturn(true);
         SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
         CurrentUserService currentUserService = mock(CurrentUserService.class);
         TaskScheduler scheduler = mock(TaskScheduler.class);
@@ -225,11 +358,11 @@ class MatchmakingSocketControllerTest {
         when(matchService.completeSimulation(matchId)).thenReturn(List.of());
 
         controller.handleMatchmakingEventsReady(new MatchmakingEventsReady(List.of(
-                new MatchService.OutboundMatchmakingEvent("pilot-one@example.com", preparationEvent))));
+                new OutboundMatchmakingEvent("pilot-one@example.com", preparationEvent))));
 
         ArgumentCaptor<MatchmakingEventDTO> publishedEvent = ArgumentCaptor.forClass(MatchmakingEventDTO.class);
         verify(messagingTemplate).convertAndSendToUser(
-                eq("pilot-one@example.com"), eq("/queue/matchmaking"), publishedEvent.capture());
+                eq("pilot-one@example.com"), eq(MatchmakingSocketDestinations.MATCH), publishedEvent.capture());
         assertThat(publishedEvent.getValue().serverNow()).isAfter(loadingStartedAt);
         assertThat(runAtCaptor.getValue()).isNotNull();
         assertThat(runAtCaptor.getValue()).isBeforeOrEqualTo(Instant.now().plusSeconds(1));
@@ -242,6 +375,7 @@ class MatchmakingSocketControllerTest {
     void delayedReplayBatchesUseTheirAbsolutePublishTimeline() {
         MatchmakingService matchmakingService = mock(MatchmakingService.class);
         MatchService matchService = mock(MatchService.class);
+        when(matchService.isCurrentEvent(any())).thenReturn(true);
         SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
         CurrentUserService currentUserService = mock(CurrentUserService.class);
         TaskScheduler scheduler = mock(TaskScheduler.class);
@@ -259,9 +393,9 @@ class MatchmakingSocketControllerTest {
         Instant secondPublishAt = firstPublishAt.plusSeconds(1);
 
         controller.handleMatchmakingEventsReady(new MatchmakingEventsReady(List.of(
-                new MatchService.OutboundMatchmakingEvent(
+                new OutboundMatchmakingEvent(
                         "pilot@example.com", firstBatch, 1_100L, firstPublishAt),
-                new MatchService.OutboundMatchmakingEvent(
+                new OutboundMatchmakingEvent(
                         "pilot@example.com", secondBatch, 2_200L, secondPublishAt))));
 
         assertThat(runAtCaptor.getAllValues()).containsExactly(firstPublishAt, secondPublishAt);
@@ -269,9 +403,224 @@ class MatchmakingSocketControllerTest {
     }
 
     @Test
+    void delayedTerminalResultIsScheduledAndDeliveredAtItsRevealTime() {
+        MatchmakingService matchmakingService = mock(MatchmakingService.class);
+        MatchService matchService = mock(MatchService.class);
+        when(matchService.isCurrentEvent(any())).thenReturn(true);
+        SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
+        CurrentUserService currentUserService = mock(CurrentUserService.class);
+        TaskScheduler scheduler = mock(TaskScheduler.class);
+        @SuppressWarnings("unchecked")
+        ScheduledFuture<Object> scheduledFuture = mock(ScheduledFuture.class);
+        ArgumentCaptor<Runnable> taskCaptor = ArgumentCaptor.forClass(Runnable.class);
+        ArgumentCaptor<Instant> runAtCaptor = ArgumentCaptor.forClass(Instant.class);
+        doReturn(scheduledFuture).when(scheduler).schedule(taskCaptor.capture(), runAtCaptor.capture());
+        MatchmakingSocketController controller = new MatchmakingSocketController(
+                matchmakingService,
+                matchService,
+                messagingTemplate,
+                currentUserService,
+                scheduler);
+        UUID matchId = UUID.randomUUID();
+        Instant revealAt = Instant.parse("2026-07-25T12:00:04Z");
+        MatchmakingEventDTO result = mock(MatchmakingEventDTO.class);
+        when(result.type()).thenReturn("MATCH_RESULT_READY");
+        when(result.matchId()).thenReturn(matchId);
+        when(result.withServerNow(any(Instant.class))).thenReturn(result);
+
+        controller.handleMatchmakingEventsReady(new MatchmakingEventsReady(List.of(
+                new OutboundMatchmakingEvent("pilot@example.com", result, 4_000L, revealAt))));
+
+        assertThat(runAtCaptor.getValue()).isEqualTo(revealAt);
+        verify(messagingTemplate, never()).convertAndSendToUser(any(), any(), any());
+
+        taskCaptor.getValue().run();
+
+        verify(messagingTemplate).convertAndSendToUser(
+                eq("pilot@example.com"), eq(MatchmakingSocketDestinations.MATCH), eq(result));
+        verify(matchService).expireCompletedMatch(matchId);
+    }
+
+    @Test
+    void confirmedDisconnectCancelsDelayedReplayAndRoundEvents() {
+        MatchmakingService matchmakingService = mock(MatchmakingService.class);
+        MatchService matchService = mock(MatchService.class);
+        when(matchService.isCurrentEvent(any())).thenReturn(true);
+        SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
+        CurrentUserService currentUserService = mock(CurrentUserService.class);
+        TaskScheduler scheduler = mock(TaskScheduler.class);
+        @SuppressWarnings("unchecked")
+        ScheduledFuture<Object> delayedReplay = mock(ScheduledFuture.class);
+        @SuppressWarnings("unchecked")
+        ScheduledFuture<Object> delayedRound = mock(ScheduledFuture.class);
+        @SuppressWarnings("unchecked")
+        ScheduledFuture<Object> disconnectDetection = mock(ScheduledFuture.class);
+        @SuppressWarnings("unchecked")
+        ScheduledFuture<Object> disconnectTimeout = mock(ScheduledFuture.class);
+        ArgumentCaptor<Runnable> taskCaptor = ArgumentCaptor.forClass(Runnable.class);
+        UUID matchId = UUID.randomUUID();
+        Instant disconnectDeadline = Instant.now().plusSeconds(30);
+
+        doReturn(delayedReplay, delayedRound, disconnectDetection, disconnectTimeout)
+                .when(scheduler).schedule(any(Runnable.class), any(Instant.class));
+        when(delayedReplay.isDone()).thenReturn(false);
+        when(delayedRound.isDone()).thenReturn(false);
+
+        MatchmakingEventDTO replayBatch = mock(MatchmakingEventDTO.class);
+        when(replayBatch.type()).thenReturn("MATCH_REPLAY_BATCH");
+        when(replayBatch.matchId()).thenReturn(matchId);
+        MatchmakingEventDTO roundReady = mock(MatchmakingEventDTO.class);
+        when(roundReady.type()).thenReturn("MATCH_ROUND_READY");
+        when(roundReady.matchId()).thenReturn(matchId);
+        MatchmakingSocketController controller = new MatchmakingSocketController(
+                matchmakingService, matchService, messagingTemplate, currentUserService, scheduler);
+        controller.handleMatchmakingEventsReady(new MatchmakingEventsReady(List.of(
+                new OutboundMatchmakingEvent("pilot@example.com", replayBatch, 1_000),
+                new OutboundMatchmakingEvent("pilot@example.com", roundReady, 2_000))));
+
+        MatchmakingEventDTO disconnected = mock(MatchmakingEventDTO.class);
+        when(disconnected.type()).thenReturn("PLAYER_DISCONNECTED");
+        when(disconnected.matchId()).thenReturn(matchId);
+        when(disconnected.disconnectEndsAt()).thenReturn(disconnectDeadline);
+        MatchmakingEventDTO result = mock(MatchmakingEventDTO.class);
+        when(result.type()).thenReturn("MATCH_RESULT_READY");
+        when(result.matchId()).thenReturn(matchId);
+        when(disconnected.withServerNow(any(Instant.class))).thenReturn(disconnected);
+        when(result.withServerNow(any(Instant.class))).thenReturn(result);
+        when(matchService.markDisconnected(any(String.class), any(String.class)))
+                .thenReturn(List.of(new OutboundMatchmakingEvent("pilot@example.com", disconnected)));
+        when(matchService.resolveDisconnectTimeout(any(String.class), eq(disconnectDeadline)))
+                .thenReturn(List.of(new OutboundMatchmakingEvent("pilot@example.com", result)));
+
+        SessionDisconnectEvent disconnectEvent = mock(SessionDisconnectEvent.class);
+        when(disconnectEvent.getUser()).thenReturn((Principal) () -> "pilot@example.com");
+        when(disconnectEvent.getSessionId()).thenReturn("socket-1");
+
+        controller.handleDisconnect(disconnectEvent);
+
+        verify(scheduler, org.mockito.Mockito.times(3)).schedule(taskCaptor.capture(), any(Instant.class));
+        taskCaptor.getAllValues().get(2).run();
+        verify(scheduler, org.mockito.Mockito.times(4)).schedule(taskCaptor.capture(), any(Instant.class));
+        taskCaptor.getAllValues().getLast().run();
+
+        verify(delayedReplay).cancel(false);
+        verify(delayedRound).cancel(false);
+        verify(messagingTemplate, never()).convertAndSendToUser(
+                any(), eq(MatchmakingSocketDestinations.MATCH), eq(replayBatch));
+        verify(messagingTemplate).convertAndSendToUser(
+                eq("pilot@example.com"), eq(MatchmakingSocketDestinations.MATCH), eq(result));
+    }
+
+    @Test
+    void directTerminalResultCancelsDelayedMatchEvents() {
+        MatchmakingService matchmakingService = mock(MatchmakingService.class);
+        MatchService matchService = mock(MatchService.class);
+        when(matchService.isCurrentEvent(any())).thenReturn(true);
+        SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
+        CurrentUserService currentUserService = mock(CurrentUserService.class);
+        TaskScheduler scheduler = mock(TaskScheduler.class);
+        @SuppressWarnings("unchecked")
+        ScheduledFuture<Object> delayedReplay = mock(ScheduledFuture.class);
+        when(delayedReplay.isDone()).thenReturn(false);
+        doReturn(delayedReplay).when(scheduler).schedule(any(Runnable.class), any(Instant.class));
+
+        UUID matchId = UUID.randomUUID();
+        MatchmakingEventDTO replayBatch = mock(MatchmakingEventDTO.class);
+        when(replayBatch.type()).thenReturn("MATCH_REPLAY_BATCH");
+        when(replayBatch.matchId()).thenReturn(matchId);
+        MatchmakingEventDTO result = mock(MatchmakingEventDTO.class);
+        when(result.type()).thenReturn("MATCH_RESULT_READY");
+        when(result.matchId()).thenReturn(matchId);
+        when(result.withServerNow(any(Instant.class))).thenReturn(result);
+
+        MatchmakingSocketController controller = new MatchmakingSocketController(
+                matchmakingService, matchService, messagingTemplate, currentUserService, scheduler);
+        controller.handleMatchmakingEventsReady(new MatchmakingEventsReady(List.of(
+                new OutboundMatchmakingEvent("pilot@example.com", replayBatch, 1_000))));
+        controller.handleMatchmakingEventsReady(new MatchmakingEventsReady(List.of(
+                new OutboundMatchmakingEvent("pilot@example.com", result))));
+
+        verify(delayedReplay).cancel(false);
+    }
+
+    @Test
+    void terminalResultInTheSameBatchDoesNotScheduleStaleDelayedMatchEvents() {
+        MatchmakingService matchmakingService = mock(MatchmakingService.class);
+        MatchService matchService = mock(MatchService.class);
+        when(matchService.isCurrentEvent(any())).thenReturn(true);
+        SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
+        CurrentUserService currentUserService = mock(CurrentUserService.class);
+        TaskScheduler scheduler = mock(TaskScheduler.class);
+        UUID matchId = UUID.randomUUID();
+        MatchmakingEventDTO replayBatch = mock(MatchmakingEventDTO.class);
+        when(replayBatch.type()).thenReturn("MATCH_REPLAY_BATCH");
+        when(replayBatch.matchId()).thenReturn(matchId);
+        MatchmakingEventDTO result = mock(MatchmakingEventDTO.class);
+        when(result.type()).thenReturn("MATCH_RESULT_READY");
+        when(result.matchId()).thenReturn(matchId);
+        when(result.withServerNow(any(Instant.class))).thenReturn(result);
+
+        MatchmakingSocketController controller = new MatchmakingSocketController(
+                matchmakingService, matchService, messagingTemplate, currentUserService, scheduler);
+        controller.handleMatchmakingEventsReady(new MatchmakingEventsReady(List.of(
+                new OutboundMatchmakingEvent("pilot@example.com", replayBatch, 1_000),
+                new OutboundMatchmakingEvent("pilot@example.com", result))));
+
+        verify(scheduler, never()).schedule(any(Runnable.class), any(Instant.class));
+        verify(messagingTemplate).convertAndSendToUser(
+                eq("pilot@example.com"), eq(MatchmakingSocketDestinations.MATCH), eq(result));
+    }
+
+    @Test
+    void staleEventIsDroppedBeforeWebSocketDelivery() {
+        MatchmakingService matchmakingService = mock(MatchmakingService.class);
+        MatchService matchService = mock(MatchService.class);
+        SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
+        CurrentUserService currentUserService = mock(CurrentUserService.class);
+        TaskScheduler scheduler = mock(TaskScheduler.class);
+        UUID matchId = UUID.randomUUID();
+        MatchmakingEventDTO stale = mock(MatchmakingEventDTO.class);
+        when(stale.matchId()).thenReturn(matchId);
+        when(stale.type()).thenReturn("MATCH_LOADOUT_SELECTED");
+        OutboundMatchmakingEvent outbound =
+                new OutboundMatchmakingEvent("pilot@example.com", stale);
+        when(matchService.isCurrentEvent(outbound)).thenReturn(false);
+
+        MatchmakingSocketController controller = new MatchmakingSocketController(
+                matchmakingService, matchService, messagingTemplate, currentUserService, scheduler);
+        controller.handleMatchmakingEventsReady(new MatchmakingEventsReady(List.of(outbound)));
+
+        verify(messagingTemplate, never()).convertAndSendToUser(any(), any(), any());
+    }
+
+    @Test
+    void staleImmediateEventDoesNotScheduleAuthoritativeWork() {
+        MatchmakingService matchmakingService = mock(MatchmakingService.class);
+        MatchService matchService = mock(MatchService.class);
+        SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
+        CurrentUserService currentUserService = mock(CurrentUserService.class);
+        TaskScheduler scheduler = mock(TaskScheduler.class);
+        UUID matchId = UUID.randomUUID();
+        MatchmakingEventDTO stale = mock(MatchmakingEventDTO.class);
+        when(stale.matchId()).thenReturn(matchId);
+        when(stale.type()).thenReturn("SIMULATION_LOADING");
+        OutboundMatchmakingEvent outbound =
+                new OutboundMatchmakingEvent("pilot@example.com", stale);
+        when(matchService.isCurrentEvent(outbound)).thenReturn(false);
+
+        MatchmakingSocketController controller = new MatchmakingSocketController(
+                matchmakingService, matchService, messagingTemplate, currentUserService, scheduler);
+        controller.handleMatchmakingEventsReady(new MatchmakingEventsReady(List.of(outbound)));
+
+        verify(scheduler, never()).schedule(any(Runnable.class), any(Instant.class));
+        verify(messagingTemplate, never()).convertAndSendToUser(any(), any(), any());
+    }
+
+    @Test
     void delayedRoundReadyActivatesTheSelectionDeadlineBeforeWebSocketDelivery() {
         MatchmakingService matchmakingService = mock(MatchmakingService.class);
         MatchService matchService = mock(MatchService.class);
+        when(matchService.isCurrentEvent(any())).thenReturn(true);
         SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
         CurrentUserService currentUserService = mock(CurrentUserService.class);
         TaskScheduler scheduler = mock(TaskScheduler.class);
@@ -352,10 +701,10 @@ class MatchmakingSocketControllerTest {
                 null,
                 null,
                 null);
-        MatchService.OutboundMatchmakingEvent pendingOutbound =
-                new MatchService.OutboundMatchmakingEvent("pilot@example.com", pending, 5_000);
+        OutboundMatchmakingEvent pendingOutbound =
+                new OutboundMatchmakingEvent("pilot@example.com", pending, 5_000);
         when(matchService.activateRoundLoadoutSelection(any()))
-                .thenReturn(new MatchService.OutboundMatchmakingEvent("pilot@example.com", activated));
+                .thenReturn(new OutboundMatchmakingEvent("pilot@example.com", activated));
         MatchmakingSocketController controller = new MatchmakingSocketController(
                 matchmakingService, matchService, messagingTemplate, currentUserService, scheduler);
 
@@ -366,7 +715,7 @@ class MatchmakingSocketControllerTest {
         ArgumentCaptor<MatchmakingEventDTO> payloadCaptor = ArgumentCaptor.forClass(MatchmakingEventDTO.class);
         verify(matchService).activateRoundLoadoutSelection(pendingOutbound);
         verify(messagingTemplate).convertAndSendToUser(
-                eq("pilot@example.com"), eq("/queue/matchmaking"), payloadCaptor.capture());
+                eq("pilot@example.com"), eq(MatchmakingSocketDestinations.MATCH), payloadCaptor.capture());
         assertThat(payloadCaptor.getValue().loadoutSelectionEndsAt()).isEqualTo(deadline);
     }
 }

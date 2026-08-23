@@ -1,5 +1,7 @@
 package com.example.botfight.service;
 
+import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;

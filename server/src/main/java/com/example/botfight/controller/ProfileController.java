@@ -4,9 +4,10 @@ import com.example.botfight.DTO.AboutMeRequestDTO;
 import com.example.botfight.DTO.ProfileDTO;
 import com.example.botfight.DTO.MatchHistoryPageDTO;
 import com.example.botfight.DTO.ProfileSearchPageDTO;
+import com.example.botfight.DTO.SolvedPuzzlePageDTO;
 import com.example.botfight.DTO.UsernameRequestDTO;
-import com.example.botfight.service.AuthException;
-import com.example.botfight.service.ProfileService;
+import com.example.botfight.service.auth.AuthException;
+import com.example.botfight.service.profile.ProfileService;
 import java.time.Instant;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -60,6 +61,14 @@ public class ProfileController {
         return profileService.publicMatchHistory(authentication, username, page, query, from, to);
     }
 
+    @GetMapping("/users/{username}/puzzles")
+    public SolvedPuzzlePageDTO publicSolvedPuzzles(
+            Authentication authentication,
+            @PathVariable String username,
+            @RequestParam(defaultValue = "0") int page) {
+        return profileService.publicSolvedPuzzles(authentication, username, page);
+    }
+
     @PutMapping("/username")
     public ProfileDTO updateUsername(
             Authentication authentication,
@@ -82,6 +91,13 @@ public class ProfileController {
             @RequestParam(required = false) Instant from,
             @RequestParam(required = false) Instant to) {
         return profileService.matchHistory(authentication, page, query, from, to);
+    }
+
+    @GetMapping("/puzzles")
+    public SolvedPuzzlePageDTO solvedPuzzles(
+            Authentication authentication,
+            @RequestParam(defaultValue = "0") int page) {
+        return profileService.solvedPuzzles(authentication, page);
     }
 
     @org.springframework.web.bind.annotation.ExceptionHandler(AuthException.class)

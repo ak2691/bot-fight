@@ -1,5 +1,7 @@
 package com.example.botfight.service;
 
+import com.example.botfight.service.submission.LegacyAbilityPayloadMigration;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
@@ -11,7 +13,7 @@ class LegacyAbilityPayloadMigrationTest {
     @Test
     void legacyNamesNormalizeAtTheExplicitBoundaryAndNumericIdsRemainStable() throws Exception {
         var legacy = jsonMapper.readTree("""
-                {"loadout":{"abilities":["heavy_slash",13],"statPoints":{}},
+                {"loadout":{"abilities":["heavy_slash",13]},
                  "roots":[{"branches":[{"action":"heavy_slash","conditions":[{"ability":"rail_shot"}]}]}]}
                 """);
 
@@ -27,7 +29,7 @@ class LegacyAbilityPayloadMigrationTest {
     @Test
     void malformedNamesRemainVisibleForFailClosedValidation() throws Exception {
         var malformed = jsonMapper.readTree("""
-                {"loadout":{"abilities":["invented_ability"],"statPoints":{}},
+                {"loadout":{"abilities":["invented_ability"]},
                  "roots":[{"branches":[{"action":"invented_ability","conditions":[{"ability":"invented_ability"}]}]}]}
                 """);
 
@@ -45,5 +47,20 @@ class LegacyAbilityPayloadMigrationTest {
 
         assertThat(LegacyAbilityPayloadMigration.normalize(partial)
                 .at("/loadout/abilities/0").intValue()).isEqualTo(12);
+    }
+
+    @Test
+    void legacyWalkCompassNamesNormalizeToAbsoluteDegreesWithoutChangingDashAliases() throws Exception {
+        var legacy = jsonMapper.readTree("""
+                {"roots":[{"branches":[
+                  {"action":"move_walk","movementMode":"absolute","movementDirection":"west","conditions":[]},
+                  {"action":"dash","movementMode":"absolute","movementDirection":"west","conditions":[]}
+                ]}]}
+                """);
+
+        var normalized = LegacyAbilityPayloadMigration.normalize(legacy);
+
+        assertThat(normalized.at("/roots/0/branches/0/movementDirection").intValue()).isEqualTo(270);
+        assertThat(normalized.at("/roots/0/branches/1/movementDirection").textValue()).isEqualTo("west");
     }
 }

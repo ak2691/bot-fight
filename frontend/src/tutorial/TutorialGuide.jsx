@@ -34,6 +34,24 @@ function hasConditionAndAction(configuration, conditionPredicate, actionPredicat
     ));
 }
 
+function customVariableNamed(configuration, name) {
+    return (configuration?.customVariables ?? []).find((variable) => variable?.name === name);
+}
+
+function hasVariableActionThatAddsOne(configuration) {
+    const variable = customVariableNamed(configuration, "Variable 1");
+    if (!variable) return false;
+    return hasAction(configuration, (action) => {
+        if (action?.action !== "variable" || action.variableId !== variable.id) return false;
+        if (action.operation === "add" && Number(action.value) === 1) return true;
+        return (action.terms ?? []).some((term) => (
+            term?.operator === "add"
+            && term.operand?.type === "number"
+            && Number(term.operand.value) === 1
+        ));
+    });
+}
+
 function numericCondition(condition, left, comparator, value, leftTarget = undefined) {
     return condition?.type === "expression"
         && condition.left === left
@@ -46,40 +64,53 @@ const always = (condition) => condition?.type === "always";
 const movement = (direction, target = "opponent") => (action) => (
     action?.action === "move_walk"
     && (action.movementMode ?? "target") === "target"
-    && (action.movementDirection ?? "toward") === direction
+    && Number(action.movementDirection ?? 0) === direction
     && (action.actionTarget ?? "opponent") === target
 );
 
 const LESSONS = [
     {
-        lessonNumber: "01",
+        lessonNumber: "1",
         eyebrow: "BUILD A BRAIN",
         title: "Create your first behavior",
-        objective: "Add one Root, ALWAYS, and Walk -> Toward Opponent.",
+        objective: "Add one Root, ALWAYS, and Walk -> 0° from Opponent.",
         interactive: true,
         solution: true,
         objectives: [
             { id: "open-code", label: "Open Bot Code", focus: "open-code", hint: "Open the Bot Code workspace to start.", complete: ({ hasOpenedLogic }) => hasOpenedLogic },
             { id: "root", label: "Add a Root", focus: "add-root", hint: "Click + ADD ROOT above.", complete: ({ configuration }) => rootsOf(configuration).length > 0 },
             { id: "always", label: "Add ALWAYS", focus: "add-condition", hint: "Click + CONDITIONAL, Click the + symbol next to the condition, then choose ALWAYS.", complete: ({ configuration }) => hasCondition(configuration, always) },
-            { id: "walk", label: "Add Walk", focus: "add-action", hint: "Click + ACTION, choose Walk.", complete: ({ configuration }) => hasAction(configuration, movement("toward")) },
+            { id: "walk", label: "Add Walk", focus: "add-action", hint: "Click + ACTION, choose Walk, and set the angle to 0°.", complete: ({ configuration }) => hasAction(configuration, movement(0)) },
         ],
     },
     {
-        lessonNumber: "02",
+        lessonNumber: "2",
         eyebrow: "DISTANCE + HP",
         title: "Approach and retreat",
         objective: "Use health and distance to choose how your bot moves.",
         interactive: true,
         solution: true,
         objectives: [
-            { id: "retreat", label: "Add low-HP retreat", focus: "add-condition", hint: "When My HP is below 45, walk Away. Click the green node to configure target.", complete: ({ configuration }) => hasConditionAndAction(configuration, (condition) => numericCondition(condition, "my.hp", "lt", 45), movement("away")) },
-            { id: "approach", label: "Add approach rule", focus: "add-condition", hint: "When Target Distance is above 100, walk Toward.", complete: ({ configuration }) => hasConditionAndAction(configuration, (condition) => numericCondition(condition, "target.distance", "gt", 100, "opponent"), movement("toward")) },
+            { id: "retreat", label: "Add low-HP retreat", focus: "add-condition", hint: "When My HP is below 45, walk at 180° from the target. Click the green node to configure target.", complete: ({ configuration }) => hasConditionAndAction(configuration, (condition) => numericCondition(condition, "my.hp", "lt", 45), movement(180)) },
+            { id: "approach", label: "Add another conditional.", focus: "add-condition", hint: "When Target Distance is above 100, walk at 0° from the target.", complete: ({ configuration }) => hasConditionAndAction(configuration, (condition) => numericCondition(condition, "target.distance", "gt", 100, "opponent"), movement(0)) },
             { id: "run", label: "Run your bot", focus: "play", hint: "Close the workspace and press PLAY.", complete: runComplete },
         ],
     },
     {
-        lessonNumber: "03",
+        lessonNumber: "3",
+        eyebrow: "USE YOUR BASIC STRIKE",
+        title: "Land Basic Strike",
+        objective: "Use Basic Strike to land a direct hit.",
+        interactive: true,
+        solution: true,
+        challenge: true,
+        objectives: [
+            { id: "challenge", label: "Land Basic Strike", focus: "play", hint: "Press PLAY and let Basic Strike connect with the opponent.", complete: runComplete },
+        ],
+        workspaceCoach: { eyebrow: "BASIC STRIKE", title: "Add a reliable hit", copy: "Add Basic Strike under an ALWAYS condition. Your bot is already in range and facing the opponent, so run the bot and land the hit.", focus: "add-action" },
+    },
+    {
+        lessonNumber: "4",
         eyebrow: "ROTATE TO FACE",
         title: "Turn before you strike",
         objective: "Land Heavy Slash within 2 seconds.",
@@ -92,7 +123,7 @@ const LESSONS = [
         workspaceCoach: { eyebrow: "BUILD THE ATTACK", title: "Rotate, close, then Heavy Slash", copy: "Add Rotate: Face Target, a close-in movement rule, and Heavy Slash. Then run the bot.", focus: "add-action" },
     },
     {
-        lessonNumber: "04",
+        lessonNumber: "5",
         eyebrow: "LOCK ON + ATTACK",
         title: "Aim, then attack",
         objective: "Land Heavy Slash within 1 second.",
@@ -105,7 +136,7 @@ const LESSONS = [
         workspaceCoach: { eyebrow: "BUILD THE ATTACK", title: "Lock On, close, then Heavy Slash", copy: "Add Lock On, a close-in movement rule, and Heavy Slash. Then run the bot.", focus: "add-action" },
     },
     {
-        lessonNumber: "05",
+        lessonNumber: "6",
         eyebrow: "DODGE A PROJECTILE",
         title: "Dodge the grenade",
         objective: "Survive for 3 seconds without getting hit by the grenade.",
@@ -118,7 +149,7 @@ const LESSONS = [
         workspaceCoach: { eyebrow: "DODGE THE GRENADE", title: "Dash clear", copy: "Target the grenade and add Dash in any direction. Then run the bot.", focus: "add-action" },
     },
     {
-        lessonNumber: "06",
+        lessonNumber: "7",
         eyebrow: "COMBINE THE FUNDAMENTALS",
         title: "Make the whole plan work",
         objective: "Land Heavy Slash without taking damage within 3 seconds.",
@@ -131,44 +162,58 @@ const LESSONS = [
         workspaceCoach: { eyebrow: "COMBINE THE PLAN", title: "Keep the tactics together", copy: "Keep the dodge, face the target, close the gap, and use Heavy Slash.", focus: "add-action" },
     },
     {
-        lessonNumber: "07",
-        eyebrow: "SURVIVE TEN SECONDS",
-        title: "Stay alive while attacking",
-        objective: "Survive for 10 seconds while attacking.",
+        lessonNumber: "8",
+        eyebrow: "CUSTOM VARIABLES",
+        title: "Make a number grow",
+        objective: "Increase Variable 1 by 5",
         interactive: true,
         solution: true,
         challenge: true,
         objectives: [
-            { id: "challenge", label: "Survive for 10 seconds", focus: "play", hint: "Press PLAY and stay alive for the full run.", complete: runComplete },
+            { id: "challenge", label: "Increase Variable 1 by 5", focus: "play", hint: "Press PLAY and make the Variable 1 value increase by 5.", complete: runComplete },
         ],
-        workspaceCoach: { eyebrow: "SURVIVE THE FIGHT", title: "Retreat before low HP", copy: "Add a low-HP retreat and keep attacking while you are healthy.", focus: "add-condition" },
+        workspaceCoach: {
+            steps: [
+                {
+                    eyebrow: "CUSTOM VARIABLES",
+                    title: "Add Variable 1",
+                    copy: "Click CUSTOM VARIABLES, then + ADD VARIABLE. Keep the name as Variable 1, the type as NUMBER, and the starting value at 0. Close the panel when you are done.",
+                    focus: "custom-variables",
+                    complete: ({ configuration }) => Boolean(customVariableNamed(configuration, "Variable 1")),
+                },
+                {
+                    eyebrow: "BUILD THE RULE",
+                    title: "Add a root",
+                    copy: "Click + ADD ROOT to create the first place for your rule.",
+                    focus: "add-root",
+                    complete: ({ configuration }) => rootsOf(configuration).length > 0,
+                },
+                {
+                    eyebrow: "BUILD THE RULE",
+                    title: "Choose ALWAYS",
+                    copy: "Click + CONDITIONAL, then use the + beside the condition to choose ALWAYS.",
+                    focus: "add-condition",
+                    complete: ({ configuration }) => hasCondition(configuration, always),
+                },
+                {
+                    eyebrow: "MODIFY THE VARIABLE",
+                    title: "Add a +1 action",
+                    copy: "Click + ACTION and select Variable: Modify Custom Variable. Choose Variable 1, set the operator to +, and enter 1.",
+                    focus: "add-action",
+                    complete: ({ configuration }) => hasVariableActionThatAddsOne(configuration),
+                },
+                {
+                    eyebrow: "RUN THE LESSON",
+                    title: "Increase Variable 1 by 5",
+                    copy: "Close the workspace and press PLAY. The challenge checks that Variable 1 increases by 5 from its starting value of 0.",
+                    focus: "play",
+                    complete: runComplete,
+                },
+            ],
+        },
     },
     {
-        lessonNumber: "08",
-        eyebrow: "BOOLEAN VARIABLES",
-        title: "Name your attack window",
-        objective: "Use a boolean custom variable to decide when Heavy Slash is ready.",
-        interactive: true,
-        solution: true,
-        objectives: [
-            { id: "challenge", label: "Replace Heavy Slash conditions", focus: "play", hint: "Press PLAY when Heavy Slash uses your boolean variable.", complete: runComplete },
-        ],
-        workspaceCoach: { eyebrow: "BOOLEAN VARIABLES", title: "Make Heavy Slash Ready", copy: "This code starts from Rotate, approach, and Heavy Slash. Create Heavy Slash Ready from target distance and relative bearing, then use it instead of Heavy Slash's two conditions.", focus: "custom-variables" },
-    },
-    {
-        lessonNumber: "09",
-        eyebrow: "INTEGER VARIABLES",
-        title: "Count your hits",
-        objective: "Use an integer custom variable to count hits, then Dash Away after three.",
-        interactive: true,
-        solution: true,
-        objectives: [
-            { id: "challenge", label: "Count hits and Dash Away", focus: "play", hint: "Press PLAY when Hits Landed adds one per hit and triggers Dash Away at three.", complete: runComplete },
-        ],
-        workspaceCoach: { eyebrow: "INTEGER VARIABLES", title: "Count hits", copy: "Create Hits Landed as an integer. Use ALWAYS for Pistol Shot, Concussive Shot, and Rail Shot, add one for each confirmed hit, then Dash Away after three.", focus: "custom-variables" },
-    },
-    {
-        lessonNumber: "10",
+        lessonNumber: "9",
         eyebrow: "SEARCH ROOTS",
         title: "Reorder a large code plan",
         objective: "Delete roots B, O, and T, then configure root Q with Search Roots.",
@@ -177,7 +222,18 @@ const LESSONS = [
         objectives: [
             { id: "challenge", label: "Validate the named-root setup", focus: "play", hint: "Press PLAY when the 17 named roots are ready.", complete: runComplete },
         ],
-        workspaceCoach: { eyebrow: "SEARCH ROOTS", title: "Find and configure root Q", copy: "Delete roots B, O, and T, find root Q, then add ALWAYS -> Walk -> Toward Opponent.", focus: "search-roots" },
+        workspaceCoach: { eyebrow: "SEARCH ROOTS", title: "Find and configure root Q", copy: "Delete roots B, O, and T, find root Q, then add ALWAYS -> Walk -> 0° from Opponent.", focus: "search-roots" },
+    },
+    {
+        lessonNumber: "10",
+        eyebrow: "THE MATCH LOOP",
+        title: "How the game works",
+        objective: "Learn the match flow before you build for real.",
+        details: [
+            "Each round gives you a selection of abilities. In Round 1, you get 6 abilities and choose 3. In round 2, you get 4 abilities and choose 2. In round 3, you get 3 abilities and choose 1.",
+            "The safe zone shrinks every 15 seconds. Each shrink lasts 5 seconds, and the closing zone deals damage.",
+            "You have 5 minutes to build your bot. Then it fights in the round simulation. This repeats for a best of 3. Draws are possible.",
+        ],
     },
     {
         lessonNumber: "11",
@@ -193,6 +249,13 @@ const LESSONS = [
         objective: "Open the Conditional Catalogue to review the checks your bot can read.",
         conditionalCatalogue: true,
     },
+    {
+        lessonNumber: "13",
+        eyebrow: "PUZZLES",
+        title: "Do puzzles to improve your skills!",
+        objective: "Put your bot-building skills to work against puzzle challenges.",
+        puzzles: true,
+    },
 ];
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -202,10 +265,15 @@ export function getTutorialProgress(step, configuration, { hasOpenedLogic = fals
     const objectives = lesson.objectives ?? [];
     const completedIds = objectives.filter((objective) => objective.complete(context)).map((objective) => objective.id);
     const active = objectives.find((objective) => !completedIds.includes(objective.id));
+    const workspaceSteps = lesson.workspaceCoach?.steps ?? [];
+    const activeWorkspaceStep = workspaceSteps.findIndex((coachStep) => !coachStep.complete?.(context));
     return {
         completedIds,
         activeId: active?.id ?? null,
-        focus: active?.focus ?? (lesson.interactive ? "play" : null),
+        focus: activeWorkspaceStep >= 0
+            ? workspaceSteps[activeWorkspaceStep].focus
+            : active?.focus ?? (lesson.interactive ? "play" : null),
+        workspaceCoachStep: activeWorkspaceStep >= 0 ? activeWorkspaceStep : Math.max(0, workspaceSteps.length - 1),
         allComplete: objectives.length > 0 && completedIds.length === objectives.length,
     };
 }
@@ -213,6 +281,14 @@ export function getTutorialProgress(step, configuration, { hasOpenedLogic = fals
 // eslint-disable-next-line react-refresh/only-export-components
 export function getTutorialCoach(step, progress = null) {
     const lesson = LESSONS[step] ?? LESSONS[0];
+    if (lesson.workspaceCoach?.steps?.length) {
+        const coachStep = Math.min(progress?.workspaceCoachStep ?? 0, lesson.workspaceCoach.steps.length - 1);
+        return {
+            ...lesson.workspaceCoach.steps[coachStep],
+            stepIndex: coachStep,
+            stepCount: lesson.workspaceCoach.steps.length,
+        };
+    }
     if (lesson.workspaceCoach) return lesson.workspaceCoach;
     const active = lesson.objectives?.find((objective) => objective.id === progress?.activeId);
     if (active) {
@@ -229,7 +305,8 @@ export function TutorialCodeCoach({ step, progress, onShowSolution, solutionShow
     if (!coach) return null;
 
     return (
-        <aside className="tutorial-coach absolute right-5 top-24 z-30 w-64 rounded-xl border border-cyan-400/40 bg-[#07111cf2] p-3.5 shadow-2xl" aria-label="Current tutorial hint">
+        <aside className="tutorial-coach absolute right-5 top-24 z-30 w-64 rounded-xl border border-cyan-400/40 bg-[#07111b] p-3.5 shadow-2xl" aria-label="Current tutorial hint">
+            {coach.stepCount > 1 && <p className="font-mono text-[8px] font-bold tracking-[.18em] text-slate-500">GUIDE {coach.stepIndex + 1}/{coach.stepCount}</p>}
             <p className="font-mono text-[9px] font-bold tracking-[.2em] text-cyan-300">{coach.eyebrow}</p>
             <h2 className="mt-2 text-sm font-bold leading-tight text-white">{coach.title}</h2>
             <p className="mt-1.5 text-[11px] leading-4 text-slate-300">{coach.copy}</p>
@@ -238,7 +315,7 @@ export function TutorialCodeCoach({ step, progress, onShowSolution, solutionShow
     );
 }
 
-export default function TutorialGuide({ step, onStepChange, challenge, onAbilityCatalogue, onConditionalCatalogue, progress }) {
+export default function TutorialGuide({ step, onStepChange, challenge, onAbilityCatalogue, onConditionalCatalogue, onPuzzles, progress }) {
     const [minimized, setMinimized] = useState(false);
     const current = LESSONS[step] ?? LESSONS[0];
     const completedIds = new Set(progress?.completedIds ?? []);
@@ -246,9 +323,9 @@ export default function TutorialGuide({ step, onStepChange, challenge, onAbility
 
     if (minimized) {
         return (
-            <button type="button" onClick={() => setMinimized(false)} className="fixed left-4 top-20 z-30 flex items-center gap-2 rounded-lg border border-cyan-400/40 bg-[#07111cf2] px-3 py-2 text-left shadow-2xl" aria-label="Expand tutorial">
-                <span className="font-mono text-[9px] font-bold tracking-[.16em] text-cyan-300">{current.lessonNumber} {current.eyebrow} - {step + 1}/{LESSONS.length}</span>
-                <span aria-hidden="true" className="text-sm text-slate-300">+</span>
+            <button type="button" onClick={() => setMinimized(false)} className="gray-button-surface fixed left-4 top-20 z-30 flex items-center gap-2 rounded-lg border border-cyan-400/40 px-3 py-2 text-left shadow-2xl" aria-label="Expand tutorial information">
+                <span className="font-mono text-[9px] font-bold tracking-[.16em] text-slate-300">{current.eyebrow} - {step + 1}/{LESSONS.length}</span>
+                <img src="/assets/arena-toolbar/info-circle-icon.png" alt="" aria-hidden="true" className="info-circle-icon h-5 w-5" />
             </button>
         );
     }
@@ -256,18 +333,18 @@ export default function TutorialGuide({ step, onStepChange, challenge, onAbility
     const activeObjective = current.objectives?.find((objective) => !completedIds.has(objective.id));
 
     return (
-        <section className="fixed left-4 top-20 z-30 w-[19rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-cyan-400/30 bg-[#07111cf2] shadow-[0_18px_50px_rgba(0,0,0,.48)]" aria-label="Tutorial mission tracker">
+        <section className="fixed left-4 top-20 z-30 w-[19rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-cyan-400/30 bg-[#07111b] shadow-[0_18px_50px_rgba(0,0,0,.48)]" aria-label="Tutorial mission tracker">
             <div className="h-1 rounded-t-xl bg-gradient-to-r from-cyan-400 via-indigo-500 to-transparent" />
             <div className="p-3.5">
-                <div className="flex items-center justify-between gap-3">
-                    <p className="font-mono text-[9px] font-bold tracking-[.18em] text-cyan-300">{current.lessonNumber} - {current.eyebrow}</p>
-                    <div className="flex items-center gap-2">
-                        <span className="font-mono text-[9px] text-slate-500">{step + 1}/{LESSONS.length}</span>
-                        <button type="button" onClick={() => setMinimized(true)} className="rounded border border-white/10 px-2 py-0.5 text-sm leading-4 text-slate-300 hover:bg-white/10" aria-label="Minimize tutorial" title="Minimize tutorial">-</button>
+                <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                        <p className="break-words font-mono text-lg font-bold leading-tight text-white">{current.lessonNumber}. {current.title}</p>
+                        <p className="mt-1 font-mono text-[9px] font-bold tracking-[.16em] text-cyan-300">{current.eyebrow} · {step + 1}/{LESSONS.length}</p>
                     </div>
+                    <button type="button" onClick={() => setMinimized(true)} className="puzzle-info-minimize" aria-label="Minimize tutorial information" title="Minimize tutorial information"><span aria-hidden="true">-</span></button>
                 </div>
-                <h2 className="mt-3 text-base font-bold leading-tight text-white">{current.title}</h2>
-                <p className="mt-1.5 text-[11px] leading-4 text-slate-300">{current.objective}</p>
+                <p className="mt-3 text-[11px] leading-4 text-slate-300">{current.objective}</p>
+                {current.details?.map((detail) => <p key={detail} className="mt-3 text-[11px] leading-4 text-slate-300">{detail}</p>)}
 
                 {current.objectives?.length > 0 && (
                     <ol className="mt-4 space-y-2" aria-label="Lesson objectives">
@@ -288,6 +365,7 @@ export default function TutorialGuide({ step, onStepChange, challenge, onAbility
                 {current.challenge && <ChallengeStatus challenge={challenge} />}
                 {current.abilityCatalogue && onAbilityCatalogue && <button type="button" onClick={onAbilityCatalogue} className="mt-4 w-full rounded border border-cyan-400/50 bg-cyan-950/30 px-3 py-2 text-[9px] font-bold text-cyan-100">OPEN ABILITY CATALOGUE</button>}
                 {current.conditionalCatalogue && onConditionalCatalogue && <button type="button" onClick={onConditionalCatalogue} className="mt-4 w-full rounded border border-cyan-400/50 bg-cyan-950/30 px-3 py-2 text-[9px] font-bold text-cyan-100">OPEN CONDITIONAL CATALOGUE</button>}
+                {current.puzzles && onPuzzles && <button type="button" onClick={onPuzzles} className="mt-4 w-full rounded border border-cyan-400/50 bg-cyan-950/30 px-3 py-2 text-[9px] font-bold text-cyan-100">GO TO PUZZLES</button>}
 
                 <div className="mt-4 flex items-center border-t border-white/10 pt-3">
                     {step > 0 && <button type="button" onClick={() => onStepChange(step - 1)} className="testing-mono font-mono text-[9px] font-bold tracking-[.045em] text-slate-500 hover:text-slate-200">BACK</button>}
@@ -309,17 +387,18 @@ const CHALLENGE_MESSAGES = {
     dodge_passed: "The grenade detonated safely. You passed.",
     dodge_took_damage: "The grenade connected. Adjust the dash direction or timing, then restart.",
     dodge_timed_out: "The grenade did not detonate before time expired.",
+    basic_strike_passed: "Basic Strike landed. You passed.",
+    basic_strike_took_damage: "Your bot took damage before the strike landed. Restart and check the action.",
+    basic_strike_timed_out: "Basic Strike did not land before time expired.",
     combo_passed: "Clean dodge and confirmed hit. You passed.",
     combo_took_damage: "The grenade connected. Adjust the dodge rule, then restart.",
     combo_timed_out: "Time expired before Heavy Slash landed. Restart the run.",
     survive_passed: "Ten seconds complete. Your bot stayed alive.",
     survive_defeated: "Your bot was defeated. Add an HP retreat and try again.",
+    custom_variable_passed: "Variable 1 increased by 5. You passed.",
+    custom_variable_timed_out: "Variable 1 did not increase by 5 before time expired.",
     search_passed: "All 17 named roots are correct.",
     search_failed: "Check the B, O, and T deletions and the root Q setup.",
-    boolean_passed: "Heavy Slash is using the boolean variable.",
-    boolean_failed: "Replace Heavy Slash's range conditions with Heavy Slash Ready.",
-    variables_passed: "The hit counter, ALWAYS attacks, and Dash Away are wired correctly.",
-    variables_failed: "Check Hits Landed, the ALWAYS ability branches, and Dash Away after three.",
 };
 
 function ChallengeStatus({ challenge }) {

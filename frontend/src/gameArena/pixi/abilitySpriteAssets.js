@@ -6,11 +6,11 @@ import muzzleFlashUrl from "../../assets/arena/abilities/rays/muzzle-flash.png";
 import concussiveShotUrl from "../../assets/arena/abilities/rays/concussive-shot.png";
 import railShotUrl from "../../assets/arena/abilities/rays/rail-shot.png";
 import stunUrl from "../../assets/arena/abilities/stun/stun.png";
-import microDashSmokeUrl from "../../assets/arena/abilities/movement/dash-microdash-smoke.png";
+import dashSmokeUrl from "../../assets/arena/abilities/movement/dash-smoke.png";
 import grenadeMineExplosionUrl from "../../assets/arena/abilities/explosions/grenade-mine-explosions.png";
-import gravityGrenadeUrl from "../../assets/arena/abilities/fields/gravity-grenade.png";
-import silencePulseUrl from "../../assets/arena/abilities/fields/silence-pulse.png";
-import nullZoneUrl from "../../assets/arena/abilities/fields/null-zone.png";
+import gravityGrenadeUrl from "../../assets/arena/abilities/zones/gravity-grenade.png";
+import silencePulseUrl from "../../assets/arena/abilities/zones/silence-pulse.png";
+import nullZoneUrl from "../../assets/arena/abilities/zones/null-zone.png";
 import temporalRewindUrl from "../../assets/arena/abilities/support/temporal-rewind.png";
 import basicHealUrl from "../../assets/arena/abilities/support/basic-heal.png";
 import lockOnCrosshairUrl from "../../assets/arena/abilities/support/crosshair.png";
@@ -68,9 +68,9 @@ export function loadAbilitySpriteCatalogue(loadAsset = defaultLoadAsset) {
         loadAsset(concussiveShotUrl, "ray.concussive_shot"),
         loadAsset(railShotUrl, "ray.rail_shot"),
         loadAsset(stunUrl, "effect.stun"),
-        loadAsset(microDashSmokeUrl, "effect.microDashSmoke"),
+        loadAsset(dashSmokeUrl, "effect.dashSmoke"),
         loadAsset(grenadeMineExplosionUrl, "effect.grenadeMineExplosion"),
-        loadAsset(gravityGrenadeUrl, "entity.gravityField"),
+        loadAsset(gravityGrenadeUrl, "entity.gravityZone"),
         loadAsset(silencePulseUrl, "entity.silenceWave"),
         loadAsset(nullZoneUrl, "entity.nullZone"),
         loadAsset(temporalRewindUrl, "entity.temporalRewindZone"),
@@ -90,7 +90,7 @@ export function loadAbilitySpriteCatalogue(loadAsset = defaultLoadAsset) {
         loadFrames(MINE_STATIC_URLS, "projectile.proximityMine.static", loadAsset),
         loadFrames(MINE_DETONATE_URLS, "projectile.proximityMine.detonate", loadAsset),
         loadFrames(PHASE_STRIKE_URLS, "effect.phaseStrike", loadAsset),
-    ]).then(([bot, drone, fireGun, muzzleFlash, concussiveShot, railShot, stun, microDashSmoke, grenadeMineExplosion,
+    ]).then(([bot, drone, fireGun, muzzleFlash, concussiveShot, railShot, stun, dashSmoke, grenadeMineExplosion,
             gravityGrenade, silencePulse, nullZone, temporalRewind, basicHeal, lockOnCrosshair, repulsorBlast, regularShield, orbitalMarker, orbitalExplosion, meleeSlashes,
             windburst, fireball, grenadeMoving, grenadeStatic, grenadeDetonate, mineMoving, mineStatic, mineDetonate,
             phaseStrike]) => ({
@@ -111,7 +111,7 @@ export function loadAbilitySpriteCatalogue(loadAsset = defaultLoadAsset) {
             muzzleFlash: sliceGrid(muzzleFlash, 4, 2),
             // This is one tall supplied stun frame, not a two-row sheet.
             stun: [stun],
-            microDashSmoke: sliceGrid(microDashSmoke, 5, 1),
+            dashSmoke: sliceGrid(dashSmoke, 5, 1),
             // Three complete frames stacked from top to bottom.
             windburst: sliceGrid(windburst, 1, 3),
             fireball,

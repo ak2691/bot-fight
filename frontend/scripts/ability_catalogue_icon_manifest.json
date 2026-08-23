@@ -10,14 +10,6 @@
       "fit": "contain",
       "padding": 32
     },
-    "block": {
-      "output": "block.png",
-      "source": "frontend/src/assets/arena/abilities/shields/regular-shield.png",
-      "grid": { "columns": 5, "rows": 4, "frame_index": 12 },
-      "crop": "alpha",
-      "fit": "contain",
-      "padding": 28
-    },
     "fire_gun": {
       "output": "fire_gun.png",
       "source": "frontend/src/assets/arena/abilities/rays/fire-gun.png",
@@ -211,6 +203,70 @@
       "crop": "alpha",
       "fit": "contain",
       "padding": 46
+    },
+    "frost_ring": {
+      "output": "frost_ring.png",
+      "source": "frontend/src/assets/arena/abilities/zones/gravity-grenade.png",
+      "selection": "temporary catalogue placeholder until the Frost Ring sprite sheet exists",
+      "crop": "alpha",
+      "fit": "contain",
+      "padding": 34
+    },
+    "singularity": {
+      "output": "singularity.png",
+      "source": "frontend/src/assets/arena/abilities/orbital-strike/orbital-strike-marker.png",
+      "selection": "temporary catalogue placeholder until the Singularity sprite sheet exists",
+      "crop": "alpha",
+      "fit": "contain",
+      "padding": 34
+    },
+    "tether_bolt": {
+      "output": "tether_bolt.png",
+      "source": "frontend/src/assets/arena/abilities/rays/concussive-shot.png",
+      "selection": "temporary catalogue placeholder until the Tether Bolt sprite sheet exists",
+      "crop": "alpha",
+      "fit": "contain",
+      "padding": 38
+    },
+    "static_snare": {
+      "output": "static_snare.png",
+      "source": "frontend/src/assets/arena/abilities/zones/null-zone.png",
+      "selection": "temporary catalogue placeholder until the Static Snare sprite sheet exists",
+      "crop": "alpha",
+      "fit": "contain",
+      "padding": 28
+    },
+    "disruptor_dart": {
+      "output": "disruptor_dart.png",
+      "source": "frontend/src/assets/arena/abilities/rays/concussive-shot.png",
+      "selection": "temporary catalogue placeholder until the Disruptor Dart sprite sheet exists",
+      "crop": "alpha",
+      "fit": "contain",
+      "padding": 38
+    },
+    "repeller_drone": {
+      "output": "repeller_drone.png",
+      "source": "frontend/src/assets/arena/abilities/bot/drone-design.png",
+      "selection": "temporary catalogue placeholder until the Repeller Drone sprite sheet exists",
+      "crop": "alpha",
+      "fit": "contain",
+      "padding": 48
+    },
+    "siphon_lance": {
+      "output": "siphon_lance.png",
+      "source": "frontend/src/assets/arena/abilities/rays/rail-shot.png",
+      "selection": "temporary catalogue placeholder until the Siphon Lance sprite sheet exists",
+      "crop": "alpha",
+      "fit": "contain",
+      "padding": 28
+    },
+    "overclock": {
+      "output": "overclock.png",
+      "source": "frontend/src/assets/arena/abilities/support/temporal-rewind.png",
+      "selection": "temporary catalogue placeholder until the Overclock sprite sheet exists",
+      "crop": "alpha",
+      "fit": "contain",
+      "padding": 34
     }
   }
 }

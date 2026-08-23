@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.example.botfight.DTO.MatchPlaybackDTO;
 import com.example.botfight.DTO.MatchmakingEventDTO;
+import com.example.botfight.DTO.MatchReplayDTO;
 import com.example.botfight.domain.AppUser;
 import com.example.botfight.domain.Match;
 import com.example.botfight.domain.MatchParticipant;
@@ -19,11 +20,19 @@ import com.example.botfight.domain.BotSubmission;
 import com.example.botfight.domain.BotSubmissionStatus;
 import com.example.botfight.repository.MatchParticipantRepository;
 import com.example.botfight.repository.MatchRepository;
-import com.example.botfight.repository.BotSubmissionRepository;
 import com.example.botfight.repository.ProfileRepository;
 import com.example.botfight.repository.UserRepository;
-import com.example.botfight.repository.ValidationResultRepository;
-import com.example.botfight.service.MatchService.MatchSession;
+import com.example.botfight.service.auth.AuthException;
+import com.example.botfight.service.match.MatchService;
+import com.example.botfight.service.match.connection.MatchConnectionService;
+import com.example.botfight.service.match.persistence.MatchPersistenceService;
+import com.example.botfight.service.match.model.*;
+import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
+import com.example.botfight.service.match.simulation.MatchSimulationService;
+import com.example.botfight.service.match.replay.ReplayDeliveryMode;
+import com.example.botfight.service.matchmaking.MatchmakingService;
+import com.example.botfight.service.limits.SlidingWindowRateLimiter;
+import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -49,10 +58,8 @@ class MatchServiceTest {
     private final MatchSimulationService simulationService = mock(MatchSimulationService.class);
     private final MatchRepository matchRepository = mock(MatchRepository.class);
     private final MatchParticipantRepository matchParticipantRepository = mock(MatchParticipantRepository.class);
-    private final BotSubmissionRepository botSubmissionRepository = mock(BotSubmissionRepository.class);
     private final ProfileRepository profileRepository = mock(ProfileRepository.class);
     private final UserRepository userRepository = mock(UserRepository.class);
-    private final ValidationResultRepository validationResultRepository = mock(ValidationResultRepository.class);
     private final MutableClock clock = new MutableClock(Instant.parse("2026-06-03T12:00:00Z"), ZoneOffset.UTC);
     private final List<MatchSession> simulatedSessions = new ArrayList<>();
     private final List<MatchParticipant> participants = new ArrayList<>();
@@ -62,25 +69,29 @@ class MatchServiceTest {
     private MatchService service;
     private MatchmakingService matchmakingService;
 
-    @BeforeEach
-    void setUp() {
-        service = new MatchService(
+    private MatchService createService(ReplayDeliveryMode replayDeliveryMode) {
+        return new MatchService(
                 simulationService,
                 new MatchPersistenceService(
                         matchRepository,
                         matchParticipantRepository,
-                        botSubmissionRepository,
                         profileRepository,
                         userRepository,
-                        validationResultRepository,
                         clock,
                         new tools.jackson.databind.json.JsonMapper()),
                 new MatchConnectionService(clock),
-                clock);
+                clock,
+                replayDeliveryMode,
+                new TokenBucketRateLimiter<>(clock, 10, Duration.ofSeconds(1)));
+    }
+
+    @BeforeEach
+    void setUp() {
+        service = createService(ReplayDeliveryMode.BATCHED);
         matchmakingService = new AutoAcceptingMatchmakingService(
                 service,
                 clock,
-                new MatchmakingRateLimiter(clock));
+                new SlidingWindowRateLimiter<>(clock, 3, Duration.ofSeconds(5)));
 
         when(matchRepository.save(any(Match.class))).thenAnswer(invocation -> {
             savedMatch = invocation.getArgument(0);
@@ -109,24 +120,14 @@ class MatchServiceTest {
                     .findFirst();
         });
         when(profileRepository.findByUserId(any(UUID.class))).thenReturn(Optional.empty());
-        when(botSubmissionRepository.save(any(BotSubmission.class))).thenAnswer(invocation -> {
-            BotSubmission submission = invocation.getArgument(0);
-            if (submission.getId() == null) submission.setId(UUID.randomUUID());
-            persistedSubmissions.put(submission.getId(), submission);
-            return submission;
-        });
-        when(botSubmissionRepository.findByIdAndUserId(any(UUID.class), any(UUID.class)))
-                .thenAnswer(invocation -> Optional.ofNullable(persistedSubmissions.get(invocation.getArgument(0))));
-        when(botSubmissionRepository.findByUserIdAndBuildingSessionIdAndRequestFingerprintIsNotNull(
-                any(UUID.class), any(String.class))).thenReturn(Optional.empty());
-        when(simulationService.buildDuelPlayback(any(MatchSession.class), any())).thenAnswer(invocation -> {
+        when(simulationService.buildDuelReplay(any(MatchSession.class), any())).thenAnswer(invocation -> {
             MatchSession session = invocation.getArgument(0);
             simulatedSessions.add(session);
-            MatchService.MatchPlayer winner = session.players().stream()
+            MatchPlayer winner = session.players().stream()
                     .filter(player -> player.slot() == 2)
                     .findFirst()
                     .orElseThrow();
-            return new MatchPlaybackDTO(
+            return MatchReplayDTO.from(new MatchPlaybackDTO(
                     session.matchId(),
                     MatchSimulationService.DUEL_RULESET_VERSION,
                     "COMPLETED",
@@ -134,7 +135,7 @@ class MatchServiceTest {
                     List.of(),
                     "BOT_WIN",
                     winner.userId(),
-                    winner.username() + " wins the fight.");
+                    winner.username() + " wins the fight."));
         });
     }
 
@@ -145,12 +146,12 @@ class MatchServiceTest {
         UUID secondMatchFirstUser = UUID.randomUUID();
         UUID secondMatchSecondUser = UUID.randomUUID();
         UUID firstMatchId = service.startMatch(
-                        new MatchService.MatchEntrant(firstMatchFirstUser, "alpha-one", "alpha-one@example.com", null),
-                        new MatchService.MatchEntrant(firstMatchSecondUser, "alpha-two", "alpha-two@example.com", null))
+                        new MatchEntrant(firstMatchFirstUser, "alpha-one", "alpha-one@example.com", null),
+                        new MatchEntrant(firstMatchSecondUser, "alpha-two", "alpha-two@example.com", null))
                 .getFirst().event().matchId();
         UUID secondMatchId = service.startMatch(
-                        new MatchService.MatchEntrant(secondMatchFirstUser, "beta-one", "beta-one@example.com", null),
-                        new MatchService.MatchEntrant(secondMatchSecondUser, "beta-two", "beta-two@example.com", null))
+                        new MatchEntrant(secondMatchFirstUser, "beta-one", "beta-one@example.com", null),
+                        new MatchEntrant(secondMatchSecondUser, "beta-two", "beta-two@example.com", null))
                 .getFirst().event().matchId();
         service.selectLoadout(firstMatchFirstUser, "melee");
 
@@ -173,11 +174,11 @@ class MatchServiceTest {
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
-            Future<List<MatchService.OutboundMatchmakingEvent>> blockedFirstMatch =
+            Future<List<OutboundMatchmakingEvent>> blockedFirstMatch =
                     executor.submit(() -> service.selectLoadout(firstMatchSecondUser, "melee"));
             assertThat(firstMatchEnteredBlockedWork.await(2, TimeUnit.SECONDS)).isTrue();
 
-            Future<List<MatchService.OutboundMatchmakingEvent>> independentSecondMatch =
+            Future<List<OutboundMatchmakingEvent>> independentSecondMatch =
                     executor.submit(() -> service.selectLoadout(secondMatchFirstUser, "melee"));
             assertThat(independentSecondMatch.get(1, TimeUnit.SECONDS))
                     .isNotEmpty()
@@ -192,13 +193,173 @@ class MatchServiceTest {
     }
 
     @Test
+    void staleSelectionSnapshotIsRejectedAfterTheMatchEntersBuilding() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        List<OutboundMatchmakingEvent> started = matchmakingService.joinQueue(
+                firstUserId, "pilot-one", "pilot-one@example.com");
+        matchmakingService.joinQueue(secondUserId, "pilot-two", "pilot-two@example.com");
+
+        List<OutboundMatchmakingEvent> selectionEvents = service.selectLoadout(firstUserId, "melee");
+        List<OutboundMatchmakingEvent> buildingEvents = service.selectLoadout(secondUserId, "melee");
+
+        assertThat(started).isNotEmpty();
+        assertThat(selectionEvents).hasSize(2);
+        assertThat(buildingEvents).hasSize(2);
+        assertThat(selectionEvents).allSatisfy(event ->
+                assertThat(service.isCurrentEvent(event)).isFalse());
+        assertThat(buildingEvents).allSatisfy(event ->
+                assertThat(service.isCurrentEvent(event)).isTrue());
+    }
+
+    @Test
+    void resumingDuringSecondRoundBuildingUsesTheLivePhaseInsteadOfTheReplayBoundary() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        UUID firstSubmissionId = UUID.randomUUID();
+        UUID secondSubmissionId = UUID.randomUUID();
+        String firstPrincipal = "pilot-one@example.com";
+
+        matchmakingService.joinQueue(firstUserId, "pilot-one", firstPrincipal);
+        matchmakingService.joinQueue(secondUserId, "pilot-two", "pilot-two@example.com");
+        service.selectLoadout(firstUserId, "melee");
+        service.selectLoadout(secondUserId, "melee");
+        stubSubmission(firstUserId, firstSubmissionId);
+        stubSubmission(secondUserId, secondSubmissionId);
+        submitMatch(firstUserId, firstSubmissionId);
+        submitMatch(secondUserId, secondSubmissionId);
+
+        List<OutboundMatchmakingEvent> firstRoundEvents = service.completeSimulation(savedMatch.getId());
+        Instant secondRoundReadyAt = firstRoundEvents.stream()
+                .filter(event -> "MATCH_ROUND_READY".equals(event.event().type()))
+                .findFirst()
+                .orElseThrow()
+                .event()
+                .roundReadyAt();
+        clock.advance(Duration.between(clock.instant(), secondRoundReadyAt));
+        firstRoundEvents.stream()
+                .filter(event -> "MATCH_ROUND_READY".equals(event.event().type()))
+                .forEach(service::activateRoundLoadoutSelection);
+
+        service.selectLoadout(firstUserId, "melee");
+        List<OutboundMatchmakingEvent> buildingEvents = service.selectLoadout(secondUserId, "melee");
+        assertThat(buildingEvents).allSatisfy(event ->
+                assertThat(event.event().roundNumber()).isEqualTo(2));
+
+        OutboundMatchmakingEvent staleBoundary = firstRoundEvents.stream()
+                .filter(event -> "MATCH_ROUND_READY".equals(event.event().type()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(service.activateRoundLoadoutSelection(staleBoundary))
+                .as("a delayed round boundary cannot reopen loadout selection")
+                .isNull();
+
+        List<OutboundMatchmakingEvent> resumed = service.resumeMatch(
+                firstUserId,
+                "pilot-one",
+                firstPrincipal,
+                "socket-reconnected");
+
+        assertThat(resumed).singleElement().satisfies(event -> {
+            assertThat(event.event().type()).isEqualTo("MATCH_FOUND");
+            assertThat(event.event().status()).isEqualTo("PREP");
+            assertThat(event.event().roundNumber()).isEqualTo(2);
+            assertThat(event.event().buildingEndsAt()).isNotNull();
+            assertThat(service.isCurrentEvent(event)).isTrue();
+        });
+    }
+
+    @Test
+    void disconnectNotificationRemainsCurrentAcrossLoadoutToBuildingTransition() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        String firstPrincipal = "pilot-one@example.com";
+        matchmakingService.joinQueue(firstUserId, "pilot-one", firstPrincipal);
+        matchmakingService.joinQueue(secondUserId, "pilot-two", "pilot-two@example.com");
+
+        service.selectLoadout(firstUserId, "melee");
+        List<OutboundMatchmakingEvent> disconnectEvents = service.markDisconnected(firstPrincipal);
+        assertThat(disconnectEvents).hasSize(2).allSatisfy(event -> {
+            assertThat(event.event().type()).isEqualTo("PLAYER_DISCONNECTED");
+            assertThat(event.event().status()).isEqualTo("LOADOUT_SELECT");
+            assertThat(service.isCurrentEvent(event)).isTrue();
+        });
+
+        service.selectLoadout(secondUserId, "melee");
+
+        assertThat(disconnectEvents).allSatisfy(event ->
+                assertThat(service.isCurrentEvent(event)).isTrue());
+    }
+
+    @Test
+    void loadoutRequestFromAnOlderRoundIsIgnored() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        UUID matchId = service.startMatch(
+                        new MatchEntrant(firstUserId, "pilot-one", "pilot-one@example.com", null),
+                        new MatchEntrant(secondUserId, "pilot-two", "pilot-two@example.com", null))
+                .getFirst().event().matchId();
+
+        assertThat(service.selectLoadout(firstUserId, matchId, 2, "melee")).isEmpty();
+        assertThat(service.selectLoadout(firstUserId, matchId, 1, "melee")).isNotEmpty();
+    }
+
+    @Test
+    void duplicateLoadoutSelectionIsIdempotentUnderTheMatchLock() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        service.startMatch(
+                new MatchEntrant(firstUserId, "pilot-one", "pilot-one@example.com", null),
+                new MatchEntrant(secondUserId, "pilot-two", "pilot-two@example.com", null));
+
+        service.selectLoadout(firstUserId, "melee");
+        List<OutboundMatchmakingEvent> duplicate =
+                service.selectLoadout(firstUserId, "ranged");
+
+        assertThat(duplicate).hasSize(1);
+        assertThat(duplicate.getFirst().event().player().loadoutSelected()).isTrue();
+        assertThat(duplicate.getFirst().event().player().selectedLoadout()).isEqualTo("melee");
+        assertThat(service.selectLoadout(secondUserId, "melee")).hasSize(2);
+    }
+
+    @Test
+    void matchSubmissionRetryUsesTheInMemoryRoundKeyWithoutSubmissionLookup() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        UUID matchId = service.startMatch(
+                        new MatchEntrant(firstUserId, "pilot-one", "pilot-one@example.com", null),
+                        new MatchEntrant(secondUserId, "pilot-two", "pilot-two@example.com", null))
+                .getFirst().event().matchId();
+        service.selectLoadout(firstUserId, "melee");
+        service.selectLoadout(secondUserId, "melee");
+
+        MatchSubmissionResult first = service.acceptMatchSubmission(
+                firstUserId,
+                matchId,
+                1,
+                "BUILDING",
+                inMemorySubmission(matchId, "fingerprint-1"));
+        MatchSubmissionResult retry = service.acceptMatchSubmission(
+                firstUserId,
+                matchId,
+                1,
+                "BUILDING",
+                inMemorySubmission(matchId, "fingerprint-1"));
+
+        assertThat(first.accepted()).isTrue();
+        assertThat(first.duplicate()).isFalse();
+        assertThat(retry.accepted()).isTrue();
+        assertThat(retry.duplicate()).isTrue();
+    }
+
+    @Test
     void ratedReplayStreamsTheAuthoritativeResultWithTheBufferedTerminalFrame() {
         List<String> preparationSteps = new ArrayList<>();
         List<Integer> authoritativeElapsedMs = new ArrayList<>();
-        when(simulationService.buildDuelPlayback(any(MatchSession.class), any())).thenAnswer(invocation -> {
+        when(simulationService.buildDuelReplay(any(MatchSession.class), any())).thenAnswer(invocation -> {
             preparationSteps.add("simulation");
             MatchSession session = invocation.getArgument(0);
-            MatchService.MatchPlayer winner = session.players().getLast();
+            MatchPlayer winner = session.players().getLast();
             MatchPlaybackDTO.ArenaStateDTO state =
                     new MatchPlaybackDTO.ArenaStateDTO(800, 800, List.of(), List.of());
             List<MatchPlaybackDTO.ReplayFrameDTO> frames = new ArrayList<>();
@@ -206,9 +367,9 @@ class MatchServiceTest {
                 authoritativeElapsedMs.add(elapsedMs);
                 frames.add(new MatchPlaybackDTO.ReplayFrameDTO(tick, elapsedMs, List.of(), List.of()));
             }
-            return new MatchPlaybackDTO(
+            return MatchReplayDTO.from(new MatchPlaybackDTO(
                     session.matchId(), MatchSimulationService.DUEL_RULESET_VERSION,
-                    "COMPLETED", state, frames, "BOT_WIN", winner.userId(), "winner");
+                    "COMPLETED", state, frames, "BOT_WIN", winner.userId(), "winner"));
         });
         when(simulationService.buildPreparationPlayback(any(MatchSession.class))).thenAnswer(invocation -> {
             preparationSteps.add("preparation");
@@ -224,17 +385,17 @@ class MatchServiceTest {
         service.selectLoadout(secondUserId, "melee");
         stubSubmission(firstUserId, firstSubmissionId);
         stubSubmission(secondUserId, secondSubmissionId);
-        service.markFinished(firstUserId, firstSubmissionId);
+        submitMatch(firstUserId, firstSubmissionId);
 
-        List<MatchService.OutboundMatchmakingEvent> preparingEvents =
-                service.markFinished(secondUserId, secondSubmissionId);
+        List<OutboundMatchmakingEvent> preparingEvents =
+                submitMatch(secondUserId, secondSubmissionId);
         assertThat(preparingEvents).hasSize(2).allSatisfy(outbound ->
                 assertThat(outbound.event().type()).isEqualTo("SIMULATION_LOADING"));
         assertThat(preparingEvents).allSatisfy(outbound ->
                 assertThat(outbound.event().playbackStartsAt()).isNull());
         assertThat(simulatedSessions).isEmpty();
         clock.advance(Duration.ofSeconds(7));
-        List<MatchService.OutboundMatchmakingEvent> events =
+        List<OutboundMatchmakingEvent> events =
                 service.completeSimulation(savedMatch.getId());
 
         assertThat(preparationSteps).containsExactly("simulation");
@@ -270,7 +431,7 @@ class MatchServiceTest {
                     assertThat(outbound.delayMillis()).isZero();
                     assertThat(outbound.publishAt()).isNull();
                 });
-        List<MatchService.OutboundMatchmakingEvent> replayBatches = events.stream()
+        List<OutboundMatchmakingEvent> replayBatches = events.stream()
                 .filter(outbound -> outbound.principalName().equals("pilot-one@example.com"))
                 .filter(outbound -> outbound.event().type().equals("MATCH_REPLAY_BATCH"))
                 .toList();
@@ -288,7 +449,7 @@ class MatchServiceTest {
                 .isIn(firstUserId, secondUserId);
         assertThat(replayBatches.stream()
                 .flatMap(outbound -> outbound.event().playback().frames().stream())
-                .map(MatchPlaybackDTO.ReplayFrameDTO::elapsedMs)
+                .map(MatchReplayDTO.ReplayFrameDTO::elapsedMs)
                 .toList()).containsExactlyElementsOf(authoritativeElapsedMs);
         assertThat(events)
                 .filteredOn(outbound -> outbound.event().type().equals("MATCH_ROUND_READY"))
@@ -298,6 +459,9 @@ class MatchServiceTest {
                             .isEqualTo(clock.instant().plusMillis(53_500));
                     assertThat(outbound.event().roundReadyAt())
                             .isEqualTo(clock.instant().plusMillis(56_500));
+                    assertThat(Duration.between(
+                            outbound.event().resultRevealsAt(),
+                            outbound.event().roundReadyAt())).isEqualTo(Duration.ofSeconds(3));
                     assertThat(outbound.publishAt()).isEqualTo(outbound.event().roundReadyAt());
                     assertThat(outbound.event().loadoutSelectionEndsAt()).isNull();
                 });
@@ -306,7 +470,7 @@ class MatchServiceTest {
         assertThat(service.resolveLoadoutSelectionTimeout(savedMatch.getId()))
                 .as("a stale prior-round timeout cannot advance a round whose selection is not active")
                 .isEmpty();
-        List<MatchService.OutboundMatchmakingEvent> activatedRoundEvents = events.stream()
+        List<OutboundMatchmakingEvent> activatedRoundEvents = events.stream()
                 .filter(outbound -> outbound.event().type().equals("MATCH_ROUND_READY"))
                 .map(service::activateRoundLoadoutSelection)
                 .toList();
@@ -317,11 +481,290 @@ class MatchServiceTest {
     }
 
     @Test
-    void terminalSeriesCompletionWinsTheDisconnectRaceAndStartsNoNewGracePeriod() {
-        when(simulationService.buildDuelPlayback(any(MatchSession.class), any())).thenAnswer(invocation -> {
+    void surrenderDuringReplayCompletesTheReplayedRoundInsteadOfTheNextRound() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        UUID firstSubmissionId = UUID.randomUUID();
+        UUID secondSubmissionId = UUID.randomUUID();
+        matchmakingService.joinQueue(firstUserId, "pilot-one", "pilot-one@example.com");
+        matchmakingService.joinQueue(secondUserId, "pilot-two", "pilot-two@example.com");
+        service.selectLoadout(firstUserId, "melee");
+        service.selectLoadout(secondUserId, "melee");
+        stubSubmission(firstUserId, firstSubmissionId);
+        stubSubmission(secondUserId, secondSubmissionId);
+        submitMatch(firstUserId, firstSubmissionId);
+        submitMatch(secondUserId, secondSubmissionId);
+
+        assertThat(service.completeSimulation(savedMatch.getId())).isNotEmpty();
+
+        List<OutboundMatchmakingEvent> events = service.surrender(firstUserId);
+
+        assertThat(events).hasSize(2).allSatisfy(outbound -> {
+            assertThat(outbound.event().type()).isEqualTo("MATCH_RESULT_READY");
+            assertThat(outbound.event().roundNumber()).isEqualTo(1);
+            assertThat(outbound.event().playback().result()).isEqualTo("RESIGNATION_WIN");
+            assertThat(outbound.event().playback().winnerUserId()).isEqualTo(secondUserId);
+            assertThat(outbound.delayMillis()).isZero();
+        });
+        assertThat(savedMatch.getStatus()).isEqualTo(MatchStatus.COMPLETED);
+        assertThat(service.surrender(firstUserId)).isEmpty();
+    }
+
+    @Test
+    void fullReplayModeSendsEveryFrameInOneImmediatePayload() {
+        service = createService(ReplayDeliveryMode.FULL);
+        matchmakingService = new AutoAcceptingMatchmakingService(
+                service,
+                clock,
+                new SlidingWindowRateLimiter<>(clock, 3, Duration.ofSeconds(5)));
+        when(simulationService.buildDuelReplay(any(MatchSession.class), any())).thenAnswer(invocation -> {
             MatchSession session = invocation.getArgument(0);
-            MatchService.MatchPlayer winner = session.players().getLast();
-            return new MatchPlaybackDTO(
+            UUID winnerUserId = session.players().getFirst().userId();
+            MatchPlaybackDTO.ArenaStateDTO state =
+                    new MatchPlaybackDTO.ArenaStateDTO(800, 800, List.of(), List.of());
+            List<MatchPlaybackDTO.ReplayFrameDTO> frames = List.of(
+                    new MatchPlaybackDTO.ReplayFrameDTO(0, 0, List.of(), List.of()),
+                    new MatchPlaybackDTO.ReplayFrameDTO(10, 1_000, List.of(), List.of()),
+                    new MatchPlaybackDTO.ReplayFrameDTO(20, 2_000, List.of(), List.of()));
+            return MatchReplayDTO.from(new MatchPlaybackDTO(
+                    session.matchId(), MatchSimulationService.DUEL_RULESET_VERSION,
+                    "COMPLETED", state, frames, "BOT_WIN", winnerUserId, "winner"));
+        });
+
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        UUID firstSubmissionId = UUID.randomUUID();
+        UUID secondSubmissionId = UUID.randomUUID();
+        matchmakingService.joinQueue(firstUserId, "pilot-one", "pilot-one@example.com");
+        matchmakingService.joinQueue(secondUserId, "pilot-two", "pilot-two@example.com");
+        service.selectLoadout(firstUserId, "melee");
+        service.selectLoadout(secondUserId, "melee");
+        stubSubmission(firstUserId, firstSubmissionId);
+        stubSubmission(secondUserId, secondSubmissionId);
+        submitMatch(firstUserId, firstSubmissionId);
+        submitMatch(secondUserId, secondSubmissionId);
+
+        List<OutboundMatchmakingEvent> replayEvents =
+                service.completeSimulation(savedMatch.getId()).stream()
+                        .filter(event -> event.principalName().equals("pilot-one@example.com"))
+                        .filter(event -> event.event().type().equals("MATCH_REPLAY_BATCH"))
+                        .toList();
+
+        assertThat(replayEvents).singleElement().satisfies(event -> {
+            assertThat(event.delayMillis()).isZero();
+            assertThat(event.event().playback().frames())
+                    .extracting(MatchReplayDTO.ReplayFrameDTO::elapsedMs)
+                    .containsExactly(0, 1_000, 2_000);
+            assertThat(event.event().playback().initialState()).isNotNull();
+            assertThat(event.event().playback().replayCursorElapsedMs()).isEqualTo(2_000);
+            assertThat(event.event().playback().terminalBatch()).isTrue();
+        });
+    }
+
+    @Test
+    void terminalReplayStaysReplayCurrentAndRevealsResultWithAnExplicitDelayedEvent() {
+        when(simulationService.buildDuelReplay(any(MatchSession.class), any())).thenAnswer(invocation -> {
+            MatchSession session = invocation.getArgument(0);
+            MatchPlayer winner = session.players().getLast();
+            return MatchReplayDTO.from(new MatchPlaybackDTO(
+                    session.matchId(),
+                    MatchSimulationService.DUEL_RULESET_VERSION,
+                    "COMPLETED",
+                    new MatchPlaybackDTO.ArenaStateDTO(800, 800, List.of(), List.of()),
+                    List.of(new MatchPlaybackDTO.ReplayFrameDTO(10, 1_000, List.of(), List.of())),
+                    "BOT_WIN",
+                    winner.userId(),
+                    "winner"));
+        });
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        String firstPrincipal = "pilot-one@example.com";
+        String secondPrincipal = "pilot-two@example.com";
+        matchmakingService.joinQueue(firstUserId, "pilot-one", firstPrincipal);
+        matchmakingService.joinQueue(secondUserId, "pilot-two", secondPrincipal);
+        service.selectLoadout(firstUserId, "melee");
+        service.selectLoadout(secondUserId, "melee");
+        UUID firstRoundFirstSubmission = UUID.randomUUID();
+        UUID firstRoundSecondSubmission = UUID.randomUUID();
+        stubSubmission(firstUserId, firstRoundFirstSubmission);
+        stubSubmission(secondUserId, firstRoundSecondSubmission);
+        submitMatch(firstUserId, firstRoundFirstSubmission);
+        submitMatch(secondUserId, firstRoundSecondSubmission);
+        List<OutboundMatchmakingEvent> firstRoundEvents = service.completeSimulation(savedMatch.getId());
+        List<OutboundMatchmakingEvent> roundReadyEvents = firstRoundEvents.stream()
+                .filter(event -> "MATCH_ROUND_READY".equals(event.event().type()))
+                .toList();
+        Instant secondRoundReadyAt = roundReadyEvents.getFirst().event().roundReadyAt();
+        clock.advance(Duration.between(clock.instant(), secondRoundReadyAt));
+        roundReadyEvents.forEach(service::activateRoundLoadoutSelection);
+
+        service.selectLoadout(firstUserId, "melee");
+        service.selectLoadout(secondUserId, "melee");
+        UUID secondRoundFirstSubmission = UUID.randomUUID();
+        UUID secondRoundSecondSubmission = UUID.randomUUID();
+        stubSubmission(firstUserId, secondRoundFirstSubmission);
+        stubSubmission(secondUserId, secondRoundSecondSubmission);
+        submitMatch(firstUserId, secondRoundFirstSubmission);
+        submitMatch(secondUserId, secondRoundSecondSubmission);
+
+        List<OutboundMatchmakingEvent> terminalEvents = service.completeSimulation(savedMatch.getId());
+        List<OutboundMatchmakingEvent> preparingEvents = terminalEvents.stream()
+                .filter(event -> "SIMULATION_PREPARING".equals(event.event().type()))
+                .toList();
+        List<OutboundMatchmakingEvent> resultEvents = terminalEvents.stream()
+                .filter(event -> "MATCH_RESULT_READY".equals(event.event().type()))
+                .toList();
+
+        assertThat(preparingEvents).hasSize(2).allSatisfy(event -> {
+            assertThat(event.delayMillis()).isZero();
+            assertThat(service.isCurrentEvent(event)).isTrue();
+        });
+        assertThat(resultEvents).hasSize(2).allSatisfy(event -> {
+            assertThat(event.delayMillis()).isEqualTo(4_000L);
+            assertThat(event.event().playback().result()).isEqualTo("BOT_WIN");
+            assertThat(event.event().playback().frames()).isEmpty();
+        });
+        assertThat(terminalEvents)
+                .noneMatch(event -> "MATCH_ROUND_READY".equals(event.event().type()));
+
+        Instant resultRevealsAt = resultEvents.getFirst().event().resultRevealsAt();
+        UUID terminalWinnerUserId = resultEvents.getFirst().event().playback().winnerUserId();
+        assertThat(service.markDisconnected(firstPrincipal)).isEmpty();
+        assertThat(service.activeMatchStatus(firstUserId).disconnected()).isFalse();
+        clock.advance(Duration.between(clock.instant(), resultRevealsAt).plusMillis(1));
+
+        assertThat(service.resumeMatch(firstUserId, "pilot-one", firstPrincipal, "socket-reconnected"))
+                .anySatisfy(event -> assertThat(event.event().type()).isEqualTo("NO_ACTIVE_MATCH"));
+        assertThat(service.activeMatchStatus(firstUserId).activeMatch()).isFalse();
+        assertThat(service.activeMatchStatus(secondUserId).activeMatch())
+                .as("the terminal session remains hidden from active-match checks")
+                .isFalse();
+        assertThat(service.submitChatMessage(firstUserId, savedMatch.getId(), "chat remains available").status())
+                .isEqualTo(MatchChatSubmissionStatus.ACCEPTED);
+        assertThat(terminalWinnerUserId).isEqualTo(resultEvents.getFirst().event().playback().winnerUserId());
+    }
+
+    @Test
+    void replayDisconnectWaitsForAValidNextRoundBeforeStartingGrace() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        String firstPrincipal = "pilot-one@example.com";
+        matchmakingService.joinQueue(firstUserId, "pilot-one", firstPrincipal);
+        matchmakingService.joinQueue(secondUserId, "pilot-two", "pilot-two@example.com");
+        service.selectLoadout(firstUserId, "melee");
+        service.selectLoadout(secondUserId, "melee");
+        UUID firstSubmissionId = UUID.randomUUID();
+        UUID secondSubmissionId = UUID.randomUUID();
+        stubSubmission(firstUserId, firstSubmissionId);
+        stubSubmission(secondUserId, secondSubmissionId);
+        submitMatch(firstUserId, firstSubmissionId);
+        submitMatch(secondUserId, secondSubmissionId);
+
+        List<OutboundMatchmakingEvent> replayEvents = service.completeSimulation(savedMatch.getId());
+        Instant roundReadyAt = replayEvents.stream()
+                .filter(event -> "MATCH_ROUND_READY".equals(event.event().type()))
+                .findFirst()
+                .orElseThrow()
+                .event()
+                .roundReadyAt();
+
+        assertThat(service.markDisconnected(firstPrincipal)).isEmpty();
+        assertThat(service.activeMatchStatus(firstUserId).disconnected()).isFalse();
+
+        clock.advance(Duration.between(clock.instant(), roundReadyAt));
+        replayEvents.stream()
+                .filter(event -> "MATCH_ROUND_READY".equals(event.event().type()))
+                .forEach(service::activateRoundLoadoutSelection);
+
+        List<OutboundMatchmakingEvent> disconnectEvents =
+                service.promotePendingDisconnect(firstPrincipal);
+        assertThat(disconnectEvents).hasSize(2).allSatisfy(event -> {
+            assertThat(event.event().type()).isEqualTo("PLAYER_DISCONNECTED");
+            assertThat(event.event().disconnectEndsAt()).isEqualTo(clock.instant().plusSeconds(30));
+        });
+
+        List<OutboundMatchmakingEvent> reconnectEvents =
+                service.resumeMatch(firstUserId, "pilot-one", firstPrincipal, "socket-reconnected");
+        assertThat(reconnectEvents)
+                .filteredOn(event -> "PLAYER_RECONNECTED".equals(event.event().type()))
+                .hasSize(2)
+                .allSatisfy(event -> assertThat(service.isCurrentEvent(event)).isTrue());
+
+        service.selectLoadout(firstUserId, "melee");
+        List<OutboundMatchmakingEvent> buildingEvents = service.selectLoadout(secondUserId, "melee");
+        assertThat(buildingEvents)
+                .filteredOn(event -> "BOT_BUILDING_SESSION_READY".equals(event.event().type()))
+                .hasSize(2);
+
+        List<OutboundMatchmakingEvent> buildingDisconnectEvents = service.markDisconnected(firstPrincipal);
+        assertThat(buildingDisconnectEvents).hasSize(2).allSatisfy(event -> {
+            assertThat(event.event().type()).isEqualTo("PLAYER_DISCONNECTED");
+            assertThat(event.event().status()).isEqualTo("PREP");
+            assertThat(service.isCurrentEvent(event)).isTrue();
+        });
+    }
+
+    @Test
+    void startedDisconnectGracePausesDuringReplayAndStartsFreshGracePeriod() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        String firstPrincipal = "pilot-one@example.com";
+        matchmakingService.joinQueue(firstUserId, "pilot-one", firstPrincipal);
+        matchmakingService.joinQueue(secondUserId, "pilot-two", "pilot-two@example.com");
+        service.selectLoadout(firstUserId, "melee");
+        service.selectLoadout(secondUserId, "melee");
+        UUID firstSubmissionId = UUID.randomUUID();
+        UUID secondSubmissionId = UUID.randomUUID();
+        stubSubmission(firstUserId, firstSubmissionId);
+        stubSubmission(secondUserId, secondSubmissionId);
+        submitMatch(firstUserId, firstSubmissionId);
+        submitMatch(secondUserId, secondSubmissionId);
+
+        service.markDisconnected(firstPrincipal);
+        clock.advance(Duration.ofSeconds(18));
+        List<OutboundMatchmakingEvent> replayEvents = service.completeSimulation(savedMatch.getId());
+        assertThat(service.activeMatchStatus(firstUserId).disconnected()).isFalse();
+        assertThat(replayEvents)
+                .filteredOn(event -> "SIMULATION_PREPARING".equals(event.event().type()))
+                .allSatisfy(event -> assertThat(event.event().disconnectEndsAt()).isNull());
+
+        Instant roundReadyAt = replayEvents.stream()
+                .filter(event -> "MATCH_ROUND_READY".equals(event.event().type()))
+                .findFirst()
+                .orElseThrow()
+                .event()
+                .roundReadyAt();
+        clock.advance(Duration.between(clock.instant(), roundReadyAt));
+        replayEvents.stream()
+                .filter(event -> "MATCH_ROUND_READY".equals(event.event().type()))
+                .forEach(service::activateRoundLoadoutSelection);
+
+        List<OutboundMatchmakingEvent> resumedEvents =
+                service.promotePendingDisconnect(firstPrincipal);
+        Instant resumedDeadline = resumedEvents.getFirst().event().disconnectEndsAt();
+        assertThat(resumedDeadline).isEqualTo(clock.instant().plusSeconds(30));
+
+        clock.advance(Duration.between(clock.instant(), resumedDeadline));
+        List<OutboundMatchmakingEvent> results = service.resolveDisconnectTimeout(
+                firstPrincipal,
+                resumedDeadline);
+
+        assertThat(results).hasSize(2).allSatisfy(event -> {
+            assertThat(event.event().type()).isEqualTo("MATCH_RESULT_READY");
+            assertThat(event.event().playback().result()).isEqualTo("DISCONNECTION_WIN");
+            assertThat(event.event().playback().winnerUserId()).isEqualTo(secondUserId);
+        });
+        assertThat(savedMatch.getStatus()).isEqualTo(MatchStatus.COMPLETED);
+        assertThat(savedMatch.getCompletionReason()).isEqualTo("DISCONNECTION");
+        assertThat(savedMatch.getWinnerUser().getId()).isEqualTo(secondUserId);
+    }
+
+    @Test
+    void terminalSeriesCompletionWinsTheDisconnectRaceAndStartsNoNewGracePeriod() {
+        when(simulationService.buildDuelReplay(any(MatchSession.class), any())).thenAnswer(invocation -> {
+            MatchSession session = invocation.getArgument(0);
+            MatchPlayer winner = session.players().getLast();
+            return MatchReplayDTO.from(new MatchPlaybackDTO(
                     session.matchId(),
                     MatchSimulationService.DUEL_RULESET_VERSION,
                     "COMPLETED",
@@ -329,7 +772,7 @@ class MatchServiceTest {
                     List.of(),
                     "BOT_WIN",
                     winner.userId(),
-                    "winner");
+                    "winner"));
         });
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
@@ -343,10 +786,20 @@ class MatchServiceTest {
         service.selectLoadout(secondUserId, "melee");
         stubSubmission(firstUserId, firstSubmissionId);
         stubSubmission(secondUserId, secondSubmissionId);
-        service.markFinished(firstUserId, firstSubmissionId);
-        service.markFinished(secondUserId, secondSubmissionId);
-        List<MatchService.OutboundMatchmakingEvent> roundEvents =
+        submitMatch(firstUserId, firstSubmissionId);
+        submitMatch(secondUserId, secondSubmissionId);
+        List<OutboundMatchmakingEvent> roundEvents =
                 service.completeSimulation(savedMatch.getId());
+        Instant roundReadyAt = roundEvents.stream()
+                .filter(outbound -> outbound.event().type().equals("MATCH_ROUND_READY"))
+                .findFirst()
+                .orElseThrow()
+                .event()
+                .roundReadyAt();
+        clock.advance(Duration.between(clock.instant(), roundReadyAt));
+        roundEvents.stream()
+                .filter(outbound -> outbound.event().type().equals("MATCH_ROUND_READY"))
+                .forEach(service::activateRoundLoadoutSelection);
         UUID roundLeaderUserId = roundEvents.stream()
                 .filter(outbound -> outbound.event().type().equals("MATCH_ROUND_READY"))
                 .findFirst()
@@ -362,8 +815,8 @@ class MatchServiceTest {
         UUID winnerUserId = roundLeaderUserId.equals(firstUserId) ? secondUserId : firstUserId;
 
         Instant deadline = service.markDisconnected(roundLeaderPrincipal).getFirst().event().disconnectEndsAt();
-        clock.advance(Duration.ofSeconds(30));
-        List<MatchService.OutboundMatchmakingEvent> results =
+        clock.advance(Duration.between(clock.instant(), deadline));
+        List<OutboundMatchmakingEvent> results =
                 service.resolveDisconnectTimeout(roundLeaderPrincipal, deadline);
 
         assertThat(results).hasSize(2);
@@ -398,15 +851,25 @@ class MatchServiceTest {
         service.selectLoadout(secondUserId, "melee");
         stubSubmission(firstUserId, firstSubmissionId);
         stubSubmission(secondUserId, secondSubmissionId);
-        service.markFinished(firstUserId, firstSubmissionId);
-        service.markFinished(secondUserId, secondSubmissionId);
-        service.completeSimulation(savedMatch.getId());
+        submitMatch(firstUserId, firstSubmissionId);
+        submitMatch(secondUserId, secondSubmissionId);
+        List<OutboundMatchmakingEvent> firstRoundEvents = service.completeSimulation(savedMatch.getId());
+        Instant roundReadyAt = firstRoundEvents.stream()
+                .filter(outbound -> "MATCH_ROUND_READY".equals(outbound.event().type()))
+                .findFirst()
+                .orElseThrow()
+                .event()
+                .roundReadyAt();
+        clock.advance(Duration.between(clock.instant(), roundReadyAt));
+        firstRoundEvents.stream()
+                .filter(outbound -> "MATCH_ROUND_READY".equals(outbound.event().type()))
+                .forEach(service::activateRoundLoadoutSelection);
 
         Instant firstDeadline =
                 service.markDisconnected(firstPrincipal).getFirst().event().disconnectEndsAt();
         service.markDisconnected(secondPrincipal);
-        clock.advance(Duration.ofSeconds(30));
-        List<MatchService.OutboundMatchmakingEvent> results =
+        clock.advance(Duration.between(clock.instant(), firstDeadline));
+        List<OutboundMatchmakingEvent> results =
                 service.resolveDisconnectTimeout(firstPrincipal, firstDeadline);
 
         assertThat(results).hasSize(2);
@@ -434,7 +897,7 @@ class MatchServiceTest {
         matchmakingService.joinQueue(secondUserId, "pilot-two", "pilot-two@example.com");
         Instant deadline = service.markDisconnected(firstPrincipal).get(0).event().disconnectEndsAt();
 
-        List<MatchService.OutboundMatchmakingEvent> reconnectEvents =
+        List<OutboundMatchmakingEvent> reconnectEvents =
                 service.resumeMatch(firstUserId, "pilot-one", firstPrincipal, "socket-reconnected");
         clock.advance(Duration.ofSeconds(31));
 
@@ -460,7 +923,7 @@ class MatchServiceTest {
                 "socket-current");
 
         assertThat(service.markDisconnected(firstPrincipal, "socket-old")).isEmpty();
-        List<MatchService.OutboundMatchmakingEvent> notices =
+        List<OutboundMatchmakingEvent> notices =
                 service.markDisconnected(firstPrincipal, "socket-current");
 
         assertThat(notices).hasSize(2);
@@ -478,10 +941,10 @@ class MatchServiceTest {
         matchmakingService.joinQueue(firstUserId, "pilot-one", firstPrincipal, "socket-one");
         matchmakingService.joinQueue(secondUserId, "pilot-two", "pilot-two@example.com", "socket-two");
 
-        List<MatchService.OutboundMatchmakingEvent> firstNotice =
+        List<OutboundMatchmakingEvent> firstNotice =
                 service.markDisconnected(firstPrincipal, "socket-one");
         clock.advance(Duration.ofSeconds(1));
-        List<MatchService.OutboundMatchmakingEvent> duplicateNotice =
+        List<OutboundMatchmakingEvent> duplicateNotice =
                 service.markDisconnected(firstPrincipal, "socket-one");
 
         assertThat(firstNotice).hasSize(2);
@@ -497,7 +960,7 @@ class MatchServiceTest {
         matchmakingService.joinQueue(firstUserId, "pilot-one", "pilot-one@example.com");
         matchmakingService.joinQueue(secondUserId, "pilot-two", "pilot-two@example.com");
 
-        List<MatchService.OutboundMatchmakingEvent> events = service.surrender(firstUserId);
+        List<OutboundMatchmakingEvent> events = service.surrender(firstUserId);
 
         assertThat(events).hasSize(2);
         assertThat(savedMatch.getStatus()).isEqualTo(MatchStatus.COMPLETED);
@@ -535,23 +998,25 @@ class MatchServiceTest {
         matchmakingService.joinQueue(firstUserId, "pilot-one", "pilot-one@example.com");
         matchmakingService.joinQueue(secondUserId, "pilot-two", "pilot-two@example.com");
 
-        MatchService.MatchChatSubmission first =
+        MatchChatSubmission first =
                 service.submitChatMessage(firstUserId, savedMatch.getId(), "  ready?  ");
-        service.submitChatMessage(firstUserId, savedMatch.getId(), "two");
-        service.submitChatMessage(firstUserId, savedMatch.getId(), "three");
-        MatchService.MatchChatSubmission limited =
-                service.submitChatMessage(firstUserId, savedMatch.getId(), "four");
+        for (int messageNumber = 2; messageNumber <= 10; messageNumber++) {
+            service.submitChatMessage(firstUserId, savedMatch.getId(), "message-" + messageNumber);
+        }
+        MatchChatSubmission limited =
+                service.submitChatMessage(firstUserId, savedMatch.getId(), "message-11");
 
-        assertThat(first.status()).isEqualTo(MatchService.MatchChatSubmissionStatus.ACCEPTED);
+        assertThat(first.status()).isEqualTo(MatchChatSubmissionStatus.ACCEPTED);
         assertThat(first.username()).isEqualTo("pilot-one");
         assertThat(first.message()).isEqualTo("ready?");
         assertThat(first.recipientPrincipalNames())
                 .containsExactlyInAnyOrder("pilot-one@example.com", "pilot-two@example.com");
-        assertThat(limited.status()).isEqualTo(MatchService.MatchChatSubmissionStatus.RATE_LIMITED);
+        assertThat(limited.status()).isEqualTo(MatchChatSubmissionStatus.RATE_LIMITED);
+        assertThat(limited.message()).isEqualTo("Too many requests, please wait.");
 
-        clock.advance(Duration.ofSeconds(5));
+        clock.advance(Duration.ofSeconds(1));
         assertThat(service.submitChatMessage(firstUserId, savedMatch.getId(), "after window").status())
-                .isEqualTo(MatchService.MatchChatSubmissionStatus.ACCEPTED);
+                .isEqualTo(MatchChatSubmissionStatus.ACCEPTED);
     }
 
     @Test
@@ -565,11 +1030,11 @@ class MatchServiceTest {
         service.surrender(firstUserId);
 
         assertThat(service.submitChatMessage(firstUserId, matchId, "still here").status())
-                .isEqualTo(MatchService.MatchChatSubmissionStatus.ACCEPTED);
+                .isEqualTo(MatchChatSubmissionStatus.ACCEPTED);
 
         clock.advance(Duration.ofSeconds(30));
         assertThat(service.submitChatMessage(firstUserId, matchId, "too late").status())
-                .isEqualTo(MatchService.MatchChatSubmissionStatus.REJECTED);
+                .isEqualTo(MatchChatSubmissionStatus.REJECTED);
     }
 
     @Test
@@ -582,13 +1047,13 @@ class MatchServiceTest {
 
         service.surrender(firstUserId);
 
-        MatchService.MatchChatClosure closure = service.closeMatchChat(matchId);
+        MatchChatClosure closure = service.closeMatchChat(matchId);
 
         assertThat(closure.message()).isEqualTo("Match chat is now closed.");
         assertThat(closure.recipientPrincipalNames())
                 .containsExactlyInAnyOrder("pilot-one@example.com", "pilot-two@example.com");
         assertThat(service.submitChatMessage(firstUserId, matchId, "after close").status())
-                .isEqualTo(MatchService.MatchChatSubmissionStatus.REJECTED);
+                .isEqualTo(MatchChatSubmissionStatus.REJECTED);
     }
 
     @Test
@@ -599,7 +1064,7 @@ class MatchServiceTest {
         matchmakingService.joinQueue(secondUserId, "pilot-two", "pilot-two@example.com");
 
         service.surrender(firstUserId);
-        List<MatchService.OutboundMatchmakingEvent> retryEvents = service.surrender(firstUserId);
+        List<OutboundMatchmakingEvent> retryEvents = service.surrender(firstUserId);
 
         assertThat(retryEvents).isEmpty();
         verify(matchRepository, times(2)).save(any(Match.class));
@@ -617,16 +1082,26 @@ class MatchServiceTest {
         service.selectLoadout(secondUserId, "melee");
         stubSubmission(firstUserId, submissionId);
 
-        service.markFinished(firstUserId, submissionId);
-        List<MatchService.OutboundMatchmakingEvent> retryEvents =
-                service.markFinished(firstUserId, submissionId);
+        submitMatch(firstUserId, submissionId);
+        List<OutboundMatchmakingEvent> retryEvents =
+                submitMatch(firstUserId, submissionId);
 
         assertThat(retryEvents).isEmpty();
-        verify(botSubmissionRepository, times(1)).findByIdAndUserId(submissionId, firstUserId);
     }
 
     private void stubSubmission(UUID userId, UUID submissionId) {
         stubSubmission(userId, submissionId, "{}");
+    }
+
+    private BotSubmission inMemorySubmission(UUID matchId, String fingerprint) {
+        BotSubmission submission = new BotSubmission();
+        submission.setMatchId(matchId);
+        submission.setRequestFingerprint(fingerprint);
+        submission.setSelectedLoadout("melee");
+        submission.setBrainSchemaVersion("bot-logic-tree-v1");
+        submission.setBrainPayload("{}");
+        submission.setStatus(BotSubmissionStatus.VALIDATED);
+        return submission;
     }
 
     private void stubSubmission(UUID userId, UUID submissionId, String brainPayload) {
@@ -639,8 +1114,17 @@ class MatchServiceTest {
         submission.setSelectedLoadout("melee");
         submission.setStatus(BotSubmissionStatus.VALIDATED);
         persistedSubmissions.put(submissionId, submission);
-        when(botSubmissionRepository.findByIdAndUserId(eq(submissionId), eq(userId)))
-                .thenReturn(Optional.of(submission));
+    }
+
+    private List<OutboundMatchmakingEvent> submitMatch(UUID userId, UUID submissionId) {
+        BotSubmission submission = persistedSubmissions.get(submissionId);
+        assertThat(submission).isNotNull();
+        MatchSubmissionResult result = service.acceptMatchSubmission(
+                userId,
+                savedMatch.getId(),
+                submission);
+        assertThat(result.accepted()).isTrue();
+        return result.events();
     }
 
     private int loadoutAbilityCodeCount(String selectedLoadout) {
@@ -664,12 +1148,12 @@ class MatchServiceTest {
                         100,
                         "melee",
                         List.of(),
-                        0, 0, 0, 0, 0, 0,
+                        List.of(),
                         Map.of(), Map.of(), Map.of(), Map.of(),
-                        null, null, 0, 0, 0, 0,
+                        null, null, 0, 0,
                         player.slot() == 1 ? 500.0 : 500.0,
                         player.slot() == 1 ? 150.0 : 850.0,
-                        0))
+                        0, 0))
                 .toList();
         return new MatchPlaybackDTO(
                 session.matchId(),
@@ -697,17 +1181,17 @@ class MatchServiceTest {
         private AutoAcceptingMatchmakingService(
                 MatchService matchService,
                 Clock clock,
-                MatchmakingRateLimiter matchmakingRateLimiter) {
+                SlidingWindowRateLimiter<UUID> matchmakingRateLimiter) {
             super(matchService, clock, matchmakingRateLimiter);
         }
 
         @Override
-        public synchronized List<MatchService.OutboundMatchmakingEvent> joinQueue(
+        public synchronized List<OutboundMatchmakingEvent> joinQueue(
                 UUID userId,
                 String username,
                 String principalName,
                 String socketSessionId) {
-            List<MatchService.OutboundMatchmakingEvent> events = super.joinQueue(
+            List<OutboundMatchmakingEvent> events = super.joinQueue(
                     userId,
                     username,
                     principalName,

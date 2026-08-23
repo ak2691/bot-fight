@@ -2,7 +2,7 @@ package com.example.botfight.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.example.botfight.service.StartupReadinessService;
+import com.example.botfight.service.system.StartupReadinessService;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;

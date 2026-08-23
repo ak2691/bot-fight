@@ -5,8 +5,10 @@ import test from "node:test";
 import { buildInitialArenaShapes } from "../modelPayloads/arenaShapes.js";
 
 const PANEL_PATH = fileURLToPath(new URL("./CodingPanel.jsx", import.meta.url));
+const ARENA_PATH = fileURLToPath(new URL("../Arena.jsx", import.meta.url));
 const BOARD_PATH = fileURLToPath(new URL("./LogicBoard.jsx", import.meta.url));
 const NODES_PATH = fileURLToPath(new URL("./nodes/GraphNodes.jsx", import.meta.url));
+const CUSTOM_VARIABLES_MODAL_PATH = fileURLToPath(new URL("./modals/CustomVariablesModal.jsx", import.meta.url));
 const SEARCH_PATH = fileURLToPath(new URL("./modals/SearchRootNodesModal.jsx", import.meta.url));
 const ICON_PATH = fileURLToPath(new URL("./controls/MatchToolIcon.jsx", import.meta.url));
 const CSS_PATH = fileURLToPath(new URL("../../index.css", import.meta.url));
@@ -18,6 +20,9 @@ function readCodingSource() {
 
 test("match and building toolbars expose only their supported controls", () => {
     const source = readCodingSource();
+    const matchControlsStart = source.indexOf("{isMatchTesting && (");
+    const matchControlsEnd = source.indexOf("{!isMatchTesting &&", matchControlsStart);
+    const matchControls = source.slice(matchControlsStart, matchControlsEnd);
 
     assert.match(source, /<div className="flex flex-col items-center gap-2\.5">/);
     assert.match(source, /icon=\{isAutoPlaying \? "pause" : "play"\}/);
@@ -25,17 +30,64 @@ test("match and building toolbars expose only their supported controls", () => {
     assert.match(source, /icon="check"/);
     assert.match(source, /: "SUBMIT"\}/);
     assert.match(source, /: "FORFEIT"\}/);
+    assert.match(source, /onPuzzleSubmit = null/);
+    assert.match(source, /onClick=\{onPuzzleSubmit\}/);
+    assert.match(source, /isPuzzleSubmitting \? "SUBMITTING" : "SUBMIT PUZZLE"/);
     assert.match(source, />\s*MEASURE\s*</);
     assert.match(source, />\s*RESET STATS\s*</);
     assert.match(source, />\s*EDIT MY LOADOUT\s*</);
     assert.match(source, />\s*EDIT DUMMY LOADOUT\s*</);
+    assert.ok(matchControls.indexOf("RESET STATS") < matchControls.indexOf("onFinishMatch"));
+    assert.match(matchControls, /onFinishMatch[\s\S]*tone="green"/);
+    assert.match(matchControls, /onSurrenderMatch[\s\S]*tone="red"/);
     assert.doesNotMatch(source, /SPAWN OPPONENT|EDIT OPPONENT LOADOUT|SAVE POINT|LOAD POINT|RESET TO BEGINNING/);
 });
 
-test("toolbar buttons share a fixed width, show labels, and retain the existing handlers", () => {
+test("puzzle play is a local preview and puzzle submission is a separate action", () => {
+    const arenaSource = readFileSync(ARENA_PATH, "utf8");
+    const runAutoPlay = arenaSource.match(/const runAutoPlay = \(\) => \{[\s\S]*?const setupValidationGoal/);
+
+    assert.ok(runAutoPlay);
+    assert.doesNotMatch(runAutoPlay[0], /submitPuzzleAttempt\(\)/);
+    assert.match(arenaSource, /onPuzzleSubmit=\{isPuzzleMode && onPuzzleAttempt \? submitPuzzleAttempt : null\}/);
+});
+
+test("the visible building deadline preserves the manual submission grace window", () => {
+    const arenaSource = readFileSync(ARENA_PATH, "utf8");
+    const panelSource = readFileSync(PANEL_PATH, "utf8");
+
+    assert.match(arenaSource, /const authoritativeRemaining = secondsRemaining\(autoSubmitDeadline\)/);
+    assert.match(arenaSource, /if \(authoritativeRemaining === 0\) \{\s*clearInterval\(interval\);[\s\S]*handleFinishMatchRef\.current\?\.\(\);[\s\S]*\}/);
+    assert.match(arenaSource, /autoFinishDeadlineRef/);
+    assert.match(panelSource, /testingRemaining === 0 && finishStatus === "BUILDING"/);
+    assert.match(panelSource, /PREPARING REPLAY · YOU CAN STILL SUBMIT/);
+});
+
+test("submitted match code closes and disables the coding workspace", () => {
+    const panelSource = readFileSync(PANEL_PATH, "utf8");
+
+    assert.ok(panelSource.includes("const isBotCodeLocked = isMatchTesting && ("));
+    assert.ok(panelSource.includes('finishStatus === "SUBMITTING"'));
+    assert.ok(panelSource.includes('finishStatus === "FINISHED"'));
+    assert.ok(panelSource.includes("setIsLogicOpen(false)"));
+    assert.ok(panelSource.includes("disabled={isBotCodeLocked}"));
+    assert.ok(panelSource.includes("disabled={isBotCodeLocked || isTesting || !viewingCurrentRound}"));
+    assert.ok(panelSource.includes("canRemove={!isBotCodeLocked && !isTesting && !roundDeleteLocked}"));
+});
+
+test("conditional ability pickers use all equipped abilities and resource-aware ammo choices", () => {
+    const panelSource = readFileSync(PANEL_PATH, "utf8");
+    const graphSource = readFileSync(NODES_PATH, "utf8");
+
+    assert.match(panelSource, /abilityOptions: abilityDefinitionsForVariable\(variable, equipped\)/);
+    assert.match(graphSource, /new Set\(\[\.\.\.STANDARD_ABILITY_IDS, \.\.\.selected\]\)/);
+});
+
+test("toolbar buttons share the blueprint surface, show labels, and retain the existing handlers", () => {
     const source = readCodingSource();
 
-    assert.match(source, /w-56 items-center justify-center gap-2 whitespace-nowrap/);
+    assert.match(source, /className=\{`arena-toolbar-button \$\{tones\[tone\]/);
+    assert.match(readFileSync(CSS_PATH, "utf8"), /\.arena-toolbar-button \{/);
     assert.match(source, /\{icon && <ToolIcon name=\{icon\} \/>}<span>\{children\}<\/span>/);
     assert.match(source, /onClick=\{onAutoPlayToggle\}/);
     assert.match(source, /onClick=\{onResetArenaStats\}/);
@@ -44,6 +96,8 @@ test("toolbar buttons share a fixed width, show labels, and retain the existing 
     assert.match(source, /onClick=\{onSurrenderMatch\}/);
     assert.match(source, /onClick=\{onOpenPlayerLoadout\}/);
     assert.match(source, /onClick=\{onOpenOpponentLoadout\}/);
+    assert.match(source, /onOpenPuzzleSubmissions/);
+    assert.match(source, />PREVIOUS SUBMISSIONS</);
     assert.match(readFileSync(ICON_PATH, "utf8"), /pause: <><path/);
 });
 
@@ -86,6 +140,7 @@ test("compact conditions own their comparator and actions summarize inspector ta
 
     assert.match(source, /function LogicNodeInspector/);
     assert.match(source, /aria-label="Comparator"/);
+    assert.doesNotMatch(source, /KeyboardDropdown/);
     assert.match(source, /className="code-operator-socket"/);
     assert.match(source, /className="code-action-label">\{formatActionNodeLabel\(selected\?\.label \?\? "Action"\)\}/);
     assert.doesNotMatch(source, /Move: \$\{selected\?\.label/);
@@ -95,11 +150,39 @@ test("compact conditions own their comparator and actions summarize inspector ta
     assert.match(source, /Move\|Movement\|Rotate\|Ability/);
     assert.match(source, /width: node\.width/);
     assert.match(readFileSync(CSS_PATH, "utf8"), /\.code-condition-node-remove \{[^}]*width: 30px;[^}]*box-sizing: border-box;[^}]*padding: 0;/);
-    assert.match(source, /away: "Away From"/);
-    assert.match(source, /away_left: "Away \+ Left of"/);
+    assert.match(source, /relativeMovementAngle/);
+    assert.match(source, /deg from/);
+    assert.match(source, /" deg from "/);
+    assert.match(source, /targetAngle \?\? 0\)} deg\)/);
     assert.match(source, /`\$\{formatOrdinal\(ordinal\)\} \$\{order\[0\]\.toUpperCase\(\)\}/);
     assert.doesNotMatch(source, /code-action-sentence[\s\S]*<OrderedTargetPicker value=\{entry\.actionTarget/);
     assert.doesNotMatch(source, /application\/x-bot-operator|GraphVariableNode|GraphTargetNode/);
+});
+
+test("boolean condition inputs use the comparator socket styling", () => {
+    const source = readFileSync(NODES_PATH, "utf8");
+    const css = readFileSync(CSS_PATH, "utf8");
+
+    assert.match(source, /boolean value[\s\S]*className="code-operator-socket code-condition-boolean-input"/);
+    assert.match(css, /\.code-condition-input > select\.code-condition-boolean-input[\s\S]*color: #bae6fd/);
+});
+
+test("action target inspectors switch to coordinates and preserve target offsets", () => {
+    const source = readFileSync(NODES_PATH, "utf8");
+
+    assert.match(source, /function actionTargetMode\(entry, definition\)/);
+    assert.match(source, /entry\?\.movementMode === "coordinates" \? "coordinates" : "target"/);
+    assert.match(source, /function ActionTargetControls/);
+    assert.match(source, /<option value="coordinates">\{definition\?\.angleTarget \? "Absolute coordinates" : "Relative to coordinates"\}<\/option>/);
+    assert.match(source, /X COORDINATE/);
+    assert.match(source, /Y COORDINATE/);
+    assert.match(source, /targetOffsetX/);
+    assert.match(source, /targetOffsetY/);
+    assert.match(source, /formatCoordinateTargetLabel/);
+    assert.match(source, /<span>deg<\/span>/);
+    assert.match(source, /0 deg = toward/);
+    const movementControls = source.slice(source.indexOf("function MovementConfigurationControls"), source.indexOf("function PhaseOrientationControls"));
+    assert.doesNotMatch(movementControls, /targetOffsetX|targetOffsetY/);
 });
 
 test("action node picker provides an auto-focused search", () => {
@@ -108,7 +191,7 @@ test("action node picker provides an auto-focused search", () => {
     assert.match(source, /function NodeKindPicker/);
     assert.match(source, /placeholder="Search actions…"/);
     assert.match(source, />＋<\/span> ADD ROOT/);
-    assert.match(source, /<input autoFocus value=\{query\}/);
+    assert.match(source, /<input ref=\{searchInputRef\} autoFocus value=\{query\}/);
     assert.match(source, /filteredActions\.map/);
     assert.match(source, /className="code-node-search-label"/);
     const actionPicker = source.slice(source.indexOf("function NodeKindPicker"), source.indexOf("function VariableOperandPicker"));
@@ -116,12 +199,13 @@ test("action node picker provides an auto-focused search", () => {
     assert.match(actionPicker, /<strong>\{action\.label\}<\/strong><\/button>/);
 });
 
-test("a narrow action row is centered below its wider conditional", () => {
+test("inserted nodes use explicit placements without auto-adjusting existing nodes", () => {
     const source = readCodingSource();
     assert.match(source, /let childX = left \+ Math\.max\(0, \(width - descendantsWidth\) \/ 2\)/);
-    assert.match(source, /Object\.entries\(current\)\.filter\(\(\[nodeId\]\) => !nodeId\.startsWith\(actionNodePrefix\)/);
-    assert.match(source, /const conditionalOffset = current\[conditionNodeId\] \?\? \{ x: 0, y: 0 \}/);
-    assert.match(source, /next\[actionGraphNodeId\(branch\.id, actionIndex, rootId\)\] = conditionalOffset/);
+    assert.match(source, /const commitConfiguration = \(nextConfiguration, preserveGraphPositions = true, positionOverrides = \{\}\)/);
+    assert.match(source, /Object\.entries\(positionOverrides\)\.forEach/);
+    assert.match(source, /positionInsertedGraphNode\(condition, previousAction, nextAction, nodeOffsetsRef\.current, CONDITION_TO_CHILD_GAP\)/);
+    assert.doesNotMatch(source, /actionNodePrefix/);
 });
 
 test("variable and action searches share a wheel-contained picker design", () => {
@@ -154,7 +238,8 @@ test("conditional nodes expand to fit complete variable names", () => {
     assert.match(css, /\.code-condition-input \{[\s\S]*min-width: 0/);
     assert.match(css, /\.code-condition-input\.is-raw \{ width: 110px; \}/);
     assert.match(source, /const leftWidth = 39 \+ leftLength \* 5\.5/);
-    assert.match(source, /const rightWidth = condition\.right\?\.type === "variable" \? 39 \+ rightLength \* 5\.5 : 110/);
+    assert.match(source, /const rightWidth = condition\.right\?\.type === "variable"[\s\S]*: 110/);
+    assert.doesNotMatch(source, /condition\.right\?\.type === "range"/);
     assert.match(source, /return 175 \+ leftWidth \+ rightWidth/);
     assert.match(source, /GRAPH_NODE_WIDTH, 1200/);
 });
@@ -165,13 +250,13 @@ test("conditional operand icon toggles replace literals and restore raw numbers"
     assert.match(source, /function ConditionalOperandBox/);
     assert.match(source, /aria-label=\{`Use a variable for input \$\{operand\}`\}/);
     assert.match(source, /function VariableOperandPicker/);
-    assert.match(source, /<input autoFocus value=\{query\}/);
+    assert.match(source, /<input ref=\{searchInputRef\} autoFocus value=\{query\}/);
     assert.match(source, /right: \{ type: "variable", value: definition\.id \}/);
     assert.match(source, /onClick=\{onPickVariable\}/);
     assert.match(source, /aria-label=\{`Use a raw number for input \$\{operand\}`\}/);
     assert.match(source, /right: \{ type: "number", value: 0 \}/);
     assert.match(source, /className="code-condition-input-toggle"/);
-    assert.match(source, /onClick=\{onInspectVariable\}/);
+    assert.match(source, /onClick=\{onOpenVariablePicker \?\? onInspectVariable\}/);
     assert.doesNotMatch(source, /onChooseExisting|ON YOUR CANVAS/);
 });
 
@@ -191,7 +276,7 @@ test("raw number inputs accept digits only and retain the original caret present
     assert.match(numberInput, /pattern=\{digitsOnly \? "\[0-9\]\*" : undefined\}/);
     assert.match(numberInput, /digitsOnly \? event\.target\.value\.replace\(\/\[\^0-9\]\/g, ""\)/);
     assert.match(numberInput, /digitsOnly && event\.key\.length === 1 && !\/\[0-9\]\/\.test\(event\.key\)/);
-    assert.match(source, /<DeferredNumberInput digitsOnly data-node-drag-ignore="true" aria-label=\{`Input \$\{operand\} number`\}/);
+    assert.match(source, /<DeferredNumberInput digitsOnly=\{integerNumber && !signedNumber\} integerOnly=\{integerNumber\} data-node-drag-ignore="true" aria-label=\{`Input \$\{operand\} number`\}/);
     assert.match(numberInput, /onClick=\{\(event\) => event\.currentTarget\.select\(\)\}/);
     assert.match(css, /\.code-condition-input\.is-raw:focus-within/);
     assert.match(css, /\.code-condition-input > input,[\s\S]*caret-color: #fff;/);
@@ -203,8 +288,17 @@ test("clicking empty canvas space deselects an active raw input", () => {
     const clearFromSurface = source.slice(source.indexOf("const clearCanvasSelectionFromSurface"), source.indexOf("const selectGraphNode"));
 
     assert.match(clearFromSurface, /event\.target !== event\.currentTarget/);
-    assert.match(clearFromSurface, /document\.activeElement\?\.closest\?\.\("\.code-condition-input\.is-raw"\)/);
+    assert.match(clearFromSurface, /document\.activeElement\?\.closest\?\.\("\.code-condition-input\.is-raw, \.code-root-name"\)/);
     assert.match(clearFromSurface, /document\.activeElement\.blur\(\)/);
+});
+
+test("variable condition searches render visual category headings", () => {
+    const source = readFileSync(NODES_PATH, "utf8");
+
+    assert.match(source, /const groupedDefinitions = groupedConditionPickerOptions\(definitions\);/);
+    assert.match(source, /className="code-node-search-group"/);
+    assert.match(source, /className="code-node-search-group-title"/);
+    assert.match(source, /group\.options\.map/);
 });
 
 test("condition and action DOM identities are scoped to their root", () => {
@@ -227,7 +321,7 @@ test("each condition row has its own remove control", () => {
 test("ALWAYS is offered from the variable operand picker", () => {
     const source = readCodingSource();
 
-    assert.match(source, /const showAlways = operand === 1 && matches\("ALWAYS", "always"\);/);
+    assert.match(source, /const showAlways = operand === 1 && !numericOnly && matches\("ALWAYS", "always"\);/);
     assert.match(source, /id: "always", label: "ALWAYS", valueType: "boolean"/);
     assert.match(source, /operandPicker\.operand === 1 && variableId === "always"/);
     assert.match(source, /\? \{ type: "always", \.\.\.\(condition\.join === "or" \? \{ join: "or" \} : \{\}\) \}/);
@@ -259,11 +353,21 @@ test("conditional nodes show depth and add a parent conditional", () => {
     const source = readCodingSource();
 
     assert.match(source, /<span className="code-node-badge">\{node\.path\.length\}<\/span>/);
-    assert.match(source, /commitConfiguration\(\{ \.\.\.configuration, roots: insertParentLogicBranch\(roots, node\.rootIndex, node\.path, parent\) \}\)/);
-    assert.match(source, /inheritNodeOffset\(conditionGraphNodeId\(parent\.id, node\.rootId\), node\.id\)/);
+    assert.match(source, /const nextRoots = insertParentLogicBranch\(roots, node\.rootIndex, node\.path, parent\);/);
+    assert.match(source, /const nextGraph = buildLogicGraph\(nextRoots, stateVariables, selectedLoadout, targetTypes\);/);
+    assert.match(source, /positionOverrides\[nextParent\.id\]/);
+    assert.match(source, /const mappedPath = \[\.\.\.candidate\.path\.slice\(0, node\.path\.length\), 0/);
     assert.match(source, /onAddChildConditional=\{\(\) =>/);
     assert.match(source, /children: \[\.\.\.\(current\.children \?\? \[\]\), child\]/);
+    assert.match(source, /positionInsertedGraphNode\(node, previousChild, nextChild, nodeOffsetsRef\.current, CONDITION_TO_CHILD_GAP\)/);
     assert.doesNotMatch(source, /siblingIndex === 0 \? "IF" : "ELSE IF"/);
+});
+
+test("root conditional controls do not change graph selection", () => {
+    const source = readCodingSource();
+
+    assert.match(source, /const addRootConditional = \(event, node, rootNode\) => \{\s*event\.stopPropagation\(\);/);
+    assert.match(source, /onClick=\{\(event\) => addRootConditional\(event, node, rootNode\)\}/);
 });
 
 test("removing a conditional promotes its child branches", () => {
@@ -282,7 +386,7 @@ test("search and configuration menus are exclusive and close on Escape", () => {
     assert.match(source, /if \(!isExternalConfigurationOpen\) return;/);
     assert.match(source, /useDialogFocus\(dialogRef, \{ onClose \}\)/);
     assert.match(source, /onKeyDown=\{\(event\) => \{ if \(event\.key === "Escape"\) \{ event\.preventDefault\(\); event\.stopPropagation\(\);/);
-    assert.match(source, /useExclusiveSearchMenu\(rootRef, open, \(\) => setOpen\(false\)\)/);
+    assert.match(source, /useExclusiveSearchMenu\(pickerRef, true, onClose\)/);
     assert.match(source, /onSearchCloseRef\.current\?\.\(\);/);
     assert.match(source, /onCloseExternalConfigurationRef\.current\?\.\(\);/);
 });
@@ -345,11 +449,45 @@ test("local building initialization creates one dummy while match initialization
     assert.equal(matchShapes.find((shape) => shape.id === "opponent-model")?.username, "Opponent");
 });
 
-test("condition comparator menus omit modulo", () => {
+test("modulo is exposed only as a custom-variable operation", () => {
     const source = readCodingSource();
 
-    assert.match(source, /candidate\.id !== "modulo" && candidate\.valueTypes/);
-    assert.match(source, /comparator\.id !== "modulo" && comparator\.valueTypes/);
+    assert.match(source, /<option value=\{CUSTOM_VARIABLE_OPERATIONS\.MODULO\}>%<\/option>/);
+    assert.doesNotMatch(source, /condition\.modulo|comparator === "modulo"|Modulo divisor/);
+});
+
+test("custom variable configuration only defines variables and starting values", () => {
+    const source = readFileSync(CUSTOM_VARIABLES_MODAL_PATH, "utf8");
+
+    assert.doesNotMatch(source, /BooleanVariableConditions|ModalConditionOperand|\+ AND|\+ OR/);
+    assert.match(source, /valueType: event\.target\.value/);
+    assert.match(source, /STARTING VALUE/);
+});
+
+test("modify custom variables use conditional-style operands and layered inspectors", () => {
+    const source = readCodingSource();
+    const css = readFileSync(CSS_PATH, "utf8");
+
+    assert.match(source, /function VariableActionControls/);
+    assert.match(source, /code-condition-input-toggle/);
+    assert.match(source, /terms\.map\(\(term, termIndex\)/);
+    assert.match(source, /updateTerms\(\[\.\.\.terms/);
+    assert.match(source, /code-variable-action-input-value/);
+    assert.match(source, /code-variable-action-input-label/);
+    assert.match(source, /code-variable-action-input/);
+    assert.doesNotMatch(source, /operandDefinition\.suffix/);
+    assert.doesNotMatch(source, /function addVariableAction/);
+    assert.match(source, /function ActionVariableInspector/);
+    assert.match(source, /className="code-condition-row-remove"/);
+    assert.match(source, /kind: "action"/);
+    assert.match(source, /setActionOperandInspector/);
+    assert.match(source, /onDismissOperandPicker/);
+    assert.match(css, /\.code-inspector--secondary/);
+    assert.match(css, /\.code-variable-action-operator \{ min-width: 68px/);
+    assert.match(css, /\.code-inspector-body \.code-condition-input > input/);
+    assert.match(css, /\.code-variable-action-input-value[\s\S]*text-overflow: ellipsis/);
+    assert.match(css, /\.code-variable-action-input-label[\s\S]*text-overflow: ellipsis/);
+    assert.match(css, /\.code-condition-input\.code-variable-action-input[\s\S]*width: 100%[\s\S]*max-width: 100%/);
 });
 
 test("code graph has no standalone variable, target, or connection workflow", () => {

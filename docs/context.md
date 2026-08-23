@@ -16,6 +16,9 @@ tests remain authoritative when a document is stale.
 - [`ADDING_A_BACKEND_ABILITY_OR_MOVE.md`](ADDING_A_BACKEND_ABILITY_OR_MOVE.md):
   detailed authoritative catalog, validation, simulation, ECS, replay, and test
   checklist. Read for server implementation after the end-to-end guide.
+- [`MODIFYING_ABILITIES.md`](MODIFYING_ABILITIES.md): practical tuning guide for
+  changing stats, adding existing generic effects, statuses, entities, delivery,
+  shields, visuals, and new effect types.
 
 ## Audits and regression review
 

@@ -6,24 +6,31 @@ import com.example.botfight.DTO.MatchChatRequestDTO;
 import com.example.botfight.DTO.MatchAcceptanceDTO;
 import com.example.botfight.DTO.MatchmakingEventDTO;
 import com.example.botfight.domain.AppUser;
-import com.example.botfight.service.AuthException;
-import com.example.botfight.service.CurrentUserService;
-import com.example.botfight.service.MatchService;
-import com.example.botfight.service.MatchmakingEventsReady;
-import com.example.botfight.service.MatchmakingService;
-import com.example.botfight.service.RateLimitExceededException;
-import com.example.botfight.service.MatchService.OutboundMatchmakingEvent;
-import com.example.botfight.service.MatchService.MatchChatClosure;
-import com.example.botfight.service.MatchService.MatchChatSubmission;
-import com.example.botfight.service.MatchService.MatchChatSubmissionStatus;
+import com.example.botfight.service.auth.AuthException;
+import com.example.botfight.service.auth.CurrentUserService;
+import com.example.botfight.service.limits.RateLimitExceededException;
+import com.example.botfight.service.match.MatchService;
+import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
+import com.example.botfight.service.match.model.MatchChatClosure;
+import com.example.botfight.service.match.model.MatchChatSubmission;
+import com.example.botfight.service.match.model.MatchChatSubmissionStatus;
+import com.example.botfight.service.matchmaking.MatchmakingEventsReady;
+import com.example.botfight.service.matchmaking.MatchmakingService;
+import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
 import java.security.Principal;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -42,6 +49,8 @@ import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.socket.messaging.SessionDisconnectEvent;
+import org.springframework.web.socket.messaging.SessionSubscribeEvent;
+import org.springframework.web.socket.messaging.SessionUnsubscribeEvent;
 
 @Controller
 public class MatchmakingSocketController {
@@ -49,16 +58,20 @@ public class MatchmakingSocketController {
     private static final Logger log = LoggerFactory.getLogger(MatchmakingSocketController.class);
     private static final int CONNECTION_LOSS_DETECTION_SECONDS = 10;
     private static final long DEADLINE_CALLBACK_BUFFER_MILLIS = 250L;
+    private static final long PHASE_TRANSITION_SCHEDULER_BUFFER_MILLIS = 0L;
     private final MatchmakingService matchmakingService;
     private final MatchService matchService;
     private final SimpMessagingTemplate messagingTemplate;
     private final CurrentUserService currentUserService;
     private final TaskScheduler matchmakingLifecycleScheduler;
     private final AsyncTaskExecutor matchSimulationExecutor;
+    private final SingleUserWebSocketSessionRegistry singleUserWebSocketSessionRegistry;
     private final Set<UUID> scheduledMatchChatClosures = new HashSet<>();
     private final Set<String> scheduledSimulations = new HashSet<>();
     private final Set<String> scheduledBuildingTimeouts = new HashSet<>();
     private final Set<String> scheduledLoadoutSelectionTimeouts = new HashSet<>();
+    private final Map<UUID, Set<ScheduledFuture<?>>> scheduledDelayedMatchEvents = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, String>> matchSubscriptionsBySession = new ConcurrentHashMap<>();
 
     @Autowired
     public MatchmakingSocketController(
@@ -67,13 +80,15 @@ public class MatchmakingSocketController {
             SimpMessagingTemplate messagingTemplate,
             CurrentUserService currentUserService,
             @Qualifier("matchmakingLifecycleScheduler") TaskScheduler matchmakingLifecycleScheduler,
-            @Qualifier("matchSimulationExecutor") AsyncTaskExecutor matchSimulationExecutor) {
+            @Qualifier("matchSimulationExecutor") AsyncTaskExecutor matchSimulationExecutor,
+            SingleUserWebSocketSessionRegistry singleUserWebSocketSessionRegistry) {
         this.matchmakingService = matchmakingService;
         this.matchService = matchService;
         this.messagingTemplate = messagingTemplate;
         this.currentUserService = currentUserService;
         this.matchmakingLifecycleScheduler = matchmakingLifecycleScheduler;
         this.matchSimulationExecutor = matchSimulationExecutor;
+        this.singleUserWebSocketSessionRegistry = singleUserWebSocketSessionRegistry;
     }
 
     MatchmakingSocketController(
@@ -88,7 +103,25 @@ public class MatchmakingSocketController {
                 messagingTemplate,
                 currentUserService,
                 matchmakingLifecycleScheduler,
-                task -> matchmakingLifecycleScheduler.schedule(task, Instant.now()));
+                task -> matchmakingLifecycleScheduler.schedule(task, Instant.now()),
+                new SingleUserWebSocketSessionRegistry());
+    }
+
+    MatchmakingSocketController(
+            MatchmakingService matchmakingService,
+            MatchService matchService,
+            SimpMessagingTemplate messagingTemplate,
+            CurrentUserService currentUserService,
+            TaskScheduler matchmakingLifecycleScheduler,
+            SingleUserWebSocketSessionRegistry singleUserWebSocketSessionRegistry) {
+        this(
+                matchmakingService,
+                matchService,
+                messagingTemplate,
+                currentUserService,
+                matchmakingLifecycleScheduler,
+                task -> matchmakingLifecycleScheduler.schedule(task, Instant.now()),
+                singleUserWebSocketSessionRegistry);
     }
 
     @PostConstruct
@@ -136,11 +169,13 @@ public class MatchmakingSocketController {
             scheduleMatchAcceptanceTimeouts(pendingEvents);
             return;
         }
-        publish(matchService.resumeMatch(
-                user.getId(),
-                user.getUsername(),
-                principal.getName(),
-                headers.getSessionId()));
+        publishToDestination(
+                matchService.resumeMatch(
+                        user.getId(),
+                        user.getUsername(),
+                        principal.getName(),
+                        headers.getSessionId()),
+                MatchmakingSocketDestinations.MATCH);
     }
 
     @MessageMapping("/matchmaking.accept")
@@ -184,9 +219,9 @@ public class MatchmakingSocketController {
 
     @MessageExceptionHandler(RateLimitExceededException.class)
     public void handleMatchmakingRateLimit(
-            RateLimitExceededException exception,
+            RateLimitExceededException ignored,
             Principal principal) {
-        sendError(principal, exception.getMessage());
+        sendError(principal, RateLimitExceededException.GENERIC_MESSAGE);
     }
 
     @MessageExceptionHandler(Exception.class)
@@ -201,7 +236,7 @@ public class MatchmakingSocketController {
         }
         messagingTemplate.convertAndSendToUser(
                 principal.getName(),
-                "/queue/matchmaking",
+                MatchmakingSocketDestinations.MATCHMAKING,
                 new MatchmakingEventDTO(
                         "MATCH_ERROR",
                         null,
@@ -234,8 +269,20 @@ public class MatchmakingSocketController {
     @MessageMapping("/matchmaking.selectLoadout")
     public void selectLoadout(@Payload MatchLoadoutSelectionDTO payload, Principal principal) {
         AppUser user = requireUser(principal);
-        List<OutboundMatchmakingEvent> events = matchService.selectLoadout(user.getId(), payload == null ? null : payload.selectedLoadout());
+        List<OutboundMatchmakingEvent> events = payload == null
+                ? List.of()
+                : matchService.selectLoadout(
+                        user.getId(),
+                        payload.matchId(),
+                        payload.roundNumber(),
+                        payload.selectedLoadout());
         publish(events);
+    }
+
+    @MessageMapping("/matchmaking.leaveCompletedMatch")
+    public void leaveCompletedMatch(Principal principal) {
+        AppUser user = requireUser(principal);
+        matchService.leaveCompletedMatch(user.getId());
     }
 
     @MessageMapping("/matchmaking.surrender")
@@ -254,7 +301,8 @@ public class MatchmakingSocketController {
         if (submission.status() == MatchChatSubmissionStatus.ACCEPTED) {
             MatchChatEventDTO event = chatEvent("MATCH_CHAT_MESSAGE", submission);
             submission.recipientPrincipalNames().forEach(recipient ->
-                    messagingTemplate.convertAndSendToUser(recipient, "/queue/match-chat", event));
+                    messagingTemplate.convertAndSendToUser(
+                            recipient, MatchmakingSocketDestinations.MATCH_CHAT, event));
             return;
         }
         String type = submission.status() == MatchChatSubmissionStatus.RATE_LIMITED
@@ -262,7 +310,7 @@ public class MatchmakingSocketController {
                 : "MATCH_CHAT_REJECTED";
         messagingTemplate.convertAndSendToUser(
                 principal.getName(),
-                "/queue/match-chat",
+                MatchmakingSocketDestinations.MATCH_CHAT,
                 chatEvent(type, submission));
     }
 
@@ -277,7 +325,65 @@ public class MatchmakingSocketController {
     }
 
     @EventListener
+    public void handleSubscribe(SessionSubscribeEvent event) {
+        SimpMessageHeaderAccessor headers = SimpMessageHeaderAccessor.wrap(event.getMessage());
+        if (!MatchmakingSocketDestinations.isMatchSubscription(headers.getDestination())) {
+            return;
+        }
+        String sessionId = headers.getSessionId();
+        String subscriptionId = headers.getSubscriptionId();
+        if (sessionId == null || subscriptionId == null) {
+            return;
+        }
+        Principal principal = event.getUser();
+        if (principal == null) {
+            principal = headers.getUser();
+        }
+        String principalName = principal == null ? "" : principal.getName();
+        matchSubscriptionsBySession
+                .computeIfAbsent(sessionId, ignored -> new ConcurrentHashMap<>())
+                .put(subscriptionId, principalName == null ? "" : principalName);
+    }
+
+    @EventListener
+    public void handleUnsubscribe(SessionUnsubscribeEvent event) {
+        SimpMessageHeaderAccessor headers = SimpMessageHeaderAccessor.wrap(event.getMessage());
+        String sessionId = headers.getSessionId();
+        String subscriptionId = headers.getSubscriptionId();
+        if (sessionId == null || subscriptionId == null) {
+            return;
+        }
+        AtomicBoolean removed = new AtomicBoolean(false);
+        AtomicReference<String> subscribedPrincipalName = new AtomicReference<>();
+        Map<String, String> remaining = matchSubscriptionsBySession.computeIfPresent(
+                sessionId,
+                (ignored, subscriptions) -> {
+                    if (!subscriptions.containsKey(subscriptionId)) return subscriptions;
+                    subscribedPrincipalName.set(subscriptions.remove(subscriptionId));
+                    removed.set(true);
+                    return subscriptions.isEmpty() ? null : subscriptions;
+                });
+        if (!removed.get() || remaining != null) {
+            return;
+        }
+        Principal principal = event.getUser();
+        if (principal == null) {
+            principal = headers.getUser();
+        }
+        String principalName = principal == null
+                ? subscribedPrincipalName.get()
+                : principal.getName();
+        if (principalName == null || principalName.isBlank()) {
+            log.warn("Ignoring match subscription removal without an authenticated principal. sessionId={}",
+                    sessionId);
+            return;
+        }
+        scheduleDisconnectDetection(principalName, sessionId);
+    }
+
+    @EventListener
     public void handleDisconnect(SessionDisconnectEvent event) {
+        matchSubscriptionsBySession.remove(event.getSessionId());
         Principal principal = event.getUser();
         if (principal == null) {
             log.warn("Ignoring WebSocket disconnect without an authenticated principal. sessionId={}",
@@ -296,10 +402,21 @@ public class MatchmakingSocketController {
                 Instant.now().plusSeconds(CONNECTION_LOSS_DETECTION_SECONDS),
                 "connection loss detection",
                 () -> {
+                    if (hasMatchSubscription(socketSessionId)) {
+                        log.info("Skipping connection-loss detection because the match subscription was restored. principal={}, sessionId={}",
+                                principalName,
+                                socketSessionId);
+                        return;
+                    }
                     publishDisconnect(
                             principalName,
                             matchService.markDisconnected(principalName, socketSessionId));
                 });
+    }
+
+    private boolean hasMatchSubscription(String socketSessionId) {
+        Map<String, String> subscriptions = matchSubscriptionsBySession.get(socketSessionId);
+        return subscriptions != null && !subscriptions.isEmpty();
     }
 
     private void publishDisconnect(String principalName, List<OutboundMatchmakingEvent> events) {
@@ -341,21 +458,128 @@ public class MatchmakingSocketController {
     }
 
     private void publish(List<OutboundMatchmakingEvent> events) {
-        scheduleBuildingTimeouts(events);
-        scheduleMatchChatClosures(events);
+        // Delayed replay and round-boundary events are intentionally not
+        // current until their scheduled publish time. Immediate events,
+        // however, must pass the authoritative snapshot check before any
+        // timeout, chat-closure, or simulation work is scheduled from them.
+        List<OutboundMatchmakingEvent> currentImmediateEvents = events.stream()
+                .filter(event -> event.delayMillis() <= 0)
+                .filter(matchService::isCurrentEvent)
+                .toList();
+        currentImmediateEvents.stream()
+                .map(OutboundMatchmakingEvent::event)
+                .filter(event -> "MATCH_RESULT_READY".equals(event.type()))
+                .map(MatchmakingEventDTO::matchId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .forEach(this::cancelScheduledDelayedMatchEvents);
+        scheduleBuildingTimeouts(currentImmediateEvents);
+        scheduleMatchChatClosures(currentImmediateEvents);
+        Set<UUID> terminalMatchIds = currentImmediateEvents.stream()
+                .map(OutboundMatchmakingEvent::event)
+                .filter(event -> "MATCH_RESULT_READY".equals(event.type()))
+                .map(MatchmakingEventDTO::matchId)
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
         for (OutboundMatchmakingEvent event : events) {
-            if (event.delayMillis() > 0) {
-                scheduleSafely(
+            boolean terminalResult = "MATCH_RESULT_READY".equals(event.event().type());
+            if (event.delayMillis() > 0
+                    && (terminalResult || !terminalMatchIds.contains(event.event().matchId()))) {
+                scheduleDelayedMatchEvent(
+                        event,
                         event.publishAt() != null
                                 ? event.publishAt()
-                                : Instant.now().plusMillis(event.delayMillis()),
-                        "delayed matchmaking event",
-                        () -> publish(event));
-            } else {
+                        : Instant.now().plusMillis(event.delayMillis()),
+                        "delayed matchmaking event");
+            } else if (currentImmediateEvents.contains(event)) {
                 publish(event);
             }
         }
-        scheduleAuthoritativeSimulations(events);
+        scheduleAuthoritativeSimulations(currentImmediateEvents);
+    }
+
+    private void scheduleDelayedMatchEvent(
+            OutboundMatchmakingEvent event,
+            Instant runAt,
+        String taskName) {
+        UUID matchId = event.event().matchId();
+        boolean phaseTransition = isScheduledPhaseTransition(event);
+        Instant authoritativeRunAt = phaseTransition
+                ? authoritativePhaseTransitionAt(event, runAt)
+                : runAt;
+        boolean enforceBoundary = phaseTransition
+                && (event.publishAt() != null
+                        || event.event().roundReadyAt() != null
+                        || event.event().resultRevealsAt() != null);
+        Instant schedulerRunAt = enforceBoundary
+                ? runAt.isAfter(authoritativeRunAt)
+                        ? runAt
+                        : authoritativeRunAt.plusMillis(PHASE_TRANSITION_SCHEDULER_BUFFER_MILLIS)
+                : runAt;
+        AtomicReference<ScheduledFuture<?>> futureRef = new AtomicReference<>();
+        ScheduledFuture<?> future = scheduleSafely(
+                schedulerRunAt,
+                taskName,
+                () -> {
+                    Instant firedAt = Instant.now();
+                    ScheduledFuture<?> scheduledFuture = futureRef.get();
+                    if (matchId != null && scheduledFuture != null) {
+                        removeScheduledDelayedMatchEvent(matchId, scheduledFuture);
+                    }
+                    if (enforceBoundary && firedAt.isBefore(authoritativeRunAt)) {
+                        long earlyByMillis = Duration.between(firedAt, authoritativeRunAt).toMillis();
+                        scheduleDelayedMatchEvent(
+                                event,
+                                authoritativeRunAt.plusMillis(
+                                        Math.max(0, earlyByMillis)
+                                                + PHASE_TRANSITION_SCHEDULER_BUFFER_MILLIS),
+                                taskName);
+                        return;
+                    }
+                    publish(event);
+                });
+        futureRef.set(future);
+        if (matchId != null && future != null) {
+            scheduledDelayedMatchEvents
+                    .computeIfAbsent(matchId, ignored -> ConcurrentHashMap.newKeySet())
+                    .add(future);
+        }
+    }
+
+    private static boolean isScheduledPhaseTransition(OutboundMatchmakingEvent event) {
+        String type = event.event().type();
+        return "MATCH_ROUND_READY".equals(type) || "MATCH_RESULT_READY".equals(type);
+    }
+
+    private static Instant authoritativePhaseTransitionAt(
+            OutboundMatchmakingEvent event,
+            Instant fallback) {
+        if (event.publishAt() != null) return event.publishAt();
+        if ("MATCH_ROUND_READY".equals(event.event().type())
+                && event.event().roundReadyAt() != null) {
+            return event.event().roundReadyAt();
+        }
+        if ("MATCH_RESULT_READY".equals(event.event().type())
+                && event.event().resultRevealsAt() != null) {
+            return event.event().resultRevealsAt();
+        }
+        return fallback;
+    }
+
+    private void cancelScheduledDelayedMatchEvents(UUID matchId) {
+        if (matchId == null) return;
+        Set<ScheduledFuture<?>> scheduled = scheduledDelayedMatchEvents.remove(matchId);
+        if (scheduled == null) return;
+        scheduled.forEach(future -> {
+            if (!future.isDone()) future.cancel(false);
+        });
+    }
+
+    private void removeScheduledDelayedMatchEvent(UUID matchId, ScheduledFuture<?> future) {
+        scheduledDelayedMatchEvents.computeIfPresent(matchId, (ignored, scheduled) -> {
+            scheduled.remove(future);
+            return scheduled.isEmpty() ? null : scheduled;
+        });
     }
 
     private void scheduleBuildingTimeouts(List<OutboundMatchmakingEvent> events) {
@@ -405,6 +629,13 @@ public class MatchmakingSocketController {
                         }
                         return;
                     }
+                    Map<String, String> expectedChatSocketIds = new HashMap<>();
+                    events.stream()
+                            .filter(outbound -> matchId.equals(outbound.event().matchId()))
+                            .forEach(outbound -> expectedChatSocketIds.putIfAbsent(
+                                    outbound.principalName(),
+                                    singleUserWebSocketSessionRegistry.currentSessionIdForPrincipal(
+                                            outbound.principalName())));
                     scheduleSafely(
                             closeAt,
                             "match chat close",
@@ -423,11 +654,22 @@ public class MatchmakingSocketController {
                                         Instant.now(),
                                         closeAt,
                                         Instant.now());
-                                closure.recipientPrincipalNames().forEach(recipient ->
-                                        messagingTemplate.convertAndSendToUser(
-                                                recipient,
-                                                "/queue/match-chat",
-                                                event));
+                                closure.recipientPrincipalNames().forEach(
+                                        recipient -> {
+                                            String expectedSessionId = expectedChatSocketIds.get(recipient);
+                                            if (expectedSessionId == null || expectedSessionId.isBlank()) {
+                                                return;
+                                            }
+                                            messagingTemplate.convertAndSendToUser(
+                                                    recipient,
+                                                    MatchmakingSocketDestinations.MATCH_CHAT,
+                                                    event,
+                                                    Map.of(SimpMessageHeaderAccessor.SESSION_ID_HEADER,
+                                                            expectedSessionId));
+                                            // Match chat is a subscription-level concern. Keep
+                                            // the authenticated transport alive for notifications;
+                                            // the match route will remove its match subscriptions.
+                                        });
                             });
                 });
     }
@@ -476,14 +718,19 @@ public class MatchmakingSocketController {
         scheduleLoadoutSelectionTimeouts(readyEvents);
     }
 
-    private void scheduleSafely(Instant runAt, String taskName, Runnable task) {
-        matchmakingLifecycleScheduler.schedule(() -> {
-            try {
-                task.run();
-            } catch (RuntimeException exception) {
-                log.error("Matchmaking {} failed", taskName, exception);
-            }
-        }, runAt);
+    private ScheduledFuture<?> scheduleSafely(Instant runAt, String taskName, Runnable task) {
+        try {
+            return matchmakingLifecycleScheduler.schedule(() -> {
+                try {
+                    task.run();
+                } catch (RuntimeException exception) {
+                    log.error("Matchmaking {} failed runAt={}", taskName, runAt, exception);
+                }
+            }, runAt);
+        } catch (RuntimeException exception) {
+            log.error("Unable to schedule matchmaking task taskName={} runAt={}", taskName, runAt, exception);
+            throw exception;
+        }
     }
 
     private static long delayUntil(Instant deadline) {
@@ -493,20 +740,48 @@ public class MatchmakingSocketController {
         return remaining.compareTo(Duration.ofMillis(wholeMillis)) > 0 ? wholeMillis + 1 : wholeMillis;
     }
 
+    private void publishToDestination(
+            List<OutboundMatchmakingEvent> events,
+            String destination) {
+        events.forEach(event -> publish(event, destination));
+    }
+
     private void publish(OutboundMatchmakingEvent event) {
-        OutboundMatchmakingEvent eventAtPhaseBoundary = "MATCH_ROUND_READY".equals(event.event().type())
+        publish(event, null);
+    }
+
+    private void publish(
+            OutboundMatchmakingEvent event,
+            String destinationOverride) {
+        if (!matchService.isCurrentEvent(event)) return;
+        boolean roundBoundary = "MATCH_ROUND_READY".equals(event.event().type());
+        OutboundMatchmakingEvent eventAtPhaseBoundary = roundBoundary
                 ? matchService.activateRoundLoadoutSelection(event)
                 : event;
-        if (eventAtPhaseBoundary == null) return;
+        if (eventAtPhaseBoundary == null) {
+            return;
+        }
+        if (!matchService.isCurrentEvent(eventAtPhaseBoundary)) return;
+        if ("MATCH_RESULT_READY".equals(eventAtPhaseBoundary.event().type())) {
+            matchService.expireCompletedMatch(eventAtPhaseBoundary.event().matchId());
+        }
         MatchmakingEventDTO payload = "SIMULATION_PREPARING".equals(eventAtPhaseBoundary.event().type())
                     ? eventAtPhaseBoundary.event()
                     : eventAtPhaseBoundary.event().withServerNow(Instant.now());
+        String destination = destinationOverride != null
+                ? destinationOverride
+                : MatchmakingSocketDestinations.forMatchmakingEvent(payload);
         messagingTemplate.convertAndSendToUser(
                 eventAtPhaseBoundary.principalName(),
-                "/queue/matchmaking",
+                destination,
                 payload);
         if ("MATCH_ROUND_READY".equals(eventAtPhaseBoundary.event().type())) {
             scheduleLoadoutSelectionTimeouts(List.of(eventAtPhaseBoundary));
+            List<OutboundMatchmakingEvent> pendingDisconnectEvents =
+                    matchService.promotePendingDisconnect(eventAtPhaseBoundary.principalName());
+            if (!pendingDisconnectEvents.isEmpty()) {
+                publishDisconnect(eventAtPhaseBoundary.principalName(), pendingDisconnectEvents);
+            }
         }
     }
 
@@ -521,7 +796,9 @@ public class MatchmakingSocketController {
                         (first, second) -> first))
                 .forEach((key, event) -> {
                     synchronized (scheduledSimulations) {
-                        if (!scheduledSimulations.add(key)) return;
+                        if (!scheduledSimulations.add(key)) {
+                            return;
+                        }
                     }
                     matchSimulationExecutor.execute(() -> {
                         try {
@@ -529,7 +806,11 @@ public class MatchmakingSocketController {
                                 publish(replayEvents);
                                 scheduleLoadoutSelectionTimeouts(replayEvents);
                         } catch (RuntimeException exception) {
-                            log.error("Matchmaking authoritative replay simulation failed", exception);
+                            log.error(
+                                    "Matchmaking authoritative replay simulation failed matchId={} round={}",
+                                    event.matchId(),
+                                    event.roundNumber(),
+                                    exception);
                         }
                     });
                 });

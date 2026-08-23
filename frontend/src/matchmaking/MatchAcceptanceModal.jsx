@@ -64,7 +64,7 @@ export default function MatchAcceptanceModal({
         ? "WAITING FOR PLAYER"
         : accepting
             ? "ACCEPTING..."
-            : "Accept";
+            : "ACCEPT MATCH";
 
     useEffect(() => {
         const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -168,7 +168,7 @@ export default function MatchAcceptanceModal({
                     type="button"
                     onClick={onAccept}
                     disabled={!canAccept}
-                    className="mt-7 min-h-20 w-full rounded border border-cyan-300/90 bg-cyan-950/35 px-6 py-4 font-display-action text-2xl tracking-wider text-white transition hover:border-cyan-100 hover:bg-cyan-900/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 disabled:cursor-wait disabled:opacity-60 motion-reduce:transition-none sm:text-3xl"
+                    className="match-acceptance-button"
                 >
                     {buttonLabel}
                 </button>

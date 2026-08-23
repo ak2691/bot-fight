@@ -30,10 +30,6 @@ public class MatchParticipant {
     @JoinColumn(name = "user_id", nullable = false)
     private AppUser user;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "bot_brain_submission_id")
-    private BotSubmission botSubmission;
-
     @Column(nullable = false)
     private short slot;
 
@@ -75,14 +71,6 @@ public class MatchParticipant {
 
     public void setUser(AppUser user) {
         this.user = user;
-    }
-
-    public BotSubmission getBotSubmission() {
-        return botSubmission;
-    }
-
-    public void setBotSubmission(BotSubmission botSubmission) {
-        this.botSubmission = botSubmission;
     }
 
     public short getSlot() {

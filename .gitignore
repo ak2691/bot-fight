@@ -6,6 +6,9 @@ artifacts/
 # Local environment files may contain secrets. Commit only example files.
 **/.env
 **/.env.local
+**/.env.*
 **/.env.*.local
 **/.env.example
 !**/.env.example
+!**/.env.*.example
+context.md

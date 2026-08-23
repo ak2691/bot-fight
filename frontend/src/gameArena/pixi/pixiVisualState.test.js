@@ -1,12 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { activeBotVisual, ENTITY_PRESENTATION_DEFINITIONS, entityCaption, BOT_PRESENTATION_DEFINITIONS, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, grenadeDetonateProgress, grenadeVisualState, isBotShape, LOCK_ON_PRESENTATION, normalizeReplayObstacleShape, pixiLayerForShape, presentationDefinitionForShape, projectileTrailStyle, replayProjectileVelocity, shapeInterpolationMs, shieldFrameIndex } from "./pixiVisualState.js";
+import { activeBotVisual, closingZoneDamageOccurred, ENTITY_PRESENTATION_DEFINITIONS, entityCaption, BOT_PRESENTATION_DEFINITIONS, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, grenadeDetonateProgress, grenadeVisualState, isBotShape, LOCK_ON_PRESENTATION, normalizeReplayObstacleShape, pixiLayerForShape, presentationDefinitionForShape, projectileTrailStyle, replayProjectileVelocity, shapeInterpolationMs } from "./pixiVisualState.js";
 import { REQUIRED_ARENA_PRESENTATION_PATHS } from "./arenaPresentationAssetOwner.js";
 
 test("Pixi renderer classifies every combat snapshot family without changing game state", () => {
     assert.equal(isBotShape({ id: "main" }), true);
     assert.equal(pixiLayerForShape({ type: "fireball" }), "projectiles");
     assert.equal(pixiLayerForShape({ type: "nullZone" }), "zones");
+    assert.equal(pixiLayerForShape({ type: "closingZone" }), "zones");
     assert.equal(pixiLayerForShape({ type: "hunterDrone" }), "entities");
 });
 
@@ -27,6 +28,19 @@ test("building and replay bot shapes resolve to the same presentation definition
     assert.equal(pixiLayerForShape(buildingShape), pixiLayerForShape(replayShape));
 });
 
+test("closing zone presentation is renderer-only and does not require an asset", () => {
+    const definition = presentationDefinitionForShape({ type: "closingZone" });
+    assert.equal(definition.layer, "zones");
+    assert.equal(definition.animation, "geometry");
+    assert.equal(definition.texturePath, undefined);
+});
+
+test("closing-zone particle events only trigger when the damage counter advances", () => {
+    assert.equal(closingZoneDamageOccurred({ closingZoneDamageCount: 1 }, { closingZoneDamageCount: 0 }), true);
+    assert.equal(closingZoneDamageOccurred({ closingZoneDamageCount: 1 }, { closingZoneDamageCount: 1 }), false);
+    assert.equal(closingZoneDamageOccurred({ closingZoneDamageCount: 0 }, { closingZoneDamageCount: 1 }), false);
+});
+
 test("slot-only replay bots remain visible when an opponent user id is omitted", () => {
     const opponent = { id: "bot-slot-2", type: "bot", slot: 2, x: 700, y: 500 };
     assert.equal(isBotShape(opponent), true);
@@ -42,7 +56,9 @@ test("every supported bot and entity presentation points at a required asset or 
 
     const entityTypes = [
         "hunterDrone", "windburstProjectile", "fireball", "grenadeExplosion", "mineExplosion", "gravityExplosion",
-        "gravityField", "silenceWave", "nullZone", "temporalRewindZone", "orbitalMarker", "orbitalExplosion",
+        "gravityZone", "silenceWave", "nullZone", "temporalRewindZone", "orbitalMarker", "orbitalExplosion",
+        "singularityZone", "singularityExplosion",
+        "tetherBolt", "staticSnare", "staticSnareBurst", "repellerDrone",
     ];
     entityTypes.forEach((type) => {
         const definition = presentationDefinitionForShape({ type, visibleMs: 100, remainingMs: 100, velocityX: 0, velocityY: 0 });
@@ -82,25 +98,20 @@ test("grenade presentation changes from moving to static to two-tick detonation"
 });
 
 test("Dash trails follow movement instead of bot facing", () => {
-    assert.equal(botMovementRotation({ rotation: 90, microDashActiveMs: 100, microDashDirectionX: -1, microDashDirectionY: 0 }), Math.PI);
-    assert.equal(botMovementRotation({ rotation: 90, microDashActiveMs: 100, velocityX: 1, velocityY: 0 }), 0);
-    assert.equal(botMovementRotation({ rotation: 135, microDashActiveMs: 100, microDashDirectionX: 0, microDashDirectionY: 0 }), Math.PI / 4);
+    assert.equal(botMovementRotation({ rotation: 90, dashActiveMs: 100, dashDirectionX: -1, dashDirectionY: 0 }), Math.PI);
+    assert.equal(botMovementRotation({ rotation: 90, dashActiveMs: 100, velocityX: 1, velocityY: 0 }), 0);
+    assert.equal(botMovementRotation({ rotation: 135, dashActiveMs: 100, dashDirectionX: 0, dashDirectionY: 0 }), Math.PI / 4);
 });
 
-test("shield holds on frame 12 and closes at the original frame speed", () => {
-    assert.equal(shieldFrameIndex({ active: true, heldElapsedMs: 0 }), 0);
-    assert.equal(shieldFrameIndex({ active: true, heldElapsedMs: 5000 }), 12);
-    assert.equal(shieldFrameIndex({ active: false, cooldownMs: 2000 }), 13);
-    assert.equal(shieldFrameIndex({ active: false, cooldownMs: 1930 }), 14);
-    assert.equal(shieldFrameIndex({ active: false, cooldownMs: 1580 }), 19);
-    assert.equal(shieldFrameIndex({ active: false, cooldownMs: 1510 }), null);
-    assert.equal(shieldFrameIndex({ active: false, cooldownMs: 0 }), null);
+test("Block is not an active bot presentation", () => {
+    assert.equal(BOT_PRESENTATION_DEFINITIONS[2], undefined);
 });
 
 test("replay projectiles recover motion from adjacent frames when velocity is absent", () => {
     assert.deepEqual(replayProjectileVelocity({ x: 130, y: 95 }, { x: 120, y: 100 }), { velocityX: 10, velocityY: -5 });
     assert.deepEqual(replayProjectileVelocity({ x: 130, y: 95, velocityX: 0, velocityY: 0 }, { x: 120, y: 100 }), { velocityX: 10, velocityY: -5 });
     assert.deepEqual(replayProjectileVelocity({ x: 130, y: 95, velocityX: 7, velocityY: 2 }, { x: 120, y: 100 }), { velocityX: 7, velocityY: 2 });
+    assert.deepEqual(replayProjectileVelocity({ x: 130, y: 95, velocityX: 0, velocityY: 0 }, { x: 130, y: 95 }, { x: 140, y: 85 }), { velocityX: 10, velocityY: -10 });
 });
 
 test("replay obstacle normalization preserves the canonical building shape contract", () => {
@@ -129,15 +140,28 @@ test("replay obstacle normalization preserves the canonical building shape contr
         velocityY: 0,
         timerMs: 800,
         abilityId: 4,
-    }, { id: "grenade-1", x: 130, y: 95 }, { interpolationMs: 100 });
+    }, { id: "grenade-1", x: 130, y: 95 }, {
+        interpolationMs: 100,
+        hitParticleEvent: "100:id:grenade-1",
+        replayFrameIndex: 1,
+        replayPhase: "playback",
+    });
     assert.deepEqual(presentationDefinitionForShape(buildingShape), presentationDefinitionForShape(replayShape));
     assert.deepEqual(replayShape.captureBySlot, { 1: 0, 2: 0 });
     assert.equal(replayShape.stoppedMs, 800);
     assert.equal(replayShape.abilityId, 4);
+    assert.equal(replayShape.hitParticleEvent, "100:id:grenade-1");
+    assert.equal(replayShape.replayFrameIndex, 1);
+    assert.equal(replayShape.replayPhase, "playback");
 });
 
 test("bot and entity labels derive from calculated snapshot fields", () => {
-    assert.deepEqual(botStatusLabels({ burnRemainingMs: 100, slowedMs: 100, nullZoneSilenced: true }), ["BURN", "SLOW", "SIL"]);
+    assert.deepEqual(botStatusLabels({ statusEffects: [
+        { type: "burn", remainingMs: 100 },
+        { type: "slow", remainingMs: 100 },
+        { type: "silence", mode: "presence" },
+    ] }), ["BURN", "SLOW", "SIL"]);
+    assert.deepEqual(botStatusLabels({ statusEffects: [{ type: "overclock", remainingMs: 100 }] }), ["OVERCLOCK"]);
     assert.equal(activeBotVisual({ abilityVisual: { ability: 7, ms: 200 } }), 7);
     assert.equal(activeBotVisual({ abilityVisual: { ability: 19, ms: 200 } }), null);
     assert.equal(activeBotVisual({ abilityActiveMs: { 19: 200 } }), null);
@@ -145,6 +169,10 @@ test("bot and entity labels derive from calculated snapshot fields", () => {
     assert.equal(LOCK_ON_PRESENTATION.markerSize, 48);
     assert.equal(activeBotVisual({ abilityActiveMs: { 16: 3000 } }), 16);
     assert.equal(activeBotVisual({ abilityActiveMs: { 23: 1500 } }), 23);
+    assert.equal(activeBotVisual({ abilityActiveMs: { 33: 3000 } }), 33);
+    assert.equal(activeBotVisual({ abilityActiveMs: { 34: 200 } }), 34);
     assert.equal(entityCaption({ type: "proximityMine", armed: true }), "");
+    assert.equal(entityCaption({ type: "repellerDrone", hp: 31 }), "31.0 HP");
+    assert.equal(entityCaption({ type: "staticSnare", hp: 20 }), "20.0 HP");
     assert.equal(entityCaption({ type: "orbitalMarker", fuseMs: 900 }), "0.9s");
 });

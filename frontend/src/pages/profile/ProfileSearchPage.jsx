@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import AppNavbar from "../../components/AppNavbar";
+import SpinningBotFace from "../../components/SpinningBotFace.jsx";
 import { apiUrl } from "../../config/api";
 
 const MAX_QUERY_LENGTH = 50;
@@ -60,7 +61,7 @@ export default function ProfileSearchPage() {
     }, [loadResults, query]);
 
     return (
-        <main className="home-grid min-h-screen bg-[#050d16] font-interface text-slate-100">
+        <main className="min-h-screen bg-[#171a1c] font-interface text-slate-100">
             <AppNavbar account currentPage="profile" />
 
             <section className="relative z-[1] mx-auto w-full max-w-[980px] px-5 py-10 sm:px-8 sm:py-12">
@@ -75,7 +76,7 @@ export default function ProfileSearchPage() {
                     <button
                         type="button"
                         onClick={() => navigate("/profile")}
-                        className="w-full border border-slate-600 bg-slate-900/40 px-4 py-2.5 text-sm font-bold text-slate-200 hover:border-cyan-400/60 hover:text-cyan-200 sm:w-auto"
+                        className="profile-toolbar-button w-full text-sm font-bold sm:w-auto"
                     >
                         Back to my profile
                     </button>
@@ -92,7 +93,7 @@ export default function ProfileSearchPage() {
                             <button
                                 type="button"
                                 onClick={() => void loadResults(0, false)}
-                                className="mt-5 border border-cyan-400/50 bg-cyan-950/30 px-5 py-2.5 text-sm font-bold text-cyan-200 hover:border-cyan-300"
+                                className="profile-toolbar-button profile-toolbar-button--blue mt-5 text-sm font-bold"
                             >
                                 Try again
                             </button>
@@ -113,7 +114,7 @@ export default function ProfileSearchPage() {
                                         type="button"
                                         onClick={() => void loadResults(page + 1, true)}
                                         disabled={status === "loading-more"}
-                                        className="w-full border border-cyan-400/50 bg-cyan-950/30 px-5 py-2.5 text-sm font-bold text-cyan-200 hover:border-cyan-300 disabled:cursor-wait disabled:opacity-50 sm:w-auto"
+                                        className="profile-toolbar-button profile-toolbar-button--blue w-full text-sm font-bold disabled:cursor-wait sm:w-auto"
                                     >
                                         {status === "loading-more" ? "Loading..." : "See more"}
                                     </button>
@@ -133,10 +134,8 @@ export default function ProfileSearchPage() {
 
 function SearchLoading() {
     return (
-        <div className="space-y-px" aria-busy="true" aria-label="Loading profile search">
-            {Array.from({ length: 5 }, (_, index) => (
-                <div key={index} className="h-20 animate-pulse bg-slate-800/20" />
-            ))}
+        <div className="flex items-center justify-center py-16" aria-busy="true" aria-label="Loading profile search">
+            <SpinningBotFace />
         </div>
     );
 }
@@ -153,7 +152,7 @@ function ProfileResult({ profile }) {
             </span>
             <span className="min-w-0 flex-1">
                 <span className="block break-words font-semibold text-slate-100">{profile.username}</span>
-                <span className="mt-1 block text-xs text-slate-500">View public profile</span>
+                <span className="mt-1 block text-xs text-slate-500">Open profile</span>
             </span>
             <span aria-hidden="true" className="text-xl text-cyan-400">&rarr;</span>
         </Link>

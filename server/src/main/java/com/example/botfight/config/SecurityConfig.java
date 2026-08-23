@@ -87,7 +87,10 @@ public class SecurityConfig {
                                 "/api/auth/google/username",
                                 "/oauth2/authorization/**",
                                 "/login/oauth2/**",
+                                "/actuator/health",
+                                "/actuator/health/**",
                                 "/ws/**").permitAll()
+                        .requestMatchers("/api/admin/puzzles/**").hasRole("ADMIN")
                         .anyRequest().authenticated());
 
         if (securityProperties.isRequireHttps()) {

@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../auth/auth-context";
+import { useNotifications } from "../../notifications/notification-context";
 import { userFacingAuthError, usernameError } from "../../auth/validation";
 import { apiUrl } from "../../config/api";
+import { ensureCsrfHeaders } from "../../security/csrf";
 import AppNavbar from "../../components/AppNavbar";
+import SpinningBotFace from "../../components/SpinningBotFace.jsx";
 import { useDialogFocus } from "../../components/useDialogFocus.js";
 import { useNavigate, useParams } from "react-router-dom";
+import {
+    createProfileRetryTokenBucket,
+    PROFILE_RETRY_REFILL_INTERVAL_MS,
+} from "./profileRetryRateLimit.js";
 
 const RECENT_MATCH_LIMIT = 5;
+const DUEL_INVITE_COOLDOWN_MS = 15_000;
 
 const resultTone = {
     WIN: "border-emerald-400/60 bg-emerald-950/30 text-emerald-300",
@@ -51,73 +59,126 @@ function historyUrl(page, username) {
     return apiUrl(`${path}?page=${page}`);
 }
 
+function solvedPuzzlesUrl(page, username) {
+    const path = username
+        ? `/api/profile/users/${encodeURIComponent(username)}/puzzles`
+        : "/api/profile/puzzles";
+    return apiUrl(`${path}?page=${page}`);
+}
+
 function appendUniqueMatches(current, next) {
     const seen = new Set(current.map((match) => match.matchId));
     return [...current, ...next.filter((match) => !seen.has(match.matchId))];
 }
 
+function appendUniqueSolvedPuzzles(current, next) {
+    const seen = new Set(current.map((puzzle) => puzzle.puzzleNumber));
+    return [...current, ...next.filter((puzzle) => !seen.has(puzzle.puzzleNumber))];
+}
+
 export default function ProfilePage() {
-    const { user, updateUsername, updateAboutMe } = useAuth();
+    const { user, updateUsername, updateAboutMe, logout } = useAuth();
+    const { hideInvitesFrom } = useNotifications();
     const navigate = useNavigate();
     const { username: routeUsername } = useParams();
     const viewedUsername = routeUsername?.trim() || null;
-    const isOwner = !viewedUsername;
+    const isSelfProfile = Boolean(
+        viewedUsername
+        && user?.username
+        && viewedUsername.toLowerCase() === user.username.toLowerCase(),
+    );
+    const isOwner = !viewedUsername || isSelfProfile;
     const [profile, setProfile] = useState(null);
     const [matches, setMatches] = useState([]);
     const [historyPage, setHistoryPage] = useState(0);
     const [hasMore, setHasMore] = useState(false);
     const [totalMatches, setTotalMatches] = useState(0);
     const [historyStatus, setHistoryStatus] = useState("loading");
+    const [solvedPuzzles, setSolvedPuzzles] = useState([]);
+    const [solvedPuzzlesPage, setSolvedPuzzlesPage] = useState(0);
+    const [hasMoreSolvedPuzzles, setHasMoreSolvedPuzzles] = useState(false);
+    const [totalSolvedPuzzles, setTotalSolvedPuzzles] = useState(0);
+    const [solvedPuzzlesStatus, setSolvedPuzzlesStatus] = useState("loading");
     const [googleLinked, setGoogleLinked] = useState(false);
     const [googleStatus, setGoogleStatus] = useState("loading");
     const [status, setStatus] = useState("loading");
     const [isMatchesModalOpen, setIsMatchesModalOpen] = useState(false);
+    const [isPuzzlesModalOpen, setIsPuzzlesModalOpen] = useState(false);
+    const [isRetryRateLimited, setIsRetryRateLimited] = useState(false);
+    const [inviteState, setInviteState] = useState("idle");
+    const [inviteError, setInviteError] = useState(null);
+    const [blockState, setBlockState] = useState("idle");
+    const [blockError, setBlockError] = useState(null);
     const profileRequestRef = useRef(0);
     const historyRequestRef = useRef(0);
+    const solvedPuzzlesRequestRef = useRef(0);
+    const profileRetryBucketRef = useRef(null);
+    const retryRateLimitTimeoutRef = useRef(null);
+    const inviteCooldownTimeoutRef = useRef(null);
+
+    if (profileRetryBucketRef.current === null) {
+        profileRetryBucketRef.current = createProfileRetryTokenBucket();
+    }
 
     const loadProfile = useCallback(async () => {
         const profileRequestId = ++profileRequestRef.current;
         const historyRequestId = ++historyRequestRef.current;
+        const solvedPuzzlesRequestId = ++solvedPuzzlesRequestRef.current;
+        const requestUsername = isOwner ? null : viewedUsername;
         setStatus("loading");
         setHistoryStatus("loading");
+        setSolvedPuzzlesStatus("loading");
         try {
-            const [profileResponse, historyResponse, googleResponse] = await Promise.all([
-                fetch(profileUrl(viewedUsername), { credentials: "include" }),
-                fetch(historyUrl(0, viewedUsername), { credentials: "include" }),
+            const [profileResponse, historyResponse, solvedPuzzlesResponse, googleResponse] = await Promise.all([
+                fetch(profileUrl(requestUsername), { credentials: "include" }),
+                fetch(historyUrl(0, requestUsername), { credentials: "include" }),
+                fetch(solvedPuzzlesUrl(0, requestUsername), { credentials: "include" }),
                 isOwner
                     ? fetch(apiUrl("/api/auth/google/status"), { credentials: "include" })
                     : Promise.resolve(null),
             ]);
-            if (!profileResponse.ok || !historyResponse.ok || (isOwner && !googleResponse?.ok)) {
+            if (!profileResponse.ok || !historyResponse.ok || !solvedPuzzlesResponse.ok || (isOwner && !googleResponse?.ok)) {
                 throw new Error("profile request failed");
             }
-            const [nextProfile, history, google] = await Promise.all([
+            const [nextProfile, history, solvedPuzzlePage, google] = await Promise.all([
                 profileResponse.json(),
                 historyResponse.json(),
+                solvedPuzzlesResponse.json(),
                 googleResponse ? googleResponse.json() : Promise.resolve(null),
             ]);
-            if (profileRequestId !== profileRequestRef.current || historyRequestId !== historyRequestRef.current) return;
+            if (profileRequestId !== profileRequestRef.current
+                || historyRequestId !== historyRequestRef.current
+                || solvedPuzzlesRequestId !== solvedPuzzlesRequestRef.current) return;
             setProfile(nextProfile);
             setMatches(Array.isArray(history.matches) ? history.matches : []);
             setHistoryPage(history.page ?? 0);
             setHasMore(history.hasMore === true);
             setTotalMatches(history.totalMatches ?? 0);
+            setSolvedPuzzles(Array.isArray(solvedPuzzlePage.puzzles) ? solvedPuzzlePage.puzzles : []);
+            setSolvedPuzzlesPage(solvedPuzzlePage.page ?? 0);
+            setHasMoreSolvedPuzzles(solvedPuzzlePage.hasMore === true);
+            setTotalSolvedPuzzles(solvedPuzzlePage.totalPuzzles ?? 0);
             setGoogleLinked(google?.linked === true);
             setGoogleStatus(isOwner ? "ready" : "unavailable");
             setHistoryStatus("ready");
+            setSolvedPuzzlesStatus("ready");
             setStatus("ready");
         } catch {
-            if (profileRequestId !== profileRequestRef.current || historyRequestId !== historyRequestRef.current) return;
+            if (profileRequestId !== profileRequestRef.current
+                || historyRequestId !== historyRequestRef.current
+                || solvedPuzzlesRequestId !== solvedPuzzlesRequestRef.current) return;
             setHistoryStatus("error");
+            setSolvedPuzzlesStatus("error");
             setStatus("error");
         }
     }, [isOwner, viewedUsername]);
 
     const requestHistory = useCallback(async (page, append) => {
         const historyRequestId = ++historyRequestRef.current;
+        const requestUsername = isOwner ? null : viewedUsername;
         setHistoryStatus(append ? "loading-more" : "loading");
         try {
-            const response = await fetch(historyUrl(page, viewedUsername), { credentials: "include" });
+            const response = await fetch(historyUrl(page, requestUsername), { credentials: "include" });
             if (!response.ok) throw new Error("history request failed");
             const history = await response.json();
             if (historyRequestId !== historyRequestRef.current) return;
@@ -132,9 +193,96 @@ export default function ProfilePage() {
             if (historyRequestId !== historyRequestRef.current) return;
             setHistoryStatus("error");
         }
+    }, [isOwner, viewedUsername]);
+
+    const requestSolvedPuzzles = useCallback(async (page, append) => {
+        const solvedPuzzlesRequestId = ++solvedPuzzlesRequestRef.current;
+        const requestUsername = isOwner ? null : viewedUsername;
+        setSolvedPuzzlesStatus(append ? "loading-more" : "loading");
+        try {
+            const response = await fetch(solvedPuzzlesUrl(page, requestUsername), { credentials: "include" });
+            if (!response.ok) throw new Error("solved puzzles request failed");
+            const solvedPuzzlePage = await response.json();
+            if (solvedPuzzlesRequestId !== solvedPuzzlesRequestRef.current) return;
+            setSolvedPuzzles((current) => append
+                ? appendUniqueSolvedPuzzles(current, Array.isArray(solvedPuzzlePage.puzzles) ? solvedPuzzlePage.puzzles : [])
+                : (Array.isArray(solvedPuzzlePage.puzzles) ? solvedPuzzlePage.puzzles : []));
+            setSolvedPuzzlesPage(solvedPuzzlePage.page ?? page);
+            setHasMoreSolvedPuzzles(solvedPuzzlePage.hasMore === true);
+            setTotalSolvedPuzzles(solvedPuzzlePage.totalPuzzles ?? 0);
+            setSolvedPuzzlesStatus("ready");
+        } catch {
+            if (solvedPuzzlesRequestId !== solvedPuzzlesRequestRef.current) return;
+            setSolvedPuzzlesStatus("error");
+        }
+    }, [isOwner, viewedUsername]);
+
+    useEffect(() => {
+        void loadProfile();
+    }, [loadProfile]);
+
+    useEffect(() => {
+        setInviteState("idle");
+        setInviteError(null);
+        if (inviteCooldownTimeoutRef.current !== null) {
+            window.clearTimeout(inviteCooldownTimeoutRef.current);
+            inviteCooldownTimeoutRef.current = null;
+        }
+        setBlockState("idle");
+        setBlockError(null);
     }, [viewedUsername]);
 
     useEffect(() => {
+        if (isOwner || !profile?.username) {
+            setBlockState("idle");
+            setBlockError(null);
+            return undefined;
+        }
+
+        const controller = new AbortController();
+        let mounted = true;
+        setBlockState("loading");
+        setBlockError(null);
+        fetch(apiUrl(`/api/blocks/status/${encodeURIComponent(profile.username)}`), {
+            credentials: "include",
+            signal: controller.signal,
+        })
+            .then(async (response) => {
+                const body = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(body.message ?? "Block status could not be loaded.");
+                if (mounted) setBlockState(body.blocked === true ? "blocked" : "idle");
+            })
+            .catch((error) => {
+                if (error.name === "AbortError" || !mounted) return;
+                setBlockState("error");
+                setBlockError(error.message ?? "Block status could not be loaded.");
+            });
+
+        return () => {
+            mounted = false;
+            controller.abort();
+        };
+    }, [isOwner, profile?.username]);
+
+    useEffect(() => () => {
+        if (retryRateLimitTimeoutRef.current !== null) {
+            window.clearTimeout(retryRateLimitTimeoutRef.current);
+        }
+        if (inviteCooldownTimeoutRef.current !== null) {
+            window.clearTimeout(inviteCooldownTimeoutRef.current);
+        }
+    }, []);
+
+    const retryProfile = useCallback(() => {
+        if (!profileRetryBucketRef.current.tryConsume()) return;
+        setIsRetryRateLimited(true);
+        if (retryRateLimitTimeoutRef.current !== null) {
+            window.clearTimeout(retryRateLimitTimeoutRef.current);
+        }
+        retryRateLimitTimeoutRef.current = window.setTimeout(() => {
+            retryRateLimitTimeoutRef.current = null;
+            setIsRetryRateLimited(false);
+        }, PROFILE_RETRY_REFILL_INTERVAL_MS);
         void loadProfile();
     }, [loadProfile]);
 
@@ -150,8 +298,66 @@ export default function ProfilePage() {
         return updatedProfile;
     }, [updateAboutMe]);
 
+    const handleLogout = useCallback(async () => {
+        await logout();
+        navigate("/login", { replace: true });
+    }, [logout, navigate]);
+
+    const sendDuelInvite = useCallback(async () => {
+        if (!profile?.username || isOwner || inviteState === "sending" || inviteState === "sent") return;
+        setInviteState("sending");
+        setInviteError(null);
+        try {
+            const response = await fetch(apiUrl("/api/duel-invites"), {
+                method: "POST",
+                credentials: "include",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(await ensureCsrfHeaders("POST")),
+                },
+                body: JSON.stringify({ username: profile.username }),
+            });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(body.message ?? "The duel invite could not be sent.");
+            setInviteState("sent");
+            inviteCooldownTimeoutRef.current = window.setTimeout(() => {
+                inviteCooldownTimeoutRef.current = null;
+                setInviteState("idle");
+            }, DUEL_INVITE_COOLDOWN_MS);
+        } catch (error) {
+            setInviteState("error");
+            setInviteError(error.message ?? "The duel invite could not be sent.");
+        }
+    }, [inviteState, isOwner, profile?.username]);
+
+    const toggleBlock = useCallback(async () => {
+        if (!profile?.username || isOwner || blockState === "loading" || blockState === "saving") return;
+        const shouldBlock = blockState !== "blocked";
+        const previousState = blockState;
+        setBlockState("saving");
+        setBlockError(null);
+        try {
+            const method = shouldBlock ? "POST" : "DELETE";
+            const response = await fetch(
+                apiUrl(`/api/blocks/${encodeURIComponent(profile.username)}`),
+                {
+                    method,
+                    credentials: "include",
+                    headers: await ensureCsrfHeaders(method),
+                },
+            );
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(body.message ?? "The block action could not be completed.");
+            setBlockState(body.blocked === true ? "blocked" : "idle");
+            if (body.blocked === true) hideInvitesFrom(profile.username);
+        } catch (error) {
+            setBlockState(previousState === "blocked" ? "blocked" : "error");
+            setBlockError(error.message ?? "The block action could not be completed.");
+        }
+    }, [blockState, hideInvitesFrom, isOwner, profile?.username]);
+
     return (
-        <main className="home-grid min-h-screen bg-[#050d16] font-interface text-slate-100">
+        <main className="min-h-screen bg-[#171a1c] font-interface text-slate-100">
             <AppNavbar account currentPage="profile" />
 
             <section className="relative z-[1] mx-auto w-full max-w-[1180px] px-5 py-10 sm:px-8 sm:py-12">
@@ -161,19 +367,29 @@ export default function ProfilePage() {
                 </div>
 
                 {status === "loading" && <ProfileLoading username={viewedUsername ?? user?.username} />}
-                {status === "error" && <ProfileError onRetry={loadProfile} />}
+                {status === "error" && <ProfileError onRetry={retryProfile} retryRateLimited={isRetryRateLimited} />}
                 {status === "ready" && profile && (
                     <ProfileContent
                         profile={profile}
                         matches={matches}
                         totalMatches={totalMatches}
                         historyStatus={historyStatus}
+                        onOpenPuzzles={() => setIsPuzzlesModalOpen(true)}
                         googleLinked={googleLinked}
                         googleStatus={googleStatus}
                         isOwner={isOwner}
                         onUsernameSaved={saveUsername}
+                        onLogout={handleLogout}
                         onAboutMeSaved={saveAboutMe}
                         onOpenMatches={() => setIsMatchesModalOpen(true)}
+                        canInvite={!isOwner}
+                        inviteState={inviteState}
+                        inviteError={inviteError}
+                        onInvite={sendDuelInvite}
+                        canBlock={!isOwner}
+                        blockState={blockState}
+                        blockError={blockError}
+                        onToggleBlock={toggleBlock}
                     />
                 )}
             </section>
@@ -188,34 +404,44 @@ export default function ProfilePage() {
                     onClose={() => setIsMatchesModalOpen(false)}
                 />
             )}
+
+            {isPuzzlesModalOpen && (
+                <SolvedPuzzlesModal
+                    puzzles={solvedPuzzles}
+                    totalPuzzles={totalSolvedPuzzles}
+                    puzzlesStatus={solvedPuzzlesStatus}
+                    hasMore={hasMoreSolvedPuzzles}
+                    onLoadMore={() => void requestSolvedPuzzles(solvedPuzzlesPage + 1, true)}
+                    onOpenPuzzle={(puzzleNumber) => navigate(`/puzzles/${encodeURIComponent(puzzleNumber)}`)}
+                    onClose={() => setIsPuzzlesModalOpen(false)}
+                />
+            )}
         </main>
     );
 }
 
 function ProfileLoading({ username }) {
     return (
-        <div className="mt-9 grid gap-5 lg:grid-cols-[minmax(240px,.85fr)_minmax(0,1.6fr)]" aria-busy="true" aria-label="Loading profile">
-            <div className="h-96 animate-pulse rounded-2xl border border-slate-700/70 bg-[#0b1722cc] p-7">
-                <div className="h-20 w-20 rounded-full bg-slate-700/70" />
-                <div className="mt-6 h-5 w-36 rounded bg-slate-700/70" />
-                <p className="mt-3 text-sm text-slate-500">{username ? `Loading ${username}'s profile...` : "Loading player profile..."}</p>
-            </div>
-            <div className="space-y-5">
-                <div className="h-80 animate-pulse rounded-2xl border border-slate-700/70 bg-[#0b1722cc]" />
-                <div className="h-44 animate-pulse rounded-2xl border border-slate-700/70 bg-[#0b1722cc]" />
-            </div>
+        <div className="mt-9 flex flex-col items-center justify-center gap-4 rounded-2xl border border-slate-700/70 bg-[#0b1722cc] py-24" aria-busy="true" aria-label="Loading profile">
+            <SpinningBotFace />
+            <p className="text-sm text-slate-500">{username ? `Loading ${username}'s profile...` : "Loading player profile..."}</p>
         </div>
     );
 }
 
-function ProfileError({ onRetry }) {
+function ProfileError({ onRetry, retryRateLimited }) {
     return (
         <div className="mx-auto mt-10 max-w-xl rounded-2xl border border-rose-400/30 bg-[#130f18e8] px-7 py-10 text-center shadow-[0_20px_60px_rgba(0,0,0,.3)]">
             <div className="mx-auto grid h-12 w-12 place-items-center rounded-full border border-rose-400/50 bg-rose-950/30 font-mono text-xl text-rose-300">!</div>
             <h2 className="mt-5 text-2xl font-bold text-white">Profile data unavailable</h2>
             <p className="mt-2 text-sm leading-6 text-slate-400">The server could not load your profile record. Your results are safe; try the request again.</p>
-            <button type="button" onClick={onRetry} className="mt-6 border border-cyan-400/50 bg-cyan-950/30 px-5 py-2.5 font-bold text-cyan-200 hover:border-cyan-300">
-                Try again
+            <button
+                type="button"
+                onClick={onRetry}
+                disabled={retryRateLimited}
+                className="profile-toolbar-button profile-toolbar-button--blue mt-6 font-bold disabled:cursor-wait"
+            >
+                {retryRateLimited ? "Please wait..." : "Try again"}
             </button>
         </div>
     );
@@ -248,7 +474,7 @@ function ProfileSearchBar({ onSearch }) {
                     />
                     <button
                         type="submit"
-                        className="h-11 border border-cyan-400/50 bg-cyan-950/30 px-5 text-sm font-bold text-cyan-200 hover:border-cyan-300"
+                        className="profile-toolbar-button profile-toolbar-button--blue h-11 text-sm font-bold"
                     >
                         Search
                     </button>
@@ -263,12 +489,22 @@ function ProfileContent({
     matches,
     totalMatches,
     historyStatus,
+    onOpenPuzzles,
     googleLinked,
     googleStatus,
     isOwner,
     onUsernameSaved,
+    onLogout,
     onAboutMeSaved,
     onOpenMatches,
+    canInvite,
+    inviteState,
+    inviteError,
+    onInvite,
+    canBlock,
+    blockState,
+    blockError,
+    onToggleBlock,
 }) {
     const initial = String(profile.username || "?").slice(0, 1).toUpperCase();
     return (
@@ -289,6 +525,7 @@ function ProfileContent({
                     <Stat label="Wins" value={profile.wins} tone="text-emerald-300" />
                     <Stat label="Losses" value={profile.losses} tone="text-rose-300" />
                     <Stat label="Draws" value={profile.draws} tone="text-amber-300" />
+                    <Stat label="Puzzles solved" value={profile.puzzlesSolved ?? 0} tone="text-cyan-300" onClick={onOpenPuzzles} />
                 </dl>
 
                 <div className="mt-7 border-t border-cyan-900/70 pt-5">
@@ -298,7 +535,25 @@ function ProfileContent({
                     </time>
                 </div>
 
-                {isOwner && <UsernameEditor username={profile.username} onSave={onUsernameSaved} />}
+                {canInvite && (
+                    <DuelInviteButton
+                        username={profile.username}
+                        state={inviteState}
+                        error={inviteError}
+                        onInvite={onInvite}
+                    />
+                )}
+
+                {canBlock && (
+                    <UserBlockButton
+                        username={profile.username}
+                        state={blockState}
+                        error={blockError}
+                        onToggle={onToggleBlock}
+                    />
+                )}
+
+                {isOwner && <UsernameEditor username={profile.username} onSave={onUsernameSaved} onLogout={onLogout} />}
 
                 {isOwner && (
                     <div className="mt-7 border-t border-cyan-900/70 pt-5">
@@ -314,7 +569,7 @@ function ProfileContent({
                                 <button
                                     type="button"
                                     onClick={() => window.location.assign(apiUrl("/api/auth/google/link"))}
-                                    className="mt-4 border border-cyan-400/50 bg-cyan-950/30 px-4 py-2.5 text-xs font-bold text-cyan-200 hover:border-cyan-300"
+                                    className="profile-toolbar-button profile-toolbar-button--blue mt-4 text-xs font-bold"
                                 >
                                     Link Google account
                                 </button>
@@ -338,6 +593,45 @@ function ProfileContent({
     );
 }
 
+function DuelInviteButton({ username, state, error, onInvite }) {
+    return (
+        <div className="mt-7 border-t border-cyan-900/70 pt-5">
+            <p className="font-mono text-[10px] font-bold tracking-[.18em] text-cyan-400">DIRECT DUEL</p>
+            <p className="mt-2 text-sm leading-6 text-slate-400">Send {username} a request to fight a rated 1v1.</p>
+            <button
+                type="button"
+                onClick={() => void onInvite()}
+                disabled={state === "sending" || state === "sent"}
+                className="profile-toolbar-button profile-toolbar-button--violet mt-4 text-sm font-bold disabled:cursor-wait"
+            >
+                {state === "sending" ? "Sending..." : state === "sent" ? "Invite sent" : "Invite to 1v1"}
+            </button>
+            {error && <p className="mt-2 text-xs text-rose-300" role="alert">{error}</p>}
+            {state === "sent" && <p className="mt-2 text-xs text-emerald-300" role="status">They will see the request in their notifications.</p>}
+        </div>
+    );
+}
+
+function UserBlockButton({ username, state, error, onToggle }) {
+    const isBlocked = state === "blocked";
+    const isPending = state === "loading" || state === "saving";
+    return (
+        <div className="mt-5 border-t border-cyan-900/70 pt-5">
+            <button
+                type="button"
+                onClick={() => void onToggle()}
+                disabled={isPending}
+                className={`profile-toolbar-button ${isBlocked ? "profile-toolbar-button--green" : "profile-toolbar-button--red"} text-xs font-bold disabled:cursor-wait`}
+                aria-label={`${isBlocked ? "Unblock" : "Block"} ${username}`}
+            >
+                {state === "loading" ? "Checking..." : state === "saving" ? "Saving..." : isBlocked ? "Unblock player" : "Block player"}
+            </button>
+            {error && <p className="mt-2 text-xs text-rose-300" role="alert">{error}</p>}
+            {isBlocked && <p className="mt-2 text-xs text-slate-500" role="status">Their notifications and chat messages are hidden from you.</p>}
+        </div>
+    );
+}
+
 function RecentMatchesCard({ matches, totalMatches, historyStatus, isOwner, onOpenMatches }) {
     const previewMatches = matches.slice(0, RECENT_MATCH_LIMIT);
     const isInitialError = historyStatus === "error" && matches.length === 0;
@@ -350,7 +644,7 @@ function RecentMatchesCard({ matches, totalMatches, historyStatus, isOwner, onOp
                 <button
                     type="button"
                     onClick={onOpenMatches}
-                    className="w-full flex-none border border-cyan-400/50 bg-cyan-950/30 px-4 py-2.5 text-sm font-bold text-cyan-200 hover:border-cyan-300 sm:w-auto"
+                    className="profile-toolbar-button profile-toolbar-button--blue w-full flex-none text-sm font-bold sm:w-auto"
                 >
                     View All Matches
                 </button>
@@ -358,8 +652,8 @@ function RecentMatchesCard({ matches, totalMatches, historyStatus, isOwner, onOp
 
             <div className="divide-y divide-slate-800">
                 {historyStatus === "loading" ? (
-                    <div className="space-y-px" aria-label="Loading recent matches" aria-busy="true">
-                        {Array.from({ length: 4 }, (_, index) => <div key={index} className="h-20 animate-pulse bg-slate-800/20" />)}
+                    <div className="flex items-center justify-center py-14" aria-label="Loading recent matches" aria-busy="true">
+                        <SpinningBotFace />
                     </div>
                 ) : isInitialError ? (
                     <div className="px-6 py-10 text-center">
@@ -438,7 +732,7 @@ function AboutMeCard({ aboutMe, editable, onSave }) {
                     <button
                         type="button"
                         onClick={() => { setError(null); setIsEditing(true); }}
-                        className="w-full border border-slate-600 bg-slate-900/40 px-4 py-2.5 text-sm font-bold text-slate-200 hover:border-cyan-400/60 hover:text-cyan-200 sm:w-auto"
+                        className="profile-toolbar-button w-full text-sm font-bold sm:w-auto"
                     >
                         Edit About Me
                     </button>
@@ -470,10 +764,10 @@ function AboutMeCard({ aboutMe, editable, onSave }) {
                             {error ?? `${draft.length}/500 characters · Plain text only`}
                         </p>
                         <div className="flex gap-2">
-                            <button type="submit" disabled={isSaving} className="h-11 border border-cyan-400/50 bg-cyan-950/30 px-4 text-sm font-bold text-cyan-200 hover:border-cyan-300 disabled:opacity-50">
+                            <button type="submit" disabled={isSaving} className="profile-toolbar-button profile-toolbar-button--blue h-11 text-sm font-bold">
                                 {isSaving ? "Saving..." : "Save"}
                             </button>
-                            <button type="button" onClick={() => { setDraft(aboutMe ?? ""); setError(null); setIsEditing(false); }} className="h-11 border border-slate-600 bg-slate-900/40 px-4 text-sm text-slate-300">
+                            <button type="button" onClick={() => { setDraft(aboutMe ?? ""); setError(null); setIsEditing(false); }} className="profile-toolbar-button h-11 text-sm">
                                 Cancel
                             </button>
                         </div>
@@ -521,7 +815,7 @@ function MatchesModal({ matches, totalMatches, historyStatus, hasMore, onLoadMor
                         <h2 id="match-history-modal-title" className="mt-2 text-2xl font-bold text-white">All Matches</h2>
                         <p className="mt-1 text-sm text-slate-500">Showing {matches.length} of {totalMatches}, newest first.</p>
                     </div>
-                    <button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Close all matches" className="grid h-10 w-10 flex-none place-items-center border border-slate-600 bg-slate-900/50 text-xl text-slate-300 hover:border-cyan-400/70 hover:text-cyan-200">
+                    <button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Close all matches" className="modal-close-button">
                         <span aria-hidden="true">×</span>
                     </button>
                 </header>
@@ -532,8 +826,8 @@ function MatchesModal({ matches, totalMatches, historyStatus, hasMore, onLoadMor
                     aria-live="polite"
                 >
                     {historyStatus === "loading" && matches.length === 0 ? (
-                        <div className="space-y-px" aria-busy="true" aria-label="Loading matches">
-                            {Array.from({ length: 5 }, (_, index) => <div key={index} className="h-20 animate-pulse bg-slate-800/20" />)}
+                        <div className="flex items-center justify-center py-16" aria-busy="true" aria-label="Loading matches">
+                            <SpinningBotFace />
                         </div>
                     ) : matches.length === 0 ? (
                         <p className="px-6 py-14 text-center text-sm text-slate-500">No completed matches yet.</p>
@@ -553,7 +847,7 @@ function MatchesModal({ matches, totalMatches, historyStatus, hasMore, onLoadMor
                         <p className="text-xs text-slate-500">All available matches are loaded.</p>
                     )}
                     {isIncrementalError && (
-                        <button type="button" onClick={onLoadMore} className="w-full border border-cyan-400/50 bg-cyan-950/30 px-5 py-2.5 text-sm font-bold text-cyan-200 hover:border-cyan-300 sm:w-auto">
+                        <button type="button" onClick={onLoadMore} className="profile-toolbar-button profile-toolbar-button--blue w-full text-sm font-bold sm:w-auto">
                             Try again
                         </button>
                     )}
@@ -563,7 +857,102 @@ function MatchesModal({ matches, totalMatches, historyStatus, hasMore, onLoadMor
     );
 }
 
-function UsernameEditor({ username, onSave }) {
+function SolvedPuzzlesModal({ puzzles, totalPuzzles, puzzlesStatus, hasMore, onLoadMore, onOpenPuzzle, onClose }) {
+    const dialogRef = useRef(null);
+    const closeButtonRef = useRef(null);
+    const isLoadingMore = puzzlesStatus === "loading-more";
+    const isIncrementalError = puzzlesStatus === "error" && puzzles.length > 0;
+
+    useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onClose, lockScroll: true });
+
+    const handlePuzzlesScroll = (event) => {
+        if (!hasMore || puzzlesStatus !== "ready") return;
+        const scrollContainer = event.currentTarget;
+        const distanceFromBottom = scrollContainer.scrollHeight
+            - scrollContainer.scrollTop
+            - scrollContainer.clientHeight;
+        if (distanceFromBottom <= 24) onLoadMore();
+    };
+
+    return (
+        <div
+            className="fixed inset-0 z-50 grid place-items-center bg-[#02070de8] p-4 backdrop-blur-sm"
+            onMouseDown={(event) => {
+                if (event.target === event.currentTarget) onClose();
+            }}
+        >
+            <section
+                ref={dialogRef}
+                className="flex max-h-[min(86vh,54rem)] w-[min(48rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-cyan-400/50 bg-[#071521] shadow-[0_24px_90px_rgba(0,0,0,.6)]"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="solved-puzzles-modal-title"
+                tabIndex={-1}
+            >
+                <header className="flex items-start justify-between gap-5 border-b border-slate-700/80 px-6 py-5 sm:px-8">
+                    <div>
+                        <h2 id="solved-puzzles-modal-title" className="mt-2 text-2xl font-bold text-white">Solved Puzzles</h2>
+                        <p className="mt-1 text-sm text-slate-500">Showing {puzzles.length} of {totalPuzzles}, newest first.</p>
+                    </div>
+                    <button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Close solved puzzles" className="modal-close-button">
+                        <span aria-hidden="true">×</span>
+                    </button>
+                </header>
+
+                <div
+                    className="min-h-0 overflow-y-auto divide-y divide-slate-800"
+                    onScroll={handlePuzzlesScroll}
+                    aria-live="polite"
+                >
+                    {puzzlesStatus === "loading" && puzzles.length === 0 ? (
+                        <div className="flex items-center justify-center py-16" aria-busy="true" aria-label="Loading solved puzzles">
+                            <SpinningBotFace />
+                        </div>
+                    ) : puzzles.length === 0 ? (
+                        <p className="px-6 py-14 text-center text-sm text-slate-500">No solved puzzles yet.</p>
+                    ) : (
+                        puzzles.map((puzzle) => (
+                            <button
+                                key={`${puzzle.puzzleNumber}-${puzzle.solvedAt}`}
+                                type="button"
+                                onClick={() => onOpenPuzzle(puzzle.puzzleNumber)}
+                                className="grid w-full min-w-0 gap-3 px-6 py-4 text-left transition hover:bg-cyan-950/20 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-8"
+                                aria-label={`Open puzzle ${puzzle.puzzleNumber}: ${puzzle.name}`}
+                            >
+                                <span className="min-w-0">
+                                    <span className="block font-mono text-[10px] font-bold tracking-wider text-cyan-400">PUZZLE #{puzzle.puzzleNumber}</span>
+                                    <span className="mt-1 block break-words font-semibold text-slate-100">{puzzle.name}</span>
+                                </span>
+                                <time className="text-sm text-slate-400 sm:text-right" dateTime={puzzle.solvedAt ?? undefined}>
+                                    {formatMatchDate(puzzle.solvedAt)}
+                                </time>
+                            </button>
+                        ))
+                    )}
+                </div>
+
+                <footer className="flex flex-col gap-3 border-t border-slate-700/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+                    {isLoadingMore ? (
+                        <p className="text-xs text-slate-500" role="status">Loading more solved puzzles...</p>
+                    ) : isIncrementalError ? (
+                        <p className="text-sm text-rose-300" role="alert">More solved puzzles could not be loaded. Your loaded puzzles are still visible.</p>
+                    ) : hasMore ? (
+                        <p className="text-xs text-slate-500">Scroll to the bottom to load more puzzles.</p>
+                    ) : (
+                        <p className="text-xs text-slate-500">All solved puzzles are loaded.</p>
+                    )}
+                    {isIncrementalError && (
+                        <button type="button" onClick={onLoadMore} className="profile-toolbar-button profile-toolbar-button--blue w-full text-sm font-bold sm:w-auto">
+                            Try again
+                        </button>
+                    )}
+                </footer>
+            </section>
+        </div>
+    );
+}
+
+function UsernameEditor({ username, onSave, onLogout }) {
     const [isEditing, setIsEditing] = useState(false);
     const [draft, setDraft] = useState(username ?? "");
     const [error, setError] = useState(null);
@@ -596,7 +985,7 @@ function UsernameEditor({ username, onSave }) {
     return (
         <div className="mt-7 border-t border-cyan-900/70 pt-5">
             {!isEditing ? (
-                <button type="button" onClick={() => { setError(null); setIsEditing(true); }} className="min-h-11 border border-cyan-400/50 bg-cyan-950/30 px-4 py-2 text-sm font-bold text-cyan-200 hover:border-cyan-300">
+                <button type="button" onClick={() => { setError(null); setIsEditing(true); }} className="profile-toolbar-button profile-toolbar-button--blue text-sm font-bold">
                     Change username
                 </button>
             ) : (
@@ -620,24 +1009,45 @@ function UsernameEditor({ username, onSave }) {
                         />
                     </label>
                     <div className="flex gap-2">
-                        <button type="submit" disabled={isSaving} className="h-11 border border-cyan-400/50 bg-cyan-950/30 px-4 text-sm font-bold text-cyan-200 hover:border-cyan-300 disabled:opacity-50">
+                        <button type="submit" disabled={isSaving} className="profile-toolbar-button profile-toolbar-button--blue h-11 text-sm font-bold">
                             {isSaving ? "Saving..." : "Save"}
                         </button>
-                        <button type="button" onClick={() => { setDraft(username ?? ""); setError(null); setIsEditing(false); }} className="h-11 border border-slate-600 bg-slate-900/40 px-4 text-sm text-slate-300">
+                        <button type="button" onClick={() => { setDraft(username ?? ""); setError(null); setIsEditing(false); }} className="profile-toolbar-button h-11 text-sm">
                             Cancel
                         </button>
                     </div>
                 </form>
             )}
+            <div className="mt-3">
+                <button
+                    type="button"
+                    onClick={() => void onLogout()}
+                    className="profile-toolbar-button profile-toolbar-button--red text-sm font-bold"
+                >
+                    Log out
+                </button>
+            </div>
             {error && <p id="profile-username-error" className="form-error mt-2 text-sm text-rose-300" role="alert">{error}</p>}
             {!error && isEditing && <p id="profile-username-help" className="mt-2 text-xs text-slate-500">3–20 characters: letters, numbers, underscores, and hyphens only.</p>}
         </div>
     );
 }
 
-function Stat({ label, value, tone }) {
+function Stat({ label, value, tone, onClick }) {
+    const interactiveProps = onClick ? {
+        role: "button",
+        tabIndex: 0,
+        onClick,
+        onKeyDown: (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onClick();
+            }
+        },
+        "aria-label": `${label}: ${value}. Open details`,
+    } : {};
     return (
-        <div className="flex items-center justify-between gap-4 py-2.5">
+        <div {...interactiveProps} className={`flex items-center justify-between gap-4 py-2.5 ${onClick ? "cursor-pointer rounded px-2 transition hover:bg-cyan-950/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400" : ""}`}>
             <dt className="text-sm text-slate-400">{label}:</dt>
             <dd className={`font-interface-numeric text-xl ${tone}`}>{value}</dd>
         </div>

@@ -23,6 +23,10 @@ export function healthBarPercent(hp, maxHp) {
     return clamp01((Number(hp) || 0) / safeMaxHp) * 100;
 }
 
+export function formatHp(hp, fallback = 0) {
+    return Math.max(0, Number(hp ?? fallback)).toFixed(1);
+}
+
 export function abilityActiveOpacity(shape, abilityId) {
     const activeMs = Math.max(0, Number(shape?.abilityActiveMs?.[abilityId] ?? 0));
     return clamp01(activeMs / Math.max(1, Number(ABILITY_STATS[abilityId]?.activeMs ?? 1)));

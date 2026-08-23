@@ -85,15 +85,13 @@ but it cannot introduce a wall-clock offset error.
   timestamp derived from `playbackStartsAt`; delivery never waits for a client
   acknowledgement and never derives the next deadline from the prior send.
 - Replay uses the original authoritative simulation `elapsedMs` values. The
-  terminal window carries the authoritative result, which the client reveals
-  only when its monotonic replay clock displays the terminal frame. A reconnect
-  receives the authorized replay prefix and original `playbackStartsAt`, allowing
-  the client to select the current frame from server-authoritative elapsed time.
-  There is no separate result-reveal socket event for a replay.
-  Immediate
-  non-replay outcomes such as surrender or a disconnect still use
-  `MATCH_RESULT_READY` because there is no replay payload to carry their
-  result.
+  terminal window completes frame delivery without disclosing whether the
+  series has ended. A reconnect receives the authorized replay prefix and
+  original `playbackStartsAt`, allowing the client to select the current frame
+  from server-authoritative elapsed time. When a round decides the series, the
+  server publishes a separate `MATCH_RESULT_READY` at `resultRevealsAt`; no
+  terminal flag is included in replay or result payloads. Immediate non-replay
+  outcomes such as surrender or a disconnect also use `MATCH_RESULT_READY`.
 - The post-result hold ends at `roundReadyAt`, normally three seconds after
   `resultRevealsAt`. The backend schedules `MATCH_ROUND_READY` for that
   deadline; the client switches to the next ability selection when that event
@@ -101,10 +99,11 @@ but it cannot introduce a wall-clock offset error.
 - Terminal match chat closes at `matchChatEndsAt`, normally 30 seconds after
   `resultRevealsAt`. The backend schedules removal of the chat window at that
   instant, broadcasts the closure notice, and rejects later messages.
-- Connection recovery uses `disconnectEndsAt` only while the persisted match is
-  still active. Terminal result events carry the server-authored `matchTerminal`
-  flag; disconnect handling after that boundary clears any stale connection
-  state and cannot start a new grace period.
+- A disconnect detected during replay does not start its 30-second grace period
+  until `resultRevealsAt`. A terminal result remains reconnectable for that
+  post-replay window, and reconnecting after playback receives the explicit
+  `MATCH_RESULT_READY`. The already-authoritative simulated winner is not
+  replaced by a replay-time disconnect.
 
 The server remains authoritative for all expiry checks and scheduled tasks.
 Adding an authoritative lifecycle deadline requires an absolute server deadline

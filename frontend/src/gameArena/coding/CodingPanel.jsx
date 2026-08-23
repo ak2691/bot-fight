@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     CONDITION_TYPES,
     STATE_VARIABLES,
@@ -7,17 +7,18 @@ import {
     MAX_ROOT_NODES,
     MAX_LOGIC_BLOCKS,
     MAX_TOTAL_CONDITIONS,
+    MAX_CUSTOM_VARIABLE_SLOTS,
     normalizeRoots,
     validateAbilityStrategyConfiguration,
     normalizeAbilityStrategyConfiguration,
+    abilityDefinitionsForVariable,
 } from "../botlogic/code/BotCode.js";
-import { BOT_ABILITIES, statusEffectDefinitionsForAbilities } from "../loadout/BotLoadout.js";
+import { statusEffectDefinitionsForAbilities } from "../loadout/BotLoadout.js";
 import CustomVariablesModal from "./modals/CustomVariablesModal.jsx";
 import TutorialGuide, { getTutorialProgress, TutorialCodeCoach } from "../../tutorial/TutorialGuide.jsx";
 import { botColorRole } from "../pixi/pixiVisualState.js";
 import { useDialogFocus } from "../../components/useDialogFocus.js";
 import {
-    ConditionEditor,
     sanitizeConfigurationConditions,
     ScoreBox,
     PanelHeading,
@@ -71,7 +72,6 @@ export default function CodingPanel({
     playerRoundWins = 0,
     opponentRoundWins = 0,
     isAutoPlaying = false,
-    measurementEnabled = false,
     onMeasurementToggle,
     isBaseTesting = false,
     finishStatus = null,
@@ -86,6 +86,13 @@ export default function CodingPanel({
     onFinishMatch,
     onOpenPlayerLoadout,
     onOpenOpponentLoadout,
+    onOpenPuzzleSubmissions = null,
+    builderControls = null,
+    puzzleControls = null,
+    onPuzzleSubmit = null,
+    isPuzzleSubmitting = false,
+    logicLimits = null,
+    opponentReadOnly = false,
     tutorialMode = false,
     tutorialGuideProps = null,
     tutorialStep = 0,
@@ -95,6 +102,7 @@ export default function CodingPanel({
     const [hasOpenedLogic, setHasOpenedLogic] = useState(() => tutorialMode && loadTutorialOpenedLogic());
     const [isCustomVariablesOpen, setIsCustomVariablesOpen] = useState(false);
     const [isNodeSearchOpen, setIsNodeSearchOpen] = useState(false);
+    const [isQuickSearchOpen, setIsQuickSearchOpen] = useState(false);
     const [activeCode, setActiveCode] = useState("player");
     const [canvasZoom, setCanvasZoom] = useState(0.85);
     const [canvasPan, setCanvasPan] = useState({ x: 40, y: 36 });
@@ -103,6 +111,7 @@ export default function CodingPanel({
     const closeTopLogicLayer = () => {
         if (isNodeSearchOpen) {
             setIsNodeSearchOpen(false);
+            setIsQuickSearchOpen(false);
             return;
         }
         if (isCustomVariablesOpen) {
@@ -117,25 +126,71 @@ export default function CodingPanel({
         enabled: isLogicOpen,
     });
     const [editHistory, setEditHistory] = useState({ player: { undo: [], redo: [] }, opponent: { undo: [], redo: [] } });
+    const viewingOpponent = activeCode === "opponent" && Boolean(opponentConfiguration);
+    const editingOpponent = viewingOpponent && Boolean(onOpponentChange) && !opponentReadOnly;
+    const activeCodeReadOnly = viewingOpponent && opponentReadOnly;
     const currentRound = Math.max(1, Number(matchContext?.roundNumber) || 1);
+    const maxActionNodes = Number.isFinite(Number(logicLimits?.maxActionNodes))
+        ? editingOpponent ? MAX_LOGIC_BLOCKS : Math.max(0, Math.floor(Number(logicLimits.maxActionNodes)))
+        : MAX_LOGIC_BLOCKS;
+    const maxConditionNodes = Number.isFinite(Number(logicLimits?.maxConditionNodes))
+        ? editingOpponent ? MAX_TOTAL_CONDITIONS : Math.max(0, Math.floor(Number(logicLimits.maxConditionNodes)))
+        : MAX_TOTAL_CONDITIONS;
+    const maxCustomVariableSlots = Number.isFinite(Number(logicLimits?.maxCustomVariables))
+        ? editingOpponent ? MAX_CUSTOM_VARIABLE_SLOTS : Math.max(0, Math.floor(Number(logicLimits.maxCustomVariables)))
+        : MAX_CUSTOM_VARIABLE_SLOTS;
     const validation = validateAbilityStrategyConfiguration(configuration);
-    const editingOpponent = activeCode === "opponent" && opponentConfiguration && onOpponentChange;
+    const isBotCodeLocked = isMatchTesting && (
+        isFinishingMatch
+        || finishStatus === "SUBMITTING"
+        || finishStatus === "FINISHED"
+    );
     const playerBotLabel = matchContext?.player?.username ? `${matchContext.player.username}'s bot` : "Your bot";
-    const activeLoadout = editingOpponent ? opponentLoadout : selectedLoadout;
-    const opposingLoadout = editingOpponent ? selectedLoadout : opponentLoadout;
-    const activeConfiguration = editingOpponent ? opponentConfiguration : configuration;
-    const activeCustomVariableValues = editingOpponent ? opponentCustomVariableValues : customVariableValues;
+    const activeLoadout = viewingOpponent ? opponentLoadout : selectedLoadout;
+    const opposingLoadout = viewingOpponent ? selectedLoadout : opponentLoadout;
+    const activeConfiguration = viewingOpponent ? opponentConfiguration : configuration;
+    const activeCustomVariableValues = viewingOpponent ? opponentCustomVariableValues : customVariableValues;
+    const isCodeEditingLocked = isBotCodeLocked || activeCodeReadOnly;
+    const openLogicWorkspace = useCallback((quickSearch = false) => {
+        if (isBotCodeLocked) return;
+        setHasOpenedLogic(true);
+        if (tutorialMode) saveTutorialOpenedLogic();
+        setIsLogicOpen(true);
+        if (quickSearch) {
+            setIsQuickSearchOpen(true);
+            setIsNodeSearchOpen(true);
+        }
+    }, [isBotCodeLocked, tutorialMode]);
+    useEffect(() => {
+        const handleWorkspaceShortcut = (event) => {
+            const textEntry = event.target?.closest?.("input,textarea,select,[contenteditable=\"true\"]");
+            if (isBotCodeLocked || textEntry || event.ctrlKey || event.metaKey || event.altKey || event.key !== "/") return;
+            event.preventDefault();
+            if (isLogicOpen) {
+                if (!isNodeSearchOpen && !isCustomVariablesOpen) {
+                    setIsQuickSearchOpen(true);
+                    setIsNodeSearchOpen(true);
+                }
+                return;
+            }
+            openLogicWorkspace(true);
+        };
+        window.addEventListener("keydown", handleWorkspaceShortcut);
+        return () => window.removeEventListener("keydown", handleWorkspaceShortcut);
+    }, [isBotCodeLocked, isCustomVariablesOpen, isLogicOpen, isNodeSearchOpen, openLogicWorkspace]);
     const applyActiveConfiguration = (next) => {
+        if (isCodeEditingLocked) return;
         if (editingOpponent) onOpponentChange(next);
         else onChange(next);
     };
     const updateActiveConfiguration = (next) => {
+        if (isCodeEditingLocked) return;
         if (next === activeConfiguration) return;
         setEditHistory((current) => ({ ...current, [activeCode]: { undo: [...current[activeCode].undo.slice(-49), activeConfiguration], redo: [] } }));
         applyActiveConfiguration(next);
     };
     const travelHistory = (direction) => {
-        if (isTesting) return;
+        if (isTesting || isCodeEditingLocked) return;
         const history = editHistory[activeCode];
         const next = history[direction].at(-1);
         if (!next) return;
@@ -147,11 +202,12 @@ export default function CodingPanel({
         } }));
         applyActiveConfiguration(next);
     };
-    const updateRoots = (roots) => updateActiveConfiguration({
+    const updateRoots = (roots, nodePositions = activeConfiguration.nodePositions) => updateActiveConfiguration({
         ...activeConfiguration,
         version: "bot-logic-tree-v1",
         roots: normalizeRoots(roots),
         customVariables: activeConfiguration?.customVariables ?? [],
+        ...(nodePositions ? { nodePositions } : {}),
     });
     const totalActiveBlocks = countActions(activeConfiguration);
     const totalRootNodes = activeConfiguration?.roots?.length ?? 0;
@@ -161,7 +217,7 @@ export default function CodingPanel({
     const roundDeleteLocked = false;
     const selectedLogicRound = currentRound;
     const currentRoundBlockCount = totalActiveBlocks;
-    const roundBlockLimit = MAX_LOGIC_BLOCKS;
+    const roundBlockLimit = maxActionNodes;
     const totalRounds = isMatchTesting ? 3 : Math.max(1, (matchContext?.winsRequired ?? 1) * 2 - 1);
     const tutorialProgress = tutorialMode
         ? getTutorialProgress(tutorialStep, configuration, { hasOpenedLogic, isAutoPlaying, challenge: tutorialGuideProps?.challenge })
@@ -171,6 +227,7 @@ export default function CodingPanel({
         setIsLogicOpen(false);
         setIsCustomVariablesOpen(false);
         setIsNodeSearchOpen(false);
+        setIsQuickSearchOpen(false);
         tutorialGuideProps?.onStepChange?.(nextStep);
     };
     const visibleConditionTypes = CONDITION_TYPES;
@@ -180,12 +237,12 @@ export default function CodingPanel({
         const builtIns = STATE_VARIABLES.map((variable) => {
             if (!variable.supportsAbility && !variable.supportsStatusEffect) return variable;
             const equipped = variable.supportsStatusEffect
-                ? variable.statusEffectOwner === "opponent" ? opponentAbilities : ownAbilities
+                ? new Set([...ownAbilities, ...opponentAbilities])
                 : variable.abilityOwner === "opponent" ? opponentAbilities : ownAbilities;
             return {
                 ...variable,
                 ...(variable.supportsAbility ? {
-                    abilityOptions: BOT_ABILITIES.filter((ability) => equipped.has(ability.id) && (!variable.requiredTag || ability.tags.includes(variable.requiredTag))),
+                    abilityOptions: abilityDefinitionsForVariable(variable, equipped),
                 } : {}),
                 ...(variable.supportsStatusEffect ? {
                     statusEffectOptions: statusEffectDefinitionsForAbilities(equipped),
@@ -204,30 +261,42 @@ export default function CodingPanel({
         [activeLoadout, opposingLoadout],
     );
     useEffect(() => {
-        const sanitized = sanitizeConfigurationConditions(activeConfiguration, visibleConditionTypes, defaultCondition);
+        if (isCodeEditingLocked) return;
+        const sanitized = sanitizeConfigurationConditions(activeConfiguration, visibleConditionTypes, defaultCondition, visibleTargetTypes, visibleStateVariables);
         if (sanitized === activeConfiguration) return;
         if (editingOpponent) onOpponentChange?.(sanitized);
         else onChange(sanitized);
-    }, [activeConfiguration, activeLoadout, opposingLoadout, defaultCondition, editingOpponent, onChange, onOpponentChange, visibleConditionTypes]);
+    }, [activeConfiguration, activeLoadout, opposingLoadout, defaultCondition, editingOpponent, isCodeEditingLocked, onChange, onOpponentChange, visibleConditionTypes, visibleStateVariables, visibleTargetTypes]);
 
     useEffect(() => {
+        if (isCodeEditingLocked) return;
         if (!isLogicOpen || usesTree) return;
         const tree = normalizeAbilityStrategyConfiguration(activeConfiguration);
         if (editingOpponent) onOpponentChange?.(tree);
         else onChange(tree);
-    }, [activeConfiguration, editingOpponent, isLogicOpen, onChange, onOpponentChange, usesTree]);
+    }, [activeConfiguration, editingOpponent, isCodeEditingLocked, isLogicOpen, onChange, onOpponentChange, usesTree]);
+
+    useEffect(() => {
+        if (!isBotCodeLocked) return;
+        const closeWorkspaceId = window.setTimeout(() => {
+            setIsLogicOpen(false);
+            setIsNodeSearchOpen(false);
+            setIsCustomVariablesOpen(false);
+            setIsQuickSearchOpen(false);
+        }, 0);
+        return () => window.clearTimeout(closeWorkspaceId);
+    }, [isBotCodeLocked]);
 
     const addRootNode = () => {
-        if (totalRootNodes >= MAX_ROOT_NODES) return;
+        if (isCodeEditingLocked || totalRootNodes >= MAX_ROOT_NODES) return;
         const roots = activeConfiguration.roots ?? [];
         const nextPriority = roots.reduce((highest, root) => Math.max(highest, Number(root?.createdOrder) + 1 || 0), 0) + 1;
         const root = createCodeRoot(nextPriority - 1);
         root.branches = [];
         const nextRoots = [...roots, root];
-        logicBoardRef.current?.placeRootAtCenter(nextRoots, nextRoots.length - 1);
-        updateRoots(nextRoots);
+        const nodePositions = logicBoardRef.current?.placeRootAtCenter(nextRoots, nextRoots.length - 1);
+        updateRoots(nextRoots, nodePositions ?? activeConfiguration.nodePositions);
     };
-
     const changeZoom = (delta, origin = null) => {
         setCanvasZoom((currentZoom) => {
             const nextZoom = clamp(Number((currentZoom + delta).toFixed(2)), MIN_ZOOM, MAX_ZOOM);
@@ -244,6 +313,8 @@ export default function CodingPanel({
     return (
         <aside className={`${usesArenaResponsiveLimits ? "arena-right-toolbar" : ""} testing-mono h-full min-h-0 w-[23rem] flex-shrink-0 overflow-y-auto border-l border-slate-700/70 bg-[linear-gradient(180deg,rgba(12,22,31,.98),rgba(8,16,24,.98))] p-4 shadow-[-12px_0_30px_rgba(0,0,0,.28)]`}>
             <div className="space-y-4">
+                {builderControls}
+                {puzzleControls}
                 {tutorialGuideProps && <TutorialGuide {...tutorialGuideProps} onStepChange={handleTutorialStepChange} progress={tutorialProgress} />}
                 {isMatchTesting && (
                     <section className="rounded-xl border border-slate-600/70 bg-slate-900/55 p-4 text-[10px] shadow-[0_10px_30px_rgba(0,0,0,.2)]">
@@ -277,15 +348,22 @@ export default function CodingPanel({
                 <section className="rounded-xl border border-slate-600/70 bg-slate-900/55 p-4 shadow-[0_10px_30px_rgba(0,0,0,.2)]">
                     <div className="flex items-center justify-between text-[10px]">
                         <PanelHeading icon="node">BOT CODE</PanelHeading>
-                        <strong className="font-interface-numeric text-ink-muted">{countActions(configuration)}/{MAX_LOGIC_BLOCKS} A · {countLogicConditions(configuration)}/{MAX_TOTAL_CONDITIONS} C</strong>
+                        <strong className="font-interface-numeric text-ink-muted">{countActions(configuration)}/{maxActionNodes} A · {countLogicConditions(configuration)}/{maxConditionNodes} C</strong>
                     </div>
                     <button
                         type="button"
-                        onClick={() => { setHasOpenedLogic(true); if (tutorialMode) saveTutorialOpenedLogic(); setIsLogicOpen(true); }}
-                        className={`font-display-action mt-4 flex min-h-14 w-full items-center justify-center gap-3 rounded-lg border border-cyan-500/80 bg-cyan-950/20 px-4 text-base tracking-[.025em] text-cyan-200 shadow-[0_0_18px_rgba(34,211,238,.08)] transition hover:bg-cyan-900/35 ${tutorialFocus === "open-code" ? "tutorial-control-focus" : ""}`}
+                        disabled={isBotCodeLocked}
+                        onClick={() => openLogicWorkspace(false)}
+                        className={`arena-toolbar-button ${isBotCodeLocked ? "arena-toolbar-button--neutral" : "arena-toolbar-button--primary"} mt-4 ${tutorialFocus === "open-code" ? "tutorial-control-focus" : ""}`}
                     >
-                        <ToolIcon name="node" /> OPEN BOT CODE
+                        <ToolIcon name="node" /> {isBotCodeLocked ? "BOT CODE SUBMITTED" : "OPEN BOT CODE"}
                     </button>
+                    {onOpenPuzzleSubmissions && (
+                        <button type="button" onClick={onOpenPuzzleSubmissions} className="arena-toolbar-submission-link mt-3" aria-haspopup="dialog">
+                            <span className="flex items-center gap-3"><ToolIcon name="reset" /> <span>PREVIOUS SUBMISSIONS</span></span>
+                            <span aria-hidden="true" className="text-2xl font-normal leading-none text-slate-300">›</span>
+                        </button>
+                    )}
                     {validation.errors.map((error) => <p key={error} className="mt-2 text-[10px] text-red-300">{error}</p>)}
                     {validation.warnings?.map((warning) => <p key={warning} className="mt-2 text-[10px] text-amber-300">WARNING: {warning}</p>)}
                 </section>
@@ -300,10 +378,31 @@ export default function CodingPanel({
                             icon={isAutoPlaying ? "pause" : "play"}
                             onClick={onAutoPlayToggle}
                             disabled={isBaseTesting || isTesting}
-                            tone={isAutoPlaying ? "neutral" : "blue"}
+                            tone="neutral"
                             className={tutorialFocus === "play" ? "tutorial-control-focus" : ""}
                         >
                             {isAutoPlaying ? "PAUSE" : "PLAY"}
+                        </ControlButton>
+                        {onPuzzleSubmit && (
+                            <ControlButton
+                                icon="check"
+                                onClick={onPuzzleSubmit}
+                                disabled={isPuzzleSubmitting || isBaseTesting || isTesting}
+                                tone="neutral"
+                            >
+                                {isPuzzleSubmitting ? "SUBMITTING" : "SUBMIT PUZZLE"}
+                            </ControlButton>
+                        )}
+                        <ControlButton icon="measure" onClick={onMeasurementToggle} disabled={!onMeasurementToggle} tone="neutral">
+                            MEASURE
+                        </ControlButton>
+                        <ControlButton
+                            icon="stats"
+                            onClick={onResetArenaStats}
+                            disabled={!onResetArenaStats || isBaseTesting || isTesting}
+                            tone="neutral"
+                        >
+                            RESET STATS
                         </ControlButton>
                         {isMatchTesting && (
                             <>
@@ -311,7 +410,7 @@ export default function CodingPanel({
                                 icon="check"
                                 onClick={onFinishMatch}
                                 disabled={!canFinishMatch || finishStatus === "FINISHED" || finishStatus === "SURRENDERED" || finishStatus === "SUBMITTING" || finishStatus === "SURRENDERING" || isFinishingMatch || isTesting}
-                                tone={finishStatus === "FINISHED" ? "green" : finishStatus === "SURRENDERED" ? "red" : "green"}
+                                tone="green"
                             >
                                 {finishStatus === "FINISHED"
                                     ? "FINISHED"
@@ -333,25 +432,18 @@ export default function CodingPanel({
                             </ControlButton>
                             </>
                         )}
-                        <ControlButton icon="measure" onClick={onMeasurementToggle} disabled={!onMeasurementToggle} tone={measurementEnabled ? "blue" : "neutral"}>
-                            MEASURE
-                        </ControlButton>
-                        <ControlButton
-                            icon="stats"
-                            onClick={onResetArenaStats}
-                            disabled={!onResetArenaStats || isBaseTesting || isTesting}
-                            tone="neutral"
-                        >
-                            RESET STATS
-                        </ControlButton>
-                        {!isMatchTesting && (
+                        {!isMatchTesting && (onOpenPlayerLoadout || onOpenOpponentLoadout) && (
                             <>
-                            <ControlButton icon="edit" onClick={onOpenPlayerLoadout} disabled={!onOpenPlayerLoadout || isTesting || isAutoPlaying} tone="violet">
-                                EDIT MY LOADOUT
-                            </ControlButton>
-                            <ControlButton icon="opponent" onClick={onOpenOpponentLoadout} disabled={!onOpenOpponentLoadout || isTesting || isAutoPlaying} tone="violet">
-                                EDIT DUMMY LOADOUT
-                            </ControlButton>
+                            {onOpenPlayerLoadout && (
+                                <ControlButton icon="edit" onClick={onOpenPlayerLoadout} disabled={isTesting || isAutoPlaying} tone="neutral">
+                                    EDIT MY LOADOUT
+                                </ControlButton>
+                            )}
+                            {onOpenOpponentLoadout && (
+                                <ControlButton icon="opponent" onClick={onOpenOpponentLoadout} disabled={isTesting || isAutoPlaying} tone="neutral">
+                                    EDIT DUMMY LOADOUT
+                                </ControlButton>
+                            )}
                             </>
                         )}
                     </div>
@@ -359,29 +451,29 @@ export default function CodingPanel({
                 </section>
             </div>
 
-            {isLogicOpen && (
+            {isLogicOpen && !isBotCodeLocked && (
                 <div className="fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-black/70 px-4 py-5">
                     <section ref={logicDialogRef} className="code-workspace testing-mono relative flex h-[min(90vh,820px)] w-[min(94vw,1440px)] flex-col overflow-hidden rounded-sm border border-border-mid bg-[#111519] shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="code-workspace-title" tabIndex={-1}>
                         <header className="code-toolbar flex min-h-[84px] flex-shrink-0 items-center gap-4 border-b border-white/10 bg-[#12161a] px-5 py-3 shadow-[0_8px_24px_rgba(0,0,0,.18)]">
                             <div className="code-toolbar-title flex-none">
                                 <div id="code-workspace-title" className="font-mono text-[11px] font-bold tracking-widest text-cyan">BOT CODE WORKSPACE</div>
                                 <div className="mt-1 truncate font-mono text-[8px] tracking-wide text-ink-muted">
-                                    {editingOpponent ? "TESTING OPPONENT" : "YOUR BOT"} - {totalActiveBlocks}/{MAX_LOGIC_BLOCKS} A - {totalActiveConditions}/{MAX_TOTAL_CONDITIONS} C
+                                    {viewingOpponent ? "OPPONENT BOT" : "YOUR BOT"} - {totalActiveBlocks}/{maxActionNodes} A - {totalActiveConditions}/{maxConditionNodes} C
                                 </div>
                             </div>
                             <div className="code-toolbar-controls min-w-0 flex-1 py-0.5">
-                                {opponentConfiguration && onOpponentChange && (
+                                {opponentConfiguration && (onOpponentChange || opponentReadOnly) && (
                                     <div className="code-tab-group">
                                         <CodeTab active={activeCode === "player"} onClick={() => setActiveCode("player")}>{playerBotLabel}</CodeTab>
                                         <CodeTab active={activeCode === "opponent"} onClick={() => setActiveCode("opponent")}>Opponent bot</CodeTab>
                                     </div>
                                 )}
                                 <div className="code-toolbar-tools">
-                                    <button type="button" onClick={() => setIsNodeSearchOpen(true)} className={`code-toolbar-button ${tutorialFocus === "search-roots" ? "tutorial-control-focus" : ""}`}><span aria-hidden="true" className="code-toolbar-icon">⌕</span> SEARCH ROOTS</button>
+                                    <button type="button" onClick={() => { setIsQuickSearchOpen(false); setIsNodeSearchOpen(true); }} className={`code-toolbar-button ${tutorialFocus === "search-roots" ? "tutorial-control-focus" : ""}`}><span aria-hidden="true" className="code-toolbar-icon">⌕</span> SEARCH ROOTS <kbd className="code-toolbar-shortcut">/</kbd></button>
                                     <button type="button" onClick={() => setIsCustomVariablesOpen(true)} className={`code-toolbar-button ${tutorialFocus === "custom-variables" ? "tutorial-control-focus" : ""}`}><span aria-hidden="true" className="code-toolbar-icon">{'{ }'}</span> CUSTOM VARIABLES</button>
                                     <button
                                         type="button"
-                                        disabled={isTesting || !viewingCurrentRound
+                                        disabled={isCodeEditingLocked || isTesting || !viewingCurrentRound
                                             || totalRootNodes >= MAX_ROOT_NODES}
                                         onClick={addRootNode}
                                         className={`code-toolbar-button code-toolbar-button-primary ${tutorialFocus === "add-root" ? "tutorial-control-focus" : ""}`}
@@ -415,7 +507,7 @@ export default function CodingPanel({
                                         type="button"
                                         aria-label="Close bot code workspace"
                                         title="Close"
-                                        onClick={() => { setIsNodeSearchOpen(false); setIsCustomVariablesOpen(false); setIsLogicOpen(false); }}
+                                        onClick={() => { setIsNodeSearchOpen(false); setIsQuickSearchOpen(false); setIsCustomVariablesOpen(false); setIsLogicOpen(false); }}
                                         className="code-toolbar-button code-toolbar-close"
                                     >
                                         <span aria-hidden="true">×</span><span className="code-toolbar-close-label">CLOSE</span>
@@ -453,8 +545,8 @@ export default function CodingPanel({
                         <TreeLogicBoard
                                 ref={logicBoardRef}
                                 configuration={activeConfiguration}
-                                disabled={isTesting || !viewingCurrentRound}
-                                canRemove={!isTesting && !roundDeleteLocked}
+                                disabled={isBotCodeLocked || isTesting || !viewingCurrentRound}
+                                canRemove={!isBotCodeLocked && !isTesting && !roundDeleteLocked}
                                 selectedLoadout={activeLoadout}
                                 stateVariables={visibleStateVariables}
                                 defaultVariable={defaultVariable}
@@ -465,16 +557,19 @@ export default function CodingPanel({
                                 onPanChange={setCanvasPan}
                                 onZoomChange={changeZoom}
                                 tutorialFocus={tutorialFocus}
-                                canUndo={!isTesting && editHistory[activeCode].undo.length > 0}
-                                canRedo={!isTesting && editHistory[activeCode].redo.length > 0}
+                                canUndo={!isCodeEditingLocked && !isTesting && editHistory[activeCode].undo.length > 0}
+                                canRedo={!isCodeEditingLocked && !isTesting && editHistory[activeCode].redo.length > 0}
                                 onUndo={() => travelHistory("undo")}
                                 onRedo={() => travelHistory("redo")}
                                 isSearchOpen={isNodeSearchOpen}
-                                onSearchClose={() => setIsNodeSearchOpen(false)}
+                                isQuickSearchOpen={isQuickSearchOpen}
+                                onSearchClose={() => { setIsNodeSearchOpen(false); setIsQuickSearchOpen(false); }}
                                 isExternalConfigurationOpen={isCustomVariablesOpen}
                                 onCloseExternalConfiguration={() => setIsCustomVariablesOpen(false)}
+                                maxLogicBlocks={maxActionNodes}
+                                maxTotalConditions={maxConditionNodes}
                             />
-                        {isCustomVariablesOpen && !isNodeSearchOpen && <CustomVariablesModal configuration={activeConfiguration} currentValues={activeCustomVariableValues} disabled={isTesting} stateVariables={visibleStateVariables} defaultVariable={defaultVariable} targetTypes={visibleTargetTypes} onChange={updateActiveConfiguration} onClose={() => setIsCustomVariablesOpen(false)} renderConditionEditor={(props) => <ConditionEditor {...props} />} />}
+                        {isCustomVariablesOpen && !isNodeSearchOpen && <CustomVariablesModal configuration={activeConfiguration} currentValues={activeCustomVariableValues} maxSlots={maxCustomVariableSlots} disabled={isCodeEditingLocked || isTesting} onChange={updateActiveConfiguration} onClose={() => setIsCustomVariablesOpen(false)} />}
                     </section>
                 </div>
             )}

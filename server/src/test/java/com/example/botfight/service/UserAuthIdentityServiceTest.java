@@ -1,5 +1,8 @@
 package com.example.botfight.service;
 
+import com.example.botfight.service.auth.AuthException;
+import com.example.botfight.service.auth.UserAuthIdentityService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;

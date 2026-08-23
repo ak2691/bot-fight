@@ -6,7 +6,6 @@ import { passwordError, userFacingAuthError, usernameError } from "../../auth/va
 import AuthLayout from "./AuthLayout";
 import { useDialogFocus } from "../../components/useDialogFocus.js";
 import googleIconUrl from "../../assets/googleicon.png";
-import { preloadPixiAndArenaAssets } from "../../routeLoaders";
 
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -29,10 +28,6 @@ export default function LoginPage() {
     const [isUsernameSubmitting, setIsUsernameSubmitting] = useState(false);
     const emailRef = useRef(null);
     const passwordRef = useRef(null);
-
-    useEffect(() => {
-        void preloadPixiAndArenaAssets();
-    }, []);
 
     useEffect(() => {
         if (googleUsernameRequired) setIsUsernamePromptOpen(true);
@@ -221,7 +216,7 @@ function UsernameSetupModal({ username, setUsername, error, isSubmitting, onSubm
                         <p className="font-mono text-[10px] font-bold tracking-[.25em] text-cyan-400">ACCOUNT SETUP</p>
                         <h2 id="username-setup-title" className="mt-2 text-2xl font-bold text-white">Choose your username</h2>
                     </div>
-                    <button type="button" onClick={onClose} aria-label="Close username setup" className="border border-slate-600 bg-slate-900 px-3 py-1 text-slate-300 hover:border-cyan-400">×</button>
+                    <button type="button" onClick={onClose} aria-label="Close username setup" className="modal-close-button"><span aria-hidden="true">×</span></button>
                 </div>
                 <p className="mt-4 text-sm leading-6 text-slate-400">Your Google account is ready. Pick a unique username before entering the arena.</p>
                 <form onSubmit={onSubmit} className="mt-5 space-y-4">

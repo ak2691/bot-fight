@@ -43,6 +43,9 @@ public class Match {
     @Column(name = "completed_at")
     private Instant completedAt;
 
+    @Column(name = "result_visible_at")
+    private Instant resultVisibleAt;
+
     @Column(name = "completion_reason", length = 50)
     private String completionReason;
 
@@ -110,6 +113,14 @@ public class Match {
 
     public void setCompletedAt(Instant completedAt) {
         this.completedAt = completedAt;
+    }
+
+    public Instant getResultVisibleAt() {
+        return resultVisibleAt;
+    }
+
+    public void setResultVisibleAt(Instant resultVisibleAt) {
+        this.resultVisibleAt = resultVisibleAt;
     }
 
     public String getCompletionReason() {

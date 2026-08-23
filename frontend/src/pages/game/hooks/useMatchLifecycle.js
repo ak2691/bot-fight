@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
     ARENA_WIDTH_UNITS,
+    BASE_BOT_HP,
     DUEL_SLOT_ONE_Y,
     DUEL_SLOT_TWO_Y,
 } from "../../../gameArena/modelPayloads/arenaConstants";
 import { decodeBotLoadout, DEFAULT_BOT_LOADOUT, encodeBotLoadout, normalizedBotLoadout } from "../../../gameArena/loadout/BotLoadout";
 import { loadoutForFreshRound } from "../../../matchmaking/loadoutDraft.js";
 import {
-    disconnectActiveMatchmakingClient,
     getEstimatedOneWayNetworkDelayMs,
 } from "../../../matchmaking/stompClient";
 import { monotonicEpochNowMs } from "../../../matchmaking/networkDelayEstimator.js";
@@ -16,6 +16,7 @@ import {
     visibleLoadoutSelectionDeadlineMs,
 } from "../../../matchmaking/relativeMatchTiming.js";
 import {
+    isOlderMatchPhaseEvent,
     isOlderMatchRoundEvent,
     isSelectionEventForActivePhase,
     isSelectionPhaseStale,
@@ -33,9 +34,68 @@ import {
     MATCH_ACCEPTANCE_SUBMISSION_GRACE_MS,
 } from "../../../matchmaking/matchAcceptance.js";
 import { localReplaySchedule, mergeReplayFrames } from "../../../replay/replayPresentation.js";
+import { useMatchmaking } from "../../../matchmaking/matchmaking-context";
 import useMatchmakingSocket from "./useMatchmakingSocket.js";
 
 const COUNTDOWN_UPDATE_INTERVAL_MS = 250;
+const LOADOUT_DRAFT_STORAGE_PREFIX = "match-loadout-draft:";
+
+function browserSessionStorage() {
+    if (typeof window === "undefined") return null;
+    try {
+        return window.sessionStorage;
+    } catch {
+        return null;
+    }
+}
+
+function loadoutDraftStorageKey(matchId, roundNumber) {
+    return `${LOADOUT_DRAFT_STORAGE_PREFIX}${matchId}:${Math.max(1, Number(roundNumber) || 1)}`;
+}
+
+function readLoadoutDraft(event) {
+    if (!event?.matchId || event.status !== "LOADOUT_SELECT" || event.player?.loadoutSelected) return null;
+    const storage = browserSessionStorage();
+    if (!storage) return null;
+    try {
+        const stored = JSON.parse(storage.getItem(
+            loadoutDraftStorageKey(event.matchId, event.roundNumber),
+        ) ?? "null");
+        const phase = selectionPhaseForEvent(event);
+        if (stored?.phaseKey && phase?.key && stored.phaseKey !== phase.key) return null;
+        return stored?.loadout ? normalizedBotLoadout(stored.loadout) : null;
+    } catch {
+        return null;
+    }
+}
+
+function writeLoadoutDraft(event, loadout) {
+    if (!event?.matchId || event.status !== "LOADOUT_SELECT" || event.player?.loadoutSelected) return;
+    const storage = browserSessionStorage();
+    if (!storage) return;
+    try {
+        storage.setItem(
+            loadoutDraftStorageKey(event.matchId, event.roundNumber),
+            JSON.stringify({
+                phaseKey: selectionPhaseForEvent(event)?.key ?? null,
+                loadout: normalizedBotLoadout(loadout),
+            }),
+        );
+    } catch {
+        // A blocked or full session store must not interrupt match state.
+    }
+}
+
+function clearLoadoutDraft(event) {
+    if (!event?.matchId) return;
+    const storage = browserSessionStorage();
+    if (!storage) return;
+    try {
+        storage.removeItem(loadoutDraftStorageKey(event.matchId, event.roundNumber));
+    } catch {
+        // A blocked session store must not interrupt match state.
+    }
+}
 
 function secondsRemaining(countdownEndsAt, maximum = Number.POSITIVE_INFINITY) {
     if (!countdownEndsAt) return 0;
@@ -67,7 +127,16 @@ function toLocalDurationDeadlineMs(durationMs, localNowMs, estimatedOneWayDelayM
     return Number(localNowMs) + Math.max(0, duration - (Number.isFinite(oneWayDelay) ? Math.max(0, oneWayDelay) : 0));
 }
 
-function normalizeEventTimes(event, estimatedOneWayDelayMs, localNowMs = monotonicEpochNowMs()) {
+function stableLocalDeadline(event, previousEvent, rawField, localField, calculatedDeadlineMs) {
+    const sameDeadline = event?.[rawField] != null
+        && event?.[rawField] === previousEvent?.[rawField];
+    const previousDeadlineMs = Number(previousEvent?.[localField]);
+    return sameDeadline && Number.isFinite(previousDeadlineMs)
+        ? previousDeadlineMs
+        : calculatedDeadlineMs;
+}
+
+function normalizeEventTimes(event, estimatedOneWayDelayMs, localNowMs = monotonicEpochNowMs(), previousEvent = null) {
     return {
         ...event,
         matchAcceptanceEndsAtMs: toLocalDeadlineMs(
@@ -101,14 +170,28 @@ function normalizeEventTimes(event, estimatedOneWayDelayMs, localNowMs = monoton
             localNowMs,
             estimatedOneWayDelayMs,
         ),
-        buildingEndsAtMs: toLocalDeadlineMs(
-            event.buildingEndsAt,
-            event.serverNow,
-            localNowMs,
-            estimatedOneWayDelayMs,
-            2_000,
+        buildingEndsAtAuthoritativeMs: stableLocalDeadline(
+            event, previousEvent, "buildingEndsAt", "buildingEndsAtAuthoritativeMs",
+            toLocalDeadlineMs(
+                event.buildingEndsAt,
+                event.serverNow,
+                localNowMs,
+                estimatedOneWayDelayMs,
+            ),
         ),
-        playbackStartsAtMs: event.type === "SIMULATION_PREPARING" && (!event.playbackStartsAt || !event.serverNow)
+        buildingEndsAtMs: stableLocalDeadline(
+            event, previousEvent, "buildingEndsAt", "buildingEndsAtMs",
+            toLocalDeadlineMs(
+                event.buildingEndsAt,
+                event.serverNow,
+                localNowMs,
+                estimatedOneWayDelayMs,
+                2_000,
+            ),
+        ),
+        playbackStartsAtMs: stableLocalDeadline(
+            event, previousEvent, "playbackStartsAt", "playbackStartsAtMs",
+            event.type === "SIMULATION_PREPARING" && (!event.playbackStartsAt || !event.serverNow)
             ? toLocalDurationDeadlineMs(
                 event.simulationPreparingDurationMs,
                 localNowMs,
@@ -120,17 +203,24 @@ function normalizeEventTimes(event, estimatedOneWayDelayMs, localNowMs = monoton
                 localNowMs,
                 estimatedOneWayDelayMs,
             ),
-        resultRevealsAtMs: toLocalDeadlineMs(
-            event.resultRevealsAt,
-            event.serverNow,
-            localNowMs,
-            estimatedOneWayDelayMs,
         ),
-        roundReadyAtMs: toLocalDeadlineMs(
-            event.roundReadyAt,
-            event.serverNow,
-            localNowMs,
-            estimatedOneWayDelayMs,
+        resultRevealsAtMs: stableLocalDeadline(
+            event, previousEvent, "resultRevealsAt", "resultRevealsAtMs",
+            toLocalDeadlineMs(
+                event.resultRevealsAt,
+                event.serverNow,
+                localNowMs,
+                estimatedOneWayDelayMs,
+            ),
+        ),
+        roundReadyAtMs: stableLocalDeadline(
+            event, previousEvent, "roundReadyAt", "roundReadyAtMs",
+            toLocalDeadlineMs(
+                event.roundReadyAt,
+                event.serverNow,
+                localNowMs,
+                estimatedOneWayDelayMs,
+            ),
         ),
         matchChatEndsAtMs: toLocalDeadlineMs(
             event.matchChatEndsAt,
@@ -147,15 +237,10 @@ function normalizeEventTimes(event, estimatedOneWayDelayMs, localNowMs = monoton
     };
 }
 
-export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
-    const initialMatchEventPayload = useMemo(() => {
-        if (!initialRouteMatchEvent) return null;
-        const normalized = normalizeEventTimes(initialRouteMatchEvent, null);
-        return normalized.status === "MATCH_ACCEPT"
-            ? acceptanceEventForClient(normalized)
-            : normalized;
-    }, [initialRouteMatchEvent]);
-    const initialMatchEvent = initialMatchEventPayload;
+export function useMatchLifecycle({ navigate }) {
+    const {
+        clearActiveMatch,
+    } = useMatchmaking();
     const clientRef = useRef(null);
     const playbackRef = useRef(null);
     const matchEventRef = useRef(null);
@@ -167,12 +252,9 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
     const loadoutSubmitPendingRef = useRef(false);
     const placementSubmittedRef = useRef(false);
     const placementSubmitPendingRef = useRef(false);
-    const initialQueueStatus = initialMatchEvent?.status === "MATCH_ACCEPT"
-        ? "MATCH_ACCEPT"
-        : initialMatchEvent?.status === "LOADOUT_SELECT" ? "LOADOUT_SELECT" : "CONNECTING";
-    const queueStatusRef = useRef(initialQueueStatus);
-    const [queueStatus, setQueueStatus] = useState(initialQueueStatus);
-    const [matchEvent, setMatchEvent] = useState(initialMatchEvent);
+    const queueStatusRef = useRef("CONNECTING");
+    const [queueStatus, setQueueStatus] = useState("CONNECTING");
+    const [matchEvent, setMatchEvent] = useState(null);
     const [playback, setPlayback] = useState(null);
     const [remaining, setRemaining] = useState(0);
     const [matchAcceptanceDeadlineMs, setMatchAcceptanceDeadlineMs] = useState(null);
@@ -190,7 +272,9 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
     const [disconnectRemaining, setDisconnectRemaining] = useState(0);
     const [, setPlacementSubmitPending] = useState(false);
     const [, setConfirmedPlacementObjects] = useState([]);
-    const [loadoutChoice, setLoadoutChoice] = useState(() => normalizedBotLoadout(DEFAULT_BOT_LOADOUT));
+    const [loadoutChoice, setLoadoutChoice] = useState(() => (
+        normalizedBotLoadout(DEFAULT_BOT_LOADOUT)
+    ));
     const [chatMessages, setChatMessages] = useState([]);
     const [chatMinimized, setChatMinimized] = useState(true);
     const [chatRateLimitNotice, setChatRateLimitNotice] = useState(null);
@@ -198,11 +282,11 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
     const [chatClosedNotice, setChatClosedNotice] = useState(null);
     const chatMinimizedRef = useRef(false);
     const chatNoticeTimeoutRef = useRef(null);
-    const intentionalSocketCloseRef = useRef(false);
-    const closeSocketAfterChatRef = useRef(false);
+    const exitToHomeInFlightRef = useRef(false);
     const disconnectNoticeResetAtRef = useRef(0);
-    const loadoutSelectionPhaseRef = useRef(selectionPhaseForEvent(initialMatchEvent));
-    const terminalMatchRef = useRef(isTerminalMatchEvent(initialMatchEvent));
+    const loadoutSelectionPhaseRef = useRef(null);
+    const terminalMatchRef = useRef(false);
+    const terminalResultRef = useRef(false);
     const redirectToHomeForTerminalEvent = useMemo(
         () => createMatchmakingTerminalRedirect(navigate),
         [navigate],
@@ -225,48 +309,16 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
         setMatchEvent(event);
     };
     const exitToHome = () => {
+        if (exitToHomeInFlightRef.current) return;
+        exitToHomeInFlightRef.current = true;
         navigate("/home");
     };
-
-    /* The route can arrive with an already-authoritative match event whose local deadlines need hydration. */
-    /* eslint-disable react-hooks/set-state-in-effect */
-    useEffect(() => {
-        if (initialMatchEventPayload) {
-            const initialEstimatedOneWayDelayMs = getEstimatedOneWayNetworkDelayMs();
-            const normalizedInitialEvent = normalizeEventTimes(
-                initialMatchEventPayload,
-                initialEstimatedOneWayDelayMs,
-            );
-            setCurrentMatchEvent(normalizedInitialEvent);
-            if (normalizedInitialEvent.status === "MATCH_ACCEPT") {
-                matchAcceptanceDeadlineRef.current = normalizedInitialEvent.matchAcceptanceEndsAtMs;
-                matchAcceptanceAuthoritativeDeadlineRef.current = normalizedInitialEvent.matchAcceptanceAuthoritativeEndsAtMs;
-                matchAcceptanceStartDeadlineRef.current = acceptanceVisibleStartMs(
-                    normalizedInitialEvent.matchAcceptanceEndsAtMs,
-                );
-                setMatchAcceptanceDeadlineMs(normalizedInitialEvent.matchAcceptanceEndsAtMs);
-                setMatchAcceptanceStartDeadlineMs(matchAcceptanceStartDeadlineRef.current);
-                setMatchAcceptanceState(acceptanceStateForEvent(normalizedInitialEvent));
-                setRemaining(secondsRemaining(matchAcceptanceDeadlineRef.current));
-                setMatchAcceptanceAuthoritativeRemaining(
-                    secondsRemaining(matchAcceptanceAuthoritativeDeadlineRef.current),
-                );
-            } else if (normalizedInitialEvent.status === "LOADOUT_SELECT") {
-                loadoutSelectionDeadlineRef.current = visibleLoadoutSelectionDeadlineMs(
-                    normalizedInitialEvent.loadoutSelectionEndsAtMs,
-                    initialEstimatedOneWayDelayMs,
-                );
-                setRemaining(secondsRemaining(loadoutSelectionDeadlineRef.current));
-            }
-        }
-    }, [initialMatchEventPayload]);
-    /* eslint-enable react-hooks/set-state-in-effect */
 
     const handleChatEvent = (event) => {
         if (event.matchId && matchEventRef.current?.matchId
             && String(event.matchId) !== String(matchEventRef.current.matchId)) return;
         if (event.type === "MATCH_CHAT_RATE_LIMITED") {
-            setChatRateLimitNotice(event.message ?? "You are sending messages too quickly.");
+            setChatRateLimitNotice(event.message ?? "Too many requests, please wait.");
             if (chatNoticeTimeoutRef.current != null) clearTimeout(chatNoticeTimeoutRef.current);
             chatNoticeTimeoutRef.current = setTimeout(() => setChatRateLimitNotice(null), 2500);
             return;
@@ -274,10 +326,6 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
         if (event.type === "MATCH_CHAT_CLOSED") {
             setChatClosed(true);
             setChatClosedNotice(event.message ?? "Match chat is now closed.");
-            intentionalSocketCloseRef.current = true;
-            closeSocketAfterChatRef.current = true;
-            const activeClient = clientRef.current;
-            if (activeClient) void disconnectActiveMatchmakingClient(activeClient);
             return;
         }
         if (event.type !== "MATCH_CHAT_MESSAGE") return;
@@ -288,7 +336,6 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
 
     const handleSocketStatus = (status) => {
         if (status === "ERROR" || status === "CLOSED") {
-            if (intentionalSocketCloseRef.current) return;
             if (terminalMatchRef.current) return;
             matchAcceptanceSubmitPendingRef.current = false;
             setMatchAcceptanceState(queueStatusRef.current === "MATCH_ACCEPT"
@@ -320,8 +367,12 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
             rawEvent,
             estimatedOneWayDelayMs,
             eventReceivedAtMs,
+            matchEventRef.current,
         );
-        if (isOlderMatchRoundEvent(event, matchEventRef.current)) return;
+        const isPlayerReconnectedEvent = event.type === "PLAYER_RECONNECTED";
+        if (!isPlayerReconnectedEvent && (isOlderMatchRoundEvent(event, matchEventRef.current)
+            || isOlderMatchPhaseEvent(event, matchEventRef.current))
+            && event.type !== "PLAYER_DISCONNECTED") return;
         const isSelectionPhaseStart = (
             event.type === "MATCH_STARTED"
             || event.type === "MATCH_LOADOUT_SELECTION_READY"
@@ -336,10 +387,13 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
         if ((event.type === "MATCH_LOADOUT_SELECTED"
             || event.type === "BOT_BUILDING_SESSION_READY")
             && !isSelectionEventForActivePhase(event, loadoutSelectionPhaseRef.current)) return;
+        if (event.type === "NO_ACTIVE_MATCH") {
+            clearActiveMatch();
+        }
         if (redirectToHomeForTerminalEvent({
             event,
             acceptanceActive: queueStatusRef.current === "MATCH_ACCEPT",
-            currentMatchId: matchEventRef.current?.matchId ?? initialMatchEventPayload?.matchId,
+            currentMatchId: matchEventRef.current?.matchId,
         })) {
             return;
         }
@@ -357,10 +411,12 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
             setDisconnectRemaining(0);
         } else if (event.type === "MATCH_FOUND" || event.type === "MATCH_STARTED") {
             terminalMatchRef.current = false;
+            terminalResultRef.current = false;
             disconnectNoticeResetAtRef.current = 0;
             setDisconnectNotice(null);
             setDisconnectRemaining(0);
         }
+        const disconnectSeconds = Math.max(1, secondsRemaining(event.disconnectEndsAtMs, 30));
         if (shouldShowDisconnectNotice({
             event,
             terminalMatch: terminalMatchRef.current,
@@ -372,12 +428,15 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
             setDisconnectNotice({
                 endsAtMs: event.disconnectEndsAtMs,
                 message: self
-                    ? "Connection lost. Reconnect within 30 seconds or the match will be forfeited."
-                    : `${event.opponent?.username ?? "Your opponent"} disconnected. They have 30 seconds to return.`,
+                    ? `Connection lost. Reconnect within ${disconnectSeconds} seconds or the match will be forfeited.`
+                    : `${event.opponent?.username ?? "Your opponent"} disconnected. They have ${disconnectSeconds} seconds to return.`,
                 self,
             });
-            setDisconnectRemaining(secondsRemaining(event.disconnectEndsAtMs, 30));
+            setDisconnectRemaining(disconnectSeconds);
         }
+        if (terminalResultRef.current
+            && event.type !== "MATCH_RESULT_READY"
+            && !isPlayerReconnectedEvent) return;
         if (event.type === "QUEUE_WAITING") {
             updateQueueStatus("WAITING");
         }
@@ -447,7 +506,9 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
             setRemaining(event.status === "LOADOUT_SELECT"
                 ? secondsRemaining(loadoutSelectionDeadlineRef.current)
                 : 0);
-            setLoadoutChoice(decodeBotLoadout(event.player?.selectedLoadout));
+            setLoadoutChoice(
+                readLoadoutDraft(event) ?? decodeBotLoadout(event.player?.selectedLoadout),
+            );
             playbackRef.current = null;
             setPlayback(null);
             setHasFinished(false);
@@ -473,11 +534,15 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
             setCurrentMatchEvent(event);
             updateQueueStatus("LOADOUT_SELECT");
             setRemaining(secondsRemaining(loadoutSelectionDeadlineRef.current));
+            setLoadoutChoice(
+                readLoadoutDraft(event) ?? decodeBotLoadout(event.player?.selectedLoadout),
+            );
         }
         if (event.type === "MATCH_LOADOUT_SELECTED") {
             setCurrentMatchEvent(event);
             updateQueueStatus("LOADOUT_SELECT");
             if (event.player?.loadoutSelected) {
+                clearLoadoutDraft(event);
                 loadoutSubmitPendingRef.current = false;
                 setLoadoutSubmitPending(false);
                 setLoadoutChoice(decodeBotLoadout(event.player.selectedLoadout));
@@ -490,6 +555,7 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
             setCurrentMatchEvent(event);
             enterBuildingRoomAtDeadline();
             setRemaining(0);
+            clearLoadoutDraft(event);
             setLoadoutChoice(decodeBotLoadout(event.player?.selectedLoadout));
             placementSubmitPendingRef.current = false;
             setPlacementSubmitPending(false);
@@ -512,7 +578,7 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
             setFinishPending(false);
             setHasSurrendered(false);
             setSurrenderPending(false);
-            setLoadoutChoice(loadoutForFreshRound(
+            setLoadoutChoice(readLoadoutDraft(event) ?? loadoutForFreshRound(
                 decodeBotLoadout(event.player?.selectedLoadout),
                 event.roundNumber,
             ));
@@ -572,6 +638,9 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
             setFinishError(event.message ?? "The server rejected the bot submission. Review the bot and try again.");
         }
         if (event.type === "SIMULATION_PREPARING") {
+            disconnectNoticeResetAtRef.current = eventServerNowMs;
+            setDisconnectNotice(null);
+            setDisconnectRemaining(0);
             setCurrentMatchEvent(event);
             const localSchedule = localReplaySchedule(
                 event.playbackStartsAtMs,
@@ -610,6 +679,7 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
             }
         }
         if (event.type === "MATCH_REPLAY_BATCH") {
+            if (terminalResultRef.current) return;
             if (playbackRef.current?.roundNumber != null
                 && event.roundNumber != null
                 && Number(playbackRef.current.roundNumber) !== Number(event.roundNumber)) return;
@@ -643,6 +713,9 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
             });
         }
         if (event.type === "MATCH_RESULT_READY") {
+            terminalResultRef.current = true;
+            clearActiveMatch();
+            clearLoadoutDraft(event);
             setSurrenderPending(false);
             if (event.playback?.result === "RESIGNATION_WIN"
                 && event.playback?.winnerUserId
@@ -654,27 +727,13 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
             setDisconnectNotice(null);
             setDisconnectRemaining(0);
             setPlayback((currentPlayback) => {
-                const isDisconnectResult = event.playback?.result === "DISCONNECTION_WIN";
-                const nextPlayback = isDisconnectResult
-                    ? {
-                        ...(event.playback ?? {}),
-                        player: event.player,
-                        opponent: event.opponent,
-                        players: event.players,
-                        roundNumber: event.roundNumber,
-                        winsRequired: event.winsRequired,
-                        playbackStartsAt: event.playbackStartsAt,
-                        playbackStartsAtMs: event.playbackStartsAtMs,
-                        resultRevealsAt: event.resultRevealsAt,
-                        resultRevealsAtMs: event.resultRevealsAtMs,
-                        roundReadyAt: event.roundReadyAt,
-                        roundReadyAtMs: event.roundReadyAtMs,
-                        matchChatEndsAt: event.matchChatEndsAt,
-                        matchChatEndsAtMs: event.matchChatEndsAtMs,
-                    }
-                    : {
-                    ...(event.playback ?? {}),
+                const nextPlayback = {
                     ...(currentPlayback ?? {}),
+                    ...(event.playback ?? {}),
+                    initialState: event.playback?.initialState ?? currentPlayback?.initialState,
+                    frames: event.playback?.frames?.length
+                        ? event.playback.frames
+                        : currentPlayback?.frames ?? event.playback?.frames,
                     playbackStartsAt: event.playbackStartsAt ?? currentPlayback?.playbackStartsAt,
                     playbackStartsAtMs: currentPlayback?.playbackStartsAtMs ?? event.playbackStartsAtMs,
                     resultRevealsAt: event.resultRevealsAt ?? currentPlayback?.resultRevealsAt,
@@ -701,7 +760,6 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
 
     const { socketStatus } = useMatchmakingSocket({
         clientRef,
-        closeSocketAfterChatRef,
         onChatEvent: handleChatEvent,
         onStatus: handleSocketStatus,
         onEvent: handleMatchEvent,
@@ -752,6 +810,10 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
         return () => clearInterval(interval);
     }, [queueStatus]);
 
+    useEffect(() => {
+        writeLoadoutDraft(matchEvent, loadoutChoice);
+    }, [loadoutChoice, matchEvent, queueStatus]);
+
     const finishMatch = () => {
         if (finishPending || hasFinished || socketStatus !== "CONNECTED") return;
         setFinishError(null);
@@ -768,7 +830,11 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
         if (loadoutSubmitPending || matchEvent?.player?.loadoutSelected || socketStatus !== "CONNECTED") return;
         loadoutSubmitPendingRef.current = true;
         setLoadoutSubmitPending(true);
-        clientRef.current?.selectLoadout(encodeBotLoadout(loadoutChoice));
+        clientRef.current?.selectLoadout(
+            encodeBotLoadout(loadoutChoice),
+            matchEvent?.matchId,
+            matchEvent?.roundNumber,
+        );
     };
 
     const acceptMatch = () => {
@@ -808,6 +874,7 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
         opponent,
         players: matchEvent?.players ?? [],
         buildingEndsAt: matchEvent?.buildingEndsAt,
+        buildingEndsAtAuthoritativeMs: matchEvent?.buildingEndsAtAuthoritativeMs,
         buildingEndsAtMs: matchEvent?.buildingEndsAtMs,
         roundReadyAt: matchEvent?.roundReadyAt,
         roundReadyAtMs: matchEvent?.roundReadyAtMs,
@@ -833,6 +900,7 @@ export function useMatchLifecycle({ initialRouteMatchEvent, navigate }) {
         opponent,
         matchEvent?.players,
         matchEvent?.buildingEndsAt,
+        matchEvent?.buildingEndsAtAuthoritativeMs,
         matchEvent?.buildingEndsAtMs,
         matchEvent?.roundReadyAt,
         matchEvent?.roundReadyAtMs,
@@ -936,8 +1004,8 @@ function arenaPreloadShapes(event) {
                 y: slotOne ? DUEL_SLOT_ONE_Y : DUEL_SLOT_TWO_Y,
                 rotation: slotOne ? 180 : 0,
                 size: 60,
-                hp: 100,
-                maxHp: 100,
+                hp: BASE_BOT_HP,
+                maxHp: BASE_BOT_HP,
                 combatLoadout: participant.selectedLoadout ?? "melee",
                 abilities: loadout.abilities,
                 locked: true,

@@ -1,5 +1,10 @@
 package com.example.botfight.service;
 
+import com.example.botfight.service.auth.AuthService;
+import com.example.botfight.service.auth.CurrentUserService;
+import com.example.botfight.service.auth.GoogleAuthService;
+import com.example.botfight.service.auth.UserAuthIdentityService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;

@@ -1,7 +1,6 @@
 import {
     CLIENT_BUILD_VERSION,
     BOT_SUBMISSION_ENDPOINT,
-    BUILDING_SESSION_ENDPOINT,
 } from "./SubmissionContract.js";
 import { ensureCsrfHeaders } from "../../../security/csrf";
 import { API_BASE_URL } from "../../../config/api.js";
@@ -10,7 +9,8 @@ import { normalizeAbilityStrategyConfiguration } from "../code/BotCode.js";
 export async function buildBotSubmissionPayload({
     code,
     matchId = null,
-    buildingSessionId = null,
+    roundNumber = null,
+    phase = null,
     selectedLoadout = "custom",
     loadout = null,
 }) {
@@ -21,7 +21,8 @@ export async function buildBotSubmissionPayload({
 
     return {
         matchId,
-        buildingSessionId,
+        roundNumber,
+        phase,
         selectedLoadout,
         clientBuildVersion: CLIENT_BUILD_VERSION,
         brain: normalizedCode,
@@ -49,45 +50,4 @@ export async function submitBotPayload(payload) {
     }
 
     return body;
-}
-
-export async function createBuildingSession(matchId = null) {
-    const endpoint = matchId
-        ? `${BUILDING_SESSION_ENDPOINT}?matchId=${encodeURIComponent(matchId)}`
-        : BUILDING_SESSION_ENDPOINT;
-    const response = await fetch(endpoint, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-            "Content-Type": "application/json",
-            ...(await ensureCsrfHeaders("POST", API_BASE_URL)),
-        },
-    });
-
-    const responseText = await response.text();
-    const body = responseText ? safeJson(responseText) : {};
-
-    if (!response.ok) {
-        throw new Error(body.message ?? responseText ?? `Building session failed with ${response.status}`);
-    }
-
-    return body;
-}
-
-function safeJson(text) {
-    try {
-        return JSON.parse(text);
-    } catch {
-        return {};
-    }
-}
-
-export async function fetchBuildingSessionDuration(buildingSessionId) {
-    const response = await fetch(`${BUILDING_SESSION_ENDPOINT}/${buildingSessionId}/duration`, {
-        credentials: "include",
-    });
-    if (!response.ok) return null;
-
-    const body = await response.json();
-    return body.buildingDurationMs ?? null;
 }

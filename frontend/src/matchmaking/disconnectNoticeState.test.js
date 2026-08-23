@@ -30,17 +30,16 @@ test("terminal result events clear and block disconnect notices", () => {
     }), false);
 });
 
-test("server-authored terminal replay events block stale disconnect events", () => {
-    const terminalReplayEvent = {
+test("replay events do not reveal or imply a terminal match", () => {
+    const replayEvent = {
         type: "SIMULATION_PREPARING",
-        matchTerminal: true,
         playback: { status: "COMPLETED", result: "BOT_WIN" },
     };
 
-    assert.equal(isTerminalMatchEvent(terminalReplayEvent), true);
+    assert.equal(isTerminalMatchEvent(replayEvent), false);
     assert.equal(shouldShowDisconnectNotice({
         event: disconnectEvent,
-        terminalMatch: isTerminalMatchEvent(terminalReplayEvent),
+        terminalMatch: isTerminalMatchEvent(replayEvent),
         eventServerNowMs: 40_000,
-    }), false);
+    }), true);
 });

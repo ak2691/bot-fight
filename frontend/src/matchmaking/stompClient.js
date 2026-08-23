@@ -14,13 +14,18 @@ import {
 } from "./networkDelayEstimator";
 
 const MATCHMAKING_DESTINATION = "/user/queue/matchmaking";
+const MATCH_DESTINATION = "/user/queue/match";
 const MATCH_CHAT_DESTINATION = "/user/queue/match-chat";
+const NOTIFICATION_DESTINATION = "/user/queue/notifications";
 const RECONNECT_DELAY_MS = 2_000;
 const MAX_RECONNECT_DELAY_MS = 10_000;
 const HEARTBEAT_INTERVAL_MS = 10_000;
 const MAX_ACCEPTED_NETWORK_DELAY_MS = 1_500;
 const NETWORK_DELAY_RESAMPLE_INTERVAL_MS = 30_000;
-
+const MATCH_ACCEPTANCE_TERMINAL_EVENT_TYPES = new Set([
+    "MATCH_ACCEPTANCE_EXPIRED",
+    "MATCH_ACCEPTANCE_CANCELLED",
+]);
 const networkDelaySynchronizer = createNetworkDelaySynchronizer({
     requestSample: () => requestBestNetworkDelaySample({
         fetchImpl: globalThis.fetch,
@@ -45,12 +50,14 @@ function sampleNetworkDelay() {
 export function createMatchmakingClient({
     onEvent,
     onChatEvent,
+    onNotification,
     onStatus,
     autoReconnect = false,
     autoJoinOnConnect = false,
 }) {
     let eventHandler = onEvent;
     let chatEventHandler = onChatEvent;
+    let notificationHandler = onNotification;
     let statusHandler = onStatus;
     let stompClient = null;
     let connectInFlight = false;
@@ -59,8 +66,25 @@ export function createMatchmakingClient({
     let eventDelivery = Promise.resolve();
     let networkDelayIntervalId = null;
     let resumeOnConnect = false;
+    let reconnectEnabled = autoReconnect;
+    // The match subscriptions share this transport, so transport connectivity
+    // alone is not evidence that the user has a live match to resume.
+    let activeMatchId = null;
+    let terminalMatchId = null;
+    let matchmakingSubscriptionRequested = false;
+    let matchSubscriptionRequested = false;
+    let matchmakingSubscription = null;
+    let matchSubscription = null;
+    let matchChatSubscription = null;
+    let notificationSubscription = null;
     const pendingEvents = [];
     const pendingChatEvents = [];
+    const pendingNotifications = [];
+
+    const isTransportOpen = () => Boolean(
+        stompClient?.connected
+        && (!stompClient.webSocket || stompClient.webSocket.readyState === 1),
+    );
 
     const stopPeriodicNetworkDelaySampling = () => {
         if (networkDelayIntervalId == null) return;
@@ -68,15 +92,47 @@ export function createMatchmakingClient({
         networkDelayIntervalId = null;
     };
 
-    const startPeriodicNetworkDelaySampling = (generation) => {
+    const startPeriodicNetworkDelaySampling = (generation, transport) => {
         stopPeriodicNetworkDelaySampling();
         networkDelayIntervalId = setInterval(() => {
-            if (generation !== connectGeneration || !stompClient?.connected) return;
+            if (generation !== connectGeneration
+                || stompClient !== transport
+                || !transport?.connected) return;
             void sampleNetworkDelay();
         }, NETWORK_DELAY_RESAMPLE_INTERVAL_MS);
     };
 
-    const deliverEvent = (event, receivedAtMs = monotonicEpochNowMs()) => {
+    const updateMatchSocketBinding = (event) => {
+        if (event?.type === "NO_ACTIVE_MATCH") {
+            activeMatchId = null;
+            terminalMatchId = null;
+            return;
+        }
+
+        const eventMatchId = event?.matchId == null ? null : String(event.matchId);
+        if (eventMatchId == null) return;
+        if (terminalMatchId === eventMatchId) return;
+
+        if (event.type === "MATCH_RESULT_READY") {
+            if (activeMatchId === eventMatchId) activeMatchId = null;
+            terminalMatchId = eventMatchId;
+            return;
+        }
+        if (MATCH_ACCEPTANCE_TERMINAL_EVENT_TYPES.has(event.type)) {
+            if (activeMatchId === eventMatchId) activeMatchId = null;
+            return;
+        }
+
+        terminalMatchId = null;
+        activeMatchId = eventMatchId;
+    };
+
+    const deliverEvent = (
+        event,
+        receivedAtMs = monotonicEpochNowMs(),
+        fromMatchSubscription = false,
+    ) => {
+        if (fromMatchSubscription) updateMatchSocketBinding(event);
         if (eventHandler) {
             eventDelivery = eventDelivery
                 .then(() => eventHandler?.(event, receivedAtMs))
@@ -84,7 +140,7 @@ export function createMatchmakingClient({
                     updateStatus("ERROR");
                 });
         } else {
-            pendingEvents.push({ event, receivedAtMs });
+            pendingEvents.push({ event, receivedAtMs, fromMatchSubscription });
             if (pendingEvents.length > 100) pendingEvents.shift();
         }
     };
@@ -104,16 +160,90 @@ export function createMatchmakingClient({
     };
 
     const publish = (destination, body = {}) => {
-        if (!stompClient?.connected) return;
-        stompClient.publish({
-            destination,
-            body: JSON.stringify(body),
-            headers: { "content-type": "application/json" },
-        });
+        if (!isTransportOpen()) return false;
+        try {
+            stompClient.publish({
+                destination,
+                body: JSON.stringify(body),
+                headers: { "content-type": "application/json" },
+            });
+            return true;
+        } catch {
+            updateStatus("CLOSED");
+            return false;
+        }
+    };
+
+    const deliverNotification = (event) => {
+        if (notificationHandler) {
+            notificationHandler(event);
+        } else {
+            pendingNotifications.push(event);
+            if (pendingNotifications.length > 100) pendingNotifications.shift();
+        }
+    };
+
+    const unsubscribe = (subscription) => {
+        if (!subscription) return;
+        try {
+            subscription.unsubscribe();
+        } catch {
+            // The transport may already be closing. The broker will clean up
+            // the subscription with the session in that case.
+        }
+    };
+
+    const clearTransportSubscriptions = () => {
+        matchmakingSubscription = null;
+        matchSubscription = null;
+        matchChatSubscription = null;
+        notificationSubscription = null;
+    };
+
+    const subscribeRequestedDestinations = (transport) => {
+        if (!transport?.connected) return;
+
+        if (!notificationSubscription) {
+            notificationSubscription = transport.subscribe(
+                NOTIFICATION_DESTINATION,
+                (message) => deliverNotification(JSON.parse(message.body)),
+            );
+        }
+
+        if (matchmakingSubscriptionRequested && !matchmakingSubscription) {
+            matchmakingSubscription = transport.subscribe(
+                MATCHMAKING_DESTINATION,
+                (message) => {
+                    const receivedAtMs = monotonicEpochNowMs();
+                    deliverEvent(JSON.parse(message.body), receivedAtMs, false);
+                },
+            );
+        }
+
+        if (matchSubscriptionRequested) {
+            if (!matchSubscription) {
+                matchSubscription = transport.subscribe(
+                    MATCH_DESTINATION,
+                    (message) => {
+                        const receivedAtMs = monotonicEpochNowMs();
+                        deliverEvent(JSON.parse(message.body), receivedAtMs, true);
+                    },
+                );
+            }
+            if (!matchChatSubscription) {
+                matchChatSubscription = transport.subscribe(
+                    MATCH_CHAT_DESTINATION,
+                    (message) => deliverChatEvent(JSON.parse(message.body)),
+                );
+            }
+        }
     };
 
     const client = {
         async connect() {
+            // STOMP marks a client active while it is connecting or waiting to
+            // reconnect. A route handoff must not replace that transport just
+            // because the handshake has not completed yet.
             if (connectInFlight || stompClient?.active) {
                 statusHandler?.(currentStatus);
                 return;
@@ -136,14 +266,14 @@ export function createMatchmakingClient({
                 return;
             }
 
-            stompClient = new Client({
+            const transport = new Client({
                 brokerURL: websocketUrl(),
                 connectHeaders: {
                     host: new URL(websocketUrl()).host,
                     ...csrfHeaders,
                 },
                 connectionTimeout: 10_000,
-                reconnectDelay: autoReconnect ? RECONNECT_DELAY_MS : 0,
+                reconnectDelay: reconnectEnabled ? RECONNECT_DELAY_MS : 0,
                 reconnectTimeMode: ReconnectionTimeMode.EXPONENTIAL,
                 maxReconnectDelay: MAX_RECONNECT_DELAY_MS,
                 discardWebsocketOnCommFailure: true,
@@ -152,11 +282,17 @@ export function createMatchmakingClient({
                 heartbeatStrategy: TickerStrategy.Worker,
                 debug: () => { },
             });
-            stompClient.beforeConnect = async () => {
+            stompClient = transport;
+            const isCurrentTransport = () => (
+                generation === connectGeneration && stompClient === transport
+            );
+            transport.beforeConnect = async () => {
+                if (!isCurrentTransport()) return;
                 try {
                     const refreshedCsrfHeaders =
                         await ensureCsrfHeaders("POST", API_BASE_URL);
-                    stompClient.connectHeaders = {
+                    if (!isCurrentTransport()) return;
+                    transport.connectHeaders = {
                         host: new URL(websocketUrl()).host,
                         ...refreshedCsrfHeaders,
                     };
@@ -165,26 +301,21 @@ export function createMatchmakingClient({
                 }
             };
 
-            stompClient.onChangeState = (state) => {
-                if (state === ActivationState.ACTIVE && !stompClient.connected) {
+            transport.onChangeState = (state) => {
+                if (!isCurrentTransport()) return;
+                if (state === ActivationState.ACTIVE && !transport.connected) {
                     updateStatus("CONNECTING");
                 }
             };
-            stompClient.onConnect = async () => {
+            transport.onConnect = async () => {
+                if (!isCurrentTransport() || !transport.connected) return;
                 stopPeriodicNetworkDelaySampling();
                 networkDelaySynchronizer.clear();
-                const initialNetworkDelaySample = sampleNetworkDelay().catch(() => null);
-                eventDelivery = eventDelivery.then(() => initialNetworkDelaySample);
-                stompClient.subscribe(MATCHMAKING_DESTINATION, (message) => {
-                    const event = JSON.parse(message.body);
-                    deliverEvent(event, monotonicEpochNowMs());
-                });
-                stompClient.subscribe(MATCH_CHAT_DESTINATION, (message) => {
-                    deliverChatEvent(JSON.parse(message.body));
-                });
-                await initialNetworkDelaySample;
-                if (generation !== connectGeneration || !stompClient?.connected) return;
-                startPeriodicNetworkDelaySampling(generation);
+                void sampleNetworkDelay().catch(() => null);
+                clearTransportSubscriptions();
+                subscribeRequestedDestinations(transport);
+                if (!isCurrentTransport() || !transport.connected) return;
+                startPeriodicNetworkDelaySampling(generation, transport);
                 updateStatus("CONNECTED");
                 if (autoJoinOnConnect) client.resumeMatch();
                 if (resumeOnConnect && !autoJoinOnConnect) {
@@ -192,19 +323,26 @@ export function createMatchmakingClient({
                     client.resumeMatch();
                 }
             };
-            stompClient.onStompError = () => {
+            transport.onStompError = () => {
+                if (!isCurrentTransport()) return;
                 updateStatus("ERROR");
             };
-            stompClient.onWebSocketError = () => {
+            transport.onWebSocketError = () => {
+                if (!isCurrentTransport()) return;
                 updateStatus("ERROR");
             };
-            stompClient.onWebSocketClose = () => {
+            transport.onWebSocketClose = () => {
+                if (!isCurrentTransport()) return;
                 stopPeriodicNetworkDelaySampling();
+                clearTransportSubscriptions();
                 updateStatus("CLOSED");
+                if (!reconnectEnabled && transport.active) {
+                    void transport.deactivate();
+                }
             };
 
             connectInFlight = false;
-            stompClient.activate();
+            transport.activate();
         },
         setHandlers({ onEvent: nextOnEvent, onChatEvent: nextOnChatEvent, onStatus: nextOnStatus } = {}) {
             eventHandler = nextOnEvent;
@@ -212,15 +350,70 @@ export function createMatchmakingClient({
             statusHandler = nextOnStatus;
             if (eventHandler && pendingEvents.length > 0) {
                 const events = pendingEvents.splice(0);
-                events.forEach(({ event, receivedAtMs }) => deliverEvent(event, receivedAtMs));
+                events.forEach(({ event, receivedAtMs, fromMatchSubscription }) => (
+                    deliverEvent(event, receivedAtMs, fromMatchSubscription)
+                ));
             }
             if (chatEventHandler && pendingChatEvents.length > 0) {
                 const events = pendingChatEvents.splice(0);
                 events.forEach((event) => chatEventHandler?.(event));
             }
-            if (eventHandler && stompClient?.connected && autoJoinOnConnect) {
+            if (eventHandler && isTransportOpen() && autoJoinOnConnect) {
                 client.resumeMatch();
             }
+        },
+        clearPendingEvents() {
+            pendingEvents.splice(0);
+            pendingChatEvents.splice(0);
+        },
+        setNotificationHandler(nextHandler) {
+            notificationHandler = nextHandler;
+            if (notificationHandler && pendingNotifications.length > 0) {
+                const events = pendingNotifications.splice(0);
+                events.forEach((event) => notificationHandler?.(event));
+            }
+        },
+        clearPendingNotifications() {
+            pendingNotifications.splice(0);
+        },
+        resumeReconnect() {
+            reconnectEnabled = autoReconnect;
+            if (stompClient) {
+                stompClient.reconnectDelay = reconnectEnabled ? RECONNECT_DELAY_MS : 0;
+            }
+        },
+        isConnected() {
+            return isTransportOpen();
+        },
+        isConnectedForMatch(matchId) {
+            return isTransportOpen()
+                && matchSubscription != null
+                && activeMatchId != null
+                && matchId != null
+                && activeMatchId === String(matchId);
+        },
+        subscribeMatchmaking() {
+            matchmakingSubscriptionRequested = true;
+            if (isTransportOpen()) subscribeRequestedDestinations(stompClient);
+        },
+        unsubscribeMatchmaking() {
+            matchmakingSubscriptionRequested = false;
+            unsubscribe(matchmakingSubscription);
+            matchmakingSubscription = null;
+        },
+        subscribeMatch() {
+            matchSubscriptionRequested = true;
+            if (isTransportOpen()) subscribeRequestedDestinations(stompClient);
+        },
+        unsubscribeMatch() {
+            matchSubscriptionRequested = false;
+            resumeOnConnect = false;
+            unsubscribe(matchSubscription);
+            unsubscribe(matchChatSubscription);
+            matchSubscription = null;
+            matchChatSubscription = null;
+            activeMatchId = null;
+            terminalMatchId = null;
         },
         joinQueue() {
             publish("/app/matchmaking.join");
@@ -230,14 +423,28 @@ export function createMatchmakingClient({
         },
         resumeWhenConnected() {
             if (autoJoinOnConnect) return;
-            if (stompClient?.connected) {
+            client.resumeReconnect();
+            resumeOnConnect = true;
+            if (isTransportOpen()) {
                 client.resumeMatch();
                 return;
             }
-            resumeOnConnect = true;
         },
         acceptMatch(matchId) {
             publish("/app/matchmaking.accept", { matchId });
+        },
+        async acceptDuelInvite(inviteId) {
+            await client.connect();
+            const deadline = Date.now() + 10_000;
+            while (!isTransportOpen()) {
+                if (Date.now() >= deadline) {
+                    throw new Error("The notification connection is unavailable.");
+                }
+                await new Promise((resolve) => setTimeout(resolve, 50));
+            }
+            if (!publish("/app/matchmaking.acceptInvite", { inviteId })) {
+                throw new Error("The duel invite could not be sent.");
+            }
         },
         cancelMatch(matchId) {
             publish("/app/matchmaking.cancel", { matchId });
@@ -245,8 +452,8 @@ export function createMatchmakingClient({
         leaveQueue() {
             publish("/app/matchmaking.leave");
         },
-        selectLoadout(selectedLoadout) {
-            publish("/app/matchmaking.selectLoadout", { selectedLoadout });
+        selectLoadout(selectedLoadout, matchId, roundNumber) {
+            publish("/app/matchmaking.selectLoadout", { matchId, roundNumber, selectedLoadout });
         },
         surrender() {
             publish("/app/matchmaking.surrender");
@@ -258,6 +465,15 @@ export function createMatchmakingClient({
             connectGeneration += 1;
             stopPeriodicNetworkDelaySampling();
             networkDelaySynchronizer.clear();
+            matchmakingSubscriptionRequested = false;
+            matchSubscriptionRequested = false;
+            unsubscribe(matchmakingSubscription);
+            unsubscribe(matchSubscription);
+            unsubscribe(matchChatSubscription);
+            unsubscribe(notificationSubscription);
+            clearTransportSubscriptions();
+            activeMatchId = null;
+            terminalMatchId = null;
             const activeClient = stompClient;
             stompClient = null;
             connectInFlight = false;
@@ -279,12 +495,24 @@ export function getActiveMatchmakingClient(handlers, options = {}) {
             autoJoinOnConnect: options.autoJoinOnConnect ?? true,
         });
     } else {
-        activeMatchmakingClient.setHandlers(handlers);
+        if (options.clearPendingEvents) activeMatchmakingClient.clearPendingEvents?.();
+        if (handlers && ("onEvent" in handlers || "onChatEvent" in handlers || "onStatus" in handlers)) {
+            activeMatchmakingClient.setHandlers(handlers);
+        }
+        if (handlers && "onNotification" in handlers) {
+            activeMatchmakingClient.setNotificationHandler?.(handlers.onNotification);
+        }
     }
     return activeMatchmakingClient;
 }
 
-export function disconnectActiveMatchmakingClient(client = activeMatchmakingClient) {
+export function forceDisconnectActiveMatchmakingClient(client = activeMatchmakingClient) {
     if (activeMatchmakingClient === client) activeMatchmakingClient = null;
+    client?.setNotificationHandler?.(null);
+    client?.clearPendingNotifications?.();
     return client?.disconnect?.() ?? Promise.resolve();
+}
+
+export function isActiveMatchSocketConnected(matchId) {
+    return activeMatchmakingClient?.isConnectedForMatch?.(matchId) === true;
 }

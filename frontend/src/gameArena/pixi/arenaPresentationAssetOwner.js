@@ -14,7 +14,7 @@ export const REQUIRED_ARENA_PRESENTATION_PATHS = Object.freeze([
     "rays.rail_shot",
     "muzzleFlash",
     "stun",
-    "microDashSmoke",
+    "dashSmoke",
     "windburst",
     "fireball",
     "grenade.moving",
@@ -62,9 +62,19 @@ export function createArenaPresentationAssetOwner({
     let cataloguePromise = null;
     const assetPromises = new Map();
     const listeners = new Set();
+    let progress = emptyProgress();
+    let attemptAssetKeys = new Set();
+    let completedAttemptAssetKeys = new Set();
 
     function snapshot() {
-        return { status, catalogue, error };
+        return {
+            status,
+            catalogue,
+            error,
+            loadedCount: progress.loadedCount,
+            totalCount: progress.totalCount,
+            currentAsset: progress.currentAsset,
+        };
     }
 
     function notify() {
@@ -74,19 +84,45 @@ export function createArenaPresentationAssetOwner({
 
     function loadRequiredAsset(url, assetId) {
         const cacheKey = String(url);
-        const existing = assetPromises.get(cacheKey);
-        if (existing) return existing;
-        const request = Promise.resolve()
-            .then(() => loadAsset(url, assetId))
-            .then((value) => {
-                if (value == null) throw new Error("The asset loader returned no resource.");
-                return value;
-            })
-            .catch((cause) => {
-                assetPromises.delete(cacheKey);
-                if (cause instanceof ArenaAssetLoadError) throw cause;
-                throw new ArenaAssetLoadError(assetId, url, cause);
-            });
+        if (attemptAssetKeys.has(cacheKey)) return assetPromises.get(cacheKey);
+
+        attemptAssetKeys.add(cacheKey);
+        progress = {
+            ...progress,
+            totalCount: progress.totalCount + 1,
+            currentAsset: assetId,
+        };
+        notify();
+
+        let request = assetPromises.get(cacheKey);
+        if (!request) {
+            request = Promise.resolve()
+                .then(() => loadAsset(url, assetId))
+                .then((value) => {
+                    if (value == null) throw new Error("The asset loader returned no resource.");
+                    return value;
+                })
+                .catch((cause) => {
+                    assetPromises.delete(cacheKey);
+                    if (cause instanceof ArenaAssetLoadError) throw cause;
+                    throw new ArenaAssetLoadError(assetId, url, cause);
+                });
+        }
+
+        request = request.then((value) => {
+            if (!completedAttemptAssetKeys.has(cacheKey)) {
+                completedAttemptAssetKeys.add(cacheKey);
+                progress = {
+                    ...progress,
+                    loadedCount: progress.loadedCount + 1,
+                    currentAsset: progress.loadedCount + 1 >= progress.totalCount
+                        ? null
+                        : progress.currentAsset,
+                };
+                notify();
+            }
+            return value;
+        });
         assetPromises.set(cacheKey, request);
         return request;
     }
@@ -99,6 +135,9 @@ export function createArenaPresentationAssetOwner({
 
         status = ARENA_ASSET_STATUS.LOADING;
         error = null;
+        progress = emptyProgress();
+        attemptAssetKeys = new Set();
+        completedAttemptAssetKeys = new Set();
         notify();
         inFlight = Promise.resolve()
             .then(() => loadCatalogue(loadRequiredAsset))
@@ -146,6 +185,10 @@ export function createArenaPresentationAssetOwner({
             return () => listeners.delete(listener);
         },
     };
+}
+
+function emptyProgress() {
+    return { loadedCount: 0, totalCount: 0, currentAsset: null };
 }
 
 export function isArenaPresentationReady(state) {

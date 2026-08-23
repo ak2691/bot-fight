@@ -49,3 +49,27 @@ export function isOlderMatchRoundEvent(event, activeEvent) {
         && eventPhase.matchId === activePhase.matchId
         && eventPhase.roundNumber < activePhase.roundNumber;
 }
+
+export function isOlderMatchPhaseEvent(event, activeEvent) {
+    const eventPhase = selectionPhaseForEvent(event);
+    const activePhase = selectionPhaseForEvent(activeEvent);
+    if (!eventPhase || !activePhase
+        || eventPhase.matchId !== activePhase.matchId
+        || eventPhase.roundNumber !== activePhase.roundNumber) return false;
+    return phaseRank(event) < phaseRank(activeEvent);
+}
+
+function phaseRank(event) {
+    if (event?.type === "MATCH_RESULT_READY") return 5;
+    if (event?.type === "SIMULATION_PREPARING"
+        || event?.type === "MATCH_REPLAY_BATCH"
+        || event?.status === "READY_FOR_PLAYBACK"
+        || event?.status === "SIMULATION_PREPARING") return 4;
+    if (event?.type === "SIMULATION_LOADING" || event?.status === "SIMULATION_LOADING") return 3;
+    if (event?.type === "PLAYER_FINISHED" || event?.status === "WAITING_FOR_FINISH") return 2;
+    if (event?.type === "MATCH_LOADOUT_SELECTED") return 1;
+    if (event?.type === "BOT_BUILDING_SESSION_READY"
+        || event?.status === "PREP"
+        || event?.status === "OBJECT_PLACEMENT") return 2;
+    return 0;
+}

@@ -275,8 +275,10 @@ export function compileCodeEditorGraph(configuration, graph) {
                 if (actionDefinition(nextEntry.action)?.movementConfig) nextEntry.movementMode = "target";
                 else nextEntry.targetMode = "target";
                 nextEntry.actionTarget = source.target;
-                nextEntry.targetOffsetX = source.targetOffsetX;
-                nextEntry.targetOffsetY = source.targetOffsetY;
+                if (!actionDefinition(nextEntry.action)?.movementConfig) {
+                    nextEntry.targetOffsetX = source.targetOffsetX;
+                    nextEntry.targetOffsetY = source.targetOffsetY;
+                }
             }
             actions[actionIndex] = nextEntry;
         });

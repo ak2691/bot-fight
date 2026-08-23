@@ -1,12 +1,11 @@
 import { ALL_ABILITY_DEFINITIONS, decodeBotLoadout, encodeBotLoadout, normalizedBotLoadout } from "../loadout/BotLoadout.js";
-import { MAIN_SHAPE, buildOpponentShape, resetBotShape } from "../modelPayloads/arenaShapes.js";
 import { abilityIdFromBoundary } from "../gameconfig/AbilityCompatibility.js";
+import { MAIN_SHAPE, buildOpponentShape, resetBotShape } from "../modelPayloads/arenaShapes.js";
 
-const ZERO_STATS = Object.freeze({ maxHp: 0, moveSpeed: 0, attackDamage: 0, attackSpeed: 0 });
 const MOVEMENT_TEST_ABILITIES = new Set([21]);
 
 function loadout(...abilities) {
-    return encodeBotLoadout({ abilities, statPoints: { ...ZERO_STATS } });
+    return encodeBotLoadout({ abilities });
 }
 
 function always() {
@@ -64,14 +63,14 @@ function moveTowardTarget() {
     return {
         action: "move_walk",
         movementMode: "target",
-        movementDirection: "toward",
+        movementDirection: 0,
         actionTarget: "opponent",
     };
 }
 
 function actionForAbility(abilityId) {
     const action = { action: abilityId, actionTarget: "opponent" };
-    if (abilityId === 19) Object.assign(action, { movementMode: "target", movementDirection: "toward" });
+    if (abilityId === 19) Object.assign(action, { movementMode: "target", movementDirection: 0 });
     if ([22, 24].includes(abilityId)) action.targetMode = "target";
     if (abilityId === 25) action.phaseFacingMode = "face_origin";
     return action;
@@ -124,7 +123,7 @@ function positioningFor(abilityId) {
         playerRotation: 180,
         opponentRotation: 0,
     };
-    if ([1, 2, 16, 23, 10, 7, 8, 17, 18].includes(abilityId)) {
+    if ([1, 16, 23, 10, 7, 8, 17, 18, 34].includes(abilityId)) {
         return { player: { x: 500, y: 500 }, opponent: { x: 500, y: 590 }, playerRotation: 180, opponentRotation: 0 };
     }
     if (abilityId === 6) {
@@ -172,7 +171,6 @@ function buildPreset(ability) {
         opponentPosition: positioning.opponent,
         playerRotation: positioning.playerRotation,
         opponentRotation: positioning.opponentRotation,
-        replayDurationMs: 12_000,
     });
 }
 
@@ -181,20 +179,6 @@ export const ABILITY_TEST_PRESETS = Object.freeze(ALL_ABILITY_DEFINITIONS.map(bu
 export function findAbilityTestingPreset(id) {
     const abilityId = abilityIdFromBoundary(id);
     return ABILITY_TEST_PRESETS.find((preset) => preset.id === abilityId) ?? null;
-}
-
-export function getAbilityTestingPreset(id) {
-    return findAbilityTestingPreset(id) ?? ABILITY_TEST_PRESETS[0];
-}
-
-/**
- * Resolve a catalogue ID into a fresh serializable preset payload.
- * Route consumers should use the stable ID and call this registry rather than
- * accepting a mutable payload from the browser.
- */
-export function abilityTestingPreset(id) {
-    const preset = findAbilityTestingPreset(id);
-    return preset ? JSON.parse(JSON.stringify(preset)) : null;
 }
 
 export function buildAbilityTestingArenaShapes(preset) {

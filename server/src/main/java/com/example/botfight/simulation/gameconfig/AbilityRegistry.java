@@ -41,7 +41,6 @@ public final class AbilityRegistry {
     private static Map<Integer, String> createNames() {
         LinkedHashMap<Integer, String> names = new LinkedHashMap<>();
         register(names, 1, "swing");
-        register(names, 2, "block");
         register(names, 3, "fire_gun");
         register(names, 4, "throw_grenade");
         register(names, 5, "shoot_fireball");
@@ -65,6 +64,15 @@ public final class AbilityRegistry {
         register(names, 23, "absolute_guard");
         register(names, 24, "null_zone");
         register(names, 25, "phase_strike");
+        register(names, 26, "frost_ring");
+        register(names, 27, "singularity");
+        register(names, 28, "tether_bolt");
+        register(names, 29, "static_snare");
+        register(names, 30, "disruptor_dart");
+        register(names, 31, "repeller_drone");
+        register(names, 32, "siphon_lance");
+        register(names, 33, "overclock");
+        register(names, 34, "basic_strike");
         return Map.copyOf(names);
     }
 

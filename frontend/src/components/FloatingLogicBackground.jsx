@@ -1,6 +1,6 @@
 const floatingNodePairs = [
-    { id: "hp", className: "home-float-pair-1", condition: { depth: 1, label: "Conditional 1", rows: [["IF", "My HP", "<", "45"]] }, action: { label: "Walk", target: "Away From Opponent 1" } },
-    { id: "distance", className: "home-float-pair-2", condition: { depth: 1, label: "Conditional 2", rows: [["IF", "Target Distance", ">", "100"]] }, action: { label: "Walk", target: "Toward Opponent 1" } },
+    { id: "hp", className: "home-float-pair-1", condition: { depth: 1, label: "Conditional 1", rows: [["IF", "My HP", "<", "45"]] }, action: { label: "Movement: Walk", target: "Away From Opponent 1" } },
+    { id: "distance", className: "home-float-pair-2", condition: { depth: 1, label: "Conditional 2", rows: [["IF", "Target Distance", ">", "100"]] }, action: { label: "Movement: Walk", target: "Toward Opponent 1" } },
     { id: "always", className: "home-float-pair-3", condition: { depth: 1, label: "Conditional 1", rows: [["IF", "ALWAYS"]] }, action: { label: "Face Target", target: "Opponent 1" } },
     { id: "bearing", className: "home-float-pair-4", wide: true, condition: { depth: 1, label: "Conditional 1", rows: [["IF", "Target Distance", "<=", "115"], ["AND", "Target Bearing Difference (Shortest)", "<=", "75"]] }, action: { label: "Heavy Slash", target: "Opponent 1" } },
 ];

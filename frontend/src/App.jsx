@@ -1,26 +1,33 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthContext'
+import ActiveMatchProtectedRoute from './auth/ActiveMatchProtectedRoute'
+import MatchProtectedRoute from './auth/MatchProtectedRoute.jsx'
 import ProtectedRoute from './auth/ProtectedRoute'
+import AdminRoute from './auth/AdminRoute.jsx'
 import HomePage from './pages/home/HomePage'
+import Arena from './gameArena/Arena'
 import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
+import ServerErrorPage from './pages/ServerErrorPage.jsx'
 import CreditsPage from './pages/credits/CreditsPage'
 import VerifyEmailPage from './pages/auth/VerifyEmailPage'
-import { loadAbilityCatalogue, loadAbilityTesting, loadAbilityTestingReplay, loadGameArena, loadConditionalCatalogue, loadMatchmaking, loadProfile, loadProfileSearch } from './routeLoaders'
+import { loadAbilityCatalogue, loadConditionalCatalogue, loadMatch, loadProfile, loadProfileSearch, loadPuzzleBuilder, loadPuzzlePlay, loadPuzzles, loadTutorial } from './routeLoaders'
 import MatchmakingProvider from './matchmaking/MatchmakingProvider'
+import NotificationsProvider from './notifications/NotificationsProvider.jsx'
 import ArenaLoadingScreen from './components/ArenaLoadingScreen'
+import ArenaPresentationAssetsProvider from './gameArena/pixi/ArenaPresentationAssetsProvider.jsx'
 import './App.css'
 
-const Arena = lazy(loadGameArena)
 const AbilityCataloguePage = lazy(loadAbilityCatalogue)
-const AbilityTestingPage = lazy(loadAbilityTesting)
-const AbilityTestingReplayPage = lazy(loadAbilityTestingReplay)
 const ConditionalCataloguePage = lazy(loadConditionalCatalogue)
-const GamePage = lazy(loadMatchmaking)
+const GamePage = lazy(loadMatch)
 const ProfilePage = lazy(loadProfile)
 const ProfileSearchPage = lazy(loadProfileSearch)
-const TutorialPage = lazy(() => import('./tutorial/TutorialPage'))
+const TutorialPage = lazy(loadTutorial)
+const PuzzleListPage = lazy(loadPuzzles)
+const PuzzlePlayPage = lazy(loadPuzzlePlay)
+const PuzzleBuilderPage = lazy(loadPuzzleBuilder)
 
 function App() {
 
@@ -29,18 +36,23 @@ function App() {
 
     <BrowserRouter>
       <AuthProvider>
-        <MatchmakingProvider>
-          <Suspense fallback={<ArenaLoadingScreen />}>
-            <Routes>
+        <NotificationsProvider>
+          <MatchmakingProvider>
+            <ArenaPresentationAssetsProvider>
+              <Suspense fallback={<ArenaLoadingScreen />}>
+                <Routes>
             <Route path="/" element={<Navigate to="/login" replace />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />
+            <Route path="/error" element={<ServerErrorPage />} />
             <Route
               path="/home"
               element={(
                 <ProtectedRoute>
-                  <HomePage />
+                  <ActiveMatchProtectedRoute>
+                    <HomePage />
+                  </ActiveMatchProtectedRoute>
                 </ProtectedRoute>
               )}
             />
@@ -49,7 +61,7 @@ function App() {
               element={<CreditsPage />}
             />
             <Route
-              path="/beta"
+              path="/practice"
               element={(
                 <ProtectedRoute>
                   <Arena />
@@ -61,22 +73,6 @@ function App() {
               element={(
                 <ProtectedRoute>
                   <AbilityCataloguePage />
-                </ProtectedRoute>
-              )}
-            />
-            <Route
-              path="/ability-testing"
-              element={(
-                <ProtectedRoute>
-                  <AbilityTestingPage />
-                </ProtectedRoute>
-              )}
-            />
-            <Route
-              path="/ability-testing/replay"
-              element={(
-                <ProtectedRoute>
-                  <AbilityTestingReplayPage />
                 </ProtectedRoute>
               )}
             />
@@ -97,10 +93,38 @@ function App() {
               )}
             />
             <Route
-              path="/matchmaking"
+              path="/puzzles"
               element={(
                 <ProtectedRoute>
-                  <GamePage />
+                  <PuzzleListPage />
+                </ProtectedRoute>
+              )}
+            />
+            <Route
+              path="/puzzles/:puzzleNumber"
+              element={(
+                <ProtectedRoute>
+                  <PuzzlePlayPage />
+                </ProtectedRoute>
+              )}
+            />
+            <Route
+              path="/admin/puzzles/new"
+              element={(
+                <ProtectedRoute>
+                  <AdminRoute>
+                    <PuzzleBuilderPage />
+                  </AdminRoute>
+                </ProtectedRoute>
+              )}
+            />
+            <Route
+              path="/match"
+              element={(
+                <ProtectedRoute>
+                  <MatchProtectedRoute>
+                    <GamePage />
+                  </MatchProtectedRoute>
                 </ProtectedRoute>
               )}
             />
@@ -128,9 +152,11 @@ function App() {
                 </ProtectedRoute>
               )}
             />
-            </Routes>
-          </Suspense>
-        </MatchmakingProvider>
+                </Routes>
+              </Suspense>
+            </ArenaPresentationAssetsProvider>
+          </MatchmakingProvider>
+        </NotificationsProvider>
       </AuthProvider>
     </BrowserRouter>
   )

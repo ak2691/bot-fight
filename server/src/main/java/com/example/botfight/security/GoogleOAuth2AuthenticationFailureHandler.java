@@ -1,6 +1,6 @@
 package com.example.botfight.security;
 
-import com.example.botfight.service.GoogleAuthService;
+import com.example.botfight.service.auth.GoogleAuthService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;

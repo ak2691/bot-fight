@@ -25,11 +25,16 @@ public class WebSocketSecurityConfig {
                         "/app/matchmaking.join",
                         "/app/matchmaking.resume",
                         "/app/matchmaking.accept",
+                        "/app/matchmaking.acceptInvite",
                         "/app/matchmaking.leave",
                         "/app/matchmaking.selectLoadout",
                         "/app/matchmaking.surrender",
                         "/app/matchmaking.chat").authenticated()
-                .simpSubscribeDestMatchers("/user/queue/matchmaking", "/user/queue/match-chat").authenticated()
+                .simpSubscribeDestMatchers(
+                        "/user/queue/matchmaking",
+                        "/user/queue/match",
+                        "/user/queue/match-chat",
+                        "/user/queue/notifications").authenticated()
                 .simpTypeMatchers(UNSUBSCRIBE, DISCONNECT).authenticated()
                 .simpTypeMatchers(MESSAGE, SUBSCRIBE).denyAll()
                 .anyMessage().denyAll();

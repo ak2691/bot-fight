@@ -3,8 +3,10 @@ package com.example.botfight.DTO;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import tools.jackson.databind.JsonNode;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record MatchmakingEventDTO(
         String type,
         UUID matchId,
@@ -21,7 +23,7 @@ public record MatchmakingEventDTO(
         Instant playbackStartsAt,
         Instant resultRevealsAt,
         String rulesetVersion,
-        MatchPlaybackDTO playback,
+        MatchReplayDTO playback,
         Integer roundNumber,
         Integer winsRequired,
         String message,
@@ -39,81 +41,7 @@ public record MatchmakingEventDTO(
         Instant matchChatEndsAt,
         Instant matchAcceptanceEndsAt,
         Boolean acceptedByMe,
-        Boolean otherPlayerAccepted,
-        boolean matchTerminal) {
-
-    public MatchmakingEventDTO(
-            String type,
-            UUID matchId,
-            Long simulationSeed,
-            String status,
-            MatchmakingPlayerDTO player,
-            MatchmakingPlayerDTO opponent,
-            List<MatchmakingPlayerDTO> players,
-            Instant serverNow,
-            Instant loadoutSelectionEndsAt,
-            Instant entityPlacementEndsAt,
-            Instant countdownEndsAt,
-            Instant buildingEndsAt,
-            Instant playbackStartsAt,
-            Instant resultRevealsAt,
-            String rulesetVersion,
-            MatchPlaybackDTO playback,
-            Integer roundNumber,
-            Integer winsRequired,
-            String message,
-            UUID entityPlacementUserId,
-            List<MatchPlaybackDTO.ArenaEntityDTO> entityPlacements,
-            List<MatchPlaybackDTO.ArenaEntityDTO> arenaEntities,
-            List<RoundBrainDTO> roundBrains,
-            Boolean previousRoundWon,
-            List<Integer> abilityOffers,
-            Integer roundBlockLimit,
-            UUID disconnectedUserId,
-            Instant disconnectEndsAt,
-            Long simulationPreparingDurationMs,
-            Instant roundReadyAt,
-            Instant matchChatEndsAt,
-            Instant matchAcceptanceEndsAt,
-            Boolean acceptedByMe,
-            Boolean otherPlayerAccepted) {
-        this(
-                type,
-                matchId,
-                simulationSeed,
-                status,
-                player,
-                opponent,
-                players,
-                serverNow,
-                loadoutSelectionEndsAt,
-                entityPlacementEndsAt,
-                countdownEndsAt,
-                buildingEndsAt,
-                playbackStartsAt,
-                resultRevealsAt,
-                rulesetVersion,
-                playback,
-                roundNumber,
-                winsRequired,
-                message,
-                entityPlacementUserId,
-                entityPlacements,
-                arenaEntities,
-                roundBrains,
-                previousRoundWon,
-                abilityOffers,
-                roundBlockLimit,
-                disconnectedUserId,
-                disconnectEndsAt,
-                simulationPreparingDurationMs,
-                roundReadyAt,
-                matchChatEndsAt,
-                matchAcceptanceEndsAt,
-                acceptedByMe,
-                otherPlayerAccepted,
-                false);
-    }
+        Boolean otherPlayerAccepted) {
 
     public MatchmakingEventDTO withReplayParticipants(
             MatchmakingPlayerDTO replayPlayer,
@@ -153,63 +81,41 @@ public record MatchmakingEventDTO(
                 matchChatEndsAt,
                 matchAcceptanceEndsAt,
                 acceptedByMe,
-                otherPlayerAccepted,
-                matchTerminal);
+                otherPlayerAccepted);
     }
 
-    public static MatchmakingEventDTO replayBatch(
+    public static MatchmakingEventDTO replayBatchPayload(
             UUID matchId,
             String rulesetVersion,
-            MatchPlaybackDTO playback,
+            MatchReplayDTO playback,
             Instant playbackStartsAt,
             Instant resultRevealsAt,
             Instant roundReadyAt) {
-        return new MatchmakingEventDTO(
-                "MATCH_REPLAY_BATCH", matchId, null, "READY_FOR_PLAYBACK",
-                null, null, List.of(), null, null, null, null, null,
-                playbackStartsAt, resultRevealsAt, rulesetVersion, playback,
-                null, null, null, null, List.of(), List.of(), List.of(), null,
-                List.of(), null, null, null, null, roundReadyAt,
-                null, null, null, null);
-    }
-
-    public MatchmakingEventDTO withMatchTerminal(boolean terminal) {
-        return new MatchmakingEventDTO(
-                type,
+        return replayBatchPayload(
                 matchId,
-                simulationSeed,
-                status,
-                player,
-                opponent,
-                players,
-                serverNow,
-                loadoutSelectionEndsAt,
-                entityPlacementEndsAt,
-                countdownEndsAt,
-                buildingEndsAt,
-                playbackStartsAt,
-                resultRevealsAt,
                 rulesetVersion,
                 playback,
-                roundNumber,
-                winsRequired,
-                message,
-                entityPlacementUserId,
-                entityPlacements,
-                arenaEntities,
-                roundBrains,
-                previousRoundWon,
-                abilityOffers,
-                roundBlockLimit,
-                disconnectedUserId,
-                disconnectEndsAt,
-                simulationPreparingDurationMs,
+                playbackStartsAt,
+                resultRevealsAt,
                 roundReadyAt,
-                matchChatEndsAt,
-                matchAcceptanceEndsAt,
-                acceptedByMe,
-                otherPlayerAccepted,
-                terminal);
+                null);
+    }
+
+    public static MatchmakingEventDTO replayBatchPayload(
+            UUID matchId,
+            String rulesetVersion,
+            MatchReplayDTO playback,
+            Instant playbackStartsAt,
+            Instant resultRevealsAt,
+            Instant roundReadyAt,
+            Integer roundNumber) {
+        return new MatchmakingEventDTO(
+                "MATCH_REPLAY_BATCH", matchId, null, "READY_FOR_PLAYBACK",
+                null, null, null, null, null, null, null, null,
+                playbackStartsAt, resultRevealsAt, rulesetVersion, playback,
+                roundNumber, null, null, null, null, null, null, null,
+                null, null, null, null, null, roundReadyAt,
+                null, null, null, null);
     }
 
     public MatchmakingEventDTO(
@@ -228,7 +134,7 @@ public record MatchmakingEventDTO(
             Instant playbackStartsAt,
             Instant resultRevealsAt,
             String rulesetVersion,
-            MatchPlaybackDTO playback,
+            MatchReplayDTO playback,
             Integer roundNumber,
             Integer winsRequired,
             String message,
@@ -292,7 +198,7 @@ public record MatchmakingEventDTO(
             Instant playbackStartsAt,
             Instant resultRevealsAt,
             String rulesetVersion,
-            MatchPlaybackDTO playback,
+            MatchReplayDTO playback,
             Integer roundNumber,
             Integer winsRequired,
             String message,
@@ -358,7 +264,7 @@ public record MatchmakingEventDTO(
             Instant playbackStartsAt,
             Instant resultRevealsAt,
             String rulesetVersion,
-            MatchPlaybackDTO playback,
+            MatchReplayDTO playback,
             Integer roundNumber,
             Integer winsRequired,
             String message,
@@ -446,8 +352,7 @@ public record MatchmakingEventDTO(
                 matchChatEndsAt,
                 matchAcceptanceEndsAt,
                 acceptedByMe,
-                otherPlayerAccepted,
-                matchTerminal);
+                otherPlayerAccepted);
     }
 
     public record RoundBrainDTO(int roundNumber, JsonNode brain, boolean won) {

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
+    abilityChargeCountFor,
     abilityRingArcPath,
     abilityRingBackground,
     abilityRingColorFor,
@@ -12,10 +13,17 @@ import {
 } from "./abilityStatusPresentation.js";
 
 const PANEL_PATH = fileURLToPath(new URL("./AbilityStatusPanel.jsx", import.meta.url));
+const PRESENTATION_PATH = fileURLToPath(new URL("./abilityStatusPresentation.js", import.meta.url));
 const INDEX_CSS_PATH = fileURLToPath(new URL("../../index.css", import.meta.url));
+
+test("ability status panel leaves Overclock to the Pixi bot presentation", () => {
+    const source = readFileSync(PANEL_PATH, "utf8");
+    assert.doesNotMatch(source, /OverclockStatusIcon|overclockStatusFor|Overclock:/);
+});
 
 test("ability status panels use a fixed three-column circular grid without slot or glow presentation", () => {
     const source = readFileSync(PANEL_PATH, "utf8");
+    const presentationSource = readFileSync(PRESENTATION_PATH, "utf8");
     const globalStyles = readFileSync(INDEX_CSS_PATH, "utf8");
 
     assert.match(source, /grid-cols-3/);
@@ -41,6 +49,7 @@ test("ability status panels use a fixed three-column circular grid without slot 
     assert.match(source, /strokeLinecap="butt"/);
     assert.doesNotMatch(source, /className="mt-1 h-3 w-full truncate/);
     assert.doesNotMatch(source, /showEmptySlot|EMPTY|border-dashed|shadow-|glow|neon/i);
+    assert.match(presentationSource, /abilityChargeCountFor/);
     assert.doesNotMatch(globalStyles, /\.ability-status-panel[^\n]*box-shadow|\.opponent-status-panel/);
 });
 
@@ -73,13 +82,14 @@ test("timer space stays stable and timed text disappears when the state is idle"
     assert.equal(formatAbilityTimer(950), "1.0s");
 });
 
-test("preparation, active, cooldown, and ready states preserve their existing timing direction", () => {
+test("preparation, active, cooldown, and ready states use remaining-time direction", () => {
     const preparing = abilityStatusFor({
-        preparingAbility: 13,
-        preparingMs: 300,
-    }, 13);
+        preparingAbility: 18,
+        preparingMs: 200,
+    }, 18);
     assert.equal(preparing.state, "preparing");
-    assert.equal(preparing.remainingMs, 600);
+    assert.equal(preparing.remainingMs, 200);
+    assert.ok(Math.abs(preparing.progress - (1 / 3)) < 0.0001);
     assert.equal(abilityRingBackground(preparing), "conic-gradient(from 0deg, #facc15 0 100.00%, #64748b 100.00% 100%)");
 
     const active = abilityStatusFor({ abilityActiveMs: { 7: 200 } }, 7);
@@ -91,13 +101,13 @@ test("preparation, active, cooldown, and ready states preserve their existing ti
     assert.equal(lockOn.state, "active");
     assert.equal(lockOn.durationMs, 200);
 
-    const microDash = abilityStatusFor({
+    const dash = abilityStatusFor({
         abilityActiveMs: { 19: 200 },
-        microDashActiveMs: 200,
+        dashActiveMs: 200,
     }, 19);
-    assert.equal(microDash.state, "active");
-    assert.equal(microDash.durationMs, 300);
-    assert.ok(Math.abs(microDash.progress - 1 / 3) < 0.0001);
+    assert.equal(dash.state, "active");
+    assert.equal(dash.durationMs, 200);
+    assert.ok(Math.abs(dash.progress - 0) < 0.0001);
 
     const cooldown = abilityStatusFor({ abilityCooldowns: { 7: 2500 } }, 7);
     assert.equal(cooldown.state, "cooldown");
@@ -117,7 +127,7 @@ test("preparation, active, cooldown, and ready states preserve their existing ti
     assert.equal(ready.progress, 1);
     assert.match(abilityRingBackground(ready), /#22c55e 0 100\.00%/);
 
-    for (const abilityId of [2, 3, 5]) {
+    for (const abilityId of [3, 5]) {
         const canonicalReplayState = abilityStatusFor({
             abilityCooldowns: { [abilityId]: 0 },
             abilityCharges: { [abilityId]: 1 },
@@ -126,6 +136,43 @@ test("preparation, active, cooldown, and ready states preserve their existing ti
         assert.equal(canonicalReplayState.state, "ready", `ability ${abilityId}`);
         assert.equal(abilityRingColorFor(abilityId, canonicalReplayState), "#22c55e");
     }
+});
+
+test("all ability resources use the canonical charge and recharge maps", () => {
+    assert.equal(abilityChargeCountFor({ abilityCharges: { 19: 1 } }, 19), null);
+
+    const gunReload = abilityStatusFor({
+        abilityCooldowns: { 3: 0 },
+        abilityCharges: { 3: 0 },
+        abilityRechargeMs: { 3: 1500 },
+    }, 3);
+    assert.equal(gunReload.state, "cooldown");
+    assert.equal(gunReload.durationMs, 5000);
+    assert.equal(gunReload.progress, 0.7);
+    assert.equal(abilityChargeCountFor({ abilityCharges: { 3: 7 } }, 3), 6);
+
+    const fireballReload = abilityStatusFor({
+        abilityCooldowns: { 5: 0 },
+        abilityCharges: { 5: 0 },
+        abilityRechargeMs: { 5: 2250 },
+    }, 5);
+    assert.equal(fireballReload.state, "cooldown");
+    assert.equal(fireballReload.progress, 0.55);
+    assert.equal(abilityChargeCountFor({ abilityCharges: { 5: 3 } }, 5), 3);
+
+});
+
+test("presentation uses only canonical charge fields", () => {
+    assert.equal(abilityChargeCountFor({}, 3), null);
+    assert.equal(abilityStatusFor({}, 3).state, "ready");
+    assert.equal(abilityStatusFor({}, 2).state, "ready");
+});
+
+test("status presentation remains driven by generic charge fields", () => {
+    const source = readFileSync(PANEL_PATH, "utf8");
+    assert.match(source, /charges != null/);
+    assert.match(source, /abilityChargeCountFor/);
+    assert.equal(abilityChargeCountFor({ abilityCharges: { 2: 12 } }, 2), null);
 });
 
 test("both panels share the same stable dimensions and empty positions remain open", () => {

@@ -1,37 +1,50 @@
-import { ACTION_TO_ABILITY } from "../../loadout/BotLoadout.js";
 import { angleDelta, clamp } from "../../gameconfig/geometry.js";
 import { ROTATION_STEP_DEG } from "../../modelPayloads/arenaConstants.js";
 import { resolveAbilityStrategyTarget, selectAbilityStrategyActionPlan } from "../code/BotCode.js";
-import { compassDirection, vectorToCompassDegrees } from "./arenaAngles.js";
+import { stateFromPayload } from "../code/runtime/runtimeState.js";
+import { compassDirection, relativeMovementVector, vectorToCompassDegrees } from "./arenaAngles.js";
+import { abilityExecutionPayload } from "../../gameconfig/AbilityExecutionPayload.js";
 
 /** Builds the action-component payload consumed by ActionExecutionSystem. */
 export function buildDeterministicLogicAction(configuration, stateSnapshot) {
     const plan = selectAbilityStrategyActionPlan(configuration, stateSnapshot);
+    const state = stateFromPayload(stateSnapshot);
     const movementBlock = plan.movement ?? null;
     const abilityBlock = plan.ability ?? null;
-    const abilityBlockWithTarget = ACTION_TO_ABILITY[abilityBlock?.action] ? abilityBlock : null;
+    const resolvedAbilityPayload = abilityExecutionPayload(abilityBlock?.action);
+    const abilityBlockWithTarget = resolvedAbilityPayload ? abilityBlock : null;
     const facingBlock = plan.rotation ?? null;
     const movementTarget = movementBlock?.movementMode === "coordinates"
         ? { x: Number(movementBlock.targetX ?? 500), y: Number(movementBlock.targetY ?? 400) }
-        : offsetTarget(resolveActionTarget(stateSnapshot, movementBlock?.actionTarget), movementBlock);
-    const facingTarget = offsetTarget(resolveActionTarget(stateSnapshot, facingBlock?.actionTarget ?? movementBlock?.actionTarget), facingBlock ?? movementBlock);
-    const specialTarget = abilityBlockWithTarget?.targetMode === "target" || abilityBlockWithTarget?.action === 20
-        ? offsetTarget(resolveActionTarget(stateSnapshot, abilityBlockWithTarget.actionTarget), abilityBlockWithTarget)
+        : resolveActionTarget(state, movementBlock?.actionTarget);
+    const facingTarget = facingBlock?.targetMode === "coordinates"
+        ? { x: Number(facingBlock.targetX ?? 500), y: Number(facingBlock.targetY ?? 400) }
+        : facingBlock?.targetMode === "angle"
+            ? null
+            : facingBlock
+                ? offsetTarget(resolveActionTarget(state, facingBlock.actionTarget ?? movementBlock?.actionTarget), facingBlock)
+                : resolveActionTarget(state, movementBlock?.actionTarget);
+    const specialTarget = abilityBlockWithTarget?.targetMode === "target"
+        || resolvedAbilityPayload?.execution?.targetMode === "target"
+        ? offsetTarget(resolveActionTarget(state, abilityBlockWithTarget.actionTarget), abilityBlockWithTarget)
         : null;
-    const movement = movementVector(movementBlock, stateSnapshot.playerModel, movementTarget);
+    const movement = movementVector(movementBlock, state.player, movementTarget);
     return {
         dx: movement.dx,
         dy: movement.dy,
-        dRot: facingBlock?.action === "rotate_toward_enemy" ? turnToward(stateSnapshot.playerModel, facingTarget) : 0,
+        dRot: facingBlock?.action === "rotate_toward_enemy"
+            ? facingBlock.targetMode === "angle" ? turnTowardAngle(state.player, facingBlock.targetAngle) : turnToward(state.player, facingTarget)
+            : 0,
         abilityAction: abilityBlock ? {
             action: abilityBlock.action,
+            abilityPayload: resolvedAbilityPayload,
             targetX: specialTarget?.x ?? abilityBlock.targetX,
             targetY: specialTarget?.y ?? abilityBlock.targetY,
             ...(abilityBlock.movementMode ? { movementMode: abilityBlock.movementMode } : {}),
-            ...(abilityBlock.movementDirection ? { movementDirection: abilityBlock.movementDirection } : {}),
+            ...(abilityBlock.movementDirection != null ? { movementDirection: abilityBlock.movementDirection } : {}),
             ...(abilityBlock.phaseFacingMode ? { phaseFacingMode: abilityBlock.phaseFacingMode } : {}),
         } : null,
-        customVariables: { ...(plan.customVariables ?? stateSnapshot.playerModel.customVariables ?? {}) },
+        customVariables: { ...(plan.customVariables ?? state.player.customVariables ?? {}) },
     };
 }
 
@@ -40,42 +53,36 @@ export function idleAction() {
 }
 
 function offsetTarget(target, block) {
+    if (block?.movementMode) return target;
     return target ? { ...target, x: Number(target.x) + Number(block?.targetOffsetX ?? 0), y: Number(target.y) + Number(block?.targetOffsetY ?? 0) } : null;
 }
 
 function resolveActionTarget(state, actionTarget = "opponent") {
     const objects = Array.isArray(state?.objects) ? state.objects : [];
-    const opponent = objects.find((object) => object.type === "opponentModel")
+    const opponent = state?.opponent
+        ?? objects.find((object) => object.type === "opponentModel")
         ?? objects.find((object) => object.id === "opponent-model" || object.id === "main")
         ?? null;
-    return resolveAbilityStrategyTarget({ player: state?.playerModel, opponent, objects }, actionTarget ?? "opponent");
+    return resolveAbilityStrategyTarget({ player: state?.player, opponent, objects }, actionTarget ?? "opponent");
 }
 
 function movementVector(block, player, target) {
     if (!player || block?.action !== "move_walk") return { dx: 0, dy: 0 };
-    const direction = block.movementDirection ?? "toward";
-    const absolute = {
-        north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0],
-        northeast: [Math.SQRT1_2, -Math.SQRT1_2], northwest: [-Math.SQRT1_2, -Math.SQRT1_2], southeast: [Math.SQRT1_2, Math.SQRT1_2], southwest: [-Math.SQRT1_2, Math.SQRT1_2],
-        stop: [0, 0],
-    };
-    if (block.movementMode === "absolute") return { dx: absolute[direction]?.[0] ?? 0, dy: absolute[direction]?.[1] ?? 0 };
+    const direction = block.movementDirection ?? 0;
+    if (block.movementMode === "absolute") {
+        const numericDirection = Number(direction);
+        if (!Number.isFinite(numericDirection)) return { dx: 0, dy: 0 };
+        const absolute = compassDirection(Math.max(-360, Math.min(360, numericDirection)));
+        return { dx: absolute.x, dy: absolute.y };
+    }
     if (!target) return { dx: 0, dy: 0 };
     let inward = { dx: target.x - player.x, dy: target.y - player.y };
     if (Math.hypot(inward.dx, inward.dy) <= 0.001) {
         const facing = compassDirection(player.rotation);
         inward = { dx: facing.x, dy: facing.y };
     }
-    const outward = { dx: -inward.dx, dy: -inward.dy };
-    const left = { dx: inward.dy, dy: -inward.dx };
-    const right = { dx: -inward.dy, dy: inward.dx };
-    const vectors = {
-        toward: inward, away: outward,
-        left, right,
-        toward_left: add(inward, left), toward_right: add(inward, right),
-        away_left: add(outward, left), away_right: add(outward, right),
-    };
-    return vectors[direction] ?? { dx: 0, dy: 0 };
+    const relative = relativeMovementVector(inward.dx, inward.dy, direction);
+    return { dx: relative.x, dy: relative.y };
 }
 
 function turnToward(player, target) {
@@ -84,6 +91,7 @@ function turnToward(player, target) {
     return clamp(angleDelta(player.rotation ?? 0, bearing) / ROTATION_STEP_DEG, -1, 1);
 }
 
-function add(first, second) {
-    return { dx: first.dx + second.dx, dy: first.dy + second.dy };
+function turnTowardAngle(player, targetAngle) {
+    if (!player || !Number.isFinite(Number(targetAngle))) return 0;
+    return clamp(angleDelta(player.rotation ?? 0, Number(targetAngle)) / ROTATION_STEP_DEG, -1, 1);
 }

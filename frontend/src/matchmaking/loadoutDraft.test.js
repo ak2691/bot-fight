@@ -7,7 +7,7 @@ import {
 } from "./loadoutDraft.js";
 import { BOT_ABILITIES } from "../gameArena/loadout/BotLoadout.js";
 
-const roundOneOffers = [1, 2, 3, 6, 10, 12];
+const roundOneOffers = [1, 3, 6, 10, 12];
 const roundTwoOffers = [13, 14, 15, 16];
 const roundThreeOffers = [21, 22, 23];
 
@@ -18,11 +18,11 @@ test("round draft limits are three, two, and one", () => {
 });
 
 test("round two abilities, including Rail Shot, can be selected independently", () => {
-    const first = toggleDraftAbility({ abilities: [1, 2, 3] }, 2, roundTwoOffers, 13);
+    const first = toggleDraftAbility({ abilities: [1, 3] }, 2, roundTwoOffers, 13);
     const second = toggleDraftAbility(first, 2, roundTwoOffers, 14);
     const draft = loadoutDraftState(second, 2, roundTwoOffers);
 
-    assert.deepEqual(draft.inheritedAbilities, [1, 2, 3]);
+    assert.deepEqual(draft.inheritedAbilities, [1, 3]);
     assert.deepEqual(draft.draftedAbilities, [13, 14]);
     assert.equal(draft.hasAllDraftPicks, true);
 });
@@ -42,22 +42,21 @@ test("legacy matchmaking offers normalize once at the draft boundary", () => {
 
 test("completed loadouts still mark auto-picked current-round abilities as selected", () => {
     const draft = loadoutDraftState({
-        abilities: [1, 2, 3, 13, 18],
+        abilities: [1, 3, 13, 18],
     }, 2, [13, 14, 15, 18]);
 
-    assert.deepEqual(draft.inheritedAbilities, [1, 2, 3]);
+    assert.deepEqual(draft.inheritedAbilities, [1, 3]);
     assert.deepEqual(draft.draftedAbilities, [13, 18]);
 });
 
 test("fresh round two and round three drafts clear only current-round abilities", () => {
     const roundTwoDraft = loadoutForFreshRound({
-        abilities: [1, 2, 3, 13, 14],
-        statPoints: { maxHp: 2 },
+        abilities: [1, 3, 13, 14],
     }, 2);
-    assert.deepEqual(roundTwoDraft.abilities, [1, 2, 3]);
+    assert.deepEqual(roundTwoDraft.abilities, [1, 3]);
 
     const roundThreeDraft = loadoutForFreshRound({
-        abilities: [1, 2, 3, 13, 14, 22],
+        abilities: [1, 3, 13, 14, 22],
     }, 3);
-    assert.deepEqual(roundThreeDraft.abilities, [1, 2, 3, 13, 14]);
+    assert.deepEqual(roundThreeDraft.abilities, [1, 3, 13, 14]);
 });

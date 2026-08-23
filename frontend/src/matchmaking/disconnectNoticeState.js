@@ -1,5 +1,5 @@
 export function isTerminalMatchEvent(event) {
-    return Boolean(event?.matchTerminal) || event?.type === "MATCH_RESULT_READY";
+    return event?.type === "MATCH_RESULT_READY";
 }
 
 export function shouldShowDisconnectNotice({

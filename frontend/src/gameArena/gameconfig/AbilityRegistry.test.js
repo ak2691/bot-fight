@@ -24,10 +24,46 @@ test("ability identities are stable numeric keys independent of array position",
 
 test("numeric identity owns tuning and contracts", () => {
     assert.equal(ABILITY_STATS[3].range, 700);
+    assert.equal(ABILITY_STATS[3].activeMs, 500);
+    assert.equal(ABILITY_STATS[3].cooldownMs, 1000);
+    assert.equal(ABILITY_STATS[3].reloadMs, 5000);
+    assert.equal(ABILITY_STATS[34].damage, 5);
+    assert.equal(ABILITY_STATS[34].range, 80);
+    assert.equal(ABILITY_STATS[34].arcDegrees, 60);
     assert.equal(abilityStats(3), ABILITY_STATS[3]);
     assert.equal(abilityContract(3), ABILITY_CONTRACTS[3]);
     assert.equal(ABILITY_STATS[3], abilityStats(3));
     assert.equal(ABILITY_CONTRACTS[3], abilityContract(3));
+});
+
+test("requested combat tuning is represented in the browser catalog", () => {
+    assert.equal(ABILITY_STATS[3].maxCharges, 6);
+    assert.equal(ABILITY_STATS[3].reloadMs, 5000);
+    assert.equal(ABILITY_STATS[4].maxDamage, 40);
+    assert.equal(ABILITY_STATS[4].throwRange, 336);
+    assert.equal(ABILITY_STATS[5].cooldownMs, 300);
+    assert.equal(ABILITY_STATS[5].reloadMs, 5000);
+    assert.equal(ABILITY_STATS[8].cooldownMs, 10000);
+    assert.equal(ABILITY_STATS[9].statuses.slow.durationMs, 1000);
+    assert.equal(ABILITY_STATS[10].healing, 20);
+    assert.equal(ABILITY_STATS[11].damage, 20);
+    assert.equal(ABILITY_STATS[11].throwRange, 176);
+    assert.equal(ABILITY_STATS[18].cooldownMs, 7000);
+    assert.equal(ABILITY_STATS[18].windupMs, 300);
+    assert.equal(ABILITY_STATS[18].knockback, 150);
+    assert.equal(ABILITY_STATS[22].windupMs, 500);
+    assert.equal(ABILITY_STATS[22].activeMs, 0);
+    assert.equal(ABILITY_STATS[22].durationMs, 1500);
+    assert.equal(ABILITY_STATS[22].damage, 15);
+    assert.equal(ABILITY_STATS[22].intervalMs, 500);
+    assert.equal(ABILITY_STATS[27].pullPerTick, 10);
+    assert.equal(ABILITY_STATS[28].pullPerTick, 100);
+    assert.equal(ABILITY_STATS[24].activeMs, 300);
+    assert.equal(ABILITY_STATS[30].cooldownMs, 8000);
+    assert.equal(ABILITY_STATS[30].damage, 15);
+    assert.equal(ABILITY_STATS[30].statuses.slow.durationMs, 2000);
+    assert.equal(ABILITY_STATS[32].cooldownMs, 10000);
+    assert.equal(ABILITY_STATS[32].windupMs, 300);
 });
 
 test("legacy names convert only through explicit allowlisted compatibility functions", () => {
@@ -40,7 +76,7 @@ test("legacy names convert only through explicit allowlisted compatibility funct
 });
 
 test("malformed numeric IDs fail closed", () => {
-    for (const value of [-1, 0, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 26, null]) {
+    for (const value of [-1, 0, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2, 35, null]) {
         assert.equal(abilityId(value), null);
     }
 });
@@ -60,4 +96,5 @@ test("missing IDs stay missing instead of shifting later abilities", () => {
     delete withoutFive[5];
     assert.equal(withoutFive[5], undefined);
     assert.equal(withoutFive[7].name, "heavy_slash");
+    assert.equal(abilityIdentity(2), null);
 });

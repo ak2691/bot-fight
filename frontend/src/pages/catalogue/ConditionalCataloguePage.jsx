@@ -16,19 +16,21 @@ const DESCRIPTIONS = Object.freeze({
     "opponent.x": "The opponent's horizontal arena position.",
     "opponent.y": "The opponent's vertical arena position.",
     "target.distance": "Straight-line distance from your bot to the selected target.",
-    "target.hp": "Current HP of the selected target. Targets without HP read as 0.",
+    "target.hp": "Current HP of the selected health-bearing target.",
     "target.alive": "True when the selected target exists and has HP remaining.",
-    "target.bearingFromMe": "The selected target's compass direction from your bot, checked as an angle range.",
-    "target.movementDirection": "The selected target's direction of travel, checked as an angle range.",
-    "target.velocity": "The selected target's current movement speed.",
+    "target.bearingFromMe": "The selected target's compass direction from your bot, compared as a signed angle.",
+    "target.movementDirection": "The selected target's direction of travel, compared as a signed degree measurement.",
+    "target.speed": "The selected target's current movement speed in arena units per simulation tick, independent of direction.",
     "my.bearingFromTarget": "Your bot's compass direction as seen from the selected target.",
-    "target.relativeBearing": "Smallest angle between your facing and the selected target.",
+    "target.relativeBearing": "Smallest angle between the direction you are facing and the selected target.",
     "target.relativeBearingClockwise": "Clockwise turn needed to face the selected target.",
     "target.relativeBearingCounterclockwise": "Counterclockwise turn needed to face the selected target.",
     "target.facing": "The opponent's current facing direction.",
-    "target.count": "Number of matching objects of the selected target type.",
+    "target.count": "Number of matching objects of the selected target type; ordering and ordinal selection do not apply.",
     "target.age": "Age or active timer of the selected object, in seconds.",
     "my.edgeDistance": "Shortest distance from your bot to an arena edge.",
+    "my.closingZoneEdgeDistance": "Signed clearance from your bot's hitbox to the circular closing-zone edge: positive inside, zero at the edge, and negative outside. It is unavailable until the zone starts.",
+    "opponent.closingZoneEdgeDistance": "Signed clearance from Opponent 1's hitbox to the circular closing-zone edge: positive inside, zero at the edge, and negative outside. It is unavailable until the zone starts.",
     "target.edgeDistance": "Shortest distance from the selected target to an arena edge.",
     "target.exists": "True when an object matching the selected target slot exists.",
 });
@@ -44,18 +46,16 @@ function describeVariable(variable) {
 
     if (variable.id.includes("selectedAbility")) {
         if (variable.id.endsWith("Ready")) return `Whether the selected drafted ability is ready for ${owner} to use.`;
+        if (variable.id.endsWith("Active")) return `Whether the selected drafted ability is currently active for ${owner}.`;
+        if (variable.id.endsWith("ActiveMs")) return `Time remaining while the selected drafted ability stays active for ${owner}, in seconds.`;
         if (variable.id.endsWith("CooldownMs")) return `Cooldown remaining on the selected drafted ability for ${owner}, in seconds.`;
-        if (variable.id.endsWith("Ammo")) return `Current ammo or charges for ${owner}'s selected drafted ability.`;
+        if (variable.id.endsWith("Charges")) return `Current charges for ${owner}'s selected drafted ability.`;
         if (variable.id.endsWith("Preparing")) return `Whether ${owner} is currently winding up the selected drafted ability.`;
         return `Current wind-up timer for ${owner}'s selected drafted ability, in seconds.`;
     }
     if (variable.id.endsWith("Ready")) return `Whether ${lowerLabel} is currently ready to use.`;
     if (variable.id.endsWith("CooldownMs")) return `Time remaining on ${lowerLabel}, in seconds.`;
-    if (variable.id.endsWith("RechargeMs") || variable.id.endsWith("ReloadMs")) {
-        return `Time remaining on ${lowerLabel}, in seconds.`;
-    }
-    if (variable.id.endsWith("Ammo") || variable.id.endsWith("Charges")) return `Current ${lowerLabel}.`;
-    if (variable.id.endsWith("shieldUp")) return `Whether ${owner}'s shield is currently raised.`;
+    if (variable.id.endsWith("Charges")) return `Current ${lowerLabel}.`;
     return `Current value of ${lowerLabel}.`;
 }
 
@@ -136,7 +136,7 @@ export default function ConditionalCataloguePage() {
                 <aside className="self-start border border-blue-500/40 bg-[#081522]/85 p-5">
                     <p className="font-mono text-[10px] font-bold tracking-[.22em] text-blue-300">HOW CONDITIONS WORK</p>
                     <p className="mt-3 text-sm leading-6 text-slate-300">
-                        Numbers use comparisons such as <span className="font-mono text-blue-200">&lt;</span>, <span className="font-mono text-blue-200">=</span>, or <span className="font-mono text-blue-200">&gt;</span>. Booleans check true or false. Direction values use a degree range.
+                        Numbers use comparisons such as <span className="font-mono text-blue-200">&lt;</span>, <span className="font-mono text-blue-200">=</span>, or <span className="font-mono text-blue-200">&gt;</span>. Booleans check true or false. Direction values use signed degrees.
                     </p>
                     <div className="my-5 h-px bg-slate-700/70" />
                     <p className="font-mono text-[10px] font-bold tracking-[.22em] text-blue-300">CUSTOM VARIABLES</p>
@@ -152,7 +152,7 @@ export default function ConditionalCataloguePage() {
                         <strong className="text-slate-200">Chosen target</strong> can read the opponent or an entity created by either bot's drafted abilities.
                     </p>
                     <p className="mt-3 text-sm leading-6 text-slate-400">
-                        Entity targets can be ordered by closest, farthest, oldest, or newest, then selected by position: first, second, and so on. <strong className="text-slate-200">Object target</strong> uses the same rules but excludes the opponent.
+                        Entity targets can be ordered by closest, farthest, oldest, or newest, then selected by position: first, second, and so on. <strong className="text-slate-200">Object target</strong> uses the same rules but excludes the opponent. <strong className="text-slate-200">Target Type Count</strong> selects only an object type and does not use ordering or ordinal selection.
                     </p>
                     <p className="mt-3 text-xs leading-5 text-slate-500">
                         Only entity and ability choices available in the current draft appear in the editor.

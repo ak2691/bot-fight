@@ -3,15 +3,15 @@ import { monotonicEpochNowMs } from "../matchmaking/networkDelayEstimator.js";
 import PixiCanvas from "../gameArena/pixi/PixiCanvas";
 import { PROJECTILE_WALL_LENGTH, PROJECTILE_WALL_TYPE } from "../gameArena/ArenaObjects";
 import { decodeBotLoadout, encodeBotLoadout } from "../gameArena/loadout/BotLoadout";
-import { AUTO_STEP_MS, DEFENSE_WALL_TYPE, ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../gameArena/modelPayloads/arenaConstants";
+import { AUTO_STEP_MS, BASE_BOT_HP, DEFENSE_WALL_TYPE, ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../gameArena/modelPayloads/arenaConstants";
+import { MATCH_DURATION_MS } from "../gameArena/gameconfig/ArenaHazardConfig.js";
 import { ABILITY_STATS } from "../gameArena/gameconfig/Abilities.js";
 import { botColorRole, normalizeReplayObstacleShape } from "../gameArena/pixi/pixiVisualState.js";
 import { compassDegreesToRadians } from "../gameArena/botlogic/planner/arenaAngles.js";
 import MatchToolIcon from "../gameArena/coding/controls/MatchToolIcon.jsx";
 import BotLogo from "../components/BotLogo.jsx";
-import { displayedRoundWins, initialReplayHandoffFrame, replayBotAbilityState, replayClockSeconds, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayFrameIndexForElapsedMs } from "./replayPresentation.js";
+import { displayedRoundWins, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, replayAbilitiesFor, replayBotAbilityState, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayFrameIndexForElapsedMs, replayRayOrigin, replayRemainingSeconds, replayShapeKey } from "./replayPresentation.js";
 
-const REPLAY_FRAME_INTERPOLATION_MS = AUTO_STEP_MS;
 const EMPTY_LIST = Object.freeze([]);
 const NOOP = () => { };
 const EMPTY_PLAYBACK = Object.freeze({
@@ -20,7 +20,12 @@ const EMPTY_PLAYBACK = Object.freeze({
     players: EMPTY_LIST,
 });
 
-export default function SimulationReplay({ playback: playbackInput, preloadShapes = [], onCancel = null, cancelLabel = "CANCEL REPLAY" }) {
+export default function SimulationReplay({
+    playback: playbackInput,
+    preloadShapes = [],
+    onCancel = null,
+    cancelLabel = "CANCEL REPLAY",
+}) {
     const playback = playbackInput ?? EMPTY_PLAYBACK;
     const frames = playback.frames ?? EMPTY_LIST;
     const viewer = playback.player ?? null;
@@ -28,6 +33,16 @@ export default function SimulationReplay({ playback: playbackInput, preloadShape
     const participants = useMemo(() => playback.players?.length
         ? playback.players
         : [viewer, opponent].filter(Boolean), [opponent, playback.players, viewer]);
+    const participantsBySlot = useMemo(() => new Map(
+        participants
+            .filter((participant) => participant?.slot != null)
+            .map((participant) => [Number(participant.slot), participant]),
+    ), [participants]);
+    const staticBotsBySlot = useMemo(() => new Map(
+        (playback.initialState?.bots ?? [])
+            .filter((bot) => bot?.slot != null)
+            .map((bot) => [Number(bot.slot), bot]),
+    ), [playback.initialState?.bots]);
     const playbackStartMs = playback.playbackStartsAtMs
         ?? (playback.playbackStartsAt ? new Date(playback.playbackStartsAt).getTime() : null);
     const [nowMs, setNowMs] = useState(() => monotonicEpochNowMs());
@@ -46,8 +61,20 @@ export default function SimulationReplay({ playback: playbackInput, preloadShape
     const activeFrame = isInitialHandoff
         ? initialReplayHandoffFrame(playback.initialState, frames[0], displayElapsedMs)
         : frames[Math.min(frameIndex, Math.max(frames.length - 1, 0))];
-    const initialBots = playback.initialState?.bots ?? EMPTY_LIST;
-    const replayBots = countdownRemainingMs > 0 ? initialBots : activeFrame?.bots ?? initialBots;
+    const nextFrame = isInitialHandoff ? null : frames[frameIndex + 1];
+    const renderFrame = useMemo(() => interpolateReplayFrame(activeFrame, nextFrame, displayElapsedMs), [activeFrame, displayElapsedMs, nextFrame]);
+    const initialBots = useMemo(() => (playback.initialState?.bots ?? EMPTY_LIST)
+        .map((bot) => hydrateReplayBot(
+            bot,
+            staticBotsBySlot.get(Number(bot?.slot)),
+            participantsBySlot.get(Number(bot?.slot)),
+        )), [participantsBySlot, playback.initialState?.bots, staticBotsBySlot]);
+    const rawReplayBots = countdownRemainingMs > 0 ? initialBots : renderFrame?.bots ?? initialBots;
+    const replayBots = useMemo(() => rawReplayBots.map((bot) => hydrateReplayBot(
+        bot,
+        staticBotsBySlot.get(Number(bot?.slot)),
+        participantsBySlot.get(Number(bot?.slot)),
+    )), [participantsBySlot, rawReplayBots, staticBotsBySlot]);
     const isForfeitResult = playback.result === "RESIGNATION_WIN" || playback.result === "DISCONNECTION_WIN";
     const winnerParticipant = useMemo(() => participants
         .find((participant) => sameId(participant?.userId, playback.winnerUserId)),
@@ -57,13 +84,13 @@ export default function SimulationReplay({ playback: playbackInput, preloadShape
         : replayBots, [isForfeitResult, replayBots, winnerParticipant]);
     const entities = useMemo(() => isForfeitResult ? EMPTY_LIST : countdownRemainingMs > 0
         ? playback.initialState?.entities ?? []
-        : activeFrame?.entities ?? playback.initialState?.entities ?? EMPTY_LIST,
-    [activeFrame?.entities, countdownRemainingMs, isForfeitResult, playback.initialState?.entities]);
+        : renderFrame?.entities ?? playback.initialState?.entities ?? EMPTY_LIST,
+    [countdownRemainingMs, isForfeitResult, playback.initialState?.entities, renderFrame?.entities]);
     const winner = [...bots, ...initialBots, ...participants]
         .find((bot) => sameId(bot?.userId, playback.winnerUserId));
     const winnerName = winner?.username ?? "A bot";
-    const finalWinner = activeFrame?.bots?.find((bot) => sameId(bot?.userId, playback.winnerUserId));
-    const winnerHp = finalWinner?.hp == null ? null : Math.max(0, Math.round(finalWinner.hp));
+    const finalWinner = bots.find((bot) => sameId(bot?.userId, playback.winnerUserId));
+    const winnerHp = finalWinner?.hp == null ? null : Math.max(0, Number(finalWinner.hp)).toFixed(1);
     const hasPlaybackStarted = countdownRemainingMs <= 0;
     const hasDisplayedFinalFrame = hasPlaybackStarted && (frames.length === 0
         || elapsedPlaybackMs >= finalElapsedMs);
@@ -82,7 +109,7 @@ export default function SimulationReplay({ playback: playbackInput, preloadShape
         winnerHp,
         winnerColorRole,
     });
-    const replaySeconds = replayClockSeconds(activeFrame, hasPlaybackStarted);
+    const replaySeconds = replayRemainingSeconds(MATCH_DURATION_MS, displayElapsedMs);
 
     useEffect(() => {
         let animationFrameId = null;
@@ -177,7 +204,7 @@ function ReplaySidebar({
                     <button
                         type="button"
                         onClick={onCancel}
-                        className="w-full border border-fuchsia-500/70 bg-fuchsia-950/30 px-3 py-2 text-left font-mono text-[9px] font-bold tracking-widest text-fuchsia-200 hover:bg-fuchsia-900/45"
+                        className="gray-button-surface w-full border border-fuchsia-500/70 px-3 py-2 text-left font-mono text-[9px] font-bold tracking-widest text-fuchsia-200"
                     >
                         {cancelLabel}
                     </button>
@@ -189,7 +216,7 @@ function ReplaySidebar({
                         <strong className="font-interface-numeric text-ink-white">{playback.roundNumber ?? 1}/3</strong>
                     </div>
                     <div className="mt-2 flex items-center justify-between text-ink-muted">
-                        <span>REPLAY TIMER</span>
+                        <span>TIME REMAINING</span>
                         <strong className="font-interface-numeric text-amber-200">{formatReplayClock(replaySeconds)}</strong>
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2">
@@ -247,30 +274,45 @@ function replayResultTitle({ shouldRevealResult, hasReachedReplayEnd, result, wi
 }
 
 function replayArenaShapes(bots, entities, recentFrames = [], entranceProgress = 1, frames = [], frameIndex = 0, initialHandoff = false) {
-    const recentlyDamagedIds = new Set();
+    const damageEvents = new Map();
     for (const frame of recentFrames) {
         for (const previous of [...(frame.bots ?? []), ...(frame.entities ?? [])]) {
             const previousKey = replayShapeKey(previous);
             const current = previousKey == null ? null : [...bots, ...entities].find((candidate) => replayShapeKey(candidate) === previousKey);
-            if (current && Number(current.hp ?? 0) < Number(previous.hp ?? 0)) recentlyDamagedIds.add(previousKey);
+            if (current && Number(current.hp ?? 0) < Number(previous.hp ?? 0)) {
+                damageEvents.set(previousKey, `${Number(frame.elapsedMs ?? 0)}:${previousKey}`);
+            }
         }
     }
+    // Replay transforms are already interpolated against the authoritative
+    // timeline before reaching Pixi. A second renderer-side interpolation
+    // would introduce a one-step lag, especially at batch boundaries.
+    const interpolationMs = 0;
+    const replayPhase = entranceProgress < 1 ? "preparing" : initialHandoff ? "handoff" : "playback";
     const botShapes = bots.map((bot) => botReplayShape(
         bot,
-        recentlyDamagedIds,
+        damageEvents,
         entranceProgress,
         frames,
         frameIndex,
-        initialHandoff,
+        interpolationMs,
+        replayPhase,
     ));
     const previousFrame = frames[Math.max(0, frameIndex - 1)];
+    const nextFrame = frames[Math.min(frames.length - 1, frameIndex + 1)];
     const previousEntitiesById = new Map((previousFrame?.entities ?? [])
+        .map((entity) => [String(entity.id), entity]));
+    const nextEntitiesById = new Map((nextFrame?.entities ?? [])
         .map((entity) => [String(entity.id), entity]));
     const entityShapes = entities.map((entity) => {
         const previous = previousEntitiesById.get(String(entity.id));
         return normalizeReplayObstacleShape(entity, previous, {
-            interpolationMs: initialHandoff ? 0 : REPLAY_FRAME_INTERPOLATION_MS,
-            hitFlashMs: recentlyDamagedIds.has(String(entity.id)) ? 200 : 0,
+            interpolationMs,
+            hitFlashMs: damageEvents.has(replayShapeKey(entity)) ? 200 : 0,
+            hitParticleEvent: damageEvents.get(replayShapeKey(entity)) ?? null,
+            replayFrameIndex: frameIndex,
+            replayPhase,
+            nextObstacle: nextEntitiesById.get(String(entity.id)),
         });
     });
     return [
@@ -282,15 +324,17 @@ function replayArenaShapes(bots, entities, recentFrames = [], entranceProgress =
     ];
 }
 
-function botReplayShape(bot, recentlyDamagedIds, entranceProgress, frames, frameIndex, initialHandoff = false) {
+function botReplayShape(bot, damageEvents, entranceProgress, frames, frameIndex = 0, interpolationMs = 0, replayPhase = "playback") {
     const loadoutId = String(bot.combatLoadout ?? "").startsWith("custom:")
         ? bot.combatLoadout
-        : encodeBotLoadout({ abilities: bot.abilities ?? [], statPoints: {} });
-    const abilities = Array.isArray(bot.abilities) && bot.abilities.length
-        ? bot.abilities
-        : decodeBotLoadout(loadoutId).abilities;
+        : encodeBotLoadout({ abilities: bot.abilities ?? [] });
+    const abilities = replayAbilitiesFor(
+        Array.isArray(bot.abilities) && bot.abilities.length
+            ? bot.abilities
+            : decodeBotLoadout(loadoutId).abilities,
+    );
     const abilityState = replayBotAbilityState(bot);
-    const visualOrigin = replayRayOrigin(bot);
+    const visualOrigin = replayRayOrigin(bot, frames, frameIndex);
     const previousBots = frames[Math.max(0, frameIndex - 1)]?.bots ?? EMPTY_LIST;
     const previousBot = previousBots[Math.max(0, Number(bot.slot ?? 1) - 1)];
     const replayVelocity = {
@@ -305,18 +349,21 @@ function botReplayShape(bot, recentlyDamagedIds, entranceProgress, frames, frame
         size: bot.size ?? 60,
         combatLoadout: loadoutId,
         abilities,
-        maxHp: Number(bot.maxHp ?? 100),
+        maxHp: Number(bot.maxHp ?? BASE_BOT_HP),
         abilityActiveMs: abilityState.abilityActiveMs,
         triggeredAbility: bot.triggeredAbility ?? null,
-        microDashActiveMs: abilityState.microDashActiveMs,
+        dashActiveMs: abilityState.dashActiveMs,
         abilityCooldowns: { ...(bot.abilityCooldowns ?? {}) },
         abilityCharges: { ...(bot.abilityCharges ?? {}) },
         abilityRechargeMs: { ...(bot.abilityRechargeMs ?? {}) },
         locked: true,
-        interpolationMs: entranceProgress < 1 || initialHandoff ? 0 : REPLAY_FRAME_INTERPOLATION_MS,
+        interpolationMs,
         username: bot.username,
         opponentUsername: bot.username,
-        hitFlashMs: recentlyDamagedIds.has(replayShapeKey(bot)) ? 200 : 0,
+        hitFlashMs: damageEvents.has(replayShapeKey(bot)) ? 200 : 0,
+        hitParticleEvent: damageEvents.get(replayShapeKey(bot)) ?? null,
+        replayFrameIndex: frameIndex,
+        replayPhase,
         ...replayVelocity,
         ...visualOrigin,
     };
@@ -330,43 +377,15 @@ function forfeitWinnerBot(winner) {
         x: ARENA_WIDTH_UNITS / 2,
         y: ARENA_HEIGHT_UNITS / 2,
         rotation: 0,
-        hp: 100,
-        maxHp: 100,
-        combatLoadout: winner.selectedLoadout ?? encodeBotLoadout({ abilities: [], statPoints: {} }),
-        abilities: decodeBotLoadout(winner.selectedLoadout).abilities,
+        hp: BASE_BOT_HP,
+        maxHp: BASE_BOT_HP,
+        combatLoadout: winner.selectedLoadout ?? encodeBotLoadout({ abilities: [] }),
+        abilities: replayAbilitiesFor(decodeBotLoadout(winner.selectedLoadout).abilities),
     };
 }
 
 function sameId(left, right) {
     return left != null && right != null && String(left) === String(right);
-}
-
-function replayRayOrigin(bot) {
-    if (Number(bot.abilityActiveMs?.[3] ?? 0) > 0) {
-        return {
-            gunRayOriginX: Number(bot.x),
-            gunRayOriginY: Number(bot.y),
-            gunRayRotation: Number(bot.rotation ?? 0),
-            replayGunActiveMs: Number(bot.abilityActiveMs[3]),
-        };
-    }
-    const ability = Number(bot.abilityActiveMs?.[12] ?? 0) > 0 ? 12
-        : Number(bot.abilityActiveMs?.[9] ?? 0) > 0 ? 9
-            : Number(bot.abilityActiveMs?.[13] ?? 0) > 0 ? 13
-                : Number(bot.abilityActiveMs?.[8] ?? 0) > 0 ? 8 : null;
-    if (!ability) return {};
-    return {
-        visualOriginX: Number(bot.x),
-        visualOriginY: Number(bot.y),
-        visualOriginRotation: Number(bot.rotation ?? 0),
-    };
-}
-
-function replayShapeKey(shape) {
-    if (shape?.userId != null) return `user:${shape.userId}`;
-    if (shape?.id != null) return `id:${shape.id}`;
-    if (shape?.slot != null) return `slot:${shape.slot}`;
-    return null;
 }
 
 function replayGunRayLength(bot, entities) {

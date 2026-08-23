@@ -10,7 +10,8 @@ public record ProfileDTO(
         long matchesPlayed,
         long wins,
         long losses,
-        long draws) {
+        long draws,
+        long puzzlesSolved) {
 
     public record RecentMatchDTO(
             UUID matchId,

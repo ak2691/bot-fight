@@ -18,16 +18,19 @@ rated results.
 - `coding/modals/`: custom-variable and root-search modal implementations.
 - `coding/utils/`: coding-menu coordination and custom-variable search helpers.
 - `status/`: player-facing cooldown, charge, and ability-status presentation.
-- `testing/`: ability-test presets and local playback simulation helpers.
 - `pixi/PixiCanvas.jsx` + `pixi/PixiCanvas.css`: Pixi scene lifecycle, layers,
   sprites, arena/bot/entity rendering, and presentation overlays.
 - `loadout/BotLoadout.js`: ability catalog metadata, round pools, loadout
-  normalization/encoding, stat budgets, action mapping, and visual capabilities.
+  normalization/encoding, action mapping, and visual capabilities.
+- `botlogic/code/`: structured bot-code contract with `BotCode.js` as the public
+  entry point and helpers split into `configuration/`, `runtime/`, and `tests/`.
 - `modelPayloads/`: arena units/constants, shape construction, and the logic
   feature/state snapshot contract.
 - `gameconfig/`: browser numeric definitions, declarative effect contracts,
   geometry, shield/defensive rules, bot combat, and visual timers.
-- `ecs/`: transient/persistent arena entities and action/effect execution.
+- `ecs/`: deterministic arena execution organized into `contracts/`, `bots/`,
+  `abilities/`, and `entities/`; see `ecs/context.md` for ownership and
+  boundaries.
 - `pixi/`: renderer-only texture caching, snapshot interpolation, and mapping
   gameplay shapes/state to Pixi layers/captions/visual state.
 - `ArenaObjects.js`: transient ability-entity identifiers and presentation
@@ -39,12 +42,12 @@ rated results.
 | --- | --- | --- |
 | Pixi object missing, wrong layer/caption/texture | `pixi/` | shape producer and visual regression checklist |
 | Jitter, teleport smear, rotation/interpolation bug | `pixi/` | combat visual-state area and snapshot timestamps |
-| Wrong cooldown/charge/status visual | `status/`, then `gameconfig/` | gameplay timer owner in `ecs/` or gameconfig |
+| Wrong cooldown/charge/status visual | `status/`, then `ecs/` | numeric definitions and effect contracts in `gameconfig/` |
 | Damage, shield, effect, or collision bug | `gameconfig/`, then `ecs/` | arena tick orchestration and server mirror |
 | Projectile/trap/summon/entity behavior | `ecs/` | combat contracts and server `simulation/ecs/` |
 | Action does not execute | `botlogic/code/`, `botlogic/planner/`, and `ecs/` | loadout action mapping and code selection |
 | Condition/target sees wrong data | `modelPayloads/` | `botlogic/code/` and shape construction |
-| Ability draft/loadout/stat issue | `loadout/` | frontend and server matchmaking areas |
+| Ability draft/loadout issue | `loadout/` | frontend and server matchmaking areas |
 | Coding workspace or graph interaction | `coding/` | `botlogic/graph/`, code schema, and nearby toolbar tests |
 | Testing loop/state coordination | `Arena.jsx` | focused system/helper and submission area |
 | Replay-only mismatch | `../replay/` | `pixi/` mapping and server replay DTO area |
@@ -71,13 +74,13 @@ or simultaneous-effect work, run through the regression checklist indexed there.
 
 ## Tests
 
-- `ecs/EntitySystems.test.js`: action execution, entity lifecycle, combat/status
+- `ecs/tests/EntitySystems.test.js`: action execution, entity lifecycle, combat/status
   interactions, and tick-order regressions.
 - `pixi/snapshotInterpolation.test.js`: position interpolation math.
 - `pixi/pixiVisualState.test.js`: renderer mapping and visual-state rules.
-- `botlogic/code/BotCode.test.js`: schema, conditions, targets, normalization, and
+- `botlogic/code/tests/BotCode.test.js`: schema, conditions, targets, normalization, and
   deterministic selection.
-- `ecs/EntitySystems.test.js`: movement intent generation and execution.
+- `ecs/tests/EntitySystems.test.js`: movement intent generation and execution.
 - `coding/strategyToolbar.test.js`: coding workspace and graph source contracts.
 - `status/abilityStatusPresentation.test.js`: status-panel source and timing contracts.
 

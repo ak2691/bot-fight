@@ -1,5 +1,11 @@
 package com.example.botfight.service;
 
+import com.example.botfight.service.auth.AuthException;
+import com.example.botfight.service.auth.CurrentUserService;
+import com.example.botfight.service.limits.SlidingWindowRateLimiter;
+import com.example.botfight.service.limits.TokenBucketRateLimiter;
+import com.example.botfight.service.profile.ProfileService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -7,16 +13,18 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.example.botfight.domain.AppUser;
-import com.example.botfight.domain.Match;
-import com.example.botfight.domain.MatchParticipant;
 import com.example.botfight.domain.MatchResult;
 import com.example.botfight.domain.Profile;
 import com.example.botfight.DTO.AboutMeRequestDTO;
 import com.example.botfight.DTO.ProfileSearchPageDTO;
 import com.example.botfight.DTO.UsernameRequestDTO;
 import com.example.botfight.repository.MatchParticipantRepository;
+import com.example.botfight.repository.MatchParticipantRepository.RecentMatchProjection;
+import com.example.botfight.repository.PuzzleCompletionRepository;
 import com.example.botfight.repository.ProfileRepository;
 import com.example.botfight.repository.UserRepository;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -25,7 +33,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.core.Authentication;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -34,12 +41,16 @@ class ProfileServiceTest {
     private final CurrentUserService currentUserService = mock(CurrentUserService.class);
     private final UserRepository userRepository = mock(UserRepository.class);
     private final MatchParticipantRepository participantRepository = mock(MatchParticipantRepository.class);
+    private final PuzzleCompletionRepository puzzleCompletionRepository = mock(PuzzleCompletionRepository.class);
     private final ProfileRepository profileRepository = mock(ProfileRepository.class);
     private final ProfileService service = new ProfileService(
             currentUserService,
             userRepository,
             participantRepository,
-            profileRepository);
+            puzzleCompletionRepository,
+            profileRepository,
+            new SlidingWindowRateLimiter<>(Clock.systemUTC(), 10, Duration.ofMinutes(1)),
+            new TokenBucketRateLimiter<String>(Clock.systemUTC(), 1, Duration.ofSeconds(1)));
 
     @Test
     void returnsOwnedAggregate() {
@@ -50,13 +61,18 @@ class ProfileServiceTest {
         storedProfile.setUser(user);
         storedProfile.setAboutMe("A careful bot builder.");
 
+        when(currentUserService.requireCurrentUserId(authentication)).thenReturn(user.getId());
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(user);
         when(profileRepository.findByUserId(user.getId())).thenReturn(Optional.of(storedProfile));
-        when(participantRepository.countByUserIdAndResult(user.getId(), MatchResult.WIN)).thenReturn(7L);
-        when(participantRepository.countByUserIdAndResultIn(
-                user.getId(),
-                List.of(MatchResult.LOSS, MatchResult.FORFEIT))).thenReturn(3L);
-        when(participantRepository.countByUserIdAndResult(user.getId(), MatchResult.DRAW)).thenReturn(2L);
+        when(participantRepository.countByUserIdAndResultAndMatchResultVisibleAtLessThanEqual(
+                eq(user.getId()), eq(MatchResult.WIN), any(Instant.class))).thenReturn(7L);
+        when(participantRepository.countByUserIdAndResultInAndMatchResultVisibleAtLessThanEqual(
+                eq(user.getId()),
+                eq(List.of(MatchResult.LOSS, MatchResult.FORFEIT)),
+                any(Instant.class))).thenReturn(3L);
+        when(participantRepository.countByUserIdAndResultAndMatchResultVisibleAtLessThanEqual(
+                eq(user.getId()), eq(MatchResult.DRAW), any(Instant.class))).thenReturn(2L);
+        when(puzzleCompletionRepository.countByUserId(user.getId())).thenReturn(4L);
         var profileView = service.currentProfile(authentication);
 
         assertThat(profileView.username()).isEqualTo("allan");
@@ -66,30 +82,34 @@ class ProfileServiceTest {
         assertThat(profileView.wins()).isEqualTo(7);
         assertThat(profileView.losses()).isEqualTo(3);
         assertThat(profileView.draws()).isEqualTo(2);
+        assertThat(profileView.puzzlesSolved()).isEqualTo(4);
     }
 
     @Test
     void returnsTwentyMatchPagesWithOpponentAndDateFilters() {
         Authentication authentication = mock(Authentication.class);
         AppUser user = user("allan");
-        AppUser opponent = user("ByteBrawler");
-        Match match = new Match();
-        match.setId(UUID.randomUUID());
-        match.setCompletedAt(Instant.parse("2026-07-22T10:15:00Z"));
-        match.setCompletionReason("SIMULATION");
-        MatchParticipant mine = participant(match, user, MatchResult.WIN);
-        MatchParticipant theirs = participant(match, opponent, MatchResult.LOSS);
+        UUID matchId = UUID.randomUUID();
         Instant from = Instant.parse("2026-07-01T00:00:00Z");
         Instant to = Instant.parse("2026-08-01T00:00:00Z");
-        PageRequest pageRequest = PageRequest.of(
-                0,
-                20,
-                Sort.by(Sort.Direction.DESC, "match.completedAt", "match.id"));
+        PageRequest pageRequest = PageRequest.of(0, 20);
+        RecentMatchProjection recentMatch = mock(RecentMatchProjection.class);
 
+        when(currentUserService.requireCurrentUserId(authentication)).thenReturn(user.getId());
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(user);
-        when(participantRepository.findAll(any(Specification.class), eq(pageRequest)))
-                .thenReturn(new PageImpl<>(List.of(mine), pageRequest, 21));
-        when(participantRepository.findByMatchId(match.getId())).thenReturn(List.of(mine, theirs));
+        when(participantRepository.findRecentMatches(
+                eq(user.getId()),
+                any(Instant.class),
+                eq("byte"),
+                eq(from),
+                eq(to),
+                eq(pageRequest)))
+                .thenReturn(new PageImpl<>(List.of(recentMatch), pageRequest, 21));
+        when(recentMatch.getMatchId()).thenReturn(matchId);
+        when(recentMatch.getOpponentUsername()).thenReturn("ByteBrawler");
+        when(recentMatch.getResult()).thenReturn(MatchResult.WIN);
+        when(recentMatch.getCompletedAt()).thenReturn(Instant.parse("2026-07-22T10:15:00Z"));
+        when(recentMatch.getCompletionReason()).thenReturn("SIMULATION");
 
         var history = service.matchHistory(authentication, 0, " byte ", from, to);
 
@@ -110,6 +130,7 @@ class ProfileServiceTest {
         UsernameRequestDTO request = new UsernameRequestDTO();
         request.setUsername("Allan_2");
 
+        when(currentUserService.requireCurrentUserId(authentication)).thenReturn(user.getId());
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(user);
         when(userRepository.existsByUsernameIgnoreCaseAndIdNot("Allan_2", user.getId())).thenReturn(false);
 
@@ -127,6 +148,7 @@ class ProfileServiceTest {
         UsernameRequestDTO request = new UsernameRequestDTO();
         request.setUsername("rival");
 
+        when(currentUserService.requireCurrentUserId(authentication)).thenReturn(user.getId());
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(user);
         when(userRepository.existsByUsernameIgnoreCaseAndIdNot("rival", user.getId())).thenReturn(true);
 
@@ -147,6 +169,7 @@ class ProfileServiceTest {
                 20,
                 Sort.by(Sort.Direction.ASC, "username", "id"));
 
+        when(currentUserService.requireCurrentUserId(authentication)).thenReturn(viewer.getId());
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(viewer);
         when(userRepository.findByEmailVerifiedTrueAndUsernameContainingIgnoreCaseOrderByUsernameAscIdAsc(
                 "byte",
@@ -170,6 +193,7 @@ class ProfileServiceTest {
         AppUser target = user("rival");
         ReflectionTestUtils.setField(target, "createdAt", Instant.parse("2026-02-10T12:00:00Z"));
 
+        when(currentUserService.requireCurrentUserId(authentication)).thenReturn(viewer.getId());
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(viewer);
         when(userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue("Rival"))
                 .thenReturn(Optional.of(target));
@@ -186,24 +210,26 @@ class ProfileServiceTest {
         Authentication authentication = mock(Authentication.class);
         AppUser viewer = user("allan");
         AppUser target = user("rival");
-        AppUser opponent = user("ByteBrawler");
-        Match match = new Match();
-        match.setId(UUID.randomUUID());
-        match.setCompletedAt(Instant.parse("2026-07-22T10:15:00Z"));
-        MatchParticipant targetParticipant = participant(match, target, MatchResult.WIN);
-        MatchParticipant opponentParticipant = participant(match, opponent, MatchResult.LOSS);
-        PageRequest pageRequest = PageRequest.of(
-                0,
-                20,
-                Sort.by(Sort.Direction.DESC, "match.completedAt", "match.id"));
+        UUID matchId = UUID.randomUUID();
+        PageRequest pageRequest = PageRequest.of(0, 20);
+        RecentMatchProjection recentMatch = mock(RecentMatchProjection.class);
 
+        when(currentUserService.requireCurrentUserId(authentication)).thenReturn(viewer.getId());
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(viewer);
         when(userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue("rival"))
                 .thenReturn(Optional.of(target));
-        when(participantRepository.findAll(any(Specification.class), eq(pageRequest)))
-                .thenReturn(new PageImpl<>(List.of(targetParticipant), pageRequest, 1));
-        when(participantRepository.findByMatchId(match.getId()))
-                .thenReturn(List.of(targetParticipant, opponentParticipant));
+        when(participantRepository.findRecentMatches(
+                eq(target.getId()),
+                any(Instant.class),
+                eq(""),
+                eq(null),
+                eq(null),
+                eq(pageRequest)))
+                .thenReturn(new PageImpl<>(List.of(recentMatch), pageRequest, 1));
+        when(recentMatch.getMatchId()).thenReturn(matchId);
+        when(recentMatch.getOpponentUsername()).thenReturn("ByteBrawler");
+        when(recentMatch.getResult()).thenReturn(MatchResult.WIN);
+        when(recentMatch.getCompletedAt()).thenReturn(Instant.parse("2026-07-22T10:15:00Z"));
 
         var history = service.publicMatchHistory(authentication, "rival", 0, "", null, null);
 
@@ -222,6 +248,7 @@ class ProfileServiceTest {
         AboutMeRequestDTO request = new AboutMeRequestDTO();
         request.setAboutMe("SELECT * FROM users;\r\n<script>alert(1)</script>");
 
+        when(currentUserService.requireCurrentUserId(authentication)).thenReturn(user.getId());
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(user);
         when(profileRepository.findByUserId(user.getId())).thenReturn(Optional.of(profile));
 
@@ -235,6 +262,7 @@ class ProfileServiceTest {
     void rejectsAboutMeControlCharactersAndOversizedValues() {
         Authentication authentication = mock(Authentication.class);
         AppUser user = user("allan");
+        when(currentUserService.requireCurrentUserId(authentication)).thenReturn(user.getId());
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(user);
 
         AboutMeRequestDTO controlCharacterRequest = new AboutMeRequestDTO();
@@ -259,11 +287,4 @@ class ProfileServiceTest {
         return user;
     }
 
-    private static MatchParticipant participant(Match match, AppUser user, MatchResult result) {
-        MatchParticipant participant = new MatchParticipant();
-        participant.setMatch(match);
-        participant.setUser(user);
-        participant.setResult(result);
-        return participant;
-    }
 }

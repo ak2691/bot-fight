@@ -8,8 +8,13 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.example.botfight.service.MatchService.MatchEntrant;
-import com.example.botfight.service.MatchService.OutboundMatchmakingEvent;
+import com.example.botfight.service.auth.AuthException;
+import com.example.botfight.service.limits.RateLimitExceededException;
+import com.example.botfight.service.limits.SlidingWindowRateLimiter;
+import com.example.botfight.service.match.MatchService;
+import com.example.botfight.service.match.model.MatchEntrant;
+import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
+import com.example.botfight.service.matchmaking.MatchmakingService;
 import com.example.botfight.DTO.ActiveMatchStatusDTO;
 import com.example.botfight.DTO.MatchmakingEventDTO;
 import com.example.botfight.DTO.MatchmakingPlayerDTO;
@@ -39,7 +44,7 @@ class MatchmakingServiceTest {
         service = new MatchmakingService(
                 matchService,
                 clock,
-                new MatchmakingRateLimiter(clock));
+                new SlidingWindowRateLimiter<>(clock, 3, Duration.ofSeconds(5)));
         when(matchService.activeMatchStatus(any()))
                 .thenReturn(ActiveMatchStatusDTO.none());
         when(matchService.startMatch(any(), any())).thenReturn(List.of());
@@ -336,7 +341,7 @@ class MatchmakingServiceTest {
                 "pilot@example.com",
                 "socket-four"))
                 .isInstanceOf(RateLimitExceededException.class)
-                .hasMessageContaining("matchmaking attempts");
+                .hasMessage(RateLimitExceededException.GENERIC_MESSAGE);
     }
 
     private static final class MutableClock extends Clock {

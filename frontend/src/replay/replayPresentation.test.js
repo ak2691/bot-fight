@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { displayedRoundWins, initialReplayHandoffFrame, localReplaySchedule, mergeReplayFrames, replayClockSeconds, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayBotAbilityState, replayFrameIndexForElapsedMs, replayRemainingMs } from "./replayPresentation.js";
+import { displayedRoundWins, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, localReplaySchedule, mergeReplayFrames, replayAbilitiesFor, replayClockSeconds, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayBotAbilityState, replayFrameIndexForElapsedMs, replayRayOrigin, replayRemainingMs, replayRemainingSeconds, replayShapeKey } from "./replayPresentation.js";
 
 test("replay schedule preserves the server deadlines when the ready event arrives late", () => {
     assert.deepEqual(localReplaySchedule(10_000, 30_000, 9_000), {
@@ -49,11 +49,11 @@ test("replay visual timers follow authoritative frame time without presentation 
 
 test("local replay preserves the organized ability timers used by Bot Room", () => {
     assert.deepEqual(replayBotAbilityState({
-        microDashActiveMs: 200,
-        abilityActiveMs: { 1: 300, 3: 850, 5: 500, 6: 400, 2: 1, 19: 100 },
+        dashActiveMs: 200,
+        abilityActiveMs: { 1: 300, 3: 850, 5: 500, 6: 400, 19: 100 },
     }), {
-        abilityActiveMs: { 1: 300, 3: 850, 5: 500, 6: 400, 2: 1, 19: 100 },
-        microDashActiveMs: 200,
+        abilityActiveMs: { 1: 300, 3: 850, 5: 500, 6: 400, 19: 100 },
+        dashActiveMs: 200,
     });
 });
 
@@ -61,6 +61,67 @@ test("replay does not infer one ability visual from another equipped ability", (
     const state = replayBotAbilityState({ abilities: [3, 5], abilityActiveMs: { 5: 500 } });
     assert.equal(state.abilityActiveMs[5], 500);
     assert.equal(state.abilityActiveMs[3] ?? 0, 0);
+});
+
+test("match replay timer starts at 1:30 and counts down to zero", () => {
+    assert.equal(replayRemainingSeconds(90_000, 0), 90);
+    assert.equal(replayRemainingSeconds(90_000, 29_900), 61);
+    assert.equal(replayRemainingSeconds(90_000, 90_000), 0);
+    assert.equal(replayRemainingSeconds(90_000, 95_000), 0);
+});
+
+test("compact replay bots recover participant metadata by slot", () => {
+    const bot = hydrateReplayBot(
+        {
+            slot: 2,
+            x: 500,
+            y: 700,
+            rotation: 0,
+            hp: 85,
+            abilityCooldowns: { 3: 1000, 19: 1500, 20: 10000 },
+            abilityCharges: { 3: 9 },
+            abilityRechargeMs: { 3: 0 },
+            abilityActiveMs: { 3: 700 },
+        },
+        { slot: 2, x: 500, y: 700, rotation: 0, hp: 100, maxHp: 140 },
+        {
+            slot: 2,
+            userId: "user-2",
+            username: "Opponent",
+            selectedLoadout: "custom:g",
+        },
+    );
+
+    assert.equal(bot.userId, "user-2");
+    assert.equal(bot.username, "Opponent");
+    assert.equal(bot.maxHp, 140);
+    assert.deepEqual(bot.abilityCooldowns, { 3: 1000, 19: 1500, 20: 10000 });
+    assert.deepEqual(bot.abilityCharges, { 3: 9 });
+    assert.deepEqual(bot.abilityRechargeMs, { 3: 0 });
+    assert.deepEqual(bot.abilities, [19, 20, 34, 3]);
+});
+
+test("initial replay bots carry resource state before the preparation countdown ends", () => {
+    const bot = hydrateReplayBot({
+        slot: 1,
+        x: 500,
+        y: 400,
+        hp: 100,
+        maxHp: 100,
+        abilities: [3, 5, 19, 20],
+        abilityCooldowns: { 3: 0, 5: 0, 19: 1500, 20: 10000 },
+        abilityCharges: { 3: 10, 5: 4 },
+        abilityRechargeMs: { 3: 0, 5: 0 },
+    });
+
+    assert.deepEqual(bot.abilities, [19, 20, 34, 3, 5]);
+    assert.deepEqual(bot.abilityCooldowns, { 3: 0, 5: 0, 19: 1500, 20: 10000 });
+    assert.deepEqual(bot.abilityCharges, { 3: 10, 5: 4 });
+    assert.deepEqual(bot.abilityRechargeMs, { 3: 0, 5: 0 });
+});
+
+test("replay status order preserves the current acquisition order", () => {
+    assert.deepEqual(replayAbilitiesFor([12, 1, 3, 13]), [19, 20, 34, 12, 1, 3, 13]);
 });
 
 test("buffered replay frames are selected directly from the fixed simulation step", () => {
@@ -81,6 +142,49 @@ test("authoritative frames beginning at the first 100 ms tick use a zero-based b
     assert.equal(replayFrameIndexForElapsedMs(frames, 200), 1);
     assert.equal(replayFrameIndexForElapsedMs(frames, 4_000), 39);
     assert.equal(replayFrameIndexForElapsedMs(frames, 4_500), 39);
+});
+
+test("replay presentation interpolates transforms on the authoritative timeline", () => {
+    const frame = {
+        elapsedMs: 100,
+        bots: [{ slot: 1, x: 100, y: 200, rotation: 350, hp: 100 }],
+        entities: [{ id: "fireball", x: 100, y: 300, rotation: 0 }],
+    };
+    const nextFrame = {
+        elapsedMs: 200,
+        bots: [{ slot: 1, x: 200, y: 100, rotation: 10, hp: 90 }],
+        entities: [{ id: "fireball", x: 200, y: 400, rotation: 20 }],
+    };
+    const interpolated = interpolateReplayFrame(frame, nextFrame, 150);
+    assert.deepEqual(interpolated.bots[0], { slot: 1, x: 150, y: 150, rotation: 360, hp: 100 });
+    assert.deepEqual(interpolated.entities[0], { id: "fireball", x: 150, y: 350, rotation: 10 });
+});
+
+test("replay damage matching remains slot-based after bot metadata hydration", () => {
+    assert.equal(replayShapeKey({ slot: 1 }), replayShapeKey({ slot: 1, userId: "user-1" }));
+    assert.equal(replayShapeKey({ id: "entity-1" }), replayShapeKey({ id: "entity-1", type: "fireball" }));
+});
+
+test("replay gun rays retain the activation position while the bot moves", () => {
+    const frames = [
+        { bots: [{ slot: 1, x: 100, y: 200, rotation: 10, abilityActiveMs: {} }] },
+        { bots: [{ slot: 1, x: 130, y: 240, rotation: 40, abilityActiveMs: { 3: 900 }, abilityCooldowns: { 3: 900 } }] },
+        { bots: [{ slot: 1, x: 170, y: 280, rotation: 90, abilityActiveMs: { 3: 800 }, abilityCooldowns: { 3: 800 } }] },
+        { bots: [{ slot: 1, x: 220, y: 330, rotation: 120, abilityActiveMs: { 3: 1000 }, abilityCooldowns: { 3: 1000 } }] },
+    ];
+
+    assert.deepEqual(replayRayOrigin(frames[2].bots[0], frames, 2), {
+        gunRayOriginX: 130,
+        gunRayOriginY: 240,
+        gunRayRotation: 40,
+        replayGunActiveMs: 800,
+    });
+    assert.deepEqual(replayRayOrigin(frames[3].bots[0], frames, 3), {
+        gunRayOriginX: 220,
+        gunRayOriginY: 330,
+        gunRayRotation: 120,
+        replayGunActiveMs: 1000,
+    });
 });
 
 test("replay recovery appends only frames newer than the current cursor", () => {

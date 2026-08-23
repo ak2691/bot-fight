@@ -6,7 +6,7 @@ See [Ability Effect Contract](ABILITY_EFFECT_CONTRACT.md) for effect semantics a
 
 ## 1. Define the contract
 
-Record the stable ID, draft round, type, targeting mode, timing/resources, geometry, ordered effects, collision/ownership rules, spawned entity (if any), shield policy, interpolation mode, and required replay fields.
+Record the stable ID, draft round, delivery, catalogue tags, targeting mode, timing/resources, geometry, damage profile, ordered effects, collision/ownership rules, spawned entity (if any), shield policy, interpolation mode, and required replay fields. Use a linear damage profile with `maxDamage`, `minDamage`, `damageFalloffStart`, and `damageFalloffEnd` instead of range-band tables. Use `status-effect` for continuing positive or negative statuses and include the percentage or numeric strength for every positive effect; use `self` independently when the delivery targets the caster. A status must use the generic `remainingMs` field, optionally `tickMs`, and an allowlisted `effects[]` list; do not introduce effect-specific timer fields or status-level cooldown fields.
 
 Use capability tags only for real gameplay contracts consumed by targeting, conditions, collision, or validation. Keep browser/server milliseconds, arena units, tick order, and rounding identical.
 
@@ -19,7 +19,8 @@ Use capability tags only for real gameplay contracts consumed by targeting, cond
   tuning/contracts rather than name-based property access.
 - `gameArena/loadout/BotLoadout.js`: catalog entry, actions, draft metadata, compact loadout code, interpolation, and entity capabilities.
 - `gameArena/gameconfig/Abilities.js`: numeric definition.
-- `gameArena/gameconfig/AbilityContracts.js`: delivery, ordered effects, and shield interaction.
+- `gameArena/gameconfig/AbilityContracts.js`: delivery, ordered effects,
+  shield interaction, and declarative activation payload metadata.
 - `gameArena/botlogic/code/BotCode.js`: edit only for a new condition variable, target mode, payload shape, or action head; catalog-derived actions and targets need no duplicate list.
 - `gameArena/modelPayloads/strategyStatePayload.js`: expose only state the brain is allowed to observe.
 
@@ -34,13 +35,24 @@ snapshot -> brain selection -> action payload -> executor -> combat/entities -> 
 | Concern | Owner |
 | --- | --- |
 | Selected action payload | `gameArena/botlogic/planner/ArenaActionPlanner.js` |
-| Readiness, resources, preparation, spawn request | `gameArena/ecs/ActionExecutionSystem.js` |
+| Readiness, resources, preparation, spawn request | `gameArena/ecs/bots/ActionExecutionSystem.js` |
 | Immediate bot combat | `gameArena/gameconfig/BotCombatSystem.js` |
-| Short-lived projectiles | `gameArena/ecs/ProjectileSystem.js` |
-| Persistent/targetable entities | `gameArena/ecs/EntityFactory.js`, `AbilityEntitySystem.js` |
-| Timed bot effects | `gameArena/ecs/BotStatusSystem.js` |
+| Short-lived projectiles | `gameArena/ecs/abilities/ProjectileSystem.js` |
+| Persistent/targetable entities | `gameArena/ecs/entities/EntityFactory.js`, `gameArena/ecs/abilities/AbilityEntitySystem.js` |
+| Timed bot effects | `gameArena/ecs/contracts/StatusContracts.js`, `gameArena/ecs/bots/BotStatusSystem.js` |
+| Cooldowns, charges, active resources | `gameArena/ecs/bots/BotResourceSystem.js` |
+| Match/transient cleanup | `gameArena/ecs/bots/BotLifecycleSystem.js` |
+| Snapshot-based future bot transitions | `gameArena/ecs/contracts/DeferredStateContracts.js`, `gameArena/ecs/bots/DeferredStateSystem.js` |
 
 `Arena.jsx` orchestrates returned state; it should not own ability geometry or damage. Factories create initial state; systems own ticking, collision, effects, and removal.
+
+Before adding a timer or delayed behavior, classify it by ownership. Preparation
+delays stay in action execution; delayed world behavior becomes an entity;
+continuing bot effects become statuses; cooldowns and charges remain resources;
+per-tick cleanup remains lifecycle; and future mutations based on captured bot
+state use deferred-state contracts. Extend the generic contract/system first;
+only add a new system or completion strategy when the behavior cannot be
+represented by an existing one.
 
 ## 4. Visuals
 

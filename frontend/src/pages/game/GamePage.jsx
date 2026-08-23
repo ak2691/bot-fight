@@ -1,4 +1,4 @@
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import ArenaLoadingScreen from "../../components/ArenaLoadingScreen.jsx";
 import SimulationReplay from "../../replay/SimulationReplay";
 import { matchReplayArenaLifecycle } from "../../replay/arenaLifecycle.js";
@@ -8,13 +8,11 @@ import MatchHeader from "./components/MatchHeader.jsx";
 import MatchView from "./components/MatchView.jsx";
 import { useMatchLifecycle } from "./hooks/useMatchLifecycle.js";
 
-const MATCH_SURFACE_CLASS = "min-h-screen bg-arena-deep text-ink-hi font-ui";
+const MATCH_SURFACE_CLASS = "gray-button-page min-h-screen bg-arena-deep text-ink-hi font-ui";
 
 export default function GamePage() {
-    const location = useLocation();
     const navigate = useNavigate();
     const lifecycle = useMatchLifecycle({
-        initialRouteMatchEvent: location.state?.matchEvent,
         navigate,
     });
     const {
@@ -81,6 +79,10 @@ export default function GamePage() {
         return <ArenaLoadingScreen />;
     }
 
+    if (queueStatus === "CONNECTING") {
+        return <ArenaLoadingScreen />;
+    }
+
     if (queueStatus === "MATCH_ACCEPT") {
         return (
             <main className={MATCH_SURFACE_CLASS}>
@@ -143,6 +145,10 @@ export default function GamePage() {
                     abilityOffers={matchEvent?.abilityOffers ?? []}
                     remaining={remaining}
                     error={finishError}
+                    onSurrender={surrenderMatch}
+                    surrenderPending={surrenderPending}
+                    hasSurrendered={hasSurrendered}
+                    canSurrender={socketStatus === "CONNECTED"}
                 />
                 <MatchView {...matchViewProps} chatOnly />
             </main>

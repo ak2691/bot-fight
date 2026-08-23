@@ -12,6 +12,7 @@ import {
 
 const GAME_PAGE_PATH = fileURLToPath(new URL("./GamePage.jsx", import.meta.url));
 const MATCH_LIFECYCLE_HOOK_PATH = fileURLToPath(new URL("./hooks/useMatchLifecycle.js", import.meta.url));
+const SIMULATION_REPLAY_PATH = fileURLToPath(new URL("../../replay/SimulationReplay.jsx", import.meta.url));
 const MATCHMAKING_PROVIDER_PATH = fileURLToPath(new URL("../../matchmaking/MatchmakingProvider.jsx", import.meta.url));
 const MATCH_ACCEPTANCE_MODAL_PATH = fileURLToPath(new URL("../../matchmaking/MatchAcceptanceModal.jsx", import.meta.url));
 
@@ -118,9 +119,9 @@ test("MATCH_ACCEPT remains modal-only until authoritative MATCH_STARTED", () => 
 
     assert.ok(acceptanceBranch >= 0);
     assert.match(acceptanceBlock, /updatePendingAcceptance\(event\)/);
-    assert.doesNotMatch(acceptanceBlock, /navigate\("\/matchmaking"/);
+    assert.doesNotMatch(acceptanceBlock, /navigate\("\/match"/);
     assert.match(providerSource, /event\.type === "MATCH_STARTED" && event\.status === "LOADOUT_SELECT"/);
-    assert.match(providerSource, /navigate\("\/matchmaking", \{ state: \{ matchEvent: event \} \}\)/);
+    assert.match(providerSource, /navigate\("\/match"\)/);
 });
 
 test("page client initialization is stable across loadout state updates", () => {
@@ -128,10 +129,25 @@ test("page client initialization is stable across loadout state updates", () => 
     const source = readFileSync(MATCH_LIFECYCLE_HOOK_PATH, "utf8");
 
     assert.match(pageSource, /useMatchLifecycle\(\{/);
-    assert.match(source, /export function useMatchLifecycle\(\{ initialRouteMatchEvent, navigate \}\)/);
-    assert.match(source, /const initialMatchEventPayload = useMemo\(/);
-    assert.match(source, /\}, \[initialRouteMatchEvent\]\);/);
+    assert.match(source, /export function useMatchLifecycle\(\{ navigate \}\)/);
+    assert.doesNotMatch(source, /initialRouteMatchEvent|location\.state/);
     assert.match(source, /useMatchmakingSocket\(\{/);
+});
+
+test("match refreshes wait for the server resume instead of using route state", () => {
+    const source = readFileSync(GAME_PAGE_PATH, "utf8");
+
+    assert.doesNotMatch(source, /useLocation|useNavigationType|location\.state|matchEvent: event/);
+    assert.match(source, /queueStatus === "CONNECTING"/);
+});
+
+test("replay does not expose a forfeit control", () => {
+    const pageSource = readFileSync(GAME_PAGE_PATH, "utf8");
+    const replaySource = readFileSync(SIMULATION_REPLAY_PATH, "utf8");
+
+    assert.match(pageSource, /<AbilitySelectionPanel[\s\S]*onSurrender=\{surrenderMatch\}/);
+    assert.doesNotMatch(replaySource, /onSurrender|surrenderPending|hasSurrendered|canSurrender/);
+    assert.doesNotMatch(replaySource, /name="flag"|FORFEIT|SURRENDERING|RESIGNED/);
 });
 
 test("page fallback acceptance flow also strips identities and supports cancellation", () => {

@@ -3,7 +3,6 @@ const lockOnIconUrl = new URL("./assets/arena/abilities/support/crosshair.png", 
 
 export const ABILITY_CATALOGUE_ICONS = Object.freeze({
     swing: "/assets/ability-list/icons/swing.png",
-    block: "/assets/ability-list/icons/block.png",
     fire_gun: "/assets/ability-list/icons/fire_gun.png",
     throw_grenade: "/assets/ability-list/icons/throw_grenade.png",
     shoot_fireball: "/assets/ability-list/icons/shoot_fireball.png",
@@ -27,10 +26,33 @@ export const ABILITY_CATALOGUE_ICONS = Object.freeze({
     absolute_guard: "/assets/ability-list/icons/absolute_guard.png",
     null_zone: "/assets/ability-list/icons/null_zone.png",
     phase_strike: "/assets/ability-list/icons/phase_strike.png",
+    frost_ring: "/assets/ability-list/icons/frost_ring.png",
+    singularity: "/assets/ability-list/icons/singularity%20%282%29.png",
+    tether_bolt: "/assets/ability-list/icons/tether_bolt.png",
+    static_snare: "/assets/ability-list/icons/static_snare.png",
+    disruptor_dart: "/assets/ability-list/icons/disruptor_dart.png",
+    repeller_drone: "/assets/ability-list/icons/repeller_drone.png",
+    siphon_lance: "/assets/ability-list/icons/siphon_lance.png",
+    overclock: "/assets/ability-list/icons/overclock.png",
+});
+
+export const ABILITY_CATALOGUE_ICON_LAYOUTS = Object.freeze({
+    tether_bolt: "wide",
+    siphon_lance: "wide",
+    disruptor_dart: "wide",
+    static_snare: "square",
+    overclock: "square",
+    singularity: "square",
+    frost_ring: "square",
 });
 
 export function getAbilityCatalogueIcon(abilityId) {
-    const name = legacyAbilityNameFromId(abilityId);
+    const name = abilityIdentity(abilityId)?.name;
     return name == null ? null : ABILITY_CATALOGUE_ICONS[name] ?? null;
 }
-import { legacyAbilityNameFromId } from "./gameArena/gameconfig/AbilityRegistry.js";
+
+export function getAbilityCatalogueIconLayout(abilityId) {
+    const name = abilityIdentity(abilityId)?.name;
+    return ABILITY_CATALOGUE_ICON_LAYOUTS[name] ?? "default";
+}
+import { abilityIdentity } from "./gameArena/gameconfig/AbilityRegistry.js";

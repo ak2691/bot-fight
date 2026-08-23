@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+    isOlderMatchPhaseEvent,
     isOlderMatchRoundEvent,
     isSelectionEventForActivePhase,
     isSelectionPhaseStale,
@@ -68,4 +69,19 @@ test("a delayed prior-round result cannot replace the active selection round", (
 
     assert.equal(isOlderMatchRoundEvent(delayedRoundOneResult, roundTwoEvent), true);
     assert.equal(isOlderMatchRoundEvent(roundTwoEvent, delayedRoundOneResult), false);
+});
+
+test("a delayed selection event cannot regress a building phase", () => {
+    const buildingPhase = { ...roundOneEvent, type: "BOT_BUILDING_SESSION_READY", status: "PREP" };
+    const delayedSelection = { ...roundOneEvent, type: "MATCH_FOUND", status: "LOADOUT_SELECT" };
+
+    assert.equal(isOlderMatchPhaseEvent(delayedSelection, buildingPhase), true);
+    assert.equal(isOlderMatchPhaseEvent(buildingPhase, delayedSelection), false);
+});
+
+test("a delayed match-start event cannot clear a loadout lock", () => {
+    const lockedSelection = { ...roundOneEvent, type: "MATCH_LOADOUT_SELECTED", status: "LOADOUT_SELECT" };
+    const delayedMatchStart = { ...roundOneEvent, type: "MATCH_FOUND", status: "LOADOUT_SELECT" };
+
+    assert.equal(isOlderMatchPhaseEvent(delayedMatchStart, lockedSelection), true);
 });

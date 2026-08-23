@@ -1,11 +1,13 @@
 package com.example.botfight.controller;
 
 import com.example.botfight.security.RequestPayloadLimitExceededException;
-import com.example.botfight.service.AuthException;
-import com.example.botfight.service.SubmissionConflictException;
+import com.example.botfight.service.auth.AuthException;
+import com.example.botfight.service.limits.RateLimitExceededException;
+import com.example.botfight.service.submission.SubmissionConflictException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
 import java.util.UUID;
+import org.springframework.http.HttpHeaders;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -41,6 +43,21 @@ public class GlobalExceptionHandler {
             HttpServletRequest request) {
         return response(HttpStatus.CONTENT_TOO_LARGE,
                 "Request payload exceeds the allowed size", request, null);
+    }
+
+    @ExceptionHandler(RateLimitExceededException.class)
+    ResponseEntity<ApiError> handleRateLimit(
+            RateLimitExceededException exception,
+            HttpServletRequest request) {
+        long retryAfterSeconds = Math.max(1, exception.getRetryAfter().toSeconds());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, Long.toString(retryAfterSeconds))
+                .body(new ApiError(
+                        Instant.now(),
+                        HttpStatus.TOO_MANY_REQUESTS.value(),
+                        HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase(),
+                        RateLimitExceededException.GENERIC_MESSAGE,
+                        UUID.randomUUID().toString()));
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)

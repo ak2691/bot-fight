@@ -14,7 +14,7 @@ const ARRAY_PATHS = new Set(REQUIRED_ARENA_PRESENTATION_PATHS.filter((path) => [
     "rays.rail_shot",
     "muzzleFlash",
     "stun",
-    "microDashSmoke",
+    "dashSmoke",
     "windburst",
     "fireball",
     "grenadeMineExplosion",
@@ -66,6 +66,8 @@ test("concurrent preload calls share one in-flight promise", async () => {
     await first;
     assert.equal(loadCalls, 1);
     assert.equal(owner.getState().status, ARENA_ASSET_STATUS.READY);
+    assert.equal(owner.getState().loadedCount, 1);
+    assert.equal(owner.getState().totalCount, 1);
 });
 
 test("completed preload reuses the catalogue without loading again", async () => {
@@ -121,6 +123,8 @@ test("failed preload exposes the asset and retry safely starts a new attempt", a
     assert.equal(loadCounts.get("bot.png"), 2);
     assert.equal(loadCounts.get("drone.png"), 1);
     assert.equal(owner.getState().status, ARENA_ASSET_STATUS.READY);
+    assert.equal(owner.getState().loadedCount, 2);
+    assert.equal(owner.getState().totalCount, 2);
 });
 
 test("home readiness stays gated until the shared catalogue is ready", () => {
