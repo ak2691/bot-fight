@@ -5,11 +5,9 @@ import com.example.botfight.DTO.DuelInviteDTO;
 import com.example.botfight.DTO.DuelInviteListDTO;
 import com.example.botfight.DTO.NotificationEventDTO;
 import com.example.botfight.service.invite.DuelInviteService;
-import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.notification.NotificationPublisher;
 import java.time.Instant;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,16 +22,12 @@ public class DuelInviteController {
 
     private final DuelInviteService duelInviteService;
     private final NotificationPublisher notificationPublisher;
-    private final TokenBucketRateLimiter<String> authenticatedGetRateLimiter;
 
     public DuelInviteController(
             DuelInviteService duelInviteService,
-            NotificationPublisher notificationPublisher,
-            @Qualifier("authenticatedGetRateLimiter")
-            TokenBucketRateLimiter<String> authenticatedGetRateLimiter) {
+            NotificationPublisher notificationPublisher) {
         this.duelInviteService = duelInviteService;
         this.notificationPublisher = notificationPublisher;
-        this.authenticatedGetRateLimiter = authenticatedGetRateLimiter;
     }
 
     @PostMapping
@@ -62,8 +56,6 @@ public class DuelInviteController {
 
     @GetMapping("/incoming")
     public DuelInviteListDTO incoming(Authentication authentication) {
-        authenticatedGetRateLimiter.requireAllowed(
-                "duel-invites:" + authentication.getName());
         return new DuelInviteListDTO(duelInviteService.incoming(authentication));
     }
 
