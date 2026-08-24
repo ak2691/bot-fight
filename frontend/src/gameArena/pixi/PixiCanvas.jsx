@@ -6,7 +6,7 @@ import { ABILITY_STATS } from "../gameconfig/Abilities.js";
 import { ABILITIES } from "../gameconfig/AbilityRegistry.js";
 import { CLOSING_ZONE_TYPE } from "../gameconfig/ArenaHazardConfig.js";
 import { abilityActiveOpacity, basicHealParticleSpec, combatVisualRemainingMs, healthBarPercent, abilityVisualOpacity, BASIC_HEAL_PARTICLE_COUNT, REPULSOR_BURST_VISUAL_MS, repulsorBurstDiameter, repulsorBurstFrameIndex, repulsorBurstProgress, sweepAngle, visualProgress } from "../gameconfig/visualState.js";
-import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../modelPayloads/arenaConstants.js";
+import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, BOT_SIZE } from "../modelPayloads/arenaConstants.js";
 import { toSimulationBotShape } from "../modelPayloads/arenaShapes.js";
 import { interpolatePosition } from "./snapshotInterpolation.js";
 import { activeBotVisual, closingZoneDamageOccurred, entityCaption, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, grenadeDetonateProgress, heavySlashRotation, isBotShape, LOCK_ON_PRESENTATION, lockOnTargetPoint, pixiLayerForShape, presentationDefinitionForShape, projectileTrailStyle, shapeInterpolationMs } from "./pixiVisualState.js";
@@ -20,7 +20,6 @@ import { acquirePixiApplication, attachPixiApplication, releasePixiApplication }
 import { statusIsActive } from "../ecs/contracts/StatusContracts.js";
 import "./PixiCanvas.css";
 
-const BOT_SIZE = 60;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 2.5;
 const COLORS = Object.freeze({

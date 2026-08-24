@@ -52,6 +52,7 @@ import {
     cloneShape,
     mergeBotShapeUpdates,
     resetBotShape,
+    resetBotShapeToStartingConfiguration,
     toCanonicalBotShape,
     toSimulationBotShape,
 } from "./modelPayloads/arenaShapes.js";
@@ -275,23 +276,17 @@ function buildPracticeArenaShapes(playerLoadout, opponentLoadout, puzzleSetup = 
         const loadout = shape.id === "main" ? playerLoadout : opponentLoadout;
         const start = shape.id === "main" ? playerStart : opponentStart;
         const fallback = shape.id === "main" ? PRACTICE_PLAYER_START : PRACTICE_OPPONENT_START;
-        const position = {
-            x: Number.isFinite(Number(start?.startX ?? start?.x)) ? Number(start.startX ?? start.x) : fallback.x,
-            y: Number.isFinite(Number(start?.startY ?? start?.y)) ? Number(start.startY ?? start.y) : fallback.y,
+        const startConfiguration = {
+            startX: Number.isFinite(Number(start?.startX ?? start?.x)) ? Number(start.startX ?? start.x) : fallback.x,
+            startY: Number.isFinite(Number(start?.startY ?? start?.y)) ? Number(start.startY ?? start.y) : fallback.y,
             rotation: Number.isFinite(Number(start?.rotation)) ? Number(start.rotation) : fallback.rotation,
+            startHp: Number.isFinite(Number(start?.startHp)) ? Number(start.startHp) : BASE_BOT_HP,
         };
-        const startHp = Number.isFinite(Number(start?.startHp))
-            ? Math.max(0, Math.min(BASE_BOT_HP, Number(start.startHp)))
-            : BASE_BOT_HP;
-        const reset = resetBotShape({
+        const reset = resetBotShapeToStartingConfiguration({
             ...shape,
-            startHp,
             combatLoadout: loadout,
             loadout: loadoutForId(loadout),
-            ...(position.x == null ? {} : { x: position.x }),
-            ...(position.y == null ? {} : { y: position.y }),
-            ...(position.rotation == null ? {} : { rotation: position.rotation }),
-        });
+        }, startConfiguration);
         return initialElapsedMs > 0 ? mergeBotShapeUpdates(reset, { matchElapsedMs: initialElapsedMs }) : reset;
     });
     const initialClosingZone = buildInitialClosingZone(initialElapsedMs);
@@ -448,27 +443,19 @@ export default function Arena({
 
     useEffect(() => {
         if (!isPuzzleBuilder || !onPuzzleDraftChange || isAutoPlaying) return;
-        const player = toSimulationBotShape(shapes.find((shape) => shape.id === "main"));
-        const opponent = toSimulationBotShape(shapes.find((shape) => shape.id === "opponent-model"));
+        // Starting stats are authoring inputs. Runtime movement, damage, and
+        // rotation must remain preview state and never overwrite the draft.
         onPuzzleDraftChange({
             playerBot: {
                 loadout: selectedLoadout,
                 brain: testingConfiguration,
-                startX: Number(player?.x ?? PRACTICE_PLAYER_START.x),
-                startY: Number(player?.y ?? PRACTICE_PLAYER_START.y),
-                rotation: Number(player?.rotation ?? PRACTICE_PLAYER_START.rotation),
-                startHp: Number(player?.startHp ?? player?.hp ?? BASE_BOT_HP),
             },
             opponentBot: {
                 loadout: opponentLoadout,
                 brain: opponentTestingConfiguration,
-                startX: Number(opponent?.x ?? PRACTICE_OPPONENT_START.x),
-                startY: Number(opponent?.y ?? PRACTICE_OPPONENT_START.y),
-                rotation: Number(opponent?.rotation ?? PRACTICE_OPPONENT_START.rotation),
-                startHp: Number(opponent?.startHp ?? opponent?.hp ?? BASE_BOT_HP),
             },
         });
-    }, [isAutoPlaying, isPuzzleBuilder, onPuzzleDraftChange, opponentLoadout, opponentTestingConfiguration, selectedLoadout, shapes, testingConfiguration]);
+    }, [isAutoPlaying, isPuzzleBuilder, onPuzzleDraftChange, opponentLoadout, opponentTestingConfiguration, selectedLoadout, testingConfiguration]);
 
     useEffect(() => () => {
         if (autoIntervalRef.current) {
@@ -627,14 +614,12 @@ export default function Arena({
                 ? shape.id === "main" || shape.id === "opponent-model"
                     ? (() => {
                         const next = mergeBotShapeUpdates(shape, updates);
-                        return isPuzzleBuilder
-                            ? { ...next, spawnX: next.x, spawnY: next.y }
-                            : next;
+                        return next;
                     })()
                     : { ...shape, ...updates }
                 : shape
         )));
-    }, [isPuzzleBuilder]);
+    }, []);
 
     const playerStartX = initialPuzzle?.playerBot?.startX;
     const playerStartY = initialPuzzle?.playerBot?.startY;
@@ -665,7 +650,7 @@ export default function Arena({
                     const rotation = Number(setup.rotation);
                     const current = toSimulationBotShape(shape);
                     const startHp = Number.isFinite(Number(setup.startHp))
-                        ? Math.max(0, Math.min(BASE_BOT_HP, Number(setup.startHp)))
+                        ? Math.max(1, Math.min(BASE_BOT_HP, Number(setup.startHp)))
                         : Number(current.maxHp ?? BASE_BOT_HP);
                     if (![x, y, rotation, startHp].every(Number.isFinite)) return shape;
                     const elapsedChanged = Number(current.matchElapsedMs ?? 0) !== initialPuzzleElapsedMs;
@@ -676,6 +661,9 @@ export default function Arena({
                         y,
                         rotation,
                         hp: startHp,
+                        startX: x,
+                        startY: y,
+                        startRotation: rotation,
                         startHp,
                         matchElapsedMs: initialPuzzleElapsedMs,
                         ...(isPuzzleBuilder ? { spawnX: x, spawnY: y } : {}),
@@ -996,9 +984,14 @@ export default function Arena({
             .filter((shape) => shape.type !== "grenade" && shape.type !== "grenadeExplosion")
             .filter((shape) => shape.type !== "fireball")
             .filter((shape) => !["proximityMine", "mineExplosion", "orbitalMarker", "orbitalExplosion", "windburstProjectile"].includes(shape.type))
-            .map((shape) => (shape.id === "main" || shape.id === "opponent-model")
-                ? resetBotShape(shape)
-                : cloneShape(shape)));
+            .map((shape) => {
+                if (shape.id !== "main" && shape.id !== "opponent-model") return cloneShape(shape);
+                if (!isPuzzleBuilder) return resetBotShape(shape);
+                const configuration = shape.id === "main"
+                    ? initialPuzzle?.playerBot
+                    : initialPuzzle?.opponentBot;
+                return resetBotShapeToStartingConfiguration(shape, configuration);
+            }));
         setSubmitStatus({ ok: true, message: "Bot stats, cooldowns, and status effects reset." });
         setTimeout(() => setSubmitStatus(null), 2500);
     };

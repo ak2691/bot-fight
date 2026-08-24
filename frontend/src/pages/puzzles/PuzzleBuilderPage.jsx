@@ -16,7 +16,15 @@ import {
     statusEffectDefinitionsForAbilities,
 } from "../../gameArena/loadout/BotLoadout.js";
 import { DEFAULT_BOT_CONFIGURATION_ID } from "../../gameArena/gameconfig/CombatLoadouts.js";
-import { BASE_BOT_HP, PRACTICE_OPPONENT_START, PRACTICE_PLAYER_START } from "../../gameArena/modelPayloads/arenaConstants.js";
+import {
+    BASE_BOT_HP,
+    BOT_CENTER_MAX_X,
+    BOT_CENTER_MAX_Y,
+    BOT_CENTER_MIN_X,
+    BOT_CENTER_MIN_Y,
+    PRACTICE_OPPONENT_START,
+    PRACTICE_PLAYER_START,
+} from "../../gameArena/modelPayloads/arenaConstants.js";
 import { targetTypesForLoadouts } from "../../gameArena/coding/nodes/GraphNodes.jsx";
 import { savePuzzle } from "../../puzzles/puzzleApi.js";
 import PuzzleLogicWorkspace, {
@@ -104,13 +112,14 @@ function canonicalBrain(brain, loadout) {
 }
 
 function requestBot(bot) {
+    const normalized = normalizeStartingBot(bot);
     return {
-        loadout: bot.loadout,
-        startX: roundToDecimal(bot.startX),
-        startY: roundToDecimal(bot.startY),
-        rotation: roundToDecimal(bot.rotation),
-        startHp: roundToDecimal(bot.startHp, BASE_BOT_HP),
-        brain: canonicalBrain(bot.brain, bot.loadout),
+        loadout: normalized.loadout,
+        startX: normalized.startX,
+        startY: normalized.startY,
+        rotation: normalized.rotation,
+        startHp: normalized.startHp,
+        brain: canonicalBrain(normalized.brain, normalized.loadout),
     };
 }
 
@@ -123,11 +132,15 @@ function normalizeStartingBot(bot, fallback = {}) {
     if (!bot) return bot;
     return {
         ...bot,
-        startX: roundToDecimal(bot.startX, roundToDecimal(fallback.startX, 0)),
-        startY: roundToDecimal(bot.startY, roundToDecimal(fallback.startY, 0)),
-        rotation: roundToDecimal(bot.rotation, roundToDecimal(fallback.rotation, 0)),
-        startHp: roundToDecimal(bot.startHp, roundToDecimal(fallback.startHp, BASE_BOT_HP)),
+        startX: boundedDecimal(bot.startX, roundToDecimal(fallback.startX, BOT_CENTER_MIN_X), BOT_CENTER_MIN_X, BOT_CENTER_MAX_X),
+        startY: boundedDecimal(bot.startY, roundToDecimal(fallback.startY, BOT_CENTER_MIN_Y), BOT_CENTER_MIN_Y, BOT_CENTER_MAX_Y),
+        rotation: boundedDecimal(bot.rotation, roundToDecimal(fallback.rotation, 0), -360, 360),
+        startHp: boundedDecimal(bot.startHp, roundToDecimal(fallback.startHp, BASE_BOT_HP), 1, BASE_BOT_HP),
     };
+}
+
+function boundedDecimal(value, fallback, min, max) {
+    return Math.max(min, Math.min(max, roundToDecimal(value, fallback)));
 }
 
 function EditableNumberInput({ value, onCommit, min, max, fallback = 0, emptyValue = fallback, integerOnly = false, decimalPlaces = null, className = "", ariaLabel }) {
@@ -259,22 +272,22 @@ function PuzzleBuilderControls({ draft, setDraft, saveState, onSaveStartingStats
                         <p className="text-cyan-200">YOU</p>
                         <div className="mt-2 space-y-2">
                             <div className="grid grid-cols-2 gap-1.5">
-                                <label className="text-[8px] text-slate-500"><span className="block">X</span><EditableNumberInput value={player.startX} min={0} max={1000} fallback={0} emptyValue={0} decimalPlaces={1} ariaLabel="Your starting X position" onCommit={(value) => setDraft((current) => ({ ...current, playerBot: { ...current.playerBot, startX: value } }))} className="mt-1 h-8 w-full border border-cyan-900/80 bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none focus:border-cyan-400" /></label>
-                                <label className="text-[8px] text-slate-500"><span className="block">Y</span><EditableNumberInput value={player.startY} min={0} max={1000} fallback={0} emptyValue={0} decimalPlaces={1} ariaLabel="Your starting Y position" onCommit={(value) => setDraft((current) => ({ ...current, playerBot: { ...current.playerBot, startY: value } }))} className="mt-1 h-8 w-full border border-cyan-900/80 bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none focus:border-cyan-400" /></label>
+                                <label className="text-[8px] text-slate-500"><span className="block">X</span><EditableNumberInput value={player.startX} min={BOT_CENTER_MIN_X} max={BOT_CENTER_MAX_X} fallback={PRACTICE_PLAYER_START.x} emptyValue={PRACTICE_PLAYER_START.x} decimalPlaces={1} ariaLabel="Your starting X position" onCommit={(value) => setDraft((current) => ({ ...current, playerBot: { ...current.playerBot, startX: value } }))} className="mt-1 h-8 w-full border border-cyan-900/80 bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none focus:border-cyan-400" /></label>
+                                <label className="text-[8px] text-slate-500"><span className="block">Y</span><EditableNumberInput value={player.startY} min={BOT_CENTER_MIN_Y} max={BOT_CENTER_MAX_Y} fallback={PRACTICE_PLAYER_START.y} emptyValue={PRACTICE_PLAYER_START.y} decimalPlaces={1} ariaLabel="Your starting Y position" onCommit={(value) => setDraft((current) => ({ ...current, playerBot: { ...current.playerBot, startY: value } }))} className="mt-1 h-8 w-full border border-cyan-900/80 bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none focus:border-cyan-400" /></label>
                             </div>
                             <label className="block text-[8px] text-slate-500"><span className="block">ROTATION</span><EditableNumberInput value={player.rotation} min={-360} max={360} fallback={0} emptyValue={0} decimalPlaces={1} ariaLabel="Your starting rotation" onCommit={(value) => setDraft((current) => ({ ...current, playerBot: { ...current.playerBot, rotation: value } }))} className="mt-1 h-8 w-full border border-cyan-900/80 bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none focus:border-cyan-400" /></label>
-                            <label className="block text-[8px] text-slate-500"><span className="block">HP</span><EditableNumberInput value={player.startHp} min={0} max={BASE_BOT_HP} fallback={BASE_BOT_HP} emptyValue={BASE_BOT_HP} decimalPlaces={1} ariaLabel="Your starting HP" onCommit={(value) => setDraft((current) => ({ ...current, playerBot: { ...current.playerBot, startHp: value } }))} className="mt-1 h-8 w-full border border-cyan-900/80 bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none focus:border-cyan-400" /></label>
+                            <label className="block text-[8px] text-slate-500"><span className="block">HP</span><EditableNumberInput value={player.startHp} min={1} max={BASE_BOT_HP} fallback={BASE_BOT_HP} emptyValue={BASE_BOT_HP} decimalPlaces={1} ariaLabel="Your starting HP" onCommit={(value) => setDraft((current) => ({ ...current, playerBot: { ...current.playerBot, startHp: value } }))} className="mt-1 h-8 w-full border border-cyan-900/80 bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none focus:border-cyan-400" /></label>
                         </div>
                     </div>
                     <div className="rounded border border-red-900/60 bg-red-950/20 p-2">
                         <p className="text-red-200">OPPONENT</p>
                         <div className="mt-2 space-y-2">
                             <div className="grid grid-cols-2 gap-1.5">
-                                <label className="text-[8px] text-slate-500"><span className="block">X</span><EditableNumberInput value={opponent.startX} min={0} max={1000} fallback={0} emptyValue={0} decimalPlaces={1} ariaLabel="Opponent starting X position" onCommit={(value) => setDraft((current) => ({ ...current, opponentBot: { ...current.opponentBot, startX: value } }))} className="mt-1 h-8 w-full border border-red-900/80 bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none focus:border-red-400" /></label>
-                                <label className="text-[8px] text-slate-500"><span className="block">Y</span><EditableNumberInput value={opponent.startY} min={0} max={1000} fallback={0} emptyValue={0} decimalPlaces={1} ariaLabel="Opponent starting Y position" onCommit={(value) => setDraft((current) => ({ ...current, opponentBot: { ...current.opponentBot, startY: value } }))} className="mt-1 h-8 w-full border border-red-900/80 bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none focus:border-red-400" /></label>
+                                <label className="text-[8px] text-slate-500"><span className="block">X</span><EditableNumberInput value={opponent.startX} min={BOT_CENTER_MIN_X} max={BOT_CENTER_MAX_X} fallback={PRACTICE_OPPONENT_START.x} emptyValue={PRACTICE_OPPONENT_START.x} decimalPlaces={1} ariaLabel="Opponent starting X position" onCommit={(value) => setDraft((current) => ({ ...current, opponentBot: { ...current.opponentBot, startX: value } }))} className="mt-1 h-8 w-full border border-red-900/80 bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none focus:border-red-400" /></label>
+                                <label className="text-[8px] text-slate-500"><span className="block">Y</span><EditableNumberInput value={opponent.startY} min={BOT_CENTER_MIN_Y} max={BOT_CENTER_MAX_Y} fallback={PRACTICE_OPPONENT_START.y} emptyValue={PRACTICE_OPPONENT_START.y} decimalPlaces={1} ariaLabel="Opponent starting Y position" onCommit={(value) => setDraft((current) => ({ ...current, opponentBot: { ...current.opponentBot, startY: value } }))} className="mt-1 h-8 w-full border border-red-900/80 bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none focus:border-red-400" /></label>
                             </div>
                             <label className="block text-[8px] text-slate-500"><span className="block">ROTATION</span><EditableNumberInput value={opponent.rotation} min={-360} max={360} fallback={0} emptyValue={0} decimalPlaces={1} ariaLabel="Opponent starting rotation" onCommit={(value) => setDraft((current) => ({ ...current, opponentBot: { ...current.opponentBot, rotation: value } }))} className="mt-1 h-8 w-full border border-red-900/80 bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none focus:border-red-400" /></label>
-                            <label className="block text-[8px] text-slate-500"><span className="block">HP</span><EditableNumberInput value={opponent.startHp} min={0} max={BASE_BOT_HP} fallback={BASE_BOT_HP} emptyValue={BASE_BOT_HP} decimalPlaces={1} ariaLabel="Opponent starting HP" onCommit={(value) => setDraft((current) => ({ ...current, opponentBot: { ...current.opponentBot, startHp: value } }))} className="mt-1 h-8 w-full border border-red-900/80 bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none focus:border-red-400" /></label>
+                            <label className="block text-[8px] text-slate-500"><span className="block">HP</span><EditableNumberInput value={opponent.startHp} min={1} max={BASE_BOT_HP} fallback={BASE_BOT_HP} emptyValue={BASE_BOT_HP} decimalPlaces={1} ariaLabel="Opponent starting HP" onCommit={(value) => setDraft((current) => ({ ...current, opponentBot: { ...current.opponentBot, startHp: value } }))} className="mt-1 h-8 w-full border border-red-900/80 bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none focus:border-red-400" /></label>
                         </div>
                     </div>
                 </div>

@@ -55,26 +55,22 @@ export default function PuzzleListPage() {
                     )}
                     {!isLoading && !error && !puzzles.length && <PuzzleListMessage>NO PUZZLES PUBLISHED YET.</PuzzleListMessage>}
                     {!isLoading && !error && puzzles.map((puzzle) => {
-                        const description = typeof puzzle.description === "string" ? puzzle.description.trim() : "";
                         return (
                             <button
                                 key={`${puzzle.number}-${puzzle.name}`}
                                 type="button"
                                 onClick={() => navigate(`/puzzles/${encodeURIComponent(puzzle.number)}`)}
-                                className="group flex w-full flex-col gap-5 rounded-xl border border-slate-700/80 bg-[linear-gradient(145deg,rgba(17,27,37,.96),rgba(11,20,30,.96))] p-5 text-left shadow-[0_12px_32px_rgba(0,0,0,.2)] transition duration-150 hover:-translate-y-0.5 hover:border-cyan-400/60 hover:bg-[linear-gradient(145deg,rgba(20,35,47,.98),rgba(11,22,33,.98))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 sm:flex-row sm:items-center sm:gap-8 sm:px-6 sm:py-5"
+                                className="group flex h-28 w-full items-center justify-between gap-4 rounded-xl border border-slate-700/80 bg-[linear-gradient(145deg,rgba(17,27,37,.96),rgba(11,20,30,.96))] p-4 text-left shadow-[0_12px_32px_rgba(0,0,0,.2)] transition duration-150 hover:-translate-y-0.5 hover:border-cyan-400/60 hover:bg-[linear-gradient(145deg,rgba(20,35,47,.98),rgba(11,22,33,.98))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 sm:gap-8 sm:px-6 sm:py-5"
                                 aria-label={`Open puzzle ${puzzle.number}: ${puzzle.name}`}
                             >
                                 <span className="min-w-0 flex-1">
-                                    <span className="block break-words text-xl font-bold leading-tight tracking-[-.02em] text-white sm:text-2xl">
+                                    <span className="line-clamp-2 break-words text-xl font-bold leading-tight tracking-[-.02em] text-white sm:text-2xl">
                                         {puzzle.number}. {puzzle.name}
-                                    </span>
-                                    <span className="mt-2 block whitespace-pre-line text-sm leading-6 text-slate-400 sm:text-base">
-                                        {description || "No description provided."}
                                     </span>
                                 </span>
 
-                                <span className="flex w-full shrink-0 items-center gap-3 sm:w-auto sm:justify-end">
-                                    <span className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold ${puzzle.solved ? "border-emerald-400/25 bg-emerald-950/20 text-emerald-300" : "border-slate-700 bg-slate-950/20 text-slate-300"}`}>
+                                <span className="flex shrink-0 items-center gap-3">
+                                    <span className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg border px-3 py-2 text-sm font-semibold ${puzzle.solved ? "border-emerald-400/25 bg-emerald-950/20 text-emerald-300" : "border-slate-700 bg-slate-950/20 text-slate-300"}`}>
                                         <span className={`h-2.5 w-2.5 rounded-full ${puzzle.solved ? "bg-emerald-400" : "bg-slate-400"}`} aria-hidden="true" />
                                         {puzzle.solved ? "Completed" : "Not Completed"}
                                     </span>

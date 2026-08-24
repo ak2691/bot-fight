@@ -2,6 +2,12 @@
 // used by the responsive viewport that renders this coordinate space.
 export const ARENA_WIDTH_UNITS = 1000;
 export const ARENA_HEIGHT_UNITS = 1000;
+export const BOT_SIZE = 60;
+export const BOT_RADIUS = BOT_SIZE / 2;
+export const BOT_CENTER_MIN_X = BOT_RADIUS;
+export const BOT_CENTER_MAX_X = ARENA_WIDTH_UNITS - BOT_RADIUS;
+export const BOT_CENTER_MIN_Y = BOT_RADIUS;
+export const BOT_CENTER_MAX_Y = ARENA_HEIGHT_UNITS - BOT_RADIUS;
 export const DISPLAY_ARENA_MAX_SIZE = 1000;
 export const AUTO_STEP_MS = 100;
 export const ROTATION_STEP_DEG = 12;

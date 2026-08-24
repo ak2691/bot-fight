@@ -66,6 +66,8 @@ public class PuzzleService {
     private static final double MAX_CONDITION_NUMBER = 1_000_000_000d;
     private static final double ARENA_WIDTH = 1000;
     private static final double ARENA_HEIGHT = 1000;
+    private static final double BOT_SIZE = 60;
+    private static final double BOT_RADIUS = BOT_SIZE / 2;
     private static final double BASE_BOT_HP = 150;
     private static final String PUZZLE_LOGIC_VERSION = "bot-logic-tree-v1";
     private static final String PUZZLE_VARIABLE_PREFIX = "custom.puzzle.";
@@ -335,6 +337,7 @@ public class PuzzleService {
         request.setStartX(bot.startX());
         request.setStartY(bot.startY());
         request.setRotation(bot.rotation());
+        request.setStartHp(bot.startHp());
         request.setBrain(brain == null ? null : brain.deepCopy());
         return request;
     }
@@ -572,10 +575,10 @@ public class PuzzleService {
         double startY = valueOrDefault(request == null ? null : request.getStartY(), defaultY);
         double rotation = valueOrDefault(request == null ? null : request.getRotation(), defaultRotation);
         double startHp = valueOrDefault(request == null ? null : request.getStartHp(), defaultHp);
-        if (!Double.isFinite(startX) || startX < 0 || startX > ARENA_WIDTH) errors.add(path + ".startX must be from 0 to 1000");
-        if (!Double.isFinite(startY) || startY < 0 || startY > ARENA_HEIGHT) errors.add(path + ".startY must be from 0 to 1000");
+        if (!Double.isFinite(startX) || startX < BOT_RADIUS || startX > ARENA_WIDTH - BOT_RADIUS) errors.add(path + ".startX must be from 30 to 970");
+        if (!Double.isFinite(startY) || startY < BOT_RADIUS || startY > ARENA_HEIGHT - BOT_RADIUS) errors.add(path + ".startY must be from 30 to 970");
         if (!Double.isFinite(rotation) || rotation < -360 || rotation > 360) errors.add(path + ".rotation must be from -360 to 360");
-        if (!Double.isFinite(startHp) || startHp < 0 || startHp > BASE_BOT_HP) errors.add(path + ".startHp must be from 0 to " + (int) BASE_BOT_HP);
+        if (!Double.isFinite(startHp) || startHp < 1 || startHp > BASE_BOT_HP) errors.add(path + ".startHp must be from 1 to " + (int) BASE_BOT_HP);
         if (!hasAtMostOneDecimal(startX)) errors.add(path + ".startX must have at most one decimal place");
         if (!hasAtMostOneDecimal(startY)) errors.add(path + ".startY must have at most one decimal place");
         if (!hasAtMostOneDecimal(rotation)) errors.add(path + ".rotation must have at most one decimal place");

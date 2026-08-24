@@ -10,6 +10,10 @@ import { normalizeStatusEffect, statusEffectsFor } from "../ecs/contracts/Status
 import {
     ARENA_HEIGHT_UNITS,
     ARENA_WIDTH_UNITS,
+    BOT_CENTER_MAX_X,
+    BOT_CENTER_MAX_Y,
+    BOT_CENTER_MIN_X,
+    BOT_CENTER_MIN_Y,
     DUEL_SLOT_ONE_X,
     DUEL_SLOT_ONE_Y,
     DUEL_SLOT_TWO_X,
@@ -206,6 +210,27 @@ export function resetBotShape(shape) {
     });
 }
 
+export function resetBotShapeToStartingConfiguration(shape, configuration = {}) {
+    const current = toSimulationBotShape(shape);
+    const setup = configuration ?? {};
+    const startX = boundedNumber(setup.startX, current.x ?? BOT_CENTER_MIN_X, BOT_CENTER_MIN_X, BOT_CENTER_MAX_X);
+    const startY = boundedNumber(setup.startY, current.y ?? BOT_CENTER_MIN_Y, BOT_CENTER_MIN_Y, BOT_CENTER_MAX_Y);
+    const rotation = boundedNumber(setup.rotation, current.rotation ?? 0, -360, 360);
+    const startHp = boundedNumber(setup.startHp, current.startHp ?? current.hp ?? BASE_BOT_HP, 1, BASE_BOT_HP);
+    return resetBotShape({
+        ...shape,
+        x: startX,
+        y: startY,
+        rotation,
+        startX,
+        startY,
+        startRotation: rotation,
+        startHp,
+        spawnX: startX,
+        spawnY: startY,
+    });
+}
+
 /** Converts the canonical bot shape into the flat view consumed by ECS systems. */
 export function toSimulationBotShape(shape) {
     if (!isArenaBotShape(shape)) return shape;
@@ -305,6 +330,10 @@ function isArenaBotShape(shape) {
 function numberValue(value, fallback) {
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function boundedNumber(value, fallback, min, max) {
+    return Math.max(min, Math.min(max, numberValue(value, fallback)));
 }
 
 function nonNegativeNumber(value, fallback) {
