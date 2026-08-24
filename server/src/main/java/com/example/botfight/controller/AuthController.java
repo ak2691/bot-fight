@@ -134,7 +134,9 @@ public class AuthController {
 
     @GetMapping("/me")
     public ResponseEntity<AuthUserDTO> me(Authentication authentication) {
-        requireAuthenticatedGetAllowed(authentication, "auth-me");
+        // Session bootstrap must remain available after a page refresh. Edge-level
+        // rate limiting protects this idempotent endpoint; do not turn a temporary
+        // application limiter response into a client-side logout.
         return ResponseEntity.ok(authService.currentUser(authentication));
     }
 
