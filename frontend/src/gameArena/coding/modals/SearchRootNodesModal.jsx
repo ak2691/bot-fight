@@ -23,7 +23,11 @@ export default function SearchRootNodesModal({
     const optionRefs = useRef([]);
     useDialogFocus(dialogRef, { initialFocusRef: searchInputRef, onClose });
     useExclusiveSearchMenu(dialogRef, true, onClose);
-    const matchingNodes = nodes.filter((node) => {
+    const orderedNodes = [...nodes].sort((first, second) => (
+        rootPriority(roots, first) - rootPriority(roots, second)
+        || first.rootIndex - second.rootIndex
+    ));
+    const matchingNodes = orderedNodes.filter((node) => {
         const normalizedQuery = query.trim().toLocaleLowerCase();
         const root = roots[node.rootIndex];
         const priority = Number(root?.createdOrder) + 1;
@@ -92,6 +96,11 @@ export default function SearchRootNodesModal({
         }) : <p>NO MATCHING ROOTS</p>}</div>
         <footer className="code-root-search-footer"><span>{matchingNodes.length} RESULTS · {roots.length}/{MAX_VISIBLE_NODES} ROOTS</span><button type="button" disabled={disabled || !roots.length} onClick={onDeleteAll} className="search-root-delete-all" aria-label="Delete all roots">DELETE ALL</button></footer>
     </aside>;
+}
+
+function rootPriority(roots, node) {
+    const createdOrder = Number(roots[node.rootIndex]?.createdOrder);
+    return Number.isFinite(createdOrder) ? createdOrder : node.rootIndex;
 }
 
 const MAX_VISIBLE_NODES = 100;

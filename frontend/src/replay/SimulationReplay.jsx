@@ -152,9 +152,9 @@ export default function SimulationReplay({
         ? replayArenaShapes(bots, entities, recentFrames, entranceProgress, frames, frameIndex, isInitialHandoff)
         : preloadShapes, [bots, entities, entranceProgress, frameIndex, frames, isInitialHandoff, playbackInput, preloadShapes, recentFrames]);
 
-    return <section className="relative match-arena-shell flex h-[calc(100svh-72px)] min-h-0 overflow-hidden">
-        <main className="match-arena-stage flex min-w-0 flex-1 items-center justify-center overflow-hidden p-2">
-            <div className="relative flex h-full w-full items-center justify-center">
+    return <section className="arena-content-shell relative match-arena-shell flex h-[calc(100svh-72px)] min-h-0 overflow-hidden">
+        <main className="arena-stage-main match-arena-stage flex min-w-0 flex-1 items-center justify-center overflow-hidden p-2">
+            <div className="arena-stage-frame relative flex h-full w-full items-center justify-center">
                 <PixiCanvas shapes={shapes} selectedId={null} onSelectShape={NOOP} onUpdateShape={NOOP}
                     onDeselectAll={NOOP} editable={false} fillAvailable fixedLayout abilityLayout="split"
                     showMissingOpponentStatus={false} lockCamera />
@@ -198,7 +198,7 @@ function ReplaySidebar({
                 : "Watching the submitted bots fight.";
 
     return (
-        <aside className="arena-right-toolbar testing-mono h-full min-h-0 w-[23rem] flex-shrink-0 overflow-y-auto border-l border-slate-700/70 bg-[linear-gradient(180deg,rgba(12,22,31,.98),rgba(8,16,24,.98))] p-4 shadow-[-12px_0_30px_rgba(0,0,0,.28)]">
+        <aside className="arena-toolbar-panel arena-right-toolbar testing-mono h-full min-h-0 w-[23rem] flex-shrink-0 overflow-y-auto border-l border-slate-700/70 bg-[linear-gradient(180deg,rgba(12,22,31,.98),rgba(8,16,24,.98))] p-4 shadow-[-12px_0_30px_rgba(0,0,0,.28)]">
             <div className="space-y-4">
                 {onCancel && (
                     <button

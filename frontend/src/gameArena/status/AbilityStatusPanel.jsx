@@ -24,7 +24,7 @@ export default function AbilityStatusPanel({ bot }) {
             className="ability-status-panel h-[17.5rem] w-full rounded-lg border border-slate-700/80 bg-zinc-950/90 p-3"
             aria-label={`${botName} ability status`}
         >
-            <div className="mb-2 flex min-h-4 items-center justify-between gap-2 font-mono text-[10px] font-bold tracking-widest">
+            <div className="ability-status-panel__header mb-2 flex min-h-4 items-center justify-between gap-2 font-mono text-[10px] font-bold tracking-widest">
                 <span className={`truncate ${red ? "text-[#ff7166]" : "text-[#57b8ff]"}`}>{botName}</span>
                 <div className="flex shrink-0 items-center gap-2">
                     {bot?.hp != null && (
@@ -34,7 +34,7 @@ export default function AbilityStatusPanel({ bot }) {
                     )}
                 </div>
             </div>
-            <div className="grid h-[14.5rem] auto-rows-[4.5rem] grid-cols-3 gap-x-1 gap-y-2 overflow-y-auto pr-1">
+            <div className="ability-status-panel__abilities grid h-[14.5rem] auto-rows-[4.5rem] grid-cols-3 gap-x-1 gap-y-2 overflow-y-auto pr-1">
                 {abilities.map((abilityId, index) => (
                     <AbilityStatusCircle key={`${abilityId}-${index}`} bot={bot} abilityId={abilityId} />
                 ))}

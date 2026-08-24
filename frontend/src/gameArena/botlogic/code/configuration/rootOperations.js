@@ -8,7 +8,10 @@ export function normalizeRoots(roots) {
     if (!Array.isArray(roots)) return [];
     return roots.map((root, rootIndex) => {
         const createdOrder = normalizeCreatedOrder(root?.createdOrder, rootIndex);
-        const id = rootIdForCreatedOrder(createdOrder, rootIndex);
+        // IDs identify the editor node, not its current execution priority. Keep
+        // an existing ID attached to the same node so priority edits cannot make
+        // saved graph positions follow a different root.
+        const id = stableNodeId(root?.id, rootIdForCreatedOrder(rootIndex, rootIndex));
         return {
             ...(root ?? {}),
             id,
@@ -23,9 +26,10 @@ function normalizeBranchIds(branches, rootId, depth) {
     if (!Array.isArray(branches)) return branches;
     return branches.map((branch, branchIndex) => {
         const createdOrder = normalizeCreatedOrder(branch?.createdOrder, branchIndex);
+        const id = stableNodeId(branch?.id, conditionalIdFor(rootId, depth, branchIndex, branchIndex));
         return {
             ...(branch ?? {}),
-            id: conditionalIdFor(rootId, depth, createdOrder, branchIndex),
+            id,
             createdOrder,
             children: normalizeBranchIds(branch?.children, rootId, depth + 1),
         };
@@ -88,7 +92,7 @@ export function setLogicBranchPriority(roots, rootIndex, path, priority) {
         const updated = branches.map((branch, index) => ({ ...branch, createdOrder: index === head ? targetOrder : finiteOrder(branch?.createdOrder, index) }));
         const swappedIndex = updated.findIndex((branch, index) => index !== head && branch.createdOrder === targetOrder);
         if (swappedIndex >= 0) updated[swappedIndex] = { ...updated[swappedIndex], createdOrder: currentOrder };
-        return updated.sort((first, second) => first.createdOrder - second.createdOrder);
+        return updated;
     };
     return normalizeRoots(roots.map((root, index) => index === rootIndex ? { ...root, branches: updateAt(root.branches, path) } : root));
 }
@@ -104,4 +108,9 @@ function normalizeRootName(value) {
 
 function finiteOrder(value, fallback) {
     return normalizeCreatedOrder(value, fallback);
+}
+
+function stableNodeId(value, fallback) {
+    const id = String(value ?? "").trim();
+    return id || fallback;
 }

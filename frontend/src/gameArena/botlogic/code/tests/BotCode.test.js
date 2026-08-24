@@ -100,6 +100,32 @@ test("editor node positions convert between saved coordinates and graph offsets"
     assert.deepEqual(nodePositionsForGraph(graphNodes, offsets), saved);
 });
 
+test("normalized editor positions stay with roots and conditionals after priority changes", () => {
+    const normalized = normalizeAbilityStrategyConfiguration({
+        nodePositions: {
+            "rootNode:fire-root": { x: 100, y: 50 },
+            "condition:fire-condition:root:fire-root": { x: 110, y: 300 },
+            "action:fire-condition:0:root:fire-root": { x: 120, y: 500 },
+            "rootNode:concussive-root": { x: 600, y: 50 },
+            "condition:concussive-condition:root:concussive-root": { x: 610, y: 300 },
+            "action:concussive-condition:0:root:concussive-root": { x: 620, y: 500 },
+        },
+        roots: [
+            { id: "fire-root", createdOrder: 1, branches: [{ id: "fire-condition", createdOrder: 0, conditions: [{ type: "always" }], actions: [{ action: "swing" }] }] },
+            { id: "concussive-root", createdOrder: 0, branches: [{ id: "concussive-condition", createdOrder: 0, conditions: [{ type: "always" }], actions: [{ action: "concussive_shot" }] }] },
+        ],
+    });
+
+    assert.deepEqual(normalized.nodePositions, {
+        "rootNode:root-2": { x: 100, y: 50 },
+        "condition:root-2-1-1:root:root-2": { x: 110, y: 300 },
+        "action:root-2-1-1:0:root:root-2": { x: 120, y: 500 },
+        "rootNode:root-1": { x: 600, y: 50 },
+        "condition:root-1-1-1:root:root-1": { x: 610, y: 300 },
+        "action:root-1-1-1:0:root:root-1": { x: 620, y: 500 },
+    });
+});
+
 test("target type count selects an object type without target ordering", () => {
     const count = STATE_VARIABLES.find((variable) => variable.id === "target.count");
     const age = STATE_VARIABLES.find((variable) => variable.id === "target.age");
@@ -939,7 +965,7 @@ test("retired directional action IDs are not migrated", () => {
     assert.equal(code.roots[0].branches[0].actions[0].action, "none");
 });
 
-test("roots preserve names and derive IDs from numeric priorities", () => {
+test("roots preserve editor IDs independently from numeric priorities", () => {
     const roots = normalizeRoots([
         {
             id: "first",
@@ -954,10 +980,10 @@ test("roots preserve names and derive IDs from numeric priorities", () => {
         { id: "second", name: "Another name", createdOrder: 9, branches: [] },
     ]);
     assert.deepEqual(roots.map((root) => root.createdOrder), [4, 9]);
-    assert.deepEqual(roots.map((root) => root.id), ["root-5", "root-10"]);
+    assert.deepEqual(roots.map((root) => root.id), ["first", "second"]);
     assert.deepEqual(roots.map((root) => root.name), ["Custom name", "Another name"]);
-    assert.equal(roots[0].branches[0].id, "root-5-1-1");
-    assert.equal(roots[0].branches[0].children[0].id, "root-5-2-3");
+    assert.equal(roots[0].branches[0].id, "conditional");
+    assert.equal(roots[0].branches[0].children[0].id, "nested");
     const created = createCodeRoot(2);
     assert.equal(created.createdOrder, 2);
     assert.equal(created.name, "Root");
@@ -984,20 +1010,34 @@ test("root priority switches values without moving roots or changing execution",
         { id: "concussive-root", name: "Concussive", createdOrder: 1, branches: [{ id: "concussive", conditions: [{ type: "always" }], actions: [{ action: "concussive_shot" }] }] },
     ];
     const switched = setLogicRootPriority(roots, 1, 1);
-    assert.deepEqual(switched.map((root) => root.id), ["root-2", "root-1"]);
-    assert.deepEqual(switched.map((root) => root.branches[0].id), ["root-2-1-1", "root-1-1-1"]);
+    assert.deepEqual(switched.map((root) => root.id), ["fire-root", "concussive-root"]);
+    assert.deepEqual(switched.map((root) => root.name), ["Fire", "Concussive"]);
+    assert.deepEqual(switched.map((root) => root.branches[0].id), ["fire", "concussive"]);
     assert.deepEqual(switched.map((root) => root.createdOrder), [1, 0]);
     assert.equal(selectAbilityStrategyActionPlan({ roots: switched }, payload()).ability.action, 9);
 });
 
-test("conditional priority switches siblings without renumbering them", () => {
+test("root priority swaps an occupied priority without changing root positions", () => {
+    const roots = Array.from({ length: 6 }, (_, index) => ({
+        id: `root-${index + 1}`,
+        name: `Root ${index + 1}`,
+        createdOrder: index,
+        branches: [],
+    }));
+    const switched = setLogicRootPriority(roots, 5, 1);
+
+    assert.deepEqual(switched.map((root) => root.id), roots.map((root) => root.id));
+    assert.deepEqual(switched.map((root) => root.createdOrder), [5, 1, 2, 3, 4, 0]);
+});
+
+test("conditional priority switches values without moving siblings", () => {
     const roots = [{ createdOrder: 0, branches: [
         { id: "first", branchType: "if", createdOrder: 0, conditions: [{ type: "always" }], actions: [] },
         { id: "third", branchType: "if", createdOrder: 2, conditions: [{ type: "always" }], actions: [] },
     ] }];
     const switched = setLogicBranchPriority(roots, 0, [1], 1);
-    assert.deepEqual(switched[0].branches.map((branch) => branch.id), ["root-1-1-1", "root-1-1-3"]);
-    assert.deepEqual(switched[0].branches.map((branch) => branch.createdOrder), [0, 2]);
+    assert.deepEqual(switched[0].branches.map((branch) => branch.id), ["first", "third"]);
+    assert.deepEqual(switched[0].branches.map((branch) => branch.createdOrder), [2, 0]);
 });
 
 test("tutorial teaches rotate before lock on", () => {

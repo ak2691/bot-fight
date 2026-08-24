@@ -32,13 +32,52 @@
 }
 
 @media (max-width: 1180px) {
-    .pixi-combat-layout--fixed {
+    .pixi-combat-layout--fixed.pixi-combat-layout--split {
         min-width: 400px !important;
         max-width: 860px;
-        grid-template-columns: minmax(400px, 860px) !important;
+        grid-template-columns: repeat(2, minmax(190px, 1fr)) !important;
+        align-items: start;
+    }
+
+    .pixi-combat-layout--fixed.pixi-combat-layout--split .pixi-player-status,
+    .pixi-combat-layout--fixed.pixi-combat-layout--split .pixi-opponent-status {
+        grid-row: 1;
+        min-width: 0;
+    }
+
+    .pixi-combat-layout--fixed.pixi-combat-layout--split .pixi-player-status {
+        grid-column: 1;
+    }
+
+    .pixi-combat-layout--fixed.pixi-combat-layout--split .pixi-opponent-status {
+        grid-column: 2;
+    }
+
+    .pixi-combat-layout--fixed.pixi-combat-layout--split .pixi-arena-surface {
+        grid-column: 1 / -1;
+        grid-row: 2;
     }
 
     .pixi-combat-layout--fixed .pixi-side-status {
-        display: none;
+        display: block;
+    }
+
+    .pixi-combat-layout--fixed .ability-status-panel {
+        height: auto;
+        min-height: 0;
+        padding: .5rem;
+    }
+
+    .pixi-combat-layout--fixed .ability-status-panel__header {
+        margin-bottom: .25rem;
+        font-size: 9px;
+    }
+
+    .pixi-combat-layout--fixed .ability-status-panel__abilities {
+        height: auto;
+        grid-auto-rows: 3.5rem;
+        gap: .25rem;
+        overflow: visible;
+        padding-right: 0;
     }
 }

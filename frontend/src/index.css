@@ -250,8 +250,50 @@ html,
   .arena-right-toolbar { width: clamp(17.5rem, calc(100vw - 53.75rem), 20rem); }
 }
 
-@media (max-width: 1140px) {
-  .arena-right-toolbar { display: none; }
+/* The arena remains the primary surface on narrow screens. Once the side
+   toolbar no longer fits, keep it in the document below the arena so every
+   control remains reachable by scrolling. The content region scrolls instead
+   of the page shell, which keeps the navbar visible while the toolbar is in
+   use. */
+.arena-content-shell {
+  min-width: 0;
+}
+
+@media (max-width: 1180px) {
+  .arena-content-shell {
+    align-items: stretch;
+    flex-direction: column;
+    overflow-x: auto;
+    overflow-y: auto;
+  }
+
+  .arena-stage-main {
+    flex: 0 0 auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .arena-stage-frame {
+    width: max(100%, 400px);
+    min-width: 400px;
+    height: auto;
+    min-height: 0;
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  .arena-toolbar-panel,
+  .arena-right-toolbar {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: none;
+    flex: 0 0 auto;
+    overflow: visible;
+    border-top: 1px solid rgba(71, 85, 105, .7);
+    border-left: 0;
+    box-shadow: none;
+  }
 }
 
 .match-chat {
@@ -1210,6 +1252,7 @@ button:focus-visible {
    controls read as a deliberate form instead of one dense toolbar row. */
 .code-graph-node {
   cursor: grab;
+  isolation: isolate;
   overflow: hidden;
   color: #e2e8f0;
   box-shadow: none;
@@ -2362,4 +2405,18 @@ button:focus-visible {
   flex: none;
   object-fit: contain;
   filter: brightness(0) saturate(100%) invert(68%) sepia(95%) saturate(1685%) hue-rotate(164deg) brightness(101%) contrast(102%);
+}
+
+/* Tutorial help stays anchored below the navbar even after its editor panel
+   moves below the arena on narrow screens. */
+.tutorial-guide-button,
+.tutorial-guide-panel {
+  top: calc(72px + env(safe-area-inset-top));
+}
+
+@media (max-width: 1180px) {
+  .tutorial-guide-panel {
+    max-height: calc(100svh - 84px - env(safe-area-inset-top));
+    overflow-y: auto;
+  }
 }

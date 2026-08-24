@@ -14,6 +14,15 @@ let preloadPromise = null;
 const checkedOutApplications = new Set();
 const warmedApplications = new WeakSet();
 
+export function arenaRendererResolution(devicePixelRatio = globalThis.devicePixelRatio) {
+    const ratio = Number(devicePixelRatio);
+    if (!Number.isFinite(ratio) || ratio <= 0) return 1;
+    // Keep the backing canvas sharp on high-density phones without allowing a
+    // very large desktop scale factor to turn the arena into an unnecessary
+    // GPU/memory multiplier.
+    return Math.min(3, Math.max(1, ratio));
+}
+
 export function preloadPixiApplication() {
     if (typeof document === "undefined") return Promise.resolve(null);
     if (availableApplications.length) return Promise.resolve(availableApplications[availableApplications.length - 1]);
@@ -89,7 +98,10 @@ export function warmPixiApplicationTextures(application, catalogue) {
 
 async function createPixiApplication() {
     const application = new Application();
-    await application.init(PIXI_APPLICATION_OPTIONS);
+    await application.init({
+        ...PIXI_APPLICATION_OPTIONS,
+        resolution: arenaRendererResolution(),
+    });
     return application;
 }
 

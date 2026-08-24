@@ -286,7 +286,7 @@ export default function PuzzlePlayPage() {
 
     return <>
         <PuzzlePlayInfoModal puzzle={puzzle} outcome={outcome} onOpenConfiguration={canViewConfiguration ? openConfiguration : undefined} />
-        <Arena key={activeRestoredSubmission?.id ?? "puzzle-default"} puzzleMode initialPuzzle={puzzleForArena} puzzleControls={controls} onOpenPuzzleSubmissions={() => setOpenSubmissionsFor(puzzleNumber)} onPuzzleOutcome={setOutcome} onPuzzleAttempt={handlePuzzleAttempt} logicLimits={{ maxActionNodes: puzzle.maxActionNodes, maxConditionNodes: puzzle.maxConditionNodes, maxCustomVariables: puzzle.maxCustomVariables }} />
+        <Arena key={`${puzzleNumber}:${activeRestoredSubmission?.id ?? "puzzle-default"}`} puzzleMode puzzleNumber={puzzleNumber} puzzleCodeOverride={activeRestoredSubmission?.brain ?? null} initialPuzzle={puzzleForArena} puzzleControls={controls} onOpenPuzzleSubmissions={() => setOpenSubmissionsFor(puzzleNumber)} onPuzzleOutcome={setOutcome} onPuzzleAttempt={handlePuzzleAttempt} logicLimits={{ maxActionNodes: puzzle.maxActionNodes, maxConditionNodes: puzzle.maxConditionNodes, maxCustomVariables: puzzle.maxCustomVariables }} />
         {isConfigurationOpen && canViewConfiguration && <PuzzleLogicWorkspace
             configuration={puzzle.logicConfiguration}
             onChange={() => {}}

@@ -17,7 +17,64 @@ export function normalizeConfiguration(configuration, operations) {
         roots,
         customVariables,
         ...(Object.prototype.hasOwnProperty.call(configuration ?? {}, NODE_POSITIONS_FIELD)
-            ? { [NODE_POSITIONS_FIELD]: normalizeNodePositions(configuration?.[NODE_POSITIONS_FIELD]) }
+            ? { [NODE_POSITIONS_FIELD]: remapNodePositions(configuration?.[NODE_POSITIONS_FIELD], sourceRoots, roots) }
             : {}),
     };
+}
+
+function remapNodePositions(source, sourceRoots, normalizedRoots) {
+    // Runtime IDs are priority-derived, but editor positions belong to the
+    // source root/branch in the same array slot. Translate only the metadata
+    // keys so normalization cannot make a priority edit move another node.
+    const positions = normalizeNodePositions(source);
+    const remapped = { ...positions };
+    (sourceRoots ?? []).slice(0, normalizedRoots.length).forEach((sourceRoot, rootIndex) => {
+        const normalizedRoot = normalizedRoots[rootIndex];
+        if (!normalizedRoot) return;
+        const sourceRootId = stableNodeId(sourceRoot?.id, `root-${rootIndex + 1}`);
+        movePosition(remapped, `rootNode:${sourceRootId}`, `rootNode:${normalizedRoot.id}`);
+        remapBranchPositions(sourceRoot?.branches, normalizedRoot.branches, sourceRootId, normalizedRoot.id, 1, remapped);
+    });
+    return remapped;
+}
+
+function remapBranchPositions(sourceBranches, normalizedBranches, sourceRootId, normalizedRootId, depth, positions) {
+    if (!Array.isArray(sourceBranches) || !Array.isArray(normalizedBranches)) return;
+    normalizedBranches.forEach((normalizedBranch, branchIndex) => {
+        const sourceBranch = sourceBranches[branchIndex];
+        if (!sourceBranch) return;
+        const sourceBranchId = stableNodeId(sourceBranch.id, `${sourceRootId}-${depth}-${branchIndex + 1}`);
+        movePosition(
+            positions,
+            `condition:${sourceBranchId}:root:${sourceRootId}`,
+            `condition:${normalizedBranch.id}:root:${normalizedRootId}`,
+        );
+        const sourceActions = graphActions(sourceBranch);
+        const normalizedActions = graphActions(normalizedBranch);
+        normalizedActions.forEach((_, actionIndex) => {
+            if (!sourceActions[actionIndex]) return;
+            movePosition(
+                positions,
+                `action:${sourceBranchId}:${actionIndex}:root:${sourceRootId}`,
+                `action:${normalizedBranch.id}:${actionIndex}:root:${normalizedRootId}`,
+            );
+        });
+        remapBranchPositions(sourceBranch.children, normalizedBranch.children, sourceRootId, normalizedRootId, depth + 1, positions);
+    });
+}
+
+function graphActions(branch) {
+    if (Array.isArray(branch?.actions)) return branch.actions.filter((entry) => entry?.action && entry.action !== "none");
+    return branch?.action && branch.action !== "none" ? [branch] : [];
+}
+
+function movePosition(positions, sourceId, targetId) {
+    if (sourceId === targetId || !Object.prototype.hasOwnProperty.call(positions, sourceId)) return;
+    positions[targetId] = positions[sourceId];
+    delete positions[sourceId];
+}
+
+function stableNodeId(value, fallback) {
+    const id = String(value ?? "").trim();
+    return id || fallback;
 }

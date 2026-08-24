@@ -6,6 +6,7 @@ import { buildInitialArenaShapes } from "../modelPayloads/arenaShapes.js";
 
 const PANEL_PATH = fileURLToPath(new URL("./CodingPanel.jsx", import.meta.url));
 const ARENA_PATH = fileURLToPath(new URL("../Arena.jsx", import.meta.url));
+const PUZZLE_PLAY_PATH = fileURLToPath(new URL("../../pages/puzzles/PuzzlePlayPage.jsx", import.meta.url));
 const BOARD_PATH = fileURLToPath(new URL("./LogicBoard.jsx", import.meta.url));
 const NODES_PATH = fileURLToPath(new URL("./nodes/GraphNodes.jsx", import.meta.url));
 const CUSTOM_VARIABLES_MODAL_PATH = fileURLToPath(new URL("./modals/CustomVariablesModal.jsx", import.meta.url));
@@ -50,6 +51,17 @@ test("puzzle play is a local preview and puzzle submission is a separate action"
     assert.ok(runAutoPlay);
     assert.doesNotMatch(runAutoPlay[0], /submitPuzzleAttempt\(\)/);
     assert.match(arenaSource, /onPuzzleSubmit=\{isPuzzleMode && onPuzzleAttempt \? submitPuzzleAttempt : null\}/);
+});
+
+test("puzzle play restores drafts by puzzle without overriding loaded submissions", () => {
+    const arenaSource = readFileSync(ARENA_PATH, "utf8");
+    const puzzleSource = readFileSync(PUZZLE_PLAY_PATH, "utf8");
+
+    assert.match(arenaSource, /puzzleCodeOverride \?\? readPuzzleBotCodeDraft\(puzzleNumber, initialPuzzle\?\.playerBot\?\.brain/);
+    assert.match(arenaSource, /savePuzzleBotCodeDraft\(puzzleNumber, sanitized\)/);
+    assert.match(puzzleSource, /key=\{`\$\{puzzleNumber\}:\$\{activeRestoredSubmission\?\.id \?\? "puzzle-default"\}`\}/);
+    assert.match(puzzleSource, /puzzleNumber=\{puzzleNumber\}/);
+    assert.match(puzzleSource, /puzzleCodeOverride=\{activeRestoredSubmission\?\.brain \?\? null\}/);
 });
 
 test("the visible building deadline preserves the manual submission grace window", () => {
@@ -115,6 +127,18 @@ test("code graph nodes can be dragged from their surfaces without stealing contr
     assert.match(source, /data-node-drag-ignore="true" className="code-condition-prefix/);
 });
 
+test("overlapping graph nodes keep delete controls in the same stacking context", () => {
+    const source = readCodingSource();
+    const css = readFileSync(CSS_PATH, "utf8");
+    const conditionalNode = source.slice(source.indexOf("function GraphConditionNode"), source.indexOf("function PuzzleConditionNode"));
+    const actionNode = source.slice(source.indexOf("function GraphActionNode"), source.indexOf("function LogicNodeInspector"));
+
+    assert.match(conditionalNode, /className="code-condition-node-remove"/);
+    assert.match(actionNode, /className="code-compact-remove code-condition-node-remove"/);
+    assert.match(css, /\.code-graph-node \{\s*cursor: grab;\s*isolation: isolate;/);
+    assert.match(css, /\.code-condition-node-remove \{[^}]*z-index: 2/);
+});
+
 test("roots expose editable names and priorities with root-only search", () => {
     const panel = readCodingSource();
     const search = readFileSync(SEARCH_PATH, "utf8");
@@ -129,6 +153,9 @@ test("roots expose editable names and priorities with root-only search", () => {
     assert.match(css, /\.code-graph-node--root[\s\S]*background: #2b3137/);
     assert.match(search, /const name = root\?\.name \?\? "Root"/);
     assert.match(search, /\$\{name\} \$\{label\}/);
+    assert.match(search, /const orderedNodes = \[\.\.\.nodes\]\.sort/);
+    assert.match(search, /const matchingNodes = orderedNodes\.filter/);
+    assert.match(search, /rootPriority\(roots, first\) - rootPriority\(roots, second\)/);
     assert.match(search, /code-node-picker code-node-picker--roots/);
     assert.match(search, /className="code-node-search-label"/);
     assert.match(search, /code-node-search-results code-root-search-results/);

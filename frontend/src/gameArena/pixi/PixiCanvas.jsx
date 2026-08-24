@@ -151,12 +151,12 @@ export default function PixiCanvas({
         <div className={`relative mx-auto grid w-full items-center justify-center gap-3 ${layoutClass}`}>
             {!arenaReady && !assetError && <ArenaLoadingScreen overlay label="Loading arena..." />}
             {abilityLayout !== "right" && (
-                <div className={`${fixedLayout ? "order-1 min-w-0" : "order-2 min-w-0 lg:order-1"} ${fixedLayout ? "pixi-side-status" : ""}`}>
+                <div className={`pixi-player-status ${fixedLayout ? "order-1 min-w-0" : "order-2 min-w-0 lg:order-1"} ${fixedLayout ? "pixi-side-status" : ""}`}>
                     {playerBot && <AbilityStatusPanel bot={playerBot} showEmptySlot={showEmptyAbilitySlot} />}
                 </div>
             )}
             <div
-                className={`relative justify-self-center overflow-hidden rounded-xl border border-border-mid bg-[#0d1117] ${fixedLayout ? "order-2" : "order-1 lg:order-2"}`}
+                className={`pixi-arena-surface relative justify-self-center overflow-hidden rounded-xl border border-border-mid bg-[#0d1117] ${fixedLayout ? "order-2" : "order-1 lg:order-2"}`}
                 style={{
                     width: arenaSize ?? (fillAvailable ? "min(100%, 860px, calc(100svh - 90px))" : "min(100%, 860px, calc(100svh - 140px))"),
                     minWidth: fixedLayout ? "400px" : undefined,
@@ -178,12 +178,12 @@ export default function PixiCanvas({
                     </div>
                 )}
                 {!lockCamera && (
-                    <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded border border-slate-700/70 bg-zinc-950/75 px-2 py-1 font-mono text-[8px] tracking-widest text-slate-400">
-                        WHEEL TO ZOOM · RIGHT-DRAG EMPTY SPACE TO PAN{allowBotRotation ? " · RIGHT-DRAG BOT TO ROTATE" : ""}
+                    <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded border border-slate-700/70 bg-zinc-950/75 px-2 py-1 text-center font-mono text-[8px] tracking-widest text-slate-400">
+                        WHEEL OR PINCH TO ZOOM · RIGHT-DRAG EMPTY SPACE TO PAN{allowBotRotation ? " · RIGHT-DRAG BOT TO ROTATE" : ""}
                     </div>
                 )}
             </div>
-            <div className={`order-3 min-w-0 space-y-3 ${fixedLayout ? "pixi-side-status" : ""}`}>
+            <div className={`pixi-opponent-status order-3 min-w-0 space-y-3 ${fixedLayout ? "pixi-side-status" : ""}`}>
                 {abilityLayout === "right" && playerBot && <AbilityStatusPanel bot={playerBot} showEmptySlot={showEmptyAbilitySlot} />}
                 {opponentStatusBot && <AbilityStatusPanel bot={opponentStatusBot} showEmptySlot={showEmptyAbilitySlot} />}
             </div>
@@ -220,6 +220,8 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     let pan = null;
     let measurementSignature = null;
     let measurementHoverPoint = null;
+    const touchPoints = new Map();
+    let pinch = null;
 
     function updateCamera() {
         if (optionsRef.current.lockCamera) {
@@ -237,6 +239,23 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         camera.scale.set(scale);
         camera.position.set(app.screen.width / 2 - viewCenter.x * scale, app.screen.height / 2 - viewCenter.y * scale);
         app.stage.hitArea = new Rectangle(0, 0, app.screen.width, app.screen.height);
+    }
+
+    function canvasPoint(event) {
+        const bounds = app.canvas.getBoundingClientRect();
+        return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+    }
+
+    function touchPair() {
+        return [...touchPoints.values()].slice(0, 2);
+    }
+
+    function touchDistance(first, second) {
+        return Math.hypot(second.x - first.x, second.y - first.y);
+    }
+
+    function touchMidpoint(first, second) {
+        return { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
     }
 
     function createView(shape, now = presentationClock.current()) {
@@ -535,6 +554,55 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         drag = null;
         pan = null;
     };
+
+    const handleTouchPointerDown = (event) => {
+        if (event.pointerType !== "touch") return;
+        touchPoints.set(event.pointerId, canvasPoint(event));
+        if (touchPoints.size !== 2 || optionsRef.current.lockCamera) return;
+        const [first, second] = touchPair();
+        const midpoint = touchMidpoint(first, second);
+        pinch = {
+            startDistance: Math.max(1, touchDistance(first, second)),
+            previousMidpoint: midpoint,
+            zoom,
+        };
+        // A second finger turns an in-progress bot drag into a camera gesture.
+        // This keeps touch selection/dragging intact for one finger without
+        // letting the bot continue moving while the user pinches.
+        drag = null;
+        rotationDrag = null;
+        pan = null;
+    };
+
+    const handleTouchPointerMove = (event) => {
+        if (event.pointerType !== "touch" || !touchPoints.has(event.pointerId)) return;
+        touchPoints.set(event.pointerId, canvasPoint(event));
+        if (!pinch || touchPoints.size < 2 || optionsRef.current.lockCamera) return;
+        event.preventDefault();
+        const [first, second] = touchPair();
+        const midpoint = touchMidpoint(first, second);
+        const distance = touchDistance(first, second);
+        if (distance < 1) return;
+
+        const anchor = camera.toLocal(pinch.previousMidpoint);
+        zoom = clamp(pinch.zoom * distance / pinch.startDistance, MIN_ZOOM, MAX_ZOOM);
+        updateCamera();
+        const afterZoom = camera.toLocal(pinch.previousMidpoint);
+        viewCenter.x += anchor.x - afterZoom.x;
+        viewCenter.y += anchor.y - afterZoom.y;
+        const scale = camera.scale.x || 1;
+        viewCenter.x -= (midpoint.x - pinch.previousMidpoint.x) / scale;
+        viewCenter.y -= (midpoint.y - pinch.previousMidpoint.y) / scale;
+        updateCamera();
+        pinch.previousMidpoint = midpoint;
+    };
+
+    const handleTouchPointerEnd = (event) => {
+        if (event.pointerType !== "touch") return;
+        touchPoints.delete(event.pointerId);
+        if (touchPoints.size < 2) pinch = null;
+    };
+
     app.stage.on("pointerdown", handleStagePointerDown);
     app.stage.on("globalpointermove", handleGlobalPointerMove);
     app.stage.on("pointerup", endPointer);
@@ -543,8 +611,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     const handleWheel = (event) => {
         event.preventDefault();
         if (optionsRef.current.lockCamera) return;
-        const bounds = app.canvas.getBoundingClientRect();
-        const cursor = { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+        const cursor = canvasPoint(event);
         const before = camera.toLocal(cursor);
         zoom = clamp(zoom * (event.deltaY < 0 ? 1.1 : 0.9), MIN_ZOOM, MAX_ZOOM);
         updateCamera();
@@ -558,6 +625,10 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         measurementHoverPoint = null;
     };
     app.canvas.addEventListener("wheel", handleWheel, { passive: false });
+    app.canvas.addEventListener("pointerdown", handleTouchPointerDown, { passive: false });
+    app.canvas.addEventListener("pointermove", handleTouchPointerMove, { passive: false });
+    app.canvas.addEventListener("pointerup", handleTouchPointerEnd);
+    app.canvas.addEventListener("pointercancel", handleTouchPointerEnd);
     app.canvas.addEventListener("contextmenu", preventContextMenu);
     app.canvas.addEventListener("pointerleave", clearMeasurementHover);
     app.ticker.add(tick);
@@ -574,6 +645,10 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             app.stage.off("pointerup", endPointer);
             app.stage.off("pointerupoutside", endPointer);
             app.canvas.removeEventListener("wheel", handleWheel);
+            app.canvas.removeEventListener("pointerdown", handleTouchPointerDown);
+            app.canvas.removeEventListener("pointermove", handleTouchPointerMove);
+            app.canvas.removeEventListener("pointerup", handleTouchPointerEnd);
+            app.canvas.removeEventListener("pointercancel", handleTouchPointerEnd);
             app.canvas.removeEventListener("contextmenu", preventContextMenu);
             app.canvas.removeEventListener("pointerleave", clearMeasurementHover);
         },

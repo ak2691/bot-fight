@@ -36,6 +36,7 @@ import {
     DEFAULT_BOT_CONFIGURATION_ID,
 } from "./gameconfig/CombatLoadouts.js";
 import { readPracticeRoomDraft, savePracticeRoomDraft } from "./practiceRoomStorage.js";
+import { readPuzzleBotCodeDraft, savePuzzleBotCodeDraft } from "../puzzles/puzzleBotCodeStorage.js";
 
 import {
     AUTO_STEP_MS,
@@ -315,6 +316,8 @@ export default function Arena({
     puzzleBuilder = false,
     puzzleMode = false,
     initialPuzzle = null,
+    puzzleNumber = null,
+    puzzleCodeOverride = null,
     onPuzzleDraftChange = null,
     builderControls = null,
     puzzleControls = null,
@@ -341,7 +344,11 @@ export default function Arena({
     const matchUserId = matchContext?.player?.userId;
     const isMatchTesting = Boolean(matchId && matchUserId);
     const allowBotRotation = isPracticeRoom || isPuzzleBuilder || (isMatchTesting && finishStatus === "BUILDING");
-    const usesArenaResponsiveLimits = !tutorialMode;
+    // Tutorial, practice, puzzle, and live-match arenas share the same
+    // responsive shell. The tutorial used to opt out of the fixed-layout
+    // breakpoints, which made its toolbar and status panels disappear at
+    // different widths from the regular arena.
+    const usesArenaResponsiveLimits = true;
     const playerRoundWins = Math.max(0, Number(matchContext?.player?.roundWins) || 0);
     const opponentRoundWins = Math.max(0, Number(matchContext?.opponent?.roundWins) || 0);
     const [selectedLoadout, setSelectedLoadout] = useState(() => tutorialMode
@@ -402,7 +409,9 @@ export default function Arena({
     const [isEditingArena, setIsEditingArena] = useState(!isPuzzleMode);
     const [testingConfiguration, setTestingConfiguration] = useState(() => sanitizeStrategyConfigurationForLoadout(
         tutorialMode ? loadTutorialStrategyConfiguration(initialTutorialStep, initialTutorialScenario.emptyCode) : isAbilityTesting ? catalogueAbilityTestingPreset.playerCode : matchContext?.roundBrains?.at(-1)?.brain
-            ?? (usesPuzzleSetup ? initialPuzzle?.playerBot?.brain ?? createDefaultAbilityStrategyConfiguration() : isPracticeRoom ? storedPracticeRoom?.player?.code ?? loadStoredStrategyConfiguration(strategyStorageKey) : loadStoredStrategyConfiguration(strategyStorageKey)),
+            ?? (isPuzzleMode
+                ? puzzleCodeOverride ?? readPuzzleBotCodeDraft(puzzleNumber, initialPuzzle?.playerBot?.brain ?? createDefaultAbilityStrategyConfiguration())
+                : usesPuzzleSetup ? initialPuzzle?.playerBot?.brain ?? createDefaultAbilityStrategyConfiguration() : isPracticeRoom ? storedPracticeRoom?.player?.code ?? loadStoredStrategyConfiguration(strategyStorageKey) : loadStoredStrategyConfiguration(strategyStorageKey)),
         selectedLoadout,
     ));
     const [opponentTestingConfiguration, setOpponentTestingConfiguration] = useState(() => sanitizeStrategyConfigurationForLoadout(
@@ -546,7 +555,11 @@ export default function Arena({
     const updateTestingConfiguration = (configuration) => {
         const sanitized = sanitizeStrategyConfigurationForLoadout(configuration, selectedLoadout);
         setTestingConfiguration(sanitized);
-        saveStoredStrategyConfiguration(strategyStorageKey, sanitized);
+        if (isPuzzleMode) {
+            savePuzzleBotCodeDraft(puzzleNumber, sanitized);
+        } else {
+            saveStoredStrategyConfiguration(strategyStorageKey, sanitized);
+        }
         if (isPracticeRoom) {
             savePracticeRoomDraft({
                 player: { loadout: selectedLoadout, code: sanitized },
@@ -1112,7 +1125,7 @@ export default function Arena({
     ]);
 
     return (
-        <div className={`relative flex h-screen flex-col text-ink-hi font-ui overflow-hidden ${isMatchTesting ? "match-arena-shell" : "bg-arena-deep"} ${isMatchTesting || isPracticeRoom || isPuzzleBuilder || isPuzzleMode ? "gray-button-page" : ""}`}>
+        <div className={`arena-page-shell relative flex h-screen flex-col text-ink-hi font-ui overflow-hidden ${isMatchTesting ? "match-arena-shell" : "bg-arena-deep"} ${isMatchTesting || isPracticeRoom || isPuzzleBuilder || isPuzzleMode ? "gray-button-page" : ""}`}>
             {submitStatus && (
                 <div role="status" aria-live="polite" className={`
                     fixed bottom-6 left-1/2 -translate-x-1/2 z-50
@@ -1130,10 +1143,10 @@ export default function Arena({
 
             <AppNavbar account={!matchContext && !tutorialMode} currentPage={isPuzzleBuilder ? "puzzle-builder" : isPuzzleMode ? "puzzle-play" : null} onHome={onExit} />
 
-            <div className="flex min-h-0 flex-1 overflow-hidden">
-                <main className={`min-w-0 flex-1 flex items-center justify-center overflow-hidden p-2 ${isMatchTesting ? "match-arena-stage" : "bg-arena-deep"}`}>
+            <div className="arena-content-shell flex min-h-0 flex-1 overflow-hidden">
+                <main className={`arena-stage-main min-w-0 flex-1 flex items-center justify-center overflow-hidden p-2 ${isMatchTesting ? "match-arena-stage" : "bg-arena-deep"}`}>
                     <div
-                        className="relative flex h-full w-full items-center justify-center"
+                        className="arena-stage-frame relative flex h-full w-full items-center justify-center"
                     >
                         <PixiCanvas
                             shapes={shapes}
@@ -1155,7 +1168,7 @@ export default function Arena({
                     </div>
                 </main>
 
-                        <CodingPanel
+                <CodingPanel
                     configuration={testingConfiguration}
                     onChange={updateTestingConfiguration}
                     opponentConfiguration={tutorialMode || (isPuzzleMode && initialPuzzle?.hideOpponentCode !== false) ? null : opponentTestingConfiguration}
