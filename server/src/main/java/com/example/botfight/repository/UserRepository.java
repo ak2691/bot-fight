@@ -32,6 +32,22 @@ public interface UserRepository extends JpaRepository<AppUser, UUID> {
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Transactional
-    @Query("delete from AppUser u where u.emailVerified = false and u.createdAt < :cutoff")
+    @Query("""
+            delete from AppUser u
+            where u.createdAt < :cutoff
+              and (
+                    u.emailVerified = false
+                    or (
+                        u.username is null
+                        and u.passwordHash is null
+                        and exists (
+                            select authIdentity.id
+                            from UserAuthIdentity authIdentity
+                            where authIdentity.user = u
+                              and authIdentity.provider = 'google'
+                        )
+                    )
+              )
+            """)
     int deleteUnverifiedAccountsCreatedBefore(@Param("cutoff") Instant cutoff);
 }

@@ -2218,6 +2218,10 @@ button:focus-visible {
   --arena-toolbar-text: #d8b4fe;
 }
 
+.username-save-button {
+  font-family: inherit;
+}
+
 /* Profile actions share the arena toolbar's graphite/blueprint surfaces while
    inheriting the profile page's existing type scale and interface font. */
 .profile-toolbar-button {

@@ -66,7 +66,8 @@ but it cannot introduce a wall-clock offset error.
   60-second visible interval, 62-second server interval, or two-second grace
   without an explicit timing-contract change.
 - During building-room preparation the client displays "Both players have
-  selected, preparing building room." Building then displays 30 seconds.
+  selected, preparing building room." Building then displays 300 seconds (5
+  minutes).
   `buildingEndsAt` is two seconds later than the visible deadline so an in-flight
   final submission can still be accepted before the server creates its fallback.
 - After both submissions are accepted, the client enters `SIMULATION_LOADING`.

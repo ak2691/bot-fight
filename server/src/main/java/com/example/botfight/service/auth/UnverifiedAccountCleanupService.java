@@ -10,7 +10,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
- * Removes abandoned normal-registration accounts once when the application starts.
+ * Removes abandoned incomplete accounts once when the application starts.
+ *
+ * <p>This includes normal registrations that never verified their email and
+ * Google-only accounts that never completed username setup.</p>
  */
 @Service
 public class UnverifiedAccountCleanupService {
@@ -31,7 +34,7 @@ public class UnverifiedAccountCleanupService {
         Instant cutoff = clock.instant().minus(RETENTION);
         int deletedAccounts = userRepository.deleteUnverifiedAccountsCreatedBefore(cutoff);
         if (deletedAccounts > 0) {
-            log.info("Deleted {} unverified account(s) older than 24 hours", deletedAccounts);
+            log.info("Deleted {} abandoned incomplete account(s) older than 24 hours", deletedAccounts);
         }
     }
 }
