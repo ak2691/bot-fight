@@ -1,16 +1,26 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "./auth-context";
+import { authUnavailableMessage } from "./authState";
 import ArenaLoadingScreen from "../components/ArenaLoadingScreen.jsx";
 import { isArenaPresentationGateReady } from "../gameArena/pixi/useArenaPresentationAssets.js";
 import { useArenaPresentationAssetsContext } from "../gameArena/pixi/ArenaPresentationAssetsContext.js";
 
 export default function ProtectedRoute({ children }) {
-    const { isAuthenticated, isLoading } = useAuth();
+    const { isAuthenticated, isLoading, authError, refreshUser } = useAuth();
     const assets = useArenaPresentationAssetsContext();
     const location = useLocation();
 
     if (isLoading) {
         return <ArenaLoadingScreen />;
+    }
+
+    if (authError && !isAuthenticated) {
+        return (
+            <ArenaLoadingScreen
+                label={authUnavailableMessage(authError)}
+                onRetry={() => void refreshUser()}
+            />
+        );
     }
 
     if (!isAuthenticated) {
