@@ -66,6 +66,11 @@ jobs:
 
       - name: Build frontend
         working-directory: frontend
+        env:
+          # Vite embeds these public values at build time. Clean CI checkouts do
+          # not include the ignored local frontend/.env files.
+          VITE_API_BASE_URL: https://api.botfightonline.com
+          VITE_CLIENT_BUILD_VERSION: ${{ github.sha }}
         run: npm run build
 
       - name: Upload frontend build artifact
@@ -140,22 +145,7 @@ jobs:
         with:
           name: frontend-dist
           path: dist
-      - name: Show OIDC claims
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const token = await core.getIDToken('sts.amazonaws.com')
-            const payload = JSON.parse(
-              Buffer.from(token.split('.')[1], 'base64url').toString()
-            )
-            core.info(JSON.stringify({
-              sub: payload.sub,
-              aud: payload.aud,
-              ref: payload.ref,
-              repository: payload.repository,
-              repository_id: payload.repository_id,
-              repository_owner_id: payload.repository_owner_id
-            }, null, 2))
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
         with:
