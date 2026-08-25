@@ -2,6 +2,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRe
 import {
     createExpressionCondition,
     defaultTargetForVariable,
+    MAX_ROOT_NAME_LENGTH,
     MAX_ROOT_NODES,
     MAX_LOGIC_BLOCKS,
     MAX_TOTAL_CONDITIONS,
@@ -64,6 +65,33 @@ function sameGraphPath(first, second) {
     return Array.isArray(first) && Array.isArray(second)
         && first.length === second.length
         && first.every((value, index) => value === second[index]);
+}
+
+function RootNameInput({ value, disabled, ariaLabel, onCommit }) {
+    const committedValue = String(value ?? "Root");
+    const [draft, setDraft] = useState(committedValue);
+
+    useEffect(() => {
+        setDraft(committedValue);
+    }, [committedValue]);
+
+    return <input
+        type="text"
+        maxLength={MAX_ROOT_NAME_LENGTH}
+        value={draft}
+        disabled={disabled}
+        aria-label={ariaLabel}
+        data-node-drag-ignore="true"
+        onPointerDown={(event) => event.stopPropagation()}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={() => onCommit(draft)}
+        onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            event.currentTarget.blur();
+        }}
+        className="code-root-name"
+    />;
 }
 
 function absoluteGraphNodePosition(node, offsets) {
@@ -786,7 +814,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
                     const label = `Root ${Number(rootNode?.createdOrder) + 1}`;
                     return <section key={node.id} onClick={(event) => selectGraphNode(event, node.id)} onPointerDown={(event) => beginNodeDrag(event, node.id)} className={`code-graph-node code-graph-node--root absolute w-[300px] rounded-sm shadow-2xl ${selectedNodeIds.includes(node.id) ? "is-selected" : ""}`} style={graphNodeStyle(node, nodeOffsets)}>
                         <header className="code-root-header">{puzzleMode ? <span className="code-root-label">PUZZLE RULE</span> : <span className="code-root-label">Root <RootNodePriorityInput priority={Number(rootNode?.createdOrder) + 1} max={MAX_ROOT_NODES} disabled={disabled} onCommit={(priority) => setRootOrder(node.rootIndex, priority)} ariaLabel={`Priority for ${label}`} className="code-root-priority" /></span>}</header>
-                        <div className="code-root-body">{puzzleMode ? <span className="code-root-name code-root-name--puzzle" aria-label={`Name for ${label}`}>{rootNode?.name ?? "Puzzle Rule"}</span> : <input type="text" maxLength={40} value={rootNode?.name ?? "Root"} disabled={disabled} aria-label={`Name for ${label}`} onChange={(event) => updateRoot(node.rootIndex, { name: event.target.value })} className="code-root-name" />}<div className="code-root-actions">{!puzzleMode && <button type="button" disabled={disabled || graphConditionCount >= maxTotalConditions} onClick={(event) => addRootConditional(event, node, rootNode)} className={`code-root-action code-root-action--conditional ${tutorialFocus === "add-condition" && !rootNode.branches?.length ? "tutorial-control-focus" : ""}`}>+ CONDITIONAL</button>}<button type="button" disabled={!canRemove} onClick={(event) => { event.stopPropagation(); removeRootNode(node.rootIndex); }} className="code-root-action code-root-action--remove">REMOVE</button></div>
+                        <div className="code-root-body">{puzzleMode ? <span className="code-root-name code-root-name--puzzle" aria-label={`Name for ${label}`}>{rootNode?.name ?? "Puzzle Rule"}</span> : <RootNameInput value={rootNode?.name} disabled={disabled} ariaLabel={`Name for ${label}`} onCommit={(name) => updateRoot(node.rootIndex, { name })} />}<div className="code-root-actions">{!puzzleMode && <button type="button" disabled={disabled || graphConditionCount >= maxTotalConditions} onClick={(event) => addRootConditional(event, node, rootNode)} className={`code-root-action code-root-action--conditional ${tutorialFocus === "add-condition" && !rootNode.branches?.length ? "tutorial-control-focus" : ""}`}>+ CONDITIONAL</button>}<button type="button" disabled={!canRemove} onClick={(event) => { event.stopPropagation(); removeRootNode(node.rootIndex); }} className="code-root-action code-root-action--remove">REMOVE</button></div>
                         </div>
                     </section>;
                 })}

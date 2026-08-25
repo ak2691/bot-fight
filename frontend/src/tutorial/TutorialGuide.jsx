@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { hasTutorialPriorityOrder } from "./TutorialPresets.js";
 
 const runComplete = ({ challenge }) => Boolean(challenge?.completed);
 
@@ -146,7 +147,7 @@ const LESSONS = [
         objectives: [
             { id: "challenge", label: "Survive for 3 seconds", focus: "play", hint: "Press PLAY and stay clear until the grenade detonates.", complete: runComplete },
         ],
-        workspaceCoach: { eyebrow: "DODGE THE GRENADE", title: "Dash clear", copy: "Target the grenade and add Dash in any direction. Then run the bot.", focus: "add-action" },
+        workspaceCoach: { eyebrow: "DODGE THE GRENADE", title: "Dash clear", copy: "Target Opponent 1 and set Dash to 90° relative to it. Then run the bot.", focus: "add-action" },
     },
     {
         lessonNumber: "7",
@@ -159,7 +160,7 @@ const LESSONS = [
         objectives: [
             { id: "challenge", label: "Land Heavy Slash without taking damage within 3 seconds", focus: "play", hint: "Press PLAY and complete the three-second challenge.", complete: runComplete },
         ],
-        workspaceCoach: { eyebrow: "COMBINE THE PLAN", title: "Keep the tactics together", copy: "Keep the dodge, face the target, close the gap, and use Heavy Slash.", focus: "add-action" },
+        workspaceCoach: { eyebrow: "COMBINE THE PLAN", title: "Keep the tactics together", copy: "Keep Dash targeted to the grenade, face the target, close the gap, and use Heavy Slash.", focus: "add-action" },
     },
     {
         lessonNumber: "8",
@@ -214,15 +215,42 @@ const LESSONS = [
     },
     {
         lessonNumber: "9",
-        eyebrow: "SEARCH ROOTS",
-        title: "Reorder a large code plan",
-        objective: "Delete roots B, O, and T, then configure root Q with Search Roots.",
+        eyebrow: "PRIORITY ORDER",
+        title: "Let priority choose the next ability",
+        objective: "Run Dash before Lock On, swap their priorities, then run again to see Lock On start first.",
         interactive: true,
         solution: true,
+        challenge: true,
         objectives: [
-            { id: "challenge", label: "Validate the named-root setup", focus: "play", hint: "Press PLAY when the 17 named roots are ready.", complete: runComplete },
+            { id: "initial-run", label: "Run Dash before Lock On", focus: "play", hint: "Press PLAY with Dash at priority 1 and Lock On at priority 2. The first run shows the original order.", complete: ({ challenge }) => Boolean(challenge?.initialRunComplete) },
+            { id: "swap", label: "Swap the two priorities", focus: "search-roots", hint: "Change Dash to priority 2 or Lock On to priority 1. The roots stay in place; only their priority changes.", complete: ({ configuration, challenge }) => Boolean(challenge?.initialRunComplete) && hasTutorialPriorityOrder(configuration, 20, 19) },
+            { id: "final-run", label: "Run Lock On before Dash", focus: "play", hint: "Press PLAY again. With Lock On at priority 1, it activates before Dash.", complete: runComplete },
         ],
-        workspaceCoach: { eyebrow: "SEARCH ROOTS", title: "Find and configure root Q", copy: "Delete roots B, O, and T, find root Q, then add ALWAYS -> Walk -> 0° from Opponent.", focus: "search-roots" },
+        workspaceCoach: {
+            steps: [
+                {
+                    eyebrow: "PRIORITY ORDER",
+                    title: "Watch Dash go first",
+                    copy: "The starter code has Dash at priority 1 and Lock On at priority 2. Close the workspace and press PLAY to watch Dash activate first, then Lock On.",
+                    focus: "play",
+                    complete: ({ challenge }) => Boolean(challenge?.initialRunComplete),
+                },
+                {
+                    eyebrow: "SWAP PRIORITIES",
+                    title: "Change the execution order",
+                    copy: "Priority decides which ready ability is chosen first. Change Dash to priority 2 or Lock On to priority 1. This changes priority only; it does not move either root or any node.",
+                    focus: "search-roots",
+                    complete: ({ configuration, challenge }) => Boolean(challenge?.initialRunComplete) && hasTutorialPriorityOrder(configuration, 20, 19),
+                },
+                {
+                    eyebrow: "PRIORITY ORDER",
+                    title: "Watch Lock On go first",
+                    copy: "Run the bot again. Lock On is now priority 1, so it activates before Dash. The same two roots remain in the same canvas positions.",
+                    focus: "play",
+                    complete: runComplete,
+                },
+            ],
+        },
     },
     {
         lessonNumber: "10",
@@ -233,6 +261,7 @@ const LESSONS = [
             "Each round gives you a selection of abilities. In Round 1, you get 6 abilities and choose 3. In round 2, you get 4 abilities and choose 2. In round 3, you get 3 abilities and choose 1.",
             "The safe zone shrinks every 15 seconds. Each shrink lasts 5 seconds, and the closing zone deals damage.",
             "You have 5 minutes to build your bot. Then it fights in the round simulation. This repeats for a best of 3. Draws are possible.",
+            "To start playing, click queue match on the home page. You can also look up a user on the profile page and invite them to a duel.",
         ],
     },
     {
@@ -321,7 +350,7 @@ export function TutorialCodeCoach({ step, progress, onShowSolution, solutionShow
             <h2 className="mt-2 text-sm font-bold leading-tight text-white">{coach.title}</h2>
             <p className="mt-1.5 text-[11px] leading-4 text-slate-300">{coach.copy}</p>
             <button type="button" onClick={() => setMinimized(true)} className="puzzle-info-minimize" aria-label="Minimize tutorial workspace hint" title="Minimize tutorial hint"><span aria-hidden="true">−</span></button>
-            {onShowSolution && <button type="button" onClick={onShowSolution} className="mt-3 text-[9px] font-semibold text-slate-400 underline decoration-slate-600 underline-offset-2 hover:text-cyan-200">Stuck? {solutionShown ? "Reset" : "Show me"}</button>}
+            {onShowSolution && <button type="button" onClick={onShowSolution} className="arena-toolbar-button tutorial-action-button tutorial-action-button--inline mt-3">Stuck? {solutionShown ? "Reset" : "Show me"}</button>}
         </aside>
     );
 }
@@ -345,7 +374,7 @@ export default function TutorialGuide({ step, onStepChange, challenge, onAbility
 
     return (
         <section className="tutorial-guide-panel info-popup-panel w-[19rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-cyan-400/30 bg-[#07111b] shadow-[0_18px_50px_rgba(0,0,0,.48)]" aria-label="Tutorial mission tracker">
-            <div className="p-3.5">
+            <div className="tutorial-guide-content p-3.5">
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                         <p className="break-words font-mono text-lg font-bold leading-tight text-white">{current.lessonNumber}. {current.title}</p>
@@ -373,14 +402,14 @@ export default function TutorialGuide({ step, onStepChange, challenge, onAbility
 
                 {activeObjective && <p className="mt-4 border-l-2 border-indigo-400 pl-2.5 text-[10px] leading-4 text-indigo-100">{activeObjective.hint}</p>}
                 {current.challenge && <ChallengeStatus challenge={challenge} />}
-                {current.abilityCatalogue && onAbilityCatalogue && <button type="button" onClick={onAbilityCatalogue} className="mt-4 w-full rounded border border-cyan-400/50 bg-cyan-950/30 px-3 py-2 text-[9px] font-bold text-cyan-100">OPEN ABILITY CATALOGUE</button>}
-                {current.conditionalCatalogue && onConditionalCatalogue && <button type="button" onClick={onConditionalCatalogue} className="mt-4 w-full rounded border border-cyan-400/50 bg-cyan-950/30 px-3 py-2 text-[9px] font-bold text-cyan-100">OPEN CONDITIONAL CATALOGUE</button>}
-                {current.puzzles && onPuzzles && <button type="button" onClick={onPuzzles} className="mt-4 w-full rounded border border-cyan-400/50 bg-cyan-950/30 px-3 py-2 text-[9px] font-bold text-cyan-100">GO TO PUZZLES</button>}
+                {current.abilityCatalogue && onAbilityCatalogue && <button type="button" onClick={onAbilityCatalogue} className="arena-toolbar-button arena-toolbar-button--blue tutorial-action-button mt-4">OPEN ABILITY CATALOGUE</button>}
+                {current.conditionalCatalogue && onConditionalCatalogue && <button type="button" onClick={onConditionalCatalogue} className="arena-toolbar-button arena-toolbar-button--blue tutorial-action-button mt-4">OPEN CONDITIONAL CATALOGUE</button>}
+                {current.puzzles && onPuzzles && <button type="button" onClick={onPuzzles} className="arena-toolbar-button arena-toolbar-button--blue tutorial-action-button mt-4">GO TO PUZZLES</button>}
 
-                <div className="mt-4 flex items-center border-t border-white/10 pt-3">
-                    {step > 0 && <button type="button" onClick={() => onStepChange(step - 1)} className="testing-mono font-mono text-[9px] font-bold tracking-[.045em] text-slate-500 hover:text-slate-200">BACK</button>}
-                    {canAdvance && step < LESSONS.length - 1 && <button type="button" onClick={() => onStepChange(step + 1)} className="testing-mono ml-auto font-mono text-[9px] font-bold tracking-[.045em] text-cyan-200 hover:text-white">NEXT LESSON</button>}
-                </div>
+            </div>
+            <div className="tutorial-guide-navigation flex flex-none items-center border-t border-white/10 px-3.5 pb-3.5 pt-3">
+                {step > 0 && <button type="button" onClick={() => onStepChange(step - 1)} className="arena-toolbar-button tutorial-action-button">BACK</button>}
+                {canAdvance && step < LESSONS.length - 1 && <button type="button" onClick={() => onStepChange(step + 1)} className="arena-toolbar-button arena-toolbar-button--blue tutorial-action-button ml-auto">NEXT LESSON</button>}
             </div>
         </section>
     );
@@ -407,8 +436,9 @@ const CHALLENGE_MESSAGES = {
     survive_defeated: "Your bot was defeated. Add an HP retreat and try again.",
     custom_variable_passed: "Variable 1 increased by 5. You passed.",
     custom_variable_timed_out: "Variable 1 did not increase by 5 before time expired.",
-    search_passed: "All 17 named roots are correct.",
-    search_failed: "Check the B, O, and T deletions and the root Q setup.",
+    priority_initial_passed: "Dash activated first, then Lock On. Now swap their priorities.",
+    priority_final_passed: "Lock On activated first, then Dash. You saw priority change the ready-ability order.",
+    priority_failed: "The required priority order was not shown. Check the two priorities and run again.",
 };
 
 function ChallengeStatus({ challenge }) {

@@ -271,6 +271,32 @@ class BotSubmissionValidationServiceTest {
     }
 
     @Test
+    void boundsRootNamesAtTwentyFiveCharactersAndAllowsSpaces() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {
+                  "version":"bot-logic-tree-v1",
+                  "roots":[{"name":"Close Range Priority Root","branches":[]}]
+                }
+                """));
+
+        assertThat(service.validate(payload).isAccepted()).isTrue();
+
+        payload.setBrain(jsonMapper.readTree("""
+                {
+                  "version":"bot-logic-tree-v1",
+                  "roots":[{"name":"12345678901234567890123456","branches":[]}]
+                }
+                """));
+
+        var rejected = service.validate(payload);
+
+        assertThat(rejected.isAccepted()).isFalse();
+        assertThat(rejected.getErrors()).contains(
+                "brain.roots[0].name must be 1 to 25 characters");
+    }
+
+    @Test
     void acceptsExpressionConditionsWithVariableComparisons() throws Exception {
         BotSubmissionPayloadDTO payload = validPayload();
         payload.setBrain(jsonMapper.readTree("""

@@ -9,9 +9,9 @@ function branch(id, conditions, actions, createdOrder = 0) {
     return { id, branchType: "if", createdOrder, priority: 1, conditions, actions, children: [] };
 }
 
-function root(createdOrder, branches, name = "Root") {
+function root(createdOrder, branches, name = "Root", id = null) {
     const safeName = String(name || "Root").trim() || "Root";
-    return { id: `tutorial-root-${safeName.toLocaleLowerCase()}-${createdOrder + 1}`, name: safeName, createdOrder, branches };
+    return { id: id || `tutorial-root-${safeName.toLocaleLowerCase()}-${createdOrder + 1}`, name: safeName, createdOrder, branches };
 }
 
 const always = () => ({ type: "always" });
@@ -23,6 +23,22 @@ const face = (target = "opponent") => ({ action: "rotate_toward_enemy", actionTa
 
 export function createEmptyTutorialCode() {
     return { version: "bot-logic-tree-v1", roots: [], blocks: [], clusters: [], customVariables: [] };
+}
+
+export function hasTutorialPriorityOrder(configuration, firstAction, secondAction) {
+    const roots = Array.isArray(configuration?.roots) ? configuration.roots : [];
+    const rootForAction = (actionId) => roots.find((rootNode) => {
+        const collect = (branches = []) => branches.flatMap((branchNode) => [
+            branchNode,
+            ...collect(Array.isArray(branchNode?.children) ? branchNode.children : []),
+        ]);
+        return collect(Array.isArray(rootNode?.branches) ? rootNode.branches : [])
+            .some((branchNode) => (Array.isArray(branchNode?.actions) ? branchNode.actions : [])
+                .some((action) => Number(action?.action) === actionId || action?.action === String(actionId)));
+    });
+    const first = rootForAction(firstAction);
+    const second = rootForAction(secondAction);
+    return Boolean(first && second && Number(first.createdOrder) < Number(second.createdOrder));
 }
 
 function code(roots) {
@@ -68,10 +84,10 @@ function stepFourSolution() {
     ]);
 }
 
-function stepFiveSolution() {
-    return code([root(0, [branch("lesson-5-dodge-if", [
-        compare("target.distance", "lt", 190, "opponent_grenade"),
-    ], [{ action: 19, movementMode: "target", movementDirection: 90, actionTarget: "opponent_grenade" }])])]);
+function stepFiveSolution(actionTarget = "opponent") {
+    return code([root(0, [branch("lesson-6-dodge-if", [always()], [
+        { action: 19, movementMode: "target", movementDirection: 90, actionTarget },
+    ])])]);
 }
 
 function stepSixBasicStrikeSolution() {
@@ -92,52 +108,38 @@ function stepEightCustomVariableSolution() {
 
 function stepSevenSolution() {
     return code([
-        ...stepFiveSolution().roots,
+        ...stepFiveSolution("opponent_grenade").roots,
         root(1, [branch("lesson-7-face-if", [always()], [face()])]),
         root(2, [branch("lesson-7-close-if", [
             compare("target.distance", "gt", 115, "opponent"),
         ], [move(0)])]),
         root(3, [branch("lesson-7-slash-if", [
             compare("target.distance", "lte", 115, "opponent"),
-            compare("target.relativeBearing", "lte", 16, "opponent"),
+            compare("target.relativeBearing", "lte", 75, "opponent"),
         ], [{ action: 7, actionTarget: "opponent" }])]),
     ]);
 }
 
-const SEARCH_LESSON_START_ORDER = ["A", "E", "C", "D", "H", "F", "G", "K", "I", "J", "N", "L", "M", "B", "O", "P", "Q", "R", "S", "T"];
-const SEARCH_LESSON_DELETED_LETTERS = new Set(["B", "O", "T"]);
-
-function searchLessonRoot(createdOrder, name, configured = false) {
-    return root(createdOrder, configured ? [
-        branch("lesson-search-node-q-if", [always()], [move(0)]),
-    ] : [], name);
+function priorityLessonStartingCode() {
+    return code([
+        root(0, [branch("lesson-9-dash-if", [always()], [
+            { action: 19, movementMode: "target", movementDirection: 90, actionTarget: "opponent" },
+        ])], "Dash", "tutorial-root-dash"),
+        root(1, [branch("lesson-9-lock-on-if", [always()], [
+            { action: 20, actionTarget: "opponent" },
+        ])], "Lock On", "tutorial-root-lock-on"),
+    ]);
 }
 
-function searchLessonStartingCode() {
-    return code(SEARCH_LESSON_START_ORDER.map((name, index) => searchLessonRoot(index, name)));
-}
-
-function searchLessonSolution() {
-    return code(SEARCH_LESSON_START_ORDER
-        .map((name, index) => ({ name, index }))
-        .filter(({ name }) => !SEARCH_LESSON_DELETED_LETTERS.has(name))
-        .map(({ name, index }) => searchLessonRoot(index, name, name === "Q")));
-}
-
-export function validateSearchNodesLesson(configuration) {
-    const roots = Array.isArray(configuration?.roots) ? configuration.roots : [];
-    const expectedNames = SEARCH_LESSON_START_ORDER.filter((name) => !SEARCH_LESSON_DELETED_LETTERS.has(name));
-    if (roots.length !== expectedNames.length || !roots.every((entry, index) => entry.name === expectedNames[index])) return false;
-
-    const nodeQ = roots.find((entry) => entry.name === "Q");
-    if (!nodeQ || Number(nodeQ.createdOrder) !== SEARCH_LESSON_START_ORDER.indexOf("Q")) return false;
-    const actions = (nodeQ?.branches ?? []).flatMap((entry) => entry.actions ?? []);
-    return actions.some((entry) => (
-        entry.action === "move_walk"
-        && entry.movementMode === "target"
-        && Number(entry.movementDirection) === 0
-        && entry.actionTarget === "opponent"
-    ));
+function priorityLessonSolution() {
+    return code([
+        root(1, [branch("lesson-9-dash-if", [always()], [
+            { action: 19, movementMode: "target", movementDirection: 90, actionTarget: "opponent" },
+        ])], "Dash", "tutorial-root-dash"),
+        root(0, [branch("lesson-9-lock-on-if", [always()], [
+            { action: 20, actionTarget: "opponent" },
+        ])], "Lock On", "tutorial-root-lock-on"),
+    ]);
 }
 
 function passiveOpponent() {
@@ -166,7 +168,7 @@ const SCENARIOS = [
     { id: "dodge", playerLoadout: loadout(), opponentLoadout: loadout(4), solution: stepFiveSolution, opponentCode: grenadeOpponent, durationMs: 3000, goal: "dodge_grenade", spawn: { playerY: 420, opponentY: 570, playerRotation: 180 } },
     { id: "combine", playerLoadout: loadout(7), opponentLoadout: loadout(4), solution: stepSevenSolution, opponentCode: grenadeOpponent, durationMs: 3000, goal: "combo", spawn: { playerY: 420, opponentY: 570, playerRotation: 0 } },
     { id: "custom-variable", playerLoadout: loadout(), opponentLoadout: loadout(), solution: stepEightCustomVariableSolution, opponentCode: passiveOpponent, durationMs: 1000, goal: "custom_variable", spawn: { playerY: 400, opponentY: 650, playerRotation: 180 } },
-    { id: "search-roots", playerLoadout: loadout(), opponentLoadout: loadout(), solution: searchLessonSolution, emptyCode: searchLessonStartingCode, opponentCode: passiveOpponent, goal: "code_search", spawn: { playerY: 400, opponentY: 650, playerRotation: 180 } },
+    { id: "priority", playerLoadout: loadout(), opponentLoadout: loadout(), solution: priorityLessonSolution, emptyCode: priorityLessonStartingCode, opponentCode: passiveOpponent, durationMs: 2200, goal: "priority", spawn: { playerY: 400, opponentY: 650, playerRotation: 180 } },
     { id: "game-overview", playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialCode, opponentCode: passiveOpponent, spawn: { playerY: 400, opponentY: 650, playerRotation: 180 } },
     { id: "ability-catalogue", playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialCode, opponentCode: passiveOpponent, spawn: { playerY: 400, opponentY: 650, playerRotation: 180 } },
     { id: "conditional-catalogue", playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialCode, opponentCode: passiveOpponent, spawn: { playerY: 400, opponentY: 650, playerRotation: 180 } },

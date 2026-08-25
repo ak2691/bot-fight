@@ -1,6 +1,7 @@
 export const BOT_LOGIC_TREE_VERSION = "bot-logic-tree-v1";
 export const MAX_LOGIC_BLOCKS = 100;
 export const MAX_ROOT_NODES = 100;
+export const MAX_ROOT_NAME_LENGTH = 25;
 export const MAX_TOTAL_CONDITIONS = 300;
 export const MAX_CUSTOM_VARIABLE_SLOTS = 100;
 export const MAX_VARIABLE_ACTION_TERMS = 20;

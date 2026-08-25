@@ -4,6 +4,7 @@ import {
     normalizeCreatedOrder,
     rootIdForCreatedOrder,
 } from "./identifiers.js";
+import { MAX_ROOT_NAME_LENGTH } from "./constants.js";
 
 export function normalizeRoot(root, rootIndex, remaining, customVariables, operations) {
     const createdOrder = normalizeCreatedOrder(root?.createdOrder, rootIndex);
@@ -17,7 +18,7 @@ export function normalizeRoot(root, rootIndex, remaining, customVariables, opera
 }
 
 function normalizeRootName(value) {
-    const name = String(value ?? "").trim().slice(0, 40);
+    const name = String(value ?? "").trim().replace(/\s+/g, " ").slice(0, MAX_ROOT_NAME_LENGTH);
     return name || "Root";
 }
 

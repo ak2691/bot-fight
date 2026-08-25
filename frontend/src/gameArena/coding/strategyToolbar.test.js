@@ -47,7 +47,7 @@ test("match and building toolbars expose only their supported controls", () => {
 
 test("puzzle play is a local preview and puzzle submission is a separate action", () => {
     const arenaSource = readFileSync(ARENA_PATH, "utf8");
-    const runAutoPlay = arenaSource.match(/const runAutoPlay = \(\) => \{[\s\S]*?const setupValidationGoal/);
+    const runAutoPlay = arenaSource.match(/const runAutoPlay = \(\) => \{[\s\S]*?const customVariableGoal/);
 
     assert.ok(runAutoPlay);
     assert.doesNotMatch(runAutoPlay[0], /submitPuzzleAttempt\(\)/);
@@ -156,6 +156,8 @@ test("arena and puzzle code workspaces share compact controls and pinch zoom", (
     assert.match(css, /\.code-toolbar-actions \{[\s\S]*grid-column: 2;[\s\S]*grid-row: 2;/);
     assert.match(css, /\.code-custom-variables-dialog > header > div:last-child > button:first-child[\s\S]*grid-column: 1 \/ -1;/);
     assert.match(css, /\.code-workspace-coach \{[\s\S]*background: #07111b;/);
+    assert.match(css, /\.tutorial-guide-panel \{[\s\S]*height: 26rem;[\s\S]*display: flex;[\s\S]*overflow: hidden;/);
+    assert.match(css, /\.tutorial-guide-content \{[\s\S]*flex: 1 1 auto;[\s\S]*overflow-y: auto;/);
 });
 
 test("overlapping graph nodes keep delete controls in the same stacking context", () => {
@@ -179,7 +181,10 @@ test("roots expose editable names and priorities with root-only search", () => {
     assert.match(panel, /code-graph-node--root/);
     assert.doesNotMatch(panel, /kind: "code"/);
     assert.match(panel, /selectedNodeIds\.includes\(node\.id\)/);
-    assert.match(panel, /value=\{rootNode\?\.name \?\? "Root"\}/);
+    assert.match(panel, /function RootNameInput/);
+    assert.match(panel, /maxLength=\{MAX_ROOT_NAME_LENGTH\}/);
+    assert.match(panel, /onChange=\{\(event\) => setDraft\(event\.target\.value\)\}/);
+    assert.match(panel, /onBlur=\{\(\) => onCommit\(draft\)\}/);
     assert.doesNotMatch(panel, /HIGHER PRIORITY|LOWER PRIORITY/);
     assert.match(css, /\.code-graph-node--root[\s\S]*background: #2b3137/);
     assert.match(search, /const name = root\?\.name \?\? "Root"/);
@@ -190,6 +195,10 @@ test("roots expose editable names and priorities with root-only search", () => {
     assert.match(search, /code-node-picker code-node-picker--roots/);
     assert.match(search, /className="code-node-search-label"/);
     assert.match(search, /code-node-search-results code-root-search-results/);
+    assert.match(search, /className=\{`code-root-search-row/);
+    assert.match(search, /role="button"/);
+    assert.match(search, /onClick=\{\(\) => selectNode\(node\)\}/);
+    assert.doesNotMatch(search, /search-root-node-option/);
     assert.doesNotMatch(search, /beginDrag|position\.x|cursor-move/);
 });
 
@@ -291,7 +300,7 @@ test("conditional nodes expand to fit complete variable names", () => {
 
     assert.match(source, /function conditionNodeWidth\(branch, stateVariables\)/);
     assert.match(source, /width: node\.width/);
-    assert.match(css, /grid-template-columns: 34px max-content 64px max-content 26px/);
+    assert.match(css, /grid-template-columns: 34px max-content 64px max-content 30px/);
     assert.match(css, /\.code-condition-input \{[\s\S]*width: max-content/);
     assert.match(css, /\.code-condition-input \{[\s\S]*min-width: 0/);
     assert.match(css, /\.code-condition-input\.is-raw \{ width: 110px; \}/);
@@ -489,7 +498,7 @@ test("condition variable chips open detailed configuration in the inspector", ()
     assert.match(source, /if \(inspectedNode\.kind === "condition-variable"\)/);
     assert.match(source, /definition\.supportsTarget && field\("Target"/);
     assert.doesNotMatch(source, /code-condition-inline-config/);
-    assert.match(css, /grid-template-columns: 34px max-content 64px max-content 26px/);
+    assert.match(css, /grid-template-columns: 34px max-content 64px max-content 30px/);
     assert.match(css, /\.code-operator-socket \{ min-width: 64px/);
 });
 
@@ -520,6 +529,7 @@ test("custom variable configuration only defines variables and starting values",
     assert.doesNotMatch(source, /BooleanVariableConditions|ModalConditionOperand|\+ AND|\+ OR/);
     assert.match(source, /valueType: event\.target\.value/);
     assert.match(source, /STARTING VALUE/);
+    assert.match(source, /arena-toolbar-button arena-toolbar-button--red code-custom-variable-delete-button/);
 });
 
 test("modify custom variables use conditional-style operands and layered inspectors", () => {
@@ -546,6 +556,12 @@ test("modify custom variables use conditional-style operands and layered inspect
     assert.match(css, /\.code-variable-action-input-value[\s\S]*text-overflow: ellipsis/);
     assert.match(css, /\.code-variable-action-input-label[\s\S]*text-overflow: ellipsis/);
     assert.match(css, /\.code-condition-input\.code-variable-action-input[\s\S]*width: 100%[\s\S]*max-width: 100%/);
+    assert.match(css, /\.code-compact-condition[\s\S]*grid-template-columns: 34px max-content 64px max-content 30px/);
+    assert.match(css, /\.code-variable-action-row[\s\S]*grid-template-columns: minmax\(68px, 76px\) minmax\(0, 1fr\) 30px/);
+    assert.match(css, /\.code-condition-row-remove[\s\S]*width: 30px[\s\S]*height: 30px[\s\S]*margin-left: 0/);
+    assert.match(css, /\.code-inspector-header button \{ color: #94a3b8; font-size: 28px; \}/);
+    assert.match(css, /\.code-inspector-header button > span \{ color: inherit; font: inherit; letter-spacing: 0; \}/);
+    assert.match(css, /\.code-condition-row-remove:hover:not\(:disabled\)[\s\S]*rgba\(127, 29, 29, \.38\)/);
 });
 
 test("code graph has no standalone variable, target, or connection workflow", () => {

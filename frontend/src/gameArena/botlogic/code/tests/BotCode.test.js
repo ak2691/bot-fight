@@ -14,7 +14,7 @@ import {
     setLogicRootPriority,
     validateAbilityStrategyConfiguration,
 } from "../BotCode.js";
-import { getTutorialScenario, TUTORIAL_STEP_COUNT, validateSearchNodesLesson } from "../../../../tutorial/TutorialPresets.js";
+import { getTutorialScenario, hasTutorialPriorityOrder, TUTORIAL_STEP_COUNT } from "../../../../tutorial/TutorialPresets.js";
 import { ABILITY_TAGS, ACTION_TYPES, STATE_VARIABLES, TARGET_TYPES, TARGET_CAPABILITIES, VARIABLE_TAGS, abilityDefinitionsForVariable, variableHasTag } from "../contracts/BotLogicContracts.js";
 import { ALL_ABILITY_DEFINITIONS, statusEffectDefinitionsForAbilities } from "../../../loadout/BotLoadout.js";
 import { compareAngleValues } from "../runtime/conditionEvaluator.js";
@@ -1064,17 +1064,20 @@ test("tutorial teaches rotate before lock on", () => {
     assert.equal(basicStrikeActions.some((action) => action.action === 2), false);
 });
 
-test("tutorial roots are named and search validation preserves their priorities", () => {
+test("tutorial priority lesson keeps roots in place while swapping priorities", () => {
     const scenario = getTutorialScenario(8);
     assert.equal(TUTORIAL_STEP_COUNT, 13);
-    assert.equal(scenario.id, "search-roots");
+    assert.equal(scenario.id, "priority");
     assert.equal(getTutorialScenario(9).id, "game-overview");
     assert.equal(getTutorialScenario(10).id, "ability-catalogue");
     assert.equal(getTutorialScenario(11).id, "conditional-catalogue");
-    assert.deepEqual(scenario.emptyCode.roots.map((root) => root.name), ["A", "E", "C", "D", "H", "F", "G", "K", "I", "J", "N", "L", "M", "B", "O", "P", "Q", "R", "S", "T"]);
-    assert.deepEqual(scenario.solution.roots.map((root) => root.createdOrder), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16, 17, 18]);
-    assert.equal(validateSearchNodesLesson(scenario.emptyCode), false);
-    assert.equal(validateSearchNodesLesson(scenario.solution), true);
+    assert.equal(getTutorialScenario(12).id, "puzzles");
+    assert.deepEqual(scenario.emptyCode.roots.map((root) => root.name), ["Dash", "Lock On"]);
+    assert.deepEqual(scenario.emptyCode.roots.map((root) => root.createdOrder), [0, 1]);
+    assert.deepEqual(scenario.solution.roots.map((root) => root.id), scenario.emptyCode.roots.map((root) => root.id));
+    assert.deepEqual(scenario.solution.roots.map((root) => root.createdOrder), [1, 0]);
+    assert.equal(hasTutorialPriorityOrder(scenario.emptyCode, 19, 20), true);
+    assert.equal(hasTutorialPriorityOrder(scenario.solution, 20, 19), true);
 });
 
 test("roots count conditions and validate as a trainable code", () => {

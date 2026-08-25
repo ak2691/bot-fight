@@ -34,6 +34,7 @@ public class BotSubmissionValidationService {
     private static final double MAX_NODE_COORDINATE = 1_000_000d;
     private static final double CUSTOM_NUMBER_LIMIT = BotLogicContracts.CUSTOM_NUMBER_LIMIT;
     private static final int MAX_ROOTS = 100;
+    private static final int MAX_ROOT_NAME_LENGTH = 25;
     private static final int MAX_CONDITIONS_PER_BLOCK = MAX_TOTAL_CONDITIONS;
     private static final Set<Integer> ALLOWED_ABILITIES = Set.copyOf(AbilityContracts.actions());
 
@@ -428,8 +429,8 @@ public class BotSubmissionValidationService {
                 errors.add(path + ".createdOrder must be an integer between 0 and " + (MAX_ROOTS - 1));
             }
             JsonNode name = root.get("name");
-            if (name != null && (!name.isTextual() || name.asText().trim().isEmpty() || name.asText().length() > 40)) {
-                errors.add(path + ".name must be 1 to 40 characters");
+            if (name != null && (!name.isTextual() || name.asText().trim().isEmpty() || name.asText().length() > MAX_ROOT_NAME_LENGTH)) {
+                errors.add(path + ".name must be 1 to " + MAX_ROOT_NAME_LENGTH + " characters");
             }
             JsonNode branches = root.get("branches");
             if (branches == null || !branches.isArray()) {

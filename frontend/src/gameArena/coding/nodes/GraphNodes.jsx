@@ -1022,10 +1022,13 @@ function OrderedTargetPicker({ value = "opponent", targetTypes = TARGET_TYPES, d
     const encode = (nextBase, nextOrder = order, nextOrdinal = ordinal) => !allowOrdering || nextBase === "opponent"
         ? nextBase
         : `${nextBase}:${nextOrder}:${Math.max(1, Math.min(100, Number(nextOrdinal) || 1))}`;
-    return <div className={`grid gap-1 ${ordered ? "grid-cols-[minmax(0,1fr)_6rem_4rem]" : "grid-cols-1"}`}>
-        <select disabled={disabled} value={base} onChange={(event) => onChange(encode(event.target.value))} className="h-8 min-w-0 rounded border border-border-lo bg-zinc-950 px-1 font-mono text-[9px] text-ink-white">{targetTypes.map((target) => <option key={target.id} value={target.id}>{target.label.replace(/^Closest /, "")}</option>)}</select>
-        {ordered && <select disabled={disabled} aria-label="Target ordering" value={order} onChange={(event) => onChange(encode(base, event.target.value))} className="h-8 rounded border border-border-lo bg-zinc-950 px-1 font-mono text-[9px] text-ink-white"><option value="closest">Closest</option><option value="farthest">Farthest</option><option value="oldest">Oldest</option><option value="newest">Newest</option></select>}
-        {ordered && <DeferredNumberInput disabled={disabled} aria-label="Target ordinal" min={1} max={100} value={ordinal} fallback={1} onCommit={(value) => onChange(encode(base, order, value))} className="h-8 rounded border border-border-lo bg-zinc-950 px-1 font-mono text-[9px] text-ink-white" />}
+    return <div className={`code-target-picker ${ordered ? "is-ordered" : ""}`}>
+        <select disabled={disabled} value={base} onChange={(event) => onChange(encode(event.target.value))} className="code-target-picker-entity">{targetTypes.map((target) => <option key={target.id} value={target.id}>{target.label.replace(/^Closest /, "")}</option>)}</select>
+        {ordered && <div className="code-target-picker-order">
+            <select disabled={disabled} aria-label="Target ordering" value={order} onChange={(event) => onChange(encode(base, event.target.value))}><option value="closest">Closest</option><option value="farthest">Farthest</option><option value="oldest">Oldest</option><option value="newest">Newest</option></select>
+            <DeferredNumberInput disabled={disabled} aria-label="Target ordinal" min={1} max={100} value={ordinal} fallback={1} onCommit={(value) => onChange(encode(base, order, value))} />
+        </div>}
+        {ordered && <small className="code-target-picker-note">Closest 1 means the 1st closest entity. It will target the closest entity to you.</small>}
     </div>;
 }
 

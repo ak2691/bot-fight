@@ -11,10 +11,23 @@
     grid-template-columns: 72px minmax(0, 1fr) 28px;
     min-height: 36px;
     align-items: stretch;
+    border: 1px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    cursor: pointer;
+    transition: background-color 140ms ease, border-color 140ms ease;
 }
 
-.code-root-search-row:hover {
+.code-root-search-row:hover,
+.code-root-search-row.is-keyboard-active {
+    border-color: transparent;
     background: rgba(203, 213, 225, .16);
+}
+
+.code-root-search-row:focus-visible {
+    outline: 2px solid #fef08a;
+    outline-offset: -2px;
+    background: rgba(203, 213, 225, .2);
 }
 
 .code-node-picker--quick-roots {
@@ -38,17 +51,17 @@
     outline-offset: -1px;
 }
 
-.search-root-node-option {
+.search-root-node-label {
+    display: flex;
     min-width: 0;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
+    flex-direction: column;
+    justify-content: center;
     padding: 9px 10px;
     overflow: hidden;
     text-align: left;
 }
 
-.search-root-node-option strong {
+.search-root-node-label strong {
     display: block;
     overflow: hidden;
     color: #e2e8f0;
@@ -57,20 +70,13 @@
     white-space: nowrap;
 }
 
-.search-root-node-option small {
+.search-root-node-label small {
     display: block;
     margin-top: 3px;
     color: #94a3b8;
     font-size: 8px;
     letter-spacing: .08em;
     text-transform: uppercase;
-}
-
-.search-root-node-option.is-keyboard-active,
-.search-root-node-option:focus-visible {
-    outline: 2px solid #fef08a;
-    outline-offset: -2px;
-    background: rgba(203, 213, 225, .2);
 }
 
 .search-root-node-delete {

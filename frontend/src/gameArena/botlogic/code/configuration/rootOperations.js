@@ -3,6 +3,7 @@ import {
     normalizeCreatedOrder,
     rootIdForCreatedOrder,
 } from "./identifiers.js";
+import { MAX_ROOT_NAME_LENGTH } from "./constants.js";
 
 export function normalizeRoots(roots) {
     if (!Array.isArray(roots)) return [];
@@ -102,7 +103,7 @@ function normalizeLogicBranchSiblings(branches) {
 }
 
 function normalizeRootName(value) {
-    const normalized = String(value ?? "").trim().replace(/\s+/g, " ").slice(0, 40);
+    const normalized = String(value ?? "").trim().replace(/\s+/g, " ").slice(0, MAX_ROOT_NAME_LENGTH);
     return normalized || "Root";
 }
 

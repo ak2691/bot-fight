@@ -125,7 +125,7 @@ export default function PuzzleListPage() {
                             type="text"
                             value={query}
                             onChange={(event) => setQuery(event.target.value)}
-                            placeholder="Search by number, name, or description"
+                            placeholder="Search by name or puzzle number"
                             maxLength={MAX_PUZZLE_SEARCH_QUERY_LENGTH}
                             autoComplete="off"
                             className="min-h-11 w-full rounded-xl border border-slate-700 bg-[#0e1822] px-4 pr-11 text-base text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
@@ -135,7 +135,7 @@ export default function PuzzleListPage() {
                                 type="button"
                                 aria-label="Clear puzzle search"
                                 onClick={() => { setQuery(""); setActiveQuery(""); }}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer border-0 bg-transparent p-1 text-xl leading-none text-white shadow-none hover:border-0 hover:bg-transparent hover:text-cyan-200 focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300"
+                                className="puzzle-search-clear"
                             >
                                 ×
                             </button>

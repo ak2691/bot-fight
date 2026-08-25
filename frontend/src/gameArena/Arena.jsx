@@ -63,7 +63,7 @@ import {
     buildTutorialArenaShapes,
     getTutorialScenario,
     TUTORIAL_STEP_COUNT,
-    validateSearchNodesLesson,
+    hasTutorialPriorityOrder,
 } from "../tutorial/TutorialPresets.js";
 
 function finalizeTickMeasurements(shape, before) {
@@ -155,11 +155,13 @@ function saveTutorialBooleanState(prefix, step, value) {
 }
 
 function tutorialChallengeForScenario(step, scenario) {
+    const completed = loadTutorialBooleanState(TUTORIAL_COMPLETION_PREFIX, step);
     return {
         status: "idle",
         remainingMs: scenario.durationMs ?? 0,
         code: "ready",
-        completed: loadTutorialBooleanState(TUTORIAL_COMPLETION_PREFIX, step),
+        completed,
+        initialRunComplete: scenario.id === "priority" ? completed : false,
     };
 }
 
@@ -773,10 +775,6 @@ export default function Arena({
     const runAutoPlay = () => {
         if (isAutoPlaying) return;
         if (isPuzzleMode) onPuzzleOutcome?.(null);
-        const setupValidationGoal = tutorialMode && tutorialScenario.goal === "code_search";
-        const setupValidationPassed = setupValidationGoal
-            ? validateSearchNodesLesson(testingConfiguration)
-            : false;
         const customVariableGoal = tutorialMode && tutorialScenario.goal === "custom_variable";
         const customVariable = customVariableGoal
             ? (testingConfiguration.customVariables ?? []).find((variable) => (
@@ -784,6 +782,12 @@ export default function Arena({
                 && String(variable?.name ?? "").trim() === "Variable 1"
             ))
             : null;
+        const priorityGoal = tutorialMode && tutorialScenario.goal === "priority";
+        const priorityStage = priorityGoal && tutorialChallenge?.initialRunComplete ? "final" : "initial";
+        const priorityOrderCorrect = !priorityGoal
+            || (priorityStage === "initial"
+                ? hasTutorialPriorityOrder(testingConfiguration, 19, 20)
+                : hasTutorialPriorityOrder(testingConfiguration, 20, 19));
         setIsEditingArena(false);
         setIsAutoPlaying(true);
         setSelectedId(null);
@@ -799,21 +803,19 @@ export default function Arena({
                 opponentHp: opponent.hp,
                 customVariableId: customVariable?.id ?? null,
                 customVariableStartValue: Number(customVariable?.initialValue ?? 0),
+                priorityStage,
+                priorityOrderCorrect,
             } : null;
-            if (setupValidationPassed || (!setupValidationGoal && !tutorialScenario.durationMs)) {
+            if (!tutorialScenario.durationMs) {
                 saveTutorialBooleanState(TUTORIAL_COMPLETION_PREFIX, tutorialStep, true);
             }
-            setTutorialChallenge((current) => setupValidationGoal ? {
-                status: setupValidationPassed ? "passed" : "failed",
-                remainingMs: 0,
-                completed: current.completed || setupValidationPassed,
-                code: setupValidationPassed ? "search_passed" : "search_failed",
-            } : {
+            setTutorialChallenge((current) => ({
+                ...current,
                 status: tutorialScenario.durationMs ? "running" : "idle",
                 remainingMs: tutorialScenario.durationMs ?? 0,
                 completed: current.completed || !tutorialScenario.durationMs,
                 code: tutorialScenario.durationMs ? "reading_code" : "demonstration_running",
-            });
+            }));
             setShapes(freshShapes);
         } else if (isPuzzleMode) {
             const freshShapes = buildPracticeArenaShapes(selectedLoadout, opponentLoadout, initialPuzzle);
@@ -924,6 +926,9 @@ export default function Arena({
                     const customVariableIncreased = run.goal === "custom_variable"
                         && Number.isFinite(customVariableValue)
                         && customVariableValue >= run.customVariableStartValue + 5;
+                    const priorityPassed = run.goal === "priority"
+                        && remainingMs === 0
+                        && run.priorityOrderCorrect;
                     const passed = run.goal === "survive"
                         ? remainingMs === 0 && survived
                         : run.goal === "heavy_slash"
@@ -932,18 +937,26 @@ export default function Arena({
                                 ? hit && !tookDamage
                                 : run.goal === "dodge_grenade"
                                     ? grenadeExploded && !tookDamage
-                                    : run.goal === "basic_strike"
-                                        ? hit
-                                    : run.goal === "custom_variable"
-                                        ? customVariableIncreased
+                                        : run.goal === "basic_strike"
+                                            ? hit
+                                        : run.goal === "custom_variable"
+                                            ? customVariableIncreased
+                                        : run.goal === "priority"
+                                            ? priorityPassed
                                         : false;
-                    const failed = run.goal === "survive" ? !survived : tookDamage || remainingMs === 0;
+                    const failed = run.goal === "survive"
+                        ? !survived
+                        : run.goal === "priority" ? remainingMs === 0 : tookDamage || remainingMs === 0;
+                    const priorityInitialPassed = passed && run.goal === "priority" && run.priorityStage === "initial";
+                    const priorityFinalPassed = passed && run.goal === "priority" && run.priorityStage === "final";
                     const code = passed
                         ? run.goal === "survive" ? "survive_passed"
                             : run.goal === "heavy_slash" ? "heavy_slash_passed"
                                 : run.goal === "combo" ? "combo_passed"
                                     : run.goal === "basic_strike" ? "basic_strike_passed"
-                                        : run.goal === "custom_variable" ? "custom_variable_passed" : "dodge_passed"
+                                        : run.goal === "custom_variable" ? "custom_variable_passed"
+                                            : run.goal === "priority" ? (priorityFinalPassed ? "priority_final_passed" : "priority_initial_passed")
+                                                : "dodge_passed"
                         : failed
                             ? run.goal === "survive" ? "survive_defeated"
                                 : run.goal === "heavy_slash" ? "heavy_slash_timed_out"
@@ -952,13 +965,17 @@ export default function Arena({
                                             ? tookDamage ? "basic_strike_took_damage" : "basic_strike_timed_out"
                                             : run.goal === "custom_variable"
                                                 ? "custom_variable_timed_out"
-                                                : tookDamage ? "dodge_took_damage" : "dodge_timed_out"
+                                                : run.goal === "priority"
+                                                    ? "priority_failed"
+                                                    : tookDamage ? "dodge_took_damage" : "dodge_timed_out"
                             : "reading_code";
-                    if (passed) saveTutorialBooleanState(TUTORIAL_COMPLETION_PREFIX, tutorialStep, true);
+                    if (passed && !priorityInitialPassed) saveTutorialBooleanState(TUTORIAL_COMPLETION_PREFIX, tutorialStep, true);
                     setTutorialChallenge((current) => ({
+                        ...current,
                         status: passed ? "passed" : failed ? "failed" : "running",
                         remainingMs,
-                        completed: current.completed || passed,
+                        completed: current.completed || (passed && !priorityInitialPassed),
+                        initialRunComplete: current.initialRunComplete || priorityInitialPassed,
                         hit,
                         dodged: !tookDamage,
                         code,

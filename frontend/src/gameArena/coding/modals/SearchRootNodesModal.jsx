@@ -74,7 +74,7 @@ export default function SearchRootNodesModal({
             optionRefs.current[nextIndex]?.focus();
             return;
         }
-        if (event.key === "Enter") {
+        if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
             const node = matchingNodes[index];
             if (node) selectNode(node);
@@ -88,10 +88,21 @@ export default function SearchRootNodesModal({
             const priority = Number(root?.createdOrder) + 1;
             const label = `Root ${priority}`;
             const name = root?.name ?? "Root";
-            return <div key={node.id} className="code-root-search-row">
-                <RootNodePriorityInput priority={priority} max={MAX_VISIBLE_NODES} disabled={disabled} onCommit={(nextPriority) => onPriorityChange(node.rootIndex, nextPriority)} ariaLabel={`Priority for ${label}`} className="search-root-node-priority" />
-                <button ref={(element) => { optionRefs.current[index] = element; }} type="button" tabIndex={index === activeIndex ? 0 : -1} onKeyDown={(event) => moveFromOption(event, index)} onClick={() => selectNode(node)} className={`search-root-node-option ${index === activeIndex ? "is-keyboard-active" : ""}`}><strong>{name}</strong><small>{label}</small></button>
-                <button type="button" disabled={!canRemove} onClick={() => onRemove(node.rootIndex)} aria-label={`Delete ${label}`} className="search-root-node-delete">×</button>
+            return <div
+                key={node.id}
+                ref={(element) => { optionRefs.current[index] = element; }}
+                role="button"
+                tabIndex={index === activeIndex ? 0 : -1}
+                onKeyDown={(event) => moveFromOption(event, index)}
+                onClick={() => selectNode(node)}
+                className={`code-root-search-row ${index === activeIndex ? "is-keyboard-active" : ""}`}
+                aria-label={`Go to ${name}, ${label}`}
+            >
+                <div className="search-root-node-priority-wrap" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+                    <RootNodePriorityInput priority={priority} max={MAX_VISIBLE_NODES} disabled={disabled} onCommit={(nextPriority) => onPriorityChange(node.rootIndex, nextPriority)} ariaLabel={`Priority for ${label}`} className="search-root-node-priority" />
+                </div>
+                <div className="search-root-node-label"><strong>{name}</strong><small>{label}</small></div>
+                <button type="button" disabled={!canRemove} onClick={(event) => { event.stopPropagation(); onRemove(node.rootIndex); }} onKeyDown={(event) => event.stopPropagation()} aria-label={`Delete ${label}`} className="search-root-node-delete">×</button>
             </div>;
         }) : <p>NO MATCHING ROOTS</p>}</div>
         <footer className="code-root-search-footer"><span>{matchingNodes.length} RESULTS · {roots.length}/{MAX_VISIBLE_NODES} ROOTS</span><button type="button" disabled={disabled || !roots.length} onClick={onDeleteAll} className="search-root-delete-all" aria-label="Delete all roots">DELETE ALL</button></footer>

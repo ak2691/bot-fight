@@ -1,5 +1,6 @@
 import {
     BOT_LOGIC_TREE_VERSION,
+    MAX_ROOT_NAME_LENGTH,
 } from "./constants.js";
 import { rootIdForCreatedOrder } from "./identifiers.js";
 
@@ -22,6 +23,6 @@ export function createCodeRoot(createdOrder = 0, name = "Root") {
 }
 
 function normalizeRootName(value) {
-    const normalized = String(value ?? "").trim().replace(/\s+/g, " ").slice(0, 40);
+    const normalized = String(value ?? "").trim().replace(/\s+/g, " ").slice(0, MAX_ROOT_NAME_LENGTH);
     return normalized || "Root";
 }
