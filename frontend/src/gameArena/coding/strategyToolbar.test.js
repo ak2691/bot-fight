@@ -155,6 +155,7 @@ test("arena and puzzle code workspaces share compact controls and pinch zoom", (
     assert.match(css, /\.code-workspace-overlay > \.code-workspace[\s\S]*height: min\(90dvh, 820px\);/);
     assert.match(css, /\.code-toolbar-actions \{[\s\S]*grid-column: 2;[\s\S]*grid-row: 2;/);
     assert.match(css, /\.code-custom-variables-dialog > header > div:last-child > button:first-child[\s\S]*grid-column: 1 \/ -1;/);
+    assert.match(css, /\.code-workspace-coach \{[\s\S]*background: #07111b;/);
 });
 
 test("overlapping graph nodes keep delete controls in the same stacking context", () => {

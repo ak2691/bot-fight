@@ -3297,7 +3297,7 @@ button:focus-visible {
 .code-workspace-coach {
   border-left: 1px solid rgba(103, 232, 249, .65);
   padding: .4rem 2.25rem .5rem .75rem;
-  background: transparent;
+  background: #07111b;
   box-shadow: none;
   text-shadow: 0 1px 3px rgba(0, 0, 0, .95);
 }
