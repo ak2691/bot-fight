@@ -459,6 +459,7 @@ export default function CodingPanel({
             {isLogicOpen && !isBotCodeLocked && typeof document !== "undefined" && createPortal(
                 <div className="code-workspace-overlay fixed inset-0 z-40 flex items-center justify-center overflow-hidden bg-black/70 px-4 py-5">
                     <section ref={logicDialogRef} className="code-workspace testing-mono relative flex h-[min(90vh,820px)] w-[min(94vw,1440px)] flex-col overflow-hidden rounded-sm border border-border-mid bg-[#111519] shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="code-workspace-title" tabIndex={-1}>
+                        <div className="code-workspace-top-layer">
                         <header className="code-toolbar flex min-h-[84px] flex-shrink-0 items-center gap-4 border-b border-white/10 bg-[#12161a] px-5 py-3 shadow-[0_8px_24px_rgba(0,0,0,.18)]">
                             <div className="code-toolbar-title flex-none">
                                 <div id="code-workspace-title" className="font-mono text-[11px] font-bold tracking-widest text-cyan">BOT CODE WORKSPACE</div>
@@ -521,6 +522,7 @@ export default function CodingPanel({
                             </div>
                         </header>
                         {tutorialMode && <TutorialCodeCoach step={tutorialStep} progress={tutorialProgress} onShowSolution={onShowTutorialSolution} solutionShown={tutorialGuideProps?.solutionShown} />}
+                        </div>
                         {isMatchTesting && !editingOpponent && currentRound < 0 && (
                             <div className="border-b border-border-lo bg-zinc-950 px-4 py-2">
                                 {currentRound >= 3 && <div className="mb-2 border border-amber-800/70 bg-amber-950/30 px-3 py-2 font-mono text-[9px] tracking-widest text-amber-200">ROUNDS 1-2 LOGIC ARCHIVED · NOT USED FOR YOUR NEW ROLE</div>}

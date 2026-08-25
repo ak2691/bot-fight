@@ -3186,24 +3186,32 @@ button:focus-visible {
   outline-offset: -1px;
 }
 
-/* The tutorial coach is in normal workspace flow, so it can never sit on top
-   of a toolbar row as that row reflows. */
+/* Keep the tutorial coach attached to the toolbar's actual height while it
+   floats over the graph instead of taking another layout row. */
+.code-workspace-top-layer {
+  position: relative;
+  z-index: 30;
+  flex: none;
+}
+
 .code-workspace-coach,
 .code-workspace-coach-minimized {
-  position: relative;
-  top: auto;
-  right: auto;
+  position: absolute;
+  top: calc(100% + .5rem);
   bottom: auto;
-  align-self: flex-end;
+  right: 1rem;
   box-sizing: border-box;
-  flex: none;
   width: 16rem;
   max-width: calc(100% - 1rem);
-  margin: .5rem 1rem 0;
+  margin: 0;
 }
 
 .code-workspace-coach {
-  padding-right: 2.25rem;
+  border-left: 1px solid rgba(103, 232, 249, .65);
+  padding: .4rem 2.25rem .5rem .75rem;
+  background: transparent;
+  box-shadow: none;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .95);
 }
 
 .code-workspace-coach > .puzzle-info-minimize {
@@ -3218,17 +3226,19 @@ button:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: .75rem;
-  border: 1px solid rgba(34, 211, 238, .45);
-  border-radius: 3px;
-  padding: 0 .65rem;
-  background: #07111b;
+  border: 0;
+  border-left: 1px solid rgba(103, 232, 249, .65);
+  border-radius: 0;
+  padding: .35rem .65rem;
+  background: transparent;
   color: #bae6fd;
   text-align: left;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .95);
 }
 
 .code-workspace-coach-minimized:hover {
   border-color: rgba(103, 232, 249, .9);
-  background: #0b1b29;
+  background: transparent;
 }
 
 /* These information cards retain a real one-pixel outline and scale only
@@ -3294,7 +3304,6 @@ button:focus-visible {
   .code-workspace-coach,
   .code-workspace-coach-minimized {
     width: min(15rem, calc(100% - 1rem));
-    margin-right: .5rem;
-    margin-left: .5rem;
+    margin: 0;
   }
 }

@@ -22,11 +22,13 @@ public interface PuzzleRepository extends JpaRepository<Puzzle, UUID> {
               and (
                     lower(p.name) like lower(concat('%', :query, '%'))
                     or lower(p.description) like lower(concat('%', :query, '%'))
+                    or (:puzzleNumber is not null and p.puzzleNumber = :puzzleNumber)
                   )
             """)
     Page<Puzzle> searchPublished(
             @Param("status") PuzzleStatus status,
             @Param("query") String query,
+            @Param("puzzleNumber") Long puzzleNumber,
             Pageable pageable);
 
     Optional<Puzzle> findByPuzzleNumberAndStatus(Long puzzleNumber, PuzzleStatus status);

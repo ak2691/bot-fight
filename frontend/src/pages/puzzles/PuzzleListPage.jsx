@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppNavbar from "../../components/AppNavbar.jsx";
+import FloatingLogicBackground from "../../components/FloatingLogicBackground.jsx";
 import { fetchPuzzles } from "../../puzzles/puzzleApi.js";
 
 const PAGE_SIZE = 20;
@@ -71,11 +72,6 @@ export default function PuzzleListPage() {
     }, []);
 
     useEffect(() => {
-        const timeout = window.setTimeout(() => setActiveQuery(query.trim()), 250);
-        return () => window.clearTimeout(timeout);
-    }, [query]);
-
-    useEffect(() => {
         activeQueryRef.current = activeQuery;
         pageRef.current = 0;
         hasNextRef.current = false;
@@ -84,6 +80,16 @@ export default function PuzzleListPage() {
         setHasNext(false);
         void loadPage(0, false, activeQuery);
     }, [activeQuery, loadPage]);
+
+    const submitSearch = (event) => {
+        event.preventDefault();
+        const nextQuery = query.trim();
+        if (nextQuery === activeQuery) {
+            void loadPage(0, false, nextQuery);
+            return;
+        }
+        setActiveQuery(nextQuery);
+    };
 
     const loadNextPage = useCallback(() => {
         if (!hasNextRef.current || isLoadingMoreRef.current) return;
@@ -102,41 +108,41 @@ export default function PuzzleListPage() {
     }, [hasNext, loadNextPage]);
 
     return (
-        <main className="puzzle-page min-h-screen bg-[#050d16] font-interface text-slate-100">
+        <main className="puzzle-page home-grid home-dashboard min-h-screen font-interface text-slate-100">
             <AppNavbar account currentPage="puzzles" />
-            <section className="mx-auto w-full max-w-[1120px] px-5 py-12 sm:px-8 sm:py-16">
-                <header className="max-w-3xl border-b border-slate-800/90 pb-8">
-                    <p className="font-mono text-[10px] font-bold tracking-[.24em] text-cyan-300">BOT FIGHT / PUZZLES</p>
-                    <h1 className="mt-4 text-5xl font-bold tracking-[-.04em] text-white sm:text-6xl">Puzzles</h1>
-                    <p className="mt-4 max-w-2xl text-base leading-7 text-slate-400 sm:text-lg">
+            <FloatingLogicBackground />
+            <section className="relative z-[2] mx-auto w-full max-w-[980px] px-5 pb-10 pt-6 sm:px-8 sm:pb-14 sm:pt-9">
+                <div className="max-w-2xl border-b border-slate-800/90 pb-4">
+                    <div className="text-[2.65rem] font-bold leading-none tracking-[-.04em] text-white sm:text-[3.5rem]">Puzzles</div>
+                    <p className="mt-2 max-w-xl text-sm leading-6 text-slate-400 sm:text-base">
                         Practice bot programming with combat scenarios and logic challenges.
                     </p>
-                </header>
+                </div>
 
-                <div className="mt-6 max-w-3xl">
+                <form onSubmit={submitSearch} className="mt-4 max-w-2xl">
                     <label htmlFor="puzzle-search" className="font-mono text-[10px] font-bold tracking-[.2em] text-cyan-300">SEARCH PUZZLES</label>
                     <div className="relative mt-2">
                         <input
                             id="puzzle-search"
-                            type="search"
+                            type="text"
                             value={query}
                             onChange={(event) => setQuery(event.target.value)}
-                            placeholder="Search by name or description"
+                            placeholder="Search by number, name, or description"
                             autoComplete="off"
-                            className="min-h-12 w-full rounded-xl border border-slate-700 bg-[#0e1822] px-4 pr-12 text-base text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
+                            className="min-h-11 w-full rounded-xl border border-slate-700 bg-[#0e1822] px-4 pr-11 text-base text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
                         />
                         {query && (
                             <button
                                 type="button"
                                 aria-label="Clear puzzle search"
-                                onClick={() => setQuery("")}
-                                className="absolute right-3 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-lg text-slate-400 hover:bg-slate-700/60 hover:text-white"
+                                onClick={() => { setQuery(""); setActiveQuery(""); }}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-xl leading-none text-white hover:text-cyan-200 focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300"
                             >
                                 ×
                             </button>
                         )}
                     </div>
-                </div>
+                </form>
 
                 <div className="mt-6 space-y-3">
                     {isLoading && <PuzzleListMessage>LOADING PUZZLES...</PuzzleListMessage>}
@@ -157,11 +163,11 @@ export default function PuzzleListPage() {
                                 key={`${puzzle.number}-${puzzle.name}`}
                                 type="button"
                                 onClick={() => navigate(`/puzzles/${encodeURIComponent(puzzle.number)}`)}
-                                className="group flex h-28 w-full items-center justify-between gap-4 rounded-xl border border-slate-700/80 bg-[linear-gradient(145deg,rgba(17,27,37,.96),rgba(11,20,30,.96))] p-4 text-left shadow-[0_12px_32px_rgba(0,0,0,.2)] transition duration-150 hover:-translate-y-0.5 hover:border-cyan-400/60 hover:bg-[linear-gradient(145deg,rgba(20,35,47,.98),rgba(11,22,33,.98))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 sm:gap-8 sm:px-6 sm:py-5"
+                                className="group flex min-h-20 w-full items-center justify-between gap-4 rounded-xl border border-slate-700/80 bg-[linear-gradient(145deg,rgba(17,27,37,.96),rgba(11,20,30,.96))] p-3 text-left shadow-[0_12px_32px_rgba(0,0,0,.2)] transition duration-150 hover:-translate-y-0.5 hover:border-cyan-400/60 hover:bg-[linear-gradient(145deg,rgba(20,35,47,.98),rgba(11,22,33,.98))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 sm:gap-6 sm:px-5 sm:py-3.5"
                                 aria-label={`Open puzzle ${puzzle.number}: ${puzzle.name}`}
                             >
                                 <span className="min-w-0 flex-1">
-                                    <span className="line-clamp-2 break-words text-xl font-bold leading-tight tracking-[-.02em] text-white sm:text-2xl">
+                                    <span className="line-clamp-2 break-words text-lg font-bold leading-tight tracking-[-.02em] text-white sm:text-xl">
                                         {puzzle.number}. {puzzle.name}
                                     </span>
                                 </span>

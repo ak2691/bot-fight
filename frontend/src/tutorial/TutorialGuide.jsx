@@ -315,7 +315,7 @@ export function TutorialCodeCoach({ step, progress, onShowSolution, solutionShow
     }
 
     return (
-        <aside className="tutorial-coach code-workspace-coach z-30 w-64 rounded-xl border border-cyan-400/40 bg-[#07111b] p-3.5 shadow-2xl" aria-label="Current tutorial hint">
+        <aside className="tutorial-coach code-workspace-coach z-30" aria-label="Current tutorial hint">
             {coach.stepCount > 1 && <p className="font-mono text-[8px] font-bold tracking-[.18em] text-slate-500">GUIDE {coach.stepIndex + 1}/{coach.stepCount}</p>}
             <p className="font-mono text-[9px] font-bold tracking-[.2em] text-cyan-300">{coach.eyebrow}</p>
             <h2 className="mt-2 text-sm font-bold leading-tight text-white">{coach.title}</h2>

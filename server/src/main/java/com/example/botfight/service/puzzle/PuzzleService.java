@@ -32,6 +32,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -56,6 +58,7 @@ public class PuzzleService {
     private static final int MAX_NAME_LENGTH = 120;
     private static final int MAX_DESCRIPTION_LENGTH = 2_000;
     private static final int MAX_SEARCH_QUERY_LENGTH = 100;
+    private static final Pattern SEARCH_PUZZLE_NUMBER_PREFIX = Pattern.compile("^(\\d+)(?:\\.|\\s|$).*");
     private static final int MAX_CONDITION_COUNT = 300;
     private static final int MAX_JSON_BYTES = 750_000;
     private static final int MAX_ACTION_NODES = 100;
@@ -221,7 +224,11 @@ public class PuzzleService {
                 Sort.by(Sort.Direction.ASC, "puzzleNumber"));
         Page<Puzzle> puzzles = query.isBlank()
                 ? puzzleRepository.findByStatusOrderByPuzzleNumberAsc(PuzzleStatus.PUBLISHED, pageRequest)
-                : puzzleRepository.searchPublished(PuzzleStatus.PUBLISHED, query, pageRequest);
+                : puzzleRepository.searchPublished(
+                        PuzzleStatus.PUBLISHED,
+                        query,
+                        puzzleNumberFromSearch(query),
+                        pageRequest);
         Set<UUID> solvedPuzzleIds = solvedPuzzleIds(userId, puzzles.getContent());
         List<PuzzleListItemDTO> items = puzzles.getContent().stream()
                 .map(puzzle -> new PuzzleListItemDTO(
@@ -238,6 +245,16 @@ public class PuzzleService {
         return query.length() <= MAX_SEARCH_QUERY_LENGTH
                 ? query
                 : query.substring(0, MAX_SEARCH_QUERY_LENGTH);
+    }
+
+    private Long puzzleNumberFromSearch(String query) {
+        Matcher matcher = SEARCH_PUZZLE_NUMBER_PREFIX.matcher(query);
+        if (!matcher.matches()) return null;
+        try {
+            return Long.valueOf(matcher.group(1));
+        } catch (NumberFormatException exception) {
+            return null;
+        }
     }
 
     @Transactional
