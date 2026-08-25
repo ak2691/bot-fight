@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { monotonicEpochNowMs } from "../matchmaking/networkDelayEstimator.js";
 import AppNavbar from "../components/AppNavbar";
@@ -329,6 +329,11 @@ export default function Arena({
     const navigate = useNavigate();
     const location = useLocation();
     const isPracticeRoom = location.pathname === "/practice";
+
+    useLayoutEffect(() => {
+        if (typeof window !== "undefined") window.scrollTo(0, 0);
+    }, [location.pathname]);
+
     const isPuzzleBuilder = Boolean(puzzleBuilder);
     const isPuzzleMode = Boolean(puzzleMode);
     const usesPuzzleSetup = isPuzzleBuilder || isPuzzleMode;

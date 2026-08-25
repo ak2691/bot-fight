@@ -6,7 +6,7 @@ export const ADMIN_PUZZLES_ENDPOINT = apiUrl("/api/admin/puzzles");
 
 const PUZZLE_LIST_CACHE_TTL_MS = 60_000;
 const PUZZLE_LIST_CACHE_MAX_ENTRIES = 100;
-const MAX_PUZZLE_SEARCH_QUERY_LENGTH = 100;
+export const MAX_PUZZLE_SEARCH_QUERY_LENGTH = 100;
 const puzzleListCache = new Map();
 
 export function clearPuzzleListCache() {

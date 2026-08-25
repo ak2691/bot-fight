@@ -133,11 +133,17 @@ public class AuthController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<AuthUserDTO> me(Authentication authentication) {
+    public ResponseEntity<AuthUserDTO> me(
+            Authentication authentication,
+            HttpServletRequest request) {
         // Session bootstrap must remain available after a page refresh. Edge-level
         // rate limiting protects this idempotent endpoint; do not turn a temporary
         // application limiter response into a client-side logout.
-        return ResponseEntity.ok(authService.currentUser(authentication));
+        AuthUserDTO currentUser = authService.currentUser(authentication);
+        if (!currentUser.isAuthenticated() && hasInvalidSessionCookie(request)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(currentUser);
+        }
+        return ResponseEntity.ok(currentUser);
     }
 
     @GetMapping("/csrf")
@@ -173,6 +179,13 @@ public class AuthController {
             return;
         }
         authenticatedGetRateLimiter.requireAllowed(category + ":" + principal.getId());
+    }
+
+    private boolean hasInvalidSessionCookie(HttpServletRequest request) {
+        return request != null
+                && request.isRequestedSessionIdFromCookie()
+                && request.getRequestedSessionId() != null
+                && !request.isRequestedSessionIdValid();
     }
 
     private String email(AuthRequestDTO request) {

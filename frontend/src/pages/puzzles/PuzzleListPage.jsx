@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppNavbar from "../../components/AppNavbar.jsx";
-import FloatingLogicBackground from "../../components/FloatingLogicBackground.jsx";
-import { fetchPuzzles } from "../../puzzles/puzzleApi.js";
+import { fetchPuzzles, MAX_PUZZLE_SEARCH_QUERY_LENGTH } from "../../puzzles/puzzleApi.js";
 
 const PAGE_SIZE = 20;
 
@@ -108,9 +107,8 @@ export default function PuzzleListPage() {
     }, [hasNext, loadNextPage]);
 
     return (
-        <main className="puzzle-page home-grid home-dashboard min-h-screen font-interface text-slate-100">
+        <main className="puzzle-page min-h-screen bg-[#050d16] font-interface text-slate-100">
             <AppNavbar account currentPage="puzzles" />
-            <FloatingLogicBackground />
             <section className="relative z-[2] mx-auto w-full max-w-[980px] px-5 pb-10 pt-6 sm:px-8 sm:pb-14 sm:pt-9">
                 <div className="max-w-2xl border-b border-slate-800/90 pb-4">
                     <div className="text-[2.65rem] font-bold leading-none tracking-[-.04em] text-white sm:text-[3.5rem]">Puzzles</div>
@@ -128,6 +126,7 @@ export default function PuzzleListPage() {
                             value={query}
                             onChange={(event) => setQuery(event.target.value)}
                             placeholder="Search by number, name, or description"
+                            maxLength={MAX_PUZZLE_SEARCH_QUERY_LENGTH}
                             autoComplete="off"
                             className="min-h-11 w-full rounded-xl border border-slate-700 bg-[#0e1822] px-4 pr-11 text-base text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
                         />
@@ -136,7 +135,7 @@ export default function PuzzleListPage() {
                                 type="button"
                                 aria-label="Clear puzzle search"
                                 onClick={() => { setQuery(""); setActiveQuery(""); }}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-xl leading-none text-white hover:text-cyan-200 focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300"
+                                className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer border-0 bg-transparent p-1 text-xl leading-none text-white shadow-none hover:border-0 hover:bg-transparent hover:text-cyan-200 focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300"
                             >
                                 ×
                             </button>
