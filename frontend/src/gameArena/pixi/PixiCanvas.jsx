@@ -178,8 +178,8 @@ export default function PixiCanvas({
                     </div>
                 )}
                 {!lockCamera && (
-                    <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded border border-slate-700/70 bg-zinc-950/75 px-2 py-1 text-center font-mono text-[8px] tracking-widest text-slate-400">
-                        WHEEL OR PINCH TO ZOOM · RIGHT-DRAG EMPTY SPACE TO PAN{allowBotRotation ? " · RIGHT-DRAG BOT TO ROTATE" : ""}
+                    <div className="pixi-arena-help pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded border border-slate-700/70 bg-zinc-950/75 px-2 py-1 text-center font-mono text-[8px] tracking-widest text-slate-400">
+                        WHEEL OR PINCH TO ZOOM · DRAG EMPTY SPACE TO PAN{allowBotRotation ? " · RIGHT-DRAG BOT TO ROTATE" : ""}
                     </div>
                 )}
             </div>
@@ -495,8 +495,10 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
 
     const handleStagePointerDown = (event) => {
         if (event.target !== app.stage) return;
-        if (event.button === 2 || event.button === 1) {
+        const isTouch = event.pointerType === "touch";
+        if (event.button === 2 || event.button === 1 || (isTouch && !optionsRef.current.measurementEnabled)) {
             if (optionsRef.current.lockCamera) return;
+            if (isTouch) event.preventDefault();
             pan = { x: event.global.x, y: event.global.y, center: { ...viewCenter } };
             return;
         }
@@ -577,8 +579,8 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     const handleTouchPointerMove = (event) => {
         if (event.pointerType !== "touch" || !touchPoints.has(event.pointerId)) return;
         touchPoints.set(event.pointerId, canvasPoint(event));
-        if (!pinch || touchPoints.size < 2 || optionsRef.current.lockCamera) return;
         event.preventDefault();
+        if (!pinch || touchPoints.size < 2 || optionsRef.current.lockCamera) return;
         const [first, second] = touchPair();
         const midpoint = touchMidpoint(first, second);
         const distance = touchDistance(first, second);

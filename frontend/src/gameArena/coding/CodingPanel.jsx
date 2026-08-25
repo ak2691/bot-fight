@@ -452,7 +452,7 @@ export default function CodingPanel({
             </div>
 
             {isLogicOpen && !isBotCodeLocked && (
-                <div className="fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-black/70 px-4 py-5">
+                <div className="code-workspace-overlay fixed inset-0 z-40 flex items-center justify-center overflow-hidden bg-black/70 px-4 py-5">
                     <section ref={logicDialogRef} className="code-workspace testing-mono relative flex h-[min(90vh,820px)] w-[min(94vw,1440px)] flex-col overflow-hidden rounded-sm border border-border-mid bg-[#111519] shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="code-workspace-title" tabIndex={-1}>
                         <header className="code-toolbar flex min-h-[84px] flex-shrink-0 items-center gap-4 border-b border-white/10 bg-[#12161a] px-5 py-3 shadow-[0_8px_24px_rgba(0,0,0,.18)]">
                             <div className="code-toolbar-title flex-none">

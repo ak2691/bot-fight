@@ -320,15 +320,24 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         },
     }), [canvasHeight, canvasWidth, pan.x, pan.y, selectedLoadout, stateVariables, targetTypes, updateNodeOffsets, zoom]);
     const beginPan = (event) => {
-        if (event.button !== 2) return;
+        const isTouch = event.pointerType === "touch";
+        const isInteractiveControl = event.target?.closest?.("button,input,select,textarea,label,a,[role=\"button\"],[data-node-drag-ignore],.code-history-rail");
+        if (!isTouch && event.button !== 2) return;
+        if (isTouch && isInteractiveControl) return;
         event.preventDefault();
+        event.stopPropagation();
         const start = { x: event.clientX, y: event.clientY, pan };
-        const move = (next) => onPanChange(clampPan({ x: start.pan.x + next.clientX - start.x, y: start.pan.y + next.clientY - start.y }));
+        const surface = event.currentTarget;
+        const move = (next) => {
+            if (isTouch) next.preventDefault();
+            onPanChange(clampPan({ x: start.pan.x + next.clientX - start.x, y: start.pan.y + next.clientY - start.y }));
+        };
         const end = () => {
             window.removeEventListener("pointermove", move);
             window.removeEventListener("pointerup", end);
             window.removeEventListener("pointercancel", end);
         };
+        if (isTouch && surface?.setPointerCapture) surface.setPointerCapture(event.pointerId);
         window.addEventListener("pointermove", move);
         window.addEventListener("pointerup", end);
         window.addEventListener("pointercancel", end);
@@ -352,6 +361,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
     });
     const beginNodeDrag = (event, key) => {
         if (disabled || event.button !== 0 || event.target?.closest?.("button,input,select,textarea,label,a,[role=\"button\"],[data-node-drag-ignore]")) return;
+        if (event.pointerType === "touch") event.preventDefault();
         event.stopPropagation();
         const dragNodeIds = selectedNodeIds.includes(key) ? selectedNodeIds : [key];
         const startOffsets = Object.fromEntries(dragNodeIds.map((nodeId) => [nodeId, nodeOffsetsRef.current[nodeId] ?? { x: 0, y: 0 }]));
@@ -359,7 +369,9 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         const graphNodesToMove = dragNodeIds.map((nodeId) => graphNodeById.get(nodeId)).filter(Boolean);
         if (!graphNodesToMove.length) return;
         let moved = false;
-        const move = (next) => updateNodeOffsets((current) => {
+        const move = (next) => {
+            if (event.pointerType === "touch") next.preventDefault();
+            return updateNodeOffsets((current) => {
             const updated = { ...current };
             const delta = { x: (next.clientX - start.x) / zoom, y: (next.clientY - start.y) / zoom };
             moved ||= Math.abs(delta.x) > 0 || Math.abs(delta.y) > 0;
@@ -371,7 +383,8 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
                 };
             });
             return updated;
-        });
+            });
+        };
         const end = () => {
             if (moved) persistNodePositions();
             window.removeEventListener("pointermove", move);
@@ -391,7 +404,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         };
     };
     const beginMarquee = (event) => {
-        if (disabled || event.button !== 0 || event.target !== event.currentTarget) return;
+        if (disabled || event.pointerType === "touch" || event.button !== 0 || event.target !== event.currentTarget) return;
         event.preventDefault();
         event.stopPropagation();
         const start = canvasPoint(event);
@@ -649,7 +662,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
             {isSearchOpen && <SearchRootNodesModal roots={roots} nodes={graph.roots} disabled={disabled} canRemove={canRemove} quick={isQuickSearchOpen} onSelect={centerOnRoot} onPriorityChange={setRootOrder} onRemove={removeRootNode} onDeleteAll={() => { if (window.confirm("Delete all roots?")) commitConfiguration({ ...configuration, roots: [] }); }} onClose={onSearchClose} />}
             {!isSearchOpen && !isExternalConfigurationOpen && nodePicker && <NodeKindPicker type={nodePicker.type} stateVariables={stateVariables} targetTypes={targetTypes} selectedLoadout={selectedLoadout} onCancel={() => setNodePicker(null)} onChooseAction={(actionId) => addAction(nodePicker.rootIndex, nodePicker.path, actionId)} />}
             {!isSearchOpen && !isExternalConfigurationOpen && !nodePicker && operandPicker && <VariableOperandPicker operand={operandPicker.kind === "action" ? 1 : operandPicker.operand} numericOnly={operandPicker.kind === "action"} stateVariables={stateVariables} onChoose={chooseOperandVariable} onClose={() => setOperandPicker(null)} />}
-            <div onPointerDown={beginMarquee} onClick={clearCanvasSelectionFromSurface} className="absolute left-0 top-0 bg-[#171b20] bg-[radial-gradient(circle,rgba(100,116,139,.24)_1px,transparent_1px)] bg-[size:20px_20px]" style={{ width: canvasWidth, height: canvasHeight, transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}>
+            <div onPointerDown={beginMarquee} onClick={clearCanvasSelectionFromSurface} className="code-graph-surface absolute left-0 top-0 bg-[#171b20] bg-[radial-gradient(circle,rgba(100,116,139,.24)_1px,transparent_1px)] bg-[size:20px_20px]" style={{ width: canvasWidth, height: canvasHeight, transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}>
                 <svg className="pointer-events-none absolute inset-0 overflow-hidden" width={canvasWidth} height={canvasHeight}>
                     {graph.edges.map((edge) => <path key={edge.id} d={graphEdgePath(edge, nodeOffsets)} fill="none" stroke="rgba(165,180,252,.72)" strokeWidth="2" />)}
                 </svg>

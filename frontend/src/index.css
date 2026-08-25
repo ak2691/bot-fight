@@ -2107,6 +2107,421 @@ button:focus-visible {
 .code-workspace .code-toolbar-button-primary { border-color: #43a6d1; background: #286583; color: #ffffff; }
 .code-inspector-header span { color: #ffffff; }
 
+/* Keep the arena and code workspace in their own scroll/gesture surfaces.
+   The page shell stays fixed under the navbar while the content region is the
+   only arena-page scroller. */
+.arena-page-shell {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+@supports (height: 100dvh) {
+  html,
+  body,
+  #root {
+    min-height: 100dvh;
+  }
+
+  body:has(.arena-page-shell) {
+    height: 100dvh;
+    overflow: hidden;
+  }
+}
+
+.arena-content-shell {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 1180px) {
+  .arena-content-shell {
+    overflow-x: auto;
+  }
+}
+
+.pixi-arena-surface,
+.pixi-arena-surface canvas {
+  touch-action: none;
+  overscroll-behavior: contain;
+}
+
+.pixi-arena-help {
+  max-width: calc(100% - 12px);
+  white-space: normal;
+}
+
+.code-workspace-overlay {
+  overscroll-behavior: none;
+}
+
+.code-workspace {
+  min-width: 0;
+  min-height: 0;
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100dvh - 2rem);
+  height: min(90vh, 820px);
+  height: min(90dvh, 820px);
+}
+
+.code-board {
+  min-width: 0;
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+
+.code-graph-surface {
+  touch-action: none;
+  overscroll-behavior: contain;
+}
+
+.code-node-picker {
+  display: flex;
+  min-width: 0;
+  max-width: calc(100% - 1rem);
+  max-height: calc(100% - 1rem);
+  flex-direction: column;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.code-node-picker > .code-node-search-results {
+  min-height: 0;
+  max-height: min(300px, calc(100% - 78px));
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.code-node-search-results strong,
+.code-node-search-results small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.code-root-search-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 32px;
+  align-items: stretch;
+  gap: 5px;
+  min-width: 0;
+  padding: 3px 5px;
+}
+
+.search-root-node-priority,
+.search-root-node-delete,
+.search-root-node-option {
+  min-width: 0;
+}
+
+.search-root-node-priority {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(125, 211, 252, .65);
+  background: rgba(15, 23, 42, .75);
+  color: #bae6fd;
+  font: 700 10px/1 "Cousine", monospace;
+  text-align: center;
+}
+
+.search-root-node-option {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 5px 7px;
+  text-align: left;
+}
+
+.search-root-node-delete {
+  width: 32px;
+  min-height: 34px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #fca5a5;
+  font: 700 17px/1 "Cousine", monospace;
+}
+
+.code-root-search-footer {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, .18);
+  padding-top: 8px;
+  font-size: 8px;
+}
+
+.code-root-search-footer > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.code-inspector-body {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.code-custom-variables-overlay {
+  overscroll-behavior: none;
+}
+
+.code-custom-variables-dialog {
+  min-width: 0;
+  min-height: 0;
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100dvh - 2rem);
+}
+
+@media (max-width: 900px) {
+  .code-workspace-overlay {
+    padding: .5rem;
+  }
+
+  .code-toolbar {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .code-toolbar-title {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .code-toolbar-controls {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 0;
+  }
+
+  .code-tab-group {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    flex: none;
+    height: 40px;
+  }
+
+  .code-toolbar-tools {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    margin-left: 0;
+  }
+
+  .code-toolbar-actions {
+    position: static;
+    display: flex;
+    width: 100%;
+    align-items: stretch;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-left: 0;
+  }
+
+  .code-workspace .code-toolbar-button {
+    min-width: 0;
+    height: 40px;
+    padding: 0 6px;
+    font-size: clamp(8px, 2.2vw, 10px);
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .code-workspace .code-toolbar-button-primary {
+    max-width: none;
+  }
+
+  .code-toolbar-icon {
+    font-size: 13px;
+  }
+
+  .code-toolbar-zoom {
+    flex: 1 1 auto;
+    width: auto;
+    height: 40px;
+    grid-template-columns: 36px minmax(42px, 1fr) 36px;
+  }
+
+  .code-workspace .code-toolbar-zoom-button {
+    width: 36px;
+    height: 30px;
+  }
+
+  .code-workspace .code-toolbar-close {
+    width: 44px;
+    min-width: 44px;
+    flex: 0 0 44px;
+    padding: 0;
+  }
+
+  .code-toolbar-close-label {
+    display: none;
+  }
+
+  .code-node-picker {
+    right: .5rem;
+    left: .5rem;
+    width: auto;
+    max-width: none;
+  }
+
+  .code-inspector {
+    width: min(360px, 70vw);
+  }
+}
+
+@media (max-width: 600px) {
+  .code-workspace-overlay {
+    padding: 0;
+  }
+
+  .code-workspace {
+    width: 100%;
+    max-width: none;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    border-right: 0;
+    border-left: 0;
+    border-radius: 0;
+  }
+
+  .code-toolbar {
+    padding: 10px;
+  }
+
+  .code-toolbar-tools {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .code-toolbar-button-primary {
+    grid-column: 1 / -1;
+  }
+
+  .code-history-rail {
+    width: 44px;
+    padding-right: 6px;
+    padding-left: 6px;
+  }
+
+  .code-workspace .code-history-button {
+    width: 32px;
+    height: 32px;
+    font-size: 18px;
+  }
+
+  .code-inspector,
+  .code-inspector--secondary {
+    inset: 0;
+    right: auto;
+    width: 100%;
+    max-width: none;
+    border-right: 0;
+    border-left: 0;
+  }
+
+  .code-inspector-header {
+    min-height: 64px;
+    padding: 10px 12px;
+  }
+
+  .code-inspector-body {
+    padding: 12px;
+  }
+
+  .code-custom-variables-overlay {
+    align-items: stretch;
+    padding: .5rem;
+  }
+
+  .code-custom-variables-dialog {
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+  }
+
+  .code-custom-variables-dialog > header {
+    min-height: 0;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    padding: 12px;
+  }
+
+  .code-custom-variables-dialog > header > div:first-child {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+
+  .code-custom-variables-dialog > header > div:last-child {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .code-custom-variables-dialog > header > div:last-child > button {
+    min-width: 0;
+    flex: 1 1 0;
+    min-height: 40px;
+  }
+
+  .code-custom-variables-dialog > .grid {
+    grid-template-rows: minmax(128px, 34%) minmax(0, 1fr);
+  }
+
+  .code-custom-variables-dialog > .grid > aside {
+    min-height: 0;
+    overflow: hidden;
+    padding: 10px;
+  }
+
+  .code-custom-variables-dialog > .grid > main {
+    min-width: 0;
+  }
+
+  .code-custom-variables-dialog > footer {
+    padding: 10px 12px;
+  }
+
+  /* iOS and some Android browsers focus-zoom controls below 16px. Keep the
+     workspace layout compact while giving every editable/selectable control a
+     mobile-safe focus size. */
+  .code-workspace input,
+  .code-workspace select,
+  .code-workspace textarea {
+    font-size: 16px !important;
+    line-height: 1.2;
+  }
+
+  .code-node-search-results button,
+  .search-root-node-option,
+  .search-root-node-delete {
+    min-height: 40px;
+  }
+}
+
 /* Shared action surface for non-workspace rooms. Keep the bot-code workspace
    on its own palette while matching the home dashboard's main buttons. */
 .gray-button-surface {
