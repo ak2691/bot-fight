@@ -564,7 +564,7 @@ export default function Arena({
         setTestingConfiguration(sanitized);
         if (isPuzzleMode) {
             savePuzzleBotCodeDraft(puzzleNumber, sanitized);
-        } else {
+        } else if (!isPuzzleBuilder) {
             saveStoredStrategyConfiguration(strategyStorageKey, sanitized);
         }
         if (isPracticeRoom) {
@@ -579,7 +579,7 @@ export default function Arena({
     const updateOpponentTestingConfiguration = (configuration) => {
         const sanitized = sanitizeStrategyConfigurationForLoadout(configuration, opponentLoadout);
         setOpponentTestingConfiguration(sanitized);
-        saveStoredStrategyConfiguration(opponentStrategyStorageKey, sanitized);
+        if (!isPuzzleBuilder) saveStoredStrategyConfiguration(opponentStrategyStorageKey, sanitized);
         if (isPracticeRoom) {
             savePracticeRoomDraft({
                 player: { loadout: selectedLoadout, code: testingConfiguration },
@@ -649,9 +649,23 @@ export default function Arena({
     const opponentRotation = initialPuzzle?.opponentBot?.rotation;
     const playerStartHp = initialPuzzle?.playerBot?.startHp;
     const opponentStartHp = initialPuzzle?.opponentBot?.startHp;
+    const puzzleSetupKey = JSON.stringify([
+        initialPuzzleElapsedMs,
+        playerStartX,
+        playerStartY,
+        playerRotation,
+        playerStartHp,
+        opponentStartX,
+        opponentStartY,
+        opponentRotation,
+        opponentStartHp,
+    ]);
+    const previousPuzzleSetupKeyRef = useRef(null);
 
     useEffect(() => {
         if (!isPuzzleBuilder || isAutoPlaying) return;
+        if (previousPuzzleSetupKeyRef.current === puzzleSetupKey) return;
+        previousPuzzleSetupKeyRef.current = puzzleSetupKey;
         const setupById = {
             main: { startX: playerStartX, startY: playerStartY, rotation: playerRotation, startHp: playerStartHp },
             "opponent-model": { startX: opponentStartX, startY: opponentStartY, rotation: opponentRotation, startHp: opponentStartHp },
@@ -699,7 +713,7 @@ export default function Arena({
             if (!changed && !zoneChanged) return previous;
             return nextZone ? [...next, nextZone] : next;
         });
-    }, [initialPuzzleElapsedMs, isAutoPlaying, isPuzzleBuilder, opponentRotation, opponentStartHp, opponentStartX, opponentStartY, playerRotation, playerStartHp, playerStartX, playerStartY]);
+    }, [initialPuzzleElapsedMs, isAutoPlaying, isPuzzleBuilder, opponentRotation, opponentStartHp, opponentStartX, opponentStartY, playerRotation, playerStartHp, playerStartX, playerStartY, puzzleSetupKey]);
 
     const handleDeleteSelectedShape = useCallback(() => {
         setShapes((prev) => {

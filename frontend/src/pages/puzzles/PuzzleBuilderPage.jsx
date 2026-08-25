@@ -111,7 +111,7 @@ function canonicalBrain(brain, loadout) {
     };
 }
 
-function requestBot(bot) {
+function requestBot(bot, { useDefaultBrain = false } = {}) {
     const normalized = normalizeStartingBot(bot);
     return {
         loadout: normalized.loadout,
@@ -119,7 +119,7 @@ function requestBot(bot) {
         startY: normalized.startY,
         rotation: normalized.rotation,
         startHp: normalized.startHp,
-        brain: canonicalBrain(normalized.brain, normalized.loadout),
+        brain: canonicalBrain(useDefaultBrain ? createDefaultAbilityStrategyConfiguration() : normalized.brain, normalized.loadout),
     };
 }
 
@@ -385,7 +385,9 @@ export default function PuzzleBuilderPage() {
                 logicConfiguration: normalizePuzzleLogic(draft.puzzleLogic),
                 winConditions: flattenPuzzleConditions(draft.puzzleLogic, "win"),
                 loseConditions: flattenPuzzleConditions(draft.puzzleLogic, "lose"),
-                playerBot: requestBot(draft.playerBot),
+                // The builder's player code is a temporary testing draft. Keep
+                // the server-side player bot valid without saving that draft.
+                playerBot: requestBot(draft.playerBot, { useDefaultBrain: true }),
                 opponentBot: requestBot(draft.opponentBot),
             });
             setSaveState({ ok: true, message: `Puzzle #${saved.puzzleNumber} saved.` });

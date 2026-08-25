@@ -65,6 +65,18 @@ test("puzzle play restores drafts by puzzle without overriding loaded submission
     assert.match(puzzleSource, /puzzleCodeOverride=\{activeRestoredSubmission\?\.brain \?\? null\}/);
 });
 
+test("puzzle builder play resumes its preview and keeps builder code out of storage", () => {
+    const arenaSource = readFileSync(ARENA_PATH, "utf8");
+    const builderSource = readFileSync(fileURLToPath(new URL("../../pages/puzzles/PuzzleBuilderPage.jsx", import.meta.url)), "utf8");
+
+    assert.match(arenaSource, /const puzzleSetupKey = JSON\.stringify\(\[/);
+    assert.match(arenaSource, /if \(previousPuzzleSetupKeyRef\.current === puzzleSetupKey\) return;/);
+    assert.match(arenaSource, /if \(isPuzzleMode\) \{[\s\S]*savePuzzleBotCodeDraft\(puzzleNumber, sanitized\);[\s\S]*\} else if \(!isPuzzleBuilder\) \{[\s\S]*saveStoredStrategyConfiguration\(strategyStorageKey, sanitized\);/);
+    assert.match(arenaSource, /if \(!isPuzzleBuilder\) saveStoredStrategyConfiguration\(opponentStrategyStorageKey, sanitized\);/);
+    assert.match(arenaSource, /if \(!isPuzzleBuilder\) return resetBotShape\(shape\);\s*const configuration/);
+    assert.match(builderSource, /playerBot: requestBot\(draft\.playerBot, \{ useDefaultBrain: true \}\)/);
+});
+
 test("the visible building deadline preserves the manual submission grace window", () => {
     const arenaSource = readFileSync(ARENA_PATH, "utf8");
     const panelSource = readFileSync(PANEL_PATH, "utf8");
