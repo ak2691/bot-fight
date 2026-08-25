@@ -7,6 +7,7 @@ import { buildInitialArenaShapes } from "../modelPayloads/arenaShapes.js";
 const PANEL_PATH = fileURLToPath(new URL("./CodingPanel.jsx", import.meta.url));
 const ARENA_PATH = fileURLToPath(new URL("../Arena.jsx", import.meta.url));
 const PUZZLE_PLAY_PATH = fileURLToPath(new URL("../../pages/puzzles/PuzzlePlayPage.jsx", import.meta.url));
+const PUZZLE_LOGIC_WORKSPACE_PATH = fileURLToPath(new URL("../../pages/puzzles/PuzzleLogicWorkspace.jsx", import.meta.url));
 const BOARD_PATH = fileURLToPath(new URL("./LogicBoard.jsx", import.meta.url));
 const NODES_PATH = fileURLToPath(new URL("./nodes/GraphNodes.jsx", import.meta.url));
 const CUSTOM_VARIABLES_MODAL_PATH = fileURLToPath(new URL("./modals/CustomVariablesModal.jsx", import.meta.url));
@@ -125,6 +126,23 @@ test("code graph nodes can be dragged from their surfaces without stealing contr
     assert.match(source, /onPointerDown=\{beginMarquee\}/);
     assert.match(source, /window\.addEventListener\("keydown"/);
     assert.match(source, /data-node-drag-ignore="true" className="code-condition-prefix/);
+});
+
+test("arena and puzzle code workspaces share compact controls and pinch zoom", () => {
+    const panelSource = readFileSync(PANEL_PATH, "utf8");
+    const boardSource = readFileSync(BOARD_PATH, "utf8");
+    const puzzleWorkspaceSource = readFileSync(PUZZLE_LOGIC_WORKSPACE_PATH, "utf8");
+    const css = readFileSync(CSS_PATH, "utf8");
+
+    assert.match(panelSource, /onPinchZoom=\{applyPinchZoom\}/);
+    assert.match(puzzleWorkspaceSource, /className="code-workspace-overlay fixed/);
+    assert.match(puzzleWorkspaceSource, /onPinchZoom=\{applyPinchZoom\}/);
+    assert.match(boardSource, /const handleTouchPointerDown = \(event\) =>/);
+    assert.match(boardSource, /onPointerDown=\{handleBoardPointerDown\}/);
+    assert.match(boardSource, /onPinchZoom\(nextZoom, nextPan\)/);
+    assert.match(css, /\.code-workspace-overlay > \.code-workspace[\s\S]*height: min\(90dvh, 820px\);/);
+    assert.match(css, /\.code-toolbar-actions \{[\s\S]*grid-column: 2;[\s\S]*grid-row: 2;/);
+    assert.match(css, /\.code-custom-variables-dialog > header > div:last-child > button:first-child[\s\S]*grid-column: 1 \/ -1;/);
 });
 
 test("overlapping graph nodes keep delete controls in the same stacking context", () => {

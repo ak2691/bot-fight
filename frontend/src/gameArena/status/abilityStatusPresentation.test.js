@@ -15,6 +15,7 @@ import {
 const PANEL_PATH = fileURLToPath(new URL("./AbilityStatusPanel.jsx", import.meta.url));
 const PRESENTATION_PATH = fileURLToPath(new URL("./abilityStatusPresentation.js", import.meta.url));
 const INDEX_CSS_PATH = fileURLToPath(new URL("../../index.css", import.meta.url));
+const PIXI_CSS_PATH = fileURLToPath(new URL("../pixi/PixiCanvas.css", import.meta.url));
 
 test("ability status panel leaves Overclock to the Pixi bot presentation", () => {
     const source = readFileSync(PANEL_PATH, "utf8");
@@ -51,6 +52,17 @@ test("ability status panels use a fixed three-column circular grid without slot 
     assert.doesNotMatch(source, /showEmptySlot|EMPTY|border-dashed|shadow-|glow|neon/i);
     assert.match(presentationSource, /abilityChargeCountFor/);
     assert.doesNotMatch(globalStyles, /\.ability-status-panel[^\n]*box-shadow|\.opponent-status-panel/);
+});
+
+test("responsive top status panels preserve the original spacing and cap at three rows", () => {
+    const pixiStyles = readFileSync(PIXI_CSS_PATH, "utf8");
+
+    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.ability-status-panel__abilities[\s\S]*max-height: 14\.5rem;/);
+    assert.match(pixiStyles, /grid-auto-rows: 4\.5rem;/);
+    assert.match(pixiStyles, /column-gap: \.25rem;/);
+    assert.match(pixiStyles, /row-gap: \.5rem;/);
+    assert.match(pixiStyles, /overflow-y: auto;/);
+    assert.doesNotMatch(pixiStyles, /grid-auto-rows: 3\.5rem|overflow: visible/);
 });
 
 test("cooldown arcs render nothing at zero, a solid circle at one, and begin at 12 o'clock", () => {

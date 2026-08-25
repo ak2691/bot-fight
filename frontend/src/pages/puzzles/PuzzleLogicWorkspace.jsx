@@ -242,6 +242,10 @@ export default function PuzzleLogicWorkspace({
         }
         setZoom(nextZoom);
     }, [zoom]);
+    const applyPinchZoom = useCallback((nextZoom, nextPan) => {
+        setZoom(nextZoom);
+        setPan(nextPan);
+    }, []);
 
     const customVariableCount = currentConfiguration.customVariables?.length ?? 0;
     const conditionCount = countLogicConditions(currentConfiguration);
@@ -252,7 +256,7 @@ export default function PuzzleLogicWorkspace({
     }, 0);
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/75 px-4 py-5" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+        <div className="code-workspace-overlay fixed inset-0 z-[100] flex items-center justify-center overflow-hidden bg-black/75 px-4 py-5" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
             <section ref={dialogRef} className="code-workspace testing-mono relative flex h-[min(92vh,900px)] w-[min(96vw,1500px)] flex-col overflow-hidden rounded-sm border border-border-mid bg-[#111519] shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="puzzle-logic-workspace-title" tabIndex={-1}>
                 <header className="code-toolbar flex min-h-[84px] flex-shrink-0 items-center gap-4 border-b border-white/10 bg-[#12161a] px-5 py-3 shadow-[0_8px_24px_rgba(0,0,0,.18)]">
                     <div className="code-toolbar-title flex-none">
@@ -290,6 +294,7 @@ export default function PuzzleLogicWorkspace({
                     pan={pan}
                     onPanChange={setPan}
                     onZoomChange={changeZoom}
+                    onPinchZoom={applyPinchZoom}
                     canUndo={!readOnly && history.undo.length > 0}
                     canRedo={!readOnly && history.redo.length > 0}
                     onUndo={() => travelHistory("undo")}

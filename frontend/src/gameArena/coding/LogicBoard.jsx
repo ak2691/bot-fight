@@ -47,6 +47,8 @@ const LOGIC_CANVAS_HEIGHT = 6000;
 const ROOT_TO_CONDITION_GAP = 106;
 const CONDITION_TO_CHILD_GAP = 70;
 const GRAPH_SIBLING_GAP = 72;
+const LOGIC_MIN_ZOOM = 0.45;
+const LOGIC_MAX_ZOOM = 1.35;
 
 function graphNodesForGraph(graph) {
     return [
@@ -95,6 +97,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
     pan,
     onPanChange,
     onZoomChange,
+    onPinchZoom = null,
     canUndo,
     canRedo,
     onUndo,
@@ -120,6 +123,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
     const [selectionBox, setSelectionBox] = useState(null);
     const removeSelectedNodesRef = useRef(() => {});
     const suppressSurfaceClickRef = useRef(false);
+    const touchGestureRef = useRef(null);
     const onSearchCloseRef = useRef(onSearchClose);
     const onCloseExternalConfigurationRef = useRef(onCloseExternalConfiguration);
     useEffect(() => {
@@ -278,13 +282,13 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         }
         onChange(clean);
     };
-    const clampPan = (nextPan) => {
-            const rect = viewportRef.current?.getBoundingClientRect();
+    const clampPan = (nextPan, nextZoom = zoom) => {
+        const rect = viewportRef.current?.getBoundingClientRect();
         if (!rect) return nextPan;
         const margin = 80;
         return {
-            x: clamp(nextPan.x, rect.width - canvasWidth * zoom - margin, margin),
-            y: clamp(nextPan.y, rect.height - canvasHeight * zoom - margin, margin),
+            x: clamp(nextPan.x, rect.width - canvasWidth * nextZoom - margin, margin),
+            y: clamp(nextPan.y, rect.height - canvasHeight * nextZoom - margin, margin),
         };
     };
     useImperativeHandle(ref, () => ({
@@ -320,16 +324,11 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         },
     }), [canvasHeight, canvasWidth, pan.x, pan.y, selectedLoadout, stateVariables, targetTypes, updateNodeOffsets, zoom]);
     const beginPan = (event) => {
-        const isTouch = event.pointerType === "touch";
-        const isInteractiveControl = event.target?.closest?.("button,input,select,textarea,label,a,[role=\"button\"],[data-node-drag-ignore],.code-history-rail");
-        if (!isTouch && event.button !== 2) return;
-        if (isTouch && isInteractiveControl) return;
+        if (event.pointerType === "touch" || event.button !== 2) return;
         event.preventDefault();
         event.stopPropagation();
         const start = { x: event.clientX, y: event.clientY, pan };
-        const surface = event.currentTarget;
         const move = (next) => {
-            if (isTouch) next.preventDefault();
             onPanChange(clampPan({ x: start.pan.x + next.clientX - start.x, y: start.pan.y + next.clientY - start.y }));
         };
         const end = () => {
@@ -337,10 +336,120 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
             window.removeEventListener("pointerup", end);
             window.removeEventListener("pointercancel", end);
         };
-        if (isTouch && surface?.setPointerCapture) surface.setPointerCapture(event.pointerId);
         window.addEventListener("pointermove", move);
         window.addEventListener("pointerup", end);
         window.addEventListener("pointercancel", end);
+    };
+    const clearTouchGesture = () => {
+        const gesture = touchGestureRef.current;
+        if (!gesture) return;
+        window.removeEventListener("pointermove", gesture.move);
+        window.removeEventListener("pointerup", gesture.end);
+        window.removeEventListener("pointercancel", gesture.end);
+        touchGestureRef.current = null;
+    };
+    const handleTouchPointerDown = (event) => {
+        if (disabled || event.pointerType !== "touch") return;
+        const isInteractiveControl = event.target?.closest?.("button,input,select,textarea,label,a,[role=\"button\"],[data-node-drag-ignore],.code-history-rail");
+        if (isInteractiveControl) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const point = { x: event.clientX, y: event.clientY };
+        let gesture = touchGestureRef.current;
+        if (!gesture) {
+            gesture = {
+                points: new Map(),
+                startPoint: point,
+                startPan: { ...pan },
+                lastPan: { ...pan },
+                lastZoom: zoom,
+                pinch: null,
+                move: null,
+                end: null,
+            };
+            const move = (nextEvent) => {
+                const current = touchGestureRef.current;
+                if (!current?.points.has(nextEvent.pointerId)) return;
+                nextEvent.preventDefault();
+                current.points.set(nextEvent.pointerId, { x: nextEvent.clientX, y: nextEvent.clientY });
+                const points = [...current.points.values()];
+                if (points.length >= 2) {
+                    const [first, second] = points;
+                    const distance = Math.max(1, Math.hypot(second.x - first.x, second.y - first.y));
+                    const midpoint = {
+                        x: (first.x + second.x) / 2,
+                        y: (first.y + second.y) / 2,
+                    };
+                    if (!current.pinch) {
+                        current.pinch = {
+                            startDistance: distance,
+                            startMidpoint: midpoint,
+                            startZoom: current.lastZoom,
+                            startPan: current.lastPan,
+                        };
+                    }
+                    const rect = viewportRef.current?.getBoundingClientRect();
+                    if (!rect) return;
+                    const { startDistance, startMidpoint, startZoom, startPan } = current.pinch;
+                    const nextZoom = clamp(startZoom * (distance / startDistance), LOGIC_MIN_ZOOM, LOGIC_MAX_ZOOM);
+                    const anchorX = (startMidpoint.x - rect.left - startPan.x) / startZoom;
+                    const anchorY = (startMidpoint.y - rect.top - startPan.y) / startZoom;
+                    const nextPan = clampPan({
+                        x: midpoint.x - rect.left - anchorX * nextZoom,
+                        y: midpoint.y - rect.top - anchorY * nextZoom,
+                    }, nextZoom);
+                    const previousZoom = current.lastZoom;
+                    current.lastZoom = nextZoom;
+                    current.lastPan = nextPan;
+                    if (onPinchZoom) onPinchZoom(nextZoom, nextPan);
+                    else onZoomChange(nextZoom - previousZoom, { x: midpoint.x - rect.left, y: midpoint.y - rect.top });
+                    return;
+                }
+                const [currentPoint] = points;
+                const nextPan = clampPan({
+                    x: current.startPan.x + currentPoint.x - current.startPoint.x,
+                    y: current.startPan.y + currentPoint.y - current.startPoint.y,
+                });
+                current.lastPan = nextPan;
+                onPanChange(nextPan);
+            };
+            const end = (nextEvent) => {
+                const current = touchGestureRef.current;
+                if (!current) return;
+                current.points.delete(nextEvent.pointerId);
+                if (current.points.size < 2) clearTouchGesture();
+            };
+            gesture.move = move;
+            gesture.end = end;
+            touchGestureRef.current = gesture;
+            window.addEventListener("pointermove", move, { passive: false });
+            window.addEventListener("pointerup", end);
+            window.addEventListener("pointercancel", end);
+        }
+        gesture.points.set(event.pointerId, point);
+        if (gesture.points.size >= 2) {
+            const [first, second] = [...gesture.points.values()];
+            gesture.pinch = {
+                startDistance: Math.max(1, Math.hypot(second.x - first.x, second.y - first.y)),
+                startMidpoint: {
+                    x: (first.x + second.x) / 2,
+                    y: (first.y + second.y) / 2,
+                },
+                startZoom: gesture.lastZoom,
+                startPan: gesture.lastPan,
+            };
+        }
+    };
+    useEffect(() => () => {
+        const gesture = touchGestureRef.current;
+        if (!gesture) return;
+        window.removeEventListener("pointermove", gesture.move);
+        window.removeEventListener("pointerup", gesture.end);
+        window.removeEventListener("pointercancel", gesture.end);
+    }, []);
+    const handleBoardPointerDown = (event) => {
+        handleTouchPointerDown(event);
+        beginPan(event);
     };
     const updateRoot = (rootIndex, updates) => commitConfiguration({ ...configuration, roots: roots.map((rootNode, index) => index === rootIndex ? { ...rootNode, ...updates } : rootNode) });
     const removeRootNode = (rootIndex) => commitConfiguration({ ...configuration, roots: roots.filter((_, index) => index !== rootIndex) }, true);
@@ -372,17 +481,17 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         const move = (next) => {
             if (event.pointerType === "touch") next.preventDefault();
             return updateNodeOffsets((current) => {
-            const updated = { ...current };
-            const delta = { x: (next.clientX - start.x) / zoom, y: (next.clientY - start.y) / zoom };
-            moved ||= Math.abs(delta.x) > 0 || Math.abs(delta.y) > 0;
-            graphNodesToMove.forEach((graphNode) => {
-                const startOffset = startOffsets[graphNode.id];
-                updated[graphNode.id] = {
-                    x: clamp(startOffset.x + delta.x, -graphNode.x, canvasWidth - graphNode.x - graphNode.width),
-                    y: clamp(startOffset.y + delta.y, -graphNode.y, canvasHeight - graphNode.y - graphNode.height),
-                };
-            });
-            return updated;
+                const updated = { ...current };
+                const delta = { x: (next.clientX - start.x) / zoom, y: (next.clientY - start.y) / zoom };
+                moved ||= Math.abs(delta.x) > 0 || Math.abs(delta.y) > 0;
+                graphNodesToMove.forEach((graphNode) => {
+                    const startOffset = startOffsets[graphNode.id];
+                    updated[graphNode.id] = {
+                        x: clamp(startOffset.x + delta.x, -graphNode.x, canvasWidth - graphNode.x - graphNode.width),
+                        y: clamp(startOffset.y + delta.y, -graphNode.y, canvasHeight - graphNode.y - graphNode.height),
+                    };
+                });
+                return updated;
             });
         };
         const end = () => {
@@ -642,7 +751,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         <div
             ref={viewportRef}
             className="code-board relative min-h-0 flex-1 select-none overflow-hidden bg-zinc-900"
-            onPointerDown={beginPan}
+            onPointerDown={handleBoardPointerDown}
             onClick={clearCanvasSelectionFromSurface}
             onContextMenu={(event) => event.preventDefault()}
             onWheel={(event) => {

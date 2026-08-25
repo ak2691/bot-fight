@@ -309,6 +309,10 @@ export default function CodingPanel({
             return nextZoom;
         });
     };
+    const applyPinchZoom = (nextZoom, nextPan) => {
+        setCanvasZoom(nextZoom);
+        setCanvasPan(nextPan);
+    };
 
     return (
         <aside className={`arena-toolbar-panel ${usesArenaResponsiveLimits ? "arena-right-toolbar" : ""} testing-mono h-full min-h-0 w-[23rem] flex-shrink-0 overflow-y-auto border-l border-slate-700/70 bg-[linear-gradient(180deg,rgba(12,22,31,.98),rgba(8,16,24,.98))] p-4 shadow-[-12px_0_30px_rgba(0,0,0,.28)]`}>
@@ -556,6 +560,7 @@ export default function CodingPanel({
                                 pan={canvasPan}
                                 onPanChange={setCanvasPan}
                                 onZoomChange={changeZoom}
+                                onPinchZoom={applyPinchZoom}
                                 tutorialFocus={tutorialFocus}
                                 canUndo={!isCodeEditingLocked && !isTesting && editHistory[activeCode].undo.length > 0}
                                 canRedo={!isCodeEditingLocked && !isTesting && editHistory[activeCode].redo.length > 0}

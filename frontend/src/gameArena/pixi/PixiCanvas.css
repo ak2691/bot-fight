@@ -75,9 +75,11 @@
 
     .pixi-combat-layout--fixed .ability-status-panel__abilities {
         height: auto;
-        grid-auto-rows: 3.5rem;
-        gap: .25rem;
-        overflow: visible;
+        max-height: 14.5rem;
+        grid-auto-rows: 4.5rem;
+        column-gap: .25rem;
+        row-gap: .5rem;
+        overflow-y: auto;
         padding-right: 0;
     }
 }
