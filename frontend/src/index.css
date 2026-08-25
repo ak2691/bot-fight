@@ -264,13 +264,16 @@ html,
 }
 
 .arena-stage-info {
+  position: relative;
   display: flex;
   width: min(100%, 1360px);
+  min-height: 3rem;
   flex: 0 0 auto;
   flex-direction: column;
   align-items: flex-start;
   gap: .5rem;
   margin: 0 auto .75rem;
+  z-index: 20;
 }
 
 .arena-stage-info__tutorial {
@@ -278,15 +281,23 @@ html,
 }
 
 .arena-stage-info > .info-popup-panel,
+.arena-stage-info__tutorial > .info-popup-panel {
+  position: absolute;
+  top: 0;
+  right: auto;
+  bottom: auto;
+  left: 0;
+  z-index: 20;
+}
+
 .arena-stage-info > .info-popup-minimized,
-.arena-stage-info__tutorial > .info-popup-panel,
 .arena-stage-info__tutorial > .info-popup-minimized {
-  position: static;
+  position: relative;
   top: auto;
   right: auto;
   bottom: auto;
   left: auto;
-  z-index: auto;
+  z-index: 21;
 }
 
 .arena-stage-canvas {
@@ -2906,7 +2917,8 @@ button:focus-visible {
 }
 
 @media (max-width: 1180px) {
-  .tutorial-guide-panel {
+  .tutorial-guide-panel,
+  .puzzle-info-panel {
     max-height: calc(100svh - 84px - env(safe-area-inset-top));
     overflow-y: auto;
   }

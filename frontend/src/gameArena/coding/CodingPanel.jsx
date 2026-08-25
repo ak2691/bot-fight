@@ -456,8 +456,8 @@ export default function CodingPanel({
                 </section>
                 {onPuzzleSubmit && (
                     <section className="rounded-lg border border-cyan-900/60 bg-slate-950/45 p-3 text-[9px] leading-4 text-slate-400">
-                        <p>When you submit a puzzle, the server simulates the bots and quickly returns whether or not you fulfilled the conditions.</p>
-                        <p className="mt-2">Pressing play only shows you what happens visually. Use play to test things out.</p>
+                        <p>When you submit a puzzle, the server will return whether or not you succeeded based on a hidden simulation.</p>
+                        <p className="mt-2">Pressing play shows you what happens visually with your current code</p>
                     </section>
                 )}
             </div>
