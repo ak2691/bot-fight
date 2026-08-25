@@ -318,7 +318,7 @@ public class DatabaseLookupCache {
     public record CachedUser(UUID id, String username, Instant createdAt) {
     }
 
-    public record PuzzleListKey(int page, int size, UUID userId) {
+    public record PuzzleListKey(int page, int size, UUID userId, String query) {
     }
 
     public record ProfileHistoryKey(

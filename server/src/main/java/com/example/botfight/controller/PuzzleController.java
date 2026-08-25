@@ -38,8 +38,9 @@ public class PuzzleController {
     public PuzzleListPageDTO list(
             Authentication authentication,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return puzzleService.listPublished(page, size, authentication);
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "") String query) {
+        return puzzleService.listPublished(page, size, query, authentication);
     }
 
     @GetMapping("/{puzzleNumber}")

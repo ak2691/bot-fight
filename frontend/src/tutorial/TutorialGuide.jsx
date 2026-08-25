@@ -301,15 +301,26 @@ export function getTutorialCoach(step, progress = null) {
 }
 
 export function TutorialCodeCoach({ step, progress, onShowSolution, solutionShown }) {
+    const [minimized, setMinimized] = useState(false);
     const coach = getTutorialCoach(step, progress);
     if (!coach) return null;
 
+    if (minimized) {
+        return (
+            <button type="button" onClick={() => setMinimized(false)} className="code-workspace-coach-minimized" aria-label="Expand tutorial workspace hint">
+                <span className="font-mono text-[8px] font-bold tracking-[.16em] text-cyan-200">GUIDE {coach.stepCount > 1 ? `${coach.stepIndex + 1}/${coach.stepCount}` : coach.eyebrow}</span>
+                <span aria-hidden="true" className="font-mono text-sm text-cyan-200">+</span>
+            </button>
+        );
+    }
+
     return (
-        <aside className="tutorial-coach absolute right-5 top-24 z-30 w-64 rounded-xl border border-cyan-400/40 bg-[#07111b] p-3.5 shadow-2xl" aria-label="Current tutorial hint">
+        <aside className="tutorial-coach code-workspace-coach z-30 w-64 rounded-xl border border-cyan-400/40 bg-[#07111b] p-3.5 shadow-2xl" aria-label="Current tutorial hint">
             {coach.stepCount > 1 && <p className="font-mono text-[8px] font-bold tracking-[.18em] text-slate-500">GUIDE {coach.stepIndex + 1}/{coach.stepCount}</p>}
             <p className="font-mono text-[9px] font-bold tracking-[.2em] text-cyan-300">{coach.eyebrow}</p>
             <h2 className="mt-2 text-sm font-bold leading-tight text-white">{coach.title}</h2>
             <p className="mt-1.5 text-[11px] leading-4 text-slate-300">{coach.copy}</p>
+            <button type="button" onClick={() => setMinimized(true)} className="puzzle-info-minimize" aria-label="Minimize tutorial workspace hint" title="Minimize tutorial hint"><span aria-hidden="true">−</span></button>
             {onShowSolution && <button type="button" onClick={onShowSolution} className="mt-3 text-[9px] font-semibold text-slate-400 underline decoration-slate-600 underline-offset-2 hover:text-cyan-200">Stuck? {solutionShown ? "Reset" : "Show me"}</button>}
         </aside>
     );
@@ -323,7 +334,7 @@ export default function TutorialGuide({ step, onStepChange, challenge, onAbility
 
     if (minimized) {
         return (
-            <button type="button" onClick={() => setMinimized(false)} className="tutorial-guide-button gray-button-surface fixed left-4 top-20 z-30 flex items-center gap-2 rounded-lg border border-cyan-400/40 px-3 py-2 text-left shadow-2xl" aria-label="Expand tutorial information">
+            <button type="button" onClick={() => setMinimized(false)} className="tutorial-guide-button info-popup-minimized gray-button-surface fixed left-4 top-20 z-30 flex items-center gap-2 rounded-lg border border-cyan-400/40 px-3 py-2 text-left shadow-2xl" aria-label="Expand tutorial information">
                 <span className="font-mono text-[9px] font-bold tracking-[.16em] text-slate-300">{current.eyebrow} - {step + 1}/{LESSONS.length}</span>
                 <img src="/assets/arena-toolbar/info-circle-icon.png" alt="" aria-hidden="true" className="info-circle-icon h-5 w-5" />
             </button>
@@ -333,8 +344,7 @@ export default function TutorialGuide({ step, onStepChange, challenge, onAbility
     const activeObjective = current.objectives?.find((objective) => !completedIds.has(objective.id));
 
     return (
-        <section className="tutorial-guide-panel fixed left-4 top-20 z-30 w-[19rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-cyan-400/30 bg-[#07111b] shadow-[0_18px_50px_rgba(0,0,0,.48)]" aria-label="Tutorial mission tracker">
-            <div className="h-1 rounded-t-xl bg-gradient-to-r from-cyan-400 via-indigo-500 to-transparent" />
+        <section className="tutorial-guide-panel info-popup-panel fixed left-4 top-20 z-30 w-[19rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-cyan-400/30 bg-[#07111b] shadow-[0_18px_50px_rgba(0,0,0,.48)]" aria-label="Tutorial mission tracker">
             <div className="p-3.5">
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">

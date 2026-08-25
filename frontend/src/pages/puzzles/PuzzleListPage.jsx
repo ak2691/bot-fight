@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppNavbar from "../../components/AppNavbar.jsx";
 import { fetchPuzzles } from "../../puzzles/puzzleApi.js";
@@ -8,30 +8,98 @@ const PAGE_SIZE = 20;
 export default function PuzzleListPage() {
     const navigate = useNavigate();
     const [puzzles, setPuzzles] = useState([]);
-    const [page, setPage] = useState(0);
     const [hasNext, setHasNext] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [error, setError] = useState(null);
+    const [loadMoreError, setLoadMoreError] = useState(null);
+    const [query, setQuery] = useState("");
+    const [activeQuery, setActiveQuery] = useState("");
+    const loadMoreSentinelRef = useRef(null);
+    const requestIdRef = useRef(0);
+    const pageRef = useRef(0);
+    const hasNextRef = useRef(false);
+    const isLoadingMoreRef = useRef(false);
+    const activeQueryRef = useRef("");
 
-    const loadPage = useCallback(async (pageToLoad, append) => {
-        setError(null);
-        append ? setIsLoadingMore(true) : setIsLoading(true);
+    const loadPage = useCallback(async (pageToLoad, append, queryToLoad) => {
+        if (append && (isLoadingMoreRef.current || !hasNextRef.current)) return;
+        const requestId = requestIdRef.current + 1;
+        requestIdRef.current = requestId;
+        if (append) {
+            isLoadingMoreRef.current = true;
+            setIsLoadingMore(true);
+            setLoadMoreError(null);
+        } else {
+            isLoadingMoreRef.current = false;
+            setIsLoading(true);
+            setError(null);
+            setLoadMoreError(null);
+        }
+
         try {
-            const result = await fetchPuzzles(pageToLoad, PAGE_SIZE);
-            setPuzzles((current) => append ? [...current, ...(result.puzzles ?? [])] : (result.puzzles ?? []));
-            setPage(Number(result.page ?? pageToLoad));
-            setHasNext(Boolean(result.hasNext));
+            const result = await fetchPuzzles(pageToLoad, PAGE_SIZE, queryToLoad);
+            if (requestId !== requestIdRef.current) return;
+            const nextPuzzles = result.puzzles ?? [];
+            setPuzzles((current) => {
+                if (!append) return nextPuzzles;
+                const existingNumbers = new Set(current.map((puzzle) => String(puzzle.number)));
+                return [...current, ...nextPuzzles.filter((puzzle) => !existingNumbers.has(String(puzzle.number)))];
+            });
+            const resolvedPage = Number(result.page ?? pageToLoad);
+            const nextHasNext = Boolean(result.hasNext);
+            pageRef.current = resolvedPage;
+            hasNextRef.current = nextHasNext;
+            setHasNext(nextHasNext);
         } catch (loadError) {
-            setError(loadError.message);
+            if (requestId !== requestIdRef.current) return;
+            if (append) {
+                setLoadMoreError(loadError.message);
+            } else {
+                setError(loadError.message);
+            }
         } finally {
-            append ? setIsLoadingMore(false) : setIsLoading(false);
+            if (requestId === requestIdRef.current) {
+                if (append) {
+                    isLoadingMoreRef.current = false;
+                    setIsLoadingMore(false);
+                } else {
+                    setIsLoading(false);
+                }
+            }
         }
     }, []);
 
     useEffect(() => {
-        void loadPage(0, false);
+        const timeout = window.setTimeout(() => setActiveQuery(query.trim()), 250);
+        return () => window.clearTimeout(timeout);
+    }, [query]);
+
+    useEffect(() => {
+        activeQueryRef.current = activeQuery;
+        pageRef.current = 0;
+        hasNextRef.current = false;
+        isLoadingMoreRef.current = false;
+        setPuzzles([]);
+        setHasNext(false);
+        void loadPage(0, false, activeQuery);
+    }, [activeQuery, loadPage]);
+
+    const loadNextPage = useCallback(() => {
+        if (!hasNextRef.current || isLoadingMoreRef.current) return;
+        void loadPage(pageRef.current + 1, true, activeQueryRef.current);
     }, [loadPage]);
+
+    useEffect(() => {
+        const sentinel = loadMoreSentinelRef.current;
+        if (!sentinel || !hasNext || typeof IntersectionObserver === "undefined") return undefined;
+
+        const observer = new IntersectionObserver((entries) => {
+            if (entries[0]?.isIntersecting) loadNextPage();
+        }, { threshold: 1 });
+        observer.observe(sentinel);
+        return () => observer.disconnect();
+    }, [hasNext, loadNextPage]);
 
     return (
         <main className="puzzle-page min-h-screen bg-[#050d16] font-interface text-slate-100">
@@ -45,15 +113,44 @@ export default function PuzzleListPage() {
                     </p>
                 </header>
 
+                <div className="mt-6 max-w-3xl">
+                    <label htmlFor="puzzle-search" className="font-mono text-[10px] font-bold tracking-[.2em] text-cyan-300">SEARCH PUZZLES</label>
+                    <div className="relative mt-2">
+                        <input
+                            id="puzzle-search"
+                            type="search"
+                            value={query}
+                            onChange={(event) => setQuery(event.target.value)}
+                            placeholder="Search by name or description"
+                            autoComplete="off"
+                            className="min-h-12 w-full rounded-xl border border-slate-700 bg-[#0e1822] px-4 pr-12 text-base text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
+                        />
+                        {query && (
+                            <button
+                                type="button"
+                                aria-label="Clear puzzle search"
+                                onClick={() => setQuery("")}
+                                className="absolute right-3 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-lg text-slate-400 hover:bg-slate-700/60 hover:text-white"
+                            >
+                                ×
+                            </button>
+                        )}
+                    </div>
+                </div>
+
                 <div className="mt-6 space-y-3">
                     {isLoading && <PuzzleListMessage>LOADING PUZZLES...</PuzzleListMessage>}
                     {!isLoading && error && (
                         <div className="rounded-xl border border-rose-400/30 bg-[#0d1722] px-5 py-8">
                             <p className="font-mono text-xs text-rose-300">{error}</p>
-                            <button type="button" onClick={() => loadPage(0, false)} className="mt-5 min-h-11 border border-cyan-400/60 bg-cyan-950/30 px-5 font-mono text-[10px] font-bold tracking-widest text-cyan-200 hover:border-cyan-300 hover:text-cyan-100">RETRY</button>
+                            <button type="button" onClick={() => loadPage(0, false, activeQuery)} className="mt-5 min-h-11 border border-cyan-400/60 bg-cyan-950/30 px-5 font-mono text-[10px] font-bold tracking-widest text-cyan-200 hover:border-cyan-300 hover:text-cyan-100">RETRY</button>
                         </div>
                     )}
-                    {!isLoading && !error && !puzzles.length && <PuzzleListMessage>NO PUZZLES PUBLISHED YET.</PuzzleListMessage>}
+                    {!isLoading && !error && !puzzles.length && (
+                        <PuzzleListMessage>
+                            {activeQuery ? `NO PUZZLES MATCHING "${activeQuery}".` : "NO PUZZLES PUBLISHED YET."}
+                        </PuzzleListMessage>
+                    )}
                     {!isLoading && !error && puzzles.map((puzzle) => {
                         return (
                             <button
@@ -81,9 +178,15 @@ export default function PuzzleListPage() {
                 </div>
 
                 {!isLoading && !error && hasNext && (
-                    <button type="button" disabled={isLoadingMore} onClick={() => loadPage(page + 1, true)} className="mx-auto mt-7 flex min-h-11 items-center border border-slate-600 bg-[#111c27] px-5 font-mono text-[10px] font-bold tracking-widest text-slate-300 hover:border-cyan-400 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-60">
-                        {isLoadingMore ? "LOADING..." : "LOAD NEXT 20"}
-                    </button>
+                    <div ref={loadMoreSentinelRef} className="mx-auto mt-7 flex min-h-11 items-center justify-center font-mono text-[10px] font-bold tracking-widest text-slate-500" aria-live="polite">
+                        {isLoadingMore ? "LOADING NEXT 20..." : "SCROLL TO LOAD MORE"}
+                    </div>
+                )}
+                {!isLoading && !error && loadMoreError && (
+                    <div className="mx-auto mt-3 flex max-w-xl flex-wrap items-center justify-center gap-3 rounded-lg border border-rose-400/25 bg-[#0d1722] px-4 py-3 text-center">
+                        <span className="font-mono text-[10px] text-rose-300">{loadMoreError}</span>
+                        <button type="button" onClick={loadNextPage} className="border border-cyan-400/60 px-3 py-2 font-mono text-[10px] font-bold tracking-widest text-cyan-200 hover:border-cyan-300 hover:text-cyan-100">RETRY</button>
+                    </div>
                 )}
             </section>
         </main>

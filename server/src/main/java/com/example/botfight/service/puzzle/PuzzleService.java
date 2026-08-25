@@ -55,6 +55,7 @@ public class PuzzleService {
     public static final int PAGE_SIZE = 20;
     private static final int MAX_NAME_LENGTH = 120;
     private static final int MAX_DESCRIPTION_LENGTH = 2_000;
+    private static final int MAX_SEARCH_QUERY_LENGTH = 100;
     private static final int MAX_CONDITION_COUNT = 300;
     private static final int MAX_JSON_BYTES = 750_000;
     private static final int MAX_ACTION_NODES = 100;
@@ -189,26 +190,38 @@ public class PuzzleService {
             int requestedPage,
             int requestedSize,
             Authentication authentication) {
+        return listPublished(requestedPage, requestedSize, "", authentication);
+    }
+
+    @Transactional(readOnly = true)
+    public PuzzleListPageDTO listPublished(
+            int requestedPage,
+            int requestedSize,
+            String requestedQuery,
+            Authentication authentication) {
         if (authentication != null) {
             requireAuthenticatedGetAllowed(authentication, "puzzle-list");
         }
         int page = Math.min(Math.max(0, requestedPage), 10_000);
         int size = Math.min(Math.max(1, requestedSize), PAGE_SIZE);
+        String query = normalizeSearchQuery(requestedQuery);
         UUID userId = authentication == null
                 ? null
                 : currentUserService.requireCurrentUserId(authentication);
-        PuzzleListKey cacheKey = new PuzzleListKey(page, size, userId);
+        PuzzleListKey cacheKey = new PuzzleListKey(page, size, userId, query);
         return databaseLookupCache.puzzleList(
                 cacheKey,
-                () -> loadPublishedList(page, size, userId));
+                () -> loadPublishedList(page, size, query, userId));
     }
 
-    private PuzzleListPageDTO loadPublishedList(int page, int size, UUID userId) {
+    private PuzzleListPageDTO loadPublishedList(int page, int size, String query, UUID userId) {
         PageRequest pageRequest = PageRequest.of(
                 page,
                 size,
                 Sort.by(Sort.Direction.ASC, "puzzleNumber"));
-        Page<Puzzle> puzzles = puzzleRepository.findByStatusOrderByPuzzleNumberAsc(PuzzleStatus.PUBLISHED, pageRequest);
+        Page<Puzzle> puzzles = query.isBlank()
+                ? puzzleRepository.findByStatusOrderByPuzzleNumberAsc(PuzzleStatus.PUBLISHED, pageRequest)
+                : puzzleRepository.searchPublished(PuzzleStatus.PUBLISHED, query, pageRequest);
         Set<UUID> solvedPuzzleIds = solvedPuzzleIds(userId, puzzles.getContent());
         List<PuzzleListItemDTO> items = puzzles.getContent().stream()
                 .map(puzzle -> new PuzzleListItemDTO(
@@ -218,6 +231,13 @@ public class PuzzleService {
                         solvedPuzzleIds.contains(puzzle.getId())))
                 .toList();
         return new PuzzleListPageDTO(items, page, size, puzzles.hasNext(), puzzles.getTotalElements());
+    }
+
+    private String normalizeSearchQuery(String requestedQuery) {
+        String query = requestedQuery == null ? "" : requestedQuery.trim();
+        return query.length() <= MAX_SEARCH_QUERY_LENGTH
+                ? query
+                : query.substring(0, MAX_SEARCH_QUERY_LENGTH);
     }
 
     @Transactional

@@ -57,6 +57,7 @@ test("ability status panels use a fixed three-column circular grid without slot 
 test("responsive top status panels preserve the original spacing and cap at three rows", () => {
     const pixiStyles = readFileSync(PIXI_CSS_PATH, "utf8");
 
+    assert.match(pixiStyles, /grid-template-columns: minmax\(170px, 190px\) minmax\(0, 1fr\) minmax\(170px, 190px\)/);
     assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.ability-status-panel__abilities[\s\S]*max-height: 14\.5rem;/);
     assert.match(pixiStyles, /grid-auto-rows: 4\.5rem;/);
     assert.match(pixiStyles, /column-gap: \.25rem;/);

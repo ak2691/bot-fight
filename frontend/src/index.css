@@ -3140,3 +3140,161 @@ button:focus-visible {
     display: none;
   }
 }
+
+/* Follow-up responsive polish: the workspace is a true viewport modal even
+   when it is opened from the narrow, scrollable arena column. */
+.code-workspace-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 1000 !important;
+  isolation: isolate;
+}
+
+/* Keep only the zoom symbols interactive. The percentage remains centered,
+   and equal grid columns/padding keep both symbols evenly inset. */
+.code-workspace .code-toolbar-zoom {
+  grid-template-columns: 32px minmax(42px, 1fr) 32px;
+  gap: 0;
+  padding: 0 6px;
+}
+
+.code-workspace .code-toolbar-zoom-button {
+  display: grid;
+  width: 32px;
+  height: 34px;
+  place-items: center;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #dce2e7;
+  font-size: 18px;
+}
+
+.code-workspace .code-toolbar-zoom-button:hover {
+  border: 0;
+  background: transparent;
+  color: #67e8f9;
+  text-shadow: 0 0 10px rgba(103, 232, 249, .7);
+  transform: scale(1.1);
+}
+
+.code-workspace .code-toolbar-zoom-button:focus-visible {
+  border: 0;
+  outline: 1px solid rgba(103, 232, 249, .9);
+  outline-offset: -1px;
+}
+
+/* The tutorial coach is in normal workspace flow, so it can never sit on top
+   of a toolbar row as that row reflows. */
+.code-workspace-coach,
+.code-workspace-coach-minimized {
+  position: relative;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  align-self: flex-end;
+  box-sizing: border-box;
+  flex: none;
+  width: 16rem;
+  max-width: calc(100% - 1rem);
+  margin: .5rem 1rem 0;
+}
+
+.code-workspace-coach {
+  padding-right: 2.25rem;
+}
+
+.code-workspace-coach > .puzzle-info-minimize {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+}
+
+.code-workspace-coach-minimized {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  border: 1px solid rgba(34, 211, 238, .45);
+  border-radius: 3px;
+  padding: 0 .65rem;
+  background: #07111b;
+  color: #bae6fd;
+  text-align: left;
+}
+
+.code-workspace-coach-minimized:hover {
+  border-color: rgba(103, 232, 249, .9);
+  background: #0b1b29;
+}
+
+/* These information cards retain a real one-pixel outline and scale only
+   until the same breakpoint where the arena status cards move to the top. */
+.info-popup-panel {
+  border-width: 1px;
+  border-style: solid;
+}
+
+.tutorial-guide-panel,
+.puzzle-info-panel {
+  top: calc(72px + env(safe-area-inset-top));
+}
+
+.info-popup-minimized {
+  top: calc(72px + env(safe-area-inset-top));
+}
+
+@media (max-width: 1180px) {
+  .tutorial-guide-panel,
+  .puzzle-info-panel {
+    width: clamp(16rem, 28vw, 18rem);
+    max-width: calc(100vw - 1rem);
+  }
+
+  .info-popup-minimized {
+    max-width: calc(100vw - 1rem);
+  }
+
+  .code-workspace-coach,
+  .code-workspace-coach-minimized {
+    width: clamp(14rem, 24vw, 16rem);
+  }
+}
+
+@media (max-width: 1100px) {
+  .code-workspace .code-toolbar-zoom {
+    grid-template-columns: 28px minmax(34px, 1fr) 28px;
+    width: 104px;
+    padding: 0 4px;
+  }
+
+  .code-workspace .code-toolbar-zoom-button {
+    width: 28px;
+    height: 30px;
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 600px) {
+  .code-workspace .code-toolbar-zoom {
+    grid-template-columns: 26px minmax(32px, 1fr) 26px;
+    width: 100px;
+    padding: 0 4px;
+  }
+
+  .code-workspace .code-toolbar-zoom-button {
+    width: 26px;
+    height: 28px;
+    font-size: 15px;
+  }
+
+  .code-workspace-coach,
+  .code-workspace-coach-minimized {
+    width: min(15rem, calc(100% - 1rem));
+    margin-right: .5rem;
+    margin-left: .5rem;
+  }
+}

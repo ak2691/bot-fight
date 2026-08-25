@@ -35,7 +35,8 @@
     .pixi-combat-layout--fixed.pixi-combat-layout--split {
         min-width: 400px !important;
         max-width: 860px;
-        grid-template-columns: repeat(2, minmax(190px, 1fr)) !important;
+        grid-template-columns: minmax(170px, 190px) minmax(0, 1fr) minmax(170px, 190px) !important;
+        justify-content: center;
         align-items: start;
     }
 
@@ -50,7 +51,7 @@
     }
 
     .pixi-combat-layout--fixed.pixi-combat-layout--split .pixi-opponent-status {
-        grid-column: 2;
+        grid-column: 3;
     }
 
     .pixi-combat-layout--fixed.pixi-combat-layout--split .pixi-arena-surface {

@@ -88,7 +88,7 @@ jobs:
     needs:
       - changes
 
-    #if: needs.changes.outputs.frontend == 'true'
+    if: needs.changes.outputs.frontend == 'true'
 
     steps:
       - name: Check out repository
@@ -249,8 +249,8 @@ jobs:
 
     if: |
       github.event_name == 'push' &&
-      github.ref == 'refs/heads/main' 
-      
+      github.ref == 'refs/heads/main' &&
+      needs.changes.outputs.frontend == 'true'
 
     permissions:
       contents: read
