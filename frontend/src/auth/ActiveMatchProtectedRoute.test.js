@@ -30,6 +30,12 @@ test("server failures use the server-down message", () => {
     assert.doesNotMatch(providerSource, /Could not verify your match status/);
 });
 
+test("queue alert notices dismiss without hiding full-page errors", () => {
+    assert.match(providerSource, /QUEUE_ALERT_DISMISS_MS = 3_500/);
+    assert.match(providerSource, /if \(!queueError\) return undefined;/);
+    assert.match(providerSource, /setQueueError\(\(current\) => current === queueError \? null : current\)/);
+});
+
 test("server-down screens ask users to refresh instead of offering a retry button", () => {
     assert.match(routeSource, /Refresh to try again/);
     assert.doesNotMatch(routeSource, /<button/);

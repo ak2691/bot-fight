@@ -25,6 +25,7 @@ const QUEUE_ATTEMPT_BURST_LIMIT = 3;
 const QUEUE_ATTEMPT_WINDOW_MS = 5000;
 const ACTIVE_MATCH_REQUEST_REUSE_MS = 1_000;
 const TOO_MANY_REQUESTS_MESSAGE = "Too many requests. Try again later.";
+const QUEUE_ALERT_DISMISS_MS = 3_500;
 const ACCEPTANCE_VISIBLE_GRACE_MS = 2_000;
 const COUNTDOWN_UPDATE_INTERVAL_MS = 250;
 const INITIAL_ACTIVE_MATCH_STATUS = {
@@ -87,6 +88,14 @@ export default function MatchmakingProvider({ children }) {
     const [acceptanceError, setAcceptanceError] = useState(null);
     const [connectionStatus, setConnectionStatus] = useState("IDLE");
     const [activeMatchStatus, setActiveMatchStatus] = useState(INITIAL_ACTIVE_MATCH_STATUS);
+
+    useEffect(() => {
+        if (!queueError) return undefined;
+        const timeout = window.setTimeout(() => {
+            setQueueError((current) => current === queueError ? null : current);
+        }, QUEUE_ALERT_DISMISS_MS);
+        return () => window.clearTimeout(timeout);
+    }, [queueError]);
 
     const requestActiveMatchStatus = useCallback((signal) => {
         const now = Date.now();
