@@ -96,6 +96,7 @@ export default function CodingPanel({
     opponentReadOnly = false,
     tutorialMode = false,
     tutorialGuideProps = null,
+    tutorialGuideHost = null,
     tutorialStep = 0,
     onShowTutorialSolution,
 }) {
@@ -320,7 +321,6 @@ export default function CodingPanel({
             <div className="space-y-4">
                 {builderControls}
                 {puzzleControls}
-                {tutorialGuideProps && <TutorialGuide {...tutorialGuideProps} onStepChange={handleTutorialStepChange} progress={tutorialProgress} />}
                 {isMatchTesting && (
                     <section className="rounded-xl border border-slate-600/70 bg-slate-900/55 p-4 text-[10px] shadow-[0_10px_30px_rgba(0,0,0,.2)]">
                         <PanelHeading icon="status">MATCH STATUS</PanelHeading>
@@ -454,8 +454,18 @@ export default function CodingPanel({
                     </div>
                     {finishError && <p className="mt-2 rounded border border-red-800/70 bg-red-950/40 px-2 py-2 font-mono text-[9px] leading-relaxed text-red-200">{finishError}</p>}
                 </section>
+                {onPuzzleSubmit && (
+                    <section className="rounded-lg border border-cyan-900/60 bg-slate-950/45 p-3 text-[9px] leading-4 text-slate-400">
+                        <p>When you submit a puzzle, the server simulates the bots and quickly returns whether or not you fulfilled the conditions.</p>
+                        <p className="mt-2">Pressing play only shows you what happens visually. Use play to test things out.</p>
+                    </section>
+                )}
             </div>
 
+            {tutorialGuideProps && tutorialGuideHost && createPortal(
+                <TutorialGuide {...tutorialGuideProps} onStepChange={handleTutorialStepChange} progress={tutorialProgress} />,
+                tutorialGuideHost,
+            )}
             {isLogicOpen && !isBotCodeLocked && typeof document !== "undefined" && createPortal(
                 <div className="code-workspace-overlay fixed inset-0 z-40 flex items-center justify-center overflow-hidden bg-black/70 px-4 py-5">
                     <section ref={logicDialogRef} className="code-workspace testing-mono relative flex h-[min(90vh,820px)] w-[min(94vw,1440px)] flex-col overflow-hidden rounded-sm border border-border-mid bg-[#111519] shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="code-workspace-title" tabIndex={-1}>

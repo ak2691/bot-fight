@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { monotonicEpochNowMs } from "../matchmaking/networkDelayEstimator.js";
 import PixiCanvas from "../gameArena/pixi/PixiCanvas";
 import { PROJECTILE_WALL_LENGTH, PROJECTILE_WALL_TYPE } from "../gameArena/ArenaObjects";
@@ -26,6 +26,10 @@ export default function SimulationReplay({
     onCancel = null,
     cancelLabel = "CANCEL REPLAY",
 }) {
+    useLayoutEffect(() => {
+        if (typeof window !== "undefined") window.scrollTo(0, 0);
+    }, []);
+
     const playback = playbackInput ?? EMPTY_PLAYBACK;
     const frames = playback.frames ?? EMPTY_LIST;
     const viewer = playback.player ?? null;

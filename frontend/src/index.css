@@ -259,6 +259,41 @@ html,
   min-width: 0;
 }
 
+.arena-stage-frame {
+  min-width: 0;
+}
+
+.arena-stage-info {
+  display: flex;
+  width: min(100%, 1360px);
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .5rem;
+  margin: 0 auto .75rem;
+}
+
+.arena-stage-info__tutorial {
+  display: contents;
+}
+
+.arena-stage-info > .info-popup-panel,
+.arena-stage-info > .info-popup-minimized,
+.arena-stage-info__tutorial > .info-popup-panel,
+.arena-stage-info__tutorial > .info-popup-minimized {
+  position: static;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  z-index: auto;
+}
+
+.arena-stage-canvas {
+  width: 100%;
+  min-width: 0;
+}
+
 @media (max-width: 1180px) {
   .arena-content-shell {
     align-items: stretch;
@@ -280,6 +315,10 @@ html,
     min-height: 0;
     align-items: flex-start;
     justify-content: flex-start;
+  }
+
+  .arena-stage-canvas {
+    flex: 0 0 auto;
   }
 
   .arena-toolbar-panel,
@@ -328,8 +367,52 @@ html,
 .match-chat__form input:focus { border-color: #43a6d1; }
 .match-chat__form button { padding: 0; border-color: #41484d; background: #286583; color: #ffffff; }
 .match-chat__form :disabled { cursor: not-allowed; opacity: .48; }
-.match-chat__restore { position: relative; min-height: 42px; padding: 0 13px; border-color: #41484d; background: #202427; color: #ffffff; font-size: 10px; letter-spacing: .12em; }
+.match-chat__restore {
+  position: relative;
+  display: grid;
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  min-height: 42px;
+  place-items: center;
+  gap: 0;
+  border: 1px solid #43a6d1;
+  border-radius: 6px;
+  padding: 0;
+  background: #286583;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .32);
+  color: #ffffff;
+  font-size: 0;
+  letter-spacing: 0;
+}
+
+.match-chat__restore:hover:not(:disabled) {
+  border-color: #67e8f9;
+  background: #347895;
+  color: #ffffff;
+}
+
+.match-chat__restore svg {
+  width: 17px;
+  height: 17px;
+}
 .match-chat__unread { position: absolute; top: -5px; right: -5px; width: 12px; height: 12px; border: 2px solid #050f19; border-radius: 999px; background: #ef4444; box-shadow: 0 0 10px rgba(239, 68, 68, .65); }
+
+.profile-stat--interactive {
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.profile-stat--interactive:hover {
+  background-color: rgba(226, 232, 240, .16);
+  box-shadow: inset 0 0 0 1px rgba(226, 232, 240, .18);
+}
+
+.profile-stat--interactive:focus-visible {
+  outline: 2px solid rgba(226, 232, 240, .7);
+  outline-offset: 2px;
+}
 
 .home-grid {
   position: relative;
@@ -652,7 +735,7 @@ html,
     font-size: 4rem;
   }
 
-  .match-chat {
+  .match-chat:not(.match-chat--minimized) {
     right: .5rem;
     bottom: .5rem;
     left: .5rem;
@@ -2822,13 +2905,6 @@ button:focus-visible {
   filter: brightness(0) saturate(100%) invert(68%) sepia(95%) saturate(1685%) hue-rotate(164deg) brightness(101%) contrast(102%);
 }
 
-/* Tutorial help stays anchored below the navbar even after its editor panel
-   moves below the arena on narrow screens. */
-.tutorial-guide-button,
-.tutorial-guide-panel {
-  top: calc(72px + env(safe-area-inset-top));
-}
-
 @media (max-width: 1180px) {
   .tutorial-guide-panel {
     max-height: calc(100svh - 84px - env(safe-area-inset-top));
@@ -3246,15 +3322,6 @@ button:focus-visible {
 .info-popup-panel {
   border-width: 1px;
   border-style: solid;
-}
-
-.tutorial-guide-panel,
-.puzzle-info-panel {
-  top: calc(72px + env(safe-area-inset-top));
-}
-
-.info-popup-minimized {
-  top: calc(72px + env(safe-area-inset-top));
 }
 
 @media (max-width: 1180px) {

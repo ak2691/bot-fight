@@ -60,7 +60,7 @@ function PuzzlePlayInfoModal({ puzzle, outcome, onOpenConfiguration }) {
 
     if (minimized) {
         return (
-            <button type="button" onClick={() => setMinimized(false)} className="info-popup-minimized gray-button-surface fixed left-4 top-20 z-30 flex items-center gap-3 rounded-lg border border-cyan-400/40 px-4 py-3 text-left shadow-2xl" aria-label="Expand puzzle information">
+            <button type="button" onClick={() => setMinimized(false)} className="info-popup-minimized gray-button-surface flex items-center gap-3 rounded-lg border border-cyan-400/40 px-4 py-3 text-left shadow-2xl" aria-label="Expand puzzle information">
                 <span className="font-mono text-sm font-bold tracking-[.12em] text-cyan-300">Puzzle Info</span>
                 <img src="/assets/arena-toolbar/info-circle-icon.png" alt="" aria-hidden="true" className="info-circle-icon h-5 w-5" />
             </button>
@@ -68,7 +68,7 @@ function PuzzlePlayInfoModal({ puzzle, outcome, onOpenConfiguration }) {
     }
 
     return (
-        <aside className="info-popup-panel puzzle-info-panel fixed left-4 top-20 z-30 w-[19rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-cyan-400/30 bg-[#07111b] shadow-[0_18px_50px_rgba(0,0,0,.48)]" aria-label="Puzzle information">
+        <aside className="info-popup-panel puzzle-info-panel w-[19rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-cyan-400/30 bg-[#07111b] shadow-[0_18px_50px_rgba(0,0,0,.48)]" aria-label="Puzzle information">
             <div className="p-3.5">
                 <div className="flex items-start justify-between gap-3">
                     <p className="min-w-0 flex-1 break-words font-mono text-lg font-bold leading-tight text-white">{puzzle.puzzleNumber}. {puzzle.name}</p>
@@ -284,8 +284,7 @@ export default function PuzzlePlayPage() {
     if (error || !puzzle) return <PuzzleStatusPage><p className="font-mono text-xs text-rose-300">{error ?? "Puzzle not found."}</p><button type="button" onClick={() => navigate("/puzzles")} className="gray-button-surface mt-5 min-h-11 border border-slate-600 px-4 font-mono text-[10px] font-bold tracking-widest text-slate-300 hover:border-cyan-400 hover:text-cyan-200">BACK TO PUZZLES</button></PuzzleStatusPage>;
 
     return <>
-        <PuzzlePlayInfoModal puzzle={puzzle} outcome={outcome} onOpenConfiguration={canViewConfiguration ? openConfiguration : undefined} />
-        <Arena key={`${puzzleNumber}:${activeRestoredSubmission?.id ?? "puzzle-default"}`} puzzleMode puzzleNumber={puzzleNumber} puzzleCodeOverride={activeRestoredSubmission?.brain ?? null} initialPuzzle={puzzleForArena} puzzleControls={controls} onOpenPuzzleSubmissions={() => setOpenSubmissionsFor(puzzleNumber)} onPuzzleOutcome={setOutcome} onPuzzleAttempt={handlePuzzleAttempt} logicLimits={{ maxActionNodes: puzzle.maxActionNodes, maxConditionNodes: puzzle.maxConditionNodes, maxCustomVariables: puzzle.maxCustomVariables }} />
+        <Arena key={`${puzzleNumber}:${activeRestoredSubmission?.id ?? "puzzle-default"}`} puzzleMode puzzleNumber={puzzleNumber} puzzleCodeOverride={activeRestoredSubmission?.brain ?? null} initialPuzzle={puzzleForArena} arenaInfo={<PuzzlePlayInfoModal puzzle={puzzle} outcome={outcome} onOpenConfiguration={canViewConfiguration ? openConfiguration : undefined} />} puzzleControls={controls} onOpenPuzzleSubmissions={() => setOpenSubmissionsFor(puzzleNumber)} onPuzzleOutcome={setOutcome} onPuzzleAttempt={handlePuzzleAttempt} logicLimits={{ maxActionNodes: puzzle.maxActionNodes, maxConditionNodes: puzzle.maxConditionNodes, maxCustomVariables: puzzle.maxCustomVariables }} />
         {isConfigurationOpen && canViewConfiguration && <PuzzleLogicWorkspace
             configuration={puzzle.logicConfiguration}
             onChange={() => {}}

@@ -334,7 +334,7 @@ export default function TutorialGuide({ step, onStepChange, challenge, onAbility
 
     if (minimized) {
         return (
-            <button type="button" onClick={() => setMinimized(false)} className="tutorial-guide-button info-popup-minimized gray-button-surface fixed left-4 top-20 z-30 flex items-center gap-2 rounded-lg border border-cyan-400/40 px-3 py-2 text-left shadow-2xl" aria-label="Expand tutorial information">
+            <button type="button" onClick={() => setMinimized(false)} className="tutorial-guide-button info-popup-minimized gray-button-surface flex items-center gap-2 rounded-lg border border-cyan-400/40 px-3 py-2 text-left shadow-2xl" aria-label="Expand tutorial information">
                 <span className="font-mono text-[9px] font-bold tracking-[.16em] text-slate-300">{current.eyebrow} - {step + 1}/{LESSONS.length}</span>
                 <img src="/assets/arena-toolbar/info-circle-icon.png" alt="" aria-hidden="true" className="info-circle-icon h-5 w-5" />
             </button>
@@ -344,7 +344,7 @@ export default function TutorialGuide({ step, onStepChange, challenge, onAbility
     const activeObjective = current.objectives?.find((objective) => !completedIds.has(objective.id));
 
     return (
-        <section className="tutorial-guide-panel info-popup-panel fixed left-4 top-20 z-30 w-[19rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-cyan-400/30 bg-[#07111b] shadow-[0_18px_50px_rgba(0,0,0,.48)]" aria-label="Tutorial mission tracker">
+        <section className="tutorial-guide-panel info-popup-panel w-[19rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-cyan-400/30 bg-[#07111b] shadow-[0_18px_50px_rgba(0,0,0,.48)]" aria-label="Tutorial mission tracker">
             <div className="p-3.5">
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">

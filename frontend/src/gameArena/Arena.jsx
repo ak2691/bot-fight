@@ -318,6 +318,7 @@ export default function Arena({
     initialPuzzle = null,
     puzzleNumber = null,
     puzzleCodeOverride = null,
+    arenaInfo = null,
     onPuzzleDraftChange = null,
     builderControls = null,
     puzzleControls = null,
@@ -440,6 +441,7 @@ export default function Arena({
     });
     const [sandboxLoadoutDraft, setSandboxLoadoutDraft] = useState(() => normalizedSandboxLoadout(null));
     const [tutorialStep, setTutorialStep] = useState(initialTutorialStep);
+    const [tutorialInfoHost, setTutorialInfoHost] = useState(null);
     const [solutionShown, setSolutionShown] = useState(() => tutorialMode
         ? loadTutorialBooleanState(TUTORIAL_SOLUTION_PREFIX, initialTutorialStep)
         : false);
@@ -1150,10 +1152,15 @@ export default function Arena({
 
             <div className="arena-content-shell flex min-h-0 flex-1 overflow-hidden">
                 <main className={`arena-stage-main min-w-0 flex-1 flex items-center justify-center overflow-hidden p-2 ${isMatchTesting ? "match-arena-stage" : "bg-arena-deep"}`}>
-                    <div
-                        className="arena-stage-frame relative flex h-full w-full items-center justify-center"
-                    >
-                        <PixiCanvas
+                    <div className="arena-stage-frame relative flex h-full w-full min-h-0 flex-col items-center justify-center">
+                        {(arenaInfo || tutorialMode) && (
+                            <div className="arena-stage-info">
+                                {arenaInfo}
+                                {tutorialMode && <div ref={setTutorialInfoHost} className="arena-stage-info__tutorial" />}
+                            </div>
+                        )}
+                        <div className="arena-stage-canvas flex min-h-0 w-full flex-1 items-center justify-center">
+                            <PixiCanvas
                             shapes={shapes}
                             selectedId={selectedId}
                             onSelectShape={isEditingArena && !tutorialMode && !isPuzzleMode ? setSelectedId : () => { }}
@@ -1169,7 +1176,8 @@ export default function Arena({
                             onMeasurementPointsChange={setMeasurementPoints}
                             isPlaying={isAutoPlaying}
                             allowBotRotation={allowBotRotation}
-                        />
+                            />
+                        </div>
                     </div>
                 </main>
 
@@ -1212,6 +1220,7 @@ export default function Arena({
                     isPuzzleSubmitting={isPuzzleAttemptSubmitting}
                     logicLimits={usesPuzzleSetup ? logicLimits : null}
                     tutorialMode={tutorialMode}
+                    tutorialGuideHost={tutorialInfoHost}
                     tutorialStep={tutorialStep}
                     onShowTutorialSolution={toggleTutorialSolution}
                     tutorialGuideProps={tutorialMode ? {

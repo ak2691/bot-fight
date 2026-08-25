@@ -1047,7 +1047,7 @@ function Stat({ label, value, tone, onClick }) {
         "aria-label": `${label}: ${value}. Open details`,
     } : {};
     return (
-        <div {...interactiveProps} className={`flex items-center justify-between gap-4 py-2.5 ${onClick ? "cursor-pointer rounded px-2 transition hover:bg-cyan-950/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400" : ""}`}>
+        <div {...interactiveProps} className={`profile-stat flex items-center justify-between gap-4 px-2 py-2.5 ${onClick ? "profile-stat--interactive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400" : ""}`}>
             <dt className="text-sm text-slate-400">{label}:</dt>
             <dd className={`font-interface-numeric text-xl ${tone}`}>{value}</dd>
         </div>

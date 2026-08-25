@@ -21,8 +21,8 @@ export default function MatchChat({ messages, minimized, onMinimizedChange, onSe
 
     if (minimized) return (
         <aside className="match-chat match-chat--minimized" aria-label="Match chat minimized">
-            <button type="button" className="gray-button-surface match-chat__restore" onClick={() => onMinimizedChange(false)} aria-label="Open match chat">
-                <ChatIcon /><span>MATCH CHAT</span>{unread && <span className="match-chat__unread" aria-label="New opponent message" />}
+            <button type="button" className="match-chat__restore" onClick={() => onMinimizedChange(false)} aria-label="Open match chat">
+                <ChatIcon />{unread && <span className="match-chat__unread" aria-label="New opponent message" />}
             </button>
         </aside>
     );
