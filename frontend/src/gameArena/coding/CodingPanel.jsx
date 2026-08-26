@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import {
     CONDITION_TYPES,
     STATE_VARIABLES,
+    VISIBLE_STATE_VARIABLES,
     createCodeRoot,
     customVariableDefinitions,
     MAX_ROOT_NODES,
@@ -29,7 +30,8 @@ import {
     countActions,
     countLogicConditions,
     abilityIdsForConfiguration,
-    targetTypesForLoadouts,
+    selectableAbilityIdsForLoadouts,
+    selectableTypesForLoadouts,
     formatClock,
 } from "./nodes/GraphNodes.jsx";
 import { TreeLogicBoard } from "./LogicBoard.jsx";
@@ -236,11 +238,11 @@ export default function CodingPanel({
     const visibleStateVariables = useMemo(() => {
         const ownAbilities = abilityIdsForConfiguration(activeLoadout);
         const opponentAbilities = abilityIdsForConfiguration(opposingLoadout);
-        const builtIns = STATE_VARIABLES.map((variable) => {
+        const builtIns = VISIBLE_STATE_VARIABLES.map((variable) => {
             if (!variable.supportsAbility && !variable.supportsStatusEffect) return variable;
             const equipped = variable.supportsStatusEffect
                 ? new Set([...ownAbilities, ...opponentAbilities])
-                : variable.abilityOwner === "opponent" ? opponentAbilities : ownAbilities;
+                : new Set([...ownAbilities, ...opponentAbilities]);
             return {
                 ...variable,
                 ...(variable.supportsAbility ? {
@@ -255,20 +257,24 @@ export default function CodingPanel({
         return [...builtIns, ...customVariableDefinitions(activeConfiguration)];
     }, [activeLoadout, opposingLoadout, activeConfiguration]);
     const defaultCondition = visibleConditionTypes[0] ?? CONDITION_TYPES[0];
-    const defaultVariable = visibleStateVariables.find((variable) => variable.id === "target.distance")
+    const defaultVariable = visibleStateVariables.find((variable) => variable.id === "selectable.distance")
         ?? visibleStateVariables[0]
         ?? STATE_VARIABLES[0];
-    const visibleTargetTypes = useMemo(
-        () => targetTypesForLoadouts(activeLoadout, opposingLoadout),
+    const visibleSelectableTypes = useMemo(
+        () => selectableTypesForLoadouts(activeLoadout, opposingLoadout),
+        [activeLoadout, opposingLoadout],
+    );
+    const visibleSelectableAbilityIds = useMemo(
+        () => selectableAbilityIdsForLoadouts(activeLoadout, opposingLoadout),
         [activeLoadout, opposingLoadout],
     );
     useEffect(() => {
         if (isCodeEditingLocked) return;
-        const sanitized = sanitizeConfigurationConditions(activeConfiguration, visibleConditionTypes, defaultCondition, visibleTargetTypes, visibleStateVariables);
+        const sanitized = sanitizeConfigurationConditions(activeConfiguration, visibleConditionTypes, defaultCondition, visibleSelectableTypes, visibleStateVariables, visibleSelectableAbilityIds);
         if (sanitized === activeConfiguration) return;
         if (editingOpponent) onOpponentChange?.(sanitized);
         else onChange(sanitized);
-    }, [activeConfiguration, activeLoadout, opposingLoadout, defaultCondition, editingOpponent, isCodeEditingLocked, onChange, onOpponentChange, visibleConditionTypes, visibleStateVariables, visibleTargetTypes]);
+    }, [activeConfiguration, activeLoadout, opposingLoadout, defaultCondition, editingOpponent, isCodeEditingLocked, onChange, onOpponentChange, visibleConditionTypes, visibleStateVariables, visibleSelectableTypes, visibleSelectableAbilityIds]);
 
     useEffect(() => {
         if (isCodeEditingLocked) return;
@@ -565,9 +571,10 @@ export default function CodingPanel({
                                 disabled={isBotCodeLocked || isTesting || !viewingCurrentRound}
                                 canRemove={!isBotCodeLocked && !isTesting && !roundDeleteLocked}
                                 selectedLoadout={activeLoadout}
+                                selectableAbilityIds={visibleSelectableAbilityIds}
                                 stateVariables={visibleStateVariables}
                                 defaultVariable={defaultVariable}
-                                targetTypes={visibleTargetTypes}
+                                selectableTypes={visibleSelectableTypes}
                                 onChange={updateActiveConfiguration}
                                 zoom={canvasZoom}
                                 pan={canvasPan}

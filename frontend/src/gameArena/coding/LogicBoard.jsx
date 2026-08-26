@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import {
     createExpressionCondition,
-    defaultTargetForVariable,
+    defaultSelectableForVariable,
     MAX_ROOT_NAME_LENGTH,
     MAX_ROOT_NODES,
     MAX_LOGIC_BLOCKS,
@@ -117,9 +117,10 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
     disabled,
     canRemove,
     selectedLoadout,
+    selectableAbilityIds,
     stateVariables,
     defaultVariable,
-    targetTypes,
+    selectableTypes,
     onChange,
     zoom,
     pan,
@@ -161,7 +162,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
     const roots = useMemo(() => normalizeRoots(configuration.roots ?? []), [configuration.roots]);
     const graphActionCount = countActions(configuration);
     const graphConditionCount = countLogicConditions(configuration);
-    const graph = useMemo(() => buildLogicGraph(roots, stateVariables, selectedLoadout, targetTypes), [roots, selectedLoadout, stateVariables, targetTypes]);
+    const graph = useMemo(() => buildLogicGraph(roots, stateVariables, selectedLoadout, selectableTypes), [roots, selectedLoadout, stateVariables, selectableTypes]);
     const canvasWidth = LOGIC_CANVAS_WIDTH;
     const canvasHeight = LOGIC_CANVAS_HEIGHT;
     const graphNodes = useMemo(() => [...graph.roots, ...graph.conditions, ...graph.actions, ...graph.variables, ...graph.targets], [graph]);
@@ -279,7 +280,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         if (Array.isArray(clean.roots)) clean.roots = normalizeRoots(clean.roots);
         delete clean.editorGraph;
         if (Array.isArray(clean.roots)) {
-            const nextGraph = buildLogicGraph(clean.roots, stateVariables, selectedLoadout, targetTypes);
+            const nextGraph = buildLogicGraph(clean.roots, stateVariables, selectedLoadout, selectableTypes);
             const nextGraphNodes = graphNodesForGraph(nextGraph);
             const currentPositions = nodePositionsForGraph(graphNodes, nodeOffsetsRef.current);
             const savedOffsets = offsetsForGraphPositions(nextGraphNodes, clean.nodePositions ?? currentPositions);
@@ -322,7 +323,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
     useImperativeHandle(ref, () => ({
         placeRootAtCenter(nextRoots, rootIndex) {
             const rect = viewportRef.current?.getBoundingClientRect();
-            const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, targetTypes);
+            const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes);
             const rootNode = nextGraph.roots.find((node) => node.rootIndex === rootIndex);
             if (!rect || !rootNode) return null;
 
@@ -350,7 +351,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
                 ...nextGraph.targets,
             ], nextOffsets);
         },
-    }), [canvasHeight, canvasWidth, pan.x, pan.y, selectedLoadout, stateVariables, targetTypes, updateNodeOffsets, zoom]);
+    }), [canvasHeight, canvasWidth, pan.x, pan.y, selectedLoadout, stateVariables, selectableTypes, updateNodeOffsets, zoom]);
     const beginPan = (event) => {
         if (event.pointerType === "touch" || event.button !== 2) return;
         event.preventDefault();
@@ -669,7 +670,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
                     if (index !== operandPicker.actionIndex) return entry;
                     const terms = variableActionTerms(entry);
                     const next = { ...entry, terms: terms.map((term, termIndex) => termIndex === operandPicker.termIndex
-                        ? { ...term, operand: { type: "variable", value: definition.id, ...(definition.supportsTarget ? { target: defaultTargetForVariable(definition, targetTypes) } : {}) } }
+                        ? { ...term, operand: { type: "variable", value: definition.id, ...(definition.supportsSelectable ? { selectable: defaultSelectableForVariable(definition, selectableTypes) } : {}) } }
                         : term) };
                     delete next.operation;
                     delete next.operand;
@@ -700,7 +701,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
                 if (operandPicker.operand === 2) return {
                     ...condition,
                     right: { type: "variable", value: definition.id },
-                    ...(definition.supportsTarget ? { rightTarget: defaultTargetForVariable(definition, targetTypes) } : {}),
+                    ...(definition.supportsSelectable ? { rightSelectable: defaultSelectableForVariable(definition, selectableTypes) } : {}),
                 };
                 const replacement = createExpressionCondition(definition);
                 const keepRight = definition.valueType === "number" && ["number", "variable"].includes(condition.right?.type)
@@ -719,7 +720,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         const nextBranch = addGraphAction(branch, selectedLoadout, actionId, configuration.customVariables ?? []);
         if (nextBranch === branch) return;
         const nextRoots = normalizeRoots(updateTreeBranch(roots, rootIndex, path, () => nextBranch));
-        const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, targetTypes);
+        const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes);
         const nextAction = nextGraph.actions.find((candidate) => candidate.rootIndex === rootIndex
             && sameGraphPath(candidate.path, path)
             && candidate.actionIndex === existingActionCount);
@@ -765,7 +766,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         const branch = newTreeBranch("if", defaultVariable, nextBranchOrder(rootNode.branches));
         const branchIndex = rootNode.branches?.length ?? 0;
         const nextRoots = normalizeRoots(roots.map((root, index) => index === node.rootIndex ? { ...root, branches: [...(root.branches ?? []), branch] } : root));
-        const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, targetTypes);
+        const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes);
         const nextBranch = treeBranchAt(nextRoots[node.rootIndex]?.branches, [branchIndex]);
         const nextCondition = nextGraph.conditions.find((candidate) => candidate.rootIndex === node.rootIndex && candidate.branchId === nextBranch?.id);
         const previousCondition = graph.conditions.find((candidate) => candidate.rootIndex === node.rootIndex
@@ -797,7 +798,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
                 </div>
             </div>
             {isSearchOpen && <SearchRootNodesModal roots={roots} nodes={graph.roots} disabled={disabled} canRemove={canRemove} quick={isQuickSearchOpen} onSelect={centerOnRoot} onPriorityChange={setRootOrder} onRemove={removeRootNode} onDeleteAll={() => { if (window.confirm("Delete all roots?")) commitConfiguration({ ...configuration, roots: [] }); }} onClose={onSearchClose} />}
-            {!isSearchOpen && !isExternalConfigurationOpen && nodePicker && <NodeKindPicker type={nodePicker.type} stateVariables={stateVariables} targetTypes={targetTypes} selectedLoadout={selectedLoadout} onCancel={() => setNodePicker(null)} onChooseAction={(actionId) => addAction(nodePicker.rootIndex, nodePicker.path, actionId)} />}
+            {!isSearchOpen && !isExternalConfigurationOpen && nodePicker && <NodeKindPicker type={nodePicker.type} stateVariables={stateVariables} selectableTypes={selectableTypes} selectedLoadout={selectedLoadout} onCancel={() => setNodePicker(null)} onChooseAction={(actionId) => addAction(nodePicker.rootIndex, nodePicker.path, actionId)} />}
             {!isSearchOpen && !isExternalConfigurationOpen && !nodePicker && operandPicker && <VariableOperandPicker operand={operandPicker.kind === "action" ? 1 : operandPicker.operand} numericOnly={operandPicker.kind === "action"} stateVariables={stateVariables} onChoose={chooseOperandVariable} onClose={() => setOperandPicker(null)} />}
             <div onPointerDown={beginMarquee} onClick={clearCanvasSelectionFromSurface} className="code-graph-surface absolute left-0 top-0 bg-[#171b20] bg-[radial-gradient(circle,rgba(100,116,139,.24)_1px,transparent_1px)] bg-[size:20px_20px]" style={{ width: canvasWidth, height: canvasHeight, transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}>
                 <svg className="pointer-events-none absolute inset-0 overflow-hidden" width={canvasWidth} height={canvasHeight}>
@@ -821,13 +822,13 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
                 {graph.conditions.map((node) => {
                     const branch = treeBranchAt(roots[node.rootIndex]?.branches, node.path);
                     if (!branch) return null;
-                    return <GraphConditionNode key={node.id} {...{ node, branch, disabled, canRemove, stateVariables, defaultVariable, nodeOffsets, beginNodeDrag, tutorialFocus, puzzleMode }} puzzleLabel={roots[node.rootIndex]?.name ?? "Puzzle Condition"} selected={selectedNodeIds.includes(node.id)} onSelect={(event) => selectGraphNode(event, node.id)} onPriorityChange={(priority) => { const reordered = setLogicBranchPriority(roots, node.rootIndex, node.path, priority); if (reordered !== roots) commitConfiguration({ ...configuration, roots: reordered }); }} onPickVariable={(rowIndex, operand) => openOperandPicker(node.rootIndex, node.path, rowIndex, operand)} onInspectVariable={(rowIndex, operand) => { setInspectedNode({ kind: "condition-variable", id: node.id, rowIndex, operand }); }} onUseRawNumber={(rowIndex) => { setInspectedNode((current) => current?.kind === "condition-variable" && current.id === node.id && current.rowIndex === rowIndex && current.operand === 2 ? null : current); updateBranch(node.rootIndex, node.path, (current) => ({ ...current, conditions: (current.conditions ?? []).map((condition, index) => { if (index !== rowIndex) return condition; const next = { ...condition, right: { type: "number", value: 0 } }; delete next.rightTarget; return next; }) })); }} onRemoveCondition={(rowIndex) => { const currentConditions = Array.isArray(branch.conditions) ? branch.conditions : []; if (currentConditions.length <= 1) { setInspectedNode(null); setSelectedNodeIds((current) => current.filter((id) => id !== node.id)); removeBranch(node.rootIndex, node.path); return; } setInspectedNode((current) => current?.kind === "condition-variable" && current.id === node.id ? null : current); updateBranch(node.rootIndex, node.path, (current) => ({ ...current, conditions: (current.conditions ?? []).filter((_, index) => index !== rowIndex) })); }} inspectedVariable={inspectedNode?.kind === "condition-variable" && inspectedNode.id === node.id ? inspectedNode : null} canAddAction={graphActionCount < maxLogicBlocks} canAddCondition={graphConditionCount < maxTotalConditions}
+                    return <GraphConditionNode key={node.id} {...{ node, branch, disabled, canRemove, stateVariables, defaultVariable, nodeOffsets, beginNodeDrag, tutorialFocus, puzzleMode }} puzzleLabel={roots[node.rootIndex]?.name ?? "Puzzle Condition"} selected={selectedNodeIds.includes(node.id)} onSelect={(event) => selectGraphNode(event, node.id)} onPriorityChange={(priority) => { const reordered = setLogicBranchPriority(roots, node.rootIndex, node.path, priority); if (reordered !== roots) commitConfiguration({ ...configuration, roots: reordered }); }} onPickVariable={(rowIndex, operand) => openOperandPicker(node.rootIndex, node.path, rowIndex, operand)} onInspectVariable={(rowIndex, operand) => { setInspectedNode({ kind: "condition-variable", id: node.id, rowIndex, operand }); }} onUseRawNumber={(rowIndex) => { setInspectedNode((current) => current?.kind === "condition-variable" && current.id === node.id && current.rowIndex === rowIndex && current.operand === 2 ? null : current); updateBranch(node.rootIndex, node.path, (current) => ({ ...current, conditions: (current.conditions ?? []).map((condition, index) => { if (index !== rowIndex) return condition; const next = { ...condition, right: { type: "number", value: 0 } }; delete next.rightSelectable; return next; }) })); }} onRemoveCondition={(rowIndex) => { const currentConditions = Array.isArray(branch.conditions) ? branch.conditions : []; if (currentConditions.length <= 1) { setInspectedNode(null); setSelectedNodeIds((current) => current.filter((id) => id !== node.id)); removeBranch(node.rootIndex, node.path); return; } setInspectedNode((current) => current?.kind === "condition-variable" && current.id === node.id ? null : current); updateBranch(node.rootIndex, node.path, (current) => ({ ...current, conditions: (current.conditions ?? []).filter((_, index) => index !== rowIndex) })); }} inspectedVariable={inspectedNode?.kind === "condition-variable" && inspectedNode.id === node.id ? inspectedNode : null} canAddAction={graphActionCount < maxLogicBlocks} canAddCondition={graphConditionCount < maxTotalConditions}
                         onChange={(updates) => updateBranch(node.rootIndex, node.path, (current) => ({ ...current, ...updates }))}
                         onRemove={() => removeBranch(node.rootIndex, node.path)}
                         onAddParentConditional={() => {
                             const parent = newTreeBranch(branch.branchType ?? "if", defaultVariable);
                             const nextRoots = insertParentLogicBranch(roots, node.rootIndex, node.path, parent);
-                            const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, targetTypes);
+                            const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes);
                             const nextParent = nextGraph.conditions.find((candidate) => candidate.rootIndex === node.rootIndex && sameGraphPath(candidate.path, node.path));
                             const currentPosition = absoluteGraphNodePosition(node, nodeOffsetsRef.current);
                             const positionOverrides = {};
@@ -857,7 +858,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
                             const child = newTreeBranch("if", defaultVariable, nextBranchOrder(branch.children));
                             const childIndex = branch.children?.length ?? 0;
                             const nextRoots = normalizeRoots(updateTreeBranch(roots, node.rootIndex, node.path, (current) => ({ ...current, children: [...(current.children ?? []), child] })));
-                            const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, targetTypes);
+                            const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes);
                             const nextChild = nextGraph.conditions.find((candidate) => candidate.rootIndex === node.rootIndex
                                 && sameGraphPath(candidate.path, [...node.path, childIndex]));
                             const previousChild = graph.conditions.find((candidate) => candidate.rootIndex === node.rootIndex
@@ -874,13 +875,13 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
                     const actions = graphBranchActions(branch);
                     const entry = actions[node.actionIndex];
                     if (!branch || !entry) return null;
-                    return <GraphActionNode key={node.id} {...{ node, entry, actions, branch, disabled, selectedLoadout, targetTypes, stateVariables, nodeOffsets, beginNodeDrag, canRemove, puzzleMode }} selectedNode={selectedNodeIds.includes(node.id)} onInspect={(event) => selectGraphNode(event, node.id, { kind: "action", id: node.id })} customVariables={configuration.customVariables ?? []}
+                    return <GraphActionNode key={node.id} {...{ node, entry, actions, branch, disabled, selectedLoadout, selectableTypes, stateVariables, nodeOffsets, beginNodeDrag, canRemove, puzzleMode }} selectedNode={selectedNodeIds.includes(node.id)} onInspect={(event) => selectGraphNode(event, node.id, { kind: "action", id: node.id })} customVariables={configuration.customVariables ?? []}
                         onChange={(nextEntry) => updateBranch(node.rootIndex, node.path, (current) => setGraphActions(current, actions.map((item, index) => index === node.actionIndex ? nextEntry : item)))}
                         onRemove={() => removeGraphAction(node.rootIndex, node.path, node.actionIndex)} />;
                 })}
             </div>
-            {!isSearchOpen && !isExternalConfigurationOpen && inspectedNode && <LogicNodeInspector inspectedNode={inspectedNode} graph={graph} roots={roots} stateVariables={stateVariables} targetTypes={targetTypes} selectedLoadout={selectedLoadout} customVariables={configuration.customVariables ?? []} disabled={disabled} canRemove={canRemove} canAddAction={graphActionCount < maxLogicBlocks} puzzleMode={puzzleMode} onClose={() => setInspectedNode(null)} updateBranch={updateBranch} onPickActionOperand={openActionOperandPicker} onInspectActionOperand={inspectActionOperand} onDismissOperandPicker={() => setOperandPicker(null)} onRemoveAction={removeGraphAction} />}
-            {!isSearchOpen && !isExternalConfigurationOpen && actionOperandInspector && actionOperandDefinition && <ActionVariableInspector definition={actionOperandDefinition} operand={actionOperand} targetTypes={targetTypes} disabled={disabled} onChange={(operand) => updateActionOperand(actionOperandInspector.rootIndex, actionOperandInspector.path, actionOperandInspector.actionIndex, actionOperandInspector.termIndex, operand)} onClose={() => setActionOperandInspector(null)} />}
+            {!isSearchOpen && !isExternalConfigurationOpen && inspectedNode && <LogicNodeInspector inspectedNode={inspectedNode} graph={graph} roots={roots} stateVariables={stateVariables} selectableTypes={selectableTypes} selectableAbilityIds={selectableAbilityIds} selectedLoadout={selectedLoadout} customVariables={configuration.customVariables ?? []} disabled={disabled} canRemove={canRemove} canAddAction={graphActionCount < maxLogicBlocks} puzzleMode={puzzleMode} onClose={() => setInspectedNode(null)} updateBranch={updateBranch} onPickActionOperand={openActionOperandPicker} onInspectActionOperand={inspectActionOperand} onDismissOperandPicker={() => setOperandPicker(null)} onRemoveAction={removeGraphAction} />}
+            {!isSearchOpen && !isExternalConfigurationOpen && actionOperandInspector && actionOperandDefinition && <ActionVariableInspector definition={actionOperandDefinition} operand={actionOperand} selectableTypes={selectableTypes} disabled={disabled} onChange={(operand) => updateActionOperand(actionOperandInspector.rootIndex, actionOperandInspector.path, actionOperandInspector.actionIndex, actionOperandInspector.termIndex, operand)} onClose={() => setActionOperandInspector(null)} />}
         </div>
     );
 });

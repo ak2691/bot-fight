@@ -20,9 +20,12 @@ test("every finite ammunition or charge resource is represented by the canonical
         .filter(([, stats]) => stats.maxCharges != null)
         .map(([abilityId]) => Number(abilityId));
 
-    assert.deepEqual(chargeAbilityIds, [3, 5]);
+    assert.deepEqual(chargeAbilityIds, [3, 5, 12]);
     assert.equal(abilityChargeCount({ abilityCharges: { 3: 6 } }, 3), 6);
     assert.equal(abilityChargeCount({ abilityCharges: { 5: 4 } }, 5), 4);
+    assert.equal(abilityChargeCount({ abilityCharges: { 12: 10 } }, 12), 10);
+    assert.equal(ABILITY_STATS[12].maxCharges, 10);
+    assert.equal(ABILITY_STATS[12].reloadMs, 3000);
     assert.equal(ABILITY_STATS[16].maxCharges, undefined);
     assert.equal(ABILITY_STATS[17].maxCharges, undefined);
 });
@@ -80,13 +83,13 @@ test("fixed resources only exist while active and reset when the active window e
 
 test("resource ticking applies the same function to every equipped charge definition", () => {
     const next = rechargeAbilityResources({
-        abilities: [3, 5, 11],
-        abilityCharges: { 3: 0, 5: 0, 11: 0 },
-        abilityRechargeMs: { 3: 3_000, 5: 3_000, 11: 0 },
+        abilities: [3, 5, 11, 12],
+        abilityCharges: { 3: 0, 5: 0, 11: 0, 12: 0 },
+        abilityRechargeMs: { 3: 3_000, 5: 3_000, 11: 0, 12: 3_000 },
     }, 100);
 
-    assert.deepEqual(next.charges, { 3: 0, 5: 0 });
-    assert.deepEqual(next.rechargeMs, { 3: 2_900, 5: 2_900 });
+    assert.deepEqual(next.charges, { 3: 0, 5: 0, 12: 0 });
+    assert.deepEqual(next.rechargeMs, { 3: 2_900, 5: 2_900, 12: 2_900 });
 });
 
 test("charge reloads wait for the active phase before consuming time", () => {
@@ -135,5 +138,13 @@ test("generic charge consumption starts reloads only when a resource becomes emp
         }],
     }, 3, 1, { elapsedMs: 100, cooldownMultiplier: 1 });
     assert.equal(abilityRechargeRemainingMs(overclockedReload.shape, 3), 2_600);
+
+    const pistol = consumeAbilityCharges({
+        abilityCharges: { 12: 1 },
+        abilityRechargeMs: { 12: 0 },
+    }, 12, 1);
+    assert.equal(pistol.consumed, true);
+    assert.equal(abilityChargeCount(pistol.shape, 12), 0);
+    assert.equal(abilityRechargeRemainingMs(pistol.shape, 12), 3_000);
 
 });

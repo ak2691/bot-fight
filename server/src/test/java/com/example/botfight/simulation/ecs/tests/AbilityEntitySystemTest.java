@@ -318,7 +318,7 @@ class AbilityEntitySystemTest {
         assertThat(hit).isEmpty();
         assertThat(combat.damage).isEqualTo(15);
         assertThat(target.hp).isEqualTo(85);
-            assertThat(target.x).isEqualTo(360);
+        assertThat(target.x).isEqualTo(360);
     }
 
     @Test
@@ -465,6 +465,7 @@ class AbilityEntitySystemTest {
             assertThat(entity.size()).isEqualTo(175);
         });
         assertThat(combat.blocks).containsExactly(new BlockRequest(100, 100, 11));
+        assertThat(combat.damage).isEqualTo(25);
     }
 
     @Test

@@ -90,7 +90,7 @@ class BotMovementServiceTest {
         return new StrategyBlock(
                 0,
                 BotLogicContracts.ACTION_MOVE_WALK,
-                BotLogicContracts.TARGET_OPPONENT,
+                BotLogicContracts.SELECTABLE_OPPONENT,
                 80,
                 -60,
                 "target",
@@ -108,7 +108,7 @@ class BotMovementServiceTest {
         return new StrategyBlock(
                 0,
                 BotLogicContracts.ACTION_MOVE_WALK,
-                BotLogicContracts.TARGET_OPPONENT,
+                BotLogicContracts.SELECTABLE_OPPONENT,
                 0,
                 0,
                 "target",

@@ -2,17 +2,17 @@
 const lockOnIconUrl = new URL("./assets/arena/abilities/support/crosshair.png", import.meta.url).href;
 
 export const ABILITY_CATALOGUE_ICONS = Object.freeze({
-    swing: "/assets/ability-list/icons/swing.png",
-    fire_gun: "/assets/ability-list/icons/fire_gun.png",
-    throw_grenade: "/assets/ability-list/icons/throw_grenade.png",
-    shoot_fireball: "/assets/ability-list/icons/shoot_fireball.png",
+    slash: "/assets/ability-list/icons/swing.png",
+    gun: "/assets/ability-list/icons/fire_gun.png",
+    grenade: "/assets/ability-list/icons/throw_grenade.png",
+    fireball: "/assets/ability-list/icons/shoot_fireball.png",
     stun: "/assets/ability-list/icons/stun.png",
     heavy_slash: "/assets/ability-list/icons/heavy_slash.png",
     repulsor_burst: "/assets/ability-list/icons/repulsor_burst.png",
     concussive_shot: "/assets/ability-list/icons/concussive_shot.png",
     basic_heal: "/assets/ability-list/icons/basic_heal.png",
     proximity_mine: "/assets/ability-list/icons/proximity_mine.png",
-    pistol_shot: "/assets/ability-list/icons/pistol_shot.png",
+    pistol: "/assets/ability-list/icons/pistol_shot.png",
     rail_shot: "/assets/ability-list/icons/rail_shot.png",
     gravity_grenade: "/assets/ability-list/icons/gravity_grenade.png",
     silence_pulse: "/assets/ability-list/icons/silence_pulse.png",

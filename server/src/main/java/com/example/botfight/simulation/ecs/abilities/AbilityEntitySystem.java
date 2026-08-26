@@ -63,8 +63,11 @@ public final class AbilityEntitySystem {
             ArenaBounds arena,
             int stepMs,
             Combat<F> combat) {
-        resetPresenceFields(entities, bots);
-        List<EntityEntry> traps = entities.stream()
+        List<ArenaEntity> tickEntities = entities.stream()
+                .map(ArenaEntity::beginTickMetrics)
+                .toList();
+        resetPresenceFields(tickEntities, bots);
+        List<EntityEntry> traps = tickEntities.stream()
                 .map(entity -> {
                     EntityContracts.EntityContract contract = EntityContracts.forEntity(entity);
                     return new EntityEntry(entity, contract,
@@ -85,12 +88,12 @@ public final class AbilityEntitySystem {
                     ArenaEntity moved = advanceTravel(entry.entity(), entry.contract(), entry.behavior(), arena, stepMs);
                     boolean destroyedByDamage = false;
                     if (entry.contract().health() != null && entry.contract().collider().hittable()) {
-                        int damage = Math.max(0, combat.damageToEntity(moved, bots, entities));
+                        int damage = Math.max(0, combat.damageToEntity(moved, bots, tickEntities));
                         int hp = Math.max(0, moved.hp() - damage);
                         destroyedByDamage = hp <= 0 && damage > 0;
                         moved = copy(moved, moved.x(), moved.y(), moved.velocityX(), moved.velocityY(), moved.traveled(),
                                 moved.timerMs(), moved.armed(), hp,
-                                moved.shotVisualMs(), moved.damageMultiplier());
+                                moved.shotVisualMs(), moved.damageMultiplier()).withDamageTakenThisTick(damage);
                     }
                     return new EntityEntry(moved, entry.contract(), entry.behavior(),
                             destroyedByDamage);
@@ -98,7 +101,7 @@ public final class AbilityEntitySystem {
                 .filter(entry -> entry.contract().health() == null || entry.entity().hp() > 0
                         || entry.destroyedByDamage())
                 .toList();
-        Set<String> triggered = resolveTrapTriggers(movedTraps, entities, bots, arena, combat);
+        Set<String> triggered = resolveTrapTriggers(movedTraps, tickEntities, bots, arena, combat);
 
         List<ArenaEntity> trapEffects = new ArrayList<>();
         for (EntityEntry entry : movedTraps) {
@@ -122,7 +125,7 @@ public final class AbilityEntitySystem {
         }
 
         next.addAll(trapEffects);
-        for (ArenaEntity entity : entities) {
+        for (ArenaEntity entity : tickEntities) {
             if (trapIds.contains(entity.id())) continue;
             EntityContracts.EntityContract contract = EntityContracts.forEntity(entity);
             EntityContracts.Behavior behavior = contract == null ? null : contract.behaviorFor(entity.type());
@@ -130,11 +133,11 @@ public final class AbilityEntitySystem {
                 next.add(entity);
                 continue;
             }
-            TickResult result = tickBehavior(entity, contract, behavior, entities, bots, arena, stepMs, combat);
+            TickResult result = tickBehavior(entity, contract, behavior, tickEntities, bots, arena, stepMs, combat);
             if (result.entity() != null) next.add(result.entity());
             next.addAll(result.spawned());
         }
-        return next;
+        return next.stream().map(ArenaEntity::settleTickMetrics).toList();
     }
 
     private static <F extends AbilityEntityBot> void resetPresenceFields(
@@ -375,14 +378,16 @@ public final class AbilityEntitySystem {
             ArenaBounds arena, int stepMs, Combat<F> combat) {
         int ageMs = entity.timerMs() + stepMs;
         int lifetimeMs = (int) Math.round(stat(contract.abilityId(), contract.lifetime().stat(), 0));
-        int hp = entity.hp() - combat.damageToEntity(entity, bots, allEntities);
+        int damage = Math.max(0, combat.damageToEntity(entity, bots, allEntities));
+        int hp = entity.hp() - damage;
         if (ageMs >= lifetimeMs || hp <= 0) return new TickResult(null);
         F target = bots.stream()
                 .filter(bot -> bot.entitySlot() != entity.ownerSlot() && bot.entityHp() > 0)
                 .min(Comparator.comparingDouble(bot -> distance(bot.entityX(), bot.entityY(), entity.x(), entity.y())))
                 .orElse(null);
         ArenaEntity next = copy(entity, entity.x(), entity.y(), entity.velocityX(), entity.velocityY(),
-                entity.traveled(), ageMs, true, hp, Math.max(0, entity.shotVisualMs() - stepMs), entity.damageMultiplier());
+                entity.traveled(), ageMs, true, hp, Math.max(0, entity.shotVisualMs() - stepMs), entity.damageMultiplier())
+                .withDamageTakenThisTick(damage);
         if (target == null) return new TickResult(next);
 
         double dx = target.entityX() - next.x();
@@ -399,7 +404,7 @@ public final class AbilityEntitySystem {
         double nextX = clamp(next.x() + dx / distance * Math.min(speed, distance), size / 2, arena.width() - size / 2);
         double nextY = clamp(next.y() + dy / distance * Math.min(speed, distance), size / 2, arena.height() - size / 2);
         next = copy(next, nextX, nextY, velocityX, velocityY, next.traveled(), next.timerMs(), true,
-                next.hp(), next.shotVisualMs(), next.damageMultiplier());
+                next.hp(), next.shotVisualMs(), next.damageMultiplier(), rotation);
 
         EntityContracts.Attack attack = behavior.attack();
         int cooldown = (int) Math.round(stat(contract.abilityId(), attack.cooldownStat(), 1000));
@@ -715,7 +720,7 @@ public final class AbilityEntitySystem {
                 : (int) Math.round(stat(source.abilityId(), definition.visibleStat(), definition.durationMs()));
         return new ArenaEntity(source.id() + "-" + definition.type(), definition.type(), source.ownerSlot(),
                 source.x(), source.y(), size, 0, 0, 0, timer, true, 0, 0,
-                source.damageMultiplier(), source.abilityId());
+                source.damageMultiplier(), source.abilityId(), Set.of(), 0, source.rotation());
     }
 
     private static ArenaEntity copy(ArenaEntity source, double x, double y, double velocityX,
@@ -738,7 +743,19 @@ public final class AbilityEntitySystem {
                                     int intervalTimerMs, int phaseTimerMs) {
         return new ArenaEntity(source.id(), source.type(), source.ownerSlot(), x, y, source.size(),
                 velocityX, velocityY, traveled, timer, armed, hp, shotVisualMs, damageMultiplier,
-                source.abilityId(), source.hitSlots(), intervalTimerMs, phaseTimerMs, source.ageMs());
+                source.abilityId(), source.hitSlots(), intervalTimerMs, phaseTimerMs, source.ageMs(),
+                source.tickStartHp(), source.damageTakenThisTick(), source.damageTakenLastTick(),
+                source.hpNetChangeLastTick(), source.rotation());
+    }
+
+    private static ArenaEntity copy(ArenaEntity source, double x, double y, double velocityX,
+                                    double velocityY, double traveled, int timer, boolean armed,
+                                    int hp, int shotVisualMs, double damageMultiplier, double rotation) {
+        return new ArenaEntity(source.id(), source.type(), source.ownerSlot(), x, y, source.size(),
+                velocityX, velocityY, traveled, timer, armed, hp, shotVisualMs, damageMultiplier,
+                source.abilityId(), source.hitSlots(), source.intervalTimerMs(), source.phaseTimerMs(), source.ageMs(),
+                source.tickStartHp(), source.damageTakenThisTick(), source.damageTakenLastTick(),
+                source.hpNetChangeLastTick(), rotation);
     }
 
     private static boolean withinRadius(AbilityEntityBot bot, ArenaEntity source, double radius) {

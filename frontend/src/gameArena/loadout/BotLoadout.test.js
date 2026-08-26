@@ -59,7 +59,7 @@ test("charges are tagged generically with HP and ammunition subtypes", () => {
     assert.equal(abilityDefinition(3).tags.includes(ABILITY_TAGS.AMMUNITION_CHARGES), true);
     assert.deepEqual(
         ALL_ABILITY_DEFINITIONS.filter((ability) => ability.tags.includes(ABILITY_TAGS.CHARGES)).map((ability) => ability.id),
-        [3, 5],
+        [3, 5, 12],
     );
     assert.equal(abilityDefinition(2), null);
 });

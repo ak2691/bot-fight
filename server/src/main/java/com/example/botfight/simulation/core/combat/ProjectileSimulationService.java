@@ -71,11 +71,13 @@ public class ProjectileSimulationService {
                     && next.timerMs() >= Abilities.projectileFuseMs(contract.abilityId());
             if (hit != null || stoppedLongEnough) {
                 if (contract.projectile() != null && contract.projectile().explosion() != null) {
-                    if (hit != null && hit.swept()) {
+                    if (hit != null) {
                         impacts.add(new ProjectileImpact(contract.abilityId(), next.ownerSlot(), hit.bot().slot,
-                                next.x(), next.y(), next.damageMultiplier(), false, hit.distance()));
+                                next.x(), next.y(), next.damageMultiplier(), false, 0.0));
                     }
-                    effects.add(createDerivedEntity(next, contract.projectile().explosion(), hit != null && hit.swept()));
+                    // Direct contact damage is applied as a separate impact;
+                    // fuse-only explosions retain their radial center falloff.
+                    effects.add(createDerivedEntity(next, contract.projectile().explosion(), hit != null));
                 } else if (hit != null) {
                     impacts.add(new ProjectileImpact(contract.abilityId(), next.ownerSlot(), hit.bot().slot,
                             next.x(), next.y(), next.damageMultiplier(), false, hit.distance()));
@@ -113,7 +115,7 @@ public class ProjectileSimulationService {
         boolean dealsDamage = AbilityContracts.get(effect.abilityId()).effects().stream()
                 .anyMatch(item -> item.type() == EffectType.DAMAGE);
         if (!dealsDamage) return 0;
-        double distance = Math.hypot(target.x() - effect.x(), target.y() - effect.y());
+        double distance = Math.hypot(selectable.x() - effect.x(), selectable.y() - effect.y());
         return (int) Math.round(Abilities.damageAtDistance(effect.abilityId(), distance)
                 * effect.damageMultiplier());
     }
@@ -149,7 +151,7 @@ public class ProjectileSimulationService {
 
     private static void applyDebuff(Bot target, AbilityContracts.Effect effect,
                                     ProjectileImpact impact, Bot owner) {
-        if (target.hp <= 0) return;
+        if (selectable.hp <= 0) return;
         int sourceSlot = owner == null ? impact.ownerSlot() : owner.slot;
         switch (effect.subtype()) {
             case "burn" -> {
@@ -250,7 +252,7 @@ public class ProjectileSimulationService {
                 : (int) Math.round(EntityContracts.stat(projectile.abilityId(), definition.visibleStat(), definition.durationMs()));
         ArenaEntity derived = new ArenaEntity(projectile.id() + "-" + definition.type(), definition.type(), projectile.ownerSlot(),
                 projectile.x(), projectile.y(), size, 0, 0, 0, timer, true, 0, 0,
-                projectile.damageMultiplier(), projectile.abilityId());
+                projectile.damageMultiplier(), projectile.abilityId(), Set.of(), 0, projectile.rotation());
         return damageApplied ? derived.withHitSlots(Set.of(-1)) : derived;
     }
 
@@ -259,7 +261,8 @@ public class ProjectileSimulationService {
         return new ArenaEntity(source.id(), source.type(), source.ownerSlot(), x, y, source.size(),
                 velocityX, velocityY, traveled, timer, armed, source.hp(), source.shotVisualMs(),
                 source.damageMultiplier(), source.abilityId(), source.hitSlots(), source.intervalTimerMs(),
-                source.phaseTimerMs(), source.ageMs());
+                source.phaseTimerMs(), source.ageMs(), source.tickStartHp(), source.damageTakenThisTick(),
+                source.damageTakenLastTick(), source.hpNetChangeLastTick(), source.rotation());
     }
 
     private static int radialShieldChargeCost(int abilityId, double distance) {

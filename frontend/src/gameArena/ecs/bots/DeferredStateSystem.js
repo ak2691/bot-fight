@@ -45,9 +45,9 @@ function completionVisualFieldsFor(contract, remainingMs) {
 function resolveCompletion(shape, completion) {
     if (!completion || completion.type !== "restoreSnapshot") return {};
 
-    const coordinates = Object.fromEntries(Object.entries(completion.coordinates ?? {}).map(([targetField, snapshotField]) => [
-        targetField,
-        Number(shape?.[snapshotField] ?? shape?.[targetField] ?? 0),
+    const coordinates = Object.fromEntries(Object.entries(completion.coordinates ?? {}).map(([selectableField, snapshotField]) => [
+        selectableField,
+        Number(shape?.[snapshotField] ?? shape?.[selectableField] ?? 0),
     ]));
     const health = completion.health;
     if (!health) return coordinates;
@@ -56,7 +56,7 @@ function resolveCompletion(shape, completion) {
     const snapshotHp = Number(shape?.[health.snapshotField] ?? shape?.[health.fallbackField] ?? 0);
     return {
         ...coordinates,
-        [health.targetField]: Math.min(maximum, snapshotHp),
+        [health.selectableField]: Math.min(maximum, snapshotHp),
     };
 }
 

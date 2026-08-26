@@ -144,7 +144,7 @@ export default function AbilitySelectionPanel({
                             aria-label={hasSurrendered ? "RESIGNED" : surrenderPending ? "SURRENDERING" : "FORFEIT"}
                             title={hasSurrendered ? "RESIGNED" : surrenderPending ? "SURRENDERING" : "FORFEIT"}
                             disabled={!canSurrender || surrenderPending || hasSurrendered}
-                            className="gray-button-surface flex h-11 items-center justify-center gap-2 rounded border border-red-700/70 px-4 font-mono text-[11px] font-bold tracking-[0.16em] text-red-300 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-40"
+                            className="arena-toolbar-button arena-toolbar-button--red arena-toolbar-button--inline"
                         >
                             <MatchToolIcon name="flag" className="h-4 w-4" />
                             {hasSurrendered ? "RESIGNED" : surrenderPending ? "SURRENDERING" : "FORFEIT"}
@@ -153,7 +153,7 @@ export default function AbilitySelectionPanel({
                             type="button"
                             onClick={onLockLoadout}
                             disabled={submitting || playerLocked || normalized.abilities.length > MAX_EQUIPPED_ABILITIES}
-                            className="gray-button-surface h-11 min-w-52 rounded border border-cyan-600/80 px-5 font-mono text-[11px] font-bold tracking-[0.16em] text-cyan-200 transition hover:border-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="arena-toolbar-button arena-toolbar-button--blue arena-toolbar-button--inline min-w-52"
                         >
                             {submitting
                                 ? "LOCKING LOADOUT"

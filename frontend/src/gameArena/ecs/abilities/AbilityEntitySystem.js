@@ -21,15 +21,28 @@ export function isAbilityEntity(entity) {
  * phases.
  */
 export function tickAbilityEntityWorld(world, combat) {
-    return runEntityWorld({
+    const staged = runEntityWorld({
         ...world,
-        entities: world.entities.map((entity) => advanceEntityAge(entity, world.stepMs)),
+        entities: world.entities.map((entity) => withComponentState(entity, {
+            tickStartHp: entity.hp == null ? null : Number(entity.hp),
+            damageTakenThisTick: 0,
+        })).map((entity) => advanceEntityAge(entity, world.stepMs)),
         bots: resetContractPresenceState(world),
     }, [
         markTriggeredEntities(combat),
         tickTrapEntities(combat),
         tickRemainingEntities(combat),
     ]);
+    return {
+        ...staged,
+        entities: staged.entities.map((entity) => withComponentState(entity, {
+            damageTakenLastTick: Number(entity.damageTakenThisTick ?? 0),
+            damageTakenThisTick: 0,
+            hpNetChangeLastTick: entity.hp == null || entity.tickStartHp == null
+                ? 0
+                : Number(entity.hp) - Number(entity.tickStartHp),
+        })),
+    };
 }
 
 function resetContractPresenceState(world) {
@@ -72,6 +85,7 @@ function tickTrapEntities(combat) {
                 const hp = Math.max(0, Number(movedEntity.hp ?? 0) - damage);
                 movedEntity = withComponentState(movedEntity, {
                     hp,
+                    damageTakenThisTick: Number(movedEntity.damageTakenThisTick ?? 0) + Math.max(0, damage),
                     ...(hp <= 0 && damage > 0
                         ? { hitTriggered: true, destroyedByDamage: true }
                         : {}),
@@ -402,7 +416,8 @@ function tickSummon(entity, behavior, world, combat) {
     const contract = contractForEntity(entity);
     const stats = ABILITY_STATS[contract.abilityId] ?? {};
     const remainingMs = Number(entity.remainingMs ?? stats.durationMs ?? 0) - Number(world.stepMs ?? 0);
-    const hp = Number(entity.hp ?? stats.hp ?? 0) - damageToEntity(entity, world, combat);
+    const damage = damageToEntity(entity, world, combat);
+    const hp = Number(entity.hp ?? stats.hp ?? 0) - damage;
     if (remainingMs <= 0 || hp <= 0) return { bots: world.bots, entity: null };
 
     let bots = world.bots;
@@ -411,6 +426,7 @@ function tickSummon(entity, behavior, world, combat) {
         .sort((first, second) => Math.hypot(first.x - entity.x, first.y - entity.y) - Math.hypot(second.x - entity.x, second.y - entity.y))[0];
     let summon = withComponentState(entity, {
         hp,
+        damageTakenThisTick: Number(entity.damageTakenThisTick ?? 0) + Math.max(0, damage),
         remainingMs,
         shotCooldownMs: Math.max(0, Number(entity.shotCooldownMs ?? 0) - Number(world.stepMs ?? 0)),
         shotVisualMs: Math.max(0, Number(entity.shotVisualMs ?? 0) - Number(world.stepMs ?? 0)),

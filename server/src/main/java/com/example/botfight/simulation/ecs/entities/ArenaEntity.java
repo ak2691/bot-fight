@@ -25,32 +25,48 @@ public record ArenaEntity(
         Set<Integer> hitSlots,
         int intervalTimerMs,
         int phaseTimerMs,
-        int ageMs) {
+        int ageMs,
+        double tickStartHp,
+        double damageTakenThisTick,
+        double damageTakenLastTick,
+        double hpNetChangeLastTick,
+        double rotation) {
 
     public ArenaEntity {
         hitSlots = hitSlots == null ? Set.of() : Set.copyOf(hitSlots);
         ageMs = Math.max(0, ageMs);
     }
 
+    /** Compatibility constructor for callers that predate authoritative entity rotation. */
+    public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
+                       double velocityX, double velocityY, double traveled, int timerMs, boolean armed, int hp,
+                       int shotVisualMs, double damageMultiplier, Integer abilityId, Set<Integer> hitSlots,
+                       int intervalTimerMs, int phaseTimerMs, int ageMs, double tickStartHp,
+                       double damageTakenThisTick, double damageTakenLastTick, double hpNetChangeLastTick) {
+        this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs, armed, hp,
+                shotVisualMs, damageMultiplier, abilityId, hitSlots, intervalTimerMs, phaseTimerMs, ageMs,
+                tickStartHp, damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick, 0.0);
+    }
+
     public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
                        double velocityX, double velocityY, double traveled, int timerMs, boolean armed, int hp,
                        int shotVisualMs, double damageMultiplier) {
         this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs, armed, hp,
-                shotVisualMs, damageMultiplier, abilityIdForType(type), Set.of(), 0, 0, 0);
+                shotVisualMs, damageMultiplier, abilityIdForType(type), Set.of(), 0, 0, 0, 0, 0, 0, 0);
     }
 
     public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
                        double velocityX, double velocityY, double traveled, int timerMs, boolean armed, int hp,
                        int shotVisualMs, double damageMultiplier, Integer abilityId) {
         this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs, armed, hp,
-                shotVisualMs, damageMultiplier, abilityId, Set.of(), 0, 0, 0);
+                shotVisualMs, damageMultiplier, abilityId, Set.of(), 0, 0, 0, 0, 0, 0, 0);
     }
 
     public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
                        double velocityX, double velocityY, double traveled, int timerMs, boolean armed, int hp,
                        int shotVisualMs, double damageMultiplier, Integer abilityId, Set<Integer> hitSlots) {
         this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs, armed, hp,
-                shotVisualMs, damageMultiplier, abilityId, hitSlots, 0, 0, 0);
+                shotVisualMs, damageMultiplier, abilityId, hitSlots, 0, 0, 0, 0, 0, 0, 0);
     }
 
     public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
@@ -58,7 +74,15 @@ public record ArenaEntity(
                        int shotVisualMs, double damageMultiplier, Integer abilityId, Set<Integer> hitSlots,
                        int intervalTimerMs) {
         this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs, armed, hp,
-                shotVisualMs, damageMultiplier, abilityId, hitSlots, intervalTimerMs, 0, 0);
+                shotVisualMs, damageMultiplier, abilityId, hitSlots, intervalTimerMs, 0, 0, 0, 0, 0, 0);
+    }
+
+    public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
+                       double velocityX, double velocityY, double traveled, int timerMs, boolean armed, int hp,
+                       int shotVisualMs, double damageMultiplier, Integer abilityId, Set<Integer> hitSlots,
+                       int intervalTimerMs, double rotation) {
+        this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs, armed, hp,
+                shotVisualMs, damageMultiplier, abilityId, hitSlots, intervalTimerMs, 0, 0, 0, 0, 0, 0, rotation);
     }
 
     public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
@@ -66,7 +90,7 @@ public record ArenaEntity(
                        int shotVisualMs, double damageMultiplier, Integer abilityId, Set<Integer> hitSlots,
                        int intervalTimerMs, int phaseTimerMs) {
         this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs, armed, hp,
-                shotVisualMs, damageMultiplier, abilityId, hitSlots, intervalTimerMs, phaseTimerMs, 0);
+                shotVisualMs, damageMultiplier, abilityId, hitSlots, intervalTimerMs, phaseTimerMs, 0, 0, 0, 0, 0);
     }
 
     public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
@@ -88,7 +112,7 @@ public record ArenaEntity(
 
     public Components components() {
         return new Components(
-                new Transform(x, y),
+                new Transform(x, y, rotation),
                 new Motion(velocityX, velocityY, traveled),
                 new Lifetime(timerMs),
                 new Collider(size),
@@ -100,18 +124,47 @@ public record ArenaEntity(
     public ArenaEntity withHitSlots(Set<Integer> nextHitSlots) {
         return new ArenaEntity(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled,
                 timerMs, armed, hp, shotVisualMs, damageMultiplier, abilityId,
-                nextHitSlots == null ? Set.of() : Set.copyOf(nextHitSlots), intervalTimerMs, phaseTimerMs, ageMs);
+                nextHitSlots == null ? Set.of() : Set.copyOf(nextHitSlots), intervalTimerMs, phaseTimerMs, ageMs,
+                tickStartHp, damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick, rotation);
     }
 
     public ArenaEntity withAgeMs(int nextAgeMs) {
         return new ArenaEntity(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled,
                 timerMs, armed, hp, shotVisualMs, damageMultiplier, abilityId, hitSlots,
-                intervalTimerMs, phaseTimerMs, Math.max(0, nextAgeMs));
+                intervalTimerMs, phaseTimerMs, Math.max(0, nextAgeMs), tickStartHp,
+                damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick, rotation);
+    }
+
+    public ArenaEntity withHp(int nextHp) {
+        return new ArenaEntity(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled,
+                timerMs, armed, Math.max(0, nextHp), shotVisualMs, damageMultiplier, abilityId, hitSlots,
+                intervalTimerMs, phaseTimerMs, ageMs, tickStartHp, damageTakenThisTick,
+                damageTakenLastTick, hpNetChangeLastTick, rotation);
+    }
+
+    public ArenaEntity withDamageTakenThisTick(double damage) {
+        return new ArenaEntity(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled,
+                timerMs, armed, hp, shotVisualMs, damageMultiplier, abilityId, hitSlots,
+                intervalTimerMs, phaseTimerMs, ageMs, tickStartHp,
+                damageTakenThisTick + Math.max(0, damage), damageTakenLastTick, hpNetChangeLastTick, rotation);
+    }
+
+    public ArenaEntity beginTickMetrics() {
+        return new ArenaEntity(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled,
+                timerMs, armed, hp, shotVisualMs, damageMultiplier, abilityId, hitSlots,
+                intervalTimerMs, phaseTimerMs, ageMs, hp, 0, damageTakenLastTick, hpNetChangeLastTick, rotation);
+    }
+
+    public ArenaEntity settleTickMetrics() {
+        double netChange = Double.isFinite(tickStartHp) ? hp - tickStartHp : 0;
+        return new ArenaEntity(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled,
+                timerMs, armed, hp, shotVisualMs, damageMultiplier, abilityId, hitSlots,
+                intervalTimerMs, phaseTimerMs, ageMs, hp, 0, damageTakenThisTick, netChange, rotation);
     }
 
     public record Components(Transform transform, Motion motion, Lifetime lifetime, Collider collider,
                              Ownership ownership, Health health, AbilityState abilityState) {}
-    public record Transform(double x, double y) {}
+    public record Transform(double x, double y, double rotation) {}
     public record Motion(double velocityX, double velocityY, double traveled) {}
     public record Lifetime(int timerMs) {}
     public record Collider(int size) {}

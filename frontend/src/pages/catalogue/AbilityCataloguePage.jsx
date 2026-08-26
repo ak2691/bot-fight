@@ -6,6 +6,7 @@ import { ABILITY_STATS } from "../../gameArena/gameconfig/Abilities.js";
 import { ALL_ABILITY_DEFINITIONS } from "../../gameArena/loadout/BotLoadout.js";
 import { useDialogFocus } from "../../components/useDialogFocus.js";
 import { abilityStatsForDisplay } from "./abilityStatsPresentation.js";
+import { STATUS_EFFECT_GUIDE } from "./statusEffectCatalogue.js";
 
 const ROUNDS = [0, 1, 2, 3];
 
@@ -148,7 +149,7 @@ export function AbilityModal({ ability, onClose, onTestAbility = null }) {
                                 <button
                                     type="button"
                                     onClick={() => onTestAbility(ability)}
-                                    className="mt-5 min-h-11 border border-green-400/80 bg-green-950/45 px-5 py-3 font-mono text-[10px] font-bold tracking-[.2em] text-green-100 transition hover:border-green-200 hover:bg-green-900/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-200"
+                                    className="arena-toolbar-button arena-toolbar-button--green arena-toolbar-button--inline mt-5"
                                 >
                                     TEST ABILITY
                                 </button>
@@ -243,29 +244,26 @@ export default function AbilityCataloguePage() {
                     <p className="font-mono text-[10px] font-bold tracking-[.32em] text-green-300">COMBAT DATABASE</p>
                     <h1 className="mt-3 font-display-action text-5xl uppercase tracking-wide text-white sm:text-7xl">Ability List</h1>
                     <p className="mt-4 max-w-2xl text-base leading-7 text-slate-400">
-                        Explore the four standard abilities every bot receives and every move available in the three-round draft. Select one to inspect its current arena stats.
+                        Explore abilities here. Click one to inspect its details.
                     </p>
                 </div>
             </header>
 
-            <div className="mx-auto max-w-7xl space-y-16 px-5 py-12 sm:px-8 sm:py-16">
-                <section aria-labelledby="ability-types-title" className="border border-slate-700/70 bg-slate-950/30 p-6 sm:p-8">
-                    <div className="max-w-3xl">
-                        <p className="font-mono text-[9px] font-bold tracking-[.28em] text-green-300">HOW TO READ THE LIST</p>
-                        <h2 id="ability-types-title" className="mt-2 font-display-action text-3xl uppercase tracking-wider text-white">Ability types</h2>
-                        <p className="mt-3 text-sm leading-6 text-slate-400">
-                            Delivery describes how an effect reaches a target. Self, Buff, Radial, Summon, Zone, and Trap are additive catalogue tags that describe who receives the effect or what remains in the arena.
-                        </p>
+            <div className="mx-auto max-w-7xl space-y-12 px-5 py-12 sm:px-8 sm:py-16">
+                <section aria-labelledby="status-effects-title" className="border border-slate-700/70 bg-slate-950/30 p-5 sm:p-6">
+                    <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-slate-700/60 pb-3">
+                        <div>
+                            <p className="font-mono text-[9px] font-bold tracking-[.28em] text-green-300">COMBAT EFFECTS</p>
+                            <h2 id="status-effects-title" className="mt-1 font-display-action text-3xl uppercase tracking-wider text-white">Status effects</h2>
+                        </div>
+                        <span className="font-mono text-[9px] tracking-widest text-slate-500">HOW THEY FUNCTION</span>
                     </div>
-                    <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                        {ABILITY_TYPE_GUIDE.map((type) => (
-                            <div key={type.label} className="border border-slate-700/70 bg-[#07131f] p-4">
-                                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                                    <h3 className="font-mono text-xs font-bold uppercase tracking-[.16em] text-slate-100">{type.label}</h3>
-                                    <span className="font-mono text-[9px] uppercase tracking-wider text-green-300/80">{type.alias}</span>
-                                </div>
-                                <p className="mt-3 text-xs leading-5 text-slate-400">{type.description}</p>
-                            </div>
+                    <div className="mt-4 grid gap-x-5 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+                        {STATUS_EFFECT_GUIDE.map((status) => (
+                            <article key={status.id} className="border border-slate-700/70 bg-[#07131f] px-3 py-2.5">
+                                <h3 className="font-mono text-[10px] font-bold uppercase tracking-[.14em] text-slate-100">{status.label}</h3>
+                                <p className="mt-1 text-[11px] leading-4 text-slate-400">{status.description}</p>
+                            </article>
                         ))}
                     </div>
                 </section>

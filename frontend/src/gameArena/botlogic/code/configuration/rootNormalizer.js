@@ -37,7 +37,7 @@ function normalizeBranches(branches, remaining, customVariables, operations, roo
             actions.push(entry);
             remaining.actions -= cost;
         }
-        if (!actions.length) actions.push({ action: "none", actionTarget: "opponent" });
+        if (!actions.length) actions.push({ action: "none", selectable: "opponent" });
         const conditions = branch?.branchType === "else"
             ? []
             : operations.normalizeConditions(branch?.conditions, customVariables).slice(0, remaining.conditions);

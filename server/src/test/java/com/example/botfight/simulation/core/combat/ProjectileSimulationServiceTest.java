@@ -51,7 +51,7 @@ class ProjectileSimulationServiceTest {
         assertThat(update.impacts()).singleElement();
 
         service.applyImpacts(List.of(owner, target), update.impacts());
-        assertThat(target.hp).isLessThan(100);
+        assertThat(target.hp).isEqualTo(60);
     }
 
     private static ArenaEntity fireball(int ageMs, double traveled) {

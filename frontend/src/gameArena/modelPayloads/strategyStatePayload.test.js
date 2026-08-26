@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { buildStatePayload } from "./strategyStatePayload.js";
 import { stateFromPayload } from "../botlogic/code/runtime/runtimeState.js";
 import { statusEffectFor, statusIsActive } from "../ecs/contracts/StatusContracts.js";
+import { SELECTABLE_IDENTITIES } from "./selectableIdentities.js";
 
 test("bot payloads group health, stats, transform, and active statuses", () => {
     const payload = buildStatePayload([
@@ -76,6 +77,7 @@ test("bot payloads group health, stats, transform, and active statuses", () => {
     assert.equal(statusIsActive(payload.playerModel, "silence"), true);
     assert.equal(payload.playerModel.cooldownRecoveryMs, undefined);
     assert.deepEqual(payload.playerModel.abilities, [5]);
+    assert.equal(payload.playerModel.selectableIdentities.includes(SELECTABLE_IDENTITIES.BOT), true);
     assert.equal(payload.playerModel.x, undefined);
     assert.equal(payload.playerModel.hp, undefined);
 
@@ -89,8 +91,24 @@ test("bot payloads group health, stats, transform, and active statuses", () => {
     assert.equal(restoredState.opponent.movementVelocityY, 0.5);
     const mine = payload.objects.find((object) => object.id === "mine-1");
     assert.deepEqual(mine.transform, undefined);
-    assert.equal(mine.hp, undefined);
+    assert.equal(mine.hp, 0);
+    assert.equal(mine.selectableIdentities.includes(SELECTABLE_IDENTITIES.ABILITY_ENTITY), true);
+    assert.equal(mine.selectableIdentities.includes(SELECTABLE_IDENTITIES.HEALTH), false);
+    assert.equal(mine.selectableIdentities.includes(SELECTABLE_IDENTITIES.FACING), false);
     assert.equal(mine.ageMs, 2400);
+});
+
+test("spawned oriented entities inherit facing and movement selectable identities", () => {
+    const payload = buildStatePayload([
+        { id: "main", type: "circle", slot: 1, x: 400, y: 400, size: 60, hp: 100 },
+        { id: "opponent-model", type: "opponentModel", slot: 2, x: 600, y: 400, size: 60, hp: 100 },
+        { id: "drone-1", type: "hunterDrone", abilityId: 17, ownerId: "opponent-model", x: 500, y: 400, size: 30 },
+    ], "custom:17");
+
+    const drone = payload.objects.find((object) => object.id === "drone-1");
+    assert.equal(drone.selectableIdentities.includes(SELECTABLE_IDENTITIES.ABILITY_ENTITY), true);
+    assert.equal(drone.selectableIdentities.includes(SELECTABLE_IDENTITIES.FACING), true);
+    assert.equal(drone.selectableIdentities.includes(SELECTABLE_IDENTITIES.MOVEMENT), true);
 });
 
 test("bot logic runtime restores nested payload values for existing conditions", () => {

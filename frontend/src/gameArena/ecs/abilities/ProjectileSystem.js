@@ -29,10 +29,15 @@ export function tickProjectileWorld(world, combat) {
             && Number(next.stoppedMs ?? 0) >= Number((ABILITY_STATS[contract.abilityId] ?? {}).fuseMs ?? Number.POSITIVE_INFINITY);
         if (targetIndex >= 0 || timedExplosion) {
             if (contract.projectile?.hit === "explode") {
-                if (hit?.swept) {
-                    bots = applyProjectileEffects(next, targetIndex, bots, combat, contract, hit.distance);
+                if (hit) {
+                    // A projectile contact is the grenade's direct/on-hit
+                    // phase. Its hitbox has already established contact, so
+                    // use zero distance for the configured maximum damage.
+                    bots = applyProjectileEffects(next, targetIndex, bots, combat, contract, 0);
                 }
-                spawnedEntities.push(createExplosionEntity(next, contract, { damageApplied: Boolean(hit?.swept) }));
+                // Contact damage is applied above; a fuse-only explosion still
+                // goes through the normal radial center-distance falloff.
+                spawnedEntities.push(createExplosionEntity(next, contract, { damageApplied: Boolean(hit) }));
             } else {
                 bots = applyProjectileEffects(next, targetIndex, bots, combat, contract, hit?.distance);
             }

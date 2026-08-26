@@ -65,7 +65,7 @@ The two most important files are the numeric catalog and the effect contract:
 
 ## 1. Modify an ability stat
 
-The browser catalog is a numeric-keyed object. For example, Fire Gun is
+The browser catalog is a numeric-keyed object. For example, Gun is
 ability 3:
 
 ~~~js
@@ -75,7 +75,7 @@ ability 3:
     cooldownMs: 1000,
     activeMs: 500,
     maxDamage: 15,
-    minDamage: 2,
+    minDamage: 5,
     damageFalloffStart: 100,
     damageFalloffEnd: 700,
     range: 700,
@@ -403,6 +403,14 @@ These changes are broader than tuning a number:
   and payload fields.
 - Compact loadout encoding and migration: update only when the wire format or
   stable ability set changes.
+
+Condition selectable menus are identity-driven. Ability definitions expose the
+identities supplied by their spawned entity (`ability-entity`, `position`,
+`health`, `facing`, or `movement`), while each variable declares the identities
+required by each selectable slot. Add an identity only when the underlying runtime
+state is meaningful and keep the browser and server declarations in parity.
+Bot ability/status variables also declare a loadout dependency so their
+secondary ability or status list is derived from the selected bot's loadout.
 
 Do not add an ability to only the picker or only the browser catalog. A rated
 ability needs browser normalization, server validation, authoritative

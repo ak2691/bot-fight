@@ -8,6 +8,7 @@ import {
     MAX_ROOT_NODES,
     MAX_TOTAL_CONDITIONS,
     STATE_VARIABLES,
+    VISIBLE_STATE_VARIABLES,
     createExpressionCondition,
     normalizeRoots,
 } from "../../gameArena/botlogic/code/BotCode.js";
@@ -25,7 +26,7 @@ const INITIAL_ZOOM = 0.85;
 const INITIAL_PAN = { x: 40, y: 36 };
 const LEGACY_ACTION_FIELDS = [
     "action",
-    "actionTarget",
+    "selectable",
     "movementMode",
     "movementDirection",
     "phaseFacingMode",
@@ -58,15 +59,18 @@ function puzzleRoot(name, kind, branch, createdOrder = 0) {
 }
 
 export function createDefaultPuzzleLogic() {
-    const defaultVariable = STATE_VARIABLES.find((variable) => variable.id === "target.distance")
+    const defaultVariable = VISIBLE_STATE_VARIABLES.find((variable) => variable.id === "selectable.distance")
+        ?? VISIBLE_STATE_VARIABLES[0]
         ?? STATE_VARIABLES[0];
     const winBranch = newTreeBranch("if", defaultVariable, 0);
-    winBranch.conditions = [puzzleCondition("opponent.hp", {
+    winBranch.conditions = [puzzleCondition("selectable.hp", {
+        leftSelectable: "opponent",
         comparator: "lte",
         right: { type: "number", value: 0 },
     })];
     const loseBranch = newTreeBranch("if", defaultVariable, 0);
-    loseBranch.conditions = [puzzleCondition("my.hp", {
+    loseBranch.conditions = [puzzleCondition("selectable.hp", {
+        leftSelectable: "my_bot",
         comparator: "lte",
         right: { type: "number", value: 0 },
     })];
@@ -135,8 +139,9 @@ function stripLegacyActionFields(branch) {
 }
 
 function createRuleRoot(stateVariables, kind, createdOrder) {
-    const defaultVariable = stateVariables.find((variable) => variable.id === "target.distance")
+    const defaultVariable = stateVariables.find((variable) => variable.id === "selectable.distance")
         ?? stateVariables[0]
+        ?? VISIBLE_STATE_VARIABLES.find((variable) => variable.id === "selectable.distance")
         ?? STATE_VARIABLES[0];
     const branch = newTreeBranch("if", defaultVariable, 0);
     const label = kind === "win" ? "Win Condition" : "Lose Condition";
@@ -144,8 +149,9 @@ function createRuleRoot(stateVariables, kind, createdOrder) {
 }
 
 function createModifyRoot(configuration, stateVariables, createdOrder) {
-    const defaultVariable = stateVariables.find((variable) => variable.id === "target.distance")
+    const defaultVariable = stateVariables.find((variable) => variable.id === "selectable.distance")
         ?? stateVariables[0]
+        ?? VISIBLE_STATE_VARIABLES.find((variable) => variable.id === "selectable.distance")
         ?? STATE_VARIABLES[0];
     const branch = newTreeBranch("if", defaultVariable, 0);
     const withAction = addGraphAction(
@@ -165,7 +171,8 @@ export default function PuzzleLogicWorkspace({
     configuration,
     onChange,
     stateVariables,
-    targetTypes,
+    selectableTypes,
+    selectableAbilityIds = null,
     maxCustomVariables,
     onClose,
     readOnly = false,
@@ -176,8 +183,9 @@ export default function PuzzleLogicWorkspace({
     const [pan, setPan] = useState(INITIAL_PAN);
     const [history, setHistory] = useState({ undo: [], redo: [] });
     const currentConfiguration = configuration ?? createDefaultPuzzleLogic();
-    const defaultVariable = stateVariables.find((variable) => variable.id === "target.distance")
+    const defaultVariable = stateVariables.find((variable) => variable.id === "selectable.distance")
         ?? stateVariables[0]
+        ?? VISIBLE_STATE_VARIABLES.find((variable) => variable.id === "selectable.distance")
         ?? STATE_VARIABLES[0];
 
     const closeTopLayer = useCallback(() => {
@@ -287,9 +295,10 @@ export default function PuzzleLogicWorkspace({
                     disabled={readOnly || isCustomVariablesOpen}
                     canRemove={!readOnly && !isCustomVariablesOpen}
                     selectedLoadout={DEFAULT_BOT_CONFIGURATION_ID}
+                    selectableAbilityIds={selectableAbilityIds}
                     stateVariables={stateVariables}
                     defaultVariable={defaultVariable}
-                    targetTypes={targetTypes}
+                    selectableTypes={selectableTypes}
                     onChange={commitConfiguration}
                     zoom={zoom}
                     pan={pan}

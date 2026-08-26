@@ -3,6 +3,7 @@ import { abilityIdentity } from "../gameconfig/AbilityRegistry.js";
 import { abilityIdFromBoundary } from "../gameconfig/AbilityCompatibility.js";
 import { abilityContract, DELIVERY_TYPES, EFFECT_TYPES } from "../gameconfig/AbilityContracts.js";
 import { entityContractForAbility } from "../ecs/contracts/EntityContracts.js";
+import { selectableIdentitiesForAbilityEntity } from "../modelPayloads/selectableIdentities.js";
 
 export { ABILITY_STATS };
 
@@ -115,6 +116,7 @@ function abilityCapabilities(ability) {
     if (!identity) throw new Error(`Unknown ability in catalog: ${ability.id}`);
     const stats = abilityStats(identity.id) ?? {};
     const entity = entityContractForAbility(identity.id);
+    const selectableIdentities = selectableIdentitiesForAbilityEntity(entity, identity.id);
     const entityMetadata = entity ? {
         entityType: entity.entityType,
         entityLabel: identity.label,
@@ -148,6 +150,7 @@ function abilityCapabilities(ability) {
         label: identity.label,
         kind: identity.type,
         ...entityMetadata,
+        selectableIdentities,
         stats: Object.freeze({ ...stats }),
         delivery: gameplay?.delivery ?? null,
         effects,
@@ -209,7 +212,7 @@ export function shouldInterpolateAbilityVisual(id) {
     return abilityDefinition(id)?.visualInterpolation === VISUAL_INTERPOLATION.LINEAR;
 }
 
-export function entityTargetDefinitions() {
+export function entitySelectableDefinitions() {
     return ALL_ABILITY_DEFINITIONS.filter((ability) => entityContractForAbility(ability.id));
 }
 

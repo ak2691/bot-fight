@@ -40,17 +40,17 @@ public final class AbilityRegistry {
 
     private static Map<Integer, String> createNames() {
         LinkedHashMap<Integer, String> names = new LinkedHashMap<>();
-        register(names, 1, "swing");
-        register(names, 3, "fire_gun");
-        register(names, 4, "throw_grenade");
-        register(names, 5, "shoot_fireball");
+        register(names, 1, "slash");
+        register(names, 3, "gun");
+        register(names, 4, "grenade");
+        register(names, 5, "fireball");
         register(names, 6, "stun");
         register(names, 7, "heavy_slash");
         register(names, 8, "repulsor_burst");
         register(names, 9, "concussive_shot");
         register(names, 10, "basic_heal");
         register(names, 11, "proximity_mine");
-        register(names, 12, "pistol_shot");
+        register(names, 12, "pistol");
         register(names, 13, "rail_shot");
         register(names, 14, "gravity_grenade");
         register(names, 15, "silence_pulse");
@@ -86,6 +86,11 @@ public final class AbilityRegistry {
     private static Map<String, Integer> createLegacyIds() {
         LinkedHashMap<String, Integer> ids = new LinkedHashMap<>();
         NAMES.forEach((id, name) -> ids.put(name, id));
+        ids.put("swing", 1);
+        ids.put("fire_gun", 3);
+        ids.put("throw_grenade", 4);
+        ids.put("shoot_fireball", 5);
+        ids.put("pistol_shot", 12);
         return Map.copyOf(ids);
     }
 }

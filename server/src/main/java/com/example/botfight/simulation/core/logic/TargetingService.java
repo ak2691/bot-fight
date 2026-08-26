@@ -6,22 +6,22 @@ import com.example.botfight.simulation.core.orchestration.DuelSimulationService.
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.StrategyBlock;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.TargetPoint;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.TargetSnapshot;
+import com.example.botfight.simulation.core.orchestration.DuelSimulationService.SelectableSnapshot;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Velocity;
 import com.example.botfight.simulation.bots.BotLogicContracts;
-import com.example.botfight.simulation.bots.BotLogicContracts.TargetContract;
+import com.example.botfight.simulation.bots.BotLogicContracts.SelectableContract;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-/** Resolves all live bot and ability entities used by bot targeting. */
+/** Resolves all live bot and ability entities used by bot selectable inputs and actions. */
 public final class TargetingService {
     private TargetingService() {}
 
-    public static Entity targetEntity(String target, Bot player, Bot opponent, List<Entity> entities) {
-        String[] selector = target != null ? target.split(":", -1) : new String[0];
+    public static Entity selectableEntity(String selectableId, Bot player, Bot opponent, List<Entity> entities) {
+        String[] selector = selectableId != null ? selectableId.split(":", -1) : new String[0];
         if (selector.length == 3) {
-            List<Entity> candidates = new ArrayList<>(matchingTargets(selector[0], player, opponent, entities));
+            List<Entity> candidates = new ArrayList<>(matchingSelectables(selector[0], player, opponent, entities));
             Comparator<Entity> comparator = switch (selector[1]) {
                 case "farthest" -> Comparator.comparingDouble((Entity entity) -> distanceFrom(player, entity)).reversed();
                 case "oldest" -> ageComparator(true);
@@ -37,24 +37,29 @@ public final class TargetingService {
             }
             return candidates.size() >= ordinal ? candidates.get(ordinal - 1) : null;
         }
-        if (BotLogicContracts.TARGET_OPPONENT.equals(target)) return opponent;
-        TargetContract contract = BotLogicContracts.targetContract(target);
+        if (BotLogicContracts.SELECTABLE_MY.equals(selectableId)) return player;
+        if (BotLogicContracts.SELECTABLE_OPPONENT.equals(selectableId)) return opponent;
+        SelectableContract contract = BotLogicContracts.selectableContract(selectableId);
         if (contract == null || contract.entityType() == null) return null;
-        return matchingEntityTargets(target, contract, player, opponent, entities).stream()
+        return matchingEntitySelectables(selectableId, contract, player, opponent, entities).stream()
                 .min(Comparator.comparingDouble(entity -> distanceFrom(player, entity)))
                 .orElse(null);
     }
 
-    public static List<Entity> matchingTargets(String target, Bot player, Bot opponent, List<Entity> entities) {
-        String base = target == null ? "" : target.split(":", -1)[0];
+    public static List<Entity> matchingSelectables(String selectableId, Bot player, Bot opponent, List<Entity> entities) {
+        String base = selectableId == null ? "" : selectableId.split(":", -1)[0];
         List<Entity> matches = new ArrayList<>();
-        if ("opponent".equals(base)) {
+        if (BotLogicContracts.SELECTABLE_MY.equals(base)) {
+            matches.add(player);
+            return matches;
+        }
+        if (BotLogicContracts.SELECTABLE_OPPONENT.equals(base)) {
             matches.add(opponent);
             return matches;
         }
-        TargetContract contract = BotLogicContracts.targetContract(base);
+        SelectableContract contract = BotLogicContracts.selectableContract(base);
         if (contract != null && contract.entityType() != null) {
-            matches.addAll(matchingEntityTargets(base, contract, player, opponent, entities));
+            matches.addAll(matchingEntitySelectables(base, contract, player, opponent, entities));
         }
         return matches;
     }
@@ -67,12 +72,12 @@ public final class TargetingService {
 
     public static Velocity entityVelocity(Entity entity) {
         if (entity instanceof Bot bot) return new Velocity(bot.velocityX, bot.velocityY);
-        if (entity instanceof TargetSnapshot targetSnapshot) return new Velocity(targetSnapshot.velocityX(), targetSnapshot.velocityY());
+        if (entity instanceof SelectableSnapshot selectableSnapshot) return new Velocity(selectableSnapshot.velocityX(), selectableSnapshot.velocityY());
         return null;
     }
 
     public static String entityId(Entity entity) {
-        if (entity instanceof TargetSnapshot targetSnapshot) return targetSnapshot.id();
+        if (entity instanceof SelectableSnapshot selectableSnapshot) return selectableSnapshot.id();
         if (entity instanceof Bot bot) return bot.userId.toString();
         return "";
     }
@@ -84,25 +89,25 @@ public final class TargetingService {
         return new TargetPoint(target.x() + block.targetOffsetX(), target.y() + block.targetOffsetY(), target.size());
     }
 
-    private static List<Entity> matchingEntityTargets(String target, TargetContract contract,
+    private static List<Entity> matchingEntitySelectables(String selectableId, SelectableContract contract,
             Bot player, Bot opponent, List<Entity> entities) {
-        if (contract.owner() == com.example.botfight.simulation.ecs.contracts.EntityContracts.TargetOwner.NONE) {
+        if (contract.owner() == com.example.botfight.simulation.ecs.contracts.EntityContracts.SelectableOwner.NONE) {
             return entities.stream()
-                    .filter(entity -> entity instanceof TargetSnapshot snapshot
+                    .filter(entity -> entity instanceof SelectableSnapshot snapshot
                             && contract.runtimeType().equals(snapshot.type())
                             && hasAbility(snapshot, contract))
                     .toList();
         }
-        int ownerSlot = target.startsWith("my_") ? player.slot : opponent.slot;
+        int ownerSlot = selectableId.startsWith("my_") ? player.slot : opponent.slot;
         return entities.stream()
-                .filter(entity -> entity instanceof TargetSnapshot snapshot
+                .filter(entity -> entity instanceof SelectableSnapshot snapshot
                         && contract.runtimeType().equals(snapshot.type())
                         && hasAbility(snapshot, contract)
                         && snapshot.ownerSlot() == ownerSlot)
                 .toList();
     }
 
-    private static boolean hasAbility(TargetSnapshot snapshot, TargetContract contract) {
+    private static boolean hasAbility(SelectableSnapshot snapshot, SelectableContract contract) {
         return Integer.valueOf(contract.abilityId()).equals(snapshot.abilityId());
     }
 
@@ -118,7 +123,7 @@ public final class TargetingService {
     }
 
     private static int entityAgeMs(Entity entity) {
-        return entity instanceof TargetSnapshot snapshot ? snapshot.ageMs() : 0;
+        return entity instanceof SelectableSnapshot snapshot ? snapshot.ageMs() : 0;
     }
 
     private static int entitySerial(Entity entity) {

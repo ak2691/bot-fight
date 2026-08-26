@@ -63,6 +63,7 @@ import {
     buildTutorialArenaShapes,
     getTutorialScenario,
     TUTORIAL_STEP_COUNT,
+    TUTORIAL_ACTIONS,
     hasTutorialPriorityOrder,
 } from "../tutorial/TutorialPresets.js";
 
@@ -103,9 +104,12 @@ function loadStoredStrategyConfiguration(key) {
     }
 }
 
-const TUTORIAL_STRATEGY_PREFIX = "arena-tutorial-strategy-v1-";
-const TUTORIAL_COMPLETION_PREFIX = "arena-tutorial-completion-v1-";
-const TUTORIAL_SOLUTION_PREFIX = "arena-tutorial-solution-v1-";
+// Tutorial drafts are reset when the logic payload changes. Old normalized
+// drafts may already have converted retired condition IDs into the valid
+// Time Since Start fallback, so they cannot be safely migrated by shape alone.
+const TUTORIAL_STRATEGY_PREFIX = "arena-tutorial-strategy-v2-";
+const TUTORIAL_COMPLETION_PREFIX = "arena-tutorial-completion-v2-";
+const TUTORIAL_SOLUTION_PREFIX = "arena-tutorial-solution-v2-";
 const TUTORIAL_CHALLENGE_VERSION_PREFIX = "arena-tutorial-challenge-v2-";
 const RESET_TUTORIAL_CHALLENGE_IDS = new Set(["rotate", "lock-on", "dodge"]);
 
@@ -231,7 +235,7 @@ function sanitizeStrategyConfigurationForLoadout(configuration, loadoutId) {
         return {
             ...action,
             action: actionId,
-            actionTarget: actionId === "none" ? "opponent" : action.actionTarget,
+            selectable: actionId === "none" ? "opponent" : action.selectable,
         };
     };
     const sanitizeBlock = (block) => {
@@ -786,8 +790,8 @@ export default function Arena({
         const priorityStage = priorityGoal && tutorialChallenge?.initialRunComplete ? "final" : "initial";
         const priorityOrderCorrect = !priorityGoal
             || (priorityStage === "initial"
-                ? hasTutorialPriorityOrder(testingConfiguration, 19, 20)
-                : hasTutorialPriorityOrder(testingConfiguration, 20, 19));
+                ? hasTutorialPriorityOrder(testingConfiguration, TUTORIAL_ACTIONS.DASH, TUTORIAL_ACTIONS.LOCK_ON)
+                : hasTutorialPriorityOrder(testingConfiguration, TUTORIAL_ACTIONS.LOCK_ON, TUTORIAL_ACTIONS.DASH));
         setIsEditingArena(false);
         setIsAutoPlaying(true);
         setSelectedId(null);

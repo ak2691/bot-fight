@@ -40,25 +40,47 @@ public class ConditionResolutionService {
         int limit = Math.min(conditions.size(), MAX_TOTAL_CONDITIONS);
         for (int index = 0; index < limit; index += 1) {
             JsonNode condition = conditions.get(index);
-            String sharedTarget = textValue(field(condition, "target"), null);
+            String sharedSelectable = textValue(field(condition, "selectable"), null);
             String left = textValue(field(condition, "left"), "");
             JsonNode rightNode = field(condition, "right");
             String rightVariable = "variable".equals(textValue(field(rightNode, "type"), ""))
                     ? textValue(field(rightNode, "value"), "") : "";
             BotLogicContracts.VariableContract leftContract = BotLogicContracts.variableContract(left);
             BotLogicContracts.VariableContract rightContract = BotLogicContracts.variableContract(rightVariable);
-            String leftFallback = BotLogicContracts.defaultTargetForVariable(leftContract);
-            String rightFallback = BotLogicContracts.defaultTargetForVariable(rightContract);
-            String leftTarget = textValue(field(condition, "leftTarget"),
-                    sharedTarget != null ? sharedTarget : leftFallback);
-            String rightTarget = textValue(field(condition, "rightTarget"),
-                    sharedTarget != null ? sharedTarget : rightFallback);
+            String leftFallback = BotLogicContracts.defaultSelectableForVariable(leftContract);
+            String rightFallback = BotLogicContracts.defaultSelectableForVariable(rightContract);
+            String pairFirstFallback = BotLogicContracts.defaultSelectable1ForVariable(leftContract);
+            String pairSecondFallback = BotLogicContracts.defaultSelectable2ForVariable(leftContract);
+            String leftSelectable = leftContract != null && leftContract.isPairVariable()
+                    ? textValue(field(condition, "selectable1"),
+                            pairFirstFallback)
+                    : textValue(field(condition, "leftSelectable"),
+                            sharedSelectable != null ? sharedSelectable : leftFallback);
+            String pairSecondSelectable = leftContract != null && leftContract.isPairVariable()
+                    ? textValue(field(condition, "selectable2"),
+                            field(condition, "selectable1") == null
+                                    ? (sharedSelectable != null ? sharedSelectable : pairSecondFallback)
+                                    : pairSecondFallback)
+                    : null;
+            String rightSelectable = textValue(field(condition, "rightSelectable"),
+                    sharedSelectable != null ? sharedSelectable : rightFallback);
+            String normalizedSelectable = leftContract != null && leftContract.isPairVariable()
+                    ? normalizeSelectable(pairSecondSelectable, pairSecondFallback,
+                            leftContract.pairSelectableIdentities(1), leftContract)
+                    : normalizeSelectable(sharedSelectable, BotLogicContracts.SELECTABLE_OPPONENT, null, null);
             normalized.add(new Condition(
                     textValue(field(condition, "type"), ""),
                     numberValue(field(condition, "value"), 0.0),
-                    normalizeTarget(sharedTarget, BotLogicContracts.TARGET_OPPONENT, null),
-                    normalizeTarget(leftTarget, leftFallback, leftContract),
-                    normalizeTarget(rightTarget, rightFallback, rightContract),
+                    normalizedSelectable,
+                    normalizeSelectable(leftSelectable,
+                            leftContract != null && leftContract.isPairVariable() ? pairFirstFallback : leftFallback,
+                            leftContract != null && leftContract.isPairVariable()
+                                    ? leftContract.pairSelectableIdentities(0)
+                                    : leftContract == null ? null : leftContract.selectableIdentities(),
+                            leftContract),
+                    normalizeSelectable(rightSelectable, rightFallback,
+                            rightContract == null ? null : rightContract.selectableIdentities(),
+                            rightContract),
                     left,
                     abilityId(field(condition, "ability")),
                     textValue(field(condition, "statusEffect"), ""),
@@ -164,7 +186,7 @@ public class ConditionResolutionService {
             BotLogicContracts.VariableContract contract = BotLogicContracts.variableContract(condition.left());
             if (contract == null || !contract.circularAngle()) continue;
             StateValue left = resolveStateVariable(
-                    condition.left(), condition.leftTarget(), condition,
+                    condition.left(), condition.leftSelectable(), condition,
                     player, opponent, entities, arena);
             if (left == null || left.type() != ValueType.NUMBER || !Double.isFinite(left.numberValue())) continue;
             String key = angleConditionGroupKey(condition);
@@ -230,20 +252,20 @@ public class ConditionResolutionService {
         StateValue left = hasAngleOverride
                 ? StateValue.number(BotLogicContracts.truncateToNumberPrecision(angleOverrides.get(angleKey)))
                 : resolveStateVariable(
-                        condition.left(), condition.leftTarget(), condition,
+                        condition.left(), condition.leftSelectable(), condition,
                         player, opponent, entities, arena);
         if (left == null) return false;
-        if (leftContract != null && leftContract.requiresHealthTarget()
-                && !BotLogicContracts.targetSupportsCapability(condition.leftTarget(), BotLogicContracts.TARGET_CAPABILITY_HEALTH)) return false;
+        if (leftContract != null && leftContract.requiresHealthSelectable()
+                && !BotLogicContracts.selectableSupportsCapability(condition.leftSelectable(), BotLogicContracts.SELECTABLE_CAPABILITY_HEALTH)) return false;
         StateValue right = "variable".equals(condition.right().type())
-                ? resolveStateVariable(condition.right().valueText(), condition.rightTarget(), condition,
+                ? resolveStateVariable(condition.right().valueText(), condition.rightSelectable(), condition,
                         player, opponent, entities, arena)
                 : condition.right().toStateValue(left.type());
         if (right == null || left.type() != right.type()) return false;
         BotLogicContracts.VariableContract rightContract = "variable".equals(condition.right().type())
                 ? BotLogicContracts.variableContract(condition.right().valueText()) : null;
-        if (rightContract != null && rightContract.requiresHealthTarget()
-                && !BotLogicContracts.targetSupportsCapability(condition.rightTarget(), BotLogicContracts.TARGET_CAPABILITY_HEALTH)) return false;
+        if (rightContract != null && rightContract.requiresHealthSelectable()
+                && !BotLogicContracts.selectableSupportsCapability(condition.rightSelectable(), BotLogicContracts.SELECTABLE_CAPABILITY_HEALTH)) return false;
         return left.type() == ValueType.BOOLEAN
                 ? comparisonService.compareBooleans(left.booleanValue(), condition.comparator(), right.booleanValue())
                 : leftContract != null && leftContract.circularAngle()
@@ -256,7 +278,11 @@ public class ConditionResolutionService {
     }
 
     private static String angleConditionGroupKey(Condition condition) {
-        return condition.left() + "|" + condition.leftTarget();
+        BotLogicContracts.VariableContract contract = BotLogicContracts.variableContract(condition.left());
+        if (contract != null && contract.isPairVariable()) {
+            return condition.left() + "|" + condition.leftSelectable() + "|" + condition.selectable();
+        }
+        return condition.left() + "|" + condition.leftSelectable();
     }
 
     private static List<Double> angleRepresentations(double value) {
@@ -269,7 +295,7 @@ public class ConditionResolutionService {
 
     public StateValue resolveStateVariable(
             String variable,
-            String targetId,
+            String selectableId,
             Condition condition,
             Bot player,
             Bot opponent,
@@ -284,7 +310,7 @@ public class ConditionResolutionService {
                     : StateValue.number(BotLogicContracts.truncateToNumberPrecision(
                             value instanceof Number number ? number.doubleValue() : 0));
         }
-        return StateVariableResolver.resolve(variable, targetId, condition,
+        return StateVariableResolver.resolve(variable, selectableId, condition,
                 player, opponent, entities, arena, actionExecutionService);
     }
 
@@ -300,19 +326,17 @@ public class ConditionResolutionService {
         return Operand.number(numberValue(node.get("value"), 0.0));
     }
 
-    private static String normalizeTarget(String target, String fallback, BotLogicContracts.VariableContract variable) {
-        if (target == null) return fallback;
-        String candidate = variable != null && !variable.targetOrderable()
-                ? target.split(":", -1)[0] : target;
+    private static String normalizeSelectable(String selectable, String fallback,
+                                          java.util.Set<BotLogicContracts.SelectableIdentity> requiredSelectableIdentities,
+                                          BotLogicContracts.VariableContract variable) {
+        if (selectable == null) return fallback;
+        String candidate = variable != null && !variable.selectableOrderable()
+                ? selectable.split(":", -1)[0] : selectable;
         String base = candidate.split(":", -1)[0];
-        BotLogicContracts.TargetContract targetContract = BotLogicContracts.targetContract(base);
-        if (BotLogicContracts.isAllowedTarget(candidate)
-                && (variable == null || !variable.objectTargetOnly()
-                    || targetContract != null && targetContract.entityType() != null)
-                && (variable == null || !variable.requiresHealthTarget()
-                    || BotLogicContracts.targetSupportsCapability(candidate, BotLogicContracts.TARGET_CAPABILITY_HEALTH))
-                && (variable == null || !variable.botTargetOnly()
-                    || BotLogicContracts.TARGET_OPPONENT.equals(base))) return candidate;
+        if (BotLogicContracts.isAllowedSelectable(candidate)
+                && (variable == null || !variable.requiresHealthSelectable()
+                    || BotLogicContracts.selectableSupportsCapability(candidate, BotLogicContracts.SELECTABLE_CAPABILITY_HEALTH))
+                && BotLogicContracts.selectableMatchesIdentities(base, requiredSelectableIdentities)) return candidate;
         return fallback;
     }
 

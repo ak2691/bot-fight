@@ -14,12 +14,12 @@ import { ABILITY_CONTRACTS, abilityContract } from "./AbilityContracts.js";
 
 test("ability identities are stable numeric keys independent of array position", () => {
     assert.equal(ABILITIES[3].id, 3);
-    assert.equal(ABILITIES[3].name, "fire_gun");
-    assert.equal(ABILITIES[3].label, "Fire Gun");
+    assert.equal(ABILITIES[3].name, "gun");
+    assert.equal(ABILITIES[3].label, "Gun");
     assert.equal(ABILITIES[3].type, "ability");
-    assert.equal(abilityIdFromLegacyName("fire_gun"), 3);
+    assert.equal(abilityIdFromLegacyName("gun"), 3);
     assert.equal(abilityIdentity(3), ABILITIES[3]);
-    assert.equal(abilityName(3), "fire_gun");
+    assert.equal(abilityName(3), "gun");
 });
 
 test("numeric identity owns tuning and contracts", () => {
@@ -46,7 +46,7 @@ test("requested combat tuning is represented in the browser catalog", () => {
     assert.equal(ABILITY_STATS[8].cooldownMs, 10000);
     assert.equal(ABILITY_STATS[9].statuses.slow.durationMs, 1000);
     assert.equal(ABILITY_STATS[10].healing, 20);
-    assert.equal(ABILITY_STATS[11].damage, 20);
+    assert.equal(ABILITY_STATS[11].damage, 25);
     assert.equal(ABILITY_STATS[11].throwRange, 176);
     assert.equal(ABILITY_STATS[18].cooldownMs, 7000);
     assert.equal(ABILITY_STATS[18].windupMs, 300);
@@ -70,7 +70,7 @@ test("legacy names convert only through explicit allowlisted compatibility funct
     assert.equal(abilityId("3"), null);
     assert.equal(abilityId("fire_gun"), null);
     assert.equal(abilityIdFromLegacyName("fire_gun"), 3);
-    assert.equal(legacyAbilityNameFromId(3), "fire_gun");
+    assert.equal(legacyAbilityNameFromId(3), "gun");
     assert.equal(abilityIdFromLegacyName("constructor"), null);
     assert.equal(abilityIdFromLegacyName("unknown"), null);
 });

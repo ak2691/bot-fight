@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { hasTutorialPriorityOrder } from "./TutorialPresets.js";
+import { hasTutorialPriorityOrder, TUTORIAL_ACTIONS } from "./TutorialPresets.js";
+import { BOT_CODE_ACTIONS, BOT_CODE_SELECTABLES } from "../gameArena/botlogic/code/contracts/BotLogicContracts.js";
 
 const runComplete = ({ challenge }) => Boolean(challenge?.completed);
 
@@ -17,7 +18,7 @@ function branchesOf(configuration) {
 
 function actionsOf(branch) {
     if (Array.isArray(branch?.actions)) return branch.actions;
-    return branch?.action ? [{ action: branch.action, actionTarget: branch.actionTarget }] : [];
+    return branch?.action ? [{ action: branch.action, selectable: branch.selectable }] : [];
 }
 
 function hasAction(configuration, predicate) {
@@ -43,7 +44,7 @@ function hasVariableActionThatAddsOne(configuration) {
     const variable = customVariableNamed(configuration, "Variable 1");
     if (!variable) return false;
     return hasAction(configuration, (action) => {
-        if (action?.action !== "variable" || action.variableId !== variable.id) return false;
+        if (action?.action !== BOT_CODE_ACTIONS.VARIABLE || action.variableId !== variable.id) return false;
         if (action.operation === "add" && Number(action.value) === 1) return true;
         return (action.terms ?? []).some((term) => (
             term?.operator === "add"
@@ -53,20 +54,32 @@ function hasVariableActionThatAddsOne(configuration) {
     });
 }
 
-function numericCondition(condition, left, comparator, value, leftTarget = undefined) {
+function numericCondition(condition, left, comparator, value, leftSelectable = undefined) {
+    const pairVariable = [
+        "selectable.distance",
+        "selectable.absoluteBearing",
+        "selectable.relativeBearing",
+        "selectable.relativeBearingClockwise",
+        "selectable.relativeBearingCounterclockwise",
+    ].includes(left);
+    const selectableMatches = !leftSelectable
+        ? true
+        : pairVariable
+            ? condition?.selectable1 === BOT_CODE_SELECTABLES.MY && condition?.selectable2 === leftSelectable
+            : condition?.leftSelectable === leftSelectable;
     return condition?.type === "expression"
         && condition.left === left
         && condition.comparator === comparator
         && Number(condition.right?.value) === value
-        && (!leftTarget || condition.leftTarget === leftTarget);
+        && selectableMatches;
 }
 
 const always = (condition) => condition?.type === "always";
-const movement = (direction, target = "opponent") => (action) => (
-    action?.action === "move_walk"
+const movement = (direction, selectable = BOT_CODE_SELECTABLES.OPPONENT) => (action) => (
+    action?.action === BOT_CODE_ACTIONS.MOVE_WALK
     && (action.movementMode ?? "target") === "target"
     && Number(action.movementDirection ?? 0) === direction
-    && (action.actionTarget ?? "opponent") === target
+    && (action.selectable ?? BOT_CODE_SELECTABLES.OPPONENT) === selectable
 );
 
 const LESSONS = [
@@ -92,8 +105,8 @@ const LESSONS = [
         interactive: true,
         solution: true,
         objectives: [
-            { id: "retreat", label: "Add low-HP retreat", focus: "add-condition", hint: "When My HP is below 45, walk at 180° from the target. Click the green node to configure target.", complete: ({ configuration }) => hasConditionAndAction(configuration, (condition) => numericCondition(condition, "my.hp", "lt", 45), movement(180)) },
-            { id: "approach", label: "Add another conditional.", focus: "add-condition", hint: "When Target Distance is above 100, walk at 0° from the target.", complete: ({ configuration }) => hasConditionAndAction(configuration, (condition) => numericCondition(condition, "target.distance", "gt", 100, "opponent"), movement(0)) },
+            { id: "retreat", label: "Add low-HP retreat", focus: "add-condition", hint: "When Entity HP for My Bot is below 45, walk at 180° from the target. Click the green node to configure the target.", complete: ({ configuration }) => hasConditionAndAction(configuration, (condition) => numericCondition(condition, "selectable.hp", "lt", 45, BOT_CODE_SELECTABLES.MY), movement(180)) },
+            { id: "approach", label: "Add another conditional.", focus: "add-condition", hint: "When Distance Between Entities is above 100, walk at 0° from the target. Click the green node to configure the entity pair.", complete: ({ configuration }) => hasConditionAndAction(configuration, (condition) => numericCondition(condition, "selectable.distance", "gt", 100, BOT_CODE_SELECTABLES.OPPONENT), movement(0)) },
             { id: "run", label: "Run your bot", focus: "play", hint: "Close the workspace and press PLAY.", complete: runComplete },
         ],
     },
@@ -147,7 +160,7 @@ const LESSONS = [
         objectives: [
             { id: "challenge", label: "Survive for 3 seconds", focus: "play", hint: "Press PLAY and stay clear until the grenade detonates.", complete: runComplete },
         ],
-        workspaceCoach: { eyebrow: "DODGE THE GRENADE", title: "Dash clear", copy: "Target Opponent 1 and set Dash to 90° relative to it. Then run the bot.", focus: "add-action" },
+        workspaceCoach: { eyebrow: "DODGE THE GRENADE", title: "Dash clear", copy: "Target Opponent and set Dash to 90° relative to it. Then run the bot.", focus: "add-action" },
     },
     {
         lessonNumber: "7",
@@ -223,7 +236,7 @@ const LESSONS = [
         challenge: true,
         objectives: [
             { id: "initial-run", label: "Run Dash before Lock On", focus: "play", hint: "Press PLAY with Dash at priority 1 and Lock On at priority 2. The first run shows the original order.", complete: ({ challenge }) => Boolean(challenge?.initialRunComplete) },
-            { id: "swap", label: "Swap the two priorities", focus: "search-roots", hint: "Change Dash to priority 2 or Lock On to priority 1. The roots stay in place; only their priority changes.", complete: ({ configuration, challenge }) => Boolean(challenge?.initialRunComplete) && hasTutorialPriorityOrder(configuration, 20, 19) },
+            { id: "swap", label: "Swap the two priorities", focus: "search-roots", hint: "Change Dash to priority 2 or Lock On to priority 1. The roots stay in place; only their priority changes.", complete: ({ configuration, challenge }) => Boolean(challenge?.initialRunComplete) && hasTutorialPriorityOrder(configuration, TUTORIAL_ACTIONS.LOCK_ON, TUTORIAL_ACTIONS.DASH) },
             { id: "final-run", label: "Run Lock On before Dash", focus: "play", hint: "Press PLAY again. With Lock On at priority 1, it activates before Dash.", complete: runComplete },
         ],
         workspaceCoach: {
@@ -240,7 +253,7 @@ const LESSONS = [
                     title: "Change the execution order",
                     copy: "Priority decides which ready ability is chosen first. Change Dash to priority 2 or Lock On to priority 1. This changes priority only; it does not move either root or any node.",
                     focus: "search-roots",
-                    complete: ({ configuration, challenge }) => Boolean(challenge?.initialRunComplete) && hasTutorialPriorityOrder(configuration, 20, 19),
+                    complete: ({ configuration, challenge }) => Boolean(challenge?.initialRunComplete) && hasTutorialPriorityOrder(configuration, TUTORIAL_ACTIONS.LOCK_ON, TUTORIAL_ACTIONS.DASH),
                 },
                 {
                     eyebrow: "PRIORITY ORDER",

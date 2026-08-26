@@ -1041,7 +1041,7 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
         const halfArc = Number(stats.arcDegrees) / 2;
         const sweep = heavySlashRotation(originRotation, sweepAngle(remaining, duration, -halfArc, halfArc));
         showSlashEffect(view, arenaSprites.abilities.heavySlash, remaining, duration, sweep, ABILITY_STATS[1].range * 2.4, 0xffffff, opacity);
-    } else if ([12, 9, 13].includes(visual)) {
+    } else if ([3, 12, 9, 13].includes(visual)) {
         const height = visual === 13 ? 100 : visual === 9 ? 76 : 14;
         showAbilityRayEffect(view, "ability", arenaSprites, position, originX, originY, originRotation, visual, Number(stats.range ?? 500), opacity, height);
         showMuzzleFlash(view, arenaSprites, position, originX, originY, originRotation, opacity, Number(shape.size ?? 60));

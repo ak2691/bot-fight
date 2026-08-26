@@ -75,23 +75,6 @@ public class PuzzleService {
     private static final double BASE_BOT_HP = 150;
     private static final String PUZZLE_LOGIC_VERSION = "bot-logic-tree-v1";
     private static final String PUZZLE_VARIABLE_PREFIX = "custom.puzzle.";
-    private static final Set<String> ALLOWED_CONDITION_SUBJECTS = Set.of(
-            "opponent.hp",
-            "player.hp",
-            "time.elapsedMs",
-            "player.damageTaken",
-            "opponent.damageTaken",
-            "player.hitsLanded",
-            "opponent.hitsLanded",
-            "player.abilityUses",
-            "opponent.abilityUses",
-            "player.alive",
-            "opponent.alive",
-            "player.customVariable",
-            "opponent.customVariable");
-    private static final Set<String> ALLOWED_CONDITION_OPERATORS = Set.of("lt", "lte", "eq", "gte", "gt");
-    private static final Set<String> BOOLEAN_CONDITION_SUBJECTS = Set.of("player.alive", "opponent.alive");
-    private static final Set<String> CUSTOM_VARIABLE_CONDITION_SUBJECTS = Set.of("player.customVariable", "opponent.customVariable");
 
     private final PuzzleRepository puzzleRepository;
     private final PuzzleCompletionRepository puzzleCompletionRepository;
@@ -413,9 +396,8 @@ public class PuzzleService {
         validateConditionArray(loseConditions, "loseConditions", errors);
         JsonNode logicConfiguration = request == null ? null : request.getLogicConfiguration();
         if (logicConfiguration == null || logicConfiguration.isNull()) {
-            logicConfiguration = legacyLogicConfiguration(winConditions, loseConditions);
-        }
-        if (isBotLogicConfiguration(logicConfiguration)) {
+            errors.add("logicConfiguration must be an object");
+        } else {
             validatePuzzleLogicConfiguration(logicConfiguration, errors);
         }
 
@@ -450,52 +432,6 @@ public class PuzzleService {
                 logicConfiguration,
                 playerBot,
                 opponentBot);
-    }
-
-    private boolean isBotLogicConfiguration(JsonNode configuration) {
-        return configuration != null && configuration.isObject()
-                && !configuration.path("legacy").asBoolean(false);
-    }
-
-    private JsonNode legacyLogicConfiguration(JsonNode winConditions, JsonNode loseConditions) {
-        if (containsLegacyCondition(winConditions) || containsLegacyCondition(loseConditions)) {
-            return jsonMapper.createObjectNode().put("legacy", true);
-        }
-        ObjectNode configuration = jsonMapper.createObjectNode();
-        configuration.put("version", PUZZLE_LOGIC_VERSION);
-        configuration.putArray("customVariables");
-        ArrayNode roots = configuration.putArray("roots");
-        addLegacyLogicRoot(roots, "root-1", "Win Condition", "win", winConditions);
-        addLegacyLogicRoot(roots, "root-2", "Lose Condition", "lose", loseConditions);
-        return configuration;
-    }
-
-    private boolean containsLegacyCondition(JsonNode conditions) {
-        if (conditions == null || !conditions.isArray()) return false;
-        for (JsonNode condition : conditions) {
-            if (condition != null && condition.isObject() && condition.has("subject")) return true;
-        }
-        return false;
-    }
-
-    private void addLegacyLogicRoot(
-            ArrayNode roots,
-            String id,
-            String name,
-            String kind,
-            JsonNode conditions) {
-        ObjectNode root = roots.addObject();
-        root.put("id", id);
-        root.put("name", name);
-        root.put("kind", kind);
-        root.put("createdOrder", roots.size() - 1);
-        ObjectNode branch = root.putArray("branches").addObject();
-        branch.put("id", id + "-1-1");
-        branch.put("branchType", "if");
-        branch.put("createdOrder", 0);
-        branch.set("conditions", conditions == null ? jsonMapper.createArrayNode() : conditions);
-        branch.putArray("actions");
-        branch.putArray("children");
     }
 
     private void validatePuzzleLogicConfiguration(JsonNode configuration, List<String> errors) {
@@ -828,47 +764,7 @@ public class PuzzleService {
     }
 
     private void validateCondition(JsonNode condition, String path, List<String> errors) {
-        JsonNode subjectNode = condition.get("subject");
-        if (subjectNode != null) {
-            validateLegacyCondition(condition, path, errors);
-            return;
-        }
-
         validateBotCondition(condition, path, errors);
-    }
-
-    private void validateLegacyCondition(JsonNode condition, String path, List<String> errors) {
-        JsonNode subjectNode = condition.get("subject");
-        if (subjectNode == null || !subjectNode.isTextual() || !ALLOWED_CONDITION_SUBJECTS.contains(subjectNode.asText())) {
-            errors.add(path + ".subject is not supported");
-            return;
-        }
-
-        String subject = subjectNode.asText();
-        JsonNode id = condition.get("id");
-        if (id != null && (!id.isTextual() || id.asText().length() > 100)) {
-            errors.add(path + ".id must be a string of at most 100 characters");
-        }
-        JsonNode operatorNode = condition.get("operator");
-        if (operatorNode == null || !operatorNode.isTextual() || !ALLOWED_CONDITION_OPERATORS.contains(operatorNode.asText())) {
-            errors.add(path + ".operator is not supported");
-        } else if (BOOLEAN_CONDITION_SUBJECTS.contains(subject) && !"eq".equals(operatorNode.asText())) {
-            errors.add(path + ".operator must be eq for boolean subjects");
-        }
-
-        JsonNode value = condition.get("value");
-        if (BOOLEAN_CONDITION_SUBJECTS.contains(subject)) {
-            if (value == null || !value.isBoolean()) errors.add(path + ".value must be boolean");
-        } else if (value == null || !value.isNumber() || !Double.isFinite(value.asDouble()) || Math.abs(value.asDouble()) > MAX_CONDITION_NUMBER) {
-            errors.add(path + ".value must be a finite number");
-        }
-
-        if (CUSTOM_VARIABLE_CONDITION_SUBJECTS.contains(subject)) {
-            JsonNode variableId = condition.get("variableId");
-            if (variableId == null || !variableId.isTextual() || variableId.asText().isBlank() || variableId.asText().length() > 100) {
-                errors.add(path + ".variableId must be a non-empty string of at most 100 characters");
-            }
-        }
     }
 
     private void validateBotCondition(JsonNode condition, String path, List<String> errors) {
@@ -902,8 +798,23 @@ public class PuzzleService {
             errors.add(path + ".comparator is not supported for this variable");
         }
 
-        validateConditionTarget(condition.get("target"), path + ".target", null, errors);
-        validateConditionTarget(condition.get("leftTarget"), path + ".leftTarget", leftContract, errors);
+        validateConditionSelectable(condition.get("selectable"), path + ".selectable", null, null, errors);
+        validateConditionSelectable(condition.get("selectable1"), path + ".selectable1", null, null, errors);
+        validateConditionSelectable(condition.get("selectable2"), path + ".selectable2", null, null, errors);
+        if (leftContract != null && leftContract.isPairVariable()) {
+            JsonNode selectable1 = condition.has("selectable1")
+                    ? condition.get("selectable1") : textNode(BotLogicContracts.defaultSelectable1ForVariable(leftContract));
+            JsonNode selectable2 = condition.has("selectable2")
+                    ? condition.get("selectable2")
+                    : condition.has("selectable") ? condition.get("selectable")
+                        : textNode(BotLogicContracts.defaultSelectable2ForVariable(leftContract));
+            validateConditionSelectable(selectable1, path + ".selectable1", leftContract.pairSelectableIdentities(0), leftContract, errors);
+            validateConditionSelectable(selectable2, path + ".selectable2", leftContract.pairSelectableIdentities(1), leftContract, errors);
+        } else {
+            validateConditionSelectable(condition.get("leftSelectable"), path + ".leftSelectable",
+                    leftContract == null ? null : leftContract.selectableIdentities(),
+                    leftContract, errors);
+        }
 
         validateConditionSelection(condition, path, leftContract, errors);
 
@@ -922,8 +833,9 @@ public class PuzzleService {
             if (rightContract != null && !"number".equals(BotLogicContracts.variableValueType(rightId))) {
                 errors.add(path + ".right.value must reference a numeric variable");
             }
-            validateConditionTarget(right.get("target"), path + ".right.target", null, errors);
-            validateConditionTarget(right.get("rightTarget"), path + ".rightTarget", rightContract, errors);
+            validateConditionSelectable(right.get("rightSelectable"), path + ".rightSelectable",
+                    rightContract == null ? null : rightContract.selectableIdentities(),
+                    rightContract, errors);
             return;
         }
         if ("boolean".equals(rightType)) {
@@ -979,20 +891,32 @@ public class PuzzleService {
         }
     }
 
-    private void validateConditionTarget(
-            JsonNode target,
+    private void validateConditionSelectable(
+            JsonNode selectable,
             String path,
+            Set<BotLogicContracts.SelectableIdentity> requiredSelectableIdentities,
             BotLogicContracts.VariableContract variable,
             List<String> errors) {
-        if (target == null) return;
-        if (!target.isTextual() || target.asText().length() > 100 || !BotLogicContracts.isAllowedTarget(target.asText())) {
-            errors.add(path + " is not a supported target");
+        if (selectable == null) return;
+        if (!selectable.isTextual() || selectable.asText().length() > 100 || !BotLogicContracts.isAllowedSelectable(selectable.asText())) {
+            errors.add(path + " is not a supported selectable");
             return;
         }
-        if (variable != null && variable.requiresHealthTarget()
-                && !BotLogicContracts.targetSupportsCapability(target.asText(), BotLogicContracts.TARGET_CAPABILITY_HEALTH)) {
-            errors.add(path + " must target a health-bearing entity");
+        if (variable != null && variable.requiresHealthSelectable()
+                && !BotLogicContracts.selectableSupportsCapability(selectable.asText(), BotLogicContracts.SELECTABLE_CAPABILITY_HEALTH)) {
+            errors.add(path + " must reference a health-bearing selectable");
         }
+        String base = selectable.asText().split(":", -1)[0];
+        if (variable != null && !variable.selectableOrderable() && selectable.asText().contains(":")) {
+            errors.add(path + " does not support selectable ordering");
+        }
+        if (!BotLogicContracts.selectableMatchesIdentities(base, requiredSelectableIdentities)) {
+            errors.add(path + " does not provide the selectable identities required by this variable");
+        }
+    }
+
+    private static JsonNode textNode(String value) {
+        return tools.jackson.databind.node.TextNode.valueOf(value);
     }
 
     private boolean isCustomVariableId(String value) {

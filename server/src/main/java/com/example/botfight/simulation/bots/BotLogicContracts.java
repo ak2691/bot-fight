@@ -22,7 +22,8 @@ public final class BotLogicContracts {
 
     public static final String CONDITION_ALWAYS = "always";
     public static final String CONDITION_EXPRESSION = "expression";
-    public static final String TARGET_OPPONENT = "opponent";
+    public static final String SELECTABLE_MY = "my_bot";
+    public static final String SELECTABLE_OPPONENT = "opponent";
     public static final String CUSTOM_VARIABLE_PREFIX = "custom.";
     public static final String CUSTOM_VARIABLE_OPERATION_SET = "set";
     public static final String CUSTOM_VARIABLE_OPERATION_ADD = "add";
@@ -34,35 +35,53 @@ public final class BotLogicContracts {
     public static final int NUMBER_DECIMAL_PLACES = 1;
     public static final double CUSTOM_NUMBER_LIMIT = 99_999.0;
     public static final String VARIABLE_TAG_ALLOW_NEGATIVE_INTEGER = "allow-negative-integer";
-    public static final String TARGET_CAPABILITY_HEALTH = "health";
+    public static final String SELECTABLE_CAPABILITY_HEALTH = "health";
 
     public enum ActionHead { NONE, VARIABLE, MOVEMENT, ROTATION, ABILITY }
     public enum ValueType { NUMBER, BOOLEAN }
-    public enum VariableScope { NONE, MY, OPPONENT, TARGET }
+    public enum VariableScope { NONE, SELECTABLE }
+    public enum VariableSelectableType {
+        PAIR("Variable_Pair");
+
+        private final String id;
+
+        VariableSelectableType(String id) { this.id = id; }
+        public String id() { return id; }
+    }
+    public enum SelectableIdentity {
+        BOT("bot"),
+        ABILITY_ENTITY("ability-entity"),
+        POSITION("position"),
+        HEALTH("health"),
+        FACING("facing"),
+        MOVEMENT("movement");
+
+        private final String id;
+        SelectableIdentity(String id) { this.id = id; }
+        public String id() { return id; }
+    }
+    public enum SelectableDependency { ABILITY_LOADOUT, STATUS_EFFECT_LOADOUT }
     public enum VariableSource {
         MATCH_ELAPSED_SECONDS,
-        BOT_HP,
-        BOT_DAMAGE_TAKEN_LAST_TICK,
-        BOT_HP_NET_CHANGE_LAST_TICK,
-        BOT_X,
-        BOT_Y,
-        TARGET_DISTANCE,
-        TARGET_HP,
-        TARGET_BEARING_FROM_ME,
-        TARGET_MOVEMENT_DIRECTION,
-        TARGET_SPEED,
-        BEARING_FROM_TARGET,
-        TARGET_RELATIVE_BEARING,
-        TARGET_RELATIVE_BEARING_CLOCKWISE,
-        TARGET_RELATIVE_BEARING_COUNTERCLOCKWISE,
-        TARGET_FACING,
-        TARGET_COUNT,
-        TARGET_AGE,
-        BOT_EDGE_DISTANCE,
-        TARGET_EDGE_DISTANCE,
-        BOT_CLOSING_ZONE_EDGE_DISTANCE,
-        TARGET_EXISTS,
-        TARGET_ALIVE,
+        SELECTABLE_DISTANCE,
+        SELECTABLE_DAMAGE_TAKEN_LAST_TICK,
+        SELECTABLE_HP_NET_CHANGE_LAST_TICK,
+        SELECTABLE_X,
+        SELECTABLE_Y,
+        SELECTABLE_HP,
+        SELECTABLE_ABSOLUTE_BEARING,
+        SELECTABLE_MOVEMENT_DIRECTION,
+        SELECTABLE_SPEED,
+        SELECTABLE_RELATIVE_BEARING,
+        SELECTABLE_RELATIVE_BEARING_CLOCKWISE,
+        SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE,
+        SELECTABLE_FACING,
+        SELECTABLE_COUNT,
+        SELECTABLE_AGE,
+        SELECTABLE_EDGE_DISTANCE,
+        SELECTABLE_CLOSING_ZONE_EDGE_DISTANCE,
+        SELECTABLE_EXISTS,
+        SELECTABLE_ALIVE,
         SELECTED_ABILITY_READY,
         SELECTED_ABILITY_ACTIVE,
         SELECTED_ABILITY_ACTIVE_MS,
@@ -80,11 +99,17 @@ public final class BotLogicContracts {
                                  boolean locationTarget, boolean orientationConfig,
                                  boolean angleTarget, String targetMode) {}
 
-    public record TargetContract(String id, EntityContracts.TargetOwner owner,
+    public record SelectableContract(String id, EntityContracts.SelectableOwner owner,
                                  String entityType, String runtimeType, int abilityId,
-                                 boolean healthBearing) {}
+                                 Set<SelectableIdentity> selectableIdentities) {
+        public SelectableContract {
+            selectableIdentities = selectableIdentities == null ? Set.of() : Set.copyOf(selectableIdentities);
+        }
+        public boolean hasIdentity(SelectableIdentity identity) { return selectableIdentities.contains(identity); }
+        public boolean healthBearing() { return hasIdentity(SelectableIdentity.HEALTH); }
+    }
 
-    public record VariableContract(String id, ValueType valueType, boolean supportsTarget,
+    public record VariableContract(String id, ValueType valueType, boolean supportsSelectable,
                                    VariableScope scope, VariableSource source, Set<String> tags) {
         public VariableContract {
             tags = tags == null ? Set.of() : Set.copyOf(tags);
@@ -106,45 +131,78 @@ public final class BotLogicContracts {
                     || source == VariableSource.SELECTED_STATUS_EFFECT_DURATION_MS;
         }
 
+        public SelectableDependency selectableDependency() {
+            if (requiresAbility()) return SelectableDependency.ABILITY_LOADOUT;
+            if (requiresStatusEffect()) return SelectableDependency.STATUS_EFFECT_LOADOUT;
+            return null;
+        }
+
+        public Set<SelectableIdentity> selectableIdentities() {
+            if (isPairVariable()) return Set.of();
+            if (requiresAbility() || requiresStatusEffect()) return Set.of(SelectableIdentity.BOT);
+            if (source == VariableSource.SELECTABLE_FACING) return Set.of(SelectableIdentity.FACING);
+            if (source == VariableSource.SELECTABLE_COUNT || source == VariableSource.SELECTABLE_AGE
+                    || source == VariableSource.SELECTABLE_EXISTS) return Set.of(SelectableIdentity.ABILITY_ENTITY);
+            return Set.of();
+        }
+
+        public Set<SelectableIdentity> pairSelectableIdentities(int slot) {
+            if (!isPairVariable()) return selectableIdentities();
+            return slot == 0 && isBearingVariable()
+                    ? Set.of(SelectableIdentity.FACING)
+                    : Set.of();
+        }
+
         public boolean allowsNegativeInteger() {
             return tags.contains(VARIABLE_TAG_ALLOW_NEGATIVE_INTEGER);
         }
 
-        public boolean requiresHealthTarget() {
-            return source == VariableSource.TARGET_HP || source == VariableSource.TARGET_ALIVE;
+        public boolean requiresHealthSelectable() {
+            // Selectable HP/alive intentionally accept every selectable. Selectables
+            // without a hittable health component resolve to zero/false.
+            return false;
         }
 
-        public boolean botTargetOnly() {
-            return source == VariableSource.TARGET_FACING;
+        public boolean isPairVariable() {
+            return source == VariableSource.SELECTABLE_DISTANCE
+                    || source == VariableSource.SELECTABLE_ABSOLUTE_BEARING
+                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING
+                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING_CLOCKWISE
+                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE;
         }
 
-        public boolean objectTargetOnly() {
-            return source == VariableSource.TARGET_COUNT
-                    || source == VariableSource.TARGET_AGE
-                    || source == VariableSource.TARGET_EXISTS;
+        /** The contract type for a single selectable, or PAIR for two selectable slots. */
+        public VariableSelectableType selectableType() {
+            return isPairVariable() ? VariableSelectableType.PAIR : null;
         }
 
-        public boolean targetOrderable() {
-            return source != VariableSource.TARGET_COUNT;
+        private boolean isBearingVariable() {
+            return source == VariableSource.SELECTABLE_ABSOLUTE_BEARING
+                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING
+                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING_CLOCKWISE
+                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE;
+        }
+
+        public boolean selectableOrderable() {
+            return source != VariableSource.SELECTABLE_COUNT;
         }
 
         public boolean angle() {
-            return source == VariableSource.TARGET_BEARING_FROM_ME
-                    || source == VariableSource.TARGET_MOVEMENT_DIRECTION
-                    || source == VariableSource.BEARING_FROM_TARGET
-                    || source == VariableSource.TARGET_RELATIVE_BEARING
-                    || source == VariableSource.TARGET_RELATIVE_BEARING_CLOCKWISE
-                    || source == VariableSource.TARGET_RELATIVE_BEARING_COUNTERCLOCKWISE
-                    || source == VariableSource.TARGET_FACING;
+            return source == VariableSource.SELECTABLE_ABSOLUTE_BEARING
+                    || source == VariableSource.SELECTABLE_MOVEMENT_DIRECTION
+                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING
+                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING_CLOCKWISE
+                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE
+                    || source == VariableSource.SELECTABLE_FACING;
         }
 
         public boolean circularAngle() {
-            return angle() && source != VariableSource.TARGET_RELATIVE_BEARING;
+            return angle() && source != VariableSource.SELECTABLE_RELATIVE_BEARING;
         }
 
         public boolean nonNegativeTime() {
             return source == VariableSource.MATCH_ELAPSED_SECONDS
-                    || source == VariableSource.TARGET_AGE;
+                    || source == VariableSource.SELECTABLE_AGE;
         }
 
         public boolean durationSeconds() {
@@ -162,10 +220,10 @@ public final class BotLogicContracts {
             ACTION_MOVE_WALK, new ActionContract(ActionHead.MOVEMENT, false, true, true, false, false, false, null),
             ACTION_ROTATE_TOWARD_TARGET, new ActionContract(ActionHead.ROTATION, false, false, true, false, false, true, "target"));
 
-    private static final Map<String, TargetContract> TARGETS = targets();
+    private static final Map<String, SelectableContract> SELECTABLES = selectables();
     private static final Map<String, VariableContract> VARIABLES = variables();
     private static final Set<String> STATUS_EFFECTS = buildStatusEffects();
-    private static final Set<String> TARGET_ORDERS = Set.of("closest", "farthest", "oldest", "newest");
+    private static final Set<String> SELECTABLE_ORDERS = Set.of("closest", "farthest", "oldest", "newest");
     private static final Set<String> MOVEMENT_MODES = Set.of("target", "coordinates", "absolute");
     private static final Set<String> ABSOLUTE_DIRECTIONS = Set.of(
             "north", "south", "east", "west", "northeast", "northwest", "southeast", "southwest", "stop");
@@ -188,31 +246,37 @@ public final class BotLogicContracts {
         return value >= 0.0 ? (long) Math.floor(value) : (long) Math.ceil(value);
     }
 
-    public static Map<String, TargetContract> targets() {
-        Map<String, TargetContract> targets = new LinkedHashMap<>();
-        targets.put(TARGET_OPPONENT, new TargetContract(
-                TARGET_OPPONENT, EntityContracts.TargetOwner.OWNER, null, null, 0, true));
+    public static Map<String, SelectableContract> selectables() {
+        Map<String, SelectableContract> selectables = new LinkedHashMap<>();
+        selectables.put(SELECTABLE_MY, new SelectableContract(
+                SELECTABLE_MY, EntityContracts.SelectableOwner.OWNER, null, null, 0,
+                Set.of(SelectableIdentity.BOT, SelectableIdentity.POSITION, SelectableIdentity.HEALTH,
+                        SelectableIdentity.FACING, SelectableIdentity.MOVEMENT)));
+        selectables.put(SELECTABLE_OPPONENT, new SelectableContract(
+                SELECTABLE_OPPONENT, EntityContracts.SelectableOwner.OWNER, null, null, 0,
+                Set.of(SelectableIdentity.BOT, SelectableIdentity.POSITION, SelectableIdentity.HEALTH,
+                        SelectableIdentity.FACING, SelectableIdentity.MOVEMENT)));
         for (EntityContract entity : EntityContracts.all().values()) {
-            if (entity.targetOwner() == EntityContracts.TargetOwner.NONE) {
-                targets.put(entity.entityType(), target(entity, entity.entityType()));
+            if (entity.selectableOwner() == EntityContracts.SelectableOwner.NONE) {
+                selectables.put(entity.entityType(), selectable(entity, entity.entityType()));
                 continue;
             }
-            targets.put("opponent_" + entity.entityType(), target(entity, "opponent_" + entity.entityType()));
-            targets.put("my_" + entity.entityType(), target(entity, "my_" + entity.entityType()));
+            selectables.put("opponent_" + entity.entityType(), selectable(entity, "opponent_" + entity.entityType()));
+            selectables.put("my_" + entity.entityType(), selectable(entity, "my_" + entity.entityType()));
         }
-        return Collections.unmodifiableMap(targets);
+        return Collections.unmodifiableMap(selectables);
     }
 
-    public static Map<String, TargetContract> targetContracts() { return TARGETS; }
-    public static TargetContract targetContract(String id) { return TARGETS.get(id); }
-    public static Set<String> targetIds() { return TARGETS.keySet(); }
+    public static Map<String, SelectableContract> selectableContracts() { return SELECTABLES; }
+    public static SelectableContract selectableContract(String id) { return SELECTABLES.get(id); }
+    public static Set<String> selectableIds() { return SELECTABLES.keySet(); }
 
-    public static boolean isAllowedTarget(String target) {
-        if (target == null) return false;
-        if (TARGETS.containsKey(target)) return true;
-        String[] parts = target.split(":", -1);
-        if (parts.length != 3 || !TARGETS.containsKey(parts[0]) || TARGET_OPPONENT.equals(parts[0])) return false;
-        if (!TARGET_ORDERS.contains(parts[1])) return false;
+    public static boolean isAllowedSelectable(String selectableId) {
+        if (selectableId == null) return false;
+        if (SELECTABLES.containsKey(selectableId)) return true;
+        String[] parts = selectableId.split(":", -1);
+        if (parts.length != 3 || !SELECTABLES.containsKey(parts[0]) || isBotSelectable(parts[0])) return false;
+        if (!SELECTABLE_ORDERS.contains(parts[1])) return false;
         try {
             int ordinal = Integer.parseInt(parts[2]);
             return ordinal >= 1 && ordinal <= 100;
@@ -221,13 +285,20 @@ public final class BotLogicContracts {
         }
     }
 
-    public static boolean targetSupportsCapability(String target, String capability) {
-        if (TARGET_CAPABILITY_HEALTH.equals(capability)) {
-            String base = target == null ? "" : target.split(":", -1)[0];
-            TargetContract contract = TARGETS.get(base);
+    public static boolean selectableSupportsCapability(String selectableId, String capability) {
+        if (SELECTABLE_CAPABILITY_HEALTH.equals(capability)) {
+            String base = selectableId == null ? "" : selectableId.split(":", -1)[0];
+            SelectableContract contract = SELECTABLES.get(base);
             return contract != null && contract.healthBearing();
         }
         return true;
+    }
+
+    public static boolean selectableMatchesIdentities(String selectableId, Set<SelectableIdentity> identities) {
+        if (identities == null || identities.isEmpty()) return true;
+        String base = selectableId == null ? "" : selectableId.split(":", -1)[0];
+        SelectableContract contract = SELECTABLES.get(base);
+        return contract != null && contract.selectableIdentities().containsAll(identities);
     }
 
     public static ActionContract actionContract(Object action) {
@@ -277,19 +348,34 @@ public final class BotLogicContracts {
         return contract == null ? null : contract.valueType() == ValueType.BOOLEAN ? "boolean" : "number";
     }
     public static boolean isKnownVariable(String variable) { return variableContract(variable) != null; }
-    public static boolean variableUsesTarget(String variable) {
+    public static boolean variableUsesSelectable(String variable) {
         VariableContract contract = variableContract(variable);
-        return contract != null && contract.supportsTarget();
+        return contract != null && contract.supportsSelectable();
     }
 
-    public static String defaultTargetForVariable(VariableContract variable) {
-        if (variable != null && variable.objectTargetOnly()) {
-            return TARGETS.keySet().stream()
-                    .filter(target -> !TARGET_OPPONENT.equals(target))
-                    .findFirst()
-                    .orElse(TARGET_OPPONENT);
+    public static String defaultSelectableForVariable(VariableContract variable) {
+        if (variable != null && (variable.requiresAbility() || variable.requiresStatusEffect())) {
+            return SELECTABLE_MY;
         }
-        return TARGET_OPPONENT;
+        if (variable != null && variable.selectableIdentities().contains(SelectableIdentity.ABILITY_ENTITY)) {
+            return SELECTABLES.keySet().stream()
+                    .filter(selectableId -> selectableContract(selectableId) != null && selectableContract(selectableId).entityType() != null)
+                    .findFirst()
+                    .orElse(SELECTABLE_OPPONENT);
+        }
+        return SELECTABLE_OPPONENT;
+    }
+
+    public static String defaultSelectable1ForVariable(VariableContract variable) {
+        return variable != null && variable.isPairVariable() ? SELECTABLE_MY : defaultSelectableForVariable(variable);
+    }
+
+    public static String defaultSelectable2ForVariable(VariableContract variable) {
+        return variable != null && variable.isPairVariable() ? SELECTABLE_OPPONENT : defaultSelectableForVariable(variable);
+    }
+
+    public static boolean isBotSelectable(String selectableId) {
+        return SELECTABLE_MY.equals(selectableId) || SELECTABLE_OPPONENT.equals(selectableId);
     }
 
     public static Set<String> statusEffects() { return STATUS_EFFECTS; }
@@ -300,7 +386,7 @@ public final class BotLogicContracts {
                 CUSTOM_VARIABLE_OPERATION_SUBTRACT,
                 CUSTOM_VARIABLE_OPERATION_MODULO).contains(operation);
     }
-    public static Set<String> targetOrders() { return TARGET_ORDERS; }
+    public static Set<String> selectableOrders() { return SELECTABLE_ORDERS; }
     public static Set<String> movementModes() { return MOVEMENT_MODES; }
     public static Set<String> absoluteDirections() { return ABSOLUTE_DIRECTIONS; }
     public static boolean isAbsoluteWalkDirection(String direction) {
@@ -351,65 +437,55 @@ public final class BotLogicContracts {
     public static Set<String> numericComparators() { return NUMERIC_COMPARATORS; }
     public static Set<String> booleanComparators() { return BOOLEAN_COMPARATORS; }
 
-    private static TargetContract target(EntityContract entity, String id) {
-        return new TargetContract(id, entity.targetOwner(), entity.entityType(), entity.runtimeType(), entity.abilityId(), entity.health() != null);
+    private static SelectableContract selectable(EntityContract entity, String id) {
+        Set<SelectableIdentity> identities = new LinkedHashSet<>();
+        identities.add(SelectableIdentity.ABILITY_ENTITY);
+        identities.add(SelectableIdentity.POSITION);
+        if (entity.health() != null && entity.collider() != null && entity.collider().hittable()) {
+            identities.add(SelectableIdentity.HEALTH);
+        }
+        if (entity.abilityId() == 17 || entity.abilityId() == 31) {
+            identities.add(SelectableIdentity.FACING);
+            identities.add(SelectableIdentity.MOVEMENT);
+        }
+        return new SelectableContract(id, entity.selectableOwner(), entity.entityType(), entity.runtimeType(), entity.abilityId(),
+                identities);
     }
 
     private static Map<String, VariableContract> variables() {
         Map<String, VariableContract> variables = new LinkedHashMap<>();
         addNumbers(variables, VariableSource.MATCH_ELAPSED_SECONDS, VariableScope.NONE, "match.elapsedSeconds");
-        addNumbers(variables, VariableSource.BOT_HP, VariableScope.MY, "my.hp");
-        addNumbers(variables, VariableSource.BOT_DAMAGE_TAKEN_LAST_TICK, VariableScope.MY, "my.damageTakenLastTick");
-        addNumbers(variables, VariableSource.BOT_HP_NET_CHANGE_LAST_TICK, VariableScope.MY,
-                Set.of(VARIABLE_TAG_ALLOW_NEGATIVE_INTEGER), "my.hpNetChangeLastTick");
-        addNumbers(variables, VariableSource.BOT_X, VariableScope.MY, "my.x");
-        addNumbers(variables, VariableSource.BOT_Y, VariableScope.MY, "my.y");
-        addNumbers(variables, VariableSource.BOT_HP, VariableScope.OPPONENT, "opponent.hp");
-        addNumbers(variables, VariableSource.BOT_DAMAGE_TAKEN_LAST_TICK, VariableScope.OPPONENT, "opponent.damageTakenLastTick");
-        addNumbers(variables, VariableSource.BOT_HP_NET_CHANGE_LAST_TICK, VariableScope.OPPONENT,
-                Set.of(VARIABLE_TAG_ALLOW_NEGATIVE_INTEGER), "opponent.hpNetChangeLastTick");
-        addNumbers(variables, VariableSource.BOT_X, VariableScope.OPPONENT, "opponent.x");
-        addNumbers(variables, VariableSource.BOT_Y, VariableScope.OPPONENT, "opponent.y");
-        addNumbers(variables, VariableSource.TARGET_DISTANCE, VariableScope.TARGET, "target.distance");
-        addNumbers(variables, VariableSource.TARGET_HP, VariableScope.TARGET, "target.hp");
-        addNumbers(variables, VariableSource.TARGET_BEARING_FROM_ME, VariableScope.TARGET, "target.bearingFromMe");
-        addNumbers(variables, VariableSource.TARGET_MOVEMENT_DIRECTION, VariableScope.TARGET, "target.movementDirection");
-        addNumbers(variables, VariableSource.TARGET_SPEED, VariableScope.TARGET, "target.speed");
-        addNumbers(variables, VariableSource.BEARING_FROM_TARGET, VariableScope.TARGET, "my.bearingFromTarget");
-        addNumbers(variables, VariableSource.TARGET_RELATIVE_BEARING, VariableScope.TARGET, "target.relativeBearing");
-        addNumbers(variables, VariableSource.TARGET_RELATIVE_BEARING_CLOCKWISE, VariableScope.TARGET, "target.relativeBearingClockwise");
-        addNumbers(variables, VariableSource.TARGET_RELATIVE_BEARING_COUNTERCLOCKWISE, VariableScope.TARGET, "target.relativeBearingCounterclockwise");
-        addNumbers(variables, VariableSource.TARGET_FACING, VariableScope.TARGET, "target.facing");
-        addNumbers(variables, VariableSource.TARGET_COUNT, VariableScope.TARGET, "target.count");
-        addNumbers(variables, VariableSource.TARGET_AGE, VariableScope.TARGET, "target.age");
-        addNumbers(variables, VariableSource.BOT_EDGE_DISTANCE, VariableScope.MY, "my.edgeDistance");
-        addNumbers(variables, VariableSource.BOT_CLOSING_ZONE_EDGE_DISTANCE, VariableScope.MY,
-                Set.of(VARIABLE_TAG_ALLOW_NEGATIVE_INTEGER), "my.closingZoneEdgeDistance");
-        addNumbers(variables, VariableSource.BOT_CLOSING_ZONE_EDGE_DISTANCE, VariableScope.OPPONENT,
-                Set.of(VARIABLE_TAG_ALLOW_NEGATIVE_INTEGER), "opponent.closingZoneEdgeDistance");
-        addNumbers(variables, VariableSource.TARGET_EDGE_DISTANCE, VariableScope.TARGET, "target.edgeDistance");
-        addBooleans(variables, VariableSource.TARGET_EXISTS, VariableScope.TARGET, "target.exists");
-        addBooleans(variables, VariableSource.TARGET_ALIVE, VariableScope.TARGET, "target.alive");
-        addBooleans(variables, VariableSource.SELECTED_ABILITY_READY, VariableScope.MY, "my.selectedAbilityReady");
-        addBooleans(variables, VariableSource.SELECTED_ABILITY_READY, VariableScope.OPPONENT, "opponent.selectedAbilityReady");
-        addBooleans(variables, VariableSource.SELECTED_ABILITY_ACTIVE, VariableScope.MY, "my.selectedAbilityActive");
-        addBooleans(variables, VariableSource.SELECTED_ABILITY_ACTIVE, VariableScope.OPPONENT, "opponent.selectedAbilityActive");
-        addBooleans(variables, VariableSource.SELECTED_ABILITY_ON_COOLDOWN, VariableScope.MY, "my.selectedAbilityOnCooldown");
-        addBooleans(variables, VariableSource.SELECTED_ABILITY_ON_COOLDOWN, VariableScope.OPPONENT, "opponent.selectedAbilityOnCooldown");
-        addNumbers(variables, VariableSource.SELECTED_ABILITY_ACTIVE_MS, VariableScope.MY, "my.selectedAbilityActiveMs");
-        addNumbers(variables, VariableSource.SELECTED_ABILITY_ACTIVE_MS, VariableScope.OPPONENT, "opponent.selectedAbilityActiveMs");
-        addNumbers(variables, VariableSource.SELECTED_ABILITY_COOLDOWN_MS, VariableScope.MY, "my.selectedAbilityCooldownMs");
-        addNumbers(variables, VariableSource.SELECTED_ABILITY_COOLDOWN_MS, VariableScope.OPPONENT, "opponent.selectedAbilityCooldownMs");
-        addNumbers(variables, VariableSource.SELECTED_ABILITY_CHARGES, VariableScope.MY, "my.selectedAbilityCharges");
-        addNumbers(variables, VariableSource.SELECTED_ABILITY_CHARGES, VariableScope.OPPONENT, "opponent.selectedAbilityCharges");
-        addBooleans(variables, VariableSource.SELECTED_ABILITY_PREPARING, VariableScope.MY, "my.selectedAbilityPreparing");
-        addBooleans(variables, VariableSource.SELECTED_ABILITY_PREPARING, VariableScope.OPPONENT, "opponent.selectedAbilityPreparing");
-        addNumbers(variables, VariableSource.SELECTED_ABILITY_PREPARATION_MS, VariableScope.MY, "my.selectedAbilityPreparationMs");
-        addNumbers(variables, VariableSource.SELECTED_ABILITY_PREPARATION_MS, VariableScope.OPPONENT, "opponent.selectedAbilityPreparationMs");
-        addBooleans(variables, VariableSource.SELECTED_STATUS_EFFECT_ACTIVE, VariableScope.MY, "my.selectedStatusEffectActive");
-        addBooleans(variables, VariableSource.SELECTED_STATUS_EFFECT_ACTIVE, VariableScope.OPPONENT, "opponent.selectedStatusEffectActive");
-        addNumbers(variables, VariableSource.SELECTED_STATUS_EFFECT_DURATION_MS, VariableScope.MY, "my.selectedStatusEffectDurationMs");
-        addNumbers(variables, VariableSource.SELECTED_STATUS_EFFECT_DURATION_MS, VariableScope.OPPONENT, "opponent.selectedStatusEffectDurationMs");
+        addNumbers(variables, VariableSource.SELECTABLE_DISTANCE, VariableScope.SELECTABLE, "selectable.distance");
+        addNumbers(variables, VariableSource.SELECTABLE_DAMAGE_TAKEN_LAST_TICK, VariableScope.SELECTABLE, "selectable.damageTakenLastTick");
+        addNumbers(variables, VariableSource.SELECTABLE_HP_NET_CHANGE_LAST_TICK, VariableScope.SELECTABLE,
+                Set.of(VARIABLE_TAG_ALLOW_NEGATIVE_INTEGER), "selectable.hpNetChangeLastTick");
+        addNumbers(variables, VariableSource.SELECTABLE_X, VariableScope.SELECTABLE, "selectable.x");
+        addNumbers(variables, VariableSource.SELECTABLE_Y, VariableScope.SELECTABLE, "selectable.y");
+        addNumbers(variables, VariableSource.SELECTABLE_HP, VariableScope.SELECTABLE, "selectable.hp");
+        addNumbers(variables, VariableSource.SELECTABLE_ABSOLUTE_BEARING, VariableScope.SELECTABLE, "selectable.absoluteBearing");
+        addNumbers(variables, VariableSource.SELECTABLE_MOVEMENT_DIRECTION, VariableScope.SELECTABLE, "selectable.movementDirection");
+        addNumbers(variables, VariableSource.SELECTABLE_SPEED, VariableScope.SELECTABLE, "selectable.speed");
+        addNumbers(variables, VariableSource.SELECTABLE_RELATIVE_BEARING, VariableScope.SELECTABLE, "selectable.relativeBearing");
+        addNumbers(variables, VariableSource.SELECTABLE_RELATIVE_BEARING_CLOCKWISE, VariableScope.SELECTABLE, "selectable.relativeBearingClockwise");
+        addNumbers(variables, VariableSource.SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE, VariableScope.SELECTABLE, "selectable.relativeBearingCounterclockwise");
+        addNumbers(variables, VariableSource.SELECTABLE_FACING, VariableScope.SELECTABLE, "selectable.facing");
+        addNumbers(variables, VariableSource.SELECTABLE_COUNT, VariableScope.SELECTABLE, "selectable.count");
+        addNumbers(variables, VariableSource.SELECTABLE_AGE, VariableScope.SELECTABLE, "selectable.age");
+        addNumbers(variables, VariableSource.SELECTABLE_EDGE_DISTANCE, VariableScope.SELECTABLE, "selectable.edgeDistance");
+        addNumbers(variables, VariableSource.SELECTABLE_CLOSING_ZONE_EDGE_DISTANCE, VariableScope.SELECTABLE,
+                Set.of(VARIABLE_TAG_ALLOW_NEGATIVE_INTEGER), "selectable.closingZoneEdgeDistance");
+        addBooleans(variables, VariableSource.SELECTABLE_EXISTS, VariableScope.SELECTABLE, "selectable.exists");
+        addBooleans(variables, VariableSource.SELECTABLE_ALIVE, VariableScope.SELECTABLE, "selectable.alive");
+        addBooleans(variables, VariableSource.SELECTED_ABILITY_READY, VariableScope.SELECTABLE, "bot.selectedAbilityReady");
+        addBooleans(variables, VariableSource.SELECTED_ABILITY_ACTIVE, VariableScope.SELECTABLE, "bot.selectedAbilityActive");
+        addBooleans(variables, VariableSource.SELECTED_ABILITY_ON_COOLDOWN, VariableScope.SELECTABLE, "bot.selectedAbilityOnCooldown");
+        addNumbers(variables, VariableSource.SELECTED_ABILITY_ACTIVE_MS, VariableScope.SELECTABLE, "bot.selectedAbilityActiveMs");
+        addNumbers(variables, VariableSource.SELECTED_ABILITY_COOLDOWN_MS, VariableScope.SELECTABLE, "bot.selectedAbilityCooldownMs");
+        addNumbers(variables, VariableSource.SELECTED_ABILITY_CHARGES, VariableScope.SELECTABLE, "bot.selectedAbilityCharges");
+        addBooleans(variables, VariableSource.SELECTED_ABILITY_PREPARING, VariableScope.SELECTABLE, "bot.selectedAbilityPreparing");
+        addNumbers(variables, VariableSource.SELECTED_ABILITY_PREPARATION_MS, VariableScope.SELECTABLE, "bot.selectedAbilityPreparationMs");
+        addBooleans(variables, VariableSource.SELECTED_STATUS_EFFECT_ACTIVE, VariableScope.SELECTABLE, "bot.selectedStatusEffectActive");
+        addNumbers(variables, VariableSource.SELECTED_STATUS_EFFECT_DURATION_MS, VariableScope.SELECTABLE, "bot.selectedStatusEffectDurationMs");
         return Collections.unmodifiableMap(variables);
     }
 
@@ -439,12 +515,12 @@ public final class BotLogicContracts {
     private static void addNumbers(Map<String, VariableContract> variables, VariableSource source,
                                    VariableScope scope, Set<String> tags, String... ids) {
         for (String id : ids) variables.put(id, new VariableContract(id, ValueType.NUMBER,
-                scope == VariableScope.TARGET, scope, source, tags));
+                scope == VariableScope.SELECTABLE, scope, source, tags));
     }
 
     private static void addBooleans(Map<String, VariableContract> variables, VariableSource source,
                                     VariableScope scope, String... ids) {
         for (String id : ids) variables.put(id, new VariableContract(id, ValueType.BOOLEAN,
-                scope == VariableScope.TARGET, scope, source, Set.of()));
+                scope == VariableScope.SELECTABLE, scope, source, Set.of()));
     }
 }

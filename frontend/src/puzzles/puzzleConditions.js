@@ -2,6 +2,8 @@ import {
     customVariableDefinitions as customVariableDefinitionsForBrain,
     evaluateCondition,
     STATE_VARIABLES,
+    SELECTABLE_BY_ID,
+    VARIABLE_SELECTABLE_TYPES,
 } from "../gameArena/botlogic/code/BotCode.js";
 
 function numeric(value, fallback = 0) {
@@ -89,40 +91,6 @@ export function updatePuzzleRunMetrics(metrics, { player, opponent, stepMs, obje
     return metrics;
 }
 
-function valueForCondition(condition, metrics) {
-    switch (condition?.subject) {
-        case "opponent.hp": return numeric(metrics.opponentHp);
-        case "player.hp": return numeric(metrics.playerHp);
-        case "time.elapsedMs": return numeric(metrics.elapsedMs);
-        case "player.damageTaken": return numeric(metrics.playerDamageTaken);
-        case "opponent.damageTaken": return numeric(metrics.opponentDamageTaken);
-        case "player.hitsLanded": return numeric(metrics.playerHitsLanded);
-        case "opponent.hitsLanded": return numeric(metrics.opponentHitsLanded);
-        case "player.abilityUses": return numeric(metrics.playerAbilityUses);
-        case "opponent.abilityUses": return numeric(metrics.opponentAbilityUses);
-        case "player.alive": return numeric(metrics.playerHp) > 0;
-        case "opponent.alive": return numeric(metrics.opponentHp) > 0;
-        case "player.customVariable": return numeric(metrics.playerCustomVariables?.[condition.variableId]);
-        case "opponent.customVariable": return numeric(metrics.opponentCustomVariables?.[condition.variableId]);
-        default: return null;
-    }
-}
-
-function compare(actual, operator, expected) {
-    if (typeof actual === "boolean") return operator === "eq" && actual === Boolean(expected);
-
-    const left = numeric(actual);
-    const right = numeric(expected);
-    switch (operator) {
-        case "lt": return left < right;
-        case "lte": return left <= right;
-        case "eq": return Math.abs(left - right) < 0.000001;
-        case "gte": return left >= right;
-        case "gt": return left > right;
-        default: return false;
-    }
-}
-
 function evaluateFullCondition(condition, metrics) {
     if (!metrics?.state || !isFullCondition(condition)) return false;
     try {
@@ -133,8 +101,7 @@ function evaluateFullCondition(condition, metrics) {
 }
 
 function evaluateConditionEntry(condition, metrics) {
-    if (isFullCondition(condition)) return evaluateFullCondition(condition, metrics);
-    return compare(valueForCondition(condition, metrics), condition?.operator, condition?.value);
+    return evaluateFullCondition(condition, metrics);
 }
 
 function evaluateFullConditionList(conditions, metrics) {
@@ -191,7 +158,9 @@ export function puzzleConditionLabel(condition, variableDefinitions = []) {
         const leftLabel = leftDefinition?.label ?? (String(condition.left ?? "condition").startsWith("custom.")
             ? `Custom variable ${condition.left.slice("custom.".length)}`
             : condition.left ?? "condition");
-        const target = condition.leftTarget ? ` @ ${condition.leftTarget}` : "";
+        const selectable = leftDefinition?.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR
+            ? ` @ ${selectableLabel(condition.selectable1 ?? "my_bot")} → ${selectableLabel(condition.selectable2 ?? condition.selectable ?? "opponent")}`
+            : condition.leftSelectable ? ` @ ${selectableLabel(condition.leftSelectable)}` : "";
         const right = condition.right?.type === "variable"
             ? (definitions.find((variable) => variable.id === condition.right.value)?.label ?? condition.right.value)
             : condition.right?.type === "boolean"
@@ -200,10 +169,12 @@ export function puzzleConditionLabel(condition, variableDefinitions = []) {
         const selection = condition.ability != null
             ? ` (ability ${condition.ability})`
             : condition.statusEffect ? ` (${condition.statusEffect})` : "";
-        return `${leftLabel}${target} ${COMPARATOR_LABELS[condition.comparator] ?? condition.comparator ?? "?"} ${right}${selection}`;
+        return `${leftLabel}${selectable} ${COMPARATOR_LABELS[condition.comparator] ?? condition.comparator ?? "?"} ${right}${selection}`;
     }
-    const subject = String(condition.subject ?? "condition").replaceAll(".", " ");
-    const operator = COMPARATOR_LABELS[condition.operator] ?? condition.operator ?? "?";
-    const value = condition.subject?.endsWith("alive") ? (condition.value ? "alive" : "not alive") : condition.value;
-    return `${subject} ${operator} ${value}`;
+    return "Unknown condition";
+}
+
+function selectableLabel(selectable) {
+    const base = String(selectable ?? "").split(":")[0];
+    return SELECTABLE_BY_ID.get(base)?.label ?? selectable;
 }

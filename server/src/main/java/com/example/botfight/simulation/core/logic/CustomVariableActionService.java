@@ -37,7 +37,7 @@ public final class CustomVariableActionService {
             return;
         }
         double next = BotLogicContracts.CUSTOM_VARIABLE_OPERATION_SET.equals(textValue(field(terms.get(0), "operator"), BotLogicContracts.CUSTOM_VARIABLE_OPERATION_ADD)) ? 0 : current;
-        Condition context = new Condition(BotLogicContracts.CONDITION_EXPRESSION, 0, BotLogicContracts.TARGET_OPPONENT, null, null, "", null, "", "eq",
+        Condition context = new Condition(BotLogicContracts.CONDITION_EXPRESSION, 0, BotLogicContracts.SELECTABLE_OPPONENT, null, null, "", null, "", "eq",
                 Operand.number(0), "and");
         for (int index = 0; index < Math.min(terms.size(), MAX_VARIABLE_ACTION_TERMS); index++) {
             JsonNode term = terms.get(index);
@@ -56,7 +56,7 @@ public final class CustomVariableActionService {
     private static double resolveAmount(JsonNode operand, double fallback, StrategyBlock block, Bot bot, Bot opponent,
             List<Entity> entities, Arena arena, ConditionResolutionService service) {
         return resolveAmount(operand, fallback,
-                new Condition(BotLogicContracts.CONDITION_EXPRESSION, 0, BotLogicContracts.TARGET_OPPONENT, null, null, "", null, "", "eq", Operand.number(0), "and"),
+                new Condition(BotLogicContracts.CONDITION_EXPRESSION, 0, BotLogicContracts.SELECTABLE_OPPONENT, null, null, "", null, "", "eq", Operand.number(0), "and"),
                 bot, opponent, entities, arena, service);
     }
 
@@ -65,7 +65,7 @@ public final class CustomVariableActionService {
         if (operand == null || !operand.isObject()) return fallback;
         if ("variable".equals(textValue(field(operand, "type"), "number"))) {
             return java.util.Optional.ofNullable(service.resolveStateVariable(
-                    textValue(field(operand, "value"), ""), textValue(field(operand, "target"), "opponent"), context,
+                    textValue(field(operand, "value"), ""), textValue(field(operand, "selectable"), "opponent"), context,
                     bot, opponent, entities, arena)).map(DuelSimulationService.StateValue::numberValue).orElse(0.0);
         }
         return numberValue(field(operand, "value"), fallback);

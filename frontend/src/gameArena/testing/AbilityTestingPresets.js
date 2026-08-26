@@ -56,7 +56,7 @@ function code(roots) {
 }
 
 function faceTarget() {
-    return { action: "rotate_toward_enemy", actionTarget: "opponent" };
+    return { action: "rotate_toward_enemy", selectable: "opponent" };
 }
 
 function moveTowardTarget() {
@@ -64,12 +64,12 @@ function moveTowardTarget() {
         action: "move_walk",
         movementMode: "target",
         movementDirection: 0,
-        actionTarget: "opponent",
+        selectable: "opponent",
     };
 }
 
 function actionForAbility(abilityId) {
-    const action = { action: abilityId, actionTarget: "opponent" };
+    const action = { action: abilityId, selectable: "opponent" };
     if (abilityId === 19) Object.assign(action, { movementMode: "target", movementDirection: 0 });
     if ([22, 24].includes(abilityId)) action.targetMode = "target";
     if (abilityId === 25) action.phaseFacingMode = "face_origin";

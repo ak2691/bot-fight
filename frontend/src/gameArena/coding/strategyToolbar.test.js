@@ -222,7 +222,7 @@ test("compact conditions own their comparator and actions summarize inspector ta
     assert.match(source, /" deg from "/);
     assert.match(source, /targetAngle \?\? 0\)} deg\)/);
     assert.match(source, /`\$\{formatOrdinal\(ordinal\)\} \$\{order\[0\]\.toUpperCase\(\)\}/);
-    assert.doesNotMatch(source, /code-action-sentence[\s\S]*<OrderedTargetPicker value=\{entry\.actionTarget/);
+    assert.doesNotMatch(source, /code-action-sentence[\s\S]*<OrderedSelectablePicker value=\{entry\.selectable/);
     assert.doesNotMatch(source, /application\/x-bot-operator|GraphVariableNode|GraphTargetNode/);
 });
 
@@ -421,7 +421,7 @@ test("conditional nodes show depth and add a parent conditional", () => {
 
     assert.match(source, /<span className="code-node-badge">\{node\.path\.length\}<\/span>/);
     assert.match(source, /const nextRoots = insertParentLogicBranch\(roots, node\.rootIndex, node\.path, parent\);/);
-    assert.match(source, /const nextGraph = buildLogicGraph\(nextRoots, stateVariables, selectedLoadout, targetTypes\);/);
+    assert.match(source, /const nextGraph = buildLogicGraph\(nextRoots, stateVariables, selectedLoadout, selectableTypes\);/);
     assert.match(source, /positionOverrides\[nextParent\.id\]/);
     assert.match(source, /const mappedPath = \[\.\.\.candidate\.path\.slice\(0, node\.path\.length\), 0/);
     assert.match(source, /onAddChildConditional=\{\(\) =>/);
@@ -496,7 +496,7 @@ test("condition variable chips open detailed configuration in the inspector", ()
 
     assert.match(source, /kind: "condition-variable"/);
     assert.match(source, /if \(inspectedNode\.kind === "condition-variable"\)/);
-    assert.match(source, /definition\.supportsTarget && field\("Target"/);
+    assert.match(source, /definition\.supportsSelectable && field\(selectablePickerLabel/);
     assert.doesNotMatch(source, /code-condition-inline-config/);
     assert.match(css, /grid-template-columns: 34px max-content 64px max-content 30px/);
     assert.match(css, /\.code-operator-socket \{ min-width: 64px/);

@@ -97,6 +97,8 @@ export function loadAbilitySpriteCatalogue(loadAsset = defaultLoadAsset) {
             bot,
             drone,
             rays: Object.freeze({
+                gun: [fireGun],
+                pistol: [fireGun],
                 fire_gun: [fireGun],
                 pistol_shot: [fireGun],
                 concussive_shot: sliceGrid(concussiveShot, 1, 7).slice(0, 6),

@@ -16,7 +16,7 @@ class AbilityRegistryTest {
     }
 
     @Test void lookupUsesPermanentMapKeyAndDoesNotDependOnPosition() {
-        assertThat(AbilityRegistry.legacyAbilityNameFromId(1)).isEqualTo("swing");
+        assertThat(AbilityRegistry.legacyAbilityNameFromId(1)).isEqualTo("slash");
         assertThat(AbilityRegistry.legacyAbilityNameFromId(25)).isEqualTo("phase_strike");
         assertThat(AbilityRegistry.legacyAbilityNameFromId(27)).isEqualTo("singularity");
         assertThat(AbilityRegistry.legacyAbilityNameFromId(33)).isEqualTo("overclock");
@@ -26,6 +26,8 @@ class AbilityRegistryTest {
     }
 
     @Test void explicitLegacyConversionsFailClosed() {
+        assertThat(AbilityRegistry.abilityIdFromLegacyName("slash")).isEqualTo(1);
+        assertThat(AbilityRegistry.abilityIdFromLegacyName("swing")).isEqualTo(1);
         assertThat(AbilityRegistry.abilityIdFromLegacyName("heavy_slash")).isEqualTo(7);
         assertThatThrownBy(() -> AbilityRegistry.abilityIdFromLegacyName("arbitrary"))
                 .isInstanceOf(IllegalArgumentException.class);

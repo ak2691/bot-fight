@@ -21,7 +21,7 @@ export const DEFERRED_STATE_CONTRACTS = Object.freeze([
                 y: "temporalRewindY",
             }),
             health: Object.freeze({
-                targetField: "hp",
+                selectableField: "hp",
                 snapshotField: "temporalRewindHp",
                 maximumField: "maxHp",
                 fallbackField: "hp",

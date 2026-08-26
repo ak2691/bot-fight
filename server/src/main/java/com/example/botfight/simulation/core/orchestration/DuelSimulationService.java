@@ -20,6 +20,7 @@ import com.example.botfight.simulation.ecs.entities.AbilityEntityBot;
 import com.example.botfight.simulation.ecs.abilities.AbilityEntitySystem;
 import com.example.botfight.simulation.ecs.entities.ArenaBounds;
 import com.example.botfight.simulation.ecs.entities.ArenaEntity;
+import com.example.botfight.simulation.ecs.contracts.EntityContracts;
 import com.example.botfight.simulation.geometry.ArenaUnits;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -167,13 +168,13 @@ public class DuelSimulationService {
             for (Bot bot : bots) {
                 botStateService.startTick(bot);
             }
-            List<Entity> targetingTargets = new ArrayList<>();
+            List<Entity> selectables = new ArrayList<>();
             abilityPlacements.stream()
-                    .map(DuelSimulationService::targetSnapshot)
-                    .forEach(targetingTargets::add);
-            projectiles.stream().map(DuelSimulationService::targetSnapshot).forEach(targetingTargets::add);
-            Action firstPredicted = predictAction(bots.get(0), bots.get(1), targetingTargets, arena);
-            Action secondPredicted = predictAction(bots.get(1), bots.get(0), targetingTargets, arena);
+                    .map(DuelSimulationService::selectableSnapshot)
+                    .forEach(selectables::add);
+            projectiles.stream().map(DuelSimulationService::selectableSnapshot).forEach(selectables::add);
+            Action firstPredicted = predictAction(bots.get(0), bots.get(1), selectables, arena);
+            Action secondPredicted = predictAction(bots.get(1), bots.get(0), selectables, arena);
             actionExecutionService.execute(bots.get(0), firstPredicted, arena);
             actionExecutionService.execute(bots.get(1), secondPredicted, arena);
             actionExecutionService.resolveTriggeredAbilities(bots.get(0), bots.get(1), arena);
@@ -339,16 +340,16 @@ public class DuelSimulationService {
         StrategyBlock facingBlock = plan.rotation;
         Entity movementTarget = movementBlock != null && "coordinates".equals(movementBlock.movementMode)
                 ? new TargetPoint(movementBlock.targetX, movementBlock.targetY, 0)
-                : TargetingService.offsetTarget(TargetingService.targetEntity(movementBlock != null ? movementBlock.actionTarget : BotLogicContracts.TARGET_OPPONENT, player, opponent, entities), movementBlock);
+                : TargetingService.offsetTarget(TargetingService.selectableEntity(movementBlock != null ? movementBlock.selectable : BotLogicContracts.SELECTABLE_OPPONENT, player, opponent, entities), movementBlock);
         Entity facingTarget = facingBlock != null && "coordinates".equals(facingBlock.targetMode())
                 ? new TargetPoint(facingBlock.targetX(), facingBlock.targetY(), 0)
                 : facingBlock != null && "angle".equals(facingBlock.targetMode())
                     ? null
-                    : TargetingService.offsetTarget(TargetingService.targetEntity(facingBlock != null
-                        ? facingBlock.actionTarget
-                        : movementBlock != null ? movementBlock.actionTarget : BotLogicContracts.TARGET_OPPONENT, player, opponent, entities), facingBlock != null ? facingBlock : movementBlock);
+                    : TargetingService.offsetTarget(TargetingService.selectableEntity(facingBlock != null
+                        ? facingBlock.selectable
+                        : movementBlock != null ? movementBlock.selectable : BotLogicContracts.SELECTABLE_OPPONENT, player, opponent, entities), facingBlock != null ? facingBlock : movementBlock);
         Entity abilityTarget = plan.ability != null && BotLogicContracts.actionUsesTarget(plan.ability.action)
-                ? TargetingService.offsetTarget(TargetingService.targetEntity(plan.ability.actionTarget, player, opponent, entities), plan.ability)
+                ? TargetingService.offsetTarget(TargetingService.selectableEntity(plan.ability.selectable, player, opponent, entities), plan.ability)
                 : null;
         Vector movement = actionExecutionService.movementVector(movementBlock, player, movementTarget);
         return new Action(
@@ -462,16 +463,16 @@ public class DuelSimulationService {
                 remainingActions[0] -= cost;
             }
             if (blocks.isEmpty()) {
-                blocks = List.of(new StrategyBlock(index, BotLogicContracts.ACTION_NONE, BotLogicContracts.TARGET_OPPONENT, 0, 0, "target", 500, 400, null, null, null, null, 1, ConditionResolutionService.normalizeConditions(field(branch, "conditions"))));
+                blocks = List.of(new StrategyBlock(index, BotLogicContracts.ACTION_NONE, BotLogicContracts.SELECTABLE_OPPONENT, 0, 0, "target", 500, 400, null, null, null, null, 1, ConditionResolutionService.normalizeConditions(field(branch, "conditions"))));
             }
             String branchType = index == 0 ? "if" : "else".equals(textValue(field(branch, "branchType"), "if")) ? "else" : "if";
             if ("else".equals(branchType)) {
-                blocks = blocks.stream().map(block -> new StrategyBlock(block.index(), block.action(), block.actionTarget(), block.targetOffsetX(), block.targetOffsetY(), block.targetMode(), block.targetX(), block.targetY(), block.movementMode(), block.movementDirection(), block.phaseFacingMode(), block.variableTerms(), block.priority(), List.of(), block.targetAngle())).toList();
+                blocks = blocks.stream().map(block -> new StrategyBlock(block.index(), block.action(), block.selectable(), block.targetOffsetX(), block.targetOffsetY(), block.targetMode(), block.targetX(), block.targetY(), block.movementMode(), block.movementDirection(), block.phaseFacingMode(), block.variableTerms(), block.priority(), List.of(), block.targetAngle())).toList();
             } else {
                 int conditionLimit = Math.min(remainingConditions[0], blocks.isEmpty() ? 0 : blocks.get(0).conditions().size());
                 List<Condition> limitedConditions = blocks.isEmpty() ? List.of() : blocks.get(0).conditions().subList(0, conditionLimit);
                 remainingConditions[0] -= conditionLimit;
-                blocks = blocks.stream().map(block -> new StrategyBlock(block.index(), block.action(), block.actionTarget(), block.targetOffsetX(), block.targetOffsetY(), block.targetMode(), block.targetX(), block.targetY(), block.movementMode(), block.movementDirection(), block.phaseFacingMode(), block.variableTerms(), block.priority(), limitedConditions, block.targetAngle())).toList();
+                blocks = blocks.stream().map(block -> new StrategyBlock(block.index(), block.action(), block.selectable(), block.targetOffsetX(), block.targetOffsetY(), block.targetMode(), block.targetX(), block.targetY(), block.movementMode(), block.movementDirection(), block.phaseFacingMode(), block.variableTerms(), block.priority(), limitedConditions, block.targetAngle())).toList();
             }
             normalized.add(new TreeBranch(
                     branchType,
@@ -494,7 +495,7 @@ public class DuelSimulationService {
                 String headKey = BotLogicContracts.ACTION_VARIABLE.equals(action) ? head + ":" + blocks.size() : head;
                 if (!heads.add(headKey)) continue;
                 blocks.add(new StrategyBlock(index, action,
-                normalizeTarget(textValue(field(actionNode, "actionTarget"), BotLogicContracts.TARGET_OPPONENT), BotLogicContracts.TARGET_OPPONENT),
+                normalizeSelectable(textValue(field(actionNode, "selectable"), BotLogicContracts.SELECTABLE_OPPONENT), BotLogicContracts.SELECTABLE_OPPONENT),
                         BotLogicContracts.ACTION_VARIABLE.equals(action)
                                 ? clamp(variableValue(firstNonNull(field(actionNode, "value"), field(actionNode, "operand"))), -CUSTOM_NUMBER_LIMIT, CUSTOM_NUMBER_LIMIT)
                                 : clamp(numberValue(field(actionNode, "targetOffsetX"), 0), -ARENA_WIDTH_UNITS, ARENA_WIDTH_UNITS),
@@ -535,7 +536,7 @@ public class DuelSimulationService {
                 || BotLogicContracts.actionUsesCoordinates(block.action(), block.targetMode())
                 || BotLogicContracts.actionUsesAbsoluteAngle(block.action(), block.targetMode())) return true;
         if (!actionUsesTarget(block.action())) return true;
-        return TargetingService.targetEntity(block.actionTarget(), player, opponent, entities) != null;
+        return TargetingService.selectableEntity(block.selectable(), player, opponent, entities) != null;
     }
 
     private boolean strategyBlockExecutableNow(StrategyBlock block, Bot player, Bot opponent,
@@ -555,7 +556,7 @@ public class DuelSimulationService {
         return new StrategyBlock(
                 index,
                 action,
-                normalizeTarget(textValue(field(block, "actionTarget"), BotLogicContracts.TARGET_OPPONENT), BotLogicContracts.TARGET_OPPONENT),
+                normalizeSelectable(textValue(field(block, "selectable"), BotLogicContracts.SELECTABLE_OPPONENT), BotLogicContracts.SELECTABLE_OPPONENT),
                 BotLogicContracts.ACTION_VARIABLE.equals(action)
                         ? clamp(variableValue(firstNonNull(field(block, "value"), field(block, "operand"))), -CUSTOM_NUMBER_LIMIT, CUSTOM_NUMBER_LIMIT)
                         : clamp(numberValue(field(block, "targetOffsetX"), 0), -ARENA_WIDTH_UNITS, ARENA_WIDTH_UNITS),
@@ -636,10 +637,16 @@ public class DuelSimulationService {
                 <= ((first.size()) + second.size()) / 2.0 + padding;
     }
 
-    private static TargetSnapshot targetSnapshot(ArenaEntity entity) {
-        return new TargetSnapshot("ability:" + entity.ownerSlot() + ":" + entity.id(), entity.type(),
-                entity.x(), entity.y(), entity.size(), entity.ageMs(), entity.hp(),
-                entity.velocityX(), entity.velocityY(), entity.abilityId(), entity.ownerSlot());
+    private static SelectableSnapshot selectableSnapshot(ArenaEntity entity) {
+        EntityContracts.EntityContract contract = EntityContracts.forEntity(entity);
+        boolean healthBearing = contract != null && contract.health() != null
+                && contract.collider() != null && contract.collider().hittable();
+        return new SelectableSnapshot("ability:" + entity.ownerSlot() + ":" + entity.id(), entity.type(),
+                entity.x(), entity.y(), entity.size(), entity.ageMs(), healthBearing ? entity.hp() : 0,
+                entity.velocityX(), entity.velocityY(), entity.abilityId(), entity.ownerSlot(),
+                healthBearing ? entity.damageTakenLastTick() : 0,
+                healthBearing ? entity.hpNetChangeLastTick() : 0,
+                entity.rotation());
     }
 
     private static List<ArenaEntity> advanceEntityAges(List<ArenaEntity> entities) {
@@ -662,8 +669,8 @@ public class DuelSimulationService {
         return (int) clamp(Math.round(Double.isFinite(value) ? value : 1.0), MIN_PRIORITY, MAX_PRIORITY);
     }
 
-    private static String normalizeTarget(String target, String fallback) {
-        if (BotLogicContracts.isAllowedTarget(target)) return target;
+    private static String normalizeSelectable(String selectableId, String fallback) {
+        if (BotLogicContracts.isAllowedSelectable(selectableId)) return selectableId;
         return fallback;
     }
 
@@ -847,12 +854,12 @@ public class DuelSimulationService {
         }
     }
 
-    public record Condition(String type, double value, String target, String leftTarget, String rightTarget, String left, Integer ability, String statusEffect, String comparator, Operand right, String join) {
+    public record Condition(String type, double value, String selectable, String leftSelectable, String rightSelectable, String left, Integer ability, String statusEffect, String comparator, Operand right, String join) {
     }
 
-    public record StrategyBlock(int index, Object action, String actionTarget, double targetOffsetX, double targetOffsetY, String targetMode, double targetX, double targetY, String movementMode, String movementDirection, String phaseFacingMode, JsonNode variableTerms, int priority, List<Condition> conditions, double targetAngle) {
-        public StrategyBlock(int index, Object action, String actionTarget, double targetOffsetX, double targetOffsetY, String targetMode, double targetX, double targetY, String movementMode, String movementDirection, String phaseFacingMode, JsonNode variableTerms, int priority, List<Condition> conditions) {
-            this(index, action, actionTarget, targetOffsetX, targetOffsetY, targetMode, targetX, targetY,
+    public record StrategyBlock(int index, Object action, String selectable, double targetOffsetX, double targetOffsetY, String targetMode, double targetX, double targetY, String movementMode, String movementDirection, String phaseFacingMode, JsonNode variableTerms, int priority, List<Condition> conditions, double targetAngle) {
+        public StrategyBlock(int index, Object action, String selectable, double targetOffsetX, double targetOffsetY, String targetMode, double targetX, double targetY, String movementMode, String movementDirection, String phaseFacingMode, JsonNode variableTerms, int priority, List<Condition> conditions) {
+            this(index, action, selectable, targetOffsetX, targetOffsetY, targetMode, targetX, targetY,
                     movementMode, movementDirection, phaseFacingMode, variableTerms, priority, conditions, Double.NaN);
         }
     }
@@ -997,7 +1004,7 @@ public class DuelSimulationService {
         @Override public void cancelPreparation() { if (!ignoresHostileEffects()) { preparingAbility = null; preparingMs = 0; } }
     }
 
-    public record TargetSnapshot(
+    public record SelectableSnapshot(
             String id,
             String type,
             double x,
@@ -1008,7 +1015,15 @@ public class DuelSimulationService {
             double velocityX,
             double velocityY,
             Integer abilityId,
-            int ownerSlot) implements Entity {}
+            int ownerSlot,
+            double damageTakenLastTick,
+            double hpNetChangeLastTick,
+            double rotation) implements Entity {
+        public SelectableSnapshot(String id, String type, double x, double y, int size, int ageMs, double hp,
+                              double velocityX, double velocityY, Integer abilityId, int ownerSlot) {
+            this(id, type, x, y, size, ageMs, hp, velocityX, velocityY, abilityId, ownerSlot, 0.0, 0.0, 0.0);
+        }
+    }
 
     private static final class ActionPlan {
         private StrategyBlock primary;

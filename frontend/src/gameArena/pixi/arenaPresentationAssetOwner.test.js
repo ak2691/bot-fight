@@ -8,6 +8,8 @@ import {
 } from "./arenaPresentationAssetOwner.js";
 
 const ARRAY_PATHS = new Set(REQUIRED_ARENA_PRESENTATION_PATHS.filter((path) => [
+    "rays.gun",
+    "rays.pistol",
     "rays.fire_gun",
     "rays.pistol_shot",
     "rays.concussive_shot",

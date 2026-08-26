@@ -1,16 +1,16 @@
 /** Canonical ability map. Keys are permanent IDs, never array positions. */
 export const ABILITIES = Object.freeze({
-    1: Object.freeze({ id: 1, name: "swing", label: "Sword Swing", type: "ability" }),
-    3: Object.freeze({ id: 3, name: "fire_gun", label: "Fire Gun", type: "ability" }),
-    4: Object.freeze({ id: 4, name: "throw_grenade", label: "Throw Grenade", type: "ability" }),
-    5: Object.freeze({ id: 5, name: "shoot_fireball", label: "Shoot Fireball", type: "ability" }),
+    1: Object.freeze({ id: 1, name: "slash", label: "Slash", type: "ability" }),
+    3: Object.freeze({ id: 3, name: "gun", label: "Gun", type: "ability" }),
+    4: Object.freeze({ id: 4, name: "grenade", label: "Grenade", type: "ability" }),
+    5: Object.freeze({ id: 5, name: "fireball", label: "Fireball", type: "ability" }),
     6: Object.freeze({ id: 6, name: "stun", label: "Stun", type: "ability" }),
     7: Object.freeze({ id: 7, name: "heavy_slash", label: "Heavy Slash", type: "ability" }),
     8: Object.freeze({ id: 8, name: "repulsor_burst", label: "Repulsor Burst", type: "ability" }),
     9: Object.freeze({ id: 9, name: "concussive_shot", label: "Concussive Shot", type: "ability" }),
     10: Object.freeze({ id: 10, name: "basic_heal", label: "Basic Heal", type: "ability" }),
     11: Object.freeze({ id: 11, name: "proximity_mine", label: "Proximity Mine", type: "ability" }),
-    12: Object.freeze({ id: 12, name: "pistol_shot", label: "Pistol Shot", type: "ability" }),
+    12: Object.freeze({ id: 12, name: "pistol", label: "Pistol", type: "ability" }),
     13: Object.freeze({ id: 13, name: "rail_shot", label: "Rail Shot", type: "ability" }),
     14: Object.freeze({ id: 14, name: "gravity_grenade", label: "Gravity Grenade", type: "ability" }),
     15: Object.freeze({ id: 15, name: "silence_pulse", label: "Silence Pulse", type: "ability" }),
@@ -35,7 +35,18 @@ export const ABILITIES = Object.freeze({
     34: Object.freeze({ id: 34, name: "basic_strike", label: "Basic Strike", type: "ability" }),
 });
 
-const ABILITY_ID_BY_NAME = new Map(Object.values(ABILITIES).map(({ id, name }) => [name, id]));
+const LEGACY_ABILITY_NAME_ALIASES = Object.freeze({
+    swing: 1,
+    fire_gun: 3,
+    throw_grenade: 4,
+    shoot_fireball: 5,
+    pistol_shot: 12,
+});
+
+const ABILITY_ID_BY_NAME = new Map([
+    ...Object.values(ABILITIES).map(({ id, name }) => [name, id]),
+    ...Object.entries(LEGACY_ABILITY_NAME_ALIASES),
+]);
 
 /**
  * Accepts only a canonical runtime ID. Ability IDs are permanent and must never

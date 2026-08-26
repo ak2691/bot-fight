@@ -1970,7 +1970,7 @@ button:focus-visible {
 .code-inspector-footer { border-top: 1px solid rgba(71, 85, 105, .8); padding: 12px 16px; }
 .code-inspector-footer button { width: 100%; min-height: 36px; border: 1px solid rgba(248, 113, 113, .45); border-radius: 4px; color: #fca5a5; font: 700 9px/1 "Cousine", monospace; }
 
-.code-target-picker {
+.code-selectable-picker {
   display: flex;
   width: 100%;
   min-width: 0;
@@ -1979,9 +1979,9 @@ button:focus-visible {
   margin-top: 7px;
 }
 
-.code-inspector-body .code-target-picker-entity,
-.code-inspector-body .code-target-picker-order select,
-.code-inspector-body .code-target-picker-order input {
+.code-inspector-body .code-selectable-picker-entity,
+.code-inspector-body .code-selectable-picker-order select,
+.code-inspector-body .code-selectable-picker-order input {
   width: 100%;
   height: 36px;
   min-width: 0;
@@ -1994,7 +1994,7 @@ button:focus-visible {
   font: 10px/1 "Cousine", monospace;
 }
 
-.code-target-picker-order {
+.code-selectable-picker-order {
   display: grid;
   width: max-content;
   max-width: 100%;
@@ -2002,11 +2002,11 @@ button:focus-visible {
   gap: 6px;
 }
 
-.code-inspector-body .code-target-picker-order input {
+.code-inspector-body .code-selectable-picker-order input {
   padding: 0 7px;
 }
 
-.code-inspector-body .code-target-picker-note {
+.code-inspector-body .code-selectable-picker-note {
   display: block;
   margin-top: 0;
   color: #64748b;
@@ -2608,6 +2608,13 @@ button:focus-visible {
   white-space: nowrap;
   text-transform: uppercase;
   transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease, color 140ms ease;
+}
+
+.arena-toolbar-button--inline {
+  width: auto;
+  min-height: 2.75rem;
+  max-width: 100%;
+  padding: .65rem .85rem;
 }
 
 .arena-toolbar-button:hover:not(:disabled) {

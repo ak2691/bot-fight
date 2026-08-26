@@ -93,7 +93,8 @@ public final class AbilityEntityFactory {
                 entityDamageMultiplier,
                 abilityId,
                 Set.of(),
-                0);
+                0,
+                rotation);
     }
 
     private static double compassRadians(double degrees) {

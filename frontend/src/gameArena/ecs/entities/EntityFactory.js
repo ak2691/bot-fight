@@ -3,6 +3,7 @@ import { ABILITY_STATS } from "../../gameconfig/Abilities.js";
 import { abilityContract } from "../../gameconfig/AbilityContracts.js";
 import { abilityId as resolveAbilityId } from "../../gameconfig/AbilityRegistry.js";
 import { ENTITY_FACTORY_TYPES, entityContract, entityContractForAbility } from "../contracts/EntityContracts.js";
+import { selectableIdentitiesForAbilityEntity } from "../../modelPayloads/selectableIdentities.js";
 
 let nextEntityId = 1;
 
@@ -12,9 +13,10 @@ export function createEntity({
     type,
     entityContractId,
     entityContractType,
-    entityCategory,
-    entitySystem,
-    owner,
+        entityCategory,
+        entitySystem,
+        selectableIdentities,
+        owner,
     transform,
     motion = {},
     lifetime = {},
@@ -30,6 +32,7 @@ export function createEntity({
         ...(entityContractType ? { entityContractType } : {}),
         ...(entityCategory ? { category: entityCategory, entityCategory } : {}),
         ...(entitySystem ? { entitySystem } : {}),
+        selectableIdentities: selectableIdentities ?? [],
         abilityId: owner.abilityId,
         ownerId: owner.id,
         ownerSlot: owner.slot,
@@ -147,6 +150,7 @@ function buildEntityOptions(bot, contract, context) {
         entityContractType: context.entityContractType ?? contract.entityType ?? contract.runtimeType,
         entityCategory: contract.category,
         entitySystem: contract.system,
+        selectableIdentities: selectableIdentitiesForAbilityEntity(contract, abilityId),
         owner: { id: bot.id, slot: bot.slot, abilityId },
         transform,
         motion,

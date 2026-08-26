@@ -8,6 +8,8 @@ export const ARENA_ASSET_STATUS = Object.freeze({
 export const REQUIRED_ARENA_PRESENTATION_PATHS = Object.freeze([
     "bot",
     "drone",
+    "rays.gun",
+    "rays.pistol",
     "rays.fire_gun",
     "rays.pistol_shot",
     "rays.concussive_shot",

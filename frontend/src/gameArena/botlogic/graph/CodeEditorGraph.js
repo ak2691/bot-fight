@@ -1,4 +1,4 @@
-import { ACTION_TYPES, STATE_VARIABLES, actionSupportsTarget } from "../code/BotCode.js";
+import { ACTION_TYPES, STATE_VARIABLES, VARIABLE_SELECTABLE_TYPES, actionSupportsTarget } from "../code/BotCode.js";
 
 export const CODE_EDITOR_GRAPH_VERSION = "bot-editor-graph-v2";
 
@@ -171,7 +171,7 @@ export function canConnectCodeEditorPorts(graph, sourceId, targetId, port, state
     const variable = variableId ? nodeById(sanitized, variableId) : null;
     if (variable?.kind === "variable") {
         const definition = stateVariables.find((candidate) => candidate.id === variable.variableId);
-        return port === "target" && Boolean(definition?.supportsTarget);
+        return port === "target" && Boolean(definition?.supportsSelectable);
     }
     return false;
 }
@@ -254,7 +254,10 @@ export function compileCodeEditorGraph(configuration, graph) {
                 const rowIndex = Number(operandMatch[2]);
                 const operand = Number(operandMatch[3]);
                 if (!conditions[rowIndex]) return;
-                const field = operand === 1 ? "leftTarget" : "rightTarget";
+                const variableDefinition = STATE_VARIABLES.find((candidate) => candidate.id === variable.variableId);
+                const field = variableDefinition?.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR
+                    ? operand === 1 ? "selectable1" : "selectable2"
+                    : operand === 1 ? "leftSelectable" : "rightSelectable";
                 conditions[rowIndex] = { ...conditions[rowIndex], [field]: source.target };
             });
         });
@@ -274,7 +277,7 @@ export function compileCodeEditorGraph(configuration, graph) {
             } else {
                 if (actionDefinition(nextEntry.action)?.movementConfig) nextEntry.movementMode = "target";
                 else nextEntry.targetMode = "target";
-                nextEntry.actionTarget = source.target;
+                nextEntry.selectable = source.target;
                 if (!actionDefinition(nextEntry.action)?.movementConfig) {
                     nextEntry.targetOffsetX = source.targetOffsetX;
                     nextEntry.targetOffsetY = source.targetOffsetY;
@@ -284,7 +287,7 @@ export function compileCodeEditorGraph(configuration, graph) {
         });
         if (Array.isArray(branch.actions)) {
             branch.actions = actions;
-            Object.assign(branch, actions[0] ?? { action: "none", actionTarget: "opponent" });
+            Object.assign(branch, actions[0] ?? { action: "none", selectable: "opponent" });
         }
     });
     return { ...configuration, roots, editorGraph };

@@ -23,7 +23,7 @@ export function selectStrategyActionPlan(configuration, payload, runtime) {
             const action = runtime.actionById.get(block.action) ?? runtime.actionTypes[0];
             if (runtime.actionSupportsTarget(action)
                 && !(action.coordinateTarget && ["coordinates", "angle"].includes(block.targetMode))
-                && !runtime.resolveTarget(state, block.actionTarget)) continue;
+                && !runtime.resolveTarget(state, block.selectable)) continue;
             const executionHead = action.head === ACTION_HEADS.MOVEMENT ? ACTION_HEADS.MOVEMENT
                 : action.head === ACTION_HEADS.ROTATION ? ACTION_HEADS.ROTATION : ACTION_HEADS.ABILITY;
             if (plan[executionHead]) continue;

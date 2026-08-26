@@ -1,5 +1,6 @@
 import { abilityChargesFor, abilityIgnoresGlobalLock, abilityRechargeRemainingMs, abilityTimingReady, anotherAbilityActive } from "../../../gameconfig/AbilityResourceSystem.js";
 import { abilityContract } from "../../../gameconfig/AbilityContracts.js";
+import { abilityIdFromBoundary } from "../../../gameconfig/AbilityCompatibility.js";
 import { ACTION_HEADS, BOT_CODE_ACTIONS } from "../contracts/BotLogicContracts.js";
 
 export function actionSupportsTarget(action) {
@@ -16,7 +17,7 @@ export function actionExecutableNow(block, state, operations) {
     if (actionSupportsTarget(action)
         && !(action.movementConfig && block.movementMode !== "target")
         && !(action.coordinateTarget && ["coordinates", "angle"].includes(block.targetMode))
-        && !operations.resolveTarget(state, block.actionTarget)) return false;
+        && !operations.resolveTarget(state, block.selectable)) return false;
     if (action.head === ACTION_HEADS.MOVEMENT || action.head === ACTION_HEADS.ROTATION) return true;
     const ability = operations.actionToAbility[action.id] ?? action.id;
     const equipped = state.player.abilities;
@@ -25,6 +26,8 @@ export function actionExecutableNow(block, state, operations) {
 }
 
 export function abilityReady(bot, ability) {
+    const abilityId = abilityIdFromBoundary(ability);
+    if (!botHasAbility(bot, abilityId)) return false;
     if (Number(bot?.preparingMs) > 0 && bot?.preparingAbility != null) {
         return false;
     }
@@ -32,17 +35,18 @@ export function abilityReady(bot, ability) {
     // Selection happens before this fixed step advances its timers. Do not
     // reserve the action for an ability whose recovery/reload ends later in
     // the step; a lower-priority action must be allowed to take over now.
-    return abilityTimingReady(bot, ability, 0)
-        && !anotherAbilityActive(bot, ability, abilityIgnoresGlobalLock(ability))
-        && abilityRechargeRemainingMs(bot, ability) <= 0
-        && (bot?.abilityCharges?.[ability] == null || Number(bot.abilityCharges[ability]) > 0);
+    return abilityTimingReady(bot, abilityId, 0)
+        && !anotherAbilityActive(bot, abilityId, abilityIgnoresGlobalLock(abilityId))
+        && abilityRechargeRemainingMs(bot, abilityId) <= 0
+        && (bot?.abilityCharges?.[abilityId] == null || Number(bot.abilityCharges[abilityId]) > 0);
 }
 
 // Conditions use abilityReady() to describe whether a new activation can
 // start. Action selection also needs to keep an already-started wind-up or
 // channelled ability selected until its execution phase completes.
 export function abilityActionReady(bot, ability) {
-    const abilityId = Number(ability);
+    const abilityId = abilityIdFromBoundary(ability);
+    if (!botHasAbility(bot, abilityId)) return false;
     const preparingSameAbility = Number(bot?.preparingAbility) === abilityId
         && Number(bot?.preparingMs) > 0;
     const channelledSameAbility = abilityContract(abilityId)?.execution?.activationModel === "channelled"
@@ -51,26 +55,39 @@ export function abilityActionReady(bot, ability) {
 }
 
 export function abilityCooldownMs(bot, ability) {
-    if (Number(bot?.abilityActiveMs?.[ability]) > 0 || Number(bot?.preparingMs) > 0) {
+    const abilityId = abilityIdFromBoundary(ability);
+    if (!botHasAbility(bot, abilityId)) return 0;
+    if (Number(bot?.abilityActiveMs?.[abilityId]) > 0 || Number(bot?.preparingMs) > 0) {
         return 0;
     }
 
     return Math.max(
-        Number(bot?.abilityCooldowns?.[ability]) || 0,
-        abilityRechargeRemainingMs(bot, ability),
+        Number(bot?.abilityCooldowns?.[abilityId]) || 0,
+        abilityRechargeRemainingMs(bot, abilityId),
     );
 }
 
 export function abilityOnCooldown(bot, ability) {
-    return abilityActiveMs(bot, ability) <= 0
+    const abilityId = abilityIdFromBoundary(ability);
+    return botHasAbility(bot, abilityId)
+        && abilityActiveMs(bot, abilityId) <= 0
         && Number(bot?.preparingMs) <= 0
-        && abilityCooldownMs(bot, ability) > 0;
+        && abilityCooldownMs(bot, abilityId) > 0;
 }
 
 export function abilityActiveMs(bot, ability) {
-    return Number(bot?.abilityActiveMs?.[ability]) || 0;
+    const abilityId = abilityIdFromBoundary(ability);
+    return botHasAbility(bot, abilityId) ? Number(bot?.abilityActiveMs?.[abilityId]) || 0 : 0;
 }
 
 export function abilityCharges(bot, ability) {
-    return abilityChargesFor(bot, ability);
+    const abilityId = abilityIdFromBoundary(ability);
+    return botHasAbility(bot, abilityId) ? abilityChargesFor(bot, abilityId) : 0;
+}
+
+export function botHasAbility(bot, ability) {
+    const abilityId = abilityIdFromBoundary(ability);
+    return abilityId != null
+        && Array.isArray(bot?.abilities)
+        && bot.abilities.some((candidate) => abilityIdFromBoundary(candidate) === abilityId);
 }

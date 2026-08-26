@@ -5,6 +5,8 @@ import { toSimulationBotShape } from "./arenaShapes.js";
 import { isClosingZone } from "../ecs/entities/ClosingZoneSystem.js";
 import { truncateToNumberPrecision } from "../botlogic/code/configuration/constants.js";
 import { normalizeStatusEffect, statusEffectsFor } from "../ecs/contracts/StatusContracts.js";
+import { entityContract } from "../ecs/contracts/EntityContracts.js";
+import { BOT_SELECTABLE_IDENTITIES, selectableIdentitiesForAbilityEntity } from "./selectableIdentities.js";
 
 export function buildStatePayload(currentShapes, selectedLoadout, actorId = "main") {
     const main = currentShapes.find((shape) => shape.id === actorId);
@@ -36,6 +38,7 @@ function botPayload(shape, selectedLoadout, type = "model", ownerId = shape.id) 
     return {
         id: shape.id,
         type,
+        selectableIdentities: BOT_SELECTABLE_IDENTITIES,
         ownerId,
         abilities: [...(shape.abilities ?? [])],
         health: healthPayload(shape, currentHp, maxHp, alive),
@@ -64,11 +67,16 @@ function objectPayload(shape, actorId) {
             owner: shape.ownerId === actorId ? "my" : "opponent",
         };
     }
+    const contract = entityContract(shape.abilityId ?? shape.entityContractType ?? shape.type);
+    const healthBearing = Boolean(contract?.health && contract?.collider?.hittable);
+    const selectableIdentities = shape.selectableIdentities
+        ?? selectableIdentitiesForAbilityEntity(contract, shape.abilityId ?? contract?.abilityId);
     return {
         id: shape.id,
         ownerId: shape.ownerId,
         owner: shape.ownerId === actorId ? "my" : "opponent",
         abilityId: shape.abilityId,
+        selectableIdentities,
         armed: Boolean(shape.armed),
         fuseMs: Math.round(shape.fuseMs ?? 0),
         // Bot roles come from stable ids. Renderer presentation types may be
@@ -76,16 +84,21 @@ function objectPayload(shape, actorId) {
         type: shape.id === opponentBotId ? "opponentModel" : shape.type,
         x: truncateToNumberPrecision(Number(shape.x ?? 0)),
         y: truncateToNumberPrecision(Number(shape.y ?? 0)),
-        size: shape.size,
+        size: shape.size ?? shape.components?.collider?.size ?? 0,
         ageMs: Math.max(0, Number(shape.ageMs ?? shape.components?.lifetime?.ageMs ?? 0)),
         rotation: truncateToNumberPrecision(Number(shape.rotation ?? 0)),
         velocityX: truncateToNumberPrecision(Number(shape.velocityX ?? 0)),
         velocityY: truncateToNumberPrecision(Number(shape.velocityY ?? 0)),
         combatLoadout: shape.combatLoadout,
         abilities: [...(shape.abilities ?? [])],
-        ...(shape.hp == null ? {} : { hp: Number(shape.hp) }),
-        damageTakenLastTick: Number(shape.damageTakenLastTick ?? 0),
-        hpNetChangeLastTick: Number(shape.hpNetChangeLastTick ?? 0),
+        // Every selectable has a stable metric shape. Non-health entities resolve
+        // to zero, which keeps selectable conditionals deterministic and avoids
+        // making callers infer whether an entity exposes a health component.
+        hp: healthBearing ? Number(shape.hp ?? shape.health?.current ?? 0) : 0,
+        damageTakenLastTick: healthBearing
+            ? Number(shape.damageTakenLastTick ?? shape.health?.damageTakenLastTick ?? 0) : 0,
+        hpNetChangeLastTick: healthBearing
+            ? Number(shape.hpNetChangeLastTick ?? shape.health?.netChangeLastTick ?? 0) : 0,
         abilityCooldowns: { ...(shape.abilityCooldowns ?? {}) },
         abilityPendingCooldownMs: { ...(shape.abilityPendingCooldownMs ?? {}) },
         abilityCharges: { ...(shape.abilityCharges ?? {}) },

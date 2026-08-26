@@ -26,5 +26,7 @@ test("ability selection panel keeps draft limits and detail modal wiring", () =>
     assert.match(source, /MatchToolIcon/);
     assert.match(source, /onSurrender/);
     assert.match(source, /FORFEIT/);
+    assert.match(source, /arena-toolbar-button arena-toolbar-button--red arena-toolbar-button--inline/);
+    assert.match(source, /arena-toolbar-button arena-toolbar-button--blue arena-toolbar-button--inline min-w-52/);
     assert.match(source, /disabled=\{!canSurrender \|\| surrenderPending \|\| hasSurrendered\}/);
 });

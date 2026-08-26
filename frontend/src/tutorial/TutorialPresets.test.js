@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getTutorialScenario, hasTutorialPriorityOrder, TUTORIAL_STEP_COUNT } from "./TutorialPresets.js";
+import { getTutorialScenario, hasTutorialPriorityOrder, TUTORIAL_ACTIONS, TUTORIAL_STEP_COUNT } from "./TutorialPresets.js";
 import { normalizeAbilityStrategyConfiguration, selectAbilityStrategyActionPlan } from "../gameArena/botlogic/code/BotCode.js";
 
 const emptyPayload = {
@@ -31,13 +31,31 @@ test("custom-variable tutorial solution adds one to Variable 1", () => {
     assert.equal(plan.customVariables["custom.variable-1"], 1);
 });
 
+test("tutorial presets use the current tree and selectable payload shapes", () => {
+    const empty = getTutorialScenario(0).emptyCode;
+    const solution = getTutorialScenario(3).solution;
+    const closeCondition = solution.roots[1].branches[0].conditions[0];
+    const strikeCondition = solution.roots[2].branches[0].conditions[1];
+    const strikeAction = solution.roots[2].branches[0].actions[0];
+
+    assert.deepEqual(Object.keys(empty).sort(), ["customVariables", "roots", "version"]);
+    assert.deepEqual(
+        { selectable1: closeCondition.selectable1, selectable2: closeCondition.selectable2 },
+        { selectable1: "my_bot", selectable2: "opponent" },
+    );
+    assert.equal(closeCondition.leftSelectable, undefined);
+    assert.equal(strikeCondition.leftSelectable, undefined);
+    assert.equal(strikeAction.action, TUTORIAL_ACTIONS.HEAVY_SLASH);
+    assert.equal(strikeAction.actionTarget, undefined);
+});
+
 test("tutorial priority lesson starts with Dash first and solution swaps only priorities", () => {
     const starting = getTutorialScenario(8).emptyCode;
     const solution = getTutorialScenario(8).solution;
 
-    assert.equal(hasTutorialPriorityOrder(starting, 19, 20), true);
-    assert.equal(hasTutorialPriorityOrder(starting, 20, 19), false);
-    assert.equal(hasTutorialPriorityOrder(solution, 20, 19), true);
+    assert.equal(hasTutorialPriorityOrder(starting, TUTORIAL_ACTIONS.DASH, TUTORIAL_ACTIONS.LOCK_ON), true);
+    assert.equal(hasTutorialPriorityOrder(starting, TUTORIAL_ACTIONS.LOCK_ON, TUTORIAL_ACTIONS.DASH), false);
+    assert.equal(hasTutorialPriorityOrder(solution, TUTORIAL_ACTIONS.LOCK_ON, TUTORIAL_ACTIONS.DASH), true);
     assert.deepEqual(solution.roots.map((root) => root.id), starting.roots.map((root) => root.id));
 });
 
@@ -45,10 +63,13 @@ test("tutorial solutions use the relaxed bearing and context-aware dashes", () =
     const dodge = getTutorialScenario(5).solution;
     const dodgeAction = dodge.roots[0].branches[0].actions[0];
     const combine = getTutorialScenario(6).solution;
-    const combineDash = combine.roots[0].branches[0].actions[0];
-    const slash = combine.roots.at(-1).branches[0].conditions[1];
+    const heavySlashRoot = combine.roots[0];
+    const combineDash = combine.roots[1].branches[0].actions[0];
+    const slash = heavySlashRoot.branches[0].conditions[1];
 
-    assert.deepEqual(dodgeAction, { action: 19, movementMode: "target", movementDirection: 90, actionTarget: "opponent" });
-    assert.deepEqual(combineDash, { action: 19, movementMode: "target", movementDirection: 90, actionTarget: "opponent_grenade" });
+    assert.deepEqual(dodgeAction, { action: TUTORIAL_ACTIONS.DASH, movementMode: "target", movementDirection: 90, selectable: "opponent" });
+    assert.deepEqual(combineDash, { action: TUTORIAL_ACTIONS.DASH, movementMode: "target", movementDirection: 90, selectable: "opponent_grenade" });
+    assert.equal(heavySlashRoot.createdOrder, 0);
+    assert.equal(heavySlashRoot.branches[0].actions[0].action, TUTORIAL_ACTIONS.HEAVY_SLASH);
     assert.equal(slash.right.value, 75);
 });

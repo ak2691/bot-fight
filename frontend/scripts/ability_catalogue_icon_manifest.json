@@ -2,7 +2,7 @@
   "canvas_size": 512,
   "default_padding": 36,
   "icons": {
-    "swing": {
+    "slash": {
       "output": "swing.png",
       "source": "frontend/src/assets/arena/melee-slashes-sheet.png",
       "grid": { "columns": 6, "rows": 2, "frame_index": 0 },
@@ -10,7 +10,7 @@
       "fit": "contain",
       "padding": 32
     },
-    "fire_gun": {
+    "gun": {
       "output": "fire_gun.png",
       "source": "frontend/src/assets/arena/abilities/rays/fire-gun.png",
       "selection": "strongest visible ray section",
@@ -18,7 +18,7 @@
       "fit": "contain",
       "padding": 42
     },
-    "throw_grenade": {
+    "grenade": {
       "output": "throw_grenade.png",
       "source": "frontend/src/assets/arena/abilities/projectiles/grenade/moving-003.png",
       "selection": "supplied moving frame",
@@ -26,7 +26,7 @@
       "fit": "contain",
       "padding": 42
     },
-    "shoot_fireball": {
+    "fireball": {
       "output": "shoot_fireball.png",
       "source": "frontend/src/assets/arena/abilities/projectiles/fireball/005.png",
       "selection": "strongest fully developed fireball frame",
@@ -82,7 +82,7 @@
       "fit": "contain",
       "padding": 42
     },
-    "pistol_shot": {
+    "pistol": {
       "output": "pistol_shot.png",
       "layers": [
         {

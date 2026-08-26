@@ -236,25 +236,25 @@ class BotSubmissionValidationServiceTest {
                       "conditions":[
                         {
                           "type":"expression",
-                          "left":"my.x",
+                          "left":"selectable.x","leftSelectable":"my_bot",
                           "comparator":"lt",
                           "right":{"type":"number","value":240}
                         },
                         {
                           "type":"expression",
-                          "left":"opponent.y",
+                          "left":"selectable.y","leftSelectable":"opponent",
                           "comparator":"gte",
                           "right":{"type":"number","value":300}
                         },
                         {
                           "type":"expression",
-                          "left":"my.overdriveMs",
+                          "left":"bot.selectedAbilityActiveMs","leftSelectable":"my_bot","ability":33,
                           "comparator":"gt",
                           "right":{"type":"number","value":2}
                         },
                         {
                           "type":"expression",
-                          "left":"opponent.selectedStatusEffectDurationMs",
+                          "left":"bot.selectedStatusEffectDurationMs","leftSelectable":"opponent",
                           "statusEffect":"silence",
                           "comparator":"lte",
                           "right":{"type":"number","value":1}
@@ -310,20 +310,20 @@ class BotSubmissionValidationServiceTest {
                       "conditions":[
                         {
                           "type":"expression",
-                          "left":"my.hp",
+                          "left":"selectable.hp","leftSelectable":"my_bot",
                           "comparator":"lt",
-                          "right":{"type":"variable","value":"opponent.hp"}
+                          "right":{"type":"variable","value":"selectable.hp"},"rightSelectable":"opponent"
                         },
                         {
                           "type":"expression",
-                          "left":"my.x",
+                          "left":"selectable.x","leftSelectable":"my_bot",
                           "comparator":"gte",
                           "right":{"type":"number","value":300}
                         },
                         {
                           "type":"expression",
                           "join":"or",
-                          "left":"my.selectedAbilityReady",
+                          "left":"bot.selectedAbilityReady","leftSelectable":"my_bot",
                           "ability":"lock_on",
                           "comparator":"eq",
                           "right":{"type":"boolean","value":true}
@@ -370,7 +370,7 @@ class BotSubmissionValidationServiceTest {
     }
 
     @Test
-    void rejectsRemovedFixedAbilityVariables() throws Exception {
+    void rejectsUnsupportedFixedAbilityVariables() throws Exception {
         BotSubmissionPayloadDTO payload = validPayload();
         payload.setSelectedLoadout("ranged");
         payload.setBrain(jsonMapper.readTree("""
@@ -384,7 +384,7 @@ class BotSubmissionValidationServiceTest {
                       "conditions":[
                         {
                           "type":"expression",
-                          "left":"my.swingReady",
+                          "left":"bot.swingReady",
                           "comparator":"lt",
                           "right":{"type":"number","value":1}
                         }
@@ -530,8 +530,8 @@ class BotSubmissionValidationServiceTest {
                   "roots":[{"branches":[{
                     "branchType":"if",
                     "actions":[
-                      {"action":"move_walk","movementMode":"target","movementDirection":0,"actionTarget":"opponent"},
-                      {"action":"rotate_toward_enemy","actionTarget":"opponent"},
+                      {"action":"move_walk","movementMode":"target","movementDirection":0,"selectable":"opponent"},
+                      {"action":"rotate_toward_enemy","selectable":"opponent"},
                       {"action":"swing"}
                     ],
                     "conditions":[{"type":"always"}],
@@ -572,14 +572,14 @@ class BotSubmissionValidationServiceTest {
                     "abilities":["swing","block"]
                   },
                   "roots":[{"branches":[{
-                    "branchType":"if","action":"fire_gun","actionTarget":"defender_core",
+                    "branchType":"if","action":"fire_gun","selectable":"defender_core",
                     "conditions":[{"type":"always"}],"children":[]
                   }]}]
                 }
                 """));
 
         assertThat(service.validate(payload).getErrors()).contains(
-                "brain.roots[0].branches[0].actionTarget is not an allowed fight target",
+                "brain.roots[0].branches[0].selectable is not an allowed selectable",
                 "brain.roots[0].branches[0].action requires equipped ability 3");
     }
 
@@ -593,7 +593,7 @@ class BotSubmissionValidationServiceTest {
                   "loadout":{"abilities":["fire_gun"]},
                   "roots":[{"branches":[{
                     "branchType":"if","action":"fire_gun",
-                    "conditions":[{"type":"expression","left":"my.selectedAbilityCharges","ability":"fire_gun","comparator":"gt","right":{"type":"number","value":0}}],
+                    "conditions":[{"type":"expression","left":"bot.selectedAbilityCharges","ability":"fire_gun","comparator":"gt","right":{"type":"number","value":0}}],
                     "children":[]
                   }]}]
                 }
@@ -612,7 +612,7 @@ class BotSubmissionValidationServiceTest {
                   "loadout":{"abilities":["overclock"]},
                   "roots":[{"branches":[{
                     "branchType":"if","action":"move_walk","movementMode":"absolute","movementDirection":"stop",
-                    "conditions":[{"type":"expression","left":"my.hp","comparator":"lt","right":{"type":"variable","value":"my.selectedAbilityCooldownMs"},"ability":33}],
+                    "conditions":[{"type":"expression","left":"selectable.hp","leftSelectable":"my_bot","comparator":"lt","right":{"type":"variable","value":"bot.selectedAbilityCooldownMs"},"rightSelectable":"my_bot","ability":33}],
                     "children":[]
                   }]}]
                 }
@@ -635,7 +635,7 @@ class BotSubmissionValidationServiceTest {
                   "loadout":{"abilities":["fire_gun"]},
                   "roots":[{"branches":[{
                     "branchType":"if","action":"dash",
-                    "conditions":[{"type":"expression","left":"my.selectedAbilityCharges","ability":"fire_gun","comparator":"gt","right":{"type":"number","value":0}}],
+                    "conditions":[{"type":"expression","left":"bot.selectedAbilityCharges","ability":"fire_gun","comparator":"gt","right":{"type":"number","value":0}}],
                     "children":[]
                   }]}]
                 }
@@ -649,7 +649,7 @@ class BotSubmissionValidationServiceTest {
                   "loadout":{"abilities":["swing"]},
                   "roots":[{"branches":[{
                     "branchType":"if","action":"swing",
-                    "conditions":[{"type":"expression","left":"my.selectedAbilityCharges","ability":"swing","comparator":"gt","right":{"type":"number","value":0}}],
+                    "conditions":[{"type":"expression","left":"bot.selectedAbilityCharges","ability":"swing","comparator":"gt","right":{"type":"number","value":0}}],
                     "children":[]
                   }]}]
                 }
@@ -669,7 +669,7 @@ class BotSubmissionValidationServiceTest {
                   "loadout":{"abilities":["shoot_fireball"]},
                   "roots":[{"branches":[{
                     "branchType":"if","action":"move_walk","movementMode":"absolute","movementDirection":"stop",
-                    "conditions":[{"type":"expression","left":"my.selectedStatusEffectActive","statusEffect":"slow","comparator":"eq","right":{"type":"boolean","value":true}}],
+                    "conditions":[{"type":"expression","left":"bot.selectedStatusEffectActive","statusEffect":"slow","comparator":"eq","right":{"type":"boolean","value":true}}],
                     "children":[]
                   }]}]
                 }
@@ -683,7 +683,7 @@ class BotSubmissionValidationServiceTest {
                   "loadout":{"abilities":["shoot_fireball"]},
                   "roots":[{"branches":[{
                     "branchType":"if","action":"move_walk","movementMode":"absolute","movementDirection":"stop",
-                    "conditions":[{"type":"expression","left":"my.selectedStatusEffectActive","statusEffect":"not-real","comparator":"eq","right":{"type":"boolean","value":true}}],
+                    "conditions":[{"type":"expression","left":"bot.selectedStatusEffectActive","statusEffect":"not-real","comparator":"eq","right":{"type":"boolean","value":true}}],
                     "children":[]
                   }]}]
                 }
@@ -703,7 +703,7 @@ class BotSubmissionValidationServiceTest {
                   "loadout":{"abilities":["shoot_fireball"]},
                   "roots":[{"branches":[{
                     "branchType":"if","action":"move_walk","movementMode":"absolute","movementDirection":"stop",
-                    "conditions":[{"type":"expression","left":"my.selectedStatusEffectDurationMs","statusEffect":"burn","comparator":"gte","right":{"type":"number","value":1.2}}],
+                    "conditions":[{"type":"expression","left":"bot.selectedStatusEffectDurationMs","statusEffect":"burn","comparator":"gte","right":{"type":"number","value":1.2}}],
                     "children":[]
                   }]}]
                 }
@@ -717,7 +717,7 @@ class BotSubmissionValidationServiceTest {
                   "loadout":{"abilities":["shoot_fireball"]},
                   "roots":[{"branches":[{
                     "branchType":"if","action":"move_walk","movementMode":"absolute","movementDirection":"stop",
-                    "conditions":[{"type":"expression","left":"my.selectedStatusEffectDurationMs","statusEffect":"burn","comparator":"gte","right":{"type":"number","value":1.23}}],
+                    "conditions":[{"type":"expression","left":"bot.selectedStatusEffectDurationMs","statusEffect":"burn","comparator":"gte","right":{"type":"number","value":1.23}}],
                     "children":[]
                   }]}]
                 }
@@ -779,7 +779,7 @@ class BotSubmissionValidationServiceTest {
         BotSubmissionPayloadDTO payload = validPayload();
         payload.setBrain(jsonMapper.readTree("""
                 {"version":"bot-logic-tree-v1","roots":[{"branches":[{"branchType":"if",
-                  "conditions":[{"type":"expression","left":"target.bearingFromMe","comparator":"lt",
+                  "conditions":[{"type":"expression","left":"selectable.absoluteBearing","comparator":"lt",
                     "right":{"type":"number","value":50}}],
                   "actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"children":[]}]}]}
                 """));
@@ -792,7 +792,7 @@ class BotSubmissionValidationServiceTest {
         BotSubmissionPayloadDTO payload = validPayload();
         payload.setBrain(jsonMapper.readTree("""
                 {"version":"bot-logic-tree-v1","roots":[{"branches":[{"branchType":"if",
-                  "conditions":[{"type":"expression","left":"my.hpNetChangeLastTick","comparator":"lt",
+                  "conditions":[{"type":"expression","left":"selectable.hpNetChangeLastTick","leftSelectable":"my_bot","comparator":"lt",
                     "right":{"type":"number","value":-5}}],
                   "actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"children":[]}]}]}
                 """));
@@ -801,7 +801,7 @@ class BotSubmissionValidationServiceTest {
 
         payload.setBrain(jsonMapper.readTree("""
                 {"version":"bot-logic-tree-v1","roots":[{"branches":[{"branchType":"if",
-                  "conditions":[{"type":"expression","left":"my.hp","comparator":"lt",
+                  "conditions":[{"type":"expression","left":"selectable.hp","leftSelectable":"my_bot","comparator":"lt",
                     "right":{"type":"number","value":-5}}],
                   "actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"children":[]}]}]}
                 """));
@@ -811,21 +811,20 @@ class BotSubmissionValidationServiceTest {
     }
 
     @Test
-    void healthConditionalsOnlyAcceptHealthBearingTargets() throws Exception {
+    void healthConditionalsAcceptNonHealthTargetsAndResolveThemAsZero() throws Exception {
         BotSubmissionPayloadDTO payload = validPayload();
         payload.setBrain(jsonMapper.readTree("""
                 {"version":"bot-logic-tree-v1","roots":[{"branches":[{"branchType":"if",
-                  "conditions":[{"type":"expression","left":"target.hp","target":"opponent_grenade","comparator":"gt",
+                  "conditions":[{"type":"expression","left":"selectable.hp","selectable":"opponent_grenade","comparator":"gt",
                     "right":{"type":"number","value":0}}],
                   "actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"children":[]}]}]}
                 """));
 
-        assertThat(service.validate(payload).getErrors()).contains(
-                "brain.roots[0].branches[0].conditions[0].leftTarget must reference a health-bearing target");
+        assertThat(service.validate(payload).getErrors()).isEmpty();
 
         payload.setBrain(jsonMapper.readTree("""
                 {"version":"bot-logic-tree-v1","roots":[{"branches":[{"branchType":"if",
-                  "conditions":[{"type":"expression","left":"target.hp","target":"opponent_hunter_drone","comparator":"gt",
+                  "conditions":[{"type":"expression","left":"selectable.hp","selectable":"opponent_hunter_drone","comparator":"gt",
                     "right":{"type":"number","value":0}}],
                   "actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"children":[]}]}]}
                 """));
@@ -856,7 +855,7 @@ class BotSubmissionValidationServiceTest {
         BotSubmissionPayloadDTO payload = validPayload();
         payload.setBrain(jsonMapper.readTree("""
                 {"version":"bot-logic-tree-v1","roots":[{"branches":[{"branchType":"if",
-                  "conditions":[{"type":"expression","left":"target.facing","comparator":"gt",
+                  "conditions":[{"type":"expression","left":"selectable.facing","comparator":"gt",
                     "right":{"type":"number","value":361}}],
                   "actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"children":[]}]}]}
                 """));

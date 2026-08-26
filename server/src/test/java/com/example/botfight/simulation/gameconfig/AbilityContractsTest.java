@@ -35,7 +35,7 @@ class AbilityContractsTest {
         assertThat(AbilityContracts.effectAmount(28, DAMAGE)).isEqualTo(10);
         assertThat(AbilityContracts.effectAmount(29, DAMAGE)).isEqualTo(15);
         assertThat(AbilityContracts.effectDurationMs(9, "slow")).isEqualTo(1_000);
-        assertThat(AbilityContracts.effectAmount(11, DAMAGE)).isEqualTo(20);
+        assertThat(AbilityContracts.effectAmount(11, DAMAGE)).isEqualTo(25);
         assertThat(AbilityContracts.effectAmount(30, DAMAGE)).isEqualTo(15);
         assertThat(AbilityContracts.effectDurationMs(30, "slow")).isEqualTo(2_000);
     }

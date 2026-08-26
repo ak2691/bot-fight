@@ -28,7 +28,7 @@ public final class EntityContracts {
     public enum TimerMode { NONE, AGE, REMAINING, STOPPED, FUSE }
     public enum BehaviorKind { TRAP, PHASE, SEGMENT, ZONE, SUMMON, DELAYED_ZONE, INTERVAL, LIFETIME, RADIAL, VISUAL_ZONE }
     public enum HitMode { ALL, NEAREST }
-    public enum TargetOwner { OWNER, NONE }
+    public enum SelectableOwner { OWNER, NONE }
 
     public record Spawn(SpawnMode mode, RotationMode rotation, double padding,
                         String clampToRadiusStat, double defaultX, double defaultY) {}
@@ -156,7 +156,7 @@ public final class EntityContracts {
             SystemType system,
             Category category,
             Spawn spawn,
-            TargetOwner targetOwner,
+            SelectableOwner selectableOwner,
             Motion motion,
             Lifetime lifetime,
             Collider collider,
@@ -349,7 +349,7 @@ public final class EntityContracts {
                 null, Map.of()));
 
         contracts.put(22, contract(22, "orbital_zone", "orbitalMarker", FactoryType.ENTITY,
-                SystemType.ABILITY, Category.ZONE, TARGET, TargetOwner.OWNER,
+                SystemType.ABILITY, Category.ZONE, TARGET, SelectableOwner.OWNER,
                 new Motion(null, 0, 1), new Lifetime(TimerMode.REMAINING, "durationMs", 0),
                 new Collider("markerSize", false), null, new InitialState(true, false),
                 new Behavior(BehaviorKind.INTERVAL, null, null, null,
@@ -373,7 +373,7 @@ public final class EntityContracts {
                 null, Map.of()));
 
         contracts.put(27, contract(27, "singularity_zone", "singularityZone", FactoryType.ENTITY,
-                SystemType.ABILITY, Category.ZONE, TARGET, TargetOwner.OWNER,
+                SystemType.ABILITY, Category.ZONE, TARGET, SelectableOwner.OWNER,
                 new Motion(null, 0, 1), new Lifetime(TimerMode.REMAINING, "durationMs", 0),
                 new Collider("zoneSize", false), null, new InitialState(true, false),
                 new Behavior(BehaviorKind.ZONE,
@@ -480,16 +480,16 @@ public final class EntityContracts {
                                            Health health, InitialState initialState, Behavior behavior,
                                            Projectile projectile, Map<String, Derived> derived) {
         return new EntityContract(abilityId, entityType, runtimeType, factory, system, category,
-                spawn, TargetOwner.OWNER, motion, lifetime, collider, health, initialState, behavior, projectile, derived);
+                spawn, SelectableOwner.OWNER, motion, lifetime, collider, health, initialState, behavior, projectile, derived);
     }
 
     private static EntityContract contract(int abilityId, String entityType, String runtimeType,
                                            FactoryType factory, SystemType system, Category category,
-                                           Spawn spawn, TargetOwner targetOwner, Motion motion, Lifetime lifetime,
+                                           Spawn spawn, SelectableOwner selectableOwner, Motion motion, Lifetime lifetime,
                                            Collider collider, Health health, InitialState initialState, Behavior behavior,
                                            Projectile projectile, Map<String, Derived> derived) {
         return new EntityContract(abilityId, entityType, runtimeType, factory, system, category,
-                spawn, targetOwner, motion, lifetime, collider, health, initialState, behavior, projectile, derived);
+                spawn, selectableOwner, motion, lifetime, collider, health, initialState, behavior, projectile, derived);
     }
 
     private static Derived derived(String type, String behaviorKey, Category category, SystemType system,

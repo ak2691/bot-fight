@@ -145,7 +145,7 @@ function rewriteVariableActions(configuration, variableId, rewrite) {
     const mapBranch = (branch) => {
         const actions = (branch.actions ?? []).map((entry) => entry.action === "variable" && entry.variableId === variableId ? rewrite(entry) : entry).filter(Boolean);
         const legacyMatches = branch.action === "variable" && branch.variableId === variableId;
-        const first = actions[0] ?? (legacyMatches ? { action: "none", actionTarget: "opponent" } : null);
+        const first = actions[0] ?? (legacyMatches ? { action: "none", selectable: "opponent" } : null);
         return { ...branch, ...(first ? { ...first, actions } : { actions }), children: (branch.children ?? []).map(mapBranch) };
     };
     return { ...configuration, roots: (configuration.roots ?? []).map((root) => ({ ...root, branches: (root.branches ?? []).map(mapBranch) })) };

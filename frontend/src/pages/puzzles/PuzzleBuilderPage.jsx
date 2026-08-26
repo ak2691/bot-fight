@@ -7,7 +7,7 @@ import {
     customVariableDefinitions,
     abilityDefinitionsForVariable,
     normalizeAbilityStrategyConfiguration,
-    STATE_VARIABLES,
+    VISIBLE_STATE_VARIABLES,
 } from "../../gameArena/botlogic/code/BotCode.js";
 import {
     decodeBotLoadout,
@@ -25,7 +25,7 @@ import {
     PRACTICE_OPPONENT_START,
     PRACTICE_PLAYER_START,
 } from "../../gameArena/modelPayloads/arenaConstants.js";
-import { targetTypesForLoadouts } from "../../gameArena/coding/nodes/GraphNodes.jsx";
+import { selectableAbilityIdsForLoadouts, selectableTypesForLoadouts } from "../../gameArena/coding/nodes/GraphNodes.jsx";
 import { savePuzzle } from "../../puzzles/puzzleApi.js";
 import PuzzleLogicWorkspace, {
     createDefaultPuzzleLogic,
@@ -84,11 +84,9 @@ function puzzleConditionVariables(playerLoadout, opponentLoadout, puzzleLogic) {
     const playerAbilities = new Set([...STANDARD_ABILITY_IDS, ...abilityIdsForLoadout(playerLoadout)]);
     const opponentAbilities = new Set([...STANDARD_ABILITY_IDS, ...abilityIdsForLoadout(opponentLoadout)]);
     const allAbilities = new Set([...playerAbilities, ...opponentAbilities]);
-    const builtIns = STATE_VARIABLES.map((variable) => {
+    const builtIns = VISIBLE_STATE_VARIABLES.map((variable) => {
         if (!variable.supportsAbility && !variable.supportsStatusEffect) return variable;
-        const equipped = variable.supportsStatusEffect
-            ? allAbilities
-            : variable.abilityOwner === "opponent" ? opponentAbilities : playerAbilities;
+        const equipped = allAbilities;
         return {
             ...variable,
             ...(variable.supportsAbility ? {
@@ -197,12 +195,13 @@ function EditableNumberInput({ value, onCommit, min, max, fallback = 0, emptyVal
     );
 }
 
-function PuzzleConfigurationModal({ draft, conditionVariables, conditionTargets, onPuzzleLogicChange, onClose }) {
+function PuzzleConfigurationModal({ draft, conditionVariables, conditionTargets, conditionTargetAbilityIds, onPuzzleLogicChange, onClose }) {
     return <PuzzleLogicWorkspace
         configuration={draft.puzzleLogic}
         onChange={onPuzzleLogicChange}
         stateVariables={conditionVariables}
-        targetTypes={conditionTargets}
+        selectableTypes={conditionTargets}
+        selectableAbilityIds={conditionTargetAbilityIds}
         maxCustomVariables={MAX_CUSTOM_VARIABLES}
         onClose={onClose}
     />;
@@ -244,7 +243,7 @@ function PuzzleRulesModal({ draft, setDraft, onClose }) {
     </div>;
 }
 
-function PuzzleBuilderControls({ draft, setDraft, saveState, onSaveStartingStats, onSaveOpponentCode, onSavePuzzle, onOpenConfiguration, onOpenRules, isSaving, conditionVariables, conditionTargets, isConfigurationOpen, onCloseConfiguration, isRulesOpen, onCloseRules, onPuzzleLogicChange }) {
+function PuzzleBuilderControls({ draft, setDraft, saveState, onSaveStartingStats, onSaveOpponentCode, onSavePuzzle, onOpenConfiguration, onOpenRules, isSaving, conditionVariables, conditionTargets, conditionTargetAbilityIds, isConfigurationOpen, onCloseConfiguration, isRulesOpen, onCloseRules, onPuzzleLogicChange }) {
     const player = draft.playerBot;
     const opponent = draft.opponentBot;
 
@@ -303,7 +302,7 @@ function PuzzleBuilderControls({ draft, setDraft, saveState, onSaveStartingStats
                 {saveState && <p role="status" className={`mb-2 font-mono text-[9px] leading-relaxed ${saveState.ok ? "text-emerald-300" : "text-rose-300"}`}>{saveState.message}</p>}
                 <button type="button" disabled={isSaving} onClick={onSavePuzzle} className="arena-toolbar-button arena-toolbar-button--blue">{isSaving ? "SAVING PUZZLE..." : "SAVE PUZZLE"}</button>
             </section>
-            {isConfigurationOpen && <PuzzleConfigurationModal draft={draft} conditionVariables={conditionVariables} conditionTargets={conditionTargets} onPuzzleLogicChange={onPuzzleLogicChange} onClose={onCloseConfiguration} />}
+            {isConfigurationOpen && <PuzzleConfigurationModal draft={draft} conditionVariables={conditionVariables} conditionTargets={conditionTargets} conditionTargetAbilityIds={conditionTargetAbilityIds} onPuzzleLogicChange={onPuzzleLogicChange} onClose={onCloseConfiguration} />}
             {isRulesOpen && <PuzzleRulesModal draft={draft} setDraft={setDraft} onClose={onCloseRules} />}
         </div>
     );
@@ -360,7 +359,11 @@ export default function PuzzleBuilderPage() {
         [draft.playerBot.loadout, draft.opponentBot.loadout, draft.puzzleLogic],
     );
     const conditionTargets = useMemo(
-        () => targetTypesForLoadouts(draft.playerBot.loadout, draft.opponentBot.loadout),
+        () => selectableTypesForLoadouts(draft.playerBot.loadout, draft.opponentBot.loadout),
+        [draft.playerBot.loadout, draft.opponentBot.loadout],
+    );
+    const conditionTargetAbilityIds = useMemo(
+        () => selectableAbilityIdsForLoadouts(draft.playerBot.loadout, draft.opponentBot.loadout),
         [draft.playerBot.loadout, draft.opponentBot.loadout],
     );
 
@@ -417,6 +420,7 @@ export default function PuzzleBuilderPage() {
             onPuzzleLogicChange={handlePuzzleLogicChange}
             conditionVariables={conditionVariables}
             conditionTargets={conditionTargets}
+            conditionTargetAbilityIds={conditionTargetAbilityIds}
         />
     );
 

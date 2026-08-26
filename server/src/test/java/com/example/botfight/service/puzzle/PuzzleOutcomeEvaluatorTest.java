@@ -22,7 +22,7 @@ class PuzzleOutcomeEvaluatorTest {
         PuzzleOutcomeEvaluator evaluator = new PuzzleOutcomeEvaluator(
                 conditionResolutionService,
                 jsonMapper.readTree("""
-                        [{"type":"expression","left":"opponent.hp","comparator":"lte","right":{"type":"number","value":0}}]
+                        [{"type":"expression","left":"selectable.hp","leftSelectable":"opponent","comparator":"lte","right":{"type":"number","value":0}}]
                         """),
                 jsonMapper.createArrayNode(),
                 90_000);
@@ -45,10 +45,10 @@ class PuzzleOutcomeEvaluatorTest {
         PuzzleOutcomeEvaluator evaluator = new PuzzleOutcomeEvaluator(
                 conditionResolutionService,
                 jsonMapper.readTree("""
-                        [{"type":"expression","left":"opponent.hp","comparator":"lte","right":{"type":"number","value":0}}]
+                        [{"type":"expression","left":"selectable.hp","leftSelectable":"opponent","comparator":"lte","right":{"type":"number","value":0}}]
                         """),
                 jsonMapper.readTree("""
-                        [{"type":"expression","left":"my.hp","comparator":"lte","right":{"type":"number","value":0}}]
+                        [{"type":"expression","left":"selectable.hp","leftSelectable":"my_bot","comparator":"lte","right":{"type":"number","value":0}}]
                         """),
                 90_000);
         DuelSimulationService.Bot player = bot(1, 0);

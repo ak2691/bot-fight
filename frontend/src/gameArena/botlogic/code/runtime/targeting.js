@@ -1,50 +1,55 @@
 import {
-    BOT_CODE_TARGETS,
-    TARGET_BY_ID,
-    TARGET_ORDERS,
-    TARGET_OWNERS,
+    BOT_CODE_SELECTABLES,
+    SELECTABLE_BY_ID,
+    SELECTABLE_ORDERS,
+    SELECTABLE_OWNERS,
 } from "../contracts/BotLogicContracts.js";
 
-export function resolveAbilityStrategyTarget(state, target) {
-    const [baseTarget, order = TARGET_ORDERS[0], ordinalText = "1"] = String(target ?? BOT_CODE_TARGETS.OPPONENT).split(":");
-    if (baseTarget !== target) {
-        const candidates = matchingStrategyTargets(state, baseTarget);
+export function resolveAbilityStrategySelectable(state, selectableId) {
+    const [baseSelectable, order = SELECTABLE_ORDERS[0], ordinalText = "1"] = String(selectableId ?? BOT_CODE_SELECTABLES.OPPONENT).split(":");
+    if (baseSelectable !== selectableId) {
+        const candidates = matchingStrategySelectables(state, baseSelectable);
         const ordinal = Math.max(1, Math.min(100, Number(ordinalText) || 1));
-        candidates.sort(targetOrderComparator(order, state?.player));
+        candidates.sort(selectableOrderComparator(order, state?.player));
         return candidates[ordinal - 1] ?? null;
     }
 
-    const targetContract = TARGET_BY_ID.get(baseTarget);
-    if (targetContract?.kind === "bot") return state?.opponent ?? null;
-    if (targetContract?.kind === "entity") {
-        return objectsForTarget(state, targetContract)
-            .sort(targetOrderComparator(TARGET_ORDERS[0], state?.player))[0] ?? null;
+    const selectableContract = SELECTABLE_BY_ID.get(baseSelectable);
+    if (selectableContract?.kind === "bot") {
+        return selectableContract.owner === SELECTABLE_OWNERS.MY ? state?.player ?? null : state?.opponent ?? null;
     }
-    return (state?.objects ?? []).find((object) => object?.id === target) ?? null;
+    if (selectableContract?.kind === "entity") {
+        return objectsForSelectable(state, selectableContract)
+            .sort(selectableOrderComparator(SELECTABLE_ORDERS[0], state?.player))[0] ?? null;
+    }
+    return (state?.objects ?? []).find((object) => object?.id === selectableId) ?? null;
 }
 
-export function matchingStrategyTargets(state, target) {
-    const base = String(target ?? "").split(":")[0];
-    const targetContract = TARGET_BY_ID.get(base);
-    if (targetContract?.kind === "bot") return state?.opponent ? [state.opponent] : [];
-    if (targetContract?.kind !== "entity") return [];
-    return objectsForTarget(state, targetContract);
+export function matchingStrategySelectables(state, selectableId) {
+    const base = String(selectableId ?? "").split(":")[0];
+    const selectableContract = SELECTABLE_BY_ID.get(base);
+    if (selectableContract?.kind === "bot") {
+        const bot = selectableContract.owner === SELECTABLE_OWNERS.MY ? state?.player : state?.opponent;
+        return bot ? [bot] : [];
+    }
+    if (selectableContract?.kind !== "entity") return [];
+    return objectsForSelectable(state, selectableContract);
 }
 
-function objectsForTarget(state, targetContract) {
+function objectsForSelectable(state, selectableContract) {
     const objects = state?.objects ?? [];
-    const abilityId = Number(targetContract.abilityId);
-    const isTargetAbility = (object) => Number(object?.abilityId ?? object?.entityContractId) === abilityId;
-    if (targetContract.owner === TARGET_OWNERS.NONE) {
-        return objects.filter((object) => object?.type === targetContract.runtimeType && isTargetAbility(object));
+    const abilityId = Number(selectableContract.abilityId);
+    const isSelectableAbility = (object) => Number(object?.abilityId ?? object?.entityContractId) === abilityId;
+    if (selectableContract.owner === SELECTABLE_OWNERS.NONE) {
+        return objects.filter((object) => object?.type === selectableContract.runtimeType && isSelectableAbility(object));
     }
-    const owner = targetContract.owner === TARGET_OWNERS.MY ? state?.player : state?.opponent;
-    return objects.filter((object) => object?.type === targetContract.runtimeType
-        && isTargetAbility(object)
+    const owner = selectableContract.owner === SELECTABLE_OWNERS.MY ? state?.player : state?.opponent;
+    return objects.filter((object) => object?.type === selectableContract.runtimeType
+        && isSelectableAbility(object)
         && (object.ownerId === owner?.id || object.ownerSlot === owner?.slot));
 }
 
-function targetOrderComparator(order, player) {
+function selectableOrderComparator(order, player) {
     if (order === "oldest" || order === "newest") return (a, b) => {
         const ageA = Number(a.ageMs);
         const ageB = Number(b.ageMs);

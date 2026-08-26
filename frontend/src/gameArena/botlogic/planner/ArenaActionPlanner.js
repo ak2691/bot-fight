@@ -1,6 +1,6 @@
 import { angleDelta, clamp } from "../../gameconfig/geometry.js";
 import { ROTATION_STEP_DEG } from "../../modelPayloads/arenaConstants.js";
-import { resolveAbilityStrategyTarget, selectAbilityStrategyActionPlan } from "../code/BotCode.js";
+import { resolveAbilityStrategySelectable, selectAbilityStrategyActionPlan } from "../code/BotCode.js";
 import { stateFromPayload } from "../code/runtime/runtimeState.js";
 import { compassDirection, relativeMovementVector, vectorToCompassDegrees } from "./arenaAngles.js";
 import { abilityExecutionPayload } from "../../gameconfig/AbilityExecutionPayload.js";
@@ -16,17 +16,17 @@ export function buildDeterministicLogicAction(configuration, stateSnapshot) {
     const facingBlock = plan.rotation ?? null;
     const movementTarget = movementBlock?.movementMode === "coordinates"
         ? { x: Number(movementBlock.targetX ?? 500), y: Number(movementBlock.targetY ?? 400) }
-        : resolveActionTarget(state, movementBlock?.actionTarget);
+        : resolveSelectable(state, movementBlock?.selectable);
     const facingTarget = facingBlock?.targetMode === "coordinates"
         ? { x: Number(facingBlock.targetX ?? 500), y: Number(facingBlock.targetY ?? 400) }
         : facingBlock?.targetMode === "angle"
             ? null
             : facingBlock
-                ? offsetTarget(resolveActionTarget(state, facingBlock.actionTarget ?? movementBlock?.actionTarget), facingBlock)
-                : resolveActionTarget(state, movementBlock?.actionTarget);
+                ? offsetTarget(resolveSelectable(state, facingBlock.selectable ?? movementBlock?.selectable), facingBlock)
+                : resolveSelectable(state, movementBlock?.selectable);
     const specialTarget = abilityBlockWithTarget?.targetMode === "target"
         || resolvedAbilityPayload?.execution?.targetMode === "target"
-        ? offsetTarget(resolveActionTarget(state, abilityBlockWithTarget.actionTarget), abilityBlockWithTarget)
+        ? offsetTarget(resolveSelectable(state, abilityBlockWithTarget.selectable), abilityBlockWithTarget)
         : null;
     const movement = movementVector(movementBlock, state.player, movementTarget);
     return {
@@ -57,13 +57,13 @@ function offsetTarget(target, block) {
     return target ? { ...target, x: Number(target.x) + Number(block?.targetOffsetX ?? 0), y: Number(target.y) + Number(block?.targetOffsetY ?? 0) } : null;
 }
 
-function resolveActionTarget(state, actionTarget = "opponent") {
+function resolveSelectable(state, selectable = "opponent") {
     const objects = Array.isArray(state?.objects) ? state.objects : [];
     const opponent = state?.opponent
         ?? objects.find((object) => object.type === "opponentModel")
         ?? objects.find((object) => object.id === "opponent-model" || object.id === "main")
         ?? null;
-    return resolveAbilityStrategyTarget({ player: state?.player, opponent, objects }, actionTarget ?? "opponent");
+    return resolveAbilityStrategySelectable({ player: state?.player, opponent, objects }, selectable ?? "opponent");
 }
 
 function movementVector(block, player, target) {

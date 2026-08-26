@@ -5,18 +5,26 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { ABILITY_CATALOGUE_ICON_LAYOUTS, ABILITY_CATALOGUE_ICONS, getAbilityCatalogueIcon, getAbilityCatalogueIconLayout } from "../../abilityCatalogueIcons.js";
 import { BOT_ABILITIES } from "../../gameArena/loadout/BotLoadout.js";
+import { STATUS_EFFECT_GUIDE } from "./statusEffectCatalogue.js";
 
 const ICON_DIRECTORY = fileURLToPath(new URL("../../../public/assets/ability-list/icons/", import.meta.url));
 const MANIFEST_PATH = fileURLToPath(new URL("../../../scripts/ability_catalogue_icon_manifest.json", import.meta.url));
 const CATALOGUE_PAGE_PATH = fileURLToPath(new URL("./AbilityCataloguePage.jsx", import.meta.url));
 const ARENA_PATH = fileURLToPath(new URL("../../gameArena/Arena.jsx", import.meta.url));
 const INDEX_CSS_PATH = fileURLToPath(new URL("../../index.css", import.meta.url));
+const LEGACY_ICON_FILENAMES = Object.freeze({
+    slash: "swing",
+    gun: "fire_gun",
+    grenade: "throw_grenade",
+    fireball: "shoot_fireball",
+    pistol: "pistol_shot",
+});
 
 test("every registered ability has one generated catalogue icon", () => {
     assert.equal(Object.keys(ABILITY_CATALOGUE_ICONS).length, BOT_ABILITIES.length + 2);
     for (const ability of BOT_ABILITIES) {
         const iconPath = getAbilityCatalogueIcon(ability.id);
-        const iconFilename = ability.name === "singularity" ? "singularity (2).png" : `${ability.name}.png`;
+        const iconFilename = ability.name === "singularity" ? "singularity (2).png" : `${LEGACY_ICON_FILENAMES[ability.name] ?? ability.name}.png`;
         const expectedIconPath = ability.name === "singularity"
             ? "/assets/ability-list/icons/singularity%20%282%29.png"
             : `/assets/ability-list/icons/${iconFilename}`;
@@ -40,7 +48,7 @@ test("icon extraction manifest covers the catalog and keeps explicit frame contr
         assert.ok(Number.isInteger(frame_index) && frame_index >= 0 && frame_index < used_frames, `${abilityId}: frame_index`);
     }
     assert.deepEqual(manifest.icons.heavy_slash.grid, { columns: 6, rows: 2, frame_index: 6 });
-    assert.deepEqual(manifest.icons.swing.grid, { columns: 6, rows: 2, frame_index: 0 });
+    assert.deepEqual(manifest.icons.slash.grid, { columns: 6, rows: 2, frame_index: 0 });
     assert.deepEqual(manifest.icons.rail_shot.grid, { columns: 2, rows: 5, used_frames: 9, frame_index: 6 });
     assert.deepEqual(manifest.icons.gravity_grenade.grid, { columns: 10, rows: 10, used_frames: 91, frame_index: 55 });
     assert.deepEqual(manifest.icons.silence_pulse.grid, { columns: 2, rows: 3, used_frames: 5, frame_index: 2 });
@@ -60,6 +68,18 @@ test("catalogue cards keep text accessible and artwork decorative", () => {
     assert.match(source, /aria-hidden="true"/);
     assert.match(source, /aria-label=\{`View \$\{ability\.label\} stats`\}/);
     assert.match(source, /onError=\{\(event\) => \{/);
+});
+
+test("catalogue starts with a compact status-effect guide and the requested intro", () => {
+    const source = readFileSync(CATALOGUE_PAGE_PATH, "utf8");
+
+    assert.equal(STATUS_EFFECT_GUIDE.length, 10);
+    assert.ok(STATUS_EFFECT_GUIDE.every(({ label, description }) => label && description));
+    assert.match(source, /Explore abilities here\. Click one to inspect its details\./);
+    assert.match(source, /aria-labelledby="status-effects-title"/);
+    assert.match(source, /STATUS_EFFECT_GUIDE\.map/);
+    assert.doesNotMatch(source, /aria-labelledby="ability-types-title"/);
+    assert.doesNotMatch(source, />Ability types<\/h2>/);
 });
 
 test("new catalogue artwork uses shape-aware layouts", () => {
@@ -92,6 +112,7 @@ test("ability details can launch a practice room preset", () => {
 
     assert.match(catalogue, /onTestAbility = null/);
     assert.match(catalogue, />\s*TEST ABILITY\s*</);
+    assert.match(catalogue, /arena-toolbar-button arena-toolbar-button--green arena-toolbar-button--inline/);
     assert.match(catalogue, /navigate\(`\/practice\?ability=\$\{encodeURIComponent\(ability\.id\)\}`\)/);
     assert.match(arena, /findAbilityTestingPreset/);
     assert.match(arena, /buildAbilityTestingArenaShapes\(catalogueAbilityTestingPreset\)/);

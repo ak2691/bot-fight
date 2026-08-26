@@ -389,8 +389,10 @@ public class BotSubmissionValidationService {
         String rightVariable = right != null && right.isObject()
                 && "variable".equals(right.path("type").asText())
                 ? right.path("value").asText("") : "";
-        if ((left != null && left.isTextual() && left.asText().startsWith("my.selectedAbility"))
-                || rightVariable.startsWith("my.selectedAbility")) {
+        boolean leftSelectedAbility = left != null && left.isTextual() && left.asText().startsWith("bot.selectedAbility");
+        boolean rightSelectedAbility = rightVariable.startsWith("bot.selectedAbility");
+        if ((leftSelectedAbility && !usesOpponentBotSelectable(node, "leftSelectable"))
+                || (rightSelectedAbility && !usesOpponentBotSelectable(node, "rightSelectable"))) {
             validateSelectedAbilityLoadout(errors, selectedAbility, equipped, path);
         }
         node.properties().forEach(entry -> {
@@ -403,6 +405,12 @@ public class BotSubmissionValidationService {
     private Integer abilityForAction(JsonNode action) {
         return action != null && action.isIntegralNumber() && action.canConvertToInt()
                 ? AbilityContracts.abilityForAction(action.intValue()) : null;
+    }
+
+    private boolean usesOpponentBotSelectable(JsonNode node, String field) {
+        JsonNode selectable = node.get(field);
+        return selectable != null && selectable.isTextual()
+                && BotLogicContracts.SELECTABLE_OPPONENT.equals(selectable.asText());
     }
 
     private void validateLogicRoots(List<String> errors, JsonNode roots, GameConfig loadoutSpec, Map<String, String> customVariableTypes) {
@@ -473,7 +481,7 @@ public class BotSubmissionValidationService {
             errors.add(path + " must be an object");
             return;
         }
-        validateTarget(errors, block.get("actionTarget"), path + ".actionTarget");
+        validateSelectable(errors, block.get("selectable"), path + ".selectable");
         JsonNode actions = block.get("actions");
         if (actions != null && actions.isArray() && !actions.isEmpty()) {
             Set<String> heads = new HashSet<>();
@@ -489,7 +497,7 @@ public class BotSubmissionValidationService {
                 String action = actionNode.isTextual() ? actionNode.asText() : null;
                 validateActionAllowed(errors, actionNode, actionPath, loadoutSpec);
                 validateActionConfiguration(errors, entry, actionNode, actionPath);
-                validateTarget(errors, entry.get("actionTarget"), actionPath + ".actionTarget");
+                validateSelectable(errors, entry.get("selectable"), actionPath + ".selectable");
                 if (entry.has("targetOffsetX")) validateSignedCoordinate(errors, entry.get("targetOffsetX"), actionPath + ".targetOffsetX", 1000);
                 if (entry.has("targetOffsetY")) validateSignedCoordinate(errors, entry.get("targetOffsetY"), actionPath + ".targetOffsetY", 800);
                 if (actionNode.isIntegralNumber() && BotLogicContracts.actionContract(actionNode.intValue()) != null
@@ -580,9 +588,11 @@ public class BotSubmissionValidationService {
             return;
         }
         String type = typeNode.asText();
-        validateTarget(errors, condition.get("target"), path + ".target");
-        validateTarget(errors, condition.get("leftTarget"), path + ".leftTarget");
-        validateTarget(errors, condition.get("rightTarget"), path + ".rightTarget");
+        validateSelectable(errors, condition.get("selectable"), path + ".selectable");
+        validateSelectable(errors, condition.get("selectable1"), path + ".selectable1");
+        validateSelectable(errors, condition.get("selectable2"), path + ".selectable2");
+        validateSelectable(errors, condition.get("leftSelectable"), path + ".leftSelectable");
+        validateSelectable(errors, condition.get("rightSelectable"), path + ".rightSelectable");
         if (BotLogicContracts.CONDITION_EXPRESSION.equals(type)) {
             validateExpressionCondition(errors, condition, path, loadoutSpec, customVariableTypes);
             return;
@@ -592,15 +602,15 @@ public class BotSubmissionValidationService {
         }
     }
 
-    private void validateTarget(List<String> errors, JsonNode target, String path) {
-        if (target == null || target.isNull()) return;
-        if (!target.isTextual() || !isAllowedTarget(target.asText())) {
-            errors.add(path + " is not an allowed fight target");
+    private void validateSelectable(List<String> errors, JsonNode selectable, String path) {
+        if (selectable == null || selectable.isNull()) return;
+        if (!selectable.isTextual() || !isAllowedSelectable(selectable.asText())) {
+            errors.add(path + " is not an allowed selectable");
         }
     }
 
-    private static boolean isAllowedTarget(String target) {
-        return BotLogicContracts.isAllowedTarget(target);
+    private static boolean isAllowedSelectable(String selectable) {
+        return BotLogicContracts.isAllowedSelectable(selectable);
     }
 
     private void validateCoordinate(List<String> errors, JsonNode value, String path, int maximum) {
@@ -639,9 +649,26 @@ public class BotSubmissionValidationService {
         if ("boolean".equals(valueType) && !BotLogicContracts.booleanComparators().contains(comparator)) {
             errors.add(path + ".comparator is not allowed for boolean variables");
         }
-        String selectedLeftTarget = selectedConditionTarget(condition, "leftTarget", variableContract);
-        validateConditionTarget(errors, path + ".leftTarget", selectedLeftTarget, variableContract,
-                condition.has("leftTarget") || condition.has("target"));
+        if (variableContract != null && variableContract.isPairVariable()) {
+            String selectedSelectable1 = condition.has("selectable1")
+                    ? condition.path("selectable1").asText(BotLogicContracts.SELECTABLE_MY)
+                    : BotLogicContracts.defaultSelectable1ForVariable(variableContract);
+            String selectedSelectable2 = condition.has("selectable2")
+                    ? condition.path("selectable2").asText(BotLogicContracts.SELECTABLE_OPPONENT)
+                    : condition.has("selectable")
+                        ? condition.path("selectable").asText(BotLogicContracts.SELECTABLE_OPPONENT)
+                        : BotLogicContracts.defaultSelectable2ForVariable(variableContract);
+            validateConditionSelectable(errors, path + ".selectable1", selectedSelectable1, variableContract.pairSelectableIdentities(0), variableContract,
+                    condition.has("selectable1"));
+            validateConditionSelectable(errors, path + ".selectable2", selectedSelectable2, variableContract.pairSelectableIdentities(1), variableContract,
+                    condition.has("selectable2") || condition.has("selectable"));
+        } else {
+            String selectedLeftSelectable = selectedConditionSelectable(condition, "leftSelectable", variableContract);
+            validateConditionSelectable(errors, path + ".leftSelectable", selectedLeftSelectable,
+                    variableContract == null ? null : variableContract.selectableIdentities(),
+                    variableContract,
+                    condition.has("leftSelectable") || condition.has("selectable"));
+        }
 
         JsonNode right = condition.get("right");
         if (right == null || !right.isObject()) {
@@ -659,9 +686,11 @@ public class BotSubmissionValidationService {
                 ? BotLogicContracts.variableContract(rightValue.asText()) : null;
         validateSelectedConditionMetadata(errors, condition, path, variableContract, rightContract);
         if ("variable".equals(rightType) && rightValue != null && rightValue.isTextual()) {
-            String selectedRightTarget = selectedConditionTarget(condition, "rightTarget", rightContract);
-            validateConditionTarget(errors, path + ".rightTarget", selectedRightTarget, rightContract,
-                    condition.has("rightTarget") || condition.has("target"));
+            String selectedRightSelectable = selectedConditionSelectable(condition, "rightSelectable", rightContract);
+            validateConditionSelectable(errors, path + ".rightSelectable", selectedRightSelectable,
+                    rightContract == null ? null : rightContract.selectableIdentities(),
+                    rightContract,
+                    condition.has("rightSelectable") || condition.has("selectable"));
         }
         if ("number".equals(valueType)) {
             if ("number".equals(rightType)) {
@@ -700,32 +729,27 @@ public class BotSubmissionValidationService {
         }
     }
 
-    private static String selectedConditionTarget(JsonNode condition, String field,
+    private static String selectedConditionSelectable(JsonNode condition, String field,
             BotLogicContracts.VariableContract variableContract) {
-        if (condition.has(field)) return condition.path(field).asText(BotLogicContracts.TARGET_OPPONENT);
-        if (condition.has("target")) return condition.path("target").asText(BotLogicContracts.TARGET_OPPONENT);
-        return BotLogicContracts.defaultTargetForVariable(variableContract);
+        if (condition.has(field)) return condition.path(field).asText(BotLogicContracts.SELECTABLE_OPPONENT);
+        if (condition.has("selectable")) return condition.path("selectable").asText(BotLogicContracts.SELECTABLE_OPPONENT);
+        return BotLogicContracts.defaultSelectableForVariable(variableContract);
     }
 
-    private static void validateConditionTarget(List<String> errors, String path, String target,
+    private static void validateConditionSelectable(List<String> errors, String path, String selectable,
+            Set<BotLogicContracts.SelectableIdentity> requiredSelectableIdentities,
             BotLogicContracts.VariableContract variableContract, boolean explicitlySelected) {
         if (variableContract == null) return;
-        String base = target.split(":", -1)[0];
-        BotLogicContracts.TargetContract targetContract = BotLogicContracts.targetContract(base);
-        if (variableContract.objectTargetOnly()
-                && (targetContract == null || targetContract.entityType() == null)) {
-            errors.add(path + " must reference an ability entity target");
+        String base = selectable.split(":", -1)[0];
+        if (!variableContract.selectableOrderable() && explicitlySelected && selectable.contains(":")) {
+            errors.add(path + " does not support selectable ordering");
         }
-        if (!variableContract.targetOrderable() && explicitlySelected && target.contains(":")) {
-            errors.add(path + " does not support target ordering");
+        if (variableContract.requiresHealthSelectable()
+                && !BotLogicContracts.selectableSupportsCapability(selectable, BotLogicContracts.SELECTABLE_CAPABILITY_HEALTH)) {
+            errors.add(path + " must reference a health-bearing selectable");
         }
-        if (variableContract.requiresHealthTarget()
-                && !BotLogicContracts.targetSupportsCapability(target, BotLogicContracts.TARGET_CAPABILITY_HEALTH)) {
-            errors.add(path + " must reference a health-bearing target");
-        }
-        if (variableContract.botTargetOnly()
-                && !BotLogicContracts.TARGET_OPPONENT.equals(base)) {
-            errors.add(path + " must reference a bot target");
+        if (!BotLogicContracts.selectableMatchesIdentities(base, requiredSelectableIdentities)) {
+            errors.add(path + " does not provide the selectable identities required by this variable");
         }
     }
 

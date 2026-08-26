@@ -111,7 +111,7 @@ export function applyVariableAction(block, state, definitions, operations) {
     let next = terms[0]?.operator === CUSTOM_VARIABLE_OPERATIONS.SET ? 0 : current;
     for (const term of terms) {
         const amount = term.operand?.type === "variable"
-            ? Number(operations.resolveVariable(state, { target: term.operand.target }, term.operand.value, term.operand.target)) || 0
+            ? Number(operations.resolveVariable(state, { selectable: term.operand.selectable }, term.operand.value, term.operand.selectable)) || 0
             : Number(term.operand?.value) || 0;
         if (term.operator === CUSTOM_VARIABLE_OPERATIONS.MODULO) {
             const divisor = Number.isFinite(amount) ? Math.trunc(amount) : 0;

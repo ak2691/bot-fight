@@ -2,14 +2,18 @@
 import { useEffect, useRef, useState } from "react";
 import {
     ACTION_TYPES,
-    TARGET_TYPES,
+    SELECTABLE_TYPES,
+    BOT_CODE_SELECTABLES,
     CONDITION_COMPARATORS,
     STATE_VARIABLES,
+    VISIBLE_STATE_VARIABLES,
     actionExecutionHead,
     actionSupportsTarget,
     createLogicBlock as createConditional,
     createExpressionCondition,
-    defaultTargetForVariable,
+    defaultSelectableForVariable,
+    defaultSelectablePairForVariable,
+    abilityDefinitionsForVariable,
     normalizeConditionSelections,
     CUSTOM_NUMBER_MIN,
     CUSTOM_NUMBER_MAX,
@@ -17,7 +21,10 @@ import {
     truncateToNumberPrecision,
     CUSTOM_VARIABLE_OPERATIONS,
     VARIABLE_TAGS,
-    TARGET_CAPABILITIES,
+    VARIABLE_SELECTABLE_TYPES,
+    SELECTABLE_DEPENDENCIES,
+    SELECTABLE_IDENTITIES,
+    selectableMatchesVariable,
     BOT_CODE_ACTIONS,
     MAX_CONDITIONS_PER_BRANCH,
     MAX_LOGIC_BLOCKS,
@@ -26,10 +33,15 @@ import {
     countConditionSlots,
 } from "../../botlogic/code/BotCode.js";
 import { absoluteMovementAngle, relativeMovementAngle } from "../../botlogic/planner/arenaAngles.js";
-import { MOVEMENT_DIRECTION_MAX, MOVEMENT_DIRECTION_MIN } from "../../botlogic/code/contracts/BotLogicContracts.js";
+import { MOVEMENT_DIRECTION_MAX, MOVEMENT_DIRECTION_MIN, SELECTABLE_ORDERS } from "../../botlogic/code/contracts/BotLogicContracts.js";
 import { actionTypesForLoadout } from "../../gameconfig/CombatLoadouts.js";
 import { abilityIdFromBoundary } from "../../gameconfig/AbilityCompatibility.js";
-import { STANDARD_ABILITY_IDS, decodeBotLoadout, decodeSandboxLoadout } from "../../loadout/BotLoadout.js";
+import {
+    STANDARD_ABILITY_IDS,
+    decodeBotLoadout,
+    decodeSandboxLoadout,
+    statusEffectDefinitionsForAbilities,
+} from "../../loadout/BotLoadout.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
 import { useDialogFocus } from "../../../components/useDialogFocus.js";
 import { useExclusiveSearchMenu } from "../utils/codeMenuEvents.js";
@@ -96,30 +108,30 @@ function conditionNodeWidth(branch, stateVariables) {
     }), GRAPH_NODE_WIDTH), GRAPH_NODE_WIDTH, 1200);
 }
 
-function actionNodeWidth(entry, selectedLoadout, targetTypes) {
+function actionNodeWidth(entry, selectedLoadout, selectableTypes) {
     const actionTypes = actionTypesForLoadout(ACTION_TYPES, selectedLoadout);
     const selected = actionTypes.find((action) => action.id === entry.action) ?? actionTypes[0];
-    const describedTarget = formatActionTargetLabel(entry, selected, targetTypes);
+    const describedTarget = formatActionTargetLabel(entry, selected, selectableTypes);
     const actionLabel = formatActionNodeLabel(selected?.label ?? "Action");
     if (!describedTarget) return Math.max(160, Math.ceil(actionLabel.length * 6.6 + 63));
     return Math.max(160, Math.ceil(Math.max(actionLabel.length, `Target: ${describedTarget}`.length) * 6.6 + 63));
 }
 
-function buildLogicGraph(roots, stateVariables = STATE_VARIABLES, selectedLoadout = null, targetTypes = TARGET_TYPES) {
+function buildLogicGraph(roots, stateVariables = VISIBLE_STATE_VARIABLES, selectedLoadout = null, selectableTypes = SELECTABLE_TYPES) {
     const graph = { roots: [], conditions: [], actions: [], variables: [], targets: [], edges: [], width: 0, height: 0 };
     let forestX = 80;
     const measureBranch = (branch) => {
         const actions = graphBranchActions(branch);
         const childWidth = (branch.children ?? []).reduce((sum, child) => sum + measureBranch(child), 0);
         const nodeWidth = conditionNodeWidth(branch, stateVariables);
-        const actionWidth = actions.reduce((sum, entry) => sum + actionNodeWidth(entry, selectedLoadout, targetTypes) + GRAPH_NODE_GAP, 0);
+        const actionWidth = actions.reduce((sum, entry) => sum + actionNodeWidth(entry, selectedLoadout, selectableTypes) + GRAPH_NODE_GAP, 0);
         return Math.max(nodeWidth + GRAPH_NODE_GAP, actionWidth + childWidth);
     };
     const measureLevel = (branches) => Math.max(GRAPH_NODE_WIDTH + GRAPH_NODE_GAP, (branches ?? []).reduce((sum, branch) => sum + measureBranch(branch), 0));
     const addBranch = (branch, rootIndex, rootId, path, left, y, parent) => {
         const width = measureBranch(branch);
         const actions = graphBranchActions(branch);
-        const descendantsWidth = actions.reduce((sum, entry) => sum + actionNodeWidth(entry, selectedLoadout, targetTypes) + GRAPH_NODE_GAP, 0)
+        const descendantsWidth = actions.reduce((sum, entry) => sum + actionNodeWidth(entry, selectedLoadout, selectableTypes) + GRAPH_NODE_GAP, 0)
             + (branch.children ?? []).reduce((sum, child) => sum + measureBranch(child), 0);
         const conditionHeight = 94 + Math.max(1, Array.isArray(branch.conditions) ? branch.conditions.length : 1) * 42;
         const nodeWidth = conditionNodeWidth(branch, stateVariables);
@@ -131,7 +143,7 @@ function buildLogicGraph(roots, stateVariables = STATE_VARIABLES, selectedLoadou
         let childX = left + Math.max(0, (width - descendantsWidth) / 2);
         const childY = y + conditionHeight + 70;
         actions.forEach((entry, actionIndex) => {
-            const actionWidth = actionNodeWidth(entry, selectedLoadout, targetTypes);
+            const actionWidth = actionNodeWidth(entry, selectedLoadout, selectableTypes);
             const action = { id: actionGraphNodeId(branch.id, actionIndex, rootId), rootId, branchId: branch.id, rootIndex, path, actionIndex, x: childX + GRAPH_NODE_GAP / 2, y: childY, width: actionWidth, height: 54 };
             graph.actions.push(action);
             graph.edges.push({ id: `${condition.id}->${action.id}`, fromId: condition.id, toId: action.id, x1: condition.x + condition.width / 2, y1: condition.y + condition.height, x2: action.x + action.width / 2, y2: action.y });
@@ -212,11 +224,11 @@ function normalizeSiblingTypes(branches) {
 
 function graphBranchActions(branch) {
     if (Array.isArray(branch?.actions)) return branch.actions.filter((entry) => entry.action && entry.action !== "none");
-    return branch?.action && branch.action !== "none" ? [{ action: branch.action, actionTarget: branch.actionTarget ?? "opponent" }] : [];
+    return branch?.action && branch.action !== "none" ? [{ action: branch.action, selectable: branch.selectable ?? "opponent" }] : [];
 }
 
 function setGraphActions(branch, actions) {
-    const first = actions[0] ?? { action: "none", actionTarget: "opponent" };
+    const first = actions[0] ?? { action: "none", selectable: "opponent" };
     return { ...branch, actions, ...first };
 }
 
@@ -229,7 +241,7 @@ function addGraphAction(branch, selectedLoadout, requestedAction = null, customV
     if (!next || (next.id !== "variable" && usedHeads.has(actionExecutionHead(next)))) return branch;
     return setGraphActions(branch, [...actions, {
         action: next.id,
-        actionTarget: "opponent",
+        selectable: "opponent",
         ...(next.variableAction ? {
             variableId: customVariables[0]?.id ?? "",
             operation: "set",
@@ -367,7 +379,11 @@ function VariableOperandPicker({ operand, stateVariables, numericOnly = false, o
 function ConditionalOperandBox({ operand, condition, stateVariables, disabled, selected, onPickVariable, onInspectVariable, onOpenVariablePicker, onUseRawNumber, onNumberChange, onBooleanChange, numberDefinition = null, tutorialFocus = false }) {
     const variableDefinition = operand === 1
         ? stateVariables.find((variable) => variable.id === condition.left)
-        : condition.right?.type === "variable" ? stateVariables.find((variable) => variable.id === condition.right.value) : null;
+            ?? STATE_VARIABLES.find((variable) => variable.id === condition.left)
+        : condition.right?.type === "variable"
+            ? stateVariables.find((variable) => variable.id === condition.right.value)
+                ?? STATE_VARIABLES.find((variable) => variable.id === condition.right.value)
+            : null;
     const variableLabel = variableDefinition?.label;
     const rawBoolean = operand === 2 && condition.right?.type === "boolean";
     const rawNumber = operand === 2 && condition.right?.type === "number";
@@ -386,17 +402,19 @@ function ConditionalOperandBox({ operand, condition, stateVariables, disabled, s
     </div>;
 }
 
-function GraphConditionNode({ node, branch, disabled, canRemove, canAddAction, canAddCondition, maxConditions = MAX_CONDITIONS_PER_BRANCH, stateVariables, defaultVariable, targetTypes, nodeOffsets, beginNodeDrag, selected, standalone = false, puzzleMode = false, puzzleLabel = "Conditional", onSelect, onPriorityChange, onPickVariable, onOpenVariablePicker, onInspectVariable, onUseRawNumber, onRemoveCondition, inspectedVariable, onChange, onRemove, onAddParentConditional, onAddChildConditional, onAddAction, tutorialFocus }) {
+function GraphConditionNode({ node, branch, disabled, canRemove, canAddAction, canAddCondition, maxConditions = MAX_CONDITIONS_PER_BRANCH, stateVariables, defaultVariable, selectableTypes, nodeOffsets, beginNodeDrag, selected, standalone = false, puzzleMode = false, puzzleLabel = "Conditional", onSelect, onPriorityChange, onPickVariable, onOpenVariablePicker, onInspectVariable, onUseRawNumber, onRemoveCondition, inspectedVariable, onChange, onRemove, onAddParentConditional, onAddChildConditional, onAddAction, tutorialFocus }) {
     const conditions = Array.isArray(branch.conditions) ? branch.conditions : [];
     const updateCondition = (rowIndex, updater) => onChange({ conditions: conditions.map((condition, index) => index === rowIndex ? updater(condition) : condition) });
-    const addJoinedCondition = (join) => onChange({ conditions: [...conditions, { ...createExpressionCondition(defaultVariable, targetTypes), ...(join === "or" ? { join: "or" } : {}) }] });
+    const addJoinedCondition = (join) => onChange({ conditions: [...conditions, { ...createExpressionCondition(defaultVariable, selectableTypes), ...(join === "or" ? { join: "or" } : {}) }] });
     return <section onClick={onSelect} onPointerDown={(event) => { if (!standalone) beginNodeDrag(event, node.id); }} className={`code-graph-node code-graph-node--conditional ${standalone ? "relative w-full" : "absolute"} rounded-sm border bg-zinc-950 shadow-2xl ${selected ? "is-inspected" : ""}`} style={standalone ? { width: "100%" } : { ...graphNodeStyle(node, nodeOffsets), width: node.width }}>
         <header className="code-compact-header code-node-header--conditional">
             {standalone || puzzleMode ? <span className="min-w-0 flex-1 truncate text-sky-100">{puzzleLabel}</span> : <><span className="code-node-badge">{node.path.length}</span><span className="min-w-0 flex flex-1 items-center gap-1 truncate text-sky-100">Conditional <RootNodePriorityInput priority={Number(branch.createdOrder) + 1} max={MAX_LOGIC_BLOCKS} disabled={disabled} onCommit={onPriorityChange} ariaLabel={`Priority for Conditional ${Number(branch.createdOrder) + 1}`} className="code-conditional-priority" /></span><button type="button" data-node-drag-ignore="true" className="code-conditional-add-button" disabled={disabled || !canAddCondition} onClick={(event) => { event.stopPropagation(); onAddParentConditional(); }}>+IF</button></>}
         </header>
         <div className="space-y-2 p-3">
             {conditions.map((condition, index) => {
-                const leftDefinition = stateVariables.find((variable) => variable.id === condition.left) ?? defaultVariable;
+                const leftDefinition = stateVariables.find((variable) => variable.id === condition.left)
+                    ?? STATE_VARIABLES.find((variable) => variable.id === condition.left)
+                    ?? defaultVariable;
                 const comparators = CONDITION_COMPARATORS.filter((candidate) => candidate.valueTypes.includes(leftDefinition.valueType));
                 const comparator = comparators.some((candidate) => candidate.id === condition.comparator) ? condition.comparator : comparators[0]?.id ?? "eq";
                 return <div key={`${index}-${condition.type}`} className="code-compact-condition-wrap">
@@ -419,7 +437,7 @@ function GraphConditionNode({ node, branch, disabled, canRemove, canAddAction, c
     </section>;
 }
 
-function PuzzleConditionNode({ title, conditions = [], stateVariables = STATE_VARIABLES, defaultVariable = STATE_VARIABLES[0], targetTypes = TARGET_TYPES, maxConditions = MAX_CONDITIONS_PER_BRANCH, onChange, onRemoveCondition }) {
+function PuzzleConditionNode({ title, conditions = [], stateVariables = VISIBLE_STATE_VARIABLES, defaultVariable = VISIBLE_STATE_VARIABLES[0], selectableTypes = SELECTABLE_TYPES, maxConditions = MAX_CONDITIONS_PER_BRANCH, onChange, onRemoveCondition }) {
     const [operandPicker, setOperandPicker] = useState(null);
     const [inspectedVariable, setInspectedVariable] = useState(null);
     const node = { id: `puzzle-condition:${title}`, rootId: `puzzle-condition:${title}`, rootIndex: 0, path: [0], width: 0 };
@@ -444,7 +462,8 @@ function PuzzleConditionNode({ title, conditions = [], stateVariables = STATE_VA
             setOperandPicker(null);
             return;
         }
-        const definition = stateVariables.find((variable) => variable.id === variableId);
+        const definition = stateVariables.find((variable) => variable.id === variableId)
+            ?? STATE_VARIABLES.find((variable) => variable.id === variableId);
         if (!definition || (operand === 2 && definition.valueType !== "number")) return;
         updateConditions(conditions.map((condition, index) => {
             if (index !== rowIndex) return condition;
@@ -452,10 +471,10 @@ function PuzzleConditionNode({ title, conditions = [], stateVariables = STATE_VA
                 return {
                     ...condition,
                     right: { type: "variable", value: definition.id },
-                    ...(definition.supportsTarget ? { rightTarget: defaultTargetForVariable(definition, targetTypes) } : {}),
+                    ...(definition.supportsSelectable ? { rightSelectable: defaultSelectableForVariable(definition, selectableTypes) } : {}),
                 };
             }
-            const replacement = createExpressionCondition(definition, targetTypes);
+            const replacement = createExpressionCondition(definition, selectableTypes);
             const keepRight = definition.valueType === "number" && ["number", "variable"].includes(condition.right?.type)
                 ? condition.right
                 : definition.valueType === "boolean" && condition.right?.type === "boolean" ? condition.right : replacement.right;
@@ -485,7 +504,7 @@ function PuzzleConditionNode({ title, conditions = [], stateVariables = STATE_VA
             maxConditions={maxConditions}
             stateVariables={stateVariables}
             defaultVariable={defaultVariable}
-            targetTypes={targetTypes}
+            selectableTypes={selectableTypes}
             nodeOffsets={{}}
             beginNodeDrag={() => {}}
             selected={false}
@@ -498,7 +517,7 @@ function PuzzleConditionNode({ title, conditions = [], stateVariables = STATE_VA
             onUseRawNumber={(rowIndex) => updateConditions(conditions.map((condition, index) => {
                 if (index !== rowIndex) return condition;
                 const next = { ...condition, right: { type: "number", value: 0 } };
-                delete next.rightTarget;
+                delete next.rightSelectable;
                 return next;
             }))}
             onRemoveCondition={removeCondition}
@@ -515,7 +534,7 @@ function PuzzleConditionNode({ title, conditions = [], stateVariables = STATE_VA
             graph={graph}
             roots={roots}
             stateVariables={stateVariables}
-            targetTypes={targetTypes}
+            selectableTypes={selectableTypes}
             selectedLoadout={null}
             customVariables={[]}
             disabled={false}
@@ -529,10 +548,10 @@ function PuzzleConditionNode({ title, conditions = [], stateVariables = STATE_VA
     </div>;
 }
 
-function GraphActionNode({ node, entry, disabled, selectedLoadout, targetTypes, nodeOffsets, beginNodeDrag, selectedNode, onInspect, onRemove, canRemove = true, puzzleMode = false }) {
+function GraphActionNode({ node, entry, disabled, selectedLoadout, selectableTypes, nodeOffsets, beginNodeDrag, selectedNode, onInspect, onRemove, canRemove = true, puzzleMode = false }) {
     const actionTypes = actionTypesForLoadout(ACTION_TYPES, selectedLoadout);
     const selected = actionTypes.find((action) => action.id === entry.action) ?? actionTypes[0];
-    const describedTarget = formatActionTargetLabel(entry, selected, targetTypes);
+    const describedTarget = formatActionTargetLabel(entry, selected, selectableTypes);
     return <section onClick={onInspect} onPointerDown={(event) => beginNodeDrag(event, node.id)} className={`code-graph-node code-graph-node--action absolute rounded-sm border shadow-2xl ${selectedNode ? "is-inspected" : ""}`} style={{ ...graphNodeStyle(node, nodeOffsets), width: node.width }}>
         <header className="code-action-bar code-node-header--action">
             <span className="code-action-label">{formatActionNodeLabel(selected?.label ?? "Action")}</span>
@@ -542,7 +561,13 @@ function GraphActionNode({ node, entry, disabled, selectedLoadout, targetTypes, 
     </section>;
 }
 
-function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, targetTypes, selectedLoadout, customVariables, disabled, canRemove, canAddAction, puzzleMode = false, onClose, updateBranch, onPickActionOperand, onInspectActionOperand, onDismissOperandPicker, onChangeConditionVariable, onRemoveAction }) {
+function selectablePairConfigurationNote(definition) {
+    if (definition.id === "selectable.distance") return "Distance Between Entities compares the center points of any two entities (center-to-center).";
+    if (definition.id === "selectable.absoluteBearing") return "Absolute Bearing of Target From Entity measures the arena bearing from the Facing Entity to the Target.";
+    return "Relative bearing compares the Facing Entity's facing direction with the bearing to the Target.";
+}
+
+function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selectableTypes, selectableAbilityIds = null, selectedLoadout, customVariables, disabled, canRemove, canAddAction, puzzleMode = false, onClose, updateBranch, onPickActionOperand, onInspectActionOperand, onDismissOperandPicker, onChangeConditionVariable, onRemoveAction }) {
     const dialogRef = useRef(null);
     useDialogFocus(dialogRef, { onClose });
     const panel = (eyebrow, title, body, removeLabel = "", onRemove = null) => <aside ref={dialogRef} className="code-inspector" data-node-drag-ignore="true" role="dialog" aria-modal="true" onPointerDown={(event) => event.stopPropagation()}>
@@ -557,26 +582,58 @@ function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, targe
         const branch = node ? treeBranchAt(roots[node.rootIndex]?.branches, node.path) : null;
         const condition = branch?.conditions?.[inspectedNode.rowIndex];
         const variableId = inspectedNode.operand === 1 ? condition?.left : condition?.right?.type === "variable" ? condition.right.value : null;
-        const definition = stateVariables.find((variable) => variable.id === variableId);
+        const definition = stateVariables.find((variable) => variable.id === variableId)
+            ?? STATE_VARIABLES.find((variable) => variable.id === variableId);
         if (!node || !branch || !condition || !definition) return null;
-        const update = (updates) => updateBranch(node.rootIndex, node.path, (current) => ({
-            ...current,
-            conditions: (current.conditions ?? []).map((item, index) => index === inspectedNode.rowIndex ? { ...item, ...updates } : item),
-        }));
-        const targetField = inspectedNode.operand === 1 ? "leftTarget" : "rightTarget";
-        const targetOptions = targetOptionsForDefinition(definition, targetTypes);
         const rightDefinition = condition.right?.type === "variable"
             ? stateVariables.find((variable) => variable.id === condition.right.value)
                 ?? STATE_VARIABLES.find((variable) => variable.id === condition.right.value)
             : null;
-        const selectedCondition = normalizeConditionSelections(condition, definition, rightDefinition);
+        const update = (updates) => updateBranch(node.rootIndex, node.path, (current) => ({
+            ...current,
+            conditions: (current.conditions ?? []).map((item, index) => {
+                if (index !== inspectedNode.rowIndex) return item;
+                const next = { ...item, ...updates };
+                const scoped = variableWithSelectableOptions(definition, next, inspectedNode.operand, selectableAbilityIds);
+                const normalized = normalizeConditionSelections(next, scoped, rightDefinition);
+                return {
+                    ...next,
+                    ...(scoped.supportsAbility && normalized.ability != null ? { ability: normalized.ability } : {}),
+                    ...(scoped.supportsStatusEffect && normalized.statusEffect != null ? { statusEffect: normalized.statusEffect } : {}),
+                };
+            }),
+        }));
+        const selectableField = inspectedNode.operand === 1 ? "leftSelectable" : "rightSelectable";
+        const selectableOptions = selectableOptionsForDefinition(
+            definition,
+            selectableTypes,
+            definition.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR ? "second" : "selectable",
+        );
+        const pairEntitySelectableOptions = definition.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR
+            ? selectableOptionsForDefinition(definition, selectableTypes, "first")
+            : selectableOptions;
+        const selectablePairDefaults = definition.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR
+            ? defaultSelectablePairForVariable(definition, selectableTypes)
+            : null;
+        const scopedDefinition = variableWithSelectableOptions(definition, condition, inspectedNode.operand, selectableAbilityIds);
+        const selectedCondition = normalizeConditionSelections(condition, scopedDefinition, rightDefinition);
+        const abilityOptions = scopedDefinition.abilityOptions ?? [];
+        const statusEffectOptions = scopedDefinition.statusEffectOptions ?? [];
+        const selectablePickerLabel = selectableSelectorLabel(definition);
         return panel(`INPUT ${inspectedNode.operand} VARIABLE`, definition.label, <>
             <p className="code-inspector-note">Configure this variable without adding controls to the conditional node.</p>
             {onChangeConditionVariable && <button type="button" onClick={() => onChangeConditionVariable(inspectedNode.rowIndex, inspectedNode.operand)} className="mb-4 min-h-9 w-full border border-cyan-700/70 bg-cyan-950/40 px-3 font-mono text-[9px] font-bold tracking-[.12em] text-cyan-200 hover:border-cyan-400 hover:bg-cyan-900/50">CHANGE VARIABLE</button>}
-            {definition.supportsAbility && definition.abilityOptions?.length > 0 && field("Ability", <select disabled={disabled} value={selectedCondition.ability ?? definition.abilityOptions[0].id} onChange={(event) => update({ ability: abilityIdFromBoundary(event.target.value) })}>{definition.abilityOptions.map((ability) => <option key={ability.id} value={ability.id}>{ability.label}</option>)}</select>)}
-            {definition.supportsStatusEffect && definition.statusEffectOptions?.length > 0 && field("Status effect", <select disabled={disabled} value={selectedCondition.statusEffect ?? ""} onChange={(event) => update({ statusEffect: normalizeStatusEffectSelection(event.target.value, definition.statusEffectOptions) })}><option value="" disabled>Choose status effect</option>{definition.statusEffectOptions.map((effect) => <option key={effect.id} value={effect.id}>{effect.label}</option>)}</select>)}
-            {definition.supportsTarget && field("Target", <OrderedTargetPicker value={condition[targetField] ?? defaultTargetForVariable(definition, targetTypes)} targetTypes={targetOptions} allowOrdering={definition.targetOrderable !== false} onChange={(target) => update({ [targetField]: target })} />)}
-            {!definition.supportsAbility && !definition.supportsStatusEffect && !definition.supportsTarget && <p className="code-inspector-note">This variable has no additional configuration.</p>}
+            {definition.supportsAbility && abilityOptions.length > 0 && field("Ability", <select disabled={disabled} value={selectedCondition.ability ?? abilityOptions[0].id} onChange={(event) => update({ ability: abilityIdFromBoundary(event.target.value) })}>{abilityOptions.map((ability) => <option key={ability.id} value={ability.id}>{ability.label}</option>)}</select>)}
+            {definition.supportsStatusEffect && statusEffectOptions.length > 0 && field("Status effect", <select disabled={disabled} value={selectedCondition.statusEffect ?? ""} onChange={(event) => update({ statusEffect: normalizeStatusEffectSelection(event.target.value, statusEffectOptions) })}><option value="" disabled>Choose status effect</option>{statusEffectOptions.map((effect) => <option key={effect.id} value={effect.id}>{effect.label}</option>)}</select>)}
+            {definition.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR
+                ? <>
+                    {field(selectableSelectorLabel(definition, 0), <OrderedSelectablePicker value={condition.selectable1 ?? selectablePairDefaults[0]} selectableTypes={pairEntitySelectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => update({ selectable1: selectable })} />)}
+                    {field(selectableSelectorLabel(definition, 1), <OrderedSelectablePicker value={condition.selectable2 ?? condition.selectable ?? selectablePairDefaults[1]} selectableTypes={selectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => update({ selectable2: selectable })} />)}
+                    <small className="code-inspector-note">{selectablePairConfigurationNote(definition)}</small>
+                </>
+                : definition.supportsSelectable && field(selectablePickerLabel, <OrderedSelectablePicker value={condition[selectableField] ?? defaultSelectableForVariable(definition, selectableTypes)} selectableTypes={selectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => update({ [selectableField]: selectable })} />)}
+            {definition.id.endsWith("edgeDistance") && <small className="code-inspector-note">Edge distance is measured edge-to-edge from the nearest edge of the entity hitbox to the arena or closing-zone boundary, not from its center.</small>}
+            {!definition.supportsAbility && !definition.supportsStatusEffect && !definition.supportsSelectable && <p className="code-inspector-note">This variable has no additional configuration.</p>}
         </>);
     }
 
@@ -603,7 +660,7 @@ function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, targe
             {definition?.variableAction && <VariableActionControls entry={entry} variables={customVariables} stateVariables={stateVariables} disabled={disabled} canAddAction={canAddAction} allowRemoveAction={!puzzleMode || canRemove} onChange={update} onPickOperand={(termIndex) => onPickActionOperand?.(node.rootIndex, node.path, node.actionIndex, termIndex)} onInspectOperand={(termIndex) => onInspectActionOperand?.(node.rootIndex, node.path, node.actionIndex, termIndex)} onRemoveAction={() => { remove(); onClose(); }} />}
             {definition?.movementConfig && <MovementConfigurationControls entry={entry} disabled={disabled} onChange={update} />}
             {definition?.orientationConfig && <PhaseOrientationControls entry={entry} onChange={update} />}
-            {needsTarget && <ActionTargetControls entry={entry} definition={definition} targetTypes={targetTypes} disabled={disabled} onChange={update} />}
+            {needsTarget && <ActionTargetControls entry={entry} definition={definition} selectableTypes={selectableTypes} disabled={disabled} onChange={update} />}
         </>, "REMOVE ACTION", remove);
     }
     return null;
@@ -627,7 +684,7 @@ function formatCoordinateTargetLabel(entry) {
     return `Coordinates (${x}, ${y})`;
 }
 
-function formatActionTargetLabel(entry, definition, targetTypes) {
+function formatActionTargetLabel(entry, definition, selectableTypes) {
     const mode = actionTargetMode(entry, definition);
     if (!mode || mode === "absolute") return "";
     if (mode === "angle") return `Angle (${Number(entry?.targetAngle ?? 0)} deg)`;
@@ -637,13 +694,13 @@ function formatActionTargetLabel(entry, definition, targetTypes) {
             ? formatMovementTargetLabel(entry?.movementDirection ?? 0, coordinateLabel)
             : coordinateLabel;
     }
-    const targetLabel = formatTargetLabel(entry?.actionTarget ?? "opponent", targetTypes);
+    const selectableLabel = formatSelectableLabel(entry?.selectable ?? "opponent", selectableTypes);
     return definition?.movementConfig
-        ? formatMovementTargetLabel(entry?.movementDirection ?? 0, targetLabel)
-        : targetLabel;
+        ? formatMovementTargetLabel(entry?.movementDirection ?? 0, selectableLabel)
+        : selectableLabel;
 }
 
-function ActionTargetControls({ entry, definition, targetTypes, disabled, onChange }) {
+function ActionTargetControls({ entry, definition, selectableTypes, disabled, onChange }) {
     const mode = actionTargetMode(entry, definition);
     const canChooseCoordinates = Boolean(definition?.coordinateTarget && !definition?.movementConfig);
     const modeControl = canChooseCoordinates && <label className="code-inspector-field">
@@ -668,7 +725,7 @@ function ActionTargetControls({ entry, definition, targetTypes, disabled, onChan
     }
     return <div>
         {modeControl}
-        <label className="code-inspector-field"><span>TARGET</span><OrderedTargetPicker disabled={disabled} value={entry.actionTarget ?? "opponent"} targetTypes={targetTypes} onChange={(actionTarget) => onChange({ ...entry, actionTarget, ...(definition?.movementConfig ? {} : { targetMode: "target" }) })} /></label>
+        <label className="code-inspector-field"><span>TARGET</span><OrderedSelectablePicker disabled={disabled} value={entry.selectable ?? "opponent"} selectableTypes={selectableTypes} onChange={(selectable) => onChange({ ...entry, selectable, ...(definition?.movementConfig ? {} : { targetMode: "target" }) })} /></label>
         {!definition?.movementConfig && <div className="grid grid-cols-2 gap-2">
             <label className="code-inspector-field"><span>OFFSET X</span><DeferredNumberInput disabled={disabled} min={-ARENA_WIDTH_UNITS} max={ARENA_WIDTH_UNITS} value={entry.targetOffsetX ?? 0} fallback={0} aria-label="Target X offset" onCommit={(targetOffsetX) => onChange({ ...entry, targetOffsetX })} /></label>
             <label className="code-inspector-field"><span>OFFSET Y</span><DeferredNumberInput disabled={disabled} min={-ARENA_HEIGHT_UNITS} max={ARENA_HEIGHT_UNITS} value={entry.targetOffsetY ?? 0} fallback={0} aria-label="Target Y offset" onCommit={(targetOffsetY) => onChange({ ...entry, targetOffsetY })} /></label>
@@ -676,12 +733,12 @@ function ActionTargetControls({ entry, definition, targetTypes, disabled, onChan
     </div>;
 }
 
-function ActionVariableInspector({ definition, operand, targetTypes, disabled, onChange, onClose }) {
+function ActionVariableInspector({ definition, operand, selectableTypes, disabled, onChange, onClose }) {
     const dialogRef = useRef(null);
     useDialogFocus(dialogRef, { onClose });
     if (!definition) return null;
-    const targetOptions = targetOptionsForDefinition(definition, targetTypes);
-    const target = operand?.target ?? defaultTargetForVariable(definition, targetTypes);
+    const selectableOptions = selectableOptionsForDefinition(definition, selectableTypes);
+    const selectable = operand?.selectable ?? defaultSelectableForVariable(definition, selectableTypes);
     const update = (updates) => onChange({ ...operand, ...updates });
     return <aside ref={dialogRef} className="code-inspector code-inspector--secondary" data-node-drag-ignore="true" role="dialog" aria-modal="true" onPointerDown={(event) => event.stopPropagation()}>
         <header className="code-inspector-header"><div><span>MODIFY INPUT VARIABLE</span><h2>{definition.label}</h2></div><button type="button" onClick={onClose} className="modal-close-button" aria-label="Close variable inspector"><span aria-hidden="true">×</span></button></header>
@@ -689,8 +746,8 @@ function ActionVariableInspector({ definition, operand, targetTypes, disabled, o
             <p className="code-inspector-note">Configure this action input without closing the modify custom variable action.</p>
             {definition.supportsAbility && definition.abilityOptions?.length > 0 && <label className="code-inspector-field"><span>ABILITY</span><select disabled={disabled} value={selectedAbilityOptionValue(operand?.ability, definition.abilityOptions)} onChange={(event) => update({ ability: abilityIdFromBoundary(event.target.value) })}>{definition.abilityOptions.map((ability) => <option key={ability.id} value={ability.id}>{ability.label}</option>)}</select></label>}
             {definition.supportsStatusEffect && definition.statusEffectOptions?.length > 0 && <label className="code-inspector-field"><span>STATUS EFFECT</span><select disabled={disabled} value={selectedStatusOptionValue(operand?.statusEffect, definition.statusEffectOptions)} onChange={(event) => update({ statusEffect: normalizeStatusEffectSelection(event.target.value, definition.statusEffectOptions) })}><option value="" disabled>Choose status effect</option>{definition.statusEffectOptions.map((effect) => <option key={effect.id} value={effect.id}>{effect.label}</option>)}</select></label>}
-            {definition.supportsTarget && <label className="code-inspector-field"><span>TARGET</span><OrderedTargetPicker disabled={disabled} value={target} targetTypes={targetOptions} allowOrdering={definition.targetOrderable !== false} onChange={(nextTarget) => update({ target: nextTarget })} /></label>}
-            {!definition.supportsAbility && !definition.supportsStatusEffect && !definition.supportsTarget && <p className="code-inspector-note">This variable has no additional configuration.</p>}
+            {definition.supportsSelectable && <label className="code-inspector-field"><span>ENTITY</span><OrderedSelectablePicker disabled={disabled} value={selectable} selectableTypes={selectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(nextSelectable) => update({ selectable: nextSelectable })} /></label>}
+            {!definition.supportsAbility && !definition.supportsStatusEffect && !definition.supportsSelectable && <p className="code-inspector-note">This variable has no additional configuration.</p>}
         </div>
     </aside>;
 }
@@ -818,7 +875,7 @@ const CONDITION_PICKER_CATEGORY_ORDER = Object.freeze([
     "Health & Combat",
     "Abilities & Status",
     "Position & Movement",
-    "Objects",
+    "Ability Entity",
     "Match",
     "Custom Variables",
     "Other",
@@ -829,11 +886,11 @@ function conditionPickerCategory(option) {
     if (id === "always") return "Basic";
     if (option?.group === "Custom Variables" || id.startsWith("custom.")) return "Custom Variables";
     if (option?.supportsAbility || option?.supportsStatusEffect) return "Abilities & Status";
-    if (option?.targetGroup === "objects" || option?.group === "Objects" || /\.(exists|count|age)$/.test(id)) return "Objects";
+    if (option?.group === "Ability Entity" || /\.(exists|count|age)$/.test(id)) return "Ability Entity";
     if (option?.group === "General") return "Match";
     if (option?.group === "Movement"
         || option?.group === "Rotation"
-        || ["my.x", "my.y", "opponent.x", "opponent.y", "target.distance"].includes(id)
+        || ["selectable.x", "selectable.y", "selectable.distance"].includes(id)
         || id.endsWith("edgeDistance")) return "Position & Movement";
     if (/(hp|damage|alive)/.test(id)) return "Health & Combat";
     return "Other";
@@ -852,7 +909,7 @@ function groupedConditionPickerOptions(options) {
         .filter((group) => group.options.length > 0);
 }
 
-function sanitizeConfigurationConditions(configuration, conditionTypes, defaultCondition, targetTypes = null, stateVariables = STATE_VARIABLES) {
+function sanitizeConfigurationConditions(configuration, conditionTypes, defaultCondition, selectableTypes = null, stateVariables = STATE_VARIABLES, selectableAbilityIds = null) {
     const allowedIds = new Set(conditionTypes.map((condition) => condition.id));
     const sanitizeConditions = (conditions) => {
         if (!Array.isArray(conditions)) return conditions;
@@ -865,19 +922,23 @@ function sanitizeConfigurationConditions(configuration, conditionTypes, defaultC
                     ? stateVariables.find((variable) => variable.id === condition.right.value)
                         ?? STATE_VARIABLES.find((variable) => variable.id === condition.right.value)
                     : null;
-                let nextCondition = normalizeConditionSelections(condition, leftDefinition, rightDefinition);
-                if (leftDefinition?.supportsTarget) {
-                    nextCondition = sanitizeExpressionTarget(nextCondition, "leftTarget", leftDefinition, targetTypes);
+                const scopedLeftDefinition = variableWithSelectableOptions(leftDefinition, condition, 1, selectableAbilityIds);
+                const scopedRightDefinition = variableWithSelectableOptions(rightDefinition, condition, 2, selectableAbilityIds);
+                let nextCondition = normalizeConditionSelections(condition, scopedLeftDefinition, scopedRightDefinition);
+                if (leftDefinition?.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR) {
+                    nextCondition = sanitizeExpressionSelectablePair(nextCondition, leftDefinition, selectableTypes);
+                } else if (leftDefinition?.supportsSelectable) {
+                    nextCondition = sanitizeExpressionSelectable(nextCondition, "leftSelectable", leftDefinition, selectableTypes);
                 }
-                if (rightDefinition?.supportsTarget) {
-                    nextCondition = sanitizeExpressionTarget(nextCondition, "rightTarget", rightDefinition, targetTypes);
+                if (rightDefinition?.supportsSelectable) {
+                    nextCondition = sanitizeExpressionSelectable(nextCondition, "rightSelectable", rightDefinition, selectableTypes);
                 }
                 changed ||= nextCondition !== condition;
                 return nextCondition;
             }
             if (allowedIds.has(condition?.type)) return condition;
             changed = true;
-            return createDefaultCondition(defaultCondition, targetTypes);
+            return createDefaultCondition(defaultCondition, selectableTypes);
         });
         return changed ? nextConditions : conditions;
     };
@@ -910,18 +971,39 @@ function sanitizeConfigurationConditions(configuration, conditionTypes, defaultC
     return changed ? { ...configuration, roots: roots } : configuration;
 }
 
-function sanitizeExpressionTarget(condition, field, definition, targetTypes) {
-    if (!Array.isArray(targetTypes)) return condition;
-    const options = targetOptionsForDefinition(definition, targetTypes);
+function sanitizeExpressionSelectable(condition, field, definition, selectableTypes) {
+    if (!Array.isArray(selectableTypes)) return condition;
+    const options = selectableOptionsForDefinition(definition, selectableTypes);
     if (!options.length) return condition;
-    const requested = condition[field] ?? condition.target;
+    const requested = condition[field] ?? condition.selectable;
     const baseRequested = String(requested ?? "").split(":")[0];
-    if (options.some((target) => target.id === baseRequested)) {
-        const normalized = definition.targetOrderable === false ? baseRequested : requested;
+    if (options.some((selectable) => selectable.id === baseRequested)) {
+        const normalized = definition.selectableOrderable === false ? baseRequested : requested;
         return normalized === condition[field] ? condition : { ...condition, [field]: normalized };
     }
-    const fallback = options.find((target) => target.kind === "entity")?.id ?? options[0]?.id;
+    const fallback = options.find((selectable) => selectableHasIdentity(selectable, SELECTABLE_IDENTITIES.ABILITY_ENTITY))?.id ?? options[0]?.id;
     return fallback && fallback !== condition[field] ? { ...condition, [field]: fallback } : condition;
+}
+
+function sanitizeExpressionSelectablePair(condition, definition, selectableTypes) {
+    if (!Array.isArray(selectableTypes)) return condition;
+    const firstOptions = selectableOptionsForDefinition(definition, selectableTypes, "first");
+    const secondOptions = selectableOptionsForDefinition(definition, selectableTypes, "second");
+    if (!firstOptions.length || !secondOptions.length) return condition;
+    const defaults = defaultSelectablePairForVariable(definition, selectableTypes);
+    const valid = (value, fallback, options) => {
+        const [base, order, ordinalText] = String(value ?? fallback).split(":");
+        const selected = options.find((selectable) => selectable.id === base);
+        if (!selected) return fallback;
+        if (selectableHasIdentity(selected, SELECTABLE_IDENTITIES.BOT) || definition.selectableOrderable === false) return base;
+        if (!SELECTABLE_ORDERS.includes(order)) return base;
+        const ordinal = Math.max(1, Math.min(100, Number(ordinalText) || 1));
+        return `${base}:${order}:${ordinal}`;
+    };
+    const selectable1 = valid(condition.selectable1, defaults[0], firstOptions);
+    const selectable2 = valid(condition.selectable2 ?? condition.selectable, defaults[1], secondOptions);
+    if (condition.selectable1 === selectable1 && condition.selectable2 === selectable2) return condition;
+    return { ...condition, selectable1, selectable2 };
 }
 
 function ScoreBox({ label, value, tone }) {
@@ -986,14 +1068,14 @@ function countLogicConditions(configuration) {
     return countConditionSlots(configuration);
 }
 
-function createDefaultCondition(definition, targetTypes = TARGET_TYPES) {
+function createDefaultCondition(definition, selectableTypes = SELECTABLE_TYPES) {
     if (definition.id === "expression") {
-        return createExpressionCondition("target.distance");
+        return createExpressionCondition("selectable.distance", selectableTypes);
     }
     return {
         type: definition.id,
         ...(definition.requiresValue ? { value: definition.defaultValue } : {}),
-        ...(definition.supportsTarget ? { target: defaultTargetForVariable(definition, targetTypes) } : {}),
+        ...(definition.supportsSelectable ? { selectable: defaultSelectableForVariable(definition, selectableTypes) } : {}),
     };
 }
 
@@ -1004,39 +1086,47 @@ function abilityIdsForConfiguration(configuration) {
     return new Set([...STANDARD_ABILITY_IDS, ...selected]);
 }
 
-function targetTypesForLoadouts(ownLoadout, opponentLoadout) {
+function selectableTypesForLoadouts(ownLoadout, opponentLoadout) {
     const ownAbilities = abilityIdsForConfiguration(ownLoadout), opponentAbilities = abilityIdsForConfiguration(opponentLoadout);
-    return TARGET_TYPES
-        .filter((target) => {
-            if (!target.abilityId) return true;
-            return (target.owner === "my" ? ownAbilities : opponentAbilities).has(target.abilityId);
+    return SELECTABLE_TYPES
+        .filter((selectable) => {
+            if (!selectable.abilityId) return true;
+            return (selectable.owner === "my" ? ownAbilities : opponentAbilities).has(selectable.abilityId);
         });
 }
 
-function OrderedTargetPicker({ value = "opponent", targetTypes = TARGET_TYPES, disabled = false, allowOrdering = true, onChange }) {
+function selectableAbilityIdsForLoadouts(ownLoadout, opponentLoadout) {
+    return {
+        [BOT_CODE_SELECTABLES.MY]: [...abilityIdsForConfiguration(ownLoadout)],
+        [BOT_CODE_SELECTABLES.OPPONENT]: [...abilityIdsForConfiguration(opponentLoadout)],
+    };
+}
+
+function OrderedSelectablePicker({ value = "opponent", selectableTypes = SELECTABLE_TYPES, disabled = false, allowOrdering = true, onChange }) {
     const [baseValue, encodedOrder, encodedOrdinal] = String(value).split(":");
-    const base = targetTypes.some((target) => target.id === baseValue) ? baseValue : targetTypes[0]?.id ?? "opponent";
+    const base = selectableTypes.some((selectable) => selectable.id === baseValue) ? baseValue : selectableTypes[0]?.id ?? "opponent";
     const order = ["closest", "farthest", "oldest", "newest"].includes(encodedOrder) ? encodedOrder : "closest";
     const ordinal = Math.max(1, Math.min(100, Number(encodedOrdinal) || 1));
-    const ordered = allowOrdering && base !== "opponent";
-    const encode = (nextBase, nextOrder = order, nextOrdinal = ordinal) => !allowOrdering || nextBase === "opponent"
+    const selectedSelectable = selectableTypes.find((selectable) => selectable.id === base);
+    const ordered = allowOrdering && !selectableHasIdentity(selectedSelectable, SELECTABLE_IDENTITIES.BOT);
+    const encode = (nextBase, nextOrder = order, nextOrdinal = ordinal) => !allowOrdering || selectableHasIdentity(selectableTypes.find((selectable) => selectable.id === nextBase), SELECTABLE_IDENTITIES.BOT)
         ? nextBase
         : `${nextBase}:${nextOrder}:${Math.max(1, Math.min(100, Number(nextOrdinal) || 1))}`;
-    return <div className={`code-target-picker ${ordered ? "is-ordered" : ""}`}>
-        <select disabled={disabled} value={base} onChange={(event) => onChange(encode(event.target.value))} className="code-target-picker-entity">{targetTypes.map((target) => <option key={target.id} value={target.id}>{target.label.replace(/^Closest /, "")}</option>)}</select>
-        {ordered && <div className="code-target-picker-order">
-            <select disabled={disabled} aria-label="Target ordering" value={order} onChange={(event) => onChange(encode(base, event.target.value))}><option value="closest">Closest</option><option value="farthest">Farthest</option><option value="oldest">Oldest</option><option value="newest">Newest</option></select>
-            <DeferredNumberInput disabled={disabled} aria-label="Target ordinal" min={1} max={100} value={ordinal} fallback={1} onCommit={(value) => onChange(encode(base, order, value))} />
+    return <div className={`code-selectable-picker ${ordered ? "is-ordered" : ""}`}>
+        <select disabled={disabled} value={base} onChange={(event) => onChange(encode(event.target.value))} className="code-selectable-picker-entity">{selectableTypes.map((selectable) => <option key={selectable.id} value={selectable.id}>{selectable.label.replace(/^Closest /, "")}</option>)}</select>
+        {ordered && <div className="code-selectable-picker-order">
+            <select disabled={disabled} aria-label="Selectable ordering" value={order} onChange={(event) => onChange(encode(base, event.target.value))}><option value="closest">Closest</option><option value="farthest">Farthest</option><option value="oldest">Oldest</option><option value="newest">Newest</option></select>
+            <DeferredNumberInput disabled={disabled} aria-label="Selectable ordinal" min={1} max={100} value={ordinal} fallback={1} onCommit={(value) => onChange(encode(base, order, value))} />
         </div>}
-        {ordered && <small className="code-target-picker-note">Closest 1 means the 1st closest entity. It will target the closest entity to you.</small>}
+        {ordered && <small className="code-selectable-picker-note">Closest 1 means the 1st closest entity. It chooses the closest entity to you.</small>}
     </div>;
 }
 
-function formatTargetLabel(value, targetTypes = TARGET_TYPES) {
+function formatSelectableLabel(value, selectableTypes = SELECTABLE_TYPES) {
     const [baseValue, encodedOrder, encodedOrdinal] = String(value).split(":");
-    const definition = targetTypes.find((target) => target.id === baseValue) ?? targetTypes[0];
+    const definition = selectableTypes.find((selectable) => selectable.id === baseValue) ?? selectableTypes[0];
     const label = definition?.label?.replace(/^Closest /, "") ?? baseValue;
-    if (baseValue === "opponent") return label;
+    if (baseValue === "my_bot" || baseValue === "opponent") return label;
     const order = ["closest", "farthest", "oldest", "newest"].includes(encodedOrder) ? encodedOrder : "closest";
     const ordinal = Math.max(1, Math.min(100, Number(encodedOrdinal) || 1));
     return `${formatOrdinal(ordinal)} ${order[0].toUpperCase()}${order.slice(1)} ${label}`;
@@ -1056,25 +1146,64 @@ function formatActionNodeLabel(label) {
     return label.replace(/^(?:Move|Movement|Rotate|Ability):\s*/, "");
 }
 
-function objectTargetTypes(targetTypes = TARGET_TYPES) {
-    return targetTypes.filter((target) => (
-        Boolean(target.abilityId)
-        ||
-        target.id.includes(":")
-        ||
-        target.id.startsWith("object_")
-        || /^p[12]_object_[1-6]$/.test(target.id)
-    ));
+function selectableOptionsForDefinition(definition, selectableTypes = SELECTABLE_TYPES, selectorRole = "selectable") {
+    const pairSlot = selectorRole === "first" || selectorRole === "entity" ? 0
+        : selectorRole === "second" ? 1 : null;
+    return selectableTypes.filter((selectable) => selectableMatchesVariable(selectable, definition, pairSlot));
 }
 
-function targetOptionsForDefinition(definition, targetTypes = TARGET_TYPES) {
-    const scoped = definition?.botTargetOnly
-        ? targetTypes.filter((target) => target.id === "opponent")
-        : definition?.targetGroup === "objects"
-            ? objectTargetTypes(targetTypes)
-            : targetTypes;
-    if (definition?.targetCapability === TARGET_CAPABILITIES.HEALTH) return scoped.filter((target) => target.healthBearing);
-    return scoped;
+function selectableHasIdentity(selectable, identity) {
+    return selectable?.selectableIdentities?.includes(identity) ?? false;
+}
+
+function selectableSelectorLabel(definition, pairSlot = null) {
+    if (definition?.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR) {
+        return definition.selectableSelectorLabels?.[pairSlot] ?? "Entity";
+    }
+    return "Entity";
+}
+
+function variableWithSelectableOptions(definition, condition, operand, selectableAbilityIds) {
+    if (!definition || !definition.selectableDependency) return definition;
+    const selectableId = abilitySelectableIdForVariable(definition, condition, operand);
+    const selectableAbilities = abilityIdsForSelectable(selectableAbilityIds, selectableId);
+    if (!selectableAbilities) return definition;
+
+    const available = new Set(selectableAbilities);
+    const visibleAbilityIds = Array.isArray(definition.abilityOptions) && definition.abilityOptions.length
+        ? new Set(definition.abilityOptions.map((ability) => ability.id))
+        : null;
+    const abilityOptions = definition.selectableDependency === SELECTABLE_DEPENDENCIES.ABILITY_LOADOUT
+        ? abilityDefinitionsForVariable(definition, available)
+            .filter((ability) => !visibleAbilityIds || visibleAbilityIds.has(ability.id))
+        : definition.abilityOptions;
+    const visibleStatusIds = Array.isArray(definition.statusEffectOptions) && definition.statusEffectOptions.length
+        ? new Set(definition.statusEffectOptions.map((effect) => effect.id))
+        : null;
+    const statusEffectOptions = definition.selectableDependency === SELECTABLE_DEPENDENCIES.STATUS_EFFECT_LOADOUT
+        ? statusEffectDefinitionsForAbilities(available)
+            .filter((effect) => !visibleStatusIds || visibleStatusIds.has(effect.id))
+        : definition.statusEffectOptions;
+    return {
+        ...definition,
+        ...(definition.selectableDependency === SELECTABLE_DEPENDENCIES.ABILITY_LOADOUT ? { abilityOptions } : {}),
+        ...(definition.selectableDependency === SELECTABLE_DEPENDENCIES.STATUS_EFFECT_LOADOUT ? { statusEffectOptions } : {}),
+    };
+}
+
+function abilitySelectableIdForVariable(definition, condition, operand) {
+    const selected = operand === 2
+        ? condition?.rightSelectable ?? condition?.selectable
+        : condition?.leftSelectable ?? condition?.selectable;
+    return String(selected ?? definition?.defaultSelectable ?? BOT_CODE_SELECTABLES.MY).split(":")[0];
+}
+
+function abilityIdsForSelectable(selectableAbilityIds, selectableId) {
+    if (!selectableAbilityIds || !selectableId) return null;
+    const configured = selectableAbilityIds[selectableId];
+    if (configured instanceof Set) return configured;
+    if (Array.isArray(configured)) return configured;
+    return null;
 }
 
 function selectedAbilityOptionValue(value, options = []) {
@@ -1127,7 +1256,8 @@ export {
     countActions,
     countLogicConditions,
     abilityIdsForConfiguration,
-    targetTypesForLoadouts,
+    selectableAbilityIdsForLoadouts,
+    selectableTypesForLoadouts,
     sanitizeConfigurationConditions,
     PanelHeading,
     ScoreBox,

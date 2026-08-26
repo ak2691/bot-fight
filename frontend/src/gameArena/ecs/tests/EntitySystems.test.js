@@ -103,7 +103,7 @@ test("target-relative walk uses a normalized vector from the bot to the target",
                 branchType: "if",
                 createdOrder: 0,
                 conditions: [{ type: "always" }],
-                actions: [{ action: "move_walk", movementMode: "target", movementDirection: 0, actionTarget: "opponent" }],
+                actions: [{ action: "move_walk", movementMode: "target", movementDirection: 0, selectable: "opponent" }],
                 children: [],
             }],
         }],
@@ -376,7 +376,7 @@ test("proximity mine triggers and damages within its increased radius", () => {
 
     assert.equal(result.entities[0].type, "mineExplosion");
     assert.equal(result.entities[0].size, 175);
-    assert.equal(result.bots[0].hp, 80);
+    assert.equal(result.bots[0].hp, 75);
 });
 
 test("an untriggered proximity mine advances once without duplicating", () => {
@@ -664,7 +664,7 @@ test("declared spawned abilities resolve through normalized entity contracts", (
     assert.equal(ENTITY_CONTRACTS.grenade, undefined);
 });
 
-test("Fire Gun waits for the next tick after its active boundary", () => {
+test("Gun waits for the next tick after its active boundary", () => {
     const gun = {
         ...base,
         abilities: [3],
@@ -1272,7 +1272,7 @@ test("ability animations keep their full starting frame without an opponent", ()
     assert.equal(sweepAngle(slash.abilityVisual.ms, 400, -heavyHalfArc, heavyHalfArc), -75);
 });
 
-test("sword swing keeps its full visual timer through the activation step", () => {
+test("slash keeps its full visual timer through the activation step", () => {
     const bot = {
         id: "main", slot: 1, x: 100, y: 100, size: 60, rotation: 0,
         hp: 100, maxHp: 100, moveSpeed: 8, attackSpeedMultiplier: 1,
@@ -1284,13 +1284,13 @@ test("sword swing keeps its full visual timer through the activation step", () =
     assert.equal(active.triggeredAbility, 1);
 });
 
-test("sword swing hit resolves only on its activation tick while its animation continues", () => {
+test("slash hit resolves only on its activation tick while its animation continues", () => {
     const defender = { x: 190, y: 100, size: 20 };
     assert.equal(abilityHitsTarget({ x: 100, y: 100, rotation: 90, size: 60, triggeredAbility: 1, abilities: [1] }, defender), true);
     assert.equal(abilityHitsTarget({ x: 100, y: 100, rotation: 90, size: 60, triggeredAbility: null, abilities: [1] }, defender), false);
 });
 
-test("sword swing hitbox matches the inclusive 120-degree, 92-unit sweep", () => {
+test("slash hitbox matches the inclusive 120-degree, 92-unit sweep", () => {
     const attacker = { x: 100, y: 100, rotation: 90, size: 60, triggeredAbility: 1, abilities: [1] };
     for (const offset of [-60, 60]) assert.equal(abilityHitsTarget(attacker, targetAtBearing(attacker, 80, attacker.rotation + offset)), true, `at ${offset} degrees`);
     for (const offset of [-60.1, 60.1]) assert.equal(abilityHitsTarget(attacker, targetAtBearing(attacker, 80, attacker.rotation + offset)), false, `outside ${offset} degrees`);
@@ -1500,7 +1500,7 @@ test("health bar fill is the clamped fraction of current hp", () => {
     assert.equal(healthBarPercent(150, 100), 100);
 });
 
-test("fire gun activation retains a fading ray for the active duration", () => {
+test("gun activation retains a fading ray for the active duration", () => {
     const bot = {
         id: "main", slot: 1, x: 100, y: 100, size: 60, rotation: 0,
         hp: 100, maxHp: 100, moveSpeed: 8, attackSpeedMultiplier: 1,
@@ -1737,6 +1737,7 @@ test("grenades become ability-system explosions on contact and fuse expiry", () 
     assert.equal(contact.entities.length, 0);
     assert.equal(contact.spawnedEntities.length, 1);
     assert.equal(isAbilityEntity(contact.spawnedEntities[0]), true);
+    assert.equal(contact.bots[1].hp, 60);
 
     const exploded = tickAbilityEntityWorld({
         entities: contact.spawnedEntities,
@@ -1746,11 +1747,11 @@ test("grenades become ability-system explosions on contact and fuse expiry", () 
         width: 1000,
         height: 800,
     }, noDamageCombat);
-    assert.equal(exploded.bots[1].hp, 67.031);
+    assert.equal(exploded.bots[1].hp, 60);
     assert.equal(exploded.entities.length, 1);
 
     const timed = tickProjectileWorld({
-        bots: [owner, { ...target, hp: 100 }],
+        bots: [owner, { ...target, x: 184, hp: 100 }],
         entities: [{ ...grenade, id: "timed-grenade", stoppedMs: 950 }],
         stepMs: 50,
         width: 1000,
@@ -1758,6 +1759,15 @@ test("grenades become ability-system explosions on contact and fuse expiry", () 
     }, noDamageCombat);
     assert.equal(timed.entities.length, 0);
     assert.equal(timed.spawnedEntities[0].type, "grenadeExplosion");
+    const timedExplosion = tickAbilityEntityWorld({
+        entities: timed.spawnedEntities,
+        projectiles: [],
+        bots: timed.bots,
+        stepMs: 50,
+        width: 1000,
+        height: 800,
+    }, noDamageCombat);
+    assert.equal(timedExplosion.bots[1].hp, 75);
 });
 
 test("grenade damage falls linearly between its configured endpoints", () => {
@@ -1770,7 +1780,7 @@ test("grenade damage falls linearly between its configured endpoints", () => {
 
 test("ranged damage profiles use max and min plateaus around linear falloff", () => {
     assert.equal(damageAtDistance(3, 100), 15);
-    assert.equal(damageAtDistance(3, 700), 2);
+    assert.equal(damageAtDistance(3, 700), 5);
     assert.equal(damageAtDistance(12, 166.665), 6);
     assert.equal(damageAtDistance(12, 400), 4);
     assert.equal(damageAtDistance(14, 45), 27.5);

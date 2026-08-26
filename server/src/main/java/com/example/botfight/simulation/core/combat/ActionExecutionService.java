@@ -100,23 +100,32 @@ public class ActionExecutionService {
     }
 
     public int selectedAbilityCooldownMs(Bot bot, int ability) {
-        if (bot == null) return 0;
+        if (bot == null || !hasAbility(bot, ability)) return 0;
         if (bot.preparingMs > 0 || bot.abilityActiveMs.getOrDefault(ability, 0) > 0) return 0;
         return Math.max(bot.abilityCooldowns.getOrDefault(ability, 0),
                 botStateService.abilityRechargeMs(bot, ability));
     }
 
     public boolean selectedAbilityOnCooldown(Bot bot, int ability) {
-        return bot != null
+        return bot != null && hasAbility(bot, ability)
                 && bot.preparingMs <= 0
                 && bot.abilityActiveMs.getOrDefault(ability, 0) <= 0
                 && selectedAbilityCooldownMs(bot, ability) > 0;
     }
 
     public int selectedAbilityCharges(Bot bot, int ability) {
-        if (bot == null) return 0;
+        if (bot == null || !hasAbility(bot, ability)) return 0;
         if (!Abilities.hasCharges(ability)) return 0;
         return botStateService.abilityCharges(bot, ability);
+    }
+
+    public int selectedAbilityActiveMs(Bot bot, int ability) {
+        return bot == null || !hasAbility(bot, ability)
+                ? 0 : bot.abilityActiveMs.getOrDefault(ability, 0);
+    }
+
+    public boolean selectedAbilityPresent(Bot bot, int ability) {
+        return bot != null && hasAbility(bot, ability);
     }
 
     public Integer abilityForAction(Object action) {

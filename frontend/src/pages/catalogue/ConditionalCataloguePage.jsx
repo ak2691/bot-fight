@@ -1,57 +1,55 @@
 import AppNavbar from "../../components/AppNavbar";
-import { STATE_VARIABLES } from "../../gameArena/botlogic/code/BotCode";
+import {
+    VISIBLE_STATE_VARIABLES,
+    VARIABLE_SELECTABLE_TYPES,
+} from "../../gameArena/botlogic/code/BotCode";
 
-const GROUP_ORDER = ["General", "My Bot", "Opponent", "Target", "Movement", "Rotation", "Objects"];
+const GROUP_ORDER = ["General", "Entity", "Health & Combat", "Position & Movement", "Abilities & Status", "Movement", "Rotation", "Ability Entity"];
 
 const DESCRIPTIONS = Object.freeze({
     "match.elapsedSeconds": "Seconds elapsed since the 1v1 began.",
-    "my.hp": "Your bot's current hit points.",
-    "my.damageTakenLastTick": "Damage your bot received during the last simulation tick.",
-    "my.hpNetChangeLastTick": "Your bot's total HP change last tick, including damage and healing.",
-    "my.x": "Your bot's horizontal arena position.",
-    "my.y": "Your bot's vertical arena position.",
-    "opponent.hp": "The opponent's current hit points.",
-    "opponent.damageTakenLastTick": "Damage the opponent received during the last simulation tick.",
-    "opponent.hpNetChangeLastTick": "The opponent's total HP change last tick, including damage and healing.",
-    "opponent.x": "The opponent's horizontal arena position.",
-    "opponent.y": "The opponent's vertical arena position.",
-    "target.distance": "Straight-line distance from your bot to the selected target.",
-    "target.hp": "Current HP of the selected health-bearing target.",
-    "target.alive": "True when the selected target exists and has HP remaining.",
-    "target.bearingFromMe": "The selected target's compass direction from your bot, compared as a signed angle.",
-    "target.movementDirection": "The selected target's direction of travel, compared as a signed degree measurement.",
-    "target.speed": "The selected target's current movement speed in arena units per simulation tick, independent of direction.",
-    "my.bearingFromTarget": "Your bot's compass direction as seen from the selected target.",
-    "target.relativeBearing": "Smallest angle between the direction you are facing and the selected target.",
-    "target.relativeBearingClockwise": "Clockwise turn needed to face the selected target.",
-    "target.relativeBearingCounterclockwise": "Counterclockwise turn needed to face the selected target.",
-    "target.facing": "The opponent's current facing direction.",
-    "target.count": "Number of matching objects of the selected target type; ordering and ordinal selection do not apply.",
-    "target.age": "Age or active timer of the selected object, in seconds.",
-    "my.edgeDistance": "Shortest distance from your bot to an arena edge.",
-    "my.closingZoneEdgeDistance": "Signed clearance from your bot's hitbox to the circular closing-zone edge: positive inside, zero at the edge, and negative outside. It is unavailable until the zone starts.",
-    "opponent.closingZoneEdgeDistance": "Signed clearance from Opponent 1's hitbox to the circular closing-zone edge: positive inside, zero at the edge, and negative outside. It is unavailable until the zone starts.",
-    "target.edgeDistance": "Shortest distance from the selected target to an arena edge.",
-    "target.exists": "True when an object matching the selected target slot exists.",
+    "selectable.distance": "Straight-line center-to-center distance between two selected entities. It defaults to My Bot and Opponent, but either selector can be changed to any entity.",
+    "selectable.hp": "Current HP of the selected entity. Entities without health report 0.",
+    "selectable.damageTakenLastTick": "Damage received by the selected entity during the last simulation tick. Entities that cannot be hit report 0.",
+    "selectable.hpNetChangeLastTick": "The selected entity's total HP change last tick, including damage and healing. Entities without health report 0.",
+    "selectable.x": "The selected entity's horizontal arena position.",
+    "selectable.y": "The selected entity's vertical arena position.",
+    "selectable.alive": "True when the selected entity exists and has HP remaining.",
+    "selectable.absoluteBearing": "The absolute arena bearing of the Target from the Facing Entity, represented as a signed degree measurement. The first selection must have the facing identity.",
+    "selectable.movementDirection": "The selected entity's direction of travel, or 0 when it has no movement direction.",
+    "selectable.speed": "The selected entity's movement speed in arena units per simulation tick, independent of direction; entities without movement speed report 0.",
+    "selectable.relativeBearing": "Smallest angle between the Facing Entity's facing direction and the bearing from it to the Target. The first selection must have the facing identity.",
+    "selectable.relativeBearingClockwise": "Clockwise turn needed for the Facing Entity to face the Target. The first selection must have the facing identity.",
+    "selectable.relativeBearingCounterclockwise": "Counterclockwise turn needed for the Facing Entity to face the Target. The first selection must have the facing identity.",
+    "selectable.facing": "The selected entity's facing direction. Only entities with the facing identity are available.",
+    "selectable.count": "Number of matching ability entities of the selected type; ordering and ordinal selection do not apply.",
+    "selectable.age": "Age or active timer of the selected ability entity, in seconds.",
+    "selectable.edgeDistance": "Shortest edge-to-edge distance from the selected entity's hitbox to an arena boundary. Positive values measure the closest gap from the shape's nearest edge.",
+    "selectable.closingZoneEdgeDistance": "Signed edge-to-edge clearance from the selected entity's hitbox to the circular closing-zone edge: positive inside, zero at the edge, and negative outside. It is unavailable until the zone starts.",
+    "selectable.exists": "True when an ability entity matching the selected type exists.",
 });
 
 function describeVariable(variable) {
     if (DESCRIPTIONS[variable.id]) return DESCRIPTIONS[variable.id];
 
-    const owner = variable.id.startsWith("my.") ? "your bot" : "the opponent";
     const lowerLabel = variable.label
         .replace(/^My /, "")
-        .replace(/^Opponent 1? ?/, "")
+        .replace(/^Opponent(?: 1)? ?/, "")
         .toLowerCase();
 
-    if (variable.id.includes("selectedAbility")) {
-        if (variable.id.endsWith("Ready")) return `Whether the selected drafted ability is ready for ${owner} to use.`;
-        if (variable.id.endsWith("Active")) return `Whether the selected drafted ability is currently active for ${owner}.`;
-        if (variable.id.endsWith("ActiveMs")) return `Time remaining while the selected drafted ability stays active for ${owner}, in seconds.`;
-        if (variable.id.endsWith("CooldownMs")) return `Cooldown remaining on the selected drafted ability for ${owner}, in seconds.`;
-        if (variable.id.endsWith("Charges")) return `Current charges for ${owner}'s selected drafted ability.`;
-        if (variable.id.endsWith("Preparing")) return `Whether ${owner} is currently winding up the selected drafted ability.`;
-        return `Current wind-up timer for ${owner}'s selected drafted ability, in seconds.`;
+    if (variable.id.startsWith("bot.selectedAbility")) {
+        if (variable.id.endsWith("Ready")) return "Whether the selected drafted ability is ready for the selected bot to use.";
+        if (variable.id.endsWith("Active")) return "Whether the selected drafted ability is currently active for the selected bot.";
+        if (variable.id.endsWith("ActiveMs")) return "Time remaining while the selected drafted ability stays active for the selected bot, in seconds.";
+        if (variable.id.endsWith("CooldownMs")) return "Cooldown remaining on the selected drafted ability for the selected bot, in seconds.";
+        if (variable.id.endsWith("Charges")) return "Current charges for the selected bot's drafted ability.";
+        if (variable.id.endsWith("Preparing")) return "Whether the selected bot is currently winding up the drafted ability.";
+        return "Current wind-up timer for the selected bot's drafted ability, in seconds.";
+    }
+    if (variable.id.startsWith("bot.selectedStatusEffect")) {
+        return variable.id.endsWith("Active")
+            ? "Whether the selected status effect is active on the selected bot."
+            : "Remaining time for the selected status effect on the selected bot, in seconds.";
     }
     if (variable.id.endsWith("Ready")) return `Whether ${lowerLabel} is currently ready to use.`;
     if (variable.id.endsWith("CooldownMs")) return `Time remaining on ${lowerLabel}, in seconds.`;
@@ -59,17 +57,18 @@ function describeVariable(variable) {
     return `Current value of ${lowerLabel}.`;
 }
 
-function targetRule(variable) {
-    if (!variable.supportsTarget) return null;
-    if (variable.botTargetOnly) return "Opponent only";
-    if (variable.targetGroup === "objects") return "Object target";
-    return "Chosen target";
+function selectableRule(variable) {
+    if (!variable.supportsSelectable) return null;
+    if (variable.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR) {
+        return variable.selectableSelectorLabels?.join(" + ") ?? "Entity + Entity";
+    }
+    return "Entity";
 }
 
 function groupedVariables() {
     return GROUP_ORDER.map((group) => ({
         group,
-        variables: STATE_VARIABLES.filter((variable) => variable.group === group),
+        variables: VISIBLE_STATE_VARIABLES.filter((variable) => variable.group === group),
     })).filter(({ variables }) => variables.length);
 }
 
@@ -147,12 +146,15 @@ export default function ConditionalCataloguePage() {
                         Use <strong className="text-slate-200">Variable: Modify Custom Variable</strong> in an action node to set a value or, for numbers, add to or subtract from it. Stored values persist between ticks during the fight.
                     </p>
                     <div className="my-5 h-px bg-slate-700/70" />
-                    <p className="font-mono text-[10px] font-bold tracking-[.22em] text-blue-300">TARGET SELECTION</p>
+                    <p className="font-mono text-[10px] font-bold tracking-[.22em] text-blue-300">ENTITY INPUTS</p>
                     <p className="mt-3 text-sm leading-6 text-slate-400">
-                        <strong className="text-slate-200">Chosen target</strong> can read the opponent or an entity created by either bot's drafted abilities.
+                        Entity selectors use the identities attached to each entity. Single-entity variables are labeled <strong className="text-slate-200">Entity</strong> and filter their options by the required identity. Position, health, movement, distance, and edge measurements accept any entity; unsupported HP or movement values resolve to 0.
                     </p>
                     <p className="mt-3 text-sm leading-6 text-slate-400">
-                        Entity targets can be ordered by closest, farthest, oldest, or newest, then selected by position: first, second, and so on. <strong className="text-slate-200">Object target</strong> uses the same rules but excludes the opponent. <strong className="text-slate-200">Target Type Count</strong> selects only an object type and does not use ordering or ordinal selection.
+                        Entities can be ordered by closest, farthest, oldest, or newest, then selected by position: first, second, and so on. <strong className="text-slate-200">Ability Entity Type Count</strong> selects only an entity type and does not use ordering or ordinal selection. Bearing pairs label their selectors <strong className="text-slate-200">Facing Entity</strong> and <strong className="text-slate-200">Target</strong>; other pairs use <strong className="text-slate-200">Entity</strong> for both.
+                    </p>
+                    <p className="mt-3 text-sm leading-6 text-slate-400">
+                        Edge-distance measurements are edge-to-edge: they use the nearest edge of the entity hitbox, not its center. Arena-edge values are positive inside the arena; closing-zone values are signed relative to the zone boundary.
                     </p>
                     <p className="mt-3 text-xs leading-5 text-slate-500">
                         Only entity and ability choices available in the current draft appear in the editor.
@@ -168,7 +170,7 @@ export default function ConditionalCataloguePage() {
                         <div className="conditional-row grid gap-2 border-b border-slate-800/80 px-1 py-4 sm:grid-cols-[minmax(12rem,.8fr)_minmax(0,1.2fr)] sm:gap-7">
                             <div>
                                 <h3 className="text-sm font-semibold text-slate-100">Always</h3>
-                                <p className="mt-1 font-mono text-[9px] tracking-wider text-slate-600">BOOLEAN · NO TARGET</p>
+                                <p className="mt-1 font-mono text-[9px] tracking-wider text-slate-600">BOOLEAN · NO ENTITY INPUT</p>
                             </div>
                             <p className="text-sm leading-6 text-slate-400">Always true. Use it for a fallback action or a branch that should run every tick.</p>
                         </div>
@@ -182,7 +184,7 @@ export default function ConditionalCataloguePage() {
                             </div>
                             <div>
                                 {variables.map((variable) => {
-                                    const target = targetRule(variable);
+                                    const selectable = selectableRule(variable);
                                     return (
                                         <article key={variable.id} className="conditional-row grid gap-2 border-b border-slate-800/80 px-1 py-4 sm:grid-cols-[minmax(12rem,.8fr)_minmax(0,1.2fr)] sm:gap-7">
                                             <div className="min-w-0">
@@ -190,7 +192,7 @@ export default function ConditionalCataloguePage() {
                                                 <p className="mt-1 flex flex-wrap gap-x-2 font-mono text-[9px] uppercase tracking-wider text-slate-600">
                                                     <span>{variable.valueType}</span>
                                                     <span>·</span>
-                                                    <span className={target ? "text-blue-300/80" : ""}>{target ?? "No target"}</span>
+                                                    <span className={selectable ? "text-blue-300/80" : ""}>{selectable ?? "No entity input"}</span>
                                                     {variable.supportsAbility && <><span>·</span><span className="text-blue-300/80">Ability picker</span></>}
                                                 </p>
                                             </div>

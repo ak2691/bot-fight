@@ -15,10 +15,10 @@ import {
     validateAbilityStrategyConfiguration,
 } from "../BotCode.js";
 import { getTutorialScenario, hasTutorialPriorityOrder, TUTORIAL_STEP_COUNT } from "../../../../tutorial/TutorialPresets.js";
-import { ABILITY_TAGS, ACTION_TYPES, STATE_VARIABLES, TARGET_TYPES, TARGET_CAPABILITIES, VARIABLE_TAGS, abilityDefinitionsForVariable, variableHasTag } from "../contracts/BotLogicContracts.js";
+import { ABILITY_TAGS, ACTION_TYPES, STATE_VARIABLES, SELECTABLE_DEPENDENCIES, SELECTABLE_IDENTITIES, SELECTABLE_TYPES, VARIABLE_TAGS, VARIABLE_SELECTABLE_TYPES, VISIBLE_STATE_VARIABLES, abilityDefinitionsForVariable, selectableIdentitiesForVariable, selectableMatchesVariable, variableHasTag } from "../contracts/BotLogicContracts.js";
 import { ALL_ABILITY_DEFINITIONS, statusEffectDefinitionsForAbilities } from "../../../loadout/BotLoadout.js";
 import { compareAngleValues } from "../runtime/conditionEvaluator.js";
-import { matchingStrategyTargets, resolveAbilityStrategyTarget } from "../runtime/targeting.js";
+import { matchingStrategySelectables, resolveAbilityStrategySelectable } from "../runtime/targeting.js";
 import { absoluteMovementAngle, normalizeRelativeMovementDegrees, relativeMovementAngle, relativeMovementVector, vectorToCompassDegrees } from "../../planner/arenaAngles.js";
 import { buildDeterministicLogicAction } from "../../planner/ArenaActionPlanner.js";
 import { nodePositionsForGraph, offsetsForGraphPositions } from "../configuration/nodePositions.js";
@@ -31,38 +31,246 @@ function payload(overrides = {}) {
     };
 }
 
+const SELECTABLE_IDENTITY_MATRIX = Object.freeze({
+    "selectable.distance": [[], []],
+    "selectable.hp": [[]],
+    "selectable.damageTakenLastTick": [[]],
+    "selectable.hpNetChangeLastTick": [[]],
+    "selectable.x": [[]],
+    "selectable.y": [[]],
+    "selectable.alive": [[]],
+    "selectable.absoluteBearing": [[SELECTABLE_IDENTITIES.FACING], []],
+    "selectable.movementDirection": [[]],
+    "selectable.speed": [[]],
+    "selectable.relativeBearing": [[SELECTABLE_IDENTITIES.FACING], []],
+    "selectable.relativeBearingClockwise": [[SELECTABLE_IDENTITIES.FACING], []],
+    "selectable.relativeBearingCounterclockwise": [[SELECTABLE_IDENTITIES.FACING], []],
+    "selectable.facing": [[SELECTABLE_IDENTITIES.FACING]],
+    "selectable.count": [[SELECTABLE_IDENTITIES.ABILITY_ENTITY]],
+    "selectable.age": [[SELECTABLE_IDENTITIES.ABILITY_ENTITY]],
+    "selectable.edgeDistance": [[]],
+    "selectable.closingZoneEdgeDistance": [[]],
+    "selectable.exists": [[SELECTABLE_IDENTITIES.ABILITY_ENTITY]],
+    "bot.selectedAbilityReady": [[SELECTABLE_IDENTITIES.BOT]],
+    "bot.selectedAbilityActive": [[SELECTABLE_IDENTITIES.BOT]],
+    "bot.selectedAbilityOnCooldown": [[SELECTABLE_IDENTITIES.BOT]],
+    "bot.selectedAbilityActiveMs": [[SELECTABLE_IDENTITIES.BOT]],
+    "bot.selectedAbilityCooldownMs": [[SELECTABLE_IDENTITIES.BOT]],
+    "bot.selectedAbilityCharges": [[SELECTABLE_IDENTITIES.BOT]],
+    "bot.selectedAbilityPreparing": [[SELECTABLE_IDENTITIES.BOT]],
+    "bot.selectedAbilityPreparationMs": [[SELECTABLE_IDENTITIES.BOT]],
+    "bot.selectedStatusEffectActive": [[SELECTABLE_IDENTITIES.BOT]],
+    "bot.selectedStatusEffectDurationMs": [[SELECTABLE_IDENTITIES.BOT]],
+});
+
 test("bot-code targets and action capabilities are derived from gameplay contracts", () => {
     const entityAbilities = ALL_ABILITY_DEFINITIONS.filter((ability) => ability.entityType);
     for (const ability of entityAbilities) {
-        assert.equal(TARGET_TYPES.some((target) => target.abilityId === ability.id), true);
+        assert.equal(SELECTABLE_TYPES.some((target) => target.abilityId === ability.id), true);
     }
     assert.equal(ACTION_TYPES.find((action) => action.id === 22)?.locationTarget, true);
     assert.equal(ACTION_TYPES.find((action) => action.id === 24)?.coordinateTarget, true);
     assert.equal(ACTION_TYPES.find((action) => action.id === 25)?.orientationConfig, true);
-    assert.equal(TARGET_TYPES.some((target) => target.id === "opponent_singularity_zone"), true);
-    assert.equal(TARGET_TYPES.some((target) => target.id === "my_singularity_zone"), true);
-    assert.equal(TARGET_TYPES.some((target) => target.id === "singularity_zone"), false);
-    assert.equal(TARGET_TYPES.find((target) => target.id === "opponent_grenade")?.healthBearing, false);
-    assert.equal(TARGET_TYPES.find((target) => target.id === "opponent_hunter_drone")?.healthBearing, true);
+    assert.equal(SELECTABLE_TYPES.some((target) => target.id === "opponent_singularity_zone"), true);
+    assert.equal(SELECTABLE_TYPES.some((target) => target.id === "my_singularity_zone"), true);
+    assert.equal(SELECTABLE_TYPES.some((target) => target.id === "singularity_zone"), false);
+    assert.equal(SELECTABLE_TYPES.find((target) => target.id === "opponent_grenade")?.selectableIdentities.includes(SELECTABLE_IDENTITIES.HEALTH), false);
+    assert.equal(SELECTABLE_TYPES.find((target) => target.id === "opponent_hunter_drone")?.selectableIdentities.includes(SELECTABLE_IDENTITIES.HEALTH), true);
+    assert.equal(SELECTABLE_TYPES.find((target) => target.id === "opponent_hunter_drone")?.selectableIdentities.includes(SELECTABLE_IDENTITIES.FACING), true);
     assert.equal(ACTION_TYPES.find((action) => action.id === "rotate_toward_enemy")?.angleTarget, true);
 });
 
-test("health conditionals reject non-health targets and signed HP net changes stay enabled", () => {
-    const hp = STATE_VARIABLES.find((variable) => variable.id === "target.hp");
-    const netChange = STATE_VARIABLES.find((variable) => variable.id === "my.hpNetChangeLastTick");
-    assert.equal(hp.targetCapability, TARGET_CAPABILITIES.HEALTH);
+test("browser selectable inputs enforce the complete conditional identity matrix", () => {
+    const selectableVariables = STATE_VARIABLES.filter((variable) => variable.supportsSelectable);
+    assert.deepEqual(new Set(selectableVariables.map((variable) => variable.id)), new Set(Object.keys(SELECTABLE_IDENTITY_MATRIX)));
+
+    for (const variable of selectableVariables) {
+        const expectedSlots = SELECTABLE_IDENTITY_MATRIX[variable.id];
+        if (variable.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR) {
+            assert.equal(expectedSlots.length, 2, `${variable.id} should expose two entity slots`);
+            assert.deepEqual(selectableIdentitiesForVariable(variable, 0), expectedSlots[0]);
+            assert.deepEqual(selectableIdentitiesForVariable(variable, 1), expectedSlots[1]);
+        } else {
+            assert.equal(expectedSlots.length, 1, `${variable.id} should expose one entity slot`);
+            assert.deepEqual(selectableIdentitiesForVariable(variable), expectedSlots[0]);
+        }
+
+        for (const selectable of SELECTABLE_TYPES) {
+            const slots = variable.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR ? [0, 1] : [null];
+            for (const slot of slots) {
+                const required = slot == null ? expectedSlots[0] : expectedSlots[slot];
+                const expected = required.every((identity) => selectable.selectableIdentities.includes(identity));
+                assert.equal(
+                    selectableMatchesVariable(selectable, variable, slot),
+                    expected,
+                    `${variable.id} selector ${slot ?? "single"} mismatched for ${selectable.id}`,
+                );
+            }
+        }
+    }
+
+    const selectable = (id) => SELECTABLE_TYPES.find((candidate) => candidate.id === id);
+    const bearing = STATE_VARIABLES.find((variable) => variable.id === "selectable.absoluteBearing");
+    const count = STATE_VARIABLES.find((variable) => variable.id === "selectable.count");
+    const botAbility = STATE_VARIABLES.find((variable) => variable.id === "bot.selectedAbilityActive");
+    assert.equal(selectableMatchesVariable(selectable("my_bot"), bearing, 0), true);
+    assert.equal(selectableMatchesVariable(selectable("opponent_hunter_drone"), bearing, 0), true);
+    assert.equal(selectableMatchesVariable(selectable("opponent_grenade"), bearing, 0), false);
+    assert.equal(selectableMatchesVariable(selectable("opponent_grenade"), bearing, 1), true);
+    assert.equal(selectableMatchesVariable(selectable("opponent_grenade"), count), true);
+    assert.equal(selectableMatchesVariable(selectable("opponent"), count), false);
+    assert.equal(selectableMatchesVariable(selectable("opponent"), botAbility), true);
+    assert.equal(selectableMatchesVariable(selectable("opponent_grenade"), botAbility), false);
+});
+
+test("target health metrics resolve zero for targets without health", () => {
+    const hp = STATE_VARIABLES.find((variable) => variable.id === "selectable.hp");
+    const netChange = STATE_VARIABLES.find((variable) => variable.id === "selectable.hpNetChangeLastTick");
+    assert.equal(hp.selectableCapability, undefined);
     assert.equal(netChange.tags.includes(VARIABLE_TAGS.ALLOW_NEGATIVE_INTEGER), true);
 
     const normalized = normalizeAbilityStrategyConfiguration({
         roots: [{ branches: [{ conditions: [{
             type: "expression",
             left: hp.id,
-            target: "opponent_grenade",
+            selectable: "opponent_grenade",
             comparator: "gt",
             right: { type: "number", value: 0 },
         }], actions: [] }] }],
     });
-    assert.equal(normalized.roots[0].branches[0].conditions[0].leftTarget, "opponent");
+    assert.equal(normalized.roots[0].branches[0].conditions[0].leftSelectable, "opponent_grenade");
+});
+
+test("selectable distance defaults to My Bot and Opponent and supports custom pairs", () => {
+    const distance = STATE_VARIABLES.find((variable) => variable.id === "selectable.distance");
+    assert.equal(distance.selectableType, VARIABLE_SELECTABLE_TYPES.PAIR);
+    assert.equal(distance.selectableSelectorLabels, undefined);
+    assert.deepEqual(selectableIdentitiesForVariable(distance, 0), []);
+    assert.deepEqual(selectableIdentitiesForVariable(distance, 1), []);
+    const defaultCondition = createExpressionCondition(distance);
+    assert.deepEqual([defaultCondition.selectable1, defaultCondition.selectable2], ["my_bot", "opponent"]);
+
+    const configuration = {
+        roots: [{ branches: [{ conditions: [{
+            type: "expression",
+            left: distance.id,
+            selectable1: "my_bot",
+            selectable2: "opponent_hunter_drone",
+            comparator: "lt",
+            right: { type: "number", value: 150 },
+        }], actions: [{ action: "swing" }] }] }],
+    };
+    assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
+        playerModel: { x: 100, y: 100 },
+        objects: [
+            { id: "opponent-model", type: "opponentModel", x: 900, y: 700, hp: 100 },
+            { id: "drone-1", type: "hunterDrone", abilityId: 17, ownerId: "opponent-model", x: 200, y: 100, hp: 30 },
+        ],
+    })).primary.id, "root-1-1-1");
+});
+
+test("bearing conditionals use the configured Entity and Target pair", () => {
+    const absoluteBearing = STATE_VARIABLES.find((variable) => variable.id === "selectable.absoluteBearing");
+    assert.equal(absoluteBearing.selectableType, VARIABLE_SELECTABLE_TYPES.PAIR);
+    assert.deepEqual(absoluteBearing.selectableSelectorLabels, ["Facing Entity", "Target"]);
+    assert.deepEqual(selectableIdentitiesForVariable(absoluteBearing, 0), [SELECTABLE_IDENTITIES.FACING]);
+    assert.deepEqual(selectableIdentitiesForVariable(absoluteBearing, 1), []);
+    assert.deepEqual(
+        VISIBLE_STATE_VARIABLES.filter((variable) => variable.label.startsWith("Absolute Bearing")).map((variable) => variable.id),
+        ["selectable.absoluteBearing"],
+    );
+    const normalizedBearing = normalizeAbilityStrategyConfiguration({
+        roots: [{ branches: [{ conditions: [{
+            type: "expression",
+            left: "selectable.absoluteBearing",
+            selectable1: "opponent",
+            selectable2: "opponent_hunter_drone",
+            comparator: "eq",
+            right: { type: "number", value: 0 },
+        }], actions: [] }] }],
+    });
+    assert.equal(normalizedBearing.roots[0].branches[0].conditions[0].selectable1, "opponent");
+    assert.equal(normalizedBearing.roots[0].branches[0].conditions[0].selectable2, "opponent_hunter_drone");
+    const invalidSourceBearing = normalizeAbilityStrategyConfiguration({
+        roots: [{ branches: [{ conditions: [{
+            type: "expression",
+            left: "selectable.absoluteBearing",
+            selectable1: "opponent_grenade",
+            selectable2: "opponent",
+            comparator: "eq",
+            right: { type: "number", value: 0 },
+        }], actions: [] }] }],
+    });
+    assert.equal(invalidSourceBearing.roots[0].branches[0].conditions[0].selectable1, "my_bot");
+    const configuration = {
+        roots: [{ branches: [{ conditions: [
+            {
+                type: "expression",
+                left: "selectable.absoluteBearing",
+                selectable1: "opponent",
+                selectable2: "my_bot",
+                comparator: "eq",
+                right: { type: "number", value: -90 },
+            },
+            {
+                type: "expression",
+                left: "selectable.relativeBearing",
+                selectable1: "opponent",
+                selectable2: "my_bot",
+                comparator: "eq",
+                right: { type: "number", value: 0 },
+            },
+        ], actions: [{ action: "swing" }] }] }],
+    };
+    assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
+        objects: [{ id: "opponent-model", type: "opponentModel", x: 600, y: 400, hp: 100, rotation: 270 }],
+    })).primary.id, "root-1-1-1");
+});
+
+test("bot ability conditionals select the configured bot and declare a loadout dependency", () => {
+    const ability = STATE_VARIABLES.find((variable) => variable.id === "bot.selectedAbilityActive");
+    assert.equal(ability.label, "Bot Ability Active");
+    assert.equal(ability.selectableType, undefined);
+    assert.deepEqual(ability.selectableIdentities, [SELECTABLE_IDENTITIES.BOT]);
+    assert.equal(ability.selectableDependency, SELECTABLE_DEPENDENCIES.ABILITY_LOADOUT);
+    assert.equal(ability.defaultSelectable, "my_bot");
+
+    const configuration = {
+        roots: [{ branches: [{ conditions: [{
+            type: "expression",
+            left: ability.id,
+            leftSelectable: "opponent",
+            ability: 5,
+            comparator: "eq",
+            right: { type: "boolean", value: true },
+        }], actions: [{ action: "swing" }] }] }],
+    };
+    assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
+        objects: [{
+            id: "opponent-model",
+            type: "opponentModel",
+            x: 600,
+            y: 400,
+            abilities: [5],
+            abilityActiveMs: { 5: 700 },
+        }],
+    })).primary.id, "root-1-1-1");
+
+    const hpConfiguration = {
+        roots: [{ branches: [{ conditions: [{
+            type: "expression",
+            left: "selectable.hp",
+            leftSelectable: "opponent_grenade",
+            comparator: "eq",
+            right: { type: "number", value: 0 },
+        }], actions: [{ action: "swing" }] }] }],
+    };
+    assert.equal(selectAbilityStrategyActionPlan(hpConfiguration, payload({
+        objects: [
+            { id: "opponent-model", type: "opponentModel", x: 600, y: 400, hp: 100 },
+            { id: "grenade-1", type: "grenade", abilityId: 4, ownerId: "opponent-model", x: 500, y: 400, hp: 90 },
+        ],
+    })).primary.id, "root-1-1-1");
 });
 
 test("editor node positions survive brain normalization as bounded visual metadata", () => {
@@ -126,46 +334,46 @@ test("normalized editor positions stay with roots and conditionals after priorit
     });
 });
 
-test("target type count selects an object type without target ordering", () => {
-    const count = STATE_VARIABLES.find((variable) => variable.id === "target.count");
-    const age = STATE_VARIABLES.find((variable) => variable.id === "target.age");
-    assert.equal(count.targetOrderable, false);
-    assert.notEqual(age.targetOrderable, false);
-    assert.notEqual(createExpressionCondition(count).leftTarget, "opponent");
+test("selectable type count selects an object type without selectable ordering", () => {
+    const count = STATE_VARIABLES.find((variable) => variable.id === "selectable.count");
+    const age = STATE_VARIABLES.find((variable) => variable.id === "selectable.age");
+    assert.equal(count.selectableOrderable, false);
+    assert.notEqual(age.selectableOrderable, false);
+    assert.notEqual(createExpressionCondition(count).leftSelectable, "opponent");
 
     const normalized = normalizeAbilityStrategyConfiguration({
         roots: [{ branches: [{ conditions: [{
             type: "expression",
             left: count.id,
-            leftTarget: "opponent_grenade:farthest:2",
+            leftSelectable: "opponent_grenade:farthest:2",
             comparator: "gt",
             right: { type: "number", value: 0 },
         }], actions: [] }] }],
     });
-    assert.equal(normalized.roots[0].branches[0].conditions[0].leftTarget, "opponent_grenade");
+    assert.equal(normalized.roots[0].branches[0].conditions[0].leftSelectable, "opponent_grenade");
 
     const orderedAge = normalizeAbilityStrategyConfiguration({
         roots: [{ branches: [{ conditions: [{
             type: "expression",
             left: age.id,
-            leftTarget: "opponent_grenade:farthest:2",
+            leftSelectable: "opponent_grenade:farthest:2",
             comparator: "gt",
             right: { type: "number", value: 0 },
         }], actions: [] }] }],
     });
-    assert.equal(orderedAge.roots[0].branches[0].conditions[0].leftTarget, "opponent_grenade:farthest:2");
+    assert.equal(orderedAge.roots[0].branches[0].conditions[0].leftSelectable, "opponent_grenade:farthest:2");
 });
 
 test("target-count defaults follow the visible entity type and inspection uses its base label", () => {
-    const count = STATE_VARIABLES.find((variable) => variable.id === "target.count");
-    const visibleTargets = TARGET_TYPES.filter((target) => ["opponent", "opponent_fireball"].includes(target.id));
-    assert.equal(createExpressionCondition(count, visibleTargets).leftTarget, "opponent_fireball");
+    const count = STATE_VARIABLES.find((variable) => variable.id === "selectable.count");
+    const visibleTargets = SELECTABLE_TYPES.filter((target) => ["opponent", "opponent_fireball"].includes(target.id));
+    assert.equal(createExpressionCondition(count, visibleTargets).leftSelectable, "opponent_fireball");
 
     const configuration = {
         roots: [{ branches: [{ conditions: [{
             type: "expression",
             left: count.id,
-            leftTarget: "opponent_fireball",
+            leftSelectable: "opponent_fireball",
             comparator: "gt",
             right: { type: "number", value: 0 },
         }], actions: [] }] }],
@@ -176,7 +384,7 @@ test("target-count defaults follow the visible entity type and inspection uses i
             { id: "fireball-1", type: "fireball", abilityId: 5, ownerId: "opponent-model", ownerSlot: 2, x: 500, y: 400, size: 20 },
         ],
     }))[0];
-    assert.equal(inspection.target, "Shoot Fireball by Opponent 1");
+    assert.equal(inspection.selectable, "Fireball by Opponent");
     assert.equal(inspection.value, 1);
 });
 
@@ -188,15 +396,15 @@ test("target existence and age conditions resolve spawned opponent entities", ()
             conditions: [
                 {
                     type: "expression",
-                    left: "target.exists",
-                    leftTarget: "opponent_singularity_zone",
+                    left: "selectable.exists",
+                    leftSelectable: "opponent_singularity_zone",
                     comparator: "eq",
                     right: { type: "boolean", value: true },
                 },
                 {
                     type: "expression",
-                    left: "target.age",
-                    leftTarget: "opponent_singularity_zone",
+                    left: "selectable.age",
+                    leftSelectable: "opponent_singularity_zone",
                     comparator: "gte",
                     right: { type: "number", value: 2 },
                 },
@@ -222,8 +430,8 @@ test("target existence and age conditions resolve spawned opponent entities", ()
     }));
     assert.equal(inspection[1].value, 0.1);
     assert.equal(inspection[1].result, false);
-    assert.equal(inspection[1].targetSelector, "opponent_singularity_zone");
-    assert.deepEqual(inspection[1].resolvedTarget, {
+    assert.equal(inspection[1].selectableSelector, "opponent_singularity_zone");
+    assert.deepEqual(inspection[1].resolvedSelectable, {
         id: "singularity-1",
         type: "singularityZone",
         entityContractType: null,
@@ -245,8 +453,8 @@ test("target existence and age conditions resolve spawned opponent entities", ()
             id: "singularity-exists",
             conditions: [{
                 type: "expression",
-                left: "target.exists",
-                leftTarget: "opponent_singularity_zone",
+                left: "selectable.exists",
+                leftSelectable: "opponent_singularity_zone",
                 comparator: "eq",
                 right: { type: "boolean", value: true },
             }],
@@ -264,7 +472,7 @@ test("target existence and age conditions resolve spawned opponent entities", ()
     })).movement?.id, "root-1-1-1");
 });
 
-test("target selectors keep shared runtime entities separated and order by age", () => {
+test("selectable selectors keep shared runtime entities separated and order by age", () => {
     const objects = [
             { id: "opponent-model", type: "opponentModel", x: 700, y: 700, hp: 100, slot: 2 },
             { id: "hunter-old", type: "hunterDrone", abilityId: 17, ownerId: "opponent-model", ownerSlot: 2, x: 200, y: 100, ageMs: 5_000, hp: 20 },
@@ -277,16 +485,16 @@ test("target selectors keep shared runtime entities separated and order by age",
         objects,
     };
 
-    assert.deepEqual(matchingStrategyTargets(state, "opponent_hunter_drone").map((target) => target.id), ["hunter-old"]);
-    assert.deepEqual(matchingStrategyTargets(state, "opponent_repeller_drone").map((target) => target.id), ["repeller-old", "repeller-new"]);
-    assert.equal(resolveAbilityStrategyTarget(state, "opponent_repeller_drone:oldest:1").id, "repeller-old");
-    assert.equal(resolveAbilityStrategyTarget(state, "opponent_repeller_drone:newest:1").id, "repeller-new");
+    assert.deepEqual(matchingStrategySelectables(state, "opponent_hunter_drone").map((target) => target.id), ["hunter-old"]);
+    assert.deepEqual(matchingStrategySelectables(state, "opponent_repeller_drone").map((target) => target.id), ["repeller-old", "repeller-new"]);
+    assert.equal(resolveAbilityStrategySelectable(state, "opponent_repeller_drone:oldest:1").id, "repeller-old");
+    assert.equal(resolveAbilityStrategySelectable(state, "opponent_repeller_drone:newest:1").id, "repeller-new");
 
     const exists = {
         roots: [{ branches: [{ conditions: [{
             type: "expression",
-            left: "target.exists",
-            leftTarget: "opponent_repeller_drone",
+            left: "selectable.exists",
+            leftSelectable: "opponent_repeller_drone",
             comparator: "eq",
             right: { type: "boolean", value: true },
         }], actions: [{ action: "move_walk", movementMode: "absolute", movementDirection: "east" }] }] }],
@@ -298,27 +506,44 @@ test("target selectors keep shared runtime entities separated and order by age",
     assert.equal(selectAbilityStrategyActionPlan(exists, payload({ playerModel: state.player, objects })).movement?.id, "root-1-1-1");
 });
 
-test("target facing falls back to a bot when an entity target is supplied", () => {
+test("facing identity allows oriented ability entities", () => {
+    const facing = STATE_VARIABLES.find((variable) => variable.id === "selectable.facing");
+    assert.deepEqual(facing.selectableIdentities, [SELECTABLE_IDENTITIES.FACING]);
     const normalized = normalizeAbilityStrategyConfiguration({
         roots: [{ branches: [{ conditions: [{
             type: "expression",
-            left: "target.facing",
-            leftTarget: "opponent_hunter_drone",
+            left: "selectable.facing",
+            leftSelectable: "opponent_hunter_drone",
             comparator: "gt",
             right: { type: "number", value: 0 },
         }], actions: [] }] }],
     });
-    assert.equal(normalized.roots[0].branches[0].conditions[0].leftTarget, "opponent");
+    assert.equal(normalized.roots[0].branches[0].conditions[0].leftSelectable, "opponent_hunter_drone");
+
+    const facingConfiguration = {
+        roots: [{ branches: [{ conditions: [{
+            type: "expression",
+            left: "selectable.facing",
+            leftSelectable: "opponent_hunter_drone",
+            comparator: "eq",
+            right: { type: "number", value: 30 },
+        }], actions: [{ action: "swing" }] }] }],
+    };
+    assert.equal(selectAbilityStrategyActionPlan(facingConfiguration, payload({
+        objects: [{ id: "opponent-model", type: "opponentModel", x: 600, y: 400, hp: 100, rotation: 30 },
+            { id: "drone-1", type: "hunterDrone", abilityId: 17, ownerId: "opponent-model", x: 500, y: 400, rotation: 30 }],
+    })).primary.id, "root-1-1-1");
 });
 
-test("target speed uses a direction-independent per-tick movement magnitude", () => {
-    const speed = STATE_VARIABLES.find((variable) => variable.id === "target.speed");
-    assert.equal(speed.label, "Target Speed");
+test("selectable speed uses a direction-independent per-tick movement magnitude", () => {
+    const speed = STATE_VARIABLES.find((variable) => variable.id === "selectable.speed");
+    assert.equal(speed.label, "Entity Speed");
+    assert.deepEqual(speed.selectableIdentities ?? [], []);
 
     const configuration = {
         roots: [{ branches: [{ id: "speed", conditions: [{
             type: "expression",
-            left: "target.speed",
+            left: "selectable.speed",
             comparator: "gt",
             right: { type: "number", value: 4 },
         }], actions: [{ action: "swing" }] }] }],
@@ -349,22 +574,18 @@ test("target speed uses a direction-independent per-tick movement magnitude", ()
 
 });
 
-test("closing-zone edge distance uses signed bot-hitbox clearance instead of target-center distance", () => {
-    const distance = STATE_VARIABLES.find((variable) => variable.id === "my.closingZoneEdgeDistance");
-    const opponentDistance = STATE_VARIABLES.find((variable) => variable.id === "opponent.closingZoneEdgeDistance");
-    assert.equal(distance.supportsTarget, undefined);
+test("closing-zone edge distance uses signed hitbox clearance instead of target-center distance", () => {
+    const distance = STATE_VARIABLES.find((variable) => variable.id === "selectable.closingZoneEdgeDistance");
+    assert.equal(distance.supportsSelectable, true);
     assert.equal(distance.min, -1200);
     assert.equal(distance.max, 1200);
     assert.equal(variableHasTag(distance, VARIABLE_TAGS.ALLOW_NEGATIVE_INTEGER), true);
-    assert.equal(opponentDistance.scope, "opponent");
-    assert.equal(opponentDistance.min, -1200);
-    assert.equal(opponentDistance.max, 1200);
-    assert.equal(variableHasTag(opponentDistance, VARIABLE_TAGS.ALLOW_NEGATIVE_INTEGER), true);
 
     const configuration = {
         roots: [{ branches: [{ id: "outside-zone", conditions: [{
             type: "expression",
             left: distance.id,
+            leftSelectable: "my_bot",
             comparator: "lt",
             right: { type: "number", value: -15 },
         }], actions: [{ action: "swing" }] }] }],
@@ -385,7 +606,8 @@ test("closing-zone edge distance uses signed bot-hitbox clearance instead of tar
     const opponentConfiguration = {
         roots: [{ branches: [{ id: "opponent-outside-zone", conditions: [{
             type: "expression",
-            left: opponentDistance.id,
+            left: distance.id,
+            leftSelectable: "opponent",
             comparator: "lt",
             right: { type: "number", value: -15 },
         }], actions: [{ action: "swing" }] }] }],
@@ -398,14 +620,14 @@ test("closing-zone edge distance uses signed bot-hitbox clearance instead of tar
 
 test("conditional ability choices include standard abilities and filter charges to real resources", () => {
     const equipped = new Set(ALL_ABILITY_DEFINITIONS.map((ability) => ability.id));
-    const ready = STATE_VARIABLES.find((variable) => variable.id === "my.selectedAbilityReady");
-    const charges = STATE_VARIABLES.find((variable) => variable.id === "my.selectedAbilityCharges");
+    const ready = STATE_VARIABLES.find((variable) => variable.id === "bot.selectedAbilityReady");
+    const charges = STATE_VARIABLES.find((variable) => variable.id === "bot.selectedAbilityCharges");
 
     assert.equal(charges.requiredTag, ABILITY_TAGS.CHARGES);
     assert.equal(abilityDefinitionsForVariable(ready, equipped).some((ability) => ability.id === 2), false);
     assert.equal(abilityDefinitionsForVariable(ready, equipped).some((ability) => ability.id === 19), true);
     assert.equal(abilityDefinitionsForVariable(ready, equipped).some((ability) => ability.id === 20), true);
-    assert.deepEqual(abilityDefinitionsForVariable(charges, equipped).map((ability) => ability.id), [3, 5]);
+    assert.deepEqual(abilityDefinitionsForVariable(charges, equipped).map((ability) => ability.id), [3, 5, 12]);
 
     const normalized = normalizeAbilityStrategyConfiguration({
         roots: [{ branches: [{ conditions: [{ type: "expression", left: charges.id, ability: "swing", comparator: "gt", right: { type: "number", value: 0 } }], actions: [] }] }],
@@ -421,9 +643,9 @@ test("conditional ability choices include standard abilities and filter charges 
 
 test("conditional ability choices expose active state and remaining active time", () => {
     const equipped = new Set(ALL_ABILITY_DEFINITIONS.map((ability) => ability.id));
-    const active = STATE_VARIABLES.find((variable) => variable.id === "my.selectedAbilityActive");
-    const onCooldown = STATE_VARIABLES.find((variable) => variable.id === "my.selectedAbilityOnCooldown");
-    const activeTime = STATE_VARIABLES.find((variable) => variable.id === "my.selectedAbilityActiveMs");
+    const active = STATE_VARIABLES.find((variable) => variable.id === "bot.selectedAbilityActive");
+    const onCooldown = STATE_VARIABLES.find((variable) => variable.id === "bot.selectedAbilityOnCooldown");
+    const activeTime = STATE_VARIABLES.find((variable) => variable.id === "bot.selectedAbilityActiveMs");
 
     assert.equal(active.valueType, "boolean");
     assert.equal(onCooldown.valueType, "boolean");
@@ -469,49 +691,100 @@ test("ability phase conditionals expose mutually exclusive active, cooldown, pre
     });
 
     const activePlan = selectAbilityStrategyActionPlan(phaseConfiguration([
-        condition("my.selectedAbilityActive", "eq", true),
-        condition("my.selectedAbilityOnCooldown", "eq", false),
-        condition("my.selectedAbilityCooldownMs", "eq", 0),
-        condition("my.selectedAbilityReady", "eq", false),
+        condition("bot.selectedAbilityActive", "eq", true),
+        condition("bot.selectedAbilityOnCooldown", "eq", false),
+        condition("bot.selectedAbilityCooldownMs", "eq", 0),
+        condition("bot.selectedAbilityReady", "eq", false),
     ]), payload({
         playerModel: { abilityActiveMs: { concussive_shot: 500 }, abilityCooldowns: { concussive_shot: 3000 } },
     }));
     assert.equal(activePlan.movement?.id, "root-1-1-1");
 
     const cooldownPlan = selectAbilityStrategyActionPlan(phaseConfiguration([
-        condition("my.selectedAbilityActive", "eq", false),
-        condition("my.selectedAbilityOnCooldown", "eq", true),
-        condition("my.selectedAbilityCooldownMs", "gt", 0),
-        condition("my.selectedAbilityReady", "eq", false),
+        condition("bot.selectedAbilityActive", "eq", false),
+        condition("bot.selectedAbilityOnCooldown", "eq", true),
+        condition("bot.selectedAbilityCooldownMs", "gt", 0),
+        condition("bot.selectedAbilityReady", "eq", false),
     ]), payload({
         playerModel: { abilityActiveMs: { concussive_shot: 0 }, abilityCooldowns: { concussive_shot: 500 } },
     }));
     assert.equal(cooldownPlan.movement?.id, "root-1-1-1");
 
     const preparationPlan = selectAbilityStrategyActionPlan(phaseConfiguration([
-        condition("my.selectedAbilityPreparing", "eq", true),
-        condition("my.selectedAbilityPreparationMs", "gt", 0),
-        condition("my.selectedAbilityActive", "eq", false),
-        condition("my.selectedAbilityActiveMs", "eq", 0),
-        condition("my.selectedAbilityOnCooldown", "eq", false),
-        condition("my.selectedAbilityCooldownMs", "eq", 0),
-        condition("my.selectedAbilityReady", "eq", false),
+        condition("bot.selectedAbilityPreparing", "eq", true),
+        condition("bot.selectedAbilityPreparationMs", "gt", 0),
+        condition("bot.selectedAbilityActive", "eq", false),
+        condition("bot.selectedAbilityActiveMs", "eq", 0),
+        condition("bot.selectedAbilityOnCooldown", "eq", false),
+        condition("bot.selectedAbilityCooldownMs", "eq", 0),
+        condition("bot.selectedAbilityReady", "eq", false),
     ]), payload({
         playerModel: { preparingAbility: 9, preparingMs: 400 },
     }));
     assert.equal(preparationPlan.movement?.id, "root-1-1-1");
 
     const readyPlan = selectAbilityStrategyActionPlan(phaseConfiguration([
-        condition("my.selectedAbilityActive", "eq", false),
-        condition("my.selectedAbilityPreparing", "eq", false),
-        condition("my.selectedAbilityOnCooldown", "eq", false),
-        condition("my.selectedAbilityReady", "eq", true),
+        condition("bot.selectedAbilityActive", "eq", false),
+        condition("bot.selectedAbilityPreparing", "eq", false),
+        condition("bot.selectedAbilityOnCooldown", "eq", false),
+        condition("bot.selectedAbilityReady", "eq", true),
     ]), payload());
     assert.equal(readyPlan.movement?.id, "root-1-1-1");
 });
 
+test("unowned ability conditionals resolve every ability state as false or zero", () => {
+    const conditions = [
+        ["bot.selectedAbilityReady", "eq", false, "boolean"],
+        ["bot.selectedAbilityActive", "eq", false, "boolean"],
+        ["bot.selectedAbilityActiveMs", "eq", 0, "number"],
+        ["bot.selectedAbilityOnCooldown", "eq", false, "boolean"],
+        ["bot.selectedAbilityCooldownMs", "eq", 0, "number"],
+        ["bot.selectedAbilityCharges", "eq", 0, "number"],
+        ["bot.selectedAbilityPreparing", "eq", false, "boolean"],
+        ["bot.selectedAbilityPreparationMs", "eq", 0, "number"],
+    ];
+    const configurationFor = (target) => ({
+        roots: [{ branches: [{ conditions: conditions.map(([left, comparator, value, type]) => ({
+            type: "expression",
+            left,
+            leftSelectable: target,
+            ability: 5,
+            comparator,
+            right: { type, value },
+        })), actions: [] }] }],
+    });
+    const stateWithStaleAbilityState = payload({
+        playerModel: {
+            abilities: [],
+            abilityActiveMs: { 5: 900 },
+            abilityCooldowns: { 5: 5000 },
+            abilityCharges: { 5: 2 },
+            preparingAbility: 5,
+            preparingMs: 600,
+        },
+        objects: [{
+            id: "opponent-model",
+            type: "opponentModel",
+            x: 600,
+            y: 400,
+            abilities: [],
+            abilityActiveMs: { 5: 900 },
+            abilityCooldowns: { 5: 5000 },
+            abilityCharges: { 5: 2 },
+            preparingAbility: 5,
+            preparingMs: 600,
+        }],
+    });
+
+    for (const target of ["my_bot", "opponent"]) {
+        const inspections = inspectAbilityStrategyConditions(configurationFor(target), stateWithStaleAbilityState);
+        assert.deepEqual(inspections.map((inspection) => inspection.value), [false, false, 0, false, 0, 0, false, 0]);
+        assert.ok(inspections.every((inspection) => inspection.result));
+    }
+});
+
 test("ability condition defaults and persisted selections use the visible ability options", () => {
-    const active = STATE_VARIABLES.find((variable) => variable.id === "my.selectedAbilityActive");
+    const active = STATE_VARIABLES.find((variable) => variable.id === "bot.selectedAbilityActive");
     const visible = {
         ...active,
         abilityOptions: [
@@ -536,7 +809,7 @@ test("ability conditionals resolve several selected abilities and numeric prepar
         const result = selectAbilityStrategyActionPlan({
             roots: [{ branches: [{ id: `active-${abilityId}`, conditions: [{
                 type: "expression",
-                left: "my.selectedAbilityActive",
+                left: "bot.selectedAbilityActive",
                 ability,
                 comparator: "eq",
                 right: { type: "boolean", value: true },
@@ -551,14 +824,14 @@ test("ability conditionals resolve several selected abilities and numeric prepar
         roots: [{ branches: [{ id: "preparing", conditions: [
             {
                 type: "expression",
-                left: "my.selectedAbilityPreparing",
+                left: "bot.selectedAbilityPreparing",
                 ability: "rail_shot",
                 comparator: "eq",
                 right: { type: "boolean", value: true },
             },
             {
                 type: "expression",
-                left: "my.selectedAbilityPreparationMs",
+                left: "bot.selectedAbilityPreparationMs",
                 ability: "rail_shot",
                 comparator: "gt",
                 right: { type: "number", value: 0.5 },
@@ -570,8 +843,8 @@ test("ability conditionals resolve several selected abilities and numeric prepar
     assert.equal(preparing.movement?.id, "root-1-1-1");
 });
 
-test("condition inspection identifies the ability represented by My Ability Active", () => {
-    const active = STATE_VARIABLES.find((variable) => variable.id === "my.selectedAbilityActive");
+test("condition inspection identifies the ability represented by Bot Ability Active", () => {
+    const active = STATE_VARIABLES.find((variable) => variable.id === "bot.selectedAbilityActive");
     const inspection = inspectAbilityStrategyConditions({
         roots: [{ branches: [{ conditions: [{
             type: "expression",
@@ -590,7 +863,7 @@ test("condition inspection identifies the ability represented by My Ability Acti
 });
 
 test("numeric-string ability selections preserve Dash active-state conditions", () => {
-    const active = STATE_VARIABLES.find((variable) => variable.id === "my.selectedAbilityActive");
+    const active = STATE_VARIABLES.find((variable) => variable.id === "bot.selectedAbilityActive");
     const configuration = {
         roots: [{ branches: [{
             id: "dash-active",
@@ -602,7 +875,7 @@ test("numeric-string ability selections preserve Dash active-state conditions", 
     const normalized = normalizeAbilityStrategyConfiguration(configuration);
     assert.equal(normalized.roots[0].branches[0].conditions[0].ability, 19);
     assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
-        playerModel: { abilityActiveMs: { 19: 850 } },
+        playerModel: { abilities: [19], abilityActiveMs: { 19: 850 } },
     })).primary.id, "root-1-1-1");
 });
 
@@ -612,7 +885,7 @@ test("angle condition inputs use signed full-turn bounds", () => {
     assert.ok(angles.every((variable) => variable.angle && variable.min === -360 && variable.max === 360));
 
     const normalized = normalizeAbilityStrategyConfiguration({
-        roots: [{ branches: [{ conditions: [{ type: "expression", left: "target.facing", comparator: "gt", right: { type: "number", value: 999 } }], actions: [] }] }],
+        roots: [{ branches: [{ conditions: [{ type: "expression", left: "selectable.facing", comparator: "gt", right: { type: "number", value: 999 } }], actions: [] }] }],
     });
     assert.equal(normalized.roots[0].branches[0].conditions[0].right.value, 360);
 });
@@ -723,7 +996,7 @@ test("relative movement angles use the universal clockwise compass", () => {
     assert.equal(normalizeRelativeMovementDegrees(270), -90);
 });
 
-test("target directions compare positive and negative angle equivalents", () => {
+test("selectable directions compare positive and negative angle equivalents", () => {
     assert.equal(compareAngleValues(350, "lt", 50), true);
     assert.equal(compareAngleValues(-10, "lt", 50), true);
     assert.equal(compareAngleValues(50, "eq", -310), true);
@@ -731,7 +1004,7 @@ test("target directions compare positive and negative angle equivalents", () => 
     const configuration = {
         roots: [{ branches: [{ id: "angle", conditions: [{
             type: "expression",
-            left: "target.bearingFromMe",
+            left: "selectable.absoluteBearing",
             comparator: "lt",
             right: { type: "number", value: 50 },
         }], actions: [{ action: "swing" }], children: [] }] }],
@@ -743,8 +1016,8 @@ test("target directions compare positive and negative angle equivalents", () => 
 
     const boundedConfiguration = {
         roots: [{ branches: [{ id: "centered-angle", conditions: [
-            { type: "expression", left: "target.bearingFromMe", comparator: "gte", right: { type: "number", value: -50 } },
-            { type: "expression", left: "target.bearingFromMe", comparator: "lt", right: { type: "number", value: 50 } },
+            { type: "expression", left: "selectable.absoluteBearing", comparator: "gte", right: { type: "number", value: -50 } },
+            { type: "expression", left: "selectable.absoluteBearing", comparator: "lt", right: { type: "number", value: 50 } },
         ], actions: [{ action: "swing" }], children: [] }] }],
     };
     assert.equal(selectAbilityStrategyActionPlan(boundedConfiguration, payload({
@@ -753,8 +1026,8 @@ test("target directions compare positive and negative angle equivalents", () => 
 
     const facingConfiguration = {
         roots: [{ branches: [{ id: "facing-range", conditions: [
-            { type: "expression", left: "target.facing", comparator: "gt", right: { type: "number", value: 10 } },
-            { type: "expression", left: "target.facing", comparator: "lt", right: { type: "number", value: 50 } },
+            { type: "expression", left: "selectable.facing", comparator: "gt", right: { type: "number", value: 10 } },
+            { type: "expression", left: "selectable.facing", comparator: "lt", right: { type: "number", value: 50 } },
         ], actions: [{ action: "swing" }], children: [] }] }],
     };
     assert.equal(selectAbilityStrategyActionPlan(facingConfiguration, payload({
@@ -770,7 +1043,7 @@ test("timed self buffs are available to status-effect conditionals", () => {
 });
 
 test("status-effect condition defaults follow the available status options instead of Burn", () => {
-    const statusVariable = STATE_VARIABLES.find((variable) => variable.id === "my.selectedStatusEffectActive");
+    const statusVariable = STATE_VARIABLES.find((variable) => variable.id === "bot.selectedStatusEffectActive");
     const overclockVariable = {
         ...statusVariable,
         statusEffectOptions: statusEffectDefinitionsForAbilities([33]),
@@ -805,7 +1078,7 @@ test("status-effect conditionals resolve multiple effect types and labels", () =
         const result = selectAbilityStrategyActionPlan({
             roots: [{ branches: [{ id: `status-${statusEffect}`, conditions: [{
                 type: "expression",
-                left: "my.selectedStatusEffectActive",
+                left: "bot.selectedStatusEffectActive",
                 statusEffect: label,
                 comparator: "eq",
                 right: { type: "boolean", value: true },
@@ -822,9 +1095,10 @@ test("right-hand ability and status variables keep their own selection metadata"
     const abilityResult = selectAbilityStrategyActionPlan({
         roots: [{ branches: [{ id: "right-ability", conditions: [{
             type: "expression",
-            left: "my.hp",
+            left: "selectable.hp",
+            leftSelectable: "my_bot",
             comparator: "lt",
-            right: { type: "variable", value: "my.selectedAbilityCooldownMs" },
+            right: { type: "variable", value: "bot.selectedAbilityCooldownMs" },
             ability: "dash",
         }], actions: [action] }] }],
     }, payload({
@@ -835,9 +1109,10 @@ test("right-hand ability and status variables keep their own selection metadata"
     const statusResult = selectAbilityStrategyActionPlan({
         roots: [{ branches: [{ id: "right-status", conditions: [{
             type: "expression",
-            left: "my.hp",
+            left: "selectable.hp",
+            leftSelectable: "my_bot",
             comparator: "lt",
-            right: { type: "variable", value: "my.selectedStatusEffectDurationMs" },
+            right: { type: "variable", value: "bot.selectedStatusEffectDurationMs" },
             statusEffect: "overclock",
         }], actions: [action] }] }],
     }, payload({
@@ -849,14 +1124,14 @@ test("right-hand ability and status variables keep their own selection metadata"
 test("status conditions read Overclock like Burn from the generic status collection", () => {
     const activeCondition = (statusEffect) => ({
         type: "expression",
-        left: "my.selectedStatusEffectActive",
+        left: "bot.selectedStatusEffectActive",
         statusEffect,
         comparator: "eq",
         right: { type: "boolean", value: true },
     });
     const durationCondition = {
         type: "expression",
-        left: "my.selectedStatusEffectDurationMs",
+        left: "bot.selectedStatusEffectDurationMs",
         statusEffect: "overclock",
         comparator: "gt",
         right: { type: "number", value: 3 },
@@ -895,7 +1170,7 @@ test("status conditions read Overclock like Burn from the generic status collect
             }],
         },
     }))[0];
-    assert.equal(inspection.target, null);
+    assert.equal(inspection.selectable, "My Bot");
     assert.equal(inspection.statusEffect, "overclock");
     assert.deepEqual(inspection.statusEffectState, {
         type: "overclock",
@@ -994,7 +1269,7 @@ test("numeric conditional order selects a later conditional", () => {
     const configuration = {
         roots: [{
             branches: [
-                { id: "first", branchType: "if", createdOrder: 0, conditions: [{ type: "expression", left: "my.hp", comparator: "lt", right: { type: "number", value: 1 } }], actions: [{ action: "swing" }] },
+                { id: "first", branchType: "if", createdOrder: 0, conditions: [{ type: "expression", left: "selectable.hp", leftSelectable: "my_bot", comparator: "lt", right: { type: "number", value: 1 } }], actions: [{ action: "swing" }] },
                 { id: "second", branchType: "if", createdOrder: 1, conditions: [{ type: "always" }], actions: [{ action: "concussive_shot" }] },
             ],
         }],

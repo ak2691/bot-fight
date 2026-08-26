@@ -39,7 +39,8 @@ export const LOCK_ON_PRESENTATION = Object.freeze({
 export const BOT_PRESENTATION_DEFINITIONS = Object.freeze({
     20: LOCK_ON_PRESENTATION,
     7: { texturePath: ["heavySlash"], animation: "progress" }, 8: { texturePath: ["repulsorBlast"], animation: "presentationClock" },
-    12: { texturePath: ["rays", "pistol_shot"], animation: "alpha" }, 9: { texturePath: ["rays", "concussive_shot"], animation: "alpha" },
+    3: { texturePath: ["rays", "gun"], animation: "alpha" }, 12: { texturePath: ["rays", "pistol"], animation: "alpha" },
+    9: { texturePath: ["rays", "concussive_shot"], animation: "alpha" },
     13: { texturePath: ["rays", "rail_shot"], animation: "alpha" }, 25: { texturePath: ["phaseStrike"], animation: "progress" },
     16: { texturePath: ["shield"], animation: "progress" }, 23: { texturePath: ["shield"], animation: "progress" },
     10: { texturePath: ["basicHeal"], animation: "particles" },

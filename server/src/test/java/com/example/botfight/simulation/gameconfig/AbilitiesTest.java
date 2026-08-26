@@ -18,8 +18,8 @@ class AbilitiesTest {
     @Test
     void rangedDamageProfilesUseLinearEndpointsAndPlateaus() {
         assertThat(Abilities.damageAtDistance(3, 100)).isEqualTo(15);
-        assertThat(Abilities.damageAtDistance(3, 400)).isEqualTo(8.5);
-        assertThat(Abilities.damageAtDistance(3, 700)).isEqualTo(2);
+        assertThat(Abilities.damageAtDistance(3, 400)).isEqualTo(10);
+        assertThat(Abilities.damageAtDistance(3, 700)).isEqualTo(5);
         assertThat(Abilities.damageAtDistance(12, 166.665)).isEqualTo(6);
         assertThat(Abilities.damageAtDistance(12, 400)).isEqualTo(4);
         assertThat(Abilities.damageAtDistance(14, 45)).isEqualTo(27.5);
@@ -44,7 +44,7 @@ class AbilitiesTest {
                 .filter(entry -> entry.getValue().charges() > 0)
                 .map(entry -> entry.getKey())
                 .toList())
-                .containsExactlyInAnyOrder(3, 5);
+                .containsExactlyInAnyOrder(3, 5, 12);
         assertThat(Abilities.definition(16).charges()).isZero();
         assertThat(Abilities.definition(17).charges()).isZero();
     }
@@ -64,6 +64,10 @@ class AbilitiesTest {
         assertThat(Abilities.definition(3).rechargeMs()).isEqualTo(5_000);
         assertThat(Abilities.cooldownMs(5)).isEqualTo(300);
         assertThat(Abilities.definition(5).rechargeMs()).isEqualTo(5_000);
+        assertThat(Abilities.definition(12).charges()).isEqualTo(10);
+        assertThat(Abilities.definition(12).rechargeMs()).isEqualTo(3_000);
+        assertThat(Abilities.definition(12).resourceModel())
+                .isEqualTo(Abilities.ResourceModel.RELOAD_WHEN_EMPTY);
     }
 
     @Test
@@ -79,6 +83,7 @@ class AbilitiesTest {
     @Test
     void newAbilityStatsKeepTheirSuggestedRoundStrengths() {
         assertThat(Abilities.definition(9).damage()).isEqualTo(20);
+        assertThat(Abilities.definition(11).damage()).isEqualTo(25);
         assertThat(Abilities.cooldownMs(28)).isEqualTo(7_700);
         assertThat(Abilities.definition(26).damage()).isEqualTo(10);
         assertThat(Abilities.definition(28).damage()).isEqualTo(10);

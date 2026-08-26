@@ -3,8 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/auth-context";
 import AppNavbar from "../../components/AppNavbar.jsx";
 import Arena from "../../gameArena/Arena.jsx";
-import { customVariableDefinitions, STATE_VARIABLES } from "../../gameArena/botlogic/code/BotCode.js";
-import { targetTypesForLoadouts } from "../../gameArena/coding/nodes/GraphNodes.jsx";
+import { customVariableDefinitions, STATE_VARIABLES, VISIBLE_STATE_VARIABLES } from "../../gameArena/botlogic/code/BotCode.js";
+import { selectableAbilityIdsForLoadouts, selectableTypesForLoadouts } from "../../gameArena/coding/nodes/GraphNodes.jsx";
 import { fetchPuzzle, submitPuzzleAttempt } from "../../puzzles/puzzleApi.js";
 import { puzzleConditionLabel } from "../../puzzles/puzzleConditions.js";
 import { loadPuzzleSubmissions, savePuzzleSubmission } from "../../puzzles/puzzleSubmissions.js";
@@ -95,7 +95,7 @@ function PuzzlePlayInfoModal({ puzzle, outcome, onOpenConfiguration }) {
                 <section className="mt-5">
                     <h2 className="font-mono text-[10px] font-bold tracking-[.16em] text-emerald-200">WIN CONDITIONS:</h2>
                     <ul className="mt-2 space-y-1.5 font-mono text-[9px] leading-4 text-slate-300">
-                        {winConditions.map((condition, index) => <PuzzleConditionItem key={condition.id ?? `${condition.subject}-${index}`} condition={condition} variableDefinitions={variableDefinitions} onOpenConfiguration={onOpenConfiguration} />)}
+                        {winConditions.map((condition, index) => <PuzzleConditionItem key={condition.id ?? `${condition.left}-${index}`} condition={condition} variableDefinitions={variableDefinitions} onOpenConfiguration={onOpenConfiguration} />)}
                     </ul>
                 </section>
 
@@ -103,7 +103,7 @@ function PuzzlePlayInfoModal({ puzzle, outcome, onOpenConfiguration }) {
                     <section className="mt-5">
                         <h2 className="font-mono text-[10px] font-bold tracking-[.16em] text-rose-200">LOSE CONDITIONS:</h2>
                         <ul className="mt-2 space-y-1.5 font-mono text-[9px] leading-4 text-slate-300">
-                            {loseConditions.map((condition, index) => <PuzzleConditionItem key={condition.id ?? `${condition.subject}-${index}`} condition={condition} variableDefinitions={variableDefinitions} onOpenConfiguration={onOpenConfiguration} />)}
+                            {loseConditions.map((condition, index) => <PuzzleConditionItem key={condition.id ?? `${condition.left}-${index}`} condition={condition} variableDefinitions={variableDefinitions} onOpenConfiguration={onOpenConfiguration} />)}
                         </ul>
                     </section>
                 )}
@@ -263,11 +263,15 @@ export default function PuzzlePlayPage() {
     }, [activeRestoredSubmission, puzzle]);
 
     const viewerStateVariables = useMemo(
-        () => [...STATE_VARIABLES, ...customVariableDefinitions(puzzle?.logicConfiguration)],
+        () => [...VISIBLE_STATE_VARIABLES, ...customVariableDefinitions(puzzle?.logicConfiguration)],
         [puzzle?.logicConfiguration],
     );
-    const viewerTargetTypes = useMemo(
-        () => targetTypesForLoadouts(puzzle?.playerBot?.loadout, puzzle?.opponentBot?.loadout),
+    const viewerSelectableTypes = useMemo(
+        () => selectableTypesForLoadouts(puzzle?.playerBot?.loadout, puzzle?.opponentBot?.loadout),
+        [puzzle?.opponentBot?.loadout, puzzle?.playerBot?.loadout],
+    );
+    const viewerSelectableAbilityIds = useMemo(
+        () => selectableAbilityIdsForLoadouts(puzzle?.playerBot?.loadout, puzzle?.opponentBot?.loadout),
         [puzzle?.opponentBot?.loadout, puzzle?.playerBot?.loadout],
     );
     const canViewConfiguration = Array.isArray(puzzle?.logicConfiguration?.roots)
@@ -289,7 +293,8 @@ export default function PuzzlePlayPage() {
             configuration={puzzle.logicConfiguration}
             onChange={() => {}}
             stateVariables={viewerStateVariables}
-            targetTypes={viewerTargetTypes}
+            selectableTypes={viewerSelectableTypes}
+            selectableAbilityIds={viewerSelectableAbilityIds}
             maxCustomVariables={puzzle.maxCustomVariables}
             readOnly
             onClose={() => setIsConfigurationOpen(false)}

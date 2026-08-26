@@ -3,7 +3,7 @@ import { abilityIdFromBoundary } from "../../gameconfig/AbilityCompatibility.js"
 import { abilityIdFromLegacyName, abilityIdentity } from "../../gameconfig/AbilityRegistry.js";
 import { ACTION_TO_ABILITY, ALL_ABILITY_DEFINITIONS, STATUS_EFFECT_DEFINITIONS } from "../../loadout/BotLoadout.js";
 import { createDefaultAbilityStrategyConfiguration } from "./configuration/configurationFactories.js";
-import { matchingStrategyTargets, resolveAbilityStrategyTarget } from "./runtime/targeting.js";
+import { matchingStrategySelectables, resolveAbilityStrategySelectable } from "./runtime/targeting.js";
 import { normalizeRoots } from "./configuration/rootOperations.js";
 import { hasStrategyActions, selectStrategyActionPlan, selectStrategyBlock } from "./runtime/actionSelector.js";
 import { validateConfiguration } from "./configuration/validation.js";
@@ -46,7 +46,7 @@ import {
     ABILITY_TAGS,
     BOT_CODE_COMPARATORS,
     BOT_CODE_CONDITIONS,
-    BOT_CODE_TARGETS,
+    BOT_CODE_SELECTABLES,
     CONDITION_JOINS,
     CUSTOM_VARIABLE_CONTRACT,
     CUSTOM_VARIABLE_OPERATIONS,
@@ -54,23 +54,29 @@ import {
     CONDITION_DEFINITIONS,
     CONDITION_TYPES,
     STATE_VARIABLES,
+    VISIBLE_STATE_VARIABLES,
     STATE_VARIABLE_BY_ID,
     STATE_VARIABLE_SCOPES,
-    TARGET_CAPABILITIES,
-    TARGET_BY_ID,
-    TARGET_ORDERS,
-    TARGET_TYPES,
+    SELECTABLE_CAPABILITIES,
+    SELECTABLE_BY_ID,
+    SELECTABLE_IDENTITIES,
+    SELECTABLE_ORDERS,
+    SELECTABLE_TYPES,
+    VARIABLE_SELECTABLE_TYPES,
+    selectableIdentitiesForVariable,
+    selectableMatchesVariable,
     ABSOLUTE_MOVEMENT_DIRECTIONS,
     MOVEMENT_DIRECTION_MAX,
     MOVEMENT_DIRECTION_MIN,
     abilityDefinitionsForVariable,
     defaultAbilityForVariable,
     defaultStatusEffectForVariable,
+    defaultSelectablePairForVariable as contractDefaultSelectablePairForVariable,
     variableDefinition,
 } from "./contracts/BotLogicContracts.js";
 
 export { createCodeRoot, createDefaultAbilityStrategyConfiguration } from "./configuration/configurationFactories.js";
-export { resolveAbilityStrategyTarget } from "./runtime/targeting.js";
+export { resolveAbilityStrategySelectable } from "./runtime/targeting.js";
 export { actionSupportsTarget } from "./runtime/actionRuntime.js";
 export { actionEntryCost, countActionSlots, countConditionSlots, countVariableSlots } from "./configuration/configurationMetrics.js";
 export { insertParentLogicBranch, moveLogicRootPriority, normalizeRoots, removeLogicBranch, setLogicBranchPriority, setLogicRootPriority } from "./configuration/rootOperations.js";
@@ -79,19 +85,27 @@ export {
     ACTION_TYPES,
     ABILITY_TAGS,
     BOT_CODE_ACTIONS,
+    BOT_CODE_SELECTABLES,
     CONDITION_COMPARATORS,
     CONDITION_DEFINITIONS,
     CONDITION_TYPES,
     CUSTOM_VARIABLE_OPERATIONS,
     STATE_VARIABLES,
-    TARGET_CAPABILITIES,
+    VISIBLE_STATE_VARIABLES,
+    SELECTABLE_CAPABILITIES,
+    SELECTABLE_BY_ID,
     VARIABLE_TAGS,
+    VARIABLE_SELECTABLE_TYPES,
+    selectableIdentitiesForVariable,
+    selectableMatchesVariable,
+    SELECTABLE_DEPENDENCIES,
+    SELECTABLE_IDENTITIES,
     abilityDefinitionsForVariable,
-    TARGET_TYPES,
-    TARGET_ORDERS,
+    SELECTABLE_TYPES,
+    SELECTABLE_ORDERS,
 } from "./contracts/BotLogicContracts.js";
 const CONDITION_BY_ID = new Map(CONDITION_DEFINITIONS.map((condition) => [condition.id, condition]));
-const OPPONENT_TARGET_ID = BOT_CODE_TARGETS.OPPONENT;
+const OPPONENT_SELECTABLE_ID = BOT_CODE_SELECTABLES.OPPONENT;
 const MAX_ENUMERATED_ANGLE_GROUPS = 8;
 
 export function createLogicBlock(conditionType = BOT_CODE_CONDITIONS.ALWAYS, action = BOT_CODE_ACTIONS.MOVE_WALK) {
@@ -100,19 +114,22 @@ export function createLogicBlock(conditionType = BOT_CODE_CONDITIONS.ALWAYS, act
         conditions: [{
             type: definition.id,
             ...(definition.requiresValue ? { value: definition.defaultValue } : {}),
-            ...(definition.supportsTarget ? { target: definition.defaultTarget ?? OPPONENT_TARGET_ID } : {}),
+        ...(definition.supportsSelectable ? { selectable: definition.defaultSelectable ?? OPPONENT_SELECTABLE_ID } : {}),
         }],
         priority: 1,
         action: ACTION_BY_ID.has(action) ? action : ACTION_TYPES[0].id,
-        actionTarget: normalizeActionTarget(OPPONENT_TARGET_ID, action),
+        selectable: normalizeSelectable(OPPONENT_SELECTABLE_ID, OPPONENT_SELECTABLE_ID),
     };
 }
 
-export function createExpressionCondition(left = "target.distance", targetTypes = TARGET_TYPES) {
+export function createExpressionCondition(left = "selectable.distance", selectableTypes = SELECTABLE_TYPES) {
     const suppliedDefinition = left && typeof left === "object" ? left : null;
     const variable = suppliedDefinition ?? STATE_VARIABLE_BY_ID.get(left) ?? STATE_VARIABLES[0];
     const defaultStatusEffect = variable.supportsStatusEffect
         ? defaultStatusEffectForVariable(variable)
+        : null;
+    const selectablePair = variable.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR
+        ? contractDefaultSelectablePairForVariable(variable, selectableTypes)
         : null;
     return normalizeExpressionCondition({
         type: BOT_CODE_CONDITIONS.EXPRESSION,
@@ -123,8 +140,10 @@ export function createExpressionCondition(left = "target.distance", targetTypes 
             : { type: "number", value: variable.defaultValue },
         ...(variable.supportsAbility ? { ability: defaultAbilityForVariable(variable) } : {}),
         ...(defaultStatusEffect ? { statusEffect: defaultStatusEffect } : {}),
-        ...(variable.supportsTarget ? { leftTarget: defaultTargetForVariable(variable, targetTypes) } : {}),
-    }, [], targetTypes);
+        ...(selectablePair
+            ? { selectable1: selectablePair[0], selectable2: selectablePair[1] }
+            : variable.supportsSelectable ? { leftSelectable: defaultSelectableForVariable(variable, selectableTypes) } : {}),
+    }, [], selectableTypes);
 }
 
 /** Keeps editor-provided ability/status choices canonical and visible. */
@@ -193,13 +212,18 @@ export function inspectAbilityStrategyConditions(configuration, payload) {
             const branchPath = [...path, branchIndex + 1];
             (branch.conditions ?? []).forEach((condition, conditionIndex) => {
                 const definition = conditionLeftDefinition(condition, state);
-                const targetId = condition.leftTarget ?? condition.target;
-                const resolvedTarget = targetId ? resolveAbilityStrategyTarget(state, targetId) : null;
+                const selectablePair = definition?.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR
+                    ? normalizedSelectablePair(condition, definition)
+                    : null;
+                const selectableId = selectablePair?.[0] ?? condition.leftSelectable ?? condition.selectable;
+                const selectable2Id = selectablePair?.[1] ?? null;
+                const resolvedSelectable = selectableId ? resolveAbilityStrategySelectable(state, selectableId) : null;
+                const resolvedSelectable2 = selectable2Id ? resolveAbilityStrategySelectable(state, selectable2Id) : null;
                 const value = definition
-                    ? resolveStateVariable(state, condition, definition.id, targetId)
+                    ? resolveStateVariable(state, condition, definition.id, selectableId)
                     : null;
                 const rightValue = condition.right?.type === "variable"
-                    ? resolveStateVariable(state, condition, condition.right.value, condition.rightTarget ?? condition.target)
+                    ? resolveStateVariable(state, condition, condition.right.value, condition.rightSelectable ?? condition.selectable)
                     : condition.right?.value;
                 const selectedStatusEffect = definition?.supportsStatusEffect
                     ? condition.statusEffect ?? null
@@ -212,12 +236,18 @@ export function inspectAbilityStrategyConditions(configuration, payload) {
                     ...(definition?.supportsAbility ? {
                         ability: abilityInspection(condition.ability),
                     } : {}),
-                    target: targetId ? formatInspectionTargetLabel(targetId, definition) : null,
-                    targetSelector: targetId ?? null,
-                    resolvedTarget: targetEntityInspection(resolvedTarget),
+                    selectable: selectablePair
+                        ? `${formatInspectionSelectableLabel(selectablePair[0], definition)} → ${formatInspectionSelectableLabel(selectablePair[1], definition)}`
+                        : selectableId ? formatInspectionSelectableLabel(selectableId, definition) : null,
+                    selectableSelector: selectableId ?? null,
+                    resolvedSelectable: selectableEntityInspection(resolvedSelectable),
+                    ...(selectable2Id ? {
+                        selectable2Selector: selectable2Id,
+                        resolvedSelectable2: selectableEntityInspection(resolvedSelectable2),
+                    } : {}),
                     ...(selectedStatusEffect ? {
                         statusEffect: selectedStatusEffect,
-                        statusEffectState: statusEffectInspection(state, definition, selectedStatusEffect),
+                        statusEffectState: statusEffectInspection(state, definition, selectedStatusEffect, condition),
                     } : {}),
                     value: condition.type === BOT_CODE_CONDITIONS.ALWAYS ? true : value,
                     comparator: condition.comparator ?? null,
@@ -233,21 +263,24 @@ export function inspectAbilityStrategyConditions(configuration, payload) {
     return inspections;
 }
 
-function targetEntityInspection(target) {
-    if (!target) return null;
-    const ageMs = Number(target.ageMs);
+function selectableEntityInspection(selectable) {
+    if (!selectable) return null;
+    const ageMs = Number(selectable.ageMs);
     return {
-        id: target.id ?? null,
-        type: target.type ?? null,
-        entityContractType: target.entityContractType ?? null,
-        ownerId: target.ownerId ?? null,
-        ownerSlot: target.ownerSlot ?? null,
+        id: selectable.id ?? null,
+        type: selectable.type ?? null,
+        entityContractType: selectable.entityContractType ?? null,
+        ownerId: selectable.ownerId ?? null,
+        ownerSlot: selectable.ownerSlot ?? null,
         ageMs: Number.isFinite(ageMs) ? ageMs : null,
     };
 }
 
-function statusEffectInspection(state, definition, effectId) {
-    const bot = definition?.scope === STATE_VARIABLE_SCOPES.OPPONENT ? state.opponent : state.player;
+function statusEffectInspection(state, definition, effectId, condition) {
+    const selectedSelectable = definition?.scope === STATE_VARIABLE_SCOPES.SELECTABLE
+        ? resolveAbilityStrategySelectable(state, condition?.leftSelectable ?? condition?.selectable ?? BOT_CODE_SELECTABLES.MY)
+        : null;
+    const bot = selectedSelectable;
     const status = (bot?.statusEffects ?? []).find((candidate) => String(candidate?.type ?? "").toLowerCase() === effectId);
     if (!status) return null;
     return {
@@ -293,7 +326,7 @@ function selectionRuntime() {
         actionById: ACTION_BY_ID,
         actionTypes: ACTION_TYPES,
         actionSupportsTarget,
-        resolveTarget: resolveAbilityStrategyTarget,
+        resolveTarget: resolveAbilityStrategySelectable,
     };
 }
 
@@ -332,7 +365,7 @@ function collectRepeatedAngleGroups(conditions, state) {
         if (condition?.type !== BOT_CODE_CONDITIONS.EXPRESSION) continue;
         const leftDefinition = conditionLeftDefinition(condition, state);
         if (!leftDefinition?.circularAngle) continue;
-        const left = resolveStateVariable(state, condition, leftDefinition.id, condition.leftTarget ?? condition.target);
+        const left = resolveStateVariable(state, condition, leftDefinition.id, condition.leftSelectable ?? condition.selectable);
         const numericLeft = Number(left);
         if (!Number.isFinite(numericLeft)) continue;
         const key = angleConditionGroupKey(condition);
@@ -397,8 +430,14 @@ function normalizeConditions(conditions, customVariables = []) {
             ...(definition.requiresValue ? {
                 value: clamp(Number(condition?.value) || definition.defaultValue, definition.min, definition.max),
             } : {}),
-            ...(definition.supportsTarget ? {
-                target: normalizeTarget(condition?.target, definition.defaultTarget ?? BOT_CODE_TARGETS.OPPONENT, definition.targetGroup, null, definition.targetOrderable !== false),
+            ...(definition.supportsSelectable ? {
+                selectable: normalizeSelectable(
+                    condition?.selectable,
+                    definition.defaultSelectable ?? BOT_CODE_SELECTABLES.OPPONENT,
+                    selectableIdentitiesForVariable(definition),
+                    null,
+                    definition.selectableOrderable !== false,
+                ),
             } : {}),
         }, condition, index);
     });
@@ -410,7 +449,7 @@ function withConditionJoin(normalized, source, index) {
         : normalized;
 }
 
-function normalizeExpressionCondition(condition, customVariables = [], targetTypes = TARGET_TYPES) {
+function normalizeExpressionCondition(condition, customVariables = [], selectableTypes = SELECTABLE_TYPES) {
     const leftId = condition?.left;
     const customVariable = customVariables.find((variable) => variable?.id === leftId);
     const customLeft = String(leftId ?? "").startsWith(CUSTOM_VARIABLE_CONTRACT.PREFIX)
@@ -425,6 +464,9 @@ function normalizeExpressionCondition(condition, customVariables = [], targetTyp
     const statusVariable = leftDefinition.supportsStatusEffect ? leftDefinition : rightDefinition?.supportsStatusEffect ? rightDefinition : null;
     const ability = abilityVariable ? normalizeAbilityId(condition?.ability, abilityVariable) : null;
     if (abilityVariable?.requiredTag === ABILITY_TAGS.CHARGES && ability == null) return falseCondition();
+    const normalizedSelectablePair = leftDefinition.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR
+        ? normalizeSelectablePair(condition, leftDefinition, selectableTypes)
+        : null;
     return {
         type: "expression",
         left: leftDefinition.id,
@@ -432,24 +474,24 @@ function normalizeExpressionCondition(condition, customVariables = [], targetTyp
         right,
         ...(abilityVariable ? { ability } : {}),
         ...(statusVariable ? { statusEffect: normalizeStatusEffectId(condition?.statusEffect, statusVariable) } : {}),
-        ...(leftDefinition.supportsTarget ? {
-            leftTarget: normalizeTarget(
-                condition?.leftTarget ?? condition?.target,
-                defaultTargetForVariable(leftDefinition, targetTypes),
-                leftDefinition.targetGroup ?? null,
-                leftDefinition.targetCapability ?? null,
-                leftDefinition.targetOrderable !== false,
-                leftDefinition.botTargetOnly === true,
-            ),
-        } : {}),
-        ...(right?.type === "variable" && STATE_VARIABLE_BY_ID.get(right.value)?.supportsTarget ? {
-            rightTarget: normalizeTarget(
-                condition?.rightTarget ?? condition?.target,
-                defaultTargetForVariable(STATE_VARIABLE_BY_ID.get(right.value), targetTypes),
-                STATE_VARIABLE_BY_ID.get(right.value).targetGroup ?? null,
-                STATE_VARIABLE_BY_ID.get(right.value).targetCapability ?? null,
-                STATE_VARIABLE_BY_ID.get(right.value).targetOrderable !== false,
-                STATE_VARIABLE_BY_ID.get(right.value).botTargetOnly === true,
+        ...(normalizedSelectablePair
+            ? { selectable1: normalizedSelectablePair[0], selectable2: normalizedSelectablePair[1] }
+            : leftDefinition.supportsSelectable ? {
+                leftSelectable: normalizeSelectable(
+                    condition?.leftSelectable ?? condition?.selectable,
+                    defaultSelectableForVariable(leftDefinition, selectableTypes),
+                    selectableIdentitiesForVariable(leftDefinition),
+                    null,
+                    leftDefinition.selectableOrderable !== false,
+                ),
+            } : {}),
+        ...(right?.type === "variable" && STATE_VARIABLE_BY_ID.get(right.value)?.supportsSelectable ? {
+            rightSelectable: normalizeSelectable(
+                condition?.rightSelectable ?? condition?.selectable,
+                defaultSelectableForVariable(STATE_VARIABLE_BY_ID.get(right.value), selectableTypes),
+                selectableIdentitiesForVariable(STATE_VARIABLE_BY_ID.get(right.value)),
+                null,
+                STATE_VARIABLE_BY_ID.get(right.value).selectableOrderable !== false,
             ),
         } : {}),
     };
@@ -490,13 +532,13 @@ function falseCondition() {
 
 function normalizeBlock(block, blockIndex, customVariables = []) {
     const actions = normalizedBlockActions(block);
-    const primaryAction = actions[0] ?? { action: BOT_CODE_ACTIONS.NONE, actionTarget: BOT_CODE_TARGETS.OPPONENT };
+    const primaryAction = actions[0] ?? { action: BOT_CODE_ACTIONS.NONE, selectable: BOT_CODE_SELECTABLES.OPPONENT };
     return {
         id: String(block?.id || `logic-${blockIndex + 1}`),
         conditions: normalizeConditions(block?.conditions, customVariables),
         priority: normalizePriority(block?.priority),
         action: primaryAction.action,
-        actionTarget: primaryAction.actionTarget,
+        selectable: primaryAction.selectable,
         actions,
     };
 }
@@ -504,7 +546,7 @@ function normalizeBlock(block, blockIndex, customVariables = []) {
 function normalizedBlockActions(block) {
     const source = Array.isArray(block?.actions) && block.actions.length
         ? block.actions
-        : [{ action: block?.action ?? BOT_CODE_ACTIONS.NONE, actionTarget: block?.actionTarget, targetOffsetX: block?.targetOffsetX, targetOffsetY: block?.targetOffsetY }];
+        : [{ action: block?.action ?? BOT_CODE_ACTIONS.NONE, selectable: block?.selectable, targetOffsetX: block?.targetOffsetX, targetOffsetY: block?.targetOffsetY }];
     const seenHeads = new Set();
     const normalized = [];
     for (const entry of source) {
@@ -533,7 +575,7 @@ function normalizedBlockActions(block) {
                         : null;
             normalized.push({
                 action: action.id,
-                actionTarget: normalizeActionTarget(normalizedEntry?.actionTarget, action.id),
+                selectable: normalizeSelectable(normalizedEntry?.selectable, BOT_CODE_SELECTABLES.OPPONENT),
                 ...(action.movementConfig ? {
                     movementMode,
                     movementDirection: normalizeMovementDirection(normalizedEntry?.movementDirection, movementMode, action),
@@ -561,28 +603,35 @@ function normalizedBlockActions(block) {
         }
     }
     const executable = normalized.filter((entry) => entry.action !== BOT_CODE_ACTIONS.NONE);
-    return executable.length ? executable : [{ action: BOT_CODE_ACTIONS.NONE, actionTarget: BOT_CODE_TARGETS.OPPONENT }];
+    return executable.length ? executable : [{ action: BOT_CODE_ACTIONS.NONE, selectable: BOT_CODE_SELECTABLES.OPPONENT }];
 }
 
-export function defaultTargetForVariable(variable, targetTypes = TARGET_TYPES) {
-    const availableTargets = Array.isArray(targetTypes) ? targetTypes : TARGET_TYPES;
-    if (variable?.defaultTarget && availableTargets.some((target) => target.id === variable.defaultTarget)) {
-        return variable.defaultTarget;
+export function defaultSelectableForVariable(variable, selectableTypes = SELECTABLE_TYPES) {
+    const availableSelectables = Array.isArray(selectableTypes) ? selectableTypes : SELECTABLE_TYPES;
+    const isAllowed = (selectable) => selectableMatchesVariable(selectable, variable);
+    const requiredIdentities = selectableIdentitiesForVariable(variable);
+    if (variable?.defaultSelectable && availableSelectables.some((selectable) => selectable.id === variable.defaultSelectable && isAllowed(selectable))) {
+        return variable.defaultSelectable;
     }
-    if (variable?.targetGroup === "objects") {
-        return availableTargets.find((target) => target.kind === "entity")?.id
-            ?? TARGET_TYPES.find((target) => target.kind === "entity")?.id
-            ?? BOT_CODE_TARGETS.OPPONENT;
+    if (requiredIdentities.includes(SELECTABLE_IDENTITIES.ABILITY_ENTITY)) {
+        return availableSelectables.find((selectable) => isAllowed(selectable))?.id ?? BOT_CODE_SELECTABLES.OPPONENT;
     }
-    return variable?.defaultTarget ?? BOT_CODE_TARGETS.OPPONENT;
+    if (availableSelectables.some((selectable) => selectable.id === BOT_CODE_SELECTABLES.OPPONENT && isAllowed(selectable))) {
+        return BOT_CODE_SELECTABLES.OPPONENT;
+    }
+    return availableSelectables.find((selectable) => isAllowed(selectable))?.id ?? BOT_CODE_SELECTABLES.OPPONENT;
 }
 
-function formatInspectionTargetLabel(value, variable) {
+export function defaultSelectablePairForVariable(variable, selectableTypes = SELECTABLE_TYPES) {
+    return contractDefaultSelectablePairForVariable(variable, selectableTypes);
+}
+
+function formatInspectionSelectableLabel(value, variable) {
     const [baseValue, encodedOrder, encodedOrdinal] = String(value).split(":");
-    const definition = TARGET_BY_ID.get(baseValue);
+    const definition = SELECTABLE_BY_ID.get(baseValue);
     const label = definition?.label ?? baseValue;
-    if (variable?.targetOrderable === false || baseValue === BOT_CODE_TARGETS.OPPONENT) return label;
-    const order = TARGET_ORDERS.includes(encodedOrder) ? encodedOrder : "closest";
+    if (variable?.selectableOrderable === false || baseValue === BOT_CODE_SELECTABLES.MY || baseValue === BOT_CODE_SELECTABLES.OPPONENT) return label;
+    const order = SELECTABLE_ORDERS.includes(encodedOrder) ? encodedOrder : "closest";
     const ordinal = Math.max(1, Math.min(100, Number(encodedOrdinal) || 1));
     return `${formatOrdinal(ordinal)} ${order[0].toUpperCase()}${order.slice(1)} ${label}`;
 }
@@ -639,12 +688,6 @@ function normalizePriority(value) {
     return clamp(Math.round(Number.isFinite(Number(value)) ? Number(value) : 1), MIN_PRIORITY, MAX_PRIORITY);
 }
 
-function normalizeActionTarget(target, actionId) {
-    const action = ACTION_BY_ID.get(actionId) ?? ACTION_TYPES[0];
-    if (!actionSupportsTarget(action)) return BOT_CODE_TARGETS.OPPONENT;
-    return normalizeTarget(target, BOT_CODE_TARGETS.OPPONENT);
-}
-
 function blockHasExecutableAction(block, state) {
     return normalizedBlockActions(block).some((entry) => actionExecutableNow({ ...block, ...entry }, state));
 }
@@ -656,7 +699,7 @@ function normalizeVariableActionOperand(operand) {
         || String(candidate.value).startsWith(CUSTOM_VARIABLE_CONTRACT.PREFIX)
     ) ? String(candidate.value) : null;
     return variable
-        ? { type: "variable", value: variable, ...(candidate.target ? { target: String(candidate.target) } : {}) }
+        ? { type: "variable", value: variable, ...(candidate.selectable ? { selectable: String(candidate.selectable) } : {}) }
         : { type: "number", value: clamp(truncateToNumberPrecision(Number(candidate.value) || 0), CUSTOM_NUMBER_MIN, CUSTOM_NUMBER_MAX) };
 }
 
@@ -702,34 +745,58 @@ function actionExecutableNow(block, state) {
         actionById: ACTION_BY_ID,
         actionTypes: ACTION_TYPES,
         actionToAbility: ACTION_TO_ABILITY,
-        resolveTarget: resolveAbilityStrategyTarget,
+        resolveTarget: resolveAbilityStrategySelectable,
     });
 }
 
-function normalizeTarget(target, fallback, targetGroup = null, targetCapability = null, allowOrdering = true, botTargetOnly = false) {
-    const [base, order, ordinal] = String(target ?? "").split(":");
-    const value = allowOrdering ? target : base;
-    const ordered = allowOrdering && TARGET_BY_ID.has(base)
-        && base !== BOT_CODE_TARGETS.OPPONENT
-        && TARGET_ORDERS.includes(order)
+function normalizeSelectable(selectableId, fallback, requiredSelectableIdentities = [], selectableCapability = null, allowOrdering = true) {
+    const [base, order, ordinal] = String(selectableId ?? "").split(":");
+    const value = allowOrdering ? selectableId : base;
+    const ordered = allowOrdering && SELECTABLE_BY_ID.has(base)
+        && base !== BOT_CODE_SELECTABLES.MY
+        && base !== BOT_CODE_SELECTABLES.OPPONENT
+        && SELECTABLE_ORDERS.includes(order)
         && Number.isInteger(Number(ordinal)) && Number(ordinal) >= 1 && Number(ordinal) <= 100;
-    if (!TARGET_BY_ID.has(value) && !ordered) return fallback;
-    if (targetGroup === "objects" && !isObjectTarget(value)) return fallback;
-    if (targetCapability && !targetSupportsCapability(value, targetCapability)) return fallback;
-    if (botTargetOnly && base !== BOT_CODE_TARGETS.OPPONENT) return fallback;
+    if (!SELECTABLE_BY_ID.has(value) && !ordered) return fallback;
+    if (selectableCapability && !selectableSupportsCapability(value, selectableCapability)) return fallback;
+    const selectableDefinition = SELECTABLE_BY_ID.get(base);
+    if (requiredSelectableIdentities.length > 0
+            && !requiredSelectableIdentities.every((identity) => selectableDefinition?.selectableIdentities?.includes(identity))) return fallback;
     return value;
 }
 
-function targetSupportsCapability(target, capability) {
-    const base = String(target ?? "").split(":")[0];
-    const definition = TARGET_BY_ID.get(base);
-    if (capability === TARGET_CAPABILITIES.HEALTH) return Boolean(definition?.healthBearing);
-    return true;
+function normalizeSelectablePair(condition, definition, selectableTypes = SELECTABLE_TYPES) {
+    const [defaultFirst, defaultSecond] = contractDefaultSelectablePairForVariable(definition, selectableTypes);
+    const first = normalizeSelectable(
+        condition?.selectable1 ?? defaultFirst,
+        defaultFirst,
+        selectableIdentitiesForVariable(definition, 0),
+        null,
+        definition.selectableOrderable !== false,
+    );
+    const second = normalizeSelectable(
+        condition?.selectable2 ?? condition?.selectable ?? defaultSecond,
+        defaultSecond,
+        selectableIdentitiesForVariable(definition, 1),
+        null,
+        definition.selectableOrderable !== false,
+    );
+    return [first, second];
 }
 
-function isObjectTarget(target) {
-    const base = String(target).split(":")[0];
-    return base !== BOT_CODE_TARGETS.OPPONENT && TARGET_BY_ID.has(base);
+function normalizedSelectablePair(condition, definition) {
+    const [defaultFirst, defaultSecond] = contractDefaultSelectablePairForVariable(definition);
+    return [
+        condition?.selectable1 ?? defaultFirst,
+        condition?.selectable2 ?? condition?.selectable ?? defaultSecond,
+    ];
+}
+
+function selectableSupportsCapability(selectableId, capability) {
+    const base = String(selectableId ?? "").split(":")[0];
+    const definition = SELECTABLE_BY_ID.get(base);
+    if (capability === SELECTABLE_CAPABILITIES.HEALTH) return Boolean(definition?.healthBearing);
+    return true;
 }
 
 function conditionLeftDefinition(condition, state) {
@@ -739,7 +806,12 @@ function conditionLeftDefinition(condition, state) {
 }
 
 function angleConditionGroupKey(condition) {
-    return `${condition.left}|${condition.leftTarget ?? condition.target ?? BOT_CODE_TARGETS.OPPONENT}`;
+    const definition = STATE_VARIABLE_BY_ID.get(condition?.left);
+    if (definition?.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR) {
+        const [first, second] = normalizedSelectablePair(condition, definition);
+        return `${condition.left}|${first}|${second}`;
+    }
+    return `${condition.left}|${condition.leftSelectable ?? condition.selectable ?? BOT_CODE_SELECTABLES.OPPONENT}`;
 }
 
 function angleRepresentations(value) {
@@ -751,20 +823,20 @@ function angleRepresentations(value) {
 function evaluateExpressionCondition(condition, state, angleOverrides = null) {
     const leftDefinition = conditionLeftDefinition(condition, state);
     if (!leftDefinition) return false;
-    if (leftDefinition.targetCapability && !targetSupportsCapability(condition.leftTarget ?? condition.target, leftDefinition.targetCapability)) return false;
+    if (leftDefinition.selectableCapability && !selectableSupportsCapability(condition.leftSelectable ?? condition.selectable, leftDefinition.selectableCapability)) return false;
     const angleKey = leftDefinition.circularAngle ? angleConditionGroupKey(condition) : null;
     const hasAngleOverride = Boolean(angleOverrides?.has(angleKey));
     const left = hasAngleOverride
         ? angleOverrides.get(angleKey)
-        : resolveStateVariable(state, condition, leftDefinition.id, condition.leftTarget ?? condition.target);
+        : resolveStateVariable(state, condition, leftDefinition.id, condition.leftSelectable ?? condition.selectable);
     const right = condition.right?.type === "variable"
-        ? resolveStateVariable(state, condition, condition.right.value, condition.rightTarget ?? condition.target)
+        ? resolveStateVariable(state, condition, condition.right.value, condition.rightSelectable ?? condition.selectable)
         : condition.right?.value;
     const rightDefinition = condition.right?.type === "variable"
         ? STATE_VARIABLE_BY_ID.get(condition.right.value)
         : null;
-    if (rightDefinition?.targetCapability
-        && !targetSupportsCapability(condition.rightTarget ?? condition.target, rightDefinition.targetCapability)) return false;
+    if (rightDefinition?.selectableCapability
+        && !selectableSupportsCapability(condition.rightSelectable ?? condition.selectable, rightDefinition.selectableCapability)) return false;
     return leftDefinition.circularAngle
         ? hasAngleOverride && condition.comparator !== BOT_CODE_COMPARATORS.EQ && condition.comparator !== BOT_CODE_COMPARATORS.NEQ
             ? compareValues(left, condition.comparator, right, "number")
@@ -772,11 +844,11 @@ function evaluateExpressionCondition(condition, state, angleOverrides = null) {
         : compareValues(left, condition.comparator, right, leftDefinition.valueType);
 }
 
-function resolveStateVariable(state, condition, variableId, targetId = condition.target) {
-    return resolveRuntimeVariable(state, condition, variableId, targetId, {
+function resolveStateVariable(state, condition, variableId, selectableId = condition.selectable) {
+    return resolveRuntimeVariable(state, condition, variableId, selectableId, {
         resolveCustom: resolveCustomVariableValue,
-        resolveTarget: resolveAbilityStrategyTarget,
-        matchingTargets: matchingStrategyTargets,
+        resolveSelectable: resolveAbilityStrategySelectable,
+        matchingSelectables: matchingStrategySelectables,
     });
 }
 
