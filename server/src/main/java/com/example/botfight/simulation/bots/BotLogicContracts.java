@@ -334,6 +334,12 @@ public final class BotLogicContracts {
         ActionContract contract = actionContract(action);
         return contract != null && contract.angleTarget() && "angle".equals(mode);
     }
+    public static boolean actionUsesSelectableTarget(Object action, String movementMode, String targetMode) {
+        return actionUsesTarget(action)
+                && !actionUsesCoordinates(action, movementMode)
+                && !actionUsesCoordinates(action, targetMode)
+                && !actionUsesAbsoluteAngle(action, targetMode);
+    }
     public static boolean actionUsesFacing(Object action) {
         ActionContract contract = actionContract(action);
         return contract != null && contract.orientationConfig();

@@ -54,10 +54,6 @@ public class BotSubmissionValidationService {
             errors.add("submission payload is required");
             return response(false, errors, warnings, false);
         }
-        if (payload.getBrain() != null) {
-            payload.setBrain(LegacyAbilityPayloadMigration.normalize(payload.getBrain()));
-        }
-
         rejectTooLong(errors, payload.getPhase(), "phase", MAX_PHASE_LENGTH);
         rejectTooLong(errors, payload.getSelectedLoadout(), "selectedLoadout", MAX_SELECTED_LOADOUT_LENGTH);
         rejectTooLong(errors, payload.getClientBuildVersion(), "clientBuildVersion", MAX_CLIENT_BUILD_VERSION_LENGTH);
@@ -74,7 +70,7 @@ public class BotSubmissionValidationService {
     /** Validates an in-memory brain with the same logic contract as a saved submission. */
     public List<String> validateForSimulation(JsonNode brain) {
         List<String> errors = new ArrayList<>();
-        validateBrain(errors, LegacyAbilityPayloadMigration.normalize(brain), combatLoadoutes.duelV1());
+        validateBrain(errors, brain, combatLoadoutes.duelV1());
         return List.copyOf(errors);
     }
 
@@ -796,6 +792,12 @@ public class BotSubmissionValidationService {
         Object actionValue = action.isTextual() ? action.asText()
                 : action.isIntegralNumber() && action.canConvertToInt() ? action.intValue() : null;
         BotLogicContracts.ActionContract actionContract = BotLogicContracts.actionContract(actionValue);
+        if (actionContract != null && !actionContract.coordinateTarget() && entry.has("targetMode")) {
+            String requestedMode = entry.path("targetMode").asText("");
+            if (actionContract.targetMode() == null || !actionContract.targetMode().equals(requestedMode)) {
+                errors.add(path + ".targetMode is not supported for this action");
+            }
+        }
         if (actionContract != null && actionContract.movementConfig()) {
             String mode = entry.path("movementMode").asText("target");
             if (!BotLogicContracts.movementModes().contains(mode)) {

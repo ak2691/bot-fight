@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.botfight.DTO.MatchmakingEventDTO;
 import com.example.botfight.DTO.MatchReplayDTO;
-import com.example.botfight.service.submission.LegacyAbilityPayloadMigration;
 import com.example.botfight.simulation.bots.BotCodeService;
 import com.example.botfight.simulation.bots.ConditionEvaluationService;
 import com.example.botfight.simulation.core.combat.ActionExecutionService;
@@ -53,13 +52,13 @@ class ConcurrentSimulationLoadTest {
     private static final int ARENA_HEIGHT = 1_600;
     private static final int MATCH_DURATION_MS = 60_000;
     private static final int REPLAY_RECIPIENT_COUNT = 2;
-    private static final List<String> LOAD_TEST_ABILITIES = List.of(
-            "throw_grenade",
-            "shoot_fireball",
-            "proximity_mine",
-            "silence_pulse",
-            "hunter_drone",
-            "wind_burst");
+    private static final List<Integer> LOAD_TEST_ABILITIES = List.of(
+            4,
+            5,
+            11,
+            15,
+            17,
+            18);
 
     private final JsonMapper jsonMapper = new JsonMapper();
 
@@ -371,17 +370,17 @@ class ConcurrentSimulationLoadTest {
     private JsonNode loadTestBrain() {
         try {
             String abilities = LOAD_TEST_ABILITIES.stream()
-                    .map("\"%s\""::formatted)
+                    .map(String::valueOf)
                     .collect(java.util.stream.Collectors.joining(","));
             String roots = IntStream.range(0, LOAD_TEST_ABILITIES.size())
                     .mapToObj(index -> """
-                            {"createdOrder":%d,"branches":[{"createdOrder":0,"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":"%s","comparator":"eq","right":{"type":"boolean","value":true}}],"actions":[{"action":"%s"}],"children":[]}]}
+                            {"createdOrder":%d,"branches":[{"createdOrder":0,"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":%s,"comparator":"eq","right":{"type":"boolean","value":true}}],"actions":[{"action":%s}],"children":[]}]}
                             """.formatted(index, LOAD_TEST_ABILITIES.get(index), LOAD_TEST_ABILITIES.get(index)))
                     .collect(java.util.stream.Collectors.joining(","));
-            return LegacyAbilityPayloadMigration.normalize(jsonMapper.readTree(
+            return jsonMapper.readTree(
                     """
                     {"version":"bot-logic-tree-v1","loadout":{"abilities":[%s]},"roots":[%s]}
-                    """.formatted(abilities, roots)));
+                    """.formatted(abilities, roots));
         } catch (Exception exception) {
             throw new IllegalStateException("Unable to create load-test brain", exception);
         }

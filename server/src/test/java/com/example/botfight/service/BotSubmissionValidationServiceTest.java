@@ -37,7 +37,7 @@ class BotSubmissionValidationServiceTest {
                 {
                   "version":"bot-logic-tree-v1",
                   "loadout":{
-                    "abilities":["dash","lock_on"]
+                    "abilities":[19,20]
                   },
                   "roots":[]
                 }
@@ -51,7 +51,7 @@ class BotSubmissionValidationServiceTest {
     }
 
     @Test
-    void rejectsTheLegacyBasicHealIdFromNewSubmissions() throws Exception {
+    void rejectsNonNumericAbilityIdsFromNewSubmissions() throws Exception {
         BotSubmissionPayloadDTO payload = validPayload();
         payload.setBrain(jsonMapper.readTree("""
                 {
@@ -68,6 +68,27 @@ class BotSubmissionValidationServiceTest {
         assertThat(result.isAccepted()).isFalse();
         assertThat(result.getErrors()).contains(
                 "brain.loadout.abilities contains an invalid or duplicate ability");
+    }
+
+    @Test
+    void rejectsNamedAbilityPayloadsFromNewSubmissions() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {
+                  "version":"bot-logic-tree-v1",
+                  "loadout":{"abilities":["swing"]},
+                  "roots":[{"branches":[
+                    {"action":"swing","conditions":[{"type":"always"}]}
+                  ]}]
+                }
+                """));
+
+        var result = service.validate(payload);
+
+        assertThat(result.isAccepted()).isFalse();
+        assertThat(result.getErrors()).contains(
+                "brain.loadout.abilities contains an invalid or duplicate ability",
+                "brain.roots[0].branches[0].action is not allowed for duel-v1");
     }
 
     @Test
@@ -105,7 +126,7 @@ class BotSubmissionValidationServiceTest {
                 {
                   "version":"bot-logic-tree-v1",
                   "loadout":{
-                    "abilities":["swing","heavy_slash","rail_shot","phase_strike","orbital_strike","null_zone"]
+                    "abilities":[1,7,13,25,22,24]
                   },
                   "roots":[]
                 }
@@ -165,8 +186,8 @@ class BotSubmissionValidationServiceTest {
                       "id":"branch-1","branchType":"if","createdOrder":1,
                       "action":"move_walk","movementMode":"target","movementDirection":0,"conditions":[{"type":"always"}],
                       "children":[
-                        {"id":"nested-1","branchType":"if","createdOrder":2,"action":"dash","movementMode":"absolute","movementDirection":"north","conditions":[{"type":"always"}],"children":[]},
-                        {"id":"nested-2","branchType":"else","createdOrder":3,"action":"move_walk","movementMode":"absolute","movementDirection":"stop","conditions":[],"children":[]}
+                        {"id":"nested-1","branchType":"if","createdOrder":2,"action":19,"movementMode":"absolute","movementDirection":"north","conditions":[{"type":"always"}],"children":[]},
+                        {"id":"nested-2","branchType":"else","createdOrder":3,"action":"move_walk","movementMode":"absolute","movementDirection":0,"conditions":[],"children":[]}
                       ]
                     }]
                   }]
@@ -324,7 +345,7 @@ class BotSubmissionValidationServiceTest {
                           "type":"expression",
                           "join":"or",
                           "left":"bot.selectedAbilityReady","leftSelectable":"my_bot",
-                          "ability":"lock_on",
+                          "ability":20,
                           "comparator":"eq",
                           "right":{"type":"boolean","value":true}
                         }
@@ -420,7 +441,7 @@ class BotSubmissionValidationServiceTest {
                 {
                   "version":"bot-logic-tree-v1",
                   "roots":[{"branches":[
-                    {"id":"node-1","action":"lock_on","conditions":[{"type":"my_selected_ability_ready"}]}
+                    {"id":"node-1","action":20,"conditions":[{"type":"my_selected_ability_ready"}]}
                   ]}]
                 }
                 """));
@@ -459,7 +480,7 @@ class BotSubmissionValidationServiceTest {
                 {
                   "version":"bot-logic-tree-v1",
                   "roots":[{"branches":[
-                    {"id":"node-1","action":"move_walk","movementMode":"absolute","movementDirection":"north","conditions":[{"type":"always"}]}
+                    {"id":"node-1","action":"move_walk","movementMode":"absolute","movementDirection":0,"conditions":[{"type":"always"}]}
                   ]}]
                 }
                 """));
@@ -511,7 +532,7 @@ class BotSubmissionValidationServiceTest {
                 {
                   "version":"bot-logic-tree-v1",
                   "roots":[{"branches":[
-                    {"id":"node-1","action":"dash","movementMode":"absolute","movementDirection":"north","conditions":[{"type":"always"}]}
+                    {"id":"node-1","action":19,"movementMode":"absolute","movementDirection":"north","conditions":[{"type":"always"}]}
                   ]}]
                 }
                 """));
@@ -532,7 +553,7 @@ class BotSubmissionValidationServiceTest {
                     "actions":[
                       {"action":"move_walk","movementMode":"target","movementDirection":0,"selectable":"opponent"},
                       {"action":"rotate_toward_enemy","selectable":"opponent"},
-                      {"action":"swing"}
+                      {"action":1}
                     ],
                     "conditions":[{"type":"always"}],
                     "children":[]
@@ -569,10 +590,10 @@ class BotSubmissionValidationServiceTest {
                 {
                   "version":"bot-logic-tree-v1",
                   "loadout":{
-                    "abilities":["swing","block"]
+                    "abilities":[1,"block"]
                   },
                   "roots":[{"branches":[{
-                    "branchType":"if","action":"fire_gun","selectable":"defender_core",
+                    "branchType":"if","action":3,"selectable":"defender_core",
                     "conditions":[{"type":"always"}],"children":[]
                   }]}]
                 }
@@ -590,10 +611,10 @@ class BotSubmissionValidationServiceTest {
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
-                  "loadout":{"abilities":["fire_gun"]},
+                  "loadout":{"abilities":[3]},
                   "roots":[{"branches":[{
-                    "branchType":"if","action":"fire_gun",
-                    "conditions":[{"type":"expression","left":"bot.selectedAbilityCharges","ability":"fire_gun","comparator":"gt","right":{"type":"number","value":0}}],
+                    "branchType":"if","action":3,
+                    "conditions":[{"type":"expression","left":"bot.selectedAbilityCharges","ability":3,"comparator":"gt","right":{"type":"number","value":0}}],
                     "children":[]
                   }]}]
                 }
@@ -609,9 +630,9 @@ class BotSubmissionValidationServiceTest {
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
-                  "loadout":{"abilities":["overclock"]},
+                  "loadout":{"abilities":[33]},
                   "roots":[{"branches":[{
-                    "branchType":"if","action":"move_walk","movementMode":"absolute","movementDirection":"stop",
+                    "branchType":"if","action":"move_walk","movementMode":"absolute","movementDirection":0,
                     "conditions":[{"type":"expression","left":"selectable.hp","leftSelectable":"my_bot","comparator":"lt","right":{"type":"variable","value":"bot.selectedAbilityCooldownMs"},"rightSelectable":"my_bot","ability":33}],
                     "children":[]
                   }]}]
@@ -632,10 +653,10 @@ class BotSubmissionValidationServiceTest {
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
-                  "loadout":{"abilities":["fire_gun"]},
+                  "loadout":{"abilities":[3]},
                   "roots":[{"branches":[{
-                    "branchType":"if","action":"dash",
-                    "conditions":[{"type":"expression","left":"bot.selectedAbilityCharges","ability":"fire_gun","comparator":"gt","right":{"type":"number","value":0}}],
+                    "branchType":"if","action":19,
+                    "conditions":[{"type":"expression","left":"bot.selectedAbilityCharges","ability":3,"comparator":"gt","right":{"type":"number","value":0}}],
                     "children":[]
                   }]}]
                 }
@@ -646,10 +667,10 @@ class BotSubmissionValidationServiceTest {
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
-                  "loadout":{"abilities":["swing"]},
+                  "loadout":{"abilities":[1]},
                   "roots":[{"branches":[{
-                    "branchType":"if","action":"swing",
-                    "conditions":[{"type":"expression","left":"bot.selectedAbilityCharges","ability":"swing","comparator":"gt","right":{"type":"number","value":0}}],
+                    "branchType":"if","action":1,
+                    "conditions":[{"type":"expression","left":"bot.selectedAbilityCharges","ability":1,"comparator":"gt","right":{"type":"number","value":0}}],
                     "children":[]
                   }]}]
                 }
@@ -666,9 +687,9 @@ class BotSubmissionValidationServiceTest {
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
-                  "loadout":{"abilities":["shoot_fireball"]},
+                  "loadout":{"abilities":[5]},
                   "roots":[{"branches":[{
-                    "branchType":"if","action":"move_walk","movementMode":"absolute","movementDirection":"stop",
+                    "branchType":"if","action":"move_walk","movementMode":"absolute","movementDirection":0,
                     "conditions":[{"type":"expression","left":"bot.selectedStatusEffectActive","statusEffect":"slow","comparator":"eq","right":{"type":"boolean","value":true}}],
                     "children":[]
                   }]}]
@@ -680,9 +701,9 @@ class BotSubmissionValidationServiceTest {
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
-                  "loadout":{"abilities":["shoot_fireball"]},
+                  "loadout":{"abilities":[5]},
                   "roots":[{"branches":[{
-                    "branchType":"if","action":"move_walk","movementMode":"absolute","movementDirection":"stop",
+                    "branchType":"if","action":"move_walk","movementMode":"absolute","movementDirection":0,
                     "conditions":[{"type":"expression","left":"bot.selectedStatusEffectActive","statusEffect":"not-real","comparator":"eq","right":{"type":"boolean","value":true}}],
                     "children":[]
                   }]}]
@@ -700,9 +721,9 @@ class BotSubmissionValidationServiceTest {
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
-                  "loadout":{"abilities":["shoot_fireball"]},
+                  "loadout":{"abilities":[5]},
                   "roots":[{"branches":[{
-                    "branchType":"if","action":"move_walk","movementMode":"absolute","movementDirection":"stop",
+                    "branchType":"if","action":"move_walk","movementMode":"absolute","movementDirection":0,
                     "conditions":[{"type":"expression","left":"bot.selectedStatusEffectDurationMs","statusEffect":"burn","comparator":"gte","right":{"type":"number","value":1.2}}],
                     "children":[]
                   }]}]
@@ -714,9 +735,9 @@ class BotSubmissionValidationServiceTest {
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
-                  "loadout":{"abilities":["shoot_fireball"]},
+                  "loadout":{"abilities":[5]},
                   "roots":[{"branches":[{
-                    "branchType":"if","action":"move_walk","movementMode":"absolute","movementDirection":"stop",
+                    "branchType":"if","action":"move_walk","movementMode":"absolute","movementDirection":0,
                     "conditions":[{"type":"expression","left":"bot.selectedStatusEffectDurationMs","statusEffect":"burn","comparator":"gte","right":{"type":"number","value":1.23}}],
                     "children":[]
                   }]}]
@@ -733,9 +754,9 @@ class BotSubmissionValidationServiceTest {
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
-                  "loadout":{"abilities":["concussive_shot"]},
+                  "loadout":{"abilities":[9]},
                   "roots":[{"branches":[{
-                    "branchType":"if","actions":[{"action":"concussive_shot"}],
+                    "branchType":"if","actions":[{"action":9}],
                     "conditions":[{"type":"always"}],"children":[]
                   }]}]
                 }
@@ -848,6 +869,19 @@ class BotSubmissionValidationServiceTest {
                   "actions":[{"action":"rotate_toward_enemy","targetMode":"coordinates","targetX":100,"targetY":200}],"children":[]}]}]}
                 """));
         assertThat(service.validate(payload).getErrors()).isEmpty();
+    }
+
+    @Test
+    void rejectsUnsupportedTargetModeOnTargetOnlyAbility() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","roots":[{"branches":[{"branchType":"if",
+                  "conditions":[{"type":"always"}],
+                  "actions":[{"action":20,"targetMode":"coordinates","targetX":100,"targetY":200}],"children":[]}]}]}
+                """));
+
+        assertThat(service.validate(payload).getErrors()).contains(
+                "brain.roots[0].branches[0].actions[0].targetMode is not supported for this action");
     }
 
     @Test

@@ -13,7 +13,7 @@ Start with [Adding an Ability or Move](ADDING_AN_ABILITY_OR_MOVE.md) and [Abilit
   shield policy, and declarative activation payload metadata.
 - `simulation/gameconfig/GameConfigCatalog.java`: active ruleset selection.
 
-Match browser IDs, milliseconds, arena units, ranges/arcs, damage rounding, resources, and compact loadout code. Runtime definitions, actions, state maps, entities, DTOs, and replay fields use the numeric ID. Ability names are limited to presentation metadata and explicit legacy migration through `LegacyAbilityPayloadMigration`. Update the round pool and enforce cumulative picks, issued offers, and selection limits on the server. Timeout picks must come from the same deterministic offer list.
+Match browser IDs, milliseconds, arena units, ranges/arcs, damage rounding, resources, and compact loadout code. Runtime definitions, actions, state maps, entities, DTOs, and replay fields use the numeric ID. Ability names are presentation metadata only; submitted and persisted brain payloads use numeric IDs. Update the round pool and enforce cumulative picks, issued offers, and selection limits on the server. Timeout picks must come from the same deterministic offer list.
 
 ## Hostile-input validation
 

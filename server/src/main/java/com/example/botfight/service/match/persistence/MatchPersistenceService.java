@@ -21,7 +21,6 @@ import com.example.botfight.service.match.model.MatchSession;
 import com.example.botfight.service.match.simulation.MatchSimulationService;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.cache.DatabaseLookupCache;
-import com.example.botfight.service.submission.LegacyAbilityPayloadMigration;
 import java.time.Clock;
 import java.time.Instant;
 import java.nio.charset.StandardCharsets;
@@ -224,8 +223,7 @@ public class MatchPersistenceService {
     private ObjectNode readBrain(String payload) {
         try {
             JsonNode parsed = jsonMapper.readTree(payload == null ? "{}" : payload);
-            JsonNode normalized = LegacyAbilityPayloadMigration.normalize(parsed);
-            if (normalized instanceof ObjectNode object) return object;
+            if (parsed instanceof ObjectNode object) return object;
             throw new AuthException("previous bot brain must be a JSON object");
         } catch (AuthException exception) {
             throw exception;

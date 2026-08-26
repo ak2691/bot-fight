@@ -16,21 +16,11 @@ class AbilityRegistryTest {
     }
 
     @Test void lookupUsesPermanentMapKeyAndDoesNotDependOnPosition() {
-        assertThat(AbilityRegistry.legacyAbilityNameFromId(1)).isEqualTo("slash");
-        assertThat(AbilityRegistry.legacyAbilityNameFromId(25)).isEqualTo("phase_strike");
-        assertThat(AbilityRegistry.legacyAbilityNameFromId(27)).isEqualTo("singularity");
-        assertThat(AbilityRegistry.legacyAbilityNameFromId(33)).isEqualTo("overclock");
-        assertThat(AbilityRegistry.legacyAbilityNameFromId(34)).isEqualTo("basic_strike");
         assertThat(AbilityRegistry.all().keySet()).doesNotContain(0);
         assertThat(AbilityRegistry.all().keySet()).doesNotContain(2);
     }
 
-    @Test void explicitLegacyConversionsFailClosed() {
-        assertThat(AbilityRegistry.abilityIdFromLegacyName("slash")).isEqualTo(1);
-        assertThat(AbilityRegistry.abilityIdFromLegacyName("swing")).isEqualTo(1);
-        assertThat(AbilityRegistry.abilityIdFromLegacyName("heavy_slash")).isEqualTo(7);
-        assertThatThrownBy(() -> AbilityRegistry.abilityIdFromLegacyName("arbitrary"))
-                .isInstanceOf(IllegalArgumentException.class);
+    @Test void invalidPermanentIdsFailClosed() {
         assertThatThrownBy(() -> AbilityRegistry.requireId(0)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> AbilityRegistry.requireId(-1)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> AbilityRegistry.requireId(35)).isInstanceOf(IllegalArgumentException.class);

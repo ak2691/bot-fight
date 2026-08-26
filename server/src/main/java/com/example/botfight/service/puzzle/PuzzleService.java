@@ -22,7 +22,6 @@ import com.example.botfight.service.cache.DatabaseLookupCache.CachedPuzzleBot;
 import com.example.botfight.service.cache.DatabaseLookupCache.PuzzleListKey;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.submission.BotSubmissionValidationService;
-import com.example.botfight.service.submission.LegacyAbilityPayloadMigration;
 import com.example.botfight.simulation.bots.BotLogicContracts;
 import com.example.botfight.simulation.gameconfig.AbilityContracts;
 import com.example.botfight.simulation.gameconfig.CompactAbilityCode;
@@ -589,8 +588,7 @@ public class PuzzleService {
             errors.add(path + ".brain must be an object");
             return null;
         }
-        JsonNode normalized = LegacyAbilityPayloadMigration.normalize(source);
-        if (!(normalized instanceof ObjectNode object)) {
+        if (!(source.deepCopy() instanceof ObjectNode object)) {
             errors.add(path + ".brain must be an object");
             return null;
         }
@@ -915,8 +913,8 @@ public class PuzzleService {
         }
     }
 
-    private static JsonNode textNode(String value) {
-        return tools.jackson.databind.node.TextNode.valueOf(value);
+    private JsonNode textNode(String value) {
+        return jsonMapper.getNodeFactory().textNode(value);
     }
 
     private boolean isCustomVariableId(String value) {

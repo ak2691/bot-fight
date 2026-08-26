@@ -8,6 +8,7 @@ import com.example.botfight.simulation.core.orchestration.DuelSimulationService.
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Entity;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.StrategyBlock;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Vector;
+import com.example.botfight.simulation.bots.BotLogicContracts;
 import com.example.botfight.simulation.core.logic.ConditionResolutionService;
 import com.example.botfight.simulation.core.logic.CustomVariableActionService;
 import com.example.botfight.simulation.core.state.BotMovementService;
@@ -47,9 +48,12 @@ public class ActionExecutionService {
         this.customVariableActionService = customVariableActionService;
     }
 
-    /** Compatibility constructor for focused unit tests that build the simulator directly. */
+    /**
+     * Compatibility constructor for focused unit tests that build the simulator
+     * directly.
+     */
     public ActionExecutionService(BotStateService botStateService,
-                                  ProjectileSimulationService projectileSimulationService) {
+            ProjectileSimulationService projectileSimulationService) {
         this.botStateService = botStateService;
         this.movementService = new BotMovementService();
         AbilityHitDetectionService hitDetectionService = new AbilityHitDetectionService();
@@ -63,11 +67,15 @@ public class ActionExecutionService {
     }
 
     private boolean selectedAbilityReady(Bot bot, AbilityExecutionPayload payload) {
-        if (payload == null || bot == null || !hasAbility(bot, payload.abilityId())) return false;
-        if (bot.preparingAbility != null && bot.preparingMs > 0) return false;
-        if (bot.abilityActiveMs.getOrDefault(payload.abilityId(), 0) > 0) return false;
+        if (payload == null || bot == null || !hasAbility(bot, payload.abilityId()))
+            return false;
+        if (bot.preparingAbility != null && bot.preparingMs > 0)
+            return false;
+        if (bot.abilityActiveMs.getOrDefault(payload.abilityId(), 0) > 0)
+            return false;
         if ("slow".equals(payload.contract().execution().blockedByStatus())
-                && BotStateService.statusActive(bot, "slow")) return false;
+                && BotStateService.statusActive(bot, "slow"))
+            return false;
         var definition = payload.definition();
         boolean fixedResourceInactive = definition.resourceModel() == Abilities.ResourceModel.FIXED
                 && bot.abilityActiveMs.getOrDefault(payload.abilityId(), 0) <= 0;
@@ -91,7 +99,8 @@ public class ActionExecutionService {
     }
 
     private boolean selectedAbilityExecutable(Bot bot, AbilityExecutionPayload payload) {
-        if (payload == null || bot == null || !hasAbility(bot, payload.abilityId())) return false;
+        if (payload == null || bot == null || !hasAbility(bot, payload.abilityId()))
+            return false;
         boolean continuingPreparation = Integer.valueOf(payload.abilityId()).equals(bot.preparingAbility)
                 && bot.preparingMs > 0;
         boolean continuingChannel = payload.definition().activationModel() == Abilities.ActivationModel.CHANNELLED
@@ -100,8 +109,10 @@ public class ActionExecutionService {
     }
 
     public int selectedAbilityCooldownMs(Bot bot, int ability) {
-        if (bot == null || !hasAbility(bot, ability)) return 0;
-        if (bot.preparingMs > 0 || bot.abilityActiveMs.getOrDefault(ability, 0) > 0) return 0;
+        if (bot == null || !hasAbility(bot, ability))
+            return 0;
+        if (bot.preparingMs > 0 || bot.abilityActiveMs.getOrDefault(ability, 0) > 0)
+            return 0;
         return Math.max(bot.abilityCooldowns.getOrDefault(ability, 0),
                 botStateService.abilityRechargeMs(bot, ability));
     }
@@ -114,14 +125,17 @@ public class ActionExecutionService {
     }
 
     public int selectedAbilityCharges(Bot bot, int ability) {
-        if (bot == null || !hasAbility(bot, ability)) return 0;
-        if (!Abilities.hasCharges(ability)) return 0;
+        if (bot == null || !hasAbility(bot, ability))
+            return 0;
+        if (!Abilities.hasCharges(ability))
+            return 0;
         return botStateService.abilityCharges(bot, ability);
     }
 
     public int selectedAbilityActiveMs(Bot bot, int ability) {
         return bot == null || !hasAbility(bot, ability)
-                ? 0 : bot.abilityActiveMs.getOrDefault(ability, 0);
+                ? 0
+                : bot.abilityActiveMs.getOrDefault(ability, 0);
     }
 
     public boolean selectedAbilityPresent(Bot bot, int ability) {
@@ -137,10 +151,8 @@ public class ActionExecutionService {
     }
 
     public boolean abilityUsesTarget(StrategyBlock block) {
-        Integer ability = configuredAbilityAction(block);
-        if (ability == null) return false;
-        var execution = AbilityContracts.get(ability).execution();
-        return execution.targetMode() != null || execution.movement() != null;
+        return block != null && BotLogicContracts.actionUsesSelectableTarget(
+                block.action(), block.movementMode(), block.targetMode());
     }
 
     public void applyCustomVariableAction(
@@ -214,7 +226,8 @@ public class ActionExecutionService {
         if (!blockedByStatus && !blockedByAbilityState && !channelledActive && payload != null
                 && payload.definition().activationModel() == Abilities.ActivationModel.IMMEDIATE) {
             AbilityExecutionPayload activated = activateImmediateAbility(bot, payload);
-            if (activated != null) setTriggeredPayload(bot, activated);
+            if (activated != null)
+                setTriggeredPayload(bot, activated);
         }
         if (blockedByStatus || blockedByAbilityState) {
             cancelPreparation(bot, payload);
@@ -222,7 +235,8 @@ public class ActionExecutionService {
                 && !BotStateService.statusActive(bot, "silence")
                 && payload.definition().activationModel() == Abilities.ActivationModel.CONFIGURED) {
             AbilityExecutionPayload activated = activateConfiguredAbility(bot, payload);
-            if (activated != null) setTriggeredPayload(bot, activated);
+            if (activated != null)
+                setTriggeredPayload(bot, activated);
         } else if (payload != null
                 && payload.definition().activationModel() == Abilities.ActivationModel.CONFIGURED
                 && bot.preparingAbility != null
@@ -241,14 +255,14 @@ public class ActionExecutionService {
     }
 
     public int damageToDroneThisTick(ArenaEntity drone, List<Bot> bots,
-                              List<ArenaEntity> projectileEffects, List<ArenaEntity> projectiles,
-                              List<ArenaEntity> placements) {
+            List<ArenaEntity> projectileEffects, List<ArenaEntity> projectiles,
+            List<ArenaEntity> placements) {
         return entityCombatService.damageToDroneThisTick(
                 drone, bots, projectileEffects, projectiles, placements);
     }
 
     public boolean mineHitByCurrentAttack(ArenaEntity mine, List<Bot> bots,
-                                   List<ArenaEntity> projectiles, List<ArenaEntity> placements) {
+            List<ArenaEntity> projectiles, List<ArenaEntity> placements) {
         return entityCombatService.mineHitByCurrentAttack(mine, bots, projectiles, placements);
     }
 
@@ -270,7 +284,8 @@ public class ActionExecutionService {
     private AbilityExecutionPayload activateImmediateAbility(
             Bot bot, AbilityExecutionPayload payload) {
         if (payload.definition().activationModel() != Abilities.ActivationModel.IMMEDIATE
-                || !selectedAbilityReady(bot, payload)) return null;
+                || !selectedAbilityReady(bot, payload))
+            return null;
         var definition = payload.definition();
         double cooldownMultiplier = 1.0 / bot.attackSpeedMultiplier;
         botStateService.startAbilityResource(bot, payload.abilityId());
@@ -290,7 +305,8 @@ public class ActionExecutionService {
 
     private AbilityExecutionPayload activateConfiguredAbility(
             Bot bot, AbilityExecutionPayload payload) {
-        if (!selectedAbilityExecutable(bot, payload)) return null;
+        if (!selectedAbilityExecutable(bot, payload))
+            return null;
         int windup = payload.definition().windupMs();
         if (windup > 0) {
             boolean continuingPreparation = Integer.valueOf(payload.abilityId()).equals(bot.preparingAbility);
@@ -304,7 +320,8 @@ public class ActionExecutionService {
                 bot.preparingTargetY = payload.targetY();
             }
             bot.preparingAbility = payload.abilityId();
-            if (bot.preparingMs > 0) return null;
+            if (bot.preparingMs > 0)
+                return null;
         }
         cancelPreparation(bot);
         botStateService.startAbilityResource(bot, payload.abilityId());
@@ -333,10 +350,12 @@ public class ActionExecutionService {
     private int activationCooldownMs(Bot bot, AbilityExecutionPayload payload, double cooldownMultiplier) {
         var definition = payload.definition();
         if (definition.charges() > 0
-                && botStateService.abilityCharges(bot, payload.abilityId()) <= 0) return 0;
+                && botStateService.abilityCharges(bot, payload.abilityId()) <= 0)
+            return 0;
         double startMultiplier = BotStateService.statusActive(bot, "overclock")
                 ? Math.min(1.0, Math.max(0.0, BotStateService.statusEffectValue(
-                        bot, "overclock", "cooldown_modifier", "multiplier", 1.0))) : 1.0;
+                        bot, "overclock", "cooldown_modifier", "multiplier", 1.0)))
+                : 1.0;
         return (int) Math.round(definition.cooldownMs() * cooldownMultiplier * startMultiplier);
     }
 
@@ -344,11 +363,10 @@ public class ActionExecutionService {
         // Defensive effects and Overclock own their duration as statuses, not
         // as post-activation action locks. Other existing short-lived combat
         // visuals retain their explicit legacy active fallback.
-        if (payload.contract().effects().stream().anyMatch(effect ->
-                effect.type() == EffectType.DAMAGE_REDUCTION
-                        || effect.type() == EffectType.DAMAGE_IMMUNITY
-                        || effect.type() == EffectType.DAMAGE_REFLECTION
-                        || (effect.type() == EffectType.BUFF && "overclock".equals(effect.subtype())))) {
+        if (payload.contract().effects().stream().anyMatch(effect -> effect.type() == EffectType.DAMAGE_REDUCTION
+                || effect.type() == EffectType.DAMAGE_IMMUNITY
+                || effect.type() == EffectType.DAMAGE_REFLECTION
+                || (effect.type() == EffectType.BUFF && "overclock".equals(effect.subtype())))) {
             return 0;
         }
         var definition = payload.definition();
@@ -356,7 +374,8 @@ public class ActionExecutionService {
             return definition.activeMs() > 0 ? definition.activeMs()
                     : definition.windupMs() > 0 ? definition.windupMs() : STEP_MS;
         }
-        if (spawnsEntity(payload) && definition.activeMs() == 0) return 0;
+        if (spawnsEntity(payload) && definition.activeMs() == 0)
+            return 0;
         return definition.activeMs() > 0 ? definition.activeMs()
                 : definition.durationMs() > 0 ? definition.durationMs() : 0;
     }
@@ -367,11 +386,13 @@ public class ActionExecutionService {
     }
 
     private static void spawnAbilityEntity(Bot bot, AbilityExecutionPayload payload, Arena arena) {
-        if (arena == null || !spawnsEntity(payload)) return;
+        if (arena == null || !spawnsEntity(payload))
+            return;
         EntityContracts.EntityContract entityContract = EntityContracts.forAbility(payload.abilityId());
         String idPrefix = entityContract != null
                 && entityContract.system() == EntityContracts.SystemType.PROJECTILE
-                ? entityContract.runtimeType() : "ability";
+                        ? entityContract.runtimeType()
+                        : "ability";
         bot.abilitySpawn = AbilityEntityFactory.create(
                 idPrefix + "-" + bot.userId + "-" + bot.abilityEntitySerial++,
                 payload.abilityId(),
@@ -395,7 +416,8 @@ public class ActionExecutionService {
     }
 
     private static void cancelPreparation(Bot bot, AbilityExecutionPayload payload) {
-        if (payload != null && !Integer.valueOf(payload.abilityId()).equals(bot.preparingAbility)) return;
+        if (payload != null && !Integer.valueOf(payload.abilityId()).equals(bot.preparingAbility))
+            return;
         cancelPreparation(bot);
     }
 
@@ -404,10 +426,12 @@ public class ActionExecutionService {
     }
 
     private static boolean anotherAbilityActive(Bot bot, int ability, boolean ignoresGlobalAbilityLock) {
-        if (ignoresGlobalAbilityLock) return false;
+        if (ignoresGlobalAbilityLock)
+            return false;
         if (bot.preparingAbility != null
                 && bot.preparingAbility != ability
-                && !AbilityContracts.get(bot.preparingAbility).execution().ignoresGlobalAbilityLock()) return true;
+                && !AbilityContracts.get(bot.preparingAbility).execution().ignoresGlobalAbilityLock())
+            return true;
         return bot.abilityActiveMs.entrySet().stream()
                 .anyMatch(entry -> entry.getKey() != ability
                         && entry.getValue() > 0

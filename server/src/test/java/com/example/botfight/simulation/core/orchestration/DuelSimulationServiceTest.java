@@ -15,7 +15,6 @@ import com.example.botfight.simulation.core.replay.ReplayMappingService;
 import com.example.botfight.simulation.core.state.BotStateService;
 import com.example.botfight.simulation.bots.ConditionEvaluationService;
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
-import com.example.botfight.service.submission.LegacyAbilityPayloadMigration;
 import com.example.botfight.simulation.gameconfig.HitStagger;
 import java.util.List;
 import java.util.Map;
@@ -78,8 +77,8 @@ class DuelSimulationServiceTest {
     void compactReplayRetainsGenericAbilityResources() {
         MatchReplayDTO fireGun = service.simulateCompact(request(
                 arena(100),
-                bot("compact-fire", "Fire", 1, 100, 400, "custom", customBrain("[\"fire_gun\"]", """
-                        [{"conditions":[{"type":"always"}],"action":"fire_gun"}]
+                bot("compact-fire", "Fire", 1, 100, 400, "custom", customBrain("[3]", """
+                        [{"conditions":[{"type":"always"}],"action":3}]
                         """)),
                 bot("compact-target", "Target", 2, 300, 400, "custom", customBrain("[]", "[]"))));
         var fireFrame = fireGun.frames().getFirst().bots().getFirst();
@@ -91,14 +90,14 @@ class DuelSimulationServiceTest {
         MatchReplayDTO cooldownOnlyAbilities = service.simulateCompact(request(
                 arena(100),
                 bot("compact-cooldown-only", "Cooldown", 1, 100, 400, "custom", customBrain(
-                        "[\"reactive_armor\",\"hunter_drone\"]", "[]")),
+                        "[16,17]", "[]")),
                 bot("compact-cooldown-target", "Target", 2, 700, 400, "custom", customBrain("[]", "[]"))));
         assertThat(cooldownOnlyAbilities.initialState().bots().getFirst().abilityCharges()).isNull();
 
         MatchReplayDTO dash = service.simulateCompact(request(
                 arena(100),
                 bot("compact-dash", "Dash", 1, 100, 700, brain("""
-                        [{"conditions":[{"type":"always"}],"action":"dash","movementMode":"absolute","movementDirection":"north"}]
+                        [{"conditions":[{"type":"always"}],"action":19,"movementMode":"absolute","movementDirection":"north"}]
                         """)),
                 bot("compact-dash-target", "Target", 2, 700, 400, idleBrain)));
         assertThat(dash.frames().getFirst().bots().getFirst().abilityCooldowns()).isNull();
@@ -106,7 +105,7 @@ class DuelSimulationServiceTest {
         MatchReplayDTO lockOn = service.simulateCompact(request(
                 arena(10_200),
                 botWithRotation("compact-lock", "Lock", 1, 100, 400, "melee", brain("""
-                        [{"conditions":[{"type":"always"}],"action":"lock_on"}]
+                        [{"conditions":[{"type":"always"}],"action":20}]
                         """), 0),
                 bot("compact-lock-target", "Target", 2, 700, 400, idleBrain)));
         assertThat(lockOn.frames()).anySatisfy(frame ->
@@ -117,7 +116,7 @@ class DuelSimulationServiceTest {
     void customLoadoutUsesDefaultHpAndArenaHasNoFixtures() throws Exception {
         JsonNode loadoutBrain = jsonMapper.readTree("""
                 {"version":"bot-logic-tree-v1",
-                 "loadout":{"abilities":["swing"]},
+                 "loadout":{"abilities":[1]},
                  "roots":[]}
                 """);
         MatchPlaybackDTO result = service.simulate(request(
@@ -135,8 +134,8 @@ class DuelSimulationServiceTest {
     void botKnockoutIsTheOnlyWinningCondition() throws Exception {
         JsonNode attackerBrain = jsonMapper.readTree("""
                 {"version":"bot-logic-tree-v1",
-                  "loadout":{"abilities":["swing"]},
-                 "roots":[{"createdOrder":0,"branches":[{"createdOrder":0,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":"swing"}],"children":[]}]}]}
+                  "loadout":{"abilities":[1]},
+                 "roots":[{"createdOrder":0,"branches":[{"createdOrder":0,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":1}],"children":[]}]}]}
                 """);
         JsonNode defenderBrain = jsonMapper.readTree("""
                 {"version":"bot-logic-tree-v1",
@@ -224,10 +223,10 @@ class DuelSimulationServiceTest {
                 [{"priority":1,"conditions":[
                   {"type":"expression","left":"selectable.exists","leftSelectable":"opponent_singularity_zone","comparator":"eq","right":{"type":"boolean","value":true}},
                   {"type":"expression","left":"selectable.age","leftSelectable":"opponent_singularity_zone","comparator":"gte","right":{"type":"number","value":0.2}}
-                ],"action":"move_walk","movementMode":"absolute","movementDirection":"east"}]
+                ],"action":"move_walk","movementMode":"absolute","movementDirection":90}]
                 """);
-        JsonNode singularityBrain = customBrain("[\"singularity\"]", """
-                [{"type":"always","action":"singularity"}]
+        JsonNode singularityBrain = customBrain("[27]", """
+                [{"type":"always","action":27}]
                 """);
 
         MatchPlaybackDTO result = service.simulate(request(
@@ -252,11 +251,11 @@ class DuelSimulationServiceTest {
                             "conditions":[{
                               "type":"expression",
                               "left":"bot.selectedAbilityReady",
-                              "ability":"lock_on",
+                              "ability":20,
                               "comparator":"eq",
                               "right":{"type":"boolean","value":true}
                             }],
-                            "action":"lock_on"
+                            "action":20
                           }
                         ]
                         """)),
@@ -272,13 +271,13 @@ class DuelSimulationServiceTest {
 
     @Test
     void expressionConditionsReadAbilityActiveStateAndRemainingSeconds() {
-        JsonNode activeAwareBrain = customBrain("[\"lock_on\"]", """
+        JsonNode activeAwareBrain = customBrain("[20]", """
                 [
-                  {"priority":1,"conditions":[{"type":"always"}],"action":"lock_on"},
+                  {"priority":1,"conditions":[{"type":"always"}],"action":20},
                   {"priority":2,"conditions":[
-                    {"type":"expression","left":"bot.selectedAbilityActive","ability":"lock_on","comparator":"eq","right":{"type":"boolean","value":true}},
-                    {"type":"expression","left":"bot.selectedAbilityActiveMs","ability":"lock_on","comparator":"gt","right":{"type":"number","value":0.1}}
-                  ],"action":"move_walk","movementMode":"absolute","movementDirection":"east"}
+                    {"type":"expression","left":"bot.selectedAbilityActive","ability":20,"comparator":"eq","right":{"type":"boolean","value":true}},
+                    {"type":"expression","left":"bot.selectedAbilityActiveMs","ability":20,"comparator":"gt","right":{"type":"number","value":0.1}}
+                  ],"action":"move_walk","movementMode":"absolute","movementDirection":90}
                 ]
                 """);
 
@@ -294,10 +293,10 @@ class DuelSimulationServiceTest {
 
     @Test
     void expressionConditionsReadRemainingAbilityPreparationSeconds() {
-        JsonNode preparationAwareBrain = customBrain("[\"concussive_shot\"]", """
+        JsonNode preparationAwareBrain = customBrain("[9]", """
                 [
-                  {"priority":1,"conditions":[{"type":"expression","left":"bot.selectedAbilityPreparationMs","ability":"concussive_shot","comparator":"gt","right":{"type":"number","value":0.3}}],"action":"move_walk","movementMode":"absolute","movementDirection":"east"},
-                  {"priority":2,"conditions":[{"type":"always"}],"action":"concussive_shot"}
+                  {"priority":1,"conditions":[{"type":"expression","left":"bot.selectedAbilityPreparationMs","ability":9,"comparator":"gt","right":{"type":"number","value":0.3}}],"action":"move_walk","movementMode":"absolute","movementDirection":90},
+                  {"priority":2,"conditions":[{"type":"always"}],"action":9}
                 ]
                 """);
 
@@ -392,10 +391,10 @@ class DuelSimulationServiceTest {
 
     @Test
     void dashIsBlockedDuringAnotherAbilityActivePhase() {
-        JsonNode dashDuringLockOn = customBrain("[\"lock_on\"]", """
+        JsonNode dashDuringLockOn = customBrain("[20]", """
                 [
-                  {"priority":1,"conditions":[{"type":"always"}],"action":"lock_on"},
-                  {"priority":2,"conditions":[{"type":"expression","left":"bot.selectedAbilityActive","ability":"lock_on","comparator":"eq","right":{"type":"boolean","value":true}}],"action":"dash","movementMode":"absolute","movementDirection":"east"}
+                  {"priority":1,"conditions":[{"type":"always"}],"action":20},
+                  {"priority":2,"conditions":[{"type":"expression","left":"bot.selectedAbilityActive","ability":20,"comparator":"eq","right":{"type":"boolean","value":true}}],"action":19,"movementMode":"absolute","movementDirection":"east"}
                 ]
                 """);
 
@@ -410,10 +409,10 @@ class DuelSimulationServiceTest {
 
     @Test
     void anotherAbilityIsBlockedDuringDashActivePhase() {
-        JsonNode abilityDuringDash = customBrain("[\"dash\",\"lock_on\"]", """
+        JsonNode abilityDuringDash = customBrain("[19,20]", """
                 [
-                  {"priority":1,"conditions":[{"type":"always"}],"action":"dash","movementMode":"absolute","movementDirection":"east"},
-                  {"priority":2,"conditions":[{"type":"expression","left":"bot.selectedAbilityActive","ability":"dash","comparator":"eq","right":{"type":"boolean","value":true}}],"action":"lock_on"}
+                  {"priority":1,"conditions":[{"type":"always"}],"action":19,"movementMode":"absolute","movementDirection":"east"},
+                  {"priority":2,"conditions":[{"type":"expression","left":"bot.selectedAbilityActive","ability":19,"comparator":"eq","right":{"type":"boolean","value":true}}],"action":20}
                 ]
                 """);
 
@@ -441,7 +440,7 @@ class DuelSimulationServiceTest {
         MatchPlaybackDTO dash = service.simulate(request(
                 arena(100),
                 bot("micro", "Micro", 1, 100, 700, brain("""
-                        [{"conditions":[{"type":"always"}],"action":"dash","movementMode":"absolute","movementDirection":"north"}]
+                        [{"conditions":[{"type":"always"}],"action":19,"movementMode":"absolute","movementDirection":"north"}]
                         """)),
                 bot("micro-target", "Target", 2, 700, 400, idleBrain)));
         var dashFrame = dash.frames().getFirst().bots().getFirst();
@@ -453,7 +452,7 @@ class DuelSimulationServiceTest {
         MatchPlaybackDTO lockOn = service.simulate(request(
                 arena(10_200),
                 botWithRotation("lock", "Lock", 1, 100, 400, "melee", brain("""
-                        [{"conditions":[{"type":"always"}],"action":"lock_on"}]
+                        [{"conditions":[{"type":"always"}],"action":20}]
                         """), 0),
                 bot("lock-target", "Target", 2, 700, 400, idleBrain)));
         var lockFrame = lockOn.frames().stream()
@@ -480,11 +479,11 @@ class DuelSimulationServiceTest {
 
     @Test
     void expressionConditionsReadAnActiveStatusEffectOnTheObservedBot() {
-        JsonNode attacker = customBrain("[\"concussive_shot\"]", """
-                [{"conditions":[{"type":"always"}],"action":"concussive_shot"}]
+        JsonNode attacker = customBrain("[9]", """
+                [{"conditions":[{"type":"always"}],"action":9}]
                 """);
         JsonNode statusAwareDefender = customBrain("[]", """
-                [{"conditions":[{"type":"expression","left":"bot.selectedStatusEffectActive","statusEffect":"slow","comparator":"eq","right":{"type":"boolean","value":true}}],"action":"move_walk","movementMode":"absolute","movementDirection":"west"}]
+                [{"conditions":[{"type":"expression","left":"bot.selectedStatusEffectActive","statusEffect":"slow","comparator":"eq","right":{"type":"boolean","value":true}}],"action":"move_walk","movementMode":"absolute","movementDirection":270}]
                 """);
 
         MatchPlaybackDTO result = service.simulate(request(
@@ -499,11 +498,11 @@ class DuelSimulationServiceTest {
 
     @Test
     void expressionConditionsCompareStatusEffectDurationInSeconds() {
-        JsonNode attacker = customBrain("[\"concussive_shot\"]", """
-                [{"conditions":[{"type":"always"}],"action":"concussive_shot"}]
+        JsonNode attacker = customBrain("[9]", """
+                [{"conditions":[{"type":"always"}],"action":9}]
                 """);
         JsonNode durationAwareDefender = customBrain("[]", """
-                [{"conditions":[{"type":"expression","left":"bot.selectedStatusEffectDurationMs","statusEffect":"slow","comparator":"gt","right":{"type":"number","value":0.5}}],"action":"move_walk","movementMode":"absolute","movementDirection":"west"}]
+                [{"conditions":[{"type":"expression","left":"bot.selectedStatusEffectDurationMs","statusEffect":"slow","comparator":"gt","right":{"type":"number","value":0.5}}],"action":"move_walk","movementMode":"absolute","movementDirection":270}]
                 """);
 
         MatchPlaybackDTO result = service.simulate(request(
@@ -516,10 +515,10 @@ class DuelSimulationServiceTest {
 
     @Test
     void expressionConditionsReadOverclockAsAnActiveStatusAndItsDuration() {
-        JsonNode overclockBrain = customBrain("[\"overclock\",\"basic_strike\"]", """
+        JsonNode overclockBrain = customBrain("[33,34]", """
                 [
-                  {"priority":1,"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":"overclock","comparator":"eq","right":{"type":"boolean","value":true}}],"action":"overclock"},
-                  {"priority":2,"conditions":[{"type":"expression","left":"bot.selectedStatusEffectActive","statusEffect":"overclock","comparator":"eq","right":{"type":"boolean","value":true}},{"type":"expression","left":"bot.selectedStatusEffectDurationMs","statusEffect":"overclock","comparator":"gt","right":{"type":"number","value":3}}],"action":"basic_strike"}
+                  {"priority":1,"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":33,"comparator":"eq","right":{"type":"boolean","value":true}}],"action":33},
+                  {"priority":2,"conditions":[{"type":"expression","left":"bot.selectedStatusEffectActive","statusEffect":"overclock","comparator":"eq","right":{"type":"boolean","value":true}},{"type":"expression","left":"bot.selectedStatusEffectDurationMs","statusEffect":"overclock","comparator":"gt","right":{"type":"number","value":3}}],"action":34}
                 ]
                 """);
 
@@ -546,7 +545,7 @@ class DuelSimulationServiceTest {
                               "comparator":"lt",
                               "right":{"type":"number","value":10}
                             }],
-                            "action":"move_walk","movementMode":"absolute","movementDirection":"west"
+                            "action":"move_walk","movementMode":"absolute","movementDirection":270
                           }
                         ]
                         """)),
@@ -601,7 +600,7 @@ class DuelSimulationServiceTest {
                               "comparator":"lt",
                               "right":{"type":"number","value":150}
                             }],
-                            "action":"move_walk","movementMode":"absolute","movementDirection":"east"
+                            "action":"move_walk","movementMode":"absolute","movementDirection":90
                           },
                           {
                             "priority":2,
@@ -611,7 +610,7 @@ class DuelSimulationServiceTest {
                               "comparator":"gt",
                               "right":{"type":"number","value":350}
                             }],
-                            "action":"move_walk","movementMode":"absolute","movementDirection":"north"
+                            "action":"move_walk","movementMode":"absolute","movementDirection":0
                           }
                         ]
                         """)),
@@ -628,7 +627,7 @@ class DuelSimulationServiceTest {
                 bot("bot-1", "One", 1, 100, 400, brain("""
                         [
                           {"priority":3,"conditions":[{"type":"expression","left":"selectable.distance","comparator":"gt","right":{"type":"number","value":100}}],"action":"move_walk","movementMode":"target","movementDirection":0},
-                          {"priority":3,"conditions":[{"type":"expression","left":"selectable.distance","comparator":"gt","right":{"type":"number","value":100}}],"action":"lock_on"}
+                          {"priority":3,"conditions":[{"type":"expression","left":"selectable.distance","comparator":"gt","right":{"type":"number","value":100}}],"action":20}
                         ]
                         """)),
                 bot("bot-2", "Two", 2, 700, 400, idleBrain)));
@@ -640,8 +639,8 @@ class DuelSimulationServiceTest {
     void rangedFireGunUsesFacingRayAndLinearFalloff() {
         MatchPlaybackDTO result = service.simulate(request(
                 arena(100),
-                bot("ranged", "Ranged", 1, 100, 400, "custom", customBrain("[\"fire_gun\"]", """
-                        [{"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":"fire_gun","comparator":"eq","right":{"type":"boolean","value":true}}],"action":"fire_gun"}]
+                bot("ranged", "Ranged", 1, 100, 400, "custom", customBrain("[3]", """
+                        [{"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":3,"comparator":"eq","right":{"type":"boolean","value":true}}],"action":3}]
                         """)),
                 bot("target", "Target", 2, 300, 400, idleBrain)));
         assertThat(result.frames().getFirst().bots().get(1).hp()).isEqualTo(136.667);
@@ -660,7 +659,7 @@ class DuelSimulationServiceTest {
         MatchPlaybackDTO result = service.simulate(request(
                 arena(100),
                 bot("standard-condition", "Standard", 1, 100, 700, "custom", customBrain("[]", """
-                        [{"conditions":[{"type":"expression","left":"selectable.hp","leftSelectable":"my_bot","comparator":"gt","right":{"type":"number","value":0}}],"action":"dash","movementMode":"absolute","movementDirection":"north"}]
+                        [{"conditions":[{"type":"expression","left":"selectable.hp","leftSelectable":"my_bot","comparator":"gt","right":{"type":"number","value":0}}],"action":19,"movementMode":"absolute","movementDirection":"north"}]
                         """)),
                 bot("standard-target", "Target", 2, 700, 400, idleBrain)));
 
@@ -691,10 +690,10 @@ class DuelSimulationServiceTest {
         MatchPlaybackDTO result = service.simulate(request(
                 arena(1_000),
                 bot("overclock-caster", "Caster", 1, 100, 400, "custom", customBrain(
-                        "[\"basic_strike\",\"overclock\"]", """
+                        "[34,33]", """
                                 [
-                                  {"priority":1,"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":"basic_strike","comparator":"eq","right":{"type":"boolean","value":true}}],"action":"basic_strike"},
-                                  {"priority":2,"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":"overclock","comparator":"eq","right":{"type":"boolean","value":true}}],"action":"overclock"}
+                                  {"priority":1,"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":34,"comparator":"eq","right":{"type":"boolean","value":true}}],"action":34},
+                                  {"priority":2,"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":33,"comparator":"eq","right":{"type":"boolean","value":true}}],"action":33}
                                 ]
                                 """)),
                 bot("overclock-target", "Target", 2, 700, 400, "custom", customBrain("[]", "[]"))));
@@ -720,7 +719,7 @@ class DuelSimulationServiceTest {
         MatchPlaybackDTO reactiveArmor = service.simulate(request(
                 arena(1_000),
                 bot("reactive-armor", "Armor", 1, 100, 400, "custom", customBrain(
-                        "[\"reactive_armor\"]", "[{\"conditions\":[{\"type\":\"always\"}],\"action\":\"reactive_armor\"}]")),
+                        "[16]", "[{\"conditions\":[{\"type\":\"always\"}],\"action\":16}]")),
                 bot("reactive-target", "Target", 2, 700, 400, "custom", customBrain("[]", "[]"))));
         var armorFrame = reactiveArmor.frames().stream()
                 .filter(frame -> Integer.valueOf(16).equals(frame.bots().getFirst().triggeredAbility()))
@@ -737,7 +736,7 @@ class DuelSimulationServiceTest {
         MatchPlaybackDTO absoluteGuard = service.simulate(request(
                 arena(1_000),
                 bot("absolute-guard", "Guard", 1, 100, 400, "custom", customBrain(
-      "[\"absolute_guard\"]", "[{\"conditions\":[{\"type\":\"always\"}],\"action\":\"absolute_guard\"}]")),
+      "[23]", "[{\"conditions\":[{\"type\":\"always\"}],\"action\":23}]")),
                 bot("guard-target", "Target", 2, 700, 400, "custom", customBrain("[]", "[]"))));
         var guardFrame = absoluteGuard.frames().stream()
                 .filter(frame -> Integer.valueOf(23).equals(frame.bots().getFirst().triggeredAbility()))
@@ -771,8 +770,8 @@ class DuelSimulationServiceTest {
     void grenadeUsesGenericAbilityStateAndArenaEntityReplay() {
         MatchPlaybackDTO result = service.simulate(request(
                 arena(100),
-                bot("grenadier", "Grenadier", 1, 100, 400, "custom", customBrain("[\"throw_grenade\"]", """
-                        [{"conditions":[{"type":"always"}],"action":"throw_grenade"}]
+                bot("grenadier", "Grenadier", 1, 100, 400, "custom", customBrain("[4]", """
+                        [{"conditions":[{"type":"always"}],"action":4}]
                         """)),
                 bot("target", "Target", 2, 190, 400, idleBrain)));
 
@@ -784,9 +783,27 @@ class DuelSimulationServiceTest {
     }
 
     @Test
+    void coordinateTargetedZoneUsesCoordinatesInsteadOfSelectableTarget() {
+        MatchPlaybackDTO result = service.simulate(request(
+                arena(1_000),
+                bot("orbital-caster", "Orbital Caster", 1, 100, 100, "custom", customBrain("[22]", """
+                        [{"conditions":[{"type":"always"}],"action":22,"targetMode":"coordinates","targetX":300,"targetY":350}]
+                        """)),
+                bot("orbital-target", "Orbital Target", 2, 1_400, 1_400, "custom", customBrain("[]", "[]"))));
+
+        var marker = result.frames().stream()
+                .flatMap(frame -> frame.entities().stream())
+                .filter(entity -> "orbitalMarker".equals(entity.type()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(marker.x()).isEqualTo(300);
+        assertThat(marker.y()).isEqualTo(350);
+    }
+
+    @Test
     void windBurstReplayFramesContainAuthoritativeOneHundredFiftyUnitKnockback() {
-        JsonNode windBurstBrain = customBrain("[\"wind_burst\"]", """
-                [{"priority":1,"conditions":[{"type":"always"}],"action":"wind_burst"}]
+        JsonNode windBurstBrain = customBrain("[18]", """
+                [{"priority":1,"conditions":[{"type":"always"}],"action":18}]
                 """);
         MatchPlaybackDTO result = service.simulate(request(
                 arena(2_000),
@@ -856,7 +873,7 @@ class DuelSimulationServiceTest {
                 rotation,
                 60,
                 selectedLoadout,
-                LegacyAbilityPayloadMigration.normalize(brain));
+                brain);
     }
 
     private static double[] positionAtBearing(double originX, double originY, double distance, double bearingDegrees) {
@@ -874,7 +891,7 @@ class DuelSimulationServiceTest {
     @Test
     void targetDirectionSupportsAnUpperAngleBound() {
         JsonNode directionBrain = customBrain("[]", """
-                [{"priority":1,"conditions":[{"type":"expression","left":"selectable.absoluteBearing","comparator":"lt","selectable":"opponent","right":{"type":"number","value":50}}],"action":"move_walk","movementMode":"absolute","movementDirection":"west"}]
+                [{"priority":1,"conditions":[{"type":"expression","left":"selectable.absoluteBearing","comparator":"lt","selectable":"opponent","right":{"type":"number","value":50}}],"action":"move_walk","movementMode":"absolute","movementDirection":270}]
                 """);
         MatchPlaybackDTO result = service.simulate(request(
                 arena(100),
@@ -900,9 +917,9 @@ class DuelSimulationServiceTest {
 
     @Test
     void closingZoneEdgeDistanceUsesSignedBotHitboxClearance() {
-        JsonNode brain = customBrain("[\"swing\"]", """
+        JsonNode brain = customBrain("[1]", """
                 [
-                  {"priority":1,"conditions":[{"type":"expression","left":"selectable.closingZoneEdgeDistance","leftSelectable":"my_bot","comparator":"lt","right":{"type":"number","value":0}}],"action":"swing"}
+                  {"priority":1,"conditions":[{"type":"expression","left":"selectable.closingZoneEdgeDistance","leftSelectable":"my_bot","comparator":"lt","right":{"type":"number","value":0}}],"action":1}
                 ]
                 """);
         MatchPlaybackDTO result = service.simulate(request(
@@ -923,9 +940,9 @@ class DuelSimulationServiceTest {
 
     @Test
     void opponentClosingZoneEdgeDistanceUsesTheOpponentBotScope() {
-        JsonNode brain = customBrain("[\"swing\"]", """
+        JsonNode brain = customBrain("[1]", """
                 [
-                  {"priority":1,"conditions":[{"type":"expression","left":"selectable.closingZoneEdgeDistance","leftSelectable":"opponent","comparator":"lt","right":{"type":"number","value":-1}}],"action":"swing"}
+                  {"priority":1,"conditions":[{"type":"expression","left":"selectable.closingZoneEdgeDistance","leftSelectable":"opponent","comparator":"lt","right":{"type":"number","value":-1}}],"action":1}
                 ]
                 """);
         MatchPlaybackDTO result = service.simulate(request(
@@ -941,7 +958,7 @@ class DuelSimulationServiceTest {
     @Test
     void targetDirectionSupportsTwoStandardBoundsForTheCenteredArc() {
         JsonNode directionBrain = customBrain("[]", """
-                [{"priority":1,"conditions":[{"type":"expression","left":"selectable.absoluteBearing","comparator":"gte","selectable":"opponent","right":{"type":"number","value":-60}},{"type":"expression","left":"selectable.absoluteBearing","comparator":"lte","selectable":"opponent","right":{"type":"number","value":60}}],"action":"move_walk","movementMode":"absolute","movementDirection":"west"}]
+                [{"priority":1,"conditions":[{"type":"expression","left":"selectable.absoluteBearing","comparator":"gte","selectable":"opponent","right":{"type":"number","value":-60}},{"type":"expression","left":"selectable.absoluteBearing","comparator":"lte","selectable":"opponent","right":{"type":"number","value":60}}],"action":"move_walk","movementMode":"absolute","movementDirection":270}]
                 """);
         double[] targetPosition = positionAtBearing(500, 400, 100, 0);
         MatchPlaybackDTO result = service.simulate(request(
@@ -954,11 +971,11 @@ class DuelSimulationServiceTest {
 
     @Test
     void selectableSpeedUsesBotMovementUnitsPerTick() {
-        JsonNode readerBrain = customBrain("[\"swing\"]", """
-                [{"priority":1,"conditions":[{"type":"expression","left":"selectable.speed","comparator":"gt","selectable":"opponent","right":{"type":"number","value":7}}],"action":"swing"}]
+        JsonNode readerBrain = customBrain("[1]", """
+                [{"priority":1,"conditions":[{"type":"expression","left":"selectable.speed","comparator":"gt","selectable":"opponent","right":{"type":"number","value":7}}],"action":1}]
                 """);
         JsonNode movementBrain = customBrain("[]", """
-                [{"priority":1,"conditions":[{"type":"always"}],"action":"move_walk","movementMode":"absolute","movementDirection":"east"}]
+                [{"priority":1,"conditions":[{"type":"always"}],"action":"move_walk","movementMode":"absolute","movementDirection":90}]
                 """);
         MatchPlaybackDTO result = service.simulate(request(
                 arena(400),
@@ -978,7 +995,7 @@ class DuelSimulationServiceTest {
                 [{"priority":1,"conditions":[
                   {"type":"expression","left":"selectable.facing","comparator":"gt","selectable":"opponent","right":{"type":"number","value":10}},
                   {"type":"expression","left":"selectable.facing","comparator":"lt","selectable":"opponent","right":{"type":"number","value":50}}
-                ],"action":"move_walk","movementMode":"absolute","movementDirection":"west"}]
+                ],"action":"move_walk","movementMode":"absolute","movementDirection":270}]
                 """);
         MatchPlaybackDTO inside = service.simulate(request(
                 arena(100),
@@ -1019,10 +1036,10 @@ class DuelSimulationServiceTest {
     @Test
     void globalAbilityLockBlocksDifferentAbilitiesDuringActivePhase() {
         JsonNode idle = customBrain("[]", "[]");
-        JsonNode fireballFirst = customBrain("[\"shoot_fireball\",\"concussive_shot\"]", """
+        JsonNode fireballFirst = customBrain("[5,9]", """
                 [
-                  {"priority":1,"conditions":[{"type":"always"}],"action":"shoot_fireball"},
-                  {"priority":2,"conditions":[{"type":"always"}],"action":"concussive_shot"}
+                  {"priority":1,"conditions":[{"type":"always"}],"action":5},
+                  {"priority":2,"conditions":[{"type":"always"}],"action":9}
                 ]
                 """);
         MatchPlaybackDTO afterFireball = service.simulate(request(
@@ -1041,10 +1058,10 @@ class DuelSimulationServiceTest {
                 && Integer.valueOf(9).equals(frame.bots().getFirst().preparingAbility()));
         assertThat(afterFireball.frames()).anyMatch(frame -> Integer.valueOf(9).equals(frame.bots().getFirst().preparingAbility()));
 
-        JsonNode concussiveFirst = customBrain("[\"shoot_fireball\",\"concussive_shot\"]", """
+        JsonNode concussiveFirst = customBrain("[5,9]", """
                 [
-                  {"priority":1,"conditions":[{"type":"always"}],"action":"concussive_shot"},
-                  {"priority":2,"conditions":[{"type":"always"}],"action":"shoot_fireball"}
+                  {"priority":1,"conditions":[{"type":"always"}],"action":9},
+                  {"priority":2,"conditions":[{"type":"always"}],"action":5}
                 ]
                 """);
         MatchPlaybackDTO afterConcussive = service.simulate(request(
@@ -1059,10 +1076,10 @@ class DuelSimulationServiceTest {
 
     @Test
     void higherPriorityFireballYieldsToGrenadeDuringItsRecoveryTick() {
-        JsonNode fireballThenGrenade = customBrain("[\"throw_grenade\",\"shoot_fireball\"]", """
+        JsonNode fireballThenGrenade = customBrain("[4,5]", """
                 [
-                  {"priority":1,"conditions":[{"type":"always"}],"action":"shoot_fireball"},
-                  {"priority":2,"conditions":[{"type":"always"}],"action":"throw_grenade"}
+                  {"priority":1,"conditions":[{"type":"always"}],"action":5},
+                  {"priority":2,"conditions":[{"type":"always"}],"action":4}
                 ]
                 """);
         MatchPlaybackDTO result = service.simulate(request(
@@ -1079,11 +1096,11 @@ class DuelSimulationServiceTest {
 
     @Test
     void abilityPreparationDoesNotInterruptMovementOrRotation() {
-        JsonNode castingBrain = customBrain("[\"concussive_shot\"]", """
+        JsonNode castingBrain = customBrain("[9]", """
                 [
-                  {"priority":1,"conditions":[{"type":"always"}],"action":"move_walk","movementMode":"absolute","movementDirection":"east"},
+                  {"priority":1,"conditions":[{"type":"always"}],"action":"move_walk","movementMode":"absolute","movementDirection":90},
                   {"priority":2,"conditions":[{"type":"always"}],"action":"rotate_toward_enemy","selectable":"opponent"},
-                  {"priority":3,"conditions":[{"type":"always"}],"action":"concussive_shot"}
+                  {"priority":3,"conditions":[{"type":"always"}],"action":9}
                 ]
                 """);
         MatchPlaybackDTO result = service.simulate(request(
@@ -1111,7 +1128,7 @@ class DuelSimulationServiceTest {
                   "customVariables":[{"id":"custom.counter","name":"Counter","valueType":"number","initialValue":99990}],
                   "roots":[
                     {"createdOrder":0,"branches":[{"branchType":"if","createdOrder":0,"conditions":[{"type":"always"}],"actions":[{"action":"variable","variableId":"custom.counter","terms":[{"operator":"add","operand":{"type":"number","value":50}}]}],"children":[]}]},
-                    {"createdOrder":1,"branches":[{"branchType":"if","createdOrder":0,"conditions":[{"type":"expression","left":"custom.counter","comparator":"eq","right":{"type":"number","value":99999}}],"actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":"east"}],"children":[]}]}
+                    {"createdOrder":1,"branches":[{"branchType":"if","createdOrder":0,"conditions":[{"type":"expression","left":"custom.counter","comparator":"eq","right":{"type":"number","value":99999}}],"actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":90}],"children":[]}]}
                   ]
                 }
                 """);
@@ -1137,7 +1154,7 @@ class DuelSimulationServiceTest {
                         {"operator":"add","operand":{"type":"number","value":2.59}}
                       ]}
                     ],"children":[]}]},
-                    {"createdOrder":1,"branches":[{"branchType":"if","createdOrder":0,"conditions":[{"type":"expression","left":"custom.counter","comparator":"eq","right":{"type":"number","value":3.5}}],"actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":"east"}],"children":[]}]}
+                    {"createdOrder":1,"branches":[{"branchType":"if","createdOrder":0,"conditions":[{"type":"expression","left":"custom.counter","comparator":"eq","right":{"type":"number","value":3.5}}],"actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":90}],"children":[]}]}
                   ]
                 }
                 """);
@@ -1155,11 +1172,11 @@ class DuelSimulationServiceTest {
         JsonNode variableBrain = jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
-                  "loadout":{"abilities":["swing"]},
+                  "loadout":{"abilities":[1]},
                   "customVariables":[{"id":"custom.counter","name":"Counter","valueType":"number","initialValue":0}],
                   "roots":[
                     {"createdOrder":0,"branches":[{"branchType":"if","createdOrder":0,"conditions":[{"type":"always"}],"actions":[{"action":"variable","variableId":"custom.counter","terms":[{"operator":"add","operand":{"type":"number","value":1}}]}],"children":[]}]},
-                    {"createdOrder":1,"branches":[{"branchType":"if","createdOrder":0,"conditions":[{"type":"expression","left":"custom.counter","comparator":"gte","right":{"type":"number","value":2}}],"actions":[{"action":"swing"}],"children":[]}]}
+                    {"createdOrder":1,"branches":[{"branchType":"if","createdOrder":0,"conditions":[{"type":"expression","left":"custom.counter","comparator":"gte","right":{"type":"number","value":2}}],"actions":[{"action":1}],"children":[]}]}
                   ]
                 }
                 """);
@@ -1175,7 +1192,7 @@ class DuelSimulationServiceTest {
     @Test
     void authoritativeSimulatorExposesElapsedMatchSeconds() {
         JsonNode timedBrain = customBrain("[]", """
-                [{"priority":1,"conditions":[{"type":"expression","left":"match.elapsedSeconds","comparator":"gte","right":{"type":"number","value":0.2}}],"action":"move_walk","movementMode":"absolute","movementDirection":"west"}]
+                [{"priority":1,"conditions":[{"type":"expression","left":"match.elapsedSeconds","comparator":"gte","right":{"type":"number","value":0.2}}],"action":"move_walk","movementMode":"absolute","movementDirection":270}]
                 """);
         MatchPlaybackDTO result = service.simulate(request(
                 arena(500),
@@ -1241,14 +1258,14 @@ class DuelSimulationServiceTest {
     }
 
     private JsonNode newAbilityDemoBrain() {
-        return customBrain("[\"tether_bolt\",\"static_snare\",\"disruptor_dart\",\"repeller_drone\",\"siphon_lance\",\"overclock\"]", """
+        return customBrain("[28,29,30,31,32,33]", """
                 [
-                  {"priority":1,"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":"tether_bolt","comparator":"eq","right":{"type":"boolean","value":true}}],"action":"tether_bolt"},
-                  {"priority":2,"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":"static_snare","comparator":"eq","right":{"type":"boolean","value":true}}],"action":"static_snare"},
-                  {"priority":3,"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":"disruptor_dart","comparator":"eq","right":{"type":"boolean","value":true}}],"action":"disruptor_dart"},
-                  {"priority":4,"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":"repeller_drone","comparator":"eq","right":{"type":"boolean","value":true}}],"action":"repeller_drone"},
-                  {"priority":5,"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":"siphon_lance","comparator":"eq","right":{"type":"boolean","value":true}}],"action":"siphon_lance"},
-                  {"priority":6,"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":"overclock","comparator":"eq","right":{"type":"boolean","value":true}}],"action":"overclock"}
+                  {"priority":1,"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":28,"comparator":"eq","right":{"type":"boolean","value":true}}],"action":28},
+                  {"priority":2,"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":29,"comparator":"eq","right":{"type":"boolean","value":true}}],"action":29},
+                  {"priority":3,"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":30,"comparator":"eq","right":{"type":"boolean","value":true}}],"action":30},
+                  {"priority":4,"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":31,"comparator":"eq","right":{"type":"boolean","value":true}}],"action":31},
+                  {"priority":5,"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":32,"comparator":"eq","right":{"type":"boolean","value":true}}],"action":32},
+                  {"priority":6,"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":33,"comparator":"eq","right":{"type":"boolean","value":true}}],"action":33}
                 ]
                 """);
     }

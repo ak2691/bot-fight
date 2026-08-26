@@ -109,13 +109,13 @@ public class ProjectileSimulationService {
     }
 
     public int radialDamageToEntity(ArenaEntity effect, ArenaEntity target) {
-        if (effect == null || effect.abilityId() == null) return 0;
+        if (effect == null || effect.abilityId() == null || target == null) return 0;
         EntityContracts.EntityContract contract = EntityContracts.forEntity(effect);
         if (contract == null) return 0;
         boolean dealsDamage = AbilityContracts.get(effect.abilityId()).effects().stream()
                 .anyMatch(item -> item.type() == EffectType.DAMAGE);
         if (!dealsDamage) return 0;
-        double distance = Math.hypot(selectable.x() - effect.x(), selectable.y() - effect.y());
+        double distance = Math.hypot(target.x() - effect.x(), target.y() - effect.y());
         return (int) Math.round(Abilities.damageAtDistance(effect.abilityId(), distance)
                 * effect.damageMultiplier());
     }
@@ -151,7 +151,7 @@ public class ProjectileSimulationService {
 
     private static void applyDebuff(Bot target, AbilityContracts.Effect effect,
                                     ProjectileImpact impact, Bot owner) {
-        if (selectable.hp <= 0) return;
+        if (target.hp <= 0) return;
         int sourceSlot = owner == null ? impact.ownerSlot() : owner.slot;
         switch (effect.subtype()) {
             case "burn" -> {

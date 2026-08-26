@@ -2,7 +2,6 @@ package com.example.botfight.simulation.bots;
 
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import com.example.botfight.simulation.gameconfig.AbilityContracts;
-import com.example.botfight.simulation.gameconfig.AbilityRegistry;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import org.springframework.stereotype.Service;
@@ -20,13 +19,6 @@ public class BotCodeService {
             if (node.isIntegralNumber() && node.canConvertToInt()) {
                 int id = node.intValue();
                 if (AbilityContracts.actions().contains(id)) result.add(id);
-            } else if (node.isTextual()) {
-                try {
-                    int id = AbilityRegistry.abilityIdFromLegacyName(node.textValue());
-                    if (AbilityContracts.actions().contains(id)) result.add(id);
-                } catch (IllegalArgumentException ignored) {
-                    // Invalid or retired names are ignored here; submission validation reports them.
-                }
             }
         });
         return result;

@@ -30,6 +30,10 @@ class BotLogicContractsTest {
         assertThat(BotLogicContracts.actionContract(BotLogicContracts.ACTION_ROTATE_TOWARD_TARGET).angleTarget()).isTrue();
         assertThat(BotLogicContracts.actionUsesAbsoluteAngle(BotLogicContracts.ACTION_ROTATE_TOWARD_TARGET, "angle")).isTrue();
         assertThat(BotLogicContracts.actionUsesTarget(BotLogicContracts.ACTION_ROTATE_TOWARD_TARGET)).isTrue();
+        assertThat(BotLogicContracts.actionUsesSelectableTarget(22, null, "target")).isTrue();
+        assertThat(BotLogicContracts.actionUsesSelectableTarget(22, null, "coordinates")).isFalse();
+        assertThat(BotLogicContracts.actionUsesSelectableTarget(19, "target", "target")).isTrue();
+        assertThat(BotLogicContracts.actionUsesSelectableTarget(19, "coordinates", "coordinates")).isFalse();
     }
 
     @Test

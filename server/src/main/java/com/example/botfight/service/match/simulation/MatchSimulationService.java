@@ -12,7 +12,6 @@ import com.example.botfight.simulation.gameconfig.CompactAbilityCode;
 import com.example.botfight.simulation.gameconfig.ClosingZoneConfig;
 import com.example.botfight.service.match.model.MatchPlayer;
 import com.example.botfight.service.match.model.MatchSession;
-import com.example.botfight.service.submission.LegacyAbilityPayloadMigration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -123,9 +122,9 @@ public class MatchSimulationService {
     private JsonNode readBrain(MatchPlayer player, BotSubmission submission) {
         if (submission != null && submission.getBrainPayload() != null && !submission.getBrainPayload().isBlank()) {
             try {
-                return LegacyAbilityPayloadMigration.normalize(jsonMapper.readTree(submission.getBrainPayload()));
+                return jsonMapper.readTree(submission.getBrainPayload());
             } catch (Exception exception) {
-                throw new IllegalStateException("Persisted bot brain could not be normalized", exception);
+                throw new IllegalStateException("Persisted bot brain could not be read", exception);
             }
         }
         return readSelectedLoadoutBrain(player != null ? player.selectedLoadout() : null);

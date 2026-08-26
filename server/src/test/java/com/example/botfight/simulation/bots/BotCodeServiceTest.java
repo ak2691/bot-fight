@@ -20,7 +20,7 @@ class BotCodeServiceTest {
     }
 
     @Test
-    void missingLegacyLoadoutDoesNotGrantClassAbilities() throws Exception {
+    void missingLoadoutDoesNotGrantClassAbilities() throws Exception {
         assertThat(service.readAbilities(jsonMapper.readTree("{}")))
                 .containsExactly(19, 20, 34);
     }

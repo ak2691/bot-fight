@@ -348,7 +348,8 @@ public class DuelSimulationService {
                     : TargetingService.offsetTarget(TargetingService.selectableEntity(facingBlock != null
                         ? facingBlock.selectable
                         : movementBlock != null ? movementBlock.selectable : BotLogicContracts.SELECTABLE_OPPONENT, player, opponent, entities), facingBlock != null ? facingBlock : movementBlock);
-        Entity abilityTarget = plan.ability != null && BotLogicContracts.actionUsesTarget(plan.ability.action)
+        Entity abilityTarget = plan.ability != null && BotLogicContracts.actionUsesSelectableTarget(
+                plan.ability.action(), plan.ability.movementMode(), plan.ability.targetMode())
                 ? TargetingService.offsetTarget(TargetingService.selectableEntity(plan.ability.selectable, player, opponent, entities), plan.ability)
                 : null;
         Vector movement = actionExecutionService.movementVector(movementBlock, player, movementTarget);

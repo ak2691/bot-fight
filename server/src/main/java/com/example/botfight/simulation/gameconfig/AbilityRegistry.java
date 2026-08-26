@@ -8,8 +8,6 @@ public final class AbilityRegistry {
     private AbilityRegistry() {}
 
     private static final Map<Integer, String> NAMES = createNames();
-    private static final Map<String, Integer> LEGACY_IDS = createLegacyIds();
-
     public static Map<Integer, String> all() {
         return NAMES;
     }
@@ -21,21 +19,6 @@ public final class AbilityRegistry {
     public static int requireId(int id) {
         if (!contains(id)) throw new IllegalArgumentException("Unknown ability ID: " + id);
         return id;
-    }
-
-    /** Explicit trusted-boundary conversion for persisted or inbound legacy data only. */
-    public static int abilityIdFromLegacyName(String name) {
-        if (name == null) throw new IllegalArgumentException("Legacy ability name is required");
-        Integer id = LEGACY_IDS.get(name);
-        if (id == null) throw new IllegalArgumentException("Unknown legacy ability name: " + name);
-        return id;
-    }
-
-    /** Explicit presentation/migration conversion; ordinary runtime lookup must remain numeric. */
-    public static String legacyAbilityNameFromId(int id) {
-        String name = NAMES.get(id);
-        if (name == null) throw new IllegalArgumentException("Unknown ability ID: " + id);
-        return name;
     }
 
     private static Map<Integer, String> createNames() {
@@ -83,14 +66,4 @@ public final class AbilityRegistry {
         names.put(id, name);
     }
 
-    private static Map<String, Integer> createLegacyIds() {
-        LinkedHashMap<String, Integer> ids = new LinkedHashMap<>();
-        NAMES.forEach((id, name) -> ids.put(name, id));
-        ids.put("swing", 1);
-        ids.put("fire_gun", 3);
-        ids.put("throw_grenade", 4);
-        ids.put("shoot_fireball", 5);
-        ids.put("pistol_shot", 12);
-        return Map.copyOf(ids);
-    }
 }
