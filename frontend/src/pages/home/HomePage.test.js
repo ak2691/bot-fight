@@ -11,6 +11,10 @@ const floatingSource = readFileSync(
     fileURLToPath(new URL("../../components/FloatingLogicBackground.jsx", import.meta.url)),
     "utf8",
 );
+const stylesSource = readFileSync(
+    fileURLToPath(new URL("../../index.css", import.meta.url)),
+    "utf8",
+);
 const puzzleBuilderSource = readFileSync(
     fileURLToPath(new URL("../puzzles/PuzzleBuilderPage.jsx", import.meta.url)),
     "utf8",
@@ -24,6 +28,11 @@ test("the home match action returns to an active match instead of queueing", () 
 
 test("the home practice-room action uses the stable practice route", () => {
     assert.match(source, /if \(id === "room"\) navigate\("\/practice"\)/);
+});
+
+test("home action rows keep the ability stack at the standard action height", () => {
+    assert.match(stylesSource, /\.home-action-icon\s*\{[\s\S]*?height: 54px;/);
+    assert.match(stylesSource, /\.home-action-ability-icons\s*\{[\s\S]*?height: 54px;/);
 });
 
 test("floating action nodes use the current movement label and targeting description", () => {

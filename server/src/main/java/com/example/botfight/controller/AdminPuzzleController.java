@@ -1,10 +1,8 @@
 package com.example.botfight.controller;
 
 import com.example.botfight.DTO.PuzzleAdminResponseDTO;
-import com.example.botfight.DTO.PuzzlePriorityMigrationResponse;
 import com.example.botfight.DTO.PuzzleSaveRequestDTO;
 import com.example.botfight.service.puzzle.PuzzleNotFoundException;
-import com.example.botfight.service.puzzle.PuzzlePriorityMigrationService;
 import com.example.botfight.service.puzzle.PuzzleService;
 import com.example.botfight.service.puzzle.PuzzleValidationException;
 import java.util.List;
@@ -27,13 +25,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminPuzzleController {
 
     private final PuzzleService puzzleService;
-    private final PuzzlePriorityMigrationService puzzlePriorityMigrationService;
 
-    public AdminPuzzleController(
-            PuzzleService puzzleService,
-            PuzzlePriorityMigrationService puzzlePriorityMigrationService) {
+    public AdminPuzzleController(PuzzleService puzzleService) {
         this.puzzleService = puzzleService;
-        this.puzzlePriorityMigrationService = puzzlePriorityMigrationService;
     }
 
     @PostMapping
@@ -56,12 +50,6 @@ public class AdminPuzzleController {
             @RequestBody PuzzleSaveRequestDTO request,
             Authentication authentication) {
         return puzzleService.update(puzzleNumber, request, authentication);
-    }
-
-    @PostMapping("/migrate-tree-priorities")
-    public PuzzlePriorityMigrationResponse migrateTreePriorities(
-            Authentication authentication) {
-        return puzzlePriorityMigrationService.migrateLegacyTreePriorities(authentication);
     }
 
     @ExceptionHandler(PuzzleValidationException.class)
