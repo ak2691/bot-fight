@@ -82,7 +82,7 @@ export default function ProfileSearchPage() {
                     </button>
                 </div>
 
-                <section className="mt-9 overflow-hidden rounded-2xl border border-cyan-900/80 bg-[#091521ed] shadow-[0_18px_60px_rgba(0,0,0,.24)]" aria-live="polite">
+                <section className="mt-9 overflow-hidden rounded-2xl border border-cyan-900/80 bg-[#151a1d] shadow-[0_18px_60px_rgba(0,0,0,.24)]" aria-live="polite">
                     {status === "empty" ? (
                         <p className="px-6 py-14 text-center text-sm text-slate-500">Enter a username to search for players.</p>
                     ) : status === "loading" && profiles.length === 0 ? (
@@ -145,7 +145,7 @@ function ProfileResult({ profile }) {
     return (
         <Link
             to={`/profile/${encodeURIComponent(profile.username)}`}
-            className="flex items-center gap-4 px-6 py-4 transition hover:bg-cyan-950/20 focus:bg-cyan-950/20 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-cyan-400 sm:px-8"
+            className="flex items-center gap-4 px-6 py-4 transition hover:bg-[#1b2226] focus:bg-[#1b2226] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-cyan-400 sm:px-8"
         >
             <span className="grid h-12 w-12 flex-none place-items-center rounded-full border border-cyan-400/60 bg-cyan-950/40 text-lg font-bold text-cyan-300">
                 {initial}

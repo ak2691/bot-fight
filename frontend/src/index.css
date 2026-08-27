@@ -2935,7 +2935,7 @@ button {
   align-items: center;
   gap: 1rem;
   border: 0;
-  padding: .65rem 0 .65rem 1.1rem;
+  padding: .65rem 1.1rem .65rem 1.1rem;
   background: transparent;
   color: inherit;
   text-align: left;
@@ -3062,6 +3062,7 @@ button {
     grid-template-columns: 2.5rem minmax(0, 1fr) 8rem;
     gap: .6rem;
     padding-left: .75rem;
+    padding-right: .7rem;
   }
 
   .puzzle-edit-button {
@@ -3073,17 +3074,15 @@ button {
 
 @media (max-width: 520px) {
   .puzzle-list-heading {
-    grid-template-columns: 2.15rem minmax(0, 1fr) 2.25rem;
-  }
-
-  .puzzle-list-heading span:nth-child(3) {
-    display: none;
+    grid-template-columns: 2.15rem minmax(0, 1fr) max-content 2.25rem;
+    padding-right: .75rem;
   }
 
   .puzzle-list-open-button {
     grid-template-columns: 2.15rem minmax(0, 1fr) auto;
     gap: .45rem;
     padding-top: .6rem;
+    padding-right: .75rem;
     padding-bottom: .6rem;
   }
 

@@ -52,6 +52,12 @@ test("profile secondary actions stay neutral until hover", () => {
     assert.match(profileSource, /profile-toolbar-button--primary h-11 text-sm font-bold/);
 });
 
+test("profile search results use the charcoal profile-card surface", () => {
+    assert.match(profileSearchSource, /rounded-2xl border border-cyan-900\/80 bg-\[#151a1d\]/);
+    assert.match(profileSearchSource, /hover:bg-\[#1b2226\] focus:bg-\[#1b2226\]/);
+    assert.doesNotMatch(profileSearchSource, /rounded-2xl border border-cyan-900\/80 bg-\[#091521ed\]/);
+});
+
 test("navbar reserves its layout slot and follows scroll direction globally", () => {
     assert.match(navbarSource, /useLocation/);
     assert.match(navbarSource, /className="app-navbar-slot"/);

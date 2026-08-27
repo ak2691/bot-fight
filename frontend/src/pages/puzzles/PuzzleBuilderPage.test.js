@@ -54,5 +54,8 @@ test("the puzzle list uses mapped responsive decorative pieces and the charcoal 
     assert.doesNotMatch(listSource, /AVAILABLE/);
     assert.match(globalStyles, /\.puzzle-list-frame \{[\s\S]*border: 1px solid #343c42;[\s\S]*background: #151a1d;/);
     assert.match(globalStyles, /\.puzzle-list-row:hover \{[\s\S]*background: #1b2226;/);
+    assert.match(globalStyles, /\.puzzle-list-open-button \{[\s\S]*padding: \.65rem 1\.1rem \.65rem 1\.1rem;/);
+    assert.match(globalStyles, /@media \(max-width: 520px\) \{[\s\S]*grid-template-columns: 2\.15rem minmax\(0, 1fr\) max-content 2\.25rem;/);
+    assert.doesNotMatch(globalStyles, /\.puzzle-list-heading span:nth-child\(3\) \{[^}]*display: none;/);
     assert.doesNotMatch(globalStyles.slice(globalStyles.indexOf(".puzzle-page {"), globalStyles.indexOf(".info-circle-icon")), /gradient/);
 });
