@@ -8,7 +8,7 @@ import MatchHeader from "./components/MatchHeader.jsx";
 import MatchView from "./components/MatchView.jsx";
 import { useMatchLifecycle } from "./hooks/useMatchLifecycle.js";
 
-const MATCH_SURFACE_CLASS = "gray-button-page min-h-screen bg-arena-deep text-ink-hi font-ui";
+const MATCH_SURFACE_CLASS = "min-h-screen bg-arena-deep text-ink-hi font-ui";
 
 export default function GamePage() {
     const navigate = useNavigate();

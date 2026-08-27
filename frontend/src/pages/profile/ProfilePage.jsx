@@ -357,7 +357,7 @@ export default function ProfilePage() {
     }, [blockState, hideInvitesFrom, isOwner, profile?.username]);
 
     return (
-        <main className="min-h-screen bg-[#171a1c] font-interface text-slate-100">
+        <main className="profile-page min-h-screen bg-[#181b1c] font-interface text-[#f2f4f5]">
             <AppNavbar account currentPage="profile" />
 
             <section className="relative z-[1] mx-auto w-full max-w-[1180px] px-5 py-10 sm:px-8 sm:py-12">
@@ -439,7 +439,7 @@ function ProfileError({ onRetry, retryRateLimited }) {
                 type="button"
                 onClick={onRetry}
                 disabled={retryRateLimited}
-                className="profile-toolbar-button profile-toolbar-button--blue mt-6 font-bold disabled:cursor-wait"
+                className="profile-toolbar-button mt-6 font-bold disabled:cursor-wait"
             >
                 {retryRateLimited ? "Please wait..." : "Try again"}
             </button>
@@ -474,7 +474,7 @@ function ProfileSearchBar({ onSearch }) {
                     />
                     <button
                         type="submit"
-                        className="profile-toolbar-button profile-toolbar-button--blue h-11 text-sm font-bold"
+                        className="profile-toolbar-button h-11 text-sm font-bold"
                     >
                         Search
                     </button>
@@ -569,7 +569,7 @@ function ProfileContent({
                                 <button
                                     type="button"
                                     onClick={() => window.location.assign(apiUrl("/api/auth/google/link"))}
-                                    className="profile-toolbar-button profile-toolbar-button--blue mt-4 text-xs font-bold"
+                                    className="profile-toolbar-button mt-4 text-xs font-bold"
                                 >
                                     Link Google account
                                 </button>
@@ -602,7 +602,7 @@ function DuelInviteButton({ username, state, error, onInvite }) {
                 type="button"
                 onClick={() => void onInvite()}
                 disabled={state === "sending" || state === "sent"}
-                className="profile-toolbar-button profile-toolbar-button--violet mt-4 text-sm font-bold disabled:cursor-wait"
+                className="profile-toolbar-button profile-toolbar-button--primary mt-4 text-sm font-bold disabled:cursor-wait"
             >
                 {state === "sending" ? "Sending..." : state === "sent" ? "Invite sent" : "Invite to 1v1"}
             </button>
@@ -644,7 +644,7 @@ function RecentMatchesCard({ matches, totalMatches, historyStatus, isOwner, onOp
                 <button
                     type="button"
                     onClick={onOpenMatches}
-                    className="profile-toolbar-button profile-toolbar-button--blue w-full flex-none text-sm font-bold sm:w-auto"
+                    className="profile-toolbar-button w-full flex-none text-sm font-bold sm:w-auto"
                 >
                     View All Matches
                 </button>
@@ -764,7 +764,7 @@ function AboutMeCard({ aboutMe, editable, onSave }) {
                             {error ?? `${draft.length}/500 characters · Plain text only`}
                         </p>
                         <div className="flex gap-2">
-                            <button type="submit" disabled={isSaving} className="profile-toolbar-button profile-toolbar-button--blue h-11 text-sm font-bold">
+                            <button type="submit" disabled={isSaving} className="profile-toolbar-button profile-toolbar-button--primary h-11 text-sm font-bold">
                                 {isSaving ? "Saving..." : "Save"}
                             </button>
                             <button type="button" onClick={() => { setDraft(aboutMe ?? ""); setError(null); setIsEditing(false); }} className="profile-toolbar-button h-11 text-sm">
@@ -847,7 +847,7 @@ function MatchesModal({ matches, totalMatches, historyStatus, hasMore, onLoadMor
                         <p className="text-xs text-slate-500">All available matches are loaded.</p>
                     )}
                     {isIncrementalError && (
-                        <button type="button" onClick={onLoadMore} className="profile-toolbar-button profile-toolbar-button--blue w-full text-sm font-bold sm:w-auto">
+                        <button type="button" onClick={onLoadMore} className="profile-toolbar-button w-full text-sm font-bold sm:w-auto">
                             Try again
                         </button>
                     )}
@@ -942,7 +942,7 @@ function SolvedPuzzlesModal({ puzzles, totalPuzzles, puzzlesStatus, hasMore, onL
                         <p className="text-xs text-slate-500">All solved puzzles are loaded.</p>
                     )}
                     {isIncrementalError && (
-                        <button type="button" onClick={onLoadMore} className="profile-toolbar-button profile-toolbar-button--blue w-full text-sm font-bold sm:w-auto">
+                        <button type="button" onClick={onLoadMore} className="profile-toolbar-button w-full text-sm font-bold sm:w-auto">
                             Try again
                         </button>
                     )}
@@ -985,7 +985,7 @@ function UsernameEditor({ username, onSave, onLogout }) {
     return (
         <div className="mt-7 border-t border-cyan-900/70 pt-5">
             {!isEditing ? (
-                <button type="button" onClick={() => { setError(null); setIsEditing(true); }} className="profile-toolbar-button profile-toolbar-button--blue text-sm font-bold">
+                <button type="button" onClick={() => { setError(null); setIsEditing(true); }} className="profile-toolbar-button text-sm font-bold">
                     Change username
                 </button>
             ) : (
@@ -1009,7 +1009,7 @@ function UsernameEditor({ username, onSave, onLogout }) {
                         />
                     </label>
                     <div className="flex gap-2">
-                        <button type="submit" disabled={isSaving} className="profile-toolbar-button profile-toolbar-button--blue h-11 text-sm font-bold">
+                        <button type="submit" disabled={isSaving} className="profile-toolbar-button profile-toolbar-button--primary h-11 text-sm font-bold">
                             {isSaving ? "Saving..." : "Save"}
                         </button>
                         <button type="button" onClick={() => { setDraft(username ?? ""); setError(null); setIsEditing(false); }} className="profile-toolbar-button h-11 text-sm">

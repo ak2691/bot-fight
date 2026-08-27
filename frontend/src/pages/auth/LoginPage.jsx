@@ -231,7 +231,7 @@ function UsernameSetupModal({ username, setUsername, error, isSubmitting, onSubm
                             className="w-full max-w-xs rounded border border-border-lo bg-zinc-950 px-3 py-3 text-sm text-ink-white outline-none placeholder:text-slate-400 focus:border-cyan-500"
                         />
                     {error && <p id="google-username-error" className="form-error w-full max-w-xs text-sm text-red-300" role="alert">{error}</p>}
-                    <button type="submit" disabled={isSubmitting} className="arena-toolbar-button arena-toolbar-button--neutral username-save-button max-w-xs">
+                    <button type="submit" disabled={isSubmitting} className="arena-toolbar-button arena-toolbar-button--neutral max-w-xs">
                         {isSubmitting ? "SAVING" : "SAVE USERNAME"}
                     </button>
                 </form>

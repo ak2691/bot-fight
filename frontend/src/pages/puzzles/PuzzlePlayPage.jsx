@@ -123,7 +123,7 @@ function PuzzlePlayToolbarControls({ onBack }) {
 
 function PuzzleStatusPage({ children }) {
     return (
-        <main className="gray-button-page min-h-screen bg-[#171a1c] font-interface text-white">
+        <main className="min-h-screen bg-[#171a1c] font-interface text-white">
             <AppNavbar account currentPage="puzzles" />
             <section className="mx-auto w-full max-w-[980px] px-4 py-12 sm:px-8">
                 {children}

@@ -15,6 +15,7 @@ const SEARCH_PATH = fileURLToPath(new URL("./modals/SearchRootNodesModal.jsx", i
 const ICON_PATH = fileURLToPath(new URL("./controls/MatchToolIcon.jsx", import.meta.url));
 const CSS_PATH = fileURLToPath(new URL("../../index.css", import.meta.url));
 const MENU_EVENTS_PATH = fileURLToPath(new URL("./utils/codeMenuEvents.js", import.meta.url));
+const PIXI_CANVAS_PATH = fileURLToPath(new URL("../pixi/PixiCanvas.jsx", import.meta.url));
 
 function readCodingSource() {
     return [PANEL_PATH, BOARD_PATH, NODES_PATH].map((path) => readFileSync(path, "utf8")).join("\\n");
@@ -571,4 +572,25 @@ test("code graph has no standalone variable, target, or connection workflow", ()
     assert.doesNotMatch(source, /const editorGraph|editorGraph\.|connections\.map/);
     assert.match(source, /delete clean\.editorGraph/);
     assert.doesNotMatch(source, /code-condition-inline-config/);
+});
+
+test("Pixi hit-testing only selects bots and ignores visual effects", () => {
+    const source = readFileSync(PIXI_CANVAS_PATH, "utf8");
+
+    assert.match(source, /background\.eventMode = "none"/);
+    assert.match(source, /particleLayer\.eventMode = "none"/);
+    assert.match(source, /container\.eventMode = isBotShape\(shape\) \? "static" : "none"/);
+    assert.match(source, /graphics\.eventMode = "none"/);
+    assert.match(source, /display\.eventMode = "none"/);
+    assert.match(source, /function beginDrag\(event, view\) \{\s*if \(!isBotShape\(view\.shape\)\) return;/);
+});
+
+test("puzzle arenas keep bot selection and dragging enabled while paused", () => {
+    const source = readFileSync(ARENA_PATH, "utf8");
+
+    assert.match(source, /const \[isEditingArena, setIsEditingArena\] = useState\(true\)/);
+    assert.match(source, /onSelectShape=\{isEditingArena && !tutorialMode \? setSelectedId/);
+    assert.match(source, /onUpdateShape=\{isEditingArena && !tutorialMode \? handleUpdateShape/);
+    assert.match(source, /editable=\{isEditingArena && !tutorialMode\}/);
+    assert.match(source, /stopAutoPlay\(\);\s*setIsEditingArena\(true\);/);
 });

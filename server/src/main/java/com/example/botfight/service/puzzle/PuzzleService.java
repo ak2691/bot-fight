@@ -129,27 +129,13 @@ public class PuzzleService {
 
     @Transactional
     public PuzzleAdminResponseDTO create(PuzzleSaveRequestDTO request, Authentication authentication) {
-        AppUser author = currentUserService.requireCurrentUser(authentication);
-        if (author.getRole() != UserRole.ADMIN) {
-            throw new AccessDeniedException("admin role is required");
-        }
+        AppUser author = requireAdmin(authentication);
         adminPuzzleCreationRateLimiter.requireAllowed(author.getId());
         ValidatedPuzzle validated = validate(request);
 
         Puzzle puzzle = new Puzzle();
         puzzle.setPuzzleNumber(nextPuzzleNumber());
-        puzzle.setName(validated.name());
-        puzzle.setDescription(validated.description());
-        puzzle.setInitialElapsedMs(validated.initialElapsedMs());
-        puzzle.setStatus(validated.published() ? PuzzleStatus.PUBLISHED : PuzzleStatus.DRAFT);
-        puzzle.setHideOpponentCode(validated.hideOpponentCode());
-        puzzle.setTimeLimitMs(validated.timeLimitMs());
-        puzzle.setMaxActionNodes(validated.maxActionNodes());
-        puzzle.setMaxConditionNodes(validated.maxConditionNodes());
-        puzzle.setMaxCustomVariables(validated.maxCustomVariables());
-        puzzle.setWinConditions(toJson(validated.winConditions()));
-        puzzle.setLoseConditions(toJson(validated.loseConditions()));
-        puzzle.setLogicConfiguration(toJson(validated.logicConfiguration()));
+        applyValidatedPuzzle(puzzle, validated);
         puzzle.setCreatedBy(author);
         puzzle.addBot(toPuzzleBot(validated.playerBot(), PuzzleBotRole.PLAYER));
         puzzle.addBot(toPuzzleBot(validated.opponentBot(), PuzzleBotRole.OPPONENT));
@@ -162,6 +148,40 @@ public class PuzzleService {
                     "create-published-puzzle");
             databaseLookupCache.invalidatePuzzleCatalog("published-puzzle-created");
         }
+        return toAdminResponse(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public PuzzleAdminResponseDTO getForAdmin(long puzzleNumber, Authentication authentication) {
+        requireAdmin(authentication);
+        return puzzleRepository.findByPuzzleNumber(puzzleNumber)
+                .map(this::toAdminResponse)
+                .orElseThrow(() -> new PuzzleNotFoundException(puzzleNumber));
+    }
+
+    @Transactional
+    public PuzzleAdminResponseDTO update(
+            long puzzleNumber,
+            PuzzleSaveRequestDTO request,
+            Authentication authentication) {
+        AppUser author = requireAdmin(authentication);
+        adminPuzzleCreationRateLimiter.requireAllowed(author.getId());
+        ValidatedPuzzle validated = validate(request);
+        Puzzle puzzle = puzzleRepository.findByPuzzleNumber(puzzleNumber)
+                .orElseThrow(() -> new PuzzleNotFoundException(puzzleNumber));
+
+        // The path number selects the existing row. Neither the puzzle UUID nor
+        // the puzzle number is copied from the request, so both remain stable.
+        applyValidatedPuzzle(puzzle, validated);
+        updatePuzzleBot(puzzle, PuzzleBotRole.PLAYER, validated.playerBot());
+        updatePuzzleBot(puzzle, PuzzleBotRole.OPPONENT, validated.opponentBot());
+
+        Puzzle saved = puzzleRepository.saveAndFlush(puzzle);
+        databaseLookupCache.logDatabaseWrite(
+                "puzzle-catalog",
+                saved.getPuzzleNumber(),
+                "update-puzzle");
+        databaseLookupCache.invalidatePuzzleCatalog("puzzle-updated");
         return toAdminResponse(saved);
     }
 
@@ -271,6 +291,14 @@ public class PuzzleService {
     private void requireAuthenticatedGetAllowed(Authentication authentication, String category) {
         UUID userId = currentUserService.requireCurrentUserId(authentication);
         authenticatedGetRateLimiter.requireAllowed(category + ":" + userId);
+    }
+
+    private AppUser requireAdmin(Authentication authentication) {
+        AppUser user = currentUserService.requireCurrentUser(authentication);
+        if (user.getRole() != UserRole.ADMIN) {
+            throw new AccessDeniedException("admin role is required");
+        }
+        return user;
     }
 
     private CachedPuzzle publishedPuzzle(long puzzleNumber) {
@@ -609,13 +637,45 @@ public class PuzzleService {
     private PuzzleBot toPuzzleBot(ValidatedBot source, PuzzleBotRole role) {
         PuzzleBot bot = new PuzzleBot();
         bot.setRole(role);
+        applyValidatedBot(bot, source);
+        return bot;
+    }
+
+    private void applyValidatedPuzzle(Puzzle puzzle, ValidatedPuzzle validated) {
+        puzzle.setName(validated.name());
+        puzzle.setDescription(validated.description());
+        puzzle.setInitialElapsedMs(validated.initialElapsedMs());
+        puzzle.setStatus(validated.published() ? PuzzleStatus.PUBLISHED : PuzzleStatus.DRAFT);
+        puzzle.setHideOpponentCode(validated.hideOpponentCode());
+        puzzle.setTimeLimitMs(validated.timeLimitMs());
+        puzzle.setMaxActionNodes(validated.maxActionNodes());
+        puzzle.setMaxConditionNodes(validated.maxConditionNodes());
+        puzzle.setMaxCustomVariables(validated.maxCustomVariables());
+        puzzle.setWinConditions(toJson(validated.winConditions()));
+        puzzle.setLoseConditions(toJson(validated.loseConditions()));
+        puzzle.setLogicConfiguration(toJson(validated.logicConfiguration()));
+    }
+
+    private void updatePuzzleBot(Puzzle puzzle, PuzzleBotRole role, ValidatedBot source) {
+        PuzzleBot bot = puzzle.getBots().stream()
+                .filter(candidate -> candidate.getRole() == role)
+                .findFirst()
+                .orElseGet(() -> {
+                    PuzzleBot created = new PuzzleBot();
+                    created.setRole(role);
+                    puzzle.addBot(created);
+                    return created;
+                });
+        applyValidatedBot(bot, source);
+    }
+
+    private void applyValidatedBot(PuzzleBot bot, ValidatedBot source) {
         bot.setLoadout(source.loadout());
         bot.setStartX(source.startX());
         bot.setStartY(source.startY());
         bot.setRotation(source.rotation());
         bot.setStartHp(source.startHp());
         bot.setBrainPayload(toJson(source.brain()));
-        return bot;
     }
 
     private PuzzleAdminResponseDTO toAdminResponse(Puzzle puzzle) {

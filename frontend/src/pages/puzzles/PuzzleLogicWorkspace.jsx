@@ -7,9 +7,12 @@ import {
     MAX_LOGIC_BLOCKS,
     MAX_ROOT_NODES,
     MAX_TOTAL_CONDITIONS,
+    SELECTABLE_TYPES,
     STATE_VARIABLES,
     VISIBLE_STATE_VARIABLES,
+    customVariableDefinitions,
     createExpressionCondition,
+    normalizeConditions,
     normalizeRoots,
 } from "../../gameArena/botlogic/code/BotCode.js";
 import { normalizeCreatedOrder, rootIdForCreatedOrder } from "../../gameArena/botlogic/code/configuration/identifiers.js";
@@ -104,30 +107,35 @@ export function flattenPuzzleConditions(configuration, kind) {
 
 export function normalizePuzzleLogic(configuration) {
     if (!configuration) return configuration;
-    const conditionNumbers = { win: 0, lose: 0, modify: 0 };
+    const conditionNumbers = { win: 0, lose: 0, modify: 0, other: 0 };
+    const customVariables = customVariableDefinitions(configuration);
     const roots = normalizeRoots(configuration.roots ?? []).map((root) => {
-        if (!["win", "lose", "modify"].includes(root?.kind)) return root;
+        const normalizedKind = typeof root?.kind === "string" ? root.kind.trim().toLowerCase() : root?.kind;
+        const normalizedRoot = normalizedKind !== root?.kind && typeof root?.kind === "string"
+            ? { ...root, kind: normalizedKind }
+            : root;
         return {
-            ...root,
-            branches: normalizePuzzleBranches(root.branches, root.kind, conditionNumbers),
+            ...normalizedRoot,
+            branches: normalizePuzzleBranches(root?.branches, normalizedKind, conditionNumbers, customVariables),
         };
     });
     return { ...configuration, roots };
 }
 
-function normalizePuzzleBranches(branches, kind, conditionNumbers) {
+function normalizePuzzleBranches(branches, kind, conditionNumbers, customVariables) {
     if (!Array.isArray(branches)) return branches;
+    const conditionKind = ["win", "lose", "modify"].includes(kind) ? kind : "other";
     return branches.map((branch) => {
         const normalizedBranch = kind === "modify" ? stripLegacyActionFields(branch) : { ...branch };
         return {
             ...normalizedBranch,
             conditions: Array.isArray(branch?.conditions)
-                ? branch.conditions.map((condition) => ({
+                ? normalizeConditions(branch.conditions, customVariables, SELECTABLE_TYPES).map((condition) => ({
                     ...condition,
-                    id: `puzzle-condition-${kind}-${++conditionNumbers[kind]}`,
+                    id: `puzzle-condition-${conditionKind}-${++conditionNumbers[conditionKind]}`,
                 }))
                 : branch?.conditions,
-            children: normalizePuzzleBranches(branch?.children, kind, conditionNumbers),
+            children: normalizePuzzleBranches(branch?.children, conditionKind, conditionNumbers, customVariables),
         };
     });
 }

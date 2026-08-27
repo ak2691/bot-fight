@@ -415,11 +415,11 @@ function evaluateAngleVariants(conditions, state, groups, groupIndex, angleOverr
     return false;
 }
 
-function normalizeConditions(conditions, customVariables = []) {
+export function normalizeConditions(conditions, customVariables = [], selectableTypes = SELECTABLE_TYPES) {
     const source = Array.isArray(conditions) ? conditions : [{ type: CONDITION_TYPES[0].id }];
     return source.slice(0, MAX_CONDITIONS_PER_BRANCH).map((condition, index) => {
         if (condition?.type === BOT_CODE_CONDITIONS.EXPRESSION || condition?.left) {
-            return withConditionJoin(normalizeExpressionCondition(condition, customVariables), condition, index);
+            return withConditionJoin(normalizeExpressionCondition(condition, customVariables, selectableTypes), condition, index);
         }
         const definition = CONDITION_BY_ID.get(condition?.type);
         if (!definition) {

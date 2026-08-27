@@ -59,6 +59,16 @@ export async function fetchPuzzle(puzzleNumber) {
     return body;
 }
 
+export async function fetchAdminPuzzle(puzzleNumber) {
+    const response = await fetch(`${ADMIN_PUZZLES_ENDPOINT}/${encodeURIComponent(puzzleNumber)}`, {
+        credentials: "include",
+    });
+    const body = await response.json().catch(() => ({}));
+    const message = typeof body === "string" ? body : body.message;
+    if (!response.ok) throw new Error(message ?? `Could not load puzzle (${response.status})`);
+    return body;
+}
+
 export async function submitPuzzleAttempt(puzzleNumber, payload) {
     const response = await fetch(`${PUZZLES_ENDPOINT}/${encodeURIComponent(puzzleNumber)}/attempt`, {
         method: "POST",
@@ -93,6 +103,26 @@ export async function savePuzzle(payload) {
     if (!response.ok) {
         const errors = Array.isArray(body.errors) && body.errors.length ? `: ${body.errors.join("; ")}` : "";
         throw new Error(`${body.message ?? `Could not save puzzle (${response.status})`}${errors}`);
+    }
+    clearPuzzleListCache();
+    return body;
+}
+
+export async function updatePuzzle(puzzleNumber, payload) {
+    const response = await fetch(`${ADMIN_PUZZLES_ENDPOINT}/${encodeURIComponent(puzzleNumber)}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: {
+            "Content-Type": "application/json",
+            ...(await ensureCsrfHeaders("PUT")),
+        },
+        body: JSON.stringify(payload),
+    });
+    const body = await response.json().catch(() => ({}));
+    const message = typeof body === "string" ? body : body.message;
+    if (!response.ok) {
+        const errors = Array.isArray(body.errors) && body.errors.length ? `: ${body.errors.join("; ")}` : "";
+        throw new Error(`${message ?? `Could not update puzzle (${response.status})`}${errors}`);
     }
     clearPuzzleListCache();
     return body;

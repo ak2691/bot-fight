@@ -225,9 +225,10 @@ function isStorageQuotaError(error) {
 }
 
 function sanitizeStrategyConfigurationForLoadout(configuration, loadoutId) {
-    const source = configuration && typeof configuration === "object"
+    const sourceConfiguration = configuration && typeof configuration === "object"
         ? configuration
         : createDefaultAbilityStrategyConfiguration();
+    const source = normalizeAbilityStrategyConfiguration(sourceConfiguration);
     const allowedActionIds = new Set(actionIdsForLoadoutConfiguration(loadoutId));
     const sanitizeAction = (action) => {
         if (!action || typeof action !== "object") return action;
@@ -418,7 +419,7 @@ export default function Arena({
     const [measurementEnabled, setMeasurementEnabled] = useState(false);
     const [measurementPoints, setMeasurementPoints] = useState([]);
     const [isBaseTesting] = useState(false);
-    const [isEditingArena, setIsEditingArena] = useState(!isPuzzleMode);
+    const [isEditingArena, setIsEditingArena] = useState(true);
     const [testingConfiguration, setTestingConfiguration] = useState(() => sanitizeStrategyConfigurationForLoadout(
         tutorialMode ? loadTutorialStrategyConfiguration(initialTutorialStep, initialTutorialScenario.emptyCode) : isAbilityTesting ? catalogueAbilityTestingPreset.playerCode : matchContext?.roundBrains?.at(-1)?.brain
             ?? (isPuzzleMode
@@ -1054,7 +1055,7 @@ export default function Arena({
     const handleAutoPlayToggle = () => {
         if (isAutoPlaying) {
             stopAutoPlay();
-            setIsEditingArena(!isPuzzleMode);
+            setIsEditingArena(true);
             if (tutorialMode && tutorialRunRef.current) {
                 tutorialRunRef.current = null;
                 setTutorialChallenge((current) => ({ ...current, status: "idle", code: "stopped" }));
@@ -1167,7 +1168,7 @@ export default function Arena({
     ]);
 
     return (
-        <div className={`arena-page-shell relative flex h-screen flex-col text-ink-hi font-ui overflow-hidden ${isMatchTesting ? "match-arena-shell" : "bg-arena-deep"} ${isMatchTesting || isPracticeRoom || isPuzzleBuilder || isPuzzleMode ? "gray-button-page" : ""}`}>
+        <div className={`arena-page-shell relative flex h-screen flex-col text-ink-hi font-ui overflow-hidden ${isMatchTesting ? "match-arena-shell" : "bg-arena-deep"}`}>
             {submitStatus && (
                 <div role="status" aria-live="polite" className={`
                     fixed bottom-6 left-1/2 -translate-x-1/2 z-50
@@ -1198,10 +1199,10 @@ export default function Arena({
                             <PixiCanvas
                             shapes={shapes}
                             selectedId={selectedId}
-                            onSelectShape={isEditingArena && !tutorialMode && !isPuzzleMode ? setSelectedId : () => { }}
-                            onUpdateShape={isEditingArena && !tutorialMode && !isPuzzleMode ? handleUpdateShape : () => { }}
-                            onDeselectAll={isEditingArena && !tutorialMode && !isPuzzleMode ? () => setSelectedId(null) : () => { }}
-                            editable={isEditingArena && !tutorialMode && !isPuzzleMode}
+                            onSelectShape={isEditingArena && !tutorialMode ? setSelectedId : () => { }}
+                            onUpdateShape={isEditingArena && !tutorialMode ? handleUpdateShape : () => { }}
+                            onDeselectAll={isEditingArena && !tutorialMode ? () => setSelectedId(null) : () => { }}
+                            editable={isEditingArena && !tutorialMode}
                             fillAvailable
                             fixedLayout={usesArenaResponsiveLimits}
                             abilityLayout="split"

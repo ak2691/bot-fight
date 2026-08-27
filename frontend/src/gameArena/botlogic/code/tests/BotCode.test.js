@@ -7,6 +7,7 @@ import {
     countConditionSlots,
     inspectAbilityStrategyConditions,
     normalizeConditionSelections,
+    normalizeConditions,
     normalizeAbilityStrategyConfiguration,
     normalizeRoots,
     setLogicBranchPriority,
@@ -121,6 +122,33 @@ test("browser selectable inputs enforce the complete conditional identity matrix
     assert.equal(selectableMatchesVariable(selectable("opponent"), count), false);
     assert.equal(selectableMatchesVariable(selectable("opponent"), botAbility), true);
     assert.equal(selectableMatchesVariable(selectable("opponent_grenade"), botAbility), false);
+});
+
+test("condition normalization emits canonical server variable ids", () => {
+    const retired = normalizeConditions([{
+        type: "expression",
+        left: "opponent.hp",
+        comparator: "lte",
+        right: { type: "number", value: 0 },
+    }])[0];
+    const displayName = normalizeConditions([{
+        type: "expression",
+        left: "Time Since Start",
+        comparator: "lt",
+        right: { type: "number", value: 5 },
+    }])[0];
+    const current = normalizeConditions([{
+        type: "expression",
+        left: "selectable.hp",
+        leftSelectable: "opponent",
+        comparator: "lte",
+        right: { type: "number", value: 0 },
+    }])[0];
+
+    assert.equal(retired.left, "match.elapsedSeconds");
+    assert.equal(displayName.left, "match.elapsedSeconds");
+    assert.equal(current.left, "selectable.hp");
+    assert.equal(current.leftSelectable, "opponent");
 });
 
 test("target health metrics resolve zero for targets without health", () => {

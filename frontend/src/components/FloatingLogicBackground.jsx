@@ -1,8 +1,8 @@
 const floatingNodePairs = [
-    { id: "hp", className: "home-float-pair-1", condition: { depth: 1, label: "Conditional 1", rows: [["IF", "Entity HP", "<", "45"]] }, action: { label: "Movement: Walk", target: "Away From Opponent" } },
-    { id: "distance", className: "home-float-pair-2", condition: { depth: 1, label: "Conditional 2", rows: [["IF", "Distance Between Entities", ">", "100"]] }, action: { label: "Movement: Walk", target: "Toward Opponent" } },
+    { id: "hp", className: "home-float-pair-1", condition: { depth: 1, label: "Conditional 1", rows: [["IF", "Entity HP", "<", "45"]] }, action: { label: "Walk", target: "180 deg from Opponent" } },
+    { id: "distance", className: "home-float-pair-2", condition: { depth: 1, label: "Conditional 2", rows: [["IF", "Distance Between Entities", ">", "100"]] }, action: { label: "Walk", target: "0 deg from Opponent" } },
     { id: "always", className: "home-float-pair-3", condition: { depth: 1, label: "Conditional 1", rows: [["IF", "ALWAYS"]] }, action: { label: "Face Target", target: "Opponent" } },
-    { id: "bearing", className: "home-float-pair-4", wide: true, condition: { depth: 1, label: "Conditional 1", rows: [["IF", "Distance Between Entities", "<=", "115"], ["AND", "Relative Bearing of Target From Entity (Shortest)", "<=", "75"]] }, action: { label: "Heavy Slash", target: "Opponent" } },
+    { id: "bearing", className: "home-float-pair-4", wide: true, condition: { depth: 1, label: "Conditional 1", rows: [["IF", "Distance Between Entities", "<=", "115"], ["AND", "Relative Bearing of Target From Entity", "<=", "75"]] }, action: { label: "Heavy Slash", target: "Opponent" } },
 ];
 
 function FloatingNode({ node }) {

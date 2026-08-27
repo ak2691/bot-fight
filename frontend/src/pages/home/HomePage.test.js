@@ -26,9 +26,16 @@ test("the home practice-room action uses the stable practice route", () => {
     assert.match(source, /if \(id === "room"\) navigate\("\/practice"\)/);
 });
 
-test("floating action nodes use the current movement action label", () => {
-    assert.match(floatingSource, /label: "Movement: Walk"/);
-    assert.doesNotMatch(floatingSource, /label: "Walk"/);
+test("floating action nodes use the current movement label and targeting description", () => {
+    assert.match(floatingSource, /label: "Walk", target: "180 deg from Opponent"/);
+    assert.match(floatingSource, /label: "Walk", target: "0 deg from Opponent"/);
+    assert.doesNotMatch(floatingSource, /label: "Movement: Walk"/);
+    assert.doesNotMatch(floatingSource, /Away From Opponent|Toward Opponent/);
+});
+
+test("home bearing nodes use the compact display label", () => {
+    assert.match(floatingSource, /"Relative Bearing of Target From Entity"/);
+    assert.doesNotMatch(floatingSource, /"Relative Bearing of Target From Entity \(Shortest\)"/);
 });
 
 test("admin puzzle starting stats give your bot the cyan panel treatment", () => {

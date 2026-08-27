@@ -205,6 +205,14 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     const particleLayer = new Container();
     const measurementLayer = new Container();
     const overlay = new Graphics();
+    background.eventMode = "none";
+    layers.zones.eventMode = "none";
+    layers.projectiles.eventMode = "none";
+    layers.entities.eventMode = "none";
+    layers.lockOn.eventMode = "none";
+    particleLayer.eventMode = "none";
+    measurementLayer.eventMode = "none";
+    overlay.eventMode = "none";
     camera.addChild(background, layers.zones, layers.projectiles, layers.entities, layers.bots, layers.lockOn, particleLayer, measurementLayer, overlay);
     app.stage.addChild(camera);
     app.stage.eventMode = "static";
@@ -265,12 +273,13 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         baseSprite.eventMode = "none";
         const cachedEffects = new Map();
         const graphics = new Graphics();
+        graphics.eventMode = "none";
         const caption = new Text({ text: "", style: { fill: COLORS.white, fontFamily: "monospace", fontSize: 13, fontWeight: "bold", align: "center" } });
         caption.anchor.set(0.5);
         caption.eventMode = "none";
         container.addChild(baseSprite, graphics, caption);
-        container.eventMode = shape.type === CLOSING_ZONE_TYPE ? "none" : "static";
-        container.cursor = shape.locked || !optionsRef.current.editable ? "default" : "grab";
+        container.eventMode = isBotShape(shape) ? "static" : "none";
+        container.cursor = isBotShape(shape) && !shape.locked && optionsRef.current.editable ? "grab" : "default";
         container.hitArea = new Circle(0, 0, Math.max(12, Number(shape.size ?? (isBotShape(shape) ? BOT_SIZE : 30)) / 2 + 6));
         const view = {
             container,
@@ -342,7 +351,8 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             if (target.x !== view.motion.to.x || target.y !== view.motion.to.y) {
                 view.motion = { from: current, to: target, startedAt: now, durationMs };
             }
-            view.container.cursor = shape.locked || !optionsRef.current.editable ? "default" : "grab";
+            view.container.eventMode = isBotShape(shape) ? "static" : "none";
+            view.container.cursor = isBotShape(shape) && !shape.locked && optionsRef.current.editable ? "grab" : "default";
             view.container.hitArea = new Circle(0, 0, Math.max(12, Number(shape.size ?? (isBotShape(shape) ? BOT_SIZE : 30)) / 2 + 6));
             const hitParticleEvent = shape.hitParticleEvent;
             const hasHitParticleEvent = hitParticleEvent != null
@@ -375,6 +385,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     }
 
     function beginDrag(event, view) {
+        if (!isBotShape(view.shape)) return;
         if (event.button === 2) {
             if (!optionsRef.current.allowBotRotation
                 || !optionsRef.current.editable
@@ -414,6 +425,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             const speed = 55 + (index % 6) * 18;
             const radius = 2 + index % 3;
             const display = new Graphics();
+            display.eventMode = "none";
             display.circle(0, 0, radius * 2.5).fill(color);
             display.position.set(x, y);
             particleLayer.addChild(display);
@@ -1415,6 +1427,7 @@ function drawPlacementOverlay(graphics, side) {
 function drawMeasurements(layer, points, hoverPoint = null) {
     layer.removeChildren().forEach((child) => child.destroy());
     const graphics = new Graphics();
+    graphics.eventMode = "none";
     if (points.length === 2) graphics.moveTo(points[0].x, points[0].y).lineTo(points[1].x, points[1].y).stroke({ color: 0x67e8f9, width: 3 });
     points.forEach((point) => graphics.circle(point.x, point.y, 7).fill(0x22d3ee).stroke({ color: COLORS.white, width: 2 }));
     if (points.length || hoverPoint) layer.addChild(graphics);
@@ -1422,6 +1435,7 @@ function drawMeasurements(layer, points, hoverPoint = null) {
         const distance = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
         const label = new Text({ text: `${distance.toFixed(1)} units`, style: { fill: COLORS.white, fontFamily: "monospace", fontSize: 12, fontWeight: "bold" } });
         label.anchor.set(0.5);
+        label.eventMode = "none";
         label.position.set((points[0].x + points[1].x) / 2, (points[0].y + points[1].y) / 2 - 12);
         layer.addChild(label);
     }
@@ -1434,6 +1448,7 @@ function drawMeasurements(layer, points, hoverPoint = null) {
             style: { fill: COLORS.white, fontFamily: "monospace", fontSize: 12, fontWeight: "bold" },
         });
         coordinateLabel.anchor.set(hoverPoint.x > ARENA_WIDTH_UNITS - 150 ? 1 : 0, hoverPoint.y < 30 ? 0 : 1);
+        coordinateLabel.eventMode = "none";
         coordinateLabel.position.set(hoverPoint.x + (hoverPoint.x > ARENA_WIDTH_UNITS - 150 ? -8 : 8), hoverPoint.y + (hoverPoint.y < 30 ? 8 : -8));
         layer.addChild(coordinateLabel);
     }

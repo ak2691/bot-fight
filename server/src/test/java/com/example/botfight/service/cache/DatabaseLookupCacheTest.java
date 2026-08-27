@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.botfight.DTO.ProfileDTO;
 import com.example.botfight.DTO.PuzzleListPageDTO;
+import com.example.botfight.service.cache.DatabaseLookupCache.CachedPuzzle;
 import com.example.botfight.service.cache.DatabaseLookupCache.PuzzleListKey;
 import java.util.List;
 import java.util.UUID;
@@ -78,5 +79,52 @@ class DatabaseLookupCacheTest {
                     return new PuzzleListPageDTO(List.of(), 0, 20, false, 0);
                 });
         assertThat(databaseLookups).hasValue(3);
+    }
+
+    @Test
+    void invalidatesPublishedPuzzleDetailsAfterAnAdminWrite() {
+        DatabaseLookupCache cache = new DatabaseLookupCache();
+        AtomicInteger databaseLookups = new AtomicInteger();
+        CachedPuzzle first = cachedPuzzle("before");
+        CachedPuzzle second = cachedPuzzle("after");
+
+        CachedPuzzle firstResult = cache.publishedPuzzle(7L, () -> {
+            databaseLookups.incrementAndGet();
+            return first;
+        });
+        CachedPuzzle cachedResult = cache.publishedPuzzle(7L, () -> {
+            databaseLookups.incrementAndGet();
+            return second;
+        });
+
+        assertThat(cachedResult).isSameAs(firstResult);
+        assertThat(databaseLookups).hasValue(1);
+
+        cache.invalidatePuzzleCatalog("test-puzzle-update");
+        CachedPuzzle refreshedResult = cache.publishedPuzzle(7L, () -> {
+            databaseLookups.incrementAndGet();
+            return second;
+        });
+
+        assertThat(refreshedResult).isSameAs(second);
+        assertThat(databaseLookups).hasValue(2);
+    }
+
+    private static CachedPuzzle cachedPuzzle(String name) {
+        return new CachedPuzzle(
+                UUID.randomUUID(),
+                7L,
+                name,
+                "description",
+                0,
+                true,
+                90_000,
+                100,
+                300,
+                100,
+                null,
+                null,
+                null,
+                List.of());
     }
 }

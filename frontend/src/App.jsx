@@ -17,7 +17,6 @@ import MatchmakingProvider from './matchmaking/MatchmakingProvider'
 import NotificationsProvider from './notifications/NotificationsProvider.jsx'
 import ArenaLoadingScreen from './components/ArenaLoadingScreen'
 import ArenaPresentationAssetsProvider from './gameArena/pixi/ArenaPresentationAssetsProvider.jsx'
-import './App.css'
 
 const AbilityCataloguePage = lazy(loadAbilityCatalogue)
 const ConditionalCataloguePage = lazy(loadConditionalCatalogue)
@@ -110,6 +109,16 @@ function App() {
             />
             <Route
               path="/admin/puzzles/new"
+              element={(
+                <ProtectedRoute>
+                  <AdminRoute>
+                    <PuzzleBuilderPage />
+                  </AdminRoute>
+                </ProtectedRoute>
+              )}
+            />
+            <Route
+              path="/admin/puzzles/:puzzleNumber/edit"
               element={(
                 <ProtectedRoute>
                   <AdminRoute>

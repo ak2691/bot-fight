@@ -1,11 +1,13 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/auth-context";
 import { useNotifications } from "../notifications/notification-context";
 import BotLogo from "./BotLogo.jsx";
 
 export default function AppNavbar({ account = false, currentPage = null, onHome = null, children = null }) {
     const navigate = useNavigate();
+    const { pathname } = useLocation();
+    const navbarRef = useRef(null);
     const { user } = useAuth();
     const {
         pendingInvites,
@@ -15,10 +17,42 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
         declineInvite,
     } = useNotifications();
     const [notificationsOpen, setNotificationsOpen] = useState(false);
+    const [navbarVisibility, setNavbarVisibility] = useState({ pathname: null, hidden: false });
+    const isHidden = navbarVisibility.pathname === pathname && navbarVisibility.hidden;
+    const isCharcoalPage = ["profile", "puzzles", "puzzle-builder", "puzzle-play", "abilities", "conditionals"].includes(currentPage);
     const username = user?.username ?? "bot";
 
+    useEffect(() => {
+        const navbar = navbarRef.current;
+        if (!navbar) return undefined;
+
+        const scrollTargets = [window];
+        const pageRoot = navbar.closest(".arena-page-shell, main");
+        const internalScrollContainer = pageRoot?.querySelector(".arena-content-shell");
+        if (internalScrollContainer) scrollTargets.push(internalScrollContainer);
+
+        const lastScrollPositions = new Map(scrollTargets.map((target) => [target, getScrollTop(target)]));
+        const handleScroll = (event) => {
+            const target = event.currentTarget;
+            const currentScrollTop = getScrollTop(target);
+            const previousScrollTop = lastScrollPositions.get(target) ?? currentScrollTop;
+            const scrollDelta = currentScrollTop - previousScrollTop;
+            lastScrollPositions.set(target, currentScrollTop);
+
+            if (currentScrollTop <= 8) {
+                setNavbarVisibility({ pathname, hidden: false });
+            } else if (Math.abs(scrollDelta) >= 3) {
+                setNavbarVisibility({ pathname, hidden: scrollDelta > 0 });
+            }
+        };
+
+        scrollTargets.forEach((target) => target.addEventListener("scroll", handleScroll, { passive: true }));
+        return () => scrollTargets.forEach((target) => target.removeEventListener("scroll", handleScroll));
+    }, [pathname]);
+
     return (
-        <header className="app-navbar relative z-10 flex min-h-[72px] flex-shrink-0 items-center justify-between gap-3 border-b border-slate-600/80 bg-[#0d1b25f5] px-5 font-interface text-slate-100 sm:px-8">
+        <div className="app-navbar-slot">
+        <header ref={navbarRef} className={`app-navbar relative z-10 flex min-h-[72px] flex-shrink-0 items-center justify-between gap-3 border-b border-slate-600/80 bg-[#0e1a22] px-5 font-interface text-slate-100 sm:px-8 ${isCharcoalPage ? "app-navbar--charcoal-page" : ""} ${isHidden ? "app-navbar--hidden" : ""}`}>
             <button type="button" onClick={() => onHome ? onHome() : navigate("/home")} className="app-brand-link app-navbar-control flex h-12 w-12 items-center justify-center" aria-label="Go to home">
                 <BotLogo className="h-12 w-12 object-contain" />
             </button>
@@ -83,7 +117,12 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
                 </nav>
             ) : children}
         </header>
+        </div>
     );
+}
+
+function getScrollTop(target) {
+    return target === window ? window.scrollY || document.documentElement.scrollTop : target.scrollTop;
 }
 
 function NotificationPanel({

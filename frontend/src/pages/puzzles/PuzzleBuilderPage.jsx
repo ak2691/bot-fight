@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import AppNavbar from "../../components/AppNavbar.jsx";
 import Arena from "../../gameArena/Arena.jsx";
 import { useDialogFocus } from "../../components/useDialogFocus.js";
 import {
@@ -26,7 +27,7 @@ import {
     PRACTICE_PLAYER_START,
 } from "../../gameArena/modelPayloads/arenaConstants.js";
 import { selectableAbilityIdsForLoadouts, selectableTypesForLoadouts } from "../../gameArena/coding/nodes/GraphNodes.jsx";
-import { savePuzzle } from "../../puzzles/puzzleApi.js";
+import { fetchAdminPuzzle, savePuzzle, updatePuzzle } from "../../puzzles/puzzleApi.js";
 import PuzzleLogicWorkspace, {
     createDefaultPuzzleLogic,
     flattenPuzzleConditions,
@@ -71,6 +72,50 @@ function createDefaultPuzzle() {
             rotation: PRACTICE_OPPONENT_START.rotation,
             startHp: BASE_BOT_HP,
         },
+    };
+}
+
+function numberOrFallback(value, fallback) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function botDraftFromAdminResponse(source, fallback) {
+    return normalizeStartingBot({
+        ...fallback,
+        loadout: source?.loadout ?? fallback.loadout,
+        brain: normalizeAbilityStrategyConfiguration(source?.brain ?? fallback.brain),
+        startX: numberOrFallback(source?.startX, fallback.startX),
+        startY: numberOrFallback(source?.startY, fallback.startY),
+        rotation: numberOrFallback(source?.rotation, fallback.rotation),
+        startHp: numberOrFallback(source?.startHp, fallback.startHp),
+    }, fallback);
+}
+
+function puzzleDraftFromAdminResponse(payload) {
+    const defaults = createDefaultPuzzle();
+    const puzzleLogic = normalizePuzzleLogic(payload?.logicConfiguration ?? defaults.puzzleLogic);
+    const bots = Array.isArray(payload?.bots) ? payload.bots : [];
+    const playerBot = bots.find((bot) => String(bot?.role ?? "").toUpperCase() === "PLAYER");
+    const opponentBot = bots.find((bot) => String(bot?.role ?? "").toUpperCase() === "OPPONENT");
+    return {
+        ...defaults,
+        name: String(payload?.name ?? defaults.name),
+        description: String(payload?.description ?? defaults.description),
+        initialElapsedMs: numberOrFallback(payload?.initialElapsedMs, defaults.initialElapsedMs),
+        published: payload?.status == null
+            ? defaults.published
+            : String(payload.status).toUpperCase() === "PUBLISHED",
+        hideOpponentCode: payload?.hideOpponentCode !== false,
+        timeLimitMs: numberOrFallback(payload?.timeLimitMs, defaults.timeLimitMs),
+        maxActionNodes: numberOrFallback(payload?.maxActionNodes, defaults.maxActionNodes),
+        maxConditionNodes: numberOrFallback(payload?.maxConditionNodes, defaults.maxConditionNodes),
+        maxCustomVariables: numberOrFallback(payload?.maxCustomVariables, defaults.maxCustomVariables),
+        puzzleLogic,
+        winConditions: flattenPuzzleConditions(puzzleLogic, "win"),
+        loseConditions: flattenPuzzleConditions(puzzleLogic, "lose"),
+        playerBot: botDraftFromAdminResponse(playerBot, defaults.playerBot),
+        opponentBot: botDraftFromAdminResponse(opponentBot, defaults.opponentBot),
     };
 }
 
@@ -243,7 +288,7 @@ function PuzzleRulesModal({ draft, setDraft, onClose }) {
     </div>;
 }
 
-function PuzzleBuilderControls({ draft, setDraft, saveState, onSaveStartingStats, onSaveOpponentCode, onSavePuzzle, onOpenConfiguration, onOpenRules, isSaving, conditionVariables, conditionTargets, conditionTargetAbilityIds, isConfigurationOpen, onCloseConfiguration, isRulesOpen, onCloseRules, onPuzzleLogicChange }) {
+function PuzzleBuilderControls({ draft, setDraft, saveState, onSaveStartingStats, onSaveOpponentCode, onSavePuzzle, onOpenConfiguration, onOpenRules, isSaving, isEditing, conditionVariables, conditionTargets, conditionTargetAbilityIds, isConfigurationOpen, onCloseConfiguration, isRulesOpen, onCloseRules, onPuzzleLogicChange }) {
     const player = draft.playerBot;
     const opponent = draft.opponentBot;
 
@@ -300,7 +345,7 @@ function PuzzleBuilderControls({ draft, setDraft, saveState, onSaveStartingStats
 
             <section className="rounded-xl border border-cyan-700/60 bg-cyan-950/20 p-4">
                 {saveState && <p role="status" className={`mb-2 font-mono text-[9px] leading-relaxed ${saveState.ok ? "text-emerald-300" : "text-rose-300"}`}>{saveState.message}</p>}
-                <button type="button" disabled={isSaving} onClick={onSavePuzzle} className="arena-toolbar-button arena-toolbar-button--blue">{isSaving ? "SAVING PUZZLE..." : "SAVE PUZZLE"}</button>
+                <button type="button" disabled={isSaving} onClick={onSavePuzzle} className="arena-toolbar-button arena-toolbar-button--blue">{isSaving ? (isEditing ? "UPDATING PUZZLE..." : "SAVING PUZZLE...") : (isEditing ? "UPDATE PUZZLE" : "SAVE PUZZLE")}</button>
             </section>
             {isConfigurationOpen && <PuzzleConfigurationModal draft={draft} conditionVariables={conditionVariables} conditionTargets={conditionTargets} conditionTargetAbilityIds={conditionTargetAbilityIds} onPuzzleLogicChange={onPuzzleLogicChange} onClose={onCloseConfiguration} />}
             {isRulesOpen && <PuzzleRulesModal draft={draft} setDraft={setDraft} onClose={onCloseRules} />}
@@ -310,12 +355,40 @@ function PuzzleBuilderControls({ draft, setDraft, saveState, onSaveStartingStats
 
 export default function PuzzleBuilderPage() {
     const navigate = useNavigate();
+    const { puzzleNumber } = useParams();
+    const isEditing = puzzleNumber != null;
     const [draft, setDraft] = useState(createDefaultPuzzle);
+    const [isLoading, setIsLoading] = useState(isEditing);
+    const [loadError, setLoadError] = useState(null);
     const [saveState, setSaveState] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     const [isConfigurationOpen, setIsConfigurationOpen] = useState(false);
     const [isRulesOpen, setIsRulesOpen] = useState(false);
     const saveNoticeTimer = useRef(null);
+
+    useEffect(() => {
+        if (!isEditing) {
+            setDraft(createDefaultPuzzle());
+            setLoadError(null);
+            setIsLoading(false);
+            return undefined;
+        }
+
+        let active = true;
+        setLoadError(null);
+        setIsLoading(true);
+        fetchAdminPuzzle(puzzleNumber)
+            .then((payload) => {
+                if (active) setDraft(puzzleDraftFromAdminResponse(payload));
+            })
+            .catch((error) => {
+                if (active) setLoadError(error.message);
+            })
+            .finally(() => {
+                if (active) setIsLoading(false);
+            });
+        return () => { active = false; };
+    }, [isEditing, puzzleNumber]);
 
     const handleArenaDraftChange = useCallback((setup) => {
         if (!setup) return;
@@ -375,7 +448,8 @@ export default function PuzzleBuilderPage() {
         setIsSaving(true);
         setSaveState(null);
         try {
-            const saved = await savePuzzle({
+            const normalizedLogic = normalizePuzzleLogic(draft.puzzleLogic);
+            const payload = {
                 name: draft.name.trim(),
                 description: draft.description.trim(),
                 published: draft.published,
@@ -385,22 +459,32 @@ export default function PuzzleBuilderPage() {
                 maxActionNodes: draft.maxActionNodes,
                 maxConditionNodes: draft.maxConditionNodes,
                 maxCustomVariables: draft.maxCustomVariables,
-                logicConfiguration: normalizePuzzleLogic(draft.puzzleLogic),
-                winConditions: flattenPuzzleConditions(draft.puzzleLogic, "win"),
-                loseConditions: flattenPuzzleConditions(draft.puzzleLogic, "lose"),
+                logicConfiguration: normalizedLogic,
+                winConditions: flattenPuzzleConditions(normalizedLogic, "win"),
+                loseConditions: flattenPuzzleConditions(normalizedLogic, "lose"),
                 // The builder's player code is a temporary testing draft. Keep
                 // the server-side player bot valid without saving that draft.
                 playerBot: requestBot(draft.playerBot, { useDefaultBrain: true }),
                 opponentBot: requestBot(draft.opponentBot),
-            });
-            setSaveState({ ok: true, message: `Puzzle #${saved.puzzleNumber} saved.` });
+            };
+            const saved = isEditing
+                ? await updatePuzzle(puzzleNumber, payload)
+                : await savePuzzle(payload);
+            setSaveState({ ok: true, message: `Puzzle #${saved.puzzleNumber} ${isEditing ? "updated" : "saved"}.` });
             if (draft.published) window.setTimeout(() => navigate("/puzzles"), 700);
         } catch (error) {
             setSaveState({ ok: false, message: error.message });
         } finally {
             setIsSaving(false);
         }
-    }, [draft, navigate]);
+    }, [draft, isEditing, navigate, puzzleNumber]);
+
+    if (isLoading) {
+        return <PuzzleBuilderStatus message="LOADING PUZZLE FOR EDITING..." />;
+    }
+    if (loadError) {
+        return <PuzzleBuilderStatus message={loadError} error onBack={() => navigate("/puzzles")} />;
+    }
 
     const builderControls = (
         <PuzzleBuilderControls
@@ -418,6 +502,7 @@ export default function PuzzleBuilderPage() {
             isRulesOpen={isRulesOpen}
             onCloseRules={() => setIsRulesOpen(false)}
             onPuzzleLogicChange={handlePuzzleLogicChange}
+            isEditing={isEditing}
             conditionVariables={conditionVariables}
             conditionTargets={conditionTargets}
             conditionTargetAbilityIds={conditionTargetAbilityIds}
@@ -425,4 +510,16 @@ export default function PuzzleBuilderPage() {
     );
 
     return <Arena puzzleBuilder initialPuzzle={draft} onPuzzleDraftChange={handleArenaDraftChange} builderControls={builderControls} logicLimits={logicLimits} />;
+}
+
+function PuzzleBuilderStatus({ message, error = false, onBack = null }) {
+    return <main className="puzzle-page min-h-screen bg-[#050d16] font-interface text-slate-100">
+        <div className="flex min-h-screen flex-col">
+            <div className="shrink-0"><AppNavbar account currentPage="puzzle-builder" /></div>
+            <section className="mx-auto flex w-full max-w-[680px] flex-1 flex-col items-center justify-center px-5 py-12 text-center">
+                <p className={`font-mono text-xs tracking-widest ${error ? "text-rose-300" : "text-slate-400"}`}>{message}</p>
+                {onBack && <button type="button" onClick={onBack} className="mt-5 min-h-11 border border-cyan-400/60 bg-cyan-950/30 px-5 font-mono text-[10px] font-bold tracking-widest text-cyan-200 hover:border-cyan-300 hover:text-cyan-100">BACK TO PUZZLES</button>}
+            </section>
+        </div>
+    </main>;
 }

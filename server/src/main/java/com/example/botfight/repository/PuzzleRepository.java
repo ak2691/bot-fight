@@ -32,4 +32,6 @@ public interface PuzzleRepository extends JpaRepository<Puzzle, UUID> {
             Pageable pageable);
 
     Optional<Puzzle> findByPuzzleNumberAndStatus(Long puzzleNumber, PuzzleStatus status);
+
+    Optional<Puzzle> findByPuzzleNumber(Long puzzleNumber);
 }
