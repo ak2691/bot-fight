@@ -2,7 +2,7 @@ import {
     BOT_LOGIC_TREE_VERSION,
     MAX_ROOT_NAME_LENGTH,
 } from "./constants.js";
-import { rootIdForCreatedOrder } from "./identifiers.js";
+import { createEditorNodeId, normalizePriority } from "./identifiers.js";
 
 export function createDefaultAbilityStrategyConfiguration() {
     return {
@@ -12,12 +12,11 @@ export function createDefaultAbilityStrategyConfiguration() {
     };
 }
 
-export function createCodeRoot(createdOrder = 0, name = "Root") {
-    const rootIndex = Math.max(0, Math.trunc(Number(createdOrder) || 0));
+export function createCodeRoot(priority = 1, name = "Root", id = null) {
     return {
-        id: rootIdForCreatedOrder(rootIndex, rootIndex),
+        id: normalizeNodeId(id) ?? createEditorNodeId("root"),
         name: normalizeRootName(name),
-        createdOrder: rootIndex,
+        priority: normalizePriority(priority),
         branches: [],
     };
 }
@@ -25,4 +24,9 @@ export function createCodeRoot(createdOrder = 0, name = "Root") {
 function normalizeRootName(value) {
     const normalized = String(value ?? "").trim().replace(/\s+/g, " ").slice(0, MAX_ROOT_NAME_LENGTH);
     return normalized || "Root";
+}
+
+function normalizeNodeId(value) {
+    const id = String(value ?? "").trim();
+    return id || null;
 }

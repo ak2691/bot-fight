@@ -16,6 +16,7 @@ import {
     abilityDefinitionsForVariable,
 } from "../botlogic/code/BotCode.js";
 import { statusEffectDefinitionsForAbilities } from "../loadout/BotLoadout.js";
+import { priorityForNode } from "../botlogic/code/configuration/identifiers.js";
 import CustomVariablesModal from "./modals/CustomVariablesModal.jsx";
 import TutorialGuide, { getTutorialProgress, TutorialCodeCoach } from "../../tutorial/TutorialGuide.jsx";
 import { botColorRole } from "../pixi/pixiVisualState.js";
@@ -298,8 +299,8 @@ export default function CodingPanel({
     const addRootNode = () => {
         if (isCodeEditingLocked || totalRootNodes >= MAX_ROOT_NODES) return;
         const roots = activeConfiguration.roots ?? [];
-        const nextPriority = roots.reduce((highest, root) => Math.max(highest, Number(root?.createdOrder) + 1 || 0), 0) + 1;
-        const root = createCodeRoot(nextPriority - 1);
+        const nextPriority = roots.reduce((highest, root, index) => Math.max(highest, priorityForNode(root, index + 1)), 0) + 1;
+        const root = createCodeRoot(nextPriority);
         root.branches = [];
         const nextRoots = [...roots, root];
         const nodePositions = logicBoardRef.current?.placeRootAtCenter(nextRoots, nextRoots.length - 1);

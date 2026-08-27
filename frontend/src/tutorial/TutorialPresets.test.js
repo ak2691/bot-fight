@@ -69,7 +69,7 @@ test("tutorial solutions use the relaxed bearing and context-aware dashes", () =
 
     assert.deepEqual(dodgeAction, { action: TUTORIAL_ACTIONS.DASH, movementMode: "target", movementDirection: 90, selectable: "opponent" });
     assert.deepEqual(combineDash, { action: TUTORIAL_ACTIONS.DASH, movementMode: "target", movementDirection: 90, selectable: "opponent_grenade" });
-    assert.equal(heavySlashRoot.createdOrder, 0);
+    assert.equal(heavySlashRoot.priority, 1);
     assert.equal(heavySlashRoot.branches[0].actions[0].action, TUTORIAL_ACTIONS.HEAVY_SLASH);
     assert.equal(slash.right.value, 75);
 });

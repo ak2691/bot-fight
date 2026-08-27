@@ -8,13 +8,12 @@ function loadout(...abilities) {
     return encodeSandboxLoadout({ abilities });
 }
 
-function branch(id, conditions, actions, createdOrder = 0) {
-    return { id, branchType: "if", createdOrder, priority: 1, conditions, actions, children: [] };
+function branch(id, conditions, actions, priority = 1) {
+    return { id, branchType: "if", priority, conditions, actions, children: [] };
 }
 
-function root(createdOrder, branches, name = "Root", id = null) {
-    const createdRoot = createCodeRoot(createdOrder, name);
-    return { ...createdRoot, ...(id ? { id } : {}), branches };
+function root(priority, branches, name = "Root", id = null) {
+    return { ...createCodeRoot(priority, name, id), branches };
 }
 
 const always = () => ({ type: "always" });
@@ -54,7 +53,7 @@ export function hasTutorialPriorityOrder(configuration, firstAction, secondActio
     });
     const first = rootForAction(firstAction);
     const second = rootForAction(secondAction);
-    return Boolean(first && second && Number(first.createdOrder) < Number(second.createdOrder));
+    return Boolean(first && second && Number(first.priority) < Number(second.priority));
 }
 
 function code(roots) {
@@ -62,25 +61,25 @@ function code(roots) {
 }
 
 function stepOneSolution() {
-    return code([root(0, [
+    return code([root(1, [
         branch("lesson-1-move-if", [always()], [move(0)]),
     ])]);
 }
 
 function stepTwoSolution() {
-    return code([root(0, [
+    return code([root(1, [
         branch("lesson-2-retreat-if", [compare("selectable.hp", "lt", 45, BOT_CODE_SELECTABLES.MY)], [move(180)]),
-        branch("lesson-2-engage", [comparePair("selectable.distance", "gt", 100)], [move(0)], 1),
+        branch("lesson-2-engage", [comparePair("selectable.distance", "gt", 100)], [move(0)], 2),
     ])]);
 }
 
 function stepThreeRotationSolution() {
     return code([
-        root(0, [branch("lesson-3-rotate-if", [always()], [face()])]),
-        root(1, [
+        root(1, [branch("lesson-3-rotate-if", [always()], [face()])]),
+        root(2, [
             branch("lesson-3-close-if", [comparePair("selectable.distance", "gt", 115)], [move(0)]),
         ]),
-        root(2, [branch("lesson-3-slash-if", [
+        root(3, [branch("lesson-3-slash-if", [
             comparePair("selectable.distance", "lte", 115),
             comparePair("selectable.relativeBearing", "lte", 75),
         ], [ability(TUTORIAL_ACTIONS.HEAVY_SLASH)])]),
@@ -89,11 +88,11 @@ function stepThreeRotationSolution() {
 
 function stepFourSolution() {
     return code([
-        root(0, [branch("lesson-4-lock-on-if", [always()], [ability(TUTORIAL_ACTIONS.LOCK_ON)])]),
-        root(1, [
+        root(1, [branch("lesson-4-lock-on-if", [always()], [ability(TUTORIAL_ACTIONS.LOCK_ON)])]),
+        root(2, [
             branch("lesson-4-close-if", [comparePair("selectable.distance", "gt", 115)], [move(0)]),
         ]),
-        root(2, [branch("lesson-4-slash-if", [
+        root(3, [branch("lesson-4-slash-if", [
             comparePair("selectable.distance", "lte", 115),
             comparePair("selectable.relativeBearing", "lte", 75),
         ], [ability(TUTORIAL_ACTIONS.HEAVY_SLASH)])]),
@@ -101,19 +100,19 @@ function stepFourSolution() {
 }
 
 function stepFiveSolution(selectable = BOT_CODE_SELECTABLES.OPPONENT) {
-    return code([root(0, [branch("lesson-6-dodge-if", [always()], [
+    return code([root(1, [branch("lesson-6-dodge-if", [always()], [
         ability(TUTORIAL_ACTIONS.DASH, selectable, { movementMode: "target", movementDirection: 90 }),
     ])])]);
 }
 
 function stepSixBasicStrikeSolution() {
-    return code([root(0, [branch("lesson-6-basic-strike-if", [always()], [ability(TUTORIAL_ACTIONS.BASIC_STRIKE)])])]);
+    return code([root(1, [branch("lesson-6-basic-strike-if", [always()], [ability(TUTORIAL_ACTIONS.BASIC_STRIKE)])])]);
 }
 
 function stepEightCustomVariableSolution() {
     const variableId = "custom.variable-1";
     return {
-        ...code([root(0, [branch("lesson-8-variable-if", [always()], [{
+        ...code([root(1, [branch("lesson-8-variable-if", [always()], [{
             action: BOT_CODE_ACTIONS.VARIABLE,
             selectable: BOT_CODE_SELECTABLES.OPPONENT,
             variableId,
@@ -125,15 +124,15 @@ function stepEightCustomVariableSolution() {
 
 function stepSevenSolution() {
     return code([
-        root(0, [branch("lesson-7-slash-if", [
+        root(1, [branch("lesson-7-slash-if", [
             comparePair("selectable.distance", "lte", 115),
             comparePair("selectable.relativeBearing", "lte", 75),
         ], [ability(TUTORIAL_ACTIONS.HEAVY_SLASH)])]),
-        root(1, [branch("lesson-7-dodge-if", [always()], [
+        root(2, [branch("lesson-7-dodge-if", [always()], [
             ability(TUTORIAL_ACTIONS.DASH, "opponent_grenade", { movementMode: "target", movementDirection: 90 }),
         ])]),
-        root(2, [branch("lesson-7-face-if", [always()], [face()])]),
-        root(3, [branch("lesson-7-close-if", [
+        root(3, [branch("lesson-7-face-if", [always()], [face()])]),
+        root(4, [branch("lesson-7-close-if", [
             comparePair("selectable.distance", "gt", 115),
         ], [move(0)])]),
     ]);
@@ -141,10 +140,10 @@ function stepSevenSolution() {
 
 function priorityLessonStartingCode() {
     return code([
-        root(0, [branch("lesson-9-dash-if", [always()], [
+        root(1, [branch("lesson-9-dash-if", [always()], [
             ability(TUTORIAL_ACTIONS.DASH, "opponent", { movementMode: "target", movementDirection: 90 }),
         ])], "Dash", "tutorial-root-dash"),
-        root(1, [branch("lesson-9-lock-on-if", [always()], [
+        root(2, [branch("lesson-9-lock-on-if", [always()], [
             ability(TUTORIAL_ACTIONS.LOCK_ON),
         ])], "Lock On", "tutorial-root-lock-on"),
     ]);
@@ -152,10 +151,10 @@ function priorityLessonStartingCode() {
 
 function priorityLessonSolution() {
     return code([
-        root(1, [branch("lesson-9-dash-if", [always()], [
+        root(2, [branch("lesson-9-dash-if", [always()], [
             ability(TUTORIAL_ACTIONS.DASH, "opponent", { movementMode: "target", movementDirection: 90 }),
         ])], "Dash", "tutorial-root-dash"),
-        root(0, [branch("lesson-9-lock-on-if", [always()], [
+        root(1, [branch("lesson-9-lock-on-if", [always()], [
             ability(TUTORIAL_ACTIONS.LOCK_ON),
         ])], "Lock On", "tutorial-root-lock-on"),
     ]);
@@ -166,15 +165,15 @@ function passiveOpponent() {
 }
 
 function meleeOpponent() {
-    return code([root(0, [
+    return code([root(1, [
         branch("opponent-sword-if", [always()], [face(), ability(TUTORIAL_ACTIONS.SLASH)]),
     ])]);
 }
 
 function grenadeOpponent() {
     return code([
-        root(0, [branch("opponent-grenade-face-if", [always()], [face()])]),
-        root(1, [branch("opponent-grenade-throw-if", [always()], [ability(TUTORIAL_ACTIONS.GRENADE)])]),
+        root(1, [branch("opponent-grenade-face-if", [always()], [face()])]),
+        root(2, [branch("opponent-grenade-throw-if", [always()], [ability(TUTORIAL_ACTIONS.GRENADE)])]),
     ]);
 }
 

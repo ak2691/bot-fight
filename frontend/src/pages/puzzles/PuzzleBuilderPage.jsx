@@ -27,7 +27,7 @@ import {
     PRACTICE_PLAYER_START,
 } from "../../gameArena/modelPayloads/arenaConstants.js";
 import { selectableAbilityIdsForLoadouts, selectableTypesForLoadouts } from "../../gameArena/coding/nodes/GraphNodes.jsx";
-import { fetchAdminPuzzle, savePuzzle, updatePuzzle } from "../../puzzles/puzzleApi.js";
+import { fetchAdminPuzzle, migratePuzzleTreePriorities, savePuzzle, updatePuzzle } from "../../puzzles/puzzleApi.js";
 import PuzzleLogicWorkspace, {
     createDefaultPuzzleLogic,
     flattenPuzzleConditions,
@@ -288,7 +288,7 @@ function PuzzleRulesModal({ draft, setDraft, onClose }) {
     </div>;
 }
 
-function PuzzleBuilderControls({ draft, setDraft, saveState, onSaveStartingStats, onSaveOpponentCode, onSavePuzzle, onOpenConfiguration, onOpenRules, isSaving, isEditing, conditionVariables, conditionTargets, conditionTargetAbilityIds, isConfigurationOpen, onCloseConfiguration, isRulesOpen, onCloseRules, onPuzzleLogicChange }) {
+function PuzzleBuilderControls({ draft, setDraft, saveState, onSaveStartingStats, onSaveOpponentCode, onSavePuzzle, onMigrateDbJson, onOpenConfiguration, onOpenRules, isSaving, isMigratingDbJson, isEditing, conditionVariables, conditionTargets, conditionTargetAbilityIds, isConfigurationOpen, onCloseConfiguration, isRulesOpen, onCloseRules, onPuzzleLogicChange }) {
     const player = draft.playerBot;
     const opponent = draft.opponentBot;
 
@@ -345,7 +345,8 @@ function PuzzleBuilderControls({ draft, setDraft, saveState, onSaveStartingStats
 
             <section className="rounded-xl border border-cyan-700/60 bg-cyan-950/20 p-4">
                 {saveState && <p role="status" className={`mb-2 font-mono text-[9px] leading-relaxed ${saveState.ok ? "text-emerald-300" : "text-rose-300"}`}>{saveState.message}</p>}
-                <button type="button" disabled={isSaving} onClick={onSavePuzzle} className="arena-toolbar-button arena-toolbar-button--blue">{isSaving ? (isEditing ? "UPDATING PUZZLE..." : "SAVING PUZZLE...") : (isEditing ? "UPDATE PUZZLE" : "SAVE PUZZLE")}</button>
+                <button type="button" disabled={isSaving || isMigratingDbJson} onClick={onSavePuzzle} className="arena-toolbar-button arena-toolbar-button--blue">{isSaving ? (isEditing ? "UPDATING PUZZLE..." : "SAVING PUZZLE...") : (isEditing ? "UPDATE PUZZLE" : "SAVE PUZZLE")}</button>
+                {isEditing && <button type="button" disabled={isSaving || isMigratingDbJson} onClick={onMigrateDbJson} className="arena-toolbar-button arena-toolbar-button--neutral mt-2">{isMigratingDbJson ? "UPDATING DB JSON..." : "UPDATE DB JSON"}</button>}
             </section>
             {isConfigurationOpen && <PuzzleConfigurationModal draft={draft} conditionVariables={conditionVariables} conditionTargets={conditionTargets} conditionTargetAbilityIds={conditionTargetAbilityIds} onPuzzleLogicChange={onPuzzleLogicChange} onClose={onCloseConfiguration} />}
             {isRulesOpen && <PuzzleRulesModal draft={draft} setDraft={setDraft} onClose={onCloseRules} />}
@@ -362,6 +363,7 @@ export default function PuzzleBuilderPage() {
     const [loadError, setLoadError] = useState(null);
     const [saveState, setSaveState] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [isMigratingDbJson, setIsMigratingDbJson] = useState(false);
     const [isConfigurationOpen, setIsConfigurationOpen] = useState(false);
     const [isRulesOpen, setIsRulesOpen] = useState(false);
     const saveNoticeTimer = useRef(null);
@@ -479,6 +481,27 @@ export default function PuzzleBuilderPage() {
         }
     }, [draft, isEditing, navigate, puzzleNumber]);
 
+    const handleMigrateDbJson = useCallback(async () => {
+        if (!isEditing || isMigratingDbJson) return;
+        if (!window.confirm("Update all stored puzzle and bot JSON from createdOrder to priority?")) return;
+        setIsMigratingDbJson(true);
+        setSaveState(null);
+        try {
+            const result = await migratePuzzleTreePriorities();
+            const puzzleConfigurations = Number(result?.puzzleConfigurationsUpdated) || 0;
+            const puzzleBots = Number(result?.puzzleBotBrainsUpdated) || 0;
+            const matchRoundBots = Number(result?.matchRoundBotBrainsUpdated) || 0;
+            setSaveState({
+                ok: true,
+                message: `DB JSON updated: ${puzzleConfigurations} puzzle configurations, ${puzzleBots} puzzle bot brains, ${matchRoundBots} saved match brains.`,
+            });
+        } catch (error) {
+            setSaveState({ ok: false, message: error.message });
+        } finally {
+            setIsMigratingDbJson(false);
+        }
+    }, [isEditing, isMigratingDbJson]);
+
     if (isLoading) {
         return <PuzzleBuilderStatus message="LOADING PUZZLE FOR EDITING..." />;
     }
@@ -492,9 +515,11 @@ export default function PuzzleBuilderPage() {
             setDraft={setDraft}
             saveState={saveState}
             isSaving={isSaving}
+            isMigratingDbJson={isMigratingDbJson}
             onSaveStartingStats={() => showDraftNotice("Starting stats saved.")}
             onSaveOpponentCode={() => showDraftNotice("Opponent code saved.")}
             onSavePuzzle={handleSavePuzzle}
+            onMigrateDbJson={handleMigrateDbJson}
             onOpenConfiguration={() => setIsConfigurationOpen(true)}
             onOpenRules={() => setIsRulesOpen(true)}
             isConfigurationOpen={isConfigurationOpen}

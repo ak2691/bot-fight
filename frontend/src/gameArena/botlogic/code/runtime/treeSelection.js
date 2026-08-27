@@ -15,13 +15,13 @@ function treeEntries(branches, rootIndex, depth = 0) {
 
 export function selectPriorityCandidates(normalized, state, operations) {
     return [...normalized.roots]
-        .sort((first, second) => first.createdOrder - second.createdOrder)
+        .sort((first, second) => first.priority - second.priority)
         .flatMap((root, rootIndex) => selectTreeBranches(root.branches, state, operations)
             .map((block, blockIndex) => ({ block, blockIndex, rootIndex })));
 }
 
 function selectTreeBranches(branches, state, operations) {
-    const ordered = [...(branches ?? [])].sort((first, second) => first.createdOrder - second.createdOrder);
+    const ordered = [...(branches ?? [])].sort((first, second) => first.priority - second.priority);
     const selected = [];
     for (const branch of ordered) {
         const matches = branch.branchType === "else" || operations.evaluateConditions(branch.conditions, state);

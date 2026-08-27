@@ -443,10 +443,10 @@ public class DuelSimulationService {
             JsonNode root = roots.get(index);
             normalized.add(new TreeRoot(
                     index,
-                    clamp(numberValue(field(root, "createdOrder"), index), 0, MAX_ROOTS - 1),
+                    clamp(treePriority(root, index + 1), 1, MAX_ROOTS),
                     normalizeTreeBranches(field(root, "branches"), remainingActions, remainingConditions)));
         }
-        normalized.sort(Comparator.comparingDouble(TreeRoot::rootPriority));
+        normalized.sort(Comparator.comparingDouble(TreeRoot::priority));
         return List.copyOf(normalized);
     }
 
@@ -477,11 +477,11 @@ public class DuelSimulationService {
             }
             normalized.add(new TreeBranch(
                     branchType,
-                    numberValue(field(branch, "createdOrder"), index),
+                    clamp(treePriority(branch, index + 1), 1, MAX_LOGIC_BLOCKS),
                     blocks,
                     normalizeTreeBranches(field(branch, "children"), remainingActions, remainingConditions)));
         }
-        normalized.sort(Comparator.comparingDouble(TreeBranch::createdOrder));
+        normalized.sort(Comparator.comparingDouble(TreeBranch::priority));
         return List.copyOf(normalized);
     }
 
@@ -508,7 +508,7 @@ public class DuelSimulationService {
                         BotLogicContracts.ACTION_VARIABLE.equals(action) ? textValue(field(actionNode, "operation"), "set") : movementDirectionValue(field(actionNode, "movementDirection"), null),
                         BotLogicContracts.ACTION_VARIABLE.equals(action) ? textValue(field(actionNode, "variableId"), "") : textValue(field(actionNode, "phaseFacingMode"), null),
                         BotLogicContracts.ACTION_VARIABLE.equals(action) ? firstNonNull(field(actionNode, "operand"), field(actionNode, "terms")) : null,
-                        normalizePriority(numberValue(field(branch, "priority"), 1.0)),
+                        actionPriority(branch),
                         ConditionResolutionService.normalizeConditions(field(branch, "conditions")),
                         clamp(numberValue(field(actionNode, "targetAngle"), 0), BotLogicContracts.ANGLE_MIN, BotLogicContracts.ANGLE_MAX)));
             }
@@ -569,7 +569,7 @@ public class DuelSimulationService {
                 movementDirectionValue(field(block, "movementDirection"), null),
                 textValue(field(block, "phaseFacingMode"), null),
                 BotLogicContracts.ACTION_VARIABLE.equals(action) ? firstNonNull(field(block, "operand"), field(block, "terms")) : null,
-                normalizePriority(numberValue(field(block, "priority"), 1.0)),
+                actionPriority(block),
                 ConditionResolutionService.normalizeConditions(field(block, "conditions")),
                 clamp(numberValue(field(block, "targetAngle"), 0), BotLogicContracts.ANGLE_MIN, BotLogicContracts.ANGLE_MAX));
     }
@@ -694,6 +694,30 @@ public class DuelSimulationService {
         return node != null && node.isNumber()
                 ? BotLogicContracts.truncateToNumberPrecision(node.asDouble())
                 : fallback;
+    }
+
+    private static double treePriority(JsonNode node, double fallback) {
+        JsonNode legacyCreatedOrder = field(node, "createdOrder");
+        if (legacyCreatedOrder != null && legacyCreatedOrder.isNumber()) {
+            return numberValue(legacyCreatedOrder, fallback - 1) + 1;
+        }
+        return numberValue(field(node, "priority"), fallback);
+    }
+
+    private static int actionPriority(JsonNode node) {
+        JsonNode explicitActionPriority = field(node, "actionPriority");
+        if (explicitActionPriority != null && explicitActionPriority.isNumber()) {
+            return normalizePriority(numberValue(explicitActionPriority, 1.0));
+        }
+        // Before tree priorities were named priority, old branch objects could
+        // carry both createdOrder (tree order) and priority (flat action order).
+        // Preserve that legacy action value without confusing it with the new
+        // conditional priority.
+        JsonNode legacyCreatedOrder = field(node, "createdOrder");
+        if (legacyCreatedOrder != null && legacyCreatedOrder.isNumber()) {
+            return normalizePriority(numberValue(field(node, "priority"), 1.0));
+        }
+        return 1;
     }
 
     private static double variableValue(JsonNode node) {
@@ -868,10 +892,10 @@ public class DuelSimulationService {
     public record TargetPoint(double x, double y, int size) implements Entity {
     }
 
-    private record TreeRoot(int index, double rootPriority, List<TreeBranch> branches) {
+    private record TreeRoot(int index, double priority, List<TreeBranch> branches) {
     }
 
-    private record TreeBranch(String branchType, double createdOrder, List<StrategyBlock> blocks, List<TreeBranch> children) {
+    private record TreeBranch(String branchType, double priority, List<StrategyBlock> blocks, List<TreeBranch> children) {
     }
 
     public interface Entity {

@@ -25,7 +25,6 @@ function branch(id, actions, conditions = [always()]) {
     return {
         id,
         branchType: "if",
-        createdOrder: 0,
         priority: 1,
         conditions,
         actions,
@@ -37,7 +36,7 @@ function root(branchId, actions, conditions = [always()]) {
     return {
         id: `ability-root-${branchId}`,
         name: "Root",
-        createdOrder: null,
+        priority: 1,
         branches: [branch(branchId, actions, conditions)],
     };
 }
@@ -45,12 +44,16 @@ function root(branchId, actions, conditions = [always()]) {
 function code(roots) {
     return {
         version: "bot-logic-tree-v1",
-        roots: roots.map((entry, index) => ({
-            ...entry,
-            id: String(entry?.id || `ability-root-${index + 1}`),
-            name: String(entry?.name || "Root"),
-            createdOrder: Number.isFinite(Number(entry?.createdOrder)) ? Number(entry.createdOrder) : index,
-        })),
+        roots: roots.map((entry, index) => {
+            const normalized = { ...(entry ?? {}) };
+            delete normalized.createdOrder;
+            return {
+                ...normalized,
+                id: String(entry?.id || `ability-root-${index + 1}`),
+                name: String(entry?.name || "Root"),
+                priority: Number.isFinite(Number(entry?.priority)) ? Number(entry.priority) : index + 1,
+            };
+        }),
         customVariables: [],
     };
 }

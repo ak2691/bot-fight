@@ -15,7 +15,7 @@ import {
     normalizeConditions,
     normalizeRoots,
 } from "../../gameArena/botlogic/code/BotCode.js";
-import { normalizeCreatedOrder, rootIdForCreatedOrder } from "../../gameArena/botlogic/code/configuration/identifiers.js";
+import { createEditorNodeId, normalizePriority } from "../../gameArena/botlogic/code/configuration/identifiers.js";
 import { DEFAULT_BOT_CONFIGURATION_ID } from "../../gameArena/gameconfig/CombatLoadouts.js";
 import { TreeLogicBoard } from "../../gameArena/coding/LogicBoard.jsx";
 import CustomVariablesModal from "../../gameArena/coding/modals/CustomVariablesModal.jsx";
@@ -50,13 +50,12 @@ function puzzleCondition(left, overrides = {}) {
     return { ...createExpressionCondition(left), ...overrides };
 }
 
-function puzzleRoot(name, kind, branch, createdOrder = 0) {
-    const normalizedOrder = normalizeCreatedOrder(createdOrder);
+function puzzleRoot(name, kind, branch, priority = 1, id = null) {
     return {
-        id: rootIdForCreatedOrder(normalizedOrder),
+        id: String(id ?? "").trim() || createEditorNodeId(`puzzle-${kind}-root`),
         name,
         kind,
-        createdOrder: normalizedOrder,
+        priority: normalizePriority(priority),
         branches: [branch],
     };
 }
@@ -65,13 +64,13 @@ export function createDefaultPuzzleLogic() {
     const defaultVariable = VISIBLE_STATE_VARIABLES.find((variable) => variable.id === "selectable.distance")
         ?? VISIBLE_STATE_VARIABLES[0]
         ?? STATE_VARIABLES[0];
-    const winBranch = newTreeBranch("if", defaultVariable, 0);
+    const winBranch = newTreeBranch("if", defaultVariable, 1);
     winBranch.conditions = [puzzleCondition("selectable.hp", {
         leftSelectable: "opponent",
         comparator: "lte",
         right: { type: "number", value: 0 },
     })];
-    const loseBranch = newTreeBranch("if", defaultVariable, 0);
+    const loseBranch = newTreeBranch("if", defaultVariable, 1);
     loseBranch.conditions = [puzzleCondition("selectable.hp", {
         leftSelectable: "my_bot",
         comparator: "lte",
@@ -81,8 +80,8 @@ export function createDefaultPuzzleLogic() {
         version: BOT_LOGIC_TREE_VERSION,
         customVariables: [],
         roots: [
-            puzzleRoot("Win Condition", "win", winBranch, 0),
-            puzzleRoot("Lose Condition", "lose", loseBranch, 1),
+            puzzleRoot("Win Condition", "win", winBranch, 1, "puzzle-root-win"),
+            puzzleRoot("Lose Condition", "lose", loseBranch, 2, "puzzle-root-lose"),
         ],
     });
 }
@@ -146,29 +145,29 @@ function stripLegacyActionFields(branch) {
     return normalized;
 }
 
-function createRuleRoot(stateVariables, kind, createdOrder) {
+function createRuleRoot(stateVariables, kind, priority) {
     const defaultVariable = stateVariables.find((variable) => variable.id === "selectable.distance")
         ?? stateVariables[0]
         ?? VISIBLE_STATE_VARIABLES.find((variable) => variable.id === "selectable.distance")
         ?? STATE_VARIABLES[0];
-    const branch = newTreeBranch("if", defaultVariable, 0);
+    const branch = newTreeBranch("if", defaultVariable, 1);
     const label = kind === "win" ? "Win Condition" : "Lose Condition";
-    return puzzleRoot(label, kind, branch, createdOrder);
+    return puzzleRoot(label, kind, branch, priority);
 }
 
-function createModifyRoot(configuration, stateVariables, createdOrder) {
+function createModifyRoot(configuration, stateVariables, priority) {
     const defaultVariable = stateVariables.find((variable) => variable.id === "selectable.distance")
         ?? stateVariables[0]
         ?? VISIBLE_STATE_VARIABLES.find((variable) => variable.id === "selectable.distance")
         ?? STATE_VARIABLES[0];
-    const branch = newTreeBranch("if", defaultVariable, 0);
+    const branch = newTreeBranch("if", defaultVariable, 1);
     const withAction = addGraphAction(
         branch,
         DEFAULT_BOT_CONFIGURATION_ID,
         "variable",
         configuration.customVariables ?? [],
     );
-    return puzzleRoot("Modify Custom Variable", "modify", withAction, createdOrder);
+    return puzzleRoot("Modify Custom Variable", "modify", withAction, priority);
 }
 
 function clampZoom(value) {
@@ -238,10 +237,10 @@ export default function PuzzleLogicWorkspace({
 
     const addRoot = useCallback((kind) => {
         if (readOnly || currentConfiguration.roots.length >= MAX_ROOT_NODES) return;
-        const createdOrder = currentConfiguration.roots.length;
+        const priority = currentConfiguration.roots.length + 1;
         const root = kind === "modify"
-            ? createModifyRoot(currentConfiguration, stateVariables, createdOrder)
-            : createRuleRoot(stateVariables, kind, createdOrder);
+            ? createModifyRoot(currentConfiguration, stateVariables, priority)
+            : createRuleRoot(stateVariables, kind, priority);
         commitConfiguration({
             ...currentConfiguration,
             roots: [...currentConfiguration.roots, root],

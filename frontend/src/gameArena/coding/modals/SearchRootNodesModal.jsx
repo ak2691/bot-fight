@@ -3,6 +3,7 @@ import RootNodePriorityInput from "../controls/RootNodePriorityInput.jsx";
 import "./SearchRootNodes.css";
 import { useDialogFocus } from "../../../components/useDialogFocus.js";
 import { useExclusiveSearchMenu } from "../utils/codeMenuEvents.js";
+import { priorityForNode } from "../../botlogic/code/configuration/identifiers.js";
 
 export default function SearchRootNodesModal({
     roots,
@@ -30,7 +31,7 @@ export default function SearchRootNodesModal({
     const matchingNodes = orderedNodes.filter((node) => {
         const normalizedQuery = query.trim().toLocaleLowerCase();
         const root = roots[node.rootIndex];
-        const priority = Number(root?.createdOrder) + 1;
+        const priority = priorityForNode(root, node.rootIndex + 1);
         const label = `Root ${priority}`;
         const name = root?.name ?? "Root";
         const priorityLabel = `Priority ${priority}`;
@@ -85,7 +86,7 @@ export default function SearchRootNodesModal({
         <label className="code-node-search-label"><span className="sr-only">Search roots</span><input ref={searchInputRef} aria-label="Search roots" name="root-search" type="search" value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(-1); optionRefs.current = []; }} onKeyDown={moveFromSearch} placeholder={quick ? "Jump to a root…" : "Search roots…"} /></label>
         <div className="code-node-search-results code-root-search-results">{matchingNodes.length ? matchingNodes.map((node, index) => {
             const root = roots[node.rootIndex];
-            const priority = Number(root?.createdOrder) + 1;
+            const priority = priorityForNode(root, node.rootIndex + 1);
             const label = `Root ${priority}`;
             const name = root?.name ?? "Root";
             return <div
@@ -110,8 +111,7 @@ export default function SearchRootNodesModal({
 }
 
 function rootPriority(roots, node) {
-    const createdOrder = Number(roots[node.rootIndex]?.createdOrder);
-    return Number.isFinite(createdOrder) ? createdOrder : node.rootIndex;
+    return priorityForNode(roots[node.rootIndex], node.rootIndex + 1);
 }
 
 const MAX_VISIBLE_NODES = 100;

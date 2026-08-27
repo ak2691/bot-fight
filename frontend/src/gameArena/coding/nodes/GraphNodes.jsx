@@ -34,6 +34,7 @@ import {
 } from "../../botlogic/code/BotCode.js";
 import { absoluteMovementAngle, relativeMovementAngle } from "../../botlogic/planner/arenaAngles.js";
 import { MOVEMENT_DIRECTION_MAX, MOVEMENT_DIRECTION_MIN, SELECTABLE_ORDERS } from "../../botlogic/code/contracts/BotLogicContracts.js";
+import { normalizePriority, priorityForNode } from "../../botlogic/code/configuration/identifiers.js";
 import { actionTypesForLoadout } from "../../gameconfig/CombatLoadouts.js";
 import { abilityIdFromBoundary } from "../../gameconfig/AbilityCompatibility.js";
 import {
@@ -135,7 +136,7 @@ function buildLogicGraph(roots, stateVariables = VISIBLE_STATE_VARIABLES, select
             + (branch.children ?? []).reduce((sum, child) => sum + measureBranch(child), 0);
         const conditionHeight = 94 + Math.max(1, Array.isArray(branch.conditions) ? branch.conditions.length : 1) * 42;
         const nodeWidth = conditionNodeWidth(branch, stateVariables);
-        const condition = { id: conditionGraphNodeId(branch.id, rootId), rootId, branchId: branch.id, rootIndex, path, x: left + width / 2 - nodeWidth / 2, y, width: nodeWidth, height: conditionHeight, priority: Number(branch.createdOrder) + 1 };
+        const condition = { id: conditionGraphNodeId(branch.id, rootId), rootId, branchId: branch.id, rootIndex, path, x: left + width / 2 - nodeWidth / 2, y, width: nodeWidth, height: conditionHeight, priority: priorityForNode(branch, (path[path.length - 1] ?? 0) + 1) };
         graph.conditions.push(condition);
         graph.edges.push({ id: `${parent.id}->${condition.id}`, fromId: parent.id, toId: condition.id, x1: parent.x + parent.width / 2, y1: parent.y + parent.height, x2: condition.x + condition.width / 2, y2: condition.y });
         // Keep the action/child row centered under its conditional when the
@@ -408,7 +409,7 @@ function GraphConditionNode({ node, branch, disabled, canRemove, canAddAction, c
     const addJoinedCondition = (join) => onChange({ conditions: [...conditions, { ...createExpressionCondition(defaultVariable, selectableTypes), ...(join === "or" ? { join: "or" } : {}) }] });
     return <section onClick={onSelect} onPointerDown={(event) => { if (!standalone) beginNodeDrag(event, node.id); }} className={`code-graph-node code-graph-node--conditional ${standalone ? "relative w-full" : "absolute"} rounded-sm border bg-zinc-950 shadow-2xl ${selected ? "is-inspected" : ""}`} style={standalone ? { width: "100%" } : { ...graphNodeStyle(node, nodeOffsets), width: node.width }}>
         <header className="code-compact-header code-node-header--conditional">
-            {standalone || puzzleMode ? <span className="min-w-0 flex-1 truncate text-sky-100">{puzzleLabel}</span> : <><span className="code-node-badge">{node.path.length}</span><span className="min-w-0 flex flex-1 items-center gap-1 truncate text-sky-100">Conditional <RootNodePriorityInput priority={Number(branch.createdOrder) + 1} max={MAX_LOGIC_BLOCKS} disabled={disabled} onCommit={onPriorityChange} ariaLabel={`Priority for Conditional ${Number(branch.createdOrder) + 1}`} className="code-conditional-priority" /></span><button type="button" data-node-drag-ignore="true" className="code-conditional-add-button" disabled={disabled || !canAddCondition} onClick={(event) => { event.stopPropagation(); onAddParentConditional(); }}>+IF</button></>}
+            {standalone || puzzleMode ? <span className="min-w-0 flex-1 truncate text-sky-100">{puzzleLabel}</span> : <><span className="code-node-badge">{node.path.length}</span><span className="min-w-0 flex flex-1 items-center gap-1 truncate text-sky-100">Conditional <RootNodePriorityInput priority={priorityForNode(branch, (node.path[node.path.length - 1] ?? 0) + 1)} max={MAX_LOGIC_BLOCKS} disabled={disabled} onCommit={onPriorityChange} ariaLabel={`Priority for Conditional ${priorityForNode(branch, (node.path[node.path.length - 1] ?? 0) + 1)}`} className="code-conditional-priority" /></span><button type="button" data-node-drag-ignore="true" className="code-conditional-add-button" disabled={disabled || !canAddCondition} onClick={(event) => { event.stopPropagation(); onAddParentConditional(); }}>+IF</button></>}
         </header>
         <div className="space-y-2 p-3">
             {conditions.map((condition, index) => {
@@ -441,7 +442,7 @@ function PuzzleConditionNode({ title, conditions = [], stateVariables = VISIBLE_
     const [operandPicker, setOperandPicker] = useState(null);
     const [inspectedVariable, setInspectedVariable] = useState(null);
     const node = { id: `puzzle-condition:${title}`, rootId: `puzzle-condition:${title}`, rootIndex: 0, path: [0], width: 0 };
-    const branch = { id: `puzzle-condition-branch:${title}`, branchType: "if", createdOrder: 0, conditions, actions: [], children: [] };
+    const branch = { id: `puzzle-condition-branch:${title}`, branchType: "if", priority: 1, conditions, actions: [], children: [] };
     const graph = { conditions: [node], actions: [] };
     const roots = [{ branches: [branch] }];
 
@@ -854,20 +855,20 @@ function PhaseOrientationControls({ entry, onChange }) {
     return <label className="block font-mono text-[9px] text-ink-muted">LANDING FACING<select value={entry.phaseFacingMode ?? "face_target"} onChange={(event) => onChange({ ...entry, phaseFacingMode: event.target.value })} className="mt-1 h-9 w-full rounded border border-border-lo bg-zinc-900 px-2 text-white"><option value="face_target">Face target after passing through</option><option value="keep">Keep current facing</option><option value="face_origin">Face the position phased from</option><option value="mirror">Mirror facing across the phase line</option></select></label>;
 }
 
-function newTreeBranch(branchType, defaultVariable, createdOrder = 0) {
+function newTreeBranch(branchType, defaultVariable, priority = 1) {
     const conditional = createConditional("always", "none");
     return {
         ...conditional,
         branchType,
-        createdOrder,
+        priority: normalizePriority(priority),
         conditions: branchType === "else" ? [] : [createExpressionCondition(defaultVariable)],
         actions: [],
         children: [],
     };
 }
 
-function nextBranchOrder(branches) {
-    return (branches ?? []).reduce((highest, branch) => Math.max(highest, Number(branch?.createdOrder) + 1 || 0), 0);
+function nextBranchPriority(branches) {
+    return (branches ?? []).reduce((highest, branch, index) => Math.max(highest, priorityForNode(branch, index + 1)), 0) + 1;
 }
 
 const CONDITION_PICKER_CATEGORY_ORDER = Object.freeze([
@@ -1252,7 +1253,7 @@ export {
     actionGraphNodeId,
     graphEdgePath,
     newTreeBranch,
-    nextBranchOrder,
+    nextBranchPriority,
     countActions,
     countLogicConditions,
     abilityIdsForConfiguration,

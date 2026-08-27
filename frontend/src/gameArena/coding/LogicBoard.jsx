@@ -14,6 +14,7 @@ import {
 } from "../botlogic/code/BotCode.js";
 import RootNodePriorityInput from "./controls/RootNodePriorityInput.jsx";
 import SearchRootNodesModal from "./modals/SearchRootNodesModal.jsx";
+import { priorityForNode } from "../botlogic/code/configuration/identifiers.js";
 import {
     buildLogicGraph,
     graphNodeStyle,
@@ -36,7 +37,7 @@ import {
     conditionGraphNodeId,
     graphEdgePath,
     newTreeBranch,
-    nextBranchOrder,
+    nextBranchPriority,
 } from "./nodes/GraphNodes.jsx";
 import {
     nodePositionsForGraph,
@@ -763,7 +764,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         event.stopPropagation();
         setSelectedNodeIds([]);
         setInspectedNode(null);
-        const branch = newTreeBranch("if", defaultVariable, nextBranchOrder(rootNode.branches));
+        const branch = newTreeBranch("if", defaultVariable, nextBranchPriority(rootNode.branches));
         const branchIndex = rootNode.branches?.length ?? 0;
         const nextRoots = normalizeRoots(roots.map((root, index) => index === node.rootIndex ? { ...root, branches: [...(root.branches ?? []), branch] } : root));
         const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes);
@@ -812,9 +813,9 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
                 }} />}
                 {graph.roots.map((node) => {
                     const rootNode = roots[node.rootIndex];
-                    const label = `Root ${Number(rootNode?.createdOrder) + 1}`;
+                    const label = `Root ${priorityForNode(rootNode, node.rootIndex + 1)}`;
                     return <section key={node.id} onClick={(event) => selectGraphNode(event, node.id)} onPointerDown={(event) => beginNodeDrag(event, node.id)} className={`code-graph-node code-graph-node--root absolute w-[300px] rounded-sm shadow-2xl ${selectedNodeIds.includes(node.id) ? "is-selected" : ""}`} style={graphNodeStyle(node, nodeOffsets)}>
-                        <header className="code-root-header">{puzzleMode ? <span className="code-root-label">PUZZLE RULE</span> : <span className="code-root-label">Root <RootNodePriorityInput priority={Number(rootNode?.createdOrder) + 1} max={MAX_ROOT_NODES} disabled={disabled} onCommit={(priority) => setRootOrder(node.rootIndex, priority)} ariaLabel={`Priority for ${label}`} className="code-root-priority" /></span>}</header>
+                        <header className="code-root-header">{puzzleMode ? <span className="code-root-label">PUZZLE RULE</span> : <span className="code-root-label">Root <RootNodePriorityInput priority={priorityForNode(rootNode, node.rootIndex + 1)} max={MAX_ROOT_NODES} disabled={disabled} onCommit={(priority) => setRootOrder(node.rootIndex, priority)} ariaLabel={`Priority for ${label}`} className="code-root-priority" /></span>}</header>
                         <div className="code-root-body">{puzzleMode ? <span className="code-root-name code-root-name--puzzle" aria-label={`Name for ${label}`}>{rootNode?.name ?? "Puzzle Rule"}</span> : <RootNameInput value={rootNode?.name} disabled={disabled} ariaLabel={`Name for ${label}`} onCommit={(name) => updateRoot(node.rootIndex, { name })} />}<div className="code-root-actions">{!puzzleMode && <button type="button" disabled={disabled || graphConditionCount >= maxTotalConditions} onClick={(event) => addRootConditional(event, node, rootNode)} className={`code-root-action code-root-action--conditional ${tutorialFocus === "add-condition" && !rootNode.branches?.length ? "tutorial-control-focus" : ""}`}>+ CONDITIONAL</button>}<button type="button" disabled={!canRemove} onClick={(event) => { event.stopPropagation(); removeRootNode(node.rootIndex); }} className="code-root-action code-root-action--remove">REMOVE</button></div>
                         </div>
                     </section>;
@@ -855,7 +856,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
                             commitConfiguration({ ...configuration, roots: nextRoots }, true, positionOverrides);
                         }}
                         onAddChildConditional={() => {
-                            const child = newTreeBranch("if", defaultVariable, nextBranchOrder(branch.children));
+                            const child = newTreeBranch("if", defaultVariable, nextBranchPriority(branch.children));
                             const childIndex = branch.children?.length ?? 0;
                             const nextRoots = normalizeRoots(updateTreeBranch(roots, node.rootIndex, node.path, (current) => ({ ...current, children: [...(current.children ?? []), child] })));
                             const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes);

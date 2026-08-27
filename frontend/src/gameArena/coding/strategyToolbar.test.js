@@ -203,6 +203,15 @@ test("roots expose editable names and priorities with root-only search", () => {
     assert.doesNotMatch(search, /beginDrag|position\.x|cursor-move/);
 });
 
+test("root priority edits refresh the graph and root search from one configuration", () => {
+    const board = readFileSync(BOARD_PATH, "utf8");
+
+    assert.match(board, /const roots = useMemo\(\(\) => normalizeRoots\(configuration\.roots \?\? \[\]\), \[configuration\.roots\]\)/);
+    assert.match(board, /const setRootOrder = \(rootIndex, priority\) => \{[\s\S]*setRootPriority\(roots, rootIndex, priority\)[\s\S]*commitConfiguration\(\{ \.\.\.configuration, roots: reordered \}\);/);
+    assert.match(board, /<SearchRootNodesModal roots=\{roots\} nodes=\{graph\.roots\}[\s\S]*onPriorityChange=\{setRootOrder\}/);
+    assert.match(board, /<RootNodePriorityInput priority=\{priorityForNode\(rootNode, node\.rootIndex \+ 1\)\}[\s\S]*onCommit=\{\(priority\) => setRootOrder\(node\.rootIndex, priority\)\}/);
+});
+
 test("compact conditions own their comparator and actions summarize inspector targets", () => {
     const source = readCodingSource();
 

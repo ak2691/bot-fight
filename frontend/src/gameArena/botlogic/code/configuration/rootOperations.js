@@ -1,23 +1,26 @@
 import {
     conditionalIdFor,
-    normalizeCreatedOrder,
-    rootIdForCreatedOrder,
+    normalizePriority,
+    priorityForNode,
+    rootIdForIndex,
 } from "./identifiers.js";
 import { MAX_ROOT_NAME_LENGTH } from "./constants.js";
 
 export function normalizeRoots(roots) {
     if (!Array.isArray(roots)) return [];
     return roots.map((root, rootIndex) => {
-        const createdOrder = normalizeCreatedOrder(root?.createdOrder, rootIndex);
+        const priority = priorityForNode(root, rootIndex + 1);
         // IDs identify the editor node, not its current execution priority. Keep
         // an existing ID attached to the same node so priority edits cannot make
         // saved graph positions follow a different root.
-        const id = stableNodeId(root?.id, rootIdForCreatedOrder(rootIndex, rootIndex));
+        const id = stableNodeId(root?.id, rootIdForIndex(rootIndex));
+        const rootData = { ...(root ?? {}) };
+        delete rootData.createdOrder;
         return {
-            ...(root ?? {}),
+            ...rootData,
             id,
             name: normalizeRootName(root?.name),
-            createdOrder,
+            priority,
             branches: normalizeBranchIds(root?.branches, id, 1),
         };
     });
@@ -26,12 +29,14 @@ export function normalizeRoots(roots) {
 function normalizeBranchIds(branches, rootId, depth) {
     if (!Array.isArray(branches)) return branches;
     return branches.map((branch, branchIndex) => {
-        const createdOrder = normalizeCreatedOrder(branch?.createdOrder, branchIndex);
-        const id = stableNodeId(branch?.id, conditionalIdFor(rootId, depth, branchIndex, branchIndex));
+        const priority = priorityForNode(branch, branchIndex + 1);
+        const id = stableNodeId(branch?.id, conditionalIdFor(rootId, depth, priority, branchIndex + 1));
+        const branchData = { ...(branch ?? {}) };
+        delete branchData.createdOrder;
         return {
-            ...(branch ?? {}),
+            ...branchData,
             id,
-            createdOrder,
+            priority,
             children: normalizeBranchIds(branch?.children, rootId, depth + 1),
         };
     });
@@ -43,7 +48,12 @@ export function insertParentLogicBranch(roots, rootIndex, path, parentBranch) {
         const [head, ...tail] = remainingPath;
         return (branches ?? []).map((branch, index) => {
             if (index !== head) return branch;
-            if (!tail.length) return { ...parentBranch, branchType: branch.branchType === "else" ? "else" : "if", createdOrder: branch.createdOrder ?? head, children: [branch] };
+            if (!tail.length) return {
+                ...parentBranch,
+                branchType: branch.branchType === "else" ? "else" : "if",
+                priority: priorityForNode(parentBranch, priorityForNode(branch, head + 1)),
+                children: [branch],
+            };
             return { ...branch, children: wrapBranchAt(branch.children, tail) };
         });
     };
@@ -64,35 +74,48 @@ export function removeLogicBranch(roots, rootIndex, path) {
 }
 
 export function moveLogicRootPriority(roots, rootIndex, delta) {
-    const currentPriority = Number(roots?.[rootIndex]?.createdOrder) + 1;
+    const currentPriority = priorityForNode(roots?.[rootIndex], rootIndex + 1);
     return setLogicRootPriority(roots, rootIndex, currentPriority + Number(delta || 0));
 }
 
 export function setLogicRootPriority(roots, rootIndex, priority) {
     if (!Array.isArray(roots)) return [];
-    const targetPriority = Math.max(1, Math.trunc(Number(priority) || 1));
+    const targetPriority = normalizePriority(priority);
     if (rootIndex < 0 || rootIndex >= roots.length) return roots;
-    const targetOrder = targetPriority - 1;
-    const currentOrder = finiteOrder(roots[rootIndex]?.createdOrder, rootIndex);
-    if (targetOrder === currentOrder) return roots;
-    const updated = roots.map((root, index) => ({ ...root, createdOrder: index === rootIndex ? targetOrder : finiteOrder(root?.createdOrder, index) }));
-    const swappedIndex = updated.findIndex((root, index) => index !== rootIndex && root.createdOrder === targetOrder);
-    if (swappedIndex >= 0) updated[swappedIndex] = { ...updated[swappedIndex], createdOrder: currentOrder };
+    const currentPriority = priorityForNode(roots[rootIndex], rootIndex + 1);
+    if (targetPriority === currentPriority) return roots;
+    const updated = roots.map((root, index) => {
+        const rootData = { ...root };
+        delete rootData.createdOrder;
+        return {
+            ...rootData,
+            priority: index === rootIndex ? targetPriority : priorityForNode(root, index + 1),
+        };
+    });
+    const swappedIndex = updated.findIndex((root, index) => index !== rootIndex && root.priority === targetPriority);
+    if (swappedIndex >= 0) updated[swappedIndex] = { ...updated[swappedIndex], priority: currentPriority };
     return normalizeRoots(updated);
 }
 
 export function setLogicBranchPriority(roots, rootIndex, path, priority) {
     if (!Array.isArray(roots) || !Array.isArray(path) || path.length === 0) return roots;
-    const targetOrder = Math.max(0, Math.trunc(Number(priority) || 1) - 1);
+    const targetPriority = normalizePriority(priority);
     const updateAt = (branches, remainingPath) => {
         const [head, ...tail] = remainingPath;
         if (!Array.isArray(branches) || !branches[head]) return branches;
         if (tail.length) return branches.map((branch, index) => index === head ? { ...branch, children: updateAt(branch.children, tail) } : branch);
-        const currentOrder = finiteOrder(branches[head].createdOrder, head);
-        if (currentOrder === targetOrder) return branches;
-        const updated = branches.map((branch, index) => ({ ...branch, createdOrder: index === head ? targetOrder : finiteOrder(branch?.createdOrder, index) }));
-        const swappedIndex = updated.findIndex((branch, index) => index !== head && branch.createdOrder === targetOrder);
-        if (swappedIndex >= 0) updated[swappedIndex] = { ...updated[swappedIndex], createdOrder: currentOrder };
+        const currentPriority = priorityForNode(branches[head], head + 1);
+        if (currentPriority === targetPriority) return branches;
+        const updated = branches.map((branch, index) => {
+            const branchData = { ...branch };
+            delete branchData.createdOrder;
+            return {
+                ...branchData,
+                priority: index === head ? targetPriority : priorityForNode(branch, index + 1),
+            };
+        });
+        const swappedIndex = updated.findIndex((branch, index) => index !== head && branch.priority === targetPriority);
+        if (swappedIndex >= 0) updated[swappedIndex] = { ...updated[swappedIndex], priority: currentPriority };
         return updated;
     };
     return normalizeRoots(roots.map((root, index) => index === rootIndex ? { ...root, branches: updateAt(root.branches, path) } : root));
@@ -105,10 +128,6 @@ function normalizeLogicBranchSiblings(branches) {
 function normalizeRootName(value) {
     const normalized = String(value ?? "").trim().replace(/\s+/g, " ").slice(0, MAX_ROOT_NAME_LENGTH);
     return normalized || "Root";
-}
-
-function finiteOrder(value, fallback) {
-    return normalizeCreatedOrder(value, fallback);
 }
 
 function stableNodeId(value, fallback) {

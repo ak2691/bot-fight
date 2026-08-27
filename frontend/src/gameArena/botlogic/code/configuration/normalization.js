@@ -23,9 +23,9 @@ export function normalizeConfiguration(configuration, operations) {
 }
 
 function remapNodePositions(source, sourceRoots, normalizedRoots) {
-    // Runtime IDs are priority-derived, but editor positions belong to the
-    // source root/branch in the same array slot. Translate only the metadata
-    // keys so normalization cannot make a priority edit move another node.
+    // Editor positions stay attached to their source root/branch while
+    // priorities change execution order. Translate metadata keys for legacy
+    // or normalized IDs so positions remain associated with the same node.
     const positions = normalizeNodePositions(source);
     const remapped = { ...positions };
     (sourceRoots ?? []).slice(0, normalizedRoots.length).forEach((sourceRoot, rootIndex) => {

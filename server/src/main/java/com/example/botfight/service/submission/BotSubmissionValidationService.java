@@ -424,14 +424,7 @@ public class BotSubmissionValidationService {
                 errors.add(path + " must be an object");
                 continue;
             }
-            JsonNode createdOrder = root.get("createdOrder");
-            if (createdOrder != null && (!createdOrder.isNumber()
-                    || !Double.isFinite(createdOrder.asDouble())
-                    || createdOrder.asDouble() < 0
-                    || createdOrder.asDouble() >= MAX_ROOTS
-                    || createdOrder.asDouble() != Math.rint(createdOrder.asDouble()))) {
-                errors.add(path + ".createdOrder must be an integer between 0 and " + (MAX_ROOTS - 1));
-            }
+            validateTreePriority(errors, root, path, MAX_ROOTS);
             JsonNode name = root.get("name");
             if (name != null && (!name.isTextual() || name.asText().trim().isEmpty() || name.asText().length() > MAX_ROOT_NAME_LENGTH)) {
                 errors.add(path + ".name must be 1 to " + MAX_ROOT_NAME_LENGTH + " characters");
@@ -454,6 +447,7 @@ public class BotSubmissionValidationService {
             String branchPath = path + "[" + index + "]";
             branchCount[0] += executableActionCount(branch);
             conditionCount[0] += conditionCount(branch);
+            validateTreePriority(errors, branch, branchPath, MAX_LOGIC_BLOCKS);
             validateLogicBlock(errors, branch, branchPath, loadoutSpec, customVariableTypes);
             String type = branch != null && branch.hasNonNull("branchType") ? branch.get("branchType").asText() : "if";
             if (index == 0 && !"if".equals(type)) errors.add(branchPath + ".branchType must be if for the first sibling");
@@ -464,6 +458,21 @@ public class BotSubmissionValidationService {
                 if (!children.isArray()) errors.add(branchPath + ".children must be an array");
                 else validateTreeBranches(errors, children, branchPath + ".children", loadoutSpec, customVariableTypes, branchCount, conditionCount);
             }
+        }
+    }
+
+    private void validateTreePriority(List<String> errors, JsonNode node, String path, int maxPriority) {
+        if (node == null || !node.isObject()) return;
+        String field = node.hasNonNull("createdOrder") ? "createdOrder" : "priority";
+        JsonNode priority = node.get(field);
+        if (priority == null || priority.isNull()) return;
+        int minimum = "createdOrder".equals(field) ? 0 : 1;
+        if (!priority.isNumber()
+                || !Double.isFinite(priority.asDouble())
+                || priority.asDouble() < minimum
+                || priority.asDouble() > maxPriority
+                || priority.asDouble() != Math.rint(priority.asDouble())) {
+            errors.add(path + "." + field + " must be an integer between " + minimum + " and " + maxPriority);
         }
     }
 

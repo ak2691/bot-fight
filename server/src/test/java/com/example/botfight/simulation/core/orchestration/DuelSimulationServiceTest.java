@@ -152,6 +152,33 @@ class DuelSimulationServiceTest {
     }
 
     @Test
+    void canonicalTreePrioritiesOrderRootsAndConditionalSiblings() throws Exception {
+        JsonNode canonicalBrain = jsonMapper.readTree("""
+                {
+                  "version":"bot-logic-tree-v1",
+                  "roots":[
+                    {"priority":2,"branches":[
+                      {"priority":1,"branchType":"if","conditions":[{"type":"always"}],
+                       "actions":[{"action":19,"movementMode":"absolute","movementDirection":"east"}],"children":[]}
+                    ]},
+                    {"priority":1,"branches":[
+                      {"priority":2,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":19,"movementMode":"absolute","movementDirection":"east"}],"children":[]},
+                      {"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":20}],"children":[]}
+                    ]}
+                  ]
+                }
+                """);
+
+        MatchPlaybackDTO result = service.simulate(request(
+                arena(100),
+                bot("canonical-priority", "Canonical", 1, 100, 400, "custom", canonicalBrain),
+                bot("canonical-target", "Target", 2, 700, 400, idleBrain)));
+
+        assertThat(result.frames()).anySatisfy(frame ->
+                assertThat(frame.bots().getFirst().preparingAbility()).isEqualTo(20));
+    }
+
+    @Test
     void lowerPriorityNumberOverridesEarlierHigherNumberMovement() {
         MatchPlaybackDTO result = service.simulate(request(
                 arena(100),

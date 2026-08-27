@@ -127,3 +127,22 @@ export async function updatePuzzle(puzzleNumber, payload) {
     clearPuzzleListCache();
     return body;
 }
+
+export async function migratePuzzleTreePriorities() {
+    const response = await fetch(`${ADMIN_PUZZLES_ENDPOINT}/migrate-tree-priorities`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+            "Content-Type": "application/json",
+            ...(await ensureCsrfHeaders("POST")),
+        },
+        body: JSON.stringify({}),
+    });
+    const body = await response.json().catch(() => ({}));
+    const message = typeof body === "string" ? body : body.message;
+    if (!response.ok) {
+        throw new Error(message ?? `Could not migrate puzzle JSON (${response.status})`);
+    }
+    clearPuzzleListCache();
+    return body;
+}

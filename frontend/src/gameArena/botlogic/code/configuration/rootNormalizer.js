@@ -1,18 +1,21 @@
 import { actionEntryCost } from "./configurationMetrics.js";
 import {
     conditionalIdFor,
-    normalizeCreatedOrder,
-    rootIdForCreatedOrder,
+    priorityForNode,
+    rootIdForIndex,
 } from "./identifiers.js";
 import { MAX_ROOT_NAME_LENGTH } from "./constants.js";
 
 export function normalizeRoot(root, rootIndex, remaining, customVariables, operations) {
-    const createdOrder = normalizeCreatedOrder(root?.createdOrder, rootIndex);
-    const rootId = rootIdForCreatedOrder(createdOrder, rootIndex);
+    const priority = priorityForNode(root, rootIndex + 1);
+    // Root IDs identify the editor node, not its current execution priority.
+    // Keeping an existing ID attached to the same array entry preserves graph
+    // positions when a priority edit swaps priority values.
+    const rootId = stableNodeId(root?.id, rootIdForIndex(rootIndex));
     return {
         id: rootId,
         name: normalizeRootName(root?.name),
-        createdOrder,
+        priority,
         branches: normalizeBranches(root?.branches, remaining, customVariables, operations, rootId, 1),
     };
 }
@@ -28,7 +31,7 @@ function normalizeBranches(branches, remaining, customVariables, operations, roo
     for (let index = 0; index < branches.length && remaining.conditions > 0; index += 1) {
         const branch = branches[index];
         const normalizedBlock = operations.normalizeBlock(branch, index, customVariables);
-        const createdOrder = normalizeCreatedOrder(branch?.createdOrder, index);
+        const priority = priorityForNode(branch, index + 1);
         const actions = [];
         for (const entry of normalizedBlock.actions) {
             if (entry.action === "none") continue;
@@ -45,15 +48,20 @@ function normalizeBranches(branches, remaining, customVariables, operations, roo
         const children = normalizeBranches(branch?.children, remaining, customVariables, operations, rootId, depth + 1);
         normalized.push({
             ...normalizedBlock,
-            id: conditionalIdFor(rootId, depth, createdOrder, index),
+            id: conditionalIdFor(rootId, depth, priority, index + 1),
             ...actions[0],
             actions,
             branchType: index === 0 ? "if" : branch?.branchType === "else" ? "else" : "if",
-            createdOrder,
+            priority,
             conditions,
             children,
         });
     }
     return normalized;
+}
+
+function stableNodeId(value, fallback) {
+    const id = String(value ?? "").trim();
+    return id || fallback;
 }
 

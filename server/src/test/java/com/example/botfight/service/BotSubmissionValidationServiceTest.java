@@ -200,6 +200,45 @@ class BotSubmissionValidationServiceTest {
     }
 
     @Test
+    void acceptsCanonicalOneBasedTreePriorities() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {
+                  "version":"bot-logic-tree-v1",
+                  "roots":[{
+                    "id":"root-1","priority":2,"branches":[{
+                      "id":"branch-1","branchType":"if","priority":1,
+                      "action":"move_walk","movementMode":"target","movementDirection":0,
+                      "conditions":[{"type":"always"}],"children":[]
+                    }]
+                  }]
+                }
+                """));
+
+        var result = service.validate(payload);
+
+        assertThat(result.isAccepted()).isTrue();
+        assertThat(result.getErrors()).isEmpty();
+    }
+
+    @Test
+    void rejectsZeroBasedCanonicalTreePriority() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {
+                  "version":"bot-logic-tree-v1",
+                  "roots":[{"priority":0,"branches":[]}]
+                }
+                """));
+
+        var result = service.validate(payload);
+
+        assertThat(result.isAccepted()).isFalse();
+        assertThat(result.getErrors()).contains(
+                "brain.roots[0].priority must be an integer between 1 and 100");
+    }
+
+    @Test
     void acceptsSignedMovementAnglesAndRejectsAnglesOutsideOneTurn() throws Exception {
         BotSubmissionPayloadDTO payload = validPayload();
         payload.setBrain(jsonMapper.readTree("""

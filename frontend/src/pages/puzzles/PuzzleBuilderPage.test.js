@@ -28,6 +28,14 @@ test("admin puzzle updates use PUT and expose no delete endpoint", () => {
     assert.doesNotMatch(controllerSource, /DeleteMapping/);
 });
 
+test("admins can trigger the one-shot stored JSON priority migration from edit mode", () => {
+    assert.match(apiSource, /migratePuzzleTreePriorities/);
+    assert.match(apiSource, /migrate-tree-priorities/);
+    assert.match(builderSource, /migratePuzzleTreePriorities/);
+    assert.match(builderSource, /UPDATE DB JSON/);
+    assert.match(controllerSource, /@PostMapping\("\/migrate-tree-priorities"\)/);
+});
+
 test("puzzle save canonicalizes both rule conditions and staged bot brains", () => {
     assert.match(workspaceSource, /normalizeConditions\(branch\.conditions, customVariables, SELECTABLE_TYPES\)/);
     assert.match(workspaceSource, /branches: normalizePuzzleBranches\(root\?\.branches, normalizedKind/);
