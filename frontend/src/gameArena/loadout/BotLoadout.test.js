@@ -11,6 +11,11 @@ test("Basic Strike is standard equipment with its direct melee contract", () => 
     assert.equal(abilityDefinition(34).stats.range, 80);
 });
 
+test("Basic Heal catalogue copy matches its 25 HP self-heal", () => {
+    assert.equal(abilityDefinition(10).stats.healing, 25);
+    assert.equal(abilityDefinition(10).summary, "Channel briefly to restore 25 HP.");
+});
+
 test("loadout payloads contain abilities only and use the default combat stats", () => {
     assert.deepEqual(normalizedBotLoadout({ abilities: [1] }), { abilities: [1] });
     assert.equal(encodeBotLoadout({ abilities: [1] }), "custom:s");

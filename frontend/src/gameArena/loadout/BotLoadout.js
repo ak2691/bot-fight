@@ -42,7 +42,7 @@ const BOT_ABILITY_CATALOG = [
     { id: 7, round: 1, visualInterpolation: "none", summary: "Wind up a 30-damage, 115-range sword punish across a 150° arc that also causes bleed." },
     { id: 8, round: 2, visualInterpolation: "none", summary: "Deal 20 damage and push nearby bots 250 units." },
     { id: 9, round: 1, visualInterpolation: "none", summary: "A projectile that slows on hit." },
-    { id: 10, round: 1, visualInterpolation: "none", summary: "Channel briefly to restore 15 HP." },
+    { id: 10, round: 1, visualInterpolation: "none", summary: "Channel briefly to restore 25 HP." },
     { id: 11, round: 1, visualInterpolation: "linear", summary: "Place one visible, destructible proximity trap." },
     { id: 12, round: 1, visualInterpolation: "none", summary: "Reliable 500-range low-damage hitscan shot." },
     { id: 13, round: 2, visualInterpolation: "none", summary: "Charge a visible 900-range, 40-damage beam that also shocks its target." },

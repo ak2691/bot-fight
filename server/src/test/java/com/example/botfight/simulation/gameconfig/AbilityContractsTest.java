@@ -82,12 +82,12 @@ class AbilityContractsTest {
     }
 
     @Test
-    void basicHealContractRemainsSelfTargetedAndRestoresTwentyHp() {
+    void basicHealContractRemainsSelfTargetedAndRestoresTwentyFiveHp() {
         assertThat(AbilityContracts.get(10).delivery())
                 .isEqualTo(AbilityContracts.DeliveryType.SELF);
         assertThat(AbilityContracts.get(10).effects())
                 .filteredOn(effect -> effect.type() == HEALING)
-                .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(20));
+                .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(25));
     }
 
     @Test

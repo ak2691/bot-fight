@@ -691,7 +691,7 @@ html,
 
 .home-action-ability-card {
   position: absolute;
-  top: 3px;
+  top: 50%;
   display: grid;
   width: 54px;
   height: 64px;
@@ -709,9 +709,9 @@ html,
   object-fit: contain;
 }
 
-.home-action-ability-card-1 { left: 0; transform: rotate(-16deg); z-index: 1; }
-.home-action-ability-card-2 { left: 16px; transform: rotate(0deg); z-index: 2; }
-.home-action-ability-card-3 { right: 0; transform: rotate(16deg); z-index: 3; }
+.home-action-ability-card-1 { left: 0; transform: translateY(-50%) rotate(-16deg); z-index: 1; }
+.home-action-ability-card-2 { left: 16px; transform: translateY(-50%) rotate(0deg); z-index: 2; }
+.home-action-ability-card-3 { right: 0; transform: translateY(-50%) rotate(16deg); z-index: 3; }
 
 .home-tutorial-button {
   border: 0;

@@ -73,7 +73,7 @@ const ABILITY_STATS_BY_ID = Object.freeze({
     7: { cooldownMs: 4600, windupMs: 300, visualMs: 400, damage: 30, range: 115, arcDegrees: 150, bleedDamage: 2, statuses: { bleed: { durationMs: 5000, intervalMs: 1000 } } },
     8: { cooldownMs: 10000, visualMs: 500, damage: 20, radius: 110, knockback: 250 },
     9: { cooldownMs: 6700, windupMs: 500, visualMs: 300, damage: 20, statuses: { slow: { durationMs: 1000 } }, range: 500, projectile: true },
-    10: { cooldownMs: 11700, windupMs: 800, visualMs: 300, healing: 20 },
+    10: { cooldownMs: 11700, windupMs: 800, visualMs: 300, healing: 25 },
     11: {
         cooldownMs: 10000,
         activeMs: 300,

@@ -33,6 +33,10 @@ test("the home practice-room action uses the stable practice route", () => {
 test("home action rows keep the ability stack at the standard action height", () => {
     assert.match(stylesSource, /\.home-action-icon\s*\{[\s\S]*?height: 54px;/);
     assert.match(stylesSource, /\.home-action-ability-icons\s*\{[\s\S]*?height: 54px;/);
+    assert.match(stylesSource, /\.home-action-ability-card\s*\{[\s\S]*?top: 50%;/);
+    assert.match(stylesSource, /\.home-action-ability-card-1\s*\{[\s\S]*?transform: translateY\(-50%\) rotate\(-16deg\);/);
+    assert.match(stylesSource, /\.home-action-ability-card-2\s*\{[\s\S]*?transform: translateY\(-50%\) rotate\(0deg\);/);
+    assert.match(stylesSource, /\.home-action-ability-card-3\s*\{[\s\S]*?transform: translateY\(-50%\) rotate\(16deg\);/);
 });
 
 test("floating action nodes use the current movement label and targeting description", () => {

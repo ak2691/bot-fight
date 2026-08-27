@@ -45,7 +45,7 @@ test("requested combat tuning is represented in the browser catalog", () => {
     assert.equal(ABILITY_STATS[5].reloadMs, 5000);
     assert.equal(ABILITY_STATS[8].cooldownMs, 10000);
     assert.equal(ABILITY_STATS[9].statuses.slow.durationMs, 1000);
-    assert.equal(ABILITY_STATS[10].healing, 20);
+    assert.equal(ABILITY_STATS[10].healing, 25);
     assert.equal(ABILITY_STATS[11].damage, 25);
     assert.equal(ABILITY_STATS[11].throwRange, 176);
     assert.equal(ABILITY_STATS[18].cooldownMs, 7000);

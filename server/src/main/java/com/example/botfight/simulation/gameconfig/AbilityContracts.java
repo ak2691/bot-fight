@@ -65,7 +65,7 @@ public final class AbilityContracts {
             entry(7, DeliveryType.MELEE, true, IGNORE, effect(EffectType.DAMAGE, 30), debuff("bleed", 2, Abilities.statusDurationMs(7, "bleed", 5000))),
             entry(8, DeliveryType.RADIAL, IGNORE, effect(EffectType.DAMAGE, 20), effect(EffectType.KNOCKBACK, 250)),
             entry(9, DeliveryType.RAY, IGNORE, effect(EffectType.DAMAGE, 20), debuff("slow", 0, Abilities.statusDurationMs(9, "slow", 1000))),
-            entry(10, DeliveryType.SELF, IGNORE, effect(EffectType.HEALING, 20)),
+            entry(10, DeliveryType.SELF, IGNORE, effect(EffectType.HEALING, 25)),
             entry(11, DeliveryType.TRAP, IGNORE, effect(EffectType.DAMAGE, 25), spawn("proximity_mine")),
             entry(12, DeliveryType.RAY, IGNORE, computed(EffectType.DAMAGE)),
             entry(13, DeliveryType.RAY, IGNORE, effect(EffectType.DAMAGE, 40), debuff("shock", 3, Abilities.statusDurationMs(13, "shock", 3000))),

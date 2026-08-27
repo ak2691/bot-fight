@@ -1113,7 +1113,7 @@ test("Basic Heal particle specs are deterministic, staggered, and upward", () =>
     assert.ok(new Set(specs.map((spec) => `${spec.offsetX}:${spec.offsetY}:${spec.vx}`)).size > 1);
 });
 
-test("Basic Heal applies 20 self-healing and respects the HP cap", () => {
+test("Basic Heal applies 25 self-healing and respects the HP cap", () => {
     const attacker = {
         id: "main", x: 100, y: 100, rotation: 0, hp: 90, maxHp: 100,
         triggeredAbility: 10,
@@ -1123,7 +1123,7 @@ test("Basic Heal applies 20 self-healing and respects the HP cap", () => {
 
     assert.deepEqual(opponent, opponentShape);
     assert.equal(activated.abilityVisual.ability, 10);
-    assert.equal(activated.pendingHealing, 20);
+    assert.equal(activated.pendingHealing, 25);
     assert.equal(settlePendingHealing(activated).hp, 100);
     assert.equal(ABILITY_STATS[10].cooldownMs, 11700);
     assert.equal(ABILITY_STATS[10].windupMs, 800);
