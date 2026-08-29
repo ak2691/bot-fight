@@ -1,5 +1,6 @@
 import { decodeBotLoadout, STANDARD_ABILITY_IDS } from "../gameArena/loadout/BotLoadout.js";
 import { BASE_BOT_HP } from "../gameArena/modelPayloads/arenaConstants.js";
+import { COMBAT_VISUAL_ABILITY_IDS, combatVisualDurationMs } from "../gameArena/gameconfig/visualState.js";
 
 export const REPLAY_PREPARATION_MS = 3_000;
 
@@ -72,6 +73,26 @@ export function replayResultRevealReached(resultRevealsAtMs, nowMs) {
     return Number.isFinite(currentMs) && currentMs >= revealMs;
 }
 
+export function replayResultVisibility({
+    result,
+    hasAuthorizedTerminalFrame = false,
+    hasDisplayedFinalFrame = false,
+    roundResultRevealReceived = false,
+    resultRevealReceived = false,
+} = {}) {
+    const replayFinished = Boolean(hasAuthorizedTerminalFrame && hasDisplayedFinalFrame);
+    const hasRoundResult = Boolean(result)
+        && replayFinished
+        && (roundResultRevealReceived || resultRevealReceived);
+    const hasMatchResult = Boolean(result)
+        && replayFinished
+        && resultRevealReceived;
+    return {
+        roundResultRevealed: hasRoundResult,
+        matchResultRevealed: hasMatchResult,
+    };
+}
+
 export function replayRatingChange(playback, resultRevealReceived = false) {
     if (!resultRevealReceived) return null;
     if (playback?.ratingBefore == null || playback?.ratingAfter == null) return null;
@@ -112,6 +133,56 @@ export function replayBotAbilityState(bot) {
         abilityActiveMs,
         dashActiveMs: Math.max(0, Number(bot?.dashActiveMs ?? abilityActiveMs[19] ?? 0)),
     };
+}
+
+/** Recreates the Bot Room's transient direct-ability visual from its trigger. */
+export function replayAbilityVisual(bot, frames = [], frameIndex = 0) {
+    if (!frames.length) return null;
+    const currentIndex = Math.min(Math.max(0, Number(frameIndex) || 0), frames.length - 1);
+    const currentElapsedMs = Number(frames[currentIndex]?.elapsedMs);
+    if (!Number.isFinite(currentElapsedMs)) return null;
+
+    for (let index = currentIndex; index >= 0; index -= 1) {
+        const candidate = replayBotAtFrame(frames[index], bot);
+        const ability = Number(candidate?.triggeredAbility);
+        if (!COMBAT_VISUAL_ABILITY_IDS.includes(ability)) continue;
+
+        const activationElapsedMs = Number(frames[index]?.elapsedMs);
+        if (!Number.isFinite(activationElapsedMs)) return null;
+        const remainingMs = replayRemainingMs(
+            combatVisualDurationMs(ability),
+            activationElapsedMs,
+            currentElapsedMs,
+        );
+        if (remainingMs <= 0) return null;
+
+        return {
+            ability,
+            ms: remainingMs,
+            x: finiteValue(candidate?.visualOriginX, candidate?.x, bot?.x),
+            y: finiteValue(candidate?.visualOriginY, candidate?.y, bot?.y),
+            rotation: finiteValue(candidate?.visualOriginRotation, candidate?.rotation, bot?.rotation, 0),
+        };
+    }
+    return null;
+}
+
+/** Carries a lock-on target through the active frames after its one-tick trigger. */
+export function replayAbilityTarget(bot, frames = [], frameIndex = 0) {
+    if (Number(bot?.abilityActiveMs?.[20] ?? 0) <= 0) return {};
+    const currentIndex = Math.min(Math.max(0, Number(frameIndex) || 0), Math.max(0, frames.length - 1));
+    for (let index = currentIndex; index >= 0; index -= 1) {
+        const candidate = replayBotAtFrame(frames[index], bot);
+        if (Number(candidate?.triggeredAbility) !== 20) continue;
+        const x = Number(candidate?.abilityTargetX);
+        const y = Number(candidate?.abilityTargetY);
+        if (Number.isFinite(x) && Number.isFinite(y)) return { abilityTargetX: x, abilityTargetY: y };
+    }
+    const x = Number(bot?.abilityTargetX);
+    const y = Number(bot?.abilityTargetY);
+    return Number.isFinite(x) && Number.isFinite(y)
+        ? { abilityTargetX: x, abilityTargetY: y }
+        : {};
 }
 
 /** Rehydrates compact slot-based replay state with one-time match metadata. */
@@ -174,9 +245,16 @@ export function mergeReplayFrames(currentFrames = [], incomingFrames = []) {
     if (!incomingFrames.length) return currentFrames;
     if (!currentFrames.length) return [...incomingFrames];
 
-    const lastCurrentElapsedMs = Number(currentFrames.at(-1)?.elapsedMs ?? 0);
-    const newFrames = incomingFrames.filter((frame) => Number(frame?.elapsedMs) > lastCurrentElapsedMs);
-    return newFrames.length ? [...currentFrames, ...newFrames] : currentFrames;
+    const framesByElapsed = new Map();
+    for (const frame of [...currentFrames, ...incomingFrames]) {
+        const elapsedMs = Number(frame?.elapsedMs);
+        if (Number.isFinite(elapsedMs) && !framesByElapsed.has(elapsedMs)) {
+            framesByElapsed.set(elapsedMs, frame);
+        }
+    }
+    return [...framesByElapsed.entries()]
+        .sort(([left], [right]) => left - right)
+        .map(([, frame]) => frame);
 }
 
 /** Compact authoritative bots are identified by their stable match slot. */
@@ -192,9 +270,9 @@ export function replayRayOrigin(bot, frames = [], frameIndex = 0) {
     if (Number(bot?.abilityActiveMs?.[3] ?? 0) > 0) {
         const activationBot = replayGunActivationBot(bot, frames, frameIndex);
         return {
-            gunRayOriginX: Number(activationBot?.gunRayOriginX ?? activationBot?.x ?? bot.x),
-            gunRayOriginY: Number(activationBot?.gunRayOriginY ?? activationBot?.y ?? bot.y),
-            gunRayRotation: Number(activationBot?.gunRayRotation ?? activationBot?.rotation ?? bot.rotation ?? 0),
+            gunRayOriginX: finiteValue(activationBot?.visualOriginX, activationBot?.gunRayOriginX, activationBot?.x, bot.x),
+            gunRayOriginY: finiteValue(activationBot?.visualOriginY, activationBot?.gunRayOriginY, activationBot?.y, bot.y),
+            gunRayRotation: finiteValue(activationBot?.visualOriginRotation, activationBot?.gunRayRotation, activationBot?.rotation, bot.rotation, 0),
             replayGunActiveMs: Number(bot.abilityActiveMs[3]),
         };
     }
@@ -241,6 +319,14 @@ function replayTimerReset(current, previous, abilityId) {
 function replayBotAtFrame(frame, bot) {
     const key = replayShapeKey(bot);
     return (frame?.bots ?? []).find((candidate) => replayShapeKey(candidate) === key) ?? null;
+}
+
+function finiteValue(...values) {
+    for (const value of values) {
+        const number = Number(value);
+        if (Number.isFinite(number)) return number;
+    }
+    return 0;
 }
 
 /**

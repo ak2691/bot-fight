@@ -13,13 +13,21 @@ import com.example.botfight.service.rating.EloRatingService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Deque;
+import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableMap;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
+import java.util.function.Predicate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -32,7 +40,7 @@ public class MatchmakingService {
     private static final int SUBMISSION_GRACE_SECONDS = 2;
     private static final int INITIAL_RATING_RANGE = 50;
     private static final int RATING_RANGE_STEP = 50;
-    private static final long RATING_RANGE_INTERVAL_SECONDS = 10;
+    private static final long RATING_RANGE_INTERVAL_SECONDS = 15;
     private static final int MAX_RATING_RANGE = 200;
     private static final int MAX_PARTY_RATING_SPREAD = 300;
 
@@ -40,7 +48,11 @@ public class MatchmakingService {
     private final Clock clock;
     private final SlidingWindowRateLimiter<UUID> matchmakingRateLimiter;
     private final EloRatingService eloRatingService;
-    private final List<QueuedGroup> queue = new ArrayList<>();
+    /** FIFO order is the fairness source for the scheduled matchmaking sweep. */
+    private final Deque<QueuedGroup> queueOrder = new ArrayDeque<>();
+    /** Rating indexes keep candidate lookup bounded to the relevant Elo window. */
+    private final Map<MatchMode, NavigableMap<Double, LinkedHashSet<QueuedGroup>>> queueByRating =
+            new EnumMap<>(MatchMode.class);
     private final Map<UUID, PendingMatch> pendingMatchesById = new HashMap<>();
 
     public MatchmakingService(
@@ -60,6 +72,8 @@ public class MatchmakingService {
         this.clock = clock;
         this.matchmakingRateLimiter = matchmakingRateLimiter;
         this.eloRatingService = eloRatingService;
+        queueByRating.put(MatchMode.ONES, new TreeMap<>());
+        queueByRating.put(MatchMode.TWOS, new TreeMap<>());
     }
 
     public synchronized List<OutboundMatchmakingEvent> joinQueue(
@@ -154,8 +168,9 @@ public class MatchmakingService {
                     "Party members must be within " + MAX_PARTY_RATING_SPREAD
                             + " Elo of each other to queue for 2v2.");
         }
-        queue.removeIf(candidate -> candidate.containsAny(group));
+        removeQueuedGroups(candidate -> candidate.containsAny(group));
         QueuedGroup joined = new QueuedGroup(
+                UUID.randomUUID(),
                 group,
                 resolvedMode,
                 groupType,
@@ -163,28 +178,22 @@ public class MatchmakingService {
                 ratings,
                 Instant.now(clock));
         if (resolvedMode == MatchMode.ONES) {
-            QueuedGroup opponent = queue.stream()
-                    .filter(candidate -> candidate.mode() == resolvedMode)
-                    .filter(candidate -> withinRatingRange(candidate, joined))
-                    .min(Comparator
-                            .<QueuedGroup>comparingDouble(candidate -> ratingDifference(candidate, joined))
-                            .thenComparing(QueuedGroup::queuedAt))
-                    .orElse(null);
+            QueuedGroup opponent = findBestOneOpponent(joined, Instant.now(clock));
             if (opponent == null) {
-                queue.add(joined);
+                addQueuedGroup(joined);
                 return waitingEvents(joined);
             }
-            queue.remove(opponent);
+            removeQueuedGroup(opponent);
             List<MatchEntrant> entrants = new ArrayList<>();
             entrants.addAll(opponent.toMatchEntrants(1));
             entrants.addAll(joined.toMatchEntrants(2));
             return createPendingMatch(entrants, resolvedMode);
         }
 
-        queue.add(joined);
+        addQueuedGroup(joined);
         TwosSelection selection = findTwosSelection();
         if (selection == null) return waitingEvents(joined);
-        selection.groups().forEach(queue::remove);
+        selection.groups().forEach(this::removeQueuedGroup);
         List<MatchEntrant> entrants = selection.groups().stream()
                 .flatMap(groupEntry -> groupEntry.toMatchEntrants(
                         selection.teamFor(groupEntry)).stream())
@@ -192,8 +201,19 @@ public class MatchmakingService {
         return createPendingMatch(entrants, resolvedMode);
     }
 
+    /**
+     * Rechecks queued groups without requiring another player to join. The
+     * caller publishes the returned events to the affected sockets.
+     */
+    public synchronized List<OutboundMatchmakingEvent> sweepQueues() {
+        List<OutboundMatchmakingEvent> events = new ArrayList<>();
+        events.addAll(matchWaitingOnes());
+        events.addAll(matchWaitingTwos());
+        return List.copyOf(events);
+    }
+
     public synchronized void leaveQueue(UUID userId) {
-        queue.removeIf(group -> group.containsUser(userId));
+        removeQueuedGroups(group -> group.containsUser(userId));
     }
 
     public synchronized boolean removeDisconnected(
@@ -202,13 +222,13 @@ public class MatchmakingService {
         if (principalName == null || principalName.isBlank()) {
             return false;
         }
-        int queueSizeBefore = queue.size();
-        queue.removeIf(group -> group.members().stream().anyMatch(player ->
+        int queueSizeBefore = queueOrder.size();
+        removeQueuedGroups(group -> group.members().stream().anyMatch(player ->
                 player.principalName().equals(principalName)
                         && (socketSessionId == null
                                 || player.socketSessionId() == null
                                 || player.socketSessionId().equals(socketSessionId))));
-        return queue.size() < queueSizeBefore;
+        return queueOrder.size() < queueSizeBefore;
     }
 
     public synchronized List<OutboundMatchmakingEvent> resumePendingMatch(
@@ -415,10 +435,149 @@ public class MatchmakingService {
     }
 
     private TwosSelection findTwosSelection() {
-        List<QueuedGroup> candidates = queue.stream()
+        List<QueuedGroup> candidates = queueOrder.stream()
                 .filter(group -> group.mode() == MatchMode.TWOS)
                 .toList();
         return selectGroups(candidates, 0, new ArrayList<>(), 0, Instant.now(clock));
+    }
+
+    private List<OutboundMatchmakingEvent> matchWaitingOnes() {
+        List<OutboundMatchmakingEvent> events = new ArrayList<>();
+        while (true) {
+            Instant now = Instant.now(clock);
+            QueuedGroup oldestEligibleGroup = null;
+            QueuedGroup opponent = null;
+            for (QueuedGroup queuedGroup : queueOrder) {
+                if (queuedGroup.mode() != MatchMode.ONES) continue;
+                QueuedGroup candidate = findBestOneOpponent(queuedGroup, now);
+                if (candidate == null) continue;
+                oldestEligibleGroup = queuedGroup;
+                opponent = candidate;
+                break;
+            }
+            if (oldestEligibleGroup == null) break;
+
+            removeQueuedGroup(oldestEligibleGroup);
+            removeQueuedGroup(opponent);
+            List<MatchEntrant> entrants = new ArrayList<>();
+            entrants.addAll(oldestEligibleGroup.toMatchEntrants(1));
+            entrants.addAll(opponent.toMatchEntrants(2));
+            events.addAll(createPendingMatch(entrants, MatchMode.ONES));
+        }
+        return events;
+    }
+
+    private List<OutboundMatchmakingEvent> matchWaitingTwos() {
+        List<OutboundMatchmakingEvent> events = new ArrayList<>();
+        while (true) {
+            TwosSelection selection = findTwosSelection();
+            if (selection == null) break;
+            selection.groups().forEach(this::removeQueuedGroup);
+            List<MatchEntrant> entrants = selection.groups().stream()
+                    .flatMap(group -> group.toMatchEntrants(selection.teamFor(group)).stream())
+                    .toList();
+            events.addAll(createPendingMatch(entrants, MatchMode.TWOS));
+        }
+        return events;
+    }
+
+    private QueuedGroup findBestOneOpponent(QueuedGroup target, Instant now) {
+        NavigableMap<Double, LinkedHashSet<QueuedGroup>> index = queueByRating.get(MatchMode.ONES);
+        if (index == null || index.isEmpty()) return null;
+
+        double targetRating = target.matchRating();
+        Map.Entry<Double, LinkedHashSet<QueuedGroup>> lower = index.floorEntry(targetRating);
+        Map.Entry<Double, LinkedHashSet<QueuedGroup>> higher = index.higherEntry(targetRating);
+        QueuedGroup best = null;
+        while (lower != null || higher != null) {
+            boolean takeLower = higher == null
+                    || (lower != null
+                            && targetRating - lower.getKey() <= higher.getKey() - targetRating);
+            if (takeLower) {
+                double rating = lower.getKey();
+                if (targetRating - rating > MAX_RATING_RANGE) {
+                    lower = null;
+                    continue;
+                }
+                best = bestOpponentInBucket(target, best, lower.getValue(), now);
+                lower = index.lowerEntry(rating);
+            } else {
+                double rating = higher.getKey();
+                if (rating - targetRating > MAX_RATING_RANGE) {
+                    higher = null;
+                    continue;
+                }
+                best = bestOpponentInBucket(target, best, higher.getValue(), now);
+                higher = index.higherEntry(rating);
+            }
+        }
+        return best;
+    }
+
+    private QueuedGroup bestOpponentInBucket(
+            QueuedGroup target,
+            QueuedGroup currentBest,
+            Set<QueuedGroup> bucket,
+            Instant now) {
+        QueuedGroup best = currentBest;
+        for (QueuedGroup candidate : bucket) {
+            if (candidate.queueEntryId().equals(target.queueEntryId())
+                    || !withinRatingRange(candidate, target, now)) {
+                continue;
+            }
+            if (best == null || isBetterOneOpponent(candidate, best, target)) {
+                best = candidate;
+            }
+        }
+        return best;
+    }
+
+    private boolean isBetterOneOpponent(
+            QueuedGroup candidate,
+            QueuedGroup current,
+            QueuedGroup target) {
+        int ratingComparison = Double.compare(
+                ratingDifference(candidate, target),
+                ratingDifference(current, target));
+        if (ratingComparison != 0) return ratingComparison < 0;
+        return candidate.queuedAt().isBefore(current.queuedAt());
+    }
+
+    private void addQueuedGroup(QueuedGroup group) {
+        queueOrder.addLast(group);
+        queueByRating.get(group.mode())
+                .computeIfAbsent(group.matchRating(), ignored -> new LinkedHashSet<>())
+                .add(group);
+    }
+
+    private void removeQueuedGroup(QueuedGroup group) {
+        if (group == null) return;
+        queueOrder.remove(group);
+        NavigableMap<Double, LinkedHashSet<QueuedGroup>> index = queueByRating.get(group.mode());
+        if (index == null) return;
+        LinkedHashSet<QueuedGroup> bucket = index.get(group.matchRating());
+        if (bucket == null) return;
+        bucket.remove(group);
+        if (bucket.isEmpty()) index.remove(group.matchRating());
+    }
+
+    private void removeQueuedGroups(Predicate<QueuedGroup> predicate) {
+        Iterator<QueuedGroup> iterator = queueOrder.iterator();
+        while (iterator.hasNext()) {
+            QueuedGroup group = iterator.next();
+            if (!predicate.test(group)) continue;
+            iterator.remove();
+            removeFromRatingIndex(group);
+        }
+    }
+
+    private void removeFromRatingIndex(QueuedGroup group) {
+        NavigableMap<Double, LinkedHashSet<QueuedGroup>> index = queueByRating.get(group.mode());
+        if (index == null) return;
+        LinkedHashSet<QueuedGroup> bucket = index.get(group.matchRating());
+        if (bucket == null) return;
+        bucket.remove(group);
+        if (bucket.isEmpty()) index.remove(group.matchRating());
     }
 
     private TwosSelection selectGroups(
@@ -502,13 +661,16 @@ public class MatchmakingService {
                 java.util.LinkedHashMap::new));
     }
 
-    private boolean withinRatingRange(QueuedGroup first, QueuedGroup second) {
+    private boolean withinRatingRange(
+            QueuedGroup first,
+            QueuedGroup second,
+            Instant now) {
         return ratingDifference(first, second)
                 <= ratingRangeFor(
                         first.queuedAt().isBefore(second.queuedAt())
                                 ? first.queuedAt()
                                 : second.queuedAt(),
-                        Instant.now(clock));
+                        now);
     }
 
     private double ratingDifference(QueuedGroup first, QueuedGroup second) {
@@ -546,10 +708,13 @@ public class MatchmakingService {
     private boolean isBetterSelection(TwosSelection candidate, TwosSelection current) {
         if (candidate == null) return false;
         if (current == null) return true;
+        int ageComparison = oldestQueuedAt(candidate.groups())
+                .compareTo(oldestQueuedAt(current.groups()));
+        if (ageComparison != 0) return ageComparison < 0;
         int ratingComparison = Double.compare(
                 candidate.ratingDifference(), current.ratingDifference());
         if (ratingComparison != 0) return ratingComparison < 0;
-        return oldestQueuedAt(candidate.groups()).isBefore(oldestQueuedAt(current.groups()));
+        return false;
     }
 
     private int ratingSpread(Map<UUID, Integer> ratings) {
@@ -621,6 +786,7 @@ public class MatchmakingService {
     }
 
     private record QueuedGroup(
+            UUID queueEntryId,
             List<MatchEntrant> members,
             MatchMode mode,
             QueueGroupType groupType,

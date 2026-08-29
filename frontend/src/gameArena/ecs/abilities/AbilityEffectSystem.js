@@ -7,6 +7,7 @@ import { clamp, normalizeAngle } from "../../gameconfig/geometry.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
 import { compassDegreesToRadians, vectorToCompassDegrees } from "../../botlogic/planner/arenaAngles.js";
 import { abilityHitsTarget, isDirectDelivery } from "./AbilityHitDetectionSystem.js";
+import { combatVisualDurationMs } from "../../gameconfig/visualState.js";
 import {
     STATUS_EFFECT_APPLICATIONS,
     upsertStatusEffect,
@@ -246,7 +247,7 @@ function withAbilityVisual(attacker, abilityId, stats) {
         ...attacker,
         abilityVisual: {
             ability: abilityId,
-            ms: Math.max(300, Number(stats.visualDurationMs ?? stats.visualMs ?? stats.durationMs ?? 0)),
+            ms: combatVisualDurationMs(abilityId, stats),
             x: Number(attacker.x ?? 0),
             y: Number(attacker.y ?? 0),
             rotation: Number(attacker.rotation ?? 0),

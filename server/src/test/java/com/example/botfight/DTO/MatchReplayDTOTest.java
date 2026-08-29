@@ -91,6 +91,64 @@ class MatchReplayDTOTest {
     }
 
     @Test
+    void compactReplayPreservesPresentationStateNeededBySharedPixiVisuals() {
+        MatchPlaybackDTO.BotStateDTO bot = new MatchPlaybackDTO.BotStateDTO(
+                UUID.randomUUID(),
+                "pilot",
+                1,
+                500,
+                120,
+                35,
+                85,
+                140,
+                "custom:g",
+                List.of(16, 20),
+                List.of(),
+                Map.of(),
+                Map.of(20, 200),
+                Map.of(),
+                Map.of(),
+                20,
+                null,
+                450,
+                0,
+                500,
+                120,
+                0,
+                0,
+                1,
+                720d,
+                340d,
+                125d,
+                235d,
+                35d);
+        MatchPlaybackDTO playback = new MatchPlaybackDTO(
+                UUID.randomUUID(),
+                "duel-v1",
+                "COMPLETED",
+                new MatchPlaybackDTO.ArenaStateDTO(1_000, 800, List.of(bot), List.of()),
+                List.of(new MatchPlaybackDTO.ReplayFrameDTO(1, 100, List.of(bot), List.of())),
+                null,
+                null,
+                null);
+
+        MatchReplayDTO compact = MatchReplayDTO.from(playback);
+        MatchReplayDTO.ReplayBotDTO frameBot = compact.frames().getFirst().bots().getFirst();
+        String json = jsonMapper.writeValueAsString(compact);
+
+        assertThat(frameBot.preparingMs()).isEqualTo(450);
+        assertThat(frameBot.abilityTargetX()).isEqualTo(720d);
+        assertThat(frameBot.abilityTargetY()).isEqualTo(340d);
+        assertThat(frameBot.visualOriginX()).isEqualTo(125d);
+        assertThat(frameBot.visualOriginY()).isEqualTo(235d);
+        assertThat(frameBot.visualOriginRotation()).isEqualTo(35d);
+        assertThat(json).contains(
+                "\"preparingMs\":450",
+                "\"abilityTargetX\":720.0",
+                "\"visualOriginX\":125.0");
+    }
+
+    @Test
     void replayBatchEnvelopeOmitsUnusedMatchmakingFields() {
         MatchReplayDTO playback = new MatchReplayDTO(
                 null,
@@ -163,5 +221,40 @@ class MatchReplayDTOTest {
 
         assertThat(entities.get(0).hp()).isNull();
         assertThat(entities.get(1).hp()).isZero();
+    }
+
+    @Test
+    void compactReplayPreservesEntityArmedStateForPresentation() {
+        MatchPlaybackDTO playback = new MatchPlaybackDTO(
+                UUID.randomUUID(),
+                "duel-v1",
+                "COMPLETED",
+                new MatchPlaybackDTO.ArenaStateDTO(1_000, 800, List.of(), List.of()),
+                List.of(new MatchPlaybackDTO.ReplayFrameDTO(
+                        1,
+                        100,
+                        List.of(),
+                        List.of(new MatchPlaybackDTO.ArenaEntityDTO(
+                                "gravity",
+                                "gravityZone",
+                                14,
+                                300,
+                                240,
+                                280,
+                                0,
+                                0,
+                                true,
+                                2_000,
+                                null,
+                                null,
+                                null)))),
+                null,
+                null,
+                null);
+
+        MatchReplayDTO.ReplayEntityDTO entity = MatchReplayDTO.from(playback)
+                .frames().getFirst().entities().getFirst();
+
+        assertThat(entity.armed()).isTrue();
     }
 }

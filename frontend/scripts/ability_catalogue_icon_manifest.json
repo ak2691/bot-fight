@@ -3,7 +3,7 @@
   "default_padding": 36,
   "icons": {
     "slash": {
-      "output": "swing.png",
+      "output": "swing.webp",
       "source": "frontend/src/assets/arena/melee-slashes-sheet.png",
       "grid": { "columns": 6, "rows": 2, "frame_index": 0 },
       "crop": "alpha",
@@ -11,7 +11,7 @@
       "padding": 32
     },
     "gun": {
-      "output": "fire_gun.png",
+      "output": "fire_gun.webp",
       "source": "frontend/src/assets/arena/abilities/rays/fire-gun.png",
       "selection": "strongest visible ray section",
       "crop": "alpha",
@@ -19,7 +19,7 @@
       "padding": 42
     },
     "grenade": {
-      "output": "throw_grenade.png",
+      "output": "throw_grenade.webp",
       "source": "frontend/src/assets/arena/abilities/projectiles/grenade/moving-003.png",
       "selection": "supplied moving frame",
       "crop": "alpha",
@@ -27,7 +27,7 @@
       "padding": 42
     },
     "fireball": {
-      "output": "shoot_fireball.png",
+      "output": "shoot_fireball.webp",
       "source": "frontend/src/assets/arena/abilities/projectiles/fireball/005.png",
       "selection": "strongest fully developed fireball frame",
       "crop": "alpha",
@@ -35,7 +35,7 @@
       "padding": 34
     },
     "stun": {
-      "output": "stun.png",
+      "output": "stun.webp",
       "source": "frontend/src/assets/arena/abilities/stun/stun.png",
       "selection": "supplied single complete frame",
       "crop": "alpha",
@@ -43,7 +43,7 @@
       "padding": 34
     },
     "heavy_slash": {
-      "output": "heavy_slash.png",
+      "output": "heavy_slash.webp",
       "source": "frontend/src/assets/arena/melee-slashes-sheet.png",
       "grid": { "columns": 6, "rows": 2, "frame_index": 6 },
       "crop": "alpha",
@@ -51,7 +51,7 @@
       "padding": 32
     },
     "repulsor_burst": {
-      "output": "repulsor_burst.png",
+      "output": "repulsor_burst.webp",
       "source": "frontend/src/assets/arena/abilities/repulsorblast/spritesheet.png",
       "grid": { "columns": 10, "rows": 1, "frame_index": 3 },
       "crop": "alpha",
@@ -59,7 +59,7 @@
       "padding": 28
     },
     "concussive_shot": {
-      "output": "concussive_shot.png",
+      "output": "concussive_shot.webp",
       "source": "frontend/src/assets/arena/abilities/rays/concussive-shot.png",
       "grid": { "columns": 1, "rows": 7, "used_frames": 6, "frame_index": 3 },
       "crop": "alpha",
@@ -67,7 +67,7 @@
       "padding": 38
     },
     "basic_heal": {
-      "output": "basic_heal.png",
+      "output": "basic_heal.webp",
       "source": "frontend/src/assets/arena/abilities/support/basic-heal.png",
       "grid": { "columns": 16, "rows": 1, "frame_index": 8 },
       "crop": "alpha",
@@ -75,7 +75,7 @@
       "padding": 34
     },
     "proximity_mine": {
-      "output": "proximity_mine.png",
+      "output": "proximity_mine.webp",
       "source": "frontend/src/assets/arena/abilities/projectiles/mine/static-004.png",
       "selection": "fully armed static presentation",
       "crop": "alpha",
@@ -83,7 +83,7 @@
       "padding": 42
     },
     "pistol": {
-      "output": "pistol_shot.png",
+      "output": "pistol_shot.webp",
       "layers": [
         {
           "source": "frontend/src/assets/arena/abilities/rays/fire-gun.png",
@@ -106,8 +106,8 @@
       "padding": 34
     },
     "rail_shot": {
-      "output": "rail_shot.png",
-      "source": "frontend/src/assets/arena/abilities/rays/rail-shot.png",
+      "output": "rail_shot.webp",
+      "source": "frontend/src/assets/arena/abilities/rays/rail-shot.webp",
       "grid": { "columns": 2, "rows": 5, "used_frames": 9, "frame_index": 6 },
       "selection": "exclude tenth green guide cell",
       "crop": "alpha",
@@ -115,23 +115,23 @@
       "padding": 28
     },
     "gravity_grenade": {
-      "output": "gravity_grenade.png",
-      "source": "frontend/src/assets/arena/abilities/fields/gravity-grenade.png",
+      "output": "gravity_grenade.webp",
+      "source": "frontend/src/assets/arena/abilities/zones/gravity-grenade.png",
       "grid": { "columns": 10, "rows": 10, "used_frames": 91, "frame_index": 55 },
       "crop": "alpha",
       "fit": "contain",
       "padding": 34
     },
     "silence_pulse": {
-      "output": "silence_pulse.png",
-      "source": "frontend/src/assets/arena/abilities/fields/silence-pulse.png",
+      "output": "silence_pulse.webp",
+      "source": "frontend/src/assets/arena/abilities/zones/silence-pulse.webp",
       "grid": { "columns": 2, "rows": 3, "used_frames": 5, "frame_index": 2 },
       "crop": "alpha",
       "fit": "contain",
       "padding": 28
     },
     "reactive_armor": {
-      "output": "reactive_armor.png",
+      "output": "reactive_armor.webp",
       "source": "frontend/src/beta/PixiCanvas.jsx#drawStatusSymbol",
       "procedural": "status_symbol",
       "status": "RA",
@@ -143,7 +143,7 @@
       "symbol_scale": 18
     },
     "hunter_drone": {
-      "output": "hunter_drone.png",
+      "output": "hunter_drone.webp",
       "source": "frontend/src/assets/arena/abilities/bot/drone-design.png",
       "selection": "centered fully visible drone",
       "crop": "alpha",
@@ -151,15 +151,15 @@
       "padding": 48
     },
     "wind_burst": {
-      "output": "wind_burst.png",
-      "source": "frontend/src/assets/arena/abilities/wind-burst/atlas_17.png",
+      "output": "wind_burst.webp",
+      "source": "frontend/src/assets/arena/abilities/wind-burst/atlas_17.webp",
       "grid": { "columns": 1, "rows": 3, "frame_index": 1 },
       "crop": "alpha",
       "fit": "contain",
       "padding": 28
     },
     "temporal_rewind": {
-      "output": "temporal_rewind.png",
+      "output": "temporal_rewind.webp",
       "source": "frontend/src/assets/arena/abilities/support/temporal-rewind.png",
       "grid": { "columns": 5, "rows": 3, "frame_index": 7 },
       "selection": "fully formed clock face with visible hands",
@@ -168,7 +168,7 @@
       "padding": 34
     },
     "orbital_strike": {
-      "output": "orbital_strike.png",
+      "output": "orbital_strike.webp",
       "source": "frontend/src/assets/arena/abilities/orbital-strike/orbitalstrike-explosion/spritesheet.png",
       "grid": { "columns": 9, "rows": 1, "frame_index": 4 },
       "selection": "brightest midpoint of explosion",
@@ -177,7 +177,7 @@
       "padding": 34
     },
     "absolute_guard": {
-      "output": "absolute_guard.png",
+      "output": "absolute_guard.webp",
       "source": "frontend/src/beta/PixiCanvas.jsx#drawStatusSymbol",
       "procedural": "status_symbol",
       "status": "AG",
@@ -189,15 +189,15 @@
       "symbol_scale": 18
     },
     "null_zone": {
-      "output": "null_zone.png",
-      "source": "frontend/src/assets/arena/abilities/fields/null-zone.png",
+      "output": "null_zone.webp",
+      "source": "frontend/src/assets/arena/abilities/zones/null-zone.png",
       "grid": { "columns": 5, "rows": 1, "frame_index": 2 },
       "crop": "alpha",
       "fit": "contain",
       "padding": 28
     },
     "phase_strike": {
-      "output": "phase_strike.png",
+      "output": "phase_strike.webp",
       "source": "frontend/src/assets/arena/abilities/support/phase-strike/004.png",
       "selection": "supplied phase-strike frame",
       "crop": "alpha",
@@ -205,7 +205,7 @@
       "padding": 46
     },
     "frost_ring": {
-      "output": "frost_ring.png",
+      "output": "frost_ring.webp",
       "source": "frontend/src/assets/arena/abilities/zones/gravity-grenade.png",
       "selection": "temporary catalogue placeholder until the Frost Ring sprite sheet exists",
       "crop": "alpha",
@@ -213,7 +213,7 @@
       "padding": 34
     },
     "singularity": {
-      "output": "singularity.png",
+      "output": "singularity.webp",
       "source": "frontend/src/assets/arena/abilities/orbital-strike/orbital-strike-marker.png",
       "selection": "temporary catalogue placeholder until the Singularity sprite sheet exists",
       "crop": "alpha",
@@ -221,7 +221,7 @@
       "padding": 34
     },
     "tether_bolt": {
-      "output": "tether_bolt.png",
+      "output": "tether_bolt.webp",
       "source": "frontend/src/assets/arena/abilities/rays/concussive-shot.png",
       "selection": "temporary catalogue placeholder until the Tether Bolt sprite sheet exists",
       "crop": "alpha",
@@ -229,7 +229,7 @@
       "padding": 38
     },
     "static_snare": {
-      "output": "static_snare.png",
+      "output": "static_snare.webp",
       "source": "frontend/src/assets/arena/abilities/zones/null-zone.png",
       "selection": "temporary catalogue placeholder until the Static Snare sprite sheet exists",
       "crop": "alpha",
@@ -237,7 +237,7 @@
       "padding": 28
     },
     "disruptor_dart": {
-      "output": "disruptor_dart.png",
+      "output": "disruptor_dart.webp",
       "source": "frontend/src/assets/arena/abilities/rays/concussive-shot.png",
       "selection": "temporary catalogue placeholder until the Disruptor Dart sprite sheet exists",
       "crop": "alpha",
@@ -245,7 +245,7 @@
       "padding": 38
     },
     "repeller_drone": {
-      "output": "repeller_drone.png",
+      "output": "repeller_drone.webp",
       "source": "frontend/src/assets/arena/abilities/bot/drone-design.png",
       "selection": "temporary catalogue placeholder until the Repeller Drone sprite sheet exists",
       "crop": "alpha",
@@ -253,15 +253,15 @@
       "padding": 48
     },
     "siphon_lance": {
-      "output": "siphon_lance.png",
-      "source": "frontend/src/assets/arena/abilities/rays/rail-shot.png",
+      "output": "siphon_lance.webp",
+      "source": "frontend/src/assets/arena/abilities/rays/rail-shot.webp",
       "selection": "temporary catalogue placeholder until the Siphon Lance sprite sheet exists",
       "crop": "alpha",
       "fit": "contain",
       "padding": 28
     },
     "overclock": {
-      "output": "overclock.png",
+      "output": "overclock.webp",
       "source": "frontend/src/assets/arena/abilities/support/temporal-rewind.png",
       "selection": "temporary catalogue placeholder until the Overclock sprite sheet exists",
       "crop": "alpha",

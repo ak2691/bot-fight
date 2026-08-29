@@ -157,8 +157,10 @@ test("custom match replay offers a lobby return after the result is revealed", (
     assert.match(pageSource, /isCustomMatch=\{matchEvent\?\.mode === "CUSTOM"\}/);
     assert.match(pageSource, /isFinalMatchResult=\{matchEvent\?\.type === "MATCH_RESULT_READY"\}/);
     assert.match(pageSource, /onReturnToLobby=\{returnToLobby\}/);
-    assert.match(replaySource, /isCustomMatch && isFinalMatchResult && shouldRevealResult && onReturnToLobby/);
+    assert.match(replaySource, /isCustomMatch && isFinalMatchResult && matchResultRevealed && onReturnToLobby/);
     assert.match(replaySource, /RETURN TO LOBBY/);
+    assert.match(replaySource, /aria-label="MATCH RESULT"/);
+    assert.match(replaySource, /wins the match/);
 });
 
 test("page fallback acceptance flow also strips identities and supports cancellation", () => {

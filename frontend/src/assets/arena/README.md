@@ -1,6 +1,6 @@
 # Arena sprite sheets
 
-These PNG assets are the shared visual source for the browser test arena and
+These PNG/WebP assets are the shared visual source for the browser test arena and
 authoritative replay presentation. The supplied files are kept in ability-
 named folders; `arenaSpriteAssets.js` and `abilitySpriteAssets.js` slice sheets
 into Pixi textures at load time without changing their source pixels.

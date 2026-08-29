@@ -158,6 +158,22 @@ test("replay obstacle normalization preserves the canonical building shape contr
     assert.equal(replayShape.replayPhase, "playback");
 });
 
+test("replay derived visual entities restore the training visible timer", () => {
+    ["mineExplosion", "gravityExplosion", "singularityExplosion", "staticSnareBurst"].forEach((type) => {
+        const replayShape = normalizeReplayObstacleShape({
+            id: `${type}-1`,
+            type,
+            x: 300,
+            y: 240,
+            size: 150,
+            timerMs: 175,
+        });
+
+        assert.equal(replayShape.visibleMs, 175, type);
+        assert.equal(replayShape.remainingMs, 175, type);
+    });
+});
+
 test("bot and entity labels derive from calculated snapshot fields", () => {
     assert.deepEqual(botStatusLabels({ statusEffects: [
         { type: "burn", remainingMs: 100 },

@@ -61,7 +61,22 @@ test("a non-terminal round result is revealed by the round-result batch", () => 
     );
 
     assert.match(replayHandler, /event\.status === "ROUND_RESULT_READY"/);
+    assert.match(replayHandler, /const isRoundResultReveal = event\.status === "ROUND_RESULT_READY"/);
+    assert.match(replayHandler, /incomingBatchIsStale = !isRoundResultReveal/);
+    assert.match(replayHandler, /event\.playback\?\.frames\?\.length/);
     assert.match(replayHandler, /roundResultRevealReceived/);
+});
+
+test("a terminal result still accepts a terminal frame batch that arrives afterward", () => {
+    const source = readFileSync(SOURCE_PATH, "utf8");
+    const replayHandler = source.slice(
+        source.indexOf('if (event.type === "MATCH_REPLAY_BATCH")'),
+        source.indexOf('if (event.type === "MATCH_RESULT_READY")'),
+    );
+
+    assert.match(source, /canCompleteTerminalReplay/);
+    assert.match(replayHandler, /terminalResultRef\.current && playbackRef\.current\?\.terminalBatch === true/);
+    assert.match(source, /terminalBatch: currentPlayback\?\.terminalBatch === true/);
 });
 
 test("the official replay result clears the cached active-match state", () => {

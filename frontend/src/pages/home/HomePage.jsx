@@ -13,9 +13,9 @@ const actions = [
         title: "Ability List",
         tone: "teal",
         icons: [
-            "/assets/ability-list/icons/temporal_rewind.png",
-            "/assets/ability-list/icons/rail_shot.png",
-            "/assets/ability-list/icons/shoot_fireball.png",
+            "/assets/ability-list/icons/temporal_rewind.webp",
+            "/assets/ability-list/icons/rail_shot.webp",
+            "/assets/ability-list/icons/shoot_fireball.webp",
         ],
     },
     { id: "conditions", title: "Conditional List", tone: "blue", icon: "/assets/homepage/book-icon.svg" },

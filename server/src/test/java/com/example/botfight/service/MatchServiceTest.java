@@ -551,6 +551,7 @@ class MatchServiceTest {
                 .filteredOn(outbound -> outbound.event().playback().frames().isEmpty())
                 .singleElement()
                 .satisfies(outbound -> {
+                    assertThat(outbound.event().status()).isEqualTo("ROUND_RESULT_READY");
                     assertThat(outbound.delayMillis()).isEqualTo(53_500L);
                     assertThat(outbound.publishAt()).isEqualTo(clock.instant().plusMillis(53_500));
                     assertThat(outbound.event().playback().result()).isEqualTo("BOT_WIN");

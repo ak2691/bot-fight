@@ -75,6 +75,9 @@ public class BotStateService {
         bot.triggeredAbility = null;
         bot.triggeredAbilityPayload = null;
         bot.abilitySpawn = null;
+        bot.visualOriginX = Double.NaN;
+        bot.visualOriginY = Double.NaN;
+        bot.visualOriginRotation = Double.NaN;
         bot.entityHitIds.clear();
     }
 

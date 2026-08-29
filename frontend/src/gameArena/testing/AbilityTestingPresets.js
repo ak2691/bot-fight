@@ -1,6 +1,8 @@
 import { ALL_ABILITY_DEFINITIONS, decodeBotLoadout, encodeBotLoadout, normalizedBotLoadout } from "../loadout/BotLoadout.js";
 import { abilityIdFromBoundary } from "../gameconfig/AbilityCompatibility.js";
-import { MAIN_SHAPE, buildOpponentShape, resetBotShape } from "../modelPayloads/arenaShapes.js";
+import { BASE_BOT_HP } from "../modelPayloads/arenaConstants.js";
+import { MAIN_SHAPE, buildOpponentShape, resetBotShapeToStartingConfiguration } from "../modelPayloads/arenaShapes.js";
+import { normalizePracticeConfig } from "../practiceRoomStorage.js";
 import { BOT_CODE_SELECTABLES } from "../botlogic/code/BotCode.js";
 
 const MOVEMENT_TEST_ABILITIES = new Set([21]);
@@ -185,13 +187,44 @@ export function findAbilityTestingPreset(id) {
     return ABILITY_TEST_PRESETS.find((preset) => preset.id === abilityId) ?? null;
 }
 
+export function buildAbilityTestingPracticeConfig(preset) {
+    if (!preset?.id) return normalizePracticeConfig(null);
+    return normalizePracticeConfig({
+        playerTeamSize: 1,
+        opponentTeamSize: 1,
+        initialElapsedMs: 0,
+        bots: [
+            {
+                role: "PLAYER",
+                teamNumber: 1,
+                slot: 1,
+                loadout: preset.playerLoadout,
+                startX: preset.playerPosition?.x ?? 500,
+                startY: preset.playerPosition?.y ?? 350,
+                rotation: preset.playerRotation ?? 180,
+                startHp: BASE_BOT_HP,
+            },
+            {
+                role: "OPPONENT",
+                teamNumber: 2,
+                slot: 1,
+                loadout: preset.opponentLoadout,
+                startX: preset.opponentPosition?.x ?? 500,
+                startY: preset.opponentPosition?.y ?? 650,
+                rotation: preset.opponentRotation ?? 0,
+                startHp: BASE_BOT_HP,
+            },
+        ],
+    });
+}
+
 export function buildAbilityTestingArenaShapes(preset) {
     const decodePayloadLoadout = (value) => typeof value === "string"
         ? decodeBotLoadout(value)
         : normalizedBotLoadout(value);
     const playerLoadout = decodePayloadLoadout(preset?.playerLoadout);
     const opponentLoadout = decodePayloadLoadout(preset?.opponentLoadout);
-    const player = resetBotShape({
+    const player = resetBotShapeToStartingConfiguration({
         ...MAIN_SHAPE,
         id: "main",
         type: "circle",
@@ -204,8 +237,13 @@ export function buildAbilityTestingArenaShapes(preset) {
         combatLoadout: encodeBotLoadout(playerLoadout),
         loadout: playerLoadout,
         locked: false,
+    }, {
+        startX: preset?.playerPosition?.x ?? 500,
+        startY: preset?.playerPosition?.y ?? 350,
+        rotation: preset?.playerRotation ?? 180,
+        startHp: BASE_BOT_HP,
     });
-    const opponent = resetBotShape({
+    const opponent = resetBotShapeToStartingConfiguration({
         ...buildOpponentShape({
             username: "Opponent 1",
             userId: "ability-test-opponent",
@@ -222,6 +260,11 @@ export function buildAbilityTestingArenaShapes(preset) {
         loadout: opponentLoadout,
         locked: false,
         opponentUsername: "Opponent 1",
+    }, {
+        startX: preset?.opponentPosition?.x ?? 500,
+        startY: preset?.opponentPosition?.y ?? 650,
+        rotation: preset?.opponentRotation ?? 0,
+        startHp: BASE_BOT_HP,
     });
     return [player, opponent];
 }

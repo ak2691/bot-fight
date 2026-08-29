@@ -24,15 +24,15 @@ test("every registered ability has one generated catalogue icon", () => {
     assert.equal(Object.keys(ABILITY_CATALOGUE_ICONS).length, BOT_ABILITIES.length + 2);
     for (const ability of BOT_ABILITIES) {
         const iconPath = getAbilityCatalogueIcon(ability.id);
-        const iconFilename = ability.name === "singularity" ? "singularity (2).png" : `${LEGACY_ICON_FILENAMES[ability.name] ?? ability.name}.png`;
+        const iconFilename = ability.name === "singularity" ? "singularity (2).webp" : `${LEGACY_ICON_FILENAMES[ability.name] ?? ability.name}.webp`;
         const expectedIconPath = ability.name === "singularity"
-            ? "/assets/ability-list/icons/singularity%20%282%29.png"
+            ? "/assets/ability-list/icons/singularity%20%282%29.webp"
             : `/assets/ability-list/icons/${iconFilename}`;
         assert.equal(iconPath, expectedIconPath);
         assert.equal(existsSync(`${ICON_DIRECTORY}${iconFilename}`), true, ability.id);
     }
-    assert.equal(getAbilityCatalogueIcon(19), "/assets/ability-list/icons/dash.png");
-    assert.equal(existsSync(`${ICON_DIRECTORY}dash.png`), true);
+    assert.equal(getAbilityCatalogueIcon(19), "/assets/ability-list/icons/dash.webp");
+    assert.equal(existsSync(`${ICON_DIRECTORY}dash.webp`), true);
     assert.match(getAbilityCatalogueIcon(20), /crosshair\.png$/);
 });
 
@@ -55,7 +55,7 @@ test("icon extraction manifest covers the catalog and keeps explicit frame contr
     assert.deepEqual(manifest.icons.reactive_armor.procedural, "status_symbol");
     assert.deepEqual(manifest.icons.absolute_guard.procedural, "status_symbol");
     assert.notEqual(manifest.icons.reactive_armor.status, manifest.icons.absolute_guard.status);
-    const hash = (id) => createHash("sha256").update(readFileSync(`${ICON_DIRECTORY}${id}.png`)).digest("hex");
+    const hash = (id) => createHash("sha256").update(readFileSync(`${ICON_DIRECTORY}${id}.webp`)).digest("hex");
     assert.notEqual(hash("swing"), hash("heavy_slash"));
     assert.notEqual(hash("fire_gun"), hash("pistol_shot"));
     assert.notEqual(hash("reactive_armor"), hash("absolute_guard"));

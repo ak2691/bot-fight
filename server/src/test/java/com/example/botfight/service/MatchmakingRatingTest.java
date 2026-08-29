@@ -46,7 +46,7 @@ class MatchmakingRatingTest {
     }
 
     @Test
-    void expandsTheOneVOneRangeAfterPlayersWait() {
+    void expandsTheOneVOneRangeAfterPlayersWaitAndSweepRechecksThem() {
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();
         when(eloRatingService.ratingsFor(eq(List.of(first)), eq(MatchMode.ONES)))
@@ -65,16 +65,73 @@ class MatchmakingRatingTest {
                 .extracting(event -> event.event().type())
                 .isEqualTo("QUEUE_WAITING");
 
-        service.leaveQueue(second);
-        clock.advance(Duration.ofSeconds(20));
-        var found = service.joinQueue(
-                second,
-                "second",
-                "second@example.com",
-                "second-socket-replacement",
-                MatchMode.ONES);
+        clock.advance(Duration.ofSeconds(29));
+        assertThat(service.sweepQueues()).isEmpty();
+
+        clock.advance(Duration.ofSeconds(1));
+        var found = service.sweepQueues();
 
         assertThat(found).hasSize(2)
+                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo("MATCH_FOUND"));
+    }
+
+    @Test
+    void oldestOneVOnePlayerIsPrioritizedOverACloserNewerPair() {
+        UUID oldest = UUID.randomUUID();
+        UUID middle = UUID.randomUUID();
+        UUID newest = UUID.randomUUID();
+        when(eloRatingService.ratingsFor(eq(List.of(oldest)), eq(MatchMode.ONES)))
+                .thenReturn(Map.of(oldest, 1000));
+        when(eloRatingService.ratingsFor(eq(List.of(middle)), eq(MatchMode.ONES)))
+                .thenReturn(Map.of(middle, 1100));
+        when(eloRatingService.ratingsFor(eq(List.of(newest)), eq(MatchMode.ONES)))
+                .thenReturn(Map.of(newest, 1160));
+
+        service.joinQueue(oldest, "oldest", "oldest@example.com", "oldest-socket", MatchMode.ONES);
+        service.joinQueue(middle, "middle", "middle@example.com", "middle-socket", MatchMode.ONES);
+        service.joinQueue(newest, "newest", "newest@example.com", "newest-socket", MatchMode.ONES);
+
+        clock.advance(Duration.ofSeconds(15));
+        var found = service.sweepQueues();
+
+        assertThat(found).hasSize(2)
+                .extracting(event -> event.principalName())
+                .containsExactlyInAnyOrder("oldest@example.com", "middle@example.com");
+    }
+
+    @Test
+    void twoVTwoSweepRechecksTheQueueAfterTheRatingRangeExpands() {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        UUID third = UUID.randomUUID();
+        UUID fourth = UUID.randomUUID();
+        when(eloRatingService.ratingsFor(eq(List.of(first)), eq(MatchMode.TWOS)))
+                .thenReturn(Map.of(first, 1000));
+        when(eloRatingService.ratingsFor(eq(List.of(second)), eq(MatchMode.TWOS)))
+                .thenReturn(Map.of(second, 1000));
+        when(eloRatingService.ratingsFor(eq(List.of(third)), eq(MatchMode.TWOS)))
+                .thenReturn(Map.of(third, 1000));
+        when(eloRatingService.ratingsFor(eq(List.of(fourth)), eq(MatchMode.TWOS)))
+                .thenReturn(Map.of(fourth, 1200));
+
+        service.joinQueue(first, "first", "first@example.com", "first-socket", MatchMode.TWOS);
+        service.joinQueue(second, "second", "second@example.com", "second-socket", MatchMode.TWOS);
+        service.joinQueue(third, "third", "third@example.com", "third-socket", MatchMode.TWOS);
+        var waiting = service.joinQueue(
+                fourth,
+                "fourth",
+                "fourth@example.com",
+                "fourth-socket",
+                MatchMode.TWOS);
+
+        assertThat(waiting).hasSize(1)
+                .extracting(event -> event.event().type())
+                .containsExactly("QUEUE_WAITING");
+        clock.advance(Duration.ofSeconds(14));
+        assertThat(service.sweepQueues()).isEmpty();
+
+        clock.advance(Duration.ofSeconds(1));
+        assertThat(service.sweepQueues()).hasSize(4)
                 .allSatisfy(event -> assertThat(event.event().type()).isEqualTo("MATCH_FOUND"));
     }
 

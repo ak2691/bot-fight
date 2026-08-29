@@ -1021,6 +1021,10 @@ public class DuelSimulationService {
         public double preparingTargetY = Double.NaN;
         public Integer triggeredAbility;
         public AbilityExecutionPayload triggeredAbilityPayload;
+        /** One-tick origin for the shared combat activation visual. */
+        public double visualOriginX = Double.NaN;
+        public double visualOriginY = Double.NaN;
+        public double visualOriginRotation = Double.NaN;
         public final Set<String> entityHitIds = new HashSet<>();
         /** Full immutable roster for this simulation, attached by the orchestrator. */
         public List<Bot> matchBots = List.of();

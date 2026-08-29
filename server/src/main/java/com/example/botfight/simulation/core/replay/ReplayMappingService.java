@@ -27,7 +27,10 @@ public class ReplayMappingService {
                 bot.triggeredAbility,
                 bot.preparingAbility, bot.preparingMs, bot.temporalRewindMs,
                 round(bot.temporalRewindX), round(bot.temporalRewindY),
-                bot.temporalRewindPulseMs, bot.closingZoneDamageCount, bot.teamNumber);
+                bot.temporalRewindPulseMs, bot.closingZoneDamageCount, bot.teamNumber,
+                triggeredTargetX(bot), triggeredTargetY(bot),
+                finiteOrNull(bot.visualOriginX), finiteOrNull(bot.visualOriginY),
+                finiteOrNull(bot.visualOriginRotation));
     }
 
     public MatchPlaybackDTO.ArenaEntityDTO toArenaEntity(ArenaEntity entity) {
@@ -88,6 +91,10 @@ public class ReplayMappingService {
                 positiveEntries(bot.abilityActiveMs),
                 bot.triggeredAbility,
                 bot.preparingAbility,
+                positiveOrNull(bot.preparingMs),
+                triggeredTargetX(bot), triggeredTargetY(bot),
+                finiteOrNull(bot.visualOriginX), finiteOrNull(bot.visualOriginY),
+                finiteOrNull(bot.visualOriginRotation),
                 temporalRewindPulseMs > 0 ? round(bot.temporalRewindX) : null,
                 temporalRewindPulseMs > 0 ? round(bot.temporalRewindY) : null,
                 positiveOrNull(temporalRewindPulseMs),
@@ -97,7 +104,6 @@ public class ReplayMappingService {
 
     private MatchReplayDTO.ReplayEntityDTO toReplayEntity(ArenaEntity entity) {
         String type = entity.type();
-        boolean mine = "proximityMine".equals(type);
         boolean drone = "hunterDrone".equals(type) || "repellerDrone".equals(type);
         double rotation = Math.hypot(entity.velocityX(), entity.velocityY()) > 0.001
                 ? vectorBearing(entity.velocityX(), entity.velocityY()) : 0;
@@ -110,7 +116,7 @@ public class ReplayMappingService {
                 entity.size(),
                 nonZeroOrNull(rotation),
                 replayEntityHp(entity.hp(), drone),
-                mine ? entity.armed() : null,
+                entity.armed(),
                 positiveOrNull(entity.timerMs()),
                 nonZeroOrNull(entity.velocityX()),
                 nonZeroOrNull(entity.velocityY()),
@@ -144,6 +150,20 @@ public class ReplayMappingService {
 
     private static Integer positiveOrNull(int value) {
         return value > 0 ? value : null;
+    }
+
+    private static Double triggeredTargetX(DuelSimulationService.Bot bot) {
+        return bot.triggeredAbilityPayload == null
+                ? null : finiteOrNull(bot.triggeredAbilityPayload.targetX());
+    }
+
+    private static Double triggeredTargetY(DuelSimulationService.Bot bot) {
+        return bot.triggeredAbilityPayload == null
+                ? null : finiteOrNull(bot.triggeredAbilityPayload.targetY());
+    }
+
+    private static Double finiteOrNull(double value) {
+        return Double.isFinite(value) ? round(value) : null;
     }
 
     private static Double nonZeroOrNull(Double value) {

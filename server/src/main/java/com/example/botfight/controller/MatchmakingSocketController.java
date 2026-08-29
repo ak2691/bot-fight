@@ -68,6 +68,7 @@ public class MatchmakingSocketController {
 
     private static final Logger log = LoggerFactory.getLogger(MatchmakingSocketController.class);
     private static final int CONNECTION_LOSS_DETECTION_SECONDS = 10;
+    private static final Duration MATCHMAKING_QUEUE_SWEEP_INTERVAL = Duration.ofSeconds(2);
     private static final long DEADLINE_CALLBACK_BUFFER_MILLIS = 250L;
     private static final long PHASE_TRANSITION_SCHEDULER_BUFFER_MILLIS = 0L;
     private final MatchmakingService matchmakingService;
@@ -167,6 +168,22 @@ public class MatchmakingSocketController {
                     }
                 },
                 Duration.ofMillis(250));
+    }
+
+    @PostConstruct
+    void scheduleQueueMatchmakingSweep() {
+        matchmakingLifecycleScheduler.scheduleWithFixedDelay(
+                () -> {
+                    try {
+                        List<OutboundMatchmakingEvent> events = matchmakingService.sweepQueues();
+                        if (events.isEmpty()) return;
+                        publish(events);
+                        scheduleMatchAcceptanceTimeouts(events);
+                    } catch (RuntimeException exception) {
+                        log.error("Ranked matchmaking queue sweep failed", exception);
+                    }
+                },
+                MATCHMAKING_QUEUE_SWEEP_INTERVAL);
     }
 
     @MessageMapping("/matchmaking.join")

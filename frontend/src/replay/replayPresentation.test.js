@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { centeredTeamPosition, displayedRoundWins, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, localReplaySchedule, mergeReplayFrames, replayAbilitiesFor, replayClockSeconds, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayBotAbilityState, replayFrameIndexForElapsedMs, replayRayOrigin, replayRatingChange, replayRemainingMs, replayRemainingSeconds, replayResultRevealReached, replayShapeKey } from "./replayPresentation.js";
+import { combatVisualDurationMs } from "../gameArena/gameconfig/visualState.js";
+import { centeredTeamPosition, displayedRoundWins, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, localReplaySchedule, mergeReplayFrames, replayAbilitiesFor, replayAbilityTarget, replayAbilityVisual, replayClockSeconds, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayBotAbilityState, replayFrameIndexForElapsedMs, replayRayOrigin, replayRatingChange, replayRemainingMs, replayRemainingSeconds, replayResultRevealReached, replayResultVisibility, replayShapeKey } from "./replayPresentation.js";
 
 test("replay schedule preserves the server deadlines when the ready event arrives late", () => {
     assert.deepEqual(localReplaySchedule(10_000, 30_000, 9_000), {
@@ -63,10 +64,81 @@ test("replay does not infer one ability visual from another equipped ability", (
     assert.equal(state.abilityActiveMs[3] ?? 0, 0);
 });
 
+test("replay reconstructs direct ability visuals with the shared Bot Room duration", () => {
+    const frames = [
+        { elapsedMs: 100, bots: [{ slot: 1, x: 100, y: 200, rotation: 10, abilityActiveMs: {} }] },
+        { elapsedMs: 200, bots: [{ slot: 1, x: 130, y: 240, rotation: 40, triggeredAbility: 16, abilityActiveMs: {} }] },
+        { elapsedMs: 300, bots: [{ slot: 1, x: 170, y: 280, rotation: 90, abilityActiveMs: {} }] },
+        { elapsedMs: 500, bots: [{ slot: 1, x: 220, y: 330, rotation: 120, abilityActiveMs: {} }] },
+    ];
+
+    assert.equal(combatVisualDurationMs(16), 300);
+    assert.deepEqual(replayAbilityVisual(frames[1].bots[0], frames, 1), {
+        ability: 16,
+        ms: 300,
+        x: 130,
+        y: 240,
+        rotation: 40,
+    });
+    assert.deepEqual(replayAbilityVisual(frames[2].bots[0], frames, 2), {
+        ability: 16,
+        ms: 200,
+        x: 130,
+        y: 240,
+        rotation: 40,
+    });
+    assert.equal(replayAbilityVisual(frames[3].bots[0], frames, 3), null);
+});
+
+test("replay keeps a lock-on target after its trigger frame", () => {
+    const frames = [
+        { elapsedMs: 100, bots: [{ slot: 1, abilityActiveMs: {} }] },
+        { elapsedMs: 200, bots: [{ slot: 1, triggeredAbility: 20, abilityActiveMs: { 20: 200 }, abilityTargetX: 720, abilityTargetY: 340 }] },
+        { elapsedMs: 300, bots: [{ slot: 1, abilityActiveMs: { 20: 100 } }] },
+    ];
+
+    assert.deepEqual(replayAbilityTarget(frames[2].bots[0], frames, 2), {
+        abilityTargetX: 720,
+        abilityTargetY: 340,
+    });
+});
+
 test("replay result stays hidden until the authoritative reveal deadline", () => {
     assert.equal(replayResultRevealReached(30_000, 29_999), false);
     assert.equal(replayResultRevealReached(30_000, 30_000), true);
     assert.equal(replayResultRevealReached(null, 0), true);
+});
+
+test("round result visibility does not depend on the official match result event", () => {
+    assert.deepEqual(replayResultVisibility({
+        result: "BOT_WIN",
+        hasAuthorizedTerminalFrame: true,
+        hasDisplayedFinalFrame: true,
+        roundResultRevealReceived: true,
+        resultRevealReceived: false,
+    }), {
+        roundResultRevealed: true,
+        matchResultRevealed: false,
+    });
+    assert.deepEqual(replayResultVisibility({
+        result: "BOT_WIN",
+        hasAuthorizedTerminalFrame: true,
+        hasDisplayedFinalFrame: true,
+        roundResultRevealReceived: false,
+        resultRevealReceived: true,
+    }), {
+        roundResultRevealed: true,
+        matchResultRevealed: true,
+    });
+    assert.deepEqual(replayResultVisibility({
+        result: "BOT_WIN",
+        hasAuthorizedTerminalFrame: false,
+        hasDisplayedFinalFrame: true,
+        resultRevealReceived: true,
+    }), {
+        roundResultRevealed: false,
+        matchResultRevealed: false,
+    });
 });
 
 test("rating change stays hidden until the result reveal event is received", () => {
@@ -222,6 +294,21 @@ test("replay gun rays use the one-tick activation marker during rotation", () =>
     });
 });
 
+test("replay gun rays prefer the authoritative activation pose when it is supplied", () => {
+    const frames = [
+        { bots: [{ slot: 1, x: 100, y: 200, rotation: 10, abilityActiveMs: {} }] },
+        { bots: [{ slot: 1, x: 130, y: 240, rotation: 40, abilityActiveMs: { 3: 900 }, triggeredAbility: 3, visualOriginX: 125, visualOriginY: 235, visualOriginRotation: 35 }] },
+        { bots: [{ slot: 1, x: 170, y: 280, rotation: 90, abilityActiveMs: { 3: 800 } }] },
+    ];
+
+    assert.deepEqual(replayRayOrigin(frames[2].bots[0], frames, 2), {
+        gunRayOriginX: 125,
+        gunRayOriginY: 235,
+        gunRayRotation: 35,
+        replayGunActiveMs: 800,
+    });
+});
+
 test("replay recovery appends only frames newer than the current cursor", () => {
     assert.deepEqual(
         mergeReplayFrames(
@@ -229,6 +316,16 @@ test("replay recovery appends only frames newer than the current cursor", () => 
             [{ elapsedMs: 200 }, { elapsedMs: 300 }],
         ),
         [{ elapsedMs: 100 }, { elapsedMs: 200 }, { elapsedMs: 300 }],
+    );
+});
+
+test("replay recovery orders frames when batches arrive out of order", () => {
+    assert.deepEqual(
+        mergeReplayFrames(
+            [{ elapsedMs: 100 }, { elapsedMs: 300 }],
+            [{ elapsedMs: 200 }, { elapsedMs: 400 }],
+        ),
+        [{ elapsedMs: 100 }, { elapsedMs: 200 }, { elapsedMs: 300 }, { elapsedMs: 400 }],
     );
 });
 

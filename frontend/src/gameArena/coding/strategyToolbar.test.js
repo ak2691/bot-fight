@@ -359,6 +359,7 @@ test("conditional nodes expand to fit complete variable names", () => {
 
 test("conditional operand icon toggles replace literals and restore raw numbers", () => {
     const source = readCodingSource();
+    const variablePicker = source.slice(source.indexOf("function VariableOperandPicker"), source.indexOf("function ConditionalOperandBox"));
 
     assert.match(source, /function ConditionalOperandBox/);
     assert.match(source, /aria-label=\{`Use a variable for input \$\{operand\}`\}/);
@@ -371,6 +372,7 @@ test("conditional operand icon toggles replace literals and restore raw numbers"
     assert.match(source, /className="code-condition-input-toggle"/);
     assert.match(source, /onClick=\{onOpenVariablePicker \?\? onInspectVariable\}/);
     assert.doesNotMatch(source, /onChooseExisting|ON YOUR CANVAS/);
+    assert.doesNotMatch(variablePicker, /TRUE \/ FALSE|NUMBER/);
 });
 
 test("raw number inputs keep their DOM focus when the selected variable changes", () => {

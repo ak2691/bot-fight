@@ -72,7 +72,11 @@ import {
     toCanonicalBotShape,
     toSimulationBotShape,
 } from "./modelPayloads/arenaShapes.js";
-import { buildAbilityTestingArenaShapes, findAbilityTestingPreset } from "./testing/AbilityTestingPresets.js";
+import {
+    buildAbilityTestingArenaShapes,
+    buildAbilityTestingPracticeConfig,
+    findAbilityTestingPreset,
+} from "./testing/AbilityTestingPresets.js";
 import { buildStatePayload } from "./modelPayloads/strategyStatePayload.js";
 import {
     buildTutorialArenaShapes,
@@ -565,7 +569,6 @@ export default function Arena({
     const isPuzzleMode = Boolean(puzzleMode);
     const usesPuzzleSetup = isPuzzleBuilder || isPuzzleMode;
     const [storedPracticeRoom] = useState(() => isPracticeRoom ? readPracticeRoomDraft() : null);
-    const [practiceConfig, setPracticeConfig] = useState(() => normalizePracticeConfig(storedPracticeRoom?.config));
     const initialTutorialStep = Math.max(0, Math.min(TUTORIAL_STEP_COUNT - 1, Number(location.state?.tutorialStep) || 0));
     const initialTutorialScenario = getTutorialScenario(initialTutorialStep);
     const catalogueAbilityId = isPracticeRoom
@@ -573,6 +576,9 @@ export default function Arena({
         : null;
     const catalogueAbilityTestingPreset = findAbilityTestingPreset(catalogueAbilityId);
     const isAbilityTesting = Boolean(catalogueAbilityTestingPreset?.id);
+    const [practiceConfig, setPracticeConfig] = useState(() => isAbilityTesting
+        ? buildAbilityTestingPracticeConfig(catalogueAbilityTestingPreset)
+        : normalizePracticeConfig(storedPracticeRoom?.config));
     const matchId = matchContext?.matchId;
     const matchUserId = matchContext?.player?.userId;
     const isMatchTesting = Boolean(matchId && matchUserId);
@@ -955,6 +961,8 @@ export default function Arena({
         setOpponentLoadout(catalogueAbilityTestingPreset.opponentLoadout);
         setTestingConfiguration(sanitizeStrategyConfigurationForLoadout(catalogueAbilityTestingPreset.playerCode, catalogueAbilityTestingPreset.playerLoadout));
         setOpponentTestingConfiguration(sanitizeStrategyConfigurationForLoadout(catalogueAbilityTestingPreset.opponentCode, catalogueAbilityTestingPreset.opponentLoadout));
+        // Keep Practice Config as the reset baseline for this catalogue preset.
+        setPracticeConfig(buildAbilityTestingPracticeConfig(catalogueAbilityTestingPreset));
         setShapes(buildAbilityTestingArenaShapes(catalogueAbilityTestingPreset));
     }, [catalogueAbilityTestingPreset, isAbilityTesting]);
 
@@ -1437,12 +1445,9 @@ export default function Arena({
             const freshShapes = buildPracticeArenaShapes(selectedLoadout, opponentLoadout, initialPuzzle);
             setShapes(freshShapes);
         } else if (isPracticeRoom) {
-            setShapes(buildPracticeArenaShapes(
-                selectedLoadout,
-                opponentLoadout,
-                practiceArenaSetup,
-                true,
-            ));
+            // Practice playback starts from the current arena state. Reset
+            // Stats is the explicit action that reinitializes positions and
+            // combat state; pressing Play must not silently do that again.
         } else {
             setShapes((prevShapes) => buildAutoPlayStartShapes(prevShapes, matchContext, isMatchTesting));
         }
@@ -2047,9 +2052,32 @@ function practiceTeamLabel(teamNumber) {
     return Number(teamNumber) === PUZZLE_OPPONENT_TEAM ? "RED TEAM" : "BLUE TEAM";
 }
 
-function practiceNumberInput(event, fallback) {
-    const value = Number(event.target.value);
-    return Number.isFinite(value) ? value : fallback;
+function DeferredNumberInput({ value, onCommit, ...props }) {
+    const [draftValue, setDraftValue] = useState(() => String(value ?? ""));
+
+    useEffect(() => {
+        // Re-sync after a committed value or bot selection changes while
+        // preserving the raw value during the active edit.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setDraftValue(String(value ?? ""));
+    }, [value]);
+
+    const commit = () => onCommit?.(draftValue);
+
+    return (
+        <input
+            {...props}
+            type="number"
+            value={draftValue}
+            onChange={(event) => setDraftValue(event.target.value)}
+            onBlur={commit}
+            onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                event.preventDefault();
+                event.currentTarget.blur();
+            }}
+        />
+    );
 }
 
 function PracticeConfigModal({ draft, onClose, onSave }) {
@@ -2068,15 +2096,21 @@ function PracticeConfigModal({ draft, onClose, onSave }) {
         ? PUZZLE_OPPONENT_TEAM
         : PUZZLE_PLAYER_TEAM;
     const tone = teamNumber === PUZZLE_OPPONENT_TEAM ? "red" : "blue";
-    const updateTeamSize = (field, event) => {
-        const value = Math.max(1, Math.min(2, Math.floor(practiceNumberInput(event, localDraft[field]))));
-        setLocalDraft((current) => normalizePracticeConfig({ ...current, [field]: value }));
+    const updateTeamSize = (field, rawValue) => {
+        setLocalDraft((current) => normalizePracticeConfig({ ...current, [field]: rawValue }));
     };
-    const updateBot = (field, event) => {
-        const value = practiceNumberInput(event, selectedBot?.[field] ?? 0);
+    const updateElapsedTime = (rawValue) => {
+        setLocalDraft((current) => {
+            const seconds = Number(rawValue);
+            const fallbackSeconds = Number(current.initialElapsedMs ?? 0) / 1000;
+            const resolvedSeconds = Number.isFinite(seconds) ? seconds : fallbackSeconds;
+            return normalizePracticeConfig({ ...current, initialElapsedMs: resolvedSeconds * 1000 });
+        });
+    };
+    const updateBot = (field, rawValue) => {
         setLocalDraft((current) => normalizePracticeConfig({
             ...current,
-            bots: current.bots.map((bot, index) => index === selectedBotIndex ? { ...bot, [field]: value } : bot),
+            bots: current.bots.map((bot, index) => index === selectedBotIndex ? { ...bot, [field]: rawValue } : bot),
         }));
     };
     const cycle = (direction) => {
@@ -2096,18 +2130,15 @@ function PracticeConfigModal({ draft, onClose, onSave }) {
                     <div className="space-y-2">
                         <label className="flex min-h-11 items-center justify-between gap-4 border-b border-slate-800/80 pb-2 font-mono text-[9px] text-slate-300">
                             <span>BLUE TEAM PLAYERS</span>
-                            <input type="number" min="1" max="2" step="1" value={localDraft.playerTeamSize} onChange={(event) => updateTeamSize("playerTeamSize", event)} aria-label="Number of blue team players" className="h-9 w-24 border-2 border-cyan-400/80 bg-cyan-950/20 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-300" />
+                            <DeferredNumberInput min="1" max="2" step="1" value={localDraft.playerTeamSize} onCommit={(value) => updateTeamSize("playerTeamSize", value)} aria-label="Number of blue team players" className="h-9 w-24 border-2 border-cyan-400/80 bg-cyan-950/20 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-300" />
                         </label>
                         <label className="flex min-h-11 items-center justify-between gap-4 border-b border-slate-800/80 pb-2 font-mono text-[9px] text-slate-300">
                             <span>RED TEAM PLAYERS</span>
-                            <input type="number" min="1" max="2" step="1" value={localDraft.opponentTeamSize} onChange={(event) => updateTeamSize("opponentTeamSize", event)} aria-label="Number of red team players" className="h-9 w-24 border-2 border-red-400/80 bg-red-950/20 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-red-300" />
+                            <DeferredNumberInput min="1" max="2" step="1" value={localDraft.opponentTeamSize} onCommit={(value) => updateTeamSize("opponentTeamSize", value)} aria-label="Number of red team players" className="h-9 w-24 border-2 border-red-400/80 bg-red-950/20 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-red-300" />
                         </label>
                         <label className="flex min-h-11 items-center justify-between gap-4 border-b border-slate-800/80 pb-2 font-mono text-[9px] text-slate-300">
                             <span>TIME AT / SEC</span>
-                            <input type="number" min="0" max="60" step="1" value={Math.round(localDraft.initialElapsedMs / 1000)} onChange={(event) => {
-                                const seconds = Math.max(0, Math.min(60, practiceNumberInput(event, localDraft.initialElapsedMs / 1000)));
-                                setLocalDraft((current) => normalizePracticeConfig({ ...current, initialElapsedMs: seconds * 1000 }));
-                            }} aria-label="Practice elapsed time in seconds" className="h-9 w-24 border border-slate-700 bg-slate-950 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-400" />
+                            <DeferredNumberInput min="0" max="60" step="1" value={Math.round(localDraft.initialElapsedMs / 1000)} onCommit={updateElapsedTime} aria-label="Practice elapsed time in seconds" className="h-9 w-24 border border-slate-700 bg-slate-950 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-400" />
                         </label>
                     </div>
                     <section className={`rounded border p-3 ${tone === "red" ? "border-red-900/60 bg-red-950/20" : "border-cyan-400/65 bg-cyan-950/30"}`}>
@@ -2123,10 +2154,10 @@ function PracticeConfigModal({ draft, onClose, onSave }) {
                             </div>
                         </div>
                         <div className="mt-3 grid grid-cols-2 gap-2">
-                            <label className="font-mono text-[8px] text-slate-500">X<input type="number" min={BOT_CENTER_MIN_X} max={BOT_CENTER_MAX_X} step="1" value={selectedBot?.startX ?? BOT_CENTER_MIN_X} onChange={(event) => updateBot("startX", event)} aria-label={`${practiceBotDisplayName(selectedBot)} starting X position`} className={inputClass} /></label>
-                            <label className="font-mono text-[8px] text-slate-500">Y<input type="number" min={BOT_CENTER_MIN_Y} max={BOT_CENTER_MAX_Y} step="1" value={selectedBot?.startY ?? BOT_CENTER_MIN_Y} onChange={(event) => updateBot("startY", event)} aria-label={`${practiceBotDisplayName(selectedBot)} starting Y position`} className={inputClass} /></label>
-                            <label className="font-mono text-[8px] text-slate-500">ROTATION<input type="number" min="-360" max="360" step="1" value={selectedBot?.rotation ?? 0} onChange={(event) => updateBot("rotation", event)} aria-label={`${practiceBotDisplayName(selectedBot)} starting rotation`} className={inputClass} /></label>
-                            <label className="font-mono text-[8px] text-slate-500">HP<input type="number" min="1" max={BASE_BOT_HP} step="1" value={selectedBot?.startHp ?? BASE_BOT_HP} onChange={(event) => updateBot("startHp", event)} aria-label={`${practiceBotDisplayName(selectedBot)} starting HP`} className={inputClass} /></label>
+                            <label className="font-mono text-[8px] text-slate-500">X<DeferredNumberInput min={BOT_CENTER_MIN_X} max={BOT_CENTER_MAX_X} step="1" value={selectedBot?.startX ?? BOT_CENTER_MIN_X} onCommit={(value) => updateBot("startX", value)} aria-label={`${practiceBotDisplayName(selectedBot)} starting X position`} className={inputClass} /></label>
+                            <label className="font-mono text-[8px] text-slate-500">Y<DeferredNumberInput min={BOT_CENTER_MIN_Y} max={BOT_CENTER_MAX_Y} step="1" value={selectedBot?.startY ?? BOT_CENTER_MIN_Y} onCommit={(value) => updateBot("startY", value)} aria-label={`${practiceBotDisplayName(selectedBot)} starting Y position`} className={inputClass} /></label>
+                            <label className="font-mono text-[8px] text-slate-500">ROTATION<DeferredNumberInput min="-360" max="360" step="1" value={selectedBot?.rotation ?? 0} onCommit={(value) => updateBot("rotation", value)} aria-label={`${practiceBotDisplayName(selectedBot)} starting rotation`} className={inputClass} /></label>
+                            <label className="font-mono text-[8px] text-slate-500">HP<DeferredNumberInput min="1" max={BASE_BOT_HP} step="1" value={selectedBot?.startHp ?? BASE_BOT_HP} onCommit={(value) => updateBot("startHp", value)} aria-label={`${practiceBotDisplayName(selectedBot)} starting HP`} className={inputClass} /></label>
                         </div>
                     </section>
                 </div>

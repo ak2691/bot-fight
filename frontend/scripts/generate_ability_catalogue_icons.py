@@ -3,7 +3,7 @@
 
 The manifest is intentionally declarative: every sprite-sheet grid, frame
 index, crop, padding, and compositing instruction lives beside the generated
-asset contract. The output is production-ready transparent PNG artwork; the
+asset contract. The output is production-ready transparent WebP artwork; the
 browser never runs this script.
 """
 
@@ -242,7 +242,7 @@ def main() -> int:
         else:
             icon = render_single(spec, name, canvas_size)
         output = OUTPUT_ROOT / spec["output"]
-        icon.save(output, format="PNG", optimize=False, compress_level=9)
+        icon.save(output, format="WEBP", quality=90, method=6)
         print(f"{name}: {output.relative_to(REPO_ROOT)}")
     return 0
 

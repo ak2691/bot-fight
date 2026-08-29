@@ -27,6 +27,7 @@ import com.example.botfight.service.matchmaking.MatchmakingEventsReady;
 import com.example.botfight.service.matchmaking.MatchmakingService;
 import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
 import java.security.Principal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +47,27 @@ import org.springframework.web.socket.messaging.SessionSubscribeEvent;
 import org.springframework.web.socket.messaging.SessionUnsubscribeEvent;
 
 class MatchmakingSocketControllerTest {
+
+    @Test
+    void schedulesRankedQueueSweepsEveryTwoSeconds() {
+        MatchmakingService matchmakingService = mock(MatchmakingService.class);
+        MatchService matchService = mock(MatchService.class);
+        SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
+        CurrentUserService currentUserService = mock(CurrentUserService.class);
+        TaskScheduler scheduler = mock(TaskScheduler.class);
+        ArgumentCaptor<Runnable> taskCaptor = ArgumentCaptor.forClass(Runnable.class);
+        when(matchmakingService.sweepQueues()).thenReturn(List.of());
+        MatchmakingSocketController controller = new MatchmakingSocketController(
+                matchmakingService, matchService, messagingTemplate, currentUserService, scheduler);
+
+        controller.scheduleQueueMatchmakingSweep();
+        verify(scheduler).scheduleWithFixedDelay(
+                taskCaptor.capture(), eq(Duration.ofSeconds(2)));
+
+        taskCaptor.getValue().run();
+
+        verify(matchmakingService).sweepQueues();
+    }
 
     @Test
     void matchSubscriptionRecognizesClientFacingUserDestination() {

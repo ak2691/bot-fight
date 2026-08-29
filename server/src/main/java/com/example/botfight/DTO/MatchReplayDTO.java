@@ -175,6 +175,12 @@ public record MatchReplayDTO(
             Map<Integer, Integer> abilityActiveMs,
             Integer triggeredAbility,
             Integer preparingAbility,
+            Integer preparingMs,
+            Double abilityTargetX,
+            Double abilityTargetY,
+            Double visualOriginX,
+            Double visualOriginY,
+            Double visualOriginRotation,
             Double temporalRewindX,
             Double temporalRewindY,
             Integer temporalRewindPulseMs,
@@ -200,8 +206,36 @@ public record MatchReplayDTO(
             this(slot, x, y, rotation, hp, statusEffects, abilityCooldowns,
                     abilityCharges, abilityRechargeMs, abilityActiveMs, triggeredAbility,
                     preparingAbility,
+                    null, null, null, null, null, null,
                     temporalRewindX, temporalRewindY, temporalRewindPulseMs,
                     closingZoneDamageCount, slot);
+        }
+
+        /** Keeps source compatibility for callers that already provide team identity. */
+        public ReplayBotDTO(
+                int slot,
+                double x,
+                double y,
+                Double rotation,
+                double hp,
+                List<StatusEffectState> statusEffects,
+                Map<Integer, Integer> abilityCooldowns,
+                Map<Integer, Integer> abilityCharges,
+                Map<Integer, Integer> abilityRechargeMs,
+                Map<Integer, Integer> abilityActiveMs,
+                Integer triggeredAbility,
+                Integer preparingAbility,
+                Double temporalRewindX,
+                Double temporalRewindY,
+                Integer temporalRewindPulseMs,
+                Integer closingZoneDamageCount,
+                int teamNumber) {
+            this(slot, x, y, rotation, hp, statusEffects, abilityCooldowns,
+                    abilityCharges, abilityRechargeMs, abilityActiveMs, triggeredAbility,
+                    preparingAbility,
+                    null, null, null, null, null, null,
+                    temporalRewindX, temporalRewindY, temporalRewindPulseMs,
+                    closingZoneDamageCount, teamNumber);
         }
 
         private static ReplayBotDTO from(MatchPlaybackDTO.BotStateDTO bot) {
@@ -219,6 +253,12 @@ public record MatchReplayDTO(
                     positiveEntries(bot.abilityActiveMs()),
                     bot.triggeredAbility(),
                     bot.preparingAbility(),
+                    positiveOrNull(bot.preparingMs()),
+                    finiteOrNull(bot.abilityTargetX()),
+                    finiteOrNull(bot.abilityTargetY()),
+                    finiteOrNull(bot.visualOriginX()),
+                    finiteOrNull(bot.visualOriginY()),
+                    finiteOrNull(bot.visualOriginRotation()),
                     temporalRewindPulseMs > 0 ? bot.temporalRewindX() : null,
                     temporalRewindPulseMs > 0 ? bot.temporalRewindY() : null,
                     positiveOrNull(temporalRewindPulseMs),
@@ -244,7 +284,6 @@ public record MatchReplayDTO(
             Integer shotVisualMs) {
         private static ReplayEntityDTO from(MatchPlaybackDTO.ArenaEntityDTO entity) {
             String type = entity.type();
-            boolean mine = "proximityMine".equals(type);
             boolean drone = "hunterDrone".equals(type) || "repellerDrone".equals(type);
             return new ReplayEntityDTO(
                     entity.id(),
@@ -255,7 +294,7 @@ public record MatchReplayDTO(
                     entity.size(),
                     nonZeroOrNull(entity.rotation()),
                     drone ? Integer.valueOf(entity.hp()) : positiveOrNull(entity.hp()),
-                    mine ? entity.armed() : null,
+                    entity.armed(),
                     positiveOrNull(entity.timerMs()),
                     nonZeroOrNull(entity.velocityX()),
                     nonZeroOrNull(entity.velocityY()),
@@ -273,6 +312,10 @@ public record MatchReplayDTO(
 
     private static Double nonZeroOrNull(Double value) {
         return value != null && Math.abs(value) > 0.0001 ? value : null;
+    }
+
+    private static Double finiteOrNull(Double value) {
+        return value != null && Double.isFinite(value) ? value : null;
     }
 
     private static Map<Integer, Integer> positiveEntries(Map<Integer, Integer> values) {

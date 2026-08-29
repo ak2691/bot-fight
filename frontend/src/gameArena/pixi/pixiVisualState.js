@@ -8,6 +8,17 @@ import { statusIsActive } from "../ecs/contracts/StatusContracts.js";
 
 const ZONE_TYPES = new Set([CLOSING_ZONE_TYPE, "gravityZone", "gravityExplosion", "nullZone", "orbitalMarker", "orbitalExplosion", "silenceWave", "temporalRewindZone", "singularityZone", "singularityExplosion", "staticSnareBurst"]);
 const PROJECTILE_TYPES = new Set(["grenade", "fireball", "windburstProjectile"]);
+// Authoritative replay entities expose the remaining lifetime as timerMs.
+// These derived effects are created with visibleMs in the training arena, so
+// normalize the replay timer back into that same renderer-facing field.
+const REPLAY_VISIBLE_TIMER_TYPES = new Set([
+    "grenadeExplosion",
+    "mineExplosion",
+    "gravityExplosion",
+    "orbitalExplosion",
+    "singularityExplosion",
+    "staticSnareBurst",
+]);
 const PROJECTILE_TRAILS = Object.freeze({
     fireball: { color: 0xfb923c, length: 48, width: 10 },
     gravityZone: { color: 0xc4b5fd, length: 38, width: 7 },
@@ -205,6 +216,9 @@ export function normalizeReplayObstacleShape(obstacle, previousObstacle, {
     const velocity = obstacle?.type === "grenade"
         ? { velocityX: Number(obstacle.velocityX ?? 0), velocityY: Number(obstacle.velocityY ?? 0) }
         : replayProjectileVelocity(obstacle, previousObstacle, nextObstacle);
+    const replayVisibleMs = REPLAY_VISIBLE_TIMER_TYPES.has(obstacle?.type)
+        ? Math.max(0, Number(obstacle?.timerMs ?? 0))
+        : null;
     return {
         ...obstacle,
         ...(obstacle?.abilityId == null ? {} : { abilityId: abilityId(Number(obstacle.abilityId)) }),
@@ -215,6 +229,7 @@ export function normalizeReplayObstacleShape(obstacle, previousObstacle, {
         armed: obstacle?.armed,
         fuseMs: obstacle?.timerMs,
         remainingMs: obstacle?.timerMs,
+        ...(replayVisibleMs == null ? {} : { visibleMs: replayVisibleMs }),
         captureBySlot: { 1: obstacle?.slotOneCaptureMs ?? 0, 2: obstacle?.slotTwoCaptureMs ?? 0 },
         ...(obstacle?.type === CLOSING_ZONE_TYPE
             ? {

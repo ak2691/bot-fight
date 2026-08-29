@@ -1,6 +1,15 @@
 import { ABILITY_STATS } from "./Abilities.js";
 
 export const COMBAT_VISUAL_MS = 300;
+/**
+ * Direct ability activations that create the short-lived bot-room visual.
+ * Replay uses the trigger marker for these same abilities because the
+ * transient `abilityVisual` object is intentionally not part of simulation
+ * state.
+ */
+export const COMBAT_VISUAL_ABILITY_IDS = Object.freeze([
+    1, 3, 6, 7, 8, 9, 10, 12, 13, 16, 20, 23, 25, 26, 30, 32, 33, 34,
+]);
 export const REPULSOR_BURST_VISUAL_MS = 500;
 export const REPULSOR_BURST_FRAME_COUNT = 10;
 export const REPULSOR_BURST_FRAME_MS = REPULSOR_BURST_VISUAL_MS / REPULSOR_BURST_FRAME_COUNT;
@@ -34,6 +43,12 @@ export function abilityActiveOpacity(shape, abilityId) {
 
 export function abilityVisualOpacity(shape, ability, durationMs = COMBAT_VISUAL_MS) {
     return clamp01(combatVisualRemainingMs(shape, ability) / durationMs);
+}
+
+/** Keeps bot-room and replay activation visuals on the same duration contract. */
+export function combatVisualDurationMs(abilityId, stats = ABILITY_STATS[abilityId]) {
+    const configuredMs = Number(stats?.visualDurationMs ?? stats?.visualMs ?? stats?.durationMs ?? 0);
+    return Math.max(COMBAT_VISUAL_MS, Number.isFinite(configuredMs) ? configuredMs : 0);
 }
 
 /**

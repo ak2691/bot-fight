@@ -631,6 +631,53 @@ public record MatchmakingEventDTO(
                 codeViewSelectedLoadout);
     }
 
+    public MatchmakingEventDTO withStatus(String nextStatus) {
+        return new MatchmakingEventDTO(
+                type,
+                matchId,
+                simulationSeed,
+                nextStatus,
+                player,
+                opponent,
+                players,
+                serverNow,
+                loadoutSelectionEndsAt,
+                entityPlacementEndsAt,
+                countdownEndsAt,
+                buildingEndsAt,
+                playbackStartsAt,
+                resultRevealsAt,
+                rulesetVersion,
+                playback,
+                roundNumber,
+                winsRequired,
+                message,
+                entityPlacementUserId,
+                entityPlacements,
+                arenaEntities,
+                roundBrains,
+                previousRoundWon,
+                abilityOffers,
+                roundBlockLimit,
+                disconnectedUserId,
+                disconnectEndsAt,
+                simulationPreparingDurationMs,
+                roundReadyAt,
+                matchChatEndsAt,
+                matchAcceptanceEndsAt,
+                acceptedByMe,
+                otherPlayerAccepted,
+                mode,
+                surrenderRequestedByMe,
+                surrenderVoteCount,
+                surrenderVoteRequired,
+                codeViewRequestId,
+                codeViewTargetUserId,
+                codeViewTargetUsername,
+                codeViewBrain,
+                codeViewSelectedLoadout);
+    }
+
     public MatchmakingEventDTO withMode(String nextMode) {
         return new MatchmakingEventDTO(
                 type,

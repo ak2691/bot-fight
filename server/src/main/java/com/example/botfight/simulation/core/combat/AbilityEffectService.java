@@ -58,6 +58,12 @@ class AbilityEffectService {
     void resolveTriggeredAbilities(Bot attacker, List<Bot> bots, Arena arena) {
         AbilityExecutionPayload payload = AbilityExecutionPayload.fromTriggered(attacker);
         if (payload == null || !hitDetectionService.isDirectDelivery(payload.contract().delivery())) return;
+        // Browser combat attaches the transient visual before applying any
+        // effect (including teleport). Preserve that exact activation pose in
+        // the authoritative frame so replay can use the same origin.
+        attacker.visualOriginX = attacker.x;
+        attacker.visualOriginY = attacker.y;
+        attacker.visualOriginRotation = attacker.rotation;
         if (payload.contract().delivery() == DeliveryType.SELF) {
             resolveTriggeredAbility(attacker, null, arena);
             return;

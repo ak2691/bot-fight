@@ -325,6 +325,7 @@ public final class MatchEventFactory {
                     resultRevealsAt,
                     roundReadyAt,
                     session.roundNumber())
+                    .withStatus(status)
                     .withMode(session.mode().name());
             if ((playback != null && playback.terminalBatch())
                     || (compactPlayback != null && compactPlayback.terminalBatch())) {

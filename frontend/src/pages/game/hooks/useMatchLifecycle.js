@@ -446,9 +446,12 @@ export function useMatchLifecycle({ navigate }) {
             matchEventRef.current,
         );
         const isPlayerReconnectedEvent = event.type === "PLAYER_RECONNECTED";
+        const canCompleteTerminalReplay = event.type === "MATCH_REPLAY_BATCH"
+            && playbackRef.current?.terminalBatch !== true;
         if (!isPlayerReconnectedEvent && (isOlderMatchRoundEvent(event, matchEventRef.current)
             || isOlderMatchPhaseEvent(event, matchEventRef.current))
-            && event.type !== "PLAYER_DISCONNECTED") return;
+            && event.type !== "PLAYER_DISCONNECTED"
+            && !canCompleteTerminalReplay) return;
         const isSelectionPhaseStart = (
             event.type === "MATCH_STARTED"
             || event.type === "MATCH_LOADOUT_SELECTION_READY"
@@ -512,7 +515,8 @@ export function useMatchLifecycle({ navigate }) {
         }
         if (terminalResultRef.current
             && event.type !== "MATCH_RESULT_READY"
-            && !isPlayerReconnectedEvent) return;
+            && !isPlayerReconnectedEvent
+            && !canCompleteTerminalReplay) return;
         if (event.type === "QUEUE_WAITING") {
             updateQueueStatus("WAITING");
         }
@@ -782,7 +786,7 @@ export function useMatchLifecycle({ navigate }) {
             }
         }
         if (event.type === "MATCH_REPLAY_BATCH") {
-            if (terminalResultRef.current) return;
+            if (terminalResultRef.current && playbackRef.current?.terminalBatch === true) return;
             if (playbackRef.current?.roundNumber != null
                 && event.roundNumber != null
                 && Number(playbackRef.current.roundNumber) !== Number(event.roundNumber)) return;
@@ -790,7 +794,18 @@ export function useMatchLifecycle({ navigate }) {
                 if (!currentPlayback) return currentPlayback;
                 const incomingSequence = Number(event.playback?.batchSequence);
                 const currentSequence = Number(currentPlayback.batchSequence);
-                const incomingBatchIsStale = Number.isFinite(incomingSequence)
+                const isRoundResultReveal = event.status === "ROUND_RESULT_READY";
+                const currentFrameTimes = new Set((currentPlayback.frames ?? [])
+                    .map((frame) => Number(frame?.elapsedMs))
+                    .filter(Number.isFinite));
+                const incomingHasNewFrames = (event.playback?.frames ?? [])
+                    .some((frame) => {
+                        const elapsedMs = Number(frame?.elapsedMs);
+                        return Number.isFinite(elapsedMs) && !currentFrameTimes.has(elapsedMs);
+                    });
+                const incomingBatchIsStale = !isRoundResultReveal
+                    && !incomingHasNewFrames
+                    && Number.isFinite(incomingSequence)
                     && Number.isFinite(currentSequence)
                     && incomingSequence <= currentSequence;
                 if (incomingBatchIsStale) return currentPlayback;
@@ -805,11 +820,14 @@ export function useMatchLifecycle({ navigate }) {
                     batchSequence: event.playback?.batchSequence ?? currentPlayback.batchSequence,
                     replayCursorElapsedMs: event.playback?.replayCursorElapsedMs
                         ?? currentPlayback.replayCursorElapsedMs,
-                    terminalBatch: Boolean(event.playback?.terminalBatch || currentPlayback.terminalBatch),
+                    terminalBatch: event.playback?.frames?.length
+                        ? Boolean(event.playback.terminalBatch || currentPlayback.terminalBatch)
+                        : Boolean(currentPlayback.terminalBatch),
                     status: event.playback?.status ?? currentPlayback.status,
                     result: event.playback?.result ?? currentPlayback.result,
                     winnerUserId: event.playback?.winnerUserId ?? currentPlayback.winnerUserId,
                     message: event.playback?.message ?? currentPlayback.message,
+                    resultRevealReceived: currentPlayback.resultRevealReceived === true,
                     roundResultRevealReceived: event.status === "ROUND_RESULT_READY"
                         || currentPlayback.roundResultRevealReceived === true,
                 };
@@ -851,12 +869,17 @@ export function useMatchLifecycle({ navigate }) {
                     result: event.playback?.result ?? currentPlayback?.result,
                     winnerUserId: event.playback?.winnerUserId ?? currentPlayback?.winnerUserId,
                     message: event.playback?.message ?? event.message ?? currentPlayback?.message,
+                    batchSequence: event.playback?.batchSequence ?? currentPlayback?.batchSequence,
+                    replayCursorElapsedMs: event.playback?.replayCursorElapsedMs
+                        ?? currentPlayback?.replayCursorElapsedMs,
+                    terminalBatch: currentPlayback?.terminalBatch === true,
                     player: event.player ?? currentPlayback?.player,
                     opponent: event.opponent ?? currentPlayback?.opponent,
                     players: event.players ?? currentPlayback?.players,
                     roundNumber: event.roundNumber ?? currentPlayback?.roundNumber,
                     winsRequired: event.winsRequired ?? currentPlayback?.winsRequired,
                     resultRevealReceived: true,
+                    roundResultRevealReceived: true,
                 };
                 playbackRef.current = nextPlayback;
                 return nextPlayback;
