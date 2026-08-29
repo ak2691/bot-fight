@@ -16,6 +16,16 @@ class BotLogicContractsTest {
                 .isEqualTo(EntityContracts.SelectableOwner.OWNER);
         assertThat(BotLogicContracts.selectableContract("opponent_singularity_zone").runtimeType())
                 .isEqualTo("singularityZone");
+        assertThat(BotLogicContracts.selectableContract("opponent_1_fireball").runtimeType())
+                .isEqualTo("fireball");
+        assertThat(BotLogicContracts.selectableContract("opponent_2_fireball").runtimeType())
+                .isEqualTo("fireball");
+        assertThat(BotLogicContracts.selectableContract("teammate_1_fireball").runtimeType())
+                .isEqualTo("fireball");
+        assertThat(BotLogicContracts.canonicalSelectableId("opponent_fireball"))
+                .isEqualTo("opponent_1_fireball");
+        assertThat(BotLogicContracts.selectableIds()).contains("opponent_1_fireball", "opponent_2_fireball", "teammate_1_fireball")
+                .doesNotContain("opponent_fireball", "my_fireball");
         assertThat(BotLogicContracts.selectableContract("singularity_zone")).isNull();
         assertThat(EntityContracts.all().values())
                 .allMatch(entity -> entity.selectableOwner() == EntityContracts.SelectableOwner.OWNER);
@@ -61,6 +71,15 @@ class BotLogicContractsTest {
                 .isEqualTo(BotLogicContracts.VariableSelectableType.PAIR);
         assertThat(BotLogicContracts.variableContract("selectable.distance").pairSelectableIdentities(0))
                 .isEmpty();
+        assertThat(BotLogicContracts.variableContract("selectable.distance").targetModes())
+                .containsExactlyInAnyOrder("target", "coordinates");
+        assertThat(BotLogicContracts.variableContract("selectable.relativeBearing").targetModes())
+                .containsExactlyInAnyOrder("target", "coordinates", "angle");
+        assertThat(BotLogicContracts.variableContract("selectable.relativeBearingClockwise").targetModes())
+                .containsExactlyInAnyOrder("target", "coordinates", "angle");
+        assertThat(BotLogicContracts.variableContract("selectable.relativeBearingCounterclockwise").targetModes())
+                .containsExactlyInAnyOrder("target", "coordinates", "angle");
+        assertThat(BotLogicContracts.variableContract("selectable.absoluteBearing").targetModes()).isEmpty();
         assertThat(BotLogicContracts.variableContract("selectable.movementDirection").angle()).isTrue();
         assertThat(BotLogicContracts.variableContract("selectable.movementDirection").selectableIdentities())
                 .isEmpty();
@@ -80,7 +99,7 @@ class BotLogicContractsTest {
         assertThat(BotLogicContracts.defaultSelectable1ForVariable(
                 BotLogicContracts.variableContract("selectable.distance"))).isEqualTo("my_bot");
         assertThat(BotLogicContracts.defaultSelectableForVariable(
-                BotLogicContracts.variableContract("selectable.distance"))).isEqualTo("opponent");
+                BotLogicContracts.variableContract("selectable.distance"))).isEqualTo("opponent_1");
         assertThat(BotLogicContracts.variableContract("bot.selectedAbilityActive").scope())
                 .isEqualTo(BotLogicContracts.VariableScope.SELECTABLE);
         assertThat(BotLogicContracts.variableContract("bot.selectedAbilityActive").selectableIdentities())
@@ -93,7 +112,7 @@ class BotLogicContractsTest {
         assertThat(BotLogicContracts.variableContract("selectable.count").selectableIdentities())
                 .containsExactly(BotLogicContracts.SelectableIdentity.ABILITY_ENTITY);
         assertThat(BotLogicContracts.defaultSelectableForVariable(
-                BotLogicContracts.variableContract("selectable.count"))).isEqualTo("opponent_grenade");
+                BotLogicContracts.variableContract("selectable.count"))).isEqualTo("opponent_1_grenade");
         assertThat(BotLogicContracts.selectableContract("opponent_hunter_drone").healthBearing()).isTrue();
         assertThat(BotLogicContracts.selectableContract("opponent_hunter_drone").selectableIdentities())
                 .contains(BotLogicContracts.SelectableIdentity.FACING, BotLogicContracts.SelectableIdentity.MOVEMENT);

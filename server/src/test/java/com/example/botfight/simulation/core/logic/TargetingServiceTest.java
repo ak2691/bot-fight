@@ -41,6 +41,35 @@ class TargetingServiceTest {
     }
 
     @Test
+    void numberedEntitySelectorsOnlyMatchEntitiesOwnedByTheSelectedBot() {
+        Bot player = bot(UUID.fromString("00000000-0000-0000-0000-000000000001"), 1, 100, 100);
+        player.teamNumber = 1;
+        Bot teammate = bot(UUID.fromString("00000000-0000-0000-0000-000000000002"), 2, 200, 100);
+        teammate.teamNumber = 1;
+        Bot opponentOne = bot(UUID.fromString("00000000-0000-0000-0000-000000000003"), 3, 700, 700);
+        opponentOne.teamNumber = 2;
+        Bot opponentTwo = bot(UUID.fromString("00000000-0000-0000-0000-000000000004"), 4, 800, 700);
+        opponentTwo.teamNumber = 2;
+        player.matchBots = List.of(player, teammate, opponentOne, opponentTwo);
+        List<Entity> entities = List.of(
+                target("my-fireball", "fireball", 5, 1, 100, 100, 100),
+                target("teammate-fireball", "fireball", 5, 2, 100, 200, 100),
+                target("opponent-one-fireball", "fireball", 5, 3, 100, 700, 700),
+                target("opponent-two-fireball", "fireball", 5, 4, 100, 800, 700));
+
+        assertThat(TargetingService.matchingSelectables("my_bot_fireball", player, opponentOne, entities))
+                .extracting(entity -> ((SelectableSnapshot) entity).id()).containsExactly("my-fireball");
+        assertThat(TargetingService.matchingSelectables("teammate_1_fireball", player, opponentOne, entities))
+                .extracting(entity -> ((SelectableSnapshot) entity).id()).containsExactly("teammate-fireball");
+        assertThat(TargetingService.matchingSelectables("opponent_1_fireball", player, opponentTwo, entities))
+                .extracting(entity -> ((SelectableSnapshot) entity).id()).containsExactly("opponent-one-fireball");
+        assertThat(TargetingService.matchingSelectables("opponent_2_fireball", player, opponentTwo, entities))
+                .extracting(entity -> ((SelectableSnapshot) entity).id()).containsExactly("opponent-two-fireball");
+        assertThat(TargetingService.matchingSelectables("opponent_fireball", player, opponentTwo, entities))
+                .extracting(entity -> ((SelectableSnapshot) entity).id()).containsExactly("opponent-one-fireball");
+    }
+
+    @Test
     void botTargetsIncludeBothSidesOfTheDuel() {
         Bot player = bot(UUID.fromString("00000000-0000-0000-0000-000000000001"), 1, 100, 100);
         Bot opponent = bot(UUID.fromString("00000000-0000-0000-0000-000000000002"), 2, 700, 700);
@@ -84,6 +113,34 @@ class TargetingServiceTest {
                 "selectable.relativeBearing", null, "", "eq", Operand.number(0), "and");
         assertThat(resolver.resolveStateVariable("selectable.relativeBearing", "opponent", relative,
                 player, opponent, entities, arena).numberValue()).isEqualTo(45.0);
+
+        Condition coordinateDistance = new Condition("expression", 0, "opponent_grenade", "my_bot", null,
+                "selectable.distance", null, "", "eq", Operand.number(0), "and",
+                "coordinates", 150, 100, 0);
+        assertThat(resolver.resolveStateVariable("selectable.distance", "my_bot", coordinateDistance,
+                player, opponent, entities, arena).numberValue()).isEqualTo(50.0);
+
+        Condition coordinateBearing = new Condition("expression", 0, "opponent", "my_bot", null,
+                "selectable.relativeBearing", null, "", "eq", Operand.number(0), "and",
+                "coordinates", 100, 0, 0);
+        assertThat(resolver.resolveStateVariable("selectable.relativeBearing", "my_bot", coordinateBearing,
+                player, opponent, entities, arena).numberValue()).isEqualTo(0.0);
+
+        Condition angleBearing = new Condition("expression", 0, "opponent", "my_bot", null,
+                "selectable.relativeBearing", null, "", "eq", Operand.number(0), "and",
+                "angle", 500, 500, 90);
+        assertThat(resolver.resolveStateVariable("selectable.relativeBearing", "my_bot", angleBearing,
+                player, opponent, entities, arena).numberValue()).isEqualTo(90.0);
+        Condition clockwiseAngleBearing = new Condition("expression", 0, "opponent", "my_bot", null,
+                "selectable.relativeBearingClockwise", null, "", "eq", Operand.number(0), "and",
+                "angle", 500, 500, 90);
+        assertThat(resolver.resolveStateVariable("selectable.relativeBearingClockwise", "my_bot", clockwiseAngleBearing,
+                player, opponent, entities, arena).numberValue()).isEqualTo(90.0);
+        Condition counterclockwiseAngleBearing = new Condition("expression", 0, "opponent", "my_bot", null,
+                "selectable.relativeBearingCounterclockwise", null, "", "eq", Operand.number(0), "and",
+                "angle", 500, 500, 90);
+        assertThat(resolver.resolveStateVariable("selectable.relativeBearingCounterclockwise", "my_bot", counterclockwiseAngleBearing,
+                player, opponent, entities, arena).numberValue()).isEqualTo(270.0);
 
         Condition hp = new Condition("expression", 0, "opponent_grenade", "opponent_grenade", null,
                 "selectable.hp", null, "", "eq", Operand.number(0), "and");

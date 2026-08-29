@@ -19,7 +19,8 @@ public final class TargetingService {
     private TargetingService() {}
 
     public static Entity selectableEntity(String selectableId, Bot player, Bot opponent, List<Entity> entities) {
-        String[] selector = selectableId != null ? selectableId.split(":", -1) : new String[0];
+        String canonicalSelectable = BotLogicContracts.canonicalSelectableId(selectableId);
+        String[] selector = canonicalSelectable != null ? canonicalSelectable.split(":", -1) : new String[0];
         if (selector.length == 3) {
             List<Entity> candidates = new ArrayList<>(matchingSelectables(selector[0], player, opponent, entities));
             Comparator<Entity> comparator = switch (selector[1]) {
@@ -37,24 +38,32 @@ public final class TargetingService {
             }
             return candidates.size() >= ordinal ? candidates.get(ordinal - 1) : null;
         }
-        if (BotLogicContracts.SELECTABLE_MY.equals(selectableId)) return player;
-        if (BotLogicContracts.SELECTABLE_OPPONENT.equals(selectableId)) return opponent;
-        SelectableContract contract = BotLogicContracts.selectableContract(selectableId);
+        if (BotLogicContracts.isBotSelectable(canonicalSelectable)) {
+            return botSelectable(canonicalSelectable, player, opponent);
+        }
+        SelectableContract contract = BotLogicContracts.selectableContract(canonicalSelectable);
         if (contract == null || contract.entityType() == null) return null;
-        return matchingEntitySelectables(selectableId, contract, player, opponent, entities).stream()
+        return matchingEntitySelectables(canonicalSelectable, contract, player, opponent, entities).stream()
                 .min(Comparator.comparingDouble(entity -> distanceFrom(player, entity)))
                 .orElse(null);
     }
 
     public static List<Entity> matchingSelectables(String selectableId, Bot player, Bot opponent, List<Entity> entities) {
-        String base = selectableId == null ? "" : selectableId.split(":", -1)[0];
+        String canonicalSelectable = BotLogicContracts.canonicalSelectableId(selectableId);
+        String base = canonicalSelectable == null ? "" : canonicalSelectable.split(":", -1)[0];
         List<Entity> matches = new ArrayList<>();
         if (BotLogicContracts.SELECTABLE_MY.equals(base)) {
             matches.add(player);
             return matches;
         }
         if (BotLogicContracts.SELECTABLE_OPPONENT.equals(base)) {
-            matches.add(opponent);
+            Entity bot = botSelectable(base, player, opponent);
+            if (bot != null) matches.add(bot);
+            return matches;
+        }
+        if (BotLogicContracts.isBotSelectable(base)) {
+            Entity bot = botSelectable(base, player, opponent);
+            if (bot != null) matches.add(bot);
             return matches;
         }
         SelectableContract contract = BotLogicContracts.selectableContract(base);
@@ -95,15 +104,61 @@ public final class TargetingService {
             return entities.stream()
                     .filter(entity -> entity instanceof SelectableSnapshot snapshot
                             && contract.runtimeType().equals(snapshot.type())
-                            && hasAbility(snapshot, contract))
+                    && hasAbility(snapshot, contract))
                     .toList();
         }
-        int ownerSlot = selectableId.startsWith("my_") ? player.slot : opponent.slot;
+        String ownerSelector = BotLogicContracts.entitySelectableBotSelector(selectableId, contract.entityType());
+        if (ownerSelector != null) {
+            Bot owner = botSelectable(ownerSelector, player, opponent);
+            if (owner == null) return List.of();
+            return entities.stream()
+                    .filter(entity -> entity instanceof SelectableSnapshot snapshot
+                            && contract.runtimeType().equals(snapshot.type())
+                            && hasAbility(snapshot, contract)
+                            && snapshot.ownerSlot() == owner.slot)
+                    .toList();
+        }
+        boolean ownEntities = selectableId.startsWith("my_");
         return entities.stream()
                 .filter(entity -> entity instanceof SelectableSnapshot snapshot
                         && contract.runtimeType().equals(snapshot.type())
                         && hasAbility(snapshot, contract)
-                        && snapshot.ownerSlot() == ownerSlot)
+                        && (ownEntities
+                                ? snapshot.ownerSlot() == player.slot
+                                : allBots(player, opponent).stream()
+                                        .anyMatch(bot -> bot.entityTeam() != player.entityTeam()
+                                                && bot.slot == snapshot.ownerSlot())))
+                .toList();
+    }
+
+    /**
+     * Resolves bot selectors from the acting bot's stable match roster. The
+     * legacy {@code opponent} selector remains an alias for the first enemy so
+     * existing 1v1 brains continue to behave exactly as before.
+     */
+    private static Bot botSelectable(String selectableId, Bot player, Bot opponent) {
+        if (player == null) return null;
+        if (BotLogicContracts.SELECTABLE_MY.equals(selectableId)) return player;
+        int index = BotLogicContracts.botSelectableIndex(selectableId);
+        if (index < 1) return null;
+        List<Bot> candidates = BotLogicContracts.isTeammateSelectable(selectableId)
+                ? allBots(player, opponent).stream()
+                        .filter(bot -> bot != player && bot.entityTeam() == player.entityTeam())
+                        .sorted(Comparator.comparingInt(bot -> bot.slot))
+                        .toList()
+                : allBots(player, opponent).stream()
+                        .filter(bot -> bot != player && bot.entityTeam() != player.entityTeam())
+                        .sorted(Comparator.comparingInt(bot -> bot.slot))
+                        .toList();
+        return candidates.size() >= index ? candidates.get(index - 1) : null;
+    }
+
+    private static List<Bot> allBots(Bot player, Bot opponent) {
+        List<Bot> roster = player != null && player.matchBots != null && !player.matchBots.isEmpty()
+                ? player.matchBots : List.of(player, opponent);
+        return roster.stream()
+                .filter(java.util.Objects::nonNull)
+                .distinct()
                 .toList();
     }
 

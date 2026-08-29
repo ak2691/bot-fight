@@ -94,6 +94,7 @@ public class ProjectileSimulationService {
             Bot owner = bots.stream().filter(bot -> bot.slot == impact.ownerSlot()).findFirst().orElse(null);
             for (Bot target : bots) {
                 if (impact.targetSlot() != null && target.slot != impact.targetSlot()) continue;
+                if (!isEnemy(impact.ownerSlot(), target, bots)) continue;
                 if (target.ignoresHostileEffects()) continue;
                 double distance = Double.isFinite(impact.damageDistance())
                         ? impact.damageDistance()
@@ -293,13 +294,26 @@ public class ProjectileSimulationService {
     private static ProjectileHit findMovingColliderHit(ArenaEntity previous, ArenaEntity projectile, List<Bot> bots) {
         double projectileRadius = projectile.size() / 2.0;
         for (Bot bot : bots) {
-            if (!bot.projectileHittable() || bot.slot == projectile.ownerSlot()) continue;
+            if (!bot.projectileHittable() || !isEnemy(projectile.ownerSlot(), bot, bots)) continue;
             double botRadius = bot.size / 2.0;
             var collision = movingCircleCollision(previous.x(), previous.y(), projectile.x(), projectile.y(), projectileRadius,
                     bot.movementStartX, bot.movementStartY, bot.x, bot.y, botRadius);
             if (collision.hit()) return new ProjectileHit(bot, collision.swept(), collision.distance());
         }
         return null;
+    }
+
+    private static boolean isEnemy(int ownerSlot, Bot target, List<Bot> bots) {
+        Bot owner = bots.stream()
+                .filter(bot -> bot.slot == ownerSlot)
+                .findFirst()
+                .orElse(null);
+        // Standalone combat tests and legacy callers do not populate teams.
+        // Keep their slot-based ownership semantics until both sides carry a
+        // validated team assignment from the match roster.
+        return owner == null || owner.teamNumber <= 0 || target.teamNumber <= 0
+                ? target.slot != ownerSlot
+                : owner.teamNumber != target.teamNumber;
     }
 
     private static double clamp(double value, double min, double max) {

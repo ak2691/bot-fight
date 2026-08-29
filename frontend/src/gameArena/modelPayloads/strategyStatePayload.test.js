@@ -227,3 +227,44 @@ test("renderer-only closing zone state is available as boundary state but absent
     assert.deepEqual(payload.closingZone, { x: 500, y: 500, safeRadius: 450 });
     assert.deepEqual(stateFromPayload(payload).closingZone, payload.closingZone);
 });
+
+test("2v2 bot payloads expose stable teammate and numbered opponent selectors", () => {
+    const payload = buildStatePayload([
+        { id: "main", type: "circle", userId: "user-1", slot: 1, teamNumber: 1, x: 300, y: 150, hp: 100, abilities: [19] },
+        { id: "bot-user-2", type: "bot", userId: "user-2", slot: 2, teamNumber: 1, x: 700, y: 150, hp: 90, abilities: [20] },
+        { id: "bot-user-3", type: "bot", userId: "user-3", slot: 3, teamNumber: 2, x: 300, y: 850, hp: 80, abilities: [5] },
+        { id: "bot-user-4", type: "bot", userId: "user-4", slot: 4, teamNumber: 2, x: 700, y: 850, hp: 70, abilities: [9] },
+    ], "custom:19");
+
+    assert.deepEqual(payload.objects.map((object) => [
+        object.id, object.role, object.botIndex, object.teamNumber, object.owner,
+    ]), [
+        ["bot-user-2", "teammate", 1, 1, "my"],
+        ["bot-user-3", "opponent", 1, 2, "opponent"],
+        ["bot-user-4", "opponent", 2, 2, "opponent"],
+    ]);
+    const state = stateFromPayload(payload);
+    assert.deepEqual(state.teammates.map((bot) => bot.id), ["bot-user-2"]);
+    assert.deepEqual(state.opponents.map((bot) => bot.id), ["bot-user-3", "bot-user-4"]);
+    assert.deepEqual(state.bots.map((bot) => bot.id), ["main", "bot-user-2", "bot-user-3", "bot-user-4"]);
+});
+
+test("spawned entities expose the exact bot selector that owns them", () => {
+    const payload = buildStatePayload([
+        { id: "main", type: "circle", userId: "user-1", slot: 1, teamNumber: 1, x: 300, y: 150, hp: 100 },
+        { id: "bot-user-2", type: "bot", userId: "user-2", slot: 2, teamNumber: 1, x: 700, y: 150, hp: 100 },
+        { id: "bot-user-3", type: "bot", userId: "user-3", slot: 3, teamNumber: 2, x: 300, y: 850, hp: 100 },
+        { id: "bot-user-4", type: "bot", userId: "user-4", slot: 4, teamNumber: 2, x: 700, y: 850, hp: 100 },
+        { id: "fireball-main", type: "fireball", abilityId: 5, ownerId: "main", ownerSlot: 1, x: 300, y: 300 },
+        { id: "fireball-teammate", type: "fireball", abilityId: 5, ownerId: "bot-user-2", ownerSlot: 2, x: 700, y: 300 },
+        { id: "fireball-opponent-1", type: "fireball", abilityId: 5, ownerId: "bot-user-3", ownerSlot: 3, x: 300, y: 700 },
+        { id: "fireball-opponent-2", type: "fireball", abilityId: 5, ownerId: "bot-user-4", ownerSlot: 4, x: 700, y: 700 },
+    ], "custom:5");
+
+    assert.deepEqual(payload.objects.filter((object) => object.type === "fireball").map((object) => [object.id, object.ownerSelector]), [
+        ["fireball-main", "my_bot"],
+        ["fireball-teammate", "teammate_1"],
+        ["fireball-opponent-1", "opponent_1"],
+        ["fireball-opponent-2", "opponent_2"],
+    ]);
+});

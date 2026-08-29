@@ -31,12 +31,26 @@ export function replayEntranceProgress(playbackStartsAtMs, nowMs, preparationMs 
 }
 
 export function replayEntranceX(bot, progress, arenaWidth = 1_000) {
-    const slotOne = Number(bot?.slot) === 1;
+    const explicitTeam = Number(bot?.teamNumber);
+    const teamOne = Number.isFinite(explicitTeam)
+        ? explicitTeam === 1
+        : Number(bot?.slot) === 1;
     const size = Number(bot?.size ?? 60);
     const targetX = Number(bot?.x ?? 0);
-    const outsideX = slotOne ? -size : arenaWidth + size;
+    const outsideX = teamOne ? -size : arenaWidth + size;
     const easedProgress = 1 - Math.pow(1 - Math.max(0, Math.min(1, Number(progress) || 0)), 3);
     return outsideX + (targetX - outsideX) * easedProgress;
+}
+
+/** Keeps a forfeiting team in the same evenly spaced horizontal formation as a match spawn. */
+export function centeredTeamPosition(teamIndex, teamSize, arenaWidth = 1_000, arenaHeight = 1_000) {
+    const safeIndex = Math.max(0, Number(teamIndex) || 0);
+    const safeSize = Math.max(1, Number(teamSize) || 1);
+    return {
+        x: Number(arenaWidth) * (safeIndex + 1) / (safeSize + 1),
+        y: Number(arenaHeight) / 2,
+        rotation: 0,
+    };
 }
 
 export function displayedRoundWins(participant, roundWinsBeforeResult, revealCurrentRoundPoint) {
@@ -49,6 +63,31 @@ export function displayedRoundWins(participant, roundWinsBeforeResult, revealCur
 export function replayClockSeconds(frame, hasPlaybackStarted = true) {
     if (!hasPlaybackStarted) return 0;
     return Math.max(0, Math.floor((Number(frame?.elapsedMs) || 0) / 1000));
+}
+
+export function replayResultRevealReached(resultRevealsAtMs, nowMs) {
+    const revealMs = Number(resultRevealsAtMs);
+    if (!Number.isFinite(revealMs)) return true;
+    const currentMs = Number(nowMs);
+    return Number.isFinite(currentMs) && currentMs >= revealMs;
+}
+
+export function replayRatingChange(playback, resultRevealReceived = false) {
+    if (!resultRevealReceived) return null;
+    if (playback?.ratingBefore == null || playback?.ratingAfter == null) return null;
+    const before = Number(playback?.ratingBefore);
+    const after = Number(playback?.ratingAfter);
+    if (!Number.isInteger(before) || !Number.isInteger(after) || before < 0 || after < 0) {
+        return null;
+    }
+    const delta = after - before;
+    return {
+        before,
+        after,
+        delta,
+        label: String(before) + " → " + String(after) + " ("
+            + (delta >= 0 ? "+" : "") + String(delta) + ")",
+    };
 }
 
 export function replayRemainingSeconds(durationMs, elapsedMs) {
@@ -95,6 +134,7 @@ export function hydrateReplayBot(bot, staticBot = null, participant = null) {
         userId: source.userId ?? initial.userId ?? participant?.userId,
         username: source.username ?? initial.username ?? participant?.username,
         slot: source.slot ?? initial.slot ?? participant?.slot,
+        teamNumber: source.teamNumber ?? initial.teamNumber ?? participant?.teamNumber,
         maxHp: source.maxHp ?? initial.maxHp ?? BASE_BOT_HP,
         combatLoadout: loadout,
         abilities,
@@ -172,6 +212,10 @@ export function replayRayOrigin(bot, frames = [], frameIndex = 0) {
 
 function replayGunActivationBot(bot, frames, frameIndex) {
     const currentIndex = Math.min(Math.max(0, Number(frameIndex) || 0), Math.max(0, frames.length - 1));
+    for (let index = currentIndex; index >= 0; index -= 1) {
+        const candidate = replayBotAtFrame(frames[index], bot);
+        if (Number(candidate?.triggeredAbility) === 3) return candidate;
+    }
     let activationBot = replayBotAtFrame(frames[currentIndex], bot) ?? bot;
     for (let index = currentIndex; index > 0; index -= 1) {
         const current = replayBotAtFrame(frames[index], bot) ?? activationBot;

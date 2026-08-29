@@ -27,6 +27,10 @@ public class Match {
     @Column(nullable = false, length = 30)
     private MatchStatus status = MatchStatus.PENDING;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mode", nullable = false, length = 20)
+    private MatchMode mode = MatchMode.ONES;
+
     @Column(name = "ruleset_version", nullable = false, length = 50)
     private String rulesetVersion;
 
@@ -73,6 +77,14 @@ public class Match {
 
     public void setStatus(MatchStatus status) {
         this.status = status;
+    }
+
+    public MatchMode getMode() {
+        return mode == null ? MatchMode.ONES : mode;
+    }
+
+    public void setMode(MatchMode mode) {
+        this.mode = mode == null ? MatchMode.ONES : mode;
     }
 
     public String getRulesetVersion() {

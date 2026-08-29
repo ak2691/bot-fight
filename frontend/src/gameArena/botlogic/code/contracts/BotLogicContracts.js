@@ -20,8 +20,34 @@ export const BOT_CODE_CONDITIONS = Object.freeze({
 
 export const BOT_CODE_SELECTABLES = Object.freeze({
     MY: "my_bot",
-    OPPONENT: "opponent",
+    OPPONENT: "opponent_1",
 });
+
+const ENTITY_SELECTABLE_DEFINITIONS = entitySelectableDefinitions();
+const ENTITY_SELECTABLE_ENTITY_TYPES = new Set(
+    ENTITY_SELECTABLE_DEFINITIONS.map((ability) => ability.entityType),
+);
+
+/**
+ * Older saved brains used one unnumbered opponent selector and side-only
+ * entity selectors. Keep accepting them at the normalization boundary, but
+ * never expose them as selectable options.
+ */
+export function canonicalBotSelectableId(selectableId) {
+    const [base, ...rest] = String(selectableId ?? "").split(":");
+    let canonicalBase = base === "opponent" ? BOT_CODE_SELECTABLES.OPPONENT : base;
+    for (const entityType of ENTITY_SELECTABLE_ENTITY_TYPES) {
+        if (base === `my_${entityType}`) {
+            canonicalBase = `${BOT_CODE_SELECTABLES.MY}_${entityType}`;
+            break;
+        }
+        if (base === `opponent_${entityType}`) {
+            canonicalBase = `${BOT_CODE_SELECTABLES.OPPONENT}_${entityType}`;
+            break;
+        }
+    }
+    return [canonicalBase, ...rest].join(":");
+}
 
 export const BOT_CODE_COMPARATORS = Object.freeze({
     LT: "lt",
@@ -111,6 +137,22 @@ export const VARIABLE_SELECTABLE_TYPES = Object.freeze({
     PAIR: "Variable_Pair",
 });
 
+export const TARGET_MODES = Object.freeze({
+    TARGET: "target",
+    COORDINATES: "coordinates",
+    ANGLE: "angle",
+});
+
+const DISTANCE_TARGET_MODES = Object.freeze([
+    TARGET_MODES.TARGET,
+    TARGET_MODES.COORDINATES,
+]);
+const BEARING_TARGET_MODES = Object.freeze([
+    TARGET_MODES.TARGET,
+    TARGET_MODES.ANGLE,
+    TARGET_MODES.COORDINATES,
+]);
+
 export function selectableIdentitiesForVariable(variable, pairSlot = null) {
     if (variable?.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR) {
         const identities = variable.pairSelectableIdentities ?? [[], []];
@@ -130,6 +172,61 @@ export const SELECTABLE_OWNERS = Object.freeze({
     OPPONENT: "opponent",
     NONE: "none",
 });
+
+export const NUMBERED_BOT_SELECTABLE_TYPES = Object.freeze([
+    ...Array.from({ length: 7 }, (_, offset) => {
+        const index = offset + 1;
+        return {
+            id: `teammate_${index}`,
+            label: `Teammate ${index}`,
+            owner: SELECTABLE_OWNERS.MY,
+            role: "teammate",
+            botIndex: index,
+            kind: "bot",
+            healthBearing: true,
+            selectableIdentities: BOT_SELECTABLE_IDENTITIES,
+            botSelector: `teammate_${index}`,
+        };
+    }),
+    ...Array.from({ length: 7 }, (_, offset) => {
+        const index = offset + 1;
+        return {
+            id: `opponent_${index}`,
+            label: `Opponent ${index}`,
+            owner: SELECTABLE_OWNERS.OPPONENT,
+            role: "opponent",
+            botIndex: index,
+            kind: "bot",
+            healthBearing: true,
+            selectableIdentities: BOT_SELECTABLE_IDENTITIES,
+            botSelector: `opponent_${index}`,
+        };
+    }),
+]);
+
+// Entity selectors retain the broad owner field for conditional compatibility,
+// but also identify the exact bot whose spawned entities are being selected.
+// Keep Opponent 1 first to preserve the previous default entity target.
+const ENTITY_OWNER_SELECTABLE_TYPES = Object.freeze([
+    {
+        id: BOT_CODE_SELECTABLES.OPPONENT,
+        label: "Opponent 1",
+        owner: SELECTABLE_OWNERS.OPPONENT,
+        role: "opponent",
+        botIndex: 1,
+        botSelector: BOT_CODE_SELECTABLES.OPPONENT,
+    },
+    {
+        id: BOT_CODE_SELECTABLES.MY,
+        label: "My Bot",
+        owner: SELECTABLE_OWNERS.MY,
+        role: "self",
+        botIndex: 0,
+        botSelector: BOT_CODE_SELECTABLES.MY,
+    },
+    ...NUMBERED_BOT_SELECTABLE_TYPES.filter((selectable) => selectable.role === "teammate"),
+    ...NUMBERED_BOT_SELECTABLE_TYPES.filter((selectable) => selectable.role === "opponent" && selectable.botIndex > 1),
+]);
 
 export const SELECTABLE_ORDERS = Object.freeze(["closest", "farthest", "oldest", "newest"]);
 export const MOVEMENT_MODES = Object.freeze(["target", "coordinates", "absolute"]);
@@ -164,10 +261,9 @@ export const ACTION_TYPES = Object.freeze([
 ]);
 export const ACTION_BY_ID = new Map(ACTION_TYPES.map((action) => [action.id, action]));
 
-const ENTITY_SELECTABLE_DEFINITIONS = entitySelectableDefinitions();
 export const SELECTABLE_TYPES = Object.freeze([
-    { id: BOT_CODE_SELECTABLES.MY, label: "My Bot", owner: SELECTABLE_OWNERS.MY, kind: "bot", healthBearing: true, selectableIdentities: BOT_SELECTABLE_IDENTITIES },
-    { id: BOT_CODE_SELECTABLES.OPPONENT, label: "Opponent", owner: SELECTABLE_OWNERS.OPPONENT, kind: "bot", healthBearing: true, selectableIdentities: BOT_SELECTABLE_IDENTITIES },
+    { id: BOT_CODE_SELECTABLES.MY, label: "My Bot", owner: SELECTABLE_OWNERS.MY, role: "self", botIndex: 0, botSelector: BOT_CODE_SELECTABLES.MY, kind: "bot", healthBearing: true, selectableIdentities: BOT_SELECTABLE_IDENTITIES },
+    ...NUMBERED_BOT_SELECTABLE_TYPES,
     ...ENTITY_SELECTABLE_DEFINITIONS.flatMap((ability) => selectableDefinitionsForAbility(ability)),
 ]);
 export const SELECTABLE_BY_ID = new Map(SELECTABLE_TYPES.map((selectable) => [selectable.id, selectable]));
@@ -216,7 +312,7 @@ const GENERIC_STATUS_VARIABLES = [
 
 export const STATE_VARIABLES = Object.freeze([
     variableDefinition("match.elapsedSeconds", "Time Since Start", "number", { group: "General", min: 0, max: 99_999, defaultValue: 0, suffix: "s", step: 0.1, scope: STATE_VARIABLE_SCOPES.MATCH, runtimeSource: STATE_VARIABLE_SOURCES.MATCH_ELAPSED_SECONDS }),
-    variableDefinition("selectable.distance", "Distance Between Entities", "number", { group: "Entity", min: 0, max: Math.hypot(ARENA_WIDTH_UNITS, ARENA_HEIGHT_UNITS), supportsSelectable: true, selectableType: VARIABLE_SELECTABLE_TYPES.PAIR, pairSelectableIdentities: [[], []], defaultSelectable1: BOT_CODE_SELECTABLES.MY, defaultSelectable2: BOT_CODE_SELECTABLES.OPPONENT, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_DISTANCE }),
+    variableDefinition("selectable.distance", "Distance Between Entities", "number", { group: "Entity", min: 0, max: Math.hypot(ARENA_WIDTH_UNITS, ARENA_HEIGHT_UNITS), supportsSelectable: true, selectableType: VARIABLE_SELECTABLE_TYPES.PAIR, targetModes: DISTANCE_TARGET_MODES, pairSelectableIdentities: [[], []], defaultSelectable1: BOT_CODE_SELECTABLES.MY, defaultSelectable2: BOT_CODE_SELECTABLES.OPPONENT, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_DISTANCE }),
     variableDefinition("selectable.hp", "Entity HP", "number", { group: "Entity", min: 0, max: 300, supportsSelectable: true, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_HP }),
     variableDefinition("selectable.damageTakenLastTick", "Entity Damage Taken Last Tick", "number", { group: "Entity", min: 0, max: 300, suffix: "damage", supportsSelectable: true, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_DAMAGE_TAKEN_LAST_TICK }),
     variableDefinition("selectable.hpNetChangeLastTick", "Entity Net HP Change Last Tick", "number", { group: "Entity", min: -300, max: 300, suffix: "HP", tags: [VARIABLE_TAGS.ALLOW_NEGATIVE_INTEGER], supportsSelectable: true, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_HP_NET_CHANGE_LAST_TICK }),
@@ -226,9 +322,9 @@ export const STATE_VARIABLES = Object.freeze([
     variableDefinition("selectable.absoluteBearing", "Absolute Bearing of Target From Entity", "number", { group: "Rotation", min: -360, max: 360, suffix: "deg", supportsSelectable: true, selectableType: VARIABLE_SELECTABLE_TYPES.PAIR, selectableSelectorLabels: ["Facing Entity", "Target"], pairSelectableIdentities: [[SELECTABLE_IDENTITIES.FACING], []], defaultSelectable1: BOT_CODE_SELECTABLES.MY, defaultSelectable2: BOT_CODE_SELECTABLES.OPPONENT, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_ABSOLUTE_BEARING }),
     variableDefinition("selectable.movementDirection", "Entity Movement Direction", "number", { group: "Movement", min: -360, max: 360, suffix: "deg", supportsSelectable: true, defaultSelectable: BOT_CODE_SELECTABLES.OPPONENT, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_MOVEMENT_DIRECTION }),
     variableDefinition("selectable.speed", "Entity Speed", "number", { group: "Movement", min: 0, max: 100, supportsSelectable: true, defaultSelectable: BOT_CODE_SELECTABLES.OPPONENT, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_SPEED }),
-    variableDefinition("selectable.relativeBearing", "Relative Bearing of Target From Entity (Shortest)", "number", { group: "Rotation", min: -360, max: 360, suffix: "deg", circularAngle: false, supportsSelectable: true, selectableType: VARIABLE_SELECTABLE_TYPES.PAIR, selectableSelectorLabels: ["Facing Entity", "Target"], pairSelectableIdentities: [[SELECTABLE_IDENTITIES.FACING], []], defaultSelectable1: BOT_CODE_SELECTABLES.MY, defaultSelectable2: BOT_CODE_SELECTABLES.OPPONENT, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_RELATIVE_BEARING }),
-    variableDefinition("selectable.relativeBearingClockwise", "Relative Bearing of Target From Entity (Clockwise)", "number", { group: "Rotation", min: -360, max: 360, suffix: "deg", supportsSelectable: true, selectableType: VARIABLE_SELECTABLE_TYPES.PAIR, selectableSelectorLabels: ["Facing Entity", "Target"], pairSelectableIdentities: [[SELECTABLE_IDENTITIES.FACING], []], defaultSelectable1: BOT_CODE_SELECTABLES.MY, defaultSelectable2: BOT_CODE_SELECTABLES.OPPONENT, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_RELATIVE_BEARING_CLOCKWISE }),
-    variableDefinition("selectable.relativeBearingCounterclockwise", "Relative Bearing of Target From Entity (Counterclockwise)", "number", { group: "Rotation", min: -360, max: 360, suffix: "deg", supportsSelectable: true, selectableType: VARIABLE_SELECTABLE_TYPES.PAIR, selectableSelectorLabels: ["Facing Entity", "Target"], pairSelectableIdentities: [[SELECTABLE_IDENTITIES.FACING], []], defaultSelectable1: BOT_CODE_SELECTABLES.MY, defaultSelectable2: BOT_CODE_SELECTABLES.OPPONENT, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE }),
+    variableDefinition("selectable.relativeBearing", "Relative Bearing of Target From Entity (Shortest)", "number", { group: "Rotation", min: -360, max: 360, suffix: "deg", circularAngle: false, supportsSelectable: true, selectableType: VARIABLE_SELECTABLE_TYPES.PAIR, targetModes: BEARING_TARGET_MODES, selectableSelectorLabels: ["Facing Entity", "Target"], pairSelectableIdentities: [[SELECTABLE_IDENTITIES.FACING], []], defaultSelectable1: BOT_CODE_SELECTABLES.MY, defaultSelectable2: BOT_CODE_SELECTABLES.OPPONENT, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_RELATIVE_BEARING }),
+    variableDefinition("selectable.relativeBearingClockwise", "Relative Bearing of Target From Entity (Clockwise)", "number", { group: "Rotation", min: -360, max: 360, suffix: "deg", targetModes: BEARING_TARGET_MODES, supportsSelectable: true, selectableType: VARIABLE_SELECTABLE_TYPES.PAIR, selectableSelectorLabels: ["Facing Entity", "Target"], pairSelectableIdentities: [[SELECTABLE_IDENTITIES.FACING], []], defaultSelectable1: BOT_CODE_SELECTABLES.MY, defaultSelectable2: BOT_CODE_SELECTABLES.OPPONENT, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_RELATIVE_BEARING_CLOCKWISE }),
+    variableDefinition("selectable.relativeBearingCounterclockwise", "Relative Bearing of Target From Entity (Counterclockwise)", "number", { group: "Rotation", min: -360, max: 360, suffix: "deg", targetModes: BEARING_TARGET_MODES, supportsSelectable: true, selectableType: VARIABLE_SELECTABLE_TYPES.PAIR, selectableSelectorLabels: ["Facing Entity", "Target"], pairSelectableIdentities: [[SELECTABLE_IDENTITIES.FACING], []], defaultSelectable1: BOT_CODE_SELECTABLES.MY, defaultSelectable2: BOT_CODE_SELECTABLES.OPPONENT, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE }),
     variableDefinition("selectable.facing", "Entity Facing Direction", "number", { group: "Rotation", min: -360, max: 360, suffix: "deg", supportsSelectable: true, selectableIdentities: [SELECTABLE_IDENTITIES.FACING], defaultSelectable: BOT_CODE_SELECTABLES.OPPONENT, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_FACING }),
     variableDefinition("selectable.count", "Ability Entity Type Count", "number", { group: "Ability Entity", min: 0, max: 100, step: 1, supportsSelectable: true, selectableIdentities: [SELECTABLE_IDENTITIES.ABILITY_ENTITY], selectableOrderable: false, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_COUNT }),
     variableDefinition("selectable.age", "Ability Entity Age (seconds)", "number", { group: "Ability Entity", suffix: "s", step: 0.1, min: 0, max: 120, supportsSelectable: true, selectableIdentities: [SELECTABLE_IDENTITIES.ABILITY_ENTITY], scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.SELECTABLE_AGE }),
@@ -317,16 +413,28 @@ function abilityActionDefinition(ability, actionId) {
 function selectableDefinitionsForAbility(ability) {
     const entity = entityContractForAbility(ability.id);
     if (!entity) return [];
-    const owners = entity.targeting?.owner === SELECTABLE_OWNERS.NONE
-        ? [SELECTABLE_OWNERS.NONE]
-        : [SELECTABLE_OWNERS.OPPONENT, SELECTABLE_OWNERS.MY];
-    return owners.map((owner) => ({
-        id: owner === SELECTABLE_OWNERS.NONE ? entity.entityType : `${owner}_${entity.entityType}`,
-        label: owner === SELECTABLE_OWNERS.NONE
-            ? ability.label
-            : `${ability.label} by ${owner === SELECTABLE_OWNERS.MY ? "My Bot" : "Opponent"}`,
+    if (entity.targeting?.owner === SELECTABLE_OWNERS.NONE) {
+        return [{
+            id: entity.entityType,
+            label: ability.label,
+            abilityId: ability.id,
+            owner: SELECTABLE_OWNERS.NONE,
+            kind: "entity",
+            entityType: entity.entityType,
+            runtimeType: entity.runtimeType,
+            healthBearing: Boolean(entity.health && entity.collider?.hittable),
+            selectableIdentities: ability.selectableIdentities,
+            tags: ability.tags,
+        }];
+    }
+    return ENTITY_OWNER_SELECTABLE_TYPES.map((owner) => ({
+        id: `${owner.id}_${entity.entityType}`,
+        label: `${ability.label} by ${owner.label}`,
         abilityId: ability.id,
-        owner,
+        owner: owner.owner,
+        role: owner.role,
+        botIndex: owner.botIndex,
+        botSelector: owner.botSelector,
         kind: "entity",
         entityType: entity.entityType,
         runtimeType: entity.runtimeType,

@@ -27,6 +27,7 @@ import com.example.botfight.simulation.gameconfig.AbilityContracts;
 import com.example.botfight.simulation.gameconfig.CompactAbilityCode;
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -64,6 +65,8 @@ public class PuzzleService {
     private static final int MAX_ROOT_NODES = 100;
     private static final int MAX_CONDITION_NODES = 300;
     private static final int MAX_CUSTOM_VARIABLES = 100;
+    private static final int MIN_PUZZLE_TEAM_SIZE = 1;
+    private static final int MAX_PUZZLE_TEAM_SIZE = 2;
     private static final int MAX_CONDITION_JSON_BYTES = 100_000;
     private static final int MAX_PUZZLE_LOGIC_JSON_BYTES = 250_000;
     private static final double MAX_CONDITION_NUMBER = 1_000_000_000d;
@@ -137,8 +140,7 @@ public class PuzzleService {
         puzzle.setPuzzleNumber(nextPuzzleNumber());
         applyValidatedPuzzle(puzzle, validated);
         puzzle.setCreatedBy(author);
-        puzzle.addBot(toPuzzleBot(validated.playerBot(), PuzzleBotRole.PLAYER));
-        puzzle.addBot(toPuzzleBot(validated.opponentBot(), PuzzleBotRole.OPPONENT));
+        validated.bots().forEach(bot -> puzzle.addBot(toPuzzleBot(bot)));
 
         Puzzle saved = puzzleRepository.save(puzzle);
         if (saved.getStatus() == PuzzleStatus.PUBLISHED) {
@@ -173,8 +175,7 @@ public class PuzzleService {
         // The path number selects the existing row. Neither the puzzle UUID nor
         // the puzzle number is copied from the request, so both remain stable.
         applyValidatedPuzzle(puzzle, validated);
-        updatePuzzleBot(puzzle, PuzzleBotRole.PLAYER, validated.playerBot());
-        updatePuzzleBot(puzzle, PuzzleBotRole.OPPONENT, validated.opponentBot());
+        updatePuzzleBots(puzzle, validated.bots());
 
         Puzzle saved = puzzleRepository.saveAndFlush(puzzle);
         databaseLookupCache.logDatabaseWrite(
@@ -319,32 +320,47 @@ public class PuzzleService {
     public PuzzleAttemptDefinition prepareAttempt(long puzzleNumber, JsonNode submittedBrain) {
         CachedPuzzle puzzle = publishedPuzzle(puzzleNumber);
         CachedPuzzleBot playerBot = puzzle.bots().stream()
-                .filter(bot -> bot.role() == PuzzleBotRole.PLAYER)
+                .filter(bot -> bot.teamNumber() == 1 && bot.slot() == 1)
                 .findFirst()
-                .orElse(null);
+                .orElseGet(() -> puzzle.bots().stream()
+                        .filter(bot -> bot.role() == PuzzleBotRole.PLAYER)
+                        .findFirst()
+                        .orElse(null));
         CachedPuzzleBot opponentBot = puzzle.bots().stream()
-                .filter(bot -> bot.role() == PuzzleBotRole.OPPONENT)
+                .filter(bot -> bot.teamNumber() == 2)
                 .findFirst()
-                .orElse(null);
-        if (playerBot == null || opponentBot == null) {
+                .orElseGet(() -> puzzle.bots().stream()
+                        .filter(bot -> bot.role() == PuzzleBotRole.OPPONENT)
+                        .findFirst()
+                        .orElse(null));
+        if (playerBot == null || opponentBot == null || puzzle.bots().size() < 2) {
             throw new PuzzleValidationException(List.of("Puzzle must contain both player and opponent bots"));
         }
 
         List<String> errors = new ArrayList<>();
-        ValidatedBot player = validateBot(
-                botRequest(playerBot, submittedBrain),
-                PuzzleBotRole.PLAYER,
-                puzzle.maxActionNodes(),
-                puzzle.maxConditionNodes(),
-                puzzle.maxCustomVariables(),
-                errors);
-        ValidatedBot opponent = validateBot(
-                botRequest(opponentBot, opponentBot.brain()),
-                PuzzleBotRole.OPPONENT,
-                MAX_ACTION_NODES,
-                MAX_CONDITION_NODES,
-                MAX_CUSTOM_VARIABLES,
-                errors);
+        List<PuzzleBotDefinition> definitions = new ArrayList<>();
+        for (CachedPuzzleBot bot : puzzle.bots()) {
+            boolean submittedPlayer = bot.teamNumber() == 1 && bot.slot() == 1;
+            PuzzleBotRole role = bot.teamNumber() == 1 ? PuzzleBotRole.PLAYER : PuzzleBotRole.OPPONENT;
+            ValidatedBot validated = validateBot(
+                    botRequest(bot, submittedPlayer ? submittedBrain : bot.brain()),
+                    role,
+                    submittedPlayer || role == PuzzleBotRole.PLAYER ? puzzle.maxActionNodes() : MAX_ACTION_NODES,
+                    submittedPlayer || role == PuzzleBotRole.PLAYER ? puzzle.maxConditionNodes() : MAX_CONDITION_NODES,
+                    submittedPlayer || role == PuzzleBotRole.PLAYER ? puzzle.maxCustomVariables() : MAX_CUSTOM_VARIABLES,
+                    "bots[" + definitions.size() + "]",
+                    errors);
+            definitions.add(new PuzzleBotDefinition(
+                    bot.teamNumber(),
+                    bot.slot(),
+                    role,
+                    validated.loadout(),
+                    validated.startX(),
+                    validated.startY(),
+                    validated.rotation(),
+                    validated.startHp(),
+                    validated.brain()));
+        }
         if (!errors.isEmpty()) throw new PuzzleValidationException(errors);
 
         return new PuzzleAttemptDefinition(
@@ -354,20 +370,7 @@ public class PuzzleService {
                 puzzle.winConditions().deepCopy(),
                 puzzle.loseConditions().deepCopy(),
                 puzzle.logicConfiguration().deepCopy(),
-                new PuzzleBotDefinition(
-                        player.loadout(),
-                        player.startX(),
-                        player.startY(),
-                        player.rotation(),
-                        player.startHp(),
-                        player.brain()),
-                new PuzzleBotDefinition(
-                        opponent.loadout(),
-                        opponent.startX(),
-                        opponent.startY(),
-                        opponent.rotation(),
-                        opponent.startHp(),
-                        opponent.brain()));
+                List.copyOf(definitions));
     }
 
     private Set<UUID> solvedPuzzleIds(UUID userId, List<Puzzle> puzzles) {
@@ -380,6 +383,9 @@ public class PuzzleService {
 
     private PuzzleBotRequestDTO botRequest(CachedPuzzleBot bot, JsonNode brain) {
         PuzzleBotRequestDTO request = new PuzzleBotRequestDTO();
+        request.setRole(bot.role() == null ? null : bot.role().name());
+        request.setTeamNumber(bot.teamNumber());
+        request.setSlot(bot.slot());
         request.setLoadout(bot.loadout());
         request.setStartX(bot.startX());
         request.setStartY(bot.startY());
@@ -416,6 +422,17 @@ public class PuzzleService {
         if (maxConditionNodes < 0 || maxConditionNodes > MAX_CONDITION_NODES) errors.add("maxConditionNodes must be between 0 and 300");
         if (maxCustomVariables < 0 || maxCustomVariables > MAX_CUSTOM_VARIABLES) errors.add("maxCustomVariables must be between 0 and 100");
 
+        int playerTeamSize = valueOrDefault(request == null ? null : request.getPlayerTeamSize(), MIN_PUZZLE_TEAM_SIZE);
+        int opponentTeamSize = valueOrDefault(request == null ? null : request.getOpponentTeamSize(), MIN_PUZZLE_TEAM_SIZE);
+        if (playerTeamSize < MIN_PUZZLE_TEAM_SIZE || playerTeamSize > MAX_PUZZLE_TEAM_SIZE) {
+            errors.add("playerTeamSize must be between 1 and 2");
+        }
+        if (opponentTeamSize < MIN_PUZZLE_TEAM_SIZE || opponentTeamSize > MAX_PUZZLE_TEAM_SIZE) {
+            errors.add("opponentTeamSize must be between 1 and 2");
+        }
+        int boundedPlayerTeamSize = boundedTeamSize(playerTeamSize);
+        int boundedOpponentTeamSize = boundedTeamSize(opponentTeamSize);
+
         JsonNode winConditions = arrayOrEmpty(request == null ? null : request.getWinConditions(), "winConditions", errors);
         JsonNode loseConditions = arrayOrEmpty(request == null ? null : request.getLoseConditions(), "loseConditions", errors);
         if (winConditions.isArray() && winConditions.isEmpty()) errors.add("winConditions must contain at least one condition");
@@ -428,19 +445,13 @@ public class PuzzleService {
             validatePuzzleLogicConfiguration(logicConfiguration, errors);
         }
 
-        ValidatedBot playerBot = validateBot(
-                request == null ? null : request.getPlayerBot(),
-                PuzzleBotRole.PLAYER,
+        List<ValidatedBot> bots = validatePuzzleBots(
+                request,
+                boundedPlayerTeamSize,
+                boundedOpponentTeamSize,
                 maxActionNodes,
                 maxConditionNodes,
                 maxCustomVariables,
-                errors);
-        ValidatedBot opponentBot = validateBot(
-                request == null ? null : request.getOpponentBot(),
-                PuzzleBotRole.OPPONENT,
-                MAX_ACTION_NODES,
-                MAX_CONDITION_NODES,
-                MAX_CUSTOM_VARIABLES,
                 errors);
 
         if (!errors.isEmpty()) throw new PuzzleValidationException(errors);
@@ -454,11 +465,116 @@ public class PuzzleService {
                 maxActionNodes,
                 maxConditionNodes,
                 maxCustomVariables,
+                boundedPlayerTeamSize,
+                boundedOpponentTeamSize,
                 winConditions,
                 loseConditions,
                 logicConfiguration,
-                playerBot,
-                opponentBot);
+                List.copyOf(bots));
+    }
+
+    private List<ValidatedBot> validatePuzzleBots(
+            PuzzleSaveRequestDTO request,
+            int playerTeamSize,
+            int opponentTeamSize,
+            int maxActionNodes,
+            int maxConditionNodes,
+            int maxCustomVariables,
+            List<String> errors) {
+        if (request == null || request.getBots() == null) {
+            ValidatedBot player = validateBot(
+                    request == null ? null : request.getPlayerBot(),
+                    PuzzleBotRole.PLAYER,
+                    maxActionNodes,
+                    maxConditionNodes,
+                    maxCustomVariables,
+                    "playerBot",
+                    errors);
+            ValidatedBot opponent = validateBot(
+                    request == null ? null : request.getOpponentBot(),
+                    PuzzleBotRole.OPPONENT,
+                    MAX_ACTION_NODES,
+                    MAX_CONDITION_NODES,
+                    MAX_CUSTOM_VARIABLES,
+                    "opponentBot",
+                    errors);
+            for (int slot = 2; slot <= playerTeamSize; slot += 1) {
+                errors.add("bots is missing team 1 slot " + slot);
+            }
+            for (int slot = 2; slot <= opponentTeamSize; slot += 1) {
+                errors.add("bots is missing team 2 slot " + slot);
+            }
+            return List.of(
+                    player.withIdentity(PuzzleBotRole.PLAYER, 1, 1),
+                    opponent.withIdentity(PuzzleBotRole.OPPONENT, 2, 1));
+        }
+
+        List<ValidatedBot> validated = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        List<PuzzleBotRequestDTO> requestedBots = request.getBots();
+        for (int index = 0; index < requestedBots.size(); index += 1) {
+            PuzzleBotRequestDTO bot = requestedBots.get(index);
+            String path = "bots[" + index + "]";
+            if (bot == null) {
+                errors.add(path + " must be an object");
+                continue;
+            }
+            int teamNumber = requestedTeamNumber(bot);
+            int slot = valueOrDefault(bot.getSlot(), 1);
+            if (teamNumber < 1 || teamNumber > 2) {
+                errors.add(path + ".teamNumber must be 1 or 2");
+                continue;
+            }
+            if (slot < 1 || slot > MAX_PUZZLE_TEAM_SIZE) {
+                errors.add(path + ".slot must be between 1 and 2");
+                continue;
+            }
+            int expectedTeamSize = teamNumber == 1 ? playerTeamSize : opponentTeamSize;
+            if (slot > expectedTeamSize) {
+                errors.add(path + " is outside the configured team size");
+                continue;
+            }
+            PuzzleBotRole role = teamNumber == 1 ? PuzzleBotRole.PLAYER : PuzzleBotRole.OPPONENT;
+            if (bot.getRole() != null && !role.name().equalsIgnoreCase(bot.getRole().trim())) {
+                errors.add(path + ".role does not match teamNumber");
+            }
+            String key = teamNumber + ":" + slot;
+            if (!seen.add(key)) {
+                errors.add(path + " duplicates team " + teamNumber + " slot " + slot);
+                continue;
+            }
+            ValidatedBot next = validateBot(
+                    bot,
+                    role,
+                    role == PuzzleBotRole.PLAYER ? maxActionNodes : MAX_ACTION_NODES,
+                    role == PuzzleBotRole.PLAYER ? maxConditionNodes : MAX_CONDITION_NODES,
+                    role == PuzzleBotRole.PLAYER ? maxCustomVariables : MAX_CUSTOM_VARIABLES,
+                    path,
+                    errors);
+            validated.add(next.withIdentity(role, teamNumber, slot));
+        }
+
+        for (int teamNumber = 1; teamNumber <= 2; teamNumber += 1) {
+            int teamSize = teamNumber == 1 ? playerTeamSize : opponentTeamSize;
+            for (int slot = 1; slot <= teamSize; slot += 1) {
+                if (!seen.contains(teamNumber + ":" + slot)) {
+                    errors.add("bots is missing team " + teamNumber + " slot " + slot);
+                }
+            }
+        }
+        validated.sort(Comparator.comparingInt(ValidatedBot::teamNumber).thenComparingInt(ValidatedBot::slot));
+        return validated;
+    }
+
+    private int requestedTeamNumber(PuzzleBotRequestDTO bot) {
+        if (bot.getTeamNumber() != null) return bot.getTeamNumber();
+        if (bot.getRole() != null && "OPPONENT".equalsIgnoreCase(bot.getRole().trim())) return 2;
+        if (bot.getRole() != null && "PLAYER".equalsIgnoreCase(bot.getRole().trim())) return 1;
+        return 0;
+    }
+
+    private int boundedTeamSize(int value) {
+        return Math.max(MIN_PUZZLE_TEAM_SIZE, Math.min(MAX_PUZZLE_TEAM_SIZE, value));
     }
 
     private void validatePuzzleLogicConfiguration(JsonNode configuration, List<String> errors) {
@@ -561,15 +677,18 @@ public class PuzzleService {
             int maxActionNodes,
             int maxConditionNodes,
             int maxCustomVariables,
+            String validationPath,
             List<String> errors) {
-        String path = role == PuzzleBotRole.PLAYER ? "playerBot" : "opponentBot";
+        String path = validationPath == null || validationPath.isBlank()
+                ? role == PuzzleBotRole.PLAYER ? "playerBot" : "opponentBot"
+                : validationPath;
         String loadout = request == null || request.getLoadout() == null ? "custom:" : request.getLoadout().trim();
         if (loadout.isBlank() || loadout.length() > 40) errors.add(path + ".loadout must be between 1 and 40 characters");
         if (!validLoadoutEncoding(loadout)) errors.add(path + ".loadout is not a supported loadout encoding");
 
         double defaultX = 500;
-        double defaultY = role == PuzzleBotRole.PLAYER ? 150 : 850;
-        double defaultRotation = role == PuzzleBotRole.PLAYER ? 180 : 0;
+        double defaultY = role == PuzzleBotRole.PLAYER ? 850 : 150;
+        double defaultRotation = role == PuzzleBotRole.PLAYER ? 0 : 180;
         double defaultHp = BASE_BOT_HP;
         double startX = valueOrDefault(request == null ? null : request.getStartX(), defaultX);
         double startY = valueOrDefault(request == null ? null : request.getStartY(), defaultY);
@@ -597,7 +716,7 @@ public class PuzzleService {
             if (variables > maxCustomVariables) errors.add(path + ".brain uses " + variables + " custom variables; puzzle allows " + maxCustomVariables);
             if (role == PuzzleBotRole.PLAYER) rejectPuzzleVariableNamespace(brain, path, errors);
         }
-        return new ValidatedBot(loadout, startX, startY, rotation, startHp, brain);
+        return new ValidatedBot(0, 0, role, loadout, startX, startY, rotation, startHp, brain);
     }
 
     private void rejectPuzzleVariableNamespace(JsonNode brain, String path, List<String> errors) {
@@ -634,9 +753,11 @@ public class PuzzleService {
         return object;
     }
 
-    private PuzzleBot toPuzzleBot(ValidatedBot source, PuzzleBotRole role) {
+    private PuzzleBot toPuzzleBot(ValidatedBot source) {
         PuzzleBot bot = new PuzzleBot();
-        bot.setRole(role);
+        bot.setRole(source.role());
+        bot.setTeamNumber(source.teamNumber());
+        bot.setSlot(source.slot());
         applyValidatedBot(bot, source);
         return bot;
     }
@@ -651,22 +772,40 @@ public class PuzzleService {
         puzzle.setMaxActionNodes(validated.maxActionNodes());
         puzzle.setMaxConditionNodes(validated.maxConditionNodes());
         puzzle.setMaxCustomVariables(validated.maxCustomVariables());
+        puzzle.setPlayerTeamSize(validated.playerTeamSize());
+        puzzle.setOpponentTeamSize(validated.opponentTeamSize());
         puzzle.setWinConditions(toJson(validated.winConditions()));
         puzzle.setLoseConditions(toJson(validated.loseConditions()));
         puzzle.setLogicConfiguration(toJson(validated.logicConfiguration()));
     }
 
-    private void updatePuzzleBot(Puzzle puzzle, PuzzleBotRole role, ValidatedBot source) {
-        PuzzleBot bot = puzzle.getBots().stream()
-                .filter(candidate -> candidate.getRole() == role)
-                .findFirst()
-                .orElseGet(() -> {
-                    PuzzleBot created = new PuzzleBot();
-                    created.setRole(role);
-                    puzzle.addBot(created);
-                    return created;
-                });
-        applyValidatedBot(bot, source);
+    private void updatePuzzleBots(Puzzle puzzle, List<ValidatedBot> sources) {
+        Set<String> retainedKeys = new HashSet<>();
+        for (ValidatedBot source : sources) {
+            String key = puzzleBotKey(source.teamNumber(), source.slot());
+            PuzzleBot bot = puzzle.getBots().stream()
+                    .filter(candidate -> key.equals(puzzleBotKey(candidate.getTeamNumber(), candidate.getSlot())))
+                    .findFirst()
+                    .orElseGet(() -> puzzle.getBots().stream()
+                            .filter(candidate -> candidate.getRole() == source.role()
+                                    && (source.slot() == 1 || candidate.getSlot() == source.slot()))
+                            .findFirst()
+                            .orElse(null));
+            if (bot == null) {
+                bot = new PuzzleBot();
+                puzzle.addBot(bot);
+            }
+            bot.setRole(source.role());
+            bot.setTeamNumber(source.teamNumber());
+            bot.setSlot(source.slot());
+            applyValidatedBot(bot, source);
+            retainedKeys.add(key);
+        }
+        puzzle.getBots().removeIf(bot -> !retainedKeys.contains(puzzleBotKey(bot.getTeamNumber(), bot.getSlot())));
+    }
+
+    private String puzzleBotKey(int teamNumber, int slot) {
+        return teamNumber + ":" + slot;
     }
 
     private void applyValidatedBot(PuzzleBot bot, ValidatedBot source) {
@@ -676,6 +815,16 @@ public class PuzzleService {
         bot.setRotation(source.rotation());
         bot.setStartHp(source.startHp());
         bot.setBrainPayload(toJson(source.brain()));
+    }
+
+    private List<PuzzleBot> orderedBots(List<PuzzleBot> bots) {
+        return (bots == null ? List.<PuzzleBot>of() : bots).stream()
+                .sorted(Comparator.comparingInt(PuzzleBot::getTeamNumber).thenComparingInt(PuzzleBot::getSlot))
+                .toList();
+    }
+
+    private Comparator<CachedPuzzleBot> cachedBotOrder() {
+        return Comparator.comparingInt(CachedPuzzleBot::teamNumber).thenComparingInt(CachedPuzzleBot::slot);
     }
 
     private PuzzleAdminResponseDTO toAdminResponse(Puzzle puzzle) {
@@ -691,10 +840,12 @@ public class PuzzleService {
         response.setMaxActionNodes(puzzle.getMaxActionNodes());
         response.setMaxConditionNodes(puzzle.getMaxConditionNodes());
         response.setMaxCustomVariables(puzzle.getMaxCustomVariables());
+        response.setPlayerTeamSize(puzzle.getPlayerTeamSize());
+        response.setOpponentTeamSize(puzzle.getOpponentTeamSize());
         response.setLogicConfiguration(readJson(puzzle.getLogicConfiguration(), jsonMapper.createObjectNode()));
         response.setWinConditions(readJson(puzzle.getWinConditions(), jsonMapper.createArrayNode()));
         response.setLoseConditions(readJson(puzzle.getLoseConditions(), jsonMapper.createArrayNode()));
-        response.setBots(puzzle.getBots().stream().map(this::toBotResponse).toList());
+        response.setBots(orderedBots(puzzle.getBots()).stream().map(this::toBotResponse).toList());
         return response;
     }
 
@@ -710,16 +861,20 @@ public class PuzzleService {
                 puzzle.getMaxActionNodes(),
                 puzzle.getMaxConditionNodes(),
                 puzzle.getMaxCustomVariables(),
+                puzzle.getPlayerTeamSize(),
+                puzzle.getOpponentTeamSize(),
                 readJson(puzzle.getLogicConfiguration(), jsonMapper.createObjectNode()),
                 readJson(puzzle.getWinConditions(), jsonMapper.createArrayNode()),
                 readJson(puzzle.getLoseConditions(), jsonMapper.createArrayNode()),
-                puzzle.getBots().stream().map(this::toCachedPuzzleBot).toList());
+                orderedBots(puzzle.getBots()).stream().map(this::toCachedPuzzleBot).toList());
     }
 
     private CachedPuzzleBot toCachedPuzzleBot(PuzzleBot bot) {
         return new CachedPuzzleBot(
                 bot.getId(),
                 bot.getRole(),
+                bot.getTeamNumber(),
+                bot.getSlot(),
                 bot.getLoadout(),
                 bot.getStartX(),
                 bot.getStartY(),
@@ -739,10 +894,12 @@ public class PuzzleService {
         response.setMaxActionNodes(puzzle.maxActionNodes());
         response.setMaxConditionNodes(puzzle.maxConditionNodes());
         response.setMaxCustomVariables(puzzle.maxCustomVariables());
+        response.setPlayerTeamSize(puzzle.playerTeamSize());
+        response.setOpponentTeamSize(puzzle.opponentTeamSize());
         response.setLogicConfiguration(puzzle.logicConfiguration().deepCopy());
         response.setWinConditions(puzzle.winConditions().deepCopy());
         response.setLoseConditions(puzzle.loseConditions().deepCopy());
-        response.setBots(puzzle.bots().stream().map(this::toBotResponse).toList());
+        response.setBots(puzzle.bots().stream().sorted(cachedBotOrder()).map(this::toBotResponse).toList());
         return response;
     }
 
@@ -750,6 +907,8 @@ public class PuzzleService {
         PuzzleBotResponseDTO response = new PuzzleBotResponseDTO();
         response.setId(bot.id());
         response.setRole(bot.role().name());
+        response.setTeamNumber(bot.teamNumber());
+        response.setSlot(bot.slot());
         response.setLoadout(bot.loadout());
         response.setStartX(bot.startX());
         response.setStartY(bot.startY());
@@ -763,6 +922,8 @@ public class PuzzleService {
         PuzzleBotResponseDTO response = new PuzzleBotResponseDTO();
         response.setId(bot.getId());
         response.setRole(bot.getRole().name());
+        response.setTeamNumber(bot.getTeamNumber());
+        response.setSlot(bot.getSlot());
         response.setLoadout(bot.getLoadout());
         response.setStartX(bot.getStartX());
         response.setStartY(bot.getStartY());
@@ -856,6 +1017,7 @@ public class PuzzleService {
             errors.add(path + ".comparator is not supported for this variable");
         }
 
+        String targetMode = validateConditionTarget(condition, path, leftContract, errors);
         validateConditionSelectable(condition.get("selectable"), path + ".selectable", null, null, errors);
         validateConditionSelectable(condition.get("selectable1"), path + ".selectable1", null, null, errors);
         validateConditionSelectable(condition.get("selectable2"), path + ".selectable2", null, null, errors);
@@ -867,7 +1029,9 @@ public class PuzzleService {
                     : condition.has("selectable") ? condition.get("selectable")
                         : textNode(BotLogicContracts.defaultSelectable2ForVariable(leftContract));
             validateConditionSelectable(selectable1, path + ".selectable1", leftContract.pairSelectableIdentities(0), leftContract, errors);
-            validateConditionSelectable(selectable2, path + ".selectable2", leftContract.pairSelectableIdentities(1), leftContract, errors);
+            if (BotLogicContracts.TARGET_MODE_TARGET.equals(targetMode)) {
+                validateConditionSelectable(selectable2, path + ".selectable2", leftContract.pairSelectableIdentities(1), leftContract, errors);
+            }
         } else {
             validateConditionSelectable(condition.get("leftSelectable"), path + ".leftSelectable",
                     leftContract == null ? null : leftContract.selectableIdentities(),
@@ -915,6 +1079,53 @@ public class PuzzleService {
             return;
         }
         errors.add(path + ".right.type must be number, boolean, or variable");
+    }
+
+    private String validateConditionTarget(
+            JsonNode condition,
+            String path,
+            BotLogicContracts.VariableContract variableContract,
+            List<String> errors) {
+        boolean hasTargetFields = condition.has("targetMode") || condition.has("targetX")
+                || condition.has("targetY") || condition.has("targetAngle");
+        if (variableContract == null || variableContract.targetModes().isEmpty()) {
+            if (hasTargetFields) errors.add(path + ".targetMode is not supported for this variable");
+            return BotLogicContracts.TARGET_MODE_TARGET;
+        }
+        JsonNode modeNode = condition.get("targetMode");
+        String mode;
+        if (modeNode == null) {
+            mode = condition.has("targetX") || condition.has("targetY")
+                    ? BotLogicContracts.TARGET_MODE_COORDINATES
+                    : condition.has("targetAngle") ? BotLogicContracts.TARGET_MODE_ANGLE : BotLogicContracts.TARGET_MODE_TARGET;
+        } else if (!modeNode.isTextual()) {
+            errors.add(path + ".targetMode must be target, coordinates, or angle");
+            return BotLogicContracts.TARGET_MODE_TARGET;
+        } else {
+            mode = modeNode.asText();
+        }
+        if (!variableContract.targetModes().contains(mode)) {
+            errors.add(path + ".targetMode is not supported for this variable");
+            return BotLogicContracts.TARGET_MODE_TARGET;
+        }
+        if (BotLogicContracts.TARGET_MODE_COORDINATES.equals(mode)) {
+            validateConditionCoordinate(condition.get("targetX"), path + ".targetX", errors);
+            validateConditionCoordinate(condition.get("targetY"), path + ".targetY", errors);
+        } else if (BotLogicContracts.TARGET_MODE_ANGLE.equals(mode)) {
+            JsonNode angle = condition.get("targetAngle");
+            if (angle == null || !angle.isNumber() || !Double.isFinite(angle.asDouble())
+                    || angle.asDouble() < BotLogicContracts.ANGLE_MIN || angle.asDouble() > BotLogicContracts.ANGLE_MAX) {
+                errors.add(path + ".targetAngle must be an angle from -360 to 360 degrees");
+            }
+        }
+        return mode;
+    }
+
+    private void validateConditionCoordinate(JsonNode value, String path, List<String> errors) {
+        if (value == null || !value.isNumber() || !Double.isFinite(value.asDouble())
+                || value.asDouble() < 0 || value.asDouble() > 1000) {
+            errors.add(path + " must be a number from 0 to 1000");
+        }
     }
 
     private void validateConditionId(JsonNode condition, String path, List<String> errors) {
@@ -1069,13 +1280,27 @@ public class PuzzleService {
             int maxActionNodes,
             int maxConditionNodes,
             int maxCustomVariables,
+            int playerTeamSize,
+            int opponentTeamSize,
             JsonNode winConditions,
             JsonNode loseConditions,
             JsonNode logicConfiguration,
-            ValidatedBot playerBot,
-            ValidatedBot opponentBot) { }
+            List<ValidatedBot> bots) { }
 
-    private record ValidatedBot(String loadout, double startX, double startY, double rotation, double startHp, JsonNode brain) { }
+    private record ValidatedBot(
+            int teamNumber,
+            int slot,
+            PuzzleBotRole role,
+            String loadout,
+            double startX,
+            double startY,
+            double rotation,
+            double startHp,
+            JsonNode brain) {
+        private ValidatedBot withIdentity(PuzzleBotRole nextRole, int nextTeamNumber, int nextSlot) {
+            return new ValidatedBot(nextTeamNumber, nextSlot, nextRole, loadout, startX, startY, rotation, startHp, brain);
+        }
+    }
 
     public record PuzzleAttemptDefinition(
             long puzzleNumber,
@@ -1084,23 +1309,78 @@ public class PuzzleService {
             JsonNode winConditions,
             JsonNode loseConditions,
             JsonNode logicConfiguration,
-            PuzzleBotDefinition playerBot,
-            PuzzleBotDefinition opponentBot) { }
+            List<PuzzleBotDefinition> bots) {
+        public PuzzleAttemptDefinition {
+            bots = List.copyOf(bots == null ? List.of() : bots);
+        }
+
+        public PuzzleAttemptDefinition(
+                long puzzleNumber,
+                int timeLimitMs,
+                int initialElapsedMs,
+                JsonNode winConditions,
+                JsonNode loseConditions,
+                JsonNode logicConfiguration,
+                PuzzleBotDefinition playerBot,
+                PuzzleBotDefinition opponentBot) {
+            this(
+                    puzzleNumber,
+                    timeLimitMs,
+                    initialElapsedMs,
+                    winConditions,
+                    loseConditions,
+                    logicConfiguration,
+                    List.of(
+                            playerBot.withIdentity(PuzzleBotRole.PLAYER, 1, 1),
+                            opponentBot.withIdentity(PuzzleBotRole.OPPONENT, 2, 1)));
+        }
+
+        public PuzzleBotDefinition playerBot() {
+            return bots.stream()
+                    .filter(bot -> bot.teamNumber() == 1 && bot.slot() == 1)
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        public PuzzleBotDefinition opponentBot() {
+            return bots.stream()
+                    .filter(bot -> bot.teamNumber() == 2)
+                    .findFirst()
+                    .orElse(null);
+        }
+    }
 
     public record PuzzleBotDefinition(
+            int teamNumber,
+            int slot,
+            PuzzleBotRole role,
             String loadout,
             double startX,
             double startY,
             double rotation,
             double startHp,
             JsonNode brain) {
+        public PuzzleBotDefinition withIdentity(PuzzleBotRole nextRole, int nextTeamNumber, int nextSlot) {
+            return new PuzzleBotDefinition(nextTeamNumber, nextSlot, nextRole, loadout, startX, startY, rotation, startHp, brain);
+        }
+
+        public PuzzleBotDefinition(
+                String loadout,
+                double startX,
+                double startY,
+                double rotation,
+                double startHp,
+                JsonNode brain) {
+            this(1, 1, PuzzleBotRole.PLAYER, loadout, startX, startY, rotation, startHp, brain);
+        }
+
         public PuzzleBotDefinition(
                 String loadout,
                 double startX,
                 double startY,
                 double rotation,
                 JsonNode brain) {
-            this(loadout, startX, startY, rotation, BASE_BOT_HP, brain);
+            this(1, 1, PuzzleBotRole.PLAYER, loadout, startX, startY, rotation, BASE_BOT_HP, brain);
         }
     }
 }

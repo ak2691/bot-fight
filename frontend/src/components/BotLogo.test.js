@@ -7,8 +7,10 @@ const navbarSource = readFileSync(new URL("./AppNavbar.jsx", import.meta.url), "
 const authLayoutSource = readFileSync(new URL("../pages/auth/AuthLayout.jsx", import.meta.url), "utf8");
 const spinningBotSource = readFileSync(new URL("./SpinningBotFace.jsx", import.meta.url), "utf8");
 const arenaLoadingSource = readFileSync(new URL("./ArenaLoadingScreen.jsx", import.meta.url), "utf8");
+const arenaSource = readFileSync(new URL("../gameArena/Arena.jsx", import.meta.url), "utf8");
 const protectedRouteSource = readFileSync(new URL("../auth/ProtectedRoute.jsx", import.meta.url), "utf8");
 const profileSource = readFileSync(new URL("../pages/profile/ProfilePage.jsx", import.meta.url), "utf8");
+const queueSource = readFileSync(new URL("../pages/queue/QueuePage.jsx", import.meta.url), "utf8");
 const profileSearchSource = readFileSync(new URL("../pages/profile/ProfileSearchPage.jsx", import.meta.url), "utf8");
 const globalStyles = readFileSync(new URL("../index.css", import.meta.url), "utf8");
 
@@ -60,12 +62,20 @@ test("profile search results use the charcoal profile-card surface", () => {
 
 test("navbar reserves its layout slot and follows scroll direction globally", () => {
     assert.match(navbarSource, /useLocation/);
-    assert.match(navbarSource, /className="app-navbar-slot"/);
+    assert.match(navbarSource, /app-navbar-slot/);
     assert.match(navbarSource, /app-navbar--hidden/);
     assert.match(navbarSource, /addEventListener\("scroll"/);
     assert.match(navbarSource, /\.arena-content-shell/);
+    assert.match(navbarSource, /inPageFlow = false/);
+    assert.match(navbarSource, /app-navbar-slot--in-page-flow/);
+    assert.match(navbarSource, /showAtScrollTop/);
     assert.match(navbarSource, /setNavbarVisibility\(\{ pathname, hidden: scrollDelta > 0 \}\)/);
+    assert.match(arenaSource, /<AppNavbar inPageFlow/);
+    assert.match(arenaSource, /arena-workspace-shell/);
     assert.match(globalStyles, /\.app-navbar-slot \{[\s\S]*min-height: 72px;/);
+    assert.doesNotMatch(globalStyles, /\.arena-page-shell:has\(\.app-navbar--hidden\) > \.app-navbar-slot/);
+    assert.match(globalStyles, /\.app-navbar--in-page-flow \{[\s\S]*position: sticky;[\s\S]*top: 0;/);
+    assert.match(globalStyles, /\.app-navbar-slot--in-page-flow \{[\s\S]*display: contents;/);
     assert.match(globalStyles, /\.app-navbar \{[\s\S]*position: fixed;/);
     assert.match(globalStyles, /\.app-navbar \{[\s\S]*background-color: #0e1a22;/);
     assert.match(globalStyles, /\.app-navbar--charcoal-page \{[\s\S]*border-bottom-color: #2b353a;/);
@@ -88,15 +98,45 @@ test("loading surfaces share the spinning bot face instead of generic rings or s
     assert.doesNotMatch(profileSearchSource, /animate-pulse/);
 });
 
-test("public profiles expose the duel invite action while owner profiles do not", () => {
+test("custom lobby creation lives in the queue instead of public profiles", () => {
     assert.match(profileSource, /const isOwner = !viewedUsername \|\| isSelfProfile/);
-    assert.match(profileSource, /canInvite=\{!isOwner\}/);
-    assert.match(profileSource, /Invite to 1v1/);
-    assert.match(profileSource, /\/api\/duel-invites/);
-    assert.match(profileSource, /DUEL_INVITE_COOLDOWN_MS = 15_000/);
+    assert.doesNotMatch(profileSource, /Invite to Custom Match/);
+    assert.doesNotMatch(profileSource, /\/api\/duel-invites/);
+    assert.match(queueSource, /CREATE CUSTOM LOBBY/);
+    assert.match(queueSource, /navigate\("\/custom-lobby"/);
+    assert.match(queueSource, /api\/custom-lobbies\/current/);
+    assert.match(queueSource, /OPEN CUSTOM LOBBY/);
+    assert.match(queueSource, /hasCustomLobby/);
+    assert.match(queueSource, /md:col-span-2 md:mx-auto/);
+    assert.match(queueSource, /QueuePlayerGroup count=\{4\} side="left"/);
+    assert.match(queueSource, /Play privately with friends\./);
+    assert.match(queueSource, /Up to 4 players\./);
+    assert.doesNotMatch(queueSource, /Invite up to four players|plus-slot/);
+    assert.doesNotMatch(queueSource, /AVAILABLE|COMING NEXT/);
+    assert.match(queueSource, /profile\?\.queueStats\?\.ones/);
+    assert.match(queueSource, /profile\?\.queueStats\?\.twos/);
+    assert.doesNotMatch(queueSource, /W: \{profile\?\.wins/);
     assert.match(profileSource, /canBlock=\{!isOwner\}/);
     assert.match(profileSource, /\/api\/blocks/);
     assert.match(profileSource, /Block player/);
     assert.match(profileSource, /profile-toolbar-button/);
     assert.match(profileSource, /profile-toolbar-button--red/);
+});
+
+test("queue cards show labeled ELO and W-L-D summaries without adding filler content", () => {
+    assert.match(queueSource, /max-w-5xl flex/);
+    assert.doesNotMatch(queueSource, /lg:max-w-6xl|xl:max-w-7xl|2xl:max-w-\[1440px\]/);
+    assert.match(queueSource, /min-h-44/);
+    assert.doesNotMatch(queueSource, /lg:min-h-48|xl:min-h-52|xl:h-10 xl:w-10/);
+    assert.match(queueSource, /ELO/);
+    assert.match(queueSource, /font-mono text-2xl font-bold leading-none tracking-normal text-white sm:text-3xl/);
+    assert.match(queueSource, /RECORD/);
+    assert.match(queueSource, /modeStats\?\.wins \?\? 0/);
+    assert.match(queueSource, /modeStats\?\.losses \?\? 0/);
+    assert.match(queueSource, /modeStats\?\.draws \?\? 0/);
+    assert.match(queueSource, /text-slate-500">—<\/span>/);
+    assert.match(queueSource, /formatQueueTime\(queueElapsed\)/);
+    assert.doesNotMatch(queueSource, /QUEUE STATUS|CANCEL QUEUE/);
+    assert.match(queueSource, /A party of 2 cannot queue a 1v1\./);
+    assert.doesNotMatch(queueSource, /W:\$\{modeStats/);
 });

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { displayedRoundWins, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, localReplaySchedule, mergeReplayFrames, replayAbilitiesFor, replayClockSeconds, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayBotAbilityState, replayFrameIndexForElapsedMs, replayRayOrigin, replayRemainingMs, replayRemainingSeconds, replayShapeKey } from "./replayPresentation.js";
+import { centeredTeamPosition, displayedRoundWins, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, localReplaySchedule, mergeReplayFrames, replayAbilitiesFor, replayClockSeconds, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayBotAbilityState, replayFrameIndexForElapsedMs, replayRayOrigin, replayRatingChange, replayRemainingMs, replayRemainingSeconds, replayResultRevealReached, replayShapeKey } from "./replayPresentation.js";
 
 test("replay schedule preserves the server deadlines when the ready event arrives late", () => {
     assert.deepEqual(localReplaySchedule(10_000, 30_000, 9_000), {
@@ -63,6 +63,24 @@ test("replay does not infer one ability visual from another equipped ability", (
     assert.equal(state.abilityActiveMs[3] ?? 0, 0);
 });
 
+test("replay result stays hidden until the authoritative reveal deadline", () => {
+    assert.equal(replayResultRevealReached(30_000, 29_999), false);
+    assert.equal(replayResultRevealReached(30_000, 30_000), true);
+    assert.equal(replayResultRevealReached(null, 0), true);
+});
+
+test("rating change stays hidden until the result reveal event is received", () => {
+    const playback = { ratingBefore: 1035, ratingAfter: 1053 };
+
+    assert.equal(replayRatingChange(playback, false), null);
+    assert.deepEqual(replayRatingChange(playback, true), {
+        before: 1035,
+        after: 1053,
+        delta: 18,
+        label: "1035 → 1053 (+18)",
+    });
+});
+
 test("match replay timer starts at 1:30 and counts down to zero", () => {
     assert.equal(replayRemainingSeconds(90_000, 0), 90);
     assert.equal(replayRemainingSeconds(90_000, 29_900), 61);
@@ -88,12 +106,14 @@ test("compact replay bots recover participant metadata by slot", () => {
             slot: 2,
             userId: "user-2",
             username: "Opponent",
+            teamNumber: 2,
             selectedLoadout: "custom:g",
         },
     );
 
     assert.equal(bot.userId, "user-2");
     assert.equal(bot.username, "Opponent");
+    assert.equal(bot.teamNumber, 2);
     assert.equal(bot.maxHp, 140);
     assert.deepEqual(bot.abilityCooldowns, { 3: 1000, 19: 1500, 20: 10000 });
     assert.deepEqual(bot.abilityCharges, { 3: 9 });
@@ -187,6 +207,21 @@ test("replay gun rays retain the activation position while the bot moves", () =>
     });
 });
 
+test("replay gun rays use the one-tick activation marker during rotation", () => {
+    const frames = [
+        { bots: [{ slot: 1, x: 100, y: 200, rotation: 10, abilityActiveMs: {} }] },
+        { bots: [{ slot: 1, x: 130, y: 240, rotation: 40, abilityActiveMs: { 3: 900 }, abilityCooldowns: { 3: 900 }, triggeredAbility: 3 }] },
+        { bots: [{ slot: 1, x: 170, y: 280, rotation: 90, abilityActiveMs: { 3: 800 }, abilityCooldowns: { 3: 800 } }] },
+    ];
+
+    assert.deepEqual(replayRayOrigin(frames[2].bots[0], frames, 2), {
+        gunRayOriginX: 130,
+        gunRayOriginY: 240,
+        gunRayRotation: 40,
+        replayGunActiveMs: 800,
+    });
+});
+
 test("replay recovery appends only frames newer than the current cursor", () => {
     assert.deepEqual(
         mergeReplayFrames(
@@ -213,4 +248,15 @@ test("bot entrance starts outside the arena and reaches its replay position at p
     assert.equal(replayEntranceX(bot, 0), -60);
     assert.equal(replayEntranceProgress(20_000, 20_000), 1);
     assert.equal(replayEntranceX(bot, 1), 500);
+});
+
+test("team replay entrances use team sides rather than treating every non-slot-one bot as an opponent", () => {
+    assert.equal(replayEntranceX({ slot: 2, teamNumber: 1, size: 60, x: 500 }, 0), -60);
+    assert.equal(replayEntranceX({ slot: 3, teamNumber: 2, size: 60, x: 500 }, 0), 1_060);
+});
+
+test("forfeit team formation keeps match-spawn spacing while centering the winners", () => {
+    assert.deepEqual(centeredTeamPosition(0, 1), { x: 500, y: 500, rotation: 0 });
+    assert.deepEqual(centeredTeamPosition(0, 2), { x: 1_000 / 3, y: 500, rotation: 0 });
+    assert.deepEqual(centeredTeamPosition(1, 2), { x: 2_000 / 3, y: 500, rotation: 0 });
 });

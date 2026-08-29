@@ -10,6 +10,7 @@ import com.example.botfight.simulation.core.orchestration.DuelSimulationService.
 import com.example.botfight.simulation.core.combat.ActionExecutionService;
 import com.example.botfight.simulation.bots.ConditionEvaluationService;
 import com.example.botfight.simulation.bots.BotLogicContracts;
+import com.example.botfight.simulation.geometry.ArenaUnits;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -68,6 +69,10 @@ public class ConditionResolutionService {
                     ? normalizeSelectable(pairSecondSelectable, pairSecondFallback,
                             leftContract.pairSelectableIdentities(1), leftContract)
                     : normalizeSelectable(sharedSelectable, BotLogicContracts.SELECTABLE_OPPONENT, null, null);
+            String targetMode = normalizeTargetMode(condition, leftContract);
+            double targetX = coordinateValue(field(condition, "targetX"), ArenaUnits.WIDTH / 2.0, ArenaUnits.WIDTH);
+            double targetY = coordinateValue(field(condition, "targetY"), ArenaUnits.HEIGHT / 2.0, ArenaUnits.HEIGHT);
+            double targetAngle = angleValue(field(condition, "targetAngle"), 0.0);
             normalized.add(new Condition(
                     textValue(field(condition, "type"), ""),
                     numberValue(field(condition, "value"), 0.0),
@@ -86,7 +91,11 @@ public class ConditionResolutionService {
                     textValue(field(condition, "statusEffect"), ""),
                     textValue(field(condition, "comparator"), "lt"),
                     normalizeOperand(rightNode),
-                    index > 0 && BotLogicContracts.JOIN_OR.equals(textValue(field(condition, "join"), "and")) ? BotLogicContracts.JOIN_OR : "and"));
+                    index > 0 && BotLogicContracts.JOIN_OR.equals(textValue(field(condition, "join"), "and")) ? BotLogicContracts.JOIN_OR : "and",
+                    targetMode,
+                    targetX,
+                    targetY,
+                    targetAngle));
         }
         return normalized;
     }
@@ -280,9 +289,28 @@ public class ConditionResolutionService {
     private static String angleConditionGroupKey(Condition condition) {
         BotLogicContracts.VariableContract contract = BotLogicContracts.variableContract(condition.left());
         if (contract != null && contract.isPairVariable()) {
-            return condition.left() + "|" + condition.leftSelectable() + "|" + condition.selectable();
+            return condition.left() + "|" + condition.leftSelectable() + "|" + targetConditionKey(condition, contract);
         }
         return condition.left() + "|" + condition.leftSelectable();
+    }
+
+    private static String targetConditionKey(Condition condition, BotLogicContracts.VariableContract contract) {
+        String targetMode = conditionTargetMode(condition, contract);
+        if (BotLogicContracts.TARGET_MODE_COORDINATES.equals(targetMode)) {
+            return BotLogicContracts.TARGET_MODE_COORDINATES + "|" + condition.targetX() + "|" + condition.targetY();
+        }
+        if (BotLogicContracts.TARGET_MODE_ANGLE.equals(targetMode)) {
+            return BotLogicContracts.TARGET_MODE_ANGLE + "|" + condition.targetAngle();
+        }
+        return BotLogicContracts.TARGET_MODE_TARGET + "|" + condition.selectable();
+    }
+
+    private static String conditionTargetMode(Condition condition, BotLogicContracts.VariableContract contract) {
+        if (contract == null || contract.targetModes().isEmpty()) return BotLogicContracts.TARGET_MODE_TARGET;
+        if (condition.targetMode() != null && contract.targetModes().contains(condition.targetMode())) return condition.targetMode();
+        return contract.targetModes().contains(BotLogicContracts.TARGET_MODE_TARGET)
+                ? BotLogicContracts.TARGET_MODE_TARGET
+                : contract.targetModes().iterator().next();
     }
 
     private static List<Double> angleRepresentations(double value) {
@@ -329,15 +357,16 @@ public class ConditionResolutionService {
     private static String normalizeSelectable(String selectable, String fallback,
                                           java.util.Set<BotLogicContracts.SelectableIdentity> requiredSelectableIdentities,
                                           BotLogicContracts.VariableContract variable) {
-        if (selectable == null) return fallback;
+        if (selectable == null) return BotLogicContracts.canonicalSelectableId(fallback);
         String candidate = variable != null && !variable.selectableOrderable()
                 ? selectable.split(":", -1)[0] : selectable;
+        candidate = BotLogicContracts.canonicalSelectableId(candidate);
         String base = candidate.split(":", -1)[0];
         if (BotLogicContracts.isAllowedSelectable(candidate)
                 && (variable == null || !variable.requiresHealthSelectable()
                     || BotLogicContracts.selectableSupportsCapability(candidate, BotLogicContracts.SELECTABLE_CAPABILITY_HEALTH))
                 && BotLogicContracts.selectableMatchesIdentities(base, requiredSelectableIdentities)) return candidate;
-        return fallback;
+        return BotLogicContracts.canonicalSelectableId(fallback);
     }
 
     private static JsonNode field(JsonNode node, String name) {
@@ -352,6 +381,31 @@ public class ConditionResolutionService {
         return node != null && node.isNumber()
                 ? BotLogicContracts.truncateToNumberPrecision(node.asDouble())
                 : fallback;
+    }
+
+    private static String normalizeTargetMode(JsonNode condition, BotLogicContracts.VariableContract contract) {
+        if (contract == null || contract.targetModes().isEmpty()) return null;
+        String requested = textValue(field(condition, "targetMode"), null);
+        if (requested == null) {
+            requested = field(condition, "targetX") != null || field(condition, "targetY") != null
+                    ? BotLogicContracts.TARGET_MODE_COORDINATES
+                    : field(condition, "targetAngle") != null ? BotLogicContracts.TARGET_MODE_ANGLE : BotLogicContracts.TARGET_MODE_TARGET;
+        }
+        if (contract.targetModes().contains(requested)) return requested;
+        return contract.targetModes().contains(BotLogicContracts.TARGET_MODE_TARGET)
+                ? BotLogicContracts.TARGET_MODE_TARGET
+                : contract.targetModes().iterator().next();
+    }
+
+    private static double coordinateValue(JsonNode node, double fallback, double maximum) {
+        if (node == null || !node.isNumber() || !Double.isFinite(node.asDouble())) return fallback;
+        return BotLogicContracts.truncateToNumberPrecision(Math.max(0.0, Math.min(maximum, node.asDouble())));
+    }
+
+    private static double angleValue(JsonNode node, double fallback) {
+        if (node == null || !node.isNumber() || !Double.isFinite(node.asDouble())) return fallback;
+        return BotLogicContracts.truncateToNumberPrecision(Math.max(BotLogicContracts.ANGLE_MIN,
+                Math.min(BotLogicContracts.ANGLE_MAX, node.asDouble())));
     }
 
     private static boolean booleanValue(JsonNode node, boolean fallback) {

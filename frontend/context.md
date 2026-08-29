@@ -9,13 +9,13 @@ to [`src/gameArena/context.md`](src/gameArena/context.md).
 - `src/main.jsx`: mounts React.
 - `src/App.jsx`: route ownership and lazy-loaded pages.
 - `src/routeLoaders.js`: route-level loading helpers.
-- `src/pages/`: login, registration, home, matchmaking, and puzzle screens.
+- `src/pages/`: login, registration, home, matchmaking, custom-lobby, and puzzle screens.
 - `src/puzzles/`: puzzle list and admin-authoring API calls; puzzle storage and
   server validation remain backend-owned.
 - `src/auth/`: session state and route protection.
 - `src/security/csrf.js`: CSRF acquisition/header helpers for state changes.
-- `src/notifications/`: app-wide notification subscription, duel-invite actions,
-  and block-aware notification state.
+- `src/notifications/`: app-wide notification subscription, duel/party/custom-lobby invite
+  actions, and block-aware notification state.
 - `src/index.css` and `src/App.css`: global/application styling.
 
 Route UI and navigation bugs here first. Authentication behavior usually spans
@@ -26,9 +26,10 @@ Route UI and navigation bugs here first. Authentication behavior usually spans
 | Concern | Primary paths | Also inspect |
 | --- | --- | --- |
 | App route or page UI | `src/pages/` and the app shell | relevant styles and route-loading area |
+| Custom lobby UI and live roster | `src/pages/customLobby/` and `src/matchmaking/` | `src/notifications/`, `src/components/AppNavbar.jsx`, and server custom-lobby areas |
 | Puzzle list or admin puzzle authoring | `src/pages/puzzles/` and `src/puzzles/` | `src/auth/`, arena code/loadout contracts, and server puzzle areas |
 | Login/session/CSRF | `src/auth/`, `src/security/` | server auth/security areas |
-| Notifications, duel invites, and blocks | `src/notifications/`, `src/components/AppNavbar.jsx`, `src/pages/profile/` | matchmaking socket/chat, server invite/block/notification areas |
+| Notifications, duel/party/custom-lobby invites, and blocks | `src/notifications/`, `src/components/AppNavbar.jsx`, `src/pages/profile/` | matchmaking queue/socket, server party/custom-lobby/invite/block/notification areas |
 | Matchmaking lifecycle/ability draft or match chat | `src/pages/`, `src/matchmaking/` | server matchmaking areas |
 | WebSocket framing/reconnect | `src/matchmaking/` | server WebSocket configuration and controller areas |
 | Logic evaluation/normalization | `src/gameArena/botlogic/code/` | nearby tests and arena payload/loadout contracts |

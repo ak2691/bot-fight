@@ -57,7 +57,8 @@ public final class MatchReplayService {
                                 frames,
                                 sequence,
                                 frames.getLast().elapsedMs(),
-                                terminalBatch),
+                                terminalBatch,
+                                playback.roundWinsBeforeResult()),
                         terminalBatch));
             }
             sequence++;
@@ -89,17 +90,31 @@ public final class MatchReplayService {
         int cursor = frames.isEmpty() ? 0 : frames.getLast().elapsedMs();
         boolean terminal = cursor >= finalElapsedMs(playback);
         int sequence = cursor <= 0 ? 0 : Math.max(1, (cursor - 1) / REPLAY_BATCH_MILLIS + 1);
-        return replayBatch(playback, playback.initialState(), frames, sequence, cursor, terminal);
+        return replayBatch(
+                playback,
+                playback.initialState(),
+                frames,
+                sequence,
+                cursor,
+                terminal,
+                playback.roundWinsBeforeResult());
     }
 
     public MatchReplayDTO initialBatch(MatchReplayDTO playback) {
+        return initialBatch(playback, playback.roundWinsBeforeResult());
+    }
+
+    public MatchReplayDTO initialBatch(
+            MatchReplayDTO playback,
+            Map<UUID, Integer> roundWinsBeforeResult) {
         return replayBatch(
                 playback,
                 playback.initialState(),
                 List.of(),
                 0,
                 0,
-                finalElapsedMs(playback) == 0);
+                finalElapsedMs(playback) == 0,
+                roundWinsBeforeResult);
     }
 
     public MatchReplayDTO fullReplayPayload(MatchReplayDTO playback) {
@@ -109,7 +124,8 @@ public final class MatchReplayService {
                 playback.frames(),
                 1,
                 finalElapsedMs(playback),
-                true);
+                true,
+                playback.roundWinsBeforeResult());
     }
 
     public MatchReplayDTO resultPayload(MatchReplayDTO playback) {
@@ -121,7 +137,8 @@ public final class MatchReplayService {
                 playback.message(),
                 playback.batchSequence(),
                 finalElapsedMs(playback),
-                true);
+                true,
+                playback.roundWinsBeforeResult());
     }
 
     public MatchReplayDTO withWinner(
@@ -136,7 +153,23 @@ public final class MatchReplayService {
                 message,
                 playback.batchSequence(),
                 playback.replayCursorElapsedMs(),
-                playback.terminalBatch());
+                playback.terminalBatch(),
+                playback.roundWinsBeforeResult());
+    }
+
+    public MatchReplayDTO withRoundWinsBeforeResult(
+            MatchReplayDTO playback,
+            Map<UUID, Integer> roundWinsBeforeResult) {
+        return new MatchReplayDTO(
+                playback.initialState(),
+                playback.frames(),
+                playback.result(),
+                playback.winnerUserId(),
+                playback.message(),
+                playback.batchSequence(),
+                playback.replayCursorElapsedMs(),
+                playback.terminalBatch(),
+                roundWinsBeforeResult);
     }
 
     public Map<UUID, Double> roundLossScores(
@@ -146,6 +179,17 @@ public final class MatchReplayService {
         session.players().forEach(player -> scores.put(player.userId(), 0.0));
         if (playback.winnerUserId() == null) return Map.copyOf(scores);
         MatchPlayer winner = playerForUser(session, playback.winnerUserId());
+        if (session.players().size() > 2) {
+            int elapsedMs = playback.frames().isEmpty()
+                    ? 0
+                    : playback.frames().getLast().elapsedMs();
+            double lossScore = Math.max(0.0, Math.min(1.0,
+                    elapsedMs / (double) MatchSimulationService.SIMULATION_DURATION_MS));
+            session.players().stream()
+                    .filter(player -> player.teamNumber() != winner.teamNumber())
+                    .forEach(player -> scores.put(player.userId(), lossScore));
+            return Map.copyOf(scores);
+        }
         MatchPlayer loser = session.players().stream()
                 .filter(player -> !player.userId().equals(winner.userId()))
                 .findFirst()
@@ -224,16 +268,18 @@ public final class MatchReplayService {
             List<MatchReplayDTO.ReplayFrameDTO> frames,
             int sequence,
             int cursorElapsedMs,
-            boolean terminalBatch) {
+            boolean terminalBatch,
+            Map<UUID, Integer> roundWinsBeforeResult) {
         return new MatchReplayDTO(
                 initialState,
                 List.copyOf(frames),
-                terminalBatch ? playback.result() : null,
-                terminalBatch ? playback.winnerUserId() : null,
-                terminalBatch ? playback.message() : null,
+                null,
+                null,
+                null,
                 sequence,
                 cursorElapsedMs,
-                terminalBatch);
+                terminalBatch,
+                roundWinsBeforeResult);
     }
 
     private MatchPlayer playerForUser(MatchSession session, UUID userId) {

@@ -82,9 +82,10 @@ class MatchReplayDTOTest {
                 "userId",
                 "username",
                 "combatLoadout",
-                "triggeredAbility",
                 "preparingMs",
                 "\"entities\"");
+        assertThat(compact.frames().getFirst().bots().getFirst().triggeredAbility()).isEqualTo(3);
+        assertThat(json).contains("\"triggeredAbility\":3");
 
         assertThat(json).doesNotContain("terminalBatch");
     }
@@ -117,6 +118,26 @@ class MatchReplayDTOTest {
                 "\"abilityOffers\"",
                 "\"serverNow\"",
                 "\"matchTerminal\"");
+    }
+
+    @Test
+    void resultPayloadCanCarryTheRecipientRatingChange() {
+        MatchReplayDTO playback = new MatchReplayDTO(
+                null,
+                List.of(),
+                "BOT_WIN",
+                UUID.randomUUID(),
+                "Blue Team wins.",
+                null,
+                null,
+                true,
+                null,
+                1035,
+                1053);
+
+        String json = jsonMapper.writeValueAsString(playback);
+
+        assertThat(json).contains("\"ratingBefore\":1035", "\"ratingAfter\":1053");
     }
 
     @Test

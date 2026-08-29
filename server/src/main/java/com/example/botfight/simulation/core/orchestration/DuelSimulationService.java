@@ -38,6 +38,8 @@ import tools.jackson.databind.JsonNode;
 @Service
 public class DuelSimulationService {
     public static final String DUEL_RULESET_VERSION = "duel-v1";
+    /** Maximum roster size accepted by the bounded XvX simulator contract. */
+    public static final int MAX_SIMULATION_BOTS = 8;
 
     private static final int ARENA_WIDTH_UNITS = ArenaUnits.WIDTH;
     private static final int ARENA_HEIGHT_UNITS = ArenaUnits.HEIGHT;
@@ -79,9 +81,7 @@ public class DuelSimulationService {
      * cannot drift between the preparation screen and replay frames.
      */
     public MatchPlaybackDTO.ArenaStateDTO buildInitialState(DuelSimulationRequest request) {
-        if (request == null || request.bots() == null || request.bots().size() != 2) {
-            throw new IllegalArgumentException("duel-v1 requires exactly two bots");
-        }
+        validateBotRoster(request);
         int width = request.arena() != null ? request.arena().width() : ARENA_WIDTH_UNITS;
         int height = request.arena() != null ? request.arena().height() : ARENA_HEIGHT_UNITS;
         List<Bot> bots = request.bots().stream()
@@ -129,9 +129,7 @@ public class DuelSimulationService {
         if (request == null || !DUEL_RULESET_VERSION.equals(request.rulesetVersion())) {
             throw new IllegalArgumentException("rulesetVersion must be duel-v1");
         }
-        if (request.bots() == null || request.bots().size() != 2) {
-            throw new IllegalArgumentException("duel-v1 requires exactly two bots");
-        }
+        validateBotRoster(request);
 
         Arena arena = new Arena(
                 request.arena() != null ? request.arena().width() : ARENA_WIDTH_UNITS,
@@ -150,6 +148,7 @@ public class DuelSimulationService {
                 .map(botStateService::create)
                 .map(this::prepareStrategy)
                 .toList();
+        attachRoster(bots);
         bots.forEach(bot -> bot.matchElapsedMs = initialElapsedMs);
         replayRecorder.initialize(arena, bots);
         List<ArenaEntity> projectiles = new ArrayList<>();
@@ -173,12 +172,15 @@ public class DuelSimulationService {
                     .map(DuelSimulationService::selectableSnapshot)
                     .forEach(selectables::add);
             projectiles.stream().map(DuelSimulationService::selectableSnapshot).forEach(selectables::add);
-            Action firstPredicted = predictAction(bots.get(0), bots.get(1), selectables, arena);
-            Action secondPredicted = predictAction(bots.get(1), bots.get(0), selectables, arena);
-            actionExecutionService.execute(bots.get(0), firstPredicted, arena);
-            actionExecutionService.execute(bots.get(1), secondPredicted, arena);
-            actionExecutionService.resolveTriggeredAbilities(bots.get(0), bots.get(1), arena);
-            actionExecutionService.resolveTriggeredAbilities(bots.get(1), bots.get(0), arena);
+            List<Action> predictedActions = bots.stream()
+                    .map(bot -> predictAction(bot, firstEnemy(bot, bots), selectables, arena))
+                    .toList();
+            for (int index = 0; index < bots.size(); index++) {
+                actionExecutionService.execute(bots.get(index), predictedActions.get(index), arena);
+            }
+            for (Bot attacker : bots) {
+                actionExecutionService.resolveTriggeredAbilities(attacker, bots, arena);
+            }
             for (Bot spawningBot : bots) {
                 ArenaEntity spawn = spawningBot.abilitySpawn;
                 if (spawn == null) continue;
@@ -224,17 +226,55 @@ public class DuelSimulationService {
                 return replayRecorder.complete(request.matchId(), null);
             }
 
-            boolean firstDefeated = bots.get(0).hp <= 0;
-            boolean secondDefeated = bots.get(1).hp <= 0;
-            if (firstDefeated || secondDefeated) {
-                Bot winner = firstDefeated == secondDefeated
+            Set<Integer> aliveTeams = bots.stream()
+                    .filter(Bot::alive)
+                    .map(bot -> bot.teamNumber)
+                    .collect(java.util.stream.Collectors.toSet());
+            if (aliveTeams.size() <= 1) {
+                Bot winner = aliveTeams.isEmpty()
                         ? null
-                        : firstDefeated ? bots.get(1) : bots.get(0);
+                        : bots.stream()
+                                .filter(bot -> aliveTeams.contains(bot.teamNumber) && bot.alive())
+                                .findFirst()
+                                .orElse(null);
                 return replayRecorder.complete(request.matchId(), winner);
             }
         }
 
         return replayRecorder.complete(request.matchId(), null);
+    }
+
+    private static void validateBotRoster(DuelSimulationRequest request) {
+        if (request == null || request.bots() == null
+                || request.bots().size() < 2
+                || request.bots().size() > MAX_SIMULATION_BOTS) {
+            throw new IllegalArgumentException(
+                    "duel-v1 requires between two and " + MAX_SIMULATION_BOTS + " bots");
+        }
+        Set<Integer> slots = new HashSet<>();
+        Set<Integer> teams = new HashSet<>();
+        for (DuelBotRequest bot : request.bots()) {
+            if (bot == null || bot.slot() <= 0 || bot.slot() > MAX_SIMULATION_BOTS
+                    || !slots.add(bot.slot()) || bot.teamNumber() <= 0) {
+                throw new IllegalArgumentException("bot slots and team numbers must be unique positive values");
+            }
+            teams.add(bot.teamNumber());
+        }
+        if (teams.size() < 2) {
+            throw new IllegalArgumentException("duel-v1 requires at least two teams");
+        }
+    }
+
+    private static void attachRoster(List<Bot> bots) {
+        List<Bot> roster = List.copyOf(bots);
+        bots.forEach(bot -> bot.matchBots = roster);
+    }
+
+    private static Bot firstEnemy(Bot player, List<Bot> bots) {
+        return bots.stream()
+                .filter(bot -> bot != player && bot.teamNumber != player.teamNumber)
+                .findFirst()
+                .orElse(null);
     }
 
     @FunctionalInterface
@@ -310,7 +350,7 @@ public class DuelSimulationService {
                     List.copyOf(frames),
                     winner != null ? "BOT_WIN" : "DRAW",
                     winner != null ? winner.userId : null,
-                    winner != null ? winner.username + " wins the fight." : "The fight ended in a draw.",
+                    winner != null ? teamLabel(winner.teamNumber) + " wins." : "The fight ended in a draw.",
                     null,
                     null,
                     null);
@@ -330,7 +370,11 @@ public class DuelSimulationService {
                 frames,
                 winner != null ? "BOT_WIN" : "DRAW",
                 winner != null ? winner.userId : null,
-                winner != null ? winner.username + " wins the fight." : "The fight ended in a draw.");
+                winner != null ? teamLabel(winner.teamNumber) + " wins." : "The fight ended in a draw.");
+    }
+
+    private static String teamLabel(int teamNumber) {
+        return teamNumber == 2 ? "Red Team" : "Blue Team";
     }
 
     private Action predictAction(Bot player, Bot opponent, List<Entity> entities, Arena arena) {
@@ -671,8 +715,9 @@ public class DuelSimulationService {
     }
 
     private static String normalizeSelectable(String selectableId, String fallback) {
-        if (BotLogicContracts.isAllowedSelectable(selectableId)) return selectableId;
-        return fallback;
+        String canonical = BotLogicContracts.canonicalSelectableId(selectableId);
+        if (BotLogicContracts.isAllowedSelectable(canonical)) return canonical;
+        return BotLogicContracts.canonicalSelectableId(fallback);
     }
 
     private static JsonNode field(JsonNode node, String field) {
@@ -811,7 +856,22 @@ public class DuelSimulationService {
             int size,
             String selectedLoadout,
             JsonNode brain,
-            Double initialHp) {
+            Double initialHp,
+            int teamNumber) {
+        public DuelBotRequest(
+                UUID userId,
+                String username,
+                int slot,
+                double x,
+                double y,
+                Double rotation,
+                int size,
+                String selectedLoadout,
+                JsonNode brain,
+                Double initialHp) {
+            this(userId, username, slot, x, y, rotation, size, selectedLoadout, brain, initialHp, slot);
+        }
+
         public DuelBotRequest(
                 UUID userId,
                 String username,
@@ -822,7 +882,7 @@ public class DuelSimulationService {
                 int size,
                 String selectedLoadout,
                 JsonNode brain) {
-            this(userId, username, slot, x, y, rotation, size, selectedLoadout, brain, null);
+            this(userId, username, slot, x, y, rotation, size, selectedLoadout, brain, null, slot);
         }
     }
 
@@ -879,7 +939,11 @@ public class DuelSimulationService {
         }
     }
 
-    public record Condition(String type, double value, String selectable, String leftSelectable, String rightSelectable, String left, Integer ability, String statusEffect, String comparator, Operand right, String join) {
+    public record Condition(String type, double value, String selectable, String leftSelectable, String rightSelectable, String left, Integer ability, String statusEffect, String comparator, Operand right, String join, String targetMode, double targetX, double targetY, double targetAngle) {
+        public Condition(String type, double value, String selectable, String leftSelectable, String rightSelectable, String left, Integer ability, String statusEffect, String comparator, Operand right, String join) {
+            this(type, value, selectable, leftSelectable, rightSelectable, left, ability, statusEffect, comparator, right, join,
+                    null, ArenaUnits.WIDTH / 2.0, ArenaUnits.HEIGHT / 2.0, 0.0);
+        }
     }
 
     public record StrategyBlock(int index, Object action, String selectable, double targetOffsetX, double targetOffsetY, String targetMode, double targetX, double targetY, String movementMode, String movementDirection, String phaseFacingMode, JsonNode variableTerms, int priority, List<Condition> conditions, double targetAngle) {
@@ -910,6 +974,8 @@ public class DuelSimulationService {
         public UUID userId;
         public String username;
         public int slot;
+        /** Team identity used for targeting, friendly-fire rules, and scoring. */
+        public int teamNumber;
         public double x;
         public double y;
         public double rotation;
@@ -956,6 +1022,8 @@ public class DuelSimulationService {
         public Integer triggeredAbility;
         public AbilityExecutionPayload triggeredAbilityPayload;
         public final Set<String> entityHitIds = new HashSet<>();
+        /** Full immutable roster for this simulation, attached by the orchestrator. */
+        public List<Bot> matchBots = List.of();
         public ArenaEntity abilitySpawn;
         public double pendingHealing;
         public double tickStartHp;
@@ -988,6 +1056,7 @@ public class DuelSimulationService {
         }
 
         @Override public int entitySlot() { return slot; }
+        @Override public int entityTeam() { return teamNumber > 0 ? teamNumber : slot; }
         @Override public double entityX() { return x; }
         @Override public double entityY() { return y; }
         @Override public double entityMovementStartX() { return movementStartX; }

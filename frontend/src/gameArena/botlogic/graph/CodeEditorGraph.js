@@ -1,4 +1,4 @@
-import { ACTION_TYPES, STATE_VARIABLES, VARIABLE_SELECTABLE_TYPES, actionSupportsTarget } from "../code/BotCode.js";
+import { ACTION_TYPES, BOT_CODE_SELECTABLES, STATE_VARIABLES, VARIABLE_SELECTABLE_TYPES, actionSupportsTarget, canonicalBotSelectableId } from "../code/BotCode.js";
 
 export const CODE_EDITOR_GRAPH_VERSION = "bot-editor-graph-v2";
 
@@ -83,7 +83,7 @@ export function sanitizeCodeEditorGraph(graph) {
             kind: "target",
             ...(String(node.name ?? "").trim() ? { name: String(node.name).slice(0, 40) } : {}),
             targetKind: node.targetKind === "coordinates" ? "coordinates" : "entity",
-            target: String(node.target ?? "opponent"),
+            target: canonicalBotSelectableId(node.target ?? BOT_CODE_SELECTABLES.OPPONENT),
             targetOffsetX: Number(node.targetOffsetX ?? 0),
             targetOffsetY: Number(node.targetOffsetY ?? 0),
             targetX: Number(node.targetX ?? 500),
@@ -287,7 +287,7 @@ export function compileCodeEditorGraph(configuration, graph) {
         });
         if (Array.isArray(branch.actions)) {
             branch.actions = actions;
-            Object.assign(branch, actions[0] ?? { action: "none", selectable: "opponent" });
+            Object.assign(branch, actions[0] ?? { action: "none", selectable: BOT_CODE_SELECTABLES.OPPONENT });
         }
     });
     return { ...configuration, roots, editorGraph };

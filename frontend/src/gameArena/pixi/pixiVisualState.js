@@ -65,6 +65,10 @@ export function isBotShape(shape) {
 }
 
 export function botColorRole(bot) {
+    const teamNumber = Number(bot?.teamNumber);
+    if (Number.isFinite(teamNumber) && teamNumber > 0) {
+        return teamNumber === 2 ? "red" : "blue";
+    }
     return Number(bot?.slot) === 2 ? "red" : "blue";
 }
 

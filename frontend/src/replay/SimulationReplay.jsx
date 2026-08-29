@@ -10,7 +10,7 @@ import { botColorRole, normalizeReplayObstacleShape } from "../gameArena/pixi/pi
 import { compassDegreesToRadians } from "../gameArena/botlogic/planner/arenaAngles.js";
 import MatchToolIcon from "../gameArena/coding/controls/MatchToolIcon.jsx";
 import BotLogo from "../components/BotLogo.jsx";
-import { displayedRoundWins, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, replayAbilitiesFor, replayBotAbilityState, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayFrameIndexForElapsedMs, replayRayOrigin, replayRemainingSeconds, replayShapeKey } from "./replayPresentation.js";
+import { centeredTeamPosition, displayedRoundWins, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, replayAbilitiesFor, replayBotAbilityState, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayFrameIndexForElapsedMs, replayRayOrigin, replayRatingChange, replayRemainingSeconds, replayResultRevealReached, replayShapeKey } from "./replayPresentation.js";
 
 const EMPTY_LIST = Object.freeze([]);
 const NOOP = () => { };
@@ -20,11 +20,34 @@ const EMPTY_PLAYBACK = Object.freeze({
     players: EMPTY_LIST,
 });
 
+function participantTeamNumber(participant) {
+    const explicitTeam = Number(participant?.teamNumber);
+    return Number.isFinite(explicitTeam) && explicitTeam > 0
+        ? explicitTeam
+        : Number(participant?.slot) === 1 ? 1 : 2;
+}
+
+function teamLabel(teamNumber) {
+    return Number(teamNumber) === 2 ? "Red Team" : "Blue Team";
+}
+
+function roundWinsForTeam(participants, teamNumber, roundWinsBeforeResult, revealCurrentRoundPoint) {
+    return participants
+        .filter((participant) => participantTeamNumber(participant) === teamNumber)
+        .reduce((highest, participant) => Math.max(
+            highest,
+            displayedRoundWins(participant, roundWinsBeforeResult, revealCurrentRoundPoint),
+        ), 0);
+}
+
 export default function SimulationReplay({
     playback: playbackInput,
     preloadShapes = [],
     onCancel = null,
     cancelLabel = "CANCEL REPLAY",
+    isCustomMatch = false,
+    isFinalMatchResult = false,
+    onReturnToLobby = null,
 }) {
     useLayoutEffect(() => {
         if (typeof window !== "undefined") window.scrollTo(0, 0);
@@ -83,34 +106,66 @@ export default function SimulationReplay({
     const winnerParticipant = useMemo(() => participants
         .find((participant) => sameId(participant?.userId, playback.winnerUserId)),
     [participants, playback.winnerUserId]);
-    const bots = useMemo(() => isForfeitResult && replayBots.length === 0
-        ? winnerParticipant ? [forfeitWinnerBot(winnerParticipant)] : []
-        : replayBots, [isForfeitResult, replayBots, winnerParticipant]);
+    const winnerTeamParticipants = useMemo(() => {
+        if (!winnerParticipant) return EMPTY_LIST;
+        const seen = new Set();
+        return participants
+            .filter((participant) => participantTeamNumber(participant) === participantTeamNumber(winnerParticipant))
+            .sort((first, second) => Number(first?.slot ?? 0) - Number(second?.slot ?? 0))
+            .filter((participant) => {
+                const key = participant?.userId != null
+                    ? `user:${participant.userId}`
+                    : participant?.slot != null ? `slot:${participant.slot}` : null;
+                if (key == null || seen.has(key)) return key == null;
+                seen.add(key);
+                return true;
+            });
+    }, [participants, winnerParticipant]);
+    const forfeitParticipants = useMemo(() => winnerTeamParticipants.length > 0
+        ? winnerTeamParticipants
+        : winnerParticipant ? [winnerParticipant] : EMPTY_LIST,
+    [winnerParticipant, winnerTeamParticipants]);
+    const viewerUserId = viewer?.userId ?? null;
+    const bots = useMemo(() => {
+        if (!isForfeitResult || forfeitParticipants.length === 0) return replayBots;
+        return forfeitParticipants.map((participant, index) => forfeitWinnerBot(
+            participant,
+            index,
+            forfeitParticipants.length,
+            viewerUserId,
+        ));
+    }, [forfeitParticipants, isForfeitResult, replayBots, viewerUserId]);
     const entities = useMemo(() => isForfeitResult ? EMPTY_LIST : countdownRemainingMs > 0
         ? playback.initialState?.entities ?? []
         : renderFrame?.entities ?? playback.initialState?.entities ?? EMPTY_LIST,
     [countdownRemainingMs, isForfeitResult, playback.initialState?.entities, renderFrame?.entities]);
     const winner = [...bots, ...initialBots, ...participants]
         .find((bot) => sameId(bot?.userId, playback.winnerUserId));
-    const winnerName = winner?.username ?? "A bot";
-    const finalWinner = bots.find((bot) => sameId(bot?.userId, playback.winnerUserId));
-    const winnerHp = finalWinner?.hp == null ? null : Math.max(0, Number(finalWinner.hp)).toFixed(1);
+    const winnerTeamNumber = winner ? participantTeamNumber(winner) : null;
+    const winnerTeamLabel = teamLabel(winnerTeamNumber);
     const hasPlaybackStarted = countdownRemainingMs <= 0;
     const hasDisplayedFinalFrame = hasPlaybackStarted && (frames.length === 0
         || elapsedPlaybackMs >= finalElapsedMs);
     const hasAuthorizedTerminalFrame = playback.batchSequence == null || playback.terminalBatch;
     const hasReachedReplayEnd = hasAuthorizedTerminalFrame && hasDisplayedFinalFrame;
+    const resultRevealsAtMs = playback.resultRevealsAtMs
+        ?? (playback.resultRevealsAt ? new Date(playback.resultRevealsAt).getTime() : null);
+    const hasReachedResultReveal = replayResultRevealReached(resultRevealsAtMs, nowMs);
+    const resultRevealReceived = playback.resultRevealReceived === true;
+    const roundResultRevealReceived = playback.roundResultRevealReceived === true;
     const shouldRevealResult = Boolean(playback.result)
         && hasAuthorizedTerminalFrame
-        && hasDisplayedFinalFrame;
+        && hasDisplayedFinalFrame
+        && hasReachedResultReveal
+        && (resultRevealReceived || roundResultRevealReceived);
+    const ratingChange = replayRatingChange(playback, shouldRevealResult && resultRevealReceived);
 
     const winnerColorRole = botColorRole(winner);
     const resultTitle = replayResultTitle({
         shouldRevealResult,
         hasReachedReplayEnd,
         result: playback.result,
-        winnerName,
-        winnerHp,
+        winnerTeamLabel,
         winnerColorRole,
     });
     const replaySeconds = replayRemainingSeconds(MATCH_DURATION_MS, displayElapsedMs);
@@ -153,21 +208,22 @@ export default function SimulationReplay({
         return [...initialFrame, ...previousTwo];
     }, [activeElapsedMs, frameIndex, frames, initialBots, playback.initialState?.entities]);
     const shapes = useMemo(() => playbackInput
-        ? replayArenaShapes(bots, entities, recentFrames, entranceProgress, frames, frameIndex, isInitialHandoff)
-        : preloadShapes, [bots, entities, entranceProgress, frameIndex, frames, isInitialHandoff, playbackInput, preloadShapes, recentFrames]);
+        ? replayArenaShapes(bots, entities, recentFrames, entranceProgress, frames, frameIndex, isInitialHandoff, viewerUserId)
+        : preloadShapes, [bots, entities, entranceProgress, frameIndex, frames, isInitialHandoff, playbackInput, preloadShapes, recentFrames, viewerUserId]);
 
     return <section className="arena-content-shell relative match-arena-shell flex h-[calc(100svh-72px)] min-h-0 overflow-hidden">
         <main className="arena-stage-main match-arena-stage flex min-w-0 flex-1 items-center justify-center overflow-hidden p-2">
             <div className="arena-stage-frame relative flex h-full w-full items-center justify-center">
                 <PixiCanvas shapes={shapes} selectedId={null} onSelectShape={NOOP} onUpdateShape={NOOP}
                     onDeselectAll={NOOP} editable={false} fillAvailable fixedLayout abilityLayout="split"
-                    showMissingOpponentStatus={false} lockCamera />
+                    showMissingOpponentStatus={false} showParticipantNumbers lockCamera />
             </div>
         </main>
         <ReplaySidebar
             playback={playback}
             player={viewer}
             opponent={opponent}
+            participants={participants}
             replaySeconds={replaySeconds}
             countdownRemainingMs={countdownRemainingMs}
             resultTitle={resultTitle}
@@ -175,6 +231,10 @@ export default function SimulationReplay({
             hasReachedReplayEnd={hasReachedReplayEnd}
             onCancel={onCancel}
             cancelLabel={cancelLabel}
+            isCustomMatch={isCustomMatch}
+            isFinalMatchResult={isFinalMatchResult}
+            onReturnToLobby={onReturnToLobby}
+            ratingChange={ratingChange}
         />
     </section>;
 }
@@ -183,6 +243,7 @@ function ReplaySidebar({
     playback,
     player,
     opponent,
+    participants,
     replaySeconds,
     countdownRemainingMs,
     resultTitle,
@@ -190,11 +251,16 @@ function ReplaySidebar({
     hasReachedReplayEnd,
     onCancel,
     cancelLabel,
+    isCustomMatch,
+    isFinalMatchResult,
+    onReturnToLobby,
+    ratingChange,
 }) {
     const roundWinsBeforeResult = playback.roundWinsBeforeResult;
     const revealCurrentRoundPoint = shouldRevealResult;
-    const playerWins = displayedRoundWins(player, roundWinsBeforeResult, revealCurrentRoundPoint);
-    const opponentWins = displayedRoundWins(opponent, roundWinsBeforeResult, revealCurrentRoundPoint);
+    const roundParticipants = participants.length > 0 ? participants : [player, opponent].filter(Boolean);
+    const blueTeamWins = roundWinsForTeam(roundParticipants, 1, roundWinsBeforeResult, revealCurrentRoundPoint);
+    const redTeamWins = roundWinsForTeam(roundParticipants, 2, roundWinsBeforeResult, revealCurrentRoundPoint);
     const statusMessage = countdownRemainingMs > 0
         ? "Bots entering the arena."
         : shouldRevealResult ? playback.message
@@ -224,8 +290,8 @@ function ReplaySidebar({
                         <strong className="font-interface-numeric text-amber-200">{formatReplayClock(replaySeconds)}</strong>
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2">
-                        <ReplayScoreBox label="YOU" value={playerWins} tone={botColorRole(player)} />
-                        <ReplayScoreBox label={opponent?.username ?? "OPP"} value={opponentWins} tone={botColorRole(opponent)} opponent />
+                        <ReplayScoreBox label="BLUE TEAM" value={blueTeamWins} tone="blue" />
+                        <ReplayScoreBox label="RED TEAM" value={redTeamWins} tone="red" opponent />
                     </div>
                 </section>
 
@@ -235,7 +301,24 @@ function ReplaySidebar({
                         {countdownRemainingMs > 0 ? "Preparing replay..." : resultTitle}
                     </p>
                     <p className="mt-2 text-xs leading-5 text-ink-muted">{statusMessage}</p>
+                    {ratingChange && (
+                        <div className="mt-4 border-t border-slate-700/70 pt-3" aria-label="ELO change">
+                            <span className="text-[10px] font-bold tracking-[.18em] text-ink-muted">ELO</span>
+                            <p className="mt-1 font-interface-numeric text-lg font-bold tracking-[.08em] text-ink-white">
+                                {ratingChange.label}
+                            </p>
+                        </div>
+                    )}
                 </section>
+                {isCustomMatch && isFinalMatchResult && shouldRevealResult && onReturnToLobby && (
+                    <button
+                        type="button"
+                        onClick={onReturnToLobby}
+                        className="gray-button-surface w-full border border-cyan-400/70 px-3 py-3 font-mono text-[10px] font-bold tracking-[.18em] text-cyan-100 hover:bg-cyan-950/40"
+                    >
+                        RETURN TO LOBBY
+                    </button>
+                )}
             </div>
         </aside>
     );
@@ -262,22 +345,22 @@ function formatReplayClock(seconds) {
     return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-function replayResultTitle({ shouldRevealResult, hasReachedReplayEnd, result, winnerName, winnerHp, winnerColorRole }) {
+function replayResultTitle({ shouldRevealResult, hasReachedReplayEnd, result, winnerTeamLabel, winnerColorRole }) {
     if (!shouldRevealResult) return hasReachedReplayEnd ? "Awaiting official result" : "Replay in progress";
     if (result === "DRAW") return "Fight drawn";
     if (result === "MATCH_CANCELLED") return "Match canceled";
     if (!["BOT_WIN", "WIN", "RESIGNATION_WIN", "DISCONNECTION_WIN"].includes(result)) return "Simulation failed";
 
-    const suffix = result === "RESIGNATION_WIN" ? " won by resignation"
-        : result === "DISCONNECTION_WIN" ? " won by disconnect"
-            : ` won the round${winnerHp == null ? "" : ` with ${winnerHp} HP`}`;
+    const suffix = result === "RESIGNATION_WIN" ? " wins by forfeit."
+        : result === "DISCONNECTION_WIN" ? " wins by disconnect."
+            : " wins.";
     return <>
-        <span className={winnerColorRole === "red" ? "text-[#ff7166]" : "text-[#57b8ff]"}>{winnerName}</span>
+        <span className={winnerColorRole === "red" ? "text-[#ff7166]" : "text-[#57b8ff]"}>{winnerTeamLabel}</span>
         {suffix}
     </>;
 }
 
-function replayArenaShapes(bots, entities, recentFrames = [], entranceProgress = 1, frames = [], frameIndex = 0, initialHandoff = false) {
+function replayArenaShapes(bots, entities, recentFrames = [], entranceProgress = 1, frames = [], frameIndex = 0, initialHandoff = false, viewerUserId = null) {
     const damageEvents = new Map();
     for (const frame of recentFrames) {
         for (const previous of [...(frame.bots ?? []), ...(frame.entities ?? [])]) {
@@ -301,6 +384,7 @@ function replayArenaShapes(bots, entities, recentFrames = [], entranceProgress =
         frameIndex,
         interpolationMs,
         replayPhase,
+        viewerUserId,
     ));
     const previousFrame = frames[Math.max(0, frameIndex - 1)];
     const nextFrame = frames[Math.min(frames.length - 1, frameIndex + 1)];
@@ -328,7 +412,7 @@ function replayArenaShapes(bots, entities, recentFrames = [], entranceProgress =
     ];
 }
 
-function botReplayShape(bot, damageEvents, entranceProgress, frames, frameIndex = 0, interpolationMs = 0, replayPhase = "playback") {
+function botReplayShape(bot, damageEvents, entranceProgress, frames, frameIndex = 0, interpolationMs = 0, replayPhase = "playback", viewerUserId = null) {
     const loadoutId = String(bot.combatLoadout ?? "").startsWith("custom:")
         ? bot.combatLoadout
         : encodeBotLoadout({ abilities: bot.abilities ?? [] });
@@ -368,23 +452,28 @@ function botReplayShape(bot, damageEvents, entranceProgress, frames, frameIndex 
         hitParticleEvent: damageEvents.get(replayShapeKey(bot)) ?? null,
         replayFrameIndex: frameIndex,
         replayPhase,
+        isCurrentUser: viewerUserId != null
+            ? sameId(bot.userId, viewerUserId)
+            : bot.isCurrentUser === true,
         ...replayVelocity,
         ...visualOrigin,
     };
 }
 
-function forfeitWinnerBot(winner) {
+function forfeitWinnerBot(winner, teamIndex, teamSize, viewerUserId) {
+    const loadout = winner.selectedLoadout ?? winner.combatLoadout ?? encodeBotLoadout({ abilities: [] });
+    const position = centeredTeamPosition(teamIndex, teamSize, ARENA_WIDTH_UNITS, ARENA_HEIGHT_UNITS);
     return {
         userId: winner.userId,
         username: winner.username,
         slot: winner.slot,
-        x: ARENA_WIDTH_UNITS / 2,
-        y: ARENA_HEIGHT_UNITS / 2,
-        rotation: 0,
+        teamNumber: participantTeamNumber(winner),
+        isCurrentUser: sameId(winner.userId, viewerUserId),
+        ...position,
         hp: BASE_BOT_HP,
         maxHp: BASE_BOT_HP,
-        combatLoadout: winner.selectedLoadout ?? encodeBotLoadout({ abilities: [] }),
-        abilities: replayAbilitiesFor(decodeBotLoadout(winner.selectedLoadout).abilities),
+        combatLoadout: loadout,
+        abilities: replayAbilitiesFor(decodeBotLoadout(loadout).abilities),
     };
 }
 

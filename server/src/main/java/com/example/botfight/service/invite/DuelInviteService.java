@@ -4,6 +4,7 @@ import com.example.botfight.DTO.DuelInviteDTO;
 import com.example.botfight.domain.AppUser;
 import com.example.botfight.domain.DuelInvite;
 import com.example.botfight.domain.DuelInviteStatus;
+import com.example.botfight.domain.MatchMode;
 import com.example.botfight.repository.DuelInviteRepository;
 import com.example.botfight.repository.UserRepository;
 import com.example.botfight.service.auth.AuthException;
@@ -185,7 +186,8 @@ public class DuelInviteService {
                         invitee.getId(),
                         invitee.getUsername(),
                         inviteePrincipalName,
-                        inviteeSocketSessionId));
+                        inviteeSocketSessionId),
+                MatchMode.CUSTOM);
         UUID matchId = events.stream()
                 .map(OutboundMatchmakingEvent::event)
                 .map(event -> event.matchId())

@@ -324,13 +324,11 @@ public final class MatchEventFactory {
                     playbackStartsAt,
                     resultRevealsAt,
                     roundReadyAt,
-                    session.roundNumber());
+                    session.roundNumber())
+                    .withMode(session.mode().name());
             if ((playback != null && playback.terminalBatch())
                     || (compactPlayback != null && compactPlayback.terminalBatch())) {
-                MatchPlayer opponent = session.players().stream()
-                        .filter(candidate -> !candidate.userId().equals(player.userId()))
-                        .findFirst()
-                        .orElse(null);
+                MatchPlayer opponent = opposingPlayer(session, player);
                 replayBatchEvent = replayBatchEvent.withReplayParticipants(
                         player.toDto(session.entityPlacementsByUserId().containsKey(player.userId())),
                         opponent == null ? null : opponent.toDto(
@@ -353,10 +351,18 @@ public final class MatchEventFactory {
         Long simulationPreparingDurationMs = simulationPreparingEvent && playbackStartsAt != null
                 ? Math.max(0, Duration.between(eventNow, playbackStartsAt).toMillis())
                 : null;
-        MatchPlayer opponent = session.players().stream()
-                .filter(candidate -> !candidate.userId().equals(player.userId()))
-                .findFirst()
-                .orElse(null);
+        MatchReplayDTO replayPayload = compactPlayback != null
+                ? compactPlayback
+                : MatchReplayDTO.from(playback);
+        if ("MATCH_RESULT_READY".equals(type) && replayPayload != null && persistenceService != null) {
+            MatchPersistenceService.RatingChange ratingChange = persistenceService.ratingChangeForPlayer(
+                    session.matchId(), player.userId());
+            if (ratingChange != null) {
+                replayPayload = replayPayload.withRatingChange(
+                        ratingChange.before(), ratingChange.after());
+            }
+        }
+        MatchPlayer opponent = opposingPlayer(session, player);
         UUID disconnectedUserId = session.players().stream()
                 .filter(candidate -> connectionService.disconnectDeadline(candidate.userId()) != null)
                 .map(MatchPlayer::userId)
@@ -387,7 +393,7 @@ public final class MatchEventFactory {
                         playbackStartsAt,
                         resultRevealsAt,
                         MatchSimulationService.DUEL_RULESET_VERSION,
-                        compactPlayback != null ? compactPlayback : MatchReplayDTO.from(playback),
+                        replayPayload,
                         session.roundNumber(),
                         session.winsRequired(),
                         message,
@@ -406,7 +412,13 @@ public final class MatchEventFactory {
                         disconnectEndsAt,
                         simulationPreparingEvent ? simulationPreparingDurationMs : null,
                         roundReadyAt,
-                        chatService.closeAt(session.matchId())),
+                        chatService.closeAt(session.matchId()))
+                        .withMode(session.mode().name())
+                        .withSurrenderState(
+                                session.surrenderVotes().contains(player.userId()),
+                                surrenderVoteCount(session, player),
+                                surrenderVoteRequired(session, player)),
+
                 delayMillis,
                 "MATCH_ROUND_READY".equals(type) ? roundReadyAt : null);
     }
@@ -429,10 +441,7 @@ public final class MatchEventFactory {
             Instant deadline,
             String message,
             MatchReplayDTO compactPlayback) {
-        MatchPlayer opponent = session.players().stream()
-                .filter(candidate -> !candidate.userId().equals(recipient.userId()))
-                .findFirst()
-                .orElse(null);
+        MatchPlayer opponent = opposingPlayer(session, recipient);
         UUID activeDisconnectedUserId = deadline != null
                 ? disconnectedPlayer.userId()
                 : session.players().stream()
@@ -491,7 +500,33 @@ public final class MatchEventFactory {
                         activeDisconnectEndsAt,
                         null,
                         null,
-                        chatService.closeAt(session.matchId())));
+                        chatService.closeAt(session.matchId()))
+                        .withMode(session.mode().name())
+                        .withSurrenderState(
+                                session.surrenderVotes().contains(recipient.userId()),
+                                surrenderVoteCount(session, recipient),
+                                surrenderVoteRequired(session, recipient)));
+    }
+
+    private int surrenderVoteCount(MatchSession session, MatchPlayer player) {
+        return (int) session.players().stream()
+                .filter(candidate -> candidate.teamNumber() == player.teamNumber())
+                .filter(candidate -> session.surrenderVotes().contains(candidate.userId()))
+                .count();
+    }
+
+    private int surrenderVoteRequired(MatchSession session, MatchPlayer player) {
+        return (int) session.players().stream()
+                .filter(candidate -> candidate.teamNumber() == player.teamNumber())
+                .count();
+    }
+
+    private MatchPlayer opposingPlayer(MatchSession session, MatchPlayer player) {
+        if (session == null || player == null) return null;
+        return session.players().stream()
+                .filter(candidate -> candidate.teamNumber() != player.teamNumber())
+                .findFirst()
+                .orElse(null);
     }
 
     public List<OutboundMatchmakingEvent> playerReconnectedEvents(

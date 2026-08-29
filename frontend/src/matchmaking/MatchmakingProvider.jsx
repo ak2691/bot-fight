@@ -58,11 +58,25 @@ function queueStatusErrorMessage(error) {
     return "The active match could not be checked. Try again.";
 }
 
+function currentUserIsPartyMember(party, userId) {
+    if (userId == null) return false;
+    return party?.members?.some((member) => (
+        String(member.userId) === String(userId)
+    )) === true;
+}
+
 export default function MatchmakingProvider({ children }) {
     const navigate = useNavigate();
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, user } = useAuth();
     const matchFoundRef = useRef(false);
     const matchmakingClientRef = useRef(null);
+    const partyClientRef = useRef(null);
+    const customLobbyClientRef = useRef(null);
+    const partyIdRef = useRef(null);
+    const partyQueueActiveRef = useRef(false);
+    const partyQueueOwnerRef = useRef(false);
+    const partyQueueMatchFoundRef = useRef(false);
+    const partyQueueCancellationRef = useRef(false);
     const pendingAcceptanceRef = useRef(null);
     const acceptanceActiveRef = useRef(false);
     const acceptanceDeadlineRef = useRef(null);
@@ -74,9 +88,14 @@ export default function MatchmakingProvider({ children }) {
     const activeMatchRequestRef = useRef(null);
     const activeMatchSnapshotRef = useRef(null);
     const [isQueueing, setIsQueueing] = useState(false);
+    const [queueMode, setQueueMode] = useState("ONES");
     const [queueStartedAt, setQueueStartedAt] = useState(null);
     const [queueElapsed, setQueueElapsed] = useState(0);
     const [queueError, setQueueError] = useState(null);
+    const [party, setParty] = useState(null);
+    const [partyLoading, setPartyLoading] = useState(true);
+    const [partyError, setPartyError] = useState(null);
+    const [customLobbyEvent, setCustomLobbyEvent] = useState(null);
     const [pendingAcceptance, setPendingAcceptance] = useState(null);
     const [acceptanceState, setAcceptanceState] = useState("READY");
     const [acceptanceRemaining, setAcceptanceRemaining] = useState(0);
@@ -202,6 +221,24 @@ export default function MatchmakingProvider({ children }) {
         setActiveMatchStatus({ loading: false, activeMatch: false, matchId: null, error: null });
     }, []);
 
+    const sendCustomLobbyChat = useCallback((lobbyId, message) => (
+        customLobbyClientRef.current?.sendCustomLobbyChat?.(lobbyId, message) === true
+    ), []);
+
+    const handleCustomLobbyEvent = useCallback((event) => {
+        if (!isAuthenticated || !event) return;
+        setCustomLobbyEvent(event);
+        if (event.type === "CUSTOM_LOBBY_MATCH_STARTED" && event.matchId) {
+            markActiveMatch(event.matchId);
+            navigate("/match", {
+                state: {
+                    activeMatchVerified: true,
+                    matchId: event.matchId,
+                },
+            });
+        }
+    }, [isAuthenticated, markActiveMatch, navigate]);
+
     useEffect(() => {
         if (!isAuthenticated) {
             setActiveMatchStatus({ loading: false, activeMatch: false, matchId: null, error: null });
@@ -220,6 +257,10 @@ export default function MatchmakingProvider({ children }) {
         acceptanceStartDeadlineRef.current = null;
         acceptanceSubmitPendingRef.current = false;
         matchFoundRef.current = false;
+        partyQueueActiveRef.current = false;
+        partyQueueOwnerRef.current = false;
+        partyQueueMatchFoundRef.current = false;
+        partyQueueCancellationRef.current = true;
         matchmakingClientRef.current?.setHandlers();
         setPendingAcceptance(null);
         setAcceptanceState("READY");
@@ -239,6 +280,147 @@ export default function MatchmakingProvider({ children }) {
         matchmakingClientRef.current?.unsubscribeMatch?.();
     }, []);
 
+    const handlePartyEvent = useCallback((event) => {
+        if (!isAuthenticated || !event) return;
+        setPartyLoading(false);
+        setPartyError(null);
+        const eventPartyId = event.partyId == null ? null : String(event.partyId);
+        const knownPartyId = partyIdRef.current == null ? null : String(partyIdRef.current);
+        if (knownPartyId && eventPartyId && knownPartyId !== eventPartyId) return;
+
+        if (event.party !== undefined) {
+            if (event.party == null || !currentUserIsPartyMember(event.party, user?.id)) {
+                partyIdRef.current = null;
+                setParty(null);
+            } else {
+                setParty(event.party);
+                partyIdRef.current = event.party.partyId ?? eventPartyId;
+            }
+        } else if (eventPartyId) {
+            partyIdRef.current = eventPartyId;
+        }
+
+        if (event.type === "PARTY_STATE_UPDATED") {
+            if ((event.party == null
+                || (event.party !== undefined && !currentUserIsPartyMember(event.party, user?.id)))
+                && (!knownPartyId || knownPartyId === eventPartyId)) {
+                partyIdRef.current = null;
+                setParty(null);
+            }
+            return;
+        }
+        if (event.type !== "PARTY_QUEUE_STATE") return;
+
+        const partySnapshot = event.party;
+        const isPartyLeader = partySnapshot?.members?.some((member) => (
+            member.leader === true && String(member.userId) === String(user?.id)
+        )) === true;
+        const queueStatus = String(event.queueStatus ?? "IDLE").toUpperCase();
+        const queueModeFromEvent = String(event.queueMode ?? "").toUpperCase();
+        const isQueueActive = queueStatus === "WAITING" || queueStatus === "MATCH_FOUND";
+
+        if (!isQueueActive) {
+            partyQueueActiveRef.current = false;
+            partyQueueOwnerRef.current = false;
+            partyQueueMatchFoundRef.current = false;
+            partyQueueCancellationRef.current = true;
+            if (acceptanceActiveRef.current) {
+                clearPendingAcceptance();
+                return;
+            }
+            setQueueStartedAt(null);
+            setQueueElapsed(0);
+            setIsQueueing(false);
+            matchmakingClientRef.current?.unsubscribeMatchmaking?.();
+            return;
+        }
+
+        partyQueueActiveRef.current = true;
+        partyQueueOwnerRef.current = isPartyLeader;
+        partyQueueCancellationRef.current = false;
+        if (queueModeFromEvent) setQueueMode(queueModeFromEvent);
+        setQueueError(null);
+        if (queueStatus === "MATCH_FOUND") {
+            partyQueueMatchFoundRef.current = true;
+            matchFoundRef.current = true;
+            setQueueStartedAt(null);
+            setQueueElapsed(0);
+            setIsQueueing(true);
+            const client = partyClientRef.current;
+            client?.subscribeMatchmaking?.();
+            client?.resumeWhenConnected?.();
+            return;
+        }
+
+        if (matchFoundRef.current || acceptanceActiveRef.current) return;
+        partyQueueMatchFoundRef.current = false;
+        const eventStartedAt = Date.parse(event.createdAt ?? "");
+        setQueueStartedAt(Number.isFinite(eventStartedAt) ? eventStartedAt : Date.now());
+        setQueueElapsed(0);
+        setIsQueueing(true);
+    }, [clearPendingAcceptance, isAuthenticated, user?.id]);
+
+    useEffect(() => {
+        if (!isAuthenticated) {
+            partyIdRef.current = null;
+            partyQueueActiveRef.current = false;
+            partyQueueOwnerRef.current = false;
+            partyQueueMatchFoundRef.current = false;
+            partyQueueCancellationRef.current = false;
+            setParty(null);
+            setPartyError(null);
+            setPartyLoading(false);
+            return undefined;
+        }
+
+        let disposed = false;
+        const client = getActiveMatchmakingClient(
+            { onPartyEvent: handlePartyEvent },
+            { autoReconnect: true, autoJoinOnConnect: false },
+        );
+        partyClientRef.current = client;
+        client.setPartyHandler?.(handlePartyEvent);
+        client.subscribeParty?.();
+        client.resumeReconnect?.();
+        void client.connect();
+
+        return () => {
+            disposed = true;
+            if (partyClientRef.current === client) partyClientRef.current = null;
+            if (disposed) client.setPartyHandler?.(null);
+            client.unsubscribeParty?.();
+        };
+    }, [handlePartyEvent, isAuthenticated, user?.id]);
+
+    useEffect(() => {
+        if (!isAuthenticated) {
+            setCustomLobbyEvent(null);
+            customLobbyClientRef.current = null;
+            return undefined;
+        }
+
+        let disposed = false;
+        const client = getActiveMatchmakingClient(
+            {
+                onCustomLobbyEvent: (event) => {
+                    if (!disposed) handleCustomLobbyEvent(event);
+                },
+            },
+            { autoReconnect: true, autoJoinOnConnect: false },
+        );
+        customLobbyClientRef.current = client;
+        client.subscribeCustomLobby?.();
+        client.resumeReconnect?.();
+        void client.connect();
+
+        return () => {
+            disposed = true;
+            if (customLobbyClientRef.current === client) customLobbyClientRef.current = null;
+            client.unsubscribeCustomLobby?.();
+            client.setCustomLobbyHandler?.(null);
+        };
+    }, [handleCustomLobbyEvent, isAuthenticated]);
+
     const cancelPendingAcceptance = useCallback(() => {
         const pending = pendingAcceptanceRef.current;
         const client = matchmakingClientRef.current;
@@ -246,8 +428,13 @@ export default function MatchmakingProvider({ children }) {
         clearPendingAcceptance();
     }, [clearPendingAcceptance]);
 
-    const startQueue = useCallback(async () => {
+    const startQueue = useCallback(async (mode = "ONES") => {
         if (queueStartInFlightRef.current) return;
+        const selectedMode = String(mode ?? "ONES").trim().toUpperCase() || "ONES";
+        if (party?.members?.some((member) => member.online === false)) {
+            setQueueError("Every party member must be online before the queue can start.");
+            return;
+        }
         const now = Date.now();
         const recentAttempts = queueAttemptTimesRef.current.filter(
             (attemptedAt) => now - attemptedAt < QUEUE_ATTEMPT_WINDOW_MS);
@@ -275,19 +462,25 @@ export default function MatchmakingProvider({ children }) {
                 return;
             }
             setQueueError(null);
+            partyQueueActiveRef.current = false;
+            partyQueueOwnerRef.current = false;
+            partyQueueMatchFoundRef.current = false;
+            partyQueueCancellationRef.current = false;
             setQueueElapsed(0);
             setQueueStartedAt(now);
+            setQueueMode(selectedMode);
             setIsQueueing(true);
         } finally {
             queueStartInFlightRef.current = false;
         }
-    }, [markActiveMatch, navigate, verifyActiveMatchForQueue]);
+    }, [markActiveMatch, navigate, party, verifyActiveMatchForQueue]);
 
     const cancelQueue = useCallback(() => {
         if (pendingAcceptanceRef.current) {
             cancelPendingAcceptance();
             return;
         }
+        partyQueueCancellationRef.current = true;
         matchmakingClientRef.current?.leaveQueue?.();
         matchmakingClientRef.current?.unsubscribeMatchmaking?.();
         matchmakingClientRef.current?.unsubscribeMatch?.();
@@ -343,7 +536,8 @@ export default function MatchmakingProvider({ children }) {
         if (!isQueueing) return undefined;
 
         let disposed = false;
-        matchFoundRef.current = false;
+        matchFoundRef.current = partyQueueMatchFoundRef.current;
+        partyQueueMatchFoundRef.current = false;
         matchmakingClientRef.current = null;
 
         const updatePendingAcceptance = (rawEvent) => {
@@ -401,7 +595,11 @@ export default function MatchmakingProvider({ children }) {
                 }
                 if (status === "CONNECTED") {
                     if (acceptanceActiveRef.current) client.resumeMatch();
-                    else if (!matchFoundRef.current) client.joinQueue();
+                    else if (partyQueueActiveRef.current && !partyQueueOwnerRef.current) {
+                        client.resumeMatch();
+                    } else if (!matchFoundRef.current) {
+                        client.joinQueue(queueMode);
+                    }
                 }
             },
             onEvent: (event) => {
@@ -430,6 +628,7 @@ export default function MatchmakingProvider({ children }) {
                 }
                 if (event.type === "MATCH_FOUND" && event.status === "MATCH_ACCEPT") {
                     matchFoundRef.current = true;
+                    partyQueueMatchFoundRef.current = false;
                     updatePendingAcceptance(event);
                     setQueueStartedAt(null);
                     setQueueElapsed(0);
@@ -467,6 +666,10 @@ export default function MatchmakingProvider({ children }) {
                     setQueueStartedAt(null);
                     setQueueElapsed(0);
                     setIsQueueing(false);
+                    partyQueueActiveRef.current = false;
+                    partyQueueOwnerRef.current = false;
+                    partyQueueMatchFoundRef.current = false;
+                    partyQueueCancellationRef.current = true;
                     markActiveMatch(event.matchId);
                     navigate("/match");
                 }
@@ -480,11 +683,15 @@ export default function MatchmakingProvider({ children }) {
         return () => {
             if (matchFoundRef.current) return;
             disposed = true;
-            client.leaveQueue();
+            if (!partyQueueCancellationRef.current
+                && (!partyQueueActiveRef.current || partyQueueOwnerRef.current)) {
+                client.leaveQueue();
+            }
+            partyQueueCancellationRef.current = false;
             client.unsubscribeMatchmaking?.();
             client.unsubscribeMatch?.();
         };
-    }, [clearPendingAcceptance, isQueueing, markActiveMatch, navigate]);
+    }, [clearPendingAcceptance, isQueueing, markActiveMatch, navigate, queueMode]);
 
     const acceptPendingMatch = useCallback(() => {
         const pending = pendingAcceptanceRef.current;
@@ -504,8 +711,15 @@ export default function MatchmakingProvider({ children }) {
 
     const value = useMemo(() => ({
         isQueueing,
+        queueMode,
         queueElapsed,
         queueError,
+        connectionStatus,
+        party,
+        partyLoading,
+        partyError,
+        customLobbyEvent,
+        sendCustomLobbyChat,
         activeMatchStatus,
         refreshActiveMatchStatus,
         markActiveMatch,
@@ -515,11 +729,18 @@ export default function MatchmakingProvider({ children }) {
     }), [
         activeMatchStatus,
         cancelQueue,
+        connectionStatus,
         clearActiveMatch,
         isQueueing,
         markActiveMatch,
+        queueMode,
         queueElapsed,
         queueError,
+        party,
+        partyError,
+        partyLoading,
+        customLobbyEvent,
+        sendCustomLobbyChat,
         refreshActiveMatchStatus,
         startQueue,
     ]);

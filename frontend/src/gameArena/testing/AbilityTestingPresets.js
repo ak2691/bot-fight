@@ -1,6 +1,7 @@
 import { ALL_ABILITY_DEFINITIONS, decodeBotLoadout, encodeBotLoadout, normalizedBotLoadout } from "../loadout/BotLoadout.js";
 import { abilityIdFromBoundary } from "../gameconfig/AbilityCompatibility.js";
 import { MAIN_SHAPE, buildOpponentShape, resetBotShape } from "../modelPayloads/arenaShapes.js";
+import { BOT_CODE_SELECTABLES } from "../botlogic/code/BotCode.js";
 
 const MOVEMENT_TEST_ABILITIES = new Set([21]);
 
@@ -59,7 +60,7 @@ function code(roots) {
 }
 
 function faceTarget() {
-    return { action: "rotate_toward_enemy", selectable: "opponent" };
+    return { action: "rotate_toward_enemy", selectable: BOT_CODE_SELECTABLES.OPPONENT };
 }
 
 function moveTowardTarget() {
@@ -67,12 +68,12 @@ function moveTowardTarget() {
         action: "move_walk",
         movementMode: "target",
         movementDirection: 0,
-        selectable: "opponent",
+        selectable: BOT_CODE_SELECTABLES.OPPONENT,
     };
 }
 
 function actionForAbility(abilityId) {
-    const action = { action: abilityId, selectable: "opponent" };
+    const action = { action: abilityId, selectable: BOT_CODE_SELECTABLES.OPPONENT };
     if (abilityId === 19) Object.assign(action, { movementMode: "target", movementDirection: 0 });
     if ([22, 24].includes(abilityId)) action.targetMode = "target";
     if (abilityId === 25) action.phaseFacingMode = "face_origin";
@@ -195,7 +196,7 @@ export function buildAbilityTestingArenaShapes(preset) {
         id: "main",
         type: "circle",
         slot: 1,
-        username: "Test Bot",
+        username: "My Bot",
         userId: "ability-test-player",
         x: preset?.playerPosition?.x ?? 500,
         y: preset?.playerPosition?.y ?? 350,
@@ -206,7 +207,7 @@ export function buildAbilityTestingArenaShapes(preset) {
     });
     const opponent = resetBotShape({
         ...buildOpponentShape({
-            username: "Practice Bot",
+            username: "Opponent 1",
             userId: "ability-test-opponent",
             slot: 2,
             loadout: opponentLoadout,
@@ -220,7 +221,7 @@ export function buildAbilityTestingArenaShapes(preset) {
         combatLoadout: encodeBotLoadout(opponentLoadout),
         loadout: opponentLoadout,
         locked: false,
-        opponentUsername: "Practice Bot",
+        opponentUsername: "Opponent 1",
     });
     return [player, opponent];
 }

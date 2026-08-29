@@ -41,6 +41,31 @@ test("notifications share the authenticated transport through a separate subscri
     assert.match(source, /acceptDuelInvite/);
 });
 
+test("party state has its own authenticated user queue and handler lifecycle", () => {
+    assert.match(source, /PARTY_DESTINATION = "\/user\/queue\/party"/);
+    assert.match(source, /partySubscription = transport\.subscribe\(/);
+    assert.match(source, /setPartyHandler/);
+    assert.match(source, /subscribeParty\(\)/);
+    assert.match(source, /unsubscribeParty\(\)/);
+    assert.match(source, /clearPendingPartyEvents/);
+});
+
+test("custom lobbies have an independent live destination and buffered handler", () => {
+    assert.match(source, /CUSTOM_LOBBY_DESTINATION = "\/user\/queue\/custom-lobby"/);
+    assert.match(source, /customLobbySubscription = transport\.subscribe\(/);
+    assert.match(source, /setCustomLobbyHandler/);
+    assert.match(source, /subscribeCustomLobby\(\)/);
+    assert.match(source, /unsubscribeCustomLobby\(\)/);
+    assert.match(source, /clearPendingCustomLobbyEvents/);
+    assert.match(source, /sendCustomLobbyChat\(lobbyId, message\)/);
+    assert.match(source, /\/app\/custom-lobby\.chat/);
+});
+
+test("match chat publishes an explicit audience channel", () => {
+    assert.match(source, /sendChat\(matchId, message, channel = "ALL"\)/);
+    assert.match(source, /channel \}\);/);
+});
+
 test("queue and active-match subscriptions have independent route lifecycles", () => {
     assert.match(source, /MATCH_DESTINATION = "\/user\/queue\/match"/);
     assert.match(source, /subscribeMatchmaking\(\)/);

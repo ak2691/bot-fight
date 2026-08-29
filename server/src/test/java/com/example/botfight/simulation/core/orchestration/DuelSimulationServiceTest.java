@@ -54,6 +54,41 @@ class DuelSimulationServiceTest {
     }
 
     @Test
+    void simulatesFourBotsAsTwoTeamsAndCarriesTeamsThroughReplay() {
+        MatchPlaybackDTO result = service.simulate(request(arena(200), List.of(
+                botWithTeam("team-one-a", "One A", 1, 200, 150, 1, idleBrain),
+                botWithTeam("team-one-b", "One B", 2, 800, 150, 1, idleBrain),
+                botWithTeam("team-two-a", "Two A", 3, 200, 850, 2, idleBrain),
+                botWithTeam("team-two-b", "Two B", 4, 800, 850, 2, idleBrain))));
+
+        assertThat(result.result()).isEqualTo("DRAW");
+        assertThat(result.initialState().bots())
+                .extracting(MatchPlaybackDTO.BotStateDTO::slot, MatchPlaybackDTO.BotStateDTO::teamNumber)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(1, 1),
+                        org.assertj.core.groups.Tuple.tuple(2, 1),
+                        org.assertj.core.groups.Tuple.tuple(3, 2),
+                        org.assertj.core.groups.Tuple.tuple(4, 2));
+        assertThat(result.frames()).allSatisfy(frame -> assertThat(frame.bots()).hasSize(4));
+    }
+
+    @Test
+    void numberedOpponentConditionalsResolveAgainstTheActingBotsTeam() {
+        JsonNode readsSecondOpponent = customBrain("[]", """
+                [{"priority":1,"conditions":[
+                  {"type":"expression","left":"selectable.hp","leftSelectable":"opponent_2","comparator":"gt","right":{"type":"number","value":0}}
+                ],"action":"move_walk","movementMode":"absolute","movementDirection":"east"}]
+                """);
+        MatchPlaybackDTO result = service.simulate(request(arena(100), List.of(
+                botWithTeam("selector", "Selector", 1, 400, 500, 1, readsSecondOpponent),
+                botWithTeam("ally", "Ally", 2, 400, 600, 1, idleBrain),
+                botWithTeam("first-enemy", "First Enemy", 3, 700, 500, 2, idleBrain),
+                botWithTeam("second-enemy", "Second Enemy", 4, 700, 600, 2, idleBrain, 0.0))));
+
+        assertThat(result.frames().getFirst().bots().getFirst().x()).isEqualTo(400.0);
+    }
+
+    @Test
     void recordsCompactReplayFramesWithoutFullBotMetadata() throws Exception {
         MatchReplayDTO result = service.simulateCompact(request(
                 arena(200),
@@ -870,12 +905,18 @@ class DuelSimulationServiceTest {
             DuelArenaRequest arena,
             DuelBotRequest first,
             DuelBotRequest second) {
+        return request(arena, List.of(first, second));
+    }
+
+    private DuelSimulationRequest request(
+            DuelArenaRequest arena,
+            List<DuelBotRequest> bots) {
         return new DuelSimulationRequest(
                 UUID.nameUUIDFromBytes("match".getBytes()),
                 DuelSimulationService.DUEL_RULESET_VERSION,
                 123L,
                 arena,
-                List.of(first, second));
+                bots);
     }
 
     private DuelArenaRequest arena(int durationMs) {
@@ -888,6 +929,27 @@ class DuelSimulationServiceTest {
 
     private DuelBotRequest bot(String id, String username, int slot, double x, double y, String selectedLoadout, JsonNode brain) {
         return botWithRotation(id, username, slot, x, y, selectedLoadout, brain, slot == 1 ? 90.0 : 270.0);
+    }
+
+    private DuelBotRequest botWithTeam(String id, String username, int slot, double x, double y,
+            int teamNumber, JsonNode brain) {
+        return botWithTeam(id, username, slot, x, y, teamNumber, brain, null);
+    }
+
+    private DuelBotRequest botWithTeam(String id, String username, int slot, double x, double y,
+            int teamNumber, JsonNode brain, Double initialHp) {
+        return new DuelBotRequest(
+                UUID.nameUUIDFromBytes(id.getBytes()),
+                username,
+                slot,
+                x,
+                y,
+                teamNumber == 1 ? 90.0 : 270.0,
+                60,
+                "melee",
+                brain,
+                initialHp,
+                teamNumber);
     }
 
     private DuelBotRequest botWithRotation(String id, String username, int slot, double x, double y, String selectedLoadout, JsonNode brain, double rotation) {
@@ -937,9 +999,9 @@ class DuelSimulationServiceTest {
                 ]
                 """));
 
-        assertThat(conditions.get(0).leftSelectable()).isEqualTo("opponent");
-        assertThat(conditions.get(0).selectable()).isEqualTo("opponent_hunter_drone");
-        assertThat(conditions.get(1).leftSelectable()).isEqualTo("opponent_hunter_drone");
+        assertThat(conditions.get(0).leftSelectable()).isEqualTo("opponent_1");
+        assertThat(conditions.get(0).selectable()).isEqualTo("opponent_1_hunter_drone");
+        assertThat(conditions.get(1).leftSelectable()).isEqualTo("opponent_1_hunter_drone");
     }
 
     @Test

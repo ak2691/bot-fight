@@ -44,7 +44,7 @@ export default function MatchView({
             <Arena
                 matchContext={matchContext}
                 finishStatus={hasSurrendered
-                    ? "SURRENDERED"
+                    ? "SURRENDER_VOTED"
                     : surrenderPending
                         ? "SURRENDERING"
                         : hasFinished

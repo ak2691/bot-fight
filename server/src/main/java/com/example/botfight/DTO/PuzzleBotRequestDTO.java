@@ -3,12 +3,24 @@ package com.example.botfight.DTO;
 import tools.jackson.databind.JsonNode;
 
 public class PuzzleBotRequestDTO {
+    private String role;
+    private Integer teamNumber;
+    private Integer slot;
     private String loadout;
     private Double startX;
     private Double startY;
     private Double rotation;
     private Double startHp;
     private JsonNode brain;
+
+    public String getRole() { return role; }
+    public void setRole(String role) { this.role = role; }
+
+    public Integer getTeamNumber() { return teamNumber; }
+    public void setTeamNumber(Integer teamNumber) { this.teamNumber = teamNumber; }
+
+    public Integer getSlot() { return slot; }
+    public void setSlot(Integer slot) { this.slot = slot; }
 
     public String getLoadout() { return loadout; }
     public void setLoadout(String loadout) { this.loadout = loadout; }

@@ -3,6 +3,7 @@ package com.example.botfight.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -18,6 +19,7 @@ import com.example.botfight.service.matchmaking.MatchmakingService;
 import com.example.botfight.DTO.ActiveMatchStatusDTO;
 import com.example.botfight.DTO.MatchmakingEventDTO;
 import com.example.botfight.DTO.MatchmakingPlayerDTO;
+import com.example.botfight.domain.MatchMode;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -342,6 +344,101 @@ class MatchmakingServiceTest {
                 "socket-four"))
                 .isInstanceOf(RateLimitExceededException.class)
                 .hasMessage(RateLimitExceededException.GENERIC_MESSAGE);
+    }
+
+    @Test
+    void aPartyCanBeMatchedWithTwoSoloPlayersInTheSameTwosPool() {
+        UUID partyOwnerId = UUID.randomUUID();
+        UUID teammateId = UUID.randomUUID();
+        UUID firstSoloId = UUID.randomUUID();
+        UUID secondSoloId = UUID.randomUUID();
+        UUID partyId = UUID.randomUUID();
+        List<MatchEntrant> party = List.of(
+                entrant(partyOwnerId, "party-owner", "party-owner@example.com", "party-owner-socket"),
+                entrant(teammateId, "teammate", "teammate@example.com", null));
+
+        var partyWaiting = service.joinQueue(
+                partyOwnerId,
+                "party-owner",
+                "party-owner@example.com",
+                "party-owner-socket",
+                MatchMode.TWOS,
+                party,
+                partyId);
+        service.joinQueue(
+                firstSoloId,
+                "solo-one",
+                "solo-one@example.com",
+                "solo-one-socket",
+                MatchMode.TWOS);
+        var found = service.joinQueue(
+                secondSoloId,
+                "solo-two",
+                "solo-two@example.com",
+                "solo-two-socket",
+                MatchMode.TWOS);
+
+        assertThat(partyWaiting).hasSize(2).allSatisfy(event ->
+                assertThat(event.event().type()).isEqualTo("QUEUE_WAITING"));
+        assertThat(found).hasSize(4).allSatisfy(event -> {
+            assertThat(event.event().type()).isEqualTo("MATCH_FOUND");
+            assertThat(event.event().status()).isEqualTo("MATCH_ACCEPT");
+        });
+
+        UUID matchId = found.getFirst().event().matchId();
+        service.acceptMatch(matchId, partyOwnerId, "party-owner-socket");
+        service.acceptMatch(matchId, teammateId, "teammate-replacement-socket");
+        service.acceptMatch(matchId, firstSoloId, "solo-one-socket");
+        service.acceptMatch(matchId, secondSoloId, "solo-two-socket");
+
+        ArgumentCaptor<List> entrantsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(matchService).startTeamMatch(entrantsCaptor.capture(), eq(MatchMode.TWOS));
+        List<?> startedEntrants = entrantsCaptor.getValue();
+        assertThat(startedEntrants).hasSize(4);
+        assertThat(startedEntrants).extracting(entry -> ((MatchEntrant) entry).teamNumber())
+                .containsExactlyInAnyOrder(1, 1, 2, 2);
+        assertThat(startedEntrants.stream()
+                .map(entry -> (MatchEntrant) entry)
+                .filter(entry -> entry.userId().equals(partyOwnerId)
+                        || entry.userId().equals(teammateId))
+                .map(MatchEntrant::teamNumber)
+                .distinct())
+                .containsExactly(1);
+    }
+
+    @Test
+    void fourSoloPlayersReceiveOneAcceptanceEventEachForTwos() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        UUID thirdUserId = UUID.randomUUID();
+        UUID fourthUserId = UUID.randomUUID();
+        service.joinQueue(firstUserId, "one", "one@example.com", "socket-one", MatchMode.TWOS);
+        service.joinQueue(secondUserId, "two", "two@example.com", "socket-two", MatchMode.TWOS);
+        service.joinQueue(thirdUserId, "three", "three@example.com", "socket-three", MatchMode.TWOS);
+        var found = service.joinQueue(
+                fourthUserId,
+                "four",
+                "four@example.com",
+                "socket-four",
+                MatchMode.TWOS);
+
+        assertThat(found).hasSize(4).extracting(event -> event.event().type())
+                .containsOnly("MATCH_FOUND");
+        UUID matchId = found.getFirst().event().matchId();
+        service.acceptMatch(matchId, firstUserId, "socket-one");
+        service.acceptMatch(matchId, secondUserId, "socket-two");
+        service.acceptMatch(matchId, thirdUserId, "socket-three");
+        service.acceptMatch(matchId, fourthUserId, "socket-four");
+
+        verify(matchService).startTeamMatch(any(), eq(MatchMode.TWOS));
+    }
+
+    private static MatchEntrant entrant(
+            UUID userId,
+            String username,
+            String principalName,
+            String socketSessionId) {
+        return new MatchEntrant(userId, username, principalName, socketSessionId);
     }
 
     private static final class MutableClock extends Clock {

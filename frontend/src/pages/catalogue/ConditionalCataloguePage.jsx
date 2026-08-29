@@ -8,7 +8,7 @@ const GROUP_ORDER = ["General", "Entity", "Health & Combat", "Position & Movemen
 
 const DESCRIPTIONS = Object.freeze({
     "match.elapsedSeconds": "Seconds elapsed since the 1v1 began.",
-    "selectable.distance": "Straight-line center-to-center distance between two selected entities. It defaults to My Bot and Opponent, but either selector can be changed to any entity.",
+    "selectable.distance": "Straight-line distance from the first selected entity to either another entity or an absolute arena coordinate. It defaults to My Bot and Opponent.",
     "selectable.hp": "Current HP of the selected entity. Entities without health report 0.",
     "selectable.damageTakenLastTick": "Damage received by the selected entity during the last simulation tick. Entities that cannot be hit report 0.",
     "selectable.hpNetChangeLastTick": "The selected entity's total HP change last tick, including damage and healing. Entities without health report 0.",
@@ -18,9 +18,9 @@ const DESCRIPTIONS = Object.freeze({
     "selectable.absoluteBearing": "The absolute arena bearing of the Target from the Facing Entity, represented as a signed degree measurement. The first selection must have the facing identity.",
     "selectable.movementDirection": "The selected entity's direction of travel, or 0 when it has no movement direction.",
     "selectable.speed": "The selected entity's movement speed in arena units per simulation tick, independent of direction; entities without movement speed report 0.",
-    "selectable.relativeBearing": "Smallest angle between the Facing Entity's facing direction and the bearing from it to the Target. The first selection must have the facing identity.",
-    "selectable.relativeBearingClockwise": "Clockwise turn needed for the Facing Entity to face the Target. The first selection must have the facing identity.",
-    "selectable.relativeBearingCounterclockwise": "Counterclockwise turn needed for the Facing Entity to face the Target. The first selection must have the facing identity.",
+    "selectable.relativeBearing": "Smallest angle between the Facing Entity's facing direction and a target entity, absolute coordinate, or absolute angle. The first selection must have the facing identity.",
+    "selectable.relativeBearingClockwise": "Clockwise turn needed for the Facing Entity to face a target entity, absolute coordinate, or absolute angle. The first selection must have the facing identity.",
+    "selectable.relativeBearingCounterclockwise": "Counterclockwise turn needed for the Facing Entity to face a target entity, absolute coordinate, or absolute angle. The first selection must have the facing identity.",
     "selectable.facing": "The selected entity's facing direction. Only entities with the facing identity are available.",
     "selectable.count": "Number of matching ability entities of the selected type; ordering and ordinal selection do not apply.",
     "selectable.age": "Age or active timer of the selected ability entity, in seconds.",
@@ -60,6 +60,9 @@ function describeVariable(variable) {
 function selectableRule(variable) {
     if (!variable.supportsSelectable) return null;
     if (variable.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR) {
+        if (variable.targetModes?.length) {
+            return `${variable.selectableSelectorLabels?.[0] ?? "Entity"} + Target mode`;
+        }
         return variable.selectableSelectorLabels?.join(" + ") ?? "Entity + Entity";
     }
     return "Entity";

@@ -136,6 +136,50 @@ class MatchSimulationServiceTest {
     }
 
     @Test
+    void preparationPlaybackSpreadsTwoTeamsUsingStableSlots() {
+        MatchSimulationService service = new MatchSimulationService(
+                new JsonMapper(),
+                duelSimulationService());
+        UUID firstUserId = UUID.nameUUIDFromBytes("team-one-first".getBytes());
+        UUID secondUserId = UUID.nameUUIDFromBytes("team-one-second".getBytes());
+        UUID thirdUserId = UUID.nameUUIDFromBytes("team-two-first".getBytes());
+        UUID fourthUserId = UUID.nameUUIDFromBytes("team-two-second".getBytes());
+        MatchSession session = new MatchSession(
+                UUID.nameUUIDFromBytes("team-preparation-match".getBytes()),
+                99L,
+                List.of(
+                        new MatchPlayer(firstUserId, "One", "one", 1, 1, true, UUID.randomUUID(), 0, "melee", true),
+                        new MatchPlayer(secondUserId, "Two", "two", 2, 1, true, UUID.randomUUID(), 0, "melee", true),
+                        new MatchPlayer(thirdUserId, "Three", "three", 3, 2, true, UUID.randomUUID(), 0, "melee", true),
+                        new MatchPlayer(fourthUserId, "Four", "four", 4, 2, true, UUID.randomUUID(), 0, "melee", true)),
+                Instant.now(),
+                Instant.now(),
+                Instant.now(),
+                Instant.now(),
+                1,
+                1,
+                List.of(),
+                Map.of());
+
+        MatchPlaybackDTO playback = service.buildPreparationPlayback(session);
+
+        assertThat(playback.initialState().bots())
+                .extracting(MatchPlaybackDTO.BotStateDTO::slot, MatchPlaybackDTO.BotStateDTO::teamNumber)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(1, 1),
+                        org.assertj.core.groups.Tuple.tuple(2, 1),
+                        org.assertj.core.groups.Tuple.tuple(3, 2),
+                        org.assertj.core.groups.Tuple.tuple(4, 2));
+        assertThat(playback.initialState().bots())
+                .extracting(MatchPlaybackDTO.BotStateDTO::x, MatchPlaybackDTO.BotStateDTO::y)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(333.333, 150.0),
+                        org.assertj.core.groups.Tuple.tuple(666.667, 150.0),
+                        org.assertj.core.groups.Tuple.tuple(333.333, 850.0),
+                        org.assertj.core.groups.Tuple.tuple(666.667, 850.0));
+    }
+
+    @Test
     void preparationPlaybackKeepsDraftOrderAcrossRounds() {
         MatchSimulationService service = new MatchSimulationService(
                 new JsonMapper(),

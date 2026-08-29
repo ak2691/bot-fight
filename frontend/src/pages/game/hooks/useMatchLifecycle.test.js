@@ -26,6 +26,8 @@ test("match lifecycle hook retains authoritative event and timer transitions", (
     assert.match(source, /window\.sessionStorage/);
     assert.match(source, /readLoadoutDraft\(event\)/);
     assert.match(source, /writeLoadoutDraft\(matchEvent, loadoutChoice\)/);
+    assert.match(source, /channel: String\(event\.channel/);
+    assert.match(source, /sendChat\(matchEventRef\.current\.matchId, message, channel\)/);
 });
 
 test("match errors preserve the current rendered phase", () => {
@@ -51,11 +53,32 @@ test("a terminal result keeps delayed replay batches from overwriting it", () =>
     assert.match(resultHandler, /terminalResultRef\.current = true/);
 });
 
+test("a non-terminal round result is revealed by the round-result batch", () => {
+    const source = readFileSync(SOURCE_PATH, "utf8");
+    const replayHandler = source.slice(
+        source.indexOf('if (event.type === "MATCH_REPLAY_BATCH")'),
+        source.indexOf('if (event.type === "MATCH_RESULT_READY")'),
+    );
+
+    assert.match(replayHandler, /event\.status === "ROUND_RESULT_READY"/);
+    assert.match(replayHandler, /roundResultRevealReceived/);
+});
+
 test("the official replay result clears the cached active-match state", () => {
     const source = readFileSync(SOURCE_PATH, "utf8");
     const resultHandler = source.slice(source.indexOf('if (event.type === "MATCH_RESULT_READY")'));
 
     assert.match(resultHandler, /clearActiveMatch\(\)/);
+    assert.match(resultHandler, /resultRevealReceived: true/);
+});
+
+test("code view requests are client-filtered to teammates and expose team forfeit state", () => {
+    const source = readFileSync(SOURCE_PATH, "utf8");
+
+    assert.match(source, /participantTeamNumber\(target\) !== participantTeamNumber\(event\?\.player\)/);
+    assert.match(source, /surrenderVoteCount: matchEvent\?\.surrenderVoteCount/);
+    assert.match(source, /surrenderVoteRequired: matchEvent\?\.surrenderVoteRequired/);
+    assert.match(source, /winnerIsOnOpposingTeam\(event\)/);
 });
 
 test("reconnect notifications clear the banner across replay phase boundaries", () => {

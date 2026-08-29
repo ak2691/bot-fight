@@ -23,7 +23,12 @@ public final class BotLogicContracts {
     public static final String CONDITION_ALWAYS = "always";
     public static final String CONDITION_EXPRESSION = "expression";
     public static final String SELECTABLE_MY = "my_bot";
-    public static final String SELECTABLE_OPPONENT = "opponent";
+    public static final String SELECTABLE_OPPONENT = "opponent_1";
+    public static final String SELECTABLE_OPPONENT_LEGACY = "opponent";
+    public static final String SELECTABLE_TEAMMATE_PREFIX = "teammate_";
+    public static final String SELECTABLE_OPPONENT_PREFIX = "opponent_";
+    /** Numbered bot selectors are explicit, bounded slots—not dynamic target queries. */
+    public static final int MAX_NUMBERED_BOT_SELECTABLES = 7;
     public static final String CUSTOM_VARIABLE_PREFIX = "custom.";
     public static final String CUSTOM_VARIABLE_OPERATION_SET = "set";
     public static final String CUSTOM_VARIABLE_OPERATION_ADD = "add";
@@ -36,6 +41,9 @@ public final class BotLogicContracts {
     public static final double CUSTOM_NUMBER_LIMIT = 99_999.0;
     public static final String VARIABLE_TAG_ALLOW_NEGATIVE_INTEGER = "allow-negative-integer";
     public static final String SELECTABLE_CAPABILITY_HEALTH = "health";
+    public static final String TARGET_MODE_TARGET = "target";
+    public static final String TARGET_MODE_COORDINATES = "coordinates";
+    public static final String TARGET_MODE_ANGLE = "angle";
 
     public enum ActionHead { NONE, VARIABLE, MOVEMENT, ROTATION, ABILITY }
     public enum ValueType { NUMBER, BOOLEAN }
@@ -171,6 +179,18 @@ public final class BotLogicContracts {
                     || source == VariableSource.SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE;
         }
 
+        public Set<String> targetModes() {
+            if (source == VariableSource.SELECTABLE_DISTANCE) {
+                return Set.of(TARGET_MODE_TARGET, TARGET_MODE_COORDINATES);
+            }
+            if (source == VariableSource.SELECTABLE_RELATIVE_BEARING
+                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING_CLOCKWISE
+                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE) {
+                return Set.of(TARGET_MODE_TARGET, TARGET_MODE_ANGLE, TARGET_MODE_COORDINATES);
+            }
+            return Set.of();
+        }
+
         /** The contract type for a single selectable, or PAIR for two selectable slots. */
         public VariableSelectableType selectableType() {
             return isPairVariable() ? VariableSelectableType.PAIR : null;
@@ -256,25 +276,49 @@ public final class BotLogicContracts {
                 SELECTABLE_OPPONENT, EntityContracts.SelectableOwner.OWNER, null, null, 0,
                 Set.of(SelectableIdentity.BOT, SelectableIdentity.POSITION, SelectableIdentity.HEALTH,
                         SelectableIdentity.FACING, SelectableIdentity.MOVEMENT)));
+        for (int index = 1; index <= MAX_NUMBERED_BOT_SELECTABLES; index++) {
+            String teammate = SELECTABLE_TEAMMATE_PREFIX + index;
+            String opponent = SELECTABLE_OPPONENT_PREFIX + index;
+            Set<SelectableIdentity> identities = Set.of(
+                    SelectableIdentity.BOT, SelectableIdentity.POSITION, SelectableIdentity.HEALTH,
+                    SelectableIdentity.FACING, SelectableIdentity.MOVEMENT);
+            selectables.put(teammate, new SelectableContract(
+                    teammate, EntityContracts.SelectableOwner.OWNER, null, null, 0, identities));
+            selectables.put(opponent, new SelectableContract(
+                    opponent, EntityContracts.SelectableOwner.OWNER, null, null, 0, identities));
+        }
         for (EntityContract entity : EntityContracts.all().values()) {
             if (entity.selectableOwner() == EntityContracts.SelectableOwner.NONE) {
                 selectables.put(entity.entityType(), selectable(entity, entity.entityType()));
                 continue;
             }
-            selectables.put("opponent_" + entity.entityType(), selectable(entity, "opponent_" + entity.entityType()));
-            selectables.put("my_" + entity.entityType(), selectable(entity, "my_" + entity.entityType()));
+            String opponentOne = entitySelectableId(SELECTABLE_OPPONENT, entity.entityType());
+            String myBot = entitySelectableId(SELECTABLE_MY, entity.entityType());
+            selectables.put(opponentOne, selectable(entity, opponentOne));
+            selectables.put(myBot, selectable(entity, myBot));
+            for (int index = 1; index <= MAX_NUMBERED_BOT_SELECTABLES; index++) {
+                String teammate = entitySelectableId(SELECTABLE_TEAMMATE_PREFIX + index, entity.entityType());
+                selectables.put(teammate, selectable(entity, teammate));
+                if (index > 1) {
+                    String opponent = entitySelectableId(SELECTABLE_OPPONENT_PREFIX + index, entity.entityType());
+                    selectables.put(opponent, selectable(entity, opponent));
+                }
+            }
         }
         return Collections.unmodifiableMap(selectables);
     }
 
     public static Map<String, SelectableContract> selectableContracts() { return SELECTABLES; }
-    public static SelectableContract selectableContract(String id) { return SELECTABLES.get(id); }
+    public static SelectableContract selectableContract(String id) {
+        return SELECTABLES.get(canonicalSelectableId(id));
+    }
     public static Set<String> selectableIds() { return SELECTABLES.keySet(); }
 
     public static boolean isAllowedSelectable(String selectableId) {
         if (selectableId == null) return false;
-        if (SELECTABLES.containsKey(selectableId)) return true;
-        String[] parts = selectableId.split(":", -1);
+        String canonical = canonicalSelectableId(selectableId);
+        if (SELECTABLES.containsKey(canonical)) return true;
+        String[] parts = canonical.split(":", -1);
         if (parts.length != 3 || !SELECTABLES.containsKey(parts[0]) || isBotSelectable(parts[0])) return false;
         if (!SELECTABLE_ORDERS.contains(parts[1])) return false;
         try {
@@ -288,7 +332,7 @@ public final class BotLogicContracts {
     public static boolean selectableSupportsCapability(String selectableId, String capability) {
         if (SELECTABLE_CAPABILITY_HEALTH.equals(capability)) {
             String base = selectableId == null ? "" : selectableId.split(":", -1)[0];
-            SelectableContract contract = SELECTABLES.get(base);
+            SelectableContract contract = selectableContract(base);
             return contract != null && contract.healthBearing();
         }
         return true;
@@ -297,8 +341,52 @@ public final class BotLogicContracts {
     public static boolean selectableMatchesIdentities(String selectableId, Set<SelectableIdentity> identities) {
         if (identities == null || identities.isEmpty()) return true;
         String base = selectableId == null ? "" : selectableId.split(":", -1)[0];
-        SelectableContract contract = SELECTABLES.get(base);
+        SelectableContract contract = selectableContract(base);
         return contract != null && contract.selectableIdentities().containsAll(identities);
+    }
+
+    /** Returns the canonical selector while preserving an optional order suffix. */
+    public static String canonicalSelectableId(String selectableId) {
+        if (selectableId == null) return null;
+        String[] parts = selectableId.split(":", -1);
+        parts[0] = canonicalSelectableBase(parts[0]);
+        return String.join(":", parts);
+    }
+
+    /** Builds the exact entity selector for one bot in the acting bot's roster. */
+    public static String entitySelectableId(String botSelector, String entityType) {
+        return botSelector + "_" + entityType;
+    }
+
+    /**
+     * Returns the exact bot selector encoded in an entity selector, or null for
+     * a global/non-owned entity selector.
+     */
+    public static String entitySelectableBotSelector(String selectableId, String entityType) {
+        if (selectableId == null || entityType == null) return null;
+        String base = canonicalSelectableId(selectableId).split(":", -1)[0];
+        if (entitySelectableId(SELECTABLE_MY, entityType).equals(base)) return SELECTABLE_MY;
+        for (int index = 1; index <= MAX_NUMBERED_BOT_SELECTABLES; index++) {
+            String teammate = SELECTABLE_TEAMMATE_PREFIX + index;
+            if (entitySelectableId(teammate, entityType).equals(base)) return teammate;
+            String opponent = SELECTABLE_OPPONENT_PREFIX + index;
+            if (entitySelectableId(opponent, entityType).equals(base)) return opponent;
+        }
+        return null;
+    }
+
+    private static String canonicalSelectableBase(String base) {
+        if (SELECTABLE_OPPONENT_LEGACY.equals(base)) return SELECTABLE_OPPONENT;
+        for (EntityContract entity : EntityContracts.all().values()) {
+            if (entity.selectableOwner() == EntityContracts.SelectableOwner.NONE) continue;
+            if (("my_" + entity.entityType()).equals(base)) {
+                return entitySelectableId(SELECTABLE_MY, entity.entityType());
+            }
+            if (("opponent_" + entity.entityType()).equals(base)) {
+                return entitySelectableId(SELECTABLE_OPPONENT, entity.entityType());
+            }
+        }
+        return base;
     }
 
     public static ActionContract actionContract(Object action) {
@@ -381,7 +469,33 @@ public final class BotLogicContracts {
     }
 
     public static boolean isBotSelectable(String selectableId) {
-        return SELECTABLE_MY.equals(selectableId) || SELECTABLE_OPPONENT.equals(selectableId);
+        selectableId = canonicalSelectableId(selectableId);
+        return SELECTABLE_MY.equals(selectableId)
+                || SELECTABLE_OPPONENT.equals(selectableId)
+                || botSelectableIndex(selectableId) > 0;
+    }
+
+    public static boolean isTeammateSelectable(String selectableId) {
+        return numberedSelectableIndex(canonicalSelectableId(selectableId), SELECTABLE_TEAMMATE_PREFIX) > 0;
+    }
+
+    public static int botSelectableIndex(String selectableId) {
+        selectableId = canonicalSelectableId(selectableId);
+        int teammateIndex = numberedSelectableIndex(selectableId, SELECTABLE_TEAMMATE_PREFIX);
+        return teammateIndex > 0
+                ? teammateIndex
+                : numberedSelectableIndex(selectableId, SELECTABLE_OPPONENT_PREFIX);
+    }
+
+    private static int numberedSelectableIndex(String selectableId, String prefix) {
+        if (selectableId == null || !selectableId.startsWith(prefix)) return 0;
+        String suffix = selectableId.substring(prefix.length());
+        try {
+            int index = Integer.parseInt(suffix);
+            return index >= 1 && index <= MAX_NUMBERED_BOT_SELECTABLES ? index : 0;
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
     }
 
     public static Set<String> statusEffects() { return STATUS_EFFECTS; }

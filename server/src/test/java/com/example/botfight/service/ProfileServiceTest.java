@@ -13,6 +13,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.example.botfight.domain.AppUser;
+import com.example.botfight.domain.MatchMode;
 import com.example.botfight.domain.MatchResult;
 import com.example.botfight.domain.Profile;
 import com.example.botfight.DTO.AboutMeRequestDTO;
@@ -72,6 +73,30 @@ class ProfileServiceTest {
                 any(Instant.class))).thenReturn(3L);
         when(participantRepository.countByUserIdAndResultAndMatchResultVisibleAtLessThanEqual(
                 eq(user.getId()), eq(MatchResult.DRAW), any(Instant.class))).thenReturn(2L);
+        when(participantRepository.countByUserIdAndModeAndResultAndMatchResultVisibleAtLessThanEqual(
+                eq(user.getId()), eq(MatchMode.ONES), eq(MatchResult.WIN), any(Instant.class)))
+                .thenReturn(5L);
+        when(participantRepository.countByUserIdAndModeAndResultInAndMatchResultVisibleAtLessThanEqual(
+                eq(user.getId()),
+                eq(MatchMode.ONES),
+                eq(List.of(MatchResult.LOSS, MatchResult.FORFEIT)),
+                any(Instant.class)))
+                .thenReturn(2L);
+        when(participantRepository.countByUserIdAndModeAndResultAndMatchResultVisibleAtLessThanEqual(
+                eq(user.getId()), eq(MatchMode.ONES), eq(MatchResult.DRAW), any(Instant.class)))
+                .thenReturn(1L);
+        when(participantRepository.countByUserIdAndModeAndResultAndMatchResultVisibleAtLessThanEqual(
+                eq(user.getId()), eq(MatchMode.TWOS), eq(MatchResult.WIN), any(Instant.class)))
+                .thenReturn(2L);
+        when(participantRepository.countByUserIdAndModeAndResultInAndMatchResultVisibleAtLessThanEqual(
+                eq(user.getId()),
+                eq(MatchMode.TWOS),
+                eq(List.of(MatchResult.LOSS, MatchResult.FORFEIT)),
+                any(Instant.class)))
+                .thenReturn(1L);
+        when(participantRepository.countByUserIdAndModeAndResultAndMatchResultVisibleAtLessThanEqual(
+                eq(user.getId()), eq(MatchMode.TWOS), eq(MatchResult.DRAW), any(Instant.class)))
+                .thenReturn(3L);
         when(puzzleCompletionRepository.countByUserId(user.getId())).thenReturn(4L);
         var profileView = service.currentProfile(authentication);
 
@@ -83,6 +108,12 @@ class ProfileServiceTest {
         assertThat(profileView.losses()).isEqualTo(3);
         assertThat(profileView.draws()).isEqualTo(2);
         assertThat(profileView.puzzlesSolved()).isEqualTo(4);
+        assertThat(profileView.queueStats().ones().wins()).isEqualTo(5);
+        assertThat(profileView.queueStats().ones().losses()).isEqualTo(2);
+        assertThat(profileView.queueStats().ones().draws()).isEqualTo(1);
+        assertThat(profileView.queueStats().twos().wins()).isEqualTo(2);
+        assertThat(profileView.queueStats().twos().losses()).isEqualTo(1);
+        assertThat(profileView.queueStats().twos().draws()).isEqualTo(3);
     }
 
     @Test

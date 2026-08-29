@@ -71,7 +71,7 @@ public class DuelInviteSocketController {
                         accepted.inviteId(),
                         accepted.inviteId(),
                         accepted.inviterUsername(),
-                        "The 1v1 is ready.",
+                        "The Custom Match is ready.",
                         now,
                         null,
                         accepted.matchId()));
@@ -84,7 +84,7 @@ public class DuelInviteSocketController {
                         accepted.inviteId(),
                         accepted.inviteId(),
                         accepted.inviteeUsername(),
-                        accepted.inviteeUsername() + " accepted your 1v1 invite.",
+                        accepted.inviteeUsername() + " accepted your Custom Match invite.",
                         now,
                         null,
                         accepted.matchId()));

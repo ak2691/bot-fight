@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAutoPlayStartShapes, buildInitialArenaShapes, toSimulationBotShape } from "./arenaShapes.js";
+import { buildAutoPlayStartShapes, buildInitialArenaShapes, buildMatchSpawnShapes, toSimulationBotShape } from "./arenaShapes.js";
 import { PRACTICE_OPPONENT_START, PRACTICE_PLAYER_START } from "./arenaConstants.js";
 import { buildTutorialArenaShapes } from "../../tutorial/TutorialPresets.js";
 
@@ -21,13 +21,13 @@ test("resuming autoplay preserves arena entities", () => {
 test("bot arena shapes group health, stats, transform, and statuses", () => {
     const [player, opponent] = buildInitialArenaShapes(null);
 
-    assert.deepEqual(player.health, { current: 100, max: 100 });
+    assert.deepEqual(player.health, { current: 150, max: 150 });
     assert.deepEqual(player.transform.position, { x: 500, y: 500 });
     assert.deepEqual(player.transform.velocity, { x: 0, y: 0 });
     assert.deepEqual(player.statusEffects, []);
     assert.equal(player.hp, undefined);
     assert.equal(player.x, undefined);
-    assert.equal(opponent.health.current, 100);
+    assert.equal(opponent.health.current, 150);
     assert.deepEqual(opponent.transform.position, { x: 500, y: 850 });
 });
 
@@ -41,4 +41,33 @@ test("tutorial reset includes the three standard abilities without Block charges
     const shape = toSimulationBotShape(player);
     assert.deepEqual(shape.abilities, [19, 20, 34]);
     assert.equal(shape.abilityCharges[2], undefined);
+});
+
+test("match spawn shapes assign stable slots and spread each team across its row", () => {
+    const shapes = buildMatchSpawnShapes({
+        matchId: "match-2v2",
+        player: { userId: "user-1", username: "One", slot: 1, teamNumber: 1, selectedLoadout: "melee" },
+        loadout: "melee",
+        players: [
+            { userId: "user-1", username: "One", slot: 1, teamNumber: 1, selectedLoadout: "melee" },
+            { userId: "user-2", username: "Two", slot: 2, teamNumber: 1, selectedLoadout: "melee" },
+            { userId: "user-3", username: "Three", slot: 3, teamNumber: 2, selectedLoadout: "melee" },
+            { userId: "user-4", username: "Four", slot: 4, teamNumber: 2, selectedLoadout: "melee" },
+        ],
+    }).map(toSimulationBotShape);
+
+    assert.deepEqual(shapes.map((shape) => [shape.id, shape.slot, shape.teamNumber]), [
+        ["main", 1, 1],
+        ["bot-user-2", 2, 1],
+        ["bot-user-3", 3, 2],
+        ["bot-user-4", 4, 2],
+    ]);
+    assert.deepEqual(shapes.map((shape) => [shape.x, shape.y, shape.rotation]), [
+        [1000 / 3, 150, 180],
+        [2000 / 3, 150, 180],
+        [1000 / 3, 850, 0],
+        [2000 / 3, 850, 0],
+    ]);
+    assert.deepEqual(shapes.map((shape) => shape.locked), [false, true, true, true]);
+    assert.deepEqual(shapes.map((shape) => shape.isCurrentUser), [true, false, false, false]);
 });

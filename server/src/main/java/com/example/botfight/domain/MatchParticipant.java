@@ -33,6 +33,9 @@ public class MatchParticipant {
     @Column(nullable = false)
     private short slot;
 
+    @Column(name = "team_number", nullable = false)
+    private short teamNumber = 1;
+
     @Column(name = "selected_loadout", length = 40)
     private String selectedLoadout;
 
@@ -79,6 +82,14 @@ public class MatchParticipant {
 
     public void setSlot(short slot) {
         this.slot = slot;
+    }
+
+    public short getTeamNumber() {
+        return teamNumber;
+    }
+
+    public void setTeamNumber(short teamNumber) {
+        this.teamNumber = teamNumber;
     }
 
     public String getSelectedLoadout() {

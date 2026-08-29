@@ -59,6 +59,12 @@ public class Puzzle {
     @Column(name = "max_custom_variables", nullable = false)
     private int maxCustomVariables = 100;
 
+    @Column(name = "player_team_size", nullable = false)
+    private int playerTeamSize = 1;
+
+    @Column(name = "opponent_team_size", nullable = false)
+    private int opponentTeamSize = 1;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "win_conditions", nullable = false)
     private String winConditions = "[]";
@@ -116,6 +122,12 @@ public class Puzzle {
 
     public int getMaxCustomVariables() { return maxCustomVariables; }
     public void setMaxCustomVariables(int maxCustomVariables) { this.maxCustomVariables = maxCustomVariables; }
+
+    public int getPlayerTeamSize() { return playerTeamSize; }
+    public void setPlayerTeamSize(int playerTeamSize) { this.playerTeamSize = playerTeamSize; }
+
+    public int getOpponentTeamSize() { return opponentTeamSize; }
+    public void setOpponentTeamSize(int opponentTeamSize) { this.opponentTeamSize = opponentTeamSize; }
 
     public String getWinConditions() { return winConditions; }
     public void setWinConditions(String winConditions) { this.winConditions = winConditions; }

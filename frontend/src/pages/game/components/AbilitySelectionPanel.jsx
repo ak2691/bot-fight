@@ -30,6 +30,7 @@ export default function AbilitySelectionPanel({
     onLockLoadout,
     player,
     opponent,
+    players = [],
     remaining,
     roundNumber,
     abilityOffers,
@@ -41,7 +42,35 @@ export default function AbilitySelectionPanel({
     canSurrender = false,
 }) {
     const playerLocked = Boolean(player?.loadoutSelected);
-    const opponentLocked = Boolean(opponent?.loadoutSelected);
+    const roster = (players.length > 0 ? players : [player, opponent])
+        .filter(Boolean)
+        .filter((participant, index, all) => (
+            participant.userId == null
+                ? index === all.findIndex((candidate) => candidate === participant)
+                : index === all.findIndex((candidate) => String(candidate.userId) === String(participant.userId))
+        ))
+        .map((participant, index) => ({
+            ...participant,
+            teamNumber: Number(participant.teamNumber) > 0
+                ? Number(participant.teamNumber)
+                : index === 0 ? 1 : 2,
+        }));
+    const ownTeamNumber = Number(player?.teamNumber) > 0 ? Number(player.teamNumber) : 1;
+    const teamGroups = [...new Set(roster.map((participant) => participant.teamNumber))]
+        .sort((first, second) => first - second)
+        .map((teamNumber) => ({
+            teamNumber,
+            participants: roster.filter((participant) => participant.teamNumber === teamNumber),
+        }));
+    const ownTeam = teamGroups.find((group) => group.teamNumber === ownTeamNumber)
+        ?? { teamNumber: ownTeamNumber, participants: player ? [player] : [] };
+    const opponentTeams = teamGroups.filter((group) => group.teamNumber !== ownTeamNumber);
+    const ownTeamReady = ownTeam.participants.length > 0
+        && ownTeam.participants.every((participant) => Boolean(participant.loadoutSelected));
+    const opponentsReady = opponentTeams.length > 0
+        && opponentTeams.every((group) => group.participants.every((participant) => Boolean(participant.loadoutSelected)));
+    const allPlayersReady = roster.length > 0
+        && roster.every((participant) => Boolean(participant.loadoutSelected));
     const draft = loadoutDraftState(loadout, roundNumber, abilityOffers);
     const { normalized, draftRule, offeredAbilityIds, inheritedAbilityIds, draftedAbilities, draftedAbilityIds, hasAllDraftPicks } = draft;
     const [selectedAbility, setSelectedAbility] = useState(null);
@@ -131,23 +160,51 @@ export default function AbilitySelectionPanel({
                     </div>
                 </div>
                 <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded border border-slate-700/70 bg-[#081522]/75 p-4">
-                    <div className="font-mono text-[10px] tracking-widest text-ink-muted">
-                        <span className="mr-3 text-cyan">&#9679;</span>
-                        YOU: <span className={playerLocked ? "text-green-300" : "text-amber-200"}>{playerLocked ? "LOCKED" : "CHOOSING"}</span>
-                        <span className="mx-3 text-border-hi">/</span>
-                        {opponent?.username ?? "OPP"}: <span className={opponentLocked ? "text-green-300" : "text-amber-200"}>{opponentLocked ? "LOCKED" : "CHOOSING"}</span>
+                    <div className="min-w-0 flex-1 font-mono text-[10px] tracking-widest text-ink-muted">
+                        <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <span className="text-cyan">&#9679;</span>
+                            <span className="text-cyan-100">
+                                {allPlayersReady
+                                    ? "ALL PLAYERS LOCKED · PREPARING..."
+                                    : ownTeamReady && opponentsReady
+                                        ? "ALL TEAMS READY · PREPARING..."
+                                        : ownTeamReady
+                                            ? "YOUR TEAM READY · WAITING FOR OPPONENTS..."
+                                            : "WAITING FOR ALL PLAYERS TO LOCK"}
+                            </span>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                            {teamGroups.map((group) => {
+                                const isOwnTeam = group.teamNumber === ownTeamNumber;
+                                const lockedCount = group.participants.filter((participant) => participant.loadoutSelected).length;
+                                return (
+                                    <div key={group.teamNumber} className="rounded border border-slate-800/80 bg-slate-950/30 px-2 py-2">
+                                        <div className="mb-1 text-[9px] text-slate-500">
+                                            {isOwnTeam ? "YOUR TEAM" : `TEAM ${group.teamNumber}`} · {lockedCount}/{group.participants.length} LOCKED
+                                        </div>
+                                        <div className="flex flex-wrap gap-x-3 gap-y-1">
+                                            {group.participants.map((participant) => (
+                                                <span key={participant.userId ?? participant.username} className={participant.loadoutSelected ? "text-green-300" : "text-amber-200"}>
+                                                    {participant.username ?? "PLAYER"}{player?.userId != null && participant.userId != null && String(player.userId) === String(participant.userId) ? " (Me)" : ""}: {participant.loadoutSelected ? "LOCKED" : "CHOOSING"}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
                         <button
                             type="button"
                             onClick={onSurrender}
-                            aria-label={hasSurrendered ? "RESIGNED" : surrenderPending ? "SURRENDERING" : "FORFEIT"}
-                            title={hasSurrendered ? "RESIGNED" : surrenderPending ? "SURRENDERING" : "FORFEIT"}
-                            disabled={!canSurrender || surrenderPending || hasSurrendered}
+                            aria-label={hasSurrendered ? "WITHDRAW FORFEIT VOTE" : surrenderPending ? "UPDATING FORFEIT VOTE" : "VOTE TO FORFEIT"}
+                            title={hasSurrendered ? "WITHDRAW FORFEIT VOTE" : surrenderPending ? "UPDATING FORFEIT VOTE" : "VOTE TO FORFEIT"}
+                            disabled={!canSurrender || surrenderPending}
                             className="arena-toolbar-button arena-toolbar-button--red arena-toolbar-button--inline"
                         >
                             <MatchToolIcon name="flag" className="h-4 w-4" />
-                            {hasSurrendered ? "RESIGNED" : surrenderPending ? "SURRENDERING" : "FORFEIT"}
+                            {hasSurrendered ? "WITHDRAW FORFEIT" : surrenderPending ? "UPDATING VOTE" : "VOTE TO FORFEIT"}
                         </button>
                         <button
                             type="button"

@@ -13,6 +13,7 @@ import com.example.botfight.simulation.core.orchestration.DuelSimulationService.
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Entity;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.StateValue;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.SelectableSnapshot;
+import com.example.botfight.simulation.core.orchestration.DuelSimulationService.TargetPoint;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Velocity;
 import com.example.botfight.simulation.core.combat.ActionExecutionService;
 import com.example.botfight.simulation.core.state.BotStateService;
@@ -29,9 +30,9 @@ final class StateVariableResolver {
             Map.entry(VariableSource.MATCH_ELAPSED_SECONDS,
                     context -> number(millisecondsToSeconds((int) context.player().matchElapsedMs))),
             Map.entry(VariableSource.SELECTABLE_DISTANCE,
-                    context -> number(context.selectable() != null && context.selectable2() != null
+                    context -> number(context.selectable() != null && context.target() != null
                             ? between(context.selectable().x(), context.selectable().y(),
-                                    context.selectable2().x(), context.selectable2().y())
+                                    context.target().x(), context.target().y())
                             : Double.POSITIVE_INFINITY)),
             Map.entry(VariableSource.SELECTABLE_DAMAGE_TAKEN_LAST_TICK,
                     context -> number(selectableDamageTaken(context.selectableId(), context.selectable()))),
@@ -43,24 +44,17 @@ final class StateVariableResolver {
                     context -> number(context.selectable() == null ? 0.0 : context.selectable().y())),
             Map.entry(VariableSource.SELECTABLE_HP, context -> number(selectableHp(context.selectableId(), context.selectable()))),
             Map.entry(VariableSource.SELECTABLE_ABSOLUTE_BEARING,
-                    context -> number(signedBearing(context.selectable(), context.selectable2()))),
+                    context -> number(signedBearing(context.selectable(), context.target()))),
             Map.entry(VariableSource.SELECTABLE_MOVEMENT_DIRECTION,
                     context -> number(movementDirection(context.selectable()))),
             Map.entry(VariableSource.SELECTABLE_SPEED,
                     context -> number(movementSpeed(context.selectable()))),
             Map.entry(VariableSource.SELECTABLE_RELATIVE_BEARING,
-                    context -> number(context.selectable() != null && context.selectable2() != null
-                            ? Math.abs(shortestDelta(entityRotation(context.selectable()),
-                                    TargetingService.compassBearing(context.selectable(), context.selectable2()))) : 0.0)),
+                    context -> number(relativeBearing(context, false))),
             Map.entry(VariableSource.SELECTABLE_RELATIVE_BEARING_CLOCKWISE,
-                    context -> number(context.selectable() != null && context.selectable2() != null
-                            ? TargetingService.clockwiseAngleDelta(entityRotation(context.selectable()),
-                                    TargetingService.compassBearing(context.selectable(), context.selectable2())) : 0.0)),
+                    context -> number(relativeBearing(context, true))),
             Map.entry(VariableSource.SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE,
-                    context -> number(context.selectable() != null && context.selectable2() != null
-                            ? TargetingService.clockwiseAngleDelta(
-                                    TargetingService.compassBearing(context.selectable(), context.selectable2()),
-                                    entityRotation(context.selectable())) : 0.0)),
+                    context -> number(relativeBearing(context, false))),
             Map.entry(VariableSource.SELECTABLE_FACING,
                     context -> number(entityRotation(context.selectable()))),
             Map.entry(VariableSource.SELECTABLE_COUNT,
@@ -110,14 +104,19 @@ final class StateVariableResolver {
         if (contract.requiresHealthSelectable()
                 && !BotLogicContracts.selectableSupportsCapability(selectableId, BotLogicContracts.SELECTABLE_CAPABILITY_HEALTH)) return null;
         Entity selectable = TargetingService.selectableEntity(selectableId, player, opponent, entities);
-        String selectable2Id = contract.isPairVariable() ? condition.selectable() : null;
+        String targetMode = normalizeTargetMode(contract, condition);
+        String selectable2Id = contract.isPairVariable() && BotLogicContracts.TARGET_MODE_TARGET.equals(targetMode)
+                ? condition.selectable() : null;
         Entity selectable2 = selectable2Id == null ? null : TargetingService.selectableEntity(selectable2Id, player, opponent, entities);
+        Entity target = BotLogicContracts.TARGET_MODE_COORDINATES.equals(targetMode)
+                ? new TargetPoint(condition.targetX(), condition.targetY(), 0)
+                : BotLogicContracts.TARGET_MODE_TARGET.equals(targetMode) ? selectable2 : null;
         if (!BotLogicContracts.selectableMatchesIdentities(selectableId,
                 contract.isPairVariable() ? contract.pairSelectableIdentities(0) : contract.selectableIdentities())) return null;
-        if (contract.isPairVariable()
+        if (contract.isPairVariable() && BotLogicContracts.TARGET_MODE_TARGET.equals(targetMode)
                 && !BotLogicContracts.selectableMatchesIdentities(selectable2Id, contract.pairSelectableIdentities(1))) return null;
         ResolutionContext context = new ResolutionContext(
-                contract, selectableId, selectable2Id, condition, player, opponent, selectable, selectable2, entities, arena,
+                contract, selectableId, selectable2Id, condition, targetMode, player, opponent, selectable, selectable2, target, entities, arena,
                 actionExecutionService);
         Function<ResolutionContext, StateValue> resolver = RESOLVERS.get(contract.source());
         return resolver == null ? null : resolver.apply(context);
@@ -206,6 +205,35 @@ final class StateVariableResolver {
         return bearing > 180 ? bearing - 360 : bearing;
     }
 
+    private static double relativeBearing(ResolutionContext context, boolean clockwise) {
+        if (context.selectable() == null) return 0.0;
+        Double bearing = targetBearing(context);
+        if (bearing == null) return 0.0;
+        if (clockwise) {
+            return TargetingService.clockwiseAngleDelta(entityRotation(context.selectable()), bearing);
+        }
+        if (VariableSource.SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE.equals(context.contract().source())) {
+            return TargetingService.clockwiseAngleDelta(bearing, entityRotation(context.selectable()));
+        }
+        return Math.abs(shortestDelta(entityRotation(context.selectable()), bearing));
+    }
+
+    private static Double targetBearing(ResolutionContext context) {
+        if (BotLogicContracts.TARGET_MODE_ANGLE.equals(context.targetMode())) {
+            return normalizeDegrees(context.condition().targetAngle());
+        }
+        return context.target() == null ? null : TargetingService.compassBearing(context.selectable(), context.target());
+    }
+
+    private static String normalizeTargetMode(VariableContract contract, Condition condition) {
+        if (contract.targetModes().isEmpty()) return BotLogicContracts.TARGET_MODE_TARGET;
+        String requested = condition == null ? null : condition.targetMode();
+        if (requested != null && contract.targetModes().contains(requested)) return requested;
+        return contract.targetModes().contains(BotLogicContracts.TARGET_MODE_TARGET)
+                ? BotLogicContracts.TARGET_MODE_TARGET
+                : contract.targetModes().iterator().next();
+    }
+
     private static double entityRotation(Entity entity) {
         if (entity instanceof Bot bot) return normalizeDegrees(bot.rotation);
         if (entity instanceof SelectableSnapshot snapshot) return normalizeDegrees(snapshot.rotation());
@@ -271,10 +299,12 @@ final class StateVariableResolver {
             String selectableId,
             String selectable2Id,
             Condition condition,
+            String targetMode,
             Bot player,
             Bot opponent,
             Entity selectable,
             Entity selectable2,
+            Entity target,
             java.util.List<Entity> entities,
             Arena arena,
             ActionExecutionService actionExecutionService) {

@@ -848,6 +848,41 @@ class BotSubmissionValidationServiceTest {
     }
 
     @Test
+    void acceptsCoordinateDistanceAndAbsoluteAngleBearingConditions() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","roots":[{"branches":[{"branchType":"if",
+                  "conditions":[
+                    {"type":"expression","left":"selectable.distance","selectable1":"my_bot",
+                     "targetMode":"coordinates","targetX":100,"targetY":200,"comparator":"lt",
+                     "right":{"type":"number","value":300}},
+                    {"type":"expression","left":"selectable.relativeBearing","selectable1":"my_bot",
+                     "targetMode":"angle","targetAngle":-90,"comparator":"eq",
+                     "right":{"type":"number","value":90}}
+                  ],
+                  "actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"children":[]}]}]}
+                """));
+
+        assertThat(service.validate(payload).getErrors()).isEmpty();
+
+        payload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","roots":[{"branches":[{"branchType":"if",
+                  "conditions":[{"type":"expression","left":"selectable.distance",
+                    "targetMode":"angle","targetAngle":45,"comparator":"lt","right":{"type":"number","value":300}}],
+                  "actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"children":[]}]}]}
+                """));
+        assertThat(service.validate(payload).getErrors()).anyMatch(error -> error.contains("targetMode is not supported"));
+
+        payload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","roots":[{"branches":[{"branchType":"if",
+                  "conditions":[{"type":"expression","left":"selectable.distance",
+                    "targetMode":"coordinates","targetX":1001,"targetY":200,"comparator":"lt","right":{"type":"number","value":300}}],
+                  "actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"children":[]}]}]}
+                """));
+        assertThat(service.validate(payload).getErrors()).anyMatch(error -> error.contains("targetX must be a number from 0 to 1000"));
+    }
+
+    @Test
     void acceptsSignedNetHpChangeButRejectsNegativePlainHp() throws Exception {
         BotSubmissionPayloadDTO payload = validPayload();
         payload.setBrain(jsonMapper.readTree("""

@@ -9,6 +9,29 @@
     touch-action: none;
 }
 
+.ability-status-icon-button {
+    display: grid;
+    width: 36px;
+    height: 36px;
+    place-items: center;
+    border: 0;
+    border-radius: 999px;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    transition: background-color 140ms ease, transform 140ms ease;
+}
+
+.ability-status-icon-button:hover {
+    background: rgba(103, 232, 249, .08);
+    transform: translateY(-1px);
+}
+
+.ability-status-icon-button:focus-visible {
+    outline: 2px solid rgba(103, 232, 249, .9);
+    outline-offset: 2px;
+}
+
 .pixi-combat-layout--fixed.pixi-combat-layout--split {
     min-width: 804px;
     grid-template-columns: minmax(190px, 220px) minmax(400px, 860px) minmax(190px, 220px);
@@ -82,5 +105,23 @@
         row-gap: .5rem;
         overflow-y: auto;
         padding-right: 0;
+    }
+
+    .pixi-combat-layout--fixed .ability-status-panel--compact {
+        height: 13rem;
+        padding: .5rem;
+    }
+
+    .pixi-combat-layout--fixed .ability-status-panel--compact .ability-status-panel__header {
+        margin-bottom: .25rem;
+        font-size: 9px;
+    }
+
+    .pixi-combat-layout--fixed .ability-status-panel--compact .ability-status-panel__abilities {
+        height: 10.5rem;
+        max-height: 10.5rem;
+        grid-auto-rows: 3.2rem;
+        column-gap: .25rem;
+        row-gap: .25rem;
     }
 }

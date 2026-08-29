@@ -107,6 +107,24 @@ export function formatAbilityTimer(remainingMs) {
     return `${(Math.ceil(milliseconds / 100) / 10).toFixed(1)}s`;
 }
 
+export function statusParticipantNumber(bot, roster = []) {
+    if (!bot || bot.isCurrentUser === true) return null;
+
+    const availableBots = (Array.isArray(roster) && roster.length > 0 ? roster : [bot]).filter(Boolean);
+    const currentUser = availableBots.find((candidate) => candidate.isCurrentUser === true);
+    const currentTeam = currentUser ? statusTeamNumber(currentUser) : null;
+    const role = currentTeam != null && statusTeamNumber(bot) === currentTeam ? "Teammate" : "Opponent";
+    const candidates = availableBots
+        .filter((candidate) => candidate.isCurrentUser !== true
+            && (currentTeam == null || (role === "Teammate"
+                ? statusTeamNumber(candidate) === currentTeam
+                : statusTeamNumber(candidate) !== currentTeam)))
+        .sort((first, second) => statusSlot(first) - statusSlot(second));
+    const index = candidates.findIndex((candidate) => sameStatusBot(candidate, bot));
+
+    return Math.max(1, index + 1);
+}
+
 export function fallbackAbilityText(abilityId, label = "") {
     if (abilityId === 20) return "LO";
     const words = String(label || abilityId || "?").split(/[\s_-]+/).filter(Boolean);
@@ -128,4 +146,22 @@ function isReady(bot, abilityId) {
 
 function positiveNumber(value) {
     return Math.max(0, Number(value) || 0);
+}
+
+function statusTeamNumber(bot) {
+    const explicitTeam = Number(bot?.teamNumber);
+    if (Number.isFinite(explicitTeam) && explicitTeam > 0) return Math.floor(explicitTeam);
+    return Number(bot?.slot) === 2 ? 2 : 1;
+}
+
+function statusSlot(bot) {
+    const slot = Number(bot?.slot);
+    return Number.isFinite(slot) ? slot : Number.MAX_SAFE_INTEGER;
+}
+
+function sameStatusBot(first, second) {
+    if (first === second) return true;
+    if (first?.id != null && second?.id != null) return String(first.id) === String(second.id);
+    if (first?.userId != null && second?.userId != null) return String(first.userId) === String(second.userId);
+    return false;
 }

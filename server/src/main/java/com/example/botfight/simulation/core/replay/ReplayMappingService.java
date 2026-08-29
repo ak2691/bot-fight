@@ -27,7 +27,7 @@ public class ReplayMappingService {
                 bot.triggeredAbility,
                 bot.preparingAbility, bot.preparingMs, bot.temporalRewindMs,
                 round(bot.temporalRewindX), round(bot.temporalRewindY),
-                bot.temporalRewindPulseMs, bot.closingZoneDamageCount);
+                bot.temporalRewindPulseMs, bot.closingZoneDamageCount, bot.teamNumber);
     }
 
     public MatchPlaybackDTO.ArenaEntityDTO toArenaEntity(ArenaEntity entity) {
@@ -69,7 +69,8 @@ public class ReplayMappingService {
                 initialEntries(abilities, bot.abilityCooldowns),
                 positiveEntries(bot.abilityActiveMs),
                 nonNegativeEntries(bot.abilityCharges),
-                initialEntries(bot.abilityCharges.keySet().stream().toList(), bot.abilityRechargeMs));
+                initialEntries(bot.abilityCharges.keySet().stream().toList(), bot.abilityRechargeMs),
+                bot.teamNumber);
     }
 
     private MatchReplayDTO.ReplayBotDTO toReplayBot(DuelSimulationService.Bot bot) {
@@ -85,11 +86,13 @@ public class ReplayMappingService {
                 nonNegativeEntries(bot.abilityCharges),
                 positiveEntries(bot.abilityRechargeMs),
                 positiveEntries(bot.abilityActiveMs),
+                bot.triggeredAbility,
                 bot.preparingAbility,
                 temporalRewindPulseMs > 0 ? round(bot.temporalRewindX) : null,
                 temporalRewindPulseMs > 0 ? round(bot.temporalRewindY) : null,
                 positiveOrNull(temporalRewindPulseMs),
-                positiveOrNull(bot.closingZoneDamageCount));
+                positiveOrNull(bot.closingZoneDamageCount),
+                bot.teamNumber);
     }
 
     private MatchReplayDTO.ReplayEntityDTO toReplayEntity(ArenaEntity entity) {

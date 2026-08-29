@@ -2,10 +2,14 @@ package com.example.botfight.service.match.model;
 
 import com.example.botfight.DTO.MatchPlaybackDTO;
 import com.example.botfight.DTO.MatchReplayDTO;
+import com.example.botfight.domain.MatchMode;
+import com.example.botfight.service.match.timing.MatchTimingPolicy;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 public record MatchSession(
@@ -24,7 +28,186 @@ public record MatchSession(
         MatchReplayDTO replayPlayback,
         Instant resultRevealsAt,
         Instant roundReadyAt,
-        boolean seriesComplete) {
+        boolean seriesComplete,
+        MatchMode mode,
+        int roundDurationSeconds,
+        Set<UUID> surrenderVotes) {
+    public MatchSession {
+        mode = mode == null ? MatchMode.ONES : mode;
+        roundDurationSeconds = MatchTimingPolicy.resolveRoundDurationSeconds(
+                mode, roundDurationSeconds);
+        surrenderVotes = surrenderVotes == null ? Set.of() : Set.copyOf(surrenderVotes);
+    }
+
+    /** Backward-compatible full constructor with a mode and no surrender votes. */
+    public MatchSession(
+            UUID matchId,
+            long simulationSeed,
+            List<MatchPlayer> players,
+            Instant loadoutSelectionEndsAt,
+            Instant entityPlacementEndsAt,
+            Instant countdownEndsAt,
+            Instant buildingEndsAt,
+            int roundNumber,
+            int winsRequired,
+            List<MatchPlaybackDTO.ArenaEntityDTO> arenaEntities,
+            Map<UUID, List<MatchPlaybackDTO.ArenaEntityDTO>> entityPlacementsByUserId,
+            Instant playbackStartsAt,
+            MatchReplayDTO replayPlayback,
+            Instant resultRevealsAt,
+            Instant roundReadyAt,
+            boolean seriesComplete,
+            MatchMode mode) {
+        this(
+                matchId,
+                simulationSeed,
+                players,
+                loadoutSelectionEndsAt,
+                entityPlacementEndsAt,
+                countdownEndsAt,
+                buildingEndsAt,
+                roundNumber,
+                winsRequired,
+                arenaEntities,
+                entityPlacementsByUserId,
+                playbackStartsAt,
+                replayPlayback,
+                resultRevealsAt,
+                roundReadyAt,
+                seriesComplete,
+                mode,
+                MatchTimingPolicy.defaultRoundDurationSeconds(mode),
+                Set.of());
+    }
+
+    /** Compatibility constructor for callers that also provide surrender votes. */
+    public MatchSession(
+            UUID matchId,
+            long simulationSeed,
+            List<MatchPlayer> players,
+            Instant loadoutSelectionEndsAt,
+            Instant entityPlacementEndsAt,
+            Instant countdownEndsAt,
+            Instant buildingEndsAt,
+            int roundNumber,
+            int winsRequired,
+            List<MatchPlaybackDTO.ArenaEntityDTO> arenaEntities,
+            Map<UUID, List<MatchPlaybackDTO.ArenaEntityDTO>> entityPlacementsByUserId,
+            Instant playbackStartsAt,
+            MatchReplayDTO replayPlayback,
+            Instant resultRevealsAt,
+            Instant roundReadyAt,
+            boolean seriesComplete,
+            MatchMode mode,
+            Set<UUID> surrenderVotes) {
+        this(
+                matchId,
+                simulationSeed,
+                players,
+                loadoutSelectionEndsAt,
+                entityPlacementEndsAt,
+                countdownEndsAt,
+                buildingEndsAt,
+                roundNumber,
+                winsRequired,
+                arenaEntities,
+                entityPlacementsByUserId,
+                playbackStartsAt,
+                replayPlayback,
+                resultRevealsAt,
+                roundReadyAt,
+                seriesComplete,
+                mode,
+                MatchTimingPolicy.defaultRoundDurationSeconds(mode),
+                surrenderVotes);
+    }
+
+    /** Full constructor for a match with an explicit round duration. */
+    public MatchSession(
+            UUID matchId,
+            long simulationSeed,
+            List<MatchPlayer> players,
+            Instant loadoutSelectionEndsAt,
+            Instant entityPlacementEndsAt,
+            Instant countdownEndsAt,
+            Instant buildingEndsAt,
+            int roundNumber,
+            int winsRequired,
+            List<MatchPlaybackDTO.ArenaEntityDTO> arenaEntities,
+            Map<UUID, List<MatchPlaybackDTO.ArenaEntityDTO>> entityPlacementsByUserId,
+            Instant playbackStartsAt,
+            MatchReplayDTO replayPlayback,
+            Instant resultRevealsAt,
+            Instant roundReadyAt,
+            boolean seriesComplete,
+            MatchMode mode,
+            int roundDurationSeconds) {
+        this(
+                matchId,
+                simulationSeed,
+                players,
+                loadoutSelectionEndsAt,
+                entityPlacementEndsAt,
+                countdownEndsAt,
+                buildingEndsAt,
+                roundNumber,
+                winsRequired,
+                arenaEntities,
+                entityPlacementsByUserId,
+                playbackStartsAt,
+                replayPlayback,
+                resultRevealsAt,
+                roundReadyAt,
+                seriesComplete,
+                mode,
+                roundDurationSeconds,
+                Set.of());
+    }
+
+    /** Backward-compatible full constructor for existing 1v1 fixtures. */
+    public MatchSession(
+            UUID matchId,
+            long simulationSeed,
+            List<MatchPlayer> players,
+            Instant loadoutSelectionEndsAt,
+            Instant entityPlacementEndsAt,
+            Instant countdownEndsAt,
+            Instant buildingEndsAt,
+            int roundNumber,
+            int winsRequired,
+            List<MatchPlaybackDTO.ArenaEntityDTO> arenaEntities,
+            Map<UUID, List<MatchPlaybackDTO.ArenaEntityDTO>> entityPlacementsByUserId,
+            Instant playbackStartsAt,
+            MatchReplayDTO replayPlayback,
+            Instant resultRevealsAt,
+            Instant roundReadyAt,
+            boolean seriesComplete) {
+        this(
+                matchId,
+                simulationSeed,
+                players,
+                loadoutSelectionEndsAt,
+                entityPlacementEndsAt,
+                countdownEndsAt,
+                buildingEndsAt,
+                roundNumber,
+                winsRequired,
+                arenaEntities,
+                entityPlacementsByUserId,
+                playbackStartsAt,
+                replayPlayback,
+                resultRevealsAt,
+                roundReadyAt,
+                seriesComplete,
+                MatchMode.ONES,
+                MatchTimingPolicy.ONES_ROUND_SECONDS,
+                Set.of());
+    }
+
+    public MatchMode mode() {
+        return mode == null ? MatchMode.ONES : mode;
+    }
+
     public MatchSession(
             UUID matchId,
             long simulationSeed,
@@ -53,7 +236,10 @@ public record MatchSession(
                 null,
                 null,
                 null,
-                false);
+                false,
+                MatchMode.ONES,
+                MatchTimingPolicy.ONES_ROUND_SECONDS,
+                Set.of());
     }
 
     public MatchSession withArenaEntities(List<MatchPlaybackDTO.ArenaEntityDTO> nextArenaEntities) {
@@ -81,6 +267,7 @@ public record MatchSession(
                                         player.username(),
                                         player.principalName(),
                                         player.slot(),
+                                        player.teamNumber(),
                                         true,
                                         botSubmissionId,
                                         player.roundWins(),
@@ -102,14 +289,20 @@ public record MatchSession(
     }
 
     public MatchSession withRoundResult(UUID winnerUserId) {
+        int winningTeam = players.stream()
+                .filter(player -> player.userId().equals(winnerUserId))
+                .map(MatchPlayer::teamNumber)
+                .findFirst()
+                .orElse(0);
         return copy(
                 players.stream()
-                        .map(player -> player.userId().equals(winnerUserId)
+                        .map(player -> winningTeam > 0 && player.teamNumber() == winningTeam
                                 ? new MatchPlayer(
                                         player.userId(),
                                         player.username(),
                                         player.principalName(),
                                         player.slot(),
+                                        player.teamNumber(),
                                         player.finished(),
                                         player.botSubmissionId(),
                                         player.roundWins() + 1,
@@ -140,6 +333,7 @@ public record MatchSession(
                                 player.username(),
                                 player.principalName(),
                                 player.slot(),
+                                player.teamNumber(),
                                 false,
                                 null,
                                 player.roundWins(),
@@ -158,7 +352,10 @@ public record MatchSession(
                 null,
                 null,
                 null,
-                false);
+                false,
+                mode(),
+                roundDurationSeconds(),
+                surrenderVotes());
     }
 
     public MatchSession withLoadoutSelection(Instant deadline) {
@@ -168,6 +365,7 @@ public record MatchSession(
                         player.username(),
                         player.principalName(),
                         player.slot(),
+                        player.teamNumber(),
                         player.finished(),
                         player.botSubmissionId(),
                         player.roundWins(),
@@ -198,6 +396,7 @@ public record MatchSession(
                                         player.username(),
                                         player.principalName(),
                                         player.slot(),
+                                        player.teamNumber(),
                                         player.finished(),
                                         player.botSubmissionId(),
                                         player.roundWins(),
@@ -218,6 +417,37 @@ public record MatchSession(
                 seriesComplete);
     }
 
+    /** Toggles one authenticated player's match-wide surrender vote. */
+    public MatchSession withSurrenderVote(UUID userId, boolean requested) {
+        if (userId == null) return this;
+        Set<UUID> nextVotes = new HashSet<>(surrenderVotes());
+        if (requested) {
+            nextVotes.add(userId);
+        } else {
+            nextVotes.remove(userId);
+        }
+        return new MatchSession(
+                matchId,
+                simulationSeed,
+                players,
+                loadoutSelectionEndsAt,
+                entityPlacementEndsAt,
+                countdownEndsAt,
+                buildingEndsAt,
+                roundNumber,
+                winsRequired,
+                arenaEntities,
+                entityPlacementsByUserId,
+                playbackStartsAt,
+                replayPlayback,
+                resultRevealsAt,
+                roundReadyAt,
+                seriesComplete,
+                mode(),
+                roundDurationSeconds(),
+                nextVotes);
+    }
+
     public MatchSession withDefaultLoadoutSelections() {
         return copy(
                 players.stream()
@@ -226,6 +456,7 @@ public record MatchSession(
                                 player.username(),
                                 player.principalName(),
                                 player.slot(),
+                                player.teamNumber(),
                                 player.finished(),
                                 player.botSubmissionId(),
                                 player.roundWins(),
@@ -290,6 +521,7 @@ public record MatchSession(
                                 player.username(),
                                 player.principalName(),
                                 player.slot(),
+                                player.teamNumber(),
                                 player.finished(),
                                 player.botSubmissionId(),
                                 player.roundWins(),
@@ -379,6 +611,9 @@ public record MatchSession(
                 nextReplayPlayback,
                 nextResultRevealsAt,
                 nextRoundReadyAt,
-                nextSeriesComplete);
+                nextSeriesComplete,
+                mode(),
+                roundDurationSeconds(),
+                surrenderVotes());
     }
 }

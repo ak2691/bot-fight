@@ -18,7 +18,7 @@ import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "puzzle_bots", uniqueConstraints = {
-        @UniqueConstraint(name = "puzzle_bots_puzzle_role_unique", columnNames = {"puzzle_id", "role"})
+        @UniqueConstraint(name = "puzzle_bots_puzzle_team_slot_unique", columnNames = {"puzzle_id", "team_number", "slot"})
 })
 public class PuzzleBot {
 
@@ -33,6 +33,12 @@ public class PuzzleBot {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private PuzzleBotRole role;
+
+    @Column(name = "team_number", nullable = false)
+    private int teamNumber = 1;
+
+    @Column(nullable = false)
+    private int slot = 1;
 
     @Column(nullable = false, length = 40)
     private String loadout;
@@ -61,6 +67,12 @@ public class PuzzleBot {
 
     public PuzzleBotRole getRole() { return role; }
     public void setRole(PuzzleBotRole role) { this.role = role; }
+
+    public int getTeamNumber() { return teamNumber; }
+    public void setTeamNumber(int teamNumber) { this.teamNumber = teamNumber; }
+
+    public int getSlot() { return slot; }
+    public void setSlot(int slot) { this.slot = slot; }
 
     public String getLoadout() { return loadout; }
     public void setLoadout(String loadout) { this.loadout = loadout; }

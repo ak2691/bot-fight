@@ -171,7 +171,7 @@ public final class AbilityEntitySystem {
                     || (!trigger.requiresDestruction()
                     && entityHitByCurrentAttack(entry.entity(), allEntities, bots, arena, trigger, combat));
             boolean contact = trigger.botContact() && (phase != null || entry.entity().armed())
-                    && bots.stream().anyMatch(bot -> bot.entitySlot() != entry.entity().ownerSlot()
+                    && bots.stream().anyMatch(bot -> isEnemy(entry.entity().ownerSlot(), bot, bots)
                     && movingCirclesIntersect(
                     entry.entity().x() - entry.entity().velocityX(), entry.entity().y() - entry.entity().velocityY(),
                     entry.entity().x(), entry.entity().y(), 0,
@@ -255,7 +255,7 @@ public final class AbilityEntitySystem {
         EntityContracts.Hit hit = behavior.hit();
         Set<Integer> hitSlots = new HashSet<>(entity.hitSlots());
         List<HitCandidate<F>> candidates = bots.stream()
-                .filter(bot -> bot.entitySlot() != entity.ownerSlot()
+                .filter(bot -> isEnemy(entity.ownerSlot(), bot, bots)
                         && !hitSlots.contains(bot.entitySlot())
                         && bot.entityHp() > 0
                         && !bot.ignoresHostileEffects())
@@ -353,7 +353,9 @@ public final class AbilityEntitySystem {
                 phaseTimerMs);
         if (!moving && behavior.presenceField() != null && active) {
             for (F bot : bots) {
-                if (withinRadius(bot, field, field.size() / 2.0) && !bot.ignoresHostileEffects()) {
+                if (isEnemy(field.ownerSlot(), bot, bots)
+                        && withinRadius(bot, field, field.size() / 2.0)
+                        && !bot.ignoresHostileEffects()) {
                     bot.setPresence(behavior.presenceField(), true);
                 }
             }
@@ -382,7 +384,7 @@ public final class AbilityEntitySystem {
         int hp = entity.hp() - damage;
         if (ageMs >= lifetimeMs || hp <= 0) return new TickResult(null);
         F target = bots.stream()
-                .filter(bot -> bot.entitySlot() != entity.ownerSlot() && bot.entityHp() > 0)
+                .filter(bot -> isEnemy(entity.ownerSlot(), bot, bots) && bot.entityHp() > 0)
                 .min(Comparator.comparingDouble(bot -> distance(bot.entityX(), bot.entityY(), entity.x(), entity.y())))
                 .orElse(null);
         ArenaEntity next = copy(entity, entity.x(), entity.y(), entity.velocityX(), entity.velocityY(),
@@ -497,7 +499,8 @@ public final class AbilityEntitySystem {
         for (F target : bots) {
             EntityContracts.EntityContract contract = EntityContracts.forEntity(source);
             EntityContracts.Behavior behavior = contract == null ? null : contract.behaviorFor(source.type());
-            if (!withinRadius(target, source, radius) || target.ignoresHostileEffects()
+            if (!isEnemy(source.ownerSlot(), target, bots)
+                    || !withinRadius(target, source, radius) || target.ignoresHostileEffects()
                     || (behavior != null && behavior.skipOwner() && target.entitySlot() == source.ownerSlot())) continue;
             Integer resolvedChargeCost = chargeCost != null ? chargeCost
                     : shieldChargeCostForDistance(target, source, abilityId);
@@ -530,6 +533,7 @@ public final class AbilityEntitySystem {
             boolean skipShield, Integer chargeCost, String knockbackDirection,
             double collisionDistance,
             Map<EffectType, EntityContracts.EffectOverride> effectOverrides) {
+        if (!isEnemy(source.ownerSlot(), target, bots)) return ShieldResult.none();
         AbilityContracts.AbilityContract contract = AbilityContracts.get(abilityId);
         ShieldResult shield = skipShield ? ShieldResult.none()
                 : combat.shield(target, source.x(), source.y(), abilityId, chargeCost);
@@ -572,6 +576,17 @@ public final class AbilityEntitySystem {
             }
         }
         return shield;
+    }
+
+    private static <F extends AbilityEntityBot> boolean isEnemy(
+            int ownerSlot, F target, List<F> bots) {
+        F owner = bots.stream()
+                .filter(bot -> bot.entitySlot() == ownerSlot)
+                .findFirst()
+                .orElse(null);
+        return owner == null
+                ? target.entitySlot() != ownerSlot
+                : owner.entityTeam() != target.entityTeam();
     }
 
     private static AbilityContracts.Effect withEffectOverride(

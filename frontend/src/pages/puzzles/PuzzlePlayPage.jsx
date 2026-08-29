@@ -9,13 +9,37 @@ import { fetchPuzzle, submitPuzzleAttempt } from "../../puzzles/puzzleApi.js";
 import { puzzleConditionLabel } from "../../puzzles/puzzleConditions.js";
 import { loadPuzzleSubmissions, savePuzzleSubmission } from "../../puzzles/puzzleSubmissions.js";
 import PuzzleLogicWorkspace from "./PuzzleLogicWorkspace.jsx";
+import {
+    MIN_PUZZLE_TEAM_SIZE,
+    PUZZLE_OPPONENT_TEAM,
+    PUZZLE_PLAYER_TEAM,
+    normalizePuzzleRoster,
+    normalizePuzzleTeamSize,
+    puzzleBotKey,
+    puzzleBotRole,
+    puzzleBotsForTeam,
+} from "./puzzleRoster.js";
 
 function puzzleWithBotRoles(payload) {
-    const bots = Array.isArray(payload?.bots) ? payload.bots : [];
+    const sourceBots = Array.isArray(payload?.bots) && payload.bots.length > 0
+        ? payload.bots
+        : [payload?.playerBot, payload?.opponentBot].filter(Boolean);
+    const playerCount = sourceBots.filter((bot) => String(bot?.role ?? "").toUpperCase() === "PLAYER").length;
+    const opponentCount = sourceBots.filter((bot) => String(bot?.role ?? "").toUpperCase() === "OPPONENT").length;
+    const playerTeamSize = normalizePuzzleTeamSize(payload?.playerTeamSize, Math.max(MIN_PUZZLE_TEAM_SIZE, Math.min(2, playerCount || 1)));
+    const opponentTeamSize = normalizePuzzleTeamSize(payload?.opponentTeamSize, Math.max(MIN_PUZZLE_TEAM_SIZE, Math.min(2, opponentCount || 1)));
+    const bots = normalizePuzzleRoster(sourceBots, playerTeamSize, opponentTeamSize, (teamNumber, slot) => ({
+        role: puzzleBotRole(teamNumber),
+        teamNumber,
+        slot,
+    }));
     return {
         ...payload,
-        playerBot: bots.find((bot) => bot?.role === "PLAYER") ?? null,
-        opponentBot: bots.find((bot) => bot?.role === "OPPONENT") ?? null,
+        playerTeamSize,
+        opponentTeamSize,
+        bots,
+        playerBot: bots.find((bot) => Number(bot?.teamNumber) === PUZZLE_PLAYER_TEAM && Number(bot?.slot) === 1) ?? null,
+        opponentBot: bots.find((bot) => Number(bot?.teamNumber) === PUZZLE_OPPONENT_TEAM && Number(bot?.slot) === 1) ?? null,
     };
 }
 
@@ -255,6 +279,9 @@ export default function PuzzlePlayPage() {
         if (!puzzle || !activeRestoredSubmission) return puzzle;
         return {
             ...puzzle,
+            bots: (puzzle.bots ?? []).map((bot) => puzzleBotKey(bot) === puzzleBotKey(PUZZLE_PLAYER_TEAM, 1)
+                ? { ...bot, brain: activeRestoredSubmission.brain }
+                : bot),
             playerBot: {
                 ...(puzzle.playerBot ?? {}),
                 brain: activeRestoredSubmission.brain,
@@ -267,12 +294,30 @@ export default function PuzzlePlayPage() {
         [puzzle?.logicConfiguration],
     );
     const viewerSelectableTypes = useMemo(
-        () => selectableTypesForLoadouts(puzzle?.playerBot?.loadout, puzzle?.opponentBot?.loadout),
-        [puzzle?.opponentBot?.loadout, puzzle?.playerBot?.loadout],
+        () => selectableTypesForLoadouts(
+            puzzle?.playerBot?.loadout,
+            puzzle?.opponentBot?.loadout,
+            {
+                teammateCount: Math.max(0, puzzleBotsForTeam(puzzle?.bots, PUZZLE_PLAYER_TEAM).length - 1),
+                opponentCount: puzzleBotsForTeam(puzzle?.bots, PUZZLE_OPPONENT_TEAM).length,
+                teammateLoadouts: puzzleBotsForTeam(puzzle?.bots, PUZZLE_PLAYER_TEAM).slice(1).map((bot) => bot.loadout),
+                opponentLoadouts: puzzleBotsForTeam(puzzle?.bots, PUZZLE_OPPONENT_TEAM).map((bot) => bot.loadout),
+            },
+        ),
+        [puzzle?.bots, puzzle?.opponentBot?.loadout, puzzle?.playerBot?.loadout],
     );
     const viewerSelectableAbilityIds = useMemo(
-        () => selectableAbilityIdsForLoadouts(puzzle?.playerBot?.loadout, puzzle?.opponentBot?.loadout),
-        [puzzle?.opponentBot?.loadout, puzzle?.playerBot?.loadout],
+        () => selectableAbilityIdsForLoadouts(
+            puzzle?.playerBot?.loadout,
+            puzzle?.opponentBot?.loadout,
+            {
+                teammateCount: Math.max(0, puzzleBotsForTeam(puzzle?.bots, PUZZLE_PLAYER_TEAM).length - 1),
+                opponentCount: puzzleBotsForTeam(puzzle?.bots, PUZZLE_OPPONENT_TEAM).length,
+                teammateLoadouts: puzzleBotsForTeam(puzzle?.bots, PUZZLE_PLAYER_TEAM).slice(1).map((bot) => bot.loadout),
+                opponentLoadouts: puzzleBotsForTeam(puzzle?.bots, PUZZLE_OPPONENT_TEAM).map((bot) => bot.loadout),
+            },
+        ),
+        [puzzle?.bots, puzzle?.opponentBot?.loadout, puzzle?.playerBot?.loadout],
     );
     const canViewConfiguration = Array.isArray(puzzle?.logicConfiguration?.roots)
         && puzzle.logicConfiguration.roots.length > 0;

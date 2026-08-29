@@ -1,21 +1,32 @@
 package com.example.botfight.controller;
 
 import com.example.botfight.DTO.MatchLoadoutSelectionDTO;
+import com.example.botfight.DTO.MatchCodeViewRequestDTO;
+import com.example.botfight.DTO.MatchCodeViewResponseDTO;
 import com.example.botfight.DTO.MatchChatEventDTO;
 import com.example.botfight.DTO.MatchChatRequestDTO;
 import com.example.botfight.DTO.MatchAcceptanceDTO;
+import com.example.botfight.DTO.CustomLobbyStateEventDTO;
+import com.example.botfight.DTO.MatchmakingJoinRequestDTO;
 import com.example.botfight.DTO.MatchmakingEventDTO;
+import com.example.botfight.DTO.PartyStateEventDTO;
 import com.example.botfight.domain.AppUser;
+import com.example.botfight.domain.MatchMode;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.auth.CurrentUserService;
+import com.example.botfight.service.customlobby.CustomLobbyService;
+import com.example.botfight.service.customlobby.CustomLobbyStatePublisher;
 import com.example.botfight.service.limits.RateLimitExceededException;
 import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
 import com.example.botfight.service.match.model.MatchChatClosure;
+import com.example.botfight.service.match.model.MatchEntrant;
 import com.example.botfight.service.match.model.MatchChatSubmission;
 import com.example.botfight.service.match.model.MatchChatSubmissionStatus;
 import com.example.botfight.service.matchmaking.MatchmakingEventsReady;
 import com.example.botfight.service.matchmaking.MatchmakingService;
+import com.example.botfight.service.party.PartyService;
+import com.example.botfight.service.party.PartyStatePublisher;
 import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
 import java.security.Principal;
 import java.time.Duration;
@@ -63,9 +74,13 @@ public class MatchmakingSocketController {
     private final MatchService matchService;
     private final SimpMessagingTemplate messagingTemplate;
     private final CurrentUserService currentUserService;
+    private final PartyService partyService;
+    private final PartyStatePublisher partyStatePublisher;
     private final TaskScheduler matchmakingLifecycleScheduler;
     private final AsyncTaskExecutor matchSimulationExecutor;
     private final SingleUserWebSocketSessionRegistry singleUserWebSocketSessionRegistry;
+    private final CustomLobbyService customLobbyService;
+    private final CustomLobbyStatePublisher customLobbyStatePublisher;
     private final Set<UUID> scheduledMatchChatClosures = new HashSet<>();
     private final Set<String> scheduledSimulations = new HashSet<>();
     private final Set<String> scheduledBuildingTimeouts = new HashSet<>();
@@ -79,16 +94,24 @@ public class MatchmakingSocketController {
             MatchService matchService,
             SimpMessagingTemplate messagingTemplate,
             CurrentUserService currentUserService,
+            PartyService partyService,
+            PartyStatePublisher partyStatePublisher,
             @Qualifier("matchmakingLifecycleScheduler") TaskScheduler matchmakingLifecycleScheduler,
             @Qualifier("matchSimulationExecutor") AsyncTaskExecutor matchSimulationExecutor,
-            SingleUserWebSocketSessionRegistry singleUserWebSocketSessionRegistry) {
+            SingleUserWebSocketSessionRegistry singleUserWebSocketSessionRegistry,
+            CustomLobbyService customLobbyService,
+            CustomLobbyStatePublisher customLobbyStatePublisher) {
         this.matchmakingService = matchmakingService;
         this.matchService = matchService;
         this.messagingTemplate = messagingTemplate;
         this.currentUserService = currentUserService;
+        this.partyService = partyService;
+        this.partyStatePublisher = partyStatePublisher;
         this.matchmakingLifecycleScheduler = matchmakingLifecycleScheduler;
         this.matchSimulationExecutor = matchSimulationExecutor;
         this.singleUserWebSocketSessionRegistry = singleUserWebSocketSessionRegistry;
+        this.customLobbyService = customLobbyService;
+        this.customLobbyStatePublisher = customLobbyStatePublisher;
     }
 
     MatchmakingSocketController(
@@ -102,9 +125,13 @@ public class MatchmakingSocketController {
                 matchService,
                 messagingTemplate,
                 currentUserService,
+                null,
+                null,
                 matchmakingLifecycleScheduler,
                 task -> matchmakingLifecycleScheduler.schedule(task, Instant.now()),
-                new SingleUserWebSocketSessionRegistry());
+                new SingleUserWebSocketSessionRegistry(),
+                null,
+                null);
     }
 
     MatchmakingSocketController(
@@ -119,9 +146,13 @@ public class MatchmakingSocketController {
                 matchService,
                 messagingTemplate,
                 currentUserService,
+                null,
+                null,
                 matchmakingLifecycleScheduler,
                 task -> matchmakingLifecycleScheduler.schedule(task, Instant.now()),
-                singleUserWebSocketSessionRegistry);
+                singleUserWebSocketSessionRegistry,
+                null,
+                null);
     }
 
     @PostConstruct
@@ -139,23 +170,63 @@ public class MatchmakingSocketController {
     }
 
     @MessageMapping("/matchmaking.join")
-    public void joinQueue(Principal principal, SimpMessageHeaderAccessor headers) {
+    public void joinQueue(
+            @Payload MatchmakingJoinRequestDTO payload,
+            Principal principal,
+            SimpMessageHeaderAccessor headers) {
         AppUser user = requireUser(principal);
+        MatchMode mode;
+        try {
+            mode = MatchMode.fromWire(payload == null ? null : payload.mode());
+        } catch (IllegalArgumentException exception) {
+            throw new AuthException("The selected match mode is not available.");
+        }
+        PartyService.QueueContext queueContext = partyService != null
+                ? partyService.queueContext(
+                        user.getId(),
+                        user.getUsername(),
+                        principal.getName(),
+                        headers.getSessionId())
+                : null;
+        List<MatchEntrant> queueGroup = queueContext != null
+                ? queueContext.entrants()
+                : List.of(new MatchEntrant(
+                        user.getId(),
+                        user.getUsername(),
+                        principal.getName(),
+                        headers.getSessionId()));
         List<OutboundMatchmakingEvent> events = matchmakingService.joinQueue(
                 user.getId(),
                 user.getUsername(),
                 principal.getName(),
-                headers.getSessionId());
+                headers.getSessionId(),
+                mode,
+                queueGroup,
+                queueContext == null ? null : queueContext.partyId());
         publish(events);
+        publishPartyQueueState(queueContext, mode, events, "WAITING");
         beginMatchFoundSelections(events);
         scheduleMatchAcceptanceTimeouts(events);
         scheduleLoadoutSelectionTimeouts(events);
     }
 
+    /** Compatibility entry point for existing direct callers and old clients. */
+    public void joinQueue(Principal principal, SimpMessageHeaderAccessor headers) {
+        joinQueue(null, principal, headers);
+    }
+
     @MessageMapping("/matchmaking.leave")
     public void leaveQueue(Principal principal) {
         AppUser user = requireUser(principal);
+        PartyService.QueueContext queueContext = partyService != null
+                ? partyService.queueContext(
+                        user.getId(),
+                        user.getUsername(),
+                        principal.getName(),
+                        null)
+                : null;
         matchmakingService.leaveQueue(user.getId());
+        publishPartyQueueState(queueContext, null, List.of(), "CANCELLED");
     }
 
     @MessageMapping("/matchmaking.resume")
@@ -266,6 +337,37 @@ public class MatchmakingSocketController {
                         null));
     }
 
+    private void publishPartyQueueState(
+            PartyService.QueueContext queueContext,
+            MatchMode mode,
+            List<OutboundMatchmakingEvent> events,
+            String fallbackStatus) {
+        if (partyStatePublisher == null
+                || queueContext == null
+                || queueContext.partyId() == null) {
+            return;
+        }
+        OutboundMatchmakingEvent found = events == null
+                ? null
+                : events.stream()
+                        .filter(event -> "MATCH_FOUND".equals(event.event().type()))
+                        .findFirst()
+                        .orElse(null);
+        String queueStatus = found == null ? fallbackStatus : "MATCH_FOUND";
+        UUID matchId = found == null ? null : found.event().matchId();
+        String queueMode = mode == null ? null : mode.name();
+        partyStatePublisher.send(
+                queueContext.recipients(),
+                new PartyStateEventDTO(
+                        "PARTY_QUEUE_STATE",
+                        queueContext.partyId(),
+                        queueContext.party(),
+                        queueStatus,
+                        queueMode,
+                        matchId,
+                        Instant.now()));
+    }
+
     @MessageMapping("/matchmaking.selectLoadout")
     public void selectLoadout(@Payload MatchLoadoutSelectionDTO payload, Principal principal) {
         AppUser user = requireUser(principal);
@@ -291,13 +393,42 @@ public class MatchmakingSocketController {
         publish(matchService.surrender(user.getId()));
     }
 
+    @MessageMapping("/matchmaking.codeView.request")
+    public void requestCodeView(
+            @Payload MatchCodeViewRequestDTO payload,
+            Principal principal) {
+        AppUser user = requireUser(principal);
+        if (payload == null) {
+            throw new AuthException("the code view request is invalid");
+        }
+        publish(matchService.requestCodeView(
+                user.getId(),
+                payload.matchId(),
+                payload.targetUserId(),
+                payload.roundNumber()));
+    }
+
+    @MessageMapping("/matchmaking.codeView.response")
+    public void respondCodeView(
+            @Payload MatchCodeViewResponseDTO payload,
+            Principal principal) {
+        AppUser user = requireUser(principal);
+        publish(matchService.respondCodeView(user.getId(), payload));
+    }
+
     @MessageMapping("/matchmaking.chat")
     public void chat(@Payload MatchChatRequestDTO payload, Principal principal) {
         AppUser user = requireUser(principal);
-        MatchChatSubmission submission = matchService.submitChatMessage(
-                user.getId(),
-                payload == null ? null : payload.matchId(),
-                payload == null ? null : payload.message());
+        MatchChatSubmission submission = payload == null || payload.channel() == null
+                ? matchService.submitChatMessage(
+                        user.getId(),
+                        payload == null ? null : payload.matchId(),
+                        payload == null ? null : payload.message())
+                : matchService.submitChatMessage(
+                        user.getId(),
+                        payload.matchId(),
+                        payload.message(),
+                        payload.channel());
         if (submission.status() == MatchChatSubmissionStatus.ACCEPTED) {
             MatchChatEventDTO event = chatEvent("MATCH_CHAT_MESSAGE", submission);
             submission.recipientPrincipalNames().forEach(recipient ->
@@ -321,15 +452,15 @@ public class MatchmakingSocketController {
                 submission.matchId(),
                 submission.username(),
                 submission.message(),
-                submission.sentAt());
+                submission.sentAt(),
+                null,
+                null,
+                submission.channel());
     }
 
     @EventListener
     public void handleSubscribe(SessionSubscribeEvent event) {
         SimpMessageHeaderAccessor headers = SimpMessageHeaderAccessor.wrap(event.getMessage());
-        if (!MatchmakingSocketDestinations.isMatchSubscription(headers.getDestination())) {
-            return;
-        }
         String sessionId = headers.getSessionId();
         String subscriptionId = headers.getSubscriptionId();
         if (sessionId == null || subscriptionId == null) {
@@ -338,6 +469,30 @@ public class MatchmakingSocketController {
         Principal principal = event.getUser();
         if (principal == null) {
             principal = headers.getUser();
+        }
+        if (MatchmakingSocketDestinations.isPartySubscription(headers.getDestination())) {
+            if (partyService == null || principal == null || principal.getName() == null) return;
+            partyService.registerSocket(principal.getName(), sessionId);
+            if (partyStatePublisher != null) {
+                var party = partyService.currentForPrincipal(principal.getName());
+                List<PartyService.PartyRecipient> recipients = party == null
+                        ? List.of(new PartyService.PartyRecipient(principal.getName(), null))
+                        : partyService.recipientsForParty(party.partyId());
+                partyStatePublisher.send(
+                        recipients,
+                        new PartyStateEventDTO(
+                                "PARTY_STATE_UPDATED",
+                                party == null ? null : party.partyId(),
+                                party,
+                                "IDLE",
+                                null,
+                                null,
+                                Instant.now()));
+            }
+            return;
+        }
+        if (!MatchmakingSocketDestinations.isMatchSubscription(headers.getDestination())) {
+            return;
         }
         String principalName = principal == null ? "" : principal.getName();
         matchSubscriptionsBySession
@@ -390,7 +545,45 @@ public class MatchmakingSocketController {
                     event.getSessionId());
             return;
         }
-        matchmakingService.removeDisconnected(principal.getName(), event.getSessionId());
+        PartyService.LeaveResult partyChange = new PartyService.LeaveResult(
+                null,
+                null,
+                List.of());
+        if (partyService != null) {
+            partyChange = partyService.removeDisconnected(
+                    principal.getName(),
+                    event.getSessionId());
+            if (partyStatePublisher != null && !partyChange.recipients().isEmpty()) {
+                partyStatePublisher.send(
+                        partyChange.recipients(),
+                        new PartyStateEventDTO(
+                                "PARTY_STATE_UPDATED",
+                                partyChange.partyId(),
+                                partyChange.party(),
+                                "IDLE",
+                                null,
+                                null,
+                                Instant.now()));
+            }
+        }
+        boolean queueWasCancelled = matchmakingService.removeDisconnected(
+                principal.getName(),
+                event.getSessionId());
+        if (queueWasCancelled
+                && partyService != null
+                && partyStatePublisher != null
+                && !partyChange.recipients().isEmpty()) {
+            partyStatePublisher.send(
+                    partyChange.recipients(),
+                    new PartyStateEventDTO(
+                            "PARTY_QUEUE_STATE",
+                            partyChange.partyId(),
+                            partyChange.party(),
+                            "CANCELLED",
+                            null,
+                            null,
+                            Instant.now()));
+        }
         scheduleDisconnectDetection(principal.getName(), event.getSessionId());
     }
 
@@ -763,7 +956,9 @@ public class MatchmakingSocketController {
         }
         if (!matchService.isCurrentEvent(eventAtPhaseBoundary)) return;
         if ("MATCH_RESULT_READY".equals(eventAtPhaseBoundary.event().type())) {
+            matchService.revealCompletedMatchResult(eventAtPhaseBoundary.event().matchId());
             matchService.expireCompletedMatch(eventAtPhaseBoundary.event().matchId());
+            releaseCompletedCustomLobby(eventAtPhaseBoundary.event().matchId());
         }
         MatchmakingEventDTO payload = "SIMULATION_PREPARING".equals(eventAtPhaseBoundary.event().type())
                     ? eventAtPhaseBoundary.event()
@@ -783,6 +978,24 @@ public class MatchmakingSocketController {
                 publishDisconnect(eventAtPhaseBoundary.principalName(), pendingDisconnectEvents);
             }
         }
+    }
+
+    private void releaseCompletedCustomLobby(UUID matchId) {
+        if (customLobbyService == null || customLobbyStatePublisher == null || matchId == null) {
+            return;
+        }
+        CustomLobbyService.LobbyChange change = customLobbyService.finishMatch(matchId);
+        if (change == null || change.lobby() == null) {
+            return;
+        }
+        customLobbyStatePublisher.send(
+                change.recipients(),
+                new CustomLobbyStateEventDTO(
+                        "CUSTOM_LOBBY_STATE",
+                        change.lobbyId(),
+                        change.lobby(),
+                        null,
+                        null));
     }
 
     private void scheduleAuthoritativeSimulations(List<OutboundMatchmakingEvent> events) {

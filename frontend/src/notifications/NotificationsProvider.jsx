@@ -22,6 +22,32 @@ function inviteFromNotification(event, username) {
     };
 }
 
+function partyInviteFromNotification(event, username) {
+    if (!event?.inviteId) return null;
+    return {
+        inviteId: event.inviteId,
+        partyId: event.partyId ?? null,
+        status: "PENDING",
+        inviterUsername: event.actorUsername ?? "A player",
+        inviteeUsername: username ?? null,
+        createdAt: event.createdAt ?? null,
+        expiresAt: event.expiresAt ?? null,
+    };
+}
+
+function customLobbyInviteFromNotification(event, username) {
+    if (!event?.inviteId) return null;
+    return {
+        inviteId: event.inviteId,
+        lobbyId: event.customLobbyId ?? null,
+        status: "PENDING",
+        inviterUsername: event.actorUsername ?? "A player",
+        inviteeUsername: username ?? null,
+        createdAt: event.createdAt ?? null,
+        expiresAt: event.expiresAt ?? null,
+    };
+}
+
 function mergeInvites(current, next) {
     const byId = new Map(current.map((invite) => [String(invite.inviteId), invite]));
     next.filter(Boolean).forEach((invite) => {
@@ -36,6 +62,8 @@ export default function NotificationsProvider({ children }) {
     const navigateRef = useRef(navigate);
     const clientRef = useRef(null);
     const [pendingInvites, setPendingInvites] = useState([]);
+    const [pendingPartyInvites, setPendingPartyInvites] = useState([]);
+    const [pendingCustomLobbyInvites, setPendingCustomLobbyInvites] = useState([]);
     const [actionPendingInviteId, setActionPendingInviteId] = useState(null);
     const [actionError, setActionError] = useState(null);
     const [lastNotification, setLastNotification] = useState(null);
@@ -44,13 +72,32 @@ export default function NotificationsProvider({ children }) {
 
     const refreshIncomingInvites = useCallback(async () => {
         try {
-            const response = await fetch(apiUrl("/api/duel-invites/incoming"), {
-                credentials: "include",
-                cache: "no-store",
-            });
-            if (!response.ok) return;
-            const body = await response.json().catch(() => ({}));
-            if (Array.isArray(body.invites)) setPendingInvites(body.invites);
+            const [duelResponse, partyResponse, customLobbyResponse] = await Promise.all([
+                fetch(apiUrl("/api/duel-invites/incoming"), {
+                    credentials: "include",
+                    cache: "no-store",
+                }),
+                fetch(apiUrl("/api/party-invites/incoming"), {
+                    credentials: "include",
+                    cache: "no-store",
+                }),
+                fetch(apiUrl("/api/custom-lobby-invites/incoming"), {
+                    credentials: "include",
+                    cache: "no-store",
+                }),
+            ]);
+            if (duelResponse.ok) {
+                const body = await duelResponse.json().catch(() => ({}));
+                if (Array.isArray(body.invites)) setPendingInvites(body.invites);
+            }
+            if (partyResponse.ok) {
+                const body = await partyResponse.json().catch(() => ({}));
+                if (Array.isArray(body.invites)) setPendingPartyInvites(body.invites);
+            }
+            if (customLobbyResponse.ok) {
+                const body = await customLobbyResponse.json().catch(() => ({}));
+                if (Array.isArray(body.invites)) setPendingCustomLobbyInvites(body.invites);
+            }
         } catch {
             // The socket remains the live path; a later app navigation can retry the snapshot.
         }
@@ -59,6 +106,8 @@ export default function NotificationsProvider({ children }) {
     useEffect(() => {
         if (!isAuthenticated) {
             setPendingInvites([]);
+            setPendingPartyInvites([]);
+            setPendingCustomLobbyInvites([]);
             setActionPendingInviteId(null);
             setActionError(null);
             setLastNotification(null);
@@ -74,6 +123,16 @@ export default function NotificationsProvider({ children }) {
                 if (invite) setPendingInvites((current) => mergeInvites(current, [invite]));
                 return;
             }
+            if (event.type === "PARTY_INVITE_RECEIVED") {
+                const invite = partyInviteFromNotification(event, null);
+                if (invite) setPendingPartyInvites((current) => mergeInvites(current, [invite]));
+                return;
+            }
+            if (event.type === "CUSTOM_LOBBY_INVITE_RECEIVED") {
+                const invite = customLobbyInviteFromNotification(event, null);
+                if (invite) setPendingCustomLobbyInvites((current) => mergeInvites(current, [invite]));
+                return;
+            }
             if (event.type === "DUEL_INVITE_MATCH_READY"
                 || event.type === "DUEL_INVITE_ACCEPTED") {
                 setPendingInvites((current) => current.filter(
@@ -87,6 +146,20 @@ export default function NotificationsProvider({ children }) {
             if (event.type === "DUEL_INVITE_ERROR") {
                 setActionPendingInviteId(null);
                 setActionError(event.message ?? "The duel invite could not be processed.");
+                return;
+            }
+            if (event.type === "PARTY_INVITE_DECLINED"
+                || event.type === "PARTY_MEMBER_JOINED") {
+                void refreshIncomingInvites();
+                return;
+            }
+            if (event.type === "CUSTOM_LOBBY_INVITE_DECLINED") {
+                void refreshIncomingInvites();
+                return;
+            }
+            if (event.type === "PARTY_ERROR") {
+                setActionPendingInviteId(null);
+                setActionError(event.message ?? "The party action could not be processed.");
             }
         };
 
@@ -133,6 +206,103 @@ export default function NotificationsProvider({ children }) {
         }
     }, []);
 
+    const declinePartyInvite = useCallback(async (inviteId) => {
+        setActionPendingInviteId(inviteId);
+        setActionError(null);
+        try {
+            const headers = {
+                "Content-Type": "application/json",
+                ...(await ensureCsrfHeaders("POST")),
+            };
+            const response = await fetch(
+                apiUrl(`/api/party-invites/${encodeURIComponent(inviteId)}/decline`),
+                { method: "POST", credentials: "include", headers },
+            );
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(body.message ?? "The party invite could not be declined.");
+            setPendingPartyInvites((current) => current.filter(
+                (invite) => String(invite.inviteId) !== String(inviteId),
+            ));
+        } catch (error) {
+            setActionError(error.message ?? "The party invite could not be declined.");
+        } finally {
+            setActionPendingInviteId(null);
+        }
+    }, []);
+
+    const acceptPartyInvite = useCallback(async (inviteId) => {
+        setActionPendingInviteId(inviteId);
+        setActionError(null);
+        try {
+            const headers = {
+                "Content-Type": "application/json",
+                ...(await ensureCsrfHeaders("POST")),
+            };
+            const response = await fetch(
+                apiUrl(`/api/party-invites/${encodeURIComponent(inviteId)}/accept`),
+                { method: "POST", credentials: "include", headers },
+            );
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(body.message ?? "The party invite could not be accepted.");
+            setPendingPartyInvites((current) => current.filter(
+                (invite) => String(invite.inviteId) !== String(inviteId),
+            ));
+        } catch (error) {
+            setActionError(error.message ?? "The party invite could not be accepted.");
+        } finally {
+            setActionPendingInviteId(null);
+        }
+    }, []);
+
+    const acceptCustomLobbyInvite = useCallback(async (inviteId) => {
+        setActionPendingInviteId(inviteId);
+        setActionError(null);
+        try {
+            const headers = {
+                "Content-Type": "application/json",
+                ...(await ensureCsrfHeaders("POST")),
+            };
+            const response = await fetch(
+                apiUrl(`/api/custom-lobby-invites/${encodeURIComponent(inviteId)}/accept`),
+                { method: "POST", credentials: "include", headers },
+            );
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(body.message ?? "The custom lobby invite could not be accepted.");
+            setPendingCustomLobbyInvites((current) => current.filter(
+                (invite) => String(invite.inviteId) !== String(inviteId),
+            ));
+            navigateRef.current("/custom-lobby");
+        } catch (error) {
+            setActionError(error.message ?? "The custom lobby invite could not be accepted.");
+        } finally {
+            setActionPendingInviteId(null);
+        }
+    }, []);
+
+    const declineCustomLobbyInvite = useCallback(async (inviteId) => {
+        setActionPendingInviteId(inviteId);
+        setActionError(null);
+        try {
+            const headers = {
+                "Content-Type": "application/json",
+                ...(await ensureCsrfHeaders("POST")),
+            };
+            const response = await fetch(
+                apiUrl(`/api/custom-lobby-invites/${encodeURIComponent(inviteId)}/decline`),
+                { method: "POST", credentials: "include", headers },
+            );
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(body.message ?? "The custom lobby invite could not be declined.");
+            setPendingCustomLobbyInvites((current) => current.filter(
+                (invite) => String(invite.inviteId) !== String(inviteId),
+            ));
+        } catch (error) {
+            setActionError(error.message ?? "The custom lobby invite could not be declined.");
+        } finally {
+            setActionPendingInviteId(null);
+        }
+    }, []);
+
     const acceptInvite = useCallback(async (inviteId) => {
         setActionPendingInviteId(inviteId);
         setActionError(null);
@@ -171,26 +341,44 @@ export default function NotificationsProvider({ children }) {
         setPendingInvites((current) => current.filter(
             (invite) => String(invite.inviterUsername ?? "").toLowerCase() !== normalizedUsername,
         ));
+        setPendingPartyInvites((current) => current.filter(
+            (invite) => String(invite.inviterUsername ?? "").toLowerCase() !== normalizedUsername,
+        ));
+        setPendingCustomLobbyInvites((current) => current.filter(
+            (invite) => String(invite.inviterUsername ?? "").toLowerCase() !== normalizedUsername,
+        ));
     }, []);
 
     const value = useMemo(() => ({
         pendingInvites,
-        notificationCount: pendingInvites.length,
+        pendingPartyInvites,
+        pendingCustomLobbyInvites,
+        notificationCount: pendingInvites.length + pendingPartyInvites.length + pendingCustomLobbyInvites.length,
         actionPendingInviteId,
         actionError,
         lastNotification,
         refreshIncomingInvites,
         hideInvitesFrom,
         acceptInvite,
+        acceptPartyInvite,
+        acceptCustomLobbyInvite,
         declineInvite,
+        declinePartyInvite,
+        declineCustomLobbyInvite,
     }), [
         acceptInvite,
+        acceptPartyInvite,
+        acceptCustomLobbyInvite,
         actionError,
         actionPendingInviteId,
         declineInvite,
+        declinePartyInvite,
+        declineCustomLobbyInvite,
         hideInvitesFrom,
         lastNotification,
         pendingInvites,
+        pendingPartyInvites,
+        pendingCustomLobbyInvites,
         refreshIncomingInvites,
     ]);
 

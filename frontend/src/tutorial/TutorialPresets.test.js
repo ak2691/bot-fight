@@ -41,7 +41,7 @@ test("tutorial presets use the current tree and selectable payload shapes", () =
     assert.deepEqual(Object.keys(empty).sort(), ["customVariables", "roots", "version"]);
     assert.deepEqual(
         { selectable1: closeCondition.selectable1, selectable2: closeCondition.selectable2 },
-        { selectable1: "my_bot", selectable2: "opponent" },
+        { selectable1: "my_bot", selectable2: "opponent_1" },
     );
     assert.equal(closeCondition.leftSelectable, undefined);
     assert.equal(strikeCondition.leftSelectable, undefined);
@@ -67,8 +67,8 @@ test("tutorial solutions use the relaxed bearing and context-aware dashes", () =
     const combineDash = combine.roots[1].branches[0].actions[0];
     const slash = heavySlashRoot.branches[0].conditions[1];
 
-    assert.deepEqual(dodgeAction, { action: TUTORIAL_ACTIONS.DASH, movementMode: "target", movementDirection: 90, selectable: "opponent" });
-    assert.deepEqual(combineDash, { action: TUTORIAL_ACTIONS.DASH, movementMode: "target", movementDirection: 90, selectable: "opponent_grenade" });
+    assert.deepEqual(dodgeAction, { action: TUTORIAL_ACTIONS.DASH, movementMode: "target", movementDirection: 90, selectable: "opponent_1" });
+    assert.deepEqual(combineDash, { action: TUTORIAL_ACTIONS.DASH, movementMode: "target", movementDirection: 90, selectable: "opponent_1_grenade" });
     assert.equal(heavySlashRoot.priority, 1);
     assert.equal(heavySlashRoot.branches[0].actions[0].action, TUTORIAL_ACTIONS.HEAVY_SLASH);
     assert.equal(slash.right.value, 75);

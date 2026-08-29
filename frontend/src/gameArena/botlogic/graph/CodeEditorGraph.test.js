@@ -45,7 +45,7 @@ test("compact editor chips preserve bounded user-facing names without changing s
     assert.equal(editorGraphNodeLabel(graph.variables[0], STATE_VARIABLES), "My health");
     assert.equal(editorGraphNodeLabel(graph.targets[0], STATE_VARIABLES), "Target 1");
     assert.equal(graph.variables[0].variableId, "selectable.hp");
-    assert.equal(graph.targets[0].target, "opponent");
+    assert.equal(graph.targets[0].target, "opponent_1");
 });
 
 test("a literal remains inline while a connected variable replaces only operand two", () => {
@@ -83,7 +83,7 @@ test("action targets compile from a target node without changing normalized acti
     const graph = { ...createCodeEditorGraph(), targets: [{ id: "target-node", kind: "target", targetKind: "entity", target: "opponent" }] };
     const changed = connectCodeEditorPorts(graph, "target-node", "action:branch:0:target", "target", STATE_VARIABLES);
     const compiled = compileCodeEditorGraph(source, changed);
-    assert.equal(normalizeAbilityStrategyConfiguration(compiled).roots[0].branches[0].actions[0].selectable, "opponent");
+    assert.equal(normalizeAbilityStrategyConfiguration(compiled).roots[0].branches[0].actions[0].selectable, "opponent_1");
 });
 
 test("movement target connections do not copy target offsets", () => {
@@ -121,6 +121,6 @@ test("target nodes connect to target-aware variables and actions, never conditio
     const compiled = compileCodeEditorGraph(source, reconciled);
     const normalized = normalizeAbilityStrategyConfiguration(compiled);
     assert.equal(normalized.roots[0].branches[0].conditions[0].left, "selectable.distance");
-    assert.equal(normalized.roots[0].branches[0].conditions[0].selectable1, "opponent_gravity_zone");
-    assert.equal(normalized.roots[0].branches[0].actions[0].selectable, "opponent_gravity_zone");
+    assert.equal(normalized.roots[0].branches[0].conditions[0].selectable1, "opponent_1_gravity_zone");
+    assert.equal(normalized.roots[0].branches[0].actions[0].selectable, "opponent_1_gravity_zone");
 });

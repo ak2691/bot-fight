@@ -10,16 +10,48 @@ import {
     abilityStatusFor,
     fallbackAbilityText,
     formatAbilityTimer,
+    statusParticipantNumber,
 } from "./abilityStatusPresentation.js";
 
 const PANEL_PATH = fileURLToPath(new URL("./AbilityStatusPanel.jsx", import.meta.url));
 const PRESENTATION_PATH = fileURLToPath(new URL("./abilityStatusPresentation.js", import.meta.url));
 const INDEX_CSS_PATH = fileURLToPath(new URL("../../index.css", import.meta.url));
 const PIXI_CSS_PATH = fileURLToPath(new URL("../pixi/PixiCanvas.css", import.meta.url));
+const PIXI_CANVAS_PATH = fileURLToPath(new URL("../pixi/PixiCanvas.jsx", import.meta.url));
 
 test("ability status panel leaves Overclock to the Pixi bot presentation", () => {
     const source = readFileSync(PANEL_PATH, "utf8");
     assert.doesNotMatch(source, /OverclockStatusIcon|overclockStatusFor|Overclock:/);
+});
+
+test("ability status panel marks only the current user with a white Me tag", () => {
+    const source = readFileSync(PANEL_PATH, "utf8");
+    assert.match(source, /bot\?\.isCurrentUser === true/);
+    assert.match(source, /text-white">\(Me\)<\/span>/);
+});
+
+test("ability status panel numbers teammates and opponents from the current user's roster", () => {
+    const source = readFileSync(PANEL_PATH, "utf8");
+    const roster = [
+        { id: "self", isCurrentUser: true, teamNumber: 1, slot: 1 },
+        { id: "teammate", teamNumber: 1, slot: 2 },
+        { id: "opponent-one", teamNumber: 2, slot: 3 },
+        { id: "opponent-two", teamNumber: 2, slot: 4 },
+    ];
+
+    assert.equal(statusParticipantNumber(roster[0], roster), null);
+    assert.equal(statusParticipantNumber(roster[1], roster), 1);
+    assert.equal(statusParticipantNumber(roster[2], roster), 1);
+    assert.equal(statusParticipantNumber(roster[3], roster), 2);
+    assert.match(source, /showParticipantNumbers \? statusParticipantNumber\(bot, statusRoster\) : null/);
+    assert.match(source, /\{participantNumber != null && <span className="ml-1 text-slate-400">\(\{participantNumber\}\)<\/span>\}/);
+});
+
+test("numbered status markers are enabled only for player matches and replays", () => {
+    const arenaSource = readFileSync(fileURLToPath(new URL("../Arena.jsx", import.meta.url)), "utf8");
+    const replaySource = readFileSync(fileURLToPath(new URL("../../replay/SimulationReplay.jsx", import.meta.url)), "utf8");
+    assert.match(arenaSource, /showParticipantNumbers=\{isMatchTesting\}/);
+    assert.match(replaySource, /showParticipantNumbers lockCamera/);
 });
 
 test("ability status panels use a fixed three-column circular grid without slot or glow presentation", () => {
@@ -56,6 +88,7 @@ test("ability status panels use a fixed three-column circular grid without slot 
 
 test("responsive top status panels preserve the original spacing and cap at three rows", () => {
     const pixiStyles = readFileSync(PIXI_CSS_PATH, "utf8");
+    const pixiSource = readFileSync(PIXI_CANVAS_PATH, "utf8");
 
     assert.match(pixiStyles, /grid-template-columns: minmax\(170px, 190px\) minmax\(0, 1fr\) minmax\(170px, 190px\)/);
     assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.ability-status-panel__abilities[\s\S]*max-height: 14\.5rem;/);
@@ -64,6 +97,12 @@ test("responsive top status panels preserve the original spacing and cap at thre
     assert.match(pixiStyles, /row-gap: \.5rem;/);
     assert.match(pixiStyles, /overflow-y: auto;/);
     assert.doesNotMatch(pixiStyles, /grid-auto-rows: 3\.5rem|overflow: visible/);
+    assert.match(pixiSource, /const blueTeamBots = bots\.filter/);
+    assert.match(pixiSource, /const redTeamBots = bots\.filter/);
+    assert.match(pixiSource, /const showTeamStatusPanels = hasMultipleTeamMembers/);
+    assert.match(pixiSource, /compact=\{hasMultipleTeamMembers\}/);
+    assert.match(pixiSource, /statusRoster=\{bots\}/);
+    assert.match(pixiSource, /showParticipantNumbers=\{showParticipantNumbers\}/);
 });
 
 test("cooldown arcs render nothing at zero, a solid circle at one, and begin at 12 o'clock", () => {

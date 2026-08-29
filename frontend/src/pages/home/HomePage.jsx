@@ -41,7 +41,7 @@ function HomeActionIcon({ action }) {
 
 export default function HomePage({ activeMatch = false, activeMatchId = null }) {
     const navigate = useNavigate();
-    const { isQueueing, queueElapsed, startQueue, cancelQueue } = useMatchmaking();
+    const { isQueueing, queueElapsed, cancelQueue } = useMatchmaking();
 
     useEffect(() => {
         const prefetchGameplay = () => void Promise.allSettled([loadAbilityCatalogue(), loadConditionalCatalogue(), loadMatch(), loadProfile(), loadTutorial()]);
@@ -73,7 +73,7 @@ export default function HomePage({ activeMatch = false, activeMatchId = null }) 
             if (isQueueing) {
                 cancelQueue();
             } else {
-                startQueue();
+                navigate("/queue");
             }
         }
         if (id === "room") navigate("/practice");

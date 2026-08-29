@@ -3,24 +3,32 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/auth-context";
 import { useNotifications } from "../notifications/notification-context";
 import BotLogo from "./BotLogo.jsx";
+import PartyPopover from "./PartyPopover.jsx";
 
-export default function AppNavbar({ account = false, currentPage = null, onHome = null, children = null }) {
+export default function AppNavbar({ account = false, currentPage = null, onHome = null, children = null, inPageFlow = false }) {
     const navigate = useNavigate();
     const { pathname } = useLocation();
     const navbarRef = useRef(null);
     const { user } = useAuth();
     const {
         pendingInvites,
+        pendingPartyInvites,
+        pendingCustomLobbyInvites,
         actionPendingInviteId,
         actionError,
         acceptInvite,
+        acceptPartyInvite,
+        acceptCustomLobbyInvite,
         declineInvite,
+        declinePartyInvite,
+        declineCustomLobbyInvite,
     } = useNotifications();
     const [notificationsOpen, setNotificationsOpen] = useState(false);
     const [navbarVisibility, setNavbarVisibility] = useState({ pathname: null, hidden: false });
     const isHidden = navbarVisibility.pathname === pathname && navbarVisibility.hidden;
     const isCharcoalPage = ["profile", "puzzles", "puzzle-builder", "puzzle-play", "abilities", "conditionals"].includes(currentPage);
     const username = user?.username ?? "bot";
+    const pendingNotificationCount = pendingInvites.length + pendingPartyInvites.length + pendingCustomLobbyInvites.length;
 
     useEffect(() => {
         const navbar = navbarRef.current;
@@ -30,6 +38,7 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
         const pageRoot = navbar.closest(".arena-page-shell, main");
         const internalScrollContainer = pageRoot?.querySelector(".arena-content-shell");
         if (internalScrollContainer) scrollTargets.push(internalScrollContainer);
+        const showAtScrollTop = inPageFlow ? 72 : 8;
 
         const lastScrollPositions = new Map(scrollTargets.map((target) => [target, getScrollTop(target)]));
         const handleScroll = (event) => {
@@ -39,7 +48,7 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
             const scrollDelta = currentScrollTop - previousScrollTop;
             lastScrollPositions.set(target, currentScrollTop);
 
-            if (currentScrollTop <= 8) {
+            if (currentScrollTop <= showAtScrollTop) {
                 setNavbarVisibility({ pathname, hidden: false });
             } else if (Math.abs(scrollDelta) >= 3) {
                 setNavbarVisibility({ pathname, hidden: scrollDelta > 0 });
@@ -48,24 +57,25 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
 
         scrollTargets.forEach((target) => target.addEventListener("scroll", handleScroll, { passive: true }));
         return () => scrollTargets.forEach((target) => target.removeEventListener("scroll", handleScroll));
-    }, [pathname]);
+    }, [inPageFlow, pathname]);
 
     return (
-        <div className="app-navbar-slot">
-        <header ref={navbarRef} className={`app-navbar relative z-10 flex min-h-[72px] flex-shrink-0 items-center justify-between gap-3 border-b border-slate-600/80 bg-[#0e1a22] px-5 font-interface text-slate-100 sm:px-8 ${isCharcoalPage ? "app-navbar--charcoal-page" : ""} ${isHidden ? "app-navbar--hidden" : ""}`}>
+        <div className={`app-navbar-slot ${inPageFlow ? "app-navbar-slot--in-page-flow" : ""}`}>
+        <header ref={navbarRef} className={`app-navbar relative z-10 flex min-h-[72px] flex-shrink-0 items-center justify-between gap-3 border-b border-slate-600/80 bg-[#0e1a22] px-5 font-interface text-slate-100 sm:px-8 ${isCharcoalPage ? "app-navbar--charcoal-page" : ""} ${inPageFlow ? "app-navbar--in-page-flow" : ""} ${isHidden ? "app-navbar--hidden" : ""}`}>
             <button type="button" onClick={() => onHome ? onHome() : navigate("/home")} className="app-brand-link app-navbar-control flex h-12 w-12 items-center justify-center" aria-label="Go to home">
                 <BotLogo className="h-12 w-12 object-contain" />
             </button>
 
             {account ? (
                 <nav className="flex items-center gap-1 sm:gap-2" aria-label="Account navigation">
+                    <PartyPopover onOpen={() => setNotificationsOpen(false)} />
                     <div className="relative">
                         <button
                             type="button"
                             onClick={() => setNotificationsOpen((open) => !open)}
                             aria-expanded={notificationsOpen}
-                            aria-label={pendingInvites.length > 0
-                                ? `Open notifications, ${pendingInvites.length} pending duel invite${pendingInvites.length === 1 ? "" : "s"}`
+                            aria-label={pendingNotificationCount > 0
+                                ? `Open notifications, ${pendingNotificationCount} pending invite${pendingNotificationCount === 1 ? "" : "s"}`
                                 : "Open notifications"}
                             className="app-navbar-control app-navbar-icon-control relative grid min-h-11 min-w-11 place-items-center text-slate-200"
                         >
@@ -73,19 +83,25 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
                                 <path d="M6.8 10.3a5.2 5.2 0 0 1 10.4 0c0 5.6 2.2 6.1 2.2 7.1H4.6c0-1 2.2-1.5 2.2-7.1Z" />
                                 <path d="M9.8 20h4.4" />
                             </svg>
-                            {pendingInvites.length > 0 && (
+                            {pendingNotificationCount > 0 && (
                                 <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full border border-[#07111b] bg-fuchsia-400 px-1 text-[10px] font-black text-[#07111b]">
-                                    {pendingInvites.length > 9 ? "9+" : pendingInvites.length}
+                                    {pendingNotificationCount > 9 ? "9+" : pendingNotificationCount}
                                 </span>
                             )}
                         </button>
                         {notificationsOpen && (
                             <NotificationPanel
                                 invites={pendingInvites}
+                                partyInvites={pendingPartyInvites}
+                                customLobbyInvites={pendingCustomLobbyInvites}
                                 actionPendingInviteId={actionPendingInviteId}
                                 actionError={actionError}
                                 onAccept={acceptInvite}
+                                onAcceptParty={acceptPartyInvite}
+                                onAcceptCustomLobby={acceptCustomLobbyInvite}
                                 onDecline={declineInvite}
+                                onDeclineParty={declinePartyInvite}
+                                onDeclineCustomLobby={declineCustomLobbyInvite}
                             />
                         )}
                     </div>
@@ -127,19 +143,26 @@ function getScrollTop(target) {
 
 function NotificationPanel({
     invites,
+    partyInvites,
+    customLobbyInvites,
     actionPendingInviteId,
     actionError,
     onAccept,
+    onAcceptParty,
+    onAcceptCustomLobby,
     onDecline,
+    onDeclineParty,
+    onDeclineCustomLobby,
 }) {
+    const totalInvites = invites.length + partyInvites.length + customLobbyInvites.length;
     return (
         <section className="absolute right-0 top-12 z-30 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-cyan-800/80 bg-[#091521f5] p-3 shadow-[0_18px_60px_rgba(0,0,0,.45)]" aria-label="Notifications">
             <div className="flex items-center justify-between gap-3 px-2 pb-2">
                 <h2 className="font-mono text-[10px] font-bold tracking-[.2em] text-cyan-400">NOTIFICATIONS</h2>
-                <span className="text-xs text-slate-500">{invites.length} pending</span>
+                <span className="text-xs text-slate-500">{totalInvites} pending</span>
             </div>
             {actionError && <p className="border border-rose-400/30 bg-rose-950/20 px-3 py-2 text-xs text-rose-200" role="alert">{actionError}</p>}
-            {invites.length === 0 ? (
+            {totalInvites === 0 ? (
                 <p className="px-2 py-5 text-sm text-slate-500">No pending notifications.</p>
             ) : (
                 <div className="space-y-2">
@@ -148,7 +171,7 @@ function NotificationPanel({
                         return (
                             <article key={invite.inviteId} className="rounded-lg border border-slate-700/80 bg-slate-950/30 p-3">
                                 <p className="text-sm leading-5 text-slate-200">
-                                    <span className="font-bold text-white">{invite.inviterUsername}</span> challenged you to a 1v1.
+                                    <span className="font-bold text-white">{invite.inviterUsername}</span> invited you to a Custom Match.
                                 </p>
                                 <div className="mt-3 flex gap-2">
                                     <button
@@ -163,6 +186,62 @@ function NotificationPanel({
                                         type="button"
                                         disabled={isPending}
                                         onClick={() => void onDecline(invite.inviteId)}
+                                        className="min-h-9 flex-1 border border-slate-600 bg-slate-900/40 px-3 py-1.5 text-xs font-bold text-slate-300 hover:border-rose-400/60 hover:text-rose-200 disabled:cursor-wait disabled:opacity-50"
+                                    >
+                                        Decline
+                                    </button>
+                                </div>
+                            </article>
+                        );
+                    })}
+                    {partyInvites.map((invite) => {
+                        const isPending = String(actionPendingInviteId) === String(invite.inviteId);
+                        return (
+                            <article key={`party-${invite.inviteId}`} className="rounded-lg border border-cyan-800/80 bg-cyan-950/15 p-3">
+                                <p className="text-sm leading-5 text-slate-200">
+                                    <span className="font-bold text-white">{invite.inviterUsername}</span> invited you to their party.
+                                </p>
+                                <div className="mt-3 flex gap-2">
+                                    <button
+                                        type="button"
+                                        disabled={isPending}
+                                        onClick={() => void onAcceptParty(invite.inviteId)}
+                                        className="min-h-9 flex-1 border border-emerald-400/50 bg-emerald-950/30 px-3 py-1.5 text-xs font-bold text-emerald-200 hover:border-emerald-300 disabled:cursor-wait disabled:opacity-50"
+                                    >
+                                        {isPending ? "Joining..." : "Join party"}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={isPending}
+                                        onClick={() => void onDeclineParty(invite.inviteId)}
+                                        className="min-h-9 flex-1 border border-slate-600 bg-slate-900/40 px-3 py-1.5 text-xs font-bold text-slate-300 hover:border-rose-400/60 hover:text-rose-200 disabled:cursor-wait disabled:opacity-50"
+                                    >
+                                        Decline
+                                    </button>
+                                </div>
+                            </article>
+                        );
+                    })}
+                    {customLobbyInvites.map((invite) => {
+                        const isPending = String(actionPendingInviteId) === String(invite.inviteId);
+                        return (
+                            <article key={`custom-lobby-${invite.inviteId}`} className="rounded-lg border border-fuchsia-800/80 bg-fuchsia-950/15 p-3">
+                                <p className="text-sm leading-5 text-slate-200">
+                                    <span className="font-bold text-white">{invite.inviterUsername}</span> invited you to a Custom Lobby.
+                                </p>
+                                <div className="mt-3 flex gap-2">
+                                    <button
+                                        type="button"
+                                        disabled={isPending}
+                                        onClick={() => void onAcceptCustomLobby(invite.inviteId)}
+                                        className="min-h-9 flex-1 border border-emerald-400/50 bg-emerald-950/30 px-3 py-1.5 text-xs font-bold text-emerald-200 hover:border-emerald-300 disabled:cursor-wait disabled:opacity-50"
+                                    >
+                                        {isPending ? "Joining..." : "Join lobby"}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={isPending}
+                                        onClick={() => void onDeclineCustomLobby(invite.inviteId)}
                                         className="min-h-9 flex-1 border border-slate-600 bg-slate-900/40 px-3 py-1.5 text-xs font-bold text-slate-300 hover:border-rose-400/60 hover:text-rose-200 disabled:cursor-wait disabled:opacity-50"
                                     >
                                         Decline

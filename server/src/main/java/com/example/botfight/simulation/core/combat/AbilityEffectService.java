@@ -13,6 +13,7 @@ import com.example.botfight.simulation.gameconfig.AbilityContracts;
 import com.example.botfight.simulation.gameconfig.AbilityContracts.DeliveryType;
 import com.example.botfight.simulation.gameconfig.AbilityContracts.EffectType;
 import com.example.botfight.simulation.gameconfig.HitStagger;
+import java.util.List;
 import org.springframework.stereotype.Service;
 
 /** Applies ordered direct ability effects after delivery and shield resolution. */
@@ -33,7 +34,11 @@ class AbilityEffectService {
     void resolveTriggeredAbility(Bot attacker, Bot defender, Arena arena) {
         AbilityExecutionPayload payload = AbilityExecutionPayload.fromTriggered(attacker);
         if (payload == null || !hitDetectionService.isDirectDelivery(payload.contract().delivery())) return;
-        if (payload.contract().delivery() != DeliveryType.SELF && defender.hp <= 0) return;
+        if (payload.contract().delivery() != DeliveryType.SELF
+                && (defender == null || defender.hp <= 0)) return;
+        if (payload.contract().delivery() != DeliveryType.SELF
+                && defender != attacker
+                && defender.entityTeam() == attacker.entityTeam()) return;
 
         boolean targetHit = payload.contract().delivery() == DeliveryType.SELF
                 || hitDetectionService.abilityHitsTarget(attacker, defender, payload);
@@ -48,6 +53,19 @@ class AbilityEffectService {
                 ? botStateService.resolveShield(defender, attacker.x, attacker.y, payload.abilityId())
                 : AbilityEntitySystem.ShieldResult.none();
         applyContractEffects(attacker, defender, payload, shield, arena, sourceX, sourceY);
+    }
+
+    void resolveTriggeredAbilities(Bot attacker, List<Bot> bots, Arena arena) {
+        AbilityExecutionPayload payload = AbilityExecutionPayload.fromTriggered(attacker);
+        if (payload == null || !hitDetectionService.isDirectDelivery(payload.contract().delivery())) return;
+        if (payload.contract().delivery() == DeliveryType.SELF) {
+            resolveTriggeredAbility(attacker, null, arena);
+            return;
+        }
+        bots.stream()
+                .filter(defender -> defender != attacker
+                        && defender.entityTeam() != attacker.entityTeam())
+                .forEach(defender -> resolveTriggeredAbility(attacker, defender, arena));
     }
 
     private void applyContractEffects(Bot attacker, Bot defender,

@@ -99,14 +99,20 @@ public final class MatchRoundResolutionService {
                 throw new AuthException("authoritative match submissions are incomplete");
             }
             long simulationStartedNanos = System.nanoTime();
-            MatchReplayDTO playback = simulationService.buildDuelReplay(
+            MatchReplayDTO calculatedPlayback = simulationService.buildDuelReplay(
                     simulationSession, submissionsByUserId);
             log.info(
                     "Authoritative duel simulation completed matchId={} round={} result={} elapsedMs={}",
                     matchId,
                     simulationSession.roundNumber(),
-                    playback.result(),
+                    calculatedPlayback.result(),
                     elapsedMillis(simulationStartedNanos));
+            Map<UUID, Integer> roundWinsBeforeResult = new HashMap<>();
+            simulationSession.players().forEach(player ->
+                    roundWinsBeforeResult.put(player.userId(), Math.max(0, player.roundWins())));
+            MatchReplayDTO playback = replayService.withRoundWinsBeforeResult(
+                    calculatedPlayback,
+                    roundWinsBeforeResult);
             long replayPreparationStartedNanos = System.nanoTime();
             PreparedReplay preparedReplay = replayService.prepare(playback);
             log.info(
@@ -171,8 +177,8 @@ public final class MatchRoundResolutionService {
                     seriesWinner,
                     seriesWinner == null
                             ? "The best-of-three match ended tied."
-                            : playerForUser(scoredSession, seriesWinner).username()
-                                    + " wins the best-of-three match.");
+                            : teamLabel(playerForUser(scoredSession, seriesWinner).teamNumber())
+                                    + " wins.");
             long codeHistoryStartedNanos = System.nanoTime();
             log.info(
                     "Terminal round code-history persistence started matchId={} round={}",
@@ -285,6 +291,21 @@ public final class MatchRoundResolutionService {
                         playbackStartsAt,
                         resultRevealsAt,
                         roundReadyAt));
+            } else {
+                long roundResultDelayMillis = Math.max(
+                        0,
+                        Duration.between(preparationCompletedAt, resultRevealsAt).toMillis());
+                events.add(eventFactory.forCompactReplay(
+                        replaySession,
+                        player,
+                        "MATCH_REPLAY_BATCH",
+                        "ROUND_RESULT_READY",
+                        replayService.resultPayload(playback),
+                        playback.message(),
+                        roundResultDelayMillis,
+                        playbackStartsAt,
+                        resultRevealsAt,
+                        roundReadyAt));
             }
         }
 
@@ -319,7 +340,51 @@ public final class MatchRoundResolutionService {
         return events;
     }
 
+    private String teamLabel(int teamNumber) {
+        return teamNumber == 2 ? "Red Team" : "Blue Team";
+    }
+
     private UUID seriesWinner(MatchSession session) {
+        if (session.players().size() > 2) {
+            Map<Integer, List<MatchPlayer>> playersByTeam = session.players().stream()
+                    .collect(java.util.stream.Collectors.groupingBy(
+                            MatchPlayer::teamNumber,
+                            java.util.LinkedHashMap::new,
+                            java.util.stream.Collectors.toList()));
+            Map<Integer, Integer> winsByTeam = playersByTeam.entrySet().stream()
+                    .collect(java.util.stream.Collectors.toMap(
+                            Map.Entry::getKey,
+                            entry -> entry.getValue().stream()
+                                    .mapToInt(MatchPlayer::roundWins)
+                                    .max()
+                                    .orElse(0)));
+            int highestWins = winsByTeam.values().stream().mapToInt(Integer::intValue).max().orElse(0);
+            List<Integer> leadingTeams = winsByTeam.entrySet().stream()
+                    .filter(entry -> entry.getValue() == highestWins)
+                    .map(Map.Entry::getKey)
+                    .toList();
+            if (leadingTeams.size() == 1) {
+                return playersByTeam.get(leadingTeams.getFirst()).getFirst().userId();
+            }
+
+            Map<Integer, Double> totalsByTeam = new HashMap<>();
+            state.roundHistoryByMatchId().getOrDefault(session.matchId(), List.of()).forEach(round ->
+                    round.lossScores().forEach((userId, score) -> session.players().stream()
+                            .filter(player -> player.userId().equals(userId))
+                            .findFirst()
+                            .ifPresent(player -> totalsByTeam.merge(
+                                    player.teamNumber(), score, Double::sum))));
+            double highestTotal = leadingTeams.stream()
+                    .mapToDouble(team -> totalsByTeam.getOrDefault(team, 0.0))
+                    .max()
+                    .orElse(0.0);
+            List<Integer> tiedTeams = leadingTeams.stream()
+                    .filter(team -> Math.abs(totalsByTeam.getOrDefault(team, 0.0) - highestTotal) < 0.000001)
+                    .toList();
+            return tiedTeams.size() == 1
+                    ? playersByTeam.get(tiedTeams.getFirst()).getFirst().userId()
+                    : null;
+        }
         MatchPlayer first = session.players().get(0);
         MatchPlayer second = session.players().get(1);
         if (first.roundWins() != second.roundWins()) {

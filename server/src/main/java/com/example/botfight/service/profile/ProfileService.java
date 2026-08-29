@@ -5,6 +5,8 @@ import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.service.auth.UsernamePolicy;
 import com.example.botfight.service.cache.DatabaseLookupCache;
 import com.example.botfight.service.cache.DatabaseLookupCache.CachedUser;
+import com.example.botfight.service.cache.DatabaseLookupCache.CachedMatchStats;
+import com.example.botfight.service.cache.DatabaseLookupCache.CachedRatings;
 import com.example.botfight.service.cache.DatabaseLookupCache.ProfileHistoryKey;
 import com.example.botfight.service.cache.DatabaseLookupCache.ProfileSearchKey;
 import com.example.botfight.service.cache.DatabaseLookupCache.SolvedPuzzleHistoryKey;
@@ -18,6 +20,7 @@ import com.example.botfight.DTO.SolvedPuzzlePageDTO;
 import com.example.botfight.DTO.ProfileDTO.RecentMatchDTO;
 import com.example.botfight.DTO.UsernameRequestDTO;
 import com.example.botfight.domain.AppUser;
+import com.example.botfight.domain.MatchMode;
 import com.example.botfight.domain.MatchResult;
 import com.example.botfight.domain.Profile;
 import com.example.botfight.domain.PuzzleCompletion;
@@ -26,6 +29,7 @@ import com.example.botfight.repository.MatchParticipantRepository.RecentMatchPro
 import com.example.botfight.repository.PuzzleCompletionRepository;
 import com.example.botfight.repository.ProfileRepository;
 import com.example.botfight.repository.UserRepository;
+import com.example.botfight.service.rating.EloRatingService;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
@@ -60,6 +64,7 @@ public class ProfileService {
     private final PuzzleCompletionRepository puzzleCompletionRepository;
     private final ProfileRepository profileRepository;
     private final DatabaseLookupCache databaseLookupCache;
+    private final EloRatingService eloRatingService;
 
     public ProfileService(
             CurrentUserService currentUserService,
@@ -78,7 +83,30 @@ public class ProfileService {
                 profileRepository,
                 profileUpdateRateLimiter,
                 authenticatedGetRateLimiter,
-                new DatabaseLookupCache());
+                new DatabaseLookupCache(),
+                null);
+    }
+
+    public ProfileService(
+            CurrentUserService currentUserService,
+            UserRepository userRepository,
+            MatchParticipantRepository matchParticipantRepository,
+            PuzzleCompletionRepository puzzleCompletionRepository,
+            ProfileRepository profileRepository,
+            @Qualifier("profileUpdateRateLimiter") SlidingWindowRateLimiter<UUID> profileUpdateRateLimiter,
+            @Qualifier("authenticatedGetRateLimiter")
+            TokenBucketRateLimiter<String> authenticatedGetRateLimiter,
+            DatabaseLookupCache databaseLookupCache) {
+        this(
+                currentUserService,
+                userRepository,
+                matchParticipantRepository,
+                puzzleCompletionRepository,
+                profileRepository,
+                profileUpdateRateLimiter,
+                authenticatedGetRateLimiter,
+                databaseLookupCache,
+                null);
     }
 
     @Autowired
@@ -91,7 +119,8 @@ public class ProfileService {
             @Qualifier("profileUpdateRateLimiter") SlidingWindowRateLimiter<UUID> profileUpdateRateLimiter,
             @Qualifier("authenticatedGetRateLimiter")
             TokenBucketRateLimiter<String> authenticatedGetRateLimiter,
-            DatabaseLookupCache databaseLookupCache) {
+            DatabaseLookupCache databaseLookupCache,
+            EloRatingService eloRatingService) {
         this.profileUpdateRateLimiter = profileUpdateRateLimiter;
         this.authenticatedGetRateLimiter = authenticatedGetRateLimiter;
         this.currentUserService = currentUserService;
@@ -100,6 +129,7 @@ public class ProfileService {
         this.puzzleCompletionRepository = puzzleCompletionRepository;
         this.profileRepository = profileRepository;
         this.databaseLookupCache = databaseLookupCache;
+        this.eloRatingService = eloRatingService;
     }
 
     @Transactional(readOnly = true)
@@ -185,16 +215,27 @@ public class ProfileService {
         String aboutMe = profileRepository.findByUserId(user.id())
                 .map(Profile::getAboutMe)
                 .orElse("");
-        Instant visibleAt = Instant.now();
-        long wins = matchParticipantRepository.countByUserIdAndResultAndMatchResultVisibleAtLessThanEqual(
-                user.id(), MatchResult.WIN, visibleAt);
-        long losses = matchParticipantRepository.countByUserIdAndResultInAndMatchResultVisibleAtLessThanEqual(
+        CachedMatchStats matchStats = databaseLookupCache.profileMatchStats(
                 user.id(),
-                List.of(MatchResult.LOSS, MatchResult.FORFEIT),
-                visibleAt);
-        long draws = matchParticipantRepository.countByUserIdAndResultAndMatchResultVisibleAtLessThanEqual(
-                user.id(), MatchResult.DRAW, visibleAt);
+                () -> loadMatchStats(user.id()));
+        CachedRatings ratings = databaseLookupCache.profileRatings(
+                user.id(),
+                () -> loadRatings(user.id()));
+        long wins = matchStats.wins();
+        long losses = matchStats.losses();
+        long draws = matchStats.draws();
         long puzzlesSolved = puzzleCompletionRepository.countByUserId(user.id());
+        ProfileDTO.QueueStats queueStats = new ProfileDTO.QueueStats(
+                new ProfileDTO.ModeStats(
+                        matchStats.onesWins(),
+                        matchStats.onesLosses(),
+                        matchStats.onesDraws(),
+                        ratings.ones()),
+                new ProfileDTO.ModeStats(
+                        matchStats.twosWins(),
+                        matchStats.twosLosses(),
+                        matchStats.twosDraws(),
+                        ratings.twos()));
 
         return new ProfileDTO(
                 user.username(),
@@ -204,7 +245,65 @@ public class ProfileService {
                 wins,
                 losses,
                 draws,
-                puzzlesSolved);
+                puzzlesSolved,
+                queueStats);
+    }
+
+    private CachedRatings loadRatings(UUID userId) {
+        if (eloRatingService == null) {
+            return new CachedRatings(
+                    EloRatingService.DEFAULT_RATING,
+                    EloRatingService.DEFAULT_RATING);
+        }
+        return new CachedRatings(
+                eloRatingService.ratingFor(userId, MatchMode.ONES),
+                eloRatingService.ratingFor(userId, MatchMode.TWOS));
+    }
+
+    private CachedMatchStats loadMatchStats(UUID userId) {
+        Instant visibleAt = Instant.now();
+        long wins = matchParticipantRepository.countByUserIdAndResultAndMatchResultVisibleAtLessThanEqual(
+                userId, MatchResult.WIN, visibleAt);
+        long losses = matchParticipantRepository.countByUserIdAndResultInAndMatchResultVisibleAtLessThanEqual(
+                userId,
+                List.of(MatchResult.LOSS, MatchResult.FORFEIT),
+                visibleAt);
+        long draws = matchParticipantRepository.countByUserIdAndResultAndMatchResultVisibleAtLessThanEqual(
+                userId, MatchResult.DRAW, visibleAt);
+        long onesWins = matchParticipantRepository
+                .countByUserIdAndModeAndResultAndMatchResultVisibleAtLessThanEqual(
+                        userId, MatchMode.ONES, MatchResult.WIN, visibleAt);
+        long onesLosses = matchParticipantRepository
+                .countByUserIdAndModeAndResultInAndMatchResultVisibleAtLessThanEqual(
+                        userId,
+                        MatchMode.ONES,
+                        List.of(MatchResult.LOSS, MatchResult.FORFEIT),
+                        visibleAt);
+        long onesDraws = matchParticipantRepository
+                .countByUserIdAndModeAndResultAndMatchResultVisibleAtLessThanEqual(
+                        userId, MatchMode.ONES, MatchResult.DRAW, visibleAt);
+        long twosWins = matchParticipantRepository
+                .countByUserIdAndModeAndResultAndMatchResultVisibleAtLessThanEqual(
+                        userId, MatchMode.TWOS, MatchResult.WIN, visibleAt);
+        long twosLosses = matchParticipantRepository
+                .countByUserIdAndModeAndResultInAndMatchResultVisibleAtLessThanEqual(
+                        userId,
+                        MatchMode.TWOS,
+                        List.of(MatchResult.LOSS, MatchResult.FORFEIT),
+                        visibleAt);
+        long twosDraws = matchParticipantRepository
+                .countByUserIdAndModeAndResultAndMatchResultVisibleAtLessThanEqual(
+                        userId, MatchMode.TWOS, MatchResult.DRAW, visibleAt);
+        return new CachedMatchStats(
+                wins,
+                losses,
+                draws,
+                onesWins,
+                onesLosses,
+                onesDraws,
+                twosWins,
+                twosLosses,
+                twosDraws);
     }
 
     private String normalizeAboutMe(String value) {
@@ -415,6 +514,7 @@ public class ProfileService {
                 match.getOpponentUsername(),
                 result,
                 match.getCompletedAt(),
-                match.getCompletionReason());
+                match.getCompletionReason(),
+                match.getMode());
     }
 }

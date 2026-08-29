@@ -17,6 +17,8 @@ const MATCHMAKING_DESTINATION = "/user/queue/matchmaking";
 const MATCH_DESTINATION = "/user/queue/match";
 const MATCH_CHAT_DESTINATION = "/user/queue/match-chat";
 const NOTIFICATION_DESTINATION = "/user/queue/notifications";
+const PARTY_DESTINATION = "/user/queue/party";
+const CUSTOM_LOBBY_DESTINATION = "/user/queue/custom-lobby";
 const RECONNECT_DELAY_MS = 2_000;
 const MAX_RECONNECT_DELAY_MS = 10_000;
 const HEARTBEAT_INTERVAL_MS = 10_000;
@@ -51,6 +53,8 @@ export function createMatchmakingClient({
     onEvent,
     onChatEvent,
     onNotification,
+    onPartyEvent,
+    onCustomLobbyEvent,
     onStatus,
     autoReconnect = false,
     autoJoinOnConnect = false,
@@ -58,6 +62,8 @@ export function createMatchmakingClient({
     let eventHandler = onEvent;
     let chatEventHandler = onChatEvent;
     let notificationHandler = onNotification;
+    let partyEventHandler = onPartyEvent;
+    let customLobbyEventHandler = onCustomLobbyEvent;
     let statusHandler = onStatus;
     let stompClient = null;
     let connectInFlight = false;
@@ -73,13 +79,19 @@ export function createMatchmakingClient({
     let terminalMatchId = null;
     let matchmakingSubscriptionRequested = false;
     let matchSubscriptionRequested = false;
+    let partySubscriptionRequested = false;
+    let customLobbySubscriptionRequested = false;
     let matchmakingSubscription = null;
     let matchSubscription = null;
     let matchChatSubscription = null;
     let notificationSubscription = null;
+    let partySubscription = null;
+    let customLobbySubscription = null;
     const pendingEvents = [];
     const pendingChatEvents = [];
     const pendingNotifications = [];
+    const pendingPartyEvents = [];
+    const pendingCustomLobbyEvents = [];
 
     const isTransportOpen = () => Boolean(
         stompClient?.connected
@@ -183,6 +195,24 @@ export function createMatchmakingClient({
         }
     };
 
+    const deliverPartyEvent = (event) => {
+        if (partyEventHandler) {
+            partyEventHandler(event);
+        } else {
+            pendingPartyEvents.push(event);
+            if (pendingPartyEvents.length > 100) pendingPartyEvents.shift();
+        }
+    };
+
+    const deliverCustomLobbyEvent = (event) => {
+        if (customLobbyEventHandler) {
+            customLobbyEventHandler(event);
+        } else {
+            pendingCustomLobbyEvents.push(event);
+            if (pendingCustomLobbyEvents.length > 100) pendingCustomLobbyEvents.shift();
+        }
+    };
+
     const unsubscribe = (subscription) => {
         if (!subscription) return;
         try {
@@ -198,6 +228,8 @@ export function createMatchmakingClient({
         matchSubscription = null;
         matchChatSubscription = null;
         notificationSubscription = null;
+        partySubscription = null;
+        customLobbySubscription = null;
     };
 
     const subscribeRequestedDestinations = (transport) => {
@@ -207,6 +239,20 @@ export function createMatchmakingClient({
             notificationSubscription = transport.subscribe(
                 NOTIFICATION_DESTINATION,
                 (message) => deliverNotification(JSON.parse(message.body)),
+            );
+        }
+
+        if (partySubscriptionRequested && !partySubscription) {
+            partySubscription = transport.subscribe(
+                PARTY_DESTINATION,
+                (message) => deliverPartyEvent(JSON.parse(message.body)),
+            );
+        }
+
+        if (customLobbySubscriptionRequested && !customLobbySubscription) {
+            customLobbySubscription = transport.subscribe(
+                CUSTOM_LOBBY_DESTINATION,
+                (message) => deliverCustomLobbyEvent(JSON.parse(message.body)),
             );
         }
 
@@ -373,6 +419,26 @@ export function createMatchmakingClient({
                 events.forEach((event) => notificationHandler?.(event));
             }
         },
+        setPartyHandler(nextHandler) {
+            partyEventHandler = nextHandler;
+            if (partyEventHandler && pendingPartyEvents.length > 0) {
+                const events = pendingPartyEvents.splice(0);
+                events.forEach((event) => partyEventHandler?.(event));
+            }
+        },
+        setCustomLobbyHandler(nextHandler) {
+            customLobbyEventHandler = nextHandler;
+            if (customLobbyEventHandler && pendingCustomLobbyEvents.length > 0) {
+                const events = pendingCustomLobbyEvents.splice(0);
+                events.forEach((event) => customLobbyEventHandler?.(event));
+            }
+        },
+        clearPendingPartyEvents() {
+            pendingPartyEvents.splice(0);
+        },
+        clearPendingCustomLobbyEvents() {
+            pendingCustomLobbyEvents.splice(0);
+        },
         clearPendingNotifications() {
             pendingNotifications.splice(0);
         },
@@ -401,6 +467,24 @@ export function createMatchmakingClient({
             unsubscribe(matchmakingSubscription);
             matchmakingSubscription = null;
         },
+        subscribeParty() {
+            partySubscriptionRequested = true;
+            if (isTransportOpen()) subscribeRequestedDestinations(stompClient);
+        },
+        unsubscribeParty() {
+            partySubscriptionRequested = false;
+            unsubscribe(partySubscription);
+            partySubscription = null;
+        },
+        subscribeCustomLobby() {
+            customLobbySubscriptionRequested = true;
+            if (isTransportOpen()) subscribeRequestedDestinations(stompClient);
+        },
+        unsubscribeCustomLobby() {
+            customLobbySubscriptionRequested = false;
+            unsubscribe(customLobbySubscription);
+            customLobbySubscription = null;
+        },
         subscribeMatch() {
             matchSubscriptionRequested = true;
             if (isTransportOpen()) subscribeRequestedDestinations(stompClient);
@@ -415,8 +499,8 @@ export function createMatchmakingClient({
             activeMatchId = null;
             terminalMatchId = null;
         },
-        joinQueue() {
-            publish("/app/matchmaking.join");
+        joinQueue(mode = "ONES") {
+            publish("/app/matchmaking.join", { mode });
         },
         resumeMatch() {
             publish("/app/matchmaking.resume");
@@ -458,8 +542,28 @@ export function createMatchmakingClient({
         surrender() {
             publish("/app/matchmaking.surrender");
         },
-        sendChat(matchId, message) {
-            publish("/app/matchmaking.chat", { matchId, message });
+        requestCodeView(matchId, targetUserId, roundNumber) {
+            publish("/app/matchmaking.codeView.request", {
+                matchId,
+                targetUserId,
+                roundNumber,
+            });
+        },
+        respondToCodeView(requestId, matchId, targetUserId, roundNumber, brain, selectedLoadout) {
+            publish("/app/matchmaking.codeView.response", {
+                requestId,
+                matchId,
+                targetUserId,
+                roundNumber,
+                brain,
+                selectedLoadout,
+            });
+        },
+        sendChat(matchId, message, channel = "ALL") {
+            return publish("/app/matchmaking.chat", { matchId, message, channel });
+        },
+        sendCustomLobbyChat(lobbyId, message) {
+            return publish("/app/custom-lobby.chat", { lobbyId, message });
         },
         disconnect() {
             connectGeneration += 1;
@@ -467,10 +571,14 @@ export function createMatchmakingClient({
             networkDelaySynchronizer.clear();
             matchmakingSubscriptionRequested = false;
             matchSubscriptionRequested = false;
+            partySubscriptionRequested = false;
+            customLobbySubscriptionRequested = false;
             unsubscribe(matchmakingSubscription);
             unsubscribe(matchSubscription);
             unsubscribe(matchChatSubscription);
             unsubscribe(notificationSubscription);
+            unsubscribe(partySubscription);
+            unsubscribe(customLobbySubscription);
             clearTransportSubscriptions();
             activeMatchId = null;
             terminalMatchId = null;
@@ -502,6 +610,12 @@ export function getActiveMatchmakingClient(handlers, options = {}) {
         if (handlers && "onNotification" in handlers) {
             activeMatchmakingClient.setNotificationHandler?.(handlers.onNotification);
         }
+        if (handlers && "onPartyEvent" in handlers) {
+            activeMatchmakingClient.setPartyHandler?.(handlers.onPartyEvent);
+        }
+        if (handlers && "onCustomLobbyEvent" in handlers) {
+            activeMatchmakingClient.setCustomLobbyHandler?.(handlers.onCustomLobbyEvent);
+        }
     }
     return activeMatchmakingClient;
 }
@@ -510,6 +624,10 @@ export function forceDisconnectActiveMatchmakingClient(client = activeMatchmakin
     if (activeMatchmakingClient === client) activeMatchmakingClient = null;
     client?.setNotificationHandler?.(null);
     client?.clearPendingNotifications?.();
+    client?.setPartyHandler?.(null);
+    client?.clearPendingPartyEvents?.();
+    client?.setCustomLobbyHandler?.(null);
+    client?.clearPendingCustomLobbyEvents?.();
     return client?.disconnect?.() ?? Promise.resolve();
 }
 

@@ -47,7 +47,7 @@ public class DuelInviteController {
                         invite.inviteId(),
                         invite.inviteId(),
                         invite.inviterUsername(),
-                        invite.inviterUsername() + " challenged you to a 1v1.",
+                        invite.inviterUsername() + " invited you to a Custom Match.",
                         invite.createdAt() == null ? Instant.now() : invite.createdAt(),
                         invite.expiresAt(),
                         null));
@@ -74,7 +74,7 @@ public class DuelInviteController {
                         invite.inviteId(),
                         invite.inviteId(),
                         declined.actorUsername(),
-                        declined.actorUsername() + " declined your 1v1 invite.",
+                        declined.actorUsername() + " declined your Custom Match invite.",
                         Instant.now(),
                         invite.expiresAt(),
                         null));

@@ -1,6 +1,7 @@
 package com.example.botfight.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -9,10 +10,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.example.botfight.DTO.MatchPlaybackDTO;
+import com.example.botfight.DTO.MatchCodeViewResponseDTO;
 import com.example.botfight.DTO.MatchmakingEventDTO;
 import com.example.botfight.DTO.MatchReplayDTO;
 import com.example.botfight.domain.AppUser;
 import com.example.botfight.domain.Match;
+import com.example.botfight.domain.MatchMode;
 import com.example.botfight.domain.MatchParticipant;
 import com.example.botfight.domain.MatchResult;
 import com.example.botfight.domain.MatchStatus;
@@ -32,6 +35,7 @@ import com.example.botfight.service.match.simulation.MatchSimulationService;
 import com.example.botfight.service.match.replay.ReplayDeliveryMode;
 import com.example.botfight.service.matchmaking.MatchmakingService;
 import com.example.botfight.service.limits.SlidingWindowRateLimiter;
+import com.example.botfight.service.limits.RateLimitExceededException;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import java.time.Clock;
 import java.time.Duration;
@@ -135,7 +139,7 @@ class MatchServiceTest {
                     List.of(),
                     "BOT_WIN",
                     winner.userId(),
-                    winner.username() + " wins the fight."));
+                    (winner.teamNumber() == 2 ? "Red Team" : "Blue Team") + " wins."));
         });
     }
 
@@ -307,6 +311,91 @@ class MatchServiceTest {
     }
 
     @Test
+    void teamMatchStartsOnlyWithAnExactTwoVersusTwoRoster() {
+        List<MatchEntrant> entrants = List.of(
+                new MatchEntrant(UUID.randomUUID(), "team-one-a", "team-one-a@example.com", "socket-1", 1),
+                new MatchEntrant(UUID.randomUUID(), "team-one-b", "team-one-b@example.com", "socket-2", 1),
+                new MatchEntrant(UUID.randomUUID(), "team-two-a", "team-two-a@example.com", "socket-3", 2),
+                new MatchEntrant(UUID.randomUUID(), "team-two-b", "team-two-b@example.com", "socket-4", 2));
+
+        List<OutboundMatchmakingEvent> events = service.startTeamMatch(entrants, MatchMode.TWOS);
+
+        assertThat(events).hasSize(4);
+        assertThat(events).allSatisfy(event -> assertThat(event.event().players()).hasSize(4));
+    }
+
+    @Test
+    void malformedTeamRosterAndDuplicateSocketAreRejectedBeforePersistence() {
+        List<MatchEntrant> threePlayers = List.of(
+                new MatchEntrant(UUID.randomUUID(), "team-one-a", "team-one-a@example.com", "socket-1", 1),
+                new MatchEntrant(UUID.randomUUID(), "team-one-b", "team-one-b@example.com", "socket-2", 1),
+                new MatchEntrant(UUID.randomUUID(), "team-two-a", "team-two-a@example.com", "socket-3", 2));
+
+        assertThatThrownBy(() -> service.startTeamMatch(threePlayers, MatchMode.TWOS))
+                .isInstanceOf(AuthException.class)
+                .hasMessage("2v2 matches require exactly two players on each team");
+
+        List<MatchEntrant> duplicateSockets = List.of(
+                new MatchEntrant(UUID.randomUUID(), "team-one-a", "team-one-a@example.com", "same-socket", 1),
+                new MatchEntrant(UUID.randomUUID(), "team-one-b", "team-one-b@example.com", "same-socket", 1),
+                new MatchEntrant(UUID.randomUUID(), "team-two-a", "team-two-a@example.com", "socket-3", 2),
+                new MatchEntrant(UUID.randomUUID(), "team-two-b", "team-two-b@example.com", "socket-4", 2));
+
+        assertThatThrownBy(() -> service.startTeamMatch(duplicateSockets, MatchMode.TWOS))
+                .isInstanceOf(AuthException.class)
+                .hasMessage("match players must use distinct socket connections");
+    }
+
+    @Test
+    void codeViewUsesAOneShotReadOnlySnapshotAndPerRequesterRateLimit() {
+        UUID requesterId = UUID.randomUUID();
+        UUID teammateUserId = UUID.randomUUID();
+        UUID opponentUserId = UUID.randomUUID();
+        UUID opponentTwoUserId = UUID.randomUUID();
+        service.startTeamMatch(List.of(
+                new MatchEntrant(requesterId, "pilot-one", "pilot-one@example.com", "socket-one", 1),
+                new MatchEntrant(teammateUserId, "pilot-teammate", "pilot-teammate@example.com", "socket-two", 1),
+                new MatchEntrant(opponentUserId, "pilot-two", "pilot-two@example.com", "socket-three", 2),
+                new MatchEntrant(opponentTwoUserId, "pilot-two-b", "pilot-two-b@example.com", "socket-four", 2)), MatchMode.TWOS);
+        UUID matchId = savedMatch.getId();
+
+        assertThatThrownBy(() -> service.requestCodeView(
+                requesterId, matchId, opponentUserId, 1))
+                .isInstanceOf(AuthException.class)
+                .hasMessage("you can only view real code from a teammate");
+
+        OutboundMatchmakingEvent request = service.requestCodeView(
+                requesterId, matchId, teammateUserId, 1);
+
+        assertThat(request.principalName()).isEqualTo("pilot-teammate@example.com");
+        assertThat(request.event().type()).isEqualTo("MATCH_CODE_VIEW_REQUEST");
+        assertThat(request.event().codeViewRequestId()).isNotNull();
+        assertThat(request.event().codeViewTargetUserId()).isEqualTo(teammateUserId);
+
+        tools.jackson.databind.JsonNode brain = new tools.jackson.databind.json.JsonMapper()
+                .createObjectNode()
+                .put("version", "bot-logic-tree-v1");
+        OutboundMatchmakingEvent result = service.respondCodeView(
+                teammateUserId,
+                new MatchCodeViewResponseDTO(
+                        request.event().codeViewRequestId(),
+                        matchId,
+                        teammateUserId,
+                        1,
+                        brain,
+                        "melee"));
+
+        assertThat(result.principalName()).isEqualTo("pilot-one@example.com");
+        assertThat(result.event().type()).isEqualTo("MATCH_CODE_VIEW_RESULT");
+        assertThat(result.event().codeViewTargetUserId()).isEqualTo(teammateUserId);
+        assertThat(result.event().codeViewBrain()).isEqualTo(brain);
+        assertThat(result.event().codeViewSelectedLoadout()).isEqualTo("melee");
+
+        assertThatThrownBy(() -> service.requestCodeView(requesterId, matchId, teammateUserId, 1))
+                .isInstanceOf(RateLimitExceededException.class);
+    }
+
+    @Test
     void duplicateLoadoutSelectionIsIdempotentUnderTheMatchLock() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
@@ -430,6 +519,9 @@ class MatchServiceTest {
                     assertThat(outbound.event().player()).isNotNull();
                     assertThat(outbound.event().opponent()).isNotNull();
                     assertThat(outbound.event().players()).hasSize(2);
+                    assertThat(outbound.event().playback().roundWinsBeforeResult())
+                            .containsEntry(firstUserId, 0)
+                            .containsEntry(secondUserId, 0);
                     assertThat(outbound.delayMillis()).isZero();
                     assertThat(outbound.publishAt()).isNull();
                 });
@@ -437,18 +529,33 @@ class MatchServiceTest {
                 .filter(outbound -> outbound.principalName().equals("pilot-one@example.com"))
                 .filter(outbound -> outbound.event().type().equals("MATCH_REPLAY_BATCH"))
                 .toList();
-        assertThat(replayBatches).isNotEmpty();
-        assertThat(replayBatches.getFirst().delayMillis()).isEqualTo(2_000L);
-        assertThat(replayBatches.getFirst().publishAt()).isEqualTo(clock.instant().plusSeconds(2));
-        assertThat(replayBatches.getFirst().event().playback().frames().getLast().elapsedMs())
+        List<OutboundMatchmakingEvent> replayFrameBatches = replayBatches.stream()
+                .filter(outbound -> !outbound.event().playback().frames().isEmpty())
+                .toList();
+        assertThat(replayFrameBatches).isNotEmpty();
+        assertThat(replayFrameBatches.getFirst().delayMillis()).isEqualTo(2_000L);
+        assertThat(replayFrameBatches.getFirst().publishAt()).isEqualTo(clock.instant().plusSeconds(2));
+        assertThat(replayFrameBatches.getFirst().event().playback().frames().getLast().elapsedMs())
                 .isEqualTo(1_000);
-        assertThat(replayBatches.getLast().delayMillis()).isEqualTo(51_500L);
-        assertThat(replayBatches.getLast().publishAt()).isEqualTo(clock.instant().plusMillis(51_500));
-        assertThat(replayBatches.getLast().event().playback().terminalBatch()).isTrue();
-        assertThat(replayBatches.getLast().event().playback().frames().getLast().elapsedMs())
+        assertThat(replayFrameBatches.getLast().delayMillis()).isEqualTo(51_500L);
+        assertThat(replayFrameBatches.getLast().publishAt()).isEqualTo(clock.instant().plusMillis(51_500));
+        assertThat(replayFrameBatches.getLast().event().playback().terminalBatch()).isTrue();
+        assertThat(replayFrameBatches.getLast().event().playback().frames().getLast().elapsedMs())
                 .isEqualTo(50_500);
-        assertThat(replayBatches.getLast().event().playback().winnerUserId())
-                .isIn(firstUserId, secondUserId);
+        assertThat(replayFrameBatches).allSatisfy(outbound -> {
+            assertThat(outbound.event().playback().result()).isNull();
+            assertThat(outbound.event().playback().winnerUserId()).isNull();
+            assertThat(outbound.event().playback().message()).isNull();
+        });
+        assertThat(replayBatches)
+                .filteredOn(outbound -> outbound.event().playback().frames().isEmpty())
+                .singleElement()
+                .satisfies(outbound -> {
+                    assertThat(outbound.delayMillis()).isEqualTo(53_500L);
+                    assertThat(outbound.publishAt()).isEqualTo(clock.instant().plusMillis(53_500));
+                    assertThat(outbound.event().playback().result()).isEqualTo("BOT_WIN");
+                    assertThat(outbound.event().playback().winnerUserId()).isNotNull();
+                });
         assertThat(replayBatches.stream()
                 .flatMap(outbound -> outbound.event().playback().frames().stream())
                 .map(MatchReplayDTO.ReplayFrameDTO::elapsedMs)
@@ -483,7 +590,7 @@ class MatchServiceTest {
     }
 
     @Test
-    void surrenderDuringReplayCompletesTheReplayedRoundInsteadOfTheNextRound() {
+    void singlePlayerForfeitDuringReplayCompletesAOneVersusOneMatch() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
         UUID firstSubmissionId = UUID.randomUUID();
@@ -506,9 +613,12 @@ class MatchServiceTest {
             assertThat(outbound.event().roundNumber()).isEqualTo(1);
             assertThat(outbound.event().playback().result()).isEqualTo("RESIGNATION_WIN");
             assertThat(outbound.event().playback().winnerUserId()).isEqualTo(secondUserId);
+            assertThat(outbound.event().playback().message()).isEqualTo("Red Team wins.");
             assertThat(outbound.delayMillis()).isZero();
         });
         assertThat(savedMatch.getStatus()).isEqualTo(MatchStatus.COMPLETED);
+        assertThat(savedMatch.getCompletionReason()).isEqualTo("RESIGNATION");
+        assertThat(savedMatch.getWinnerUser().getId()).isEqualTo(secondUserId);
         assertThat(service.surrender(firstUserId)).isEmpty();
     }
 
@@ -552,7 +662,10 @@ class MatchServiceTest {
                         .filter(event -> event.event().type().equals("MATCH_REPLAY_BATCH"))
                         .toList();
 
-        assertThat(replayEvents).singleElement().satisfies(event -> {
+        assertThat(replayEvents)
+                .filteredOn(event -> !event.event().playback().frames().isEmpty())
+                .singleElement()
+                .satisfies(event -> {
             assertThat(event.delayMillis()).isZero();
             assertThat(event.event().playback().frames())
                     .extracting(MatchReplayDTO.ReplayFrameDTO::elapsedMs)
@@ -560,7 +673,18 @@ class MatchServiceTest {
             assertThat(event.event().playback().initialState()).isNotNull();
             assertThat(event.event().playback().replayCursorElapsedMs()).isEqualTo(2_000);
             assertThat(event.event().playback().terminalBatch()).isTrue();
+            assertThat(event.event().playback().result()).isNull();
+            assertThat(event.event().playback().winnerUserId()).isNull();
+            assertThat(event.event().playback().message()).isNull();
         });
+        assertThat(replayEvents)
+                .filteredOn(event -> event.event().playback().frames().isEmpty())
+                .singleElement()
+                .satisfies(event -> {
+                    assertThat(event.delayMillis()).isEqualTo(5_000L);
+                    assertThat(event.event().playback().result()).isEqualTo("BOT_WIN");
+                    assertThat(event.event().playback().winnerUserId()).isNotNull();
+                });
     }
 
     @Test
@@ -956,7 +1080,59 @@ class MatchServiceTest {
     }
 
     @Test
-    void surrenderCompletesMatchAsResignationWinForOpponent() {
+    void unanimousTeamForfeitCompletesMatchForTheOpposingTeam() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID teammateUserId = UUID.randomUUID();
+        UUID opponentUserId = UUID.randomUUID();
+        UUID opponentTeammateUserId = UUID.randomUUID();
+        service.startTeamMatch(List.of(
+                new MatchEntrant(firstUserId, "pilot-one", "pilot-one@example.com", "socket-one", 1),
+                new MatchEntrant(teammateUserId, "pilot-one-b", "pilot-one-b@example.com", "socket-two", 1),
+                new MatchEntrant(opponentUserId, "pilot-two", "pilot-two@example.com", "socket-three", 2),
+                new MatchEntrant(opponentTeammateUserId, "pilot-two-b", "pilot-two-b@example.com", "socket-four", 2)), MatchMode.TWOS);
+
+        List<OutboundMatchmakingEvent> voteEvents = service.surrender(firstUserId);
+
+        assertThat(voteEvents).hasSize(4).allSatisfy(outbound -> {
+            assertThat(outbound.event().type()).isEqualTo("MATCH_SURRENDER_UPDATED");
+            assertThat(outbound.event().surrenderVoteRequired()).isEqualTo(2);
+            assertThat(outbound.event().surrenderVoteCount())
+                    .isEqualTo(outbound.event().player().teamNumber() == 1 ? 1 : 0);
+        });
+        List<OutboundMatchmakingEvent> events = service.surrender(teammateUserId);
+
+        assertThat(events).hasSize(4);
+        assertThat(savedMatch.getStatus()).isEqualTo(MatchStatus.COMPLETED);
+        assertThat(savedMatch.getCompletionReason()).isEqualTo("RESIGNATION");
+        assertThat(savedMatch.getWinnerUser().getId()).isIn(opponentUserId, opponentTeammateUserId);
+        assertThat(participants)
+                .filteredOn(participant -> participant.getTeamNumber() == 1)
+                .hasSize(2)
+                .allSatisfy(participant ->
+                        assertThat(participant.getResult()).isEqualTo(MatchResult.FORFEIT));
+        assertThat(participants)
+                .filteredOn(participant -> participant.getTeamNumber() == 2)
+                .hasSize(2)
+                .allSatisfy(participant ->
+                        assertThat(participant.getResult()).isEqualTo(MatchResult.WIN));
+        assertThat(events).allSatisfy(outbound -> {
+            assertThat(outbound.event().type()).isEqualTo("MATCH_RESULT_READY");
+            assertThat(outbound.event().playback().result()).isEqualTo("RESIGNATION_WIN");
+            assertThat(outbound.event().playback().winnerUserId())
+                    .isIn(opponentUserId, opponentTeammateUserId);
+            assertThat(outbound.event().playback().message()).isEqualTo("Red Team wins.");
+            assertThat(outbound.delayMillis()).isZero();
+            assertThat(outbound.event().matchChatEndsAt()).isEqualTo(clock.instant().plusSeconds(30));
+        });
+        assertThat(service.matchChatCloseAt(savedMatch.getId()))
+                .isEqualTo(clock.instant().plusSeconds(30));
+        assertThat(service.markDisconnected("pilot-one@example.com")).isEmpty();
+        assertThat(service.markDisconnected("pilot-one-b@example.com")).isEmpty();
+        assertThat(savedMatch.getWinnerUser().getId()).isIn(opponentUserId, opponentTeammateUserId);
+    }
+
+    @Test
+    void oneVersusOneForfeitRequiresOnlyThatTeamMember() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
         matchmakingService.joinQueue(firstUserId, "pilot-one", "pilot-one@example.com");
@@ -964,33 +1140,47 @@ class MatchServiceTest {
 
         List<OutboundMatchmakingEvent> events = service.surrender(firstUserId);
 
-        assertThat(events).hasSize(2);
-        assertThat(savedMatch.getStatus()).isEqualTo(MatchStatus.COMPLETED);
-        assertThat(savedMatch.getCompletionReason()).isEqualTo("RESIGNATION");
-        assertThat(savedMatch.getWinnerUser().getId()).isEqualTo(secondUserId);
-        assertThat(participants)
-                .filteredOn(participant -> participant.getUser().getId().equals(firstUserId))
-                .singleElement()
-                .extracting(MatchParticipant::getResult)
-                .isEqualTo(MatchResult.FORFEIT);
-        assertThat(participants)
-                .filteredOn(participant -> participant.getUser().getId().equals(secondUserId))
-                .singleElement()
-                .extracting(MatchParticipant::getResult)
-                .isEqualTo(MatchResult.WIN);
-        assertThat(events).allSatisfy(outbound -> {
+        assertThat(events).hasSize(2).allSatisfy(outbound -> {
             assertThat(outbound.event().type()).isEqualTo("MATCH_RESULT_READY");
             assertThat(outbound.event().playback().result()).isEqualTo("RESIGNATION_WIN");
             assertThat(outbound.event().playback().winnerUserId()).isEqualTo(secondUserId);
-            assertThat(outbound.event().playback().message()).isEqualTo("pilot-two wins by resignation.");
-            assertThat(outbound.delayMillis()).isZero();
-            assertThat(outbound.event().matchChatEndsAt()).isEqualTo(clock.instant().plusSeconds(30));
+            assertThat(outbound.event().surrenderVoteRequired()).isEqualTo(1);
         });
-        assertThat(service.matchChatCloseAt(savedMatch.getId()))
-                .isEqualTo(clock.instant().plusSeconds(30));
-        assertThat(service.markDisconnected("pilot-one@example.com")).isEmpty();
-        assertThat(service.markDisconnected("pilot-two@example.com")).isEmpty();
+        assertThat(savedMatch.getCompletionReason()).isEqualTo("RESIGNATION");
         assertThat(savedMatch.getWinnerUser().getId()).isEqualTo(secondUserId);
+    }
+
+    @Test
+    void forfeitVoteCanBeWithdrawnBeforeItBecomesUnanimous() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID teammateUserId = UUID.randomUUID();
+        UUID opponentUserId = UUID.randomUUID();
+        UUID opponentTeammateUserId = UUID.randomUUID();
+        service.startTeamMatch(List.of(
+                new MatchEntrant(firstUserId, "pilot-one", "pilot-one@example.com", "socket-one", 1),
+                new MatchEntrant(teammateUserId, "pilot-one-b", "pilot-one-b@example.com", "socket-two", 1),
+                new MatchEntrant(opponentUserId, "pilot-two", "pilot-two@example.com", "socket-three", 2),
+                new MatchEntrant(opponentTeammateUserId, "pilot-two-b", "pilot-two-b@example.com", "socket-four", 2)), MatchMode.TWOS);
+
+        List<OutboundMatchmakingEvent> voteEvents = service.surrender(firstUserId);
+        List<OutboundMatchmakingEvent> withdrawalEvents = service.surrender(firstUserId);
+
+        assertThat(voteEvents).hasSize(4).allSatisfy(outbound -> {
+            assertThat(outbound.event().type()).isEqualTo("MATCH_SURRENDER_UPDATED");
+            assertThat(outbound.event().surrenderVoteRequired()).isEqualTo(2);
+        });
+        assertThat(withdrawalEvents).hasSize(4).allSatisfy(outbound -> {
+            assertThat(outbound.event().type()).isEqualTo("MATCH_SURRENDER_UPDATED");
+            assertThat(outbound.event().surrenderVoteCount()).isZero();
+            assertThat(outbound.event().surrenderVoteRequired()).isEqualTo(2);
+        });
+        assertThat(withdrawalEvents.stream()
+                .filter(outbound -> outbound.event().player().userId().equals(firstUserId))
+                .findFirst()
+                .orElseThrow()
+                .event()
+                .surrenderRequestedByMe()).isFalse();
+        assertThat(savedMatch.getStatus()).isEqualTo(MatchStatus.RUNNING);
     }
 
     @Test
@@ -1030,6 +1220,7 @@ class MatchServiceTest {
         UUID matchId = savedMatch.getId();
 
         service.surrender(firstUserId);
+        service.surrender(secondUserId);
 
         assertThat(service.submitChatMessage(firstUserId, matchId, "still here").status())
                 .isEqualTo(MatchChatSubmissionStatus.ACCEPTED);
@@ -1048,6 +1239,7 @@ class MatchServiceTest {
         UUID matchId = savedMatch.getId();
 
         service.surrender(firstUserId);
+        service.surrender(secondUserId);
 
         MatchChatClosure closure = service.closeMatchChat(matchId);
 
@@ -1066,6 +1258,7 @@ class MatchServiceTest {
         matchmakingService.joinQueue(secondUserId, "pilot-two", "pilot-two@example.com");
 
         service.surrender(firstUserId);
+        service.surrender(secondUserId);
         List<OutboundMatchmakingEvent> retryEvents = service.surrender(firstUserId);
 
         assertThat(retryEvents).isEmpty();

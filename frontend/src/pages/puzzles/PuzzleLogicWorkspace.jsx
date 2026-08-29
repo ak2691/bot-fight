@@ -4,6 +4,8 @@ import { createPortal } from "react-dom";
 import { useDialogFocus } from "../../components/useDialogFocus.js";
 import {
     BOT_LOGIC_TREE_VERSION,
+    BOT_CODE_SELECTABLES,
+    CONDITION_TYPES,
     MAX_LOGIC_BLOCKS,
     MAX_ROOT_NODES,
     MAX_TOTAL_CONDITIONS,
@@ -23,6 +25,7 @@ import {
     addGraphAction,
     countLogicConditions,
     newTreeBranch,
+    sanitizeConfigurationConditions,
 } from "../../gameArena/coding/nodes/GraphNodes.jsx";
 
 const INITIAL_ZOOM = 0.85;
@@ -60,22 +63,27 @@ function puzzleRoot(name, kind, branch, priority = 1, id = null) {
     };
 }
 
-export function createDefaultPuzzleLogic() {
+export function createDefaultPuzzleLogic(playerTeamSize = 1, opponentTeamSize = 1) {
     const defaultVariable = VISIBLE_STATE_VARIABLES.find((variable) => variable.id === "selectable.distance")
         ?? VISIBLE_STATE_VARIABLES[0]
         ?? STATE_VARIABLES[0];
     const winBranch = newTreeBranch("if", defaultVariable, 1);
-    winBranch.conditions = [puzzleCondition("selectable.hp", {
-        leftSelectable: "opponent",
+    const opponentSelectors = Number(opponentTeamSize) > 1
+        ? Array.from({ length: Math.min(2, Math.max(1, Number(opponentTeamSize))) }, (_, index) => `opponent_${index + 1}`)
+        : [BOT_CODE_SELECTABLES.OPPONENT];
+    winBranch.conditions = opponentSelectors.map((leftSelectable) => puzzleCondition("selectable.hp", {
+        leftSelectable,
         comparator: "lte",
         right: { type: "number", value: 0 },
-    })];
+    }));
     const loseBranch = newTreeBranch("if", defaultVariable, 1);
-    loseBranch.conditions = [puzzleCondition("selectable.hp", {
-        leftSelectable: "my_bot",
+    const playerSelectors = ["my_bot"];
+    if (Number(playerTeamSize) > 1) playerSelectors.push("teammate_1");
+    loseBranch.conditions = playerSelectors.map((leftSelectable) => puzzleCondition("selectable.hp", {
+        leftSelectable,
         comparator: "lte",
         right: { type: "number", value: 0 },
-    })];
+    }));
     return normalizePuzzleLogic({
         version: BOT_LOGIC_TREE_VERSION,
         customVariables: [],
@@ -104,10 +112,11 @@ export function flattenPuzzleConditions(configuration, kind) {
     return conditions;
 }
 
-export function normalizePuzzleLogic(configuration) {
+export function normalizePuzzleLogic(configuration, options = {}) {
     if (!configuration) return configuration;
     const conditionNumbers = { win: 0, lose: 0, modify: 0, other: 0 };
     const customVariables = customVariableDefinitions(configuration);
+    const selectableTypes = options.selectableTypes ?? SELECTABLE_TYPES;
     const roots = normalizeRoots(configuration.roots ?? []).map((root) => {
         const normalizedKind = typeof root?.kind === "string" ? root.kind.trim().toLowerCase() : root?.kind;
         const normalizedRoot = normalizedKind !== root?.kind && typeof root?.kind === "string"
@@ -115,26 +124,38 @@ export function normalizePuzzleLogic(configuration) {
             : root;
         return {
             ...normalizedRoot,
-            branches: normalizePuzzleBranches(root?.branches, normalizedKind, conditionNumbers, customVariables),
+            branches: normalizePuzzleBranches(root?.branches, normalizedKind, conditionNumbers, customVariables, selectableTypes),
         };
     });
-    return { ...configuration, roots };
+    return sanitizeConfigurationConditions(
+        { ...configuration, roots },
+        options.conditionTypes ?? CONDITION_TYPES,
+        options.defaultCondition ?? CONDITION_TYPES[0],
+        selectableTypes,
+        options.stateVariables ?? STATE_VARIABLES,
+        options.selectableAbilityIds ?? null,
+    );
 }
 
-function normalizePuzzleBranches(branches, kind, conditionNumbers, customVariables) {
+function normalizePuzzleBranches(branches, kind, conditionNumbers, customVariables, selectableTypes) {
     if (!Array.isArray(branches)) return branches;
     const conditionKind = ["win", "lose", "modify"].includes(kind) ? kind : "other";
     return branches.map((branch) => {
         const normalizedBranch = kind === "modify" ? stripLegacyActionFields(branch) : { ...branch };
+        const normalizedConditions = Array.isArray(branch?.conditions)
+            ? (selectableTypes === SELECTABLE_TYPES
+                ? normalizeConditions(branch.conditions, customVariables, SELECTABLE_TYPES)
+                : normalizeConditions(branch.conditions, customVariables, selectableTypes))
+            : branch?.conditions;
         return {
             ...normalizedBranch,
-            conditions: Array.isArray(branch?.conditions)
-                ? normalizeConditions(branch.conditions, customVariables, SELECTABLE_TYPES).map((condition) => ({
+            conditions: Array.isArray(normalizedConditions)
+                ? normalizedConditions.map((condition) => ({
                     ...condition,
                     id: `puzzle-condition-${conditionKind}-${++conditionNumbers[conditionKind]}`,
                 }))
-                : branch?.conditions,
-            children: normalizePuzzleBranches(branch?.children, conditionKind, conditionNumbers, customVariables),
+                : normalizedConditions,
+            children: normalizePuzzleBranches(branch?.children, conditionKind, conditionNumbers, customVariables, selectableTypes),
         };
     });
 }
@@ -210,13 +231,17 @@ export default function PuzzleLogicWorkspace({
 
     const commitConfiguration = useCallback((nextConfiguration) => {
         if (readOnly || !nextConfiguration || nextConfiguration === currentConfiguration) return;
-        const normalizedConfiguration = normalizePuzzleLogic(nextConfiguration);
+        const normalizedConfiguration = normalizePuzzleLogic(nextConfiguration, {
+            stateVariables,
+            selectableTypes,
+            selectableAbilityIds,
+        });
         setHistory((current) => ({
             undo: [...current.undo, currentConfiguration].slice(-100),
             redo: [],
         }));
         onChange(normalizedConfiguration);
-    }, [currentConfiguration, onChange, readOnly]);
+    }, [currentConfiguration, onChange, readOnly, selectableAbilityIds, selectableTypes, stateVariables]);
 
     const travelHistory = useCallback((direction) => {
         if (readOnly) return;
@@ -228,12 +253,16 @@ export default function PuzzleLogicWorkspace({
             const opposite = direction === "undo"
                 ? [...current.redo, currentConfiguration]
                 : [...current.undo, currentConfiguration];
-            onChange(normalizePuzzleLogic(nextConfiguration));
+            onChange(normalizePuzzleLogic(nextConfiguration, {
+                stateVariables,
+                selectableTypes,
+                selectableAbilityIds,
+            }));
             return direction === "undo"
                 ? { undo: nextSource, redo: opposite }
                 : { undo: opposite, redo: nextSource };
         });
-    }, [currentConfiguration, onChange, readOnly]);
+    }, [currentConfiguration, onChange, readOnly, selectableAbilityIds, selectableTypes, stateVariables]);
 
     const addRoot = useCallback((kind) => {
         if (readOnly || currentConfiguration.roots.length >= MAX_ROOT_NODES) return;

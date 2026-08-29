@@ -7,9 +7,11 @@ rated results.
 ## Ownership map
 
 - `Arena.jsx`: testing-room state, fixed-step arena loop, logic action
-  application, entity ticking, submission coordination, and state snapshots.
+  application, entity ticking, submission coordination, state snapshots, and
+  live-match code-view responders plus editable sandbox copies.
 - `coding/CodingPanel.jsx`: coding workspace composition root, toolbar,
-  history, modal coordination, and outer workspace layout.
+  history, modal coordination, outer workspace layout, and read-only live
+  participant snapshots.
 - `coding/LogicBoard.jsx`: graph canvas interaction, node positioning, branch
   edits, selection, and search integration.
 - `coding/nodes/GraphNodes.jsx`: graph layout, condition/action node rendering,

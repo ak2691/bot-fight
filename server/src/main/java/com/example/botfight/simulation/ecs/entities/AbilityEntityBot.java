@@ -3,6 +3,8 @@ package com.example.botfight.simulation.ecs.entities;
 /** Minimal mutable bot surface required by persistent ability systems. */
 public interface AbilityEntityBot {
     int entitySlot();
+    /** Team identity used to keep hostile entity effects off friendly bots. */
+    default int entityTeam() { return entitySlot(); }
     double entityX();
     double entityY();
     /** Start pose of this bot's movement segment for the current simulation tick. */

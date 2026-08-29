@@ -1,6 +1,8 @@
 import {
     customVariableDefinitions as customVariableDefinitionsForBrain,
     evaluateCondition,
+    BOT_CODE_SELECTABLES,
+    canonicalBotSelectableId,
     STATE_VARIABLES,
     SELECTABLE_BY_ID,
     VARIABLE_SELECTABLE_TYPES,
@@ -159,7 +161,7 @@ export function puzzleConditionLabel(condition, variableDefinitions = []) {
             ? `Custom variable ${condition.left.slice("custom.".length)}`
             : condition.left ?? "condition");
         const selectable = leftDefinition?.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR
-            ? ` @ ${selectableLabel(condition.selectable1 ?? "my_bot")} → ${selectableLabel(condition.selectable2 ?? condition.selectable ?? "opponent")}`
+            ? ` @ ${selectableLabel(condition.selectable1 ?? "my_bot")} → ${selectableLabel(condition.selectable2 ?? condition.selectable ?? BOT_CODE_SELECTABLES.OPPONENT)}`
             : condition.leftSelectable ? ` @ ${selectableLabel(condition.leftSelectable)}` : "";
         const right = condition.right?.type === "variable"
             ? (definitions.find((variable) => variable.id === condition.right.value)?.label ?? condition.right.value)
@@ -175,6 +177,6 @@ export function puzzleConditionLabel(condition, variableDefinitions = []) {
 }
 
 function selectableLabel(selectable) {
-    const base = String(selectable ?? "").split(":")[0];
+    const base = canonicalBotSelectableId(selectable).split(":")[0];
     return SELECTABLE_BY_ID.get(base)?.label ?? selectable;
 }

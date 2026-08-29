@@ -1,6 +1,6 @@
 import { angleDelta, clamp } from "../../gameconfig/geometry.js";
 import { ROTATION_STEP_DEG } from "../../modelPayloads/arenaConstants.js";
-import { resolveAbilityStrategySelectable, selectAbilityStrategyActionPlan } from "../code/BotCode.js";
+import { BOT_CODE_SELECTABLES, resolveAbilityStrategySelectable, selectAbilityStrategyActionPlan } from "../code/BotCode.js";
 import { stateFromPayload } from "../code/runtime/runtimeState.js";
 import { compassDirection, relativeMovementVector, vectorToCompassDegrees } from "./arenaAngles.js";
 import { abilityExecutionPayload } from "../../gameconfig/AbilityExecutionPayload.js";
@@ -57,13 +57,20 @@ function offsetTarget(target, block) {
     return target ? { ...target, x: Number(target.x) + Number(block?.targetOffsetX ?? 0), y: Number(target.y) + Number(block?.targetOffsetY ?? 0) } : null;
 }
 
-function resolveSelectable(state, selectable = "opponent") {
+function resolveSelectable(state, selectable = BOT_CODE_SELECTABLES.OPPONENT) {
     const objects = Array.isArray(state?.objects) ? state.objects : [];
     const opponent = state?.opponent
         ?? objects.find((object) => object.type === "opponentModel")
         ?? objects.find((object) => object.id === "opponent-model" || object.id === "main")
         ?? null;
-    return resolveAbilityStrategySelectable({ player: state?.player, opponent, objects }, selectable ?? "opponent");
+    return resolveAbilityStrategySelectable({
+        player: state?.player,
+        opponent,
+        teammates: state?.teammates ?? [],
+        opponents: state?.opponents ?? [],
+        bots: state?.bots ?? [],
+        objects,
+    }, selectable ?? BOT_CODE_SELECTABLES.OPPONENT);
 }
 
 function movementVector(block, player, target) {

@@ -70,6 +70,15 @@ public class PuzzleAttemptService {
                 definition.timeLimitMs(),
                 definition.initialElapsedMs());
 
+        int playerTeamSize = definition.bots().stream()
+                .filter(bot -> bot.teamNumber() == 1)
+                .mapToInt(PuzzleService.PuzzleBotDefinition::slot)
+                .max()
+                .orElse(1);
+        List<DuelBotRequest> simulationBots = definition.bots().stream()
+                .map(bot -> toBotRequest(bot, playerTeamSize, definition.puzzleNumber()))
+                .toList();
+
         DuelSimulationRequest simulationRequest = new DuelSimulationRequest(
                 UUID.nameUUIDFromBytes(("puzzle:" + definition.puzzleNumber()).getBytes(StandardCharsets.UTF_8)),
                 DuelSimulationService.DUEL_RULESET_VERSION,
@@ -79,9 +88,7 @@ public class PuzzleAttemptService {
                         ArenaUnits.HEIGHT,
                         Math.max(MIN_SIMULATION_STEP_MS, definition.timeLimitMs()),
                         definition.initialElapsedMs()),
-                List.of(
-                        toBotRequest(definition.playerBot(), 1, "Puzzle Player", definition.puzzleNumber(), "player"),
-                        toBotRequest(definition.opponentBot(), 2, "Puzzle Opponent", definition.puzzleNumber(), "opponent")));
+                simulationBots);
 
         duelSimulationService.simulateWithoutReplay(simulationRequest, outcome::afterTick);
         String status = outcome.status();
@@ -98,20 +105,25 @@ public class PuzzleAttemptService {
 
     private DuelBotRequest toBotRequest(
             PuzzleService.PuzzleBotDefinition bot,
-            int slot,
-            String username,
-            long puzzleNumber,
-            String role) {
+            int playerTeamSize,
+            long puzzleNumber) {
+        int simulationSlot = bot.teamNumber() == 1
+                ? bot.slot()
+                : playerTeamSize + bot.slot();
+        String teamLabel = bot.teamNumber() == 1 ? "Blue" : "Red";
+        String username = "Puzzle " + teamLabel + " " + bot.slot();
         return new DuelBotRequest(
-                UUID.nameUUIDFromBytes(("puzzle:" + puzzleNumber + ":" + role).getBytes(StandardCharsets.UTF_8)),
+                UUID.nameUUIDFromBytes(("puzzle:" + puzzleNumber + ":team:" + bot.teamNumber() + ":slot:" + bot.slot())
+                        .getBytes(StandardCharsets.UTF_8)),
                 username,
-                slot,
+                simulationSlot,
                 bot.startX(),
                 bot.startY(),
                 bot.rotation(),
                 BOT_SIZE,
                 bot.loadout(),
                 bot.brain(),
-                bot.startHp());
+                bot.startHp(),
+                bot.teamNumber());
     }
 }

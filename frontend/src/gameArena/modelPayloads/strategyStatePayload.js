@@ -10,14 +10,18 @@ import { BOT_SELECTABLE_IDENTITIES, selectableIdentitiesForAbilityEntity } from 
 
 export function buildStatePayload(currentShapes, selectedLoadout, actorId = "main") {
     const main = currentShapes.find((shape) => shape.id === actorId);
+    const botShapes = currentShapes.filter(isBotShape);
     const closingZone = currentShapes.find(isClosingZone);
     return {
         selectedLoadout,
         closingZone: closingZone ? closingZonePayload(closingZone) : null,
-        playerModel: botPayload(main, selectedLoadout),
+        playerModel: botPayload(main, selectedLoadout, "model", main?.ownerId ?? actorId, {
+            role: "self",
+            botIndex: 0,
+        }),
         objects: currentShapes
             .filter((shape) => shape.id !== actorId && shape.visibility !== "renderer-only")
-            .map((shape) => objectPayload(shape, actorId)),
+            .map((shape) => objectPayload(shape, actorId, main, botShapes)),
     };
 }
 
@@ -29,7 +33,7 @@ function closingZonePayload(shape) {
     };
 }
 
-function botPayload(shape, selectedLoadout, type = "model", ownerId = shape.id) {
+function botPayload(shape, selectedLoadout, type = "model", ownerId = shape?.id, metadata = {}) {
     shape = toSimulationBotShape(shape);
     const combatLoadout = shape.combatLoadout ?? selectedLoadout;
     const currentHp = Number(shape.hp ?? BASE_BOT_HP);
@@ -37,9 +41,13 @@ function botPayload(shape, selectedLoadout, type = "model", ownerId = shape.id) 
     const alive = currentHp > 0;
     return {
         id: shape.id,
+        userId: shape.userId ?? null,
         type,
         selectableIdentities: BOT_SELECTABLE_IDENTITIES,
         ownerId,
+        role: metadata.role ?? null,
+        botIndex: metadata.botIndex ?? null,
+        teamNumber: teamNumberFor(shape),
         abilities: [...(shape.abilities ?? [])],
         health: healthPayload(shape, currentHp, maxHp, alive),
         stats: statsPayload(shape),
@@ -59,12 +67,18 @@ function botPayload(shape, selectedLoadout, type = "model", ownerId = shape.id) 
     };
 }
 
-function objectPayload(shape, actorId) {
-    const opponentBotId = actorId === "main" ? "opponent-model" : "main";
-    if (shape.id === opponentBotId) {
+function objectPayload(shape, actorId, actorShape, botShapes) {
+    if (isBotShape(shape)) {
+        const role = roleForBot(shape, actorShape, botShapes);
         return {
-            ...botPayload(shape, shape.combatLoadout, "opponentModel", shape.ownerId),
-            owner: shape.ownerId === actorId ? "my" : "opponent",
+            ...botPayload(
+                shape,
+                shape.combatLoadout,
+                shape.id === "opponent-model" ? "opponentModel" : "botModel",
+                shape.ownerId ?? shape.id,
+                role,
+            ),
+            owner: role.role === "teammate" ? "my" : "opponent",
         };
     }
     const contract = entityContract(shape.abilityId ?? shape.entityContractType ?? shape.type);
@@ -74,14 +88,14 @@ function objectPayload(shape, actorId) {
     return {
         id: shape.id,
         ownerId: shape.ownerId,
-        owner: shape.ownerId === actorId ? "my" : "opponent",
+        ownerSlot: shape.ownerSlot,
+        owner: ownerRoleForEntity(shape, actorId, actorShape, botShapes),
+        ownerSelector: ownerSelectableForEntity(shape, actorId, actorShape, botShapes),
         abilityId: shape.abilityId,
         selectableIdentities,
         armed: Boolean(shape.armed),
         fuseMs: Math.round(shape.fuseMs ?? 0),
-        // Bot roles come from stable ids. Renderer presentation types may be
-        // changed by resets or editors and must not break gameplay targeting.
-        type: shape.id === opponentBotId ? "opponentModel" : shape.type,
+        type: shape.type,
         x: truncateToNumberPrecision(Number(shape.x ?? 0)),
         y: truncateToNumberPrecision(Number(shape.y ?? 0)),
         size: shape.size ?? shape.components?.collider?.size ?? 0,
@@ -108,6 +122,55 @@ function objectPayload(shape, actorId) {
         preparingMs: Math.round(shape.preparingMs ?? 0),
         slot: shape.slot,
     };
+}
+
+function isBotShape(shape) {
+    return shape?.id === "main"
+        || shape?.id === "opponent-model"
+        || shape?.type === "circle"
+        || shape?.type === "bot"
+        || shape?.type === "botModel"
+        || shape?.type === "opponentModel"
+        || (shape?.slot != null && shape?.userId != null && shape?.abilityId == null);
+}
+
+function teamNumberFor(shape) {
+    const explicit = Number(shape?.teamNumber);
+    if (Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit);
+    const slot = Number(shape?.slot);
+    return Number.isFinite(slot) && slot > 0 ? slot <= 2 ? Math.floor(slot) : 1 : 1;
+}
+
+function roleForBot(shape, actorShape, botShapes) {
+    if (shape?.id === actorShape?.id) return { role: "self", botIndex: 0 };
+    const actorTeam = teamNumberFor(actorShape);
+    const role = teamNumberFor(shape) === actorTeam ? "teammate" : "opponent";
+    const candidates = botShapes
+        .filter((candidate) => candidate.id !== actorShape?.id
+            && (role === "teammate"
+                ? teamNumberFor(candidate) === actorTeam
+                : teamNumberFor(candidate) !== actorTeam))
+        .sort((first, second) => Number(first.slot ?? 0) - Number(second.slot ?? 0));
+    return { role, botIndex: Math.max(1, candidates.findIndex((candidate) => candidate.id === shape.id) + 1) };
+}
+
+function ownerRoleForEntity(shape, actorId, actorShape, botShapes) {
+    const owner = ownerBotForEntity(shape, botShapes);
+    if (owner) return teamNumberFor(owner) === teamNumberFor(actorShape) ? "my" : "opponent";
+    return shape.ownerId === actorId ? "my" : "opponent";
+}
+
+function ownerSelectableForEntity(shape, actorId, actorShape, botShapes) {
+    const owner = ownerBotForEntity(shape, botShapes);
+    if (!owner) return shape.ownerId === actorId ? "my_bot" : null;
+    if (owner.id === actorId) return "my_bot";
+    const role = roleForBot(owner, actorShape, botShapes);
+    return role.role === "teammate" ? `teammate_${role.botIndex}` : `opponent_${role.botIndex}`;
+}
+
+function ownerBotForEntity(shape, botShapes) {
+    return botShapes.find((bot) => bot.id === shape.ownerId
+        || (shape.ownerSlot != null && Number(bot.slot) === Number(shape.ownerSlot)));
 }
 
 function healthPayload(shape, currentHp, maxHp, alive) {

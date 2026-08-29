@@ -15,6 +15,8 @@ public final class MatchmakingSocketDestinations {
     public static final String MATCHMAKING = "/queue/matchmaking";
     public static final String MATCH = "/queue/match";
     public static final String MATCH_CHAT = "/queue/match-chat";
+    public static final String PARTY = "/queue/party";
+    public static final String CUSTOM_LOBBY = "/queue/custom-lobby";
     private static final String USER_PREFIX = "/user";
 
     private MatchmakingSocketDestinations() {
@@ -36,5 +38,13 @@ public final class MatchmakingSocketDestinations {
      */
     public static boolean isMatchSubscription(String destination) {
         return MATCH.equals(destination) || (USER_PREFIX + MATCH).equals(destination);
+    }
+
+    public static boolean isPartySubscription(String destination) {
+        return PARTY.equals(destination) || (USER_PREFIX + PARTY).equals(destination);
+    }
+
+    public static boolean isCustomLobbySubscription(String destination) {
+        return CUSTOM_LOBBY.equals(destination) || (USER_PREFIX + CUSTOM_LOBBY).equals(destination);
     }
 }

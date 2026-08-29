@@ -9,11 +9,15 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.example.botfight.DTO.CustomLobbyDTO;
+import com.example.botfight.DTO.CustomLobbyStateEventDTO;
 import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.DTO.MatchChatEventDTO;
 import com.example.botfight.DTO.MatchChatRequestDTO;
 import com.example.botfight.DTO.MatchmakingEventDTO;
 import com.example.botfight.domain.AppUser;
+import com.example.botfight.service.customlobby.CustomLobbyService;
+import com.example.botfight.service.customlobby.CustomLobbyStatePublisher;
 import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
 import com.example.botfight.service.match.model.MatchChatClosure;
@@ -415,13 +419,30 @@ class MatchmakingSocketControllerTest {
         ArgumentCaptor<Runnable> taskCaptor = ArgumentCaptor.forClass(Runnable.class);
         ArgumentCaptor<Instant> runAtCaptor = ArgumentCaptor.forClass(Instant.class);
         doReturn(scheduledFuture).when(scheduler).schedule(taskCaptor.capture(), runAtCaptor.capture());
+        CustomLobbyService customLobbyService = mock(CustomLobbyService.class);
+        CustomLobbyStatePublisher customLobbyStatePublisher = mock(CustomLobbyStatePublisher.class);
+        CustomLobbyDTO lobby = mock(CustomLobbyDTO.class);
+        UUID lobbyId = UUID.randomUUID();
+        CustomLobbyService.LobbyRecipient lobbyRecipient =
+                new CustomLobbyService.LobbyRecipient("pilot@example.com", UUID.randomUUID());
+        UUID matchId = UUID.randomUUID();
+        when(customLobbyService.finishMatch(matchId)).thenReturn(new CustomLobbyService.LobbyChange(
+                lobbyId,
+                lobby,
+                List.of(lobbyRecipient),
+                List.of()));
         MatchmakingSocketController controller = new MatchmakingSocketController(
                 matchmakingService,
                 matchService,
                 messagingTemplate,
                 currentUserService,
-                scheduler);
-        UUID matchId = UUID.randomUUID();
+                null,
+                null,
+                scheduler,
+                Runnable::run,
+                new SingleUserWebSocketSessionRegistry(),
+                customLobbyService,
+                customLobbyStatePublisher);
         Instant revealAt = Instant.parse("2026-07-25T12:00:04Z");
         MatchmakingEventDTO result = mock(MatchmakingEventDTO.class);
         when(result.type()).thenReturn("MATCH_RESULT_READY");
@@ -439,6 +460,9 @@ class MatchmakingSocketControllerTest {
         verify(messagingTemplate).convertAndSendToUser(
                 eq("pilot@example.com"), eq(MatchmakingSocketDestinations.MATCH), eq(result));
         verify(matchService).expireCompletedMatch(matchId);
+        verify(customLobbyService).finishMatch(matchId);
+        verify(customLobbyStatePublisher).send(
+                eq(List.of(lobbyRecipient)), any(CustomLobbyStateEventDTO.class));
     }
 
     @Test

@@ -225,7 +225,7 @@ public final class MatchReconnectionService {
             return List.of();
         }
         MatchPlayer winner = session.players().stream()
-                .filter(player -> !player.userId().equals(disconnectedPlayer.userId()))
+                .filter(player -> player.teamNumber() != disconnectedPlayer.teamNumber())
                 .findFirst()
                 .orElseThrow(() -> new AuthException("opponent was not found"));
 
@@ -239,7 +239,10 @@ public final class MatchReconnectionService {
                     null,
                     "The match is a draw because a player disconnected before round one began.");
         }
-        if (connectionService.isDisconnected(winner.userId())) {
+        boolean everyOpponentDisconnected = session.players().stream()
+                .filter(player -> player.teamNumber() == winner.teamNumber())
+                .allMatch(player -> connectionService.isDisconnected(player.userId()));
+        if (everyOpponentDisconnected) {
             persistenceService.completeMatchAsDraw(
                     session.matchId(), COMPLETION_REASON_MUTUAL_DISCONNECTION);
             clearSession.accept(session);
@@ -260,7 +263,11 @@ public final class MatchReconnectionService {
                 session,
                 "DISCONNECTION_WIN",
                 winner.userId(),
-                winner.username() + " wins because the opponent did not reconnect.");
+                teamLabel(winner.teamNumber()) + " wins because the opposing team did not reconnect.");
+    }
+
+    private String teamLabel(int teamNumber) {
+        return teamNumber == 2 ? "Red Team" : "Blue Team";
     }
 
     public MatchSession findSessionForPrincipal(String principalName) {

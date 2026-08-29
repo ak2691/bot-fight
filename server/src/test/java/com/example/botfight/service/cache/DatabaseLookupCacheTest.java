@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.botfight.DTO.ProfileDTO;
 import com.example.botfight.DTO.PuzzleListPageDTO;
+import com.example.botfight.service.cache.DatabaseLookupCache.CachedMatchStats;
 import com.example.botfight.service.cache.DatabaseLookupCache.CachedPuzzle;
+import com.example.botfight.service.cache.DatabaseLookupCache.CachedRatings;
 import com.example.botfight.service.cache.DatabaseLookupCache.PuzzleListKey;
 import java.util.List;
 import java.util.UUID;
@@ -37,6 +39,68 @@ class DatabaseLookupCacheTest {
             return new ProfileDTO("cache-user", null, "updated", 0, 0, 0, 0, 0);
         });
 
+        assertThat(databaseLookups).hasValue(2);
+    }
+
+    @Test
+    void keepsMatchStatsWhenPuzzleCompletionInvalidatesTheProfileSummary() {
+        DatabaseLookupCache cache = new DatabaseLookupCache();
+        UUID userId = UUID.randomUUID();
+        AtomicInteger databaseLookups = new AtomicInteger();
+        CachedMatchStats first = new CachedMatchStats(4, 2, 1);
+
+        CachedMatchStats cached = cache.profileMatchStats(userId, () -> {
+            databaseLookups.incrementAndGet();
+            return first;
+        });
+
+        cache.invalidateAfterPuzzleCompletion(userId, "puzzle-completed");
+        CachedMatchStats afterPuzzleWrite = cache.profileMatchStats(userId, () -> {
+            databaseLookups.incrementAndGet();
+            return new CachedMatchStats(8, 3, 1);
+        });
+
+        assertThat(afterPuzzleWrite).isSameAs(cached);
+        assertThat(databaseLookups).hasValue(1);
+
+        cache.invalidateAfterMatchWrite(userId, "match-result-written");
+        CachedMatchStats afterMatchWrite = cache.profileMatchStats(userId, () -> {
+            databaseLookups.incrementAndGet();
+            return new CachedMatchStats(8, 3, 1);
+        });
+
+        assertThat(afterMatchWrite).isNotSameAs(cached);
+        assertThat(databaseLookups).hasValue(2);
+    }
+
+    @Test
+    void keepsRatingsSeparateFromPuzzleCompletionInvalidation() {
+        DatabaseLookupCache cache = new DatabaseLookupCache();
+        UUID userId = UUID.randomUUID();
+        AtomicInteger databaseLookups = new AtomicInteger();
+        CachedRatings first = new CachedRatings(1120, 980);
+
+        CachedRatings cached = cache.profileRatings(userId, () -> {
+            databaseLookups.incrementAndGet();
+            return first;
+        });
+
+        cache.invalidateAfterPuzzleCompletion(userId, "puzzle-completed");
+        CachedRatings afterPuzzleWrite = cache.profileRatings(userId, () -> {
+            databaseLookups.incrementAndGet();
+            return new CachedRatings(1200, 900);
+        });
+
+        assertThat(afterPuzzleWrite).isSameAs(cached);
+        assertThat(databaseLookups).hasValue(1);
+
+        cache.invalidateAfterMatchWrite(userId, "match-result-written");
+        CachedRatings afterMatchWrite = cache.profileRatings(userId, () -> {
+            databaseLookups.incrementAndGet();
+            return new CachedRatings(1200, 900);
+        });
+
+        assertThat(afterMatchWrite).isNotSameAs(cached);
         assertThat(databaseLookups).hasValue(2);
     }
 

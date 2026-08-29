@@ -22,6 +22,8 @@ import java.util.concurrent.ConcurrentMap;
 public final class MatchChatService {
     private static final int MAX_CODE_POINTS = 280;
     private static final String CLOSED_MESSAGE = "Match chat is now closed.";
+    public static final String ALL_CHANNEL = "ALL";
+    public static final String TEAM_CHANNEL = "TEAM";
 
     private final Clock clock;
     private final ConcurrentMap<UUID, MatchSession> activeSessionsByUserId;
@@ -48,7 +50,19 @@ public final class MatchChatService {
     }
 
     public MatchChatSubmission submit(UUID userId, UUID matchId, String rawMessage) {
-        if (matchId == null) return MatchChatSubmission.rejected(null, CLOSED_MESSAGE);
+        return submit(userId, matchId, rawMessage, ALL_CHANNEL);
+    }
+
+    public MatchChatSubmission submit(
+            UUID userId,
+            UUID matchId,
+            String rawMessage,
+            String requestedChannel) {
+        String channel = normalizeChannel(requestedChannel);
+        if (channel == null) {
+            return MatchChatSubmission.rejected(matchId, "Chat channel was not accepted.", ALL_CHANNEL);
+        }
+        if (matchId == null) return MatchChatSubmission.rejected(null, CLOSED_MESSAGE, channel);
 
         MatchSession session = activeSessionsByUserId.get(userId);
         Instant now = Instant.now(clock);
@@ -59,19 +73,21 @@ public final class MatchChatService {
             sender = new MatchChatParticipant(
                     activeSender.userId(),
                     activeSender.username(),
-                    activeSender.principalName());
+                    activeSender.principalName(),
+                    activeSender.teamNumber());
             recipients = session.players().stream()
                     .map(player -> new MatchChatParticipant(
                             player.userId(),
                             player.username(),
-                            player.principalName()))
+                            player.principalName(),
+                            player.teamNumber()))
                     .toList();
         } else {
             MatchChatWindow chatWindow = chatWindowsByMatchId.get(matchId);
             if (chatWindow == null
                     || !now.isBefore(chatWindow.closesAt())
                     || !chatWindow.participantsByUserId().containsKey(userId)) {
-                return MatchChatSubmission.rejected(matchId, CLOSED_MESSAGE);
+                return MatchChatSubmission.rejected(matchId, CLOSED_MESSAGE, channel);
             }
             sender = chatWindow.participantsByUserId().get(userId);
             recipients = chatWindow.participantsByUserId().values().stream().toList();
@@ -81,13 +97,13 @@ public final class MatchChatService {
         if (message.isBlank()
                 || message.codePointCount(0, message.length()) > MAX_CODE_POINTS
                 || message.codePoints().anyMatch(Character::isISOControl)) {
-            return MatchChatSubmission.rejected(matchId, "Message was not accepted.");
+            return MatchChatSubmission.rejected(matchId, "Message was not accepted.", channel);
         }
 
         try {
             rateLimiter.requireAllowed(rateLimitKey(matchId, userId));
         } catch (RateLimitExceededException exception) {
-            return MatchChatSubmission.rateLimited(matchId);
+            return MatchChatSubmission.rateLimited(matchId, channel);
         }
         return new MatchChatSubmission(
                 MatchChatSubmissionStatus.ACCEPTED,
@@ -97,9 +113,12 @@ public final class MatchChatService {
                 message,
                 now,
                 recipients.stream()
+                        .filter(recipient -> !TEAM_CHANNEL.equals(channel)
+                                || recipient.teamNumber() == sender.teamNumber())
                         .filter(recipient -> !blockLookup.isBlocked(recipient.userId(), userId))
                         .map(MatchChatParticipant::principalName)
-                        .toList());
+                        .toList(),
+                channel);
     }
 
     public Instant closeAt(UUID matchId) {
@@ -139,7 +158,11 @@ public final class MatchChatService {
         for (MatchPlayer player : session.players()) {
             participants.put(
                     player.userId(),
-                    new MatchChatParticipant(player.userId(), player.username(), player.principalName()));
+                    new MatchChatParticipant(
+                            player.userId(),
+                            player.username(),
+                            player.principalName(),
+                            player.teamNumber()));
         }
         chatWindowsByMatchId.put(
                 session.matchId(),
@@ -157,7 +180,20 @@ public final class MatchChatService {
         return matchId + ":" + userId;
     }
 
-    private record MatchChatParticipant(UUID userId, String username, String principalName) {
+    private String normalizeChannel(String requestedChannel) {
+        if (requestedChannel == null || requestedChannel.isBlank()) return ALL_CHANNEL;
+        String channel = requestedChannel.strip().toUpperCase(java.util.Locale.ROOT);
+        return switch (channel) {
+            case ALL_CHANNEL, TEAM_CHANNEL -> channel;
+            default -> null;
+        };
+    }
+
+    private record MatchChatParticipant(
+            UUID userId,
+            String username,
+            String principalName,
+            int teamNumber) {
     }
 
     private record MatchChatWindow(

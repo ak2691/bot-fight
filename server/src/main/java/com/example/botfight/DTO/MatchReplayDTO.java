@@ -17,7 +17,54 @@ public record MatchReplayDTO(
         String message,
         Integer batchSequence,
         Integer replayCursorElapsedMs,
-        @JsonInclude(JsonInclude.Include.NON_DEFAULT) Boolean terminalBatch) {
+        @JsonInclude(JsonInclude.Include.NON_DEFAULT) Boolean terminalBatch,
+        @JsonInclude(JsonInclude.Include.NON_EMPTY) Map<UUID, Integer> roundWinsBeforeResult,
+        Integer ratingBefore,
+        Integer ratingAfter) {
+
+    /** Keeps source compatibility for callers that do not have score metadata. */
+    public MatchReplayDTO(
+            ReplayInitialStateDTO initialState,
+            List<ReplayFrameDTO> frames,
+            String result,
+            UUID winnerUserId,
+            String message,
+            Integer batchSequence,
+            Integer replayCursorElapsedMs,
+            Boolean terminalBatch) {
+        this(initialState, frames, result, winnerUserId, message, batchSequence,
+                replayCursorElapsedMs, terminalBatch, null);
+    }
+
+    /** Keeps source compatibility for callers that already provide score metadata. */
+    public MatchReplayDTO(
+            ReplayInitialStateDTO initialState,
+            List<ReplayFrameDTO> frames,
+            String result,
+            UUID winnerUserId,
+            String message,
+            Integer batchSequence,
+            Integer replayCursorElapsedMs,
+            Boolean terminalBatch,
+            Map<UUID, Integer> roundWinsBeforeResult) {
+        this(initialState, frames, result, winnerUserId, message, batchSequence,
+                replayCursorElapsedMs, terminalBatch, roundWinsBeforeResult, null, null);
+    }
+
+    public MatchReplayDTO withRatingChange(Integer before, Integer after) {
+        return new MatchReplayDTO(
+                initialState,
+                frames,
+                result,
+                winnerUserId,
+                message,
+                batchSequence,
+                replayCursorElapsedMs,
+                terminalBatch,
+                roundWinsBeforeResult,
+                before,
+                after);
+    }
 
     public static MatchReplayDTO from(MatchPlaybackDTO playback) {
         if (playback == null) return null;
@@ -31,7 +78,10 @@ public record MatchReplayDTO(
                 playback.message(),
                 playback.batchSequence(),
                 playback.replayCursorElapsedMs(),
-                playback.terminalBatch());
+                playback.terminalBatch(),
+                null,
+                null,
+                null);
     }
 
     private static ReplayInitialStateDTO replayInitialState(MatchPlaybackDTO.ArenaStateDTO state) {
@@ -58,9 +108,26 @@ public record MatchReplayDTO(
             Map<Integer, Integer> abilityCooldowns,
             Map<Integer, Integer> abilityActiveMs,
             Map<Integer, Integer> abilityCharges,
-            Map<Integer, Integer> abilityRechargeMs) {
+            Map<Integer, Integer> abilityRechargeMs,
+            int teamNumber) {
         public ReplayBotStaticDTO(int slot, double x, double y, Double rotation, int hp, int maxHp) {
-            this(slot, x, y, rotation, hp, maxHp, null, null, null, null, null);
+            this(slot, x, y, rotation, hp, maxHp, null, null, null, null, null, slot);
+        }
+
+        public ReplayBotStaticDTO(
+                int slot,
+                double x,
+                double y,
+                Double rotation,
+                double hp,
+                double maxHp,
+                List<Integer> abilities,
+                Map<Integer, Integer> abilityCooldowns,
+                Map<Integer, Integer> abilityActiveMs,
+                Map<Integer, Integer> abilityCharges,
+                Map<Integer, Integer> abilityRechargeMs) {
+            this(slot, x, y, rotation, hp, maxHp, abilities, abilityCooldowns,
+                    abilityActiveMs, abilityCharges, abilityRechargeMs, slot);
         }
 
         private static ReplayBotStaticDTO from(MatchPlaybackDTO.BotStateDTO bot) {
@@ -72,7 +139,8 @@ public record MatchReplayDTO(
                     positiveEntries(bot.abilityActiveMs()),
                     nonNegativeEntries(bot.abilityCharges()),
                     initialEntries(bot.abilityCharges() == null ? List.of() : bot.abilityCharges().keySet().stream().toList(),
-                            bot.abilityRechargeMs()));
+                            bot.abilityRechargeMs()),
+                    bot.teamNumber());
         }
     }
 
@@ -105,11 +173,37 @@ public record MatchReplayDTO(
             Map<Integer, Integer> abilityCharges,
             Map<Integer, Integer> abilityRechargeMs,
             Map<Integer, Integer> abilityActiveMs,
+            Integer triggeredAbility,
             Integer preparingAbility,
             Double temporalRewindX,
             Double temporalRewindY,
             Integer temporalRewindPulseMs,
-            Integer closingZoneDamageCount) {
+            Integer closingZoneDamageCount,
+            int teamNumber) {
+        private ReplayBotDTO(
+                int slot,
+                double x,
+                double y,
+                Double rotation,
+                double hp,
+                List<StatusEffectState> statusEffects,
+                Map<Integer, Integer> abilityCooldowns,
+                Map<Integer, Integer> abilityCharges,
+                Map<Integer, Integer> abilityRechargeMs,
+                Map<Integer, Integer> abilityActiveMs,
+                Integer triggeredAbility,
+                Integer preparingAbility,
+                Double temporalRewindX,
+                Double temporalRewindY,
+                Integer temporalRewindPulseMs,
+                Integer closingZoneDamageCount) {
+            this(slot, x, y, rotation, hp, statusEffects, abilityCooldowns,
+                    abilityCharges, abilityRechargeMs, abilityActiveMs, triggeredAbility,
+                    preparingAbility,
+                    temporalRewindX, temporalRewindY, temporalRewindPulseMs,
+                    closingZoneDamageCount, slot);
+        }
+
         private static ReplayBotDTO from(MatchPlaybackDTO.BotStateDTO bot) {
             int temporalRewindPulseMs = bot.temporalRewindPulseMs();
             return new ReplayBotDTO(
@@ -123,11 +217,13 @@ public record MatchReplayDTO(
                     nonNegativeEntries(bot.abilityCharges()),
                     positiveEntries(bot.abilityRechargeMs()),
                     positiveEntries(bot.abilityActiveMs()),
+                    bot.triggeredAbility(),
                     bot.preparingAbility(),
                     temporalRewindPulseMs > 0 ? bot.temporalRewindX() : null,
                     temporalRewindPulseMs > 0 ? bot.temporalRewindY() : null,
                     positiveOrNull(temporalRewindPulseMs),
-                    positiveOrNull(bot.closingZoneDamageCount()));
+                    positiveOrNull(bot.closingZoneDamageCount()),
+                    bot.teamNumber());
         }
     }
 

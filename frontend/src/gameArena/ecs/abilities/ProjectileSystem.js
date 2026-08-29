@@ -73,7 +73,7 @@ function findMovingColliderHit(previous, projectile, bots, world) {
     const projectileRadius = Number(projectile.size ?? 0) / 2;
     for (let index = 0; index < bots.length; index += 1) {
         const bot = bots[index];
-        if (!isProjectileHittable(bot) || (bot.id === projectile.ownerId && !projectile.reflected)) continue;
+        if (!isProjectileHittable(bot) || !isEnemyProjectileTarget(projectile, bot, bots)) continue;
         const botRadius = Number(bot.size ?? 60) / 2;
         const botPath = botMovementSegment(bot, world.stepMs);
         const collision = movingCircleCollision(
@@ -87,6 +87,16 @@ function findMovingColliderHit(previous, projectile, bots, world) {
         if (collision.hit) return { index, ...collision };
     }
     return null;
+}
+
+function isEnemyProjectileTarget(projectile, target, bots) {
+    const owner = bots.find((bot) => bot?.id === projectile.ownerId
+        || (Number.isFinite(Number(projectile.ownerSlot)) && Number(bot?.slot) === Number(projectile.ownerSlot)));
+    const ownerTeam = Number(owner?.teamNumber ?? projectile.ownerTeam);
+    const targetTeam = Number(target?.teamNumber);
+    if (Number.isFinite(ownerTeam) && Number.isFinite(targetTeam)
+        && ownerTeam > 0 && targetTeam > 0) return ownerTeam !== targetTeam;
+    return target.id !== projectile.ownerId || Boolean(projectile.reflected);
 }
 
 function botMovementSegment(bot, stepMs) {

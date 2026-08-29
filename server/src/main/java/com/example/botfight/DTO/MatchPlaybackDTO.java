@@ -55,7 +55,39 @@ public record MatchPlaybackDTO(
             double temporalRewindX,
             double temporalRewindY,
             int temporalRewindPulseMs,
-            int closingZoneDamageCount) {
+            int closingZoneDamageCount,
+            int teamNumber) {
+
+        public BotStateDTO(
+                UUID userId,
+                String username,
+                int slot,
+                double x,
+                double y,
+                double rotation,
+                double hp,
+                double maxHp,
+                String combatLoadout,
+                List<Integer> abilities,
+                List<StatusEffectState> statusEffects,
+                Map<Integer, Integer> abilityCooldowns,
+                Map<Integer, Integer> abilityActiveMs,
+                Map<Integer, Integer> abilityCharges,
+                Map<Integer, Integer> abilityRechargeMs,
+                Integer triggeredAbility,
+                Integer preparingAbility,
+                int preparingMs,
+                int temporalRewindMs,
+                double temporalRewindX,
+                double temporalRewindY,
+                int temporalRewindPulseMs,
+                int closingZoneDamageCount) {
+            this(userId, username, slot, x, y, rotation, hp, maxHp, combatLoadout,
+                    abilities, statusEffects, abilityCooldowns, abilityActiveMs,
+                    abilityCharges, abilityRechargeMs, triggeredAbility, preparingAbility,
+                    preparingMs, temporalRewindMs, temporalRewindX, temporalRewindY,
+                    temporalRewindPulseMs, closingZoneDamageCount, slot);
+        }
     }
 
     public record ArenaEntityDTO(

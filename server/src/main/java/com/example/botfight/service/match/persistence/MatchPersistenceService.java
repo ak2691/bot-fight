@@ -4,6 +4,7 @@ import com.example.botfight.DTO.MatchPlaybackDTO;
 import com.example.botfight.DTO.MatchReplayDTO;
 import com.example.botfight.domain.AppUser;
 import com.example.botfight.domain.Match;
+import com.example.botfight.domain.MatchMode;
 import com.example.botfight.domain.MatchParticipant;
 import com.example.botfight.domain.MatchResult;
 import com.example.botfight.domain.MatchStatus;
@@ -21,6 +22,7 @@ import com.example.botfight.service.match.model.MatchSession;
 import com.example.botfight.service.match.simulation.MatchSimulationService;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.cache.DatabaseLookupCache;
+import com.example.botfight.service.rating.EloRatingService;
 import java.time.Clock;
 import java.time.Instant;
 import java.nio.charset.StandardCharsets;
@@ -53,6 +55,7 @@ public class MatchPersistenceService {
     private final Clock clock;
     private final JsonMapper jsonMapper;
     private final DatabaseLookupCache databaseLookupCache;
+    private final EloRatingService eloRatingService;
 
     public MatchPersistenceService(
             MatchRepository matchRepository,
@@ -69,7 +72,8 @@ public class MatchPersistenceService {
                 clock,
                 jsonMapper,
                 null,
-                new DatabaseLookupCache());
+                new DatabaseLookupCache(),
+                null);
     }
 
     public MatchPersistenceService(
@@ -88,7 +92,29 @@ public class MatchPersistenceService {
                 clock,
                 jsonMapper,
                 matchRoundBotCodeRepository,
-                new DatabaseLookupCache());
+                new DatabaseLookupCache(),
+                null);
+    }
+
+    public MatchPersistenceService(
+            MatchRepository matchRepository,
+            MatchParticipantRepository matchParticipantRepository,
+            ProfileRepository profileRepository,
+            UserRepository userRepository,
+            Clock clock,
+            JsonMapper jsonMapper,
+            MatchRoundBotCodeRepository matchRoundBotCodeRepository,
+            DatabaseLookupCache databaseLookupCache) {
+        this(
+                matchRepository,
+                matchParticipantRepository,
+                profileRepository,
+                userRepository,
+                clock,
+                jsonMapper,
+                matchRoundBotCodeRepository,
+                databaseLookupCache,
+                null);
     }
 
     @Autowired
@@ -100,7 +126,8 @@ public class MatchPersistenceService {
             Clock clock,
             JsonMapper jsonMapper,
             MatchRoundBotCodeRepository matchRoundBotCodeRepository,
-            DatabaseLookupCache databaseLookupCache) {
+            DatabaseLookupCache databaseLookupCache,
+            EloRatingService eloRatingService) {
         this.matchRepository = matchRepository;
         this.matchParticipantRepository = matchParticipantRepository;
         this.profileRepository = profileRepository;
@@ -109,11 +136,17 @@ public class MatchPersistenceService {
         this.jsonMapper = jsonMapper;
         this.matchRoundBotCodeRepository = matchRoundBotCodeRepository;
         this.databaseLookupCache = databaseLookupCache;
+        this.eloRatingService = eloRatingService;
     }
 
     public Match createMatch() {
+        return createMatch(MatchMode.ONES);
+    }
+
+    public Match createMatch(MatchMode mode) {
         Match match = new Match();
         match.setStatus(MatchStatus.RUNNING);
+        match.setMode(mode);
         match.setRulesetVersion(MatchSimulationService.DUEL_RULESET_VERSION);
         match.setSimulationSeed(ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE));
         match.setStartedAt(Instant.now(clock));
@@ -158,6 +191,7 @@ public class MatchPersistenceService {
                     participant.setMatch(match);
                     participant.setUser(userRepository.getReferenceById(player.userId()));
                     participant.setSlot((short) player.slot());
+                    participant.setTeamNumber((short) player.teamNumber());
                     participant.setSelectedLoadout(player.selectedLoadout());
                     return participant;
                 })
@@ -311,6 +345,7 @@ public class MatchPersistenceService {
         }
     }
 
+    @Transactional
     public void completeMatch(UUID matchId, MatchPlaybackDTO playback) {
         completeMatch(
                 matchId,
@@ -318,6 +353,7 @@ public class MatchPersistenceService {
                 "FAILED".equals(playback.status()) || "ERROR".equals(playback.result()));
     }
 
+    @Transactional
     public void completeMatch(UUID matchId, MatchReplayDTO playback) {
         completeMatch(
                 matchId,
@@ -345,6 +381,44 @@ public class MatchPersistenceService {
         });
     }
 
+    @Transactional(readOnly = true)
+    public RatingChange ratingChangeForPlayer(UUID matchId, UUID userId) {
+        if (matchId == null || userId == null) return null;
+        List<MatchParticipant> participants = matchParticipantRepository.findByMatchId(matchId);
+        if (participants == null) return null;
+        return participants.stream()
+                .filter(participant -> participant.getUser() != null
+                        && userId.equals(participant.getUser().getId()))
+                .filter(participant -> participant.getRatingBefore() != null
+                        && participant.getRatingAfter() != null)
+                .map(participant -> new RatingChange(
+                        participant.getRatingBefore(), participant.getRatingAfter()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    /** Refreshes profile read models only when the delayed result is published. */
+    @Transactional(readOnly = true)
+    public void invalidateAfterResultReveal(UUID matchId) {
+        if (matchId == null) return;
+        List<MatchParticipant> participants = matchParticipantRepository.findByMatchId(matchId);
+        if (participants == null) return;
+        participants.stream()
+                .map(MatchParticipant::getUser)
+                .filter(user -> user != null && user.getId() != null)
+                .map(AppUser::getId)
+                .distinct()
+                .forEach(userId -> {
+                    databaseLookupCache.logDatabaseWrite(
+                            "profile-summary",
+                            userId,
+                            "match-result-revealed");
+                    databaseLookupCache.invalidateAfterMatchWrite(
+                            userId,
+                            "match-result-revealed");
+                });
+    }
+
     private void completeMatch(UUID matchId, UUID winnerUserId, boolean failed) {
         Match match = runningMatch(matchId);
         if (match == null) return;
@@ -359,24 +433,66 @@ public class MatchPersistenceService {
         if (winnerUserId != null) {
             match.setWinnerUser(userRepository.getReferenceById(winnerUserId));
         }
+        Short winningTeam = winnerUserId == null
+                ? null
+                : participants.stream()
+                        .filter(participant -> participant.getUser().getId().equals(winnerUserId))
+                        .map(MatchParticipant::getTeamNumber)
+                        .findFirst()
+                        .orElse(null);
         for (MatchParticipant participant : participants) {
             if (winnerUserId == null) {
                 participant.setResult(MatchResult.DRAW);
-            } else if (participant.getUser().getId().equals(winnerUserId)) {
+            } else if (winningTeam != null && participant.getTeamNumber() == winningTeam) {
                 participant.setResult(MatchResult.WIN);
             } else {
                 participant.setResult(MatchResult.LOSS);
             }
             incrementMatchesPlayed(participant.getUser());
         }
+        if (!failed && eloRatingService != null) {
+            eloRatingService.applyRatedResult(match, participants);
+        }
         saveResult(match, participants);
     }
 
+    @Transactional
     public void completeMatchByForfeit(
             UUID matchId,
             MatchPlayer forfeitingPlayer,
             MatchPlayer winner,
             String completionReason) {
+        completeMatchByForfeit(
+                matchId,
+                forfeitingPlayer.userId(),
+                forfeitingPlayer.teamNumber(),
+                winner,
+                completionReason,
+                false);
+    }
+
+    @Transactional
+    public void completeMatchByTeamForfeit(
+            UUID matchId,
+            int forfeitingTeam,
+            MatchPlayer winner,
+            String completionReason) {
+        completeMatchByForfeit(
+                matchId,
+                null,
+                forfeitingTeam,
+                winner,
+                completionReason,
+                true);
+    }
+
+    private void completeMatchByForfeit(
+            UUID matchId,
+            UUID forfeitingUserId,
+            int forfeitingTeam,
+            MatchPlayer winner,
+            String completionReason,
+            boolean teamForfeit) {
         Match match = matchRepository.findById(matchId)
                 .orElseThrow(() -> new AuthException("match was not found"));
         boolean alreadyCompletedBySimulation = match.getStatus() == MatchStatus.COMPLETED
@@ -392,19 +508,31 @@ public class MatchPersistenceService {
         match.setResultVisibleAt(completedAt);
         match.setWinnerUser(userRepository.getReferenceById(winner.userId()));
 
+        int winningTeam = winner.teamNumber();
+
         for (MatchParticipant participant : participants) {
-            if (participant.getUser().getId().equals(forfeitingPlayer.userId())) {
-                participant.setResult(MatchResult.FORFEIT);
-            } else if (participant.getUser().getId().equals(winner.userId())) {
+            if (participant.getTeamNumber() == winningTeam) {
                 participant.setResult(MatchResult.WIN);
+            } else if (teamForfeit && participant.getTeamNumber() == forfeitingTeam) {
+                participant.setResult(MatchResult.FORFEIT);
+            } else if (!teamForfeit && participant.getUser().getId().equals(forfeitingUserId)) {
+                participant.setResult(MatchResult.FORFEIT);
+            } else if (participant.getTeamNumber() == forfeitingTeam) {
+                participant.setResult(MatchResult.LOSS);
+            } else {
+                participant.setResult(MatchResult.LOSS);
             }
             if (!alreadyCompletedBySimulation) {
                 incrementMatchesPlayed(participant.getUser());
             }
         }
+        if (!alreadyCompletedBySimulation && eloRatingService != null) {
+            eloRatingService.applyRatedResult(match, participants);
+        }
         saveResult(match, participants);
     }
 
+    @Transactional
     public void completeMatchAsDraw(UUID matchId, String completionReason) {
         Match match = runningMatch(matchId);
         if (match == null) return;
@@ -421,6 +549,9 @@ public class MatchPersistenceService {
         for (MatchParticipant participant : participants) {
             participant.setResult(MatchResult.DRAW);
             incrementMatchesPlayed(participant.getUser());
+        }
+        if (eloRatingService != null) {
+            eloRatingService.applyRatedResult(match, participants);
         }
         saveResult(match, participants);
     }
@@ -452,5 +583,8 @@ public class MatchPersistenceService {
         profile.setMatchesPlayed(profile.getMatchesPlayed() + 1);
         profileRepository.save(profile);
         databaseLookupCache.invalidateAfterMatchWrite(user.getId(), "match-result-written");
+    }
+
+    public record RatingChange(Integer before, Integer after) {
     }
 }

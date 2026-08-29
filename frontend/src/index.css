@@ -252,9 +252,8 @@ html,
 
 /* The arena remains the primary surface on narrow screens. Once the side
    toolbar no longer fits, keep it in the document below the arena so every
-   control remains reachable by scrolling. The content region scrolls instead
-   of the page shell, while the shared navbar remains outside that scroll
-   surface and follows the same direction-aware visibility rules. */
+   control remains reachable by scrolling. The content region scrolls while
+   the shared navbar keeps its direction-aware visibility behavior. */
 .arena-content-shell {
   min-width: 0;
 }
@@ -313,6 +312,12 @@ html,
     overflow-y: auto;
   }
 
+  .arena-workspace-shell {
+    flex: 0 0 auto;
+    flex-direction: column;
+    overflow: visible;
+  }
+
   .arena-stage-main {
     flex: 0 0 auto;
     min-height: 0;
@@ -368,6 +373,10 @@ html,
 .match-chat__header span, .match-chat__restore { display: flex; align-items: center; gap: 8px; }
 .match-chat svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; }
 .match-chat__header button { padding: 2px 8px; border-color: #286583; background: transparent; color: #ffffff; }
+.match-chat__tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-bottom: 1px solid #41484d; }
+.match-chat__tab { min-height: 32px; border: 0; border-right: 1px solid rgba(104, 115, 125, .35); background: transparent; color: #8b9293; font: inherit; font-size: 9px; font-weight: 700; letter-spacing: .1em; }
+.match-chat__tab:last-child { border-right: 0; }
+.match-chat__tab:hover, .match-chat__tab--active { background: rgba(40, 101, 131, .24); color: #a5f3fc; }
 .match-chat__messages { min-height: 0; flex: 1; overflow-y: auto; padding: 12px; }
 .match-chat__empty { color: #8b9293; font-size: 11px; }
 .match-chat__message { margin: 0 0 9px; overflow-wrap: anywhere; color: #cbc4b6; font-size: 12px; line-height: 1.45; }
@@ -408,6 +417,32 @@ html,
   height: 17px;
 }
 .match-chat__unread { position: absolute; top: -5px; right: -5px; width: 12px; height: 12px; border: 2px solid #050f19; border-radius: 999px; background: #ef4444; box-shadow: 0 0 10px rgba(239, 68, 68, .65); }
+
+.custom-lobby-chat {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #1e293b;
+  border-radius: 0.75rem;
+  background: #07111b;
+  font-family: "Cousine", "Courier New", monospace;
+}
+.custom-lobby-chat__header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 42px; border-bottom: 1px solid #1e293b; padding: 0 14px; color: #ffffff; font-size: 10px; font-weight: 700; letter-spacing: .16em; }
+.custom-lobby-chat__header span { display: flex; align-items: center; gap: 8px; }
+.custom-lobby-chat__header svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.custom-lobby-chat__channel { color: #67e8f9; font-size: 9px; }
+.custom-lobby-chat__messages { height: 11rem; overflow-y: auto; padding: 12px 14px; }
+.custom-lobby-chat__empty { color: #64748b; font-size: 11px; }
+.custom-lobby-chat__message { margin: 0 0 9px; overflow-wrap: anywhere; color: #cbc4b6; font-size: 12px; line-height: 1.45; }
+.custom-lobby-chat__message strong { color: #ffffff; }
+.custom-lobby-chat__notice { margin: 0 12px 8px; border: 1px solid rgba(251, 146, 60, .42); border-radius: 5px; background: rgba(124, 45, 18, .28); padding: 7px 9px; color: #fdba74; font-size: 10px; }
+.custom-lobby-chat__form { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 7px; border-top: 1px solid rgba(104, 115, 125, .35); padding: 10px; }
+.custom-lobby-chat__form input { min-width: 0; border: 1px solid #41484d; border-radius: 6px; background: #171a1c; padding: 9px 10px; color: #ffffff; font: inherit; font-size: 11px; outline: none; }
+.custom-lobby-chat__form input:focus { border-color: #43a6d1; }
+.custom-lobby-chat__form button { padding: 0; border: 1px solid #41484d; background: #286583; color: #ffffff; }
+.custom-lobby-chat__form :disabled { cursor: not-allowed; opacity: .48; }
+.custom-lobby-chat--compact .custom-lobby-chat__messages { height: 9.5rem; }
 
 .profile-stat--interactive {
   cursor: pointer;
@@ -955,12 +990,13 @@ button {
   color: #94a3b8;
   font-size: 22px;
   line-height: 1;
+  transition: color 150ms ease;
 }
 
 .modal-close-button:hover {
   border-color: transparent;
   background: transparent;
-  color: #fff;
+  color: #fb7185;
 }
 
 .app-brand-link {
@@ -1000,6 +1036,19 @@ button {
   transform: translate3d(0, 0, 0);
   transition: transform 260ms cubic-bezier(.22, .61, .36, 1);
   will-change: transform;
+}
+
+.app-navbar--in-page-flow {
+  position: sticky;
+  top: 0;
+  right: 0;
+  bottom: auto;
+  left: 0;
+  z-index: 100;
+}
+
+.app-navbar-slot--in-page-flow {
+  display: contents;
 }
 
 .app-navbar--charcoal-page {
@@ -1176,6 +1225,7 @@ button {
 .code-toolbar-actions {
   flex: none;
   margin-left: auto;
+  align-self: flex-start;
 }
 
 .code-workspace .code-toolbar-button {
@@ -1290,6 +1340,137 @@ button {
   height: 2px;
   background: #67dfe1;
   content: "";
+}
+
+.code-bot-selector-stack {
+  display: flex;
+  flex: 0 1 340px;
+  min-width: 220px;
+  max-width: 360px;
+  flex-direction: column;
+  gap: 4px;
+  align-self: flex-start;
+}
+
+.code-bot-selector {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 34px;
+  height: 48px;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 3px;
+  background: rgba(18, 22, 26, 0.86);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.02), 0 5px 16px rgba(0, 0, 0, 0.16);
+}
+
+.code-bot-selector__arrow {
+  border: 0;
+  background: rgba(29, 34, 39, 0.62);
+  color: #a8adb3;
+  font-size: 24px;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.code-bot-selector__arrow:hover:not(:disabled) {
+  background: rgba(43, 49, 55, 0.82);
+  color: #f6f8fa;
+}
+
+.code-bot-selector__arrow:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.code-bot-selector__current {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  overflow: hidden;
+  border-right: 1px solid rgba(148, 163, 184, 0.14);
+  border-bottom: 2px solid #67dfe1;
+  border-left: 1px solid rgba(148, 163, 184, 0.14);
+  padding: 0 10px 3px;
+  background: rgba(22, 28, 33, 0.95);
+}
+
+.code-bot-selector.is-red .code-bot-selector__current {
+  border-bottom-color: #ff7166;
+}
+
+.code-bot-selector.is-blue .code-bot-selector__current {
+  border-bottom-color: #57b8ff;
+}
+
+.code-bot-selector__name,
+.code-bot-selector__meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.code-bot-selector__name {
+  color: #8be5e6;
+  font-size: clamp(8px, 0.72vw, 11px);
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  line-height: 1;
+}
+
+.code-bot-selector.is-red .code-bot-selector__name {
+  color: #ffaaa3;
+}
+
+.code-bot-selector.is-blue .code-bot-selector__name {
+  color: #8bd3ff;
+}
+
+.code-bot-selector__meta {
+  color: #a8adb3;
+  font-size: 7px;
+  letter-spacing: 0.08em;
+  line-height: 1;
+}
+
+.code-bot-view-toggle,
+.code-bot-view-mode {
+  display: flex;
+  width: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 3px;
+  padding: 5px 8px;
+  background: rgba(18, 22, 26, 0.72);
+  color: #c5cbd1;
+  font: 700 8px/1 "Cousine", "Courier New", monospace;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+.code-bot-view-toggle:hover:not(:disabled) {
+  border-color: rgba(148, 163, 184, 0.48);
+  background: rgba(43, 49, 55, 0.74);
+  color: #f6f8fa;
+}
+
+.code-bot-view-toggle.is-real {
+  border-color: rgba(94, 234, 212, 0.34);
+  color: #b8f5f1;
+}
+
+.code-bot-view-toggle.is-sandbox {
+  border-color: rgba(251, 191, 36, 0.42);
+  color: #fde68a;
+}
+
+.code-bot-view-mode {
+  border-color: rgba(148, 163, 184, 0.15);
+  color: #7f8b95;
 }
 
 .code-toolbar-zoom {
@@ -1937,11 +2118,36 @@ button {
   width: 100%;
   min-width: 0;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   margin-top: 7px;
 }
 
+.code-selectable-picker-entity-row,
+.code-selectable-picker-order {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 6px;
+}
+
+.code-selectable-picker-entity-row { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
+.code-selectable-picker-entity-row > :only-child { grid-column: 1 / -1; }
+
+.code-selectable-picker-control {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.code-selectable-picker-control > span {
+  color: #64748b;
+  font: 700 8px/1 "Cousine", monospace;
+  letter-spacing: .06em;
+}
+
 .code-inspector-body .code-selectable-picker-entity,
+.code-inspector-body .code-selectable-picker-owner,
 .code-inspector-body .code-selectable-picker-order select,
 .code-inspector-body .code-selectable-picker-order input {
   width: 100%;
@@ -1957,11 +2163,7 @@ button {
 }
 
 .code-selectable-picker-order {
-  display: grid;
-  width: max-content;
-  max-width: 100%;
-  grid-template-columns: 6rem 4rem;
-  gap: 6px;
+  grid-template-columns: minmax(0, 1fr) 5rem;
 }
 
 .code-inspector-body .code-selectable-picker-order input {
@@ -2056,15 +2258,6 @@ button {
     width: clamp(9rem, 14vw, 11rem);
   }
 
-  .code-toolbar-title > :first-child {
-    font-size: 9px;
-    letter-spacing: 0.06em;
-  }
-
-  .code-toolbar-title > :last-child {
-    font-size: 6.5px;
-  }
-
   .code-toolbar-controls {
     gap: 8px;
   }
@@ -2081,7 +2274,6 @@ button {
 
   .code-workspace .code-toolbar-button,
   .code-workspace .code-tab {
-    font-size: 7.5px;
     padding-right: 8px;
     padding-left: 8px;
   }
@@ -2140,9 +2332,8 @@ button {
 .code-workspace .code-toolbar-button-primary { border-color: #43a6d1; background: #286583; color: #ffffff; }
 .code-inspector-header span { color: #ffffff; }
 
-/* Keep the arena and code workspace in their own scroll/gesture surfaces.
-   The page shell stays fixed under the navbar while the content region is the
-   only arena-page scroller. */
+/* Keep the navbar and arena workspace in the same scroll surface. The navbar
+   is sticky within that surface, while its 72px height remains page content. */
 .arena-page-shell {
   height: 100vh;
   height: 100dvh;
@@ -3303,11 +3494,11 @@ button {
 
 /* At this point the toolbar changes as a unit with the browser window. Tabs
    stay left of the compact zoom/close controls, with the editor tools below. */
-@media (max-width: 1100px) {
+@media (max-width: 1350px) {
   .code-toolbar {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: auto auto auto;
+    grid-template-rows: minmax(34px, auto) auto auto;
     align-items: center;
     align-content: start;
     gap: 6px 8px;
@@ -3318,8 +3509,10 @@ button {
   .code-toolbar-title {
     grid-column: 1 / -1;
     grid-row: 1;
+    box-sizing: border-box;
     width: auto;
     min-width: 0;
+    padding-right: 48px;
   }
 
   .code-toolbar-controls {
@@ -3358,7 +3551,6 @@ button {
   .code-workspace .code-toolbar-button {
     height: 38px;
     padding: 0 8px;
-    font-size: clamp(7.5px, .8vw, 10px);
   }
 
   .code-workspace .code-toolbar-button-primary {
@@ -3371,6 +3563,9 @@ button {
   }
 
   .code-workspace .code-toolbar-close {
+    position: absolute;
+    top: 8px;
+    right: 8px;
     width: 36px;
     min-width: 36px;
     height: 34px;
@@ -3632,18 +3827,19 @@ button {
   }
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1350px) {
   .code-workspace .code-toolbar-zoom {
-    grid-template-columns: 28px minmax(34px, 1fr) 28px;
-    width: 104px;
-    height: 34px;
+    grid-template-columns: 26px minmax(32px, 1fr) 26px;
+    width: 100px;
+    min-width: 100px;
+    height: 48px;
     padding: 0 4px;
   }
 
   .code-workspace .code-toolbar-zoom-button {
-    width: 28px;
-    height: 30px;
-    font-size: 16px;
+    width: 26px;
+    height: 34px;
+    font-size: 15px;
   }
 }
 
@@ -3651,13 +3847,13 @@ button {
   .code-workspace .code-toolbar-zoom {
     grid-template-columns: 26px minmax(32px, 1fr) 26px;
     width: 100px;
-    height: 32px;
+    height: 48px;
     padding: 0 4px;
   }
 
   .code-workspace .code-toolbar-zoom-button {
     width: 26px;
-    height: 28px;
+    height: 34px;
     font-size: 15px;
   }
 

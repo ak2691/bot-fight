@@ -6,6 +6,8 @@ import MatchProtectedRoute from './auth/MatchProtectedRoute.jsx'
 import ProtectedRoute from './auth/ProtectedRoute'
 import AdminRoute from './auth/AdminRoute.jsx'
 import HomePage from './pages/home/HomePage'
+import QueuePage from './pages/queue/QueuePage.jsx'
+import CustomLobbyPage from './pages/customLobby/CustomLobbyPage.jsx'
 import Arena from './gameArena/Arena'
 import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
@@ -80,6 +82,26 @@ function App() {
               element={(
                 <ProtectedRoute>
                   <ConditionalCataloguePage />
+                </ProtectedRoute>
+              )}
+            />
+            <Route
+              path="/queue"
+              element={(
+                <ProtectedRoute>
+                  <ActiveMatchProtectedRoute>
+                    <QueuePage />
+                  </ActiveMatchProtectedRoute>
+                </ProtectedRoute>
+              )}
+            />
+            <Route
+              path="/custom-lobby"
+              element={(
+                <ProtectedRoute>
+                  <ActiveMatchProtectedRoute>
+                    <CustomLobbyPage />
+                  </ActiveMatchProtectedRoute>
                 </ProtectedRoute>
               )}
             />

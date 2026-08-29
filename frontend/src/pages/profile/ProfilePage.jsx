@@ -3,6 +3,7 @@ import { useAuth } from "../../auth/auth-context";
 import { useNotifications } from "../../notifications/notification-context";
 import { userFacingAuthError, usernameError } from "../../auth/validation";
 import { apiUrl } from "../../config/api";
+import { matchModeLabel } from "../../matchmaking/matchModes";
 import { ensureCsrfHeaders } from "../../security/csrf";
 import AppNavbar from "../../components/AppNavbar";
 import SpinningBotFace from "../../components/SpinningBotFace.jsx";
@@ -14,7 +15,6 @@ import {
 } from "./profileRetryRateLimit.js";
 
 const RECENT_MATCH_LIMIT = 5;
-const DUEL_INVITE_COOLDOWN_MS = 15_000;
 
 const resultTone = {
     WIN: "border-emerald-400/60 bg-emerald-950/30 text-emerald-300",
@@ -105,8 +105,6 @@ export default function ProfilePage() {
     const [isMatchesModalOpen, setIsMatchesModalOpen] = useState(false);
     const [isPuzzlesModalOpen, setIsPuzzlesModalOpen] = useState(false);
     const [isRetryRateLimited, setIsRetryRateLimited] = useState(false);
-    const [inviteState, setInviteState] = useState("idle");
-    const [inviteError, setInviteError] = useState(null);
     const [blockState, setBlockState] = useState("idle");
     const [blockError, setBlockError] = useState(null);
     const profileRequestRef = useRef(0);
@@ -114,7 +112,6 @@ export default function ProfilePage() {
     const solvedPuzzlesRequestRef = useRef(0);
     const profileRetryBucketRef = useRef(null);
     const retryRateLimitTimeoutRef = useRef(null);
-    const inviteCooldownTimeoutRef = useRef(null);
 
     if (profileRetryBucketRef.current === null) {
         profileRetryBucketRef.current = createProfileRetryTokenBucket();
@@ -222,12 +219,6 @@ export default function ProfilePage() {
     }, [loadProfile]);
 
     useEffect(() => {
-        setInviteState("idle");
-        setInviteError(null);
-        if (inviteCooldownTimeoutRef.current !== null) {
-            window.clearTimeout(inviteCooldownTimeoutRef.current);
-            inviteCooldownTimeoutRef.current = null;
-        }
         setBlockState("idle");
         setBlockError(null);
     }, [viewedUsername]);
@@ -268,9 +259,6 @@ export default function ProfilePage() {
         if (retryRateLimitTimeoutRef.current !== null) {
             window.clearTimeout(retryRateLimitTimeoutRef.current);
         }
-        if (inviteCooldownTimeoutRef.current !== null) {
-            window.clearTimeout(inviteCooldownTimeoutRef.current);
-        }
     }, []);
 
     const retryProfile = useCallback(() => {
@@ -302,33 +290,6 @@ export default function ProfilePage() {
         await logout();
         navigate("/login", { replace: true });
     }, [logout, navigate]);
-
-    const sendDuelInvite = useCallback(async () => {
-        if (!profile?.username || isOwner || inviteState === "sending" || inviteState === "sent") return;
-        setInviteState("sending");
-        setInviteError(null);
-        try {
-            const response = await fetch(apiUrl("/api/duel-invites"), {
-                method: "POST",
-                credentials: "include",
-                headers: {
-                    "Content-Type": "application/json",
-                    ...(await ensureCsrfHeaders("POST")),
-                },
-                body: JSON.stringify({ username: profile.username }),
-            });
-            const body = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(body.message ?? "The duel invite could not be sent.");
-            setInviteState("sent");
-            inviteCooldownTimeoutRef.current = window.setTimeout(() => {
-                inviteCooldownTimeoutRef.current = null;
-                setInviteState("idle");
-            }, DUEL_INVITE_COOLDOWN_MS);
-        } catch (error) {
-            setInviteState("error");
-            setInviteError(error.message ?? "The duel invite could not be sent.");
-        }
-    }, [inviteState, isOwner, profile?.username]);
 
     const toggleBlock = useCallback(async () => {
         if (!profile?.username || isOwner || blockState === "loading" || blockState === "saving") return;
@@ -382,10 +343,6 @@ export default function ProfilePage() {
                         onLogout={handleLogout}
                         onAboutMeSaved={saveAboutMe}
                         onOpenMatches={() => setIsMatchesModalOpen(true)}
-                        canInvite={!isOwner}
-                        inviteState={inviteState}
-                        inviteError={inviteError}
-                        onInvite={sendDuelInvite}
                         canBlock={!isOwner}
                         blockState={blockState}
                         blockError={blockError}
@@ -497,10 +454,6 @@ function ProfileContent({
     onLogout,
     onAboutMeSaved,
     onOpenMatches,
-    canInvite,
-    inviteState,
-    inviteError,
-    onInvite,
     canBlock,
     blockState,
     blockError,
@@ -520,12 +473,21 @@ function ProfileContent({
                     </div>
                 </div>
 
-                <dl className="mt-8 divide-y divide-cyan-900/70 border-y border-cyan-900/70">
-                    <Stat label="Matches played" value={profile.matchesPlayed} tone="text-white" />
-                    <Stat label="Wins" value={profile.wins} tone="text-emerald-300" />
-                    <Stat label="Losses" value={profile.losses} tone="text-rose-300" />
-                    <Stat label="Draws" value={profile.draws} tone="text-amber-300" />
-                    <Stat label="Puzzles solved" value={profile.puzzlesSolved ?? 0} tone="text-cyan-300" onClick={onOpenPuzzles} />
+                <div className="mt-8 grid gap-3 sm:grid-cols-2">
+                    <QueueModeStatsCard label="1V1" stats={profile.queueStats?.ones} />
+                    <QueueModeStatsCard label="2V2" stats={profile.queueStats?.twos} />
+                </div>
+
+                <dl className="mt-7 border-t border-slate-700/70 pt-4">
+                    <Stat
+                        label="PUZZLES SOLVED"
+                        value={profile.puzzlesSolved ?? 0}
+                        tone="text-cyan-300"
+                        labelClassName="font-mono text-sm font-bold tracking-[.14em] text-slate-400"
+                        valueClassName="font-interface-numeric text-2xl font-bold"
+                        showColon={false}
+                        onClick={onOpenPuzzles}
+                    />
                 </dl>
 
                 <div className="mt-7 border-t border-cyan-900/70 pt-5">
@@ -534,15 +496,6 @@ function ProfileContent({
                         {formatJoinedDate(profile.joinedAt)}
                     </time>
                 </div>
-
-                {canInvite && (
-                    <DuelInviteButton
-                        username={profile.username}
-                        state={inviteState}
-                        error={inviteError}
-                        onInvite={onInvite}
-                    />
-                )}
 
                 {canBlock && (
                     <UserBlockButton
@@ -593,22 +546,24 @@ function ProfileContent({
     );
 }
 
-function DuelInviteButton({ username, state, error, onInvite }) {
+function QueueModeStatsCard({ label, stats }) {
     return (
-        <div className="mt-7 border-t border-cyan-900/70 pt-5">
-            <p className="font-mono text-[10px] font-bold tracking-[.18em] text-cyan-400">DIRECT DUEL</p>
-            <p className="mt-2 text-sm leading-6 text-slate-400">Send {username} a request to fight a rated 1v1.</p>
-            <button
-                type="button"
-                onClick={() => void onInvite()}
-                disabled={state === "sending" || state === "sent"}
-                className="profile-toolbar-button profile-toolbar-button--primary mt-4 text-sm font-bold disabled:cursor-wait"
-            >
-                {state === "sending" ? "Sending..." : state === "sent" ? "Invite sent" : "Invite to 1v1"}
-            </button>
-            {error && <p className="mt-2 text-xs text-rose-300" role="alert">{error}</p>}
-            {state === "sent" && <p className="mt-2 text-xs text-emerald-300" role="status">They will see the request in their notifications.</p>}
-        </div>
+        <section className="min-w-0 overflow-hidden rounded-2xl border border-cyan-700/70 bg-[#171c20] px-5 py-5 sm:px-6 sm:py-6">
+            <h3 className="font-display-action text-2xl font-bold tracking-wide text-white">{label}</h3>
+            <div className="mt-6">
+                <p className="font-mono text-[11px] font-bold tracking-[.18em] text-slate-400">ELO</p>
+                <p className="mt-1 whitespace-nowrap font-mono text-3xl font-bold tracking-normal text-white">
+                    {stats?.elo ?? 1000}
+                </p>
+            </div>
+            <div className="my-5 border-t border-slate-700/80" />
+            <div>
+                <p className="font-mono text-[11px] font-bold tracking-[.18em] text-slate-400">RECORD</p>
+                <p className="mt-2 whitespace-nowrap font-mono text-[11px] font-bold tracking-[.04em] text-white sm:text-sm">
+                    {stats?.wins ?? 0}W <span className="text-cyan-300">—</span> {stats?.losses ?? 0}L <span className="text-cyan-300">—</span> {stats?.draws ?? 0}D
+                </p>
+            </div>
+        </section>
     );
 }
 
@@ -684,7 +639,7 @@ function MatchRow({ match }) {
     return (
         <article className="grid min-w-0 gap-3 px-6 py-4 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:px-8">
             <div className="min-w-0">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Opponent</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{matchModeLabel(match.mode)} · Opponent</p>
                 <p className="mt-1 break-words font-semibold text-slate-100">{match.opponentUsername}</p>
             </div>
             <span className={`w-fit rounded-lg border px-3 py-1 font-mono text-xs font-bold tracking-wider ${resultTone[match.result] ?? resultTone.DRAW}`}>
@@ -1033,7 +988,15 @@ function UsernameEditor({ username, onSave, onLogout }) {
     );
 }
 
-function Stat({ label, value, tone, onClick }) {
+function Stat({
+    label,
+    value,
+    tone,
+    onClick,
+    labelClassName = "text-sm text-slate-400",
+    valueClassName = "font-interface-numeric text-xl",
+    showColon = true,
+}) {
     const interactiveProps = onClick ? {
         role: "button",
         tabIndex: 0,
@@ -1048,8 +1011,8 @@ function Stat({ label, value, tone, onClick }) {
     } : {};
     return (
         <div {...interactiveProps} className={`profile-stat flex items-center justify-between gap-4 px-2 py-2.5 ${onClick ? "profile-stat--interactive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400" : ""}`}>
-            <dt className="text-sm text-slate-400">{label}:</dt>
-            <dd className={`font-interface-numeric text-xl ${tone}`}>{value}</dd>
+            <dt className={labelClassName}>{label}{showColon ? ":" : ""}</dt>
+            <dd className={`${valueClassName} ${tone}`}>{value}</dd>
         </div>
     );
 }

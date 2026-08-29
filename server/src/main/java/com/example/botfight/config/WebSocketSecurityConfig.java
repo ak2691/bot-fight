@@ -29,12 +29,17 @@ public class WebSocketSecurityConfig {
                         "/app/matchmaking.leave",
                         "/app/matchmaking.selectLoadout",
                         "/app/matchmaking.surrender",
-                        "/app/matchmaking.chat").authenticated()
+                        "/app/matchmaking.codeView.request",
+                        "/app/matchmaking.codeView.response",
+                        "/app/matchmaking.chat",
+                        "/app/custom-lobby.chat").authenticated()
                 .simpSubscribeDestMatchers(
                         "/user/queue/matchmaking",
                         "/user/queue/match",
                         "/user/queue/match-chat",
-                        "/user/queue/notifications").authenticated()
+                        "/user/queue/notifications",
+                        "/user/queue/party",
+                        "/user/queue/custom-lobby").authenticated()
                 .simpTypeMatchers(UNSUBSCRIBE, DISCONNECT).authenticated()
                 .simpTypeMatchers(MESSAGE, SUBSCRIBE).denyAll()
                 .anyMessage().denyAll();

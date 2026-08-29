@@ -69,11 +69,14 @@ test("every supported bot and entity presentation points at a required asset or 
     assert.equal(presentationDefinitionForShape({ type: "unknownEntity" }).fallback, "hidden");
 });
 
-test("bot colors follow the match-assigned slot instead of viewer identity", () => {
+test("bot colors follow the match-assigned team instead of viewer identity or slot", () => {
     assert.equal(botColorRole({ id: "main", slot: 1 }), "blue");
     assert.equal(botColorRole({ id: "main", slot: 2 }), "red");
     assert.equal(botColorRole({ id: "opponent-model", slot: 1 }), "blue");
     assert.equal(botColorRole({ id: "opponent-model", slot: 2 }), "red");
+    assert.equal(botColorRole({ id: "teammate", slot: 2, teamNumber: 1 }), "blue");
+    assert.equal(botColorRole({ id: "opponent-1", slot: 3, teamNumber: 2 }), "red");
+    assert.equal(botColorRole({ id: "opponent-2", slot: 4, teamNumber: 2 }), "red");
 });
 
 test("Pixi movement interpolation follows canonical ability metadata", () => {

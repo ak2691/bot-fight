@@ -254,6 +254,10 @@ public class ActionExecutionService {
         abilityEffectService.resolveTriggeredAbility(attacker, defender, arena);
     }
 
+    public void resolveTriggeredAbilities(Bot attacker, List<Bot> bots, Arena arena) {
+        abilityEffectService.resolveTriggeredAbilities(attacker, bots, arena);
+    }
+
     public int damageToDroneThisTick(ArenaEntity drone, List<Bot> bots,
             List<ArenaEntity> projectileEffects, List<ArenaEntity> projectiles,
             List<ArenaEntity> placements) {

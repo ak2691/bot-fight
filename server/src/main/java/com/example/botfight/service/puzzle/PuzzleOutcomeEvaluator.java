@@ -9,6 +9,7 @@ import com.example.botfight.simulation.core.orchestration.DuelSimulationService.
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Condition;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.StrategyBlock;
 import com.example.botfight.simulation.ecs.entities.ArenaEntity;
+import java.util.Comparator;
 import java.util.List;
 import tools.jackson.databind.JsonNode;
 
@@ -82,8 +83,26 @@ final class PuzzleOutcomeEvaluator {
             return true;
         }
 
-        Bot player = bots.get(0);
-        Bot opponent = bots.get(1);
+        Bot player = bots.stream()
+                .filter(bot -> bot != null && bot.teamNumber == 1 && bot.slot == 1)
+                .findFirst()
+                .orElseGet(() -> bots.stream()
+                        .filter(bot -> bot != null && bot.teamNumber == 1)
+                        .min(Comparator.comparingInt(bot -> bot.slot))
+                        .orElseGet(() -> bots.stream().filter(java.util.Objects::nonNull).findFirst().orElse(null)));
+        Bot opponent = player == null
+                ? null
+                : bots.stream()
+                        .filter(bot -> bot != null
+                                && bot != player
+                                && (player.teamNumber <= 0 || bot.teamNumber != player.teamNumber))
+                        .min(Comparator.comparingInt((Bot bot) -> bot.teamNumber)
+                                .thenComparingInt(bot -> bot.slot))
+                        .orElse(null);
+        if (player == null || opponent == null) {
+            status = "failed";
+            return true;
+        }
         List<DuelSimulationService.Entity> targetEntities = entities == null
                 ? List.of()
                 : entities.stream()

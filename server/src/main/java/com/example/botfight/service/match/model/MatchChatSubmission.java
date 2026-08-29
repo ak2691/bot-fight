@@ -12,8 +12,26 @@ public record MatchChatSubmission(
         String username,
         String message,
         Instant sentAt,
-        List<String> recipientPrincipalNames) {
+        List<String> recipientPrincipalNames,
+        String channel) {
+
+    /** Backward-compatible constructor for callers that predate chat channels. */
+    public MatchChatSubmission(
+            MatchChatSubmissionStatus status,
+            UUID messageId,
+            UUID matchId,
+            String username,
+            String message,
+            Instant sentAt,
+            List<String> recipientPrincipalNames) {
+        this(status, messageId, matchId, username, message, sentAt, recipientPrincipalNames, "ALL");
+    }
+
     public static MatchChatSubmission rateLimited(UUID matchId) {
+        return rateLimited(matchId, "ALL");
+    }
+
+    public static MatchChatSubmission rateLimited(UUID matchId, String channel) {
         return new MatchChatSubmission(
                 MatchChatSubmissionStatus.RATE_LIMITED,
                 null,
@@ -21,10 +39,15 @@ public record MatchChatSubmission(
                 null,
                 RateLimitExceededException.GENERIC_MESSAGE,
                 null,
-                List.of());
+                List.of(),
+                channel);
     }
 
     public static MatchChatSubmission rejected(UUID matchId, String message) {
+        return rejected(matchId, message, "ALL");
+    }
+
+    public static MatchChatSubmission rejected(UUID matchId, String message, String channel) {
         return new MatchChatSubmission(
                 MatchChatSubmissionStatus.REJECTED,
                 null,
@@ -32,6 +55,7 @@ public record MatchChatSubmission(
                 null,
                 message,
                 null,
-                List.of());
+                List.of(),
+                channel);
     }
 }

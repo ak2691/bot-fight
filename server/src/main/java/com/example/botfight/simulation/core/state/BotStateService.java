@@ -39,6 +39,7 @@ public class BotStateService {
         bot.userId = request.userId();
         bot.username = request.username();
         bot.slot = request.slot();
+        bot.teamNumber = request.teamNumber();
         bot.x = request.x();
         bot.y = request.y();
         bot.rotation = request.rotation() != null ? request.rotation() : request.slot() == 1 ? 90.0 : 270.0;

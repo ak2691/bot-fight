@@ -6,6 +6,7 @@ import {
     MAX_CUSTOM_VARIABLE_SLOTS,
     countVariableSlots,
 } from "../../botlogic/code/BotCode.js";
+import { BOT_CODE_SELECTABLES } from "../../botlogic/code/contracts/BotLogicContracts.js";
 import { useDialogFocus } from "../../../components/useDialogFocus.js";
 import { filterCustomVariableEntries } from "../utils/customVariableSearch.js";
 import { useExclusiveSearchMenu } from "../utils/codeMenuEvents.js";
@@ -145,7 +146,7 @@ function rewriteVariableActions(configuration, variableId, rewrite) {
     const mapBranch = (branch) => {
         const actions = (branch.actions ?? []).map((entry) => entry.action === "variable" && entry.variableId === variableId ? rewrite(entry) : entry).filter(Boolean);
         const legacyMatches = branch.action === "variable" && branch.variableId === variableId;
-        const first = actions[0] ?? (legacyMatches ? { action: "none", selectable: "opponent" } : null);
+        const first = actions[0] ?? (legacyMatches ? { action: "none", selectable: BOT_CODE_SELECTABLES.OPPONENT } : null);
         return { ...branch, ...(first ? { ...first, actions } : { actions }), children: (branch.children ?? []).map(mapBranch) };
     };
     return { ...configuration, roots: (configuration.roots ?? []).map((root) => ({ ...root, branches: (root.branches ?? []).map(mapBranch) })) };

@@ -210,7 +210,8 @@ public final class MatchPhaseService {
                 || "MATCH_STARTED".equals(event.type())
                 || "MATCH_LOADOUT_SELECTION_READY".equals(event.type())
                 || "MATCH_LOADOUT_SELECTED".equals(event.type())
-                || "MATCH_ROUND_READY".equals(event.type())) {
+                || "MATCH_ROUND_READY".equals(event.type())
+                || "MATCH_SURRENDER_UPDATED".equals(event.type())) {
             return MatchPhase.LOADOUT_SELECT;
         }
         if ("MATCH_FOUND".equals(event.status())) return MatchPhase.MATCH_FOUND;

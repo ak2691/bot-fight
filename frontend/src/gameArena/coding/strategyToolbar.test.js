@@ -32,14 +32,15 @@ test("match and building toolbars expose only their supported controls", () => {
     assert.match(source, /isAutoPlaying \? "PAUSE" : "PLAY"/);
     assert.match(source, /icon="check"/);
     assert.match(source, /: "SUBMIT"\}/);
-    assert.match(source, /: "FORFEIT"\}/);
+    assert.match(source, /: "VOTE TO FORFEIT"\}/);
     assert.match(source, /onPuzzleSubmit = null/);
     assert.match(source, /onClick=\{onPuzzleSubmit\}/);
     assert.match(source, /isPuzzleSubmitting \? "SUBMITTING" : "SUBMIT PUZZLE"/);
     assert.match(source, />\s*MEASURE\s*</);
     assert.match(source, />\s*RESET STATS\s*</);
-    assert.match(source, />\s*EDIT MY LOADOUT\s*</);
-    assert.match(source, />\s*EDIT DUMMY LOADOUT\s*</);
+    assert.match(source, />\s*PRACTICE CONFIG\s*</);
+    assert.match(source, />\s*EDIT LOADOUT\s*</);
+    assert.doesNotMatch(source, /EDIT MY LOADOUT|EDIT DUMMY LOADOUT/);
     assert.ok(matchControls.indexOf("RESET STATS") < matchControls.indexOf("onFinishMatch"));
     assert.match(matchControls, /onFinishMatch[\s\S]*tone="green"/);
     assert.match(matchControls, /onSurrenderMatch[\s\S]*tone="red"/);
@@ -59,7 +60,7 @@ test("puzzle play restores drafts by puzzle without overriding loaded submission
     const arenaSource = readFileSync(ARENA_PATH, "utf8");
     const puzzleSource = readFileSync(PUZZLE_PLAY_PATH, "utf8");
 
-    assert.match(arenaSource, /puzzleCodeOverride \?\? readPuzzleBotCodeDraft\(puzzleNumber, initialPuzzle\?\.playerBot\?\.brain/);
+    assert.match(arenaSource, /puzzleCodeOverride \?\? readPuzzleBotCodeDraft\(puzzleNumber, puzzleBotForSetup\(initialPuzzle, PUZZLE_PLAYER_TEAM\)\?\.brain/);
     assert.match(arenaSource, /savePuzzleBotCodeDraft\(puzzleNumber, sanitized\)/);
     assert.match(puzzleSource, /key=\{`\$\{puzzleNumber\}:\$\{activeRestoredSubmission\?\.id \?\? "puzzle-default"\}`\}/);
     assert.match(puzzleSource, /puzzleNumber=\{puzzleNumber\}/);
@@ -97,8 +98,20 @@ test("submitted match code closes and disables the coding workspace", () => {
     assert.ok(panelSource.includes('finishStatus === "FINISHED"'));
     assert.ok(panelSource.includes("setIsLogicOpen(false)"));
     assert.ok(panelSource.includes("disabled={isBotCodeLocked}"));
-    assert.ok(panelSource.includes("disabled={isBotCodeLocked || isTesting || !viewingCurrentRound}"));
-    assert.ok(panelSource.includes("canRemove={!isBotCodeLocked && !isTesting && !roundDeleteLocked}"));
+    assert.ok(panelSource.includes("disabled={isCodeEditingLocked || isTesting || !viewingCurrentRound}"));
+    assert.ok(panelSource.includes("canRemove={!isCodeEditingLocked && !isTesting && !roundDeleteLocked}"));
+});
+
+test("live match code browsing is teammate-first and keeps opponent code sandbox-only", () => {
+    const panelSource = readFileSync(PANEL_PATH, "utf8");
+
+    assert.match(panelSource, /orderedLiveCodeParticipants/);
+    assert.match(panelSource, /cycleCodeParticipant/);
+    assert.match(panelSource, /activeLiveIsTeammate/);
+    assert.match(panelSource, /SANDBOX CODE ONLY · OPPONENT CODE IS PRIVATE/);
+    assert.match(panelSource, /onClick=\{toggleLiveCodeMode\}/);
+    assert.doesNotMatch(panelSource, /onCopyParticipantToSandbox/);
+    assert.doesNotMatch(panelSource, /REFRESH REAL CODE|COPY NOW/);
 });
 
 test("conditional ability pickers use all equipped abilities and resource-aware ammo choices", () => {
@@ -120,8 +133,9 @@ test("toolbar buttons share the blueprint surface, show labels, and retain the e
     assert.match(source, /onClick=\{onMeasurementToggle\}/);
     assert.match(source, /onClick=\{onFinishMatch\}/);
     assert.match(source, /onClick=\{onSurrenderMatch\}/);
-    assert.match(source, /onClick=\{onOpenPlayerLoadout\}/);
-    assert.match(source, /onClick=\{onOpenOpponentLoadout\}/);
+    assert.match(source, /onClick=\{onOpenPracticeConfig\}/);
+    assert.match(source, /onClick=\{onOpenLoadout\}/);
+    assert.doesNotMatch(source, /onOpenPlayerLoadout|onOpenOpponentLoadout/);
     assert.match(source, /onOpenPuzzleSubmissions/);
     assert.match(source, />PREVIOUS SUBMISSIONS</);
     assert.match(readFileSync(ICON_PATH, "utf8"), /pause: <><path/);
@@ -155,6 +169,14 @@ test("arena and puzzle code workspaces share compact controls and pinch zoom", (
     assert.match(boardSource, /onPinchZoom\(nextZoom, nextPan\)/);
     assert.match(css, /\.code-workspace-overlay > \.code-workspace[\s\S]*height: min\(90dvh, 820px\);/);
     assert.match(css, /\.code-toolbar-actions \{[\s\S]*grid-column: 2;[\s\S]*grid-row: 2;/);
+    assert.match(css, /\.code-toolbar-actions \{[\s\S]*align-self: flex-start;/);
+    assert.match(css, /\.code-bot-selector-stack \{[\s\S]*align-self: flex-start;/);
+    assert.match(css, /@media \(max-width: 1350px\) \{[\s\S]*\.code-toolbar \{/);
+    assert.doesNotMatch(css, /@media \(max-width: 1200px\) \{[\s\S]*\.code-toolbar \{/);
+    assert.doesNotMatch(css, /\.code-workspace \.code-toolbar-button,\s*\.code-workspace \.code-tab \{\s*font-size: 7\.5px;/);
+    const compactZoom = css.slice(css.indexOf("@media (max-width: 1350px) {\n  .code-workspace .code-toolbar-zoom"), css.indexOf("@media (max-width: 600px) {", css.indexOf("@media (max-width: 1350px) {\n  .code-workspace .code-toolbar-zoom")));
+    assert.match(compactZoom, /height: 48px;/);
+    assert.doesNotMatch(compactZoom, /height: 32px;/);
     assert.match(css, /\.code-custom-variables-dialog > header > div:last-child > button:first-child[\s\S]*grid-column: 1 \/ -1;/);
     assert.match(css, /\.code-workspace-coach \{[\s\S]*background: #07111b;/);
     assert.match(css, /\.tutorial-guide-panel \{[\s\S]*height: 26rem;[\s\S]*display: flex;[\s\S]*overflow: hidden;/);
@@ -234,6 +256,20 @@ test("compact conditions own their comparator and actions summarize inspector ta
     assert.match(source, /`\$\{formatOrdinal\(ordinal\)\} \$\{order\[0\]\.toUpperCase\(\)\}/);
     assert.doesNotMatch(source, /code-action-sentence[\s\S]*<OrderedSelectablePicker value=\{entry\.selectable/);
     assert.doesNotMatch(source, /application\/x-bot-operator|GraphVariableNode|GraphTargetNode/);
+});
+
+test("entity selectable controls separate ability, owner, and ordering", () => {
+    const source = readFileSync(NODES_PATH, "utf8");
+    const css = readFileSync(CSS_PATH, "utf8");
+
+    assert.match(source, /function entitySelectableGroups\(selectableTypes = SELECTABLE_TYPES\)/);
+    assert.match(source, /<span>ABILITY NAME<\/span>/);
+    assert.match(source, /aria-label="Selectable owner"/);
+    assert.match(source, /<span>ATTRIBUTE<\/span>/);
+    assert.match(source, /<span>ORDER #<\/span>/);
+    assert.match(source, /SELECTABLE_ORDERS\.map/);
+    assert.match(css, /\.code-selectable-picker-entity-row[\s\S]*grid-template-columns: minmax\(0, 1\.2fr\)/);
+    assert.match(css, /\.code-selectable-picker-control > span/);
 });
 
 test("boolean condition inputs use the comparator socket styling", () => {
@@ -524,6 +560,13 @@ test("local building initialization creates one dummy while match initialization
     });
     assert.equal(matchShapes.filter((shape) => shape.id === "opponent-model").length, 1);
     assert.equal(matchShapes.find((shape) => shape.id === "opponent-model")?.username, "Opponent");
+});
+
+test("live match arena does not append the legacy opponent model to the authoritative roster", () => {
+    const arenaSource = readFileSync(ARENA_PATH, "utf8");
+
+    assert.match(arenaSource, /if \(matchContext\?\.matchId \|\| !matchContext\?\.opponent\) return;/);
+    assert.match(arenaSource, /buildMatchSpawnShapes/);
 });
 
 test("modulo is exposed only as a custom-variable operation", () => {

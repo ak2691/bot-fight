@@ -5,6 +5,7 @@ import {
     rootIdForIndex,
 } from "./identifiers.js";
 import { MAX_ROOT_NAME_LENGTH } from "./constants.js";
+import { BOT_CODE_SELECTABLES } from "../contracts/BotLogicContracts.js";
 
 export function normalizeRoot(root, rootIndex, remaining, customVariables, operations) {
     const priority = priorityForNode(root, rootIndex + 1);
@@ -40,7 +41,7 @@ function normalizeBranches(branches, remaining, customVariables, operations, roo
             actions.push(entry);
             remaining.actions -= cost;
         }
-        if (!actions.length) actions.push({ action: "none", selectable: "opponent" });
+        if (!actions.length) actions.push({ action: "none", selectable: BOT_CODE_SELECTABLES.OPPONENT });
         const conditions = branch?.branchType === "else"
             ? []
             : operations.normalizeConditions(branch?.conditions, customVariables).slice(0, remaining.conditions);

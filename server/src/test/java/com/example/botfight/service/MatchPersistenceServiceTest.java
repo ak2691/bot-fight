@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.example.botfight.domain.AppUser;
 import com.example.botfight.domain.Match;
+import com.example.botfight.domain.MatchParticipant;
 import com.example.botfight.domain.MatchStatus;
 import com.example.botfight.repository.MatchParticipantRepository;
 import com.example.botfight.repository.MatchRepository;
@@ -20,6 +21,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -72,5 +74,22 @@ class MatchPersistenceServiceTest {
 
         org.mockito.Mockito.verify(matchRepository, org.mockito.Mockito.never())
                 .saveAll(any());
+    }
+
+    @Test
+    void returnsOnlyTheCurrentPlayersPersistedRatingChange() {
+        UUID matchId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        AppUser user = new AppUser();
+        user.setId(userId);
+        MatchParticipant participant = new MatchParticipant();
+        participant.setUser(user);
+        participant.setRatingBefore(1035);
+        participant.setRatingAfter(1053);
+        when(matchParticipantRepository.findByMatchId(matchId)).thenReturn(List.of(participant));
+
+        assertThat(service.ratingChangeForPlayer(matchId, userId))
+                .isEqualTo(new MatchPersistenceService.RatingChange(1035, 1053));
+        assertThat(service.ratingChangeForPlayer(matchId, UUID.randomUUID())).isNull();
     }
 }

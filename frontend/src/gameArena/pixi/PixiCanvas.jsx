@@ -45,6 +45,8 @@ export default function PixiCanvas({
     abilityLayout = "split",
     showEmptyAbilitySlot = false,
     showMissingOpponentStatus = true,
+    showParticipantNumbers = false,
+    abilityInfoEnabled = false,
     arenaSize = null,
     fixedLayout = false,
     lockCamera = false,
@@ -131,14 +133,21 @@ export default function PixiCanvas({
     };
 
     const bots = presentationShapes.filter(isBotShape);
+    const blueTeamBots = bots.filter((bot) => botColorRole(bot) === "blue");
+    const redTeamBots = bots.filter((bot) => botColorRole(bot) === "red");
+    const hasMultipleTeamMembers = blueTeamBots.length > 1 || redTeamBots.length > 1;
+    const showTeamStatusPanels = hasMultipleTeamMembers
+        || (!showMissingOpponentStatus && (blueTeamBots.length === 0 || redTeamBots.length === 0));
     const playerBot = bots.find((bot) => bot.id === "main")
         ?? bots.find((bot) => Number(bot.slot) === 1)
         ?? bots[0];
     const opponentBot = bots.find((bot) => bot.id === "opponent-model")
-        ?? bots.find((bot) => Number(bot.slot) === 2 && bot.id !== playerBot?.id)
         ?? bots.find((bot) => bot.id !== playerBot?.id);
     const opponentStatusBot = opponentBot
-        ?? (showMissingOpponentStatus ? { id: "opponent-model", slot: 2, abilities: [], opponentUsername: "OPPONENT" } : null);
+        ?? (showMissingOpponentStatus ? { id: "opponent-model", slot: 2, teamNumber: 2, abilities: [], opponentUsername: "OPPONENT" } : null);
+    const renderStatusPanels = (teamBots) => teamBots.map((bot) => (
+        <AbilityStatusPanel key={bot.id ?? `slot-${bot.slot}`} bot={bot} compact={hasMultipleTeamMembers} statusRoster={bots} showParticipantNumbers={showParticipantNumbers} showEmptySlot={showEmptyAbilitySlot} abilityInfoEnabled={abilityInfoEnabled} />
+    ));
     const layoutClass = fixedLayout
         ? abilityLayout === "right"
             ? "pixi-combat-layout--fixed pixi-combat-layout--right max-w-[1120px]"
@@ -151,8 +160,8 @@ export default function PixiCanvas({
         <div className={`relative mx-auto grid w-full items-center justify-center gap-3 ${layoutClass}`}>
             {!arenaReady && !assetError && <ArenaLoadingScreen overlay label="Loading arena..." />}
             {abilityLayout !== "right" && (
-                <div className={`pixi-player-status ${fixedLayout ? "order-1 min-w-0" : "order-2 min-w-0 lg:order-1"} ${fixedLayout ? "pixi-side-status" : ""}`}>
-                    {playerBot && <AbilityStatusPanel bot={playerBot} showEmptySlot={showEmptyAbilitySlot} />}
+                <div className={`pixi-player-status space-y-3 ${fixedLayout ? "order-1 min-w-0" : "order-2 min-w-0 lg:order-1"} ${fixedLayout ? "pixi-side-status" : ""}`}>
+                    {showTeamStatusPanels ? renderStatusPanels(blueTeamBots) : playerBot && <AbilityStatusPanel bot={playerBot} statusRoster={bots} showParticipantNumbers={showParticipantNumbers} showEmptySlot={showEmptyAbilitySlot} abilityInfoEnabled={abilityInfoEnabled} />}
                 </div>
             )}
             <div
@@ -184,8 +193,15 @@ export default function PixiCanvas({
                 )}
             </div>
             <div className={`pixi-opponent-status order-3 min-w-0 space-y-3 ${fixedLayout ? "pixi-side-status" : ""}`}>
-                {abilityLayout === "right" && playerBot && <AbilityStatusPanel bot={playerBot} showEmptySlot={showEmptyAbilitySlot} />}
-                {opponentStatusBot && <AbilityStatusPanel bot={opponentStatusBot} showEmptySlot={showEmptyAbilitySlot} />}
+                {abilityLayout === "right"
+                        ? (showTeamStatusPanels
+                            ? [...blueTeamBots, ...redTeamBots].map((bot) => (
+                            <AbilityStatusPanel key={bot.id ?? `slot-${bot.slot}`} bot={bot} compact statusRoster={bots} showParticipantNumbers={showParticipantNumbers} showEmptySlot={showEmptyAbilitySlot} abilityInfoEnabled={abilityInfoEnabled} />
+                        ))
+                        : playerBot && <AbilityStatusPanel bot={playerBot} statusRoster={bots} showParticipantNumbers={showParticipantNumbers} showEmptySlot={showEmptyAbilitySlot} abilityInfoEnabled={abilityInfoEnabled} />)
+                    : showTeamStatusPanels
+                        ? renderStatusPanels(redTeamBots)
+                        : opponentStatusBot && <AbilityStatusPanel bot={opponentStatusBot} statusRoster={bots} showParticipantNumbers={showParticipantNumbers} showEmptySlot={showEmptyAbilitySlot} abilityInfoEnabled={abilityInfoEnabled} />}
             </div>
         </div>
     );

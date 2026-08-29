@@ -654,6 +654,7 @@ public class BotSubmissionValidationService {
         if ("boolean".equals(valueType) && !BotLogicContracts.booleanComparators().contains(comparator)) {
             errors.add(path + ".comparator is not allowed for boolean variables");
         }
+        String targetMode = validateConditionTarget(errors, condition, path, variableContract);
         if (variableContract != null && variableContract.isPairVariable()) {
             String selectedSelectable1 = condition.has("selectable1")
                     ? condition.path("selectable1").asText(BotLogicContracts.SELECTABLE_MY)
@@ -665,8 +666,10 @@ public class BotSubmissionValidationService {
                         : BotLogicContracts.defaultSelectable2ForVariable(variableContract);
             validateConditionSelectable(errors, path + ".selectable1", selectedSelectable1, variableContract.pairSelectableIdentities(0), variableContract,
                     condition.has("selectable1"));
-            validateConditionSelectable(errors, path + ".selectable2", selectedSelectable2, variableContract.pairSelectableIdentities(1), variableContract,
-                    condition.has("selectable2") || condition.has("selectable"));
+            if (BotLogicContracts.TARGET_MODE_TARGET.equals(targetMode)) {
+                validateConditionSelectable(errors, path + ".selectable2", selectedSelectable2, variableContract.pairSelectableIdentities(1), variableContract,
+                        condition.has("selectable2") || condition.has("selectable"));
+            }
         } else {
             String selectedLeftSelectable = selectedConditionSelectable(condition, "leftSelectable", variableContract);
             validateConditionSelectable(errors, path + ".leftSelectable", selectedLeftSelectable,
@@ -732,6 +735,46 @@ public class BotSubmissionValidationService {
                 errors.add(path + ".right.value must be a boolean");
             }
         }
+    }
+
+    private String validateConditionTarget(
+            List<String> errors,
+            JsonNode condition,
+            String path,
+            BotLogicContracts.VariableContract variableContract) {
+        boolean hasTargetFields = condition.has("targetMode") || condition.has("targetX")
+                || condition.has("targetY") || condition.has("targetAngle");
+        if (variableContract == null || variableContract.targetModes().isEmpty()) {
+            if (hasTargetFields) errors.add(path + ".targetMode is not supported for this variable");
+            return BotLogicContracts.TARGET_MODE_TARGET;
+        }
+        JsonNode modeNode = condition.get("targetMode");
+        String mode;
+        if (modeNode == null) {
+            mode = condition.has("targetX") || condition.has("targetY")
+                    ? BotLogicContracts.TARGET_MODE_COORDINATES
+                    : condition.has("targetAngle") ? BotLogicContracts.TARGET_MODE_ANGLE : BotLogicContracts.TARGET_MODE_TARGET;
+        } else if (!modeNode.isTextual()) {
+            errors.add(path + ".targetMode must be target, coordinates, or angle");
+            return BotLogicContracts.TARGET_MODE_TARGET;
+        } else {
+            mode = modeNode.asText();
+        }
+        if (!variableContract.targetModes().contains(mode)) {
+            errors.add(path + ".targetMode is not supported for this variable");
+            return BotLogicContracts.TARGET_MODE_TARGET;
+        }
+        if (BotLogicContracts.TARGET_MODE_COORDINATES.equals(mode)) {
+            validateCoordinate(errors, condition.get("targetX"), path + ".targetX", 1000);
+            validateCoordinate(errors, condition.get("targetY"), path + ".targetY", 1000);
+        } else if (BotLogicContracts.TARGET_MODE_ANGLE.equals(mode)) {
+            JsonNode angle = condition.get("targetAngle");
+            if (angle == null || !angle.isNumber() || !Double.isFinite(angle.asDouble())
+                    || angle.asDouble() < BotLogicContracts.ANGLE_MIN || angle.asDouble() > BotLogicContracts.ANGLE_MAX) {
+                errors.add(path + ".targetAngle must be an angle from -360 to 360 degrees");
+            }
+        }
+        return mode;
     }
 
     private static String selectedConditionSelectable(JsonNode condition, String field,

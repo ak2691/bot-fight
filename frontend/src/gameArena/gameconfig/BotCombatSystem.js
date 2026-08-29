@@ -1,6 +1,7 @@
 import { ignoresHostileEffects, withoutBotStatuses } from "./DefensiveState.js";
 import { HIT_STAGGER_DURATION_MS } from "./HitStagger.js";
 import { CLOSING_ZONE_TYPE } from "./ArenaHazardConfig.js";
+import { abilityContract, DELIVERY_TYPES } from "./AbilityContracts.js";
 import { resolveTriggeredAbilityEffects } from "../ecs/abilities/AbilityEffectSystem.js";
 import { BASE_BOT_HP } from "../modelPayloads/arenaConstants.js";
 import {
@@ -10,12 +11,40 @@ import {
 } from "../ecs/contracts/StatusContracts.js";
 
 export function resolveTriggeredAbilityCombat(first, second) {
-    let nextFirst = { ...first };
-    let nextSecond = second ? { ...second } : null;
+    const roster = second ? [first, second] : [first];
+    const next = resolveTriggeredAbilityCombatForRoster(roster);
+    return [next[0] ?? null, second ? next[1] ?? null : null];
+}
+
+/** Resolves direct triggered abilities against every opposing bot in a roster. */
+export function resolveTriggeredAbilityCombatForRoster(bots) {
+    if (!Array.isArray(bots)) return [];
+    let nextBots = bots.map((bot) => bot ? { ...bot } : bot);
     const combat = { applyDamageFromShapes };
-    [nextFirst, nextSecond] = resolveTriggeredAbilityEffects(nextFirst, nextSecond, combat);
-    if (nextSecond) [nextSecond, nextFirst] = resolveTriggeredAbilityEffects(nextSecond, nextFirst, combat);
-    return [nextFirst, nextSecond];
+    for (let attackerIndex = 0; attackerIndex < nextBots.length; attackerIndex += 1) {
+        let attacker = nextBots[attackerIndex];
+        if (!attacker) continue;
+        const delivery = abilityContract(attacker.triggeredAbility)?.delivery?.type;
+        if (delivery === DELIVERY_TYPES.SELF) {
+            [attacker] = resolveTriggeredAbilityEffects(attacker, null, combat);
+            nextBots[attackerIndex] = attacker;
+            continue;
+        }
+        let resolvedAgainstEnemy = false;
+        for (let defenderIndex = 0; defenderIndex < nextBots.length; defenderIndex += 1) {
+            if (defenderIndex === attackerIndex || !areOpposingTeams(attacker, nextBots[defenderIndex])) continue;
+            resolvedAgainstEnemy = true;
+            let defender = nextBots[defenderIndex];
+            [attacker, defender] = resolveTriggeredAbilityEffects(attacker, defender, combat);
+            nextBots[attackerIndex] = attacker;
+            nextBots[defenderIndex] = defender;
+        }
+        if (!resolvedAgainstEnemy) {
+            [attacker] = resolveTriggeredAbilityEffects(attacker, null, combat);
+            nextBots[attackerIndex] = attacker;
+        }
+    }
+    return nextBots;
 }
 
 export function applyDamageToShape(shape, damage, source = null) {
@@ -99,7 +128,19 @@ function roundCombatValue(value) {
 }
 
 function isHostileDamageSource(source, target) {
+    const sourceTeam = Number(source?.teamNumber ?? source?.ownerTeam);
+    const targetTeam = Number(target?.teamNumber);
+    if (Number.isFinite(sourceTeam) && Number.isFinite(targetTeam)
+        && sourceTeam > 0 && targetTeam > 0) return sourceTeam !== targetTeam;
     const sourceSlot = Number(source?.slot ?? source?.ownerSlot);
     const targetSlot = Number(target?.slot);
     return Number.isFinite(sourceSlot) && Number.isFinite(targetSlot) && sourceSlot !== targetSlot;
+}
+
+function areOpposingTeams(first, second) {
+    const firstTeam = Number(first?.teamNumber);
+    const secondTeam = Number(second?.teamNumber);
+    if (Number.isFinite(firstTeam) && Number.isFinite(secondTeam)
+        && firstTeam > 0 && secondTeam > 0) return firstTeam !== secondTeam;
+    return Number(first?.slot) !== Number(second?.slot);
 }

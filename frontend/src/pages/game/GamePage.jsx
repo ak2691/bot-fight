@@ -52,6 +52,7 @@ export default function GamePage() {
         exitToHome,
         preloadShapes,
     } = lifecycle;
+    const returnToLobby = () => navigate("/custom-lobby");
 
     const matchViewProps = {
         matchContext,
@@ -120,6 +121,9 @@ export default function GamePage() {
                     key={replayArena.key}
                     playback={playback}
                     preloadShapes={preloadShapes}
+                    isCustomMatch={matchEvent?.mode === "CUSTOM"}
+                    isFinalMatchResult={matchEvent?.type === "MATCH_RESULT_READY"}
+                    onReturnToLobby={returnToLobby}
                 />
                 <MatchView {...matchViewProps} chatOnly />
             </main>
@@ -141,6 +145,7 @@ export default function GamePage() {
                     submitting={loadoutSubmitPending}
                     player={matchEvent?.player}
                     opponent={matchEvent?.opponent}
+                    players={matchEvent?.players}
                     roundNumber={matchEvent?.roundNumber ?? 1}
                     abilityOffers={matchEvent?.abilityOffers ?? []}
                     remaining={remaining}

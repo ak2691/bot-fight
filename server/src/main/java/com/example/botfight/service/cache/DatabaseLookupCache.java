@@ -44,6 +44,10 @@ public class DatabaseLookupCache {
             "puzzle-list", 2_000, PUZZLE_EXPIRY);
     private final Cache<UUID, ProfileDTO> profileCache = newCache(
             "profile-summary", 5_000, PROFILE_EXPIRY);
+    private final Cache<UUID, CachedMatchStats> profileMatchStatsCache = newCache(
+            "profile-match-stats", 5_000, PROFILE_EXPIRY);
+    private final Cache<UUID, CachedRatings> profileRatingsCache = newCache(
+            "profile-ratings", 5_000, PROFILE_EXPIRY);
     private final Cache<UUID, CachedUser> currentUserCache = newCache(
             "profile-current-user", 5_000, PROFILE_EXPIRY);
     private final Cache<String, CachedUser> publicUserCache = newCache(
@@ -67,6 +71,18 @@ public class DatabaseLookupCache {
 
     public ProfileDTO profileSummary(UUID userId, Supplier<ProfileDTO> databaseLookup) {
         return getOrLoad("profile-summary", profileCache, userId, databaseLookup);
+    }
+
+    public CachedMatchStats profileMatchStats(
+            UUID userId,
+            Supplier<CachedMatchStats> databaseLookup) {
+        return getOrLoad("profile-match-stats", profileMatchStatsCache, userId, databaseLookup);
+    }
+
+    public CachedRatings profileRatings(
+            UUID userId,
+            Supplier<CachedRatings> databaseLookup) {
+        return getOrLoad("profile-ratings", profileRatingsCache, userId, databaseLookup);
     }
 
     public CachedUser currentUser(UUID userId, Supplier<CachedUser> databaseLookup) {
@@ -132,6 +148,8 @@ public class DatabaseLookupCache {
 
     public void invalidateAfterMatchWrite(UUID userId, String reason) {
         invalidate("profile-summary", profileCache, userId, reason);
+        invalidate("profile-match-stats", profileMatchStatsCache, userId, reason);
+        invalidate("profile-ratings", profileRatingsCache, userId, reason);
         invalidateMatching(
                 "profile-match-history",
                 matchHistoryCache,
@@ -283,10 +301,46 @@ public class DatabaseLookupCache {
             int maxActionNodes,
             int maxConditionNodes,
             int maxCustomVariables,
+            int playerTeamSize,
+            int opponentTeamSize,
             JsonNode logicConfiguration,
             JsonNode winConditions,
             JsonNode loseConditions,
             List<CachedPuzzleBot> bots) {
+
+        public CachedPuzzle(
+                UUID id,
+                long puzzleNumber,
+                String name,
+                String description,
+                int initialElapsedMs,
+                boolean hideOpponentCode,
+                int timeLimitMs,
+                int maxActionNodes,
+                int maxConditionNodes,
+                int maxCustomVariables,
+                JsonNode logicConfiguration,
+                JsonNode winConditions,
+                JsonNode loseConditions,
+                List<CachedPuzzleBot> bots) {
+            this(
+                    id,
+                    puzzleNumber,
+                    name,
+                    description,
+                    initialElapsedMs,
+                    hideOpponentCode,
+                    timeLimitMs,
+                    maxActionNodes,
+                    maxConditionNodes,
+                    maxCustomVariables,
+                    1,
+                    1,
+                    logicConfiguration,
+                    winConditions,
+                    loseConditions,
+                    bots);
+        }
 
         public CachedPuzzle {
             logicConfiguration = copy(logicConfiguration);
@@ -303,6 +357,8 @@ public class DatabaseLookupCache {
     public record CachedPuzzleBot(
             UUID id,
             PuzzleBotRole role,
+            int teamNumber,
+            int slot,
             String loadout,
             double startX,
             double startY,
@@ -316,6 +372,25 @@ public class DatabaseLookupCache {
     }
 
     public record CachedUser(UUID id, String username, Instant createdAt) {
+    }
+
+    public record CachedMatchStats(
+            long wins,
+            long losses,
+            long draws,
+            long onesWins,
+            long onesLosses,
+            long onesDraws,
+            long twosWins,
+            long twosLosses,
+            long twosDraws) {
+
+        public CachedMatchStats(long wins, long losses, long draws) {
+            this(wins, losses, draws, 0, 0, 0, 0, 0, 0);
+        }
+    }
+
+    public record CachedRatings(int ones, int twos) {
     }
 
     public record PuzzleListKey(int page, int size, UUID userId, String query) {

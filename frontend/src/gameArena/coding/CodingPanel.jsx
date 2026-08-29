@@ -27,7 +27,6 @@ import {
     PanelHeading,
     ToolIcon,
     ControlButton,
-    CodeTab,
     countActions,
     countLogicConditions,
     abilityIdsForConfiguration,
@@ -61,20 +60,108 @@ function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
 }
 
+function participantTeamNumber(participant) {
+    const explicitTeam = Number(participant?.teamNumber);
+    return Number.isFinite(explicitTeam) && explicitTeam > 0
+        ? explicitTeam
+        : Number(participant?.slot) === 1 ? 1 : 2;
+}
+
+function participantId(participant) {
+    return participant?.userId == null ? "" : String(participant.userId);
+}
+
+function matchParticipantsForContext(matchContext) {
+    const participants = Array.isArray(matchContext?.players) && matchContext.players.length > 0
+        ? matchContext.players
+        : [matchContext?.player, matchContext?.opponent].filter(Boolean);
+    const unique = new Map();
+    participants.forEach((participant) => {
+        const key = participantId(participant);
+        if (key && !unique.has(key)) unique.set(key, participant);
+    });
+    return [...unique.values()];
+}
+
+function orderedLiveCodeParticipants(matchContext) {
+    const participants = matchParticipantsForContext(matchContext);
+    const player = matchContext?.player ?? participants[0] ?? null;
+    if (!player) return [];
+    const playerKey = participantId(player);
+    const playerTeam = participantTeamNumber(player);
+    const bySlot = (first, second) => Number(first?.slot ?? 0) - Number(second?.slot ?? 0);
+    const teammates = participants
+        .filter((participant) => participantId(participant) !== playerKey
+            && participantTeamNumber(participant) === playerTeam)
+        .sort(bySlot);
+    const opponents = participants
+        .filter((participant) => participantId(participant) !== playerKey
+            && participantTeamNumber(participant) !== playerTeam)
+        .sort(bySlot);
+    return [player, ...teammates, ...opponents];
+}
+
+const OFFLINE_PLAYER = Object.freeze({
+    userId: "offline-player",
+    username: "My Bot",
+    slot: 1,
+    teamNumber: 1,
+});
+
+const OFFLINE_OPPONENT = Object.freeze({
+    userId: "offline-opponent",
+    username: "Opponent 1",
+    slot: 2,
+    teamNumber: 2,
+});
+
+function offlineCodeParticipantsForContext(matchContext, opponentConfiguration) {
+    const player = matchContext?.player ?? OFFLINE_PLAYER;
+    const opponent = matchContext?.opponent ?? OFFLINE_OPPONENT;
+    return opponentConfiguration ? [player, opponent] : [player];
+}
+
+function codeSelectorLabel(participant, roster, viewer) {
+    if (!participant || participantId(participant) === participantId(viewer)) return "My Bot";
+    const viewerTeam = participantTeamNumber(viewer);
+    const role = participantTeamNumber(participant) === viewerTeam ? "Teammate" : "Opponent";
+    const ordinal = roster
+        .slice(0, Math.max(0, roster.indexOf(participant)))
+        .filter((candidate) => candidate !== viewer
+            && participantTeamNumber(candidate) === participantTeamNumber(participant))
+        .length + 1;
+    return `${role} ${ordinal}`;
+}
+
+function teamLabel(teamNumber) {
+    return Number(teamNumber) === 2 ? "RED TEAM" : "BLUE TEAM";
+}
+
+function roundWinsForTeam(participants, teamNumber) {
+    return participants
+        .filter((participant) => participantTeamNumber(participant) === teamNumber)
+        .reduce((highest, participant) => Math.max(highest, Math.max(0, Number(participant?.roundWins) || 0)), 0);
+}
+
 export default function CodingPanel({
     configuration,
     onChange,
     opponentConfiguration = null,
     onOpponentChange = null,
+    offlineCodeParticipants = null,
+    onOfflineCodeChange = null,
     isTesting,
     selectedLoadout,
     opponentLoadout,
     isMatchTesting = false,
     usesArenaResponsiveLimits = false,
     matchContext = null,
+    codeSnapshots = {},
+    codeViewError = null,
+    onRequestCodeView = null,
+    sandboxCodeCopies = {},
+    onSandboxParticipantChange = null,
     testingRemaining = null,
-    playerRoundWins = 0,
-    opponentRoundWins = 0,
     isAutoPlaying = false,
     onMeasurementToggle,
     isBaseTesting = false,
@@ -88,8 +175,8 @@ export default function CodingPanel({
     opponentCustomVariableValues = {},
     onSurrenderMatch,
     onFinishMatch,
-    onOpenPlayerLoadout,
-    onOpenOpponentLoadout,
+    onOpenLoadout,
+    onOpenPracticeConfig = null,
     onOpenPuzzleSubmissions = null,
     builderControls = null,
     puzzleControls = null,
@@ -131,9 +218,68 @@ export default function CodingPanel({
         enabled: isLogicOpen,
     });
     const [editHistory, setEditHistory] = useState({ player: { undo: [], redo: [] }, opponent: { undo: [], redo: [] } });
-    const viewingOpponent = activeCode === "opponent" && Boolean(opponentConfiguration);
-    const editingOpponent = viewingOpponent && Boolean(onOpponentChange) && !opponentReadOnly;
-    const activeCodeReadOnly = viewingOpponent && opponentReadOnly;
+    const liveCodeRoster = useMemo(
+        () => isMatchTesting ? orderedLiveCodeParticipants(matchContext) : [],
+        [isMatchTesting, matchContext],
+    );
+    const offlineCodeRoster = useMemo(
+        () => isMatchTesting
+            ? []
+            : Array.isArray(offlineCodeParticipants) && offlineCodeParticipants.length > 0
+                ? offlineCodeParticipants
+                : offlineCodeParticipantsForContext(matchContext, opponentConfiguration),
+        [isMatchTesting, matchContext, offlineCodeParticipants, opponentConfiguration],
+    );
+    const codeSelectorRoster = isMatchTesting ? liveCodeRoster : offlineCodeRoster;
+    const activeLiveCodeType = activeCode.startsWith("real:")
+        ? "real"
+        : activeCode.startsWith("sandbox:") ? "sandbox" : null;
+    const activeLiveParticipantId = activeLiveCodeType ? activeCode.slice(activeLiveCodeType.length + 1) : null;
+    const activeLiveParticipant = activeLiveParticipantId
+        ? liveCodeRoster.find((participant) => participantId(participant) === activeLiveParticipantId)
+        : null;
+    const activeOfflineParticipantId = activeCode.startsWith("offline:")
+        ? activeCode.slice("offline:".length)
+        : null;
+    const activeOfflineParticipant = activeOfflineParticipantId
+        ? offlineCodeRoster.find((participant) => participantId(participant) === activeOfflineParticipantId)
+        : null;
+    const viewingOfflineParticipant = Boolean(activeOfflineParticipant);
+    const primaryOfflineParticipant = offlineCodeRoster[0] ?? null;
+    const activeOfflineIsTeammate = Boolean(
+        activeOfflineParticipant
+        && primaryOfflineParticipant
+        && participantTeamNumber(activeOfflineParticipant) === participantTeamNumber(primaryOfflineParticipant),
+    );
+    const offlineOpponentParticipant = offlineCodeRoster.find((participant) => participant.codeKey === "opponent")
+        ?? offlineCodeRoster[1]
+        ?? null;
+    useEffect(() => {
+        if (isMatchTesting || !activeCode.startsWith("offline:") || activeOfflineParticipant) return;
+        // Reset the selector when a team-size change removes the active bot.
+        setActiveCode("player");
+    }, [activeCode, activeOfflineParticipant, isMatchTesting]);
+    const activeCodeSnapshot = activeLiveParticipantId ? codeSnapshots?.[activeLiveParticipantId] : null;
+    const activeSandboxCopy = activeLiveParticipantId ? sandboxCodeCopies?.[activeLiveParticipantId] : null;
+    const viewingLiveParticipant = Boolean(activeLiveParticipant && activeLiveCodeType);
+    const activeLiveIsTeammate = Boolean(activeLiveParticipant
+        && participantTeamNumber(activeLiveParticipant) === participantTeamNumber(matchContext?.player));
+    const viewingLiveReal = viewingLiveParticipant
+        && activeLiveCodeType === "real"
+        && activeLiveIsTeammate;
+    const viewingLiveSandbox = viewingLiveParticipant && activeLiveCodeType === "sandbox";
+    const viewingLiveTeammateSandbox = viewingLiveSandbox && activeLiveIsTeammate;
+    const viewingLiveOpponentSandbox = viewingLiveSandbox && !activeLiveIsTeammate;
+    const viewingOpponent = !isMatchTesting
+        && activeCode === "opponent"
+        && Boolean(opponentConfiguration);
+    const editingOpponent = viewingLiveTeammateSandbox
+        || (viewingOpponent && Boolean(onOpponentChange) && !opponentReadOnly)
+        || (viewingOfflineParticipant && !activeOfflineIsTeammate && Boolean(onOfflineCodeChange));
+    const activeCodeReadOnly = viewingLiveReal
+        || viewingLiveOpponentSandbox
+        || (viewingOpponent && opponentReadOnly)
+        || (viewingOfflineParticipant && !onOfflineCodeChange);
     const currentRound = Math.max(1, Number(matchContext?.roundNumber) || 1);
     const maxActionNodes = Number.isFinite(Number(logicLimits?.maxActionNodes))
         ? editingOpponent ? MAX_LOGIC_BLOCKS : Math.max(0, Math.floor(Number(logicLimits.maxActionNodes)))
@@ -144,17 +290,88 @@ export default function CodingPanel({
     const maxCustomVariableSlots = Number.isFinite(Number(logicLimits?.maxCustomVariables))
         ? editingOpponent ? MAX_CUSTOM_VARIABLE_SLOTS : Math.max(0, Math.floor(Number(logicLimits.maxCustomVariables)))
         : MAX_CUSTOM_VARIABLE_SLOTS;
-    const validation = validateAbilityStrategyConfiguration(configuration);
+    const activeConfigurationSource = viewingOfflineParticipant
+        ? activeOfflineParticipant.configuration ?? activeOfflineParticipant.brain
+        : viewingLiveTeammateSandbox
+            ? activeSandboxCopy?.configuration
+        : viewingLiveReal
+            ? activeCodeSnapshot?.configuration
+            : viewingLiveOpponentSandbox
+                ? activeCodeSnapshot?.configuration
+                    ?? { version: "bot-logic-tree-v1", roots: [], customVariables: [] }
+            : viewingOpponent ? opponentConfiguration : configuration;
+    const activeLoadoutSource = viewingOfflineParticipant
+        ? activeOfflineParticipant.selectedLoadout ?? activeOfflineParticipant.loadout
+        : viewingLiveTeammateSandbox
+            ? activeSandboxCopy?.selectedLoadout
+        : viewingLiveReal
+            ? activeCodeSnapshot?.selectedLoadout
+            : viewingLiveOpponentSandbox
+                ? activeLiveParticipant?.selectedLoadout
+            : viewingOpponent ? opponentLoadout : selectedLoadout;
+    const normalizedActiveConfiguration = activeConfigurationSource && typeof activeConfigurationSource === "object"
+        ? activeConfigurationSource
+        : { version: "bot-logic-tree-v1", roots: [], customVariables: [] };
+    const activeConfiguration = normalizedActiveConfiguration;
+    const activeLoadout = activeLoadoutSource;
+    const validation = validateAbilityStrategyConfiguration(normalizedActiveConfiguration);
     const isBotCodeLocked = isMatchTesting && (
         isFinishingMatch
         || finishStatus === "SUBMITTING"
         || finishStatus === "FINISHED"
     );
-    const playerBotLabel = matchContext?.player?.username ? `${matchContext.player.username}'s bot` : "Your bot";
-    const activeLoadout = viewingOpponent ? opponentLoadout : selectedLoadout;
-    const opposingLoadout = viewingOpponent ? selectedLoadout : opponentLoadout;
-    const activeConfiguration = viewingOpponent ? opponentConfiguration : configuration;
-    const activeCustomVariableValues = viewingOpponent ? opponentCustomVariableValues : customVariableValues;
+    const activeCustomVariableValues = viewingOfflineParticipant
+        ? activeOfflineParticipant.customVariableValues ?? {}
+        : viewingOpponent
+            ? opponentCustomVariableValues
+        : viewingLiveOpponentSandbox
+            ? {}
+            : customVariableValues;
+    const activeParticipant = viewingLiveParticipant
+        ? activeLiveParticipant
+        : viewingOfflineParticipant
+        ? activeOfflineParticipant
+        : viewingOpponent
+        ? offlineOpponentParticipant
+        : isMatchTesting ? matchContext?.player : offlineCodeRoster[0];
+    const opposingLoadout = useMemo(() => {
+        if (!isMatchTesting) {
+            return viewingOpponent || (viewingOfflineParticipant && !activeOfflineIsTeammate)
+                ? selectedLoadout
+                : opponentLoadout;
+        }
+        if (!activeParticipant) {
+            return opponentLoadout;
+        }
+        const activeTeam = participantTeamNumber(activeParticipant);
+        const opposingParticipant = matchParticipantsForContext(matchContext)
+            .filter((participant) => participantTeamNumber(participant) !== activeTeam)
+            .sort((first, second) => Number(first?.slot ?? 0) - Number(second?.slot ?? 0))[0];
+        return opposingParticipant?.selectedLoadout ?? opponentLoadout;
+    }, [activeOfflineIsTeammate, activeParticipant, isMatchTesting, matchContext, opponentLoadout, selectedLoadout, viewingOfflineParticipant, viewingOpponent]);
+    const selectableRoster = useMemo(() => {
+        if (!activeParticipant) return null;
+        const participants = isMatchTesting
+            ? matchParticipantsForContext(matchContext)
+            : codeSelectorRoster;
+        const activeTeam = participantTeamNumber(activeParticipant);
+        const activeId = participantId(activeParticipant);
+        const teammates = participants
+            .filter((participant) => participantId(participant) !== activeId
+                && participantTeamNumber(participant) === activeTeam)
+            .sort((first, second) => Number(first?.slot ?? 0) - Number(second?.slot ?? 0));
+        const opponents = participants
+            .filter((participant) => participantTeamNumber(participant) !== activeTeam)
+            .sort((first, second) => Number(first?.slot ?? 0) - Number(second?.slot ?? 0));
+        return {
+            teammateCount: teammates.length,
+            opponentCount: opponents.length,
+            teammateLoadouts: teammates.map((participant) => participant.selectedLoadout),
+            opponentLoadouts: opponents.map((participant) => participant.selectedLoadout),
+        };
+    }, [activeParticipant, codeSelectorRoster, isMatchTesting, matchContext]);
+    const blueTeamRoundWins = roundWinsForTeam(liveCodeRoster, 1);
+    const redTeamRoundWins = roundWinsForTeam(liveCodeRoster, 2);
     const isCodeEditingLocked = isBotCodeLocked || activeCodeReadOnly;
     const openLogicWorkspace = useCallback((quickSearch = false) => {
         if (isBotCodeLocked) return;
@@ -185,25 +402,33 @@ export default function CodingPanel({
     }, [isBotCodeLocked, isCustomVariablesOpen, isLogicOpen, isNodeSearchOpen, openLogicWorkspace]);
     const applyActiveConfiguration = (next) => {
         if (isCodeEditingLocked) return;
-        if (editingOpponent) onOpponentChange(next);
+        if (viewingOfflineParticipant) onOfflineCodeChange?.(activeOfflineParticipantId, next);
+        else if (viewingLiveTeammateSandbox) onSandboxParticipantChange?.(activeLiveParticipantId, next);
+        else if (editingOpponent) onOpponentChange?.(next);
         else onChange(next);
     };
     const updateActiveConfiguration = (next) => {
         if (isCodeEditingLocked) return;
         if (next === activeConfiguration) return;
-        setEditHistory((current) => ({ ...current, [activeCode]: { undo: [...current[activeCode].undo.slice(-49), activeConfiguration], redo: [] } }));
+        setEditHistory((current) => {
+            const history = current[activeCode] ?? { undo: [], redo: [] };
+            return {
+                ...current,
+                [activeCode]: { undo: [...history.undo.slice(-49), activeConfiguration], redo: [] },
+            };
+        });
         applyActiveConfiguration(next);
     };
     const travelHistory = (direction) => {
         if (isTesting || isCodeEditingLocked) return;
-        const history = editHistory[activeCode];
+        const history = editHistory[activeCode] ?? { undo: [], redo: [] };
         const next = history[direction].at(-1);
         if (!next) return;
         const destination = direction === "undo" ? "redo" : "undo";
         setEditHistory((current) => ({ ...current, [activeCode]: {
-            ...current[activeCode],
-            [direction]: current[activeCode][direction].slice(0, -1),
-            [destination]: [...current[activeCode][destination], activeConfiguration],
+            ...(current[activeCode] ?? { undo: [], redo: [] }),
+            [direction]: history[direction].slice(0, -1),
+            [destination]: [...(current[activeCode]?.[destination] ?? []), activeConfiguration],
         } }));
         applyActiveConfiguration(next);
     };
@@ -262,28 +487,32 @@ export default function CodingPanel({
         ?? visibleStateVariables[0]
         ?? STATE_VARIABLES[0];
     const visibleSelectableTypes = useMemo(
-        () => selectableTypesForLoadouts(activeLoadout, opposingLoadout),
-        [activeLoadout, opposingLoadout],
+        () => selectableTypesForLoadouts(activeLoadout, opposingLoadout, selectableRoster),
+        [activeLoadout, opposingLoadout, selectableRoster],
     );
     const visibleSelectableAbilityIds = useMemo(
-        () => selectableAbilityIdsForLoadouts(activeLoadout, opposingLoadout),
-        [activeLoadout, opposingLoadout],
+        () => selectableAbilityIdsForLoadouts(activeLoadout, opposingLoadout, selectableRoster),
+        [activeLoadout, opposingLoadout, selectableRoster],
     );
     useEffect(() => {
         if (isCodeEditingLocked) return;
         const sanitized = sanitizeConfigurationConditions(activeConfiguration, visibleConditionTypes, defaultCondition, visibleSelectableTypes, visibleStateVariables, visibleSelectableAbilityIds);
         if (sanitized === activeConfiguration) return;
-        if (editingOpponent) onOpponentChange?.(sanitized);
+        if (viewingOfflineParticipant) onOfflineCodeChange?.(activeOfflineParticipantId, sanitized);
+        else if (viewingLiveTeammateSandbox) onSandboxParticipantChange?.(activeLiveParticipantId, sanitized);
+        else if (editingOpponent) onOpponentChange?.(sanitized);
         else onChange(sanitized);
-    }, [activeConfiguration, activeLoadout, opposingLoadout, defaultCondition, editingOpponent, isCodeEditingLocked, onChange, onOpponentChange, visibleConditionTypes, visibleStateVariables, visibleSelectableTypes, visibleSelectableAbilityIds]);
+    }, [activeConfiguration, activeLiveParticipantId, activeOfflineParticipantId, activeLoadout, defaultCondition, editingOpponent, isCodeEditingLocked, onChange, onOfflineCodeChange, onOpponentChange, onSandboxParticipantChange, opposingLoadout, viewingLiveTeammateSandbox, viewingOfflineParticipant, visibleConditionTypes, visibleStateVariables, visibleSelectableTypes, visibleSelectableAbilityIds]);
 
     useEffect(() => {
         if (isCodeEditingLocked) return;
         if (!isLogicOpen || usesTree) return;
         const tree = normalizeAbilityStrategyConfiguration(activeConfiguration);
-        if (editingOpponent) onOpponentChange?.(tree);
+        if (viewingOfflineParticipant) onOfflineCodeChange?.(activeOfflineParticipantId, tree);
+        else if (viewingLiveTeammateSandbox) onSandboxParticipantChange?.(activeLiveParticipantId, tree);
+        else if (editingOpponent) onOpponentChange?.(tree);
         else onChange(tree);
-    }, [activeConfiguration, editingOpponent, isCodeEditingLocked, isLogicOpen, onChange, onOpponentChange, usesTree]);
+    }, [activeConfiguration, activeLiveParticipantId, activeOfflineParticipantId, editingOpponent, isCodeEditingLocked, isLogicOpen, onChange, onOfflineCodeChange, onOpponentChange, onSandboxParticipantChange, viewingLiveTeammateSandbox, viewingOfflineParticipant, usesTree]);
 
     useEffect(() => {
         if (!isBotCodeLocked) return;
@@ -322,7 +551,68 @@ export default function CodingPanel({
         setCanvasZoom(nextZoom);
         setCanvasPan(nextPan);
     };
-
+    const activeSelectorParticipant = isMatchTesting
+        ? activeCode === "player"
+            ? matchContext?.player
+            : activeLiveParticipant
+        : viewingOfflineParticipant
+            ? activeOfflineParticipant
+            : activeCode === "opponent"
+                ? offlineOpponentParticipant
+            : offlineCodeRoster[0];
+    const activeSelectorIndex = codeSelectorRoster.findIndex((participant) =>
+        participantId(participant) === participantId(activeSelectorParticipant));
+    const activeSelectorRole = botColorRole(activeSelectorParticipant);
+    const activeSelectorLabel = codeSelectorLabel(
+        activeSelectorParticipant,
+        codeSelectorRoster,
+        isMatchTesting ? matchContext?.player : offlineCodeRoster[0],
+    );
+    const isViewingOwnCode = Boolean(activeSelectorParticipant
+        && participantId(activeSelectorParticipant)
+            === participantId(isMatchTesting ? matchContext?.player : offlineCodeRoster[0]));
+    const activeSelectorMode = !isMatchTesting
+        ? "SANDBOX CODE"
+        : isViewingOwnCode
+            ? "REAL CODE"
+            : activeLiveIsTeammate
+                ? viewingLiveSandbox ? "SANDBOX CODE" : "REAL CODE"
+                : "SANDBOX CODE ONLY";
+    const selectCodeParticipant = (index) => {
+        const participant = codeSelectorRoster[index];
+        if (!participant) return;
+        if (!isMatchTesting) {
+            if (index === 0) {
+                setActiveCode("player");
+                return;
+            }
+            if (participant.codeKey === "opponent" || !Array.isArray(offlineCodeParticipants)) {
+                setActiveCode("opponent");
+                return;
+            }
+            const key = participantId(participant);
+            if (key) setActiveCode(`offline:${key}`);
+            return;
+        }
+        const key = participantId(participant);
+        setActiveCode(key === participantId(matchContext?.player) ? "player" : `sandbox:${key}`);
+    };
+    const cycleCodeParticipant = (direction) => {
+        if (codeSelectorRoster.length < 2) return;
+        const currentIndex = activeSelectorIndex >= 0 ? activeSelectorIndex : 0;
+        const nextIndex = (currentIndex + direction + codeSelectorRoster.length) % codeSelectorRoster.length;
+        selectCodeParticipant(nextIndex);
+    };
+    const toggleLiveCodeMode = () => {
+        if (!isMatchTesting || !activeLiveParticipant || !activeLiveIsTeammate || isBotCodeLocked) return;
+        const key = participantId(activeLiveParticipant);
+        if (viewingLiveSandbox) {
+            setActiveCode(`real:${key}`);
+            onRequestCodeView?.(activeLiveParticipant.userId);
+        } else {
+            setActiveCode(`sandbox:${key}`);
+        }
+    };
     return (
         <aside className={`arena-toolbar-panel ${usesArenaResponsiveLimits ? "arena-right-toolbar" : ""} testing-mono h-full min-h-0 w-[23rem] flex-shrink-0 overflow-y-auto border-l border-slate-700/70 bg-[linear-gradient(180deg,rgba(12,22,31,.98),rgba(8,16,24,.98))] p-4 shadow-[-12px_0_30px_rgba(0,0,0,.28)]`}>
             <div className="space-y-4">
@@ -340,9 +630,15 @@ export default function CodingPanel({
                             <strong className="font-interface-numeric text-amber-200">{formatClock(testingRemaining)}</strong>
                         </div>
                         <div className="mt-3 grid grid-cols-2 gap-2">
-                            <ScoreBox label="YOU" value={playerRoundWins} tone={botColorRole(matchContext?.player)} />
-                            <ScoreBox label={matchContext?.opponent?.username ?? "OPP"} value={opponentRoundWins} tone={botColorRole(matchContext?.opponent)} />
+                            <ScoreBox label="BLUE TEAM" value={blueTeamRoundWins} tone="blue" />
+                            <ScoreBox label="RED TEAM" value={redTeamRoundWins} tone="red" />
                         </div>
+                        {Number(matchContext?.surrenderVoteRequired) > 0
+                            && Number(matchContext?.surrenderVoteCount) > 0 && (
+                            <div className="mt-3 rounded border border-red-900/50 bg-red-950/20 px-2 py-2 text-red-200">
+                                {teamLabel(participantTeamNumber(matchContext?.player))} FORFEIT VOTES: {matchContext.surrenderVoteCount}/{matchContext.surrenderVoteRequired}
+                            </div>
+                        )}
                         {matchContext?.opponent?.finished && finishStatus !== "FINISHED" && (
                             <div className="mt-3 rounded border border-green-800/50 bg-green-950/30 px-2 py-2 text-green-300">
                                 OPPONENT FINISHED
@@ -360,7 +656,7 @@ export default function CodingPanel({
                 <section className="rounded-xl border border-slate-600/70 bg-slate-900/55 p-4 shadow-[0_10px_30px_rgba(0,0,0,.2)]">
                     <div className="flex items-center justify-between text-[10px]">
                         <PanelHeading icon="node">BOT CODE</PanelHeading>
-                        <strong className="font-interface-numeric text-ink-muted">{countActions(configuration)}/{maxActionNodes} A · {countLogicConditions(configuration)}/{maxConditionNodes} C</strong>
+                        <strong className="font-interface-numeric text-ink-muted">{countActions(activeConfiguration)}/{maxActionNodes} A · {countLogicConditions(activeConfiguration)}/{maxConditionNodes} C</strong>
                     </div>
                     <button
                         type="button"
@@ -428,6 +724,8 @@ export default function CodingPanel({
                                     ? "FINISHED"
                                     : finishStatus === "SURRENDERED"
                                         ? "RESIGNED"
+                                        : finishStatus === "SURRENDER_VOTED"
+                                            ? "SUBMIT / WITHDRAW VOTE"
                                         : finishStatus === "SUBMITTING"
                                             ? "SUBMITTING"
                                             : isFinishingMatch
@@ -440,23 +738,21 @@ export default function CodingPanel({
                                 disabled={!onSurrenderMatch || finishStatus === "SURRENDERED" || finishStatus === "FINISHED" || finishStatus === "SUBMITTING" || finishStatus === "SURRENDERING" || isFinishingMatch || isTesting}
                                 tone="red"
                             >
-                                {finishStatus === "SURRENDERING" ? "SURRENDERING" : "FORFEIT"}
+                                {finishStatus === "SURRENDERING"
+                                    ? "SURRENDERING"
+                                    : finishStatus === "SURRENDER_VOTED" ? "WITHDRAW FORFEIT" : "VOTE TO FORFEIT"}
                             </ControlButton>
                             </>
                         )}
-                        {!isMatchTesting && (onOpenPlayerLoadout || onOpenOpponentLoadout) && (
-                            <>
-                            {onOpenPlayerLoadout && (
-                                <ControlButton icon="edit" onClick={onOpenPlayerLoadout} disabled={isTesting || isAutoPlaying} tone="neutral">
-                                    EDIT MY LOADOUT
-                                </ControlButton>
-                            )}
-                            {onOpenOpponentLoadout && (
-                                <ControlButton icon="opponent" onClick={onOpenOpponentLoadout} disabled={isTesting || isAutoPlaying} tone="neutral">
-                                    EDIT DUMMY LOADOUT
-                                </ControlButton>
-                            )}
-                            </>
+                        {!isMatchTesting && onOpenPracticeConfig && (
+                            <ControlButton icon="tools" onClick={onOpenPracticeConfig} disabled={isTesting || isAutoPlaying} tone="neutral">
+                                PRACTICE CONFIG
+                            </ControlButton>
+                        )}
+                        {!isMatchTesting && onOpenLoadout && (
+                            <ControlButton icon="edit" onClick={onOpenLoadout} disabled={isTesting || isAutoPlaying} tone="neutral">
+                                EDIT LOADOUT
+                            </ControlButton>
                         )}
                     </div>
                     {finishError && <p className="mt-2 rounded border border-red-800/70 bg-red-950/40 px-2 py-2 font-mono text-[9px] leading-relaxed text-red-200">{finishError}</p>}
@@ -481,14 +777,71 @@ export default function CodingPanel({
                             <div className="code-toolbar-title flex-none">
                                 <div id="code-workspace-title" className="font-mono text-[11px] font-bold tracking-widest text-cyan">BOT CODE WORKSPACE</div>
                                 <div className="mt-1 truncate font-mono text-[8px] tracking-wide text-ink-muted">
-                                    {viewingOpponent ? "OPPONENT BOT" : "YOUR BOT"} - {totalActiveBlocks}/{maxActionNodes} A - {totalActiveConditions}/{maxConditionNodes} C
+                                    {activeCodeReadOnly
+                                        ? "REAL CODE SNAPSHOT"
+                                        : viewingLiveSandbox
+                                            ? "SANDBOX COPY"
+                                            : viewingOpponent ? "SANDBOX CODE"
+                                                : isMatchTesting ? "REAL CODE" : "SANDBOX CODE"}
+                                    {activeParticipant?.username ? ` · ${activeParticipant.username}` : ""}
+                                    {` - ${totalActiveBlocks}/${maxActionNodes} A - ${totalActiveConditions}/${maxConditionNodes} C`}
                                 </div>
                             </div>
                             <div className="code-toolbar-controls min-w-0 flex-1 py-0.5">
-                                {opponentConfiguration && (onOpponentChange || opponentReadOnly) && (
-                                    <div className="code-tab-group">
-                                        <CodeTab active={activeCode === "player"} onClick={() => setActiveCode("player")}>{playerBotLabel}</CodeTab>
-                                        <CodeTab active={activeCode === "opponent"} onClick={() => setActiveCode("opponent")}>Opponent bot</CodeTab>
+                                {codeSelectorRoster.length > 0 ? (
+                                    <div className="code-bot-selector-stack">
+                                        <div className={`code-bot-selector ${activeSelectorRole === "red" ? "is-red" : "is-blue"}`} role="group" aria-label="Select bot code workspace">
+                                            <button
+                                                type="button"
+                                                aria-label="Show previous bot"
+                                                title="Previous bot"
+                                                onClick={() => cycleCodeParticipant(-1)}
+                                                disabled={codeSelectorRoster.length < 2}
+                                                className="code-bot-selector__arrow"
+                                            >
+                                                ‹
+                                            </button>
+                                            <div className="code-bot-selector__current" aria-live="polite">
+                                                <span className="code-bot-selector__name">{activeSelectorLabel}</span>
+                                                <span className="code-bot-selector__meta">{teamLabel(participantTeamNumber(activeSelectorParticipant))} · {activeSelectorMode} · {Math.max(1, activeSelectorIndex + 1)}/{codeSelectorRoster.length}</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                aria-label="Show next bot"
+                                                title="Next bot"
+                                                onClick={() => cycleCodeParticipant(1)}
+                                                disabled={codeSelectorRoster.length < 2}
+                                                className="code-bot-selector__arrow"
+                                            >
+                                                ›
+                                            </button>
+                                        </div>
+                                        {!isMatchTesting ? (
+                                            <div className="code-bot-view-mode">SANDBOX CODE</div>
+                                        ) : isViewingOwnCode ? (
+                                            <div className="code-bot-view-mode">REAL CODE</div>
+                                        ) : activeLiveParticipant && activeLiveIsTeammate ? (
+                                            <button
+                                                type="button"
+                                                onClick={toggleLiveCodeMode}
+                                                disabled={isBotCodeLocked}
+                                                className={`code-bot-view-toggle ${viewingLiveSandbox ? "is-sandbox" : "is-real"}`}
+                                            >
+                                                {viewingLiveSandbox ? "VIEW REAL CODE" : "VIEW SANDBOX CODE"}
+                                            </button>
+                                        ) : activeLiveParticipant ? (
+                                            <div className="code-bot-view-mode">SANDBOX CODE ONLY · OPPONENT CODE IS PRIVATE</div>
+                                        ) : null}
+                                    </div>
+                                ) : null}
+                                {viewingLiveReal && !activeCodeSnapshot && (
+                                    <div className="mt-2 rounded border border-cyan-900/70 bg-cyan-950/20 px-2 py-1.5 font-mono text-[8px] tracking-wide text-cyan-200">
+                                        REQUESTING A READ-ONLY SNAPSHOT FROM {activeLiveParticipant?.username ?? "PLAYER"}...
+                                    </div>
+                                )}
+                                {codeViewError && (
+                                    <div role="status" aria-live="polite" className="mt-2 rounded border border-red-900/70 bg-red-950/30 px-2 py-1.5 font-mono text-[8px] tracking-wide text-red-200">
+                                        {codeViewError}
                                     </div>
                                 )}
                                 <div className="code-toolbar-tools">
@@ -569,8 +922,8 @@ export default function CodingPanel({
                         <TreeLogicBoard
                                 ref={logicBoardRef}
                                 configuration={activeConfiguration}
-                                disabled={isBotCodeLocked || isTesting || !viewingCurrentRound}
-                                canRemove={!isBotCodeLocked && !isTesting && !roundDeleteLocked}
+                                disabled={isCodeEditingLocked || isTesting || !viewingCurrentRound}
+                                canRemove={!isCodeEditingLocked && !isTesting && !roundDeleteLocked}
                                 selectedLoadout={activeLoadout}
                                 selectableAbilityIds={visibleSelectableAbilityIds}
                                 stateVariables={visibleStateVariables}
@@ -583,8 +936,8 @@ export default function CodingPanel({
                                 onZoomChange={changeZoom}
                                 onPinchZoom={applyPinchZoom}
                                 tutorialFocus={tutorialFocus}
-                                canUndo={!isCodeEditingLocked && !isTesting && editHistory[activeCode].undo.length > 0}
-                                canRedo={!isCodeEditingLocked && !isTesting && editHistory[activeCode].redo.length > 0}
+                                canUndo={!isCodeEditingLocked && !isTesting && (editHistory[activeCode]?.undo?.length ?? 0) > 0}
+                                canRedo={!isCodeEditingLocked && !isTesting && (editHistory[activeCode]?.redo?.length ?? 0) > 0}
                                 onUndo={() => travelHistory("undo")}
                                 onRedo={() => travelHistory("redo")}
                                 isSearchOpen={isNodeSearchOpen}

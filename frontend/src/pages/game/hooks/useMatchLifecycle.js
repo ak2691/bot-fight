@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     ARENA_WIDTH_UNITS,
     BASE_BOT_HP,
@@ -95,6 +95,27 @@ function clearLoadoutDraft(event) {
     } catch {
         // A blocked session store must not interrupt match state.
     }
+}
+
+function participantTeamNumber(participant) {
+    const explicitTeam = Number(participant?.teamNumber);
+    return Number.isFinite(explicitTeam) && explicitTeam > 0
+        ? explicitTeam
+        : Number(participant?.slot) === 1 ? 1 : 2;
+}
+
+function eventParticipants(event) {
+    return Array.isArray(event?.players) && event.players.length > 0
+        ? event.players
+        : [event?.player, event?.opponent].filter(Boolean);
+}
+
+function winnerIsOnOpposingTeam(event) {
+    const player = event?.player;
+    const winner = eventParticipants(event)
+        .find((participant) => String(participant?.userId) === String(event?.playback?.winnerUserId));
+    return Boolean(player && winner
+        && participantTeamNumber(player) !== participantTeamNumber(winner));
 }
 
 function secondsRemaining(countdownEndsAt, maximum = Number.POSITIVE_INFINITY) {
@@ -242,6 +263,7 @@ export function useMatchLifecycle({ navigate }) {
         clearActiveMatch,
     } = useMatchmaking();
     const clientRef = useRef(null);
+    const codeViewResponderRef = useRef(null);
     const playbackRef = useRef(null);
     const matchEventRef = useRef(null);
     const matchAcceptanceDeadlineRef = useRef(null);
@@ -267,6 +289,9 @@ export function useMatchLifecycle({ navigate }) {
     const [finishPending, setFinishPending] = useState(false);
     const [hasSurrendered, setHasSurrendered] = useState(false);
     const [surrenderPending, setSurrenderPending] = useState(false);
+    const [codeSnapshots, setCodeSnapshots] = useState({});
+    const [codeViewPending, setCodeViewPending] = useState(null);
+    const [codeViewError, setCodeViewError] = useState(null);
     const [finishError, setFinishError] = useState(null);
     const [disconnectNotice, setDisconnectNotice] = useState(null);
     const [disconnectRemaining, setDisconnectRemaining] = useState(0);
@@ -287,6 +312,9 @@ export function useMatchLifecycle({ navigate }) {
     const loadoutSelectionPhaseRef = useRef(null);
     const terminalMatchRef = useRef(false);
     const terminalResultRef = useRef(false);
+    const registerCodeViewResponder = useCallback((handler) => {
+        codeViewResponderRef.current = typeof handler === "function" ? handler : null;
+    }, []);
     const redirectToHomeForTerminalEvent = useMemo(
         () => createMatchmakingTerminalRedirect(navigate),
         [navigate],
@@ -323,6 +351,12 @@ export function useMatchLifecycle({ navigate }) {
             chatNoticeTimeoutRef.current = setTimeout(() => setChatRateLimitNotice(null), 2500);
             return;
         }
+        if (event.type === "MATCH_CHAT_REJECTED") {
+            setChatRateLimitNotice(event.message ?? "Message was not accepted.");
+            if (chatNoticeTimeoutRef.current != null) clearTimeout(chatNoticeTimeoutRef.current);
+            chatNoticeTimeoutRef.current = setTimeout(() => setChatRateLimitNotice(null), 2500);
+            return;
+        }
         if (event.type === "MATCH_CHAT_CLOSED") {
             setChatClosed(true);
             setChatClosedNotice(event.message ?? "Match chat is now closed.");
@@ -331,7 +365,11 @@ export function useMatchLifecycle({ navigate }) {
         if (event.type !== "MATCH_CHAT_MESSAGE") return;
         setChatMessages((current) => current.some((message) => message.messageId === event.messageId)
             ? current
-            : [...current, { ...event, unread: chatMinimizedRef.current }].slice(-100));
+            : [...current, {
+                ...event,
+                channel: String(event.channel ?? "ALL").toUpperCase() === "TEAM" ? "TEAM" : "ALL",
+                unread: chatMinimizedRef.current,
+            }].slice(-100));
     };
 
     const handleSocketStatus = (status) => {
@@ -362,6 +400,44 @@ export function useMatchLifecycle({ navigate }) {
     };
 
     const handleMatchEvent = (rawEvent, eventReceivedAtMs = monotonicEpochNowMs()) => {
+        if (rawEvent?.type === "MATCH_CODE_VIEW_REQUEST") {
+            const currentMatchId = matchEventRef.current?.matchId;
+            if (!currentMatchId || String(currentMatchId) !== String(rawEvent.matchId)) return;
+            const snapshot = codeViewResponderRef.current?.(rawEvent);
+            if (snapshot?.brain && clientRef.current?.respondToCodeView) {
+                clientRef.current.respondToCodeView(
+                    rawEvent.codeViewRequestId,
+                    rawEvent.matchId,
+                    rawEvent.codeViewTargetUserId,
+                    rawEvent.roundNumber,
+                    snapshot.brain,
+                    snapshot.selectedLoadout,
+                );
+            }
+            return;
+        }
+        if (rawEvent?.type === "MATCH_CODE_VIEW_RESULT") {
+            const currentMatchId = matchEventRef.current?.matchId;
+            if (!currentMatchId || String(currentMatchId) !== String(rawEvent.matchId)) return;
+            const targetUserId = rawEvent.codeViewTargetUserId;
+            if (targetUserId == null || !rawEvent.codeViewBrain) {
+                setCodeViewPending(null);
+                setCodeViewError("The code snapshot was empty or invalid.");
+                return;
+            }
+            setCodeSnapshots((current) => ({
+                ...current,
+                [String(targetUserId)]: {
+                    configuration: rawEvent.codeViewBrain,
+                    selectedLoadout: rawEvent.codeViewSelectedLoadout ?? null,
+                    roundNumber: rawEvent.roundNumber,
+                    receivedAtMs: eventReceivedAtMs,
+                },
+            }));
+            setCodeViewPending(null);
+            setCodeViewError(null);
+            return;
+        }
         const estimatedOneWayDelayMs = getEstimatedOneWayNetworkDelayMs();
         const event = normalizeEventTimes(
             rawEvent,
@@ -516,6 +592,9 @@ export function useMatchLifecycle({ navigate }) {
             setFinishError(null);
             setHasSurrendered(false);
             setSurrenderPending(false);
+            setCodeSnapshots({});
+            setCodeViewPending(null);
+            setCodeViewError(null);
             setChatClosed(false);
             setChatClosedNotice(null);
             setChatMessages([]);
@@ -548,6 +627,13 @@ export function useMatchLifecycle({ navigate }) {
                 setLoadoutChoice(decodeBotLoadout(event.player.selectedLoadout));
             }
         }
+        if (event.type === "MATCH_SURRENDER_UPDATED") {
+            setCurrentMatchEvent(event);
+            setSurrenderPending(false);
+            setHasSurrendered(event.surrenderRequestedByMe === true);
+            setFinishError(null);
+            return;
+        }
         if (event.type === "BOT_BUILDING_SESSION_READY") {
             loadoutSubmitPendingRef.current = false;
             setLoadoutSubmitPending(false);
@@ -578,6 +664,9 @@ export function useMatchLifecycle({ navigate }) {
             setFinishPending(false);
             setHasSurrendered(false);
             setSurrenderPending(false);
+            setCodeSnapshots({});
+            setCodeViewPending(null);
+            setCodeViewError(null);
             setLoadoutChoice(readLoadoutDraft(event) ?? loadoutForFreshRound(
                 decodeBotLoadout(event.player?.selectedLoadout),
                 event.roundNumber,
@@ -634,6 +723,10 @@ export function useMatchLifecycle({ navigate }) {
             setLoadoutSubmitPending(false);
             setFinishPending(false);
             setSurrenderPending(false);
+            if (codeViewPending) {
+                setCodeViewPending(null);
+                setCodeViewError(event.message ?? "The code view request was rejected.");
+            }
             setHasFinished(false);
             setFinishError(event.message ?? "The server rejected the bot submission. Review the bot and try again.");
         }
@@ -646,18 +739,28 @@ export function useMatchLifecycle({ navigate }) {
                 event.playbackStartsAtMs,
                 event.resultRevealsAtMs,
             );
-            const roundWinsBeforeResult = Object.fromEntries(
-                (event.players ?? [event.player, event.opponent].filter(Boolean))
-                    .filter((participant) => participant?.userId != null)
-                    .map((participant) => {
-                        const wonCurrentRound = event.playback?.winnerUserId != null
-                            && String(participant.userId) === String(event.playback.winnerUserId);
-                        return [
-                            String(participant.userId),
-                            Math.max(0, (Number(participant.roundWins) || 0) - (wonCurrentRound ? 1 : 0)),
-                        ];
-                    })
-            );
+            const replayScoreBaseline = event.playback?.roundWinsBeforeResult;
+            const roundWinsBeforeResult = replayScoreBaseline
+                && Object.keys(replayScoreBaseline).length > 0
+                ? replayScoreBaseline
+                : Object.fromEntries(
+                    (() => {
+                        const participants = eventParticipants(event);
+                        const winner = participants.find((participant) =>
+                            String(participant?.userId) === String(event.playback?.winnerUserId));
+                        return participants
+                            .filter((participant) => participant?.userId != null)
+                            .map((participant) => {
+                                const wonCurrentRound = winner
+                                    ? participantTeamNumber(participant) === participantTeamNumber(winner)
+                                    : String(participant.userId) === String(event.playback?.winnerUserId);
+                                return [
+                                    String(participant.userId),
+                                    Math.max(0, (Number(participant.roundWins) || 0) - (wonCurrentRound ? 1 : 0)),
+                                ];
+                            });
+                    })()
+                );
             const nextPlayback = buildPreparationPlayback(event);
             if (nextPlayback) {
                 Object.assign(nextPlayback, {
@@ -707,6 +810,8 @@ export function useMatchLifecycle({ navigate }) {
                     result: event.playback?.result ?? currentPlayback.result,
                     winnerUserId: event.playback?.winnerUserId ?? currentPlayback.winnerUserId,
                     message: event.playback?.message ?? currentPlayback.message,
+                    roundResultRevealReceived: event.status === "ROUND_RESULT_READY"
+                        || currentPlayback.roundResultRevealReceived === true,
                 };
                 playbackRef.current = nextPlayback;
                 return nextPlayback;
@@ -720,7 +825,7 @@ export function useMatchLifecycle({ navigate }) {
             if (event.playback?.result === "RESIGNATION_WIN"
                 && event.playback?.winnerUserId
                 && event.player?.userId
-                && String(event.playback.winnerUserId) !== String(event.player.userId)) {
+                && winnerIsOnOpposingTeam(event)) {
                 setHasSurrendered(true);
             }
             setCurrentMatchEvent(event);
@@ -751,6 +856,7 @@ export function useMatchLifecycle({ navigate }) {
                     players: event.players ?? currentPlayback?.players,
                     roundNumber: event.roundNumber ?? currentPlayback?.roundNumber,
                     winsRequired: event.winsRequired ?? currentPlayback?.winsRequired,
+                    resultRevealReceived: true,
                 };
                 playbackRef.current = nextPlayback;
                 return nextPlayback;
@@ -821,10 +927,27 @@ export function useMatchLifecycle({ navigate }) {
     };
 
     const surrenderMatch = () => {
-        if (surrenderPending || hasSurrendered || socketStatus !== "CONNECTED") return;
+        if (surrenderPending || socketStatus !== "CONNECTED") return;
         setSurrenderPending(true);
         clientRef.current?.surrender();
     };
+
+    const requestCodeView = useCallback((targetUserId) => {
+        const event = matchEventRef.current;
+        const matchId = event?.matchId;
+        const roundNumber = event?.roundNumber;
+        if (!matchId || !targetUserId || socketStatus !== "CONNECTED") return;
+        if (String(targetUserId) === String(event?.player?.userId)) return;
+        const target = eventParticipants(event)
+            .find((participant) => String(participant?.userId) === String(targetUserId));
+        if (!target
+            || participantTeamNumber(target) !== participantTeamNumber(event?.player)) return;
+        if (codeViewPending
+            && Date.now() - Number(codeViewPending.requestedAt) < 1_000) return;
+        setCodeViewPending({ targetUserId, requestedAt: Date.now() });
+        setCodeViewError(null);
+        clientRef.current?.requestCodeView(matchId, targetUserId, roundNumber);
+    }, [codeViewPending, socketStatus]);
 
     const lockLoadout = () => {
         if (loadoutSubmitPending || matchEvent?.player?.loadoutSelected || socketStatus !== "CONNECTED") return;
@@ -856,9 +979,9 @@ export function useMatchLifecycle({ navigate }) {
         exitToHome();
     };
 
-    const sendChatMessage = (message) => {
+    const sendChatMessage = (message, channel = "ALL") => {
         if (!matchEventRef.current?.matchId || chatClosed || socketStatus !== "CONNECTED") return;
-        clientRef.current?.sendChat(matchEventRef.current.matchId, message);
+        clientRef.current?.sendChat(matchEventRef.current.matchId, message, channel);
     };
 
     const opponent = matchEvent?.opponent ?? null;
@@ -891,8 +1014,16 @@ export function useMatchLifecycle({ navigate }) {
         roundBlockLimit: matchEvent?.roundBlockLimit ?? 10,
         message: matchEvent?.message,
         status: matchEvent?.status,
+        surrenderRequestedByMe: matchEvent?.surrenderRequestedByMe ?? false,
+        surrenderVoteCount: matchEvent?.surrenderVoteCount ?? 0,
+        surrenderVoteRequired: matchEvent?.surrenderVoteRequired ?? 0,
         loadout: loadoutChoice,
         opponentLoadout: decodeBotLoadout(matchEvent?.opponent?.selectedLoadout),
+        codeSnapshots,
+        codeViewPending,
+        codeViewError,
+        registerCodeViewResponder,
+        requestCodeView,
     }), [
         matchEvent?.matchId,
         matchEvent?.simulationSeed,
@@ -917,8 +1048,16 @@ export function useMatchLifecycle({ navigate }) {
         matchEvent?.roundBlockLimit,
         matchEvent?.message,
         matchEvent?.status,
+        matchEvent?.surrenderRequestedByMe,
+        matchEvent?.surrenderVoteCount,
+        matchEvent?.surrenderVoteRequired,
         matchEvent?.opponent?.selectedLoadout,
         loadoutChoice,
+        codeSnapshots,
+        codeViewPending,
+        codeViewError,
+        registerCodeViewResponder,
+        requestCodeView,
     ]);
 
     useEffect(() => () => {
@@ -960,6 +1099,8 @@ export function useMatchLifecycle({ navigate }) {
         acceptMatch,
         cancelAcceptance,
         sendChatMessage,
+        registerCodeViewResponder,
+        requestCodeView,
         exitToHome,
         preloadShapes: arenaPreloadShapes(matchEvent),
     };
@@ -984,15 +1125,30 @@ function buildPreparationPlayback(event) {
         winsRequired: event.winsRequired,
         playbackStartsAt: event.playbackStartsAt,
         playbackStartsAtMs: event.playbackStartsAtMs,
+        resultRevealsAt: event.resultRevealsAt ?? playback.resultRevealsAt,
+        resultRevealsAtMs: event.resultRevealsAtMs ?? playback.resultRevealsAtMs,
+        roundReadyAt: event.roundReadyAt ?? playback.roundReadyAt,
+        roundReadyAtMs: event.roundReadyAtMs ?? playback.roundReadyAtMs,
     };
 }
 
 function arenaPreloadShapes(event) {
-    return [event?.player, event?.opponent]
+    const participants = (Array.isArray(event?.players) && event.players.length > 0
+        ? event.players
+        : [event?.player, event?.opponent].filter(Boolean))
         .filter((participant) => participant?.userId != null)
-        .map((participant) => {
+        .map((participant) => ({
+            ...participant,
+            slot: Number(participant.slot) || 1,
+            teamNumber: teamNumberForParticipant(participant),
+        }))
+        .sort((first, second) => first.slot - second.slot);
+    return participants.map((participant) => {
             const loadout = decodeBotLoadout(participant.selectedLoadout);
-            const slotOne = Number(participant.slot) === 1;
+            const teamParticipants = participants.filter((candidate) => candidate.teamNumber === participant.teamNumber);
+            const teamIndex = Math.max(0, teamParticipants.findIndex((candidate) => candidate.slot === participant.slot));
+            const teamSize = Math.max(1, teamParticipants.length);
+            const slotOne = participant.teamNumber === 1;
             return {
                 id: `bot-${participant.userId}`,
                 type: "bot",
@@ -1000,9 +1156,11 @@ function arenaPreloadShapes(event) {
                 username: participant.username,
                 opponentUsername: participant.username,
                 slot: participant.slot,
-                x: slotOne ? -60 : ARENA_WIDTH_UNITS + 60,
+                teamNumber: participant.teamNumber,
+                x: slotOne ? -60 - teamIndex * 24 : ARENA_WIDTH_UNITS + 60 + teamIndex * 24,
                 y: slotOne ? DUEL_SLOT_ONE_Y : DUEL_SLOT_TWO_Y,
                 rotation: slotOne ? 180 : 0,
+                targetX: ARENA_WIDTH_UNITS * (teamIndex + 1) / (teamSize + 1),
                 size: 60,
                 hp: BASE_BOT_HP,
                 maxHp: BASE_BOT_HP,
@@ -1011,4 +1169,10 @@ function arenaPreloadShapes(event) {
                 locked: true,
             };
         });
+}
+
+function teamNumberForParticipant(participant) {
+    const explicit = Number(participant?.teamNumber);
+    if (Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit);
+    return Number(participant?.slot) === 1 ? 1 : 2;
 }

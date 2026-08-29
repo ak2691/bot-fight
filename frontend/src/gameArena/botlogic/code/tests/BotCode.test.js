@@ -16,7 +16,7 @@ import {
     validateAbilityStrategyConfiguration,
 } from "../BotCode.js";
 import { getTutorialScenario, hasTutorialPriorityOrder, TUTORIAL_STEP_COUNT } from "../../../../tutorial/TutorialPresets.js";
-import { ABILITY_TAGS, ACTION_TYPES, STATE_VARIABLES, SELECTABLE_DEPENDENCIES, SELECTABLE_IDENTITIES, SELECTABLE_TYPES, VARIABLE_TAGS, VARIABLE_SELECTABLE_TYPES, VISIBLE_STATE_VARIABLES, abilityDefinitionsForVariable, selectableIdentitiesForVariable, selectableMatchesVariable, variableHasTag } from "../contracts/BotLogicContracts.js";
+import { ABILITY_TAGS, ACTION_TYPES, STATE_VARIABLES, SELECTABLE_DEPENDENCIES, SELECTABLE_IDENTITIES, SELECTABLE_TYPES, TARGET_MODES, VARIABLE_TAGS, VARIABLE_SELECTABLE_TYPES, VISIBLE_STATE_VARIABLES, abilityDefinitionsForVariable, selectableIdentitiesForVariable, selectableMatchesVariable, variableHasTag } from "../contracts/BotLogicContracts.js";
 import { ALL_ABILITY_DEFINITIONS, statusEffectDefinitionsForAbilities } from "../../../loadout/BotLoadout.js";
 import { compareAngleValues } from "../runtime/conditionEvaluator.js";
 import { matchingStrategySelectables, resolveAbilityStrategySelectable } from "../runtime/targeting.js";
@@ -72,12 +72,12 @@ test("bot-code targets and action capabilities are derived from gameplay contrac
     assert.equal(ACTION_TYPES.find((action) => action.id === 22)?.locationTarget, true);
     assert.equal(ACTION_TYPES.find((action) => action.id === 24)?.coordinateTarget, true);
     assert.equal(ACTION_TYPES.find((action) => action.id === 25)?.orientationConfig, true);
-    assert.equal(SELECTABLE_TYPES.some((target) => target.id === "opponent_singularity_zone"), true);
-    assert.equal(SELECTABLE_TYPES.some((target) => target.id === "my_singularity_zone"), true);
+    assert.equal(SELECTABLE_TYPES.some((target) => target.id === "opponent_1_singularity_zone"), true);
+    assert.equal(SELECTABLE_TYPES.some((target) => target.id === "my_bot_singularity_zone"), true);
     assert.equal(SELECTABLE_TYPES.some((target) => target.id === "singularity_zone"), false);
-    assert.equal(SELECTABLE_TYPES.find((target) => target.id === "opponent_grenade")?.selectableIdentities.includes(SELECTABLE_IDENTITIES.HEALTH), false);
-    assert.equal(SELECTABLE_TYPES.find((target) => target.id === "opponent_hunter_drone")?.selectableIdentities.includes(SELECTABLE_IDENTITIES.HEALTH), true);
-    assert.equal(SELECTABLE_TYPES.find((target) => target.id === "opponent_hunter_drone")?.selectableIdentities.includes(SELECTABLE_IDENTITIES.FACING), true);
+    assert.equal(SELECTABLE_TYPES.find((target) => target.id === "opponent_1_grenade")?.selectableIdentities.includes(SELECTABLE_IDENTITIES.HEALTH), false);
+    assert.equal(SELECTABLE_TYPES.find((target) => target.id === "opponent_1_hunter_drone")?.selectableIdentities.includes(SELECTABLE_IDENTITIES.HEALTH), true);
+    assert.equal(SELECTABLE_TYPES.find((target) => target.id === "opponent_1_hunter_drone")?.selectableIdentities.includes(SELECTABLE_IDENTITIES.FACING), true);
     assert.equal(ACTION_TYPES.find((action) => action.id === "rotate_toward_enemy")?.angleTarget, true);
 });
 
@@ -115,13 +115,13 @@ test("browser selectable inputs enforce the complete conditional identity matrix
     const count = STATE_VARIABLES.find((variable) => variable.id === "selectable.count");
     const botAbility = STATE_VARIABLES.find((variable) => variable.id === "bot.selectedAbilityActive");
     assert.equal(selectableMatchesVariable(selectable("my_bot"), bearing, 0), true);
-    assert.equal(selectableMatchesVariable(selectable("opponent_hunter_drone"), bearing, 0), true);
-    assert.equal(selectableMatchesVariable(selectable("opponent_grenade"), bearing, 0), false);
-    assert.equal(selectableMatchesVariable(selectable("opponent_grenade"), bearing, 1), true);
-    assert.equal(selectableMatchesVariable(selectable("opponent_grenade"), count), true);
-    assert.equal(selectableMatchesVariable(selectable("opponent"), count), false);
-    assert.equal(selectableMatchesVariable(selectable("opponent"), botAbility), true);
-    assert.equal(selectableMatchesVariable(selectable("opponent_grenade"), botAbility), false);
+    assert.equal(selectableMatchesVariable(selectable("opponent_1_hunter_drone"), bearing, 0), true);
+    assert.equal(selectableMatchesVariable(selectable("opponent_1_grenade"), bearing, 0), false);
+    assert.equal(selectableMatchesVariable(selectable("opponent_1_grenade"), bearing, 1), true);
+    assert.equal(selectableMatchesVariable(selectable("opponent_1_grenade"), count), true);
+    assert.equal(selectableMatchesVariable(selectable("opponent_1"), count), false);
+    assert.equal(selectableMatchesVariable(selectable("opponent_1"), botAbility), true);
+    assert.equal(selectableMatchesVariable(selectable("opponent_1_grenade"), botAbility), false);
 });
 
 test("condition normalization emits canonical server variable ids", () => {
@@ -148,7 +148,7 @@ test("condition normalization emits canonical server variable ids", () => {
     assert.equal(retired.left, "match.elapsedSeconds");
     assert.equal(displayName.left, "match.elapsedSeconds");
     assert.equal(current.left, "selectable.hp");
-    assert.equal(current.leftSelectable, "opponent");
+    assert.equal(current.leftSelectable, "opponent_1");
 });
 
 test("target health metrics resolve zero for targets without health", () => {
@@ -166,7 +166,7 @@ test("target health metrics resolve zero for targets without health", () => {
             right: { type: "number", value: 0 },
         }], actions: [] }] }],
     });
-    assert.equal(normalized.roots[0].branches[0].conditions[0].leftSelectable, "opponent_grenade");
+    assert.equal(normalized.roots[0].branches[0].conditions[0].leftSelectable, "opponent_1_grenade");
 });
 
 test("selectable distance defaults to My Bot and Opponent and supports custom pairs", () => {
@@ -175,8 +175,10 @@ test("selectable distance defaults to My Bot and Opponent and supports custom pa
     assert.equal(distance.selectableSelectorLabels, undefined);
     assert.deepEqual(selectableIdentitiesForVariable(distance, 0), []);
     assert.deepEqual(selectableIdentitiesForVariable(distance, 1), []);
+    assert.deepEqual(distance.targetModes, [TARGET_MODES.TARGET, TARGET_MODES.COORDINATES]);
     const defaultCondition = createExpressionCondition(distance);
-    assert.deepEqual([defaultCondition.selectable1, defaultCondition.selectable2], ["my_bot", "opponent"]);
+    assert.deepEqual([defaultCondition.selectable1, defaultCondition.selectable2], ["my_bot", "opponent_1"]);
+    assert.equal(defaultCondition.targetMode, TARGET_MODES.TARGET);
 
     const configuration = {
         roots: [{ branches: [{ conditions: [{
@@ -195,12 +197,39 @@ test("selectable distance defaults to My Bot and Opponent and supports custom pa
             { id: "drone-1", type: "hunterDrone", abilityId: 17, ownerId: "opponent-model", x: 200, y: 100, hp: 30 },
         ],
     })).primary.id, "root-1-1-1");
+
+    const coordinateConfiguration = {
+        roots: [{ branches: [{ conditions: [{
+            type: "expression",
+            left: distance.id,
+            selectable1: "my_bot",
+            targetMode: TARGET_MODES.COORDINATES,
+            targetX: 150,
+            targetY: 100,
+            comparator: "eq",
+            right: { type: "number", value: 50 },
+        }], actions: [{ action: "swing" }] }] }],
+    };
+    const normalizedCoordinate = normalizeAbilityStrategyConfiguration(coordinateConfiguration);
+    const coordinateCondition = normalizedCoordinate.roots[0].branches[0].conditions[0];
+    assert.equal(coordinateCondition.targetMode, TARGET_MODES.COORDINATES);
+    assert.equal(coordinateCondition.targetX, 150);
+    assert.equal(coordinateCondition.targetY, 100);
+    assert.equal(selectAbilityStrategyActionPlan(coordinateConfiguration, payload({
+        playerModel: { x: 100, y: 100 },
+        objects: [],
+    })).primary.id, "root-1-1-1");
 });
 
 test("bearing conditionals use the configured Entity and Target pair", () => {
     const absoluteBearing = STATE_VARIABLES.find((variable) => variable.id === "selectable.absoluteBearing");
     assert.equal(absoluteBearing.selectableType, VARIABLE_SELECTABLE_TYPES.PAIR);
     assert.deepEqual(absoluteBearing.selectableSelectorLabels, ["Facing Entity", "Target"]);
+    assert.deepEqual(STATE_VARIABLES.find((variable) => variable.id === "selectable.relativeBearing").targetModes, [
+        TARGET_MODES.TARGET,
+        TARGET_MODES.ANGLE,
+        TARGET_MODES.COORDINATES,
+    ]);
     assert.deepEqual(selectableIdentitiesForVariable(absoluteBearing, 0), [SELECTABLE_IDENTITIES.FACING]);
     assert.deepEqual(selectableIdentitiesForVariable(absoluteBearing, 1), []);
     assert.deepEqual(
@@ -217,8 +246,8 @@ test("bearing conditionals use the configured Entity and Target pair", () => {
             right: { type: "number", value: 0 },
         }], actions: [] }] }],
     });
-    assert.equal(normalizedBearing.roots[0].branches[0].conditions[0].selectable1, "opponent");
-    assert.equal(normalizedBearing.roots[0].branches[0].conditions[0].selectable2, "opponent_hunter_drone");
+    assert.equal(normalizedBearing.roots[0].branches[0].conditions[0].selectable1, "opponent_1");
+    assert.equal(normalizedBearing.roots[0].branches[0].conditions[0].selectable2, "opponent_1_hunter_drone");
     const invalidSourceBearing = normalizeAbilityStrategyConfiguration({
         roots: [{ branches: [{ conditions: [{
             type: "expression",
@@ -252,6 +281,40 @@ test("bearing conditionals use the configured Entity and Target pair", () => {
     };
     assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
         objects: [{ id: "opponent-model", type: "opponentModel", x: 600, y: 400, hp: 100, rotation: 270 }],
+    })).primary.id, "root-1-1-1");
+
+    const absoluteAngleConfiguration = {
+        roots: [{ branches: [{ conditions: [{
+            type: "expression",
+            left: "selectable.relativeBearing",
+            selectable1: "my_bot",
+            selectable2: "opponent_1",
+            targetMode: TARGET_MODES.ANGLE,
+            targetAngle: 90,
+            comparator: "eq",
+            right: { type: "number", value: 90 },
+        }], actions: [{ action: "swing" }] }] }],
+    };
+    assert.equal(selectAbilityStrategyActionPlan(absoluteAngleConfiguration, payload({
+        playerModel: { x: 400, y: 400, rotation: 0 },
+        objects: [],
+    })).primary.id, "root-1-1-1");
+
+    const coordinateBearingConfiguration = {
+        roots: [{ branches: [{ conditions: [{
+            type: "expression",
+            left: "selectable.relativeBearing",
+            selectable1: "my_bot",
+            targetMode: TARGET_MODES.COORDINATES,
+            targetX: 400,
+            targetY: 300,
+            comparator: "eq",
+            right: { type: "number", value: 0 },
+        }], actions: [{ action: "swing" }] }] }],
+    };
+    assert.equal(selectAbilityStrategyActionPlan(coordinateBearingConfiguration, payload({
+        playerModel: { x: 400, y: 400, rotation: 0 },
+        objects: [],
     })).primary.id, "root-1-1-1");
 });
 
@@ -384,7 +447,7 @@ test("selectable type count selects an object type without selectable ordering",
             right: { type: "number", value: 0 },
         }], actions: [] }] }],
     });
-    assert.equal(normalized.roots[0].branches[0].conditions[0].leftSelectable, "opponent_grenade");
+    assert.equal(normalized.roots[0].branches[0].conditions[0].leftSelectable, "opponent_1_grenade");
 
     const orderedAge = normalizeAbilityStrategyConfiguration({
         roots: [{ branches: [{ conditions: [{
@@ -395,13 +458,13 @@ test("selectable type count selects an object type without selectable ordering",
             right: { type: "number", value: 0 },
         }], actions: [] }] }],
     });
-    assert.equal(orderedAge.roots[0].branches[0].conditions[0].leftSelectable, "opponent_grenade:farthest:2");
+    assert.equal(orderedAge.roots[0].branches[0].conditions[0].leftSelectable, "opponent_1_grenade:farthest:2");
 });
 
 test("target-count defaults follow the visible entity type and inspection uses its base label", () => {
     const count = STATE_VARIABLES.find((variable) => variable.id === "selectable.count");
-    const visibleTargets = SELECTABLE_TYPES.filter((target) => ["opponent", "opponent_fireball"].includes(target.id));
-    assert.equal(createExpressionCondition(count, visibleTargets).leftSelectable, "opponent_fireball");
+    const visibleTargets = SELECTABLE_TYPES.filter((target) => ["opponent_1", "opponent_1_fireball"].includes(target.id));
+    assert.equal(createExpressionCondition(count, visibleTargets).leftSelectable, "opponent_1_fireball");
 
     const configuration = {
         roots: [{ branches: [{ conditions: [{
@@ -418,7 +481,7 @@ test("target-count defaults follow the visible entity type and inspection uses i
             { id: "fireball-1", type: "fireball", abilityId: 5, ownerId: "opponent-model", ownerSlot: 2, x: 500, y: 400, size: 20 },
         ],
     }))[0];
-    assert.equal(inspection.selectable, "Fireball by Opponent");
+    assert.equal(inspection.selectable, "Fireball by Opponent 1");
     assert.equal(inspection.value, 1);
 });
 
@@ -464,7 +527,7 @@ test("target existence and age conditions resolve spawned opponent entities", ()
     }));
     assert.equal(inspection[1].value, 0.1);
     assert.equal(inspection[1].result, false);
-    assert.equal(inspection[1].selectableSelector, "opponent_singularity_zone");
+    assert.equal(inspection[1].selectableSelector, "opponent_1_singularity_zone");
     assert.deepEqual(inspection[1].resolvedSelectable, {
         id: "singularity-1",
         type: "singularityZone",
@@ -540,6 +603,29 @@ test("selectable selectors keep shared runtime entities separated and order by a
     assert.equal(selectAbilityStrategyActionPlan(exists, payload({ playerModel: state.player, objects })).movement?.id, "root-1-1-1");
 });
 
+test("numbered entity selectors isolate identical spawned abilities by bot owner", () => {
+    const state = {
+        player: { id: "main", slot: 1, x: 100, y: 100 },
+        teammates: [{ id: "teammate-1", slot: 2, x: 200, y: 100 }],
+        opponents: [
+            { id: "opponent-1", slot: 3, x: 700, y: 700 },
+            { id: "opponent-2", slot: 4, x: 800, y: 700 },
+        ],
+        objects: [
+            { id: "my-fireball", type: "fireball", abilityId: 5, ownerId: "main", ownerSlot: 1 },
+            { id: "teammate-fireball", type: "fireball", abilityId: 5, ownerId: "teammate-1", ownerSlot: 2 },
+            { id: "opponent-one-fireball", type: "fireball", abilityId: 5, ownerId: "opponent-1", ownerSlot: 3 },
+            { id: "opponent-two-fireball", type: "fireball", abilityId: 5, ownerId: "opponent-2", ownerSlot: 4 },
+        ],
+    };
+
+    assert.deepEqual(matchingStrategySelectables(state, "my_bot_fireball").map((object) => object.id), ["my-fireball"]);
+    assert.deepEqual(matchingStrategySelectables(state, "teammate_1_fireball").map((object) => object.id), ["teammate-fireball"]);
+    assert.deepEqual(matchingStrategySelectables(state, "opponent_1_fireball").map((object) => object.id), ["opponent-one-fireball"]);
+    assert.deepEqual(matchingStrategySelectables(state, "opponent_2_fireball").map((object) => object.id), ["opponent-two-fireball"]);
+    assert.deepEqual(matchingStrategySelectables(state, "opponent_fireball").map((object) => object.id), ["opponent-one-fireball"]);
+});
+
 test("facing identity allows oriented ability entities", () => {
     const facing = STATE_VARIABLES.find((variable) => variable.id === "selectable.facing");
     assert.deepEqual(facing.selectableIdentities, [SELECTABLE_IDENTITIES.FACING]);
@@ -552,7 +638,7 @@ test("facing identity allows oriented ability entities", () => {
             right: { type: "number", value: 0 },
         }], actions: [] }] }],
     });
-    assert.equal(normalized.roots[0].branches[0].conditions[0].leftSelectable, "opponent_hunter_drone");
+    assert.equal(normalized.roots[0].branches[0].conditions[0].leftSelectable, "opponent_1_hunter_drone");
 
     const facingConfiguration = {
         roots: [{ branches: [{ conditions: [{

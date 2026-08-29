@@ -22,6 +22,7 @@ import {
 
 export const MAIN_SHAPE = {
     id: "main",
+    isCurrentUser: true,
     username: "Player",
     type: "circle",
     slot: 1,
@@ -57,18 +58,25 @@ export const MAIN_SHAPE = {
 };
 
 export function buildOpponentShape(opponent) {
-    const loadout = opponent?.loadout
-        ? normalizedBotLoadout(opponent.loadout)
-        : decodeBotLoadout(opponent?.selectedLoadout ?? opponent?.selectedLoadout);
+    const suppliedLoadout = opponent?.loadout ?? opponent?.selectedLoadout;
+    const loadout = suppliedLoadout && typeof suppliedLoadout === "object"
+        ? normalizedBotLoadout(suppliedLoadout)
+        : decodeBotLoadout(suppliedLoadout);
     const loadoutId = encodeBotLoadout(loadout);
     const abilities = abilitiesForLoadout(loadout);
     const stats = BASE_BOT_STATS;
-    const slot = Number(opponent?.slot) === 1 ? 1 : 2;
+    const requestedSlot = Number(opponent?.slot);
+    const slot = Number.isFinite(requestedSlot) && requestedSlot >= 1 && requestedSlot <= 8
+        ? Math.floor(requestedSlot)
+        : 2;
     return toCanonicalBotShape({
         id: "opponent-model",
+        isCurrentUser: false,
         username: opponent?.username ?? "Opponent",
         type: "opponentModel",
         slot,
+        teamNumber: teamNumberForParticipant(opponent),
+        userId: opponent?.userId ?? null,
         x: DUEL_SLOT_TWO_X,
         y: DUEL_SLOT_TWO_Y,
         size: 64,
@@ -110,33 +118,109 @@ export function buildInitialArenaShapes(matchContext) {
 }
 
 export function buildMatchSpawnShapes(matchContext) {
-    const playerSlot = Number(matchContext?.player?.slot) === 2 ? 2 : 1;
-    const opponentSlot = playerSlot === 1 ? 2 : 1;
-    const bots = [
-        resetBotShape({
-            ...MAIN_SHAPE,
-            combatLoadout: encodeBotLoadout(matchContext?.loadout ?? DEFAULT_BOT_LOADOUT),
-            loadout: matchContext?.loadout ?? DEFAULT_BOT_LOADOUT,
-            x: playerSlot === 1 ? DUEL_SLOT_ONE_X : DUEL_SLOT_TWO_X,
-            y: playerSlot === 1 ? DUEL_SLOT_ONE_Y : DUEL_SLOT_TWO_Y,
-            rotation: playerSlot === 1 ? 180 : 0,
-            slot: playerSlot,
-            userId: matchContext?.player?.userId ?? null,
-            username: matchContext?.player?.username ?? "Player",
-        }),
-        resetBotShape({
-            ...buildOpponentShape(matchContext?.opponent),
-            combatLoadout: encodeBotLoadout(matchContext?.opponentLoadout ?? DEFAULT_BOT_LOADOUT),
-            loadout: matchContext?.opponentLoadout ?? DEFAULT_BOT_LOADOUT,
-            x: opponentSlot === 1 ? DUEL_SLOT_ONE_X : DUEL_SLOT_TWO_X,
-            y: opponentSlot === 1 ? DUEL_SLOT_ONE_Y : DUEL_SLOT_TWO_Y,
-            rotation: opponentSlot === 1 ? 180 : 0,
-            slot: opponentSlot,
-            userId: matchContext?.opponent?.userId ?? null,
-            username: matchContext?.opponent?.username ?? "Opponent",
-        }),
-    ];
-    return bots;
+    const participants = matchParticipants(matchContext);
+    const currentUserId = matchContext?.player?.userId == null
+        ? null
+        : String(matchContext.player.userId);
+    const playerSlot = Number(matchContext?.player?.slot);
+    return participants.map((participant) => {
+        const isPlayer = currentUserId != null
+            ? String(participant.userId) === currentUserId
+            : Number(participant.slot) === playerSlot;
+        const loadout = loadoutForParticipant(matchContext, participant, isPlayer);
+        const loadoutId = loadoutIdentifier(loadout);
+        const position = matchSpawnPosition(participants, participant);
+        const shapeId = isPlayer
+            ? "main"
+            : participants.length === 2
+                ? "opponent-model"
+                : botShapeId(participant);
+        const baseShape = isPlayer
+            ? { ...MAIN_SHAPE }
+            : buildOpponentShape({ ...participant, selectedLoadout: loadoutId });
+        return resetBotShape({
+            ...baseShape,
+            id: shapeId,
+            type: isPlayer ? "circle" : "bot",
+            combatLoadout: loadoutId,
+            loadout: loadoutObject(loadoutId),
+            x: position.x,
+            y: position.y,
+            rotation: position.rotation,
+            slot: Number(participant.slot) || (isPlayer ? 1 : 2),
+            teamNumber: teamNumberForParticipant(participant),
+            isCurrentUser: isPlayer,
+            userId: participant.userId ?? null,
+            username: participant.username ?? (isPlayer ? "Player" : "Opponent"),
+            opponentUsername: participant.username ?? (isPlayer ? "Player" : "Opponent"),
+            locked: !isPlayer,
+        });
+    });
+}
+
+function matchParticipants(matchContext) {
+    const source = Array.isArray(matchContext?.players) && matchContext.players.length > 0
+        ? matchContext.players
+        : [matchContext?.player, matchContext?.opponent].filter(Boolean);
+    return source
+        .filter((participant) => participant?.userId != null || participant?.slot != null)
+        .map((participant) => ({
+            ...participant,
+            slot: Number(participant.slot) || 1,
+            teamNumber: teamNumberForParticipant(participant),
+        }))
+        .sort((first, second) => first.slot - second.slot);
+}
+
+function botShapeId(participant) {
+    return participant?.userId != null
+        ? `bot-${participant.userId}`
+        : `bot-slot-${Number(participant?.slot) || 1}`;
+}
+
+function teamNumberForParticipant(participant) {
+    const explicit = Number(participant?.teamNumber);
+    if (Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit);
+    const slot = Number(participant?.slot);
+    return Number.isFinite(slot) && slot === 1 ? 1 : 2;
+}
+
+function loadoutForParticipant(matchContext, participant, isPlayer) {
+    if (isPlayer) return matchContext?.loadout ?? participant?.selectedLoadout ?? encodeBotLoadout(DEFAULT_BOT_LOADOUT);
+    const opponentId = matchContext?.opponent?.userId;
+    if (opponentId != null && String(opponentId) === String(participant?.userId)
+        && matchContext?.opponentLoadout != null) {
+        return matchContext.opponentLoadout;
+    }
+    return participant?.selectedLoadout ?? encodeBotLoadout(DEFAULT_BOT_LOADOUT);
+}
+
+function loadoutObject(loadout) {
+    if (loadout && typeof loadout === "object") return normalizedBotLoadout(loadout);
+    const encoded = String(loadout ?? "");
+    return encoded.startsWith("sandbox:")
+        ? decodeSandboxLoadout(encoded)
+        : decodeBotLoadout(encoded || encodeBotLoadout(DEFAULT_BOT_LOADOUT));
+}
+
+function loadoutIdentifier(loadout) {
+    if (loadout && typeof loadout === "object") return encodeBotLoadout(normalizedBotLoadout(loadout));
+    const encoded = String(loadout ?? "");
+    return encoded || encodeBotLoadout(DEFAULT_BOT_LOADOUT);
+}
+
+function matchSpawnPosition(participants, participant) {
+    const teamPlayers = participants
+        .filter((candidate) => candidate.teamNumber === participant.teamNumber)
+        .sort((first, second) => first.slot - second.slot);
+    const teamIndex = Math.max(0, teamPlayers.findIndex((candidate) => candidate.slot === participant.slot));
+    const teamSize = Math.max(1, teamPlayers.length);
+    const x = ARENA_WIDTH_UNITS * (teamIndex + 1) / (teamSize + 1);
+    return {
+        x,
+        y: participant.teamNumber === 1 ? DUEL_SLOT_ONE_Y : DUEL_SLOT_TWO_Y,
+        rotation: participant.teamNumber === 1 ? 180 : 0,
+    };
 }
 
 export function cloneShape(shape) {
@@ -321,6 +405,7 @@ export function mergeBotShapeUpdates(shape, updates) {
 function isArenaBotShape(shape) {
     return shape?.id === "main"
         || shape?.id === "opponent-model"
+        || String(shape?.id ?? "").startsWith("bot-")
         || shape?.type === "circle"
         || shape?.type === "bot"
         || shape?.type === "opponentModel"

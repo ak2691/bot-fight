@@ -4,6 +4,7 @@ import AppNavbar from "../../components/AppNavbar.jsx";
 import Arena from "../../gameArena/Arena.jsx";
 import { useDialogFocus } from "../../components/useDialogFocus.js";
 import {
+    BOT_CODE_SELECTABLES,
     createDefaultAbilityStrategyConfiguration,
     customVariableDefinitions,
     abilityDefinitionsForVariable,
@@ -33,6 +34,17 @@ import PuzzleLogicWorkspace, {
     flattenPuzzleConditions,
     normalizePuzzleLogic,
 } from "./PuzzleLogicWorkspace.jsx";
+import {
+    MAX_PUZZLE_TEAM_SIZE,
+    MIN_PUZZLE_TEAM_SIZE,
+    PUZZLE_OPPONENT_TEAM,
+    PUZZLE_PLAYER_TEAM,
+    normalizePuzzleRoster,
+    normalizePuzzleTeamSize,
+    puzzleBotKey,
+    puzzleBotsForTeam,
+    puzzleBotRole,
+} from "./puzzleRoster.js";
 
 const MAX_TIME_SECONDS = 90;
 const MAX_INITIAL_ELAPSED_SECONDS = 60;
@@ -40,10 +52,119 @@ const MAX_ACTION_NODES = 100;
 const MAX_CONDITION_NODES = 300;
 const MAX_CUSTOM_VARIABLES = 100;
 
+function defaultPuzzleStart(teamNumber) {
+    const isPlayer = Number(teamNumber) === PUZZLE_PLAYER_TEAM;
+    const fallback = isPlayer ? PRACTICE_PLAYER_START : PRACTICE_OPPONENT_START;
+    return {
+        // New team members begin on the same center line as their team lead.
+        // The author can position them independently in the starting-stats
+        // editor after they have been added.
+        startX: fallback.x,
+        startY: fallback.y,
+        rotation: fallback.rotation,
+    };
+}
+
+function createDefaultPuzzleBot(teamNumber, slot) {
+    const start = defaultPuzzleStart(teamNumber);
+    return {
+        role: puzzleBotRole(teamNumber),
+        teamNumber,
+        slot,
+        loadout: DEFAULT_BOT_CONFIGURATION_ID,
+        brain: createDefaultAbilityStrategyConfiguration(),
+        ...start,
+        startHp: BASE_BOT_HP,
+    };
+}
+
+function puzzleBotAliases(bots) {
+    return {
+        playerBot: bots.find((bot) => Number(bot?.teamNumber) === PUZZLE_PLAYER_TEAM && Number(bot?.slot) === 1) ?? bots[0],
+        opponentBot: bots.find((bot) => Number(bot?.teamNumber) === PUZZLE_OPPONENT_TEAM && Number(bot?.slot) === 1)
+            ?? bots.find((bot) => Number(bot?.teamNumber) === PUZZLE_OPPONENT_TEAM),
+    };
+}
+
+function normalizeDraftRoster(draft, source = null, playerTeamSize = draft.playerTeamSize, opponentTeamSize = draft.opponentTeamSize) {
+    const normalizedPlayerTeamSize = normalizePuzzleTeamSize(playerTeamSize);
+    const normalizedOpponentTeamSize = normalizePuzzleTeamSize(opponentTeamSize);
+    const sourceBots = Array.isArray(source)
+        ? source
+        : Array.isArray(draft.bots) ? draft.bots : [draft.playerBot, draft.opponentBot].filter(Boolean);
+    const bots = normalizePuzzleRoster(
+        sourceBots,
+        normalizedPlayerTeamSize,
+        normalizedOpponentTeamSize,
+        createDefaultPuzzleBot,
+    ).map((bot) => normalizeStartingBot(bot, createDefaultPuzzleBot(bot.teamNumber, bot.slot, bot.teamNumber === PUZZLE_PLAYER_TEAM ? normalizedPlayerTeamSize : normalizedOpponentTeamSize)));
+    const sourceKeys = new Set(sourceBots
+        .filter((bot) => Number.isFinite(Number(bot?.teamNumber)) && Number.isFinite(Number(bot?.slot)))
+        .map((bot) => puzzleBotKey(bot)));
+    const primaryByTeam = new Map(bots
+        .filter((bot) => Number(bot?.slot) === 1)
+        .map((bot) => [Number(bot.teamNumber), bot]));
+    const alignedBots = bots.map((bot) => {
+        const slot = Number(bot?.slot) || 1;
+        const primary = primaryByTeam.get(Number(bot?.teamNumber));
+        if (slot === 1 || sourceKeys.has(puzzleBotKey(bot)) || !primary) return bot;
+        return {
+            ...bot,
+            startX: primary.startX,
+            startY: primary.startY,
+            rotation: primary.rotation,
+        };
+    });
+    return {
+        ...draft,
+        playerTeamSize: normalizedPlayerTeamSize,
+        opponentTeamSize: normalizedOpponentTeamSize,
+        bots: alignedBots,
+        ...puzzleBotAliases(alignedBots),
+    };
+}
+
+function defaultPuzzleConditionSelectors(playerTeamSize, opponentTeamSize) {
+    return {
+        win: Number(opponentTeamSize) > 1 ? ["opponent_1", "opponent_2"] : [BOT_CODE_SELECTABLES.OPPONENT],
+        lose: Number(playerTeamSize) > 1 ? ["my_bot", "teammate_1"] : ["my_bot"],
+    };
+}
+
+function puzzleLogicUsesDefaultElimination(configuration, playerTeamSize, opponentTeamSize) {
+    const selectors = defaultPuzzleConditionSelectors(playerTeamSize, opponentTeamSize);
+    const conditionsFor = (kind) => flattenPuzzleConditions(configuration, kind);
+    const isEliminationCondition = (condition, selector) => condition?.type === "expression"
+        && condition.left === "selectable.hp"
+        && condition.leftSelectable === selector
+        && condition.comparator === "lte"
+        && condition.right?.type === "number"
+        && Number(condition.right.value) === 0
+        && (condition.join == null || condition.join === "and");
+    const roots = Array.isArray(configuration?.roots) ? configuration.roots : [];
+    const winConditions = conditionsFor("win");
+    const loseConditions = conditionsFor("lose");
+    return roots.some((root) => root?.kind === "win")
+        && roots.some((root) => root?.kind === "lose")
+        && winConditions.length === selectors.win.length
+        && loseConditions.length === selectors.lose.length
+        && selectors.win.every((selector, index) => isEliminationCondition(winConditions[index], selector))
+        && selectors.lose.every((selector, index) => isEliminationCondition(loseConditions[index], selector));
+}
+
 function createDefaultPuzzle() {
     const brain = createDefaultAbilityStrategyConfiguration();
     const puzzleLogic = createDefaultPuzzleLogic();
-    return {
+    const bots = normalizePuzzleRoster(
+        [],
+        MIN_PUZZLE_TEAM_SIZE,
+        MIN_PUZZLE_TEAM_SIZE,
+        (teamNumber, slot, teamSize) => ({
+            ...createDefaultPuzzleBot(teamNumber, slot, teamSize),
+            ...(teamNumber === PUZZLE_PLAYER_TEAM && slot === 1 ? { brain } : {}),
+        }),
+    );
+    return normalizeDraftRoster({
         name: "",
         description: "",
         initialElapsedMs: 0,
@@ -56,23 +177,10 @@ function createDefaultPuzzle() {
         puzzleLogic,
         winConditions: flattenPuzzleConditions(puzzleLogic, "win"),
         loseConditions: flattenPuzzleConditions(puzzleLogic, "lose"),
-        playerBot: {
-            loadout: DEFAULT_BOT_CONFIGURATION_ID,
-            brain,
-            startX: PRACTICE_PLAYER_START.x,
-            startY: PRACTICE_PLAYER_START.y,
-            rotation: PRACTICE_PLAYER_START.rotation,
-            startHp: BASE_BOT_HP,
-        },
-        opponentBot: {
-            loadout: DEFAULT_BOT_CONFIGURATION_ID,
-            brain: createDefaultAbilityStrategyConfiguration(),
-            startX: PRACTICE_OPPONENT_START.x,
-            startY: PRACTICE_OPPONENT_START.y,
-            rotation: PRACTICE_OPPONENT_START.rotation,
-            startHp: BASE_BOT_HP,
-        },
-    };
+        playerTeamSize: MIN_PUZZLE_TEAM_SIZE,
+        opponentTeamSize: MIN_PUZZLE_TEAM_SIZE,
+        bots,
+    }, bots, MIN_PUZZLE_TEAM_SIZE, MIN_PUZZLE_TEAM_SIZE);
 }
 
 function numberOrFallback(value, fallback) {
@@ -95,10 +203,31 @@ function botDraftFromAdminResponse(source, fallback) {
 function puzzleDraftFromAdminResponse(payload) {
     const defaults = createDefaultPuzzle();
     const puzzleLogic = normalizePuzzleLogic(payload?.logicConfiguration ?? defaults.puzzleLogic);
-    const bots = Array.isArray(payload?.bots) ? payload.bots : [];
-    const playerBot = bots.find((bot) => String(bot?.role ?? "").toUpperCase() === "PLAYER");
-    const opponentBot = bots.find((bot) => String(bot?.role ?? "").toUpperCase() === "OPPONENT");
-    return {
+    const payloadBots = Array.isArray(payload?.bots) ? payload.bots : [];
+    const legacyPlayerBot = payload?.playerBot
+        ?? payloadBots.find((bot) => String(bot?.role ?? "").toUpperCase() === "PLAYER");
+    const legacyOpponentBot = payload?.opponentBot
+        ?? payloadBots.find((bot) => String(bot?.role ?? "").toUpperCase() === "OPPONENT");
+    const sourceBots = payloadBots.length > 0
+        ? payloadBots
+        : [
+            legacyPlayerBot ? { ...legacyPlayerBot, role: "PLAYER", teamNumber: PUZZLE_PLAYER_TEAM, slot: 1 } : null,
+            legacyOpponentBot ? { ...legacyOpponentBot, role: "OPPONENT", teamNumber: PUZZLE_OPPONENT_TEAM, slot: 1 } : null,
+        ].filter(Boolean);
+    const inferredTeam = (bot) => Number(bot?.teamNumber) === PUZZLE_OPPONENT_TEAM
+        || String(bot?.role ?? "").toUpperCase() === "OPPONENT"
+        ? PUZZLE_OPPONENT_TEAM
+        : PUZZLE_PLAYER_TEAM;
+    const playerCount = sourceBots.filter((bot) => inferredTeam(bot) === PUZZLE_PLAYER_TEAM).length;
+    const opponentCount = sourceBots.filter((bot) => inferredTeam(bot) === PUZZLE_OPPONENT_TEAM).length;
+    const playerTeamSize = normalizePuzzleTeamSize(payload?.playerTeamSize, Math.max(MIN_PUZZLE_TEAM_SIZE, Math.min(MAX_PUZZLE_TEAM_SIZE, playerCount || 1)));
+    const opponentTeamSize = normalizePuzzleTeamSize(payload?.opponentTeamSize, Math.max(MIN_PUZZLE_TEAM_SIZE, Math.min(MAX_PUZZLE_TEAM_SIZE, opponentCount || 1)));
+    const normalizedSourceBots = sourceBots.map((bot) => botDraftFromAdminResponse(bot, createDefaultPuzzleBot(
+        inferredTeam(bot),
+        Number(bot?.slot) || 1,
+        inferredTeam(bot) === PUZZLE_OPPONENT_TEAM ? opponentTeamSize : playerTeamSize,
+    )));
+    const draft = normalizeDraftRoster({
         ...defaults,
         name: String(payload?.name ?? defaults.name),
         description: String(payload?.description ?? defaults.description),
@@ -114,9 +243,11 @@ function puzzleDraftFromAdminResponse(payload) {
         puzzleLogic,
         winConditions: flattenPuzzleConditions(puzzleLogic, "win"),
         loseConditions: flattenPuzzleConditions(puzzleLogic, "lose"),
-        playerBot: botDraftFromAdminResponse(playerBot, defaults.playerBot),
-        opponentBot: botDraftFromAdminResponse(opponentBot, defaults.opponentBot),
-    };
+        playerTeamSize,
+        opponentTeamSize,
+        bots: normalizedSourceBots,
+    }, normalizedSourceBots, playerTeamSize, opponentTeamSize);
+    return normalizePuzzleDraftConditions(draft);
 }
 
 function abilityIdsForLoadout(loadout) {
@@ -125,10 +256,14 @@ function abilityIdsForLoadout(loadout) {
         : decodeBotLoadout(loadout).abilities;
 }
 
-function puzzleConditionVariables(playerLoadout, opponentLoadout, puzzleLogic) {
+function puzzleConditionVariables(playerLoadout, opponentLoadout, puzzleLogic, additionalLoadouts = []) {
     const playerAbilities = new Set([...STANDARD_ABILITY_IDS, ...abilityIdsForLoadout(playerLoadout)]);
     const opponentAbilities = new Set([...STANDARD_ABILITY_IDS, ...abilityIdsForLoadout(opponentLoadout)]);
-    const allAbilities = new Set([...playerAbilities, ...opponentAbilities]);
+    const allAbilities = new Set([
+        ...playerAbilities,
+        ...opponentAbilities,
+        ...additionalLoadouts.flatMap((loadout) => abilityIdsForLoadout(loadout)),
+    ]);
     const builtIns = VISIBLE_STATE_VARIABLES.map((variable) => {
         if (!variable.supportsAbility && !variable.supportsStatusEffect) return variable;
         const equipped = allAbilities;
@@ -144,6 +279,38 @@ function puzzleConditionVariables(playerLoadout, opponentLoadout, puzzleLogic) {
     }).filter((variable) => (!variable.supportsAbility || variable.abilityOptions.length > 0)
         && (!variable.supportsStatusEffect || variable.statusEffectOptions.length > 0));
     return [...builtIns, ...customVariableDefinitions(puzzleLogic)];
+}
+
+function normalizePuzzleDraftConditions(draft) {
+    const playerBots = puzzleBotsForTeam(draft.bots, PUZZLE_PLAYER_TEAM);
+    const opponentBots = puzzleBotsForTeam(draft.bots, PUZZLE_OPPONENT_TEAM);
+    const primaryPlayer = playerBots[0];
+    const primaryOpponent = opponentBots[0];
+    const roster = {
+        teammateCount: Math.max(0, playerBots.length - 1),
+        opponentCount: opponentBots.length,
+        teammateLoadouts: playerBots.slice(1).map((bot) => bot.loadout),
+        opponentLoadouts: opponentBots.map((bot) => bot.loadout),
+    };
+    const stateVariables = puzzleConditionVariables(
+        primaryPlayer.loadout,
+        primaryOpponent.loadout,
+        draft.puzzleLogic,
+        [...playerBots.slice(1), ...opponentBots.slice(1)].map((bot) => bot.loadout),
+    );
+    const selectableTypes = selectableTypesForLoadouts(primaryPlayer.loadout, primaryOpponent.loadout, roster);
+    const selectableAbilityIds = selectableAbilityIdsForLoadouts(primaryPlayer.loadout, primaryOpponent.loadout, roster);
+    const puzzleLogic = normalizePuzzleLogic(draft.puzzleLogic, {
+        stateVariables,
+        selectableTypes,
+        selectableAbilityIds,
+    });
+    return {
+        ...draft,
+        puzzleLogic,
+        winConditions: flattenPuzzleConditions(puzzleLogic, "win"),
+        loseConditions: flattenPuzzleConditions(puzzleLogic, "lose"),
+    };
 }
 
 function canonicalBrain(brain, loadout) {
@@ -163,6 +330,17 @@ function requestBot(bot, { useDefaultBrain = false } = {}) {
         rotation: normalized.rotation,
         startHp: normalized.startHp,
         brain: canonicalBrain(useDefaultBrain ? createDefaultAbilityStrategyConfiguration() : normalized.brain, normalized.loadout),
+    };
+}
+
+function requestPuzzleBot(bot) {
+    const teamNumber = Number(bot?.teamNumber) === PUZZLE_OPPONENT_TEAM ? PUZZLE_OPPONENT_TEAM : PUZZLE_PLAYER_TEAM;
+    const slot = Math.max(1, Math.floor(Number(bot?.slot) || 1));
+    return {
+        ...requestBot(bot, { useDefaultBrain: teamNumber === PUZZLE_PLAYER_TEAM && slot === 1 }),
+        role: puzzleBotRole(teamNumber),
+        teamNumber,
+        slot,
     };
 }
 
@@ -252,7 +430,7 @@ function PuzzleConfigurationModal({ draft, conditionVariables, conditionTargets,
     />;
 }
 
-function PuzzleRulesModal({ draft, setDraft, onClose }) {
+function PuzzleRulesModal({ draft, setDraft, onTeamSizeChange, onClose }) {
     const dialogRef = useRef(null);
     const closeButtonRef = useRef(null);
     useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onClose, lockScroll: true });
@@ -271,13 +449,15 @@ function PuzzleRulesModal({ draft, setDraft, onClose }) {
     const rows = [
         ["TIME PASSED / SEC", <EditableNumberInput key="initial-time" value={initialElapsedSeconds} min={0} max={MAX_INITIAL_ELAPSED_SECONDS} fallback={0} emptyValue={0} integerOnly ariaLabel="Time already passed at puzzle start in seconds" onCommit={updateInitialElapsed} className="h-9 w-28 border border-slate-700 bg-slate-900 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-400" />],
         ["TIME LIMIT / SEC", <EditableNumberInput key="time" value={Number(draft.timeLimitMs ?? 0) / 1000} min={0} max={maxTimeSeconds} fallback={0} emptyValue={0} integerOnly ariaLabel="Puzzle time limit in seconds" onCommit={(value) => setDraft((current) => ({ ...current, timeLimitMs: value * 1000 }))} className="h-9 w-28 border border-slate-700 bg-slate-900 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-400" />],
+        ["BLUE TEAM PLAYERS", <EditableNumberInput key="blue-team-size" value={draft.playerTeamSize} min={MIN_PUZZLE_TEAM_SIZE} max={MAX_PUZZLE_TEAM_SIZE} fallback={MIN_PUZZLE_TEAM_SIZE} emptyValue={MIN_PUZZLE_TEAM_SIZE} integerOnly ariaLabel="Number of blue team players" onCommit={(value) => onTeamSizeChange("playerTeamSize", value)} className="h-9 w-28 border-2 border-cyan-400/80 bg-cyan-950/20 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-300" />],
+        ["RED TEAM PLAYERS", <EditableNumberInput key="red-team-size" value={draft.opponentTeamSize} min={MIN_PUZZLE_TEAM_SIZE} max={MAX_PUZZLE_TEAM_SIZE} fallback={MIN_PUZZLE_TEAM_SIZE} emptyValue={MIN_PUZZLE_TEAM_SIZE} integerOnly ariaLabel="Number of red team players" onCommit={(value) => onTeamSizeChange("opponentTeamSize", value)} className="h-9 w-28 border-2 border-red-400/80 bg-red-950/20 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-red-300" />],
         ["ACTION NODES", <EditableNumberInput key="actions" value={draft.maxActionNodes} min={0} max={MAX_ACTION_NODES} fallback={0} emptyValue={0} integerOnly ariaLabel="Maximum action nodes" onCommit={(value) => updateLimit("maxActionNodes", value)} className="h-9 w-28 border border-slate-700 bg-slate-900 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-400" />],
         ["CONDITIONAL NODES", <EditableNumberInput key="conditions" value={draft.maxConditionNodes} min={0} max={MAX_CONDITION_NODES} fallback={0} emptyValue={0} integerOnly ariaLabel="Maximum conditional nodes" onCommit={(value) => updateLimit("maxConditionNodes", value)} className="h-9 w-28 border border-slate-700 bg-slate-900 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-400" />],
         ["CUSTOM VARIABLES", <EditableNumberInput key="variables" value={draft.maxCustomVariables} min={0} max={MAX_CUSTOM_VARIABLES} fallback={0} emptyValue={0} integerOnly ariaLabel="Maximum custom variables" onCommit={(value) => updateLimit("maxCustomVariables", value)} className="h-9 w-28 border border-slate-700 bg-slate-900 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-400" />],
     ];
     return <div className="fixed inset-0 z-[110] grid place-items-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
         <section ref={dialogRef} className="w-[min(92vw,520px)] rounded-xl border border-cyan-700/70 bg-[#11171a] shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="puzzle-rules-title" tabIndex={-1}>
-            <header className="flex items-center justify-between gap-4 border-b border-slate-700/80 bg-slate-950/70 px-5 py-4"><div><p className="font-mono text-[9px] font-bold tracking-[.2em] text-cyan-300">PUZZLE RULES</p><h2 id="puzzle-rules-title" className="mt-1 text-lg font-bold text-white">Limits & visibility</h2></div><button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Close puzzle rules" className="gray-button-surface modal-close-button"><span aria-hidden="true">×</span></button></header>
+            <header className="flex items-center justify-between gap-4 border-b border-slate-700/80 bg-slate-950/70 px-5 py-4"><div><p className="font-mono text-[9px] font-bold tracking-[.2em] text-cyan-300">PUZZLE RULES</p><h2 id="puzzle-rules-title" className="mt-1 text-lg font-bold text-white">Limits & visibility</h2></div><button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Close puzzle rules" className="modal-close-button"><span aria-hidden="true">×</span></button></header>
             <div className="space-y-2 p-5">
                 {rows.map(([label, control]) => <div key={label} className="flex min-h-12 items-center justify-between gap-4 border-b border-slate-800/80 pb-2 font-mono text-[9px] text-slate-400"><span>{label}</span>{control}</div>)}
                 <label className="flex min-h-12 items-center justify-between gap-4 border-b border-slate-800/80 pb-2 font-mono text-[9px] text-slate-300"><span>PUBLISH PUZZLE</span><input type="checkbox" checked={draft.published} onChange={(event) => setDraft((current) => ({ ...current, published: event.target.checked }))} /></label>
@@ -288,9 +468,68 @@ function PuzzleRulesModal({ draft, setDraft, onClose }) {
     </div>;
 }
 
-function PuzzleBuilderControls({ draft, setDraft, saveState, onSaveStartingStats, onSaveOpponentCode, onSavePuzzle, onOpenConfiguration, onOpenRules, isSaving, isEditing, conditionVariables, conditionTargets, conditionTargetAbilityIds, isConfigurationOpen, onCloseConfiguration, isRulesOpen, onCloseRules, onPuzzleLogicChange }) {
-    const player = draft.playerBot;
-    const opponent = draft.opponentBot;
+function puzzleTeamLabel(teamNumber) {
+    return Number(teamNumber) === PUZZLE_OPPONENT_TEAM ? "RED TEAM" : "BLUE TEAM";
+}
+
+function puzzleBotDisplayName(bot) {
+    const teamNumber = Number(bot?.teamNumber);
+    const slot = Number(bot?.slot) || 1;
+    if (teamNumber === PUZZLE_PLAYER_TEAM && slot === 1) return "My Bot";
+    return teamNumber === PUZZLE_PLAYER_TEAM ? `Teammate ${slot - 1}` : `Opponent ${slot}`;
+}
+
+function PuzzleStartingStatsEditor({ draft, setDraft, onSave }) {
+    const bots = Array.isArray(draft.bots) && draft.bots.length > 0
+        ? draft.bots
+        : [draft.playerBot, draft.opponentBot].filter(Boolean);
+    const [selectedIndex, setSelectedIndex] = useState(0);
+    const selectedBotIndex = Math.min(selectedIndex, Math.max(0, bots.length - 1));
+    const selectedBot = bots[selectedBotIndex] ?? bots[0] ?? createDefaultPuzzleBot(PUZZLE_PLAYER_TEAM, 1);
+    const teamNumber = Number(selectedBot.teamNumber) === PUZZLE_OPPONENT_TEAM ? PUZZLE_OPPONENT_TEAM : PUZZLE_PLAYER_TEAM;
+    const teamSize = normalizePuzzleTeamSize(teamNumber === PUZZLE_PLAYER_TEAM ? draft.playerTeamSize : draft.opponentTeamSize);
+    const fallbackStart = defaultPuzzleStart(teamNumber, Number(selectedBot.slot) || 1, teamSize);
+    const tone = teamNumber === PUZZLE_OPPONENT_TEAM ? "red" : "blue";
+    const updateSelectedBot = (field, value) => setDraft((current) => {
+        const currentBots = Array.isArray(current.bots) ? current.bots : [current.playerBot, current.opponentBot].filter(Boolean);
+        const nextBots = currentBots.map((bot, index) => index === selectedBotIndex ? { ...bot, [field]: value } : bot);
+        return normalizeDraftRoster(current, nextBots);
+    });
+    const cycle = (direction) => {
+        if (bots.length < 2) return;
+        setSelectedIndex((current) => (Math.min(current, bots.length - 1) + direction + bots.length) % bots.length);
+    };
+
+    return (
+        <section className="rounded-xl border border-slate-600/70 bg-slate-950/55 p-4">
+            <div className="mb-2 flex items-center justify-between"><h2 className="font-mono text-[10px] font-bold tracking-[.16em] text-cyan-200">STARTING STATS</h2></div>
+            <div className="code-bot-selector-stack w-full max-w-none">
+                <div className={`code-bot-selector ${tone === "red" ? "is-red" : "is-blue"}`} role="group" aria-label="Select puzzle starting stats">
+                    <button type="button" aria-label="Show previous player starting stats" title="Previous player" onClick={() => cycle(-1)} disabled={bots.length < 2} className="code-bot-selector__arrow">‹</button>
+                    <div className="code-bot-selector__current" aria-live="polite">
+                        <span className="code-bot-selector__name">{puzzleBotDisplayName(selectedBot)}</span>
+                        <span className="code-bot-selector__meta">{puzzleTeamLabel(teamNumber)} · STARTING STATS · {Math.max(1, selectedBotIndex + 1)}/{bots.length}</span>
+                    </div>
+                    <button type="button" aria-label="Show next player starting stats" title="Next player" onClick={() => cycle(1)} disabled={bots.length < 2} className="code-bot-selector__arrow">›</button>
+                </div>
+            </div>
+            <div className={`mt-2 rounded border p-2 font-mono text-[9px] ${tone === "red" ? "border-red-900/60 bg-red-950/20" : "border-cyan-400/65 bg-cyan-950/30"}`}>
+                <p className={tone === "red" ? "text-red-200" : "text-cyan-200"}>{puzzleBotDisplayName(selectedBot)}</p>
+                <div className="mt-2 space-y-2">
+                    <div className="grid grid-cols-2 gap-1.5">
+                        <label className="text-[8px] text-slate-500"><span className="block">X</span><EditableNumberInput value={selectedBot.startX} min={BOT_CENTER_MIN_X} max={BOT_CENTER_MAX_X} fallback={fallbackStart.startX} emptyValue={fallbackStart.startX} decimalPlaces={1} ariaLabel={`${puzzleBotDisplayName(selectedBot)} starting X position`} onCommit={(value) => updateSelectedBot("startX", value)} className={`mt-1 h-8 w-full border bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none ${tone === "red" ? "border-red-900/80 focus:border-red-400" : "border-cyan-900/80 focus:border-cyan-400"}`} /></label>
+                        <label className="text-[8px] text-slate-500"><span className="block">Y</span><EditableNumberInput value={selectedBot.startY} min={BOT_CENTER_MIN_Y} max={BOT_CENTER_MAX_Y} fallback={fallbackStart.startY} emptyValue={fallbackStart.startY} decimalPlaces={1} ariaLabel={`${puzzleBotDisplayName(selectedBot)} starting Y position`} onCommit={(value) => updateSelectedBot("startY", value)} className={`mt-1 h-8 w-full border bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none ${tone === "red" ? "border-red-900/80 focus:border-red-400" : "border-cyan-900/80 focus:border-cyan-400"}`} /></label>
+                    </div>
+                    <label className="block text-[8px] text-slate-500"><span className="block">ROTATION</span><EditableNumberInput value={selectedBot.rotation} min={-360} max={360} fallback={fallbackStart.rotation} emptyValue={fallbackStart.rotation} decimalPlaces={1} ariaLabel={`${puzzleBotDisplayName(selectedBot)} starting rotation`} onCommit={(value) => updateSelectedBot("rotation", value)} className={`mt-1 h-8 w-full border bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none ${tone === "red" ? "border-red-900/80 focus:border-red-400" : "border-cyan-900/80 focus:border-cyan-400"}`} /></label>
+                    <label className="block text-[8px] text-slate-500"><span className="block">HP</span><EditableNumberInput value={selectedBot.startHp} min={1} max={BASE_BOT_HP} fallback={BASE_BOT_HP} emptyValue={BASE_BOT_HP} decimalPlaces={1} ariaLabel={`${puzzleBotDisplayName(selectedBot)} starting HP`} onCommit={(value) => updateSelectedBot("startHp", value)} className={`mt-1 h-8 w-full border bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none ${tone === "red" ? "border-red-900/80 focus:border-red-400" : "border-cyan-900/80 focus:border-cyan-400"}`} /></label>
+                </div>
+            </div>
+            <button type="button" onClick={onSave} className="arena-toolbar-button arena-toolbar-button--blue mt-2">SAVE STARTING STATS</button>
+        </section>
+    );
+}
+
+function PuzzleBuilderControls({ draft, setDraft, saveState, onSaveStartingStats, onSaveOpponentCode, onSavePuzzle, onOpenConfiguration, onOpenRules, onPuzzleTeamSizeChange, isSaving, isEditing, conditionVariables, conditionTargets, conditionTargetAbilityIds, isConfigurationOpen, onCloseConfiguration, isRulesOpen, onCloseRules, onPuzzleLogicChange }) {
 
     return (
         <div className="space-y-3">
@@ -309,34 +548,7 @@ function PuzzleBuilderControls({ draft, setDraft, saveState, onSaveStartingStats
                 </div>
             </section>
 
-            <section className="rounded-xl border border-slate-600/70 bg-slate-950/55 p-4">
-                <div className="mb-2 flex items-center justify-between"><h2 className="font-mono text-[10px] font-bold tracking-[.16em] text-cyan-200">STARTING STATS</h2></div>
-                <div className="grid grid-cols-1 gap-2 font-mono text-[9px] text-slate-400 sm:grid-cols-2">
-                    <div className="rounded border border-cyan-400/65 bg-cyan-950/30 p-2 shadow-[inset_0_1px_rgba(125,211,252,.04)]">
-                        <p className="text-cyan-200">YOU</p>
-                        <div className="mt-2 space-y-2">
-                            <div className="grid grid-cols-2 gap-1.5">
-                                <label className="text-[8px] text-slate-500"><span className="block">X</span><EditableNumberInput value={player.startX} min={BOT_CENTER_MIN_X} max={BOT_CENTER_MAX_X} fallback={PRACTICE_PLAYER_START.x} emptyValue={PRACTICE_PLAYER_START.x} decimalPlaces={1} ariaLabel="Your starting X position" onCommit={(value) => setDraft((current) => ({ ...current, playerBot: { ...current.playerBot, startX: value } }))} className="mt-1 h-8 w-full border border-cyan-900/80 bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none focus:border-cyan-400" /></label>
-                                <label className="text-[8px] text-slate-500"><span className="block">Y</span><EditableNumberInput value={player.startY} min={BOT_CENTER_MIN_Y} max={BOT_CENTER_MAX_Y} fallback={PRACTICE_PLAYER_START.y} emptyValue={PRACTICE_PLAYER_START.y} decimalPlaces={1} ariaLabel="Your starting Y position" onCommit={(value) => setDraft((current) => ({ ...current, playerBot: { ...current.playerBot, startY: value } }))} className="mt-1 h-8 w-full border border-cyan-900/80 bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none focus:border-cyan-400" /></label>
-                            </div>
-                            <label className="block text-[8px] text-slate-500"><span className="block">ROTATION</span><EditableNumberInput value={player.rotation} min={-360} max={360} fallback={0} emptyValue={0} decimalPlaces={1} ariaLabel="Your starting rotation" onCommit={(value) => setDraft((current) => ({ ...current, playerBot: { ...current.playerBot, rotation: value } }))} className="mt-1 h-8 w-full border border-cyan-900/80 bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none focus:border-cyan-400" /></label>
-                            <label className="block text-[8px] text-slate-500"><span className="block">HP</span><EditableNumberInput value={player.startHp} min={1} max={BASE_BOT_HP} fallback={BASE_BOT_HP} emptyValue={BASE_BOT_HP} decimalPlaces={1} ariaLabel="Your starting HP" onCommit={(value) => setDraft((current) => ({ ...current, playerBot: { ...current.playerBot, startHp: value } }))} className="mt-1 h-8 w-full border border-cyan-900/80 bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none focus:border-cyan-400" /></label>
-                        </div>
-                    </div>
-                    <div className="rounded border border-red-900/60 bg-red-950/20 p-2">
-                        <p className="text-red-200">OPPONENT</p>
-                        <div className="mt-2 space-y-2">
-                            <div className="grid grid-cols-2 gap-1.5">
-                                <label className="text-[8px] text-slate-500"><span className="block">X</span><EditableNumberInput value={opponent.startX} min={BOT_CENTER_MIN_X} max={BOT_CENTER_MAX_X} fallback={PRACTICE_OPPONENT_START.x} emptyValue={PRACTICE_OPPONENT_START.x} decimalPlaces={1} ariaLabel="Opponent starting X position" onCommit={(value) => setDraft((current) => ({ ...current, opponentBot: { ...current.opponentBot, startX: value } }))} className="mt-1 h-8 w-full border border-red-900/80 bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none focus:border-red-400" /></label>
-                                <label className="text-[8px] text-slate-500"><span className="block">Y</span><EditableNumberInput value={opponent.startY} min={BOT_CENTER_MIN_Y} max={BOT_CENTER_MAX_Y} fallback={PRACTICE_OPPONENT_START.y} emptyValue={PRACTICE_OPPONENT_START.y} decimalPlaces={1} ariaLabel="Opponent starting Y position" onCommit={(value) => setDraft((current) => ({ ...current, opponentBot: { ...current.opponentBot, startY: value } }))} className="mt-1 h-8 w-full border border-red-900/80 bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none focus:border-red-400" /></label>
-                            </div>
-                            <label className="block text-[8px] text-slate-500"><span className="block">ROTATION</span><EditableNumberInput value={opponent.rotation} min={-360} max={360} fallback={0} emptyValue={0} decimalPlaces={1} ariaLabel="Opponent starting rotation" onCommit={(value) => setDraft((current) => ({ ...current, opponentBot: { ...current.opponentBot, rotation: value } }))} className="mt-1 h-8 w-full border border-red-900/80 bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none focus:border-red-400" /></label>
-                            <label className="block text-[8px] text-slate-500"><span className="block">HP</span><EditableNumberInput value={opponent.startHp} min={1} max={BASE_BOT_HP} fallback={BASE_BOT_HP} emptyValue={BASE_BOT_HP} decimalPlaces={1} ariaLabel="Opponent starting HP" onCommit={(value) => setDraft((current) => ({ ...current, opponentBot: { ...current.opponentBot, startHp: value } }))} className="mt-1 h-8 w-full border border-red-900/80 bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none focus:border-red-400" /></label>
-                        </div>
-                    </div>
-                </div>
-                <button type="button" onClick={onSaveStartingStats} className="arena-toolbar-button arena-toolbar-button--blue mt-2">SAVE STARTING STATS</button>
-            </section>
+            <PuzzleStartingStatsEditor draft={draft} setDraft={setDraft} onSave={onSaveStartingStats} />
 
             <section className="rounded-xl border border-red-900/60 bg-slate-950/55 p-4">
                 <div className="mb-2 flex items-center justify-between"><h2 className="font-mono text-[10px] font-bold tracking-[.16em] text-red-200">OPPONENT BOT</h2></div>
@@ -348,7 +560,7 @@ function PuzzleBuilderControls({ draft, setDraft, saveState, onSaveStartingStats
                 <button type="button" disabled={isSaving} onClick={onSavePuzzle} className="arena-toolbar-button arena-toolbar-button--blue">{isSaving ? (isEditing ? "UPDATING PUZZLE..." : "SAVING PUZZLE...") : (isEditing ? "UPDATE PUZZLE" : "SAVE PUZZLE")}</button>
             </section>
             {isConfigurationOpen && <PuzzleConfigurationModal draft={draft} conditionVariables={conditionVariables} conditionTargets={conditionTargets} conditionTargetAbilityIds={conditionTargetAbilityIds} onPuzzleLogicChange={onPuzzleLogicChange} onClose={onCloseConfiguration} />}
-            {isRulesOpen && <PuzzleRulesModal draft={draft} setDraft={setDraft} onClose={onCloseRules} />}
+            {isRulesOpen && <PuzzleRulesModal draft={draft} setDraft={setDraft} onTeamSizeChange={onPuzzleTeamSizeChange} onClose={onCloseRules} />}
         </div>
     );
 }
@@ -393,26 +605,24 @@ export default function PuzzleBuilderPage() {
     const handleArenaDraftChange = useCallback((setup) => {
         if (!setup) return;
         setDraft((current) => {
-            const playerBot = normalizeStartingBot(
-                { ...current.playerBot, ...(setup.playerBot ?? {}) },
-                current.playerBot,
+            const currentBots = Array.isArray(current.bots)
+                ? current.bots
+                : [current.playerBot, current.opponentBot].filter(Boolean);
+            const setupBots = Array.isArray(setup.bots) ? setup.bots : null;
+            const nextBots = setupBots ?? currentBots.map((bot) => {
+                const key = puzzleBotKey(bot);
+                const update = key === puzzleBotKey(PUZZLE_PLAYER_TEAM, 1)
+                    ? setup.playerBot
+                    : key === puzzleBotKey(PUZZLE_OPPONENT_TEAM, 1) ? setup.opponentBot : null;
+                return update ? { ...bot, ...update } : bot;
+            });
+            return normalizeDraftRoster(
+                { ...current, ...setup },
+                nextBots,
+                setup.playerTeamSize ?? current.playerTeamSize,
+                setup.opponentTeamSize ?? current.opponentTeamSize,
             );
-            const opponentBot = normalizeStartingBot(
-                { ...current.opponentBot, ...(setup.opponentBot ?? {}) },
-                current.opponentBot,
-            );
-            return { ...current, ...setup, playerBot, opponentBot };
         });
-    }, []);
-
-    const handlePuzzleLogicChange = useCallback((puzzleLogic) => {
-        const normalizedLogic = normalizePuzzleLogic(puzzleLogic);
-        setDraft((current) => ({
-            ...current,
-            puzzleLogic: normalizedLogic,
-            winConditions: flattenPuzzleConditions(normalizedLogic, "win"),
-            loseConditions: flattenPuzzleConditions(normalizedLogic, "lose"),
-        }));
     }, []);
 
     const showDraftNotice = useCallback((message) => {
@@ -427,18 +637,73 @@ export default function PuzzleBuilderPage() {
         maxCustomVariables: draft.maxCustomVariables,
     }), [draft.maxActionNodes, draft.maxConditionNodes, draft.maxCustomVariables]);
 
+    const playerTeamBots = useMemo(() => puzzleBotsForTeam(draft.bots, PUZZLE_PLAYER_TEAM), [draft.bots]);
+    const opponentTeamBots = useMemo(() => puzzleBotsForTeam(draft.bots, PUZZLE_OPPONENT_TEAM), [draft.bots]);
+    const conditionRoster = useMemo(() => ({
+        teammateCount: Math.max(0, playerTeamBots.length - 1),
+        opponentCount: opponentTeamBots.length,
+        teammateLoadouts: playerTeamBots.slice(1).map((bot) => bot.loadout),
+        opponentLoadouts: opponentTeamBots.map((bot) => bot.loadout),
+    }), [opponentTeamBots, playerTeamBots]);
+    const additionalPuzzleLoadouts = useMemo(() => {
+        const primaryKeys = new Set([
+            puzzleBotKey(PUZZLE_PLAYER_TEAM, 1),
+            puzzleBotKey(PUZZLE_OPPONENT_TEAM, 1),
+        ]);
+        return draft.bots
+            .filter((bot) => !primaryKeys.has(puzzleBotKey(bot)))
+            .map((bot) => bot.loadout);
+    }, [draft.bots]);
     const conditionVariables = useMemo(
-        () => puzzleConditionVariables(draft.playerBot.loadout, draft.opponentBot.loadout, draft.puzzleLogic),
-        [draft.playerBot.loadout, draft.opponentBot.loadout, draft.puzzleLogic],
+        () => puzzleConditionVariables(
+            draft.playerBot.loadout,
+            draft.opponentBot.loadout,
+            draft.puzzleLogic,
+            additionalPuzzleLoadouts,
+        ),
+        [additionalPuzzleLoadouts, draft.opponentBot, draft.playerBot, draft.puzzleLogic],
     );
     const conditionTargets = useMemo(
-        () => selectableTypesForLoadouts(draft.playerBot.loadout, draft.opponentBot.loadout),
-        [draft.playerBot.loadout, draft.opponentBot.loadout],
+        () => selectableTypesForLoadouts(draft.playerBot.loadout, draft.opponentBot.loadout, conditionRoster),
+        [conditionRoster, draft.opponentBot.loadout, draft.playerBot.loadout],
     );
     const conditionTargetAbilityIds = useMemo(
-        () => selectableAbilityIdsForLoadouts(draft.playerBot.loadout, draft.opponentBot.loadout),
-        [draft.playerBot.loadout, draft.opponentBot.loadout],
+        () => selectableAbilityIdsForLoadouts(draft.playerBot.loadout, draft.opponentBot.loadout, conditionRoster),
+        [conditionRoster, draft.opponentBot.loadout, draft.playerBot.loadout],
     );
+    const handlePuzzleLogicChange = useCallback((puzzleLogic) => {
+        const normalizedLogic = normalizePuzzleLogic(puzzleLogic, {
+            stateVariables: conditionVariables,
+            selectableTypes: conditionTargets,
+            selectableAbilityIds: conditionTargetAbilityIds,
+        });
+        setDraft((current) => ({
+            ...current,
+            puzzleLogic: normalizedLogic,
+            winConditions: flattenPuzzleConditions(normalizedLogic, "win"),
+            loseConditions: flattenPuzzleConditions(normalizedLogic, "lose"),
+        }));
+    }, [conditionTargetAbilityIds, conditionTargets, conditionVariables]);
+    const handlePuzzleTeamSizeChange = useCallback((field, value) => {
+        setDraft((current) => {
+            const playerTeamSize = normalizePuzzleTeamSize(field === "playerTeamSize" ? value : current.playerTeamSize);
+            const opponentTeamSize = normalizePuzzleTeamSize(field === "opponentTeamSize" ? value : current.opponentTeamSize);
+            const rosterDraft = normalizeDraftRoster(
+                current,
+                current.bots,
+                playerTeamSize,
+                opponentTeamSize,
+            );
+            const puzzleLogic = puzzleLogicUsesDefaultElimination(
+                current.puzzleLogic,
+                normalizePuzzleTeamSize(current.playerTeamSize),
+                normalizePuzzleTeamSize(current.opponentTeamSize),
+            )
+                ? createDefaultPuzzleLogic(playerTeamSize, opponentTeamSize)
+                : rosterDraft.puzzleLogic;
+            return normalizePuzzleDraftConditions({ ...rosterDraft, puzzleLogic });
+        });
+    }, []);
 
     const handleSavePuzzle = useCallback(async () => {
         if (!draft.name.trim()) {
@@ -449,6 +714,11 @@ export default function PuzzleBuilderPage() {
         setSaveState(null);
         try {
             const normalizedLogic = normalizePuzzleLogic(draft.puzzleLogic);
+            Object.assign(normalizedLogic, normalizePuzzleLogic(normalizedLogic, {
+                stateVariables: conditionVariables,
+                selectableTypes: conditionTargets,
+                selectableAbilityIds: conditionTargetAbilityIds,
+            }));
             const payload = {
                 name: draft.name.trim(),
                 description: draft.description.trim(),
@@ -459,9 +729,12 @@ export default function PuzzleBuilderPage() {
                 maxActionNodes: draft.maxActionNodes,
                 maxConditionNodes: draft.maxConditionNodes,
                 maxCustomVariables: draft.maxCustomVariables,
+                playerTeamSize: draft.playerTeamSize,
+                opponentTeamSize: draft.opponentTeamSize,
                 logicConfiguration: normalizedLogic,
                 winConditions: flattenPuzzleConditions(normalizedLogic, "win"),
                 loseConditions: flattenPuzzleConditions(normalizedLogic, "lose"),
+                bots: (draft.bots ?? []).map(requestPuzzleBot),
                 // The builder's player code is a temporary testing draft. Keep
                 // the server-side player bot valid without saving that draft.
                 playerBot: requestBot(draft.playerBot, { useDefaultBrain: true }),
@@ -477,7 +750,7 @@ export default function PuzzleBuilderPage() {
         } finally {
             setIsSaving(false);
         }
-    }, [draft, isEditing, navigate, puzzleNumber]);
+    }, [conditionTargetAbilityIds, conditionTargets, conditionVariables, draft, isEditing, navigate, puzzleNumber]);
 
     if (isLoading) {
         return <PuzzleBuilderStatus message="LOADING PUZZLE FOR EDITING..." />;
@@ -502,6 +775,7 @@ export default function PuzzleBuilderPage() {
             isRulesOpen={isRulesOpen}
             onCloseRules={() => setIsRulesOpen(false)}
             onPuzzleLogicChange={handlePuzzleLogicChange}
+            onPuzzleTeamSizeChange={handlePuzzleTeamSizeChange}
             isEditing={isEditing}
             conditionVariables={conditionVariables}
             conditionTargets={conditionTargets}

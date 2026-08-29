@@ -18,6 +18,7 @@ test("ability selection panel keeps draft limits and detail modal wiring", () =>
     assert.match(source, /src="\/assets\/arena-toolbar\/info-circle-icon\.png"/);
     assert.match(source, /role="button"/);
     assert.match(source, /cursor-pointer/);
+    assert.match(source, /\(Me\)/);
     assert.doesNotMatch(source, /className="gray-button-surface absolute right-3 top-3/);
     assert.match(source, /onChange\(toggleDraftAbility\(/);
     assert.doesNotMatch(source, /STAT POINTS|Increase \$\{label\}|Decrease \$\{label\}/);
@@ -28,5 +29,6 @@ test("ability selection panel keeps draft limits and detail modal wiring", () =>
     assert.match(source, /FORFEIT/);
     assert.match(source, /arena-toolbar-button arena-toolbar-button--red arena-toolbar-button--inline/);
     assert.match(source, /arena-toolbar-button arena-toolbar-button--blue arena-toolbar-button--inline min-w-52/);
-    assert.match(source, /disabled=\{!canSurrender \|\| surrenderPending \|\| hasSurrendered\}/);
+    assert.match(source, /disabled=\{!canSurrender \|\| surrenderPending\}/);
+    assert.match(source, /WITHDRAW FORFEIT/);
 });

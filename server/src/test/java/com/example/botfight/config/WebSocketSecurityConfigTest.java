@@ -51,4 +51,55 @@ class WebSocketSecurityConfigTest {
         assertThat(manager.authorize(authenticationSupplier, send).isGranted()).isTrue();
         assertThat(manager.authorize(authenticationSupplier, subscribe).isGranted()).isTrue();
     }
+
+    @Test
+    void authenticatedUsersMaySubscribeToCustomLobbyState() {
+        MessageMatcherDelegatingAuthorizationManager.Builder messages =
+                MessageMatcherDelegatingAuthorizationManager.builder();
+        AuthorizationManager<Message<?>> manager =
+                new WebSocketSecurityConfig().messageAuthorizationManager(messages);
+        Authentication authentication = new TestingAuthenticationToken("pilot", "password", "ROLE_USER");
+        Message<byte[]> subscribe = MessageBuilder.withPayload(new byte[0])
+                .setHeader(SimpMessageHeaderAccessor.MESSAGE_TYPE_HEADER, SimpMessageType.SUBSCRIBE)
+                .setHeader(SimpMessageHeaderAccessor.DESTINATION_HEADER, "/user/queue/custom-lobby")
+                .build();
+
+        assertThat(manager.authorize(() -> authentication, subscribe).isGranted()).isTrue();
+    }
+
+    @Test
+    void authenticatedUsersMaySendCustomLobbyChat() {
+        MessageMatcherDelegatingAuthorizationManager.Builder messages =
+                MessageMatcherDelegatingAuthorizationManager.builder();
+        AuthorizationManager<Message<?>> manager =
+                new WebSocketSecurityConfig().messageAuthorizationManager(messages);
+        Authentication authentication = new TestingAuthenticationToken("pilot", "password", "ROLE_USER");
+        Message<byte[]> send = MessageBuilder.withPayload(new byte[0])
+                .setHeader(SimpMessageHeaderAccessor.MESSAGE_TYPE_HEADER, SimpMessageType.MESSAGE)
+                .setHeader(SimpMessageHeaderAccessor.DESTINATION_HEADER, "/app/custom-lobby.chat")
+                .build();
+
+        assertThat(manager.authorize(() -> authentication, send).isGranted()).isTrue();
+    }
+
+    @Test
+    void authenticatedUsersMayExchangeReadOnlyCodeViewMessages() {
+        MessageMatcherDelegatingAuthorizationManager.Builder messages =
+                MessageMatcherDelegatingAuthorizationManager.builder();
+        AuthorizationManager<Message<?>> manager =
+                new WebSocketSecurityConfig().messageAuthorizationManager(messages);
+        Authentication authentication = new TestingAuthenticationToken("pilot", "password", "ROLE_USER");
+        Supplier<Authentication> authenticationSupplier = () -> authentication;
+
+        for (String destination : new String[] {
+                "/app/matchmaking.codeView.request",
+                "/app/matchmaking.codeView.response"}) {
+            Message<byte[]> message = MessageBuilder.withPayload(new byte[0])
+                    .setHeader(SimpMessageHeaderAccessor.MESSAGE_TYPE_HEADER, SimpMessageType.MESSAGE)
+                    .setHeader(SimpMessageHeaderAccessor.DESTINATION_HEADER, destination)
+                    .build();
+
+            assertThat(manager.authorize(authenticationSupplier, message).isGranted()).isTrue();
+        }
+    }
 }

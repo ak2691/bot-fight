@@ -6,6 +6,8 @@ import tools.jackson.databind.JsonNode;
 public class PuzzleBotResponseDTO {
     private UUID id;
     private String role;
+    private int teamNumber;
+    private int slot;
     private String loadout;
     private double startX;
     private double startY;
@@ -18,6 +20,12 @@ public class PuzzleBotResponseDTO {
 
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }
+
+    public int getTeamNumber() { return teamNumber; }
+    public void setTeamNumber(int teamNumber) { this.teamNumber = teamNumber; }
+
+    public int getSlot() { return slot; }
+    public void setSlot(int slot) { this.slot = slot; }
 
     public String getLoadout() { return loadout; }
     public void setLoadout(String loadout) { this.loadout = loadout; }

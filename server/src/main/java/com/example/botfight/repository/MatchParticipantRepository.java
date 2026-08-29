@@ -1,6 +1,7 @@
 package com.example.botfight.repository;
 
 import com.example.botfight.domain.MatchParticipant;
+import com.example.botfight.domain.MatchMode;
 import com.example.botfight.domain.MatchResult;
 import java.time.Instant;
 import java.util.List;
@@ -24,13 +25,46 @@ public interface MatchParticipantRepository
     long countByUserIdAndResultInAndMatchResultVisibleAtLessThanEqual(
             UUID userId, List<MatchResult> results, Instant visibleAt);
 
+    @Query("""
+            select count(participant)
+            from MatchParticipant participant
+            join participant.match gameMatch
+            where participant.user.id = :userId
+              and gameMatch.mode = :mode
+              and participant.result = :result
+              and gameMatch.resultVisibleAt is not null
+              and gameMatch.resultVisibleAt <= :visibleAt
+            """)
+    long countByUserIdAndModeAndResultAndMatchResultVisibleAtLessThanEqual(
+            @Param("userId") UUID userId,
+            @Param("mode") MatchMode mode,
+            @Param("result") MatchResult result,
+            @Param("visibleAt") Instant visibleAt);
+
+    @Query("""
+            select count(participant)
+            from MatchParticipant participant
+            join participant.match gameMatch
+            where participant.user.id = :userId
+              and gameMatch.mode = :mode
+              and participant.result in (:results)
+              and gameMatch.resultVisibleAt is not null
+              and gameMatch.resultVisibleAt <= :visibleAt
+            """)
+    long countByUserIdAndModeAndResultInAndMatchResultVisibleAtLessThanEqual(
+            @Param("userId") UUID userId,
+            @Param("mode") MatchMode mode,
+            @Param("results") List<MatchResult> results,
+            @Param("visibleAt") Instant visibleAt);
+
     @Query(value = """
             select distinct
                 gameMatch.id as matchId,
                 opponentUser.username as opponentUsername,
                 mine.result as result,
                 gameMatch.completedAt as completedAt,
-                gameMatch.completionReason as completionReason
+                gameMatch.completionReason as completionReason,
+                gameMatch.mode as mode
             from MatchParticipant mine
             join mine.match gameMatch
             join MatchParticipant opponent
@@ -80,6 +114,23 @@ public interface MatchParticipantRepository
 
     Optional<MatchParticipant> findByMatchIdAndUserId(UUID matchId, UUID userId);
 
+    @Query("""
+            select participant.user.id as userId,
+                   participant.ratingBefore as ratingBefore,
+                   participant.ratingAfter as ratingAfter,
+                   gameMatch.resultVisibleAt as resultVisibleAt
+            from MatchParticipant participant
+            join participant.match gameMatch
+            where participant.user.id in :userIds
+              and gameMatch.mode = :mode
+              and participant.ratingBefore is not null
+              and participant.ratingAfter is not null
+            order by gameMatch.completedAt desc, gameMatch.id desc
+            """)
+    List<RatingSnapshotProjection> findRatingSnapshotsByUserIdsAndMode(
+            @Param("userIds") List<UUID> userIds,
+            @Param("mode") MatchMode mode);
+
     interface RecentMatchProjection {
         UUID getMatchId();
 
@@ -90,5 +141,17 @@ public interface MatchParticipantRepository
         Instant getCompletedAt();
 
         String getCompletionReason();
+
+        String getMode();
+    }
+
+    interface RatingSnapshotProjection {
+        UUID getUserId();
+
+        Integer getRatingBefore();
+
+        Integer getRatingAfter();
+
+        Instant getResultVisibleAt();
     }
 }

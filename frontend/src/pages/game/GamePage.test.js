@@ -150,6 +150,17 @@ test("replay does not expose a forfeit control", () => {
     assert.doesNotMatch(replaySource, /name="flag"|FORFEIT|SURRENDERING|RESIGNED/);
 });
 
+test("custom match replay offers a lobby return after the result is revealed", () => {
+    const pageSource = readFileSync(GAME_PAGE_PATH, "utf8");
+    const replaySource = readFileSync(SIMULATION_REPLAY_PATH, "utf8");
+
+    assert.match(pageSource, /isCustomMatch=\{matchEvent\?\.mode === "CUSTOM"\}/);
+    assert.match(pageSource, /isFinalMatchResult=\{matchEvent\?\.type === "MATCH_RESULT_READY"\}/);
+    assert.match(pageSource, /onReturnToLobby=\{returnToLobby\}/);
+    assert.match(replaySource, /isCustomMatch && isFinalMatchResult && shouldRevealResult && onReturnToLobby/);
+    assert.match(replaySource, /RETURN TO LOBBY/);
+});
+
 test("page fallback acceptance flow also strips identities and supports cancellation", () => {
     const pageSource = readFileSync(GAME_PAGE_PATH, "utf8");
     const source = readFileSync(MATCH_LIFECYCLE_HOOK_PATH, "utf8");

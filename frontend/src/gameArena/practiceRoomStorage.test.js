@@ -50,3 +50,28 @@ test("practice room storage merges player and opponent updates", () => {
     assert.equal(saved.opponent.loadout, "sandbox:4");
     assert.deepEqual(saved.player.code, playerCode);
 });
+
+test("practice room storage bounds the shared practice roster config and keeps code out of it", () => {
+    const storage = createStorage();
+    savePracticeRoomDraft({
+        config: {
+            playerTeamSize: 9,
+            opponentTeamSize: 0,
+            initialElapsedMs: 999_999,
+            bots: [
+                { role: "PLAYER", teamNumber: 1, slot: 1, startX: -5, startY: 500, startHp: 999, brain: { roots: [] } },
+                { role: "PLAYER", teamNumber: 1, slot: 2, startX: 500, startY: 500, startHp: 80 },
+                { role: "OPPONENT", teamNumber: 2, slot: 1, startX: 500, startY: 999, startHp: 75 },
+            ],
+        },
+    }, storage);
+
+    const saved = readPracticeRoomDraft(storage);
+    assert.equal(saved.config.playerTeamSize, 2);
+    assert.equal(saved.config.opponentTeamSize, 1);
+    assert.equal(saved.config.initialElapsedMs, 60_000);
+    assert.equal(saved.config.bots.length, 3);
+    assert.equal(saved.config.bots[0].startX, 30);
+    assert.equal(saved.config.bots[0].startHp, 150);
+    assert.equal(saved.config.bots[0].brain, undefined);
+});

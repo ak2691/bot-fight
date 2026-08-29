@@ -22,6 +22,11 @@ public class RateLimitConfig {
         return new SlidingWindowRateLimiter<>(clock, 3, Duration.ofSeconds(5));
     }
 
+    @Bean(name = "matchCodeViewRateLimiter")
+    public SlidingWindowRateLimiter<UUID> matchCodeViewRateLimiter(Clock clock) {
+        return new SlidingWindowRateLimiter<>(clock, 1, Duration.ofSeconds(1));
+    }
+
     @Bean(name = "profileUpdateRateLimiter")
     public SlidingWindowRateLimiter<UUID> profileUpdateRateLimiter(Clock clock) {
         return new SlidingWindowRateLimiter<>(clock, 10, Duration.ofMinutes(1));
@@ -53,9 +58,29 @@ public class RateLimitConfig {
         return new TokenBucketRateLimiter<>(clock, 10, Duration.ofSeconds(1));
     }
 
+    @Bean(name = "customLobbyChatRateLimiter")
+    public TokenBucketRateLimiter<String> customLobbyChatRateLimiter(Clock clock) {
+        return new TokenBucketRateLimiter<>(clock, 10, Duration.ofSeconds(1));
+    }
+
     @Bean(name = "duelInviteRateLimiter")
     public TokenBucketRateLimiter<UUID> duelInviteRateLimiter(Clock clock) {
-        return new TokenBucketRateLimiter<>(clock, 1, Duration.ofSeconds(10));
+        return new TokenBucketRateLimiter<>(clock, 1, Duration.ofSeconds(5));
+    }
+
+    @Bean(name = "partyInviteRateLimiter")
+    public TokenBucketRateLimiter<UUID> partyInviteRateLimiter(Clock clock) {
+        return new TokenBucketRateLimiter<>(clock, 1, Duration.ofSeconds(5));
+    }
+
+    @Bean(name = "customLobbyInviteRateLimiter")
+    public TokenBucketRateLimiter<UUID> customLobbyInviteRateLimiter(Clock clock) {
+        return new TokenBucketRateLimiter<>(clock, 1, Duration.ofSeconds(5));
+    }
+
+    @Bean(name = "customLobbyTeamRateLimiter")
+    public TokenBucketRateLimiter<UUID> customLobbyTeamRateLimiter(Clock clock) {
+        return new TokenBucketRateLimiter<>(clock, 1, Duration.ofMillis(500));
     }
 
     @Bean(name = "authenticatedGetRateLimiter")

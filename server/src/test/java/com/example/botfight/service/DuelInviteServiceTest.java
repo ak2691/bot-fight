@@ -13,6 +13,7 @@ import com.example.botfight.DTO.MatchmakingEventDTO;
 import com.example.botfight.domain.AppUser;
 import com.example.botfight.domain.DuelInvite;
 import com.example.botfight.domain.DuelInviteStatus;
+import com.example.botfight.domain.MatchMode;
 import com.example.botfight.repository.DuelInviteRepository;
 import com.example.botfight.repository.UserRepository;
 import com.example.botfight.service.auth.AuthException;
@@ -102,7 +103,7 @@ class DuelInviteServiceTest {
         when(inviteRepository.findForInviteeForUpdate(inviteId, invitee.getId()))
                 .thenReturn(Optional.of(invite));
         when(socketRegistry.currentSessionIdForPrincipal(inviter.getEmail())).thenReturn("alice-session");
-        when(matchService.startMatch(any(), any())).thenReturn(
+        when(matchService.startMatch(any(), any(), eq(MatchMode.CUSTOM))).thenReturn(
                 List.of(new OutboundMatchmakingEvent(inviter.getEmail(), event)));
         when(inviteRepository.save(any(DuelInvite.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));

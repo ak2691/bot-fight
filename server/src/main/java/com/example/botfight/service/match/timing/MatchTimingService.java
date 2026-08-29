@@ -23,7 +23,6 @@ import java.util.function.Supplier;
 /** Owns loadout, countdown, building-deadline, and round-boundary timing. */
 public final class MatchTimingService {
     private static final int LOADOUT_SELECTION_SECONDS = 60;
-    private static final int BUILDING_SECONDS = 300;
     private static final int SUBMISSION_GRACE_SECONDS = 2;
     private static final int BUILDING_ROOM_PREPARATION_SECONDS = 2;
     private static final String BUILDING_PHASE = "BUILDING";
@@ -307,7 +306,8 @@ public final class MatchTimingService {
                 && countdownEndsAt.isAfter(session.loadoutSelectionEndsAt())) {
             countdownEndsAt = session.loadoutSelectionEndsAt();
         }
-        Instant buildingEndsAt = countdownEndsAt.plusSeconds(BUILDING_SECONDS + SUBMISSION_GRACE_SECONDS);
+        Instant buildingEndsAt = countdownEndsAt.plusSeconds(
+                session.roundDurationSeconds() + SUBMISSION_GRACE_SECONDS);
         MatchSession countdownSession = session.withCountdown(countdownEndsAt, buildingEndsAt);
         state.putSession(countdownSession);
         for (MatchPlayer player : countdownSession.players()) {

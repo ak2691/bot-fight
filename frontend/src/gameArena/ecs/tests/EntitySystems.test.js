@@ -11,7 +11,7 @@ import { tickBotState } from "../bots/BotStateSystem.js";
 import { applyBotAction } from "../bots/ActionExecutionSystem.js";
 import { tickProjectileWorld } from "../abilities/ProjectileSystem.js";
 import { abilityActiveOpacity, basicHealParticleSpec, BASIC_HEAL_PARTICLE_COUNT, BASIC_HEAL_PARTICLE_LIFETIME_MS, combatVisualRemainingMs, healthBarPercent, abilityVisualOpacity, REPULSOR_BURST_FRAME_COUNT, REPULSOR_BURST_FRAME_MS, REPULSOR_BURST_MAX_DIAMETER, REPULSOR_BURST_VISUAL_MS, repulsorBurstDiameter, repulsorBurstFrameIndex, repulsorBurstProgress, sweepAngle } from "../../gameconfig/visualState.js";
-import { applyDamageFromShapes, applyDamageToShape, resolveTriggeredAbilityCombat as resolveAbilityCombat, settlePendingHealing } from "../../gameconfig/BotCombatSystem.js";
+import { applyDamageFromShapes, applyDamageToShape, resolveTriggeredAbilityCombat as resolveAbilityCombat, resolveTriggeredAbilityCombatForRoster, settlePendingHealing } from "../../gameconfig/BotCombatSystem.js";
 import { damageAtDistance } from "../abilities/AbilityEffectSystem.js";
 import { abilityHitsTarget } from "../abilities/AbilityHitDetectionSystem.js";
 import { buildDeterministicLogicAction } from "../../botlogic/planner/ArenaActionPlanner.js";
@@ -548,6 +548,30 @@ test("successful hostile HP damage starts, refreshes, and never stacks hit stagg
     assert.equal(statusRemainingMs(refreshed, "hit-stagger"), 300);
     const repeated = applyDamageToShape({ ...refreshed, hp: 68 }, 1, attacker);
     assert.equal(statusRemainingMs(repeated, "hit-stagger"), 300);
+});
+
+test("roster combat damages opposing teams without damaging a nearby teammate", () => {
+    const attacker = {
+        id: "attacker", slot: 1, teamNumber: 1, x: 100, y: 100, size: 60,
+        rotation: 90, hp: 100, maxHp: 100, attackDamageMultiplier: 1, triggeredAbility: 7,
+    };
+    const teammate = {
+        id: "teammate", slot: 2, teamNumber: 1, x: 150, y: 100, size: 60,
+        rotation: 270, hp: 100, maxHp: 100,
+    };
+    const opponent = {
+        id: "opponent", slot: 3, teamNumber: 2, x: 150, y: 100, size: 60,
+        rotation: 270, hp: 100, maxHp: 100,
+    };
+
+    const [, nextTeammate, nextOpponent] = resolveTriggeredAbilityCombatForRoster([
+        attacker,
+        teammate,
+        opponent,
+    ]);
+
+    assert.equal(nextTeammate.hp, 100);
+    assert.equal(nextOpponent.hp, 70);
 });
 
 test("damage is never absorbed by stale retired Block state", () => {

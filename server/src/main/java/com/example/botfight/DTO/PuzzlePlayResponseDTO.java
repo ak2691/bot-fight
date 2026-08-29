@@ -13,6 +13,8 @@ public class PuzzlePlayResponseDTO {
     private int maxActionNodes;
     private int maxConditionNodes;
     private int maxCustomVariables;
+    private int playerTeamSize;
+    private int opponentTeamSize;
     private JsonNode logicConfiguration;
     private JsonNode winConditions;
     private JsonNode loseConditions;
@@ -44,6 +46,12 @@ public class PuzzlePlayResponseDTO {
 
     public int getMaxCustomVariables() { return maxCustomVariables; }
     public void setMaxCustomVariables(int maxCustomVariables) { this.maxCustomVariables = maxCustomVariables; }
+
+    public int getPlayerTeamSize() { return playerTeamSize; }
+    public void setPlayerTeamSize(int playerTeamSize) { this.playerTeamSize = playerTeamSize; }
+
+    public int getOpponentTeamSize() { return opponentTeamSize; }
+    public void setOpponentTeamSize(int opponentTeamSize) { this.opponentTeamSize = opponentTeamSize; }
 
     public JsonNode getLogicConfiguration() { return logicConfiguration; }
     public void setLogicConfiguration(JsonNode logicConfiguration) { this.logicConfiguration = logicConfiguration; }

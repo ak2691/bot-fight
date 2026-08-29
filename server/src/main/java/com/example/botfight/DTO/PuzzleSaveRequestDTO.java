@@ -1,5 +1,6 @@
 package com.example.botfight.DTO;
 
+import java.util.List;
 import tools.jackson.databind.JsonNode;
 
 public class PuzzleSaveRequestDTO {
@@ -12,11 +13,14 @@ public class PuzzleSaveRequestDTO {
     private Integer maxActionNodes = 100;
     private Integer maxConditionNodes = 300;
     private Integer maxCustomVariables = 100;
+    private Integer playerTeamSize = 1;
+    private Integer opponentTeamSize = 1;
     private JsonNode logicConfiguration;
     private JsonNode winConditions;
     private JsonNode loseConditions;
     private PuzzleBotRequestDTO playerBot;
     private PuzzleBotRequestDTO opponentBot;
+    private List<PuzzleBotRequestDTO> bots;
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
@@ -45,6 +49,12 @@ public class PuzzleSaveRequestDTO {
     public Integer getMaxCustomVariables() { return maxCustomVariables; }
     public void setMaxCustomVariables(Integer maxCustomVariables) { this.maxCustomVariables = maxCustomVariables; }
 
+    public Integer getPlayerTeamSize() { return playerTeamSize; }
+    public void setPlayerTeamSize(Integer playerTeamSize) { this.playerTeamSize = playerTeamSize; }
+
+    public Integer getOpponentTeamSize() { return opponentTeamSize; }
+    public void setOpponentTeamSize(Integer opponentTeamSize) { this.opponentTeamSize = opponentTeamSize; }
+
     public JsonNode getLogicConfiguration() { return logicConfiguration; }
     public void setLogicConfiguration(JsonNode logicConfiguration) { this.logicConfiguration = logicConfiguration; }
 
@@ -59,4 +69,7 @@ public class PuzzleSaveRequestDTO {
 
     public PuzzleBotRequestDTO getOpponentBot() { return opponentBot; }
     public void setOpponentBot(PuzzleBotRequestDTO opponentBot) { this.opponentBot = opponentBot; }
+
+    public List<PuzzleBotRequestDTO> getBots() { return bots; }
+    public void setBots(List<PuzzleBotRequestDTO> bots) { this.bots = bots; }
 }

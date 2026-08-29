@@ -62,6 +62,8 @@ import {
     SELECTABLE_IDENTITIES,
     SELECTABLE_ORDERS,
     SELECTABLE_TYPES,
+    TARGET_MODES,
+    canonicalBotSelectableId,
     VARIABLE_SELECTABLE_TYPES,
     selectableIdentitiesForVariable,
     selectableMatchesVariable,
@@ -102,7 +104,9 @@ export {
     SELECTABLE_IDENTITIES,
     abilityDefinitionsForVariable,
     SELECTABLE_TYPES,
+    TARGET_MODES,
     SELECTABLE_ORDERS,
+    canonicalBotSelectableId,
 } from "./contracts/BotLogicContracts.js";
 const CONDITION_BY_ID = new Map(CONDITION_DEFINITIONS.map((condition) => [condition.id, condition]));
 const OPPONENT_SELECTABLE_ID = BOT_CODE_SELECTABLES.OPPONENT;
@@ -467,6 +471,9 @@ function normalizeExpressionCondition(condition, customVariables = [], selectabl
     const normalizedSelectablePair = leftDefinition.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR
         ? normalizeSelectablePair(condition, leftDefinition, selectableTypes)
         : null;
+    const normalizedTarget = normalizedSelectablePair
+        ? normalizePairTarget(condition, leftDefinition)
+        : null;
     return {
         type: "expression",
         left: leftDefinition.id,
@@ -485,6 +492,7 @@ function normalizeExpressionCondition(condition, customVariables = [], selectabl
                     leftDefinition.selectableOrderable !== false,
                 ),
             } : {}),
+        ...(normalizedTarget ?? {}),
         ...(right?.type === "variable" && STATE_VARIABLE_BY_ID.get(right.value)?.supportsSelectable ? {
             rightSelectable: normalizeSelectable(
                 condition?.rightSelectable ?? condition?.selectable,
@@ -627,10 +635,10 @@ export function defaultSelectablePairForVariable(variable, selectableTypes = SEL
 }
 
 function formatInspectionSelectableLabel(value, variable) {
-    const [baseValue, encodedOrder, encodedOrdinal] = String(value).split(":");
+    const [baseValue, encodedOrder, encodedOrdinal] = canonicalBotSelectableId(value).split(":");
     const definition = SELECTABLE_BY_ID.get(baseValue);
     const label = definition?.label ?? baseValue;
-    if (variable?.selectableOrderable === false || baseValue === BOT_CODE_SELECTABLES.MY || baseValue === BOT_CODE_SELECTABLES.OPPONENT) return label;
+    if (variable?.selectableOrderable === false || definition?.kind === "bot") return label;
     const order = SELECTABLE_ORDERS.includes(encodedOrder) ? encodedOrder : "closest";
     const ordinal = Math.max(1, Math.min(100, Number(encodedOrdinal) || 1));
     return `${formatOrdinal(ordinal)} ${order[0].toUpperCase()}${order.slice(1)} ${label}`;
@@ -750,18 +758,20 @@ function actionExecutableNow(block, state) {
 }
 
 function normalizeSelectable(selectableId, fallback, requiredSelectableIdentities = [], selectableCapability = null, allowOrdering = true) {
-    const [base, order, ordinal] = String(selectableId ?? "").split(":");
-    const value = allowOrdering ? selectableId : base;
+    const canonicalSelectable = canonicalBotSelectableId(selectableId);
+    const canonicalFallback = canonicalBotSelectableId(fallback);
+    const [base, order, ordinal] = canonicalSelectable.split(":");
+    const value = allowOrdering ? canonicalSelectable : base;
     const ordered = allowOrdering && SELECTABLE_BY_ID.has(base)
         && base !== BOT_CODE_SELECTABLES.MY
         && base !== BOT_CODE_SELECTABLES.OPPONENT
         && SELECTABLE_ORDERS.includes(order)
         && Number.isInteger(Number(ordinal)) && Number(ordinal) >= 1 && Number(ordinal) <= 100;
-    if (!SELECTABLE_BY_ID.has(value) && !ordered) return fallback;
-    if (selectableCapability && !selectableSupportsCapability(value, selectableCapability)) return fallback;
+    if (!SELECTABLE_BY_ID.has(value) && !ordered) return canonicalFallback;
+    if (selectableCapability && !selectableSupportsCapability(value, selectableCapability)) return canonicalFallback;
     const selectableDefinition = SELECTABLE_BY_ID.get(base);
     if (requiredSelectableIdentities.length > 0
-            && !requiredSelectableIdentities.every((identity) => selectableDefinition?.selectableIdentities?.includes(identity))) return fallback;
+            && !requiredSelectableIdentities.every((identity) => selectableDefinition?.selectableIdentities?.includes(identity))) return canonicalFallback;
     return value;
 }
 
@@ -784,6 +794,26 @@ function normalizeSelectablePair(condition, definition, selectableTypes = SELECT
     return [first, second];
 }
 
+function normalizePairTarget(condition, definition) {
+    const modes = definition?.targetModes;
+    if (!Array.isArray(modes) || modes.length === 0) return null;
+    const inferredMode = condition?.targetMode
+        ?? (condition?.targetX != null || condition?.targetY != null
+            ? TARGET_MODES.COORDINATES
+            : condition?.targetAngle != null ? TARGET_MODES.ANGLE : TARGET_MODES.TARGET);
+    const targetMode = modes.includes(inferredMode)
+        ? inferredMode
+        : modes.includes(TARGET_MODES.TARGET) ? TARGET_MODES.TARGET : modes[0];
+    return {
+        targetMode,
+        targetX: boundedNumber(condition?.targetX, 0, ARENA_WIDTH_UNITS, ARENA_WIDTH_UNITS / 2),
+        targetY: boundedNumber(condition?.targetY, 0, ARENA_HEIGHT_UNITS, ARENA_HEIGHT_UNITS / 2),
+        ...(modes.includes(TARGET_MODES.ANGLE)
+            ? { targetAngle: boundedNumber(condition?.targetAngle, -360, 360, 0) }
+            : {}),
+    };
+}
+
 function normalizedSelectablePair(condition, definition) {
     const [defaultFirst, defaultSecond] = contractDefaultSelectablePairForVariable(definition);
     return [
@@ -793,7 +823,7 @@ function normalizedSelectablePair(condition, definition) {
 }
 
 function selectableSupportsCapability(selectableId, capability) {
-    const base = String(selectableId ?? "").split(":")[0];
+    const base = canonicalBotSelectableId(selectableId).split(":")[0];
     const definition = SELECTABLE_BY_ID.get(base);
     if (capability === SELECTABLE_CAPABILITIES.HEALTH) return Boolean(definition?.healthBearing);
     return true;
@@ -809,7 +839,13 @@ function angleConditionGroupKey(condition) {
     const definition = STATE_VARIABLE_BY_ID.get(condition?.left);
     if (definition?.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR) {
         const [first, second] = normalizedSelectablePair(condition, definition);
-        return `${condition.left}|${first}|${second}`;
+        const target = normalizePairTarget(condition, definition);
+        const targetKey = target?.targetMode === TARGET_MODES.COORDINATES
+            ? `${TARGET_MODES.COORDINATES}|${target.targetX}|${target.targetY}`
+            : target?.targetMode === TARGET_MODES.ANGLE
+                ? `${TARGET_MODES.ANGLE}|${target.targetAngle}`
+                : `${TARGET_MODES.TARGET}|${second}`;
+        return `${condition.left}|${first}|${targetKey}`;
     }
     return `${condition.left}|${condition.leftSelectable ?? condition.selectable ?? BOT_CODE_SELECTABLES.OPPONENT}`;
 }

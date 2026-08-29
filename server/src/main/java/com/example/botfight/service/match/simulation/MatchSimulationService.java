@@ -29,10 +29,8 @@ public class MatchSimulationService {
     private static final int DEFAULT_BOT_HP = 150;
     // Rated rounds run until HP damage ends them or the arena's hard cap is reached.
     public static final int SIMULATION_DURATION_MS = ClosingZoneConfig.duelV1().simulationDurationMs();
-    private static final double SLOT_ONE_X = ARENA_WIDTH_UNITS / 2.0;
-    private static final double SLOT_ONE_Y = ARENA_HEIGHT_UNITS * 0.15;
-    private static final double SLOT_TWO_X = ARENA_WIDTH_UNITS / 2.0;
-    private static final double SLOT_TWO_Y = ARENA_HEIGHT_UNITS * 0.85;
+    private static final double TEAM_ONE_Y = ARENA_HEIGHT_UNITS * 0.15;
+    private static final double TEAM_TWO_Y = ARENA_HEIGHT_UNITS * 0.85;
     private final JsonMapper jsonMapper;
     private final DuelSimulationService duelSimulationService;
 
@@ -90,7 +88,7 @@ public class MatchSimulationService {
             MatchSession session,
             Map<UUID, BotSubmission> submissionsByUserId) {
         List<DuelBotRequest> bots = session.players().stream()
-                .map(player -> toBotRequest(player, submissionsByUserId.get(player.userId())))
+                .map(player -> toBotRequest(session, player, submissionsByUserId.get(player.userId())))
                 .toList();
         return new DuelSimulationRequest(
                 session.matchId(),
@@ -100,19 +98,22 @@ public class MatchSimulationService {
                 bots);
     }
 
-    private DuelBotRequest toBotRequest(MatchPlayer player, BotSubmission submission) {
+    private DuelBotRequest toBotRequest(MatchSession session, MatchPlayer player, BotSubmission submission) {
+        SpawnPosition position = spawnPosition(session, player);
         return new DuelBotRequest(
                 player.userId(),
                 player.username(),
                 player.slot(),
-                player.slot() == 1 ? SLOT_ONE_X : SLOT_TWO_X,
-                player.slot() == 1 ? SLOT_ONE_Y : SLOT_TWO_Y,
-                player.slot() == 1 ? 180.0 : 0.0,
+                position.x(),
+                position.y(),
+                position.rotation(),
                 BOT_SIZE,
                 hasText(submission != null ? submission.getSelectedLoadout() : null)
                         ? submission.getSelectedLoadout()
                         : hasText(player.selectedLoadout()) ? player.selectedLoadout() : "melee",
-                readBrain(player, submission));
+                readBrain(player, submission),
+                null,
+                player.teamNumber());
     }
 
     private boolean hasText(String value) {
@@ -150,13 +151,15 @@ public class MatchSimulationService {
 
     private MatchPlaybackDTO failedPlayback(MatchSession session, String message) {
         List<MatchPlaybackDTO.BotStateDTO> bots = session.players().stream()
-                .map(player -> new MatchPlaybackDTO.BotStateDTO(
+                .map(player -> {
+                    SpawnPosition position = spawnPosition(session, player);
+                    return new MatchPlaybackDTO.BotStateDTO(
                         player.userId(),
                         player.username(),
                         player.slot(),
-                        player.slot() == 1 ? SLOT_ONE_X : SLOT_TWO_X,
-                        player.slot() == 1 ? SLOT_ONE_Y : SLOT_TWO_Y,
-                        player.slot() == 1 ? 90 : 270,
+                        position.x(),
+                        position.y(),
+                        position.rotation(),
                         DEFAULT_BOT_HP,
                         DEFAULT_BOT_HP,
                         hasText(player.selectedLoadout()) ? player.selectedLoadout() : "melee",
@@ -164,9 +167,11 @@ public class MatchSimulationService {
                         List.of(),
                         Map.of(), Map.of(), Map.of(), Map.of(),
                         null, null, 0, 0,
-                        player.slot() == 1 ? SLOT_ONE_X : SLOT_TWO_X,
-                        player.slot() == 1 ? SLOT_ONE_Y : SLOT_TWO_Y,
-                        0, 0))
+                        position.x(),
+                        position.y(),
+                        0, 0,
+                        player.teamNumber());
+                })
                 .toList();
         return new MatchPlaybackDTO(
                 session.matchId(),
@@ -185,13 +190,18 @@ public class MatchSimulationService {
 
     private MatchReplayDTO failedReplay(MatchSession session, String message) {
         List<MatchReplayDTO.ReplayBotStaticDTO> bots = session.players().stream()
-                .map(player -> new MatchReplayDTO.ReplayBotStaticDTO(
+                .map(player -> {
+                    SpawnPosition position = spawnPosition(session, player);
+                    return new MatchReplayDTO.ReplayBotStaticDTO(
                         player.slot(),
-                        player.slot() == 1 ? SLOT_ONE_X : SLOT_TWO_X,
-                        player.slot() == 1 ? SLOT_ONE_Y : SLOT_TWO_Y,
-                        player.slot() == 1 ? 90.0 : 270.0,
+                        position.x(),
+                        position.y(),
+                        position.rotation(),
                         DEFAULT_BOT_HP,
-                        DEFAULT_BOT_HP))
+                        DEFAULT_BOT_HP,
+                        null, null, null, null, null,
+                        player.teamNumber());
+                })
                 .toList();
         return new MatchReplayDTO(
                 new MatchReplayDTO.ReplayInitialStateDTO(bots),
@@ -203,5 +213,22 @@ public class MatchSimulationService {
                 null,
                 null);
     }
+
+    private SpawnPosition spawnPosition(MatchSession session, MatchPlayer player) {
+        // Slots are assigned in deterministic team order. Spread members of a
+        // team across its spawn row so 2v2 and future bounded XvX matches do
+        // not overlap at the center while preserving the old 1v1 center spawn.
+        List<MatchPlayer> teamPlayers = session.players().stream()
+                .filter(candidate -> candidate.teamNumber() == player.teamNumber())
+                .sorted(java.util.Comparator.comparingInt(MatchPlayer::slot))
+                .toList();
+        int teamSize = Math.max(1, teamPlayers.size());
+        int teamIndex = Math.max(0, teamPlayers.indexOf(player));
+        double x = ARENA_WIDTH_UNITS * (teamIndex + 1.0) / (teamSize + 1.0);
+        boolean teamOne = player.teamNumber() == 1;
+        return new SpawnPosition(x, teamOne ? TEAM_ONE_Y : TEAM_TWO_Y, teamOne ? 180.0 : 0.0);
+    }
+
+    private record SpawnPosition(double x, double y, double rotation) {}
 
 }

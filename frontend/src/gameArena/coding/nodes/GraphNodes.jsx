@@ -22,6 +22,7 @@ import {
     CUSTOM_VARIABLE_OPERATIONS,
     VARIABLE_TAGS,
     VARIABLE_SELECTABLE_TYPES,
+    TARGET_MODES,
     SELECTABLE_DEPENDENCIES,
     SELECTABLE_IDENTITIES,
     selectableMatchesVariable,
@@ -31,9 +32,10 @@ import {
     MAX_VARIABLE_ACTION_TERMS,
     countActionSlots,
     countConditionSlots,
+    canonicalBotSelectableId,
 } from "../../botlogic/code/BotCode.js";
 import { absoluteMovementAngle, relativeMovementAngle } from "../../botlogic/planner/arenaAngles.js";
-import { MOVEMENT_DIRECTION_MAX, MOVEMENT_DIRECTION_MIN, SELECTABLE_ORDERS } from "../../botlogic/code/contracts/BotLogicContracts.js";
+import { MOVEMENT_DIRECTION_MAX, MOVEMENT_DIRECTION_MIN, SELECTABLE_ORDERS, SELECTABLE_OWNERS } from "../../botlogic/code/contracts/BotLogicContracts.js";
 import { normalizePriority, priorityForNode } from "../../botlogic/code/configuration/identifiers.js";
 import { actionTypesForLoadout } from "../../gameconfig/CombatLoadouts.js";
 import { abilityIdFromBoundary } from "../../gameconfig/AbilityCompatibility.js";
@@ -225,11 +227,11 @@ function normalizeSiblingTypes(branches) {
 
 function graphBranchActions(branch) {
     if (Array.isArray(branch?.actions)) return branch.actions.filter((entry) => entry.action && entry.action !== "none");
-    return branch?.action && branch.action !== "none" ? [{ action: branch.action, selectable: branch.selectable ?? "opponent" }] : [];
+    return branch?.action && branch.action !== "none" ? [{ action: branch.action, selectable: branch.selectable ?? BOT_CODE_SELECTABLES.OPPONENT }] : [];
 }
 
 function setGraphActions(branch, actions) {
-    const first = actions[0] ?? { action: "none", selectable: "opponent" };
+    const first = actions[0] ?? { action: "none", selectable: BOT_CODE_SELECTABLES.OPPONENT };
     return { ...branch, actions, ...first };
 }
 
@@ -242,7 +244,7 @@ function addGraphAction(branch, selectedLoadout, requestedAction = null, customV
     if (!next || (next.id !== "variable" && usedHeads.has(actionExecutionHead(next)))) return branch;
     return setGraphActions(branch, [...actions, {
         action: next.id,
-        selectable: "opponent",
+        selectable: BOT_CODE_SELECTABLES.OPPONENT,
         ...(next.variableAction ? {
             variableId: customVariables[0]?.id ?? "",
             operation: "set",
@@ -563,9 +565,9 @@ function GraphActionNode({ node, entry, disabled, selectedLoadout, selectableTyp
 }
 
 function selectablePairConfigurationNote(definition) {
-    if (definition.id === "selectable.distance") return "Distance Between Entities compares the center points of any two entities (center-to-center).";
+    if (definition.id === "selectable.distance") return "Distance compares the first entity to either a selected entity or an absolute arena coordinate.";
     if (definition.id === "selectable.absoluteBearing") return "Absolute Bearing of Target From Entity measures the arena bearing from the Facing Entity to the Target.";
-    return "Relative bearing compares the Facing Entity's facing direction with the bearing to the Target.";
+    return "Relative bearing compares the Facing Entity's facing direction with a target entity, absolute coordinates, or an absolute angle.";
 }
 
 function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selectableTypes, selectableAbilityIds = null, selectedLoadout, customVariables, disabled, canRemove, canAddAction, puzzleMode = false, onClose, updateBranch, onPickActionOperand, onInspectActionOperand, onDismissOperandPicker, onChangeConditionVariable, onRemoveAction }) {
@@ -628,8 +630,10 @@ function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selec
             {definition.supportsStatusEffect && statusEffectOptions.length > 0 && field("Status effect", <select disabled={disabled} value={selectedCondition.statusEffect ?? ""} onChange={(event) => update({ statusEffect: normalizeStatusEffectSelection(event.target.value, statusEffectOptions) })}><option value="" disabled>Choose status effect</option>{statusEffectOptions.map((effect) => <option key={effect.id} value={effect.id}>{effect.label}</option>)}</select>)}
             {definition.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR
                 ? <>
-                    {field(selectableSelectorLabel(definition, 0), <OrderedSelectablePicker value={condition.selectable1 ?? selectablePairDefaults[0]} selectableTypes={pairEntitySelectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => update({ selectable1: selectable })} />)}
-                    {field(selectableSelectorLabel(definition, 1), <OrderedSelectablePicker value={condition.selectable2 ?? condition.selectable ?? selectablePairDefaults[1]} selectableTypes={selectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => update({ selectable2: selectable })} />)}
+                    {field(selectableSelectorLabel(definition, 0), <OrderedSelectablePicker disabled={disabled} value={condition.selectable1 ?? selectablePairDefaults[0]} selectableTypes={pairEntitySelectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => update({ selectable1: selectable })} />)}
+                    {definition.targetModes?.length
+                        ? <ConditionTargetControls condition={condition} definition={definition} selectableTypes={selectableOptions} defaultSelectable={selectablePairDefaults[1]} disabled={disabled} onChange={update} />
+                        : field(selectableSelectorLabel(definition, 1), <OrderedSelectablePicker disabled={disabled} value={condition.selectable2 ?? condition.selectable ?? selectablePairDefaults[1]} selectableTypes={selectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => update({ selectable2: selectable })} />)}
                     <small className="code-inspector-note">{selectablePairConfigurationNote(definition)}</small>
                 </>
                 : definition.supportsSelectable && field(selectablePickerLabel, <OrderedSelectablePicker value={condition[selectableField] ?? defaultSelectableForVariable(definition, selectableTypes)} selectableTypes={selectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => update({ [selectableField]: selectable })} />)}
@@ -695,7 +699,7 @@ function formatActionTargetLabel(entry, definition, selectableTypes) {
             ? formatMovementTargetLabel(entry?.movementDirection ?? 0, coordinateLabel)
             : coordinateLabel;
     }
-    const selectableLabel = formatSelectableLabel(entry?.selectable ?? "opponent", selectableTypes);
+    const selectableLabel = formatSelectableLabel(entry?.selectable ?? BOT_CODE_SELECTABLES.OPPONENT, selectableTypes);
     return definition?.movementConfig
         ? formatMovementTargetLabel(entry?.movementDirection ?? 0, selectableLabel)
         : selectableLabel;
@@ -726,11 +730,56 @@ function ActionTargetControls({ entry, definition, selectableTypes, disabled, on
     }
     return <div>
         {modeControl}
-        <label className="code-inspector-field"><span>TARGET</span><OrderedSelectablePicker disabled={disabled} value={entry.selectable ?? "opponent"} selectableTypes={selectableTypes} onChange={(selectable) => onChange({ ...entry, selectable, ...(definition?.movementConfig ? {} : { targetMode: "target" }) })} /></label>
+        <label className="code-inspector-field"><span>TARGET</span><OrderedSelectablePicker disabled={disabled} value={entry.selectable ?? BOT_CODE_SELECTABLES.OPPONENT} selectableTypes={selectableTypes} onChange={(selectable) => onChange({ ...entry, selectable, ...(definition?.movementConfig ? {} : { targetMode: "target" }) })} /></label>
         {!definition?.movementConfig && <div className="grid grid-cols-2 gap-2">
             <label className="code-inspector-field"><span>OFFSET X</span><DeferredNumberInput disabled={disabled} min={-ARENA_WIDTH_UNITS} max={ARENA_WIDTH_UNITS} value={entry.targetOffsetX ?? 0} fallback={0} aria-label="Target X offset" onCommit={(targetOffsetX) => onChange({ ...entry, targetOffsetX })} /></label>
             <label className="code-inspector-field"><span>OFFSET Y</span><DeferredNumberInput disabled={disabled} min={-ARENA_HEIGHT_UNITS} max={ARENA_HEIGHT_UNITS} value={entry.targetOffsetY ?? 0} fallback={0} aria-label="Target Y offset" onCommit={(targetOffsetY) => onChange({ ...entry, targetOffsetY })} /></label>
         </div>}
+    </div>;
+}
+
+function conditionTargetMode(condition, definition) {
+    const modes = definition?.targetModes;
+    if (!Array.isArray(modes) || modes.length === 0) return TARGET_MODES.TARGET;
+    const inferredMode = condition?.targetMode
+        ?? (condition?.targetX != null || condition?.targetY != null
+            ? TARGET_MODES.COORDINATES
+            : condition?.targetAngle != null ? TARGET_MODES.ANGLE : TARGET_MODES.TARGET);
+    return modes.includes(inferredMode)
+        ? inferredMode
+        : modes.includes(TARGET_MODES.TARGET) ? TARGET_MODES.TARGET : modes[0];
+}
+
+function ConditionTargetControls({ condition, definition, selectableTypes, defaultSelectable, disabled, onChange }) {
+    const modes = definition?.targetModes ?? [];
+    const mode = conditionTargetMode(condition, definition);
+    const modeControl = <label className="code-inspector-field">
+        <span>TARGET MODE</span>
+        <select disabled={disabled} value={mode} onChange={(event) => onChange({ targetMode: event.target.value })}>
+            {modes.includes(TARGET_MODES.TARGET) && <option value={TARGET_MODES.TARGET}>Relative to target</option>}
+            {modes.includes(TARGET_MODES.ANGLE) && <option value={TARGET_MODES.ANGLE}>Absolute angle</option>}
+            {modes.includes(TARGET_MODES.COORDINATES) && <option value={TARGET_MODES.COORDINATES}>Absolute coordinates</option>}
+        </select>
+    </label>;
+    if (mode === TARGET_MODES.ANGLE) {
+        return <div>
+            {modeControl}
+            <label className="code-inspector-field"><span>ABSOLUTE ANGLE</span><DeferredNumberInput disabled={disabled} min={-360} max={360} value={condition.targetAngle ?? 0} fallback={0} aria-label="Target absolute angle" onCommit={(targetAngle) => onChange({ targetAngle })} /><span className="code-inspector-field-unit">deg</span></label>
+            <small>0 deg = north · 90 deg = east · 180 deg = south · 270 deg = west. Negative angles are also valid.</small>
+        </div>;
+    }
+    if (mode === TARGET_MODES.COORDINATES) {
+        return <div>
+            {modeControl}
+            <div className="grid grid-cols-2 gap-2">
+                <label className="code-inspector-field"><span>X COORDINATE</span><DeferredNumberInput disabled={disabled} min={0} max={ARENA_WIDTH_UNITS} value={condition.targetX ?? ARENA_WIDTH_UNITS / 2} fallback={ARENA_WIDTH_UNITS / 2} aria-label="Target X coordinate" onCommit={(targetX) => onChange({ targetX })} /></label>
+                <label className="code-inspector-field"><span>Y COORDINATE</span><DeferredNumberInput disabled={disabled} min={0} max={ARENA_HEIGHT_UNITS} value={condition.targetY ?? ARENA_HEIGHT_UNITS / 2} fallback={ARENA_HEIGHT_UNITS / 2} aria-label="Target Y coordinate" onCommit={(targetY) => onChange({ targetY })} /></label>
+            </div>
+        </div>;
+    }
+    return <div>
+        {modeControl}
+        <label className="code-inspector-field"><span>TARGET</span><OrderedSelectablePicker disabled={disabled} value={condition.selectable2 ?? condition.selectable ?? defaultSelectable} selectableTypes={selectableTypes} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => onChange({ selectable2: selectable, targetMode: TARGET_MODES.TARGET })} /></label>
     </div>;
 }
 
@@ -977,9 +1026,10 @@ function sanitizeExpressionSelectable(condition, field, definition, selectableTy
     const options = selectableOptionsForDefinition(definition, selectableTypes);
     if (!options.length) return condition;
     const requested = condition[field] ?? condition.selectable;
-    const baseRequested = String(requested ?? "").split(":")[0];
+    const canonicalRequested = canonicalBotSelectableId(requested);
+    const baseRequested = canonicalRequested.split(":")[0];
     if (options.some((selectable) => selectable.id === baseRequested)) {
-        const normalized = definition.selectableOrderable === false ? baseRequested : requested;
+        const normalized = definition.selectableOrderable === false ? baseRequested : canonicalRequested;
         return normalized === condition[field] ? condition : { ...condition, [field]: normalized };
     }
     const fallback = options.find((selectable) => selectableHasIdentity(selectable, SELECTABLE_IDENTITIES.ABILITY_ENTITY))?.id ?? options[0]?.id;
@@ -993,7 +1043,7 @@ function sanitizeExpressionSelectablePair(condition, definition, selectableTypes
     if (!firstOptions.length || !secondOptions.length) return condition;
     const defaults = defaultSelectablePairForVariable(definition, selectableTypes);
     const valid = (value, fallback, options) => {
-        const [base, order, ordinalText] = String(value ?? fallback).split(":");
+        const [base, order, ordinalText] = canonicalBotSelectableId(value ?? fallback).split(":");
         const selected = options.find((selectable) => selectable.id === base);
         if (!selected) return fallback;
         if (selectableHasIdentity(selected, SELECTABLE_IDENTITIES.BOT) || definition.selectableOrderable === false) return base;
@@ -1087,47 +1137,162 @@ function abilityIdsForConfiguration(configuration) {
     return new Set([...STANDARD_ABILITY_IDS, ...selected]);
 }
 
-function selectableTypesForLoadouts(ownLoadout, opponentLoadout) {
+function selectableTypesForLoadouts(ownLoadout, opponentLoadout, roster = null) {
     const ownAbilities = abilityIdsForConfiguration(ownLoadout), opponentAbilities = abilityIdsForConfiguration(opponentLoadout);
     return SELECTABLE_TYPES
         .filter((selectable) => {
+            if (selectable.role === "teammate" || selectable.role === "opponent") {
+                const availableCount = selectable.role === "teammate"
+                    ? roster?.teammateCount
+                    : roster?.opponentCount;
+                if (Number.isFinite(Number(availableCount))) {
+                    if (Number(selectable.botIndex) > Number(availableCount)) return false;
+                }
+            }
             if (!selectable.abilityId) return true;
+            const loadouts = selectable.role === "teammate"
+                ? roster?.teammateLoadouts
+                : selectable.role === "opponent" ? roster?.opponentLoadouts : null;
+            if (Array.isArray(loadouts)) {
+                const loadout = loadouts[Number(selectable.botIndex) - 1];
+                if (loadout != null) return abilityIdsForConfiguration(loadout).has(selectable.abilityId);
+            }
             return (selectable.owner === "my" ? ownAbilities : opponentAbilities).has(selectable.abilityId);
         });
 }
 
-function selectableAbilityIdsForLoadouts(ownLoadout, opponentLoadout) {
-    return {
+function selectableAbilityIdsForLoadouts(ownLoadout, opponentLoadout, roster = null) {
+    const result = {
         [BOT_CODE_SELECTABLES.MY]: [...abilityIdsForConfiguration(ownLoadout)],
         [BOT_CODE_SELECTABLES.OPPONENT]: [...abilityIdsForConfiguration(opponentLoadout)],
     };
+    for (const selectable of SELECTABLE_TYPES) {
+        if (!selectable.role || !Number.isFinite(Number(selectable.botIndex))) continue;
+        const loadouts = selectable.role === "teammate"
+            ? roster?.teammateLoadouts
+            : roster?.opponentLoadouts;
+        const loadout = Array.isArray(loadouts)
+            ? loadouts[Number(selectable.botIndex) - 1]
+            : null;
+        if (loadout != null) result[selectable.id] = [...abilityIdsForConfiguration(loadout)];
+    }
+    return result;
 }
 
-function OrderedSelectablePicker({ value = "opponent", selectableTypes = SELECTABLE_TYPES, disabled = false, allowOrdering = true, onChange }) {
-    const [baseValue, encodedOrder, encodedOrdinal] = String(value).split(":");
-    const base = selectableTypes.some((selectable) => selectable.id === baseValue) ? baseValue : selectableTypes[0]?.id ?? "opponent";
-    const order = ["closest", "farthest", "oldest", "newest"].includes(encodedOrder) ? encodedOrder : "closest";
+function selectableOwnerLabel(selectable) {
+    const bot = SELECTABLE_TYPES.find((candidate) => candidate.id === selectable?.botSelector);
+    if (bot?.label) return bot.label;
+    const label = String(selectable?.label ?? "");
+    const marker = label.lastIndexOf(" by ");
+    return marker >= 0 ? label.slice(marker + 4) : selectable?.botSelector ?? "Owner";
+}
+
+function entitySelectableGroups(selectableTypes = SELECTABLE_TYPES) {
+    const groups = [];
+    const groupsByEntityType = new Map();
+    for (const selectable of selectableTypes ?? []) {
+        if (selectable?.kind !== "entity") continue;
+        const entityType = String(selectable.entityType ?? "").trim();
+        if (!entityType) continue;
+        let group = groupsByEntityType.get(entityType);
+        if (!group) {
+            group = {
+                entityType,
+                label: String(selectable.label ?? entityType).replace(/\s+by\s+.+$/, ""),
+                baseId: null,
+                owners: [],
+            };
+            groupsByEntityType.set(entityType, group);
+            groups.push(group);
+        }
+        if (selectable.owner === SELECTABLE_OWNERS.NONE) {
+            group.baseId = selectable.id;
+            continue;
+        }
+        if (!selectable.botSelector || group.owners.some((owner) => owner.id === selectable.botSelector)) continue;
+        group.owners.push({
+            id: selectable.botSelector,
+            label: selectableOwnerLabel(selectable),
+            selectableId: selectable.id,
+        });
+    }
+    return groups;
+}
+
+function selectableOrderLabel(order) {
+    return order.charAt(0).toUpperCase() + order.slice(1);
+}
+
+function OrderedSelectablePicker({ value = BOT_CODE_SELECTABLES.OPPONENT, selectableTypes = SELECTABLE_TYPES, disabled = false, allowOrdering = true, onChange }) {
+    const availableSelectableTypes = Array.isArray(selectableTypes) ? selectableTypes : SELECTABLE_TYPES;
+    const [baseValue, encodedOrder, encodedOrdinal] = canonicalBotSelectableId(value).split(":");
+    const base = availableSelectableTypes.some((selectable) => selectable.id === baseValue) ? baseValue : availableSelectableTypes[0]?.id ?? BOT_CODE_SELECTABLES.OPPONENT;
+    const order = SELECTABLE_ORDERS.includes(encodedOrder) ? encodedOrder : SELECTABLE_ORDERS[0];
     const ordinal = Math.max(1, Math.min(100, Number(encodedOrdinal) || 1));
-    const selectedSelectable = selectableTypes.find((selectable) => selectable.id === base);
-    const ordered = allowOrdering && !selectableHasIdentity(selectedSelectable, SELECTABLE_IDENTITIES.BOT);
-    const encode = (nextBase, nextOrder = order, nextOrdinal = ordinal) => !allowOrdering || selectableHasIdentity(selectableTypes.find((selectable) => selectable.id === nextBase), SELECTABLE_IDENTITIES.BOT)
+    const entityGroups = entitySelectableGroups(availableSelectableTypes);
+    const selectedSelectable = availableSelectableTypes.find((selectable) => selectable.id === base);
+    const selectedEntityGroup = selectedSelectable?.kind === "entity"
+        ? entityGroups.find((group) => group.entityType === selectedSelectable.entityType)
+        : null;
+    const botOptions = availableSelectableTypes.filter((selectable) => selectable.kind === "bot");
+    const ownerOptions = selectedEntityGroup?.owners ?? [];
+    const selectedOwner = ownerOptions.find((owner) => owner.selectableId === base) ?? ownerOptions[0];
+    const ordered = allowOrdering && Boolean(selectedEntityGroup);
+    const encode = (nextBase, nextOrder = order, nextOrdinal = ordinal) => !allowOrdering || selectableHasIdentity(availableSelectableTypes.find((selectable) => selectable.id === nextBase), SELECTABLE_IDENTITIES.BOT)
         ? nextBase
         : `${nextBase}:${nextOrder}:${Math.max(1, Math.min(100, Number(nextOrdinal) || 1))}`;
+    const encodeEntity = (entityType, ownerId = selectedOwner?.id, nextOrder = order, nextOrdinal = ordinal) => {
+        const group = entityGroups.find((candidate) => candidate.entityType === entityType);
+        const owner = group?.owners.find((candidate) => candidate.id === ownerId) ?? group?.owners[0];
+        const nextBase = owner?.selectableId ?? group?.baseId ?? entityType;
+        return encode(nextBase, nextOrder, nextOrdinal);
+    };
+    const handlePrimaryChange = (nextValue) => {
+        const entityGroup = entityGroups.find((group) => group.entityType === nextValue);
+        onChange(entityGroup ? encodeEntity(nextValue) : encode(nextValue));
+    };
+    const selectableValue = selectedEntityGroup?.entityType ?? base;
+    const entityOptions = entityGroups.map((group) => <option key={group.entityType} value={group.entityType}>{group.label}</option>);
+    const botOptionElements = botOptions.map((selectable) => <option key={selectable.id} value={selectable.id}>{selectable.label.replace(/^Closest /, "")}</option>);
+    const primaryOptions = botOptions.length > 0 && entityOptions.length > 0
+        ? <><optgroup label="Bots">{botOptionElements}</optgroup><optgroup label="Entities">{entityOptions}</optgroup></>
+        : <>{botOptionElements}{entityOptions}</>;
     return <div className={`code-selectable-picker ${ordered ? "is-ordered" : ""}`}>
-        <select disabled={disabled} value={base} onChange={(event) => onChange(encode(event.target.value))} className="code-selectable-picker-entity">{selectableTypes.map((selectable) => <option key={selectable.id} value={selectable.id}>{selectable.label.replace(/^Closest /, "")}</option>)}</select>
+        {selectedEntityGroup
+            ? <>
+                <div className="code-selectable-picker-entity-row">
+                    <div className="code-selectable-picker-control">
+                        <span>ABILITY NAME</span>
+                        <select disabled={disabled} aria-label="Selectable entity" value={selectableValue} onChange={(event) => handlePrimaryChange(event.target.value)} className="code-selectable-picker-entity">{primaryOptions}</select>
+                    </div>
+                    {ownerOptions.length > 0 && <div className="code-selectable-picker-control">
+                        <span>BY</span>
+                        <select disabled={disabled} aria-label="Selectable owner" value={selectedOwner?.id ?? ""} onChange={(event) => onChange(encodeEntity(selectedEntityGroup.entityType, event.target.value))} className="code-selectable-picker-owner">{ownerOptions.map((owner) => <option key={owner.id} value={owner.id}>{owner.label}</option>)}</select>
+                    </div>}
+                </div>
+            </>
+            : <select disabled={disabled} aria-label="Selectable" value={selectableValue} onChange={(event) => handlePrimaryChange(event.target.value)} className="code-selectable-picker-entity">
+                {primaryOptions}
+            </select>}
         {ordered && <div className="code-selectable-picker-order">
-            <select disabled={disabled} aria-label="Selectable ordering" value={order} onChange={(event) => onChange(encode(base, event.target.value))}><option value="closest">Closest</option><option value="farthest">Farthest</option><option value="oldest">Oldest</option><option value="newest">Newest</option></select>
-            <DeferredNumberInput disabled={disabled} aria-label="Selectable ordinal" min={1} max={100} value={ordinal} fallback={1} onCommit={(value) => onChange(encode(base, order, value))} />
+            <div className="code-selectable-picker-control">
+                <span>ATTRIBUTE</span>
+                <select disabled={disabled} aria-label="Selectable ordering" value={order} onChange={(event) => onChange(encode(selectedOwner?.selectableId ?? base, event.target.value))}>{SELECTABLE_ORDERS.map((option) => <option key={option} value={option}>{selectableOrderLabel(option)}</option>)}</select>
+            </div>
+            <div className="code-selectable-picker-control">
+                <span>ORDER #</span>
+                <DeferredNumberInput disabled={disabled} aria-label="Selectable ordinal" min={1} max={100} value={ordinal} fallback={1} onCommit={(value) => onChange(encode(selectedOwner?.selectableId ?? base, order, value))} />
+            </div>
         </div>}
         {ordered && <small className="code-selectable-picker-note">Closest 1 means the 1st closest entity. It chooses the closest entity to you.</small>}
     </div>;
 }
 
 function formatSelectableLabel(value, selectableTypes = SELECTABLE_TYPES) {
-    const [baseValue, encodedOrder, encodedOrdinal] = String(value).split(":");
+    const [baseValue, encodedOrder, encodedOrdinal] = canonicalBotSelectableId(value).split(":");
     const definition = selectableTypes.find((selectable) => selectable.id === baseValue) ?? selectableTypes[0];
     const label = definition?.label?.replace(/^Closest /, "") ?? baseValue;
-    if (baseValue === "my_bot" || baseValue === "opponent") return label;
+    if (definition?.kind === "bot") return label;
     const order = ["closest", "farthest", "oldest", "newest"].includes(encodedOrder) ? encodedOrder : "closest";
     const ordinal = Math.max(1, Math.min(100, Number(encodedOrdinal) || 1));
     return `${formatOrdinal(ordinal)} ${order[0].toUpperCase()}${order.slice(1)} ${label}`;
@@ -1201,7 +1366,8 @@ function abilitySelectableIdForVariable(definition, condition, operand) {
 
 function abilityIdsForSelectable(selectableAbilityIds, selectableId) {
     if (!selectableAbilityIds || !selectableId) return null;
-    const configured = selectableAbilityIds[selectableId];
+    const configured = selectableAbilityIds[selectableId]
+        ?? selectableAbilityIds[canonicalBotSelectableId(selectableId)];
     if (configured instanceof Set) return configured;
     if (Array.isArray(configured)) return configured;
     return null;

@@ -144,7 +144,7 @@ function resolveTrapTriggers(entries, world) {
         return Boolean(entity.hitTriggered)
             || armedExpired
             || (trigger.botContact && Boolean(phase?.trigger || entity.armed) && world.bots.some((bot) => {
-                if (bot.slot === entity.ownerSlot) return false;
+                if (!isEnemy(entity, bot, world.bots)) return false;
                 const botPath = botMovementSegment(bot, world.stepMs);
                 return movingCirclesIntersect(
                     entityPath.start,
@@ -251,7 +251,7 @@ function tickSegment(entity, behavior, world, combat) {
     let blocked = false;
     const candidates = world.bots
         .map((bot, index) => ({ bot, index }))
-        .filter(({ bot }) => bot.slot !== entity.ownerSlot
+        .filter(({ bot }) => isEnemy(entity, bot, world.bots)
             && !hitSlots.includes(bot.slot)
             && Number(bot.hp ?? BASE_BOT_HP) > 0
             && !ignoresHostileEffects(bot)
@@ -422,7 +422,7 @@ function tickSummon(entity, behavior, world, combat) {
 
     let bots = world.bots;
     const target = bots
-        .filter((bot) => bot.slot !== entity.ownerSlot && Number(bot.hp ?? 0) > 0)
+        .filter((bot) => isEnemy(entity, bot, bots) && Number(bot.hp ?? 0) > 0)
         .sort((first, second) => Math.hypot(first.x - entity.x, first.y - entity.y) - Math.hypot(second.x - entity.x, second.y - entity.y))[0];
     let summon = withComponentState(entity, {
         hp,
@@ -528,6 +528,7 @@ function applyZoneEffects(bots, source, abilityId, effectTypes, radius, combat, 
         )) continue;
         if (ignoresHostileEffects(target)) continue;
         const sourceBehavior = behaviorForEntity(source);
+        if (!isEnemy(source, target, nextBots)) continue;
         if (sourceBehavior?.skipOwner && Number(target.slot) === Number(source.ownerSlot)) continue;
         const result = applyEntityEffects(nextBots, index, source, abilityId, combat, {
             effectTypes,
@@ -742,6 +743,17 @@ function shieldChargeCostForDistance(target, source, abilityId) {
     const radius = Number(stats.explosionRadius ?? stats.radius ?? Number(source?.size ?? 0) / 2);
     const distance = Math.hypot(Number(target.x) - Number(source?.x), Number(target.y) - Number(source?.y));
     return clamp(Math.round(radius > 0 ? 5 - (distance / radius) * 4 : 1), 1, Number(stats.maxCharges ?? 5));
+}
+
+function isEnemy(source, target, bots) {
+    if (!source || !target) return false;
+    const owner = bots?.find((bot) => bot?.id === source.ownerId
+        || (Number.isFinite(Number(source.ownerSlot)) && Number(bot?.slot) === Number(source.ownerSlot)));
+    const sourceTeam = Number(owner?.teamNumber ?? source.ownerTeam);
+    const targetTeam = Number(target.teamNumber);
+    if (Number.isFinite(sourceTeam) && Number.isFinite(targetTeam)
+        && sourceTeam > 0 && targetTeam > 0) return sourceTeam !== targetTeam;
+    return Number(target.slot) !== Number(source.ownerSlot);
 }
 
 function contractForEntity(entity) {

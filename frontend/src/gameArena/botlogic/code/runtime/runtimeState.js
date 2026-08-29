@@ -52,20 +52,49 @@ function botState(source = {}) {
 export function stateFromPayload(payload) {
     const objects = Array.isArray(payload?.objects) ? payload.objects : [];
     const player = botState(payload?.playerModel);
-    const opponentSource = objects.find((object) => object?.type === "opponentModel")
-        ?? objects.find((object) => object?.id === "opponent-model" || object?.id === "main")
-        ?? null;
-    const opponent = opponentSource ? {
-        ...botState(opponentSource),
-        swingActive: Boolean(opponentSource.swingActive),
-    } : null;
+    const botObjects = objects.filter(isBotModel);
+    const teammateSources = botObjects
+        .filter((object) => object?.role === "teammate")
+        .sort(botOrder);
+    const opponentSources = botObjects
+        .filter((object) => object?.role === "opponent")
+        .sort(botOrder);
+    const normalizedTeammates = teammateSources.map(botState);
+    const opponentSourcesWithLegacyFallback = (opponentSources.length > 0
+        ? opponentSources
+        : [
+            botObjects.find((object) => object?.type === "opponentModel")
+                ?? objects.find((object) => object?.id === "opponent-model" || object?.id === "main"),
+        ].filter(Boolean));
+    const normalizedOpponents = opponentSourcesWithLegacyFallback.map((source) => ({
+            ...botState(source),
+            swingActive: Boolean(source.swingActive),
+        }));
+    const opponent = normalizedOpponents[0] ?? null;
     return {
         player,
         opponent,
+        teammates: normalizedTeammates,
+        opponents: normalizedOpponents,
+        bots: [player, ...normalizedTeammates, ...normalizedOpponents],
         closingZone: payload?.closingZone ?? null,
         objects,
-        obstacles: objects.filter((object) => object?.type && object.type !== "opponentModel"),
+        obstacles: objects.filter((object) => object?.type && !isBotModel(object)),
     };
+}
+
+function isBotModel(object) {
+    return object?.type === "opponentModel"
+        || object?.type === "botModel"
+        || object?.type === "bot"
+        || object?.role === "teammate"
+        || object?.role === "opponent";
+}
+
+function botOrder(first, second) {
+    const firstIndex = Number(first?.botIndex ?? first?.slot ?? Number.MAX_SAFE_INTEGER);
+    const secondIndex = Number(second?.botIndex ?? second?.slot ?? Number.MAX_SAFE_INTEGER);
+    return firstIndex - secondIndex || String(first?.id ?? "").localeCompare(String(second?.id ?? ""));
 }
 
 import { abilityIdFromBoundary, abilityIdsFromBoundary, abilityMapFromBoundary } from "../../../gameconfig/AbilityCompatibility.js";
