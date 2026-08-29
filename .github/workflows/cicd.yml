@@ -59,7 +59,7 @@ jobs:
     needs:
       - changes
 
-    if: needs.changes.outputs.backend == 'true'
+   
 
     steps:
       - name: Check out repository
@@ -140,8 +140,7 @@ jobs:
 
     if: |
       github.event_name == 'push' &&
-      github.ref == 'refs/heads/main' &&
-      needs.changes.outputs.backend == 'true'
+      github.ref == 'refs/heads/main'
 
     permissions:
       contents: read
@@ -184,8 +183,7 @@ jobs:
 
     if: |
       github.event_name == 'push' &&
-      github.ref == 'refs/heads/main' &&
-      needs.changes.outputs.backend == 'true'
+      github.ref == 'refs/heads/main'
 
     steps:
       - name: Configure SSH
@@ -230,7 +228,7 @@ jobs:
           docker compose \
             --env-file docker-compose.prod.env \
             -f docker-compose.prod.yml \
-            up -d --no-deps --force-recreate backend
+            up -d --force-recreate backend
 
           EOF
 
