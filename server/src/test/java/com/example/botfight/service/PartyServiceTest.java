@@ -230,6 +230,26 @@ class PartyServiceTest {
     }
 
     @Test
+    void aStalePartyInviteCanBeDeclinedAfterTheLastPartyMemberLeaves() {
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
+        var created = service.create(authentication);
+        when(userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(teammate.getUsername()))
+                .thenReturn(Optional.of(teammate));
+        var invite = service.invite(authentication, created.partyId(), teammate.getUsername());
+
+        service.leave(authentication, created.partyId());
+        assertThat(service.currentForPrincipal(owner.getEmail())).isNull();
+
+        when(currentUserService.requireCurrentUserId(authentication)).thenReturn(teammate.getId());
+        assertThatThrownBy(() -> service.accept(authentication, invite.invite().inviteId()))
+                .isInstanceOf(AuthException.class)
+                .hasMessage("Party no longer exists");
+
+        assertThat(service.decline(authentication, invite.invite().inviteId()).invite().status())
+                .isEqualTo("DECLINED");
+    }
+
+    @Test
     void customMatchDisbandsAPartyWhenItsLeaderStartsWithoutEveryMember() {
         createPartyWithTeammate();
 

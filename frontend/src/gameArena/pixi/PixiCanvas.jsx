@@ -55,6 +55,7 @@ export default function PixiCanvas({
     measurementPoints = [],
     onMeasurementPointsChange = () => { },
     allowBotRotation = false,
+    allowLockedBotEditing = false,
 }) {
     const presentationShapes = shapes.map(toSimulationBotShape);
     const hostRef = useRef(null);
@@ -78,10 +79,11 @@ export default function PixiCanvas({
             measurementPoints,
             onMeasurementPointsChange,
             allowBotRotation,
+            allowLockedBotEditing,
         };
         runtimeRef.current?.setPlaying(isPlaying);
         runtimeRef.current?.syncShapes(presentationShapes);
-    }, [allowBotRotation, editable, isPlaying, lockCamera, measurementEnabled, measurementPoints, onDeselectAll, onMeasurementPointsChange, onSelectShape, onUpdateShape, placementSide, selectedId, presentationShapes]);
+    }, [allowBotRotation, allowLockedBotEditing, editable, isPlaying, lockCamera, measurementEnabled, measurementPoints, onDeselectAll, onMeasurementPointsChange, onSelectShape, onUpdateShape, placementSide, selectedId, presentationShapes]);
 
     useEffect(() => {
         let disposed = false;
@@ -295,7 +297,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         caption.eventMode = "none";
         container.addChild(baseSprite, graphics, caption);
         container.eventMode = isBotShape(shape) ? "static" : "none";
-        container.cursor = isBotShape(shape) && !shape.locked && optionsRef.current.editable ? "grab" : "default";
+        container.cursor = canEditBot(shape) ? "grab" : "default";
         container.hitArea = new Circle(0, 0, Math.max(12, Number(shape.size ?? (isBotShape(shape) ? BOT_SIZE : 30)) / 2 + 6));
         const view = {
             container,
@@ -368,7 +370,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
                 view.motion = { from: current, to: target, startedAt: now, durationMs };
             }
             view.container.eventMode = isBotShape(shape) ? "static" : "none";
-            view.container.cursor = isBotShape(shape) && !shape.locked && optionsRef.current.editable ? "grab" : "default";
+            view.container.cursor = canEditBot(shape) ? "grab" : "default";
             view.container.hitArea = new Circle(0, 0, Math.max(12, Number(shape.size ?? (isBotShape(shape) ? BOT_SIZE : 30)) / 2 + 6));
             const hitParticleEvent = shape.hitParticleEvent;
             const hasHitParticleEvent = hitParticleEvent != null
@@ -400,13 +402,17 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         }
     }
 
+    function canEditBot(shape) {
+        return isBotShape(shape)
+            && optionsRef.current.editable
+            && (!shape.locked || optionsRef.current.allowLockedBotEditing);
+    }
+
     function beginDrag(event, view) {
         if (!isBotShape(view.shape)) return;
         if (event.button === 2) {
             if (!optionsRef.current.allowBotRotation
-                || !optionsRef.current.editable
-                || !isBotShape(view.shape)
-                || view.shape.locked) return;
+                || !canEditBot(view.shape)) return;
             event.stopPropagation();
             optionsRef.current.onSelectShape?.(view.shape.id);
             rotationDrag = { id: view.shape.id };
@@ -417,7 +423,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         if (event.button !== 0) return;
         event.stopPropagation();
         optionsRef.current.onSelectShape?.(view.shape.id);
-        if (view.shape.locked || !optionsRef.current.editable) return;
+        if (!canEditBot(view.shape)) return;
         const point = camera.toLocal(event.global);
         const position = sampleViewPosition(view);
         drag = { id: view.shape.id, offsetX: point.x - position.x, offsetY: point.y - position.y };

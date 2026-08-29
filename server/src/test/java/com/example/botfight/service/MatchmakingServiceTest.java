@@ -11,7 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.limits.RateLimitExceededException;
-import com.example.botfight.service.limits.SlidingWindowRateLimiter;
+import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.match.model.MatchEntrant;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
@@ -46,7 +46,7 @@ class MatchmakingServiceTest {
         service = new MatchmakingService(
                 matchService,
                 clock,
-                new SlidingWindowRateLimiter<>(clock, 3, Duration.ofSeconds(5)));
+                new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3)));
         when(matchService.activeMatchStatus(any()))
                 .thenReturn(ActiveMatchStatusDTO.none());
         when(matchService.startMatch(any(), any())).thenReturn(List.of());
@@ -344,6 +344,9 @@ class MatchmakingServiceTest {
                 "socket-four"))
                 .isInstanceOf(RateLimitExceededException.class)
                 .hasMessage(RateLimitExceededException.GENERIC_MESSAGE);
+
+        clock.advance(Duration.ofSeconds(3));
+        service.joinQueue(userId, "pilot", "pilot@example.com", "socket-four");
     }
 
     @Test

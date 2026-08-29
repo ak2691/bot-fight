@@ -1502,6 +1502,13 @@ test("roots count conditions and validate as a trainable code", () => {
     assert.deepEqual(validateAbilityStrategyConfiguration(configuration).errors, []);
 });
 
+test("empty or incomplete bot code does not create a submission-blocking action error", () => {
+    assert.deepEqual(validateAbilityStrategyConfiguration({ roots: [] }).errors, []);
+    assert.deepEqual(validateAbilityStrategyConfiguration({
+        roots: [{ branches: [{ conditions: [{ type: "always" }], actions: [{ action: "none" }], children: [] }] }],
+    }).errors, []);
+});
+
 test("custom variables use one variable slot and do not carry boolean conditions", () => {
     const configuration = {
         customVariables: [{ id: "custom.ready", name: "Ready", valueType: "boolean", initialValue: false, conditions: [{ type: "always" }] }],

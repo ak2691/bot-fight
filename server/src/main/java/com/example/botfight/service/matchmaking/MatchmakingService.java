@@ -4,7 +4,7 @@ import com.example.botfight.DTO.MatchmakingEventDTO;
 import com.example.botfight.DTO.MatchmakingPlayerDTO;
 import com.example.botfight.domain.MatchMode;
 import com.example.botfight.service.auth.AuthException;
-import com.example.botfight.service.limits.SlidingWindowRateLimiter;
+import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
 import com.example.botfight.service.match.model.MatchEntrant;
@@ -46,7 +46,7 @@ public class MatchmakingService {
 
     private final MatchService matchService;
     private final Clock clock;
-    private final SlidingWindowRateLimiter<UUID> matchmakingRateLimiter;
+    private final TokenBucketRateLimiter<UUID> matchmakingRateLimiter;
     private final EloRatingService eloRatingService;
     /** FIFO order is the fairness source for the scheduled matchmaking sweep. */
     private final Deque<QueuedGroup> queueOrder = new ArrayDeque<>();
@@ -58,7 +58,7 @@ public class MatchmakingService {
     public MatchmakingService(
             MatchService matchService,
             Clock clock,
-            @Qualifier("matchmakingRateLimiter") SlidingWindowRateLimiter<UUID> matchmakingRateLimiter) {
+            @Qualifier("matchmakingRateLimiter") TokenBucketRateLimiter<UUID> matchmakingRateLimiter) {
         this(matchService, clock, matchmakingRateLimiter, null);
     }
 
@@ -66,7 +66,7 @@ public class MatchmakingService {
     public MatchmakingService(
             MatchService matchService,
             Clock clock,
-            @Qualifier("matchmakingRateLimiter") SlidingWindowRateLimiter<UUID> matchmakingRateLimiter,
+            @Qualifier("matchmakingRateLimiter") TokenBucketRateLimiter<UUID> matchmakingRateLimiter,
             EloRatingService eloRatingService) {
         this.matchService = matchService;
         this.clock = clock;

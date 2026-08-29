@@ -34,7 +34,6 @@ import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
 import com.example.botfight.service.match.simulation.MatchSimulationService;
 import com.example.botfight.service.match.replay.ReplayDeliveryMode;
 import com.example.botfight.service.matchmaking.MatchmakingService;
-import com.example.botfight.service.limits.SlidingWindowRateLimiter;
 import com.example.botfight.service.limits.RateLimitExceededException;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import java.time.Clock;
@@ -95,7 +94,7 @@ class MatchServiceTest {
         matchmakingService = new AutoAcceptingMatchmakingService(
                 service,
                 clock,
-                new SlidingWindowRateLimiter<>(clock, 3, Duration.ofSeconds(5)));
+                new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3)));
 
         when(matchRepository.save(any(Match.class))).thenAnswer(invocation -> {
             savedMatch = invocation.getArgument(0);
@@ -629,7 +628,7 @@ class MatchServiceTest {
         matchmakingService = new AutoAcceptingMatchmakingService(
                 service,
                 clock,
-                new SlidingWindowRateLimiter<>(clock, 3, Duration.ofSeconds(5)));
+                new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3)));
         when(simulationService.buildDuelReplay(any(MatchSession.class), any())).thenAnswer(invocation -> {
             MatchSession session = invocation.getArgument(0);
             UUID winnerUserId = session.players().getFirst().userId();
@@ -1377,7 +1376,7 @@ class MatchServiceTest {
         private AutoAcceptingMatchmakingService(
                 MatchService matchService,
                 Clock clock,
-                SlidingWindowRateLimiter<UUID> matchmakingRateLimiter) {
+                TokenBucketRateLimiter<UUID> matchmakingRateLimiter) {
             super(matchService, clock, matchmakingRateLimiter);
         }
 

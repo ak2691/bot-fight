@@ -156,9 +156,9 @@ function NotificationPanel({
 }) {
     const totalInvites = invites.length + partyInvites.length + customLobbyInvites.length;
     return (
-        <section className="absolute right-0 top-12 z-30 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-cyan-800/80 bg-[#091521f5] p-3 shadow-[0_18px_60px_rgba(0,0,0,.45)]" aria-label="Notifications">
+        <section className="absolute right-0 top-12 z-30 max-h-[min(32rem,calc(100vh-6rem))] w-[min(22rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-xl border border-fuchsia-800/80 bg-[#091521f5] p-3 shadow-[0_18px_60px_rgba(0,0,0,.45)]" aria-label="Notifications">
             <div className="flex items-center justify-between gap-3 px-2 pb-2">
-                <h2 className="font-mono text-[10px] font-bold tracking-[.2em] text-cyan-400">NOTIFICATIONS</h2>
+                <h2 className="font-mono text-[10px] font-bold tracking-[.2em] text-fuchsia-400">NOTIFICATIONS</h2>
                 <span className="text-xs text-slate-500">{totalInvites} pending</span>
             </div>
             {actionError && <p className="border border-rose-400/30 bg-rose-950/20 px-3 py-2 text-xs text-rose-200" role="alert">{actionError}</p>}

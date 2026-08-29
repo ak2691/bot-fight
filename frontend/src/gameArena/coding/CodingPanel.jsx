@@ -149,6 +149,7 @@ export default function CodingPanel({
     opponentConfiguration = null,
     onOpponentChange = null,
     offlineCodeParticipants = null,
+    selectableParticipants = null,
     onOfflineCodeChange = null,
     isTesting,
     selectedLoadout,
@@ -333,7 +334,7 @@ export default function CodingPanel({
         ? activeOfflineParticipant
         : viewingOpponent
         ? offlineOpponentParticipant
-        : isMatchTesting ? matchContext?.player : offlineCodeRoster[0];
+        : isMatchTesting ? matchContext?.player : selectableParticipants?.[0] ?? offlineCodeRoster[0];
     const opposingLoadout = useMemo(() => {
         if (!isMatchTesting) {
             return viewingOpponent || (viewingOfflineParticipant && !activeOfflineIsTeammate)
@@ -353,7 +354,7 @@ export default function CodingPanel({
         if (!activeParticipant) return null;
         const participants = isMatchTesting
             ? matchParticipantsForContext(matchContext)
-            : codeSelectorRoster;
+            : selectableParticipants ?? codeSelectorRoster;
         const activeTeam = participantTeamNumber(activeParticipant);
         const activeId = participantId(activeParticipant);
         const teammates = participants
@@ -369,7 +370,7 @@ export default function CodingPanel({
             teammateLoadouts: teammates.map((participant) => participant.selectedLoadout),
             opponentLoadouts: opponents.map((participant) => participant.selectedLoadout),
         };
-    }, [activeParticipant, codeSelectorRoster, isMatchTesting, matchContext]);
+    }, [activeParticipant, codeSelectorRoster, isMatchTesting, matchContext, selectableParticipants]);
     const blueTeamRoundWins = roundWinsForTeam(liveCodeRoster, 1);
     const redTeamRoundWins = roundWinsForTeam(liveCodeRoster, 2);
     const isCodeEditingLocked = isBotCodeLocked || activeCodeReadOnly;
@@ -658,11 +659,20 @@ export default function CodingPanel({
                         <PanelHeading icon="node">BOT CODE</PanelHeading>
                         <strong className="font-interface-numeric text-ink-muted">{countActions(activeConfiguration)}/{maxActionNodes} A · {countLogicConditions(activeConfiguration)}/{maxConditionNodes} C</strong>
                     </div>
+                    <ControlButton
+                        icon={isAutoPlaying ? "pause" : "play"}
+                        onClick={onAutoPlayToggle}
+                        disabled={isBaseTesting || isTesting}
+                        tone="neutral"
+                        className={tutorialFocus === "play" ? "tutorial-control-focus mt-4" : "mt-4"}
+                    >
+                        {isAutoPlaying ? "PAUSE" : "PLAY"}
+                    </ControlButton>
                     <button
                         type="button"
                         disabled={isBotCodeLocked}
                         onClick={() => openLogicWorkspace(false)}
-                        className={`arena-toolbar-button ${isBotCodeLocked ? "arena-toolbar-button--neutral" : "arena-toolbar-button--primary"} mt-4 ${tutorialFocus === "open-code" ? "tutorial-control-focus" : ""}`}
+                        className={`arena-toolbar-button ${isBotCodeLocked ? "arena-toolbar-button--neutral" : "arena-toolbar-button--primary"} mt-2 ${tutorialFocus === "open-code" ? "tutorial-control-focus" : ""}`}
                     >
                         <ToolIcon name="node" /> {isBotCodeLocked ? "BOT CODE SUBMITTED" : "OPEN BOT CODE"}
                     </button>
@@ -682,15 +692,6 @@ export default function CodingPanel({
                         <span className="font-display-action tracking-[.08em] text-ink-muted">BOT LOADOUT</span>
                     </div>
                     <div className="flex flex-col items-center gap-2.5">
-                        <ControlButton
-                            icon={isAutoPlaying ? "pause" : "play"}
-                            onClick={onAutoPlayToggle}
-                            disabled={isBaseTesting || isTesting}
-                            tone="neutral"
-                            className={tutorialFocus === "play" ? "tutorial-control-focus" : ""}
-                        >
-                            {isAutoPlaying ? "PAUSE" : "PLAY"}
-                        </ControlButton>
                         {onPuzzleSubmit && (
                             <ControlButton
                                 icon="check"

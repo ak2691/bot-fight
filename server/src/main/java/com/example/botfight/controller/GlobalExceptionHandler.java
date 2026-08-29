@@ -2,6 +2,7 @@ package com.example.botfight.controller;
 
 import com.example.botfight.security.RequestPayloadLimitExceededException;
 import com.example.botfight.service.auth.AuthException;
+import com.example.botfight.service.invite.InviteTargetUnavailableException;
 import com.example.botfight.service.limits.RateLimitExceededException;
 import com.example.botfight.service.submission.SubmissionConflictException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -67,7 +68,10 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(AuthException.class)
     ResponseEntity<ApiError> handleForbidden(AuthException exception, HttpServletRequest request) {
-        return response(HttpStatus.FORBIDDEN, "Request is not authorized", request, null);
+        String message = exception instanceof InviteTargetUnavailableException
+                ? exception.getMessage()
+                : "Request is not authorized";
+        return response(HttpStatus.FORBIDDEN, message, request, null);
     }
 
     @ExceptionHandler(SubmissionConflictException.class)

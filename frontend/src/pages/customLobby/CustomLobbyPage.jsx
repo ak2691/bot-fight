@@ -175,9 +175,10 @@ export default function CustomLobbyPage() {
         lobbyIdRef.current = customLobbyEvent.lobby?.lobbyId ?? null;
         setLobby(customLobbyEvent.lobby ?? null);
         setLoadState(customLobbyEvent.lobby ? "ready" : "empty");
-        if (customLobbyEvent.lobby) setError(null);
-        if (!customLobbyEvent.lobby && customLobbyEvent.message) {
-            setNotice(customLobbyEvent.message);
+        setError(null);
+        if (!customLobbyEvent.lobby) {
+            setNotice(null);
+            setInviteStatus(null);
         }
     }, [customLobbyEvent]);
 
@@ -210,10 +211,10 @@ export default function CustomLobbyPage() {
 
     useEffect(() => {
         if (!notice && !error) return undefined;
-        if (loadState === "error") return undefined;
         const timeoutId = window.setTimeout(() => {
             setNotice(null);
             setError(null);
+            if (loadState === "error") setLoadState("empty");
         }, STATUS_MESSAGE_DURATION_MS);
         return () => window.clearTimeout(timeoutId);
     }, [error, loadState, notice]);
@@ -482,11 +483,8 @@ export default function CustomLobbyPage() {
                     </div>
                 )}
                 {loadState === "empty" && (
-                    <div className="mt-10 border border-cyan-900/80 bg-[#07111b] px-6 py-12 text-center">
-                        <p className="font-mono text-[10px] font-bold tracking-[.2em] text-cyan-400">NO ACTIVE LOBBY</p>
-                        <h2 className="mt-3 text-2xl font-bold text-white">Build a private room</h2>
-                        <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-500">Create an invite-only lobby and send the room to the players you want to fight.</p>
-                        <button type="button" onClick={createLobby} disabled={action !== null} className="mt-6 h-12 border border-cyan-400/70 bg-cyan-950/50 px-6 font-mono text-xs font-bold tracking-widest text-cyan-100 hover:bg-cyan-900/50 disabled:cursor-wait disabled:opacity-50">{action === "create" ? "CREATING..." : "CREATE CUSTOM LOBBY"}</button>
+                    <div className="mt-10 flex flex-1 items-center justify-center">
+                        <button type="button" onClick={createLobby} disabled={action !== null} className="h-12 border border-cyan-400/70 bg-cyan-950/50 px-6 font-mono text-xs font-bold tracking-widest text-cyan-100 hover:bg-cyan-900/50 disabled:cursor-wait disabled:opacity-50">{action === "create" ? "CREATING..." : "CREATE CUSTOM LOBBY"}</button>
                     </div>
                 )}
                 {lobby && (

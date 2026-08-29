@@ -47,6 +47,19 @@ test("match and building toolbars expose only their supported controls", () => {
     assert.doesNotMatch(source, /SPAWN OPPONENT|EDIT OPPONENT LOADOUT|SAVE POINT|LOAD POINT|RESET TO BEGINNING/);
 });
 
+test("play stays in the bot-code panel above the code workspace button", () => {
+    const source = readFileSync(PANEL_PATH, "utf8");
+    const botCodeStart = source.indexOf('<PanelHeading icon="node">BOT CODE</PanelHeading>');
+    const matchToolsStart = source.indexOf("<PanelHeading>MATCH TOOLS</PanelHeading>");
+    const botCodePanel = source.slice(botCodeStart, matchToolsStart);
+    const matchToolsPanel = source.slice(matchToolsStart);
+
+    assert.ok(botCodeStart >= 0);
+    assert.ok(matchToolsStart > botCodeStart);
+    assert.ok(botCodePanel.indexOf("onAutoPlayToggle") < botCodePanel.indexOf("OPEN BOT CODE"));
+    assert.doesNotMatch(matchToolsPanel, /onAutoPlayToggle/);
+});
+
 test("puzzle play is a local preview and puzzle submission is a separate action", () => {
     const arenaSource = readFileSync(ARENA_PATH, "utf8");
     const runAutoPlay = arenaSource.match(/const runAutoPlay = \(\) => \{[\s\S]*?const customVariableGoal/);
@@ -181,6 +194,8 @@ test("arena and puzzle code workspaces share compact controls and pinch zoom", (
     assert.match(css, /\.code-workspace-coach \{[\s\S]*background: #07111b;/);
     assert.match(css, /\.tutorial-guide-panel \{[\s\S]*height: 26rem;[\s\S]*display: flex;[\s\S]*overflow: hidden;/);
     assert.match(css, /\.tutorial-guide-content \{[\s\S]*flex: 1 1 auto;[\s\S]*overflow-y: auto;/);
+    assert.match(css, /\.arena-stage-info \{[\s\S]*position: absolute;[\s\S]*height: 100%;[\s\S]*pointer-events: none;/);
+    assert.match(css, /\.arena-stage-info > \.info-popup-minimized,[\s\S]*position: absolute;[\s\S]*left: 0;[\s\S]*pointer-events: auto;/);
 });
 
 test("overlapping graph nodes keep delete controls in the same stacking context", () => {
@@ -643,6 +658,10 @@ test("puzzle arenas keep bot selection and dragging enabled while paused", () =>
     const source = readFileSync(ARENA_PATH, "utf8");
 
     assert.match(source, /const \[isEditingArena, setIsEditingArena\] = useState\(true\)/);
+    assert.match(source, /const allowLockedBotEditing = isPuzzleMode \|\| \(isMatchTesting && finishStatus === "BUILDING"\)/);
+    assert.match(source, /const arenaSelectableParticipants = useMemo\(\(\) => \{/);
+    assert.match(source, /userId: "tutorial-opponent", username: "Opponent 1"/);
+    assert.match(source, /selectableParticipants=\{arenaSelectableParticipants\}/);
     assert.match(source, /onSelectShape=\{isEditingArena && !tutorialMode \? setSelectedId/);
     assert.match(source, /onUpdateShape=\{isEditingArena && !tutorialMode \? handleUpdateShape/);
     assert.match(source, /editable=\{isEditingArena && !tutorialMode\}/);

@@ -8,6 +8,13 @@ import {
     getActiveMatchmakingClient,
 } from "../matchmaking/stompClient";
 import { NotificationContext } from "./notification-context";
+import {
+    mergeIncomingInvite,
+    normalizeIncomingInvites,
+    removeExpiredInvites,
+} from "./notificationExpiry";
+
+const ACTION_STATUS_DURATION_MS = 3500;
 
 function inviteFromNotification(event, username) {
     if (!event?.inviteId) return null;
@@ -48,14 +55,6 @@ function customLobbyInviteFromNotification(event, username) {
     };
 }
 
-function mergeInvites(current, next) {
-    const byId = new Map(current.map((invite) => [String(invite.inviteId), invite]));
-    next.filter(Boolean).forEach((invite) => {
-        byId.set(String(invite.inviteId), { ...byId.get(String(invite.inviteId)), ...invite });
-    });
-    return [...byId.values()];
-}
-
 export default function NotificationsProvider({ children }) {
     const { isAuthenticated } = useAuth();
     const navigate = useNavigate();
@@ -67,11 +66,13 @@ export default function NotificationsProvider({ children }) {
     const [actionPendingInviteId, setActionPendingInviteId] = useState(null);
     const [actionError, setActionError] = useState(null);
     const [lastNotification, setLastNotification] = useState(null);
+    const hiddenInviteIdsRef = useRef(new Set());
 
     navigateRef.current = navigate;
 
     const refreshIncomingInvites = useCallback(async () => {
         try {
+            const receivedAt = Date.now();
             const [duelResponse, partyResponse, customLobbyResponse] = await Promise.all([
                 fetch(apiUrl("/api/duel-invites/incoming"), {
                     credentials: "include",
@@ -88,15 +89,36 @@ export default function NotificationsProvider({ children }) {
             ]);
             if (duelResponse.ok) {
                 const body = await duelResponse.json().catch(() => ({}));
-                if (Array.isArray(body.invites)) setPendingInvites(body.invites);
+                if (Array.isArray(body.invites)) {
+                    setPendingInvites((current) => normalizeIncomingInvites(
+                        body.invites,
+                        current,
+                        receivedAt,
+                        hiddenInviteIdsRef.current,
+                    ));
+                }
             }
             if (partyResponse.ok) {
                 const body = await partyResponse.json().catch(() => ({}));
-                if (Array.isArray(body.invites)) setPendingPartyInvites(body.invites);
+                if (Array.isArray(body.invites)) {
+                    setPendingPartyInvites((current) => normalizeIncomingInvites(
+                        body.invites,
+                        current,
+                        receivedAt,
+                        hiddenInviteIdsRef.current,
+                    ));
+                }
             }
             if (customLobbyResponse.ok) {
                 const body = await customLobbyResponse.json().catch(() => ({}));
-                if (Array.isArray(body.invites)) setPendingCustomLobbyInvites(body.invites);
+                if (Array.isArray(body.invites)) {
+                    setPendingCustomLobbyInvites((current) => normalizeIncomingInvites(
+                        body.invites,
+                        current,
+                        receivedAt,
+                        hiddenInviteIdsRef.current,
+                    ));
+                }
             }
         } catch {
             // The socket remains the live path; a later app navigation can retry the snapshot.
@@ -105,6 +127,7 @@ export default function NotificationsProvider({ children }) {
 
     useEffect(() => {
         if (!isAuthenticated) {
+            hiddenInviteIdsRef.current.clear();
             setPendingInvites([]);
             setPendingPartyInvites([]);
             setPendingCustomLobbyInvites([]);
@@ -120,17 +143,32 @@ export default function NotificationsProvider({ children }) {
             setLastNotification(event);
             if (event.type === "DUEL_INVITE_RECEIVED") {
                 const invite = inviteFromNotification(event, null);
-                if (invite) setPendingInvites((current) => mergeInvites(current, [invite]));
+                if (invite) setPendingInvites((current) => mergeIncomingInvite(
+                    current,
+                    invite,
+                    Date.now(),
+                    hiddenInviteIdsRef.current,
+                ));
                 return;
             }
             if (event.type === "PARTY_INVITE_RECEIVED") {
                 const invite = partyInviteFromNotification(event, null);
-                if (invite) setPendingPartyInvites((current) => mergeInvites(current, [invite]));
+                if (invite) setPendingPartyInvites((current) => mergeIncomingInvite(
+                    current,
+                    invite,
+                    Date.now(),
+                    hiddenInviteIdsRef.current,
+                ));
                 return;
             }
             if (event.type === "CUSTOM_LOBBY_INVITE_RECEIVED") {
                 const invite = customLobbyInviteFromNotification(event, null);
-                if (invite) setPendingCustomLobbyInvites((current) => mergeInvites(current, [invite]));
+                if (invite) setPendingCustomLobbyInvites((current) => mergeIncomingInvite(
+                    current,
+                    invite,
+                    Date.now(),
+                    hiddenInviteIdsRef.current,
+                ));
                 return;
             }
             if (event.type === "DUEL_INVITE_MATCH_READY"
@@ -182,6 +220,46 @@ export default function NotificationsProvider({ children }) {
         };
     }, [isAuthenticated, refreshIncomingInvites]);
 
+    useEffect(() => {
+        if (!isAuthenticated) return undefined;
+        const removeExpired = () => {
+            const now = Date.now();
+            setPendingInvites((current) => removeExpiredInvites(
+                current,
+                now,
+                hiddenInviteIdsRef.current,
+            ));
+            setPendingPartyInvites((current) => removeExpiredInvites(
+                current,
+                now,
+                hiddenInviteIdsRef.current,
+            ));
+            setPendingCustomLobbyInvites((current) => removeExpiredInvites(
+                current,
+                now,
+                hiddenInviteIdsRef.current,
+            ));
+            setActionPendingInviteId((current) => (
+                current != null && hiddenInviteIdsRef.current.has(String(current)) ? null : current
+            ));
+        };
+        removeExpired();
+        const intervalId = window.setInterval(removeExpired, 1000);
+        return () => window.clearInterval(intervalId);
+    }, [isAuthenticated]);
+
+    useEffect(() => {
+        if (!actionError) return undefined;
+        const timeoutId = window.setTimeout(() => {
+            setActionError((current) => current === actionError ? null : current);
+        }, ACTION_STATUS_DURATION_MS);
+        return () => window.clearTimeout(timeoutId);
+    }, [actionError]);
+
+    const markInviteHandled = useCallback((inviteId) => {
+        if (inviteId != null) hiddenInviteIdsRef.current.add(String(inviteId));
+    }, []);
+
     const declineInvite = useCallback(async (inviteId) => {
         setActionPendingInviteId(inviteId);
         setActionError(null);
@@ -196,6 +274,7 @@ export default function NotificationsProvider({ children }) {
             );
             const body = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(body.message ?? "The invite could not be declined.");
+            markInviteHandled(inviteId);
             setPendingInvites((current) => current.filter(
                 (invite) => String(invite.inviteId) !== String(inviteId),
             ));
@@ -204,7 +283,7 @@ export default function NotificationsProvider({ children }) {
         } finally {
             setActionPendingInviteId(null);
         }
-    }, []);
+    }, [markInviteHandled]);
 
     const declinePartyInvite = useCallback(async (inviteId) => {
         setActionPendingInviteId(inviteId);
@@ -220,6 +299,7 @@ export default function NotificationsProvider({ children }) {
             );
             const body = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(body.message ?? "The party invite could not be declined.");
+            markInviteHandled(inviteId);
             setPendingPartyInvites((current) => current.filter(
                 (invite) => String(invite.inviteId) !== String(inviteId),
             ));
@@ -228,7 +308,7 @@ export default function NotificationsProvider({ children }) {
         } finally {
             setActionPendingInviteId(null);
         }
-    }, []);
+    }, [markInviteHandled]);
 
     const acceptPartyInvite = useCallback(async (inviteId) => {
         setActionPendingInviteId(inviteId);
@@ -244,15 +324,23 @@ export default function NotificationsProvider({ children }) {
             );
             const body = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(body.message ?? "The party invite could not be accepted.");
+            markInviteHandled(inviteId);
             setPendingPartyInvites((current) => current.filter(
                 (invite) => String(invite.inviteId) !== String(inviteId),
             ));
         } catch (error) {
-            setActionError(error.message ?? "The party invite could not be accepted.");
+            const message = error.message ?? "The party invite could not be accepted.";
+            if (message === "Party no longer exists") {
+                markInviteHandled(inviteId);
+                setPendingPartyInvites((current) => current.filter(
+                    (invite) => String(invite.inviteId) !== String(inviteId),
+                ));
+            }
+            setActionError(message);
         } finally {
             setActionPendingInviteId(null);
         }
-    }, []);
+    }, [markInviteHandled]);
 
     const acceptCustomLobbyInvite = useCallback(async (inviteId) => {
         setActionPendingInviteId(inviteId);
@@ -268,16 +356,24 @@ export default function NotificationsProvider({ children }) {
             );
             const body = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(body.message ?? "The custom lobby invite could not be accepted.");
+            markInviteHandled(inviteId);
             setPendingCustomLobbyInvites((current) => current.filter(
                 (invite) => String(invite.inviteId) !== String(inviteId),
             ));
             navigateRef.current("/custom-lobby");
         } catch (error) {
-            setActionError(error.message ?? "The custom lobby invite could not be accepted.");
+            const message = error.message ?? "The custom lobby invite could not be accepted.";
+            if (message === "Lobby no longer exists") {
+                markInviteHandled(inviteId);
+                setPendingCustomLobbyInvites((current) => current.filter(
+                    (invite) => String(invite.inviteId) !== String(inviteId),
+                ));
+            }
+            setActionError(message);
         } finally {
             setActionPendingInviteId(null);
         }
-    }, []);
+    }, [markInviteHandled]);
 
     const declineCustomLobbyInvite = useCallback(async (inviteId) => {
         setActionPendingInviteId(inviteId);
@@ -293,6 +389,7 @@ export default function NotificationsProvider({ children }) {
             );
             const body = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(body.message ?? "The custom lobby invite could not be declined.");
+            markInviteHandled(inviteId);
             setPendingCustomLobbyInvites((current) => current.filter(
                 (invite) => String(invite.inviteId) !== String(inviteId),
             ));
@@ -301,7 +398,7 @@ export default function NotificationsProvider({ children }) {
         } finally {
             setActionPendingInviteId(null);
         }
-    }, []);
+    }, [markInviteHandled]);
 
     const acceptInvite = useCallback(async (inviteId) => {
         setActionPendingInviteId(inviteId);
@@ -338,15 +435,14 @@ export default function NotificationsProvider({ children }) {
     const hideInvitesFrom = useCallback((username) => {
         const normalizedUsername = String(username ?? "").toLowerCase();
         if (!normalizedUsername) return;
-        setPendingInvites((current) => current.filter(
-            (invite) => String(invite.inviterUsername ?? "").toLowerCase() !== normalizedUsername,
-        ));
-        setPendingPartyInvites((current) => current.filter(
-            (invite) => String(invite.inviterUsername ?? "").toLowerCase() !== normalizedUsername,
-        ));
-        setPendingCustomLobbyInvites((current) => current.filter(
-            (invite) => String(invite.inviterUsername ?? "").toLowerCase() !== normalizedUsername,
-        ));
+        const hide = (current) => current.filter((invite) => {
+            const shouldHide = String(invite.inviterUsername ?? "").toLowerCase() === normalizedUsername;
+            if (shouldHide && invite.inviteId != null) hiddenInviteIdsRef.current.add(String(invite.inviteId));
+            return !shouldHide;
+        });
+        setPendingInvites(hide);
+        setPendingPartyInvites(hide);
+        setPendingCustomLobbyInvites(hide);
     }, []);
 
     const value = useMemo(() => ({

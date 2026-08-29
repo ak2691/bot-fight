@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getTutorialScenario, hasTutorialPriorityOrder, TUTORIAL_ACTIONS, TUTORIAL_STEP_COUNT } from "./TutorialPresets.js";
+import { buildTutorialArenaShapes, getTutorialScenario, hasTutorialPriorityOrder, TUTORIAL_ACTIONS, TUTORIAL_STEP_COUNT } from "./TutorialPresets.js";
 import { normalizeAbilityStrategyConfiguration, selectAbilityStrategyActionPlan } from "../gameArena/botlogic/code/BotCode.js";
+import { buildStatePayload } from "../gameArena/modelPayloads/strategyStatePayload.js";
+import { stateFromPayload } from "../gameArena/botlogic/code/runtime/runtimeState.js";
 
 const emptyPayload = {
     playerModel: {
@@ -47,6 +49,18 @@ test("tutorial presets use the current tree and selectable payload shapes", () =
     assert.equal(strikeCondition.leftSelectable, undefined);
     assert.equal(strikeAction.action, TUTORIAL_ACTIONS.HEAVY_SLASH);
     assert.equal(strikeAction.actionTarget, undefined);
+});
+
+test("tutorial arena uses standard offline bot labels and exposes its opponent", () => {
+    const shapes = buildTutorialArenaShapes(0);
+    const payload = buildStatePayload(shapes, shapes.find((shape) => shape.id === "main")?.combatLoadout);
+    const opponent = payload.objects.find((object) => object.id === "opponent-model");
+
+    assert.deepEqual(shapes.map((shape) => shape.username), ["My Bot", "Opponent 1"]);
+    assert.equal(opponent?.type, "opponentModel");
+    assert.equal(opponent?.role, "opponent");
+    assert.equal(opponent?.botIndex, 1);
+    assert.equal(stateFromPayload(payload).opponent?.id, "opponent-model");
 });
 
 test("tutorial priority lesson starts with Dash first and solution swaps only priorities", () => {

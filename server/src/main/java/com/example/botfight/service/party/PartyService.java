@@ -20,6 +20,7 @@ import com.example.botfight.service.block.BlockLookup;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.match.model.MatchEntrant;
+import com.example.botfight.service.invite.InviteTargetUnavailableException;
 import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
 import java.time.Clock;
 import java.time.Duration;
@@ -320,11 +321,11 @@ public class PartyService {
     @Transactional
     public synchronized AcceptedInvite accept(Authentication authentication, UUID inviteId) {
         UUID inviteeId = currentUserService.requireCurrentUserId(authentication);
-        PartyInvite invite = requirePendingInvite(inviteId, inviteeId);
+        PartyInvite invite = requirePendingInviteForAccept(inviteId, inviteeId);
         Party party = requirePartyForUpdate(invite.getParty().getId());
         AppUser invitee = invite.getInvitee();
         if (party.getStatus() != PartyStatus.ACTIVE) {
-            throw new AuthException("the party is no longer available");
+            throw new InviteTargetUnavailableException("Party no longer exists");
         }
         rejectActiveMatch(inviteeId);
         if (activePartyForUser(inviteeId) != null) {
@@ -356,7 +357,7 @@ public class PartyService {
     @Transactional
     public synchronized DeclinedInvite decline(Authentication authentication, UUID inviteId) {
         UUID inviteeId = currentUserService.requireCurrentUserId(authentication);
-        PartyInvite invite = requirePendingInvite(inviteId, inviteeId);
+        PartyInvite invite = requirePendingInviteForDecline(inviteId, inviteeId);
         invite.setStatus(PartyInviteStatus.DECLINED);
         invite.setRespondedAt(clock.instant());
         AppUser inviter = invite.getInviter();
@@ -496,7 +497,6 @@ public class PartyService {
             if (members.isEmpty()) {
                 activePartiesById.remove(party.getId());
                 membersByPartyId.remove(party.getId());
-                expireInvitesForParty(party.getId());
                 changes.add(new CustomMatchPartyChange(
                         party.getId(),
                         null,
@@ -617,25 +617,17 @@ public class PartyService {
         if (remaining.isEmpty()) {
             activePartiesById.remove(party.getId());
             membersByPartyId.remove(party.getId());
-            expireInvitesForParty(party.getId());
             return new LeaveResult(null, party.getId(), recipients, removedRecipient);
         }
         if (party.getOwner() != null && userId.equals(party.getOwner().getId())) {
             party.setOwner(remaining.getFirst().getUser());
-            expireInvitesForParty(party.getId());
         }
         return new LeaveResult(toDTO(party), party.getId(), recipients, removedRecipient);
-    }
-
-    private void expireInvitesForParty(UUID partyId) {
-        invitesById.values().removeIf(invite -> invite.getParty() != null
-                && partyId.equals(invite.getParty().getId()));
     }
 
     private void clearParty(Party party) {
         activePartiesById.remove(party.getId());
         List<PartyMember> members = membersByPartyId.remove(party.getId());
-        expireInvitesForParty(party.getId());
         if (members == null) return;
         members.forEach(member -> {
             if (member.getUser() == null || member.getUser().getId() == null) return;
@@ -704,7 +696,17 @@ public class PartyService {
                 .orElse(null);
     }
 
-    private PartyInvite requirePendingInvite(UUID inviteId, UUID inviteeId) {
+    private PartyInvite requirePendingInviteForAccept(UUID inviteId, UUID inviteeId) {
+        PartyInvite invite = requirePendingInviteForDecline(inviteId, inviteeId);
+        if (invite.getParty() == null
+                || !activePartiesById.containsKey(invite.getParty().getId())
+                || invite.getParty().getStatus() != PartyStatus.ACTIVE) {
+            throw new InviteTargetUnavailableException("Party no longer exists");
+        }
+        return invite;
+    }
+
+    private PartyInvite requirePendingInviteForDecline(UUID inviteId, UUID inviteeId) {
         if (inviteId == null || inviteeId == null) {
             throw new AuthException("the party invite is no longer available");
         }
@@ -721,10 +723,6 @@ public class PartyService {
             invite.setRespondedAt(now);
             invitesById.remove(inviteId);
             throw new AuthException("the party invite has expired");
-        }
-        if (invite.getParty() == null || !activePartiesById.containsKey(invite.getParty().getId())) {
-            invitesById.remove(inviteId);
-            throw new AuthException("the party is no longer available");
         }
         return invite;
     }

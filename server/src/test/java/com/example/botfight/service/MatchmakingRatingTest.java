@@ -10,7 +10,7 @@ import static org.mockito.Mockito.when;
 import com.example.botfight.DTO.ActiveMatchStatusDTO;
 import com.example.botfight.domain.MatchMode;
 import com.example.botfight.service.auth.AuthException;
-import com.example.botfight.service.limits.SlidingWindowRateLimiter;
+import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.match.model.MatchEntrant;
 import com.example.botfight.service.matchmaking.MatchmakingService;
@@ -40,7 +40,7 @@ class MatchmakingRatingTest {
         service = new MatchmakingService(
                 matchService,
                 clock,
-                new SlidingWindowRateLimiter<>(clock, 5, Duration.ofSeconds(5)),
+                new TokenBucketRateLimiter<>(clock, 5, Duration.ofSeconds(3)),
                 eloRatingService);
         when(matchService.activeMatchStatus(any())).thenReturn(ActiveMatchStatusDTO.none());
     }

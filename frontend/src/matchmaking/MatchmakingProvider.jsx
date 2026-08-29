@@ -20,9 +20,11 @@ import {
     getEstimatedOneWayNetworkDelayMs,
 } from "./stompClient";
 import { MatchmakingContext } from "./matchmaking-context";
+import {
+    createQueueTokenBucket,
+    tryConsumeQueueToken,
+} from "./queueRateLimit.js";
 
-const QUEUE_ATTEMPT_BURST_LIMIT = 3;
-const QUEUE_ATTEMPT_WINDOW_MS = 5000;
 const ACTIVE_MATCH_REQUEST_REUSE_MS = 1_000;
 const TOO_MANY_REQUESTS_MESSAGE = "Too many requests. Try again later.";
 const QUEUE_ALERT_DISMISS_MS = 3_500;
@@ -83,7 +85,7 @@ export default function MatchmakingProvider({ children }) {
     const acceptanceAuthoritativeDeadlineRef = useRef(null);
     const acceptanceStartDeadlineRef = useRef(null);
     const acceptanceSubmitPendingRef = useRef(false);
-    const queueAttemptTimesRef = useRef([]);
+    const queueTokenBucketRef = useRef(createQueueTokenBucket());
     const queueStartInFlightRef = useRef(false);
     const activeMatchRequestRef = useRef(null);
     const activeMatchSnapshotRef = useRef(null);
@@ -421,6 +423,10 @@ export default function MatchmakingProvider({ children }) {
         };
     }, [handleCustomLobbyEvent, isAuthenticated]);
 
+    useEffect(() => {
+        queueTokenBucketRef.current = createQueueTokenBucket();
+    }, [user?.id]);
+
     const cancelPendingAcceptance = useCallback(() => {
         const pending = pendingAcceptanceRef.current;
         const client = matchmakingClientRef.current;
@@ -436,14 +442,11 @@ export default function MatchmakingProvider({ children }) {
             return;
         }
         const now = Date.now();
-        const recentAttempts = queueAttemptTimesRef.current.filter(
-            (attemptedAt) => now - attemptedAt < QUEUE_ATTEMPT_WINDOW_MS);
-        if (recentAttempts.length >= QUEUE_ATTEMPT_BURST_LIMIT) {
+        if (!tryConsumeQueueToken(queueTokenBucketRef.current, now)) {
             setQueueError(TOO_MANY_REQUESTS_MESSAGE);
             return;
         }
         queueStartInFlightRef.current = true;
-        queueAttemptTimesRef.current = [...recentAttempts, now];
         try {
             setQueueError(null);
             const status = await verifyActiveMatchForQueue();

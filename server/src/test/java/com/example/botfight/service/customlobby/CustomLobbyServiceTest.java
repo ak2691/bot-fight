@@ -153,6 +153,27 @@ class CustomLobbyServiceTest {
     }
 
     @Test
+    void aStaleLobbyInviteCanBeDeclinedAfterTheLastLobbyMemberLeaves() {
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
+        CustomLobbyDTO lobby = service.create(authentication);
+        when(userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(teammate.getUsername()))
+                .thenReturn(Optional.of(teammate));
+        CustomLobbyService.CreatedInvite created = service.invite(
+                authentication, lobby.lobbyId(), teammate.getUsername());
+
+        service.leave(authentication, lobby.lobbyId());
+        assertThat(service.currentForPrincipal(owner.getEmail())).isNull();
+
+        when(currentUserService.requireCurrentUserId(authentication)).thenReturn(teammate.getId());
+        assertThatThrownBy(() -> service.accept(authentication, created.invite().inviteId()))
+                .isInstanceOf(AuthException.class)
+                .hasMessage("Lobby no longer exists");
+
+        assertThat(service.decline(authentication, created.invite().inviteId()).invite().status())
+                .isEqualTo("DECLINED");
+    }
+
+    @Test
     void onlyTheOwnerCanStartAndTheStartedMatchUsesCustomMode() {
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
         CustomLobbyDTO lobby = service.create(authentication);

@@ -63,7 +63,6 @@ export default function QueuePage() {
         isQueueing,
         queueMode,
         queueElapsed,
-        queueError,
         startQueue,
         cancelQueue,
         party,
@@ -232,11 +231,10 @@ export default function QueuePage() {
                     </button>
                 </div>
 
-                {(partyQueueBlocked || partyHasOfflineMember || queueError) && (
+                {(partyQueueBlocked || partyHasOfflineMember) && (
                     <section className="mt-5 rounded-xl border border-slate-800 bg-[#07111b] p-5 sm:p-6">
                         {partyQueueBlocked && <p className="text-xs text-amber-300">Only the party leader can start the party queue.</p>}
                         {partyHasOfflineMember && <p className="mt-3 text-xs text-amber-300">Every party member must be online before the queue can start.</p>}
-                        {queueError && <p className="text-xs text-rose-300" role="alert">{queueError}</p>}
                     </section>
                 )}
 

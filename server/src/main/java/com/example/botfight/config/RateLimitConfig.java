@@ -18,8 +18,8 @@ public class RateLimitConfig {
     }
 
     @Bean(name = "matchmakingRateLimiter")
-    public SlidingWindowRateLimiter<UUID> matchmakingRateLimiter(Clock clock) {
-        return new SlidingWindowRateLimiter<>(clock, 3, Duration.ofSeconds(5));
+    public TokenBucketRateLimiter<UUID> matchmakingRateLimiter(Clock clock) {
+        return new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3));
     }
 
     @Bean(name = "matchCodeViewRateLimiter")

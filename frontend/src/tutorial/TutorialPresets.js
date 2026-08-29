@@ -204,11 +204,19 @@ export function buildTutorialArenaShapes(step = 0) {
     const scenario = getTutorialScenario(step);
     const { playerY, opponentY, playerRotation } = scenario.spawn;
     const player = resetBotShape({
-        ...MAIN_SHAPE, username: "Your tutorial bot", x: 500, y: playerY, spawnX: 500, spawnY: playerY,
+        ...MAIN_SHAPE,
+        userId: "tutorial-player",
+        username: "My Bot",
+        slot: 1,
+        teamNumber: 1,
+        x: 500,
+        y: playerY,
+        spawnX: 500,
+        spawnY: playerY,
         rotation: playerRotation, combatLoadout: scenario.playerLoadout,
     });
     const opponent = resetBotShape({
-        ...buildOpponentShape({ username: "Tutorial opponent", selectedLoadout: scenario.opponentLoadout, slot: 2 }),
+        ...buildOpponentShape({ userId: "tutorial-opponent", username: "Opponent 1", selectedLoadout: scenario.opponentLoadout, slot: 2, teamNumber: 2 }),
         x: 500, y: opponentY, spawnX: 500, spawnY: opponentY, rotation: 0,
         combatLoadout: scenario.opponentLoadout, locked: true,
     });

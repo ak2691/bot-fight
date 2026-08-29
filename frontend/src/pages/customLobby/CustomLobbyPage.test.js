@@ -54,6 +54,14 @@ test("custom lobby page exposes invite-only teams and owner start controls", () 
     assert.doesNotMatch(source, /roundMinutes|custom-lobby-round-minutes/);
 });
 
+test("an empty or kicked custom-lobby view keeps only the centered create action", () => {
+    assert.match(source, /loadState === "empty"/);
+    assert.match(source, /mt-10 flex flex-1 items-center justify-center/);
+    assert.match(source, /<button type="button" onClick=\{createLobby\}/);
+    assert.doesNotMatch(source, /NO ACTIVE LOBBY|Build a private room|Create an invite-only lobby/);
+    assert.match(source, /if \(!customLobbyEvent\.lobby\) \{[\s\S]*setNotice\(null\);[\s\S]*setInviteStatus\(null\);/);
+});
+
 test("custom lobby is protected from active matches and has its own route", () => {
     assert.match(appSource, /path="\/custom-lobby"/);
     assert.match(appSource, /<CustomLobbyPage \/>/);

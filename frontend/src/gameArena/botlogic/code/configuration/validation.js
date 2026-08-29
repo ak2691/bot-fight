@@ -4,8 +4,6 @@ export function validateConfiguration(configuration, {
     normalizeConfiguration,
     countVariableSlots,
     countConditionSlots,
-    normalizedBlockEntries,
-    isTrainableBlock,
 }) {
     const normalized = normalizeConfiguration(configuration);
     const errors = [];
@@ -26,7 +24,5 @@ export function validateConfiguration(configuration, {
             errors.push(`Custom variable "${name}" no longer supports conditions.`);
         }
     });
-    const entries = normalizedBlockEntries(normalized);
-    if (entries.length > 0 && !entries.some((entry) => isTrainableBlock(entry.block))) errors.push("Add at least one bot code action before submitting.");
     return { configuration: normalized, errors, warnings };
 }

@@ -15,6 +15,7 @@ import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
 import com.example.botfight.service.match.model.MatchEntrant;
 import com.example.botfight.service.match.timing.MatchTimingPolicy;
+import com.example.botfight.service.invite.InviteTargetUnavailableException;
 import com.example.botfight.service.party.PartyService;
 import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
 import java.time.Clock;
@@ -225,7 +226,7 @@ public class CustomLobbyService {
 
     public synchronized AcceptedInvite accept(Authentication authentication, UUID inviteId) {
         UUID inviteeId = currentUserService.requireCurrentUserId(authentication);
-        LobbyInvite invite = requirePendingInvite(inviteId, inviteeId);
+        LobbyInvite invite = requirePendingInviteForAccept(inviteId, inviteeId);
         rejectActiveMatch(inviteeId);
         if (blockLookup.isBlocked(inviteeId, invite.inviter.getId())
                 || blockLookup.isBlocked(invite.inviter.getId(), inviteeId)) {
@@ -258,7 +259,7 @@ public class CustomLobbyService {
 
     public synchronized DeclinedInvite decline(Authentication authentication, UUID inviteId) {
         UUID inviteeId = currentUserService.requireCurrentUserId(authentication);
-        LobbyInvite invite = requirePendingInvite(inviteId, inviteeId);
+        LobbyInvite invite = requirePendingInviteForDecline(inviteId, inviteeId);
         invite.status = "DECLINED";
         invitesById.remove(invite.inviteId);
         return new DeclinedInvite(
@@ -497,7 +498,6 @@ public class CustomLobbyService {
             lobbyIdsByUserId.remove(member.user.getId(), lobby.lobbyId);
             socketSessionIdsByUserId.remove(member.user.getId());
         });
-        invitesById.values().removeIf(invite -> lobby.lobbyId.equals(invite.lobbyId));
     }
 
     private ActiveLobby requireLobby(UUID lobbyId) {
@@ -597,7 +597,15 @@ public class CustomLobbyService {
                 .orElse(null);
     }
 
-    private LobbyInvite requirePendingInvite(UUID inviteId, UUID inviteeId) {
+    private LobbyInvite requirePendingInviteForAccept(UUID inviteId, UUID inviteeId) {
+        LobbyInvite invite = requirePendingInviteForDecline(inviteId, inviteeId);
+        if (!activeLobbiesById.containsKey(invite.lobbyId)) {
+            throw new InviteTargetUnavailableException("Lobby no longer exists");
+        }
+        return invite;
+    }
+
+    private LobbyInvite requirePendingInviteForDecline(UUID inviteId, UUID inviteeId) {
         if (inviteId == null || inviteeId == null) {
             throw new AuthException("the custom lobby invite is no longer available");
         }
@@ -611,10 +619,6 @@ public class CustomLobbyService {
         if (invite.expiresAt == null || !now.isBefore(invite.expiresAt)) {
             invitesById.remove(inviteId);
             throw new AuthException("the custom lobby invite has expired");
-        }
-        if (!activeLobbiesById.containsKey(invite.lobbyId)) {
-            invitesById.remove(inviteId);
-            throw new AuthException("the custom lobby is no longer available");
         }
         return invite;
     }

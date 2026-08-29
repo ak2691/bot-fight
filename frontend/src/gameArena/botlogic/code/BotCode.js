@@ -10,7 +10,7 @@ import { validateConfiguration } from "./configuration/validation.js";
 import { compareAngleValues, compareValues, evaluateConditionNode, evaluateConditionNodes } from "./runtime/conditionEvaluator.js";
 import { normalizeConfiguration } from "./configuration/normalization.js";
 import { stateFromPayload } from "./runtime/runtimeState.js";
-import { normalizedBlockEntries, selectPriorityCandidates as selectCandidates } from "./runtime/treeSelection.js";
+import { selectPriorityCandidates as selectCandidates } from "./runtime/treeSelection.js";
 import { normalizeRoot as normalizeCodeRoot } from "./configuration/rootNormalizer.js";
 import { actionExecutableNow as canExecuteAction, actionSupportsTarget } from "./runtime/actionRuntime.js";
 import { countConditionSlots, countVariableSlots } from "./configuration/configurationMetrics.js";
@@ -193,8 +193,6 @@ export function validateAbilityStrategyConfiguration(configuration) {
         normalizeConfiguration: normalizeAbilityStrategyConfiguration,
         countVariableSlots,
         countConditionSlots,
-        normalizedBlockEntries,
-        isTrainableBlock,
     });
 }
 

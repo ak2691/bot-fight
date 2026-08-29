@@ -269,12 +269,12 @@ const LESSONS = [
         lessonNumber: "10",
         eyebrow: "THE MATCH LOOP",
         title: "How the game works",
-        objective: "Learn the match flow before you build for real.",
+        objective: "Learn the rules",
         details: [
             "Each round gives you a selection of abilities. In Round 1, you get 6 abilities and choose 3. In round 2, you get 4 abilities and choose 2. In round 3, you get 3 abilities and choose 1.",
             "The safe zone shrinks every 15 seconds. Each shrink lasts 5 seconds, and the closing zone deals damage.",
-            "You have 5 minutes to build your bot. Then it fights in the round simulation. This repeats for a best of 3. Draws are possible.",
-            "To start playing, click queue match on the home page. You can also look up a user on the profile page and invite them to a duel.",
+            "You have 5 minutes to build your bot in 1v1s, 6 minutes for 2v2s.",
+            "To start playing, click queue match on the home page.",
         ],
     },
     {

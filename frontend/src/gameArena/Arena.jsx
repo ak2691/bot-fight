@@ -584,6 +584,7 @@ export default function Arena({
     const isMatchTesting = Boolean(matchId && matchUserId);
     const abilityInfoEnabled = isPracticeRoom || (isMatchTesting && finishStatus === "BUILDING");
     const allowBotRotation = isPracticeRoom || isPuzzleBuilder || (isMatchTesting && finishStatus === "BUILDING");
+    const allowLockedBotEditing = isPuzzleMode || (isMatchTesting && finishStatus === "BUILDING");
     // Tutorial, practice, puzzle, and live-match arenas share the same
     // responsive shell. The tutorial used to opt out of the fixed-layout
     // breakpoints, which made its toolbar and status panels disappear at
@@ -739,6 +740,26 @@ export default function Arena({
         () => practiceArenaSetup ? puzzleSetupBots(practiceArenaSetup, selectedLoadout, opponentLoadout) : [],
         [opponentLoadout, practiceArenaSetup, selectedLoadout],
     );
+    const arenaSelectableParticipants = useMemo(() => {
+        if (tutorialMode) {
+            return [
+                { userId: "tutorial-player", username: "My Bot", slot: 1, teamNumber: PUZZLE_PLAYER_TEAM, selectedLoadout },
+                { userId: "tutorial-opponent", username: "Opponent 1", slot: 2, teamNumber: PUZZLE_OPPONENT_TEAM, selectedLoadout: opponentLoadout },
+            ];
+        }
+        if (!isPuzzleMode) return null;
+        return puzzleSetupRoster.map((bot) => {
+            const key = puzzleBotKey(bot);
+            const isPrimaryPlayer = key === puzzleBotKey(PUZZLE_PLAYER_TEAM, 1);
+            const isPrimaryOpponent = key === puzzleBotKey(PUZZLE_OPPONENT_TEAM, 1);
+            return {
+                ...bot,
+                userId: bot.userId ?? `puzzle-selectable-${key}`,
+                username: puzzleCodeParticipantName(bot),
+                selectedLoadout: isPrimaryPlayer ? selectedLoadout : isPrimaryOpponent ? opponentLoadout : bot.loadout,
+            };
+        });
+    }, [isPuzzleMode, opponentLoadout, puzzleSetupRoster, selectedLoadout, tutorialMode]);
     const puzzleCodeRoster = useMemo(() => {
         if (!isPuzzleBuilder) return null;
         return puzzleSetupRoster.map((bot) => {
@@ -1201,16 +1222,11 @@ export default function Arena({
 
     const handleUpdateShape = useCallback((id, updates) => {
         setShapes((previous) => previous.map((shape) => (
-            shape.id === id && !shape.locked
-                ? shape.id === "main" || shape.id === "opponent-model"
-                    ? (() => {
-                        const next = mergeBotShapeUpdates(shape, updates);
-                        return next;
-                    })()
-                    : { ...shape, ...updates }
+            shape.id === id && (!shape.locked || allowLockedBotEditing)
+                ? mergeBotShapeUpdates(shape, updates)
                 : shape
         )));
-    }, []);
+    }, [allowLockedBotEditing]);
 
     const playerSetup = puzzleBotForSetup(initialPuzzle, PUZZLE_PLAYER_TEAM);
     const opponentSetup = puzzleBotForSetup(initialPuzzle, PUZZLE_OPPONENT_TEAM);
@@ -1859,6 +1875,7 @@ export default function Arena({
                             onMeasurementPointsChange={setMeasurementPoints}
                             isPlaying={isAutoPlaying}
                             allowBotRotation={allowBotRotation}
+                            allowLockedBotEditing={allowLockedBotEditing}
                             />
                         </div>
                     </div>
@@ -1870,6 +1887,7 @@ export default function Arena({
                     opponentConfiguration={isMatchTesting || tutorialMode || (isPuzzleMode && initialPuzzle?.hideOpponentCode !== false) ? null : opponentTestingConfiguration}
                     onOpponentChange={isMatchTesting || tutorialMode ? null : updateOpponentTestingConfiguration}
                     offlineCodeParticipants={isPuzzleBuilder ? puzzleCodeRoster : isPracticeRoom ? practiceCodeRoster : null}
+                    selectableParticipants={arenaSelectableParticipants}
                     onOfflineCodeChange={isPuzzleBuilder || isPracticeRoom ? handleOfflineCodeChange : null}
                     opponentReadOnly={isPuzzleMode && initialPuzzle?.hideOpponentCode === false}
                     selectedLoadout={selectedLoadout}

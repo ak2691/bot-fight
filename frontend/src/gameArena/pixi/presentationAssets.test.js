@@ -99,6 +99,19 @@ test("PixiCanvas consumes the shared application instead of owning a second asse
     assert.doesNotMatch(source, /Loading assets\.\.\./);
 });
 
+test("setup can move protected participant bots without making them deletable", () => {
+    const pixiSource = readFileSync(PIXI_CANVAS_PATH, "utf8");
+    const arenaSource = readFileSync(fileURLToPath(new URL("../Arena.jsx", import.meta.url)), "utf8");
+
+    assert.match(pixiSource, /allowLockedBotEditing = false/);
+    assert.match(pixiSource, /!shape\.locked \|\| optionsRef\.current\.allowLockedBotEditing/);
+    assert.match(pixiSource, /if \(!canEditBot\(view\.shape\)\) return;/);
+    assert.match(arenaSource, /const allowLockedBotEditing = isPuzzleMode \|\| \(isMatchTesting && finishStatus === "BUILDING"\)/);
+    assert.match(arenaSource, /shape\.id === id && \(!shape\.locked \|\| allowLockedBotEditing\)/);
+    assert.match(arenaSource, /allowLockedBotEditing=\{allowLockedBotEditing\}/);
+    assert.match(arenaSource, /if \(!isEditingArena \|\| !selected \|\| selected\.id === "main" \|\| selected\.locked\) return prev;/);
+});
+
 test("Pixi warmup renders into a disposable target instead of the visible canvas", () => {
     const source = readFileSync(PIXI_APPLICATION_PATH, "utf8");
     assert.match(source, /RenderTexture\.create\(\{ width: 1, height: 1 \}\)/);
