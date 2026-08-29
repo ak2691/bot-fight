@@ -148,7 +148,7 @@ export default function PixiCanvas({
     const opponentStatusBot = opponentBot
         ?? (showMissingOpponentStatus ? { id: "opponent-model", slot: 2, teamNumber: 2, abilities: [], opponentUsername: "OPPONENT" } : null);
     const renderStatusPanels = (teamBots) => teamBots.map((bot) => (
-        <AbilityStatusPanel key={bot.id ?? `slot-${bot.slot}`} bot={bot} compact={hasMultipleTeamMembers} statusRoster={bots} showParticipantNumbers={showParticipantNumbers} showEmptySlot={showEmptyAbilitySlot} abilityInfoEnabled={abilityInfoEnabled} />
+        <AbilityStatusPanel key={bot.id ?? `slot-${bot.slot}`} bot={bot} statusRoster={bots} showParticipantNumbers={showParticipantNumbers} showEmptySlot={showEmptyAbilitySlot} abilityInfoEnabled={abilityInfoEnabled} />
     ));
     const layoutClass = fixedLayout
         ? abilityLayout === "right"
@@ -198,7 +198,7 @@ export default function PixiCanvas({
                 {abilityLayout === "right"
                         ? (showTeamStatusPanels
                             ? [...blueTeamBots, ...redTeamBots].map((bot) => (
-                            <AbilityStatusPanel key={bot.id ?? `slot-${bot.slot}`} bot={bot} compact statusRoster={bots} showParticipantNumbers={showParticipantNumbers} showEmptySlot={showEmptyAbilitySlot} abilityInfoEnabled={abilityInfoEnabled} />
+                            <AbilityStatusPanel key={bot.id ?? `slot-${bot.slot}`} bot={bot} statusRoster={bots} showParticipantNumbers={showParticipantNumbers} showEmptySlot={showEmptyAbilitySlot} abilityInfoEnabled={abilityInfoEnabled} />
                         ))
                         : playerBot && <AbilityStatusPanel bot={playerBot} statusRoster={bots} showParticipantNumbers={showParticipantNumbers} showEmptySlot={showEmptyAbilitySlot} abilityInfoEnabled={abilityInfoEnabled} />)
                     : showTeamStatusPanels

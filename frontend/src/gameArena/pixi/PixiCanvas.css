@@ -54,6 +54,30 @@
     }
 }
 
+@media (min-width: 1181px) {
+    .pixi-combat-layout--fixed .ability-status-panel {
+        height: 14rem;
+        min-height: 14rem;
+    }
+
+    .pixi-combat-layout--fixed .ability-status-panel .ability-status-panel__header {
+        margin-bottom: 0;
+        line-height: .875rem;
+    }
+
+    .pixi-combat-layout--fixed .ability-status-panel .ability-status-panel__timer {
+        height: .75rem;
+        line-height: .75rem;
+    }
+
+    .pixi-combat-layout--fixed .ability-status-panel .ability-status-panel__abilities {
+        height: 10.25rem;
+        max-height: 10.25rem;
+        grid-auto-rows: 3.25rem;
+        row-gap: .25rem;
+    }
+}
+
 @media (max-width: 1180px) {
     .pixi-combat-layout--fixed.pixi-combat-layout--split {
         min-width: 400px !important;
@@ -87,41 +111,46 @@
     }
 
     .pixi-combat-layout--fixed .ability-status-panel {
-        height: auto;
-        min-height: 0;
-        padding: .5rem;
+        height: 11.5rem;
+        min-height: 11.5rem;
+        padding: .375rem;
     }
 
     .pixi-combat-layout--fixed .ability-status-panel__header {
-        margin-bottom: .25rem;
+        gap: .125rem;
+        margin-bottom: .125rem;
         font-size: 9px;
+        line-height: .75rem;
+    }
+
+    .pixi-combat-layout--fixed .ability-status-panel__hp {
+        font-size: 9px;
+        line-height: .75rem;
+    }
+
+    .pixi-combat-layout--fixed .ability-status-panel__timer {
+        height: .75rem;
+        font-size: 8px;
+        line-height: .75rem;
+    }
+
+    .pixi-combat-layout--fixed .ability-status-panel__icon {
+        margin-top: 0;
+    }
+
+    .pixi-combat-layout--fixed .ability-status-panel__abilities .ability-status-icon-button,
+    .pixi-combat-layout--fixed .ability-status-panel__abilities .ability-status-ring {
+        width: 32px;
+        height: 32px;
     }
 
     .pixi-combat-layout--fixed .ability-status-panel__abilities {
-        height: auto;
-        max-height: 14.5rem;
-        grid-auto-rows: 4.5rem;
-        column-gap: .25rem;
-        row-gap: .5rem;
-        overflow-y: auto;
-        padding-right: 0;
-    }
-
-    .pixi-combat-layout--fixed .ability-status-panel--compact {
-        height: 13rem;
-        padding: .5rem;
-    }
-
-    .pixi-combat-layout--fixed .ability-status-panel--compact .ability-status-panel__header {
-        margin-bottom: .25rem;
-        font-size: 9px;
-    }
-
-    .pixi-combat-layout--fixed .ability-status-panel--compact .ability-status-panel__abilities {
-        height: 10.5rem;
-        max-height: 10.5rem;
-        grid-auto-rows: 3.2rem;
+        height: 8.75rem;
+        max-height: 8.75rem;
+        grid-auto-rows: 2.75rem;
         column-gap: .25rem;
         row-gap: .25rem;
+        overflow-y: auto;
+        padding-right: 0;
     }
 }

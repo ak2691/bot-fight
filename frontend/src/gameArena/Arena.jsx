@@ -582,7 +582,7 @@ export default function Arena({
     const matchId = matchContext?.matchId;
     const matchUserId = matchContext?.player?.userId;
     const isMatchTesting = Boolean(matchId && matchUserId);
-    const abilityInfoEnabled = isPracticeRoom || (isMatchTesting && finishStatus === "BUILDING");
+    const abilityInfoEnabled = isPracticeRoom || isPuzzleMode || isPuzzleBuilder || (isMatchTesting && finishStatus === "BUILDING");
     const allowBotRotation = isPracticeRoom || isPuzzleBuilder || (isMatchTesting && finishStatus === "BUILDING");
     const allowLockedBotEditing = isPuzzleMode || (isMatchTesting && finishStatus === "BUILDING");
     // Tutorial, practice, puzzle, and live-match arenas share the same

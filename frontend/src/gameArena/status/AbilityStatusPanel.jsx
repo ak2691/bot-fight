@@ -11,7 +11,7 @@ const ABILITY_RING_CENTER = 18;
 const ABILITY_RING_RADIUS = 15.5;
 const ABILITY_RING_STROKE_WIDTH = 3;
 
-export default function AbilityStatusPanel({ bot, compact = false, abilityInfoEnabled = false, statusRoster = [], showParticipantNumbers = false }) {
+export default function AbilityStatusPanel({ bot, abilityInfoEnabled = false, statusRoster = [], showParticipantNumbers = false }) {
     const abilities = Array.isArray(bot?.abilities) ? bot.abilities : [];
     const [selectedAbility, setSelectedAbility] = useState(null);
     const opponent = bot?.id === "opponent-model";
@@ -26,24 +26,22 @@ export default function AbilityStatusPanel({ bot, compact = false, abilityInfoEn
     return (
         <>
             <section
-                className={`ability-status-panel ${compact ? "ability-status-panel--compact" : ""} w-full rounded-lg border border-slate-700/80 bg-zinc-950/90 ${compact ? "h-[13rem] p-2" : "h-[17.5rem] p-3"}`}
+                className="ability-status-panel flex w-full flex-col overflow-hidden rounded-lg border border-slate-700/80 bg-zinc-950/90 h-[17.5rem] p-3"
                 aria-label={`${accessibleBotName} ability status`}
             >
-                <div className={`ability-status-panel__header flex min-h-4 items-center justify-between gap-2 font-mono font-bold tracking-widest ${compact ? "mb-1 text-[9px]" : "mb-2 text-[10px]"}`}>
-                    <span className={`truncate ${red ? "text-[#ff7166]" : "text-[#57b8ff]"}`}>
+                <div className="ability-status-panel__header flex min-w-0 shrink-0 flex-col items-stretch justify-start gap-0.5 mb-2 text-[10px] font-mono font-bold tracking-widest">
+                    <span className={`ability-status-panel__name block min-w-0 w-full truncate ${red ? "text-[#ff7166]" : "text-[#57b8ff]"}`}>
                         {botName}
                         {isCurrentUser && <span className="ml-1 text-white">(Me)</span>}
                         {participantNumber != null && <span className="ml-1 text-slate-400">({participantNumber})</span>}
                     </span>
-                    <div className="flex shrink-0 items-center gap-2">
-                        {bot?.hp != null && (
-                            <span className="tracking-normal text-lime">
-                                {formatHp(bot.hp)} / {formatHp(Math.max(1, Number(bot.maxHp ?? BASE_BOT_HP)))} HP
-                            </span>
-                        )}
-                    </div>
+                    {bot?.hp != null && (
+                        <span className="ability-status-panel__hp block self-start tracking-normal text-lime">
+                            {formatHp(bot.hp)} / {formatHp(Math.max(1, Number(bot.maxHp ?? BASE_BOT_HP)))} HP
+                        </span>
+                    )}
                 </div>
-                <div className={`ability-status-panel__abilities grid grid-cols-3 overflow-y-auto pr-1 ${compact ? "h-[10.5rem] auto-rows-[3.2rem] gap-x-1 gap-y-1" : "h-[14.5rem] auto-rows-[4.5rem] gap-x-1 gap-y-2"}`}>
+                <div className="ability-status-panel__abilities min-h-0 flex-1 grid grid-cols-3 h-[11rem] auto-rows-[3.5rem] gap-x-1 gap-y-1 overflow-y-auto pr-1">
                     {abilities.map((abilityId, index) => (
                         <AbilityStatusCircle
                             key={`${abilityId}-${index}`}
@@ -94,10 +92,10 @@ function AbilityStatusCircle({ bot, abilityId, onAbilityInfo = null }) {
             aria-label={`${label}: ${stateLabel}`}
             title={canOpenAbilityInfo ? undefined : `${label}: ${stateLabel}`}
         >
-            <div className="flex h-4 w-full items-end justify-center overflow-hidden whitespace-nowrap font-mono text-[9px] leading-3 text-slate-300" aria-hidden="true">
+            <div className="ability-status-panel__timer flex h-4 w-full items-end justify-center overflow-hidden whitespace-nowrap font-mono text-[9px] leading-3 text-slate-300" aria-hidden="true">
                 {timer}
             </div>
-            <div className="mt-1">
+            <div className="ability-status-panel__icon mt-1">
                 {canOpenAbilityInfo ? (
                     <button
                         type="button"
@@ -122,7 +120,7 @@ function AbilityRing({ status, abilityId, label, iconPath, imageFailed, charges,
 
     return (
         <div
-            className="relative h-9 w-9 shrink-0 rounded-full"
+            className="ability-status-ring relative h-9 w-9 shrink-0 rounded-full"
             data-ability-state={status.state}
             data-ring-progress={ringProgress}
         >

@@ -304,6 +304,29 @@ html,
 }
 
 @media (max-width: 1180px) {
+  /* In vertical mode the info card belongs above the status-panel row. Keep
+     the desktop overlay behavior unchanged so the card remains level with
+     the arena when there is room beside it. */
+  .arena-stage-info {
+    position: static;
+    inset: auto;
+    width: 100%;
+    height: auto;
+    flex: 0 0 auto;
+    margin-bottom: .5rem;
+  }
+
+  .arena-stage-info > .info-popup-panel,
+  .arena-stage-info__tutorial > .info-popup-panel,
+  .arena-stage-info > .info-popup-minimized,
+  .arena-stage-info__tutorial > .info-popup-minimized {
+    position: static;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
+  }
+
   .arena-content-shell {
     align-items: stretch;
     flex-direction: column;

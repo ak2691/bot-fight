@@ -51,6 +51,7 @@ test("numbered status markers are enabled only for player matches and replays", 
     const arenaSource = readFileSync(fileURLToPath(new URL("../Arena.jsx", import.meta.url)), "utf8");
     const replaySource = readFileSync(fileURLToPath(new URL("../../replay/SimulationReplay.jsx", import.meta.url)), "utf8");
     assert.match(arenaSource, /showParticipantNumbers=\{isMatchTesting\}/);
+    assert.match(arenaSource, /const abilityInfoEnabled = isPracticeRoom \|\| isPuzzleMode \|\| isPuzzleBuilder \|\|/);
     assert.match(replaySource, /showParticipantNumbers lockCamera/);
 });
 
@@ -60,8 +61,8 @@ test("ability status panels use a fixed three-column circular grid without slot 
     const globalStyles = readFileSync(INDEX_CSS_PATH, "utf8");
 
     assert.match(source, /grid-cols-3/);
-    assert.match(source, /auto-rows-\[4\.5rem\]/);
-    assert.match(source, /h-\[14\.5rem\]/);
+    assert.match(source, /auto-rows-\[3\.5rem\]/);
+    assert.match(source, /h-\[11rem\]/);
     assert.match(source, /rounded-full/);
     assert.match(source, /object-contain/);
     assert.match(source, /getAbilityCatalogueIcon/);
@@ -86,21 +87,38 @@ test("ability status panels use a fixed three-column circular grid without slot 
     assert.doesNotMatch(globalStyles, /\.ability-status-panel[^\n]*box-shadow|\.opponent-status-panel/);
 });
 
-test("responsive top status panels preserve the original spacing and cap at three rows", () => {
+test("responsive top status panels stay compact without shrinking their icons", () => {
     const pixiStyles = readFileSync(PIXI_CSS_PATH, "utf8");
     const pixiSource = readFileSync(PIXI_CANVAS_PATH, "utf8");
+    const globalStyles = readFileSync(INDEX_CSS_PATH, "utf8");
+    const panelSource = readFileSync(PANEL_PATH, "utf8");
 
     assert.match(pixiStyles, /grid-template-columns: minmax\(170px, 190px\) minmax\(0, 1fr\) minmax\(170px, 190px\)/);
-    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.ability-status-panel__abilities[\s\S]*max-height: 14\.5rem;/);
-    assert.match(pixiStyles, /grid-auto-rows: 4\.5rem;/);
+    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.ability-status-panel[\s\S]*height: 11\.5rem;/);
+    assert.match(pixiStyles, /@media \(min-width: 1181px\)[\s\S]*\.pixi-combat-layout--fixed \.ability-status-panel[\s\S]*height: 14rem;/);
+    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.ability-status-panel \.ability-status-panel__header[\s\S]*margin-bottom: 0[;\s\S]*line-height: \.875rem;/);
+    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.ability-status-panel \.ability-status-panel__timer[\s\S]*height: \.75rem[\s\S]*line-height: \.75rem;/);
+    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.ability-status-panel \.ability-status-panel__abilities[\s\S]*max-height: 10\.25rem[\s\S]*grid-auto-rows: 3\.25rem;/);
+    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.ability-status-panel__abilities[\s\S]*max-height: 8\.75rem;/);
+    assert.match(pixiStyles, /grid-auto-rows: 2\.75rem;/);
     assert.match(pixiStyles, /column-gap: \.25rem;/);
-    assert.match(pixiStyles, /row-gap: \.5rem;/);
+    assert.match(pixiStyles, /row-gap: \.25rem;/);
     assert.match(pixiStyles, /overflow-y: auto;/);
-    assert.doesNotMatch(pixiStyles, /grid-auto-rows: 3\.5rem|overflow: visible/);
+    assert.match(pixiStyles, /\.ability-status-icon-button[\s\S]*width: 36px;[\s\S]*height: 36px;/);
+    assert.match(pixiStyles, /\.ability-status-panel__abilities \.ability-status-icon-button,[\s\S]*width: 32px;[\s\S]*height: 32px;/);
+    assert.doesNotMatch(pixiStyles, /overflow: visible/);
+    assert.match(panelSource, /ability-status-panel__name/);
+    assert.match(panelSource, /ability-status-panel__hp/);
+    assert.match(panelSource, /ability-status-panel__timer/);
+    assert.match(panelSource, /ability-status-ring/);
+    assert.doesNotMatch(panelSource, /ability-status-panel--compact|compact =/);
+    assert.doesNotMatch(pixiSource, /\bcompact\b/);
+    assert.match(panelSource, /flex min-w-0 shrink-0 flex-col/);
+    assert.match(globalStyles, /\.arena-stage-info \{[\s\S]*position: static;[\s\S]*height: auto;[\s\S]*flex: 0 0 auto;/);
+    assert.match(globalStyles, /\.arena-stage-info > \.info-popup-panel,[\s\S]*position: static;/);
     assert.match(pixiSource, /const blueTeamBots = bots\.filter/);
     assert.match(pixiSource, /const redTeamBots = bots\.filter/);
     assert.match(pixiSource, /const showTeamStatusPanels = hasMultipleTeamMembers/);
-    assert.match(pixiSource, /compact=\{hasMultipleTeamMembers\}/);
     assert.match(pixiSource, /statusRoster=\{bots\}/);
     assert.match(pixiSource, /showParticipantNumbers=\{showParticipantNumbers\}/);
 });
@@ -127,7 +145,7 @@ test("Lock On and missing artwork use compact safe fallbacks", () => {
 
 test("timer space stays stable and timed text disappears when the state is idle", () => {
     const source = readFileSync(PANEL_PATH, "utf8");
-    assert.match(source, /className="flex h-4 w-full/);
+    assert.match(source, /className="ability-status-panel__timer flex h-4 w-full/);
     assert.match(source, /formatAbilityTimer\(status\.remainingMs\)/);
     assert.equal(formatAbilityTimer(0), "");
     assert.equal(formatAbilityTimer(null), "");
