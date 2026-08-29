@@ -19,6 +19,13 @@ export function passwordError(value, { required = true } = {}) {
     return null;
 }
 
+export function newPasswordError(value) {
+    if (value.length === 0) return "Enter a new password.";
+    if (value.length < 8 || value.length > 128) return "Password must be between 8 and 128 characters.";
+    if (/\s/.test(value)) return "Password cannot contain spaces.";
+    return null;
+}
+
 export function userFacingAuthError(error, fallback) {
     const message = String(error?.message ?? "").trim();
     if (!message || /request failed with \d{3}|exception|stack trace|java\.|org\.|sql|database error/i.test(message)) {

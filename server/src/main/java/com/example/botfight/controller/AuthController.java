@@ -5,11 +5,19 @@ import com.example.botfight.DTO.AuthUserDTO;
 import com.example.botfight.DTO.EmailVerificationRequestDTO;
 import com.example.botfight.DTO.GoogleAuthStatusDTO;
 import com.example.botfight.DTO.GoogleLinkRequestDTO;
+import com.example.botfight.DTO.PasswordChangeRequestDTO;
+import com.example.botfight.DTO.PasswordResetPasswordRequestDTO;
+import com.example.botfight.DTO.PasswordResetRequestDTO;
+import com.example.botfight.DTO.PasswordResetRequestResponseDTO;
+import com.example.botfight.DTO.PasswordResetStatusDTO;
+import com.example.botfight.DTO.PasswordResetVerificationRequestDTO;
+import com.example.botfight.DTO.PasswordResetVerificationResponseDTO;
 import com.example.botfight.DTO.RegistrationResponseDTO;
 import com.example.botfight.DTO.UsernameRequestDTO;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.auth.AuthService;
 import com.example.botfight.service.auth.GoogleAuthService;
+import com.example.botfight.service.auth.PasswordResetService;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.security.AuthenticatedUserDetails;
 import java.io.IOException;
@@ -17,6 +25,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.Locale;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -41,19 +50,39 @@ public class AuthController {
     private final TokenBucketRateLimiter<String> authIpRateLimiter;
     private final TokenBucketRateLimiter<String> authEmailRateLimiter;
     private final TokenBucketRateLimiter<String> authenticatedGetRateLimiter;
+    private final PasswordResetService passwordResetService;
 
+    @Autowired
     public AuthController(
             AuthService authService,
             GoogleAuthService googleAuthService,
             @Qualifier("authIpRateLimiter") TokenBucketRateLimiter<String> authIpRateLimiter,
             @Qualifier("authEmailRateLimiter") TokenBucketRateLimiter<String> authEmailRateLimiter,
             @Qualifier("authenticatedGetRateLimiter")
-            TokenBucketRateLimiter<String> authenticatedGetRateLimiter) {
+            TokenBucketRateLimiter<String> authenticatedGetRateLimiter,
+            PasswordResetService passwordResetService) {
         this.authService = authService;
         this.googleAuthService = googleAuthService;
         this.authIpRateLimiter = authIpRateLimiter;
         this.authEmailRateLimiter = authEmailRateLimiter;
         this.authenticatedGetRateLimiter = authenticatedGetRateLimiter;
+        this.passwordResetService = passwordResetService;
+    }
+
+    /** Compatibility constructor for focused controller tests that do not exercise password reset routes. */
+    public AuthController(
+            AuthService authService,
+            GoogleAuthService googleAuthService,
+            TokenBucketRateLimiter<String> authIpRateLimiter,
+            TokenBucketRateLimiter<String> authEmailRateLimiter,
+            TokenBucketRateLimiter<String> authenticatedGetRateLimiter) {
+        this(
+                authService,
+                googleAuthService,
+                authIpRateLimiter,
+                authEmailRateLimiter,
+                authenticatedGetRateLimiter,
+                null);
     }
 
     @PostMapping("/register")
@@ -86,6 +115,50 @@ public class AuthController {
             HttpServletRequest httpRequest) {
         requireAuthLimits("login", email(request), httpRequest);
         return ResponseEntity.ok(authService.login(request, httpRequest));
+    }
+
+    @PostMapping({"/password-reset/request", "/forgot-password"})
+    public ResponseEntity<PasswordResetRequestResponseDTO> requestPasswordReset(
+            @RequestBody PasswordResetRequestDTO request,
+            HttpServletRequest httpRequest) {
+        requireAuthLimits("password-reset-request", email(request), httpRequest);
+        passwordResetService.requestPasswordReset(request == null ? null : request.getEmail());
+        return ResponseEntity.ok(PasswordResetRequestResponseDTO.generic());
+    }
+
+    @PostMapping({"/password-reset/verify", "/verify-password-reset"})
+    public ResponseEntity<PasswordResetVerificationResponseDTO> verifyPasswordReset(
+            @RequestBody PasswordResetVerificationRequestDTO request,
+            HttpServletRequest httpRequest) {
+        requireAuthLimits("password-reset-verify", email(request), httpRequest);
+        passwordResetService.verifyCode(
+                request == null ? null : request.getEmail(),
+                request == null ? null : request.getCode(),
+                httpRequest);
+        return ResponseEntity.ok(new PasswordResetVerificationResponseDTO(true));
+    }
+
+    @GetMapping("/password-reset/status")
+    public PasswordResetStatusDTO passwordResetStatus(HttpServletRequest httpRequest) {
+        return passwordResetService.status(httpRequest);
+    }
+
+    @PostMapping({"/password-reset", "/reset-password"})
+    public ResponseEntity<Map<String, String>> resetPassword(
+            @RequestBody PasswordResetPasswordRequestDTO request,
+            HttpServletRequest httpRequest) {
+        requireAuthLimits("password-reset-complete", null, httpRequest);
+        passwordResetService.resetPassword(request, httpRequest);
+        return ResponseEntity.ok(Map.of("message", "Password reset successfully"));
+    }
+
+    @PostMapping("/change-password")
+    public ResponseEntity<AuthUserDTO> changePassword(
+            Authentication authentication,
+            @RequestBody PasswordChangeRequestDTO request,
+            HttpServletRequest httpRequest) {
+        requireAuthLimits("change-password", authenticatedEmail(authentication), httpRequest);
+        return ResponseEntity.ok(authService.changePassword(authentication, request));
     }
 
     @PostMapping("/google/link-existing")
@@ -194,6 +267,22 @@ public class AuthController {
 
     private String email(EmailVerificationRequestDTO request) {
         return request == null ? null : request.getEmail();
+    }
+
+    private String email(PasswordResetRequestDTO request) {
+        return request == null ? null : request.getEmail();
+    }
+
+    private String email(PasswordResetVerificationRequestDTO request) {
+        return request == null ? null : request.getEmail();
+    }
+
+    private String authenticatedEmail(Authentication authentication) {
+        if (authentication == null
+                || !(authentication.getPrincipal() instanceof AuthenticatedUserDetails principal)) {
+            return null;
+        }
+        return principal.getEmail();
     }
 
     private String normalizeEmail(String email) {

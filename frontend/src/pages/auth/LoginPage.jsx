@@ -20,6 +20,7 @@ export default function LoginPage() {
     const navigate = useNavigate();
     const location = useLocation();
     const googleStatus = new URLSearchParams(location.search).get("google");
+    const resetCompleted = new URLSearchParams(location.search).get("reset") === "success";
     const googleLinkRequired = googleStatus === "link-required";
     const googleUsernameRequired = googleStatus === "username-required";
     const [googleUsername, setGoogleUsername] = useState("");
@@ -178,7 +179,11 @@ export default function LoginPage() {
                             </div>
                             {fieldErrors.password && <span id="login-password-error" className="form-error mt-1 block text-sm text-red-300">{fieldErrors.password}</span>}
                         </div>
+                        <div className="-mt-1 text-right">
+                            <Link to="/forgot-password" className="text-sm text-cyan-300 hover:text-cyan-100">Forgot password?</Link>
+                        </div>
                         {formError && <p id="login-form-error" className="form-error text-sm text-red-300" role="alert">{formError}</p>}
+                        {resetCompleted && <p className="text-sm text-emerald-300" role="status">Your password was reset. You can now log in.</p>}
                         <button
                             type="submit"
                             disabled={isSubmitting}

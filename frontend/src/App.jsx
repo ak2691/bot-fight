@@ -14,6 +14,8 @@ import RegisterPage from './pages/auth/RegisterPage'
 import ServerErrorPage from './pages/ServerErrorPage.jsx'
 import CreditsPage from './pages/credits/CreditsPage'
 import VerifyEmailPage from './pages/auth/VerifyEmailPage'
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage'
+import ResetPasswordPage from './pages/auth/ResetPasswordPage'
 import { loadAbilityCatalogue, loadConditionalCatalogue, loadMatch, loadProfile, loadProfileSearch, loadPuzzleBuilder, loadPuzzlePlay, loadPuzzles, loadTutorial } from './routeLoaders'
 import MatchmakingProvider from './matchmaking/MatchmakingProvider'
 import NotificationsProvider from './notifications/NotificationsProvider.jsx'
@@ -46,6 +48,8 @@ function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/error" element={<ServerErrorPage />} />
             <Route
               path="/home"

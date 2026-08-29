@@ -12,8 +12,10 @@ import static org.mockito.Mockito.when;
 
 import com.example.botfight.DTO.AuthRequestDTO;
 import com.example.botfight.DTO.EmailVerificationRequestDTO;
+import com.example.botfight.DTO.PasswordChangeRequestDTO;
 import com.example.botfight.domain.AppUser;
 import com.example.botfight.repository.UserRepository;
+import com.example.botfight.security.AuthenticatedUserDetails;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import java.lang.reflect.Field;
@@ -23,6 +25,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 
 class AuthServiceTest {
 
@@ -108,6 +112,36 @@ class AuthServiceTest {
         assertThat(response.isAuthenticated()).isTrue();
         assertThat(response.getId()).isEqualTo(user.getId());
         assertThat(response.getUsername()).isEqualTo("pilot");
+        assertThat(response.isHasPassword()).isTrue();
+    }
+
+    @Test
+    void changesPasswordForAnAccountWithALocalCredential() throws Exception {
+        AppUser user = user("pilot@example.com", "pilot", passwordEncoder.encode("old-password"));
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+        Authentication authentication = authenticationFor(user);
+        PasswordChangeRequestDTO request = new PasswordChangeRequestDTO();
+        request.setCurrentPassword("old-password");
+        request.setNewPassword("new-password");
+        request.setConfirmPassword("new-password");
+
+        var response = service.changePassword(authentication, request);
+
+        assertThat(response.isAuthenticated()).isTrue();
+        assertThat(response.isHasPassword()).isTrue();
+        assertThat(passwordEncoder.matches("new-password", user.getPasswordHash())).isTrue();
+        verify(userRepository).save(user);
+    }
+
+    @Test
+    void rejectsPasswordChangeForGoogleOnlyAccount() throws Exception {
+        AppUser user = user("pilot@example.com", "pilot", null);
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> service.changePassword(authenticationFor(user), new PasswordChangeRequestDTO()))
+                .isInstanceOf(AuthException.class)
+                .hasMessage("This account does not use password authentication.");
+        verify(userRepository, org.mockito.Mockito.never()).save(user);
     }
 
     @Test
@@ -179,5 +213,10 @@ class AuthServiceTest {
         Field idField = AppUser.class.getDeclaredField("id");
         idField.setAccessible(true);
         idField.set(user, id);
+    }
+
+    private Authentication authenticationFor(AppUser user) {
+        AuthenticatedUserDetails details = new AuthenticatedUserDetails(user);
+        return new UsernamePasswordAuthenticationToken(details, null, details.getAuthorities());
     }
 }

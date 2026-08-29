@@ -3,6 +3,7 @@ package com.example.botfight.service.auth;
 import com.example.botfight.DTO.AuthRequestDTO;
 import com.example.botfight.DTO.AuthUserDTO;
 import com.example.botfight.DTO.EmailVerificationRequestDTO;
+import com.example.botfight.DTO.PasswordChangeRequestDTO;
 import com.example.botfight.DTO.RegistrationResponseDTO;
 import com.example.botfight.domain.AppUser;
 import com.example.botfight.repository.UserRepository;
@@ -148,7 +149,42 @@ public class AuthService {
         response.setEmail(user.getEmail());
         response.setUsername(user.getUsername());
         response.setAdmin(user.getRole() == com.example.botfight.domain.UserRole.ADMIN);
+        response.setHasPassword(user.getPasswordHash() != null && !user.getPasswordHash().isBlank());
         return response;
+    }
+
+    @Transactional
+    public AuthUserDTO changePassword(
+            Authentication authentication,
+            PasswordChangeRequestDTO request) {
+        if (authentication == null
+                || !authentication.isAuthenticated()
+                || !(authentication.getPrincipal() instanceof AuthenticatedUserDetails principal)
+                || principal.getId() == null) {
+            throw new AuthException("authentication is required");
+        }
+
+        AppUser user = userRepository.findById(principal.getId())
+                .orElseThrow(() -> new AuthException("authenticated user was not found"));
+        if (user.getPasswordHash() == null || user.getPasswordHash().isBlank()) {
+            throw new AuthException("This account does not use password authentication.");
+        }
+
+        String currentPassword = request == null ? null : request.getCurrentPassword();
+        String newPassword = request == null ? null : request.getNewPassword();
+        String confirmPassword = request == null ? null : request.getConfirmPassword();
+        PasswordPolicy.requireForLogin(currentPassword);
+        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new AuthException("current password is incorrect");
+        }
+        PasswordPolicy.validateForRegistration(newPassword);
+        if (!newPassword.equals(confirmPassword)) {
+            throw new AuthException("passwords do not match");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+        return toAuthUser(user);
     }
 
     public void authenticateSession(AppUser user, HttpServletRequest request) {

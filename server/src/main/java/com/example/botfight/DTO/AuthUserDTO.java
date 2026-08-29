@@ -9,6 +9,7 @@ public class AuthUserDTO {
     private String email;
     private String username;
     private boolean admin;
+    private boolean hasPassword;
 
     public boolean isAuthenticated() {
         return authenticated;
@@ -48,6 +49,14 @@ public class AuthUserDTO {
 
     public void setAdmin(boolean admin) {
         this.admin = admin;
+    }
+
+    public boolean isHasPassword() {
+        return hasPassword;
+    }
+
+    public void setHasPassword(boolean hasPassword) {
+        this.hasPassword = hasPassword;
     }
 
     public static AuthUserDTO guest() {

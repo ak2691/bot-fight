@@ -107,6 +107,39 @@ export function AuthProvider({ children }) {
         });
     }, []);
 
+    const requestPasswordReset = useCallback(async ({ email }) => {
+        return authFetch("/api/auth/password-reset/request", {
+            method: "POST",
+            body: JSON.stringify({ email }),
+        });
+    }, []);
+
+    const verifyPasswordReset = useCallback(async ({ email, code }) => {
+        return authFetch("/api/auth/password-reset/verify", {
+            method: "POST",
+            body: JSON.stringify({ email, code }),
+        });
+    }, []);
+
+    const passwordResetStatus = useCallback(async () => authFetch("/api/auth/password-reset/status", {
+        method: "GET",
+    }), []);
+
+    const resetPassword = useCallback(async ({ password, confirmPassword }) => authFetch("/api/auth/password-reset", {
+        method: "POST",
+        body: JSON.stringify({ password, confirmPassword }),
+    }), []);
+
+    const changePassword = useCallback(async ({ currentPassword, newPassword, confirmPassword }) => {
+        const updatedUser = await authFetch("/api/auth/change-password", {
+            method: "POST",
+            body: JSON.stringify({ currentPassword, newPassword, confirmPassword }),
+        });
+        setAuthError(null);
+        setUser(updatedUser);
+        return updatedUser;
+    }, []);
+
     const linkGoogleAccount = useCallback(async ({ email, password }) => {
         const linkedUser = await authFetch("/api/auth/google/link-existing", {
             method: "POST",
@@ -164,13 +197,18 @@ export function AuthProvider({ children }) {
         register,
         verifyEmail,
         resendVerification,
+        requestPasswordReset,
+        verifyPasswordReset,
+        passwordResetStatus,
+        resetPassword,
+        changePassword,
         linkGoogleAccount,
         completeGoogleUsername,
         updateUsername,
         updateAboutMe,
         logout,
         refreshUser,
-    }), [user, isLoading, authError, login, register, verifyEmail, resendVerification, linkGoogleAccount, completeGoogleUsername, updateUsername, updateAboutMe, logout, refreshUser]);
+    }), [user, isLoading, authError, login, register, verifyEmail, resendVerification, requestPasswordReset, verifyPasswordReset, passwordResetStatus, resetPassword, changePassword, linkGoogleAccount, completeGoogleUsername, updateUsername, updateAboutMe, logout, refreshUser]);
 
     return (
         <AuthContext.Provider value={value}>

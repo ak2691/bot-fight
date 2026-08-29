@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../auth/auth-context";
 import { useNotifications } from "../../notifications/notification-context";
-import { userFacingAuthError, usernameError } from "../../auth/validation";
+import { newPasswordError, passwordError, userFacingAuthError, usernameError } from "../../auth/validation";
 import { apiUrl } from "../../config/api";
 import { matchModeLabel } from "../../matchmaking/matchModes";
 import { ensureCsrfHeaders } from "../../security/csrf";
@@ -77,7 +77,7 @@ function appendUniqueSolvedPuzzles(current, next) {
 }
 
 export default function ProfilePage() {
-    const { user, updateUsername, updateAboutMe, logout } = useAuth();
+    const { user, updateUsername, updateAboutMe, changePassword, logout } = useAuth();
     const { hideInvitesFrom } = useNotifications();
     const navigate = useNavigate();
     const { username: routeUsername } = useParams();
@@ -286,6 +286,10 @@ export default function ProfilePage() {
         return updatedProfile;
     }, [updateAboutMe]);
 
+    const savePassword = useCallback(async ({ currentPassword, newPassword, confirmPassword }) => {
+        return changePassword({ currentPassword, newPassword, confirmPassword });
+    }, [changePassword]);
+
     const handleLogout = useCallback(async () => {
         await logout();
         navigate("/login", { replace: true });
@@ -339,7 +343,9 @@ export default function ProfilePage() {
                         googleLinked={googleLinked}
                         googleStatus={googleStatus}
                         isOwner={isOwner}
+                        hasPassword={user?.hasPassword === true}
                         onUsernameSaved={saveUsername}
+                        onPasswordSaved={savePassword}
                         onLogout={handleLogout}
                         onAboutMeSaved={saveAboutMe}
                         onOpenMatches={() => setIsMatchesModalOpen(true)}
@@ -450,7 +456,9 @@ function ProfileContent({
     googleLinked,
     googleStatus,
     isOwner,
+    hasPassword,
     onUsernameSaved,
+    onPasswordSaved,
     onLogout,
     onAboutMeSaved,
     onOpenMatches,
@@ -507,6 +515,14 @@ function ProfileContent({
                 )}
 
                 {isOwner && <UsernameEditor username={profile.username} onSave={onUsernameSaved} onLogout={onLogout} />}
+
+                {isOwner && (
+                    <PasswordSettings
+                        hasPassword={hasPassword}
+                        googleLinked={googleLinked}
+                        onSave={onPasswordSaved}
+                    />
+                )}
 
                 {isOwner && (
                     <div className="mt-7 border-t border-cyan-900/70 pt-5">
@@ -984,6 +1000,131 @@ function UsernameEditor({ username, onSave, onLogout }) {
             </div>
             {error && <p id="profile-username-error" className="form-error mt-2 text-sm text-rose-300" role="alert">{error}</p>}
             {!error && isEditing && <p id="profile-username-help" className="mt-2 text-xs text-slate-500">3–20 characters: letters, numbers, underscores, and hyphens only.</p>}
+        </div>
+    );
+}
+
+function PasswordSettings({ hasPassword, googleLinked, onSave }) {
+    const [isEditing, setIsEditing] = useState(false);
+    const [currentPassword, setCurrentPassword] = useState("");
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [error, setError] = useState(null);
+    const [notice, setNotice] = useState(null);
+    const [isSaving, setIsSaving] = useState(false);
+
+    const cancel = () => {
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+        setError(null);
+        setIsEditing(false);
+    };
+
+    const handleSubmit = async (event) => {
+        event.preventDefault();
+        setError(null);
+        setNotice(null);
+        const currentPasswordError = passwordError(currentPassword);
+        const nextPasswordError = newPasswordError(newPassword);
+        if (currentPasswordError) {
+            setError(currentPasswordError);
+            return;
+        }
+        if (nextPasswordError) {
+            setError(nextPasswordError);
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            setError("Passwords do not match.");
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            await onSave({ currentPassword, newPassword, confirmPassword });
+            cancel();
+            setNotice("Password updated successfully.");
+        } catch (submissionError) {
+            setError(userFacingAuthError(submissionError, "Your password could not be updated. Check your current password and try again."));
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    return (
+        <div className="mt-7 border-t border-cyan-900/70 pt-5">
+            <p className="font-mono text-[10px] font-bold uppercase tracking-[.18em] text-slate-500">PASSWORD SIGN-IN</p>
+            {!hasPassword ? (
+                <>
+                    <h2 className="mt-2 text-lg font-bold text-white">Password managed by Google</h2>
+                    <p className="mt-1 text-sm leading-6 text-slate-400">
+                        {googleLinked
+                            ? "This account signs in through Google and does not have a local password."
+                            : "This account does not use password authentication."}
+                    </p>
+                </>
+            ) : !isEditing ? (
+                <>
+                    <h2 className="mt-2 text-lg font-bold text-white">Change password</h2>
+                    <p className="mt-1 text-sm leading-6 text-slate-400">Update the password used for email sign-in.</p>
+                    <button type="button" onClick={() => { setNotice(null); setError(null); setIsEditing(true); }} className="profile-toolbar-button mt-4 text-xs font-bold">
+                        Change password
+                    </button>
+                    {notice && <p className="mt-2 text-sm text-emerald-300" role="status">{notice}</p>}
+                </>
+            ) : (
+                <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-3">
+                    <label htmlFor="profile-current-password" className="block">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Current password</span>
+                        <input
+                            id="profile-current-password"
+                            name="currentPassword"
+                            type="password"
+                            value={currentPassword}
+                            onChange={(event) => setCurrentPassword(event.target.value)}
+                            autoComplete="current-password"
+                            required
+                            className="mt-1 h-11 w-full rounded-lg border border-slate-700 bg-[#07111b] px-4 text-sm text-white outline-none focus:border-cyan-400/70"
+                        />
+                    </label>
+                    <label htmlFor="profile-new-password" className="block">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">New password</span>
+                        <input
+                            id="profile-new-password"
+                            name="newPassword"
+                            type="password"
+                            value={newPassword}
+                            onChange={(event) => setNewPassword(event.target.value)}
+                            autoComplete="new-password"
+                            required
+                            className="mt-1 h-11 w-full rounded-lg border border-slate-700 bg-[#07111b] px-4 text-sm text-white outline-none focus:border-cyan-400/70"
+                        />
+                    </label>
+                    <label htmlFor="profile-confirm-password" className="block">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Confirm password</span>
+                        <input
+                            id="profile-confirm-password"
+                            name="confirmPassword"
+                            type="password"
+                            value={confirmPassword}
+                            onChange={(event) => setConfirmPassword(event.target.value)}
+                            autoComplete="new-password"
+                            required
+                            className="mt-1 h-11 w-full rounded-lg border border-slate-700 bg-[#07111b] px-4 text-sm text-white outline-none focus:border-cyan-400/70"
+                        />
+                    </label>
+                    {error && <p className="form-error text-sm text-rose-300" role="alert">{error}</p>}
+                    <p className="text-xs text-slate-500">Use 8–128 characters without spaces.</p>
+                    <div className="flex gap-2">
+                        <button type="submit" disabled={isSaving} className="profile-toolbar-button profile-toolbar-button--primary h-11 text-sm font-bold">
+                            {isSaving ? "Saving..." : "Save"}
+                        </button>
+                        <button type="button" onClick={cancel} className="profile-toolbar-button h-11 text-sm">Cancel</button>
+                    </div>
+                </form>
+            )}
+            {error && !isEditing && <p className="form-error mt-2 text-sm text-rose-300" role="alert">{error}</p>}
         </div>
     );
 }
