@@ -191,7 +191,7 @@ export default function PixiCanvas({
                 )}
                 {showArenaHelp && !lockCamera && (
                     <div className="pixi-arena-help pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded border border-slate-700/70 bg-zinc-950/75 px-2 py-1 text-center font-mono text-[8px] tracking-widest text-slate-400">
-                        WHEEL OR PINCH TO ZOOM · DRAG EMPTY SPACE TO PAN{allowBotRotation ? " · RIGHT-DRAG BOT TO ROTATE" : ""}
+                        WHEEL OR PINCH TO ZOOM · DRAG EMPTY SPACE TO PAN{allowBotRotation ? " · SELECT BOT + DRAG ROTATE HANDLE" : ""}
                     </div>
                 )}
             </div>
@@ -285,6 +285,18 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         return { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
     }
 
+    function canRotateBot(shape) {
+        return optionsRef.current.allowBotRotation && canEditBot(shape);
+    }
+
+    function botHitAreaRadius(shape) {
+        const radius = Number(shape.size ?? (isBotShape(shape) ? BOT_SIZE : 30)) / 2;
+        const botHitRadius = Math.max(12, radius + 6);
+        return canRotateBot(shape)
+            ? Math.max(botHitRadius, rotationHandleDistance(radius) + 14)
+            : botHitRadius;
+    }
+
     function createView(shape, now = presentationClock.current()) {
         const container = new Container();
         const baseSprite = new Sprite();
@@ -293,18 +305,23 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         const cachedEffects = new Map();
         const graphics = new Graphics();
         graphics.eventMode = "none";
+        const rotationHandle = new Graphics();
+        rotationHandle.eventMode = "static";
+        rotationHandle.cursor = "default";
+        rotationHandle.visible = false;
         const caption = new Text({ text: "", style: { fill: COLORS.white, fontFamily: "monospace", fontSize: 13, fontWeight: "bold", align: "center" } });
         caption.anchor.set(0.5);
         caption.eventMode = "none";
-        container.addChild(baseSprite, graphics, caption);
+        container.addChild(baseSprite, graphics, rotationHandle, caption);
         container.eventMode = isBotShape(shape) ? "static" : "none";
         container.cursor = canEditBot(shape) ? "grab" : "default";
-        container.hitArea = new Circle(0, 0, Math.max(12, Number(shape.size ?? (isBotShape(shape) ? BOT_SIZE : 30)) / 2 + 6));
+        container.hitArea = new Circle(0, 0, botHitAreaRadius(shape));
         const view = {
             container,
             baseSprite,
             cachedEffects,
             graphics,
+            rotationHandle,
             caption,
             shape,
             blockHeldStartedAt: null,
@@ -317,6 +334,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         };
         layers[pixiLayerForShape(shape)].addChild(container);
         container.on("pointerdown", (event) => beginDrag(event, view));
+        rotationHandle.on("pointerdown", (event) => beginRotationDrag(event, view));
         return view;
     }
 
@@ -372,7 +390,8 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             }
             view.container.eventMode = isBotShape(shape) ? "static" : "none";
             view.container.cursor = canEditBot(shape) ? "grab" : "default";
-            view.container.hitArea = new Circle(0, 0, Math.max(12, Number(shape.size ?? (isBotShape(shape) ? BOT_SIZE : 30)) / 2 + 6));
+            view.rotationHandle.cursor = canRotateBot(shape) ? "grab" : "default";
+            view.container.hitArea = new Circle(0, 0, botHitAreaRadius(shape));
             const hitParticleEvent = shape.hitParticleEvent;
             const hasHitParticleEvent = hitParticleEvent != null
                 && hitParticleEvent !== previousShape?.hitParticleEvent;
@@ -412,12 +431,12 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     function beginDrag(event, view) {
         if (!isBotShape(view.shape)) return;
         if (event.button === 2) {
-            if (!optionsRef.current.allowBotRotation
-                || !canEditBot(view.shape)) return;
+            if (!canRotateBot(view.shape)) return;
             event.stopPropagation();
             optionsRef.current.onSelectShape?.(view.shape.id);
             rotationDrag = { id: view.shape.id };
             view.container.cursor = "crosshair";
+            view.rotationHandle.cursor = "grabbing";
             updateBotRotation(event, view);
             return;
         }
@@ -429,6 +448,17 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         const position = sampleViewPosition(view);
         drag = { id: view.shape.id, offsetX: point.x - position.x, offsetY: point.y - position.y };
         view.container.cursor = "grabbing";
+    }
+
+    function beginRotationDrag(event, view) {
+        if (!canRotateBot(view.shape)) return;
+        if (event.pointerType !== "touch" && event.button !== 0) return;
+        event.stopPropagation();
+        event.preventDefault?.();
+        optionsRef.current.onSelectShape?.(view.shape.id);
+        rotationDrag = { id: view.shape.id };
+        view.rotationHandle.cursor = "grabbing";
+        updateBotRotation(event, view);
     }
 
     function updateBotRotation(event, view) {
@@ -498,7 +528,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         for (const view of views.values()) {
             const position = sampleViewPosition(view, now);
             view.container.position.set(position.x, position.y);
-            if (isBotShape(view.shape)) drawBot(view, position, optionsRef.current.selectedId === view.shape.id, now, arenaSprites, overlappingBotIds.has(view.shape.id));
+            if (isBotShape(view.shape)) drawBot(view, position, optionsRef.current.selectedId === view.shape.id, now, arenaSprites, overlappingBotIds.has(view.shape.id), canRotateBot(view.shape));
             else drawEntity(view, optionsRef.current.selectedId === view.shape.id, now, arenaSprites);
         }
         drawLockOnMarkers(layers.lockOn, lockOnMarkers, botViews, arenaSprites);
@@ -581,11 +611,17 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     const endPointer = () => {
         if (rotationDrag) {
             const view = views.get(rotationDrag.id);
-            if (view) view.container.cursor = "grab";
+            if (view) {
+                view.container.cursor = "grab";
+                view.rotationHandle.cursor = canRotateBot(view.shape) ? "grab" : "default";
+            }
         }
         if (drag) {
             const view = views.get(drag.id);
-            if (view) view.container.cursor = "grab";
+            if (view) {
+                view.container.cursor = "grab";
+                view.rotationHandle.cursor = canRotateBot(view.shape) ? "grab" : "default";
+            }
         }
         rotationDrag = null;
         drag = null;
@@ -705,8 +741,8 @@ function drawArena(graphics) {
     graphics.rect(2, 2, 996, 996).stroke({ color: 0x475569, width: 4 });
 }
 
-function drawBot(view, position, selected, now, arenaSprites, overlapping = false) {
-    const { shape, baseSprite, graphics, caption } = view;
+function drawBot(view, position, selected, now, arenaSprites, overlapping = false, canRotate = false) {
+    const { shape, baseSprite, graphics, rotationHandle, caption } = view;
     const colorRole = botColorRole(shape);
     const tone = colorRole === "red" ? COLORS.opponent : COLORS.player;
     const radius = Number(shape.size ?? BOT_SIZE) / 2;
@@ -725,8 +761,14 @@ function drawBot(view, position, selected, now, arenaSprites, overlapping = fals
     baseSprite.width = radius * 3;
     baseSprite.height = radius * 3;
     baseSprite.alpha = botInteriorAlpha(shape, overlapping);
+    rotationHandle.clear();
+    rotationHandle.visible = false;
     if (selected) graphics.circle(0, 0, radius + 9).stroke({ color: COLORS.white, alpha: 0.72, width: 2 });
     drawFacingArrow(graphics, rotation, radius, tone);
+    if (selected && canRotate) {
+        drawRotationHandle(rotationHandle, rotation, radius, tone);
+        rotationHandle.visible = true;
+    }
 
     if (shape.hp != null) {
         const width = 80;
@@ -812,6 +854,51 @@ function distanceSquared(left, right) {
     const dx = Number(left?.x ?? 0) - Number(right?.x ?? 0);
     const dy = Number(left?.y ?? 0) - Number(right?.y ?? 0);
     return dx * dx + dy * dy;
+}
+
+function rotationHandleDistance(radius) {
+    return radius * 1.5 + 30;
+}
+
+function drawRotationHandle(graphics, rotation, radius, color) {
+    const distance = rotationHandleDistance(radius);
+    const x = Math.cos(rotation) * distance;
+    const y = Math.sin(rotation) * distance;
+    const renderedBotRadius = radius * 1.5;
+    const connectorStart = renderedBotRadius + 15;
+    graphics
+        .moveTo(Math.cos(rotation) * connectorStart, Math.sin(rotation) * connectorStart)
+        .lineTo(x, y)
+        .stroke({ color, alpha: 0.9, width: 2 });
+    graphics.circle(x, y, 13)
+        .fill({ color: 0x07111b, alpha: 0.96 })
+        .stroke({ color, width: 2 });
+
+    const arrowRadius = 7;
+    const arcStart = -Math.PI * 0.75;
+    const arcEnd = Math.PI * 0.55;
+    const arcPoints = Array.from({ length: 12 }, (_, index) => {
+        const angle = arcStart + (arcEnd - arcStart) * index / 11;
+        return { x: x + Math.cos(angle) * arrowRadius, y: y + Math.sin(angle) * arrowRadius };
+    });
+    graphics.moveTo(arcPoints[0].x, arcPoints[0].y);
+    for (const point of arcPoints.slice(1)) graphics.lineTo(point.x, point.y);
+    graphics.stroke({ color: COLORS.white, width: 2 });
+    const tip = arcPoints[arcPoints.length - 1];
+    const previous = arcPoints[arcPoints.length - 2];
+    const directionLength = Math.max(1, Math.hypot(tip.x - previous.x, tip.y - previous.y));
+    const directionX = (tip.x - previous.x) / directionLength;
+    const directionY = (tip.y - previous.y) / directionLength;
+    const normalX = -directionY;
+    const normalY = directionX;
+    graphics.poly([
+        tip.x, tip.y,
+        tip.x - directionX * 5 + normalX * 3,
+        tip.y - directionY * 5 + normalY * 3,
+        tip.x - directionX * 5 - normalX * 3,
+        tip.y - directionY * 5 - normalY * 3,
+    ]).fill(COLORS.white);
+    graphics.hitArea = new Circle(x, y, 14);
 }
 
 function drawFacingArrow(graphics, rotation, radius, color) {

@@ -716,7 +716,7 @@ export default function Arena({
     const tutorialResetTimerRef = useRef(null);
     const tutorialScenario = getTutorialScenario(tutorialStep);
     const isTutorialArenaIntro = tutorialMode && tutorialScenario.id === "arena-basics";
-    const allowBotRotation = isPracticeRoom || isPuzzleBuilder || isTutorialArenaIntro || (isMatchTesting && finishStatus === "BUILDING");
+    const allowBotRotation = isPracticeRoom || isPuzzleBuilder || isPuzzleMode || isTutorialArenaIntro || (isMatchTesting && finishStatus === "BUILDING");
     const allowLockedBotEditing = isPuzzleMode || isTutorialArenaIntro || (isMatchTesting && finishStatus === "BUILDING");
     const arenaEditingEnabled = isEditingArena && (!tutorialMode || isTutorialArenaIntro);
     const showArenaHelp = !isPracticeRoom && !usesPuzzleSetup && !tutorialMode;

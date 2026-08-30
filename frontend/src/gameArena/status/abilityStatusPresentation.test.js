@@ -94,18 +94,18 @@ test("responsive top status panels stay compact without shrinking their icons", 
     const panelSource = readFileSync(PANEL_PATH, "utf8");
 
     assert.match(pixiStyles, /grid-template-columns: minmax\(170px, 190px\) minmax\(0, 1fr\) minmax\(170px, 190px\)/);
-    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.ability-status-panel[\s\S]*height: 11\.5rem;/);
-    assert.match(pixiStyles, /@media \(min-width: 1181px\)[\s\S]*\.pixi-combat-layout--fixed \.ability-status-panel[\s\S]*height: 14rem;/);
+    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.ability-status-panel[\s\S]*height: 12\.5rem;/);
+    assert.match(pixiStyles, /@media \(min-width: 1181px\)[\s\S]*\.pixi-combat-layout--fixed \.ability-status-panel[\s\S]*height: 14\.75rem;/);
     assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.ability-status-panel \.ability-status-panel__header[\s\S]*margin-bottom: 0[;\s\S]*line-height: \.875rem;/);
     assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.ability-status-panel \.ability-status-panel__timer[\s\S]*height: \.75rem[\s\S]*line-height: \.75rem;/);
-    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.ability-status-panel \.ability-status-panel__abilities[\s\S]*max-height: 10\.25rem[\s\S]*grid-auto-rows: 3\.25rem;/);
-    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.ability-status-panel__abilities[\s\S]*max-height: 8\.75rem;/);
-    assert.match(pixiStyles, /grid-auto-rows: 2\.75rem;/);
+    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.ability-status-panel \.ability-status-panel__abilities[\s\S]*max-height: 11rem[\s\S]*grid-auto-rows: 3\.5rem;/);
+    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.ability-status-panel__abilities[\s\S]*max-height: 9\.5rem;/);
+    assert.match(pixiStyles, /grid-auto-rows: 3rem;/);
     assert.match(pixiStyles, /column-gap: \.25rem;/);
     assert.match(pixiStyles, /row-gap: \.25rem;/);
     assert.match(pixiStyles, /overflow-y: auto;/);
-    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.pixi-side-status \{[\s\S]*display: flex;[\s\S]*flex-direction: column-reverse;/);
-    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.pixi-side-status > \* \{[\s\S]*margin-block-start: 0 !important;/);
+    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.pixi-side-status \{[\s\S]*display: flex;[\s\S]*flex-direction: column-reverse;[\s\S]*align-self: end;[\s\S]*justify-content: flex-start;/);
+    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.pixi-side-status > \* \{[\s\S]*margin-block-start: 0 !important;[\s\S]*margin-block-end: 0 !important;/);
     assert.match(pixiStyles, /\.ability-status-icon-button[\s\S]*width: 36px;[\s\S]*height: 36px;/);
     assert.match(pixiStyles, /\.ability-status-panel__abilities \.ability-status-icon-button,[\s\S]*width: 32px;[\s\S]*height: 32px;/);
     assert.doesNotMatch(pixiStyles, /overflow: visible/);

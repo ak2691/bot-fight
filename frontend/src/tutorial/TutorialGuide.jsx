@@ -91,9 +91,10 @@ const LESSONS = [
         steps: [
             "Open BOT CODE in the right-hand panel to build and edit your bot's logic.",
             "Click MEASURE, then click two points in the arena to see the distance between them. Click again to start a new measurement.",
-            "Left-drag a bot to move it. Right-drag a bot to rotate it.",
+            "Drag a bot to move it. Select a bot, then drag its rotate handle to turn it.",
             "Drag empty space to pan around the arena.",
             "Use the mouse wheel or pinch to zoom in and out.",
+            "For the rest of the tutorial, you will not be able to select and move the bots as there will be objectives for you to complete."
         ],
     },
     {

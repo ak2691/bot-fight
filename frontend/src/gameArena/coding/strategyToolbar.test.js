@@ -654,6 +654,20 @@ test("Pixi hit-testing only selects bots and ignores visual effects", () => {
     assert.match(source, /function beginDrag\(event, view\) \{\s*if \(!isBotShape\(view\.shape\)\) return;/);
 });
 
+test("editable bots expose a shared mouse and touch rotation handle", () => {
+    const source = readFileSync(PIXI_CANVAS_PATH, "utf8");
+    const arenaSource = readFileSync(ARENA_PATH, "utf8");
+
+    assert.match(source, /const rotationHandle = new Graphics\(\)/);
+    assert.match(source, /rotationHandle\.on\("pointerdown", \(event\) => beginRotationDrag\(event, view\)\)/);
+    assert.match(source, /function beginRotationDrag\(event, view\)/);
+    assert.match(source, /event\.pointerType !== "touch" && event\.button !== 0/);
+    assert.match(source, /function drawRotationHandle\(graphics, rotation, radius, color\)/);
+    assert.match(source, /drawRotationHandle\(rotationHandle, rotation, radius, tone\)/);
+    assert.match(source, /SELECT BOT \+ DRAG ROTATE HANDLE/);
+    assert.match(arenaSource, /const allowBotRotation = .*isPuzzleMode/);
+});
+
 test("puzzle arenas keep bot selection and dragging enabled while paused", () => {
     const source = readFileSync(ARENA_PATH, "utf8");
 
