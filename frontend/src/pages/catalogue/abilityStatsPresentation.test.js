@@ -18,6 +18,21 @@ test("charges and coverage share the Charges and Arc labels", () => {
     assert.deepEqual(abilityStatsForDisplay({ effects: [], stats: { maxCharges: 10, arcDegrees: 180 } }), [{ label: "Arc", value: "180°" }, { label: "Charges", value: "10" }]);
 });
 
+test("charged abilities expose their reload time", () => {
+    for (const [abilityId, expectedCharges, expectedReload] of [[3, "6", "5 sec"], [5, "4", "5 sec"], [12, "10", "3 sec"]]) {
+        const rows = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === abilityId));
+        assert.ok(rows.some(({ label, value }) => label === "Charges" && value === expectedCharges), abilityId);
+        assert.ok(rows.some(({ label, value }) => label === "Reload" && value === expectedReload), abilityId);
+    }
+});
+
+test("generic recharge metadata uses the Recharge label", () => {
+    assert.deepEqual(abilityStatsForDisplay({ effects: [], stats: { maxCharges: 3, rechargeMs: 2500 } }), [
+        { label: "Charges", value: "3" },
+        { label: "Recharge", value: "2.5 sec" },
+    ]);
+});
+
 test("status effects avoid per-tick wording", () => {
     const rows = abilityStatsForDisplay({ effects: [{ type: "debuff", debuff: "burn", durationMs: 5000 }], stats: { damage: 15, burnDamage: 2, burnTickMs: 1000, burnDurationMs: 5000 } });
     assert.deepEqual(rows.map(({ label }) => label), ["Damage", "Status effect", "Status duration", "Status interval", "Status damage"]);

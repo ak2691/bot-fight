@@ -99,6 +99,13 @@ export function abilityStatsForDisplay(ability) {
     if (arc != null) rows.push({ label: "Arc", value: `${number(arc)}\u00B0` });
     const charges = stats.maxCharges;
     if (charges != null) rows.push({ label: "Charges", value: String(charges) });
+    const resourceDurationMs = stats.reloadMs ?? stats.rechargeMs;
+    if (charges != null && resourceDurationMs != null) {
+        rows.push({
+            label: stats.reloadMs != null ? "Reload" : "Recharge",
+            value: seconds(resourceDurationMs),
+        });
+    }
     const hasEntity = (ability.effects ?? []).some((effect) => effect.type === "spawn_entity");
     const duration = stats.durationMs ?? (hasEntity ? stats.fuseMs ?? stats.delayMs : null);
     const durationIsStatus = (ability.effects ?? []).some((effect) => effect.type === "debuff" && effect.durationMs === duration);
