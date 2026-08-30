@@ -178,6 +178,7 @@ function grenadeOpponent() {
 }
 
 const SCENARIOS = [
+    { id: "arena-basics", playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialCode, opponentCode: passiveOpponent, spawn: { playerY: 360, opponentY: 650, playerRotation: 180 } },
     { id: "movement", playerLoadout: loadout(), opponentLoadout: loadout(), solution: stepOneSolution, opponentCode: passiveOpponent, spawn: { playerY: 360, opponentY: 650, playerRotation: 180 } },
     { id: "distance", playerLoadout: loadout(), opponentLoadout: loadout(1), solution: stepTwoSolution, opponentCode: meleeOpponent, spawn: { playerY: 420, opponentY: 560, playerRotation: 180 } },
     { id: "basic-strike", playerLoadout: loadout(34), opponentLoadout: loadout(), solution: stepSixBasicStrikeSolution, opponentCode: passiveOpponent, durationMs: 2000, goal: "basic_strike", spawn: { playerY: 500, opponentY: 560, playerRotation: 180 } },

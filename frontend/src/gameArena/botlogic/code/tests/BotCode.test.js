@@ -1455,11 +1455,11 @@ test("conditional priority switches values without moving siblings", () => {
 });
 
 test("tutorial teaches rotate before lock on", () => {
-    const basicStrikeScenario = getTutorialScenario(2);
-    const rotateScenario = getTutorialScenario(3);
-    const lockOnScenario = getTutorialScenario(4);
-    const dodgeScenario = getTutorialScenario(5);
-    const combineScenario = getTutorialScenario(6);
+    const basicStrikeScenario = getTutorialScenario(3);
+    const rotateScenario = getTutorialScenario(4);
+    const lockOnScenario = getTutorialScenario(5);
+    const dodgeScenario = getTutorialScenario(6);
+    const combineScenario = getTutorialScenario(7);
     const rotateActions = rotateScenario.solution.roots.flatMap((root) => root.branches.flatMap((branch) => branch.actions ?? []));
     const lockOnActions = lockOnScenario.solution.roots.flatMap((root) => root.branches.flatMap((branch) => branch.actions ?? []));
     const basicStrikeActions = basicStrikeScenario.solution.roots.flatMap((root) => root.branches.flatMap((branch) => branch.actions ?? []));
@@ -1479,13 +1479,13 @@ test("tutorial teaches rotate before lock on", () => {
 });
 
 test("tutorial priority lesson keeps roots in place while swapping priorities", () => {
-    const scenario = getTutorialScenario(8);
-    assert.equal(TUTORIAL_STEP_COUNT, 13);
+    const scenario = getTutorialScenario(9);
+    assert.equal(TUTORIAL_STEP_COUNT, 14);
     assert.equal(scenario.id, "priority");
-    assert.equal(getTutorialScenario(9).id, "game-overview");
-    assert.equal(getTutorialScenario(10).id, "ability-catalogue");
-    assert.equal(getTutorialScenario(11).id, "conditional-catalogue");
-    assert.equal(getTutorialScenario(12).id, "puzzles");
+    assert.equal(getTutorialScenario(10).id, "game-overview");
+    assert.equal(getTutorialScenario(11).id, "ability-catalogue");
+    assert.equal(getTutorialScenario(12).id, "conditional-catalogue");
+    assert.equal(getTutorialScenario(13).id, "puzzles");
     assert.deepEqual(scenario.emptyCode.roots.map((root) => root.name), ["Dash", "Lock On"]);
     assert.deepEqual(scenario.emptyCode.roots.map((root) => root.priority), [1, 2]);
     assert.deepEqual(scenario.solution.roots.map((root) => root.id), scenario.emptyCode.roots.map((root) => root.id));

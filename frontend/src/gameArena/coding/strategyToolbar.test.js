@@ -658,12 +658,23 @@ test("puzzle arenas keep bot selection and dragging enabled while paused", () =>
     const source = readFileSync(ARENA_PATH, "utf8");
 
     assert.match(source, /const \[isEditingArena, setIsEditingArena\] = useState\(true\)/);
-    assert.match(source, /const allowLockedBotEditing = isPuzzleMode \|\| \(isMatchTesting && finishStatus === "BUILDING"\)/);
+    assert.match(source, /const allowLockedBotEditing = isPuzzleMode \|\| isTutorialArenaIntro \|\| \(isMatchTesting && finishStatus === "BUILDING"\)/);
     assert.match(source, /const arenaSelectableParticipants = useMemo\(\(\) => \{/);
     assert.match(source, /userId: "tutorial-opponent", username: "Opponent 1"/);
     assert.match(source, /selectableParticipants=\{arenaSelectableParticipants\}/);
-    assert.match(source, /onSelectShape=\{isEditingArena && !tutorialMode \? setSelectedId/);
-    assert.match(source, /onUpdateShape=\{isEditingArena && !tutorialMode \? handleUpdateShape/);
-    assert.match(source, /editable=\{isEditingArena && !tutorialMode\}/);
+    assert.match(source, /const arenaEditingEnabled = isEditingArena && \(!tutorialMode \|\| isTutorialArenaIntro\)/);
+    assert.match(source, /onSelectShape=\{arenaEditingEnabled \? setSelectedId/);
+    assert.match(source, /onUpdateShape=\{arenaEditingEnabled \? handleUpdateShape/);
+    assert.match(source, /editable=\{arenaEditingEnabled\}/);
     assert.match(source, /stopAutoPlay\(\);\s*setIsEditingArena\(true\);/);
+});
+
+test("offline arenas keep camera controls without the bottom interaction banner", () => {
+    const arenaSource = readFileSync(ARENA_PATH, "utf8");
+    const pixiSource = readFileSync(PIXI_CANVAS_PATH, "utf8");
+
+    assert.match(arenaSource, /const showArenaHelp = !isPracticeRoom && !usesPuzzleSetup && !tutorialMode/);
+    assert.match(arenaSource, /showArenaHelp=\{showArenaHelp\}/);
+    assert.match(pixiSource, /showArenaHelp = true/);
+    assert.match(pixiSource, /\{showArenaHelp && !lockCamera && \(/);
 });

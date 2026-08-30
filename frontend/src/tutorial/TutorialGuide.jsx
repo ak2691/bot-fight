@@ -85,6 +85,19 @@ const movement = (direction, selectable = BOT_CODE_SELECTABLES.OPPONENT) => (act
 const LESSONS = [
     {
         lessonNumber: "1",
+        eyebrow: "ARENA BASICS",
+        title: "Get comfortable in the arena",
+        objective: "Learn the basic arena tools before you build your first behavior.",
+        steps: [
+            "Open BOT CODE in the right-hand panel to build and edit your bot's logic.",
+            "Click MEASURE, then click two points in the arena to see the distance between them. Click again to start a new measurement.",
+            "Left-drag a bot to move it. Right-drag a bot to rotate it.",
+            "Drag empty space to pan around the arena.",
+            "Use the mouse wheel or pinch to zoom in and out.",
+        ],
+    },
+    {
+        lessonNumber: "2",
         eyebrow: "BUILD A BRAIN",
         title: "Create your first behavior",
         objective: "Add one Root, ALWAYS, and Walk -> 0° from Opponent.",
@@ -98,7 +111,7 @@ const LESSONS = [
         ],
     },
     {
-        lessonNumber: "2",
+        lessonNumber: "3",
         eyebrow: "DISTANCE + HP",
         title: "Approach and retreat",
         objective: "Use health and distance to choose how your bot moves.",
@@ -111,7 +124,7 @@ const LESSONS = [
         ],
     },
     {
-        lessonNumber: "3",
+        lessonNumber: "4",
         eyebrow: "USE YOUR BASIC STRIKE",
         title: "Land Basic Strike",
         objective: "Use Basic Strike to land a direct hit.",
@@ -124,7 +137,7 @@ const LESSONS = [
         workspaceCoach: { eyebrow: "BASIC STRIKE", title: "Add a reliable hit", copy: "Add Basic Strike under an ALWAYS condition. Your bot is already in range and facing the opponent, so run the bot and land the hit.", focus: "add-action" },
     },
     {
-        lessonNumber: "4",
+        lessonNumber: "5",
         eyebrow: "ROTATE TO FACE",
         title: "Turn before you strike",
         objective: "Land Heavy Slash within 2 seconds.",
@@ -137,7 +150,7 @@ const LESSONS = [
         workspaceCoach: { eyebrow: "BUILD THE ATTACK", title: "Rotate, close, then Heavy Slash", copy: "Add Rotate: Face Target, a close-in movement rule, and Heavy Slash. Then run the bot.", focus: "add-action" },
     },
     {
-        lessonNumber: "5",
+        lessonNumber: "6",
         eyebrow: "LOCK ON + ATTACK",
         title: "Aim, then attack",
         objective: "Land Heavy Slash within 1 second.",
@@ -150,7 +163,7 @@ const LESSONS = [
         workspaceCoach: { eyebrow: "BUILD THE ATTACK", title: "Lock On, close, then Heavy Slash", copy: "Add Lock On, a close-in movement rule, and Heavy Slash. Then run the bot.", focus: "add-action" },
     },
     {
-        lessonNumber: "6",
+        lessonNumber: "7",
         eyebrow: "DODGE A PROJECTILE",
         title: "Dodge the grenade",
         objective: "Survive for 3 seconds without getting hit by the grenade.",
@@ -163,7 +176,7 @@ const LESSONS = [
         workspaceCoach: { eyebrow: "DODGE THE GRENADE", title: "Dash clear", copy: "Target Opponent and set Dash to 90° relative to it. Then run the bot.", focus: "add-action" },
     },
     {
-        lessonNumber: "7",
+        lessonNumber: "8",
         eyebrow: "COMBINE THE FUNDAMENTALS",
         title: "Make the whole plan work",
         objective: "Land Heavy Slash without taking damage within 3 seconds.",
@@ -176,7 +189,7 @@ const LESSONS = [
         workspaceCoach: { eyebrow: "COMBINE THE PLAN", title: "Keep the tactics together", copy: "Keep Dash targeted to the grenade, face the target, close the gap, and use Heavy Slash.", focus: "add-action" },
     },
     {
-        lessonNumber: "8",
+        lessonNumber: "9",
         eyebrow: "CUSTOM VARIABLES",
         title: "Make a number grow",
         objective: "Increase Variable 1 by 5",
@@ -227,7 +240,7 @@ const LESSONS = [
         },
     },
     {
-        lessonNumber: "9",
+        lessonNumber: "10",
         eyebrow: "PRIORITY ORDER",
         title: "Let priority choose the next ability",
         objective: "Run Dash before Lock On, swap their priorities, then run again to see Lock On start first.",
@@ -266,7 +279,7 @@ const LESSONS = [
         },
     },
     {
-        lessonNumber: "10",
+        lessonNumber: "11",
         eyebrow: "THE MATCH LOOP",
         title: "How the game works",
         objective: "Learn the rules",
@@ -278,21 +291,21 @@ const LESSONS = [
         ],
     },
     {
-        lessonNumber: "11",
+        lessonNumber: "12",
         eyebrow: "ROUND ABILITIES",
         title: "Plan your ability draft",
         objective: "Open the Ability Catalogue and see what each round can offer.",
         abilityCatalogue: true,
     },
     {
-        lessonNumber: "12",
+        lessonNumber: "13",
         eyebrow: "CONDITIONALS",
         title: "Choose when actions run",
         objective: "Open the Conditional Catalogue to review the checks your bot can read.",
         conditionalCatalogue: true,
     },
     {
-        lessonNumber: "13",
+        lessonNumber: "14",
         eyebrow: "PUZZLES",
         title: "Do puzzles to improve your skills!",
         objective: "Put your bot-building skills to work against puzzle challenges.",
@@ -397,6 +410,16 @@ export default function TutorialGuide({ step, onStepChange, challenge, onAbility
                 </div>
                 <p className="mt-3 text-[11px] leading-4 text-slate-300">{current.objective}</p>
                 {current.details?.map((detail) => <p key={detail} className="mt-3 text-[11px] leading-4 text-slate-300">{detail}</p>)}
+                {current.steps?.length > 0 && (
+                    <ol className="mt-4 space-y-2 text-[11px] leading-4 text-slate-300" aria-label="Tutorial steps">
+                        {current.steps.map((instruction, index) => (
+                            <li key={instruction} className="flex items-start gap-2">
+                                <span className="flex h-4 w-4 flex-none items-center justify-center rounded-full border border-cyan-400/50 bg-cyan-950/40 font-mono text-[9px] text-cyan-200" aria-hidden="true">{index + 1}</span>
+                                <span>{instruction}</span>
+                            </li>
+                        ))}
+                    </ol>
+                )}
 
                 {current.objectives?.length > 0 && (
                     <ol className="mt-4 space-y-2" aria-label="Lesson objectives">

@@ -104,6 +104,8 @@ test("responsive top status panels stay compact without shrinking their icons", 
     assert.match(pixiStyles, /column-gap: \.25rem;/);
     assert.match(pixiStyles, /row-gap: \.25rem;/);
     assert.match(pixiStyles, /overflow-y: auto;/);
+    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.pixi-side-status \{[\s\S]*display: flex;[\s\S]*flex-direction: column-reverse;/);
+    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.pixi-side-status > \* \{[\s\S]*margin-block-start: 0 !important;/);
     assert.match(pixiStyles, /\.ability-status-icon-button[\s\S]*width: 36px;[\s\S]*height: 36px;/);
     assert.match(pixiStyles, /\.ability-status-panel__abilities \.ability-status-icon-button,[\s\S]*width: 32px;[\s\S]*height: 32px;/);
     assert.doesNotMatch(pixiStyles, /overflow: visible/);

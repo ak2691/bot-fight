@@ -50,6 +50,7 @@ export default function PixiCanvas({
     arenaSize = null,
     fixedLayout = false,
     lockCamera = false,
+    showArenaHelp = true,
     isPlaying = true,
     measurementEnabled = false,
     measurementPoints = [],
@@ -188,7 +189,7 @@ export default function PixiCanvas({
                         </button>
                     </div>
                 )}
-                {!lockCamera && (
+                {showArenaHelp && !lockCamera && (
                     <div className="pixi-arena-help pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded border border-slate-700/70 bg-zinc-950/75 px-2 py-1 text-center font-mono text-[8px] tracking-widest text-slate-400">
                         WHEEL OR PINCH TO ZOOM · DRAG EMPTY SPACE TO PAN{allowBotRotation ? " · RIGHT-DRAG BOT TO ROTATE" : ""}
                     </div>

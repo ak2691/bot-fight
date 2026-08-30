@@ -107,7 +107,13 @@
     }
 
     .pixi-combat-layout--fixed .pixi-side-status {
-        display: block;
+        display: flex;
+        flex-direction: column-reverse;
+        gap: .75rem;
+    }
+
+    .pixi-combat-layout--fixed .pixi-side-status > * {
+        margin-block-start: 0 !important;
     }
 
     .pixi-combat-layout--fixed .ability-status-panel {

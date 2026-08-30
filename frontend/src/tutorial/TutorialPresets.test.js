@@ -18,15 +18,15 @@ const emptyPayload = {
 };
 
 test("tutorial scenarios follow the reordered lesson sequence", () => {
-    assert.equal(TUTORIAL_STEP_COUNT, 13);
+    assert.equal(TUTORIAL_STEP_COUNT, 14);
     assert.deepEqual(
         Array.from({ length: TUTORIAL_STEP_COUNT }, (_, index) => getTutorialScenario(index).id),
-        ["movement", "distance", "basic-strike", "rotate", "lock-on", "dodge", "combine", "custom-variable", "priority", "game-overview", "ability-catalogue", "conditional-catalogue", "puzzles"],
+        ["arena-basics", "movement", "distance", "basic-strike", "rotate", "lock-on", "dodge", "combine", "custom-variable", "priority", "game-overview", "ability-catalogue", "conditional-catalogue", "puzzles"],
     );
 });
 
 test("custom-variable tutorial solution adds one to Variable 1", () => {
-    const solution = normalizeAbilityStrategyConfiguration(getTutorialScenario(7).solution);
+    const solution = normalizeAbilityStrategyConfiguration(getTutorialScenario(8).solution);
     const plan = selectAbilityStrategyActionPlan(solution, emptyPayload);
 
     assert.deepEqual(solution.customVariables, [{ id: "custom.variable-1", name: "Variable 1", valueType: "number", initialValue: 0 }]);
@@ -35,7 +35,7 @@ test("custom-variable tutorial solution adds one to Variable 1", () => {
 
 test("tutorial presets use the current tree and selectable payload shapes", () => {
     const empty = getTutorialScenario(0).emptyCode;
-    const solution = getTutorialScenario(3).solution;
+    const solution = getTutorialScenario(4).solution;
     const closeCondition = solution.roots[1].branches[0].conditions[0];
     const strikeCondition = solution.roots[2].branches[0].conditions[1];
     const strikeAction = solution.roots[2].branches[0].actions[0];
@@ -64,8 +64,8 @@ test("tutorial arena uses standard offline bot labels and exposes its opponent",
 });
 
 test("tutorial priority lesson starts with Dash first and solution swaps only priorities", () => {
-    const starting = getTutorialScenario(8).emptyCode;
-    const solution = getTutorialScenario(8).solution;
+    const starting = getTutorialScenario(9).emptyCode;
+    const solution = getTutorialScenario(9).solution;
 
     assert.equal(hasTutorialPriorityOrder(starting, TUTORIAL_ACTIONS.DASH, TUTORIAL_ACTIONS.LOCK_ON), true);
     assert.equal(hasTutorialPriorityOrder(starting, TUTORIAL_ACTIONS.LOCK_ON, TUTORIAL_ACTIONS.DASH), false);
@@ -74,9 +74,9 @@ test("tutorial priority lesson starts with Dash first and solution swaps only pr
 });
 
 test("tutorial solutions use the relaxed bearing and context-aware dashes", () => {
-    const dodge = getTutorialScenario(5).solution;
+    const dodge = getTutorialScenario(6).solution;
     const dodgeAction = dodge.roots[0].branches[0].actions[0];
-    const combine = getTutorialScenario(6).solution;
+    const combine = getTutorialScenario(7).solution;
     const heavySlashRoot = combine.roots[0];
     const combineDash = combine.roots[1].branches[0].actions[0];
     const slash = heavySlashRoot.branches[0].conditions[1];

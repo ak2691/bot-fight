@@ -583,8 +583,6 @@ export default function Arena({
     const matchUserId = matchContext?.player?.userId;
     const isMatchTesting = Boolean(matchId && matchUserId);
     const abilityInfoEnabled = isPracticeRoom || isPuzzleMode || isPuzzleBuilder || (isMatchTesting && finishStatus === "BUILDING");
-    const allowBotRotation = isPracticeRoom || isPuzzleBuilder || (isMatchTesting && finishStatus === "BUILDING");
-    const allowLockedBotEditing = isPuzzleMode || (isMatchTesting && finishStatus === "BUILDING");
     // Tutorial, practice, puzzle, and live-match arenas share the same
     // responsive shell. The tutorial used to opt out of the fixed-layout
     // breakpoints, which made its toolbar and status panels disappear at
@@ -717,6 +715,11 @@ export default function Arena({
     const puzzleAttemptIdRef = useRef(0);
     const tutorialResetTimerRef = useRef(null);
     const tutorialScenario = getTutorialScenario(tutorialStep);
+    const isTutorialArenaIntro = tutorialMode && tutorialScenario.id === "arena-basics";
+    const allowBotRotation = isPracticeRoom || isPuzzleBuilder || isTutorialArenaIntro || (isMatchTesting && finishStatus === "BUILDING");
+    const allowLockedBotEditing = isPuzzleMode || isTutorialArenaIntro || (isMatchTesting && finishStatus === "BUILDING");
+    const arenaEditingEnabled = isEditingArena && (!tutorialMode || isTutorialArenaIntro);
+    const showArenaHelp = !isPracticeRoom && !usesPuzzleSetup && !tutorialMode;
     const initialPuzzleElapsedMs = Math.max(0, Number(initialPuzzle?.initialElapsedMs) || 0);
     const puzzleSetupRoster = useMemo(
         () => puzzleSetupBots(initialPuzzle, selectedLoadout, opponentLoadout),
@@ -1860,13 +1863,14 @@ export default function Arena({
                             <PixiCanvas
                             shapes={shapes}
                             selectedId={selectedId}
-                            onSelectShape={isEditingArena && !tutorialMode ? setSelectedId : () => { }}
-                            onUpdateShape={isEditingArena && !tutorialMode ? handleUpdateShape : () => { }}
-                            onDeselectAll={isEditingArena && !tutorialMode ? () => setSelectedId(null) : () => { }}
-                            editable={isEditingArena && !tutorialMode}
+                            onSelectShape={arenaEditingEnabled ? setSelectedId : () => { }}
+                            onUpdateShape={arenaEditingEnabled ? handleUpdateShape : () => { }}
+                            onDeselectAll={arenaEditingEnabled ? () => setSelectedId(null) : () => { }}
+                            editable={arenaEditingEnabled}
                             fillAvailable
                             fixedLayout={usesArenaResponsiveLimits}
                             abilityLayout="split"
+                            showArenaHelp={showArenaHelp}
                             showEmptyAbilitySlot={!isMatchTesting}
                             showParticipantNumbers={isMatchTesting}
                             abilityInfoEnabled={abilityInfoEnabled}

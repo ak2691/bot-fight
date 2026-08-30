@@ -106,7 +106,7 @@ test("setup can move protected participant bots without making them deletable", 
     assert.match(pixiSource, /allowLockedBotEditing = false/);
     assert.match(pixiSource, /!shape\.locked \|\| optionsRef\.current\.allowLockedBotEditing/);
     assert.match(pixiSource, /if \(!canEditBot\(view\.shape\)\) return;/);
-    assert.match(arenaSource, /const allowLockedBotEditing = isPuzzleMode \|\| \(isMatchTesting && finishStatus === "BUILDING"\)/);
+    assert.match(arenaSource, /const allowLockedBotEditing = isPuzzleMode \|\| isTutorialArenaIntro \|\| \(isMatchTesting && finishStatus === "BUILDING"\)/);
     assert.match(arenaSource, /shape\.id === id && \(!shape\.locked \|\| allowLockedBotEditing\)/);
     assert.match(arenaSource, /allowLockedBotEditing=\{allowLockedBotEditing\}/);
     assert.match(arenaSource, /if \(!isEditingArena \|\| !selected \|\| selected\.id === "main" \|\| selected\.locked\) return prev;/);
