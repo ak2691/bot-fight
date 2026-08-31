@@ -374,8 +374,8 @@ class ConcurrentSimulationLoadTest {
                     .collect(java.util.stream.Collectors.joining(","));
             String roots = IntStream.range(0, LOAD_TEST_ABILITIES.size())
                     .mapToObj(index -> """
-                            {"createdOrder":%d,"branches":[{"createdOrder":0,"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":%s,"comparator":"eq","right":{"type":"boolean","value":true}}],"actions":[{"action":%s}],"children":[]}]}
-                            """.formatted(index, LOAD_TEST_ABILITIES.get(index), LOAD_TEST_ABILITIES.get(index)))
+                            {"priority":%d,"branches":[{"priority":1,"conditions":[{"type":"expression","left":"bot.selectedAbilityReady","ability":%s,"comparator":"eq","right":{"type":"boolean","value":true}}],"actions":[{"action":%s}],"children":[]}]}
+                            """.formatted(index + 1, LOAD_TEST_ABILITIES.get(index), LOAD_TEST_ABILITIES.get(index)))
                     .collect(java.util.stream.Collectors.joining(","));
             return jsonMapper.readTree(
                     """

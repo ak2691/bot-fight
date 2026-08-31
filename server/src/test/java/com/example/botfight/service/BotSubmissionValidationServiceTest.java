@@ -181,13 +181,13 @@ class BotSubmissionValidationServiceTest {
                 {
                   "version":"bot-logic-tree-v1",
                   "roots":[{
-                    "createdOrder":1,
+                    "priority":2,
                     "branches":[{
-                      "id":"branch-1","branchType":"if","createdOrder":1,
+                      "id":"branch-1","branchType":"if","priority":2,
                       "action":"move_walk","movementMode":"target","movementDirection":0,"conditions":[{"type":"always"}],
                       "children":[
-                        {"id":"nested-1","branchType":"if","createdOrder":2,"action":19,"movementMode":"absolute","movementDirection":"north","conditions":[{"type":"always"}],"children":[]},
-                        {"id":"nested-2","branchType":"else","createdOrder":3,"action":"move_walk","movementMode":"absolute","movementDirection":0,"conditions":[],"children":[]}
+                        {"id":"nested-1","branchType":"if","priority":3,"action":19,"movementMode":"absolute","movementDirection":"north","conditions":[{"type":"always"}],"children":[]},
+                        {"id":"nested-2","branchType":"else","priority":4,"action":"move_walk","movementMode":"absolute","movementDirection":0,"conditions":[],"children":[]}
                       ]
                     }]
                   }]
@@ -219,6 +219,34 @@ class BotSubmissionValidationServiceTest {
 
         assertThat(result.isAccepted()).isTrue();
         assertThat(result.getErrors()).isEmpty();
+    }
+
+    @Test
+    void rejectsLegacyCreatedOrderInsteadOfUsingItAsPriority() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {
+                  "version":"bot-logic-tree-v1",
+                  "roots":[{
+                    "createdOrder":0,
+                    "priority":1,
+                    "branches":[{
+                      "createdOrder":0,
+                      "priority":1,
+                      "conditions":[{"type":"always"}],
+                      "actions":[],
+                      "children":[]
+                    }]
+                  }]
+                }
+                """));
+
+        var result = service.validate(payload);
+
+        assertThat(result.isAccepted()).isFalse();
+        assertThat(result.getErrors()).contains(
+                "brain.roots[0].createdOrder is no longer supported; use priority",
+                "brain.roots[0].branches[0].createdOrder is no longer supported; use priority");
     }
 
     @Test

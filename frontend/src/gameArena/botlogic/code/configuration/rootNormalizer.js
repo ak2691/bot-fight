@@ -49,7 +49,7 @@ function normalizeBranches(branches, remaining, customVariables, operations, roo
         const children = normalizeBranches(branch?.children, remaining, customVariables, operations, rootId, depth + 1);
         normalized.push({
             ...normalizedBlock,
-            id: conditionalIdFor(rootId, depth, priority, index + 1),
+            id: conditionalIdFor(rootId, depth, index + 1, index + 1),
             ...actions[0],
             actions,
             branchType: index === 0 ? "if" : branch?.branchType === "else" ? "else" : "if",

@@ -26,19 +26,24 @@ function remapNodePositions(source, sourceRoots, normalizedRoots) {
     // Editor positions stay attached to their source root/branch while
     // priorities change execution order. Translate metadata keys for legacy
     // or normalized IDs so positions remain associated with the same node.
-    const positions = normalizeNodePositions(source);
-    const remapped = { ...positions };
+    const sourcePositions = normalizeNodePositions(source);
+    const remapped = { ...sourcePositions };
+    const movedSourceIds = new Set();
+    const targetIds = new Set();
     (sourceRoots ?? []).slice(0, normalizedRoots.length).forEach((sourceRoot, rootIndex) => {
         const normalizedRoot = normalizedRoots[rootIndex];
         if (!normalizedRoot) return;
         const sourceRootId = stableNodeId(sourceRoot?.id, `root-${rootIndex + 1}`);
-        movePosition(remapped, `rootNode:${sourceRootId}`, `rootNode:${normalizedRoot.id}`);
-        remapBranchPositions(sourceRoot?.branches, normalizedRoot.branches, sourceRootId, normalizedRoot.id, 1, remapped);
+        movePosition(remapped, `rootNode:${sourceRootId}`, `rootNode:${normalizedRoot.id}`, sourcePositions, movedSourceIds, targetIds);
+        remapBranchPositions(sourceRoot?.branches, normalizedRoot.branches, sourceRootId, normalizedRoot.id, 1, remapped, sourcePositions, movedSourceIds, targetIds);
+    });
+    movedSourceIds.forEach((sourceId) => {
+        if (!targetIds.has(sourceId)) delete remapped[sourceId];
     });
     return remapped;
 }
 
-function remapBranchPositions(sourceBranches, normalizedBranches, sourceRootId, normalizedRootId, depth, positions) {
+function remapBranchPositions(sourceBranches, normalizedBranches, sourceRootId, normalizedRootId, depth, positions, sourcePositions, movedSourceIds, targetIds) {
     if (!Array.isArray(sourceBranches) || !Array.isArray(normalizedBranches)) return;
     normalizedBranches.forEach((normalizedBranch, branchIndex) => {
         const sourceBranch = sourceBranches[branchIndex];
@@ -48,6 +53,9 @@ function remapBranchPositions(sourceBranches, normalizedBranches, sourceRootId, 
             positions,
             `condition:${sourceBranchId}:root:${sourceRootId}`,
             `condition:${normalizedBranch.id}:root:${normalizedRootId}`,
+            sourcePositions,
+            movedSourceIds,
+            targetIds,
         );
         const sourceActions = graphActions(sourceBranch);
         const normalizedActions = graphActions(normalizedBranch);
@@ -57,9 +65,12 @@ function remapBranchPositions(sourceBranches, normalizedBranches, sourceRootId, 
                 positions,
                 `action:${sourceBranchId}:${actionIndex}:root:${sourceRootId}`,
                 `action:${normalizedBranch.id}:${actionIndex}:root:${normalizedRootId}`,
+                sourcePositions,
+                movedSourceIds,
+                targetIds,
             );
         });
-        remapBranchPositions(sourceBranch.children, normalizedBranch.children, sourceRootId, normalizedRootId, depth + 1, positions);
+        remapBranchPositions(sourceBranch.children, normalizedBranch.children, sourceRootId, normalizedRootId, depth + 1, positions, sourcePositions, movedSourceIds, targetIds);
     });
 }
 
@@ -68,10 +79,11 @@ function graphActions(branch) {
     return branch?.action && branch.action !== "none" ? [branch] : [];
 }
 
-function movePosition(positions, sourceId, targetId) {
-    if (sourceId === targetId || !Object.prototype.hasOwnProperty.call(positions, sourceId)) return;
-    positions[targetId] = positions[sourceId];
-    delete positions[sourceId];
+function movePosition(positions, sourceId, targetId, sourcePositions, movedSourceIds, targetIds) {
+    if (sourceId === targetId || !Object.prototype.hasOwnProperty.call(sourcePositions, sourceId)) return;
+    positions[targetId] = sourcePositions[sourceId];
+    movedSourceIds.add(sourceId);
+    targetIds.add(targetId);
 }
 
 function stableNodeId(value, fallback) {

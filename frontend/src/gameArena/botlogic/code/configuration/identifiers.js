@@ -7,18 +7,7 @@ export function normalizePriority(value, fallback = 1) {
     return Math.max(1, priority);
 }
 
-/**
- * Read the canonical one-based priority while accepting the old zero-based
- * createdOrder field during the database/client migration window. Legacy
- * createdOrder wins when both fields exist because old conditional nodes also
- * used priority for a different, flat-action purpose.
- */
 export function priorityForNode(node, fallback = 1) {
-    const legacyValue = node?.createdOrder;
-    const legacyOrder = Number(legacyValue);
-    if (legacyValue !== null && legacyValue !== undefined && legacyValue !== "" && Number.isFinite(legacyOrder)) {
-        return normalizePriority(legacyOrder + 1, fallback);
-    }
     return normalizePriority(node?.priority, fallback);
 }
 
@@ -53,7 +42,9 @@ export function rootIdForIndex(value = 0) {
     return `root-${(Number.isFinite(index) ? Math.max(0, Math.trunc(index)) : 0) + 1}`;
 }
 
-export function conditionalIdFor(rootId, depth, priority, fallback = 1) {
+// Conditional identities follow their structural sibling position. Execution
+// priority is mutable metadata and must never change the editor node identity.
+export function conditionalIdFor(rootId, depth, position, fallback = 1) {
     const normalizedDepth = normalizePriority(depth, 1);
-    return `${String(rootId || rootIdForIndex(0))}-${normalizedDepth}-${normalizePriority(priority, fallback)}`;
+    return `${String(rootId || rootIdForIndex(0))}-${normalizedDepth}-${normalizePriority(position, fallback)}`;
 }

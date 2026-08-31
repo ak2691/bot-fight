@@ -487,7 +487,7 @@ public class DuelSimulationService {
             JsonNode root = roots.get(index);
             normalized.add(new TreeRoot(
                     index,
-                    clamp(treePriority(root, index + 1), 1, MAX_ROOTS),
+                    clamp(numberValue(field(root, "priority"), index + 1), 1, MAX_ROOTS),
                     normalizeTreeBranches(field(root, "branches"), remainingActions, remainingConditions)));
         }
         normalized.sort(Comparator.comparingDouble(TreeRoot::priority));
@@ -521,7 +521,7 @@ public class DuelSimulationService {
             }
             normalized.add(new TreeBranch(
                     branchType,
-                    clamp(treePriority(branch, index + 1), 1, MAX_LOGIC_BLOCKS),
+                    clamp(numberValue(field(branch, "priority"), index + 1), 1, MAX_LOGIC_BLOCKS),
                     blocks,
                     normalizeTreeBranches(field(branch, "children"), remainingActions, remainingConditions)));
         }
@@ -741,26 +741,10 @@ public class DuelSimulationService {
                 : fallback;
     }
 
-    private static double treePriority(JsonNode node, double fallback) {
-        JsonNode legacyCreatedOrder = field(node, "createdOrder");
-        if (legacyCreatedOrder != null && legacyCreatedOrder.isNumber()) {
-            return numberValue(legacyCreatedOrder, fallback - 1) + 1;
-        }
-        return numberValue(field(node, "priority"), fallback);
-    }
-
     private static int actionPriority(JsonNode node) {
         JsonNode explicitActionPriority = field(node, "actionPriority");
         if (explicitActionPriority != null && explicitActionPriority.isNumber()) {
             return normalizePriority(numberValue(explicitActionPriority, 1.0));
-        }
-        // Before tree priorities were named priority, old branch objects could
-        // carry both createdOrder (tree order) and priority (flat action order).
-        // Preserve that legacy action value without confusing it with the new
-        // conditional priority.
-        JsonNode legacyCreatedOrder = field(node, "createdOrder");
-        if (legacyCreatedOrder != null && legacyCreatedOrder.isNumber()) {
-            return normalizePriority(numberValue(field(node, "priority"), 1.0));
         }
         return 1;
     }

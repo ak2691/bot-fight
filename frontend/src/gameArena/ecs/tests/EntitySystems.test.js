@@ -97,11 +97,11 @@ test("target-relative walk uses a normalized vector from the bot to the target",
     const configuration = {
         version: "bot-logic-tree-v1",
         roots: [{
-            createdOrder: 0,
+            priority: 1,
             branches: [{
                 id: "walk-up",
                 branchType: "if",
-                createdOrder: 0,
+                priority: 1,
                 conditions: [{ type: "always" }],
                 actions: [{ action: "move_walk", movementMode: "target", movementDirection: 0, selectable: "opponent" }],
                 children: [],
@@ -1612,7 +1612,7 @@ test("death removes every active bot status while preserving preparation and coo
 test("an ALWAYS code action reaches the real fire-gun executor", () => {
     const configuration = {
         version: "bot-logic-tree-v1",
-        roots: [{ createdOrder: 0, branches: [{ id: "always-fire", branchType: "if", createdOrder: 0, conditions: [{ type: "always" }], actions: [{ action: 3 }], children: [] }] }],
+        roots: [{ priority: 1, branches: [{ id: "always-fire", branchType: "if", priority: 1, conditions: [{ type: "always" }], actions: [{ action: 3 }], children: [] }] }],
     };
     const snapshot = {
         playerModel: { id: "main", x: 100, y: 100, rotation: 0, abilities: [3], abilityCooldowns: { 3: 0 }, abilityCharges: { 3: 6 }, abilityRechargeMs: { 3: 0 }, abilityActiveMs: {} },
@@ -1634,9 +1634,9 @@ test("an ALWAYS code action reaches the real fire-gun executor", () => {
 test("a global ability lock blocks a different ability until the active phase ends", () => {
     const configuration = (first, second) => ({
         version: "bot-logic-tree-v1",
-        roots: [{ createdOrder: 0, branches: [
-            { id: first, branchType: "if", createdOrder: 0, conditions: [{ type: "always" }], actions: [{ action: first }] },
-            { id: second, branchType: "if", createdOrder: 1, conditions: [{ type: "always" }], actions: [{ action: second }] },
+        roots: [{ priority: 1, branches: [
+            { id: first, branchType: "if", priority: 1, conditions: [{ type: "always" }], actions: [{ action: first }] },
+            { id: second, branchType: "if", priority: 2, conditions: [{ type: "always" }], actions: [{ action: second }] },
         ] }],
     });
     const opponent = { id: "opponent-model", slot: 2, x: 600, y: 100, size: 60, hp: 100, abilities: [] };
@@ -1672,9 +1672,9 @@ test("a global ability lock blocks a different ability until the active phase en
 test("Dash participates in the global ability lock while retaining its own cooldown", () => {
     const configuration = {
         version: "bot-logic-tree-v1",
-        roots: [{ createdOrder: 0, branches: [
-            { id: "active-attack", branchType: "if", createdOrder: 0, conditions: [{ type: "always" }], actions: [{ action: 5 }] },
-            { id: "dash", branchType: "if", createdOrder: 1, conditions: [{ type: "always" }], actions: [{ action: 19, movementMode: "absolute", movementDirection: "east" }] },
+        roots: [{ priority: 1, branches: [
+            { id: "active-attack", branchType: "if", priority: 1, conditions: [{ type: "always" }], actions: [{ action: 5 }] },
+            { id: "dash", branchType: "if", priority: 2, conditions: [{ type: "always" }], actions: [{ action: 19, movementMode: "absolute", movementDirection: "east" }] },
         ] }],
     };
     const opponent = { id: "opponent-model", slot: 2, x: 700, y: 100, size: 60, hp: 100, abilities: [] };
@@ -1699,8 +1699,8 @@ test("a higher-priority fireball yields to grenade during its one-tick recovery"
     const configuration = {
         version: "bot-logic-tree-v1",
         roots: [
-            { createdOrder: 0, branches: [{ conditions: [{ type: "always" }], actions: [{ action: "shoot_fireball" }] }] },
-            { createdOrder: 1, branches: [{ conditions: [{ type: "always" }], actions: [{ action: "throw_grenade" }] }] },
+            { priority: 1, branches: [{ conditions: [{ type: "always" }], actions: [{ action: "shoot_fireball" }] }] },
+            { priority: 2, branches: [{ conditions: [{ type: "always" }], actions: [{ action: "throw_grenade" }] }] },
         ],
     };
     const opponent = { id: "opponent-model", slot: 2, x: 700, y: 400, size: 60, hp: 100, maxHp: 100, abilities: [] };

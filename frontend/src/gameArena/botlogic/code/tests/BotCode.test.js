@@ -410,8 +410,8 @@ test("normalized editor positions stay with roots and conditionals after priorit
             "action:concussive-condition:0:root:concussive-root": { x: 620, y: 500 },
         },
         roots: [
-            { id: "fire-root", createdOrder: 0, branches: [{ id: "fire-condition", createdOrder: 0, conditions: [{ type: "always" }], actions: [{ action: "swing" }] }] },
-            { id: "concussive-root", createdOrder: 1, branches: [{ id: "concussive-condition", createdOrder: 0, conditions: [{ type: "always" }], actions: [{ action: "concussive_shot" }] }] },
+            { id: "fire-root", priority: 1, branches: [{ id: "fire-condition", priority: 1, conditions: [{ type: "always" }], actions: [{ action: "swing" }] }] },
+            { id: "concussive-root", priority: 2, branches: [{ id: "concussive-condition", priority: 1, conditions: [{ type: "always" }], actions: [{ action: "concussive_shot" }] }] },
         ],
     };
     const switched = setLogicRootPriority(configuration.roots, 1, 1);
@@ -429,6 +429,34 @@ test("normalized editor positions stay with roots and conditionals after priorit
         "condition:concussive-root-1-1:root:concussive-root": { x: 610, y: 300 },
         "action:concussive-root-1-1:0:root:concussive-root": { x: 620, y: 500 },
     });
+});
+
+test("conditional priority swaps preserve node identities and positions", () => {
+    const configuration = normalizeAbilityStrategyConfiguration({
+        nodePositions: {
+            "condition:logic-root-1-1:root:logic-root": { x: 110, y: 300 },
+            "action:logic-root-1-1:0:root:logic-root": { x: 120, y: 500 },
+            "condition:logic-root-1-2:root:logic-root": { x: 610, y: 300 },
+            "action:logic-root-1-2:0:root:logic-root": { x: 620, y: 500 },
+            "condition:logic-root-1-3:root:logic-root": { x: 1110, y: 300 },
+            "action:logic-root-1-3:0:root:logic-root": { x: 1120, y: 500 },
+        },
+        roots: [{ id: "logic-root", branches: [
+            { conditions: [{ type: "always" }], actions: [{ action: "swing" }] },
+            { conditions: [{ type: "always" }], actions: [{ action: "swing" }] },
+            { conditions: [{ type: "always" }], actions: [{ action: "swing" }] },
+        ] }],
+    });
+    const switchedRoots = setLogicBranchPriority(normalizeRoots(configuration.roots), 0, [0], 3);
+    const switched = normalizeAbilityStrategyConfiguration({ ...configuration, roots: switchedRoots });
+
+    assert.deepEqual(switched.roots[0].branches.map((branch) => ({ action: branch.action, priority: branch.priority })), [
+        { action: 1, priority: 3 },
+        { action: 1, priority: 2 },
+        { action: 1, priority: 1 },
+    ]);
+    assert.deepEqual(switched.roots[0].branches.map((branch) => branch.id), ["logic-root-1-1", "logic-root-1-2", "logic-root-1-3"]);
+    assert.deepEqual(switched.nodePositions, configuration.nodePositions);
 });
 
 test("selectable type count selects an object type without selectable ordering", () => {
@@ -1380,22 +1408,20 @@ test("roots preserve editor IDs independently from numeric priorities", () => {
         {
             id: "first",
             name: "Custom name",
-            createdOrder: 4,
+            priority: 5,
             branches: [{
                 id: "conditional",
-                createdOrder: 0,
-                children: [{ id: "nested", createdOrder: 2, children: [] }],
+                priority: 1,
+                children: [{ id: "nested", priority: 3, children: [] }],
             }],
         },
-        { id: "second", name: "Another name", createdOrder: 9, branches: [] },
+        { id: "second", name: "Another name", priority: 10, branches: [] },
     ]);
     assert.deepEqual(roots.map((root) => root.priority), [5, 10]);
-    assert.deepEqual(roots.map((root) => root.createdOrder), [undefined, undefined]);
     assert.deepEqual(roots.map((root) => root.id), ["first", "second"]);
     assert.deepEqual(roots.map((root) => root.name), ["Custom name", "Another name"]);
     assert.equal(roots[0].branches[0].id, "conditional");
     assert.equal(roots[0].branches[0].priority, 1);
-    assert.equal(roots[0].branches[0].createdOrder, undefined);
     assert.equal(roots[0].branches[0].children[0].id, "nested");
     assert.equal(roots[0].branches[0].children[0].priority, 3);
     const created = createCodeRoot(2);
@@ -1407,10 +1433,10 @@ test("roots preserve editor IDs independently from numeric priorities", () => {
     assert.equal(createCodeRoot(2, "Saved root", "saved-root").id, "saved-root");
 });
 
-test("legacy roots without ids keep stable fallback identities when priorities change", () => {
+test("roots without ids keep stable fallback identities when priorities change", () => {
     const normalized = normalizeRoots([
-        { createdOrder: 0, branches: [] },
-        { createdOrder: 1, branches: [] },
+        { priority: 1, branches: [] },
+        { priority: 2, branches: [] },
     ]);
     const switched = setLogicRootPriority(normalized, 1, 1);
 
@@ -1423,8 +1449,8 @@ test("numeric conditional order selects a later conditional", () => {
     const configuration = {
         roots: [{
             branches: [
-                { id: "first", branchType: "if", createdOrder: 0, conditions: [{ type: "expression", left: "selectable.hp", leftSelectable: "my_bot", comparator: "lt", right: { type: "number", value: 1 } }], actions: [{ action: "swing" }] },
-                { id: "second", branchType: "if", createdOrder: 1, conditions: [{ type: "always" }], actions: [{ action: "concussive_shot" }] },
+                { id: "first", branchType: "if", priority: 1, conditions: [{ type: "expression", left: "selectable.hp", leftSelectable: "my_bot", comparator: "lt", right: { type: "number", value: 1 } }], actions: [{ action: "swing" }] },
+                { id: "second", branchType: "if", priority: 2, conditions: [{ type: "always" }], actions: [{ action: "concussive_shot" }] },
             ],
         }],
     };
@@ -1435,8 +1461,8 @@ test("numeric conditional order selects a later conditional", () => {
 
 test("root priority switches values without moving roots or changing execution", () => {
     const roots = [
-        { id: "fire-root", name: "Fire", createdOrder: 0, branches: [{ id: "fire", conditions: [{ type: "always" }], actions: [{ action: "swing" }] }] },
-        { id: "concussive-root", name: "Concussive", createdOrder: 1, branches: [{ id: "concussive", conditions: [{ type: "always" }], actions: [{ action: "concussive_shot" }] }] },
+        { id: "fire-root", name: "Fire", priority: 1, branches: [{ id: "fire", conditions: [{ type: "always" }], actions: [{ action: "swing" }] }] },
+        { id: "concussive-root", name: "Concussive", priority: 2, branches: [{ id: "concussive", conditions: [{ type: "always" }], actions: [{ action: "concussive_shot" }] }] },
     ];
     const switched = setLogicRootPriority(roots, 1, 1);
     assert.deepEqual(switched.map((root) => root.id), ["fire-root", "concussive-root"]);
@@ -1450,7 +1476,7 @@ test("root priority swaps an occupied priority without changing root positions",
     const roots = Array.from({ length: 6 }, (_, index) => ({
         id: `root-${index + 1}`,
         name: `Root ${index + 1}`,
-        createdOrder: index,
+        priority: index + 1,
         branches: [],
     }));
     const switched = setLogicRootPriority(roots, 5, 1);
@@ -1460,9 +1486,9 @@ test("root priority swaps an occupied priority without changing root positions",
 });
 
 test("conditional priority switches values without moving siblings", () => {
-    const roots = [{ createdOrder: 0, branches: [
-        { id: "first", branchType: "if", createdOrder: 0, conditions: [{ type: "always" }], actions: [] },
-        { id: "third", branchType: "if", createdOrder: 2, conditions: [{ type: "always" }], actions: [] },
+    const roots = [{ priority: 1, branches: [
+        { id: "first", branchType: "if", priority: 1, conditions: [{ type: "always" }], actions: [] },
+        { id: "third", branchType: "if", priority: 3, conditions: [{ type: "always" }], actions: [] },
     ] }];
     const switched = setLogicBranchPriority(roots, 0, [1], 1);
     assert.deepEqual(switched[0].branches.map((branch) => branch.id), ["first", "third"]);
@@ -1511,7 +1537,7 @@ test("tutorial priority lesson keeps roots in place while swapping priorities", 
 
 test("roots count conditions and validate as a trainable code", () => {
     const configuration = {
-        roots: [{ createdOrder: 0, branches: [{ id: "branch", branchType: "if", conditions: [{ type: "always" }], actions: [{ action: "swing" }], children: [] }] }],
+        roots: [{ priority: 1, branches: [{ id: "branch", branchType: "if", conditions: [{ type: "always" }], actions: [{ action: "swing" }], children: [] }] }],
     };
     assert.equal(countConditionSlots(configuration), 1);
     assert.deepEqual(validateAbilityStrategyConfiguration(configuration).errors, []);

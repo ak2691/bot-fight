@@ -463,16 +463,17 @@ public class BotSubmissionValidationService {
 
     private void validateTreePriority(List<String> errors, JsonNode node, String path, int maxPriority) {
         if (node == null || !node.isObject()) return;
-        String field = node.hasNonNull("createdOrder") ? "createdOrder" : "priority";
-        JsonNode priority = node.get(field);
+        if (node.has("createdOrder")) {
+            errors.add(path + ".createdOrder is no longer supported; use priority");
+        }
+        JsonNode priority = node.get("priority");
         if (priority == null || priority.isNull()) return;
-        int minimum = "createdOrder".equals(field) ? 0 : 1;
         if (!priority.isNumber()
                 || !Double.isFinite(priority.asDouble())
-                || priority.asDouble() < minimum
+                || priority.asDouble() < 1
                 || priority.asDouble() > maxPriority
                 || priority.asDouble() != Math.rint(priority.asDouble())) {
-            errors.add(path + "." + field + " must be an integer between " + minimum + " and " + maxPriority);
+            errors.add(path + ".priority must be an integer between 1 and " + maxPriority);
         }
     }
 

@@ -15,7 +15,6 @@ export function normalizeRoots(roots) {
         // saved graph positions follow a different root.
         const id = stableNodeId(root?.id, rootIdForIndex(rootIndex));
         const rootData = { ...(root ?? {}) };
-        delete rootData.createdOrder;
         return {
             ...rootData,
             id,
@@ -30,9 +29,8 @@ function normalizeBranchIds(branches, rootId, depth) {
     if (!Array.isArray(branches)) return branches;
     return branches.map((branch, branchIndex) => {
         const priority = priorityForNode(branch, branchIndex + 1);
-        const id = stableNodeId(branch?.id, conditionalIdFor(rootId, depth, priority, branchIndex + 1));
+        const id = stableNodeId(branch?.id, conditionalIdFor(rootId, depth, branchIndex + 1, branchIndex + 1));
         const branchData = { ...(branch ?? {}) };
-        delete branchData.createdOrder;
         return {
             ...branchData,
             id,
@@ -86,7 +84,6 @@ export function setLogicRootPriority(roots, rootIndex, priority) {
     if (targetPriority === currentPriority) return roots;
     const updated = roots.map((root, index) => {
         const rootData = { ...root };
-        delete rootData.createdOrder;
         return {
             ...rootData,
             priority: index === rootIndex ? targetPriority : priorityForNode(root, index + 1),
@@ -108,7 +105,6 @@ export function setLogicBranchPriority(roots, rootIndex, path, priority) {
         if (currentPriority === targetPriority) return branches;
         const updated = branches.map((branch, index) => {
             const branchData = { ...branch };
-            delete branchData.createdOrder;
             return {
                 ...branchData,
                 priority: index === head ? targetPriority : priorityForNode(branch, index + 1),

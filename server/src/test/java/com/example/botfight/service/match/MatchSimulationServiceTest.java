@@ -48,7 +48,7 @@ class MatchSimulationServiceTest {
                 Map.of());
         BotSubmission firstSubmission = new BotSubmission();
         firstSubmission.setBrainPayload("""
-                {"version":"bot-logic-tree-v1","roots":[{"createdOrder":0,"branches":[{"createdOrder":0,"branchType":"if","actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"conditions":[],"children":[]}]}]}
+                {"version":"bot-logic-tree-v1","roots":[{"priority":1,"branches":[{"priority":1,"branchType":"if","actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"conditions":[],"children":[]}]}]}
                 """);
 
         MatchPlaybackDTO playback = service.buildDuelPlayback(session, Map.of(firstUserId, firstSubmission));

@@ -24,7 +24,7 @@ function draft(name) {
         roots: [{
             id: `root-${name}`,
             name,
-            createdOrder: 0,
+            priority: 1,
             branches: [{
                 id: `branch-${name}`,
                 conditions: [{ type: "always" }],

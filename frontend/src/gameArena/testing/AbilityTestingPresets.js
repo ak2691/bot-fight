@@ -49,7 +49,6 @@ function code(roots) {
         version: "bot-logic-tree-v1",
         roots: roots.map((entry, index) => {
             const normalized = { ...(entry ?? {}) };
-            delete normalized.createdOrder;
             return {
                 ...normalized,
                 id: String(entry?.id || `ability-root-${index + 1}`),

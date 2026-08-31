@@ -173,8 +173,8 @@ class BotSubmissionServiceTest {
         JsonNode brain = jsonMapper.readTree("""
                 {
                   "version": "bot-logic-tree-v1",
-                  "roots": [{"createdOrder":0,"branches":[
-                    {"id":"node-1","createdOrder":0,"branchType":"if","actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"conditions":[],"children":[]}
+                  "roots": [{"priority":1,"branches":[
+                    {"id":"node-1","priority":1,"branchType":"if","actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"conditions":[],"children":[]}
                   ]}]
                 }
                 """);

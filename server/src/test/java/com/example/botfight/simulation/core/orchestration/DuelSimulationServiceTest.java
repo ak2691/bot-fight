@@ -170,7 +170,7 @@ class DuelSimulationServiceTest {
         JsonNode attackerBrain = jsonMapper.readTree("""
                 {"version":"bot-logic-tree-v1",
                   "loadout":{"abilities":[1]},
-                 "roots":[{"createdOrder":0,"branches":[{"createdOrder":0,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":1}],"children":[]}]}]}
+                 "roots":[{"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":1}],"children":[]}]}]}
                 """);
         JsonNode defenderBrain = jsonMapper.readTree("""
                 {"version":"bot-logic-tree-v1",
@@ -1216,8 +1216,8 @@ class DuelSimulationServiceTest {
                   "version":"bot-logic-tree-v1",
                   "customVariables":[{"id":"custom.counter","name":"Counter","valueType":"number","initialValue":99990}],
                   "roots":[
-                    {"createdOrder":0,"branches":[{"branchType":"if","createdOrder":0,"conditions":[{"type":"always"}],"actions":[{"action":"variable","variableId":"custom.counter","terms":[{"operator":"add","operand":{"type":"number","value":50}}]}],"children":[]}]},
-                    {"createdOrder":1,"branches":[{"branchType":"if","createdOrder":0,"conditions":[{"type":"expression","left":"custom.counter","comparator":"eq","right":{"type":"number","value":99999}}],"actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":90}],"children":[]}]}
+                    {"priority":1,"branches":[{"branchType":"if","priority":1,"conditions":[{"type":"always"}],"actions":[{"action":"variable","variableId":"custom.counter","terms":[{"operator":"add","operand":{"type":"number","value":50}}]}],"children":[]}]},
+                    {"priority":2,"branches":[{"branchType":"if","priority":1,"conditions":[{"type":"expression","left":"custom.counter","comparator":"eq","right":{"type":"number","value":99999}}],"actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":90}],"children":[]}]}
                   ]
                 }
                 """);
@@ -1236,14 +1236,14 @@ class DuelSimulationServiceTest {
                   "version":"bot-logic-tree-v1",
                   "customVariables":[{"id":"custom.counter","name":"Counter","valueType":"number","initialValue":0}],
                   "roots":[
-                    {"createdOrder":0,"branches":[{"branchType":"if","createdOrder":0,"conditions":[{"type":"always"}],"actions":[
+                    {"priority":1,"branches":[{"branchType":"if","priority":1,"conditions":[{"type":"always"}],"actions":[
                       {"action":"variable","variableId":"custom.counter","terms":[
                         {"operator":"set","operand":{"type":"number","value":3.29}},
                         {"operator":"modulo","operand":{"type":"number","value":2.5}},
                         {"operator":"add","operand":{"type":"number","value":2.59}}
                       ]}
                     ],"children":[]}]},
-                    {"createdOrder":1,"branches":[{"branchType":"if","createdOrder":0,"conditions":[{"type":"expression","left":"custom.counter","comparator":"eq","right":{"type":"number","value":3.5}}],"actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":90}],"children":[]}]}
+                    {"priority":2,"branches":[{"branchType":"if","priority":1,"conditions":[{"type":"expression","left":"custom.counter","comparator":"eq","right":{"type":"number","value":3.5}}],"actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":90}],"children":[]}]}
                   ]
                 }
                 """);
@@ -1264,8 +1264,8 @@ class DuelSimulationServiceTest {
                   "loadout":{"abilities":[1]},
                   "customVariables":[{"id":"custom.counter","name":"Counter","valueType":"number","initialValue":0}],
                   "roots":[
-                    {"createdOrder":0,"branches":[{"branchType":"if","createdOrder":0,"conditions":[{"type":"always"}],"actions":[{"action":"variable","variableId":"custom.counter","terms":[{"operator":"add","operand":{"type":"number","value":1}}]}],"children":[]}]},
-                    {"createdOrder":1,"branches":[{"branchType":"if","createdOrder":0,"conditions":[{"type":"expression","left":"custom.counter","comparator":"gte","right":{"type":"number","value":2}}],"actions":[{"action":1}],"children":[]}]}
+                    {"priority":1,"branches":[{"branchType":"if","priority":1,"conditions":[{"type":"always"}],"actions":[{"action":"variable","variableId":"custom.counter","terms":[{"operator":"add","operand":{"type":"number","value":1}}]}],"children":[]}]},
+                    {"priority":2,"branches":[{"branchType":"if","priority":1,"conditions":[{"type":"expression","left":"custom.counter","comparator":"gte","right":{"type":"number","value":2}}],"actions":[{"action":1}],"children":[]}]}
                   ]
                 }
                 """);
@@ -1362,7 +1362,7 @@ class DuelSimulationServiceTest {
     private JsonNode treeBrain(String abilitiesJson, String branchesJson) {
         try {
             return jsonMapper.readTree("""
-                    {"version":"bot-logic-tree-v1","loadout":{"abilities":%s},"roots":[{"createdOrder":0,"branches":%s}]}
+                    {"version":"bot-logic-tree-v1","loadout":{"abilities":%s},"roots":[{"priority":1,"branches":%s}]}
                     """.formatted(abilitiesJson, branchesJson));
         } catch (Exception ex) {
             throw new IllegalStateException(ex);
