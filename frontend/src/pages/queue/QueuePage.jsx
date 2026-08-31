@@ -197,9 +197,10 @@ export default function QueuePage() {
                                         </span>
                                         <span className="mt-4 block border-t border-slate-700/70 pt-3">
                                             <span className="block font-mono text-[10px] font-bold tracking-[.18em] text-slate-400">RECORD</span>
-                                            <span className="mt-2 block whitespace-nowrap font-mono text-sm font-bold tracking-[.12em] text-white sm:text-base">
-                                                {modeStats?.wins ?? 0}W <span className="text-slate-500">—</span> {modeStats?.losses ?? 0}L <span className="text-slate-500">—</span> {modeStats?.draws ?? 0}D
+                                            <span className="mt-2 block whitespace-nowrap font-mono text-sm font-bold tracking-normal text-white sm:text-base">
+                                                {modeStats?.wins ?? 0}-{modeStats?.losses ?? 0}-{modeStats?.draws ?? 0}
                                             </span>
+                                            <span className="mt-1 block font-mono text-[9px] font-bold tracking-[.16em] text-cyan-300">W-L-D</span>
                                         </span>
                                     </span>
                                     {active

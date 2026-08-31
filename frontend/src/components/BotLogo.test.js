@@ -136,7 +136,9 @@ test("queue cards show labeled ELO and W-L-D summaries without adding filler con
     assert.match(queueSource, /modeStats\?\.wins \?\? 0/);
     assert.match(queueSource, /modeStats\?\.losses \?\? 0/);
     assert.match(queueSource, /modeStats\?\.draws \?\? 0/);
-    assert.match(queueSource, /text-slate-500">—<\/span>/);
+    assert.match(queueSource, /\{modeStats\?\.wins \?\? 0\}-\{modeStats\?\.losses \?\? 0\}-\{modeStats\?\.draws \?\? 0\}/);
+    assert.match(queueSource, /text-cyan-300">W-L-D<\/span>/);
+    assert.doesNotMatch(queueSource, /modeStats\?\.wins \?\? 0\}W/);
     assert.match(queueSource, /formatQueueTime\(queueElapsed\)/);
     assert.doesNotMatch(queueSource, /QUEUE STATUS|CANCEL QUEUE/);
     assert.match(queueSource, /A party of 2 cannot queue a 1v1\./);

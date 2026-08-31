@@ -227,6 +227,32 @@ class MatchmakingServiceTest {
     }
 
     @Test
+    void ratingRangeExpandsToFourHundred() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        EloRatingService ratingService = mock(EloRatingService.class);
+        when(ratingService.ratingsFor(any(), eq(MatchMode.ONES)))
+                .thenReturn(Map.of(firstUserId, 1100, secondUserId, 1490));
+        service = new MatchmakingService(
+                matchService,
+                clock,
+                new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3)),
+                ratingService);
+
+        service.joinQueue(firstUserId, "first", "first@example.com", "first-socket");
+        var waiting = service.joinQueue(
+                secondUserId, "second", "second@example.com", "second-socket");
+
+        assertThat(waiting).singleElement()
+                .extracting(event -> event.event().type())
+                .isEqualTo("QUEUE_WAITING");
+        clock.advance(Duration.ofSeconds(105));
+
+        assertThat(service.sweepQueues()).hasSize(2)
+                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo("MATCH_FOUND"));
+    }
+
+    @Test
     void reconnectRebindsTheExistingQueueEntryWithoutResettingItsPosition() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();

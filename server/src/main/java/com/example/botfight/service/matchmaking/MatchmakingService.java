@@ -38,7 +38,7 @@ public class MatchmakingService {
     private static final int INITIAL_RATING_RANGE = 50;
     private static final int RATING_RANGE_STEP = 50;
     private static final long RATING_RANGE_INTERVAL_SECONDS = 15;
-    private static final int MAX_RATING_RANGE = 200;
+    private static final int MAX_RATING_RANGE = 400;
     private static final int MAX_PARTY_RATING_SPREAD = 300;
     private static final int QUEUE_RECONNECT_GRACE_SECONDS = 10;
     private static final Duration QUEUE_RECONNECT_GRACE =

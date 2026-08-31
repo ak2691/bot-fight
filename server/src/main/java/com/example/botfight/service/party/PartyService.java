@@ -788,15 +788,18 @@ public class PartyService {
         if (member == null || member.getUser() == null || member.getUser().getId() == null) {
             return false;
         }
-        String registeredSocket = socketSessionIdsByUserId.get(member.getUser().getId());
-        if (registeredSocket == null || registeredSocket.isBlank()) {
-            return false;
-        }
-        if (socketRegistry == null) {
+        if (socketRegistry != null) {
+            String currentSocket = currentSocketForPrincipal(member.getUser().getEmail());
+            if (currentSocket == null || currentSocket.isBlank()) {
+                return false;
+            }
+            // The transport registry sees reconnects before the party
+            // subscription handler can refresh this cached party binding.
+            socketSessionIdsByUserId.put(member.getUser().getId(), currentSocket);
             return true;
         }
-        String currentSocket = currentSocketForPrincipal(member.getUser().getEmail());
-        return registeredSocket.equals(currentSocket);
+        String registeredSocket = socketSessionIdsByUserId.get(member.getUser().getId());
+        return registeredSocket != null && !registeredSocket.isBlank();
     }
 
     public record CreatedInvite(
