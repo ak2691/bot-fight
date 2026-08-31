@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import ProfileLink from "../../components/ProfileLink.jsx";
 
 const MAX_MESSAGE_LENGTH = 280;
 
@@ -27,7 +28,7 @@ export default function CustomLobbyChat({ messages, onSend, disabled = false, no
                 {messages.length === 0 && <p className="custom-lobby-chat__empty">No messages yet.</p>}
                 {messages.map((message) => (
                     <p key={message.messageId ?? `${message.sentAt}-${message.username}-${message.message}`} className="custom-lobby-chat__message">
-                        <strong>{message.username}:</strong> {message.message}
+                        <strong><ProfileLink username={message.username}>{message.username}</ProfileLink>:</strong> {message.message}
                     </p>
                 ))}
             </div>

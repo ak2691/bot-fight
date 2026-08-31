@@ -50,7 +50,8 @@ public record MatchmakingEventDTO(
         UUID codeViewTargetUserId,
         String codeViewTargetUsername,
         JsonNode codeViewBrain,
-        String codeViewSelectedLoadout) {
+        String codeViewSelectedLoadout,
+        Instant queueStartedAt) {
 
     /** Backward-compatible constructor for the pre-vote 1v1/match contract. */
     public MatchmakingEventDTO(
@@ -125,6 +126,7 @@ public record MatchmakingEventDTO(
                 acceptedByMe,
                 otherPlayerAccepted,
                 mode,
+                null,
                 null,
                 null,
                 null,
@@ -214,6 +216,7 @@ public record MatchmakingEventDTO(
                 surrenderRequestedByMe,
                 surrenderVoteCount,
                 surrenderVoteRequired,
+                null,
                 null,
                 null,
                 null,
@@ -345,7 +348,8 @@ public record MatchmakingEventDTO(
                 codeViewTargetUserId,
                 codeViewTargetUsername,
                 codeViewBrain,
-                codeViewSelectedLoadout);
+                codeViewSelectedLoadout,
+                queueStartedAt);
     }
 
     public static MatchmakingEventDTO replayBatchPayload(
@@ -628,7 +632,8 @@ public record MatchmakingEventDTO(
                 codeViewTargetUserId,
                 codeViewTargetUsername,
                 codeViewBrain,
-                codeViewSelectedLoadout);
+                codeViewSelectedLoadout,
+                queueStartedAt);
     }
 
     public MatchmakingEventDTO withStatus(String nextStatus) {
@@ -675,7 +680,8 @@ public record MatchmakingEventDTO(
                 codeViewTargetUserId,
                 codeViewTargetUsername,
                 codeViewBrain,
-                codeViewSelectedLoadout);
+                codeViewSelectedLoadout,
+                queueStartedAt);
     }
 
     public MatchmakingEventDTO withMode(String nextMode) {
@@ -722,7 +728,56 @@ public record MatchmakingEventDTO(
                 codeViewTargetUserId,
                 codeViewTargetUsername,
                 codeViewBrain,
-                codeViewSelectedLoadout);
+                codeViewSelectedLoadout,
+                queueStartedAt);
+    }
+
+    public MatchmakingEventDTO withQueueStartedAt(Instant nextQueueStartedAt) {
+        return new MatchmakingEventDTO(
+                type,
+                matchId,
+                simulationSeed,
+                status,
+                player,
+                opponent,
+                players,
+                serverNow,
+                loadoutSelectionEndsAt,
+                entityPlacementEndsAt,
+                countdownEndsAt,
+                buildingEndsAt,
+                playbackStartsAt,
+                resultRevealsAt,
+                rulesetVersion,
+                playback,
+                roundNumber,
+                winsRequired,
+                message,
+                entityPlacementUserId,
+                entityPlacements,
+                arenaEntities,
+                roundBrains,
+                previousRoundWon,
+                abilityOffers,
+                roundBlockLimit,
+                disconnectedUserId,
+                disconnectEndsAt,
+                simulationPreparingDurationMs,
+                roundReadyAt,
+                matchChatEndsAt,
+                matchAcceptanceEndsAt,
+                acceptedByMe,
+                otherPlayerAccepted,
+                mode,
+                surrenderRequestedByMe,
+                surrenderVoteCount,
+                surrenderVoteRequired,
+                codeViewRequestId,
+                codeViewTargetUserId,
+                codeViewTargetUsername,
+                codeViewBrain,
+                codeViewSelectedLoadout,
+                nextQueueStartedAt);
     }
 
     public MatchmakingEventDTO withSurrenderState(
@@ -772,7 +827,8 @@ public record MatchmakingEventDTO(
                 codeViewTargetUserId,
                 codeViewTargetUsername,
                 codeViewBrain,
-                codeViewSelectedLoadout);
+                codeViewSelectedLoadout,
+                queueStartedAt);
     }
 
     public MatchmakingEventDTO withCodeViewState(
@@ -824,7 +880,8 @@ public record MatchmakingEventDTO(
                 nextCodeViewTargetUserId,
                 nextCodeViewTargetUsername,
                 nextCodeViewBrain,
-                nextCodeViewSelectedLoadout);
+                nextCodeViewSelectedLoadout,
+                queueStartedAt);
     }
 
     public record RoundBrainDTO(int roundNumber, JsonNode brain, boolean won) {

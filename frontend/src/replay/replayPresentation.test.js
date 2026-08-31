@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { combatVisualDurationMs } from "../gameArena/gameconfig/visualState.js";
-import { centeredTeamPosition, displayedRoundWins, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, localReplaySchedule, mergeReplayFrames, replayAbilitiesFor, replayAbilityTarget, replayAbilityVisual, replayClockSeconds, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayBotAbilityState, replayFrameIndexForElapsedMs, replayRayOrigin, replayRatingChange, replayRemainingMs, replayRemainingSeconds, replayResultRevealReached, replayResultVisibility, replayShapeKey } from "./replayPresentation.js";
+import { centeredTeamPosition, displayedRoundWins, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, localReplaySchedule, mergeReplayFrames, replayAbilitiesFor, replayAbilityTarget, replayAbilityVisual, replayClockSeconds, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayBotAbilityState, replayFrameIndexForElapsedMs, replayRayOrigin, replayRatingChange, replayRatingChanges, replayRemainingMs, replayRemainingSeconds, replayResultRevealReached, replayResultVisibility, replayShapeKey } from "./replayPresentation.js";
 
 test("replay schedule preserves the server deadlines when the ready event arrives late", () => {
     assert.deepEqual(localReplaySchedule(10_000, 30_000, 9_000), {
@@ -151,6 +151,41 @@ test("rating change stays hidden until the result reveal event is received", () 
         delta: 18,
         label: "1035 → 1053 (+18)",
     });
+});
+
+test("all rated match Elo changes stay hidden until the result reveal", () => {
+    const playback = {
+        ratingChanges: [
+            { username: "pilot", before: 1100, after: 1120 },
+            { username: "teammate", before: 1000, after: 980 },
+            { username: "opponent", before: 1200, after: 1180 },
+        ],
+    };
+
+    assert.deepEqual(replayRatingChanges(playback, false), []);
+    assert.deepEqual(replayRatingChanges(playback, true), [
+        {
+            username: "pilot",
+            before: 1100,
+            after: 1120,
+            delta: 20,
+            label: "1100 → 1120 (+20)",
+        },
+        {
+            username: "teammate",
+            before: 1000,
+            after: 980,
+            delta: -20,
+            label: "1000 → 980 (-20)",
+        },
+        {
+            username: "opponent",
+            before: 1200,
+            after: 1180,
+            delta: -20,
+            label: "1200 → 1180 (-20)",
+        },
+    ]);
 });
 
 test("match replay timer starts at 1:30 and counts down to zero", () => {

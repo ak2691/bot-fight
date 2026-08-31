@@ -63,6 +63,8 @@ export default function QueuePage() {
         isQueueing,
         queueMode,
         queueElapsed,
+        queueReconnectRemaining,
+        connectionStatus,
         startQueue,
         cancelQueue,
         party,
@@ -201,7 +203,14 @@ export default function QueuePage() {
                                         </span>
                                     </span>
                                     {active
-                                        ? <span className="min-w-14 text-center font-mono text-sm font-bold tracking-widest text-cyan-300" aria-hidden="true">{formatQueueTime(queueElapsed)}</span>
+                                        ? <span className="min-w-14 text-center font-mono text-sm font-bold tracking-widest text-cyan-300" aria-live="polite">
+                                            <span aria-hidden="true">{formatQueueTime(queueElapsed)}</span>
+                                            {connectionStatus !== "CONNECTED" && (
+                                                <span className="mt-1 block text-[9px] leading-3 text-amber-300">
+                                                    RECONNECTING{queueReconnectRemaining > 0 ? ` · ${queueReconnectRemaining}s` : ""}
+                                                </span>
+                                            )}
+                                        </span>
                                         : <QueueArrow />}
                                 </span>
                             </button>
@@ -234,7 +243,13 @@ export default function QueuePage() {
                 {(partyQueueBlocked || partyHasOfflineMember) && (
                     <section className="mt-5 rounded-xl border border-slate-800 bg-[#07111b] p-5 sm:p-6">
                         {partyQueueBlocked && <p className="text-xs text-amber-300">Only the party leader can start the party queue.</p>}
-                        {partyHasOfflineMember && <p className="mt-3 text-xs text-amber-300">Every party member must be online before the queue can start.</p>}
+                        {partyHasOfflineMember && (
+                            <p className={`text-xs leading-5 text-amber-300 ${partyQueueBlocked ? "mt-3" : ""}`}>
+                                {isQueueing
+                                    ? "A party member is offline. A match cannot be found until everyone is online. The queue timer continues while they reconnect."
+                                    : "Every party member must be online before the queue can start."}
+                            </p>
+                        )}
                     </section>
                 )}
 

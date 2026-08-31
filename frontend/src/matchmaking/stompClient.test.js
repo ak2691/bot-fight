@@ -48,6 +48,7 @@ test("party state has its own authenticated user queue and handler lifecycle", (
     assert.match(source, /subscribeParty\(\)/);
     assert.match(source, /unsubscribeParty\(\)/);
     assert.match(source, /clearPendingPartyEvents/);
+    assert.match(source, /partySubscriptionRequested && !partySubscription/);
 });
 
 test("custom lobbies have an independent live destination and buffered handler", () => {
@@ -74,4 +75,8 @@ test("queue and active-match subscriptions have independent route lifecycles", (
     assert.match(source, /unsubscribeMatch\(\)/);
     assert.match(source, /deliverEvent\(JSON\.parse\(message\.body\), receivedAtMs, false\)/);
     assert.match(source, /deliverEvent\(JSON\.parse\(message\.body\), receivedAtMs, true\)/);
+});
+
+test("reconnecting queue clients rebind instead of publishing another join", () => {
+    assert.match(source, /resumeQueue\(\) \{\s*publish\("\/app\/matchmaking\.resumeQueue"\)/);
 });

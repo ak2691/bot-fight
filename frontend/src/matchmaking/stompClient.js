@@ -505,6 +505,9 @@ export function createMatchmakingClient({
         resumeMatch() {
             publish("/app/matchmaking.resume");
         },
+        resumeQueue() {
+            publish("/app/matchmaking.resumeQueue");
+        },
         resumeWhenConnected() {
             if (autoJoinOnConnect) return;
             client.resumeReconnect();

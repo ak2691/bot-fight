@@ -21,6 +21,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -91,5 +92,30 @@ class MatchPersistenceServiceTest {
         assertThat(service.ratingChangeForPlayer(matchId, userId))
                 .isEqualTo(new MatchPersistenceService.RatingChange(1035, 1053));
         assertThat(service.ratingChangeForPlayer(matchId, UUID.randomUUID())).isNull();
+    }
+
+    @Test
+    void returnsAllPersistedRatingChangesByUser() {
+        UUID matchId = UUID.randomUUID();
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        MatchParticipant first = participant(firstUserId, 1100, 1120);
+        MatchParticipant second = participant(secondUserId, 1200, 1180);
+        when(matchParticipantRepository.findByMatchId(matchId)).thenReturn(List.of(first, second));
+
+        assertThat(service.ratingChangesForMatch(matchId))
+                .containsExactlyInAnyOrderEntriesOf(Map.of(
+                        firstUserId, new MatchPersistenceService.RatingChange(1100, 1120),
+                        secondUserId, new MatchPersistenceService.RatingChange(1200, 1180)));
+    }
+
+    private MatchParticipant participant(UUID userId, int before, int after) {
+        AppUser user = new AppUser();
+        user.setId(userId);
+        MatchParticipant participant = new MatchParticipant();
+        participant.setUser(user);
+        participant.setRatingBefore(before);
+        participant.setRatingAfter(after);
+        return participant;
     }
 }

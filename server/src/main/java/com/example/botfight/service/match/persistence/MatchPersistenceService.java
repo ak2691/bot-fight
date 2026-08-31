@@ -28,6 +28,7 @@ import java.time.Instant;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -384,17 +385,27 @@ public class MatchPersistenceService {
     @Transactional(readOnly = true)
     public RatingChange ratingChangeForPlayer(UUID matchId, UUID userId) {
         if (matchId == null || userId == null) return null;
+        return ratingChangesForMatch(matchId).get(userId);
+    }
+
+    /** Returns the final rated-result changes for every participant in a match. */
+    @Transactional(readOnly = true)
+    public Map<UUID, RatingChange> ratingChangesForMatch(UUID matchId) {
+        if (matchId == null) return Map.of();
         List<MatchParticipant> participants = matchParticipantRepository.findByMatchId(matchId);
-        if (participants == null) return null;
-        return participants.stream()
-                .filter(participant -> participant.getUser() != null
-                        && userId.equals(participant.getUser().getId()))
-                .filter(participant -> participant.getRatingBefore() != null
-                        && participant.getRatingAfter() != null)
-                .map(participant -> new RatingChange(
-                        participant.getRatingBefore(), participant.getRatingAfter()))
-                .findFirst()
-                .orElse(null);
+        if (participants == null || participants.isEmpty()) return Map.of();
+
+        Map<UUID, RatingChange> changes = new LinkedHashMap<>();
+        for (MatchParticipant participant : participants) {
+            UUID userId = participant.getUser() == null ? null : participant.getUser().getId();
+            if (userId == null || participant.getRatingBefore() == null
+                    || participant.getRatingAfter() == null) {
+                continue;
+            }
+            changes.putIfAbsent(userId, new RatingChange(
+                    participant.getRatingBefore(), participant.getRatingAfter()));
+        }
+        return Map.copyOf(changes);
     }
 
     /** Refreshes profile read models only when the delayed result is published. */

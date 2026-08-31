@@ -121,7 +121,7 @@ test("MATCH_ACCEPT remains modal-only until authoritative MATCH_STARTED", () => 
     assert.match(acceptanceBlock, /updatePendingAcceptance\(event\)/);
     assert.doesNotMatch(acceptanceBlock, /navigate\("\/match"/);
     assert.match(providerSource, /event\.type === "MATCH_STARTED" && event\.status === "LOADOUT_SELECT"/);
-    assert.match(providerSource, /navigate\("\/match"\)/);
+    assert.match(providerSource, /navigateRef\.current\("\/match"\)/);
 });
 
 test("page client initialization is stable across loadout state updates", () => {

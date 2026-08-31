@@ -138,7 +138,10 @@ public final class MatchReplayService {
                 playback.batchSequence(),
                 finalElapsedMs(playback),
                 true,
-                playback.roundWinsBeforeResult());
+                playback.roundWinsBeforeResult(),
+                playback.ratingBefore(),
+                playback.ratingAfter(),
+                playback.ratingChanges());
     }
 
     public MatchReplayDTO withWinner(

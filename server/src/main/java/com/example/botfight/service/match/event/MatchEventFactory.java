@@ -14,7 +14,10 @@ import com.example.botfight.service.match.simulation.MatchSimulationService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiFunction;
@@ -356,8 +359,28 @@ public final class MatchEventFactory {
                 ? compactPlayback
                 : MatchReplayDTO.from(playback);
         if ("MATCH_RESULT_READY".equals(type) && replayPayload != null && persistenceService != null) {
-            MatchPersistenceService.RatingChange ratingChange = persistenceService.ratingChangeForPlayer(
-                    session.matchId(), player.userId());
+            Map<UUID, MatchPersistenceService.RatingChange> loadedRatingChanges =
+                    persistenceService.ratingChangesForMatch(session.matchId());
+            Map<UUID, MatchPersistenceService.RatingChange> ratingChanges =
+                    loadedRatingChanges == null ? Map.of() : loadedRatingChanges;
+            List<MatchReplayDTO.RatingChangeDTO> orderedRatingChanges = session.players().stream()
+                    .sorted(Comparator
+                            .comparingInt((MatchPlayer candidate) -> ratingChangeOrder(candidate, player))
+                            .thenComparingInt(MatchPlayer::slot))
+                    .map(candidate -> {
+                        MatchPersistenceService.RatingChange ratingChange =
+                                ratingChanges.get(candidate.userId());
+                        return ratingChange == null
+                                ? null
+                                : new MatchReplayDTO.RatingChangeDTO(
+                                        candidate.username(),
+                                        ratingChange.before(),
+                                        ratingChange.after());
+                    })
+                    .filter(Objects::nonNull)
+                    .toList();
+            replayPayload = replayPayload.withRatingChanges(orderedRatingChanges);
+            MatchPersistenceService.RatingChange ratingChange = ratingChanges.get(player.userId());
             if (ratingChange != null) {
                 replayPayload = replayPayload.withRatingChange(
                         ratingChange.before(), ratingChange.after());
@@ -422,6 +445,11 @@ public final class MatchEventFactory {
 
                 delayMillis,
                 "MATCH_ROUND_READY".equals(type) ? roundReadyAt : null);
+    }
+
+    private int ratingChangeOrder(MatchPlayer candidate, MatchPlayer recipient) {
+        if (Objects.equals(candidate.userId(), recipient.userId())) return 0;
+        return candidate.teamNumber() == recipient.teamNumber() ? 1 : 2;
     }
 
     public OutboundMatchmakingEvent disconnectEventForPlayer(

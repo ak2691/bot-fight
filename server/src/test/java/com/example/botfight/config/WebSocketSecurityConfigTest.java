@@ -16,7 +16,7 @@ import org.springframework.security.messaging.access.intercept.MessageMatcherDel
 class WebSocketSecurityConfigTest {
 
     @Test
-    void authenticatedUsersMayResumeAnActiveMatchSocket() {
+    void authenticatedUsersMayResumeMatchmakingState() {
         MessageMatcherDelegatingAuthorizationManager.Builder messages =
                 MessageMatcherDelegatingAuthorizationManager.builder();
         AuthorizationManager<Message<?>> manager =
@@ -29,6 +29,13 @@ class WebSocketSecurityConfigTest {
         Supplier<Authentication> authenticationSupplier = () -> authentication;
 
         assertThat(manager.authorize(authenticationSupplier, resumeMessage).isGranted()).isTrue();
+
+        Message<byte[]> queueResumeMessage = MessageBuilder.withPayload(new byte[0])
+                .setHeader(SimpMessageHeaderAccessor.MESSAGE_TYPE_HEADER, SimpMessageType.MESSAGE)
+                .setHeader(SimpMessageHeaderAccessor.DESTINATION_HEADER, "/app/matchmaking.resumeQueue")
+                .build();
+
+        assertThat(manager.authorize(authenticationSupplier, queueResumeMessage).isGranted()).isTrue();
     }
 
     @Test

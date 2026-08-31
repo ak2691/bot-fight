@@ -197,6 +197,19 @@ class PartyServiceTest {
     }
 
     @Test
+    void aLiveSocketKeepsAReconnectedMemberOnlineBeforePartySubscriptionRefreshesTheBinding() {
+        createPartyWithTeammate();
+        when(socketRegistry.currentSessionIdForPrincipal(teammate.getEmail()))
+                .thenReturn("teammate-socket-new");
+
+        assertThat(service.currentForPrincipal(owner.getEmail()).members())
+                .filteredOn(member -> member.userId().equals(teammate.getId()))
+                .singleElement()
+                .extracting(PartyMemberDTO::online)
+                .isEqualTo(true);
+    }
+
+    @Test
     void kickingAMemberRemovesTheirPartyMembershipAndReturnsTheirRecipient() {
         var party = createPartyWithTeammate();
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);

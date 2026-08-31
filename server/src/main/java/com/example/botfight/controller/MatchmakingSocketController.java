@@ -257,6 +257,13 @@ public class MatchmakingSocketController {
             scheduleMatchAcceptanceTimeouts(pendingEvents);
             return;
         }
+        List<OutboundMatchmakingEvent> queueEvents = matchmakingService.resumeQueuedPlayer(
+                user.getId(),
+                headers.getSessionId());
+        if (!queueEvents.isEmpty()) {
+            publish(queueEvents);
+            return;
+        }
         publishToDestination(
                 matchService.resumeMatch(
                         user.getId(),
@@ -264,6 +271,28 @@ public class MatchmakingSocketController {
                         principal.getName(),
                         headers.getSessionId()),
                 MatchmakingSocketDestinations.MATCH);
+    }
+
+    /** Rebinds a refreshed/reconnected browser to its waiting queue entry. */
+    @MessageMapping("/matchmaking.resumeQueue")
+    public void resumeQueue(Principal principal, SimpMessageHeaderAccessor headers) {
+        AppUser user = requireUser(principal);
+        List<OutboundMatchmakingEvent> pendingEvents = matchmakingService.resumePendingMatch(
+                user.getId(),
+                headers.getSessionId());
+        if (!pendingEvents.isEmpty()) {
+            publish(pendingEvents);
+            scheduleMatchAcceptanceTimeouts(pendingEvents);
+            return;
+        }
+        List<OutboundMatchmakingEvent> queueEvents = matchmakingService.resumeQueuedPlayer(
+                user.getId(),
+                headers.getSessionId());
+        if (!queueEvents.isEmpty()) {
+            publish(queueEvents);
+            return;
+        }
+        sendQueueIdle(principal);
     }
 
     @MessageMapping("/matchmaking.accept")
@@ -345,6 +374,42 @@ public class MatchmakingSocketController {
                         null,
                         null,
                         message,
+                        null,
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        null,
+                        List.of(),
+                        null));
+    }
+
+    private void sendQueueIdle(Principal principal) {
+        if (principal == null) {
+            return;
+        }
+        messagingTemplate.convertAndSendToUser(
+                principal.getName(),
+                MatchmakingSocketDestinations.MATCHMAKING,
+                new MatchmakingEventDTO(
+                        "QUEUE_IDLE",
+                        null,
+                        null,
+                        "IDLE",
+                        null,
+                        null,
+                        List.of(),
+                        Instant.now(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
                         null,
                         List.of(),
                         List.of(),
@@ -583,24 +648,9 @@ public class MatchmakingSocketController {
                                 Instant.now()));
             }
         }
-        boolean queueWasCancelled = matchmakingService.removeDisconnected(
+        matchmakingService.markDisconnected(
                 principal.getName(),
                 event.getSessionId());
-        if (queueWasCancelled
-                && partyService != null
-                && partyStatePublisher != null
-                && !partyChange.recipients().isEmpty()) {
-            partyStatePublisher.send(
-                    partyChange.recipients(),
-                    new PartyStateEventDTO(
-                            "PARTY_QUEUE_STATE",
-                            partyChange.partyId(),
-                            partyChange.party(),
-                            "CANCELLED",
-                            null,
-                            null,
-                            Instant.now()));
-        }
         scheduleDisconnectDetection(principal.getName(), event.getSessionId());
     }
 

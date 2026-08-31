@@ -39,6 +39,8 @@ test("profile page uses scoped charcoal surfaces without recoloring the shared n
     assert.match(profileSource, /className="profile-page min-h-screen bg-\[#181b1c\] font-interface text-\[#f2f4f5\]"/);
     assert.match(globalStyles, /\.profile-page \{[\s\S]*background: #181b1c;[\s\S]*color: #f2f4f5;/);
     assert.match(globalStyles, /\.profile-page \.rounded-2xl \{[\s\S]*background: #151a1d;[\s\S]*box-shadow: none;/);
+    assert.match(globalStyles, /\.profile-page > section \.rounded-full \{[\s\S]*background: #1b2226;[\s\S]*box-shadow: none;/);
+    assert.doesNotMatch(globalStyles, /\.profile-page \.rounded-full \{/);
     assert.match(globalStyles, /\.profile-page \.profile-toolbar-button:hover:not\(:disabled\) \{[\s\S]*background-color: #1b2226;/);
     assert.match(globalStyles, /\.profile-page \.profile-toolbar-button \{[\s\S]*--profile-toolbar-border: #3a464d;/);
     assert.match(globalStyles, /\.profile-page \.profile-toolbar-button--primary \{[\s\S]*--profile-toolbar-border: #35c7e8;/);
@@ -139,4 +141,10 @@ test("queue cards show labeled ELO and W-L-D summaries without adding filler con
     assert.doesNotMatch(queueSource, /QUEUE STATUS|CANCEL QUEUE/);
     assert.match(queueSource, /A party of 2 cannot queue a 1v1\./);
     assert.doesNotMatch(queueSource, /W:\$\{modeStats/);
+});
+
+test("profile records keep the W-L-D labels below compact numeric values", () => {
+    assert.match(profileSource, /\{stats\?\.wins \?\? 0\}-\{stats\?\.losses \?\? 0\}-\{stats\?\.draws \?\? 0\}/);
+    assert.match(profileSource, /text-center font-mono text-\[9px\].*W-L-D/);
+    assert.doesNotMatch(profileSource, /stats\?\.wins \?\? 0\}W/);
 });

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import AppNavbar from "../../components/AppNavbar";
+import ProfileLink from "../../components/ProfileLink.jsx";
 import { useDialogFocus } from "../../components/useDialogFocus.js";
 import { useAuth } from "../../auth/auth-context";
 import { apiUrl } from "../../config/api";
@@ -460,7 +461,12 @@ export default function CustomLobbyPage() {
                             <div className="min-w-0 flex-1">
                                 <p className="font-mono text-[10px] font-bold tracking-[.2em] text-cyan-400">INVITE ONLY · MATCH SETTINGS</p>
                                 <p className="mt-2 text-lg font-bold text-white">{lobby.members.length}/{lobby.capacity ?? 4} players in lobby</p>
-                                <p className="mt-1 text-xs text-slate-500">Owner: {lobby.ownerUsername ?? "Unknown"}</p>
+                                <p className="mt-1 text-xs text-slate-500">
+                                    Owner:{" "}
+                                    {lobby.ownerUsername
+                                        ? <ProfileLink username={lobby.ownerUsername} className="text-slate-400 hover:text-cyan-200">{lobby.ownerUsername}</ProfileLink>
+                                        : "Unknown"}
+                                </p>
                                 <p className="mt-4 border-t border-slate-800 pt-3 font-mono text-[9px] tracking-widest text-slate-500">ROUND TIME · {formatRoundDuration(lobby.roundDurationSeconds)}</p>
                             </div>
                             <div className="flex shrink-0 items-start gap-2">
@@ -539,7 +545,15 @@ export default function CustomLobbyPage() {
                                     {isOwner && members.length < 2 && <p className="mt-1 text-xs text-amber-300">Invite at least one more player to start.</p>}
                                     {isOwner && !bothTeamsHavePlayers && <p className="mt-1 text-xs text-amber-300">Both Blue Team and Red Team need a player.</p>}
                                     {isOwner && !everyoneOnTeam && members.length >= 2 && <p className="mt-1 text-xs text-amber-300">Every player must join a team before the match can start.</p>}
-                                    {!isOwner && <p className="mt-1 text-xs text-slate-500">Only {lobby.ownerUsername ?? "the lobby owner"} can start this match.</p>}
+                                    {!isOwner && (
+                                        <p className="mt-1 text-xs text-slate-500">
+                                            Only{" "}
+                                            {lobby.ownerUsername
+                                                ? <ProfileLink username={lobby.ownerUsername} className="text-slate-400 hover:text-cyan-200">{lobby.ownerUsername}</ProfileLink>
+                                                : "the lobby owner"}{" "}
+                                            can start this match.
+                                        </p>
+                                    )}
                                     <button type="button" onClick={startMatch} disabled={!canStart} className="mt-4 h-11 w-full border border-emerald-400/70 bg-emerald-950/30 px-4 font-mono text-[10px] font-bold tracking-widest text-emerald-100 hover:bg-emerald-900/40 disabled:cursor-not-allowed disabled:opacity-45">{action === "start" ? "STARTING..." : "START CUSTOM MATCH"}</button>
                                 </div>
                             </div>
@@ -649,7 +663,7 @@ function LobbyMemberInline({ member, owner, action, onKick }) {
     return (
         <div className="flex min-w-0 items-center gap-2 border border-slate-800 bg-slate-950/25 px-2 py-1.5">
             <span className={`h-2 w-2 shrink-0 rounded-full ${member.online === false ? "bg-slate-600" : "bg-emerald-400"}`} title={member.online === false ? "Offline" : "Online"} aria-label={member.online === false ? "Offline" : "Online"} />
-            <span className="max-w-40 truncate text-sm font-semibold text-slate-100">{member.username}</span>
+            <ProfileLink username={member.username} className="max-w-40 truncate text-sm font-semibold text-slate-100">{member.username}</ProfileLink>
             {member.owner && <span className="font-mono text-[8px] font-bold tracking-widest text-cyan-300">OWNER</span>}
             {owner && !member.owner && <button type="button" onClick={() => onKick(member)} disabled={action !== null} aria-label={`Kick ${member.username}`} title={`Kick ${member.username}`} className="grid h-5 w-5 place-items-center border border-slate-700 text-sm leading-none text-slate-500 hover:border-rose-400 hover:text-rose-300 disabled:cursor-wait disabled:opacity-50">×</button>}
         </div>
@@ -663,7 +677,7 @@ function LobbyMemberCard({ member, isCurrent, owner, action, onKick }) {
         <article className={`border px-3 py-3 ${isCurrent ? "border-cyan-400/70 bg-cyan-950/15" : "border-slate-800 bg-slate-950/25"}`}>
             <div className="flex items-center gap-2">
                 <span className={`h-2 w-2 shrink-0 rounded-full ${member.online === false ? "bg-slate-600" : "bg-emerald-400"}`} title={member.online === false ? "Offline" : "Online"} aria-label={member.online === false ? "Offline" : "Online"} />
-                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-100">{member.username}</span>
+                <ProfileLink username={member.username} className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-100">{member.username}</ProfileLink>
                 {member.owner && <span className="font-mono text-[8px] font-bold tracking-widest text-cyan-300">OWNER</span>}
                 {owner && !member.owner && <button type="button" onClick={() => onKick(member)} disabled={action !== null} aria-label={`Kick ${member.username}`} title={`Kick ${member.username}`} className="grid h-6 w-6 place-items-center border border-slate-700 text-sm leading-none text-slate-500 hover:border-rose-400 hover:text-rose-300 disabled:cursor-wait disabled:opacity-50">×</button>}
             </div>

@@ -20,7 +20,8 @@ public record MatchReplayDTO(
         @JsonInclude(JsonInclude.Include.NON_DEFAULT) Boolean terminalBatch,
         @JsonInclude(JsonInclude.Include.NON_EMPTY) Map<UUID, Integer> roundWinsBeforeResult,
         Integer ratingBefore,
-        Integer ratingAfter) {
+        Integer ratingAfter,
+        @JsonInclude(JsonInclude.Include.NON_EMPTY) List<RatingChangeDTO> ratingChanges) {
 
     /** Keeps source compatibility for callers that do not have score metadata. */
     public MatchReplayDTO(
@@ -48,7 +49,25 @@ public record MatchReplayDTO(
             Boolean terminalBatch,
             Map<UUID, Integer> roundWinsBeforeResult) {
         this(initialState, frames, result, winnerUserId, message, batchSequence,
-                replayCursorElapsedMs, terminalBatch, roundWinsBeforeResult, null, null);
+                replayCursorElapsedMs, terminalBatch, roundWinsBeforeResult, null, null, null);
+    }
+
+    /** Keeps source compatibility for callers that provide the recipient rating change. */
+    public MatchReplayDTO(
+            ReplayInitialStateDTO initialState,
+            List<ReplayFrameDTO> frames,
+            String result,
+            UUID winnerUserId,
+            String message,
+            Integer batchSequence,
+            Integer replayCursorElapsedMs,
+            Boolean terminalBatch,
+            Map<UUID, Integer> roundWinsBeforeResult,
+            Integer ratingBefore,
+            Integer ratingAfter) {
+        this(initialState, frames, result, winnerUserId, message, batchSequence,
+                replayCursorElapsedMs, terminalBatch, roundWinsBeforeResult,
+                ratingBefore, ratingAfter, null);
     }
 
     public MatchReplayDTO withRatingChange(Integer before, Integer after) {
@@ -63,7 +82,24 @@ public record MatchReplayDTO(
                 terminalBatch,
                 roundWinsBeforeResult,
                 before,
-                after);
+                after,
+                ratingChanges);
+    }
+
+    public MatchReplayDTO withRatingChanges(List<RatingChangeDTO> changes) {
+        return new MatchReplayDTO(
+                initialState,
+                frames,
+                result,
+                winnerUserId,
+                message,
+                batchSequence,
+                replayCursorElapsedMs,
+                terminalBatch,
+                roundWinsBeforeResult,
+                ratingBefore,
+                ratingAfter,
+                changes == null || changes.isEmpty() ? null : List.copyOf(changes));
     }
 
     public static MatchReplayDTO from(MatchPlaybackDTO playback) {
@@ -81,7 +117,15 @@ public record MatchReplayDTO(
                 playback.terminalBatch(),
                 null,
                 null,
+                null,
                 null);
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record RatingChangeDTO(
+            String username,
+            Integer before,
+            Integer after) {
     }
 
     private static ReplayInitialStateDTO replayInitialState(MatchPlaybackDTO.ArenaStateDTO state) {

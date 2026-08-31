@@ -39,3 +39,12 @@ test("invite, party, and lobby action messages use the 3.5-second timeout", () =
     assert.match(lobbySource, /const STATUS_MESSAGE_DURATION_MS = 3500;/);
     assert.match(lobbySource, /setNotice\(null\);\s*setError\(null\);[\s\S]*STATUS_MESSAGE_DURATION_MS/);
 });
+
+test("party queue explains that an offline member blocks matching without stopping the timer", () => {
+    const partySource = readFileSync(PARTY_POPOVER_PATH, "utf8");
+
+    assert.match(partySource, /isQueueing/);
+    assert.match(partySource, /partyHasOfflineMember/);
+    assert.match(partySource, /isQueueing && partyHasOfflineMember/);
+    assert.match(partySource, /A party member is offline\. A match cannot be found until everyone is online\. The queue timer continues while they reconnect\./);
+});

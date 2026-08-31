@@ -3,6 +3,7 @@ import { useAuth } from "../auth/auth-context";
 import { apiUrl } from "../config/api";
 import { useMatchmaking } from "../matchmaking/matchmaking-context";
 import { ensureCsrfHeaders } from "../security/csrf";
+import ProfileLink from "./ProfileLink.jsx";
 
 const FALLBACK_PARTY_CAPACITY = 2;
 const MAX_RENDERED_PARTY_SLOTS = 20;
@@ -22,7 +23,12 @@ async function readPartyResponse(response, fallbackMessage) {
 
 export default function PartyPopover({ onOpen = null }) {
     const { user } = useAuth();
-    const { party, partyLoading, partyError: partyLoadError } = useMatchmaking();
+    const {
+        party,
+        partyLoading,
+        partyError: partyLoadError,
+        isQueueing,
+    } = useMatchmaking();
     const popoverRef = useRef(null);
     const [partyOpen, setPartyOpen] = useState(false);
     const [partyAction, setPartyAction] = useState(null);
@@ -59,7 +65,9 @@ export default function PartyPopover({ onOpen = null }) {
     const toggleParty = () => {
         const nextOpen = !partyOpen;
         setPartyOpen(nextOpen);
-        if (nextOpen) onOpen?.();
+        if (nextOpen) {
+            onOpen?.();
+        }
     };
 
     const createParty = async () => {
@@ -158,6 +166,7 @@ export default function PartyPopover({ onOpen = null }) {
         member.leader === true && String(member.userId) === String(user?.id)
     ));
     const isFull = members.length >= capacity;
+    const partyHasOfflineMember = Boolean(party && members.some((member) => member.online === false));
     const partySizeLabel = party ? `${members.length}/${capacity}` : "No party";
 
     return (
@@ -200,7 +209,7 @@ export default function PartyPopover({ onOpen = null }) {
                                 {Array.from({ length: capacity }, (_, index) => {
                                     const member = members.find((candidate) => Number(candidate.slot) === index + 1);
                                     const canKick = isLeader && member && String(member.userId) !== String(user?.id);
-                                    const memberOnline = member?.online === true;
+                                    const memberOnline = member?.online !== false;
                                     return (
                                         <div key={index + 1} className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/35 px-2.5">
                                             {member ? (
@@ -210,7 +219,7 @@ export default function PartyPopover({ onOpen = null }) {
                                                         title={memberOnline ? "Online" : "Offline"}
                                                         aria-label={memberOnline ? "Online" : "Offline"}
                                                     />
-                                                    <span className="min-w-0 truncate text-xs font-bold text-white">{member.username}</span>
+                                                    <ProfileLink username={member.username} className="min-w-0 truncate text-xs font-bold text-white">{member.username}</ProfileLink>
                                                     {member.leader && <span className="shrink-0 font-mono text-[8px] font-bold tracking-widest text-cyan-300">LEADER</span>}
                                                 </div>
                                             ) : (
@@ -232,6 +241,15 @@ export default function PartyPopover({ onOpen = null }) {
                                     );
                                 })}
                             </div>
+
+                            {isQueueing && partyHasOfflineMember && (
+                                <p
+                                    className="mt-3 rounded-lg border border-amber-400/35 bg-amber-950/20 px-2.5 py-2 text-[11px] leading-4 text-amber-200"
+                                    role="status"
+                                >
+                                    A party member is offline. A match cannot be found until everyone is online. The queue timer continues while they reconnect.
+                                </p>
+                            )}
 
                             {isLeader && !isFull && (
                                 <form className="mt-3 flex gap-2" onSubmit={inviteToParty}>

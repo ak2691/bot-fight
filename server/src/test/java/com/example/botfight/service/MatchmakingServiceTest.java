@@ -16,6 +16,7 @@ import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.match.model.MatchEntrant;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
 import com.example.botfight.service.matchmaking.MatchmakingService;
+import com.example.botfight.service.rating.EloRatingService;
 import com.example.botfight.DTO.ActiveMatchStatusDTO;
 import com.example.botfight.DTO.MatchmakingEventDTO;
 import com.example.botfight.DTO.MatchmakingPlayerDTO;
@@ -26,6 +27,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -165,7 +167,7 @@ class MatchmakingServiceTest {
                 "first@example.com",
                 "socket-current");
 
-        service.removeDisconnected("first@example.com", "socket-old");
+        service.markDisconnected("first@example.com", "socket-old");
         var found = service.joinQueue(
                 UUID.randomUUID(),
                 "bravo-secret",
@@ -178,11 +180,11 @@ class MatchmakingServiceTest {
     }
 
     @Test
-    void disconnectRemovesAQueuedPlayerBeforeAnotherPlayerCanPair() {
+    void disconnectKeepsAQueuedPlayerOutOfMatchingDuringTheReconnectGracePeriod() {
         UUID firstUserId = UUID.randomUUID();
         service.joinQueue(firstUserId, "first", "first@example.com", "socket-first");
 
-        service.removeDisconnected("first@example.com", "socket-first");
+        assertThat(service.markDisconnected("first@example.com", "socket-first")).isTrue();
         var waiting = service.joinQueue(
                 UUID.randomUUID(),
                 "second",
@@ -196,13 +198,132 @@ class MatchmakingServiceTest {
     }
 
     @Test
+    void requiresBothPlayersCurrentRatingRangesToIncludeTheMatch() {
+        UUID olderUserId = UUID.randomUUID();
+        UUID newerUserId = UUID.randomUUID();
+        EloRatingService ratingService = mock(EloRatingService.class);
+        when(ratingService.ratingsFor(any(), eq(MatchMode.ONES)))
+                .thenReturn(Map.of(olderUserId, 1100, newerUserId, 1290));
+        service = new MatchmakingService(
+                matchService,
+                clock,
+                new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3)),
+                ratingService);
+
+        service.joinQueue(olderUserId, "older", "older@example.com", "older-socket");
+        clock.advance(Duration.ofSeconds(45));
+        var waiting = service.joinQueue(
+                newerUserId, "newer", "newer@example.com", "newer-socket");
+
+        assertThat(waiting).singleElement()
+                .extracting(event -> event.event().type())
+                .isEqualTo("QUEUE_WAITING");
+        clock.advance(Duration.ofSeconds(44));
+        assertThat(service.sweepQueues()).isEmpty();
+        clock.advance(Duration.ofSeconds(1));
+
+        assertThat(service.sweepQueues()).hasSize(2)
+                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo("MATCH_FOUND"));
+    }
+
+    @Test
+    void reconnectRebindsTheExistingQueueEntryWithoutResettingItsPosition() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        Instant queuedAt = clock.instant();
+        service.joinQueue(firstUserId, "first", "first@example.com", "socket-first");
+        service.markDisconnected("first@example.com", "socket-first");
+        service.joinQueue(secondUserId, "second", "second@example.com", "socket-second");
+
+        clock.advance(Duration.ofSeconds(9));
+        var resumed = service.resumeQueuedPlayer(firstUserId, "socket-replacement");
+
+        assertThat(resumed).singleElement()
+                .satisfies(event -> {
+                    assertThat(event.event().type()).isEqualTo("QUEUE_WAITING");
+                    assertThat(event.event().queueStartedAt()).isEqualTo(queuedAt);
+                });
+        var found = service.sweepQueues();
+        assertThat(found).hasSize(2)
+                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo("MATCH_FOUND"));
+        verify(matchService, never()).startMatch(any(), any());
+    }
+
+    @Test
+    void partyIsIneligibleUntilEveryMemberReconnects() {
+        UUID partyOwnerId = UUID.randomUUID();
+        UUID teammateId = UUID.randomUUID();
+        UUID firstSoloId = UUID.randomUUID();
+        UUID secondSoloId = UUID.randomUUID();
+
+        service.joinQueue(
+                partyOwnerId,
+                "party-owner",
+                "party-owner@example.com",
+                "party-owner-socket",
+                MatchMode.TWOS,
+                List.of(
+                        entrant(partyOwnerId, "party-owner", "party-owner@example.com", "party-owner-socket"),
+                        entrant(teammateId, "teammate", "teammate@example.com", "teammate-socket")),
+                UUID.randomUUID());
+        service.markDisconnected("teammate@example.com", "teammate-socket");
+        service.joinQueue(firstSoloId, "solo-one", "solo-one@example.com", "solo-one-socket", MatchMode.TWOS);
+        var waiting = service.joinQueue(
+                secondSoloId,
+                "solo-two",
+                "solo-two@example.com",
+                "solo-two-socket",
+                MatchMode.TWOS);
+
+        assertThat(waiting).singleElement()
+                .extracting(event -> event.event().type())
+                .isEqualTo("QUEUE_WAITING");
+
+        service.resumeQueuedPlayer(teammateId, "teammate-replacement-socket");
+        var found = service.sweepQueues();
+
+        assertThat(found).hasSize(4)
+                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo("MATCH_FOUND"));
+    }
+
+    @Test
+    void expiredDisconnectedQueueEntryIsRemovedAfterTheGracePeriod() {
+        UUID firstUserId = UUID.randomUUID();
+        service.joinQueue(firstUserId, "first", "first@example.com", "socket-first");
+        service.markDisconnected("first@example.com", "socket-first");
+
+        clock.advance(Duration.ofSeconds(10));
+        var expired = service.sweepQueues();
+
+        assertThat(expired).singleElement().satisfies(event -> {
+            assertThat(event.event().type()).isEqualTo("MATCH_ERROR");
+            assertThat(event.event().message()).contains("10 seconds");
+        });
+        assertThat(service.resumeQueuedPlayer(firstUserId, "socket-too-late")).isEmpty();
+    }
+
+    @Test
+    void reconnectDoesNotConsumeTheNormalQueueJoinRateLimit() {
+        UUID firstUserId = UUID.randomUUID();
+        service.joinQueue(firstUserId, "first", "first@example.com", "socket-first");
+        service.markDisconnected("first@example.com", "socket-first");
+
+        for (int attempt = 0; attempt < 5; attempt++) {
+            assertThat(service.resumeQueuedPlayer(firstUserId, "socket-replacement-" + attempt))
+                    .singleElement()
+                    .extracting(event -> event.event().type())
+                    .isEqualTo("QUEUE_WAITING");
+        }
+    }
+
+    @Test
     void provisionalMatchSurvivesSocketReplacementBeforeAcceptance() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
         service.joinQueue(firstUserId, "alpha-secret", "first@example.com", "socket-first");
         var found = service.joinQueue(secondUserId, "bravo-secret", "second@example.com", "socket-second");
 
-        service.removeDisconnected("first@example.com", "socket-first");
+        service.markDisconnected("first@example.com", "socket-first");
         var resumed = service.resumePendingMatch(firstUserId, "socket-replacement");
 
         assertThat(resumed).hasSize(2).allSatisfy(event -> {

@@ -30,6 +30,7 @@ const TOO_MANY_REQUESTS_MESSAGE = "Too many requests. Try again later.";
 const QUEUE_ALERT_DISMISS_MS = 3_500;
 const ACCEPTANCE_VISIBLE_GRACE_MS = 2_000;
 const COUNTDOWN_UPDATE_INTERVAL_MS = 250;
+const QUEUE_RECONNECT_GRACE_MS = 10_000;
 const INITIAL_ACTIVE_MATCH_STATUS = {
     loading: true,
     activeMatch: false,
@@ -69,7 +70,9 @@ function currentUserIsPartyMember(party, userId) {
 
 export default function MatchmakingProvider({ children }) {
     const navigate = useNavigate();
-    const { isAuthenticated, user } = useAuth();
+    const navigateRef = useRef(navigate);
+    navigateRef.current = navigate;
+    const { isAuthenticated, isLoading: authLoading, user } = useAuth();
     const matchFoundRef = useRef(false);
     const matchmakingClientRef = useRef(null);
     const partyClientRef = useRef(null);
@@ -87,6 +90,12 @@ export default function MatchmakingProvider({ children }) {
     const acceptanceSubmitPendingRef = useRef(false);
     const queueTokenBucketRef = useRef(createQueueTokenBucket());
     const queueStartInFlightRef = useRef(false);
+    const queueEntryKnownRef = useRef(false);
+    const queueResumeInFlightRef = useRef(false);
+    const queueServerStateKnownRef = useRef(false);
+    const queueStartRequestedRef = useRef(false);
+    const queueModeRef = useRef("ONES");
+    const isQueueingRef = useRef(false);
     const activeMatchRequestRef = useRef(null);
     const activeMatchSnapshotRef = useRef(null);
     const [isQueueing, setIsQueueing] = useState(false);
@@ -94,6 +103,9 @@ export default function MatchmakingProvider({ children }) {
     const [queueStartedAt, setQueueStartedAt] = useState(null);
     const [queueElapsed, setQueueElapsed] = useState(0);
     const [queueError, setQueueError] = useState(null);
+    const [queueReconnectDeadline, setQueueReconnectDeadline] = useState(null);
+    const [queueReconnectRemaining, setQueueReconnectRemaining] = useState(0);
+    const [queueConnectionEnabled, setQueueConnectionEnabled] = useState(true);
     const [party, setParty] = useState(null);
     const [partyLoading, setPartyLoading] = useState(true);
     const [partyError, setPartyError] = useState(null);
@@ -109,6 +121,9 @@ export default function MatchmakingProvider({ children }) {
     const [acceptanceError, setAcceptanceError] = useState(null);
     const [connectionStatus, setConnectionStatus] = useState("IDLE");
     const [activeMatchStatus, setActiveMatchStatus] = useState(INITIAL_ACTIVE_MATCH_STATUS);
+
+    isQueueingRef.current = isQueueing;
+    queueModeRef.current = queueMode;
 
     useEffect(() => {
         if (!queueError) return undefined;
@@ -276,6 +291,13 @@ export default function MatchmakingProvider({ children }) {
         setQueueStartedAt(null);
         setQueueElapsed(0);
         setIsQueueing(false);
+        setQueueReconnectDeadline(null);
+        setQueueReconnectRemaining(0);
+        queueEntryKnownRef.current = false;
+        queueResumeInFlightRef.current = false;
+        queueServerStateKnownRef.current = false;
+        queueStartRequestedRef.current = false;
+        setQueueConnectionEnabled(false);
         setConnectionStatus("IDLE");
         if (message) setQueueError(message);
         matchmakingClientRef.current?.unsubscribeMatchmaking?.();
@@ -333,13 +355,23 @@ export default function MatchmakingProvider({ children }) {
             setQueueStartedAt(null);
             setQueueElapsed(0);
             setIsQueueing(false);
+            setQueueReconnectDeadline(null);
+            setQueueReconnectRemaining(0);
+            queueEntryKnownRef.current = false;
+            queueResumeInFlightRef.current = false;
+            queueServerStateKnownRef.current = true;
+            queueStartRequestedRef.current = false;
+            setQueueConnectionEnabled(false);
             matchmakingClientRef.current?.unsubscribeMatchmaking?.();
             return;
         }
 
+        setQueueConnectionEnabled(true);
         partyQueueActiveRef.current = true;
         partyQueueOwnerRef.current = isPartyLeader;
         partyQueueCancellationRef.current = false;
+        queueEntryKnownRef.current = true;
+        queueResumeInFlightRef.current = false;
         if (queueModeFromEvent) setQueueMode(queueModeFromEvent);
         setQueueError(null);
         if (queueStatus === "MATCH_FOUND") {
@@ -374,6 +406,8 @@ export default function MatchmakingProvider({ children }) {
             setPartyLoading(false);
             return undefined;
         }
+
+        setQueueConnectionEnabled(true);
 
         let disposed = false;
         const client = getActiveMatchmakingClient(
@@ -469,14 +503,36 @@ export default function MatchmakingProvider({ children }) {
             partyQueueOwnerRef.current = false;
             partyQueueMatchFoundRef.current = false;
             partyQueueCancellationRef.current = false;
+            queueEntryKnownRef.current = false;
+            queueResumeInFlightRef.current = false;
+            queueServerStateKnownRef.current = false;
+            queueStartRequestedRef.current = true;
+            setQueueConnectionEnabled(true);
             setQueueElapsed(0);
             setQueueStartedAt(now);
             setQueueMode(selectedMode);
+            queueModeRef.current = selectedMode;
+            setQueueReconnectDeadline(null);
+            setQueueReconnectRemaining(0);
             setIsQueueing(true);
+            const client = matchmakingClientRef.current;
+            if (queueConnectionEnabled && client?.isConnected?.()) {
+                client.subscribeMatchmaking?.();
+                if (!queueResumeInFlightRef.current) {
+                    queueResumeInFlightRef.current = true;
+                    client.resumeQueue?.();
+                }
+            }
         } finally {
             queueStartInFlightRef.current = false;
         }
-    }, [markActiveMatch, navigate, party, verifyActiveMatchForQueue]);
+    }, [
+        markActiveMatch,
+        navigate,
+        party,
+        queueConnectionEnabled,
+        verifyActiveMatchForQueue,
+    ]);
 
     const cancelQueue = useCallback(() => {
         if (pendingAcceptanceRef.current) {
@@ -484,6 +540,11 @@ export default function MatchmakingProvider({ children }) {
             return;
         }
         partyQueueCancellationRef.current = true;
+        queueEntryKnownRef.current = false;
+        queueResumeInFlightRef.current = false;
+        queueServerStateKnownRef.current = true;
+        queueStartRequestedRef.current = false;
+        setQueueConnectionEnabled(false);
         matchmakingClientRef.current?.leaveQueue?.();
         matchmakingClientRef.current?.unsubscribeMatchmaking?.();
         matchmakingClientRef.current?.unsubscribeMatch?.();
@@ -491,13 +552,14 @@ export default function MatchmakingProvider({ children }) {
         setQueueElapsed(0);
         setQueueStartedAt(null);
         setIsQueueing(false);
+        setQueueReconnectDeadline(null);
+        setQueueReconnectRemaining(0);
     }, [cancelPendingAcceptance]);
 
     useEffect(() => {
-        if (!isAuthenticated && isQueueing) {
-            window.queueMicrotask(cancelQueue);
-        }
-    }, [cancelQueue, isAuthenticated, isQueueing]);
+        if (authLoading || isAuthenticated || !isQueueing) return;
+        window.queueMicrotask(cancelQueue);
+    }, [authLoading, cancelQueue, isAuthenticated, isQueueing]);
 
     useEffect(() => {
         if (!isQueueing || queueStartedAt == null) return undefined;
@@ -508,6 +570,22 @@ export default function MatchmakingProvider({ children }) {
         const interval = window.setInterval(updateElapsed, 250);
         return () => window.clearInterval(interval);
     }, [isQueueing, queueStartedAt]);
+
+    useEffect(() => {
+        if (!isQueueing || queueReconnectDeadline == null) {
+            setQueueReconnectRemaining(0);
+            return undefined;
+        }
+        const updateRemaining = () => {
+            setQueueReconnectRemaining(Math.max(
+                0,
+                Math.ceil((queueReconnectDeadline - Date.now()) / 1000),
+            ));
+        };
+        updateRemaining();
+        const interval = window.setInterval(updateRemaining, COUNTDOWN_UPDATE_INTERVAL_MS);
+        return () => window.clearInterval(interval);
+    }, [isQueueing, queueReconnectDeadline]);
 
     useEffect(() => {
         if (!pendingAcceptance) return undefined;
@@ -536,7 +614,7 @@ export default function MatchmakingProvider({ children }) {
     }, [acceptanceAuthoritativeDeadlineMs, clearPendingAcceptance, pendingAcceptance]);
 
     useEffect(() => {
-        if (!isQueueing) return undefined;
+        if (!isAuthenticated || !queueConnectionEnabled) return undefined;
 
         let disposed = false;
         matchFoundRef.current = partyQueueMatchFoundRef.current;
@@ -584,6 +662,8 @@ export default function MatchmakingProvider({ children }) {
                 if (disposed) return;
                 setConnectionStatus(status);
                 if (status === "ERROR" || status === "CLOSED") {
+                    queueResumeInFlightRef.current = false;
+                    queueServerStateKnownRef.current = false;
                     if (acceptanceActiveRef.current) {
                         acceptanceSubmitPendingRef.current = false;
                         setAcceptanceState(acceptanceStateForEvent(pendingAcceptanceRef.current));
@@ -591,22 +671,97 @@ export default function MatchmakingProvider({ children }) {
                         return;
                     }
                     if (matchFoundRef.current) return;
-                    setQueueError("Matchmaking connection lost. Try again.");
-                    setQueueStartedAt(null);
-                    setIsQueueing(false);
+                    setQueueError(null);
+                    setQueueReconnectDeadline((current) => (
+                        current ?? Date.now() + QUEUE_RECONNECT_GRACE_MS
+                    ));
                     return;
                 }
                 if (status === "CONNECTED") {
-                    if (acceptanceActiveRef.current) client.resumeMatch();
-                    else if (partyQueueActiveRef.current && !partyQueueOwnerRef.current) {
+                    setQueueReconnectDeadline(null);
+                    setQueueReconnectRemaining(0);
+                    if (acceptanceActiveRef.current) {
                         client.resumeMatch();
-                    } else if (!matchFoundRef.current) {
-                        client.joinQueue(queueMode);
+                        return;
+                    }
+                    if (queueStartRequestedRef.current && queueEntryKnownRef.current) {
+                        queueStartRequestedRef.current = false;
+                        return;
+                    }
+                    if (queueStartRequestedRef.current && !queueServerStateKnownRef.current) {
+                        if (!queueResumeInFlightRef.current) {
+                            queueResumeInFlightRef.current = true;
+                            client.resumeQueue?.();
+                        }
+                        return;
+                    }
+                    if (queueStartRequestedRef.current) {
+                        queueStartRequestedRef.current = false;
+                        queueEntryKnownRef.current = true;
+                        client.joinQueue(queueModeRef.current);
+                        return;
+                    }
+                    if (queueEntryKnownRef.current) {
+                        if (!queueServerStateKnownRef.current && !queueResumeInFlightRef.current) {
+                            queueResumeInFlightRef.current = true;
+                            client.resumeQueue?.();
+                        }
+                        return;
+                    }
+                    if (!queueServerStateKnownRef.current && !queueResumeInFlightRef.current) {
+                        queueResumeInFlightRef.current = true;
+                        client.resumeQueue?.();
                     }
                 }
             },
             onEvent: (event) => {
                 if (disposed) return;
+                if (event.type === "QUEUE_IDLE") {
+                    queueServerStateKnownRef.current = true;
+                    queueResumeInFlightRef.current = false;
+                    if (queueStartRequestedRef.current) {
+                        queueStartRequestedRef.current = false;
+                        queueEntryKnownRef.current = true;
+                        client.joinQueue(queueModeRef.current);
+                        return;
+                    }
+                    const hadQueue = isQueueingRef.current || queueEntryKnownRef.current;
+                    queueEntryKnownRef.current = false;
+                    if (hadQueue && !acceptanceActiveRef.current && !matchFoundRef.current) {
+                        setQueueStartedAt(null);
+                        setQueueElapsed(0);
+                        setIsQueueing(false);
+                        setQueueReconnectDeadline(null);
+                        setQueueReconnectRemaining(0);
+                        partyQueueActiveRef.current = false;
+                        partyQueueOwnerRef.current = false;
+                        partyQueueMatchFoundRef.current = false;
+                        partyQueueCancellationRef.current = true;
+                    }
+                    setQueueConnectionEnabled(false);
+                    return;
+                }
+                if (event.type === "QUEUE_WAITING") {
+                    setQueueConnectionEnabled(true);
+                    queueServerStateKnownRef.current = true;
+                    queueEntryKnownRef.current = true;
+                    queueResumeInFlightRef.current = false;
+                    queueStartRequestedRef.current = false;
+                    setQueueError(null);
+                    setQueueReconnectDeadline(null);
+                    setQueueReconnectRemaining(0);
+                    const eventStartedAt = Date.parse(
+                        event.queueStartedAt ?? event.serverNow ?? event.createdAt ?? "",
+                    );
+                    setQueueStartedAt((current) => Number.isFinite(eventStartedAt)
+                        ? eventStartedAt
+                        : (current ?? Date.now()));
+                    if (event.mode) {
+                        setQueueMode(String(event.mode).trim().toUpperCase());
+                    }
+                    setIsQueueing(true);
+                    return;
+                }
                 if (event.type === "MATCH_ERROR") {
                     if (acceptanceActiveRef.current) {
                         if (isMatchAcceptanceUnavailableError(event)) {
@@ -621,6 +776,17 @@ export default function MatchmakingProvider({ children }) {
                     setQueueError(event.message ?? "The queue request was rejected.");
                     setQueueStartedAt(null);
                     setIsQueueing(false);
+                    setQueueReconnectDeadline(null);
+                    setQueueReconnectRemaining(0);
+                    queueEntryKnownRef.current = false;
+                    queueResumeInFlightRef.current = false;
+                    queueServerStateKnownRef.current = true;
+                    queueStartRequestedRef.current = false;
+                    partyQueueActiveRef.current = false;
+                    partyQueueOwnerRef.current = false;
+                    partyQueueMatchFoundRef.current = false;
+                    partyQueueCancellationRef.current = true;
+                    setQueueConnectionEnabled(false);
                     return;
                 }
                 const pending = pendingAcceptanceRef.current;
@@ -630,7 +796,12 @@ export default function MatchmakingProvider({ children }) {
                     return;
                 }
                 if (event.type === "MATCH_FOUND" && event.status === "MATCH_ACCEPT") {
+                    queueServerStateKnownRef.current = true;
+                    queueEntryKnownRef.current = false;
+                    queueResumeInFlightRef.current = false;
+                    queueStartRequestedRef.current = false;
                     matchFoundRef.current = true;
+                    setQueueConnectionEnabled(true);
                     partyQueueMatchFoundRef.current = false;
                     updatePendingAcceptance(event);
                     setQueueStartedAt(null);
@@ -669,12 +840,19 @@ export default function MatchmakingProvider({ children }) {
                     setQueueStartedAt(null);
                     setQueueElapsed(0);
                     setIsQueueing(false);
+                    setQueueReconnectDeadline(null);
+                    setQueueReconnectRemaining(0);
+                    queueEntryKnownRef.current = false;
+                    queueResumeInFlightRef.current = false;
+                    queueServerStateKnownRef.current = true;
+                    queueStartRequestedRef.current = false;
                     partyQueueActiveRef.current = false;
                     partyQueueOwnerRef.current = false;
                     partyQueueMatchFoundRef.current = false;
                     partyQueueCancellationRef.current = true;
+                    setQueueConnectionEnabled(false);
                     markActiveMatch(event.matchId);
-                    navigate("/match");
+                    navigateRef.current("/match");
                 }
             },
         }, { autoReconnect: true, autoJoinOnConnect: false });
@@ -686,15 +864,17 @@ export default function MatchmakingProvider({ children }) {
         return () => {
             if (matchFoundRef.current) return;
             disposed = true;
-            if (!partyQueueCancellationRef.current
-                && (!partyQueueActiveRef.current || partyQueueOwnerRef.current)) {
-                client.leaveQueue();
-            }
             partyQueueCancellationRef.current = false;
             client.unsubscribeMatchmaking?.();
             client.unsubscribeMatch?.();
         };
-    }, [clearPendingAcceptance, isQueueing, markActiveMatch, navigate, queueMode]);
+    }, [
+        clearPendingAcceptance,
+        isAuthenticated,
+        markActiveMatch,
+        queueConnectionEnabled,
+        user?.id,
+    ]);
 
     const acceptPendingMatch = useCallback(() => {
         const pending = pendingAcceptanceRef.current;
@@ -717,6 +897,7 @@ export default function MatchmakingProvider({ children }) {
         queueMode,
         queueElapsed,
         queueError,
+        queueReconnectRemaining,
         connectionStatus,
         party,
         partyLoading,
@@ -739,6 +920,7 @@ export default function MatchmakingProvider({ children }) {
         queueMode,
         queueElapsed,
         queueError,
+        queueReconnectRemaining,
         party,
         partyError,
         partyLoading,

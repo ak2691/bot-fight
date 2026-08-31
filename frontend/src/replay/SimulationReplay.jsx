@@ -10,7 +10,7 @@ import { botColorRole, normalizeReplayObstacleShape } from "../gameArena/pixi/pi
 import { compassDegreesToRadians } from "../gameArena/botlogic/planner/arenaAngles.js";
 import MatchToolIcon from "../gameArena/coding/controls/MatchToolIcon.jsx";
 import BotLogo from "../components/BotLogo.jsx";
-import { centeredTeamPosition, displayedRoundWins, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, replayAbilitiesFor, replayAbilityTarget, replayAbilityVisual, replayBotAbilityState, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayFrameIndexForElapsedMs, replayRayOrigin, replayRatingChange, replayRemainingSeconds, replayResultVisibility, replayShapeKey } from "./replayPresentation.js";
+import { centeredTeamPosition, displayedRoundWins, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, replayAbilitiesFor, replayAbilityTarget, replayAbilityVisual, replayBotAbilityState, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayFrameIndexForElapsedMs, replayRayOrigin, replayRatingChanges, replayRemainingSeconds, replayResultVisibility, replayShapeKey } from "./replayPresentation.js";
 
 const EMPTY_LIST = Object.freeze([]);
 const NOOP = () => { };
@@ -157,7 +157,7 @@ export default function SimulationReplay({
         roundResultRevealReceived,
         resultRevealReceived,
     });
-    const ratingChange = replayRatingChange(playback, matchResultRevealed);
+    const ratingChanges = replayRatingChanges(playback, matchResultRevealed, viewer?.username);
 
     const winnerColorRole = botColorRole(winner);
     const replaySeconds = replayRemainingSeconds(MATCH_DURATION_MS, displayElapsedMs);
@@ -229,7 +229,7 @@ export default function SimulationReplay({
             isCustomMatch={isCustomMatch}
             isFinalMatchResult={isFinalMatchResult}
             onReturnToLobby={onReturnToLobby}
-            ratingChange={ratingChange}
+            ratingChanges={ratingChanges}
         />
     </section>;
 }
@@ -252,7 +252,7 @@ function ReplaySidebar({
     isCustomMatch,
     isFinalMatchResult,
     onReturnToLobby,
-    ratingChange,
+    ratingChanges,
 }) {
     const roundWinsBeforeResult = playback.roundWinsBeforeResult;
     const revealCurrentRoundPoint = roundResultRevealed || matchResultRevealed;
@@ -323,12 +323,24 @@ function ReplaySidebar({
                         <p className="mt-2 break-words text-base font-bold text-ink-white" aria-live="polite">
                             {matchResultTitle}
                         </p>
-                        {ratingChange && (
-                            <div className="mt-4 border-t border-slate-700/70 pt-3" aria-label="ELO change">
-                                <span className="text-[10px] font-bold tracking-[.18em] text-ink-muted">ELO</span>
-                                <p className="mt-1 font-interface-numeric text-lg font-bold tracking-[.08em] text-ink-white">
-                                    {ratingChange.label}
-                                </p>
+                        {ratingChanges.length > 0 && (
+                            <div className="mt-4 border-t border-slate-700/70 pt-3" aria-label="ELO changes">
+                                <span className="text-[10px] font-bold tracking-[.18em] text-ink-muted">ELO CHANGES</span>
+                                <div className="mt-2 space-y-2">
+                                    {ratingChanges.map((change, index) => (
+                                        <div
+                                            key={`${change.username}-${index}`}
+                                            className="flex items-center justify-between gap-3 text-sm"
+                                        >
+                                            <span className="min-w-0 truncate font-semibold text-ink-white">
+                                                {change.username}
+                                            </span>
+                                            <span className="shrink-0 font-interface-numeric font-bold tracking-[.04em] text-ink-white">
+                                                {change.label}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         )}
                     </section>

@@ -3361,7 +3361,7 @@ button {
   box-shadow: none;
 }
 
-.profile-page .rounded-full {
+.profile-page > section .rounded-full {
   border-color: #35c7e8;
   background: #1b2226;
   box-shadow: none;

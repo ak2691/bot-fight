@@ -26,6 +26,12 @@ test("the home match action returns to an active match instead of queueing", () 
     assert.match(source, /if \(activeMatch\) \{\s*navigate\("\/match", \{\s*state:/s);
 });
 
+test("the home match action opens the queue without cancelling an active queue", () => {
+    assert.match(source, /const \{ isQueueing, queueElapsed \} = useMatchmaking\(\);/);
+    assert.match(source, /if \(activeMatch\) \{[\s\S]*?return;\s*\}\s*navigate\("\/queue"\);/);
+    assert.doesNotMatch(source, /cancelQueue/);
+});
+
 test("the home practice-room action uses the stable practice route", () => {
     assert.match(source, /if \(id === "room"\) navigate\("\/practice"\)/);
 });

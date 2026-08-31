@@ -70,6 +70,38 @@ class MatchmakingSocketControllerTest {
     }
 
     @Test
+    void queueResumeChecksTheServerAndReportsAnIdleQueueWithoutCreatingOne() {
+        MatchmakingService matchmakingService = mock(MatchmakingService.class);
+        MatchService matchService = mock(MatchService.class);
+        SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
+        CurrentUserService currentUserService = mock(CurrentUserService.class);
+        TaskScheduler scheduler = mock(TaskScheduler.class);
+        MatchmakingSocketController controller = new MatchmakingSocketController(
+                matchmakingService, matchService, messagingTemplate, currentUserService, scheduler);
+        Authentication authentication = mock(Authentication.class);
+        AppUser user = new AppUser();
+        UUID userId = UUID.randomUUID();
+        user.setId(userId);
+        user.setUsername("pilot");
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(user);
+        when(matchmakingService.resumePendingMatch(userId, "socket-new")).thenReturn(List.of());
+        when(matchmakingService.resumeQueuedPlayer(userId, "socket-new")).thenReturn(List.of());
+        SimpMessageHeaderAccessor headers = SimpMessageHeaderAccessor.create();
+        headers.setSessionId("socket-new");
+
+        controller.resumeQueue(authentication, headers);
+
+        ArgumentCaptor<MatchmakingEventDTO> eventCaptor = ArgumentCaptor.forClass(MatchmakingEventDTO.class);
+        verify(messagingTemplate).convertAndSendToUser(
+                eq(authentication.getName()),
+                eq(MatchmakingSocketDestinations.MATCHMAKING),
+                eventCaptor.capture());
+        assertThat(eventCaptor.getValue().type()).isEqualTo("QUEUE_IDLE");
+        assertThat(eventCaptor.getValue().status()).isEqualTo("IDLE");
+        verify(matchmakingService, never()).joinQueue(any(), any(), any(), any());
+    }
+
+    @Test
     void matchSubscriptionRecognizesClientFacingUserDestination() {
         assertThat(MatchmakingSocketDestinations.isMatchSubscription(
                 "/user" + MatchmakingSocketDestinations.MATCH)).isTrue();
@@ -193,7 +225,7 @@ class MatchmakingSocketControllerTest {
     }
 
     @Test
-    void socketCloseWaitsForHeartbeatWindowBeforeStartingDisconnectGracePeriod() {
+    void socketCloseStartsQueueGraceWhileMatchGraceWaitsForHeartbeatWindow() {
         MatchmakingService matchmakingService = mock(MatchmakingService.class);
         MatchService matchService = mock(MatchService.class);
         when(matchService.isCurrentEvent(any())).thenReturn(true);
@@ -221,7 +253,7 @@ class MatchmakingSocketControllerTest {
 
         controller.handleDisconnect(event);
 
-        verify(matchmakingService).removeDisconnected("pilot@example.com", "socket-1");
+        verify(matchmakingService).markDisconnected("pilot@example.com", "socket-1");
         verify(matchService, never()).markDisconnected(any(), any());
         assertThat(runAtCaptor.getValue())
                 .isBetween(beforeClose.plusSeconds(10), Instant.now().plusSeconds(10));

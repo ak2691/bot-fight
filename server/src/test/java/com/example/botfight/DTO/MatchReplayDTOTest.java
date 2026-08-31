@@ -199,6 +199,33 @@ class MatchReplayDTOTest {
     }
 
     @Test
+    void resultPayloadCanCarryAllNamedRatingChanges() {
+        MatchReplayDTO playback = new MatchReplayDTO(
+                null,
+                List.of(),
+                "BOT_WIN",
+                UUID.randomUUID(),
+                "Blue Team wins.",
+                null,
+                null,
+                true,
+                null,
+                null,
+                null)
+                .withRatingChanges(List.of(
+                        new MatchReplayDTO.RatingChangeDTO("pilot", 1100, 1120),
+                        new MatchReplayDTO.RatingChangeDTO("opponent", 1200, 1180)));
+
+        String json = jsonMapper.writeValueAsString(playback);
+
+        assertThat(json).contains(
+                "\"ratingChanges\"",
+                "\"username\":\"pilot\"",
+                "\"before\":1100",
+                "\"after\":1120");
+    }
+
+    @Test
     void compactReplayKeepsEntityHpNullableWithoutUnboxingEmptyValues() {
         MatchPlaybackDTO playback = new MatchPlaybackDTO(
                 UUID.randomUUID(),

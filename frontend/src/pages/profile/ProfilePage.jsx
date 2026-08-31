@@ -59,6 +59,16 @@ function historyUrl(page, username) {
     return apiUrl(`${path}?page=${page}`);
 }
 
+function routeProfileUsername(value) {
+    const raw = String(value ?? "").trim();
+    if (!raw) return null;
+    try {
+        return decodeURIComponent(raw).trim() || null;
+    } catch {
+        return raw;
+    }
+}
+
 function solvedPuzzlesUrl(page, username) {
     const path = username
         ? `/api/profile/users/${encodeURIComponent(username)}/puzzles`
@@ -81,7 +91,7 @@ export default function ProfilePage() {
     const { hideInvitesFrom } = useNotifications();
     const navigate = useNavigate();
     const { username: routeUsername } = useParams();
-    const viewedUsername = routeUsername?.trim() || null;
+    const viewedUsername = routeProfileUsername(routeUsername);
     const isSelfProfile = Boolean(
         viewedUsername
         && user?.username
@@ -112,6 +122,10 @@ export default function ProfilePage() {
     const solvedPuzzlesRequestRef = useRef(0);
     const profileRetryBucketRef = useRef(null);
     const retryRateLimitTimeoutRef = useRef(null);
+    const profileMatchesRoute = !viewedUsername || (
+        typeof profile?.username === "string"
+        && profile.username.toLowerCase() === viewedUsername.toLowerCase()
+    );
 
     if (profileRetryBucketRef.current === null) {
         profileRetryBucketRef.current = createProfileRetryTokenBucket();
@@ -121,7 +135,9 @@ export default function ProfilePage() {
         const profileRequestId = ++profileRequestRef.current;
         const historyRequestId = ++historyRequestRef.current;
         const solvedPuzzlesRequestId = ++solvedPuzzlesRequestRef.current;
-        const requestUsername = isOwner ? null : viewedUsername;
+        // A profile URL is an explicit request for that username, including
+        // when the URL happens to point back to the authenticated user.
+        const requestUsername = viewedUsername;
         setStatus("loading");
         setHistoryStatus("loading");
         setSolvedPuzzlesStatus("loading");
@@ -172,7 +188,7 @@ export default function ProfilePage() {
 
     const requestHistory = useCallback(async (page, append) => {
         const historyRequestId = ++historyRequestRef.current;
-        const requestUsername = isOwner ? null : viewedUsername;
+        const requestUsername = viewedUsername;
         setHistoryStatus(append ? "loading-more" : "loading");
         try {
             const response = await fetch(historyUrl(page, requestUsername), { credentials: "include" });
@@ -190,11 +206,11 @@ export default function ProfilePage() {
             if (historyRequestId !== historyRequestRef.current) return;
             setHistoryStatus("error");
         }
-    }, [isOwner, viewedUsername]);
+    }, [viewedUsername]);
 
     const requestSolvedPuzzles = useCallback(async (page, append) => {
         const solvedPuzzlesRequestId = ++solvedPuzzlesRequestRef.current;
-        const requestUsername = isOwner ? null : viewedUsername;
+        const requestUsername = viewedUsername;
         setSolvedPuzzlesStatus(append ? "loading-more" : "loading");
         try {
             const response = await fetch(solvedPuzzlesUrl(page, requestUsername), { credentials: "include" });
@@ -212,7 +228,7 @@ export default function ProfilePage() {
             if (solvedPuzzlesRequestId !== solvedPuzzlesRequestRef.current) return;
             setSolvedPuzzlesStatus("error");
         }
-    }, [isOwner, viewedUsername]);
+    }, [viewedUsername]);
 
     useEffect(() => {
         void loadProfile();
@@ -224,7 +240,7 @@ export default function ProfilePage() {
     }, [viewedUsername]);
 
     useEffect(() => {
-        if (isOwner || !profile?.username) {
+        if (isOwner || !viewedUsername) {
             setBlockState("idle");
             setBlockError(null);
             return undefined;
@@ -234,7 +250,7 @@ export default function ProfilePage() {
         let mounted = true;
         setBlockState("loading");
         setBlockError(null);
-        fetch(apiUrl(`/api/blocks/status/${encodeURIComponent(profile.username)}`), {
+        fetch(apiUrl(`/api/blocks/status/${encodeURIComponent(viewedUsername)}`), {
             credentials: "include",
             signal: controller.signal,
         })
@@ -253,7 +269,7 @@ export default function ProfilePage() {
             mounted = false;
             controller.abort();
         };
-    }, [isOwner, profile?.username]);
+    }, [isOwner, viewedUsername]);
 
     useEffect(() => () => {
         if (retryRateLimitTimeoutRef.current !== null) {
@@ -296,7 +312,7 @@ export default function ProfilePage() {
     }, [logout, navigate]);
 
     const toggleBlock = useCallback(async () => {
-        if (!profile?.username || isOwner || blockState === "loading" || blockState === "saving") return;
+        if (!viewedUsername || isOwner || blockState === "loading" || blockState === "saving") return;
         const shouldBlock = blockState !== "blocked";
         const previousState = blockState;
         setBlockState("saving");
@@ -304,7 +320,7 @@ export default function ProfilePage() {
         try {
             const method = shouldBlock ? "POST" : "DELETE";
             const response = await fetch(
-                apiUrl(`/api/blocks/${encodeURIComponent(profile.username)}`),
+                apiUrl(`/api/blocks/${encodeURIComponent(viewedUsername)}`),
                 {
                     method,
                     credentials: "include",
@@ -314,12 +330,12 @@ export default function ProfilePage() {
             const body = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(body.message ?? "The block action could not be completed.");
             setBlockState(body.blocked === true ? "blocked" : "idle");
-            if (body.blocked === true) hideInvitesFrom(profile.username);
+            if (body.blocked === true) hideInvitesFrom(viewedUsername);
         } catch (error) {
             setBlockState(previousState === "blocked" ? "blocked" : "error");
             setBlockError(error.message ?? "The block action could not be completed.");
         }
-    }, [blockState, hideInvitesFrom, isOwner, profile?.username]);
+    }, [blockState, hideInvitesFrom, isOwner, viewedUsername]);
 
     return (
         <main className="profile-page min-h-screen bg-[#181b1c] font-interface text-[#f2f4f5]">
@@ -331,9 +347,11 @@ export default function ProfilePage() {
                     <ProfileSearchBar onSearch={(query) => navigate(`/profile/search?query=${encodeURIComponent(query)}`)} />
                 </div>
 
-                {status === "loading" && <ProfileLoading username={viewedUsername ?? user?.username} />}
+                {(status === "loading" || (status === "ready" && !profileMatchesRoute)) && (
+                    <ProfileLoading username={viewedUsername ?? user?.username} />
+                )}
                 {status === "error" && <ProfileError onRetry={retryProfile} retryRateLimited={isRetryRateLimited} />}
-                {status === "ready" && profile && (
+                {status === "ready" && profile && profileMatchesRoute && (
                     <ProfileContent
                         profile={profile}
                         matches={matches}
@@ -575,9 +593,10 @@ function QueueModeStatsCard({ label, stats }) {
             <div className="my-5 border-t border-slate-700/80" />
             <div>
                 <p className="font-mono text-[11px] font-bold tracking-[.18em] text-slate-400">RECORD</p>
-                <p className="mt-2 whitespace-nowrap font-mono text-[11px] font-bold tracking-[.04em] text-white sm:text-sm">
-                    {stats?.wins ?? 0}W <span className="text-cyan-300">—</span> {stats?.losses ?? 0}L <span className="text-cyan-300">—</span> {stats?.draws ?? 0}D
+                <p className="mt-2 whitespace-nowrap text-center font-mono text-[11px] font-bold tracking-normal text-white sm:text-sm">
+                    {stats?.wins ?? 0}-{stats?.losses ?? 0}-{stats?.draws ?? 0}
                 </p>
+                <p className="mt-1 text-center font-mono text-[9px] font-bold tracking-[.16em] text-cyan-300">W-L-D</p>
             </div>
         </section>
     );

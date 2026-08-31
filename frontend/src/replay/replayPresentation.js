@@ -111,6 +111,34 @@ export function replayRatingChange(playback, resultRevealReceived = false) {
     };
 }
 
+export function replayRatingChanges(playback, resultRevealReceived = false, fallbackUsername = null) {
+    if (!resultRevealReceived) return [];
+    const changes = (Array.isArray(playback?.ratingChanges) ? playback.ratingChanges : [])
+        .map((change) => {
+            const username = String(change?.username ?? "").trim();
+            const before = Number(change?.before);
+            const after = Number(change?.after);
+            if (!username || !Number.isInteger(before) || !Number.isInteger(after)
+                || before < 0 || after < 0) return null;
+            const delta = after - before;
+            return {
+                username,
+                before,
+                after,
+                delta,
+                label: String(before) + " → " + String(after) + " ("
+                    + (delta >= 0 ? "+" : "") + String(delta) + ")",
+            };
+        })
+        .filter(Boolean);
+    if (changes.length > 0) return changes;
+
+    const currentPlayerChange = replayRatingChange(playback, true);
+    return currentPlayerChange && String(fallbackUsername ?? "").trim()
+        ? [{ username: String(fallbackUsername).trim(), ...currentPlayerChange }]
+        : [];
+}
+
 export function replayRemainingSeconds(durationMs, elapsedMs) {
     const duration = Number(durationMs);
     const elapsed = Number(elapsedMs);
