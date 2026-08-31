@@ -770,7 +770,8 @@ test("conditional ability choices expose active state and remaining active time"
     assert.equal(active.valueType, "boolean");
     assert.equal(onCooldown.valueType, "boolean");
     assert.equal(activeTime.valueType, "number");
-    assert.equal(activeTime.suffix, "s");
+    assert.equal(activeTime.unit, "seconds");
+    assert.equal(activeTime.suffix, undefined);
     assert.equal(activeTime.min, 0);
     assert.equal(abilityDefinitionsForVariable(active, equipped).some((ability) => ability.id === 9), true);
     assert.equal(abilityDefinitionsForVariable(onCooldown, equipped).some((ability) => ability.id === 9), true);
@@ -1008,6 +1009,20 @@ test("angle condition inputs use signed full-turn bounds", () => {
         roots: [{ branches: [{ conditions: [{ type: "expression", left: "selectable.facing", comparator: "gt", right: { type: "number", value: 999 } }], actions: [] }] }],
     });
     assert.equal(normalized.roots[0].branches[0].conditions[0].right.value, 360);
+});
+
+test("conditional measurement units stay in catalogue metadata except for inline degrees", () => {
+    const age = STATE_VARIABLES.find((variable) => variable.id === "selectable.age");
+    const distance = STATE_VARIABLES.find((variable) => variable.id === "selectable.distance");
+    const charges = STATE_VARIABLES.find((variable) => variable.id === "bot.selectedAbilityCharges");
+
+    assert.equal(age.label, "Ability Entity Age");
+    assert.equal(age.unit, "seconds");
+    assert.equal(age.suffix, undefined);
+    assert.equal(distance.unit, "arena units");
+    assert.equal(distance.suffix, undefined);
+    assert.equal(charges.unit, "charges");
+    assert.deepEqual(new Set(STATE_VARIABLES.filter((variable) => variable.suffix).map((variable) => variable.suffix)), new Set(["deg"]));
 });
 
 test("movement actions normalize relative angles and discard movement offsets", () => {

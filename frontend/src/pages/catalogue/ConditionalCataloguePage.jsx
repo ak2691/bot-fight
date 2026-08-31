@@ -194,6 +194,7 @@ export default function ConditionalCataloguePage() {
                                                 <h3 className="text-sm font-semibold text-slate-100">{variable.label}</h3>
                                                 <p className="mt-1 flex flex-wrap gap-x-2 font-mono text-[9px] uppercase tracking-wider text-slate-600">
                                                     <span>{variable.valueType}</span>
+                                                    {variable.unit && <><span>·</span><span>{variable.unit}</span></>}
                                                     <span>·</span>
                                                     <span className={selectable ? "text-blue-300/80" : ""}>{selectable ?? "No entity input"}</span>
                                                     {variable.supportsAbility && <><span>·</span><span className="text-blue-300/80">Ability picker</span></>}
