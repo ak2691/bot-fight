@@ -178,6 +178,7 @@ export default function CodingPanel({
     onFinishMatch,
     onOpenLoadout,
     onOpenPracticeConfig = null,
+    onOpenPuzzleConfig = null,
     onOpenPuzzleSubmissions = null,
     builderControls = null,
     puzzleControls = null,
@@ -748,6 +749,11 @@ export default function CodingPanel({
                         {!isMatchTesting && onOpenPracticeConfig && (
                             <ControlButton icon="tools" onClick={onOpenPracticeConfig} disabled={isTesting || isAutoPlaying} tone="neutral">
                                 PRACTICE CONFIG
+                            </ControlButton>
+                        )}
+                        {!isMatchTesting && onOpenPuzzleConfig && (
+                            <ControlButton icon="tools" onClick={onOpenPuzzleConfig} disabled={isTesting || isAutoPlaying} tone="neutral">
+                                PUZZLE CONFIG
                             </ControlButton>
                         )}
                         {!isMatchTesting && onOpenLoadout && (

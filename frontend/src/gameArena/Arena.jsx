@@ -450,6 +450,21 @@ function practiceSetupForArena(
     };
 }
 
+function puzzleSetupForArena(config, initialPuzzle) {
+    const normalized = normalizePracticeConfig(config);
+    const sourceBots = Array.isArray(initialPuzzle?.bots) && initialPuzzle.bots.length > 0
+        ? initialPuzzle.bots
+        : [initialPuzzle?.playerBot, initialPuzzle?.opponentBot].filter(Boolean);
+    const sourceByKey = new Map(sourceBots.map((bot) => [puzzleBotKey(bot), bot]));
+    return {
+        ...normalized,
+        bots: normalized.bots.map((bot) => {
+            const source = sourceByKey.get(puzzleBotKey(bot));
+            return source?.brain == null ? bot : { ...bot, brain: source.brain };
+        }),
+    };
+}
+
 function buildPracticeArenaShapes(playerLoadout, opponentLoadout, puzzleSetup = null, allowPuzzleBotEditing = false) {
     const loadoutForId = (loadout) => String(loadout).startsWith("sandbox:")
         ? decodeSandboxLoadout(loadout)
@@ -579,6 +594,8 @@ export default function Arena({
     const [practiceConfig, setPracticeConfig] = useState(() => isAbilityTesting
         ? buildAbilityTestingPracticeConfig(catalogueAbilityTestingPreset)
         : normalizePracticeConfig(storedPracticeRoom?.config));
+    const puzzleDefaultConfig = useMemo(() => normalizePracticeConfig(initialPuzzle), [initialPuzzle]);
+    const [puzzleConfig, setPuzzleConfig] = useState(() => normalizePracticeConfig(initialPuzzle));
     const matchId = matchContext?.matchId;
     const matchUserId = matchContext?.player?.userId;
     const isMatchTesting = Boolean(matchId && matchUserId);
@@ -602,13 +619,14 @@ export default function Arena({
             : matchContext?.opponent?.selectedLoadout ?? DEFAULT_BOT_CONFIGURATION_ID);
     const strategyStorageKey = matchStrategyConfigurationKey(matchId, matchUserId, selectedLoadout);
     const opponentStrategyStorageKey = opponentStrategyConfigurationKey(matchId, matchUserId, opponentLoadout);
+    const puzzleArenaSetup = isPuzzleMode ? puzzleSetupForArena(puzzleConfig, initialPuzzle) : initialPuzzle;
     const [shapes, setShapes] = useState(() => tutorialMode
         ? buildTutorialArenaShapes(initialTutorialStep)
         : isAbilityTesting ? buildAbilityTestingArenaShapes(catalogueAbilityTestingPreset)
             : usesPuzzleSetup ? buildPracticeArenaShapes(
                 puzzleBotForSetup(initialPuzzle, PUZZLE_PLAYER_TEAM)?.loadout ?? DEFAULT_BOT_CONFIGURATION_ID,
                 puzzleBotForSetup(initialPuzzle, PUZZLE_OPPONENT_TEAM)?.loadout ?? DEFAULT_BOT_CONFIGURATION_ID,
-                initialPuzzle,
+                puzzleArenaSetup,
                 isPuzzleBuilder,
             )
             : isPracticeRoom ? buildPracticeArenaShapes(
@@ -700,6 +718,7 @@ export default function Arena({
         enabled: Boolean(sandboxLoadoutTarget),
     });
     const [isPracticeConfigOpen, setIsPracticeConfigOpen] = useState(false);
+    const [isPuzzleConfigOpen, setIsPuzzleConfigOpen] = useState(false);
     const [tutorialStep, setTutorialStep] = useState(initialTutorialStep);
     const [tutorialInfoHost, setTutorialInfoHost] = useState(null);
     const [solutionShown, setSolutionShown] = useState(() => tutorialMode
@@ -1223,6 +1242,21 @@ export default function Arena({
         setTimeout(() => setSubmitStatus(null), 2500);
     };
 
+    const savePuzzleConfig = (nextConfig) => {
+        if (!isPuzzleMode || isMatchTesting || isAutoPlaying) return;
+        const normalized = normalizePracticeConfig(nextConfig);
+        setPuzzleConfig(normalized);
+        setSelectedId(null);
+        setShapes(buildPracticeArenaShapes(
+            selectedLoadout,
+            opponentLoadout,
+            puzzleSetupForArena(normalized, initialPuzzle),
+        ));
+        setIsPuzzleConfigOpen(false);
+        setSubmitStatus({ ok: true, message: "Puzzle test configuration saved." });
+        setTimeout(() => setSubmitStatus(null), 2500);
+    };
+
     const handleUpdateShape = useCallback((id, updates) => {
         setShapes((previous) => previous.map((shape) => (
             shape.id === id && (!shape.locked || allowLockedBotEditing)
@@ -1460,13 +1494,10 @@ export default function Arena({
                 code: tutorialScenario.durationMs ? "reading_code" : "demonstration_running",
             }));
             setShapes(freshShapes);
-        } else if (isPuzzleMode) {
-            const freshShapes = buildPracticeArenaShapes(selectedLoadout, opponentLoadout, initialPuzzle);
-            setShapes(freshShapes);
-        } else if (isPracticeRoom) {
-            // Practice playback starts from the current arena state. Reset
-            // Stats is the explicit action that reinitializes positions and
-            // combat state; pressing Play must not silently do that again.
+        } else if (isPuzzleMode || isPracticeRoom) {
+            // Puzzle and practice playback start from the current arena state.
+            // Reset Stats is the explicit action that reinitializes positions
+            // and combat state; pressing Play must not silently do that again.
         } else {
             setShapes((prevShapes) => buildAutoPlayStartShapes(prevShapes, matchContext, isMatchTesting));
         }
@@ -1690,6 +1721,12 @@ export default function Arena({
                 opponentLoadout,
                 practiceArenaSetup,
                 true,
+            ));
+        } else if (isPuzzleMode) {
+            setShapes(buildPracticeArenaShapes(
+                selectedLoadout,
+                opponentLoadout,
+                puzzleArenaSetup,
             ));
         } else {
             setShapes((prevShapes) => prevShapes
@@ -1923,6 +1960,7 @@ export default function Arena({
                     onSurrenderMatch={onSurrenderMatch}
                     onOpenLoadout={!isMatchTesting && !tutorialMode && !isPuzzleMode && loadoutEditorRoster.length > 0 ? () => openSandboxLoadout() : null}
                     onOpenPracticeConfig={!isMatchTesting && !tutorialMode && !isPuzzleMode && isPracticeRoom ? () => setIsPracticeConfigOpen(true) : null}
+                    onOpenPuzzleConfig={!isMatchTesting && !tutorialMode && isPuzzleMode ? () => setIsPuzzleConfigOpen(true) : null}
                     onOpenPuzzleSubmissions={isPuzzleMode ? onOpenPuzzleSubmissions : null}
                     builderControls={builderControls}
                     puzzleControls={puzzleControls}
@@ -2053,24 +2091,42 @@ export default function Arena({
                 </div>
             )}
             {isPracticeConfigOpen && (
-                <PracticeConfigModal
+                <ArenaConfigModal
                     draft={practiceConfig}
                     onClose={() => setIsPracticeConfigOpen(false)}
                     onSave={savePracticeConfig}
+                    eyebrow="PRACTICE CONFIG"
+                    title="Practice arena setup"
+                    titleId="practice-config-title"
+                    saveLabel="SAVE PRACTICE CONFIG"
+                />
+            )}
+            {isPuzzleConfigOpen && (
+                <ArenaConfigModal
+                    draft={puzzleConfig}
+                    defaults={puzzleDefaultConfig}
+                    onClose={() => setIsPuzzleConfigOpen(false)}
+                    onSave={savePuzzleConfig}
+                    eyebrow="PUZZLE CONFIG"
+                    title="Puzzle test setup"
+                    titleId="puzzle-config-title"
+                    saveLabel="SAVE PUZZLE CONFIG"
+                    restoreLabel="RESTORE PUZZLE DEFAULTS"
+                    showTeamSizeControls={false}
                 />
             )}
         </div>
     );
 }
 
-function practiceBotDisplayName(bot) {
+function arenaBotDisplayName(bot) {
     const teamNumber = Number(bot?.teamNumber);
     const slot = Number(bot?.slot) || 1;
     if (teamNumber === PUZZLE_PLAYER_TEAM && slot === 1) return "My Bot";
     return teamNumber === PUZZLE_PLAYER_TEAM ? `Teammate ${slot - 1}` : `Opponent ${slot}`;
 }
 
-function practiceTeamLabel(teamNumber) {
+function arenaTeamLabel(teamNumber) {
     return Number(teamNumber) === PUZZLE_OPPONENT_TEAM ? "RED TEAM" : "BLUE TEAM";
 }
 
@@ -2102,7 +2158,7 @@ function DeferredNumberInput({ value, onCommit, ...props }) {
     );
 }
 
-function PracticeConfigModal({ draft, onClose, onSave }) {
+function ArenaConfigModal({ draft, defaults = null, onClose, onSave, eyebrow, title, titleId, saveLabel, restoreLabel = null, showTeamSizeControls = true }) {
     const dialogRef = useRef(null);
     useDialogFocus(dialogRef, {
         onClose,
@@ -2139,51 +2195,61 @@ function PracticeConfigModal({ draft, onClose, onSave }) {
         if (bots.length < 2) return;
         setSelectedIndex((current) => (Math.min(current, bots.length - 1) + direction + bots.length) % bots.length);
     };
+    const restoreDefaults = () => {
+        if (!defaults) return;
+        setLocalDraft(normalizePracticeConfig(defaults));
+        setSelectedIndex(0);
+    };
     const inputClass = `mt-1 h-9 w-full border bg-slate-950 px-2 text-center font-interface-numeric text-sm text-white outline-none ${tone === "red" ? "border-red-900/80 focus:border-red-400" : "border-cyan-900/80 focus:border-cyan-400"}`;
 
     return (
         <div className="fixed inset-0 z-[110] grid place-items-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-            <section ref={dialogRef} className="max-h-[92vh] w-[min(92vw,560px)] overflow-y-auto rounded-xl border border-cyan-700/70 bg-[#11171a] shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="practice-config-title" tabIndex={-1}>
+            <section ref={dialogRef} className="max-h-[92vh] w-[min(92vw,560px)] overflow-y-auto rounded-xl border border-cyan-700/70 bg-[#11171a] shadow-2xl" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
                 <header className="flex items-center justify-between gap-4 border-b border-slate-700/80 bg-slate-950/70 px-5 py-4">
-                    <div><p className="font-mono text-[9px] font-bold tracking-[.2em] text-cyan-300">PRACTICE CONFIG</p><h2 id="practice-config-title" className="mt-1 text-lg font-bold text-white">Practice arena setup</h2></div>
-                    <button type="button" onClick={onClose} aria-label="Close practice config" className="modal-close-button"><span aria-hidden="true">×</span></button>
+                    <div><p className="font-mono text-[9px] font-bold tracking-[.2em] text-cyan-300">{eyebrow}</p><h2 id={titleId} className="mt-1 text-lg font-bold text-white">{title}</h2></div>
+                    <button type="button" onClick={onClose} aria-label={`Close ${title}`} className="modal-close-button"><span aria-hidden="true">×</span></button>
                 </header>
                 <div className="space-y-4 p-5">
                     <div className="space-y-2">
-                        <label className="flex min-h-11 items-center justify-between gap-4 border-b border-slate-800/80 pb-2 font-mono text-[9px] text-slate-300">
-                            <span>BLUE TEAM PLAYERS</span>
-                            <DeferredNumberInput min="1" max="2" step="1" value={localDraft.playerTeamSize} onCommit={(value) => updateTeamSize("playerTeamSize", value)} aria-label="Number of blue team players" className="h-9 w-24 border-2 border-cyan-400/80 bg-cyan-950/20 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-300" />
-                        </label>
-                        <label className="flex min-h-11 items-center justify-between gap-4 border-b border-slate-800/80 pb-2 font-mono text-[9px] text-slate-300">
-                            <span>RED TEAM PLAYERS</span>
-                            <DeferredNumberInput min="1" max="2" step="1" value={localDraft.opponentTeamSize} onCommit={(value) => updateTeamSize("opponentTeamSize", value)} aria-label="Number of red team players" className="h-9 w-24 border-2 border-red-400/80 bg-red-950/20 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-red-300" />
-                        </label>
+                        {showTeamSizeControls && <>
+                            <label className="flex min-h-11 items-center justify-between gap-4 border-b border-slate-800/80 pb-2 font-mono text-[9px] text-slate-300">
+                                <span>BLUE TEAM PLAYERS</span>
+                                <DeferredNumberInput min="1" max="2" step="1" value={localDraft.playerTeamSize} onCommit={(value) => updateTeamSize("playerTeamSize", value)} aria-label="Number of blue team players" className="h-9 w-24 border-2 border-cyan-400/80 bg-cyan-950/20 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-300" />
+                            </label>
+                            <label className="flex min-h-11 items-center justify-between gap-4 border-b border-slate-800/80 pb-2 font-mono text-[9px] text-slate-300">
+                                <span>RED TEAM PLAYERS</span>
+                                <DeferredNumberInput min="1" max="2" step="1" value={localDraft.opponentTeamSize} onCommit={(value) => updateTeamSize("opponentTeamSize", value)} aria-label="Number of red team players" className="h-9 w-24 border-2 border-red-400/80 bg-red-950/20 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-red-300" />
+                            </label>
+                        </>}
                         <label className="flex min-h-11 items-center justify-between gap-4 border-b border-slate-800/80 pb-2 font-mono text-[9px] text-slate-300">
                             <span>TIME AT / SEC</span>
-                            <DeferredNumberInput min="0" max="60" step="1" value={Math.round(localDraft.initialElapsedMs / 1000)} onCommit={updateElapsedTime} aria-label="Practice elapsed time in seconds" className="h-9 w-24 border border-slate-700 bg-slate-950 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-400" />
+                            <DeferredNumberInput min="0" max="60" step="1" value={Math.round(localDraft.initialElapsedMs / 1000)} onCommit={updateElapsedTime} aria-label="Arena elapsed time in seconds" className="h-9 w-24 border border-slate-700 bg-slate-950 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-400" />
                         </label>
                     </div>
                     <section className={`rounded border p-3 ${tone === "red" ? "border-red-900/60 bg-red-950/20" : "border-cyan-400/65 bg-cyan-950/30"}`}>
                         <div className="mb-2 flex items-center justify-between"><h3 className="font-mono text-[10px] font-bold tracking-[.16em] text-cyan-200">STARTING STATS</h3></div>
                         <div className="code-bot-selector-stack w-full max-w-none">
-                            <div className={`code-bot-selector ${tone === "red" ? "is-red" : "is-blue"}`} role="group" aria-label="Select practice starting stats">
-                                <button type="button" aria-label="Show previous practice bot" title="Previous bot" onClick={() => cycle(-1)} disabled={bots.length < 2} className="code-bot-selector__arrow">‹</button>
+                            <div className={`code-bot-selector ${tone === "red" ? "is-red" : "is-blue"}`} role="group" aria-label="Select starting stats">
+                                <button type="button" aria-label="Show previous bot" title="Previous bot" onClick={() => cycle(-1)} disabled={bots.length < 2} className="code-bot-selector__arrow">‹</button>
                                 <div className="code-bot-selector__current" aria-live="polite">
-                                    <span className="code-bot-selector__name">{practiceBotDisplayName(selectedBot)}</span>
-                                    <span className="code-bot-selector__meta">{practiceTeamLabel(teamNumber)} · STARTING STATS · {Math.max(1, selectedBotIndex + 1)}/{bots.length}</span>
+                                    <span className="code-bot-selector__name">{arenaBotDisplayName(selectedBot)}</span>
+                                    <span className="code-bot-selector__meta">{arenaTeamLabel(teamNumber)} · STARTING STATS · {Math.max(1, selectedBotIndex + 1)}/{bots.length}</span>
                                 </div>
-                                <button type="button" aria-label="Show next practice bot" title="Next bot" onClick={() => cycle(1)} disabled={bots.length < 2} className="code-bot-selector__arrow">›</button>
+                                <button type="button" aria-label="Show next bot" title="Next bot" onClick={() => cycle(1)} disabled={bots.length < 2} className="code-bot-selector__arrow">›</button>
                             </div>
                         </div>
                         <div className="mt-3 grid grid-cols-2 gap-2">
-                            <label className="font-mono text-[8px] text-slate-500">X<DeferredNumberInput min={BOT_CENTER_MIN_X} max={BOT_CENTER_MAX_X} step="1" value={selectedBot?.startX ?? BOT_CENTER_MIN_X} onCommit={(value) => updateBot("startX", value)} aria-label={`${practiceBotDisplayName(selectedBot)} starting X position`} className={inputClass} /></label>
-                            <label className="font-mono text-[8px] text-slate-500">Y<DeferredNumberInput min={BOT_CENTER_MIN_Y} max={BOT_CENTER_MAX_Y} step="1" value={selectedBot?.startY ?? BOT_CENTER_MIN_Y} onCommit={(value) => updateBot("startY", value)} aria-label={`${practiceBotDisplayName(selectedBot)} starting Y position`} className={inputClass} /></label>
-                            <label className="font-mono text-[8px] text-slate-500">ROTATION<DeferredNumberInput min="-360" max="360" step="1" value={selectedBot?.rotation ?? 0} onCommit={(value) => updateBot("rotation", value)} aria-label={`${practiceBotDisplayName(selectedBot)} starting rotation`} className={inputClass} /></label>
-                            <label className="font-mono text-[8px] text-slate-500">HP<DeferredNumberInput min="1" max={BASE_BOT_HP} step="1" value={selectedBot?.startHp ?? BASE_BOT_HP} onCommit={(value) => updateBot("startHp", value)} aria-label={`${practiceBotDisplayName(selectedBot)} starting HP`} className={inputClass} /></label>
+                            <label className="font-mono text-[8px] text-slate-500">X<DeferredNumberInput min={BOT_CENTER_MIN_X} max={BOT_CENTER_MAX_X} step="1" value={selectedBot?.startX ?? BOT_CENTER_MIN_X} onCommit={(value) => updateBot("startX", value)} aria-label={`${arenaBotDisplayName(selectedBot)} starting X position`} className={inputClass} /></label>
+                            <label className="font-mono text-[8px] text-slate-500">Y<DeferredNumberInput min={BOT_CENTER_MIN_Y} max={BOT_CENTER_MAX_Y} step="1" value={selectedBot?.startY ?? BOT_CENTER_MIN_Y} onCommit={(value) => updateBot("startY", value)} aria-label={`${arenaBotDisplayName(selectedBot)} starting Y position`} className={inputClass} /></label>
+                            <label className="font-mono text-[8px] text-slate-500">ROTATION<DeferredNumberInput min="-360" max="360" step="1" value={selectedBot?.rotation ?? 0} onCommit={(value) => updateBot("rotation", value)} aria-label={`${arenaBotDisplayName(selectedBot)} starting rotation`} className={inputClass} /></label>
+                            <label className="font-mono text-[8px] text-slate-500">HP<DeferredNumberInput min="1" max={BASE_BOT_HP} step="1" value={selectedBot?.startHp ?? BASE_BOT_HP} onCommit={(value) => updateBot("startHp", value)} aria-label={`${arenaBotDisplayName(selectedBot)} starting HP`} className={inputClass} /></label>
                         </div>
                     </section>
                 </div>
-                <footer className="flex justify-end gap-2 border-t border-slate-700/80 bg-slate-950/70 px-5 py-4"><button type="button" onClick={onClose} className="gray-button-surface min-h-10 border border-slate-600 px-5 font-mono text-[10px] font-bold tracking-[.16em] text-slate-300">CANCEL</button><button type="button" onClick={() => onSave(localDraft)} className="gray-button-surface min-h-10 border border-cyan-400 px-5 font-mono text-[10px] font-bold tracking-[.16em] text-cyan-100">SAVE PRACTICE CONFIG</button></footer>
+                <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-700/80 bg-slate-950/70 px-5 py-4">
+                    {defaults && restoreLabel ? <button type="button" onClick={restoreDefaults} className="gray-button-surface min-h-10 border border-amber-400/70 px-4 font-mono text-[9px] font-bold tracking-[.12em] text-amber-200">{restoreLabel}</button> : <span />}
+                    <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className="gray-button-surface min-h-10 border border-slate-600 px-5 font-mono text-[10px] font-bold tracking-[.16em] text-slate-300">CANCEL</button><button type="button" onClick={() => onSave(localDraft)} className="gray-button-surface min-h-10 border border-cyan-400 px-5 font-mono text-[10px] font-bold tracking-[.16em] text-cyan-100">{saveLabel}</button></div>
+                </footer>
             </section>
         </div>
     );

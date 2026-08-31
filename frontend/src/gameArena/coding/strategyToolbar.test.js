@@ -69,6 +69,20 @@ test("puzzle play is a local preview and puzzle submission is a separate action"
     assert.match(arenaSource, /onPuzzleSubmit=\{isPuzzleMode && onPuzzleAttempt \? submitPuzzleAttempt : null\}/);
 });
 
+test("puzzle play preserves the editable setup until Reset Stats is chosen", () => {
+    const arenaSource = readFileSync(ARENA_PATH, "utf8");
+    const panelSource = readFileSync(PANEL_PATH, "utf8");
+
+    assert.match(arenaSource, /else if \(isPuzzleMode \|\| isPracticeRoom\) \{[\s\S]*current arena state[\s\S]*?Reset Stats/);
+    assert.match(arenaSource, /else if \(isPuzzleMode\) \{\s*setShapes\(buildPracticeArenaShapes\([\s\S]*?initialPuzzle/);
+    assert.match(arenaSource, /onOpenPuzzleConfig=.*setIsPuzzleConfigOpen\(true\)/);
+    assert.match(arenaSource, /const savePuzzleConfig = \(nextConfig\) => \{[\s\S]*setPuzzleConfig\(normalized\)[\s\S]*puzzleSetupForArena\(normalized, initialPuzzle\)/);
+    assert.match(arenaSource, /restoreLabel="RESTORE PUZZLE DEFAULTS"/);
+    assert.match(arenaSource, /restoreLabel="RESTORE PUZZLE DEFAULTS"[\s\S]*showTeamSizeControls=\{false\}/);
+    assert.match(arenaSource, /showTeamSizeControls = true/);
+    assert.match(panelSource, />\s*PUZZLE CONFIG\s*</);
+});
+
 test("puzzle play restores drafts by puzzle without overriding loaded submissions", () => {
     const arenaSource = readFileSync(ARENA_PATH, "utf8");
     const puzzleSource = readFileSync(PUZZLE_PLAY_PATH, "utf8");
