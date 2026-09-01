@@ -739,7 +739,7 @@ export default function Arena({
     const allowBotRotation = isPracticeRoom || isPuzzleBuilder || isPuzzleMode || isTutorialArenaIntro || (isMatchTesting && finishStatus === "BUILDING");
     const allowLockedBotEditing = isPuzzleMode || isTutorialArenaIntro || (isMatchTesting && finishStatus === "BUILDING");
     const arenaEditingEnabled = isEditingArena && (!tutorialMode || isTutorialArenaIntro);
-    const showArenaHelp = !isPracticeRoom && !usesPuzzleSetup && !tutorialMode;
+    const showArenaHelp = !isPracticeRoom && !usesPuzzleSetup && !tutorialMode && !isMatchTesting;
     const initialPuzzleElapsedMs = Math.max(0, Number(initialPuzzle?.initialElapsedMs) || 0);
     const puzzleSetupRoster = useMemo(
         () => puzzleSetupBots(initialPuzzle, selectedLoadout, opponentLoadout),

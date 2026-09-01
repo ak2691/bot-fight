@@ -23,6 +23,10 @@ import "./PixiCanvas.css";
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 2.5;
+const BOT_TOUCH_TARGET_PX = 48;
+const BOT_CAPTION_FONT_SIZE = 13;
+const BOT_CAPTION_MIN_PX = 10;
+const BOT_CAPTION_MAX_PX = 13;
 const ARENA_GRID_MINOR_STEP_UNITS = 50;
 const ARENA_GRID_MAJOR_STEP_UNITS = 300;
 const COLORS = Object.freeze({
@@ -35,6 +39,18 @@ const COLORS = Object.freeze({
     white: 0xf8fafc,
     hp: 0xdc2626,
 });
+
+function touchInputAvailable() {
+    return Number(globalThis.navigator?.maxTouchPoints ?? 0) > 0
+        || globalThis.matchMedia?.("(pointer: coarse)")?.matches === true;
+}
+
+function captionScaleForCamera(cameraScale) {
+    const scale = Math.max(0.001, Number(cameraScale) || 1);
+    const renderedSize = BOT_CAPTION_FONT_SIZE * scale;
+    const targetSize = Math.max(BOT_CAPTION_MIN_PX, Math.min(BOT_CAPTION_MAX_PX, renderedSize));
+    return targetSize / renderedSize;
+}
 
 export default function PixiCanvas({
     shapes,
@@ -243,6 +259,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     app.stage.addChild(camera);
     app.stage.eventMode = "static";
     drawArena(background);
+    if (arenaSprites.abilities.bot?.source) arenaSprites.abilities.bot.source.scaleMode = "linear";
 
     const views = new Map();
     const lockOnMarkers = new Map();
@@ -255,6 +272,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     let measurementSignature = null;
     let measurementHoverPoint = null;
     const touchPoints = new Map();
+    let touchInput = touchInputAvailable();
     let pinch = null;
 
     function updateCamera() {
@@ -304,8 +322,15 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         return Math.max(12, radius + 6);
     }
 
-    function selectionHitArea(shape) {
+    function botInteractionRadius(shape) {
         const bodyRadius = botHitAreaRadius(shape);
+        if (!touchInput || !canEditBot(shape)) return bodyRadius;
+        const scale = Math.max(0.001, Number(camera.scale.x) || 1);
+        return Math.max(bodyRadius, BOT_TOUCH_TARGET_PX / (2 * scale));
+    }
+
+    function selectionHitArea(shape) {
+        const bodyRadius = isBotShape(shape) ? botInteractionRadius(shape) : botHitAreaRadius(shape);
         if (!isBotShape(shape) || optionsRef.current.selectedId !== shape.id || !canRotateBot(shape)) {
             return new Circle(0, 0, bodyRadius);
         }
@@ -325,6 +350,10 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         };
     }
 
+    function refreshSelectionHitAreas() {
+        for (const view of views.values()) view.container.hitArea = selectionHitArea(view.shape);
+    }
+
     function createView(shape, now = presentationClock.current()) {
         const container = new Container();
         const baseSprite = new Sprite();
@@ -337,7 +366,8 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         rotationHandle.eventMode = "static";
         rotationHandle.cursor = "default";
         rotationHandle.visible = false;
-        const caption = new Text({ text: "", style: { fill: COLORS.white, fontFamily: "monospace", fontSize: 13, fontWeight: "bold", align: "center" } });
+        const caption = new Text({ text: "", style: { fill: COLORS.white, fontFamily: "monospace", fontSize: BOT_CAPTION_FONT_SIZE, fontWeight: "bold", align: "center" } });
+        caption.resolution = Math.min(3, Math.max(2, Number(app.renderer.resolution) || 1));
         caption.anchor.set(0.5);
         caption.eventMode = "none";
         container.addChild(baseSprite, graphics, rotationHandle, caption);
@@ -470,9 +500,10 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             return;
         }
         if (event.button !== 0) return;
-        event.stopPropagation();
-        optionsRef.current.onSelectShape?.(view.shape.id);
-        if (!canEditBot(view.shape)) return;
+        if (event.pointerType === "touch" && !touchInput) {
+            touchInput = true;
+            refreshSelectionHitAreas();
+        }
         const point = camera.toLocal(event.global);
         const position = sampleViewPosition(view);
         const localX = point.x - position.x;
@@ -483,10 +514,14 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         const handleY = Math.sin(compassDegreesToRadians(view.shape.rotation)) * handleDistance;
         if (canRotateBot(view.shape)
             && (localX - handleX) ** 2 + (localY - handleY) ** 2 <= 14 ** 2) {
+            event.stopPropagation();
             beginRotationDrag(event, view);
             return;
         }
-        if (localX * localX + localY * localY > botHitAreaRadius(view.shape) ** 2) return;
+        if (localX * localX + localY * localY > botInteractionRadius(view.shape) ** 2) return;
+        event.stopPropagation();
+        optionsRef.current.onSelectShape?.(view.shape.id);
+        if (!canEditBot(view.shape)) return;
         drag = { id: view.shape.id, offsetX: point.x - position.x, offsetY: point.y - position.y };
         view.container.cursor = "grabbing";
     }
@@ -553,6 +588,8 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     function render(now) {
         updateCamera();
         overlay.clear();
+        refreshSelectionHitAreas();
+        const captionScale = captionScaleForCamera(camera.scale.x);
         const botViews = [...views.values()]
             .filter((view) => isBotShape(view.shape))
             .map((view) => ({ view, position: sampleViewPosition(view, now) }));
@@ -569,6 +606,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         for (const view of views.values()) {
             const position = sampleViewPosition(view, now);
             view.container.position.set(position.x, position.y);
+            view.caption.scale.set(captionScale);
             if (isBotShape(view.shape)) drawBot(view, position, optionsRef.current.selectedId === view.shape.id, now, arenaSprites, overlappingBotIds.has(view.shape.id), canRotateBot(view.shape));
             else drawEntity(view, optionsRef.current.selectedId === view.shape.id, now, arenaSprites);
         }
@@ -603,6 +641,10 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     const handleStagePointerDown = (event) => {
         if (event.target !== app.stage) return;
         const isTouch = event.pointerType === "touch";
+        if (isTouch && !touchInput) {
+            touchInput = true;
+            refreshSelectionHitAreas();
+        }
         if (event.button === 2 || event.button === 1 || (isTouch && !optionsRef.current.measurementEnabled)) {
             if (optionsRef.current.lockCamera) return;
             if (isTouch) event.preventDefault();
@@ -672,6 +714,10 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
 
     const handleTouchPointerDown = (event) => {
         if (event.pointerType !== "touch") return;
+        if (!touchInput) {
+            touchInput = true;
+            refreshSelectionHitAreas();
+        }
         touchPoints.set(event.pointerId, canvasPoint(event));
         if (touchPoints.size !== 2 || optionsRef.current.lockCamera) return;
         const [first, second] = touchPair();

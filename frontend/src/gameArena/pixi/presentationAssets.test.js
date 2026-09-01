@@ -119,6 +119,13 @@ test("Pixi warmup renders into a disposable target instead of the visible canvas
     assert.match(source, /warmupTexture\.destroy\(true\)/);
 });
 
+test("small responsive arenas keep a high-enough backing resolution", () => {
+    const source = readFileSync(PIXI_APPLICATION_PATH, "utf8");
+
+    assert.match(source, /const MIN_ARENA_RENDERER_RESOLUTION = 1\.5/);
+    assert.match(source, /Math\.max\(MIN_ARENA_RENDERER_RESOLUTION, ratio\)/);
+});
+
 test("Pixi modules stay out of login until the authenticated asset gate starts", () => {
     const hookSource = readFileSync(PRESENTATION_ASSET_HOOK_PATH, "utf8");
     const providerSource = readFileSync(PRESENTATION_ASSET_PROVIDER_PATH, "utf8");

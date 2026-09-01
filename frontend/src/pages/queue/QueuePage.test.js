@@ -59,4 +59,8 @@ test("queue exposes one optional catalogue-backed guarantee slot per round", () 
     assert.match(pickerSource, /getAbilityCatalogueIcon/);
     assert.match(pickerSource, /onChange\?\.\(activeRound, ability\.id\)/);
     assert.match(pickerSource, /onChange\?\.\(activeRound, null\)/);
+    assert.match(pickerSource, /className="modal-close-button"/);
+    assert.match(pickerSource, /className="info-circle-icon h-5 w-5 opacity-85"/);
+    assert.doesNotMatch(pickerSource, /setInfoAbility\(ability\);\s*setOpenRound\(null\);/);
+    assert.match(pickerSource, /overlayClassName="z-\[950\]"/);
 });

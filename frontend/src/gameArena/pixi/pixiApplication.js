@@ -8,6 +8,7 @@ const PIXI_APPLICATION_OPTIONS = Object.freeze({
     antialias: true,
     backgroundAlpha: 0,
 });
+const MIN_ARENA_RENDERER_RESOLUTION = 1.5;
 
 const availableApplications = [];
 let preloadPromise = null;
@@ -16,11 +17,10 @@ const warmedApplications = new WeakSet();
 
 export function arenaRendererResolution(devicePixelRatio = globalThis.devicePixelRatio) {
     const ratio = Number(devicePixelRatio);
-    if (!Number.isFinite(ratio) || ratio <= 0) return 1;
-    // Keep the backing canvas sharp on high-density phones without allowing a
-    // very large desktop scale factor to turn the arena into an unnecessary
-    // GPU/memory multiplier.
-    return Math.min(3, Math.max(1, ratio));
+    if (!Number.isFinite(ratio) || ratio <= 0) return MIN_ARENA_RENDERER_RESOLUTION;
+    // Keep the backing canvas sharp when the responsive arena is compressed on
+    // a desktop window, while avoiding a very large desktop scale factor.
+    return Math.min(3, Math.max(MIN_ARENA_RENDERER_RESOLUTION, ratio));
 }
 
 export function preloadPixiApplication() {

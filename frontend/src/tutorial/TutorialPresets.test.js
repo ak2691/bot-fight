@@ -4,6 +4,7 @@ import { buildTutorialArenaShapes, getTutorialScenario, hasTutorialPriorityOrder
 import { normalizeAbilityStrategyConfiguration, selectAbilityStrategyActionPlan } from "../gameArena/botlogic/code/BotCode.js";
 import { buildStatePayload } from "../gameArena/modelPayloads/strategyStatePayload.js";
 import { stateFromPayload } from "../gameArena/botlogic/code/runtime/runtimeState.js";
+import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../gameArena/modelPayloads/arenaConstants.js";
 
 const emptyPayload = {
     playerModel: {
@@ -61,6 +62,21 @@ test("tutorial arena uses standard offline bot labels and exposes its opponent",
     assert.equal(opponent?.role, "opponent");
     assert.equal(opponent?.botIndex, 1);
     assert.equal(stateFromPayload(payload).opponent?.id, "opponent-model");
+});
+
+test("tutorial arena starts use the current arena center and preserve lesson spacing", () => {
+    const shapes = buildTutorialArenaShapes(3);
+    const centerX = ARENA_WIDTH_UNITS / 2;
+    const centerY = ARENA_HEIGHT_UNITS / 2;
+
+    assert.equal(shapes[0].transform.position.x, centerX);
+    assert.equal(shapes[0].spawnX, centerX);
+    assert.equal(shapes[0].transform.position.y, centerY);
+    assert.equal(shapes[0].spawnY, centerY);
+    assert.equal(shapes[1].transform.position.x, centerX);
+    assert.equal(shapes[1].spawnX, centerX);
+    assert.equal(shapes[1].transform.position.y, centerY + 60);
+    assert.equal(shapes[1].spawnY, centerY + 60);
 });
 
 test("tutorial priority lesson starts with Dash first and solution swaps only priorities", () => {

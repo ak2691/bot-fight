@@ -87,7 +87,7 @@ const LESSONS = [
         lessonNumber: "1",
         eyebrow: "ARENA BASICS",
         title: "Get comfortable in the arena",
-        objective: "Learn the basic arena tools before you build your first behavior.",
+        objective: "Learn the basic arena tools.",
         steps: [
             "Open BOT CODE in the right-hand panel to build and edit your bot's logic.",
             "Click MEASURE, then click two points in the arena to see the distance between them. Click again to start a new measurement.",
@@ -100,7 +100,7 @@ const LESSONS = [
     {
         lessonNumber: "2",
         eyebrow: "BUILD A BRAIN",
-        title: "Create your first behavior",
+        title: "Create your first set of instructions.",
         objective: "Add one Root, ALWAYS, and Walk -> 0° from Opponent.",
         interactive: true,
         solution: true,

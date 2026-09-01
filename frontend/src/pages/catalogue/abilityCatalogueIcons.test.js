@@ -68,6 +68,7 @@ test("catalogue cards keep text accessible and artwork decorative", () => {
     assert.match(source, /aria-hidden="true"/);
     assert.match(source, /aria-label=\{`View \$\{ability\.label\} stats`\}/);
     assert.match(source, /onError=\{\(event\) => \{/);
+    assert.doesNotMatch(source, /src="\/assets\/arena-toolbar\/info-circle-icon\.png"/);
 });
 
 test("catalogue starts with a compact status-effect guide and the requested intro", () => {

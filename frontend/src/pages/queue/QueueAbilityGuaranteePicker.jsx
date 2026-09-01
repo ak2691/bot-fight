@@ -78,7 +78,7 @@ function QueueGuaranteeDialog({ round, selectedAbility, onSelect, onClear, onClo
                         type="button"
                         onClick={onClose}
                         aria-label="Close round guarantee picker"
-                        className="grid h-9 w-9 shrink-0 place-items-center border border-slate-600 text-2xl font-light leading-none text-slate-300 transition hover:border-green-400 hover:text-white"
+                        className="modal-close-button"
                     >
                         <span aria-hidden="true">×</span>
                     </button>
@@ -145,7 +145,7 @@ function QueueGuaranteeDialog({ round, selectedAbility, onSelect, onClear, onClo
                                             src="/assets/arena-toolbar/info-circle-icon.png"
                                             alt=""
                                             aria-hidden="true"
-                                            className="h-5 w-5 opacity-85"
+                                            className="info-circle-icon h-5 w-5 opacity-85"
                                         />
                                     </button>
                                 </div>
@@ -178,7 +178,6 @@ export default function QueueAbilityGuaranteePicker({ values = [], onChange, dis
 
     const showAbilityInfo = (ability) => {
         setInfoAbility(ability);
-        setOpenRound(null);
     };
 
     const selectAbility = (ability) => {
@@ -234,7 +233,11 @@ export default function QueueAbilityGuaranteePicker({ values = [], onChange, dis
                 />
             )}
             {infoAbility && (
-                <AbilityModal ability={infoAbility} onClose={() => setInfoAbility(null)} />
+                <AbilityModal
+                    ability={infoAbility}
+                    onClose={() => setInfoAbility(null)}
+                    overlayClassName="z-[950]"
+                />
             )}
         </>
     );

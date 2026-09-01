@@ -695,6 +695,21 @@ test("Pixi hit-testing only selects bots and ignores visual effects", () => {
     assert.match(source, /function beginDrag\(event, view\) \{\s*if \(!isBotShape\(view\.shape\)\) return;/);
 });
 
+test("bot editing keeps touch targets usable without changing the rendered model size", () => {
+    const source = readFileSync(PIXI_CANVAS_PATH, "utf8");
+
+    assert.match(source, /const BOT_TOUCH_TARGET_PX = 48/);
+    assert.match(source, /pointer: coarse/);
+    assert.match(source, /navigator\?\.maxTouchPoints/);
+    assert.match(source, /BOT_TOUCH_TARGET_PX \/ \(2 \* scale\)/);
+    assert.match(source, /event\.pointerType === "touch"/);
+    assert.match(source, /localX \* localX \+ localY \* localY > botInteractionRadius\(view\.shape\) \*\* 2/);
+    assert.match(source, /const BOT_CAPTION_MIN_PX = 10/);
+    assert.match(source, /captionScaleForCamera\(camera\.scale\.x\)/);
+    assert.match(source, /view\.caption\.scale\.set\(captionScale\)/);
+    assert.match(source, /arenaSprites\.abilities\.bot\.source\.scaleMode = "linear"/);
+});
+
 test("editable bots expose a shared mouse and touch rotation handle", () => {
     const source = readFileSync(PIXI_CANVAS_PATH, "utf8");
     const arenaSource = readFileSync(ARENA_PATH, "utf8");
@@ -728,7 +743,7 @@ test("offline arenas keep camera controls without the bottom interaction banner"
     const arenaSource = readFileSync(ARENA_PATH, "utf8");
     const pixiSource = readFileSync(PIXI_CANVAS_PATH, "utf8");
 
-    assert.match(arenaSource, /const showArenaHelp = !isPracticeRoom && !usesPuzzleSetup && !tutorialMode/);
+    assert.match(arenaSource, /const showArenaHelp = !isPracticeRoom && !usesPuzzleSetup && !tutorialMode && !isMatchTesting/);
     assert.match(arenaSource, /showArenaHelp=\{showArenaHelp\}/);
     assert.match(pixiSource, /showArenaHelp = true/);
     assert.match(pixiSource, /\{showArenaHelp && !lockCamera && \(/);

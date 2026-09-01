@@ -1,8 +1,13 @@
 import { encodeSandboxLoadout } from "../gameArena/loadout/BotLoadout.js";
 import { MAIN_SHAPE, buildOpponentShape, resetBotShape } from "../gameArena/modelPayloads/arenaShapes.js";
+import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../gameArena/modelPayloads/arenaConstants.js";
 import { createCodeRoot, createDefaultAbilityStrategyConfiguration } from "../gameArena/botlogic/code/configuration/configurationFactories.js";
 import { BOT_CODE_ACTIONS, BOT_CODE_SELECTABLES } from "../gameArena/botlogic/code/contracts/BotLogicContracts.js";
 import { abilityIdFromLegacyName } from "../gameArena/gameconfig/AbilityRegistry.js";
+
+const TUTORIAL_CENTER_X = ARENA_WIDTH_UNITS / 2;
+const TUTORIAL_CENTER_Y = ARENA_HEIGHT_UNITS / 2;
+const tutorialY = (offsetFromCenter) => TUTORIAL_CENTER_Y + offsetFromCenter;
 
 function loadout(...abilities) {
     return encodeSandboxLoadout({ abilities });
@@ -178,20 +183,21 @@ function grenadeOpponent() {
 }
 
 const SCENARIOS = [
-    { id: "arena-basics", playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialCode, opponentCode: passiveOpponent, spawn: { playerY: 360, opponentY: 650, playerRotation: 180 } },
-    { id: "movement", playerLoadout: loadout(), opponentLoadout: loadout(), solution: stepOneSolution, opponentCode: passiveOpponent, spawn: { playerY: 360, opponentY: 650, playerRotation: 180 } },
-    { id: "distance", playerLoadout: loadout(), opponentLoadout: loadout(1), solution: stepTwoSolution, opponentCode: meleeOpponent, spawn: { playerY: 420, opponentY: 560, playerRotation: 180 } },
-    { id: "basic-strike", playerLoadout: loadout(34), opponentLoadout: loadout(), solution: stepSixBasicStrikeSolution, opponentCode: passiveOpponent, durationMs: 2000, goal: "basic_strike", spawn: { playerY: 500, opponentY: 560, playerRotation: 180 } },
-    { id: "rotate", playerLoadout: loadout(7), opponentLoadout: loadout(), solution: stepThreeRotationSolution, opponentCode: passiveOpponent, durationMs: 2000, goal: "heavy_slash", spawn: { playerY: 440, opponentY: 560, playerRotation: 0 } },
-    { id: "lock-on", playerLoadout: loadout(7), opponentLoadout: loadout(), solution: stepFourSolution, opponentCode: passiveOpponent, durationMs: 1000, goal: "heavy_slash", spawn: { playerY: 440, opponentY: 560, playerRotation: 0 } },
-    { id: "dodge", playerLoadout: loadout(), opponentLoadout: loadout(4), solution: stepFiveSolution, opponentCode: grenadeOpponent, durationMs: 3000, goal: "dodge_grenade", spawn: { playerY: 420, opponentY: 570, playerRotation: 180 } },
-    { id: "combine", playerLoadout: loadout(7), opponentLoadout: loadout(4), solution: stepSevenSolution, opponentCode: grenadeOpponent, durationMs: 3000, goal: "combo", spawn: { playerY: 420, opponentY: 570, playerRotation: 0 } },
-    { id: "custom-variable", playerLoadout: loadout(), opponentLoadout: loadout(), solution: stepEightCustomVariableSolution, opponentCode: passiveOpponent, durationMs: 1000, goal: "custom_variable", spawn: { playerY: 400, opponentY: 650, playerRotation: 180 } },
-    { id: "priority", playerLoadout: loadout(), opponentLoadout: loadout(), solution: priorityLessonSolution, emptyCode: priorityLessonStartingCode, opponentCode: passiveOpponent, durationMs: 2200, goal: "priority", spawn: { playerY: 400, opponentY: 650, playerRotation: 180 } },
-    { id: "game-overview", playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialCode, opponentCode: passiveOpponent, spawn: { playerY: 400, opponentY: 650, playerRotation: 180 } },
-    { id: "ability-catalogue", playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialCode, opponentCode: passiveOpponent, spawn: { playerY: 400, opponentY: 650, playerRotation: 180 } },
-    { id: "conditional-catalogue", playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialCode, opponentCode: passiveOpponent, spawn: { playerY: 400, opponentY: 650, playerRotation: 180 } },
-    { id: "puzzles", playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialCode, opponentCode: passiveOpponent, spawn: { playerY: 400, opponentY: 650, playerRotation: 180 } },
+    // Preserve each lesson's old relationship to the arena center as the world grows to 1200 units.
+    { id: "arena-basics", playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialCode, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(-140), opponentY: tutorialY(150), playerRotation: 180 } },
+    { id: "movement", playerLoadout: loadout(), opponentLoadout: loadout(), solution: stepOneSolution, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(-140), opponentY: tutorialY(150), playerRotation: 180 } },
+    { id: "distance", playerLoadout: loadout(), opponentLoadout: loadout(1), solution: stepTwoSolution, opponentCode: meleeOpponent, spawn: { playerY: tutorialY(-80), opponentY: tutorialY(60), playerRotation: 180 } },
+    { id: "basic-strike", playerLoadout: loadout(34), opponentLoadout: loadout(), solution: stepSixBasicStrikeSolution, opponentCode: passiveOpponent, durationMs: 2000, goal: "basic_strike", spawn: { playerY: tutorialY(0), opponentY: tutorialY(60), playerRotation: 180 } },
+    { id: "rotate", playerLoadout: loadout(7), opponentLoadout: loadout(), solution: stepThreeRotationSolution, opponentCode: passiveOpponent, durationMs: 2000, goal: "heavy_slash", spawn: { playerY: tutorialY(-60), opponentY: tutorialY(60), playerRotation: 0 } },
+    { id: "lock-on", playerLoadout: loadout(7), opponentLoadout: loadout(), solution: stepFourSolution, opponentCode: passiveOpponent, durationMs: 1000, goal: "heavy_slash", spawn: { playerY: tutorialY(-60), opponentY: tutorialY(60), playerRotation: 0 } },
+    { id: "dodge", playerLoadout: loadout(), opponentLoadout: loadout(4), solution: stepFiveSolution, opponentCode: grenadeOpponent, durationMs: 3000, goal: "dodge_grenade", spawn: { playerY: tutorialY(-80), opponentY: tutorialY(70), playerRotation: 180 } },
+    { id: "combine", playerLoadout: loadout(7), opponentLoadout: loadout(4), solution: stepSevenSolution, opponentCode: grenadeOpponent, durationMs: 3000, goal: "combo", spawn: { playerY: tutorialY(-80), opponentY: tutorialY(70), playerRotation: 0 } },
+    { id: "custom-variable", playerLoadout: loadout(), opponentLoadout: loadout(), solution: stepEightCustomVariableSolution, opponentCode: passiveOpponent, durationMs: 1000, goal: "custom_variable", spawn: { playerY: tutorialY(-100), opponentY: tutorialY(150), playerRotation: 180 } },
+    { id: "priority", playerLoadout: loadout(), opponentLoadout: loadout(), solution: priorityLessonSolution, emptyCode: priorityLessonStartingCode, opponentCode: passiveOpponent, durationMs: 2200, goal: "priority", spawn: { playerY: tutorialY(-100), opponentY: tutorialY(150), playerRotation: 180 } },
+    { id: "game-overview", playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialCode, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(-100), opponentY: tutorialY(150), playerRotation: 180 } },
+    { id: "ability-catalogue", playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialCode, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(-100), opponentY: tutorialY(150), playerRotation: 180 } },
+    { id: "conditional-catalogue", playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialCode, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(-100), opponentY: tutorialY(150), playerRotation: 180 } },
+    { id: "puzzles", playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialCode, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(-100), opponentY: tutorialY(150), playerRotation: 180 } },
 ];
 
 export const TUTORIAL_STEP_COUNT = SCENARIOS.length;
@@ -210,15 +216,15 @@ export function buildTutorialArenaShapes(step = 0) {
         username: "My Bot",
         slot: 1,
         teamNumber: 1,
-        x: 500,
+        x: TUTORIAL_CENTER_X,
         y: playerY,
-        spawnX: 500,
+        spawnX: TUTORIAL_CENTER_X,
         spawnY: playerY,
         rotation: playerRotation, combatLoadout: scenario.playerLoadout,
     });
     const opponent = resetBotShape({
         ...buildOpponentShape({ userId: "tutorial-opponent", username: "Opponent 1", selectedLoadout: scenario.opponentLoadout, slot: 2, teamNumber: 2 }),
-        x: 500, y: opponentY, spawnX: 500, spawnY: opponentY, rotation: 0,
+        x: TUTORIAL_CENTER_X, y: opponentY, spawnX: TUTORIAL_CENTER_X, spawnY: opponentY, rotation: 0,
         combatLoadout: scenario.opponentLoadout, locked: true,
     });
     return [player, scenario.opponentHp ? { ...opponent, hp: scenario.opponentHp, maxHp: scenario.opponentHp } : opponent];

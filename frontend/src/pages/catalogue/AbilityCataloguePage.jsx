@@ -104,7 +104,12 @@ function playerFacingEffects(ability) {
     return [...new Set(effects)];
 }
 
-export function AbilityModal({ ability, onClose, onTestAbility = null }) {
+export function AbilityModal({
+    ability,
+    onClose,
+    onTestAbility = null,
+    overlayClassName = "z-50",
+}) {
     const closeButtonRef = useRef(null);
     const dialogRef = useRef(null);
     const stats = statsForAbility(ability);
@@ -123,7 +128,7 @@ export function AbilityModal({ ability, onClose, onTestAbility = null }) {
     useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onClose, lockScroll: true });
 
     return (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-[#02070de8] p-4 backdrop-blur-sm" onMouseDown={(event) => {
+        <div className={`fixed inset-0 ${overlayClassName} grid place-items-center bg-[#02070de8] p-4 backdrop-blur-sm`} onMouseDown={(event) => {
             if (event.target === event.currentTarget) onClose();
         }}>
             <section
@@ -308,12 +313,6 @@ export default function AbilityCataloguePage() {
                                             />
                                         )}
                                         <span className="ability-card-gradient" aria-hidden="true" />
-                                        <img
-                                            src="/assets/arena-toolbar/info-circle-icon.png"
-                                            alt=""
-                                            aria-hidden="true"
-                                            className="info-circle-icon absolute left-4 top-4 z-10 h-5 w-5 opacity-80 transition duration-150 group-hover:scale-110 group-hover:opacity-100"
-                                        />
                                         <span className="absolute right-4 top-2 font-display-action text-6xl text-white/[.035]" aria-hidden="true">
                                             {String(index + 1).padStart(2, "0")}
                                         </span>
