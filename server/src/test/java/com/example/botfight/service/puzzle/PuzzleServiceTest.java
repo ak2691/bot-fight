@@ -20,6 +20,7 @@ import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.service.cache.DatabaseLookupCache;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.submission.BotSubmissionValidationService;
+import com.example.botfight.simulation.geometry.ArenaUnits;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -88,7 +89,7 @@ class PuzzleServiceTest {
         assertThat(puzzle.getBots()).containsExactly(player, opponent);
         assertThat(player.getId()).isEqualTo(playerBotId);
         assertThat(opponent.getId()).isEqualTo(opponentBotId);
-        assertThat(opponent.getStartX()).isEqualTo(640.0);
+        assertThat(opponent.getStartX()).isEqualTo(30.0);
         assertThat(opponent.getBrainPayload()).contains("loadout");
         verify(puzzleRepository).saveAndFlush(puzzle);
         verify(databaseLookupCache).invalidatePuzzleCatalog("puzzle-updated");
@@ -124,8 +125,8 @@ class PuzzleServiceTest {
                 """));
         request.setWinConditions(jsonMapper.readTree("[{\"type\":\"always\"}]"));
         request.setLoseConditions(jsonMapper.createArrayNode());
-        request.setPlayerBot(botRequest(520, 180, 90, 140));
-        request.setOpponentBot(botRequest(640, 820, -90, 120));
+        request.setPlayerBot(botRequest(1170, 1050, 90, 140));
+        request.setOpponentBot(botRequest(30, 150, -90, 120));
         return request;
     }
 
@@ -145,9 +146,11 @@ class PuzzleServiceTest {
         bot.setId(id);
         bot.setRole(role);
         bot.setLoadout(loadout);
-        bot.setStartX(role == PuzzleBotRole.PLAYER ? 500 : 500);
-        bot.setStartY(role == PuzzleBotRole.PLAYER ? 150 : 850);
-        bot.setRotation(role == PuzzleBotRole.PLAYER ? 180 : 0);
+        bot.setStartX(ArenaUnits.WIDTH / 2.0);
+        bot.setStartY(role == PuzzleBotRole.PLAYER
+                ? ArenaUnits.HEIGHT - ArenaUnits.SPAWN_EDGE_MARGIN
+                : ArenaUnits.SPAWN_EDGE_MARGIN);
+        bot.setRotation(role == PuzzleBotRole.PLAYER ? 0 : 180);
         bot.setStartHp(150);
         bot.setBrainPayload("{}");
         return bot;

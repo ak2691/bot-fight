@@ -26,6 +26,7 @@ import com.example.botfight.simulation.bots.BotLogicContracts;
 import com.example.botfight.simulation.gameconfig.AbilityContracts;
 import com.example.botfight.simulation.gameconfig.CompactAbilityCode;
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
+import com.example.botfight.simulation.geometry.ArenaUnits;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -70,8 +71,8 @@ public class PuzzleService {
     private static final int MAX_CONDITION_JSON_BYTES = 100_000;
     private static final int MAX_PUZZLE_LOGIC_JSON_BYTES = 250_000;
     private static final double MAX_CONDITION_NUMBER = 1_000_000_000d;
-    private static final double ARENA_WIDTH = 1000;
-    private static final double ARENA_HEIGHT = 1000;
+    private static final double ARENA_WIDTH = ArenaUnits.WIDTH;
+    private static final double ARENA_HEIGHT = ArenaUnits.HEIGHT;
     private static final double BOT_SIZE = 60;
     private static final double BOT_RADIUS = BOT_SIZE / 2;
     private static final double BASE_BOT_HP = 150;
@@ -686,16 +687,22 @@ public class PuzzleService {
         if (loadout.isBlank() || loadout.length() > 40) errors.add(path + ".loadout must be between 1 and 40 characters");
         if (!validLoadoutEncoding(loadout)) errors.add(path + ".loadout is not a supported loadout encoding");
 
-        double defaultX = 500;
-        double defaultY = role == PuzzleBotRole.PLAYER ? 850 : 150;
+        double defaultX = ARENA_WIDTH / 2;
+        double defaultY = role == PuzzleBotRole.PLAYER
+                ? ARENA_HEIGHT - ArenaUnits.SPAWN_EDGE_MARGIN
+                : ArenaUnits.SPAWN_EDGE_MARGIN;
         double defaultRotation = role == PuzzleBotRole.PLAYER ? 0 : 180;
         double defaultHp = BASE_BOT_HP;
         double startX = valueOrDefault(request == null ? null : request.getStartX(), defaultX);
         double startY = valueOrDefault(request == null ? null : request.getStartY(), defaultY);
         double rotation = valueOrDefault(request == null ? null : request.getRotation(), defaultRotation);
         double startHp = valueOrDefault(request == null ? null : request.getStartHp(), defaultHp);
-        if (!Double.isFinite(startX) || startX < BOT_RADIUS || startX > ARENA_WIDTH - BOT_RADIUS) errors.add(path + ".startX must be from 30 to 970");
-        if (!Double.isFinite(startY) || startY < BOT_RADIUS || startY > ARENA_HEIGHT - BOT_RADIUS) errors.add(path + ".startY must be from 30 to 970");
+        if (!Double.isFinite(startX) || startX < BOT_RADIUS || startX > ARENA_WIDTH - BOT_RADIUS) {
+            errors.add(path + ".startX must be from " + (int) BOT_RADIUS + " to " + (int) (ARENA_WIDTH - BOT_RADIUS));
+        }
+        if (!Double.isFinite(startY) || startY < BOT_RADIUS || startY > ARENA_HEIGHT - BOT_RADIUS) {
+            errors.add(path + ".startY must be from " + (int) BOT_RADIUS + " to " + (int) (ARENA_HEIGHT - BOT_RADIUS));
+        }
         if (!Double.isFinite(rotation) || rotation < -360 || rotation > 360) errors.add(path + ".rotation must be from -360 to 360");
         if (!Double.isFinite(startHp) || startHp < 1 || startHp > BASE_BOT_HP) errors.add(path + ".startHp must be from 1 to " + (int) BASE_BOT_HP);
         if (!hasAtMostOneDecimal(startX)) errors.add(path + ".startX must have at most one decimal place");
@@ -1109,8 +1116,8 @@ public class PuzzleService {
             return BotLogicContracts.TARGET_MODE_TARGET;
         }
         if (BotLogicContracts.TARGET_MODE_COORDINATES.equals(mode)) {
-            validateConditionCoordinate(condition.get("targetX"), path + ".targetX", errors);
-            validateConditionCoordinate(condition.get("targetY"), path + ".targetY", errors);
+            validateConditionCoordinate(condition.get("targetX"), path + ".targetX", ARENA_WIDTH, errors);
+            validateConditionCoordinate(condition.get("targetY"), path + ".targetY", ARENA_HEIGHT, errors);
         } else if (BotLogicContracts.TARGET_MODE_ANGLE.equals(mode)) {
             JsonNode angle = condition.get("targetAngle");
             if (angle == null || !angle.isNumber() || !Double.isFinite(angle.asDouble())
@@ -1121,10 +1128,10 @@ public class PuzzleService {
         return mode;
     }
 
-    private void validateConditionCoordinate(JsonNode value, String path, List<String> errors) {
+    private void validateConditionCoordinate(JsonNode value, String path, double maximum, List<String> errors) {
         if (value == null || !value.isNumber() || !Double.isFinite(value.asDouble())
-                || value.asDouble() < 0 || value.asDouble() > 1000) {
-            errors.add(path + " must be a number from 0 to 1000");
+                || value.asDouble() < 0 || value.asDouble() > maximum) {
+            errors.add(path + " must be a number from 0 to " + (int) maximum);
         }
     }
 
