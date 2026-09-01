@@ -128,6 +128,8 @@ test("page client initialization is stable across loadout state updates", () => 
     const pageSource = readFileSync(GAME_PAGE_PATH, "utf8");
     const source = readFileSync(MATCH_LIFECYCLE_HOOK_PATH, "utf8");
 
+    assert.match(pageSource, /const \{ queueGuarantees \} = useMatchmaking\(\)/);
+    assert.match(pageSource, /guaranteedAbilityId=\{queueGuarantees\?\.\[currentRound - 1\] \?\? null\}/);
     assert.match(pageSource, /useMatchLifecycle\(\{/);
     assert.match(source, /export function useMatchLifecycle\(\{ navigate \}\)/);
     assert.doesNotMatch(source, /initialRouteMatchEvent|location\.state/);

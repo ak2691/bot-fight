@@ -389,7 +389,7 @@ function SandboxAbilityCard({ ability, selected, onToggle }) {
             className={`gray-button-surface ability-card ability-card-${ability.round} group relative min-h-52 w-full overflow-hidden rounded-none border p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-200 ${selected
                 ? "-translate-y-1 cursor-pointer border-green-400 bg-green-950/25 shadow-[0_8px_24px_rgba(114,182,93,0.12)] ring-2 ring-green-300/75 ring-offset-2 ring-offset-[#171a1c] hover:border-green-300"
                 : "cursor-pointer border-slate-700/75 bg-[#202427]/85 hover:border-green-700 hover:bg-green-950/15"
-            }`}
+                }`}
         >
             {iconPath && (
                 <img
@@ -608,15 +608,15 @@ export default function Arena({
     const [selectedLoadout, setSelectedLoadout] = useState(() => tutorialMode
         ? initialTutorialScenario.playerLoadout
         : isAbilityTesting ? catalogueAbilityTestingPreset.playerLoadout
-        : usesPuzzleSetup ? puzzleBotForSetup(initialPuzzle, PUZZLE_PLAYER_TEAM)?.loadout ?? DEFAULT_BOT_CONFIGURATION_ID
-            : isPracticeRoom ? storedPracticeRoom?.player?.loadout ?? DEFAULT_BOT_CONFIGURATION_ID
-            : matchContext?.player?.selectedLoadout ?? DEFAULT_BOT_CONFIGURATION_ID);
+            : usesPuzzleSetup ? puzzleBotForSetup(initialPuzzle, PUZZLE_PLAYER_TEAM)?.loadout ?? DEFAULT_BOT_CONFIGURATION_ID
+                : isPracticeRoom ? storedPracticeRoom?.player?.loadout ?? DEFAULT_BOT_CONFIGURATION_ID
+                    : matchContext?.player?.selectedLoadout ?? DEFAULT_BOT_CONFIGURATION_ID);
     const [opponentLoadout, setOpponentLoadout] = useState(() => tutorialMode
         ? initialTutorialScenario.opponentLoadout
         : isAbilityTesting ? catalogueAbilityTestingPreset.opponentLoadout
             : usesPuzzleSetup ? puzzleBotForSetup(initialPuzzle, PUZZLE_OPPONENT_TEAM)?.loadout ?? DEFAULT_BOT_CONFIGURATION_ID
-            : isPracticeRoom ? storedPracticeRoom?.opponent?.loadout ?? DEFAULT_BOT_CONFIGURATION_ID
-            : matchContext?.opponent?.selectedLoadout ?? DEFAULT_BOT_CONFIGURATION_ID);
+                : isPracticeRoom ? storedPracticeRoom?.opponent?.loadout ?? DEFAULT_BOT_CONFIGURATION_ID
+                    : matchContext?.opponent?.selectedLoadout ?? DEFAULT_BOT_CONFIGURATION_ID);
     const strategyStorageKey = matchStrategyConfigurationKey(matchId, matchUserId, selectedLoadout);
     const opponentStrategyStorageKey = opponentStrategyConfigurationKey(matchId, matchUserId, opponentLoadout);
     const puzzleArenaSetup = isPuzzleMode ? puzzleSetupForArena(puzzleConfig, initialPuzzle) : initialPuzzle;
@@ -629,19 +629,19 @@ export default function Arena({
                 puzzleArenaSetup,
                 isPuzzleBuilder,
             )
-            : isPracticeRoom ? buildPracticeArenaShapes(
-                selectedLoadout,
-                opponentLoadout,
-                practiceSetupForArena(
-                    storedPracticeRoom?.config,
+                : isPracticeRoom ? buildPracticeArenaShapes(
                     selectedLoadout,
                     opponentLoadout,
-                    storedPracticeRoom?.player?.code,
-                    storedPracticeRoom?.opponent?.code,
-                ),
-                true,
-            )
-            : buildInitialArenaShapes(matchContext));
+                    practiceSetupForArena(
+                        storedPracticeRoom?.config,
+                        selectedLoadout,
+                        opponentLoadout,
+                        storedPracticeRoom?.player?.code,
+                        storedPracticeRoom?.opponent?.code,
+                    ),
+                    true,
+                )
+                    : buildInitialArenaShapes(matchContext));
     const loggedTrainingEntityIdsRef = useRef(null);
     const loggedTrainingConditionStateRef = useRef(null);
 
@@ -685,7 +685,7 @@ export default function Arena({
             : isAbilityTesting ? catalogueAbilityTestingPreset.opponentCode : isPracticeRoom
                 ? storedPracticeRoom?.opponent?.code ?? loadStoredStrategyConfiguration(opponentStrategyStorageKey)
                 : usesPuzzleSetup ? puzzleBotForSetup(initialPuzzle, PUZZLE_OPPONENT_TEAM)?.brain ?? createDefaultAbilityStrategyConfiguration()
-                : loadStoredStrategyConfiguration(opponentStrategyStorageKey),
+                    : loadStoredStrategyConfiguration(opponentStrategyStorageKey),
         opponentLoadout,
     ));
     const [sandboxCodeCopies, setSandboxCodeCopies] = useState({});
@@ -1623,13 +1623,13 @@ export default function Arena({
                                 ? hit && !tookDamage
                                 : run.goal === "dodge_grenade"
                                     ? grenadeExploded && !tookDamage
-                                        : run.goal === "basic_strike"
-                                            ? hit
+                                    : run.goal === "basic_strike"
+                                        ? hit
                                         : run.goal === "custom_variable"
                                             ? customVariableIncreased
-                                        : run.goal === "priority"
-                                            ? priorityPassed
-                                        : false;
+                                            : run.goal === "priority"
+                                                ? priorityPassed
+                                                : false;
                     const failed = run.goal === "survive"
                         ? !survived
                         : run.goal === "priority" ? remainingMs === 0 : tookDamage || remainingMs === 0;
@@ -1647,7 +1647,7 @@ export default function Arena({
                             ? run.goal === "survive" ? "survive_defeated"
                                 : run.goal === "heavy_slash" ? "heavy_slash_timed_out"
                                     : run.goal === "combo" ? tookDamage ? "combo_took_damage" : "combo_timed_out"
-                                : run.goal === "basic_strike"
+                                        : run.goal === "basic_strike"
                                             ? tookDamage ? "basic_strike_took_damage" : "basic_strike_timed_out"
                                             : run.goal === "custom_variable"
                                                 ? "custom_variable_timed_out"
@@ -1889,103 +1889,103 @@ export default function Arena({
                 <AppNavbar inPageFlow account={!matchContext && !tutorialMode} currentPage={isPuzzleBuilder ? "puzzle-builder" : isPuzzleMode ? "puzzle-play" : null} onHome={onExit} />
 
                 <div className="arena-workspace-shell flex min-h-0 min-w-0 flex-1 overflow-hidden">
-                <main className={`arena-stage-main min-w-0 flex-1 flex items-center justify-center overflow-hidden p-2 ${isMatchTesting ? "match-arena-stage" : "bg-arena-deep"}`}>
-                    <div className="arena-stage-frame relative flex h-full w-full min-h-0 flex-col items-center justify-center">
-                        {(arenaInfo || tutorialMode) && (
-                            <div className="arena-stage-info">
-                                {arenaInfo}
-                                {tutorialMode && <div ref={setTutorialInfoHost} className="arena-stage-info__tutorial" />}
+                    <main className={`arena-stage-main min-w-0 flex-1 flex items-center justify-center overflow-hidden p-2 ${isMatchTesting ? "match-arena-stage" : "bg-arena-deep"}`}>
+                        <div className="arena-stage-frame relative flex h-full w-full min-h-0 flex-col items-center justify-center">
+                            {(arenaInfo || tutorialMode) && (
+                                <div className="arena-stage-info">
+                                    {arenaInfo}
+                                    {tutorialMode && <div ref={setTutorialInfoHost} className="arena-stage-info__tutorial" />}
+                                </div>
+                            )}
+                            <div className="arena-stage-canvas flex min-h-0 w-full flex-1 items-center justify-center">
+                                <PixiCanvas
+                                    shapes={shapes}
+                                    selectedId={selectedId}
+                                    onSelectShape={arenaEditingEnabled ? setSelectedId : () => { }}
+                                    onUpdateShape={arenaEditingEnabled ? handleUpdateShape : () => { }}
+                                    onDeselectAll={arenaEditingEnabled ? () => setSelectedId(null) : () => { }}
+                                    editable={arenaEditingEnabled}
+                                    fillAvailable
+                                    fixedLayout={usesArenaResponsiveLimits}
+                                    abilityLayout="split"
+                                    showArenaHelp={showArenaHelp}
+                                    showEmptyAbilitySlot={!isMatchTesting}
+                                    showParticipantNumbers={isMatchTesting}
+                                    abilityInfoEnabled={abilityInfoEnabled}
+                                    measurementEnabled={measurementEnabled}
+                                    measurementPoints={measurementPoints}
+                                    onMeasurementPointsChange={setMeasurementPoints}
+                                    hitboxesEnabled={isPracticeRoom && hitboxesEnabled}
+                                    isPlaying={isAutoPlaying}
+                                    allowBotRotation={allowBotRotation}
+                                    allowLockedBotEditing={allowLockedBotEditing}
+                                />
                             </div>
-                        )}
-                        <div className="arena-stage-canvas flex min-h-0 w-full flex-1 items-center justify-center">
-                            <PixiCanvas
-                            shapes={shapes}
-                            selectedId={selectedId}
-                            onSelectShape={arenaEditingEnabled ? setSelectedId : () => { }}
-                            onUpdateShape={arenaEditingEnabled ? handleUpdateShape : () => { }}
-                            onDeselectAll={arenaEditingEnabled ? () => setSelectedId(null) : () => { }}
-                            editable={arenaEditingEnabled}
-                            fillAvailable
-                            fixedLayout={usesArenaResponsiveLimits}
-                            abilityLayout="split"
-                            showArenaHelp={showArenaHelp}
-                            showEmptyAbilitySlot={!isMatchTesting}
-                            showParticipantNumbers={isMatchTesting}
-                            abilityInfoEnabled={abilityInfoEnabled}
-                            measurementEnabled={measurementEnabled}
-                            measurementPoints={measurementPoints}
-                            onMeasurementPointsChange={setMeasurementPoints}
-                            hitboxesEnabled={isPracticeRoom && hitboxesEnabled}
-                            isPlaying={isAutoPlaying}
-                            allowBotRotation={allowBotRotation}
-                            allowLockedBotEditing={allowLockedBotEditing}
-                            />
                         </div>
-                    </div>
-                </main>
+                    </main>
 
-                <CodingPanel
-                    configuration={testingConfiguration}
-                    onChange={updateTestingConfiguration}
-                    opponentConfiguration={isMatchTesting || tutorialMode || (isPuzzleMode && initialPuzzle?.hideOpponentCode !== false) ? null : opponentTestingConfiguration}
-                    onOpponentChange={isMatchTesting || tutorialMode ? null : updateOpponentTestingConfiguration}
-                    offlineCodeParticipants={isPuzzleBuilder ? puzzleCodeRoster : isPracticeRoom ? practiceCodeRoster : null}
-                    selectableParticipants={arenaSelectableParticipants}
-                    onOfflineCodeChange={isPuzzleBuilder || isPracticeRoom ? handleOfflineCodeChange : null}
-                    opponentReadOnly={isPuzzleMode && initialPuzzle?.hideOpponentCode === false}
-                    selectedLoadout={selectedLoadout}
-                    opponentLoadout={opponentLoadout}
-                    isMatchTesting={isMatchTesting}
-                    usesArenaResponsiveLimits={usesArenaResponsiveLimits}
-                    matchContext={matchContext}
-                    codeSnapshots={matchContext?.codeSnapshots}
-                    codeViewError={matchContext?.codeViewError}
-                    onRequestCodeView={matchContext?.requestCodeView}
-                    sandboxCodeCopies={sandboxCodeCopies}
-                    onSandboxParticipantChange={updateSandboxParticipantConfiguration}
-                    testingRemaining={testingRemaining}
-                    isAutoPlaying={isAutoPlaying}
-                    onMeasurementToggle={() => setMeasurementEnabled((current) => {
-                        if (current) setMeasurementPoints([]);
-                        return !current;
-                    })}
-                    hitboxesEnabled={hitboxesEnabled}
-                    onHitboxesToggle={isPracticeRoom ? () => setHitboxesEnabled((current) => !current) : null}
-                    isBaseTesting={isBaseTesting}
-                    finishStatus={finishStatus}
-                    finishError={finishError}
-                    isFinishingMatch={isFinishingMatch}
-                    canFinishMatch={Boolean(onFinishMatch)}
-                    onAutoPlayToggle={handleAutoPlayToggle}
-                    onResetArenaStats={resetArenaStats}
-                    customVariableValues={shapes.find((shape) => shape.id === "main")?.customVariables ?? {}}
-                    opponentCustomVariableValues={shapes.find((shape) => shape.id === "opponent-model")?.customVariables ?? {}}
-                    onFinishMatch={handleFinishMatch}
-                    onSurrenderMatch={onSurrenderMatch}
-                    onOpenLoadout={!isMatchTesting && !tutorialMode && !isPuzzleMode && loadoutEditorRoster.length > 0 ? () => openSandboxLoadout() : null}
-                    onOpenPracticeConfig={!isMatchTesting && !tutorialMode && !isPuzzleMode && isPracticeRoom ? () => setIsPracticeConfigOpen(true) : null}
-                    onOpenPuzzleConfig={!isMatchTesting && !tutorialMode && isPuzzleMode ? () => setIsPuzzleConfigOpen(true) : null}
-                    onOpenPuzzleSubmissions={isPuzzleMode ? onOpenPuzzleSubmissions : null}
-                    builderControls={builderControls}
-                    puzzleControls={puzzleControls}
-                    onPuzzleSubmit={isPuzzleMode && onPuzzleAttempt ? submitPuzzleAttempt : null}
-                    isPuzzleSubmitting={isPuzzleAttemptSubmitting}
-                    logicLimits={usesPuzzleSetup ? logicLimits : null}
-                    tutorialMode={tutorialMode}
-                    tutorialGuideHost={tutorialInfoHost}
-                    tutorialStep={tutorialStep}
-                    onShowTutorialSolution={toggleTutorialSolution}
-                    tutorialGuideProps={tutorialMode ? {
-                        step: tutorialStep,
-                        onStepChange: handleTutorialStepChange,
-                        challenge: tutorialChallenge,
-                        onAbilityCatalogue: () => navigate("/ability-catalogue"),
-                        onConditionalCatalogue: () => navigate("/conditionals"),
-                        onPuzzles: () => navigate("/puzzles"),
-                        onShowSolution: toggleTutorialSolution,
-                        solutionShown,
-                    } : null}
-                />
+                    <CodingPanel
+                        configuration={testingConfiguration}
+                        onChange={updateTestingConfiguration}
+                        opponentConfiguration={isMatchTesting || tutorialMode || (isPuzzleMode && initialPuzzle?.hideOpponentCode !== false) ? null : opponentTestingConfiguration}
+                        onOpponentChange={isMatchTesting || tutorialMode ? null : updateOpponentTestingConfiguration}
+                        offlineCodeParticipants={isPuzzleBuilder ? puzzleCodeRoster : isPracticeRoom ? practiceCodeRoster : null}
+                        selectableParticipants={arenaSelectableParticipants}
+                        onOfflineCodeChange={isPuzzleBuilder || isPracticeRoom ? handleOfflineCodeChange : null}
+                        opponentReadOnly={isPuzzleMode && initialPuzzle?.hideOpponentCode === false}
+                        selectedLoadout={selectedLoadout}
+                        opponentLoadout={opponentLoadout}
+                        isMatchTesting={isMatchTesting}
+                        usesArenaResponsiveLimits={usesArenaResponsiveLimits}
+                        matchContext={matchContext}
+                        codeSnapshots={matchContext?.codeSnapshots}
+                        codeViewError={matchContext?.codeViewError}
+                        onRequestCodeView={matchContext?.requestCodeView}
+                        sandboxCodeCopies={sandboxCodeCopies}
+                        onSandboxParticipantChange={updateSandboxParticipantConfiguration}
+                        testingRemaining={testingRemaining}
+                        isAutoPlaying={isAutoPlaying}
+                        onMeasurementToggle={() => setMeasurementEnabled((current) => {
+                            if (current) setMeasurementPoints([]);
+                            return !current;
+                        })}
+                        hitboxesEnabled={hitboxesEnabled}
+                        onHitboxesToggle={isPracticeRoom ? () => setHitboxesEnabled((current) => !current) : null}
+                        isBaseTesting={isBaseTesting}
+                        finishStatus={finishStatus}
+                        finishError={finishError}
+                        isFinishingMatch={isFinishingMatch}
+                        canFinishMatch={Boolean(onFinishMatch)}
+                        onAutoPlayToggle={handleAutoPlayToggle}
+                        onResetArenaStats={resetArenaStats}
+                        customVariableValues={shapes.find((shape) => shape.id === "main")?.customVariables ?? {}}
+                        opponentCustomVariableValues={shapes.find((shape) => shape.id === "opponent-model")?.customVariables ?? {}}
+                        onFinishMatch={handleFinishMatch}
+                        onSurrenderMatch={onSurrenderMatch}
+                        onOpenLoadout={!isMatchTesting && !tutorialMode && !isPuzzleMode && loadoutEditorRoster.length > 0 ? () => openSandboxLoadout() : null}
+                        onOpenPracticeConfig={!isMatchTesting && !tutorialMode && !isPuzzleMode && isPracticeRoom ? () => setIsPracticeConfigOpen(true) : null}
+                        onOpenPuzzleConfig={!isMatchTesting && !tutorialMode && isPuzzleMode ? () => setIsPuzzleConfigOpen(true) : null}
+                        onOpenPuzzleSubmissions={isPuzzleMode ? onOpenPuzzleSubmissions : null}
+                        builderControls={builderControls}
+                        puzzleControls={puzzleControls}
+                        onPuzzleSubmit={isPuzzleMode && onPuzzleAttempt ? submitPuzzleAttempt : null}
+                        isPuzzleSubmitting={isPuzzleAttemptSubmitting}
+                        logicLimits={usesPuzzleSetup ? logicLimits : null}
+                        tutorialMode={tutorialMode}
+                        tutorialGuideHost={tutorialInfoHost}
+                        tutorialStep={tutorialStep}
+                        onShowTutorialSolution={toggleTutorialSolution}
+                        tutorialGuideProps={tutorialMode ? {
+                            step: tutorialStep,
+                            onStepChange: handleTutorialStepChange,
+                            challenge: tutorialChallenge,
+                            onAbilityCatalogue: () => navigate("/ability-catalogue"),
+                            onConditionalCatalogue: () => navigate("/conditionals"),
+                            onPuzzles: () => navigate("/puzzles"),
+                            onShowSolution: toggleTutorialSolution,
+                            solutionShown,
+                        } : null}
+                    />
                 </div>
             </div>
             {sandboxLoadoutTarget && activeLoadoutEntry && (
@@ -2010,7 +2010,7 @@ export default function Arena({
                             <div>
                                 <p className="font-mono text-[10px] font-bold tracking-[.28em] text-green-300">BOT LOADOUT EDITOR</p>
                                 <h2 id="sandbox-loadout-title" className="mt-2 font-display-action text-4xl uppercase tracking-wide text-white sm:text-5xl">{activeLoadoutEntry.username} loadout</h2>
-                                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">Choose abilities for every bot in this room. Changes stay local while you browse players and are committed together when you apply loadouts.</p>
+                                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">Choose abilities for every bot in this room.</p>
                             </div>
                             <button type="button" onClick={closeSandboxLoadout} aria-label="Close sandbox loadout editor" className="modal-close-button"><span aria-hidden="true">×</span></button>
                         </div>
@@ -2032,7 +2032,7 @@ export default function Arena({
                                             className={`min-w-32 shrink-0 rounded border px-3 py-2 text-left transition ${active
                                                 ? "border-green-400 bg-green-950/30 text-white shadow-[0_0_0_1px_rgba(114,182,93,.22)]"
                                                 : "border-slate-700/80 bg-slate-950/25 text-slate-400 hover:border-green-700/70 hover:text-slate-200"
-                                            }`}
+                                                }`}
                                         >
                                             <span className="block truncate text-xs font-bold">{entry.username}</span>
                                             <span className="mt-1 block truncate font-mono text-[8px] tracking-widest text-green-300/70">{teamLabel} · {draft.abilities.length} EQUIPPED</span>

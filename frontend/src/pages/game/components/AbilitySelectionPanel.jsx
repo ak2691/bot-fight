@@ -34,6 +34,7 @@ export default function AbilitySelectionPanel({
     remaining,
     roundNumber,
     abilityOffers,
+    guaranteedAbilityId = null,
     submitting,
     error,
     onSurrender,
@@ -116,6 +117,8 @@ export default function AbilitySelectionPanel({
                         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                             {BOT_ABILITIES.filter((ability) => offeredAbilityIds.has(ability.id)).map((ability) => {
                                 const active = draftedAbilityIds.has(ability.id);
+                                const guaranteed = guaranteedAbilityId != null
+                                    && String(guaranteedAbilityId) === String(ability.id);
                                 const unavailable = playerLocked || (!active && hasAllDraftPicks);
                                 return (
                                     <div key={ability.id} className="relative">
@@ -134,6 +137,11 @@ export default function AbilitySelectionPanel({
                                         >
                                             <AbilityCatalogueIcon ability={ability} className="ability-card-art" />
                                             <span className="ability-card-gradient" aria-hidden="true" />
+                                            {guaranteed && (
+                                                <span className="pointer-events-none absolute left-3 top-3 z-10 rounded border border-cyan-200/50 bg-cyan-950/90 px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[.16em] text-cyan-100">
+                                                    Guaranteed
+                                                </span>
+                                            )}
                                             <span className="ability-card-content absolute inset-x-0 bottom-0 px-5 py-4">
                                                 {active && <span className="mb-1 block font-mono text-[9px] font-bold tracking-[.2em] text-cyan-200">SELECTED</span>}
                                                 <span className="block font-display-action text-xl uppercase tracking-wider text-white">{ability.label}</span>

@@ -9,6 +9,10 @@ test("ability selection panel keeps draft limits and detail modal wiring", () =>
     const source = readFileSync(SOURCE_PATH, "utf8");
 
     assert.match(source, /loadoutDraftState/);
+    assert.match(source, /guaranteedAbilityId/);
+    assert.match(source, /String\(guaranteedAbilityId\) === String\(ability\.id\)/);
+    assert.match(source, /pointer-events-none absolute left-3 top-3/);
+    assert.match(source, />\s*Guaranteed\s*<\/span>/);
     assert.match(source, /\.join\(" · "\)/);
     assert.match(source, /toggleDraftAbility/);
     assert.match(source, /hasAllDraftPicks/);
