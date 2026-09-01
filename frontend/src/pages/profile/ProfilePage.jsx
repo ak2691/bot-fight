@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../auth/auth-context";
 import { useNotifications } from "../../notifications/notification-context";
 import { newPasswordError, passwordError, userFacingAuthError, usernameError } from "../../auth/validation";
@@ -671,11 +671,28 @@ function RecentMatchesCard({ matches, totalMatches, historyStatus, isOwner, onOp
 }
 
 function MatchRow({ match }) {
+    const participantTeams = Array.isArray(match.participantTeams) ? match.participantTeams : [];
+
     return (
         <article className="grid min-w-0 gap-3 px-6 py-4 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:px-8">
             <div className="min-w-0">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{matchModeLabel(match.mode)}</p>
-                <p className="mt-1 break-words font-semibold text-slate-100">{(match.participantUsernames ?? []).join(", ")}</p>
+                <div className="mt-1 flex flex-col items-start gap-y-1 text-sm font-semibold text-slate-100">
+                    {participantTeams.map((team, teamIndex) => (
+                        <Fragment key={`team-${teamIndex}`}>
+                            {teamIndex > 0 && (
+                                <span className="px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500" aria-hidden="true">
+                                    vs
+                                </span>
+                            )}
+                            <span className="flex flex-wrap gap-x-3 gap-y-1">
+                                {(Array.isArray(team) ? team : []).map((username) => (
+                                    <span key={`${teamIndex}-${username}`}>{username}</span>
+                                ))}
+                            </span>
+                        </Fragment>
+                    ))}
+                </div>
             </div>
             <span className={`w-fit rounded-lg border px-3 py-1 font-mono text-xs font-bold tracking-wider ${resultTone[match.result] ?? resultTone.DRAW}`}>
                 {match.result}

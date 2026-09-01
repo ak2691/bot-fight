@@ -146,10 +146,12 @@ class ProfileServiceTest {
         Match match = match(matchId);
         AppUser teammate = user("Teammate");
         AppUser opponent = user("ByteBrawler");
+        AppUser opponentTwo = user("ByteSmith");
         when(participantRepository.findByMatchIdIn(List.of(matchId))).thenReturn(List.of(
                 participant(match, user, (short) 1, (short) 1),
-                participant(match, opponent, (short) 2, (short) 3),
-                participant(match, teammate, (short) 1, (short) 2)));
+                participant(match, opponentTwo, (short) 2, (short) 4),
+                participant(match, teammate, (short) 1, (short) 2),
+                participant(match, opponent, (short) 2, (short) 3)));
 
         var history = service.matchHistory(authentication, 0, " byte ", from, to);
 
@@ -157,7 +159,9 @@ class ProfileServiceTest {
         assertThat(history.hasMore()).isTrue();
         assertThat(history.totalMatches()).isEqualTo(21);
         assertThat(history.matches()).singleElement().satisfies(recent -> {
-            assertThat(recent.participantUsernames()).containsExactly("Teammate", "ByteBrawler");
+            assertThat(recent.participantTeams()).containsExactly(
+                    List.of("allan", "Teammate"),
+                    List.of("ByteBrawler", "ByteSmith"));
             assertThat(recent.result()).isEqualTo("WIN");
             assertThat(recent.completedAt()).isEqualTo(Instant.parse("2026-07-22T10:15:00Z"));
         });
@@ -278,7 +282,9 @@ class ProfileServiceTest {
         var history = service.publicMatchHistory(authentication, "rival", 0, "", null, null);
 
         assertThat(history.matches()).singleElement().satisfies(recent -> {
-            assertThat(recent.participantUsernames()).containsExactly("ByteBrawler");
+            assertThat(recent.participantTeams()).containsExactly(
+                    List.of("rival"),
+                    List.of("ByteBrawler"));
             assertThat(recent.result()).isEqualTo("WIN");
         });
     }

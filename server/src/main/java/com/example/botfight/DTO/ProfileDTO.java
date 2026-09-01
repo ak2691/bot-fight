@@ -54,7 +54,7 @@ public record ProfileDTO(
 
     public record RecentMatchDTO(
             UUID matchId,
-            List<String> participantUsernames,
+            List<List<String>> participantTeams,
             String result,
             Instant completedAt,
             String completionReason,

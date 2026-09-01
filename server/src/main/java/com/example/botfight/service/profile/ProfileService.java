@@ -33,6 +33,7 @@ import com.example.botfight.repository.UserRepository;
 import com.example.botfight.service.rating.EloRatingService;
 import java.time.Instant;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -522,21 +523,30 @@ public class ProfileService {
                 ? MatchResult.LOSS.name()
                 : match.getResult().name();
         short viewedTeamNumber = match.getTeamNumber();
-        List<String> participantUsernames = participantsByMatch
+        List<List<String>> participantTeams = participantsByMatch
                 .getOrDefault(match.getMatchId(), List.of())
                 .stream()
                 .filter(participant -> participant.getUser() != null
-                        && !viewedUserId.equals(participant.getUser().getId()))
+                        && participant.getTeamNumber() > 0)
                 .sorted(Comparator
-                        .comparingInt((MatchParticipant participant) -> participant.getTeamNumber() == viewedTeamNumber ? 0 : 1)
+                        .comparingInt((MatchParticipant participant) -> viewedUserId.equals(participant.getUser().getId()) ? 0
+                                : participant.getTeamNumber() == viewedTeamNumber ? 1 : 2)
+                        .thenComparingInt(MatchParticipant::getTeamNumber)
                         .thenComparingInt(MatchParticipant::getSlot)
                         .thenComparing(participant -> participant.getUser().getUsername(), String.CASE_INSENSITIVE_ORDER))
-                .map(participant -> participant.getUser().getUsername())
+                .collect(Collectors.groupingBy(
+                        MatchParticipant::getTeamNumber,
+                        LinkedHashMap::new,
+                        Collectors.mapping(
+                                participant -> participant.getUser().getUsername(),
+                                Collectors.toList())))
+                .values()
+                .stream()
                 .toList();
 
         return new RecentMatchDTO(
                 match.getMatchId(),
-                participantUsernames,
+                participantTeams,
                 result,
                 match.getCompletedAt(),
                 match.getCompletionReason(),
