@@ -704,6 +704,9 @@ test("bot editing keeps touch targets usable without changing the rendered model
     assert.match(source, /BOT_TOUCH_TARGET_PX \/ \(2 \* scale\)/);
     assert.match(source, /event\.pointerType === "touch"/);
     assert.match(source, /localX \* localX \+ localY \* localY > botInteractionRadius\(view\.shape\) \*\* 2/);
+    assert.match(source, /const BOT_CAPTION_FONT_SIZE = 14/);
+    assert.match(source, /const BOT_CAPTION_OFFSET_UNITS = 37/);
+    assert.match(source, /caption\.position\.set\(0, -radius - BOT_CAPTION_OFFSET_UNITS\)/);
     assert.doesNotMatch(source, /BOT_CAPTION_MIN_PX|BOT_CAPTION_MAX_PX|captionScaleForCamera/);
     assert.doesNotMatch(source, /view\.caption\.scale\.set\(captionScale\)/);
     assert.match(source, /arenaSprites\.abilities\.bot\.source\.scaleMode = "linear"/);

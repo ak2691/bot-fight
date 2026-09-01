@@ -24,7 +24,8 @@ import "./PixiCanvas.css";
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 2.5;
 const BOT_TOUCH_TARGET_PX = 48;
-const BOT_CAPTION_FONT_SIZE = 13;
+const BOT_CAPTION_FONT_SIZE = 14;
+const BOT_CAPTION_OFFSET_UNITS = 37;
 const ARENA_GRID_MINOR_STEP_UNITS = 50;
 const ARENA_GRID_MAJOR_STEP_UNITS = 300;
 const COLORS = Object.freeze({
@@ -882,7 +883,7 @@ function drawBot(view, position, selected, now, arenaSprites, overlapping = fals
 
     caption.text = botDisplayName(shape);
     caption.style.fill = tone;
-    caption.position.set(0, -radius - 29);
+    caption.position.set(0, -radius - BOT_CAPTION_OFFSET_UNITS);
     caption.visible = true;
     drawBotWorldEffects(shape, position, view, now, arenaSprites);
 }
