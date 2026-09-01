@@ -25,8 +25,6 @@ const MIN_ZOOM = 1;
 const MAX_ZOOM = 2.5;
 const BOT_TOUCH_TARGET_PX = 48;
 const BOT_CAPTION_FONT_SIZE = 13;
-const BOT_CAPTION_MIN_PX = 10;
-const BOT_CAPTION_MAX_PX = 13;
 const ARENA_GRID_MINOR_STEP_UNITS = 50;
 const ARENA_GRID_MAJOR_STEP_UNITS = 300;
 const COLORS = Object.freeze({
@@ -43,13 +41,6 @@ const COLORS = Object.freeze({
 function touchInputAvailable() {
     return Number(globalThis.navigator?.maxTouchPoints ?? 0) > 0
         || globalThis.matchMedia?.("(pointer: coarse)")?.matches === true;
-}
-
-function captionScaleForCamera(cameraScale) {
-    const scale = Math.max(0.001, Number(cameraScale) || 1);
-    const renderedSize = BOT_CAPTION_FONT_SIZE * scale;
-    const targetSize = Math.max(BOT_CAPTION_MIN_PX, Math.min(BOT_CAPTION_MAX_PX, renderedSize));
-    return targetSize / renderedSize;
 }
 
 export default function PixiCanvas({
@@ -589,7 +580,6 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         updateCamera();
         overlay.clear();
         refreshSelectionHitAreas();
-        const captionScale = captionScaleForCamera(camera.scale.x);
         const botViews = [...views.values()]
             .filter((view) => isBotShape(view.shape))
             .map((view) => ({ view, position: sampleViewPosition(view, now) }));
@@ -606,7 +596,6 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         for (const view of views.values()) {
             const position = sampleViewPosition(view, now);
             view.container.position.set(position.x, position.y);
-            view.caption.scale.set(captionScale);
             if (isBotShape(view.shape)) drawBot(view, position, optionsRef.current.selectedId === view.shape.id, now, arenaSprites, overlappingBotIds.has(view.shape.id), canRotateBot(view.shape));
             else drawEntity(view, optionsRef.current.selectedId === view.shape.id, now, arenaSprites);
         }

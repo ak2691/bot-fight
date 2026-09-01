@@ -5,12 +5,28 @@ import { useAuth } from "../../auth/auth-context";
 import { apiUrl } from "../../config/api";
 import { useMatchmaking } from "../../matchmaking/matchmaking-context";
 import { MATCH_MODES, QUEUE_MODES } from "../../matchmaking/matchModes";
+import { cacheProfileStats, loadCachedProfileStats } from "../profile/profileStatsCache.js";
 import QueueAbilityGuaranteePicker from "./QueueAbilityGuaranteePicker.jsx";
 
 function formatQueueTime(elapsedSeconds) {
     const minutes = Math.floor(elapsedSeconds / 60);
     const seconds = elapsedSeconds % 60;
     return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function numericStat(value) {
+    if (value === null || value === undefined || value === "") return null;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
+}
+
+function formatQueueElo(stats) {
+    return numericStat(stats?.elo) ?? "...";
+}
+
+function formatQueueRecord(stats) {
+    const values = [stats?.wins, stats?.losses, stats?.draws].map(numericStat);
+    return values.every((value) => value !== null) ? values.join("-") : "...";
 }
 
 const PARTY_QUEUE_NOTICE_DURATION_MS = 3500;
@@ -57,9 +73,10 @@ function QueueArrow() {
 export default function QueuePage() {
     const navigate = useNavigate();
     const { user } = useAuth();
+    const profileCacheKey = user?.authenticated === true ? user.id ?? user.username : null;
     const [customLobby, setCustomLobby] = useState(null);
     const [customLobbyChecked, setCustomLobbyChecked] = useState(false);
-    const [profile, setProfile] = useState(null);
+    const [profileStats, setProfileStats] = useState(() => loadCachedProfileStats(profileCacheKey));
     const {
         isQueueing,
         queueMode,
@@ -100,6 +117,7 @@ export default function QueuePage() {
 
     useEffect(() => {
         let disposed = false;
+        setProfileStats(loadCachedProfileStats(profileCacheKey));
         const loadProfile = async () => {
             try {
                 const response = await fetch(apiUrl("/api/profile"), {
@@ -108,7 +126,10 @@ export default function QueuePage() {
                 });
                 if (!disposed && response.ok) {
                     const nextProfile = await response.json().catch(() => null);
-                    if (nextProfile) setProfile(nextProfile);
+                    if (nextProfile) {
+                        const nextStats = cacheProfileStats(profileCacheKey, nextProfile.queueStats);
+                        setProfileStats(nextStats);
+                    }
                 }
             } catch {
                 // The cards can render without stats if this optional snapshot fails.
@@ -118,7 +139,7 @@ export default function QueuePage() {
         return () => {
             disposed = true;
         };
-    }, []);
+    }, [profileCacheKey]);
 
     useEffect(() => {
         if (!partyQueueNotice) return undefined;
@@ -183,8 +204,8 @@ export default function QueuePage() {
                         const playersPerTeam = mode.id === MATCH_MODES.TWOS ? 2 : 1;
                         const partySizeBlocked = isFullParty && mode.id === MATCH_MODES.ONES;
                         const modeStats = mode.id === MATCH_MODES.TWOS
-                            ? profile?.queueStats?.twos
-                            : profile?.queueStats?.ones;
+                            ? profileStats?.twos
+                            : profileStats?.ones;
                         return (
                             <button
                                 type="button"
@@ -203,12 +224,12 @@ export default function QueuePage() {
                                         <span className="block whitespace-nowrap font-display-action text-2xl tracking-wide text-white sm:text-3xl">Queue {mode.label}</span>
                                         <span className="mt-4 block">
                                             <span className="block font-mono text-[10px] font-bold tracking-[.18em] text-slate-400">ELO</span>
-                                            <span className="mt-1 block font-mono text-2xl font-bold leading-none tracking-normal text-white sm:text-3xl">{modeStats?.elo ?? 1000}</span>
+                                            <span className="mt-1 block font-mono text-2xl font-bold leading-none tracking-normal text-white sm:text-3xl">{formatQueueElo(modeStats)}</span>
                                         </span>
                                         <span className="mt-4 block border-t border-slate-700/70 pt-3">
                                             <span className="block font-mono text-[10px] font-bold tracking-[.18em] text-slate-400">RECORD</span>
                                             <span className="mt-2 block whitespace-nowrap font-mono text-sm font-bold tracking-normal text-white sm:text-base">
-                                                {modeStats?.wins ?? 0}-{modeStats?.losses ?? 0}-{modeStats?.draws ?? 0}
+                                                {formatQueueRecord(modeStats)}
                                             </span>
                                             <span className="mt-1 block font-mono text-[9px] font-bold tracking-[.16em] text-cyan-300">W-L-D</span>
                                         </span>

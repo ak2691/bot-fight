@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { cacheProfileStats, loadCachedProfileStats, PROFILE_STATS_CACHE_TTL_MS } from "../profile/profileStatsCache.js";
 
 const QUEUE_PAGE_PATH = fileURLToPath(new URL("./QueuePage.jsx", import.meta.url));
 const QUEUE_PICKER_PATH = fileURLToPath(new URL("./QueueAbilityGuaranteePicker.jsx", import.meta.url));
@@ -63,4 +64,36 @@ test("queue exposes one optional catalogue-backed guarantee slot per round", () 
     assert.match(pickerSource, /className="info-circle-icon h-5 w-5 opacity-85"/);
     assert.doesNotMatch(pickerSource, /setInfoAbility\(ability\);\s*setOpenRound\(null\);/);
     assert.match(pickerSource, /overlayClassName="z-\[950\]"/);
+});
+
+test("profile stats cache is isolated by profile and expires safely", () => {
+    const values = new Map();
+    const storage = {
+        getItem: (key) => values.get(key) ?? null,
+        setItem: (key, value) => values.set(key, value),
+        removeItem: (key) => values.delete(key),
+    };
+    const stats = {
+        ones: { wins: 4, losses: 2, draws: 1, elo: 1035 },
+        twos: { wins: 1, losses: 3, draws: 0, elo: 987 },
+    };
+
+    cacheProfileStats("profile-one", stats, storage, 1_000);
+    assert.deepEqual(loadCachedProfileStats("profile-one", storage, 1_001), stats);
+    assert.equal(loadCachedProfileStats("profile-two", storage, 1_001), null);
+    assert.equal(loadCachedProfileStats("profile-one", storage, 1_000 + PROFILE_STATS_CACHE_TTL_MS + 1), null);
+});
+
+test("queue stats use placeholders until profile data exists", () => {
+    const queueSource = readFileSync(QUEUE_PAGE_PATH, "utf8");
+
+    assert.match(queueSource, /const profileCacheKey = user\?\.authenticated === true \? user\.id \?\? user\.username : null/);
+    assert.match(queueSource, /loadCachedProfileStats\(profileCacheKey\)/);
+    assert.match(queueSource, /cacheProfileStats\(profileCacheKey, nextProfile\.queueStats\)/);
+    assert.match(queueSource, /formatQueueElo\(modeStats\)/);
+    assert.match(queueSource, /formatQueueRecord\(modeStats\)/);
+    assert.doesNotMatch(queueSource, /modeStats\?\.elo \?\? 1000/);
+    assert.doesNotMatch(queueSource, /modeStats\?\.wins \?\? 0/);
+    assert.match(queueSource, /return numericStat\(stats\?\.elo\) \?\? "\.\.\."/);
+    assert.match(queueSource, /return values\.every\(\(value\) => value !== null\) \? values\.join\("-"\) : "\.\.\."/);
 });

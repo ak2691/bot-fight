@@ -115,8 +115,8 @@ test("custom lobby creation lives in the queue instead of public profiles", () =
     assert.match(queueSource, /Up to 4 players\./);
     assert.doesNotMatch(queueSource, /Invite up to four players|plus-slot/);
     assert.doesNotMatch(queueSource, /AVAILABLE|COMING NEXT/);
-    assert.match(queueSource, /profile\?\.queueStats\?\.ones/);
-    assert.match(queueSource, /profile\?\.queueStats\?\.twos/);
+    assert.match(queueSource, /profileStats\?\.ones/);
+    assert.match(queueSource, /profileStats\?\.twos/);
     assert.doesNotMatch(queueSource, /W: \{profile\?\.wins/);
     assert.match(profileSource, /canBlock=\{!isOwner\}/);
     assert.match(profileSource, /\/api\/blocks/);
@@ -133,10 +133,8 @@ test("queue cards show labeled ELO and W-L-D summaries without adding filler con
     assert.match(queueSource, /ELO/);
     assert.match(queueSource, /font-mono text-2xl font-bold leading-none tracking-normal text-white sm:text-3xl/);
     assert.match(queueSource, /RECORD/);
-    assert.match(queueSource, /modeStats\?\.wins \?\? 0/);
-    assert.match(queueSource, /modeStats\?\.losses \?\? 0/);
-    assert.match(queueSource, /modeStats\?\.draws \?\? 0/);
-    assert.match(queueSource, /\{modeStats\?\.wins \?\? 0\}-\{modeStats\?\.losses \?\? 0\}-\{modeStats\?\.draws \?\? 0\}/);
+    assert.match(queueSource, /formatQueueElo\(modeStats\)/);
+    assert.match(queueSource, /formatQueueRecord\(modeStats\)/);
     assert.match(queueSource, /text-cyan-300">W-L-D<\/span>/);
     assert.doesNotMatch(queueSource, /modeStats\?\.wins \?\? 0\}W/);
     assert.match(queueSource, /formatQueueTime\(queueElapsed\)/);
