@@ -1,6 +1,7 @@
 package com.example.botfight.DTO;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 public record ProfileDTO(
@@ -53,7 +54,7 @@ public record ProfileDTO(
 
     public record RecentMatchDTO(
             UUID matchId,
-            String opponentUsername,
+            List<String> participantUsernames,
             String result,
             Instant completedAt,
             String completionReason,

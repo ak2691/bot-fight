@@ -21,6 +21,7 @@ import com.example.botfight.DTO.ProfileDTO.RecentMatchDTO;
 import com.example.botfight.DTO.UsernameRequestDTO;
 import com.example.botfight.domain.AppUser;
 import com.example.botfight.domain.MatchMode;
+import com.example.botfight.domain.MatchParticipant;
 import com.example.botfight.domain.MatchResult;
 import com.example.botfight.domain.Profile;
 import com.example.botfight.domain.PuzzleCompletion;
@@ -31,9 +32,12 @@ import com.example.botfight.repository.ProfileRepository;
 import com.example.botfight.repository.UserRepository;
 import com.example.botfight.service.rating.EloRatingService;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -441,8 +445,15 @@ public class ProfileService {
                             fromInclusive,
                             toExclusive,
                             pageRequest);
+            List<UUID> matchIds = matches.getContent().stream()
+                    .map(RecentMatchProjection::getMatchId)
+                    .toList();
+            Map<UUID, List<MatchParticipant>> participantsByMatch = matchIds.isEmpty()
+                    ? Map.of()
+                    : matchParticipantRepository.findByMatchIdIn(matchIds).stream()
+                            .collect(Collectors.groupingBy(participant -> participant.getMatch().getId()));
             List<RecentMatchDTO> recentMatches = matches.getContent().stream()
-                    .map(this::toRecentMatch)
+                    .map(match -> toRecentMatch(match, participantsByMatch, user.id()))
                     .toList();
             return new MatchHistoryPageDTO(
                     recentMatches,
@@ -504,14 +515,28 @@ public class ProfileService {
     }
 
     private RecentMatchDTO toRecentMatch(
-            RecentMatchProjection match) {
+            RecentMatchProjection match,
+            Map<UUID, List<MatchParticipant>> participantsByMatch,
+            UUID viewedUserId) {
         String result = match.getResult() == MatchResult.FORFEIT
                 ? MatchResult.LOSS.name()
                 : match.getResult().name();
+        short viewedTeamNumber = match.getTeamNumber();
+        List<String> participantUsernames = participantsByMatch
+                .getOrDefault(match.getMatchId(), List.of())
+                .stream()
+                .filter(participant -> participant.getUser() != null
+                        && !viewedUserId.equals(participant.getUser().getId()))
+                .sorted(Comparator
+                        .comparingInt((MatchParticipant participant) -> participant.getTeamNumber() == viewedTeamNumber ? 0 : 1)
+                        .thenComparingInt(MatchParticipant::getSlot)
+                        .thenComparing(participant -> participant.getUser().getUsername(), String.CASE_INSENSITIVE_ORDER))
+                .map(participant -> participant.getUser().getUsername())
+                .toList();
 
         return new RecentMatchDTO(
                 match.getMatchId(),
-                match.getOpponentUsername(),
+                participantUsernames,
                 result,
                 match.getCompletedAt(),
                 match.getCompletionReason(),

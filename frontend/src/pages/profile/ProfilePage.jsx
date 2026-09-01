@@ -674,8 +674,8 @@ function MatchRow({ match }) {
     return (
         <article className="grid min-w-0 gap-3 px-6 py-4 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:px-8">
             <div className="min-w-0">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{matchModeLabel(match.mode)} · Opponent</p>
-                <p className="mt-1 break-words font-semibold text-slate-100">{match.opponentUsername}</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{matchModeLabel(match.mode)}</p>
+                <p className="mt-1 break-words font-semibold text-slate-100">{(match.participantUsernames ?? []).join(", ")}</p>
             </div>
             <span className={`w-fit rounded-lg border px-3 py-1 font-mono text-xs font-bold tracking-wider ${resultTone[match.result] ?? resultTone.DRAW}`}>
                 {match.result}

@@ -2,19 +2,18 @@ import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } fr
 import { useLocation, useNavigate } from "react-router-dom";
 import { monotonicEpochNowMs } from "../matchmaking/networkDelayEstimator.js";
 import AppNavbar from "../components/AppNavbar";
-import { useDialogFocus } from "../components/useDialogFocus.js";
 import PixiCanvas from "./pixi/PixiCanvas.jsx";
 import CodingPanel from "./coding/CodingPanel.jsx";
-import { SELECTABLE_BOT_ABILITIES, decodeBotLoadout, decodeSandboxLoadout, encodeSandboxLoadout, normalizedSandboxLoadout } from "./loadout/BotLoadout.js";
-import { getAbilityCatalogueIcon, getAbilityCatalogueIconLayout } from "../abilityCatalogueIcons.js";
+import { SELECTABLE_BOT_ABILITIES, encodeSandboxLoadout, normalizedSandboxLoadout } from "./loadout/BotLoadout.js";
+import { loadoutDraftForEntry, loadoutDraftsForRoster } from "./loadout/sandboxLoadout.js";
+import ArenaConfigModal from "./components/modals/ArenaConfigModal.jsx";
+import SandboxLoadoutModal from "./components/modals/SandboxLoadoutModal.jsx";
 import {
-    BOT_CODE_SELECTABLES,
     createDefaultAbilityStrategyConfiguration,
     hasAbilityStrategyActions,
     inspectAbilityStrategyConditions,
     normalizeAbilityStrategyConfiguration,
 } from "./botlogic/code/BotCode.js";
-import { CODE_EDITOR_GRAPH_VERSION, sanitizeCodeEditorGraph } from "./botlogic/graph/CodeEditorGraph.js";
 import { buildDeterministicLogicAction, idleAction } from "./botlogic/planner/ArenaActionPlanner.js";
 import {
     buildBotSubmissionPayload,
@@ -34,7 +33,6 @@ import { triggeredAbilityDamage } from "./ecs/abilities/AbilityEffectSystem.js";
 import { abilityHitsTarget } from "./ecs/abilities/AbilityHitDetectionSystem.js";
 import { isClosingZone, tickClosingZoneWorld } from "./ecs/entities/ClosingZoneSystem.js";
 import {
-    actionIdsForLoadoutConfiguration,
     DEFAULT_BOT_CONFIGURATION_ID,
 } from "./gameconfig/CombatLoadouts.js";
 import { normalizePracticeConfig, readPracticeRoomDraft, savePracticeRoomDraft } from "./practiceRoomStorage.js";
@@ -42,11 +40,7 @@ import { readPuzzleBotCodeDraft, savePuzzleBotCodeDraft } from "../puzzles/puzzl
 import {
     PUZZLE_OPPONENT_TEAM,
     PUZZLE_PLAYER_TEAM,
-    normalizePuzzleRoster,
-    normalizePuzzleTeamSize,
     puzzleBotKey,
-    puzzleBotRole,
-    puzzleSimulationSlot,
 } from "../pages/puzzles/puzzleRoster.js";
 
 import {
@@ -54,12 +48,6 @@ import {
     ARENA_HEIGHT_UNITS,
     ARENA_WIDTH_UNITS,
     BASE_BOT_HP,
-    BOT_CENTER_MAX_X,
-    BOT_CENTER_MAX_Y,
-    BOT_CENTER_MIN_X,
-    BOT_CENTER_MIN_Y,
-    PRACTICE_OPPONENT_START,
-    PRACTICE_PLAYER_START,
 } from "./modelPayloads/arenaConstants.js";
 import {
     buildAutoPlayStartShapes,
@@ -77,7 +65,33 @@ import {
     buildAbilityTestingPracticeConfig,
     findAbilityTestingPreset,
 } from "./testing/AbilityTestingPresets.js";
+import {
+    buildInitialClosingZone,
+    buildPracticeArenaShapes,
+    practiceSetupForArena,
+    puzzleBotForSetup,
+    puzzleBotShapeKey,
+    puzzleCodeParticipantName,
+    puzzleSetupBots,
+    puzzleSetupForArena,
+} from "./setup/ArenaSetup.js";
 import { buildStatePayload } from "./modelPayloads/strategyStatePayload.js";
+import {
+    loadStoredStrategyConfiguration,
+    matchStrategyConfigurationKey,
+    opponentStrategyConfigurationKey,
+    sanitizeStrategyConfigurationForLoadout,
+    saveStoredStrategyConfiguration,
+} from "./persistence/arenaStrategyStorage.js";
+import {
+    TUTORIAL_COMPLETION_PREFIX,
+    TUTORIAL_SOLUTION_PREFIX,
+    loadTutorialBooleanState,
+    loadTutorialStrategyConfiguration,
+    saveTutorialBooleanState,
+    tutorialChallengeForScenario,
+    tutorialStrategyConfigurationKey,
+} from "./persistence/tutorialStorage.js";
 import {
     buildTutorialArenaShapes,
     getTutorialScenario,
@@ -96,98 +110,6 @@ function finalizeTickMeasurements(shape, before) {
     };
 }
 
-function matchStrategyConfigurationKey(matchId, userId, loadoutId) {
-    return matchId && userId
-        ? `arena-match-strategy-v1-${loadoutId}-${matchId}-${userId}`
-        : `arena-testing-strategy-v1-${loadoutId}`;
-}
-
-function opponentStrategyConfigurationKey(matchId, userId, loadoutId) {
-    return matchId && userId
-        ? `arena-match-opponent-strategy-v1-${loadoutId}-${matchId}-${userId}`
-        : `arena-testing-opponent-strategy-v1-${loadoutId}`;
-}
-
-function loadStoredStrategyConfiguration(key) {
-    if (!key) return createDefaultAbilityStrategyConfiguration();
-    try {
-        const stored = localStorage.getItem(key);
-        if (!stored) return createDefaultAbilityStrategyConfiguration();
-        const parsed = JSON.parse(stored);
-        const normalized = normalizeAbilityStrategyConfiguration(parsed);
-        return parsed?.editorGraph?.version === CODE_EDITOR_GRAPH_VERSION
-            ? { ...normalized, editorGraph: sanitizeCodeEditorGraph(parsed.editorGraph) }
-            : normalized;
-    } catch {
-        return createDefaultAbilityStrategyConfiguration();
-    }
-}
-
-// Tutorial drafts are reset when the logic payload changes. Old normalized
-// drafts may already have converted retired condition IDs into the valid
-// Time Since Start fallback, so they cannot be safely migrated by shape alone.
-const TUTORIAL_STRATEGY_PREFIX = "arena-tutorial-strategy-v2-";
-const TUTORIAL_COMPLETION_PREFIX = "arena-tutorial-completion-v2-";
-const TUTORIAL_SOLUTION_PREFIX = "arena-tutorial-solution-v2-";
-const TUTORIAL_CHALLENGE_VERSION_PREFIX = "arena-tutorial-challenge-v2-";
-const RESET_TUTORIAL_CHALLENGE_IDS = new Set(["rotate", "lock-on", "dodge"]);
-
-function tutorialStrategyConfigurationKey(step) {
-    return `${TUTORIAL_STRATEGY_PREFIX}${getTutorialScenario(step).id ?? step}`;
-}
-
-function loadTutorialStrategyConfiguration(step, fallback) {
-    const key = tutorialStrategyConfigurationKey(step);
-    try {
-        return localStorage.getItem(key) ? loadStoredStrategyConfiguration(key) : fallback;
-    } catch {
-        return fallback;
-    }
-}
-
-function tutorialBooleanStateKey(prefix, step) {
-    return `${prefix}${getTutorialScenario(step).id ?? step}`;
-}
-
-function tutorialChallengeVersionKey(step) {
-    return `${TUTORIAL_CHALLENGE_VERSION_PREFIX}${getTutorialScenario(step).id ?? step}`;
-}
-
-function loadTutorialBooleanState(prefix, step) {
-    try {
-        const scenario = getTutorialScenario(step);
-        if (prefix === TUTORIAL_COMPLETION_PREFIX
-            && RESET_TUTORIAL_CHALLENGE_IDS.has(scenario.id)
-            && localStorage.getItem(tutorialChallengeVersionKey(step)) !== "true") return false;
-        const currentValue = localStorage.getItem(tutorialBooleanStateKey(prefix, step));
-        return currentValue === "true";
-    } catch {
-        return false;
-    }
-}
-
-function saveTutorialBooleanState(prefix, step, value) {
-    try {
-        localStorage.setItem(tutorialBooleanStateKey(prefix, step), String(Boolean(value)));
-        if (prefix === TUTORIAL_COMPLETION_PREFIX && RESET_TUTORIAL_CHALLENGE_IDS.has(getTutorialScenario(step).id)) {
-            localStorage.setItem(tutorialChallengeVersionKey(step), "true");
-        }
-    } catch {
-        // Tutorial memory is best-effort when browser storage is unavailable.
-    }
-}
-
-function tutorialChallengeForScenario(step, scenario) {
-    const completed = loadTutorialBooleanState(TUTORIAL_COMPLETION_PREFIX, step);
-    return {
-        status: "idle",
-        remainingMs: scenario.durationMs ?? 0,
-        code: "ready",
-        completed,
-        initialRunComplete: scenario.id === "priority" ? completed : false,
-    };
-}
-
 function isSimulationBotShape(shape) {
     return shape?.id === "main"
         || shape?.id === "opponent-model"
@@ -196,94 +118,6 @@ function isSimulationBotShape(shape) {
         || shape?.type === "botModel"
         || shape?.type === "opponentModel"
         || (shape?.slot != null && shape?.userId != null && shape?.abilityId == null);
-}
-
-const STRATEGY_STORAGE_PREFIXES = Object.freeze([
-    "arena-testing-strategy-v1-",
-    "arena-testing-opponent-strategy-v1-",
-    "arena-match-strategy-v1-",
-    "arena-match-opponent-strategy-v1-",
-]);
-const MAX_STORED_STRATEGY_BYTES = 750_000;
-
-function saveStoredStrategyConfiguration(key, configuration) {
-    if (!key) return false;
-    const serialized = JSON.stringify(configuration);
-    if (serialized.length * 2 > MAX_STORED_STRATEGY_BYTES) {
-        console.warn("[arena-logic] Strategy draft is too large to persist safely.");
-        return false;
-    }
-    try {
-        localStorage.setItem(key, serialized);
-        return true;
-    } catch (error) {
-        if (!isStorageQuotaError(error)) throw error;
-    }
-
-    removeStaleStrategyDrafts(key);
-    try {
-        localStorage.setItem(key, serialized);
-        return true;
-    } catch (error) {
-        if (!isStorageQuotaError(error)) throw error;
-        console.warn("[arena-logic] Browser storage is full; the current code remains available in memory but was not persisted.");
-        return false;
-    }
-}
-
-function removeStaleStrategyDrafts(activeKey) {
-    const staleKeys = [];
-    const counterpartKey = activeKey.includes("-opponent-strategy-")
-        ? activeKey.replace("-opponent-strategy-", "-strategy-")
-        : activeKey.replace("-strategy-", "-opponent-strategy-");
-    for (let index = 0; index < localStorage.length; index += 1) {
-        const candidate = localStorage.key(index);
-        if (candidate && candidate !== activeKey && candidate !== counterpartKey
-            && STRATEGY_STORAGE_PREFIXES.some((prefix) => candidate.startsWith(prefix))) {
-            staleKeys.push(candidate);
-        }
-    }
-    staleKeys.forEach((key) => localStorage.removeItem(key));
-}
-
-function isStorageQuotaError(error) {
-    return error?.name === "QuotaExceededError"
-        || error?.name === "NS_ERROR_DOM_QUOTA_REACHED"
-        || error?.code === 22
-        || error?.code === 1014;
-}
-
-function sanitizeStrategyConfigurationForLoadout(configuration, loadoutId) {
-    const sourceConfiguration = configuration && typeof configuration === "object"
-        ? configuration
-        : createDefaultAbilityStrategyConfiguration();
-    const source = normalizeAbilityStrategyConfiguration(sourceConfiguration);
-    const allowedActionIds = new Set(actionIdsForLoadoutConfiguration(loadoutId));
-    const sanitizeAction = (action) => {
-        if (!action || typeof action !== "object") return action;
-        const actionId = allowedActionIds.has(action.action) ? action.action : "none";
-        return {
-            ...action,
-            action: actionId,
-            selectable: actionId === "none" ? BOT_CODE_SELECTABLES.OPPONENT : action.selectable,
-        };
-    };
-    const sanitizeBlock = (block) => {
-        if (!block || typeof block !== "object") return block;
-        return {
-            ...block,
-            ...sanitizeAction(block),
-            ...(Array.isArray(block.actions) ? { actions: block.actions.map(sanitizeAction) } : {}),
-            ...(Array.isArray(block.children) ? { children: block.children.map(sanitizeBlock) } : {}),
-        };
-    };
-    return {
-        ...source,
-        roots: Array.isArray(source.roots) ? source.roots.map((root) => ({
-            ...root,
-            branches: Array.isArray(root?.branches) ? root.branches.map(sanitizeBlock) : [],
-        })) : [],
-    };
 }
 
 function secondsRemaining(targetTime) {
@@ -299,255 +133,6 @@ const AUTO_FINISH_SAFETY_BUFFER_MS = 500;
 
 function applyActionToShape(shape, action, elapsedMs) {
     return applyBotAction(shape, action, elapsedMs, applyDamageToShape);
-}
-
-function defaultPuzzleBotStart(teamNumber) {
-    const isPlayer = Number(teamNumber) === PUZZLE_PLAYER_TEAM;
-    return {
-        // Team members intentionally overlap their team's lead until the
-        // author positions them. Their simulation slot still remains unique.
-        startX: ARENA_WIDTH_UNITS / 2,
-        startY: isPlayer ? PRACTICE_PLAYER_START.y : PRACTICE_OPPONENT_START.y,
-        rotation: isPlayer ? PRACTICE_PLAYER_START.rotation : PRACTICE_OPPONENT_START.rotation,
-    };
-}
-
-function puzzleSetupBots(puzzleSetup, playerLoadout, opponentLoadout) {
-    const source = Array.isArray(puzzleSetup?.bots)
-        ? puzzleSetup.bots
-        : [puzzleSetup?.playerBot, puzzleSetup?.opponentBot].filter(Boolean);
-    const playerCount = source.filter((bot) => String(bot?.role ?? "").toUpperCase() === "PLAYER").length;
-    const opponentCount = source.filter((bot) => String(bot?.role ?? "").toUpperCase() === "OPPONENT").length;
-    const playerTeamSize = normalizePuzzleTeamSize(puzzleSetup?.playerTeamSize, playerCount || 1);
-    const opponentTeamSize = normalizePuzzleTeamSize(puzzleSetup?.opponentTeamSize, opponentCount || 1);
-    return normalizePuzzleRoster(source, playerTeamSize, opponentTeamSize, (teamNumber, slot, teamSize) => ({
-        role: puzzleBotRole(teamNumber),
-        teamNumber,
-        slot,
-        loadout: teamNumber === PUZZLE_PLAYER_TEAM ? playerLoadout : opponentLoadout,
-        brain: createDefaultAbilityStrategyConfiguration(),
-        ...defaultPuzzleBotStart(teamNumber, slot, teamSize),
-        startHp: BASE_BOT_HP,
-    }));
-}
-
-function puzzleBotForSetup(puzzleSetup, teamNumber, slot = 1) {
-    const source = Array.isArray(puzzleSetup?.bots)
-        ? puzzleSetup.bots
-        : [puzzleSetup?.playerBot, puzzleSetup?.opponentBot].filter(Boolean);
-    const exact = source.find((bot) => Number(bot?.teamNumber) === Number(teamNumber)
-        && Number(bot?.slot) === Number(slot));
-    if (exact) return exact;
-    const role = puzzleBotRole(teamNumber);
-    return source.find((bot) => String(bot?.role ?? "").toUpperCase() === role)
-        ?? (Number(teamNumber) === PUZZLE_PLAYER_TEAM ? puzzleSetup?.playerBot : puzzleSetup?.opponentBot)
-        ?? null;
-}
-
-function puzzleBotShapeKey(shape) {
-    if (shape?.puzzleBotKey) return shape.puzzleBotKey;
-    if (shape?.id === "main") return puzzleBotKey(PUZZLE_PLAYER_TEAM, 1);
-    if (shape?.id === "opponent-model") return puzzleBotKey(PUZZLE_OPPONENT_TEAM, 1);
-    return null;
-}
-
-function puzzleCodeParticipantName(bot) {
-    const teamNumber = Number(bot?.teamNumber);
-    const slot = Number(bot?.slot) || 1;
-    if (teamNumber === PUZZLE_PLAYER_TEAM && slot === 1) return "My Bot";
-    return teamNumber === PUZZLE_PLAYER_TEAM ? `Teammate ${slot - 1}` : `Opponent ${slot}`;
-}
-
-function loadoutDraftForEntry(entry) {
-    const supplied = entry?.loadout;
-    if (supplied && typeof supplied === "object") return normalizedSandboxLoadout(supplied);
-    const encoded = String(supplied ?? "");
-    const source = encoded.startsWith("sandbox:")
-        ? decodeSandboxLoadout(encoded)
-        : decodeBotLoadout(encoded);
-    return normalizedSandboxLoadout(source);
-}
-
-function loadoutDraftsForRoster(roster) {
-    return Object.fromEntries((roster ?? []).map((entry) => [entry.key, loadoutDraftForEntry(entry)]));
-}
-
-function abilityDisplayTag(tag) {
-    return String(tag ?? "")
-        .replaceAll("-", " ")
-        .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function SandboxAbilityCard({ ability, selected, onToggle }) {
-    const iconPath = getAbilityCatalogueIcon(ability.id);
-    return (
-        <button
-            type="button"
-            aria-pressed={selected}
-            aria-label={`${selected ? "Unequip" : "Equip"} ${ability.label}`}
-            onClick={() => onToggle(ability.id)}
-            className={`gray-button-surface ability-card ability-card-${ability.round} group relative min-h-52 w-full overflow-hidden rounded-none border p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-200 ${selected
-                ? "-translate-y-1 cursor-pointer border-green-400 bg-green-950/25 shadow-[0_8px_24px_rgba(114,182,93,0.12)] ring-2 ring-green-300/75 ring-offset-2 ring-offset-[#171a1c] hover:border-green-300"
-                : "cursor-pointer border-slate-700/75 bg-[#202427]/85 hover:border-green-700 hover:bg-green-950/15"
-                }`}
-        >
-            {iconPath && (
-                <img
-                    src={iconPath}
-                    alt=""
-                    aria-hidden="true"
-                    className={`ability-card-art ability-card-art-${getAbilityCatalogueIconLayout(ability.id)}`}
-                    onError={(event) => {
-                        event.currentTarget.hidden = true;
-                    }}
-                />
-            )}
-            <span className="ability-card-gradient" aria-hidden="true" />
-            <span className="absolute right-4 top-2 font-display-action text-6xl text-white/[.035]" aria-hidden="true">
-                {String(ability.id).padStart(2, "0")}
-            </span>
-            <span className="ability-card-content absolute inset-x-0 bottom-0 border-t border-white/10 px-5 py-4">
-                {selected && <span className="mb-1 block font-mono text-[9px] font-bold tracking-[.2em] text-green-200">EQUIPPED</span>}
-                <span className="block font-display-action text-xl uppercase tracking-wider text-white">{ability.label}</span>
-                <span className="mt-2 flex flex-wrap gap-1.5">
-                    <span className="font-mono text-[8px] font-bold tracking-[.16em] text-green-300/70">{ability.kind.toUpperCase()}</span>
-                    {(ability.catalogueTags ?? []).map((tag) => (
-                        <span key={tag} className="border border-green-400/40 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-[.12em] text-green-300/80">
-                            {abilityDisplayTag(tag)}
-                        </span>
-                    ))}
-                </span>
-            </span>
-        </button>
-    );
-}
-
-function practiceSetupForArena(
-    config,
-    playerLoadout,
-    opponentLoadout,
-    playerConfiguration,
-    opponentConfiguration,
-    botConfigurations = {},
-) {
-    const normalized = normalizePracticeConfig(config);
-    return {
-        ...normalized,
-        bots: normalized.bots.map((bot) => {
-            const key = puzzleBotKey(bot);
-            const isPrimaryPlayer = key === puzzleBotKey(PUZZLE_PLAYER_TEAM, 1);
-            const isPrimaryOpponent = key === puzzleBotKey(PUZZLE_OPPONENT_TEAM, 1);
-            return {
-                ...bot,
-                loadout: isPrimaryPlayer ? playerLoadout : isPrimaryOpponent ? opponentLoadout : bot.loadout,
-                brain: isPrimaryPlayer
-                    ? playerConfiguration ?? createDefaultAbilityStrategyConfiguration()
-                    : isPrimaryOpponent
-                        ? opponentConfiguration ?? createDefaultAbilityStrategyConfiguration()
-                        : botConfigurations[key] ?? createDefaultAbilityStrategyConfiguration(),
-            };
-        }),
-    };
-}
-
-function puzzleSetupForArena(config, initialPuzzle) {
-    const normalized = normalizePracticeConfig(config);
-    const sourceBots = Array.isArray(initialPuzzle?.bots) && initialPuzzle.bots.length > 0
-        ? initialPuzzle.bots
-        : [initialPuzzle?.playerBot, initialPuzzle?.opponentBot].filter(Boolean);
-    const sourceByKey = new Map(sourceBots.map((bot) => [puzzleBotKey(bot), bot]));
-    return {
-        ...normalized,
-        bots: normalized.bots.map((bot) => {
-            const source = sourceByKey.get(puzzleBotKey(bot));
-            return source?.brain == null ? bot : { ...bot, brain: source.brain };
-        }),
-    };
-}
-
-function buildPracticeArenaShapes(playerLoadout, opponentLoadout, puzzleSetup = null, allowPuzzleBotEditing = false) {
-    const loadoutForId = (loadout) => String(loadout).startsWith("sandbox:")
-        ? decodeSandboxLoadout(loadout)
-        : decodeBotLoadout(loadout);
-    if (puzzleSetup) {
-        const initialElapsedMs = Math.max(0, Number(puzzleSetup.initialElapsedMs) || 0);
-        const bots = puzzleSetupBots(puzzleSetup, playerLoadout, opponentLoadout);
-        const playerTeamSize = normalizePuzzleTeamSize(puzzleSetup.playerTeamSize, 1);
-        const botShapes = bots.map((bot) => {
-            const isPlayer = Number(bot.teamNumber) === PUZZLE_PLAYER_TEAM && Number(bot.slot) === 1;
-            const isPrimaryOpponent = Number(bot.teamNumber) === PUZZLE_OPPONENT_TEAM && Number(bot.slot) === 1;
-            const localSlot = Number(bot.slot) || 1;
-            const simulationSlot = puzzleSimulationSlot(bot, localSlot, playerTeamSize);
-            const id = isPlayer ? "main" : isPrimaryOpponent ? "opponent-model" : `bot-puzzle-${bot.teamNumber}-${bot.slot}`;
-            const fallback = defaultPuzzleBotStart(bot.teamNumber, bot.slot, Number(bot.teamNumber) === PUZZLE_PLAYER_TEAM
-                ? normalizePuzzleTeamSize(puzzleSetup.playerTeamSize)
-                : normalizePuzzleTeamSize(puzzleSetup.opponentTeamSize));
-            const startConfiguration = {
-                startX: Number.isFinite(Number(bot.startX)) ? Number(bot.startX) : fallback.startX,
-                startY: Number.isFinite(Number(bot.startY)) ? Number(bot.startY) : fallback.startY,
-                rotation: Number.isFinite(Number(bot.rotation)) ? Number(bot.rotation) : fallback.rotation,
-                startHp: Number.isFinite(Number(bot.startHp)) ? Number(bot.startHp) : BASE_BOT_HP,
-            };
-            const loadout = bot.loadout ?? (isPlayer ? playerLoadout : opponentLoadout);
-            const baseShape = isPlayer
-                ? buildInitialArenaShapes(null).find((shape) => shape.id === "main")
-                : buildOpponentShape({ slot: simulationSlot, teamNumber: bot.teamNumber, selectedLoadout: loadout });
-            const displayName = puzzleCodeParticipantName(bot);
-            const configured = {
-                ...baseShape,
-                id,
-                type: isPlayer ? "circle" : isPrimaryOpponent ? "opponentModel" : "bot",
-                slot: simulationSlot,
-                puzzleSlot: localSlot,
-                teamNumber: Number(bot.teamNumber) || PUZZLE_PLAYER_TEAM,
-                puzzleBotKey: puzzleBotKey(bot.teamNumber, localSlot),
-                username: displayName,
-                opponentUsername: displayName,
-                combatLoadout: loadout,
-                loadout: loadoutForId(loadout),
-                strategyConfiguration: normalizeAbilityStrategyConfiguration(bot.brain ?? createDefaultAbilityStrategyConfiguration()),
-                locked: !isPlayer && !allowPuzzleBotEditing,
-            };
-            const reset = resetBotShapeToStartingConfiguration(configured, startConfiguration);
-            return initialElapsedMs > 0 ? mergeBotShapeUpdates(reset, { matchElapsedMs: initialElapsedMs }) : reset;
-        });
-        const initialClosingZone = buildInitialClosingZone(initialElapsedMs);
-        return initialClosingZone ? [...botShapes, initialClosingZone] : botShapes;
-    }
-    const shapes = buildInitialArenaShapes(null);
-    const initialElapsedMs = Math.max(0, Number(puzzleSetup?.initialElapsedMs) || 0);
-    const playerStart = puzzleSetup?.playerBot ?? puzzleSetup?.playerStart ?? null;
-    const opponentStart = puzzleSetup?.opponentBot ?? puzzleSetup?.opponentStart ?? null;
-    const botShapes = shapes.map((shape) => {
-        const loadout = shape.id === "main" ? playerLoadout : opponentLoadout;
-        const start = shape.id === "main" ? playerStart : opponentStart;
-        const fallback = shape.id === "main" ? PRACTICE_PLAYER_START : PRACTICE_OPPONENT_START;
-        const startConfiguration = {
-            startX: Number.isFinite(Number(start?.startX ?? start?.x)) ? Number(start.startX ?? start.x) : fallback.x,
-            startY: Number.isFinite(Number(start?.startY ?? start?.y)) ? Number(start.startY ?? start.y) : fallback.y,
-            rotation: Number.isFinite(Number(start?.rotation)) ? Number(start.rotation) : fallback.rotation,
-            startHp: Number.isFinite(Number(start?.startHp)) ? Number(start.startHp) : BASE_BOT_HP,
-        };
-        const reset = resetBotShapeToStartingConfiguration({
-            ...shape,
-            combatLoadout: loadout,
-            loadout: loadoutForId(loadout),
-        }, startConfiguration);
-        return initialElapsedMs > 0 ? mergeBotShapeUpdates(reset, { matchElapsedMs: initialElapsedMs }) : reset;
-    });
-    const initialClosingZone = buildInitialClosingZone(initialElapsedMs);
-    return initialClosingZone ? [...botShapes, initialClosingZone] : botShapes;
-}
-
-function buildInitialClosingZone(elapsedMs) {
-    return tickClosingZoneWorld({
-        zone: null,
-        bots: [],
-        elapsedMs,
-        stepMs: 1,
-        width: ARENA_WIDTH_UNITS,
-        height: ARENA_HEIGHT_UNITS,
-    }).zone;
 }
 
 export default function Arena({
@@ -712,12 +297,6 @@ export default function Arena({
         setSandboxLoadoutDrafts({});
         setSandboxLoadoutSearch("");
     }, []);
-    const sandboxDialogRef = useRef(null);
-    useDialogFocus(sandboxDialogRef, {
-        onClose: closeSandboxLoadout,
-        lockScroll: true,
-        enabled: Boolean(sandboxLoadoutTarget),
-    });
     const [isPracticeConfigOpen, setIsPracticeConfigOpen] = useState(false);
     const [isPuzzleConfigOpen, setIsPuzzleConfigOpen] = useState(false);
     const [tutorialStep, setTutorialStep] = useState(initialTutorialStep);
@@ -1989,115 +1568,21 @@ export default function Arena({
                 </div>
             </div>
             {sandboxLoadoutTarget && activeLoadoutEntry && (
-                <div
-                    ref={sandboxDialogRef}
-                    onMouseDown={(event) => {
-                        if (event.target === event.currentTarget) closeSandboxLoadout();
-                    }}
-                    className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-[#02070de8] p-4 backdrop-blur-sm"
-                    role="dialog"
-                    aria-modal="true"
-                    aria-labelledby="sandbox-loadout-title"
-                    tabIndex={-1}
-                    onKeyDown={(event) => {
-                        if (event.key !== "Enter" || event.target.closest?.(".modal-close-button")) return;
-                        event.preventDefault();
-                        applySandboxLoadouts();
-                    }}
-                >
-                    <div className="max-h-[92vh] w-full max-w-6xl overflow-y-auto border border-green-400/60 bg-[#171a1c] p-5 text-white shadow-[0_32px_100px_rgba(0,0,0,.72)] sm:p-7">
-                        <div className="flex items-start justify-between gap-4 border-b border-slate-700/70 pb-5">
-                            <div>
-                                <p className="font-mono text-[10px] font-bold tracking-[.28em] text-green-300">BOT LOADOUT EDITOR</p>
-                                <h2 id="sandbox-loadout-title" className="mt-2 font-display-action text-4xl uppercase tracking-wide text-white sm:text-5xl">{activeLoadoutEntry.username} loadout</h2>
-                                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">Choose abilities for every bot in this room.</p>
-                            </div>
-                            <button type="button" onClick={closeSandboxLoadout} aria-label="Close sandbox loadout editor" className="modal-close-button"><span aria-hidden="true">×</span></button>
-                        </div>
-
-                        <div className="mt-5 flex items-center gap-2">
-                            <button type="button" aria-label="Show previous bot loadout" title="Previous bot" onClick={() => cycleSandboxLoadout(-1)} disabled={loadoutEditorRoster.length < 2} className="code-bot-selector__arrow code-loadout-selector__arrow">‹</button>
-                            <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Select bot loadout">
-                                {loadoutEditorRoster.map((entry) => {
-                                    const draft = sandboxLoadoutDrafts[entry.key] ?? loadoutDraftForEntry(entry);
-                                    const active = entry.key === activeLoadoutEntry.key;
-                                    const teamLabel = Number(entry.teamNumber) === PUZZLE_OPPONENT_TEAM ? "RED TEAM" : "BLUE TEAM";
-                                    return (
-                                        <button
-                                            type="button"
-                                            key={entry.key}
-                                            role="tab"
-                                            aria-selected={active}
-                                            onClick={() => setSandboxLoadoutTarget(entry.key)}
-                                            className={`min-w-32 shrink-0 rounded border px-3 py-2 text-left transition ${active
-                                                ? "border-green-400 bg-green-950/30 text-white shadow-[0_0_0_1px_rgba(114,182,93,.22)]"
-                                                : "border-slate-700/80 bg-slate-950/25 text-slate-400 hover:border-green-700/70 hover:text-slate-200"
-                                                }`}
-                                        >
-                                            <span className="block truncate text-xs font-bold">{entry.username}</span>
-                                            <span className="mt-1 block truncate font-mono text-[8px] tracking-widest text-green-300/70">{teamLabel} · {draft.abilities.length} EQUIPPED</span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                            <button type="button" aria-label="Show next bot loadout" title="Next bot" onClick={() => cycleSandboxLoadout(1)} disabled={loadoutEditorRoster.length < 2} className="code-bot-selector__arrow code-loadout-selector__arrow">›</button>
-                        </div>
-
-                        <div className="mt-5 flex flex-col gap-4 border-y border-slate-700/70 py-4 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                                <p className="font-mono text-[10px] font-bold tracking-[.2em] text-green-300">{Number(activeLoadoutEntry.teamNumber) === PUZZLE_OPPONENT_TEAM ? "RED TEAM" : "BLUE TEAM"} · LOADOUT {Math.max(1, activeLoadoutIndex + 1)}/{loadoutEditorRoster.length}</p>
-                                <p className="mt-1 text-sm text-slate-400">{activeSandboxLoadout.abilities.length} abilities equipped</p>
-                            </div>
-                            <label className="flex min-h-10 w-full items-center rounded border border-slate-700 bg-[#202427] px-3 focus-within:border-green-400 sm:max-w-xs">
-                                <span className="mr-2 text-slate-500" aria-hidden="true">⌕</span>
-                                <span className="sr-only">Search abilities by name</span>
-                                <input
-                                    type="search"
-                                    value={sandboxLoadoutSearch}
-                                    onChange={(event) => setSandboxLoadoutSearch(event.target.value)}
-                                    placeholder="Search abilities by name"
-                                    className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-slate-600"
-                                />
-                            </label>
-                        </div>
-
-                        <div className="mt-6 space-y-8">
-                            {[1, 2, 3].map((round) => {
-                                const roundAbilities = visibleSandboxAbilities.filter((ability) => ability.round === round);
-                                if (roundAbilities.length === 0) return null;
-                                return (
-                                    <section key={round} aria-labelledby={`sandbox-round-${round}-title`}>
-                                        <div className="mb-4 flex items-end justify-between gap-4 border-b border-slate-700/60 pb-3">
-                                            <div>
-                                                <p className="font-mono text-[9px] font-bold tracking-[.28em] text-slate-500">DRAFT TIER 0{round}</p>
-                                                <h3 id={`sandbox-round-${round}-title`} className="mt-1 font-display-action text-3xl uppercase tracking-wider text-white">Round {round}</h3>
-                                            </div>
-                                            <span className="font-mono text-[9px] tracking-widest text-green-300">{roundAbilities.length} ABILITIES</span>
-                                        </div>
-                                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                            {roundAbilities.map((ability) => (
-                                                <SandboxAbilityCard
-                                                    key={ability.id}
-                                                    ability={ability}
-                                                    selected={activeSandboxLoadout.abilities.includes(ability.id)}
-                                                    onToggle={toggleSandboxLoadoutAbility}
-                                                />
-                                            ))}
-                                        </div>
-                                    </section>
-                                );
-                            })}
-                            {visibleSandboxAbilities.length === 0 && (
-                                <p className="border border-slate-700/70 bg-slate-950/30 px-4 py-6 text-sm text-slate-400">No abilities match “{sandboxLoadoutSearch.trim()}”. Search by ability name.</p>
-                            )}
-                        </div>
-
-                        <div className="mt-7 flex flex-col gap-4 border-t border-slate-700/70 pt-5 sm:flex-row sm:items-center sm:justify-between">
-                            <p className="text-xs leading-5 text-slate-500">Switching players keeps each draft until you close this editor or apply all loadouts.</p>
-                            <button type="button" onClick={applySandboxLoadouts} className="gray-button-surface min-h-11 rounded border border-green-400/70 bg-green-950/20 px-6 font-mono text-[11px] font-bold tracking-widest text-green-200 hover:bg-green-950/40">APPLY LOADOUTS</button>
-                        </div>
-                    </div>
-                </div>
+                <SandboxLoadoutModal
+                    activeLoadoutEntry={activeLoadoutEntry}
+                    activeLoadoutIndex={activeLoadoutIndex}
+                    activeSandboxLoadout={activeSandboxLoadout}
+                    loadoutEditorRoster={loadoutEditorRoster}
+                    sandboxLoadoutDrafts={sandboxLoadoutDrafts}
+                    sandboxLoadoutSearch={sandboxLoadoutSearch}
+                    visibleSandboxAbilities={visibleSandboxAbilities}
+                    onApply={applySandboxLoadouts}
+                    onClose={closeSandboxLoadout}
+                    onCycle={cycleSandboxLoadout}
+                    onSearchChange={setSandboxLoadoutSearch}
+                    onSelectBot={setSandboxLoadoutTarget}
+                    onToggleAbility={toggleSandboxLoadoutAbility}
+                />
             )}
             {isPracticeConfigOpen && (
                 <ArenaConfigModal
@@ -2124,142 +1609,6 @@ export default function Arena({
                     showTeamSizeControls={false}
                 />
             )}
-        </div>
-    );
-}
-
-function arenaBotDisplayName(bot) {
-    const teamNumber = Number(bot?.teamNumber);
-    const slot = Number(bot?.slot) || 1;
-    if (teamNumber === PUZZLE_PLAYER_TEAM && slot === 1) return "My Bot";
-    return teamNumber === PUZZLE_PLAYER_TEAM ? `Teammate ${slot - 1}` : `Opponent ${slot}`;
-}
-
-function arenaTeamLabel(teamNumber) {
-    return Number(teamNumber) === PUZZLE_OPPONENT_TEAM ? "RED TEAM" : "BLUE TEAM";
-}
-
-function DeferredNumberInput({ value, onCommit, ...props }) {
-    const [draftValue, setDraftValue] = useState(() => String(value ?? ""));
-
-    useEffect(() => {
-        // Re-sync after a committed value or bot selection changes while
-        // preserving the raw value during the active edit.
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setDraftValue(String(value ?? ""));
-    }, [value]);
-
-    const commit = () => onCommit?.(draftValue);
-
-    return (
-        <input
-            {...props}
-            type="number"
-            value={draftValue}
-            onChange={(event) => setDraftValue(event.target.value)}
-            onBlur={commit}
-            onKeyDown={(event) => {
-                if (event.key !== "Enter") return;
-                event.preventDefault();
-                event.currentTarget.blur();
-            }}
-        />
-    );
-}
-
-function ArenaConfigModal({ draft, defaults = null, onClose, onSave, eyebrow, title, titleId, saveLabel, restoreLabel = null, showTeamSizeControls = true }) {
-    const dialogRef = useRef(null);
-    useDialogFocus(dialogRef, {
-        onClose,
-        lockScroll: true,
-        enabled: true,
-    });
-    const [localDraft, setLocalDraft] = useState(() => normalizePracticeConfig(draft));
-    const [selectedIndex, setSelectedIndex] = useState(0);
-    const bots = localDraft.bots;
-    const selectedBotIndex = Math.min(selectedIndex, Math.max(0, bots.length - 1));
-    const selectedBot = bots[selectedBotIndex] ?? bots[0];
-    const teamNumber = Number(selectedBot?.teamNumber) === PUZZLE_OPPONENT_TEAM
-        ? PUZZLE_OPPONENT_TEAM
-        : PUZZLE_PLAYER_TEAM;
-    const tone = teamNumber === PUZZLE_OPPONENT_TEAM ? "red" : "blue";
-    const updateTeamSize = (field, rawValue) => {
-        setLocalDraft((current) => normalizePracticeConfig({ ...current, [field]: rawValue }));
-    };
-    const updateElapsedTime = (rawValue) => {
-        setLocalDraft((current) => {
-            const seconds = Number(rawValue);
-            const fallbackSeconds = Number(current.initialElapsedMs ?? 0) / 1000;
-            const resolvedSeconds = Number.isFinite(seconds) ? seconds : fallbackSeconds;
-            return normalizePracticeConfig({ ...current, initialElapsedMs: resolvedSeconds * 1000 });
-        });
-    };
-    const updateBot = (field, rawValue) => {
-        setLocalDraft((current) => normalizePracticeConfig({
-            ...current,
-            bots: current.bots.map((bot, index) => index === selectedBotIndex ? { ...bot, [field]: rawValue } : bot),
-        }));
-    };
-    const cycle = (direction) => {
-        if (bots.length < 2) return;
-        setSelectedIndex((current) => (Math.min(current, bots.length - 1) + direction + bots.length) % bots.length);
-    };
-    const restoreDefaults = () => {
-        if (!defaults) return;
-        setLocalDraft(normalizePracticeConfig(defaults));
-        setSelectedIndex(0);
-    };
-    const inputClass = `mt-1 h-9 w-full border bg-slate-950 px-2 text-center font-interface-numeric text-sm text-white outline-none ${tone === "red" ? "border-red-900/80 focus:border-red-400" : "border-cyan-900/80 focus:border-cyan-400"}`;
-
-    return (
-        <div className="fixed inset-0 z-[110] grid place-items-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-            <section ref={dialogRef} className="max-h-[92vh] w-[min(92vw,560px)] overflow-y-auto rounded-xl border border-cyan-700/70 bg-[#11171a] shadow-2xl" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
-                <header className="flex items-center justify-between gap-4 border-b border-slate-700/80 bg-slate-950/70 px-5 py-4">
-                    <div><p className="font-mono text-[9px] font-bold tracking-[.2em] text-cyan-300">{eyebrow}</p><h2 id={titleId} className="mt-1 text-lg font-bold text-white">{title}</h2></div>
-                    <button type="button" onClick={onClose} aria-label={`Close ${title}`} className="modal-close-button"><span aria-hidden="true">×</span></button>
-                </header>
-                <div className="space-y-4 p-5">
-                    <div className="space-y-2">
-                        {showTeamSizeControls && <>
-                            <label className="flex min-h-11 items-center justify-between gap-4 border-b border-slate-800/80 pb-2 font-mono text-[9px] text-slate-300">
-                                <span>BLUE TEAM PLAYERS</span>
-                                <DeferredNumberInput min="1" max="2" step="1" value={localDraft.playerTeamSize} onCommit={(value) => updateTeamSize("playerTeamSize", value)} aria-label="Number of blue team players" className="h-9 w-24 border-2 border-cyan-400/80 bg-cyan-950/20 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-300" />
-                            </label>
-                            <label className="flex min-h-11 items-center justify-between gap-4 border-b border-slate-800/80 pb-2 font-mono text-[9px] text-slate-300">
-                                <span>RED TEAM PLAYERS</span>
-                                <DeferredNumberInput min="1" max="2" step="1" value={localDraft.opponentTeamSize} onCommit={(value) => updateTeamSize("opponentTeamSize", value)} aria-label="Number of red team players" className="h-9 w-24 border-2 border-red-400/80 bg-red-950/20 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-red-300" />
-                            </label>
-                        </>}
-                        <label className="flex min-h-11 items-center justify-between gap-4 border-b border-slate-800/80 pb-2 font-mono text-[9px] text-slate-300">
-                            <span>TIME AT / SEC</span>
-                            <DeferredNumberInput min="0" max="60" step="1" value={Math.round(localDraft.initialElapsedMs / 1000)} onCommit={updateElapsedTime} aria-label="Arena elapsed time in seconds" className="h-9 w-24 border border-slate-700 bg-slate-950 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-400" />
-                        </label>
-                    </div>
-                    <section className={`rounded border p-3 ${tone === "red" ? "border-red-900/60 bg-red-950/20" : "border-cyan-400/65 bg-cyan-950/30"}`}>
-                        <div className="mb-2 flex items-center justify-between"><h3 className="font-mono text-[10px] font-bold tracking-[.16em] text-cyan-200">STARTING STATS</h3></div>
-                        <div className="code-bot-selector-stack w-full max-w-none">
-                            <div className={`code-bot-selector ${tone === "red" ? "is-red" : "is-blue"}`} role="group" aria-label="Select starting stats">
-                                <button type="button" aria-label="Show previous bot" title="Previous bot" onClick={() => cycle(-1)} disabled={bots.length < 2} className="code-bot-selector__arrow">‹</button>
-                                <div className="code-bot-selector__current" aria-live="polite">
-                                    <span className="code-bot-selector__name">{arenaBotDisplayName(selectedBot)}</span>
-                                    <span className="code-bot-selector__meta">{arenaTeamLabel(teamNumber)} · STARTING STATS · {Math.max(1, selectedBotIndex + 1)}/{bots.length}</span>
-                                </div>
-                                <button type="button" aria-label="Show next bot" title="Next bot" onClick={() => cycle(1)} disabled={bots.length < 2} className="code-bot-selector__arrow">›</button>
-                            </div>
-                        </div>
-                        <div className="mt-3 grid grid-cols-2 gap-2">
-                            <label className="font-mono text-[8px] text-slate-500">X<DeferredNumberInput min={BOT_CENTER_MIN_X} max={BOT_CENTER_MAX_X} step="1" value={selectedBot?.startX ?? BOT_CENTER_MIN_X} onCommit={(value) => updateBot("startX", value)} aria-label={`${arenaBotDisplayName(selectedBot)} starting X position`} className={inputClass} /></label>
-                            <label className="font-mono text-[8px] text-slate-500">Y<DeferredNumberInput min={BOT_CENTER_MIN_Y} max={BOT_CENTER_MAX_Y} step="1" value={selectedBot?.startY ?? BOT_CENTER_MIN_Y} onCommit={(value) => updateBot("startY", value)} aria-label={`${arenaBotDisplayName(selectedBot)} starting Y position`} className={inputClass} /></label>
-                            <label className="font-mono text-[8px] text-slate-500">ROTATION<DeferredNumberInput min="-360" max="360" step="1" value={selectedBot?.rotation ?? 0} onCommit={(value) => updateBot("rotation", value)} aria-label={`${arenaBotDisplayName(selectedBot)} starting rotation`} className={inputClass} /></label>
-                            <label className="font-mono text-[8px] text-slate-500">HP<DeferredNumberInput min="1" max={BASE_BOT_HP} step="1" value={selectedBot?.startHp ?? BASE_BOT_HP} onCommit={(value) => updateBot("startHp", value)} aria-label={`${arenaBotDisplayName(selectedBot)} starting HP`} className={inputClass} /></label>
-                        </div>
-                    </section>
-                </div>
-                <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-700/80 bg-slate-950/70 px-5 py-4">
-                    {defaults && restoreLabel ? <button type="button" onClick={restoreDefaults} className="gray-button-surface min-h-10 border border-amber-400/70 px-4 font-mono text-[9px] font-bold tracking-[.12em] text-amber-200">{restoreLabel}</button> : <span />}
-                    <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className="gray-button-surface min-h-10 border border-slate-600 px-5 font-mono text-[10px] font-bold tracking-[.16em] text-slate-300">CANCEL</button><button type="button" onClick={() => onSave(localDraft)} className="gray-button-surface min-h-10 border border-cyan-400 px-5 font-mono text-[10px] font-bold tracking-[.16em] text-cyan-100">{saveLabel}</button></div>
-                </footer>
-            </section>
         </div>
     );
 }

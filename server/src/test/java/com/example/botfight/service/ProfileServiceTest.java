@@ -13,7 +13,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.example.botfight.domain.AppUser;
+import com.example.botfight.domain.Match;
 import com.example.botfight.domain.MatchMode;
+import com.example.botfight.domain.MatchParticipant;
 import com.example.botfight.domain.MatchResult;
 import com.example.botfight.domain.Profile;
 import com.example.botfight.DTO.AboutMeRequestDTO;
@@ -117,7 +119,7 @@ class ProfileServiceTest {
     }
 
     @Test
-    void returnsTwentyMatchPagesWithOpponentAndDateFilters() {
+    void returnsTwentyMatchPagesWithParticipantAndDateFilters() {
         Authentication authentication = mock(Authentication.class);
         AppUser user = user("allan");
         UUID matchId = UUID.randomUUID();
@@ -137,10 +139,17 @@ class ProfileServiceTest {
                 eq(pageRequest)))
                 .thenReturn(new PageImpl<>(List.of(recentMatch), pageRequest, 21));
         when(recentMatch.getMatchId()).thenReturn(matchId);
-        when(recentMatch.getOpponentUsername()).thenReturn("ByteBrawler");
+        when(recentMatch.getTeamNumber()).thenReturn((short) 1);
         when(recentMatch.getResult()).thenReturn(MatchResult.WIN);
         when(recentMatch.getCompletedAt()).thenReturn(Instant.parse("2026-07-22T10:15:00Z"));
         when(recentMatch.getCompletionReason()).thenReturn("SIMULATION");
+        Match match = match(matchId);
+        AppUser teammate = user("Teammate");
+        AppUser opponent = user("ByteBrawler");
+        when(participantRepository.findByMatchIdIn(List.of(matchId))).thenReturn(List.of(
+                participant(match, user, (short) 1, (short) 1),
+                participant(match, opponent, (short) 2, (short) 3),
+                participant(match, teammate, (short) 1, (short) 2)));
 
         var history = service.matchHistory(authentication, 0, " byte ", from, to);
 
@@ -148,7 +157,7 @@ class ProfileServiceTest {
         assertThat(history.hasMore()).isTrue();
         assertThat(history.totalMatches()).isEqualTo(21);
         assertThat(history.matches()).singleElement().satisfies(recent -> {
-            assertThat(recent.opponentUsername()).isEqualTo("ByteBrawler");
+            assertThat(recent.participantUsernames()).containsExactly("Teammate", "ByteBrawler");
             assertThat(recent.result()).isEqualTo("WIN");
             assertThat(recent.completedAt()).isEqualTo(Instant.parse("2026-07-22T10:15:00Z"));
         });
@@ -258,14 +267,18 @@ class ProfileServiceTest {
                 eq(pageRequest)))
                 .thenReturn(new PageImpl<>(List.of(recentMatch), pageRequest, 1));
         when(recentMatch.getMatchId()).thenReturn(matchId);
-        when(recentMatch.getOpponentUsername()).thenReturn("ByteBrawler");
+        when(recentMatch.getTeamNumber()).thenReturn((short) 1);
         when(recentMatch.getResult()).thenReturn(MatchResult.WIN);
         when(recentMatch.getCompletedAt()).thenReturn(Instant.parse("2026-07-22T10:15:00Z"));
+        Match match = match(matchId);
+        when(participantRepository.findByMatchIdIn(List.of(matchId))).thenReturn(List.of(
+                participant(match, target, (short) 1, (short) 1),
+                participant(match, user("ByteBrawler"), (short) 2, (short) 2)));
 
         var history = service.publicMatchHistory(authentication, "rival", 0, "", null, null);
 
         assertThat(history.matches()).singleElement().satisfies(recent -> {
-            assertThat(recent.opponentUsername()).isEqualTo("ByteBrawler");
+            assertThat(recent.participantUsernames()).containsExactly("ByteBrawler");
             assertThat(recent.result()).isEqualTo("WIN");
         });
     }
@@ -316,6 +329,21 @@ class ProfileServiceTest {
         user.setId(UUID.randomUUID());
         user.setUsername(username);
         return user;
+    }
+
+    private static Match match(UUID matchId) {
+        Match match = new Match();
+        match.setId(matchId);
+        return match;
+    }
+
+    private static MatchParticipant participant(Match match, AppUser user, short teamNumber, short slot) {
+        MatchParticipant participant = new MatchParticipant();
+        participant.setMatch(match);
+        participant.setUser(user);
+        participant.setTeamNumber(teamNumber);
+        participant.setSlot(slot);
+        return participant;
     }
 
 }

@@ -6,6 +6,8 @@ import { buildInitialArenaShapes } from "../modelPayloads/arenaShapes.js";
 
 const PANEL_PATH = fileURLToPath(new URL("./CodingPanel.jsx", import.meta.url));
 const ARENA_PATH = fileURLToPath(new URL("../Arena.jsx", import.meta.url));
+const ARENA_CONFIG_MODAL_PATH = fileURLToPath(new URL("../components/modals/ArenaConfigModal.jsx", import.meta.url));
+const SANDBOX_LOADOUT_MODAL_PATH = fileURLToPath(new URL("../components/modals/SandboxLoadoutModal.jsx", import.meta.url));
 const PUZZLE_PLAY_PATH = fileURLToPath(new URL("../../pages/puzzles/PuzzlePlayPage.jsx", import.meta.url));
 const PUZZLE_LOGIC_WORKSPACE_PATH = fileURLToPath(new URL("../../pages/puzzles/PuzzleLogicWorkspace.jsx", import.meta.url));
 const BOARD_PATH = fileURLToPath(new URL("./LogicBoard.jsx", import.meta.url));
@@ -72,6 +74,7 @@ test("puzzle play is a local preview and puzzle submission is a separate action"
 test("puzzle play preserves the editable setup until Reset Stats is chosen", () => {
     const arenaSource = readFileSync(ARENA_PATH, "utf8");
     const panelSource = readFileSync(PANEL_PATH, "utf8");
+    const configModalSource = readFileSync(ARENA_CONFIG_MODAL_PATH, "utf8");
 
     assert.match(arenaSource, /else if \(isPuzzleMode \|\| isPracticeRoom\) \{[\s\S]*current arena state[\s\S]*?Reset Stats/);
     assert.match(arenaSource, /else if \(isPuzzleMode\) \{\s*setShapes\(buildPracticeArenaShapes\([\s\S]*?initialPuzzle/);
@@ -79,7 +82,7 @@ test("puzzle play preserves the editable setup until Reset Stats is chosen", () 
     assert.match(arenaSource, /const savePuzzleConfig = \(nextConfig\) => \{[\s\S]*setPuzzleConfig\(normalized\)[\s\S]*puzzleSetupForArena\(normalized, initialPuzzle\)/);
     assert.match(arenaSource, /restoreLabel="RESTORE PUZZLE DEFAULTS"/);
     assert.match(arenaSource, /restoreLabel="RESTORE PUZZLE DEFAULTS"[\s\S]*showTeamSizeControls=\{false\}/);
-    assert.match(arenaSource, /showTeamSizeControls = true/);
+    assert.match(configModalSource, /showTeamSizeControls = true/);
     assert.match(panelSource, />\s*PUZZLE CONFIG\s*</);
 });
 
@@ -171,19 +174,19 @@ test("toolbar buttons share the blueprint surface, show labels, and retain the e
 });
 
 test("practice loadouts save on Enter and use the shared selector and close controls", () => {
-    const arenaSource = readFileSync(ARENA_PATH, "utf8");
     const panelSource = readFileSync(PANEL_PATH, "utf8");
+    const loadoutModalSource = readFileSync(SANDBOX_LOADOUT_MODAL_PATH, "utf8");
     const customVariablesSource = readFileSync(CUSTOM_VARIABLES_MODAL_PATH, "utf8");
     const puzzleWorkspaceSource = readFileSync(PUZZLE_LOGIC_WORKSPACE_PATH, "utf8");
     const catalogueSource = readFileSync(fileURLToPath(new URL("../../pages/catalogue/AbilityCataloguePage.jsx", import.meta.url)), "utf8");
     const submissionsSource = readFileSync(PUZZLE_PLAY_PATH, "utf8");
     const css = readFileSync(CSS_PATH, "utf8");
 
-    assert.match(arenaSource, /onKeyDown=\{\(event\) => \{\s*if \(event\.key !== "Enter" \|\| event\.target\.closest\?\.\("\.modal-close-button"\)\) return;\s*event\.preventDefault\(\);\s*applySandboxLoadouts\(\);/);
-    assert.match(arenaSource, /className="mt-5 flex items-center gap-2"/);
-    assert.match(arenaSource, /className="code-bot-selector__arrow code-loadout-selector__arrow">‹<\/button>/);
-    assert.match(arenaSource, /className="code-bot-selector__arrow code-loadout-selector__arrow">›<\/button>/);
-    assert.match(arenaSource, /aria-label="Close sandbox loadout editor" className="modal-close-button"/);
+    assert.match(loadoutModalSource, /onKeyDown=\{\(event\) => \{\s*if \(event\.key !== "Enter" \|\| event\.target\.closest\?\.\("\.modal-close-button"\)\) return;\s*event\.preventDefault\(\);\s*onApply\(\);/);
+    assert.match(loadoutModalSource, /className="mt-5 flex items-center gap-2"/);
+    assert.match(loadoutModalSource, /className="code-bot-selector__arrow code-loadout-selector__arrow">‹<\/button>/);
+    assert.match(loadoutModalSource, /className="code-bot-selector__arrow code-loadout-selector__arrow">›<\/button>/);
+    assert.match(loadoutModalSource, /aria-label="Close sandbox loadout editor" className="modal-close-button"/);
     assert.match(panelSource, /aria-label="Close bot code workspace"[\s\S]*className="modal-close-button"[\s\S]*<span aria-hidden="true">×<\/span>/);
     assert.match(customVariablesSource, /aria-label="Close custom variables" className="modal-close-button"/);
     assert.match(puzzleWorkspaceSource, /aria-label="Close puzzle configuration"[\s\S]*className="modal-close-button"/);

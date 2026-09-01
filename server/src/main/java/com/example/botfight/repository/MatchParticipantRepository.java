@@ -60,11 +60,11 @@ public interface MatchParticipantRepository
     @Query(value = """
             select distinct
                 gameMatch.id as matchId,
-                opponentUser.username as opponentUsername,
                 mine.result as result,
                 gameMatch.completedAt as completedAt,
                 gameMatch.completionReason as completionReason,
-                gameMatch.mode as mode
+                gameMatch.mode as mode,
+                mine.teamNumber as teamNumber
             from MatchParticipant mine
             join mine.match gameMatch
             join MatchParticipant opponent
@@ -112,6 +112,8 @@ public interface MatchParticipantRepository
 
     List<MatchParticipant> findByMatchId(UUID matchId);
 
+    List<MatchParticipant> findByMatchIdIn(List<UUID> matchIds);
+
     Optional<MatchParticipant> findByMatchIdAndUserId(UUID matchId, UUID userId);
 
     @Query("""
@@ -134,8 +136,6 @@ public interface MatchParticipantRepository
     interface RecentMatchProjection {
         UUID getMatchId();
 
-        String getOpponentUsername();
-
         MatchResult getResult();
 
         Instant getCompletedAt();
@@ -143,6 +143,8 @@ public interface MatchParticipantRepository
         String getCompletionReason();
 
         String getMode();
+
+        short getTeamNumber();
     }
 
     interface RatingSnapshotProjection {
