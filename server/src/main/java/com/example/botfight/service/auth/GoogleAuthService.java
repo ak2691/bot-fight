@@ -145,7 +145,7 @@ public class GoogleAuthService {
         AppUser user = userRepository.findById(pending.userId())
                 .orElseThrow(() -> new AuthException("account could not be found"));
         if (user.getPasswordHash() == null || !passwordEncoder.matches(password, user.getPasswordHash())) {
-            throw new AuthException("enter the email and password for the existing account");
+            throw new AuthException("invalid email or password");
         }
 
         identityService.linkIdentity(

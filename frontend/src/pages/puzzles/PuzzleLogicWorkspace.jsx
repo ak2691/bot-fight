@@ -321,7 +321,7 @@ export default function PuzzleLogicWorkspace({
                                 <span className="code-toolbar-zoom-value">{Math.round(zoom * 100)}%</span>
                                 <button type="button" aria-label="Zoom in" onClick={() => changeZoom(0.1)} className="code-toolbar-zoom-button">+</button>
                             </div>
-                            <button type="button" aria-label="Close puzzle configuration" title="Close" onClick={onClose} className="code-toolbar-button code-toolbar-close"><span aria-hidden="true">×</span><span className="code-toolbar-close-label">CLOSE</span></button>
+                            <button type="button" aria-label="Close puzzle configuration" title="Close" onClick={onClose} className="modal-close-button"><span aria-hidden="true">×</span></button>
                         </div>
                     </div>
                 </header>

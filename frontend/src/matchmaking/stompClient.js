@@ -499,8 +499,13 @@ export function createMatchmakingClient({
             activeMatchId = null;
             terminalMatchId = null;
         },
-        joinQueue(mode = "ONES") {
-            publish("/app/matchmaking.join", { mode });
+        joinQueue(mode = "ONES", guaranteedAbilityIds = []) {
+            publish("/app/matchmaking.join", {
+                mode,
+                guaranteedAbilityIds: Array.isArray(guaranteedAbilityIds)
+                    ? guaranteedAbilityIds.slice(0, 3)
+                    : [],
+            });
         },
         resumeMatch() {
             publish("/app/matchmaking.resume");

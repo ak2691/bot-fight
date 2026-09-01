@@ -189,10 +189,10 @@ public class ActionExecutionService {
         movementService.applyTickMovement(bot, action, arena, false,
                 slowedWasActive, hitStaggerWasActive);
         if (stunnedWasActive) {
+            BotStateService.interruptCurrentAbility(bot);
             if (channelledAbility != null) {
                 botStateService.setAbilityReuseCooldown(bot, channelledAbility);
             }
-            cancelPreparation(bot);
             botStateService.beginTick(bot);
             return;
         }

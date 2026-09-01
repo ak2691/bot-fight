@@ -669,6 +669,7 @@ export default function Arena({
     const [isPuzzleAttemptSubmitting, setIsPuzzleAttemptSubmitting] = useState(false);
     const [measurementEnabled, setMeasurementEnabled] = useState(false);
     const [measurementPoints, setMeasurementPoints] = useState([]);
+    const [hitboxesEnabled, setHitboxesEnabled] = useState(false);
     const [isBaseTesting] = useState(false);
     const [isEditingArena, setIsEditingArena] = useState(true);
     const [testingConfiguration, setTestingConfiguration] = useState(() => sanitizeStrategyConfigurationForLoadout(
@@ -1914,6 +1915,7 @@ export default function Arena({
                             measurementEnabled={measurementEnabled}
                             measurementPoints={measurementPoints}
                             onMeasurementPointsChange={setMeasurementPoints}
+                            hitboxesEnabled={isPracticeRoom && hitboxesEnabled}
                             isPlaying={isAutoPlaying}
                             allowBotRotation={allowBotRotation}
                             allowLockedBotEditing={allowLockedBotEditing}
@@ -1947,6 +1949,8 @@ export default function Arena({
                         if (current) setMeasurementPoints([]);
                         return !current;
                     })}
+                    hitboxesEnabled={hitboxesEnabled}
+                    onHitboxesToggle={isPracticeRoom ? () => setHitboxesEnabled((current) => !current) : null}
                     isBaseTesting={isBaseTesting}
                     finishStatus={finishStatus}
                     finishError={finishError}
@@ -1995,6 +1999,11 @@ export default function Arena({
                     aria-modal="true"
                     aria-labelledby="sandbox-loadout-title"
                     tabIndex={-1}
+                    onKeyDown={(event) => {
+                        if (event.key !== "Enter" || event.target.closest?.(".modal-close-button")) return;
+                        event.preventDefault();
+                        applySandboxLoadouts();
+                    }}
                 >
                     <div className="max-h-[92vh] w-full max-w-6xl overflow-y-auto border border-green-400/60 bg-[#171a1c] p-5 text-white shadow-[0_32px_100px_rgba(0,0,0,.72)] sm:p-7">
                         <div className="flex items-start justify-between gap-4 border-b border-slate-700/70 pb-5">
@@ -2003,11 +2012,11 @@ export default function Arena({
                                 <h2 id="sandbox-loadout-title" className="mt-2 font-display-action text-4xl uppercase tracking-wide text-white sm:text-5xl">{activeLoadoutEntry.username} loadout</h2>
                                 <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">Choose abilities for every bot in this room. Changes stay local while you browse players and are committed together when you apply loadouts.</p>
                             </div>
-                            <button type="button" onClick={closeSandboxLoadout} aria-label="Close sandbox loadout editor" className="gray-button-surface min-h-11 shrink-0 rounded border border-slate-600 px-3 font-mono text-xs text-slate-300">CLOSE</button>
+                            <button type="button" onClick={closeSandboxLoadout} aria-label="Close sandbox loadout editor" className="modal-close-button"><span aria-hidden="true">×</span></button>
                         </div>
 
                         <div className="mt-5 flex items-center gap-2">
-                            <button type="button" aria-label="Show previous bot loadout" title="Previous bot" onClick={() => cycleSandboxLoadout(-1)} disabled={loadoutEditorRoster.length < 2} className="code-bot-selector__arrow h-11 w-10 shrink-0">‹</button>
+                            <button type="button" aria-label="Show previous bot loadout" title="Previous bot" onClick={() => cycleSandboxLoadout(-1)} disabled={loadoutEditorRoster.length < 2} className="code-bot-selector__arrow code-loadout-selector__arrow">‹</button>
                             <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Select bot loadout">
                                 {loadoutEditorRoster.map((entry) => {
                                     const draft = sandboxLoadoutDrafts[entry.key] ?? loadoutDraftForEntry(entry);
@@ -2031,7 +2040,7 @@ export default function Arena({
                                     );
                                 })}
                             </div>
-                            <button type="button" aria-label="Show next bot loadout" title="Next bot" onClick={() => cycleSandboxLoadout(1)} disabled={loadoutEditorRoster.length < 2} className="code-bot-selector__arrow h-11 w-10 shrink-0">›</button>
+                            <button type="button" aria-label="Show next bot loadout" title="Next bot" onClick={() => cycleSandboxLoadout(1)} disabled={loadoutEditorRoster.length < 2} className="code-bot-selector__arrow code-loadout-selector__arrow">›</button>
                         </div>
 
                         <div className="mt-5 flex flex-col gap-4 border-y border-slate-700/70 py-4 sm:flex-row sm:items-center sm:justify-between">

@@ -252,10 +252,10 @@
       "fit": "contain",
       "padding": 48
     },
-    "siphon_lance": {
-      "output": "siphon_lance.webp",
+    "vampiric_beam": {
+      "output": "vampiric_beam.webp",
       "source": "frontend/src/assets/arena/abilities/rays/rail-shot.webp",
-      "selection": "temporary catalogue placeholder until the Siphon Lance sprite sheet exists",
+      "selection": "temporary catalogue placeholder until the Vampiric Beam sprite sheet exists",
       "crop": "alpha",
       "fit": "contain",
       "padding": 28

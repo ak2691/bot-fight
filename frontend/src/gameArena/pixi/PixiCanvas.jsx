@@ -16,12 +16,15 @@ import { textureMuzzleAnchor } from "./abilitySpriteAssets.js";
 import { advanceParticle } from "./particleMotion.js";
 import { createPresentationClock } from "./presentationClock.js";
 import { compassDegreesToRadians, vectorToCompassDegrees } from "../botlogic/planner/arenaAngles.js";
+import { hitboxGeometriesForEntity, hitboxGeometryForBot } from "../gameconfig/hitboxGeometry.js";
 import { acquirePixiApplication, attachPixiApplication, releasePixiApplication } from "./pixiApplication.js";
 import { statusIsActive } from "../ecs/contracts/StatusContracts.js";
 import "./PixiCanvas.css";
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 2.5;
+const ARENA_GRID_MINOR_STEP_UNITS = 50;
+const ARENA_GRID_MAJOR_STEP_UNITS = 300;
 const COLORS = Object.freeze({
     arena: 0x0d1117,
     grid: 0x253442,
@@ -55,6 +58,7 @@ export default function PixiCanvas({
     measurementEnabled = false,
     measurementPoints = [],
     onMeasurementPointsChange = () => { },
+    hitboxesEnabled = false,
     allowBotRotation = false,
     allowLockedBotEditing = false,
 }) {
@@ -79,12 +83,13 @@ export default function PixiCanvas({
             measurementEnabled,
             measurementPoints,
             onMeasurementPointsChange,
+            hitboxesEnabled,
             allowBotRotation,
             allowLockedBotEditing,
         };
         runtimeRef.current?.setPlaying(isPlaying);
         runtimeRef.current?.syncShapes(presentationShapes);
-    }, [allowBotRotation, allowLockedBotEditing, editable, isPlaying, lockCamera, measurementEnabled, measurementPoints, onDeselectAll, onMeasurementPointsChange, onSelectShape, onUpdateShape, placementSide, selectedId, presentationShapes]);
+    }, [allowBotRotation, allowLockedBotEditing, editable, hitboxesEnabled, isPlaying, lockCamera, measurementEnabled, measurementPoints, onDeselectAll, onMeasurementPointsChange, onSelectShape, onUpdateShape, placementSide, selectedId, presentationShapes]);
 
     useEffect(() => {
         let disposed = false;
@@ -223,6 +228,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     };
     const particleLayer = new Container();
     const measurementLayer = new Container();
+    const hitboxLayer = new Graphics();
     const overlay = new Graphics();
     background.eventMode = "none";
     layers.zones.eventMode = "none";
@@ -231,8 +237,9 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     layers.lockOn.eventMode = "none";
     particleLayer.eventMode = "none";
     measurementLayer.eventMode = "none";
+    hitboxLayer.eventMode = "none";
     overlay.eventMode = "none";
-    camera.addChild(background, layers.zones, layers.projectiles, layers.entities, layers.bots, layers.lockOn, particleLayer, measurementLayer, overlay);
+    camera.addChild(background, layers.zones, layers.projectiles, layers.entities, layers.bots, hitboxLayer, layers.lockOn, particleLayer, measurementLayer, overlay);
     app.stage.addChild(camera);
     app.stage.eventMode = "static";
     drawArena(background);
@@ -260,8 +267,8 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         const halfWidth = app.screen.width / scale / 2;
         const halfHeight = app.screen.height / scale / 2;
         viewCenter = {
-            x: clamp(viewCenter.x, Math.min(500, halfWidth), Math.max(500, ARENA_WIDTH_UNITS - halfWidth)),
-            y: clamp(viewCenter.y, Math.min(500, halfHeight), Math.max(500, ARENA_HEIGHT_UNITS - halfHeight)),
+            x: clamp(viewCenter.x, Math.min(ARENA_WIDTH_UNITS / 2, halfWidth), Math.max(ARENA_WIDTH_UNITS / 2, ARENA_WIDTH_UNITS - halfWidth)),
+            y: clamp(viewCenter.y, Math.min(ARENA_HEIGHT_UNITS / 2, halfHeight), Math.max(ARENA_HEIGHT_UNITS / 2, ARENA_HEIGHT_UNITS - halfHeight)),
         };
         camera.scale.set(scale);
         camera.position.set(app.screen.width / 2 - viewCenter.x * scale, app.screen.height / 2 - viewCenter.y * scale);
@@ -291,10 +298,31 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
 
     function botHitAreaRadius(shape) {
         const radius = Number(shape.size ?? (isBotShape(shape) ? BOT_SIZE : 30)) / 2;
-        const botHitRadius = Math.max(12, radius + 6);
-        return canRotateBot(shape)
-            ? Math.max(botHitRadius, rotationHandleDistance(radius) + 14)
-            : botHitRadius;
+        // The bot's opaque model is slightly inset in its texture. Keep the
+        // body target at the model edge; the rotation handle gets a separate
+        // hit region so it cannot enlarge the bot's selectable body.
+        return Math.max(12, radius + 6);
+    }
+
+    function selectionHitArea(shape) {
+        const bodyRadius = botHitAreaRadius(shape);
+        if (!isBotShape(shape) || optionsRef.current.selectedId !== shape.id || !canRotateBot(shape)) {
+            return new Circle(0, 0, bodyRadius);
+        }
+        const radius = Number(shape.size ?? BOT_SIZE) / 2;
+        const handleDistance = rotationHandleDistance(radius);
+        const handleRadius = 14;
+        const rotation = compassDegreesToRadians(shape.rotation);
+        const handleX = Math.cos(rotation) * handleDistance;
+        const handleY = Math.sin(rotation) * handleDistance;
+        return {
+            contains(x, y) {
+                const bodyHit = x * x + y * y <= bodyRadius * bodyRadius;
+                const handleDeltaX = x - handleX;
+                const handleDeltaY = y - handleY;
+                return bodyHit || handleDeltaX * handleDeltaX + handleDeltaY * handleDeltaY <= handleRadius * handleRadius;
+            },
+        };
     }
 
     function createView(shape, now = presentationClock.current()) {
@@ -315,7 +343,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         container.addChild(baseSprite, graphics, rotationHandle, caption);
         container.eventMode = isBotShape(shape) ? "static" : "none";
         container.cursor = canEditBot(shape) ? "grab" : "default";
-        container.hitArea = new Circle(0, 0, botHitAreaRadius(shape));
+        container.hitArea = selectionHitArea(shape);
         const view = {
             container,
             baseSprite,
@@ -391,7 +419,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             view.container.eventMode = isBotShape(shape) ? "static" : "none";
             view.container.cursor = canEditBot(shape) ? "grab" : "default";
             view.rotationHandle.cursor = canRotateBot(shape) ? "grab" : "default";
-            view.container.hitArea = new Circle(0, 0, botHitAreaRadius(shape));
+            view.container.hitArea = selectionHitArea(shape);
             const hitParticleEvent = shape.hitParticleEvent;
             const hasHitParticleEvent = hitParticleEvent != null
                 && hitParticleEvent !== previousShape?.hitParticleEvent;
@@ -430,6 +458,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
 
     function beginDrag(event, view) {
         if (!isBotShape(view.shape)) return;
+        if (event.target === view.rotationHandle) return;
         if (event.button === 2) {
             if (!canRotateBot(view.shape)) return;
             event.stopPropagation();
@@ -446,6 +475,18 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         if (!canEditBot(view.shape)) return;
         const point = camera.toLocal(event.global);
         const position = sampleViewPosition(view);
+        const localX = point.x - position.x;
+        const localY = point.y - position.y;
+        const radius = Number(view.shape.size ?? BOT_SIZE) / 2;
+        const handleDistance = rotationHandleDistance(radius);
+        const handleX = Math.cos(compassDegreesToRadians(view.shape.rotation)) * handleDistance;
+        const handleY = Math.sin(compassDegreesToRadians(view.shape.rotation)) * handleDistance;
+        if (canRotateBot(view.shape)
+            && (localX - handleX) ** 2 + (localY - handleY) ** 2 <= 14 ** 2) {
+            beginRotationDrag(event, view);
+            return;
+        }
+        if (localX * localX + localY * localY > botHitAreaRadius(view.shape) ** 2) return;
         drag = { id: view.shape.id, offsetX: point.x - position.x, offsetY: point.y - position.y };
         view.container.cursor = "grabbing";
     }
@@ -531,6 +572,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             if (isBotShape(view.shape)) drawBot(view, position, optionsRef.current.selectedId === view.shape.id, now, arenaSprites, overlappingBotIds.has(view.shape.id), canRotateBot(view.shape));
             else drawEntity(view, optionsRef.current.selectedId === view.shape.id, now, arenaSprites);
         }
+        drawHitboxes(hitboxLayer, views, now, optionsRef, sampleViewPosition);
         drawLockOnMarkers(layers.lockOn, lockOnMarkers, botViews, arenaSprites);
         drawPlacementOverlay(overlay, optionsRef.current.placementSide);
         const points = optionsRef.current.measurementPoints ?? [];
@@ -730,15 +772,19 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
 
 function drawArena(graphics) {
     graphics.rect(0, 0, ARENA_WIDTH_UNITS, ARENA_HEIGHT_UNITS).fill(COLORS.arena);
-    for (let coordinate = 0; coordinate <= ARENA_WIDTH_UNITS; coordinate += 50) {
-        const major = coordinate % 250 === 0;
+    for (let coordinate = 0; coordinate <= ARENA_WIDTH_UNITS; coordinate += ARENA_GRID_MINOR_STEP_UNITS) {
+        const major = coordinate % ARENA_GRID_MAJOR_STEP_UNITS === 0;
         const stroke = { color: major ? COLORS.gridMajor : COLORS.grid, alpha: major ? 0.5 : 0.28, width: major ? 2 : 1 };
         graphics.moveTo(coordinate, 0).lineTo(coordinate, ARENA_HEIGHT_UNITS).stroke(stroke);
+    }
+    for (let coordinate = 0; coordinate <= ARENA_HEIGHT_UNITS; coordinate += ARENA_GRID_MINOR_STEP_UNITS) {
+        const major = coordinate % ARENA_GRID_MAJOR_STEP_UNITS === 0;
+        const stroke = { color: major ? COLORS.gridMajor : COLORS.grid, alpha: major ? 0.5 : 0.28, width: major ? 2 : 1 };
         graphics.moveTo(0, coordinate).lineTo(ARENA_WIDTH_UNITS, coordinate).stroke(stroke);
     }
-    graphics.moveTo(500, 0).lineTo(500, 1000).stroke({ color: 0x64748b, alpha: 0.55, width: 2 });
-    graphics.moveTo(0, 500).lineTo(1000, 500).stroke({ color: 0x64748b, alpha: 0.55, width: 2 });
-    graphics.rect(2, 2, 996, 996).stroke({ color: 0x475569, width: 4 });
+    graphics.moveTo(ARENA_WIDTH_UNITS / 2, 0).lineTo(ARENA_WIDTH_UNITS / 2, ARENA_HEIGHT_UNITS).stroke({ color: 0x64748b, alpha: 0.55, width: 2 });
+    graphics.moveTo(0, ARENA_HEIGHT_UNITS / 2).lineTo(ARENA_WIDTH_UNITS, ARENA_HEIGHT_UNITS / 2).stroke({ color: 0x64748b, alpha: 0.55, width: 2 });
+    graphics.rect(2, 2, Math.max(0, ARENA_WIDTH_UNITS - 4), Math.max(0, ARENA_HEIGHT_UNITS - 4)).stroke({ color: 0x475569, width: 4 });
 }
 
 function drawBot(view, position, selected, now, arenaSprites, overlapping = false, canRotate = false) {
@@ -1169,7 +1215,7 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
         showMuzzleFlash(view, arenaSprites, position, originX, originY, originRotation, opacity, Number(shape.size ?? 60));
     } else if ([30, 32].includes(visual)) {
         drawProceduralAbilityRay(graphics, position, originX, originY, originRotation,
-            Number(stats.range ?? 500), visual === 30 ? 0x22d3ee : 0xa78bfa, opacity,
+            Number(stats.range ?? 500), visual === 30 ? 0x22d3ee : 0xef4444, opacity,
             visual === 30 ? 8 : 10);
         showMuzzleFlash(view, arenaSprites, position, originX, originY, originRotation, opacity, Number(shape.size ?? 60));
     } else if (visual === 34) {
@@ -1183,12 +1229,14 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
     } else if (visual === 25) {
         const progress = visualProgress(remaining, duration);
         showCachedEffect(view, "ability", spriteFrameAtProgress(arenaSprites.abilities.phaseStrike, progress), {
+            x: originX - position.x,
+            y: originY - position.y,
             rotation: angle,
             alpha: opacity,
             tint: 0xf0abfc,
-            width: Number(stats.range ?? 100) * 2.25,
-            height: Number(stats.range ?? 100) * 1.35,
-            anchorX: 0.05,
+            width: Number(stats.range ?? 100),
+            height: Number(stats.hitboxWidth ?? 60),
+            anchorX: 0,
             blendMode: "screen",
         });
     } else if (visual === 26) {
@@ -1330,6 +1378,97 @@ function drawEntity(view, selected, now, arenaSprites) {
     }
     if (selected) graphics.circle(0, 0, radius + 6).stroke({ color: COLORS.white, alpha: 0.8, width: 2 });
     if (Number(shape.hitFlashMs ?? 0) > 0) graphics.circle(0, 0, radius + 2).fill({ color: 0xef4444, alpha: 0.5 });
+}
+
+function drawHitboxes(graphics, views, now, optionsRef, sampleViewPosition) {
+    graphics.clear();
+    if (!optionsRef.current.hitboxesEnabled) return;
+    for (const view of views.values()) {
+        const position = sampleViewPosition(view, now);
+        const geometries = isBotShape(view.shape)
+            ? [hitboxGeometryForBot(view.shape, position)]
+            : hitboxGeometriesForEntity(view.shape);
+        for (const geometry of geometries.filter(Boolean)) drawHitboxGeometry(graphics, geometry, position);
+    }
+}
+
+function drawHitboxGeometry(graphics, geometry, fallbackPosition) {
+    const alpha = Math.max(0.2, Math.min(1, Number(geometry.opacity ?? 1)));
+    const centerX = Number(geometry.x ?? fallbackPosition.x);
+    const centerY = Number(geometry.y ?? fallbackPosition.y);
+    if (geometry.shape === "rectangle") {
+        graphics.poly(rotatedRectanglePoints(
+            centerX,
+            centerY,
+            geometry.width,
+            geometry.height,
+            geometry.rotation,
+        )).fill({ color: 0xfacc15, alpha: 0.14 * alpha }).stroke({ color: 0xfacc15, alpha: 0.9 * alpha, width: 2 });
+        return;
+    }
+    if (geometry.shape === "ray") {
+        const rotation = Number(geometry.rotation) || 0;
+        const length = Math.max(0, Number(geometry.length) || 0);
+        const startX = Number(geometry.startX ?? centerX);
+        const startY = Number(geometry.startY ?? centerY);
+        const rayCenterX = startX + Math.cos(rotation) * length / 2;
+        const rayCenterY = startY + Math.sin(rotation) * length / 2;
+        graphics.poly(rotatedRectanglePoints(
+            rayCenterX,
+            rayCenterY,
+            length,
+            geometry.width,
+            rotation,
+        )).fill({ color: 0xfacc15, alpha: 0.12 * alpha }).stroke({ color: 0xfacc15, alpha: 0.9 * alpha, width: 2 });
+        graphics.circle(startX, startY, Math.max(2, Number(geometry.width) / 2))
+            .fill({ color: 0xfacc15, alpha: 0.28 * alpha });
+        return;
+    }
+    if (geometry.shape === "sector") {
+        const points = sectorPoints(
+            centerX,
+            centerY,
+            geometry.radius,
+            geometry.rotation,
+            geometry.halfAngle,
+        );
+        graphics.poly(points)
+            .fill({ color: 0xfacc15, alpha: 0.12 * alpha })
+            .stroke({ color: 0xfacc15, alpha: 0.9 * alpha, width: 2 });
+        return;
+    }
+    graphics.circle(centerX, centerY, geometry.radius)
+        .fill({ color: 0xfacc15, alpha: 0.1 * alpha })
+        .stroke({ color: 0xfacc15, alpha: 0.82 * alpha, width: 2 });
+}
+
+function sectorPoints(centerX, centerY, radius, rotation, halfAngle) {
+    const safeRadius = Math.max(0, Number(radius) || 0);
+    const safeHalfAngle = Math.max(0, Number(halfAngle) || 0);
+    const segmentCount = Math.max(12, Math.ceil(safeHalfAngle * 2 * 24 / Math.PI));
+    const points = [centerX, centerY];
+    for (let index = 0; index <= segmentCount; index += 1) {
+        const angle = Number(rotation) - safeHalfAngle + (safeHalfAngle * 2 * index / segmentCount);
+        points.push(centerX + Math.cos(angle) * safeRadius, centerY + Math.sin(angle) * safeRadius);
+    }
+    return points;
+}
+
+function rotatedRectanglePoints(centerX, centerY, width, height, rotation) {
+    const halfWidth = Number(width) / 2;
+    const halfHeight = Number(height) / 2;
+    const cos = Math.cos(Number(rotation) || 0);
+    const sin = Math.sin(Number(rotation) || 0);
+    return [
+        ...rotatePoint(-halfWidth, -halfHeight),
+        ...rotatePoint(halfWidth, -halfHeight),
+        ...rotatePoint(halfWidth, halfHeight),
+        ...rotatePoint(-halfWidth, halfHeight),
+    ];
+
+    function rotatePoint(x, y) {
+        return [centerX + x * cos - y * sin, centerY + x * sin + y * cos];
+    }
 }
 
 function drawClosingZone(graphics, shape) {

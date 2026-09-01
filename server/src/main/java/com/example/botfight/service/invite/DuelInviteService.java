@@ -14,6 +14,7 @@ import com.example.botfight.service.block.BlockLookup;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
+import com.example.botfight.service.match.loadout.MatchAbilityGuaranteeService;
 import com.example.botfight.service.match.model.MatchEntrant;
 import com.example.botfight.service.matchmaking.MatchmakingService;
 import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
@@ -43,6 +44,7 @@ public class DuelInviteService {
     private final TokenBucketRateLimiter<UUID> inviteRateLimiter;
     private final Clock clock;
     private final BlockLookup blockLookup;
+    private final MatchAbilityGuaranteeService guaranteeService;
 
     @Autowired
     public DuelInviteService(
@@ -54,7 +56,8 @@ public class DuelInviteService {
             SingleUserWebSocketSessionRegistry socketSessionRegistry,
             @Qualifier("duelInviteRateLimiter") TokenBucketRateLimiter<UUID> inviteRateLimiter,
             Clock clock,
-            BlockLookup blockLookup) {
+            BlockLookup blockLookup,
+            MatchAbilityGuaranteeService guaranteeService) {
         this.currentUserService = currentUserService;
         this.userRepository = userRepository;
         this.duelInviteRepository = duelInviteRepository;
@@ -64,6 +67,33 @@ public class DuelInviteService {
         this.inviteRateLimiter = inviteRateLimiter;
         this.clock = clock;
         this.blockLookup = blockLookup;
+        this.guaranteeService = guaranteeService == null
+                ? new MatchAbilityGuaranteeService()
+                : guaranteeService;
+    }
+
+    /** Compatibility constructor for focused service tests. */
+    public DuelInviteService(
+            CurrentUserService currentUserService,
+            UserRepository userRepository,
+            DuelInviteRepository duelInviteRepository,
+            MatchService matchService,
+            MatchmakingService matchmakingService,
+            SingleUserWebSocketSessionRegistry socketSessionRegistry,
+            TokenBucketRateLimiter<UUID> inviteRateLimiter,
+            Clock clock,
+            BlockLookup blockLookup) {
+        this(
+                currentUserService,
+                userRepository,
+                duelInviteRepository,
+                matchService,
+                matchmakingService,
+                socketSessionRegistry,
+                inviteRateLimiter,
+                clock,
+                blockLookup,
+                new MatchAbilityGuaranteeService());
     }
 
     public DuelInviteService(
@@ -181,12 +211,14 @@ public class DuelInviteService {
                         inviter.getId(),
                         inviter.getUsername(),
                         inviter.getEmail(),
-                        inviterSocketSessionId),
+                        inviterSocketSessionId)
+                        .withGuaranteedAbilities(guaranteeService.forUser(inviter.getId())),
                 new MatchEntrant(
                         invitee.getId(),
                         invitee.getUsername(),
                         inviteePrincipalName,
-                        inviteeSocketSessionId),
+                        inviteeSocketSessionId)
+                        .withGuaranteedAbilities(guaranteeService.forUser(invitee.getId())),
                 MatchMode.CUSTOM);
         UUID matchId = events.stream()
                 .map(OutboundMatchmakingEvent::event)

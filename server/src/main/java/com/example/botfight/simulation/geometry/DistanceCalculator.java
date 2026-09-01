@@ -76,7 +76,84 @@ public final class DistanceCalculator {
         return new MovingCircleCollision(distance <= collisionRadius, true, distance);
     }
 
+    /**
+     * Resolves a moving, direction-aligned rectangle against a moving circle.
+     * The target radius expands both local rectangle axes, which keeps the
+     * collider deterministic and intentionally simple for arena gameplay.
+     */
+    public static MovingCircleCollision movingRectangleCollision(
+            double firstStartX, double firstStartY, double firstEndX, double firstEndY,
+            double firstWidth, double firstHeight, double firstRotation,
+            double secondStartX, double secondStartY, double secondEndX, double secondEndY,
+            double secondRadius) {
+        double width = Math.max(0, finiteOrZero(firstWidth));
+        double height = Math.max(0, finiteOrZero(firstHeight));
+        double radius = Math.max(0, finiteOrZero(secondRadius));
+        double rotation = Double.isFinite(firstRotation) ? firstRotation : 0;
+        double cos = Math.cos(rotation);
+        double sin = Math.sin(rotation);
+        double[] relativeStart = toLocalPoint(
+                secondStartX - firstStartX, secondStartY - firstStartY, cos, sin);
+        double[] relativeEnd = toLocalPoint(
+                secondEndX - firstEndX, secondEndY - firstEndY, cos, sin);
+        double halfWidth = width / 2.0 + radius;
+        double halfHeight = height / 2.0 + radius;
+        double distance = movingCirclesDistance(firstStartX, firstStartY, firstEndX, firstEndY,
+                secondStartX, secondStartY, secondEndX, secondEndY);
+        if (insideRectangle(relativeEnd[0], relativeEnd[1], halfWidth, halfHeight)) {
+            return new MovingCircleCollision(true, false, distance);
+        }
+        return new MovingCircleCollision(
+                segmentIntersectsRectangle(relativeStart[0], relativeStart[1], relativeEnd[0], relativeEnd[1],
+                        halfWidth, halfHeight),
+                true,
+                distance);
+    }
+
     public record MovingCircleCollision(boolean hit, boolean swept, double distance) {}
+
+    private static double[] toLocalPoint(double x, double y, double cos, double sin) {
+        return new double[]{x * cos + y * sin, -x * sin + y * cos};
+    }
+
+    private static boolean insideRectangle(double x, double y, double halfWidth, double halfHeight) {
+        return Math.abs(x) <= halfWidth && Math.abs(y) <= halfHeight;
+    }
+
+    private static boolean segmentIntersectsRectangle(
+            double startX, double startY, double endX, double endY,
+            double halfWidth, double halfHeight) {
+        if (insideRectangle(startX, startY, halfWidth, halfHeight)) return true;
+        double minimum = 0;
+        double maximum = 1;
+        double[] origins = {startX, startY};
+        double[] deltas = {endX - startX, endY - startY};
+        double[] extents = {halfWidth, halfHeight};
+        for (int index = 0; index < origins.length; index++) {
+            double origin = origins[index];
+            double delta = deltas[index];
+            double extent = extents[index];
+            if (Math.abs(delta) <= 1e-12) {
+                if (origin < -extent || origin > extent) return false;
+                continue;
+            }
+            double near = (-extent - origin) / delta;
+            double far = (extent - origin) / delta;
+            if (near > far) {
+                double swap = near;
+                near = far;
+                far = swap;
+            }
+            minimum = Math.max(minimum, near);
+            maximum = Math.min(maximum, far);
+            if (minimum > maximum) return false;
+        }
+        return maximum >= 0 && minimum <= 1;
+    }
+
+    private static double finiteOrZero(double value) {
+        return Double.isFinite(value) ? value : 0;
+    }
 
     /** Returns whether two line segments come within the supplied distance. */
     public static boolean segmentsWithinDistance(

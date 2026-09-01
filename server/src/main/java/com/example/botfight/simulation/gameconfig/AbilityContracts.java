@@ -11,18 +11,24 @@ public final class AbilityContracts {
     public enum EffectType { DAMAGE, HEALING, KNOCKBACK, PULL, DEBUFF, BUFF, INTERRUPT, MOVEMENT, TELEPORT,
         RESTORE_STATE, DAMAGE_REDUCTION, DAMAGE_IMMUNITY, DAMAGE_REFLECTION, SPAWN_ENTITY }
     public enum DeliveryType { SELF, MELEE, RAY, PROJECTILE, RADIAL, ZONE, TRAP, SUMMON }
+    public enum HitboxGeometry { ARC, RECTANGLE }
     public enum ShieldMode { BLOCK, IGNORE, DRAIN_WHILE_ACTIVE }
     public enum ChargeCost { ONE, ALL, DISTANCE_SCALED }
 
     public record Effect(EffectType type, String subtype, double amount, int durationMs, boolean runtimeComputed,
-                         String recipient, boolean requiresConfirmedDamage, boolean mirrorsDamage) {
-        public Effect(EffectType type) { this(type, null, 0, 0, false, null, false, false); }
+                         String recipient, boolean requiresConfirmedDamage, boolean mirrorsDamage,
+                         String distanceMode) {
+        public Effect(EffectType type) { this(type, null, 0, 0, false, null, false, false, null); }
         public Effect(EffectType type, String subtype, double amount, int durationMs, boolean runtimeComputed) {
-            this(type, subtype, amount, durationMs, runtimeComputed, null, false, false);
+            this(type, subtype, amount, durationMs, runtimeComputed, null, false, false, null);
         }
         public Effect(EffectType type, String subtype, double amount, int durationMs, boolean runtimeComputed,
                       String recipient, boolean requiresConfirmedDamage) {
-            this(type, subtype, amount, durationMs, runtimeComputed, recipient, requiresConfirmedDamage, false);
+            this(type, subtype, amount, durationMs, runtimeComputed, recipient, requiresConfirmedDamage, false, null);
+        }
+        public Effect(EffectType type, String subtype, double amount, int durationMs, boolean runtimeComputed,
+                      String recipient, boolean requiresConfirmedDamage, boolean mirrorsDamage) {
+            this(type, subtype, amount, durationMs, runtimeComputed, recipient, requiresConfirmedDamage, mirrorsDamage, null);
         }
     }
     public record ShieldInteraction(ShieldMode mode, double halfArcDegrees, ChargeCost chargeCost,
@@ -34,21 +40,31 @@ public final class AbilityContracts {
     public record Execution(String targetMode, boolean captureAtActivation,
                              boolean faceTargetFromPayload, String phaseFacingDefault,
                              Movement movement, String blockedByStatus,
-                             boolean ignoresGlobalAbilityLock) {
+                             boolean ignoresGlobalAbilityLock,
+                             boolean teleportOncePerActivation) {
         public Execution(String targetMode, boolean captureAtActivation,
                          boolean faceTargetFromPayload, String phaseFacingDefault,
                          Movement movement) {
             this(targetMode, captureAtActivation, faceTargetFromPayload,
-                    phaseFacingDefault, movement, null, false);
+                    phaseFacingDefault, movement, null, false, false);
         }
         public Execution(String targetMode, boolean captureAtActivation,
                          boolean faceTargetFromPayload, String phaseFacingDefault,
                          Movement movement, String blockedByStatus) {
             this(targetMode, captureAtActivation, faceTargetFromPayload,
-                    phaseFacingDefault, movement, blockedByStatus, false);
+                    phaseFacingDefault, movement, blockedByStatus, false, false);
+        }
+        public Execution(String targetMode, boolean captureAtActivation,
+                         boolean faceTargetFromPayload, String phaseFacingDefault,
+                         Movement movement, String blockedByStatus,
+                         boolean ignoresGlobalAbilityLock) {
+            this(targetMode, captureAtActivation, faceTargetFromPayload,
+                    phaseFacingDefault, movement, blockedByStatus,
+                    ignoresGlobalAbilityLock, false);
         }
     }
-    public record AbilityContract(DeliveryType delivery, boolean includeTargetRadius,
+    public record AbilityContract(DeliveryType delivery, HitboxGeometry hitboxGeometry,
+                                  boolean includeTargetRadius,
                                   List<Effect> effects, ShieldInteraction shieldInteraction,
                                   Execution execution) {}
 
@@ -61,9 +77,9 @@ public final class AbilityContracts {
                     execution(null, true, false, null, null), computed(EffectType.DAMAGE)),
             entry(4, DeliveryType.PROJECTILE, IGNORE, computed(EffectType.DAMAGE), spawn("grenade")),
             entry(5, DeliveryType.PROJECTILE, IGNORE, effect(EffectType.DAMAGE, 15), debuff("burn", 2, Abilities.statusDurationMs(5, "burn", 5000)), spawn("fireball")),
-            entry(6, DeliveryType.MELEE, true, IGNORE, effect(EffectType.DAMAGE, 5), debuff("stun", 0, Abilities.statusDurationMs(6, "stun", 1200))),
+            entry(6, DeliveryType.MELEE, true, IGNORE, effect(EffectType.DAMAGE, 10), debuff("stun", 0, Abilities.statusDurationMs(6, "stun", 1200))),
             entry(7, DeliveryType.MELEE, true, IGNORE, effect(EffectType.DAMAGE, 30), debuff("bleed", 2, Abilities.statusDurationMs(7, "bleed", 5000))),
-            entry(8, DeliveryType.RADIAL, IGNORE, effect(EffectType.DAMAGE, 20), effect(EffectType.KNOCKBACK, 250)),
+            entry(8, DeliveryType.RADIAL, true, IGNORE, effect(EffectType.DAMAGE, 20), effect(EffectType.KNOCKBACK, 250)),
             entry(9, DeliveryType.RAY, IGNORE, effect(EffectType.DAMAGE, 20), debuff("slow", 0, Abilities.statusDurationMs(9, "slow", 1000))),
             entry(10, DeliveryType.SELF, IGNORE, effect(EffectType.HEALING, 25)),
             entry(11, DeliveryType.TRAP, IGNORE, effect(EffectType.DAMAGE, 25), spawn("proximity_mine")),
@@ -76,17 +92,20 @@ public final class AbilityContracts {
             entry(16, DeliveryType.SELF, IGNORE,
                     timed(EffectType.DAMAGE_REDUCTION, .5, Abilities.statusDurationMs(16, "damage_reduction", 4000)),
                     timed(EffectType.DAMAGE_REFLECTION, .5, Abilities.statusDurationMs(16, "damage_reflection", 4000))),
-            entry(17, DeliveryType.SUMMON, IGNORE, effect(EffectType.DAMAGE, 3), spawn("hunter_drone")),
-            entry(18, DeliveryType.PROJECTILE, IGNORE, effect(EffectType.DAMAGE, 15), effect(EffectType.KNOCKBACK, 150), spawn("windburst_projectile")),
+            entry(17, DeliveryType.SUMMON, IGNORE, effect(EffectType.DAMAGE, 5), spawn("hunter_drone")),
+            entry(18, DeliveryType.PROJECTILE, IGNORE, effect(EffectType.DAMAGE, Abilities.definition(18).damage()),
+                    effect(EffectType.KNOCKBACK, Abilities.stat(18, "knockback", 0)), spawn("windburst_projectile")),
             entry(19, DeliveryType.SELF, IGNORE, execution("slow", new Movement("distance", "stepDistance", "activeMs", "trailMs")), effect(EffectType.MOVEMENT, 150)),
             entry(20, DeliveryType.SELF, IGNORE, execution("target", false, true, null, null)),
             entry(21, DeliveryType.SELF, IGNORE, timed(EffectType.RESTORE_STATE, 3000), spawn("temporal_rewind_zone")),
             entry(22, DeliveryType.ZONE, IGNORE, effect(EffectType.DAMAGE, 15), spawn("orbital_zone")),
             entry(23, DeliveryType.SELF, IGNORE, timed(EffectType.DAMAGE_IMMUNITY, 1, Abilities.statusDurationMs(23, "damage_immunity", 1500))),
             entry(24, DeliveryType.ZONE, IGNORE, debuff("silence", 0, 0), spawn("null_zone")),
-            entry(25, DeliveryType.MELEE, IGNORE, execution(null, false, false, "face_target", null), effect(EffectType.TELEPORT, 50), effect(EffectType.DAMAGE, 14)),
-            entry(26, DeliveryType.RADIAL, IGNORE,
-                    effect(EffectType.DAMAGE, 10), debuff("slow", 0, Abilities.statusDurationMs(26, "slow", 1_500)), effect(EffectType.KNOCKBACK, 60)),
+            entry(25, DeliveryType.MELEE, HitboxGeometry.RECTANGLE, true, IGNORE,
+                    execution(null, true, false, "0", null, true),
+                    teleportByCenterDistance(), effect(EffectType.DAMAGE, 15)),
+            entry(26, DeliveryType.RADIAL, true, IGNORE,
+                    effect(EffectType.DAMAGE, 15), debuff("slow", 0, Abilities.statusDurationMs(26, "slow", 1_500)), effect(EffectType.KNOCKBACK, 60)),
             entry(27, DeliveryType.ZONE, IGNORE,
                     effect(EffectType.PULL, Abilities.stat(27, "pullPerTick", 10)), computed(EffectType.DAMAGE), spawn("singularity_zone")),
             entry(28, DeliveryType.PROJECTILE, IGNORE,
@@ -98,13 +117,13 @@ public final class AbilityContracts {
             entry(30, DeliveryType.RAY, IGNORE,
                     effect(EffectType.DAMAGE, 15), timed(EffectType.INTERRUPT, 250), debuff("slow", 0, Abilities.statusDurationMs(30, "slow", 2_000))),
             entry(31, DeliveryType.SUMMON, IGNORE,
-                    effect(EffectType.DAMAGE, 2), effect(EffectType.KNOCKBACK, 35), spawn("repeller_drone")),
+                    effect(EffectType.DAMAGE, 3), effect(EffectType.KNOCKBACK, 40), spawn("repeller_drone")),
             entry(32, DeliveryType.RAY, IGNORE,
                     computed(EffectType.DAMAGE), lifesteal("source")),
             entry(33, DeliveryType.SELF, IGNORE,
                     buff("overclock", .5, Abilities.statusDurationMs(33, "overclock", 4_000))),
             entry(34, DeliveryType.MELEE, true, IGNORE,
-                    effect(EffectType.DAMAGE, 5))
+                    effect(EffectType.DAMAGE, 8))
     );
     private static final Set<Integer> ACTIONS = CATALOG.keySet();
 
@@ -157,10 +176,24 @@ public final class AbilityContracts {
         return entry(id, delivery, false, shield, execution, effects);
     }
     private static Map.Entry<Integer, AbilityContract> entry(int id, DeliveryType delivery,
+                                                              HitboxGeometry hitboxGeometry,
+                                                              ShieldInteraction shield, Execution execution,
+                                                              Effect... effects) {
+        return entry(id, delivery, hitboxGeometry, false, shield, execution, effects);
+    }
+    private static Map.Entry<Integer, AbilityContract> entry(int id, DeliveryType delivery,
+                                                              HitboxGeometry hitboxGeometry,
                                                               boolean includeTargetRadius,
                                                               ShieldInteraction shield, Execution execution,
                                                               Effect... effects) {
-        return Map.entry(id, new AbilityContract(delivery, includeTargetRadius,
+        return Map.entry(id, new AbilityContract(delivery, hitboxGeometry, includeTargetRadius,
+                List.of(effects), shield, execution));
+    }
+    private static Map.Entry<Integer, AbilityContract> entry(int id, DeliveryType delivery,
+                                                              boolean includeTargetRadius,
+                                                              ShieldInteraction shield, Execution execution,
+                                                              Effect... effects) {
+        return Map.entry(id, new AbilityContract(delivery, HitboxGeometry.ARC, includeTargetRadius,
                 List.of(effects), shield, execution));
     }
     private static Execution execution(Movement movement) { return new Execution(null, false, false, null, movement); }
@@ -176,8 +209,17 @@ public final class AbilityContracts {
         return new Execution(targetMode, captureAtActivation, faceTargetFromPayload,
                 phaseFacingDefault, movement);
     }
+    private static Execution execution(String targetMode, boolean captureAtActivation,
+                                       boolean faceTargetFromPayload, String phaseFacingDefault,
+                                       Movement movement, boolean teleportOncePerActivation) {
+        return new Execution(targetMode, captureAtActivation, faceTargetFromPayload,
+                phaseFacingDefault, movement, null, false, teleportOncePerActivation);
+    }
     private static Effect effect(EffectType type) { return new Effect(type); }
     private static Effect effect(EffectType type, double amount) { return new Effect(type, null, amount, 0, false); }
+    private static Effect teleportByCenterDistance() {
+        return new Effect(EffectType.TELEPORT, null, 0, 0, false, null, false, false, "center_distance");
+    }
     private static Effect timed(EffectType type, int durationMs) { return new Effect(type, null, 0, durationMs, false); }
     private static Effect timed(EffectType type, double amount, int durationMs) { return new Effect(type, null, amount, durationMs, false); }
     private static Effect computed(EffectType type) { return new Effect(type, null, 0, 0, true); }

@@ -158,6 +158,8 @@ test("toolbar buttons share the blueprint surface, show labels, and retain the e
     assert.match(source, /onClick=\{onAutoPlayToggle\}/);
     assert.match(source, /onClick=\{onResetArenaStats\}/);
     assert.match(source, /onClick=\{onMeasurementToggle\}/);
+    assert.match(source, /onHitboxesToggle/);
+    assert.match(source, /HITBOXES ON/);
     assert.match(source, /onClick=\{onFinishMatch\}/);
     assert.match(source, /onClick=\{onSurrenderMatch\}/);
     assert.match(source, /onClick=\{onOpenPracticeConfig\}/);
@@ -166,6 +168,31 @@ test("toolbar buttons share the blueprint surface, show labels, and retain the e
     assert.match(source, /onOpenPuzzleSubmissions/);
     assert.match(source, />PREVIOUS SUBMISSIONS</);
     assert.match(readFileSync(ICON_PATH, "utf8"), /pause: <><path/);
+});
+
+test("practice loadouts save on Enter and use the shared selector and close controls", () => {
+    const arenaSource = readFileSync(ARENA_PATH, "utf8");
+    const panelSource = readFileSync(PANEL_PATH, "utf8");
+    const customVariablesSource = readFileSync(CUSTOM_VARIABLES_MODAL_PATH, "utf8");
+    const puzzleWorkspaceSource = readFileSync(PUZZLE_LOGIC_WORKSPACE_PATH, "utf8");
+    const catalogueSource = readFileSync(fileURLToPath(new URL("../../pages/catalogue/AbilityCataloguePage.jsx", import.meta.url)), "utf8");
+    const submissionsSource = readFileSync(PUZZLE_PLAY_PATH, "utf8");
+    const css = readFileSync(CSS_PATH, "utf8");
+
+    assert.match(arenaSource, /onKeyDown=\{\(event\) => \{\s*if \(event\.key !== "Enter" \|\| event\.target\.closest\?\.\("\.modal-close-button"\)\) return;\s*event\.preventDefault\(\);\s*applySandboxLoadouts\(\);/);
+    assert.match(arenaSource, /className="mt-5 flex items-center gap-2"/);
+    assert.match(arenaSource, /className="code-bot-selector__arrow code-loadout-selector__arrow">‹<\/button>/);
+    assert.match(arenaSource, /className="code-bot-selector__arrow code-loadout-selector__arrow">›<\/button>/);
+    assert.match(arenaSource, /aria-label="Close sandbox loadout editor" className="modal-close-button"/);
+    assert.match(panelSource, /aria-label="Close bot code workspace"[\s\S]*className="modal-close-button"[\s\S]*<span aria-hidden="true">×<\/span>/);
+    assert.match(customVariablesSource, /aria-label="Close custom variables" className="modal-close-button"/);
+    assert.match(puzzleWorkspaceSource, /aria-label="Close puzzle configuration"[\s\S]*className="modal-close-button"/);
+    assert.match(catalogueSource, /className="modal-close-button"/);
+    assert.match(submissionsSource, /className="modal-close-button" aria-label="Close submissions"/);
+    assert.doesNotMatch(panelSource, /code-toolbar-close|CLOSE/);
+    assert.doesNotMatch(customVariablesSource, /code-toolbar-close|CLOSE/);
+    assert.doesNotMatch(puzzleWorkspaceSource, /code-toolbar-close|CLOSE/);
+    assert.match(css, /\.code-loadout-selector__arrow \{[\s\S]*background: transparent;[\s\S]*font-size: 42px;/);
 });
 
 test("code graph nodes can be dragged from their surfaces without stealing control clicks", () => {

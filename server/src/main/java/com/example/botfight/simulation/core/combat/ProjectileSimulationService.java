@@ -12,10 +12,11 @@ import com.example.botfight.simulation.gameconfig.Abilities;
 import com.example.botfight.simulation.gameconfig.AbilityContracts;
 import com.example.botfight.simulation.gameconfig.AbilityContracts.EffectType;
 import com.example.botfight.simulation.gameconfig.HitStagger;
+import com.example.botfight.simulation.geometry.ArenaUnits;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import static com.example.botfight.simulation.geometry.DistanceCalculator.movingCircleCollision;
+import static com.example.botfight.simulation.geometry.EntityHitbox.movingAgainstCircle;
 import org.springframework.stereotype.Service;
 
 /** Advances all entities assigned to the contract-driven projectile system. */
@@ -49,8 +50,8 @@ public class ProjectileSimulationService {
                 botStateService.damageMultiplier(bot),
                 Double.NaN,
                 Double.NaN,
-                1000,
-                800);
+                ArenaUnits.WIDTH,
+                ArenaUnits.HEIGHT);
     }
 
     public ProjectileUpdate updateProjectiles(List<ArenaEntity> projectiles, List<Bot> bots, Arena arena) {
@@ -139,12 +140,7 @@ public class ProjectileSimulationService {
                             impact.sourceX(), impact.sourceY());
                 }
                 case DEBUFF -> applyDebuff(target, effect, impact, owner);
-                case INTERRUPT -> {
-                    target.preparingAbility = null;
-                    target.preparingMs = 0;
-                    BotStateService.upsertStatusEffect(target, new StatusEffectState("stun", effect.durationMs(), 0)
-                            .addEffect(new StatusEffectState.Effect("stun", "constant")));
-                }
+                case INTERRUPT -> BotStateService.applyInterrupt(target, effect.durationMs(), impact.abilityId());
                 default -> { }
             }
         }
@@ -292,12 +288,13 @@ public class ProjectileSimulationService {
     }
 
     private static ProjectileHit findMovingColliderHit(ArenaEntity previous, ArenaEntity projectile, List<Bot> bots) {
-        double projectileRadius = projectile.size() / 2.0;
         for (Bot bot : bots) {
             if (!bot.projectileHittable() || !isEnemy(projectile.ownerSlot(), bot, bots)) continue;
-            double botRadius = bot.size / 2.0;
-            var collision = movingCircleCollision(previous.x(), previous.y(), projectile.x(), projectile.y(), projectileRadius,
-                    bot.movementStartX, bot.movementStartY, bot.x, bot.y, botRadius);
+            var collision = movingAgainstCircle(
+                    projectile,
+                    previous.x(), previous.y(), projectile.x(), projectile.y(),
+                    bot.movementStartX, bot.movementStartY, bot.x, bot.y,
+                    bot.size / 2.0);
             if (collision.hit()) return new ProjectileHit(bot, collision.swept(), collision.distance());
         }
         return null;

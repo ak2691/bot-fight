@@ -1265,7 +1265,7 @@ test("right-hand ability and status variables keep their own selection metadata"
             ability: "dash",
         }], actions: [action] }] }],
     }, payload({
-        playerModel: { hp: 1, abilities: [19], abilityCooldowns: { 19: 1300 } },
+        playerModel: { hp: 1, abilities: [19], abilityCooldowns: { 19: 1800 } },
     }));
     assert.equal(abilityResult.movement?.id, "root-1-1-1");
 

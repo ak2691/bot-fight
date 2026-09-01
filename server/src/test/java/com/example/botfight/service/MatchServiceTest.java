@@ -143,6 +143,48 @@ class MatchServiceTest {
     }
 
     @Test
+    void startsLoadoutSelectionWithQueueGuarantees() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        List<OutboundMatchmakingEvent> started = service.startMatch(
+                new MatchEntrant(
+                        firstUserId,
+                        "alpha-one",
+                        "alpha-one@example.com",
+                        null,
+                        0,
+                        Map.of(1, 1, 2, 6, 3, 21)),
+                new MatchEntrant(
+                        secondUserId,
+                        "alpha-two",
+                        "alpha-two@example.com",
+                        null,
+                        0,
+                        Map.of(1, 3, 2, 8, 3, 22)));
+
+        assertThat(started)
+                .allMatch(event -> "LOADOUT_SELECT".equals(event.event().status()))
+                .allMatch(service::isCurrentEvent);
+        assertThat(Duration.between(
+                started.getFirst().event().serverNow(),
+                started.getFirst().event().loadoutSelectionEndsAt()).getSeconds())
+                .isEqualTo(62);
+
+        MatchmakingEventDTO firstStarted = started.stream()
+                .filter(event -> firstUserId.equals(event.event().player().userId()))
+                .findFirst()
+                .orElseThrow()
+                .event();
+        MatchmakingEventDTO secondStarted = started.stream()
+                .filter(event -> secondUserId.equals(event.event().player().userId()))
+                .findFirst()
+                .orElseThrow()
+                .event();
+        assertThat(firstStarted.abilityOffers()).hasSize(6).contains(1).doesNotContain(3);
+        assertThat(secondStarted.abilityOffers()).hasSize(6).contains(3).doesNotContain(1);
+    }
+
+    @Test
     void blockedTransitionInOneMatchDoesNotBlockAnotherMatch() throws Exception {
         UUID firstMatchFirstUser = UUID.randomUUID();
         UUID firstMatchSecondUser = UUID.randomUUID();

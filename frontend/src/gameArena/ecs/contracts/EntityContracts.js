@@ -60,7 +60,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
         system: ENTITY_SYSTEM_TYPES.PROJECTILE,
         spawn: { mode: "forward", rotation: "zero", padding: 2 },
         motion: { speedStat: "speed", traveled: 0 },
-        collider: { sizeStat: "size" },
+        collider: { sizeStat: "size", shape: "rectangle" },
         state: {
             stoppedMs: 0,
             damageMultiplier: contextValue("damageMultiplier", ownerStat("attackDamageMultiplier", 1)),
@@ -96,7 +96,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
         spawn: { mode: "forward", rotation: "owner", padding: 2 },
         motion: { speedStat: "speed", traveled: 0 },
         lifetime: { durationStat: "durationMs" },
-        collider: { sizeStat: "size" },
+        collider: { sizeStat: "size", shape: "rectangle" },
         state: {
             damageMultiplier: contextValue("damageMultiplier", ownerStat("attackDamageMultiplier", 1)),
         },
@@ -231,7 +231,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
         spawn: { mode: "self", rotation: "owner" },
         motion: { speedStat: "waveSpeedPerTick" },
         lifetime: { durationStat: "durationMs" },
-        collider: { sizeStat: "projectileSize" },
+        collider: { sizeStat: "projectileSize", shape: "rectangle" },
         state: { hitSlots: [] },
         behavior: Object.freeze({
             kind: "segment",
@@ -274,7 +274,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
         spawn: { mode: "forward", rotation: "owner", padding: 2 },
         motion: { speedStat: "speedPerTick", traveled: 0 },
         lifetime: { durationStat: "durationMs" },
-        collider: { sizeStat: "size", hittable: true },
+        collider: { sizeStat: "size", hittable: true, shape: "rectangle" },
         state: { damageMultiplier: contextValue("damageMultiplier", ownerStat("attackDamageMultiplier", 1)) },
         behavior: Object.freeze({
             kind: "segment",
@@ -402,7 +402,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
         spawn: { mode: "forward", rotation: "owner", padding: 2 },
         motion: { speedStat: "speedPerTick", traveled: 0 },
         lifetime: { durationStat: "durationMs" },
-        collider: { sizeStat: "size" },
+        collider: { sizeStat: "size", shape: "rectangle" },
         state: { damageMultiplier: contextValue("damageMultiplier", ownerStat("attackDamageMultiplier", 1)) },
         behavior: Object.freeze({
             kind: "segment",

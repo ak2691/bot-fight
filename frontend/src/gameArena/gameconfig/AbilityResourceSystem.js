@@ -113,6 +113,121 @@ export function setAbilityCooldownState(shape, abilityId, cooldownMs) {
     return { ...shape, abilityCooldowns: cooldowns, abilityPendingCooldownMs: pendingCooldowns };
 }
 
+/**
+ * Interrupts every bot-owned ability phase that is currently preparing or
+ * active. Ability entities are deliberately not touched: once an entity has
+ * been spawned, its own contract owns its remaining lifetime.
+ */
+export function interruptCurrentAbility(shape, options = {}) {
+    if (!shape || (shape.hp != null && Number(shape.hp) <= 0)) return shape;
+    const ids = new Set();
+    const preparingAbilityId = shape.preparingAbility == null ? null : Number(shape.preparingAbility);
+    if (Number.isFinite(preparingAbilityId) && positiveNumber(shape.preparingMs) > 0) {
+        ids.add(preparingAbilityId);
+    }
+    for (const [abilityId, activeMs] of Object.entries(shape.abilityActiveMs ?? {})) {
+        if (positiveNumber(activeMs) > 0) ids.add(Number(abilityId));
+    }
+
+    let next = shape;
+    for (const abilityId of ids) next = interruptAbility(next, abilityId, options);
+    if (next.preparingAbility != null || positiveNumber(next.preparingMs) > 0
+        || next.preparingTargetX != null || next.preparingTargetY != null) {
+        next = {
+            ...next,
+            preparingAbility: null,
+            preparingMs: 0,
+            preparingTargetX: null,
+            preparingTargetY: null,
+        };
+    }
+    return next;
+}
+
+/**
+ * Cancels one ability phase and starts the relevant recovery gate without
+ * firing its activation effects. Reloading resources remain on reload rather
+ * than also receiving a cooldown, so the two resource gates cannot overlap.
+ */
+export function interruptAbility(shape, abilityId, { cooldownMultiplier = null } = {}) {
+    const id = Number(abilityId);
+    if (!shape || !Number.isFinite(id)) return shape;
+
+    const preparing = Number(shape.preparingAbility) === id
+        && positiveNumber(shape.preparingMs) > 0;
+    const active = positiveNumber(shape.abilityActiveMs?.[id]) > 0;
+    if (!preparing && !active) return shape;
+
+    const stats = ABILITY_STATS[id] ?? {};
+    const multiplier = positiveMultiplier(cooldownMultiplier == null
+        ? 1 / Number(shape.attackSpeedMultiplier ?? 1)
+        : cooldownMultiplier);
+    let next = preparing
+        ? {
+            ...shape,
+            preparingAbility: null,
+            preparingMs: 0,
+            preparingTargetX: null,
+            preparingTargetY: null,
+        }
+        : shape;
+
+    if (active) {
+        next = {
+            ...next,
+            abilityActiveMs: { ...(next.abilityActiveMs ?? {}), [id]: 0 },
+        };
+    }
+
+    let reloadActive = isReloadingResource(next, id, stats);
+    if (preparing && !reloadActive
+        && abilityMaxChargesForShape(id, next) != null
+        && abilityChargesFor(next, id) > 0
+        && ![FIXED_RESOURCE, HP_RESOURCE].includes(stats.resourceModel)) {
+        const consumed = consumeAbilityCharges(next, id, 1, {
+            elapsedMs: 0,
+            cooldownMultiplier: multiplier,
+        });
+        if (consumed.consumed) {
+            next = consumed.shape;
+            reloadActive = isReloadingResource(next, id, stats);
+        }
+    }
+
+    if (reloadActive) {
+        const cooldowns = { ...(next.abilityCooldowns ?? {}), [id]: 0 };
+        const pendingCooldowns = { ...(next.abilityPendingCooldownMs ?? {}) };
+        delete pendingCooldowns[id];
+        next = { ...next, abilityCooldowns: cooldowns, abilityPendingCooldownMs: pendingCooldowns };
+    } else {
+        const configuredCooldownMs = Math.round(
+            Number(stats.cooldownMs ?? stats.reuseCooldownMs ?? 1000)
+            * multiplier * cooldownStartMultiplier(next),
+        );
+        next = setAbilityCooldownState(next, id, configuredCooldownMs);
+    }
+
+    if (active && abilityContract(id)?.execution?.movement) {
+        next = {
+            ...next,
+            dashActiveMs: 0,
+            dashRemaining: 0,
+            movementVelocityX: 0,
+            movementVelocityY: 0,
+            velocityX: 0,
+            velocityY: 0,
+        };
+    }
+    return next;
+}
+
+function isReloadingResource(shape, abilityId, stats) {
+    const resource = abilityResourceFor(shape, abilityId, stats);
+    return stats.resourceModel === RELOAD_RESOURCE
+        && resource.charges === 0
+        && resource.rechargeMs > 0;
+}
+
 /** Returns true when a different non-bypass ability is active or still preparing. */
 export function anotherAbilityActive(shape, abilityId, ignoresGlobalAbilityLock = abilityIgnoresGlobalLock(abilityId)) {
     if (ignoresGlobalAbilityLock) return false;

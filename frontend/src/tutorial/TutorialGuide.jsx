@@ -285,7 +285,7 @@ const LESSONS = [
         title: "How the game works",
         objective: "Learn the rules",
         details: [
-            "Each round gives you a selection of abilities. In Round 1, you get 6 abilities and choose 3. In round 2, you get 4 abilities and choose 2. In round 3, you get 3 abilities and choose 1.",
+            "Each round gives you a selection of abilities. You can optionally set one Guaranteed Offer for each round before queueing; that ability is added to its round's offer pool. In Round 1, you get 6 abilities and choose 3. In round 2, you get 4 abilities and choose 2. In round 3, you get 3 abilities and choose 1.",
             "The safe zone shrinks every 15 seconds. Each shrink lasts 5 seconds, and the closing zone deals damage.",
             "You have 5 minutes to build your bot in 1v1s, 6 minutes for 2v2s.",
             "To start playing, click queue match on the home page.",

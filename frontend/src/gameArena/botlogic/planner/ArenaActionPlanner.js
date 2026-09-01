@@ -42,7 +42,7 @@ export function buildDeterministicLogicAction(configuration, stateSnapshot) {
             targetY: specialTarget?.y ?? abilityBlock.targetY,
             ...(abilityBlock.movementMode ? { movementMode: abilityBlock.movementMode } : {}),
             ...(abilityBlock.movementDirection != null ? { movementDirection: abilityBlock.movementDirection } : {}),
-            ...(abilityBlock.phaseFacingMode ? { phaseFacingMode: abilityBlock.phaseFacingMode } : {}),
+            ...(abilityBlock.phaseFacingMode != null ? { phaseFacingMode: abilityBlock.phaseFacingMode } : {}),
         } : null,
         customVariables: { ...(plan.customVariables ?? state.player.customVariables ?? {}) },
     };

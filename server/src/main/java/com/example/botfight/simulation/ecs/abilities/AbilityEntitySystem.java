@@ -2,7 +2,8 @@ package com.example.botfight.simulation.ecs.abilities;
 
 import static com.example.botfight.simulation.geometry.DistanceCalculator.movingCirclesDistance;
 import static com.example.botfight.simulation.geometry.DistanceCalculator.movingCirclesIntersect;
-import static com.example.botfight.simulation.geometry.DistanceCalculator.movingCircleCollision;
+import static com.example.botfight.simulation.geometry.EntityHitbox.movingCollision;
+import static com.example.botfight.simulation.geometry.EntityHitbox.movingAgainstCircle;
 
 import com.example.botfight.simulation.gameconfig.Abilities;
 import com.example.botfight.simulation.gameconfig.AbilityContracts;
@@ -176,7 +177,7 @@ public final class AbilityEntitySystem {
                     entry.entity().x() - entry.entity().velocityX(), entry.entity().y() - entry.entity().velocityY(),
                     entry.entity().x(), entry.entity().y(), 0,
                     bot.entityMovementStartX(), bot.entityMovementStartY(), bot.entityX(), bot.entityY(),
-                    phaseStat(entry.contract().abilityId(), phase, trigger.radiusStat(), 0)));
+                    phaseStat(entry.contract().abilityId(), phase, trigger.radiusStat(), 0) + bot.entitySize() / 2.0));
             boolean armedExpired = phase != null
                     ? entry.entity().ageMs() >= Abilities.durationMs(entry.contract().abilityId())
                     : entry.entity().armed() && entry.entity().timerMs() >= stat(entry.contract().abilityId(), trigger.lifetimeStat(), Double.MAX_VALUE);
@@ -262,8 +263,8 @@ public final class AbilityEntitySystem {
                 .map(bot -> new HitCandidate<>(bot,
                         movingCirclesDistance(entity.x(), entity.y(), nextX, nextY,
                                 bot.entityMovementStartX(), bot.entityMovementStartY(), bot.entityX(), bot.entityY())))
-                .filter(candidate -> movingCircleCollision(entity.x(), entity.y(), nextX, nextY,
-                        entity.size() / 2.0,
+                .filter(candidate -> movingAgainstCircle(
+                        entity, entity.x(), entity.y(), nextX, nextY,
                         candidate.bot().entityMovementStartX(), candidate.bot().entityMovementStartY(),
                         candidate.bot().entityX(), candidate.bot().entityY(), candidate.bot().entitySize() / 2.0).hit())
                 .sorted(Comparator.comparingDouble(HitCandidate::distance))
@@ -600,7 +601,8 @@ public final class AbilityEntitySystem {
                 effect.runtimeComputed(),
                 effect.recipient(),
                 effect.requiresConfirmedDamage(),
-                effect.mirrorsDamage());
+                effect.mirrorsDamage(),
+                effect.distanceMode());
     }
 
     private static ArenaEntity advanceTravel(ArenaEntity entity, EntityContracts.EntityContract contract,
@@ -776,13 +778,16 @@ public final class AbilityEntitySystem {
     private static boolean withinRadius(AbilityEntityBot bot, ArenaEntity source, double radius) {
         return movingCirclesIntersect(
                 source.x(), source.y(), source.x(), source.y(), radius,
-                bot.entityMovementStartX(), bot.entityMovementStartY(), bot.entityX(), bot.entityY(), 0);
+                bot.entityMovementStartX(), bot.entityMovementStartY(), bot.entityX(), bot.entityY(), bot.entitySize() / 2.0);
     }
 
     private static boolean overlaps(ArenaEntity first, ArenaEntity second) {
-        return movingCirclesIntersect(
-                first.x() - first.velocityX(), first.y() - first.velocityY(), first.x(), first.y(), first.size() / 2.0,
-                second.x() - second.velocityX(), second.y() - second.velocityY(), second.x(), second.y(), second.size() / 2.0);
+        return movingCollision(
+                first,
+                first.x() - first.velocityX(), first.y() - first.velocityY(), first.x(), first.y(),
+                second,
+                second.x() - second.velocityX(), second.y() - second.velocityY(), second.x(), second.y(),
+                0).hit();
     }
 
     private static boolean rayIntersectsCircle(double x, double y, double dx, double dy,

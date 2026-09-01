@@ -4,6 +4,8 @@ import com.example.botfight.domain.MatchMode;
 
 /** Centralized round-duration policy shared by match creation and custom lobbies. */
 public final class MatchTimingPolicy {
+    public static final int LOADOUT_SELECTION_SECONDS = 60;
+    public static final int SUBMISSION_GRACE_SECONDS = 2;
     public static final int ONES_ROUND_SECONDS = 5 * 60;
     public static final int TWOS_ROUND_SECONDS = 6 * 60;
     public static final int DEFAULT_CUSTOM_ROUND_SECONDS = ONES_ROUND_SECONDS;

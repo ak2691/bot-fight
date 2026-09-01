@@ -1405,6 +1405,29 @@ button {
   opacity: 0.35;
 }
 
+.code-loadout-selector__arrow {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #a8adb3;
+  font-size: 42px;
+  font-weight: 300;
+  line-height: .8;
+}
+
+.code-loadout-selector__arrow:hover:not(:disabled) {
+  background: transparent;
+  color: #f6f8fa;
+  transform: scale(1.08);
+}
+
+.code-loadout-selector__arrow:disabled {
+  background: transparent;
+}
+
 .code-bot-selector__current {
   display: flex;
   min-width: 0;
@@ -1517,22 +1540,6 @@ button {
   text-align: center;
   text-overflow: clip;
   white-space: nowrap;
-}
-
-.code-workspace .code-toolbar-close:hover {
-  border-color: #d48c91;
-}
-
-.code-workspace .code-toolbar-close {
-  width: auto;
-  flex: none;
-  padding: 0 15px;
-  font-size: 11px;
-}
-
-.code-workspace .code-toolbar-close > :first-child {
-  font-size: 19px;
-  font-weight: 300;
 }
 
 .code-board {
@@ -2300,14 +2307,6 @@ button {
     padding-left: 8px;
   }
 
-  .code-workspace .code-toolbar-close {
-    width: 44px;
-    padding: 0;
-  }
-
-  .code-toolbar-close-label {
-    display: none;
-  }
 }
 
 /* Final semantic overrides for the Blueprint Combat theme. */
@@ -3504,16 +3503,6 @@ button {
   max-height: calc(100dvh - 1rem);
 }
 
-.code-custom-variables-dialog .code-toolbar-close {
-  width: 36px;
-  min-width: 36px;
-  padding: 0;
-}
-
-.code-custom-variables-dialog .code-toolbar-close-label {
-  display: none;
-}
-
 /* At this point the toolbar changes as a unit with the browser window. Tabs
    stay left of the compact zoom/close controls, with the editor tools below. */
 @media (max-width: 1350px) {
@@ -3584,20 +3573,6 @@ button {
     font-size: clamp(7px, .75vw, 9px);
   }
 
-  .code-workspace .code-toolbar-close {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    width: 36px;
-    min-width: 36px;
-    height: 34px;
-    flex: 0 0 36px;
-    padding: 0;
-  }
-
-  .code-toolbar-close-label {
-    display: none;
-  }
 }
 
 @media (max-width: 900px) {
@@ -3714,13 +3689,6 @@ button {
 
   .code-toolbar-icon {
     font-size: 11px;
-  }
-
-  .code-workspace .code-toolbar-close {
-    width: 34px;
-    min-width: 34px;
-    height: 32px;
-    flex-basis: 34px;
   }
 
 }

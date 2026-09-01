@@ -87,7 +87,7 @@ test("new catalogue artwork uses shape-aware layouts", () => {
     const styles = readFileSync(INDEX_CSS_PATH, "utf8");
     assert.deepEqual(ABILITY_CATALOGUE_ICON_LAYOUTS, {
         tether_bolt: "wide",
-        siphon_lance: "wide",
+        vampiric_beam: "wide",
         disruptor_dart: "wide",
         static_snare: "square",
         overclock: "square",

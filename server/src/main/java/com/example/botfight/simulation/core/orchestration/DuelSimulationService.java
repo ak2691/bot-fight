@@ -378,7 +378,7 @@ public class DuelSimulationService {
     }
 
     private Action predictAction(Bot player, Bot opponent, List<Entity> entities, Arena arena) {
-        if (player.hp <= 0) return new Action(0, 0, 0, null, 500, 400, null, null, null);
+        if (player.hp <= 0) return new Action(0, 0, 0, null, ARENA_WIDTH_UNITS / 2.0, ARENA_HEIGHT_UNITS / 2.0, null, null, null);
         ActionPlan plan = selectStrategyActionPlan(player, opponent, entities, arena);
         StrategyBlock movementBlock = plan.movement;
         StrategyBlock facingBlock = plan.rotation;
@@ -405,8 +405,8 @@ public class DuelSimulationService {
                             ? turnTowardAngle(player, facingBlock.targetAngle())
                             : turnTowardTarget(player, facingTarget) : 0.0,
                 actionExecutionService.configuredAbilityAction(plan.ability),
-                abilityTarget != null ? abilityTarget.x() : plan.ability != null ? plan.ability.targetX : 500,
-                abilityTarget != null ? abilityTarget.y() : plan.ability != null ? plan.ability.targetY : 400,
+                abilityTarget != null ? abilityTarget.x() : plan.ability != null ? plan.ability.targetX : ARENA_WIDTH_UNITS / 2.0,
+                abilityTarget != null ? abilityTarget.y() : plan.ability != null ? plan.ability.targetY : ARENA_HEIGHT_UNITS / 2.0,
                 plan.ability != null ? plan.ability.movementMode() : null,
                 plan.ability != null ? plan.ability.movementDirection() : null,
                 plan.ability != null ? plan.ability.phaseFacingMode() : null);
@@ -508,7 +508,7 @@ public class DuelSimulationService {
                 remainingActions[0] -= cost;
             }
             if (blocks.isEmpty()) {
-                blocks = List.of(new StrategyBlock(index, BotLogicContracts.ACTION_NONE, BotLogicContracts.SELECTABLE_OPPONENT, 0, 0, "target", 500, 400, null, null, null, null, 1, ConditionResolutionService.normalizeConditions(field(branch, "conditions"))));
+                blocks = List.of(new StrategyBlock(index, BotLogicContracts.ACTION_NONE, BotLogicContracts.SELECTABLE_OPPONENT, 0, 0, "target", ARENA_WIDTH_UNITS / 2.0, ARENA_HEIGHT_UNITS / 2.0, null, null, null, null, 1, ConditionResolutionService.normalizeConditions(field(branch, "conditions"))));
             }
             String branchType = index == 0 ? "if" : "else".equals(textValue(field(branch, "branchType"), "if")) ? "else" : "if";
             if ("else".equals(branchType)) {
@@ -546,11 +546,11 @@ public class DuelSimulationService {
                                 : clamp(numberValue(field(actionNode, "targetOffsetX"), 0), -ARENA_WIDTH_UNITS, ARENA_WIDTH_UNITS),
                         clamp(numberValue(field(actionNode, "targetOffsetY"), 0), -ARENA_HEIGHT_UNITS, ARENA_HEIGHT_UNITS),
                         normalizeActionTargetMode(action, actionNode),
-                        clamp(numberValue(field(actionNode, "targetX"), 500), 0, ARENA_WIDTH_UNITS),
-                        clamp(numberValue(field(actionNode, "targetY"), 400), 0, ARENA_HEIGHT_UNITS),
+                        clamp(numberValue(field(actionNode, "targetX"), ARENA_WIDTH_UNITS / 2.0), 0, ARENA_WIDTH_UNITS),
+                        clamp(numberValue(field(actionNode, "targetY"), ARENA_HEIGHT_UNITS / 2.0), 0, ARENA_HEIGHT_UNITS),
                         textValue(field(actionNode, "movementMode"), null),
                         BotLogicContracts.ACTION_VARIABLE.equals(action) ? textValue(field(actionNode, "operation"), "set") : movementDirectionValue(field(actionNode, "movementDirection"), null),
-                        BotLogicContracts.ACTION_VARIABLE.equals(action) ? textValue(field(actionNode, "variableId"), "") : textValue(field(actionNode, "phaseFacingMode"), null),
+                        BotLogicContracts.ACTION_VARIABLE.equals(action) ? textValue(field(actionNode, "variableId"), "") : movementDirectionValue(field(actionNode, "phaseFacingMode"), null),
                         BotLogicContracts.ACTION_VARIABLE.equals(action) ? firstNonNull(field(actionNode, "operand"), field(actionNode, "terms")) : null,
                         actionPriority(branch),
                         ConditionResolutionService.normalizeConditions(field(branch, "conditions")),
@@ -607,11 +607,13 @@ public class DuelSimulationService {
                         : clamp(numberValue(field(block, "targetOffsetX"), 0), -ARENA_WIDTH_UNITS, ARENA_WIDTH_UNITS),
                 clamp(numberValue(field(block, "targetOffsetY"), 0), -ARENA_HEIGHT_UNITS, ARENA_HEIGHT_UNITS),
                 normalizeActionTargetMode(action, block),
-                clamp(numberValue(field(block, "targetX"), 500), 0, ARENA_WIDTH_UNITS),
-                clamp(numberValue(field(block, "targetY"), 400), 0, ARENA_HEIGHT_UNITS),
+                clamp(numberValue(field(block, "targetX"), ARENA_WIDTH_UNITS / 2.0), 0, ARENA_WIDTH_UNITS),
+                clamp(numberValue(field(block, "targetY"), ARENA_HEIGHT_UNITS / 2.0), 0, ARENA_HEIGHT_UNITS),
                 textValue(field(block, "movementMode"), null),
                 movementDirectionValue(field(block, "movementDirection"), null),
-                textValue(field(block, "phaseFacingMode"), null),
+                BotLogicContracts.ACTION_VARIABLE.equals(action)
+                        ? textValue(field(block, "phaseFacingMode"), null)
+                        : movementDirectionValue(field(block, "phaseFacingMode"), null),
                 BotLogicContracts.ACTION_VARIABLE.equals(action) ? firstNonNull(field(block, "operand"), field(block, "terms")) : null,
                 actionPriority(block),
                 ConditionResolutionService.normalizeConditions(field(block, "conditions")),
@@ -675,11 +677,6 @@ public class DuelSimulationService {
                         return botStateService.resolveShield(bot, sourceX, sourceY, abilityId);
                     }
                 });
-    }
-
-    private static boolean overlapsShape(Entity first, Entity second, double padding) {
-        return Math.hypot(first.x() - second.x(), first.y() - second.y())
-                <= ((first.size()) + second.size()) / 2.0 + padding;
     }
 
     private static SelectableSnapshot selectableSnapshot(ArenaEntity entity) {
@@ -1083,7 +1080,9 @@ public class DuelSimulationService {
                     new StatusEffectState("stun", durationMs, 0)
                             .addEffect(new StatusEffectState.Effect("stun", "constant")));
         }
-        @Override public void cancelPreparation() { if (!ignoresHostileEffects()) { preparingAbility = null; preparingMs = 0; } }
+        @Override public void applyInterrupt(int durationMs) {
+            BotStateService.applyInterrupt(this, durationMs, null);
+        }
     }
 
     public record SelectableSnapshot(

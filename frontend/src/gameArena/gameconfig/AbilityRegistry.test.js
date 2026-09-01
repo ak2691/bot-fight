@@ -20,6 +20,9 @@ test("ability identities are stable numeric keys independent of array position",
     assert.equal(abilityIdFromLegacyName("gun"), 3);
     assert.equal(abilityIdentity(3), ABILITIES[3]);
     assert.equal(abilityName(3), "gun");
+    assert.equal(ABILITIES[32].name, "vampiric_beam");
+    assert.equal(ABILITIES[32].label, "Vampiric Beam");
+    assert.equal(abilityIdFromLegacyName("retired_beam"), null);
 });
 
 test("numeric identity owns tuning and contracts", () => {
@@ -27,9 +30,15 @@ test("numeric identity owns tuning and contracts", () => {
     assert.equal(ABILITY_STATS[3].activeMs, 500);
     assert.equal(ABILITY_STATS[3].cooldownMs, 1000);
     assert.equal(ABILITY_STATS[3].reloadMs, 5000);
-    assert.equal(ABILITY_STATS[34].damage, 5);
+    assert.equal(ABILITY_STATS[34].damage, 8);
     assert.equal(ABILITY_STATS[34].range, 80);
-    assert.equal(ABILITY_STATS[34].arcDegrees, 60);
+    assert.equal(ABILITY_STATS[34].arcDegrees, 30);
+    assert.equal(ABILITY_STATS[19].cooldownMs, 1800);
+    assert.equal(ABILITY_STATS[25].hitboxWidth, 60);
+    assert.equal(ABILITY_CONTRACTS[25].delivery.geometry, "rectangle");
+    assert.equal(ABILITY_CONTRACTS[25].delivery.includeTargetRadius, true);
+    assert.equal(ABILITY_CONTRACTS[25].effects[0].distanceMode, "center_distance");
+    assert.equal(ABILITY_CONTRACTS[25].execution.teleportOncePerActivation, true);
     assert.equal(abilityStats(3), ABILITY_STATS[3]);
     assert.equal(abilityContract(3), ABILITY_CONTRACTS[3]);
     assert.equal(ABILITY_STATS[3], abilityStats(3));
@@ -48,9 +57,12 @@ test("requested combat tuning is represented in the browser catalog", () => {
     assert.equal(ABILITY_STATS[10].healing, 25);
     assert.equal(ABILITY_STATS[11].damage, 25);
     assert.equal(ABILITY_STATS[11].throwRange, 176);
+    assert.equal(ABILITY_STATS[6].damage, 10);
+    assert.equal(ABILITY_STATS[17].damage, 5);
     assert.equal(ABILITY_STATS[18].cooldownMs, 7000);
     assert.equal(ABILITY_STATS[18].windupMs, 300);
-    assert.equal(ABILITY_STATS[18].knockback, 150);
+    assert.equal(ABILITY_STATS[18].damage, 20);
+    assert.equal(ABILITY_STATS[18].knockback, 200);
     assert.equal(ABILITY_STATS[22].windupMs, 500);
     assert.equal(ABILITY_STATS[22].activeMs, 0);
     assert.equal(ABILITY_STATS[22].durationMs, 1500);
@@ -59,9 +71,15 @@ test("requested combat tuning is represented in the browser catalog", () => {
     assert.equal(ABILITY_STATS[27].pullPerTick, 10);
     assert.equal(ABILITY_STATS[28].pullPerTick, 100);
     assert.equal(ABILITY_STATS[24].activeMs, 300);
+    assert.equal(ABILITY_STATS[24].windupMs, 1000);
+    assert.equal(ABILITY_STATS[25].damage, 15);
+    assert.equal(ABILITY_STATS[26].damage, 15);
     assert.equal(ABILITY_STATS[30].cooldownMs, 8000);
+    assert.equal(ABILITY_STATS[30].windupMs, 200);
     assert.equal(ABILITY_STATS[30].damage, 15);
     assert.equal(ABILITY_STATS[30].statuses.slow.durationMs, 2000);
+    assert.equal(ABILITY_STATS[31].damage, 3);
+    assert.equal(ABILITY_STATS[31].knockback, 40);
     assert.equal(ABILITY_STATS[32].cooldownMs, 10000);
     assert.equal(ABILITY_STATS[32].windupMs, 300);
 });

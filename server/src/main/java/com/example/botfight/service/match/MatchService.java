@@ -138,7 +138,7 @@ public class MatchService {
                 matchPersistenceService,
                 matchChatService,
                 runtimeState.initialLoadoutSelectionStartedMatchIds(),
-                matchLoadoutService::abilityOffers,
+                matchLoadoutService::abilityOffersForPlayer,
                 this::roundBrainsForPlayer,
                 this::previousRoundWon);
         this.matchSubmissionService = new MatchSubmissionService(

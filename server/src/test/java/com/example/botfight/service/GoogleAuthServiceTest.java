@@ -1,11 +1,13 @@
 package com.example.botfight.service;
 
 import com.example.botfight.service.auth.AuthService;
+import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.service.auth.GoogleAuthService;
 import com.example.botfight.service.auth.UserAuthIdentityService;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
@@ -118,6 +120,22 @@ class GoogleAuthServiceTest {
                 "pilot@example.com",
                 true);
         verify(authService).authenticateSession(existing, request);
+    }
+
+    @Test
+    void reportsInvalidCredentialsWhenPendingGoogleLinkPasswordIsWrong() {
+        AppUser existing = user("pilot", "pilot@example.com", passwordEncoder.encode("password123"));
+        when(userRepository.findByNormalizedEmail("pilot@example.com")).thenReturn(Optional.of(existing));
+        service.loginOrPrepareLink(googleUser, request);
+        when(userRepository.findById(existing.getId())).thenReturn(Optional.of(existing));
+
+        GoogleLinkRequestDTO linkRequest = new GoogleLinkRequestDTO();
+        linkRequest.setEmail("pilot@example.com");
+        linkRequest.setPassword("wrong-password");
+
+        assertThatThrownBy(() -> service.completePendingLink(linkRequest, request))
+                .isInstanceOf(AuthException.class)
+                .hasMessage("invalid email or password");
     }
 
     @Test

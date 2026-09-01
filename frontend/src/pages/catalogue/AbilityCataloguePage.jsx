@@ -160,7 +160,7 @@ export function AbilityModal({ ability, onClose, onTestAbility = null }) {
                             type="button"
                             onClick={onClose}
                             aria-label={`Close ${ability.label} details`}
-                            className="gray-button-surface modal-close-button"
+                            className="modal-close-button"
                         >
                             <span aria-hidden="true">×</span>
                         </button>

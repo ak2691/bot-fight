@@ -904,10 +904,10 @@ class BotSubmissionValidationServiceTest {
         payload.setBrain(jsonMapper.readTree("""
                 {"version":"bot-logic-tree-v1","roots":[{"branches":[{"branchType":"if",
                   "conditions":[{"type":"expression","left":"selectable.distance",
-                    "targetMode":"coordinates","targetX":1001,"targetY":200,"comparator":"lt","right":{"type":"number","value":300}}],
+                    "targetMode":"coordinates","targetX":1201,"targetY":200,"comparator":"lt","right":{"type":"number","value":300}}],
                   "actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"children":[]}]}]}
                 """));
-        assertThat(service.validate(payload).getErrors()).anyMatch(error -> error.contains("targetX must be a number from 0 to 1000"));
+        assertThat(service.validate(payload).getErrors()).anyMatch(error -> error.contains("targetX must be a number from 0 to 1200"));
     }
 
     @Test

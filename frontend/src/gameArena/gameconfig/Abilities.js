@@ -38,9 +38,9 @@ const ABILITY_STATS_BY_ID = Object.freeze({
             burn: { durationMs: 5000, intervalMs: 1000 },
         },
     },
-    18: { cooldownMs: 7000, windupMs: 300, visualMs: 500, damage: 15, range: fixedStepRange(44, 500), knockback: 150, projectile: true, size: 24, speedPerTick: 44, durationMs: 500 },
-    19: { cooldownMs: 1300, distance: 150, activeMs: 200, durationMs: 200, speedPerTick: 75, trailMs: 300 },
-    25: { cooldownMs: 1500, visualMs: 300, damage: 14, range: 100, arcDegrees: 90, passThroughDistance: 50 },
+    18: { cooldownMs: 7000, windupMs: 300, visualMs: 500, damage: 20, range: fixedStepRange(44, 500), knockback: 200, projectile: true, size: 24, speedPerTick: 44, durationMs: 500 },
+    19: { cooldownMs: 1800, distance: 150, activeMs: 200, durationMs: 200, speedPerTick: 75, trailMs: 300 },
+    25: { cooldownMs: 1500, visualMs: 300, damage: 15, range: 100, hitboxWidth: 60 },
     20: { cooldownMs: 9_800, windupMs: 200, activeMs: 200 },
     4: {
         activationModel: "immediate",
@@ -69,7 +69,7 @@ const ABILITY_STATS_BY_ID = Object.freeze({
         damageFalloffEnd: 333.33,
         range: 500,
     },
-    6: { activationModel: "immediate", cooldownMs: 9600, windupMs: 400, damage: 5, durationMs: 1200, arcDegrees: 100, range: 184, statuses: { stun: { durationMs: 1200 } } },
+    6: { activationModel: "immediate", cooldownMs: 9600, windupMs: 400, damage: 10, durationMs: 1200, arcDegrees: 100, range: 184, statuses: { stun: { durationMs: 1200 } } },
     7: { cooldownMs: 4600, windupMs: 300, visualMs: 400, damage: 30, range: 115, arcDegrees: 150, bleedDamage: 2, statuses: { bleed: { durationMs: 5000, intervalMs: 1000 } } },
     8: { cooldownMs: 10000, visualMs: 500, damage: 20, radius: 110, knockback: 250 },
     9: { cooldownMs: 6700, windupMs: 500, visualMs: 300, damage: 20, statuses: { slow: { durationMs: 1000 } }, range: 500, projectile: true },
@@ -108,7 +108,7 @@ const ABILITY_STATS_BY_ID = Object.freeze({
     },
     15: { cooldownMs: 10000, windupMs: 1000, activeMs: 2000, durationMs: 1200, statuses: { silence: { durationMs: 2000 } }, interruptMs: 100, waveSpeedPerTick: 150, projectileSize: 225 },
     16: { cooldownMs: 9000, windupMs: 500, activeMs: 0, durationMs: 4000, statuses: { damage_reduction: { durationMs: 4000 }, damage_reflection: { durationMs: 4000 } }, visualDurationMs: 300 },
-    17: { cooldownMs: 8000, activeMs: 300, entity: "hunter_drone", durationMs: 6000, hp: 50, size: 28, moveSpeed: 4.5, range: 200, shotCooldownMs: 1000, shotVisualMs: 300, turnStepDegrees: 8, damage: 3 },
+    17: { cooldownMs: 8000, activeMs: 300, entity: "hunter_drone", durationMs: 6000, hp: 50, size: 28, moveSpeed: 4.5, range: 200, shotCooldownMs: 1000, shotVisualMs: 300, turnStepDegrees: 8, damage: 5 },
     21: { cooldownMs: 18000, activeMs: 300, delayMs: 3000, intervalMs: 400, zoneSize: 90, durationMs: 3100 },
     22: {
         cooldownMs: 18000,
@@ -123,8 +123,8 @@ const ABILITY_STATS_BY_ID = Object.freeze({
         explosionVisibleMs: 400,
     },
     23: { cooldownMs: 15500, windupMs: 500, activeMs: 0, durationMs: 1500, statuses: { damage_immunity: { durationMs: 1500 } }, visualDurationMs: 300 },
-    24: { cooldownMs: 13000, windupMs: 1500, activeMs: 300, entity: "null_zone", durationMs: 5000, radius: 150, zoneSize: 300 },
-    26: { cooldownMs: 8700, visualMs: 300, damage: 10, radius: 120, statuses: { slow: { durationMs: 1500 } }, knockback: 60 },
+    24: { cooldownMs: 13000, windupMs: 1000, activeMs: 300, entity: "null_zone", durationMs: 5000, radius: 150, zoneSize: 300 },
+    26: { cooldownMs: 8700, visualMs: 300, damage: 15, radius: 120, statuses: { slow: { durationMs: 1500 } }, knockback: 60 },
     27: {
         cooldownMs: 18000,
         activeMs: 300,
@@ -179,7 +179,7 @@ const ABILITY_STATS_BY_ID = Object.freeze({
     },
     30: {
         cooldownMs: 8000,
-        windupMs: 300,
+        windupMs: 200,
         visualMs: 300,
         damage: 15,
         interruptMs: 250,
@@ -198,8 +198,8 @@ const ABILITY_STATS_BY_ID = Object.freeze({
         shotCooldownMs: 1000,
         shotVisualMs: 300,
         turnStepDegrees: 8,
-        damage: 2,
-        knockback: 35,
+        damage: 3,
+        knockback: 40,
     },
     32: {
         cooldownMs: 10000,
@@ -226,9 +226,9 @@ const ABILITY_STATS_BY_ID = Object.freeze({
         cooldownMs: 500,
         activeMs: 200,
         visualMs: 200,
-        damage: 5,
+        damage: 8,
         range: 80,
-        arcDegrees: 60,
+        arcDegrees: 30,
     },
 });
 

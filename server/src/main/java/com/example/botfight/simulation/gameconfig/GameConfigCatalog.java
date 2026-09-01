@@ -9,7 +9,7 @@ import java.util.Set;
 public class GameConfigCatalog {
     public static final List<Integer> STANDARD_ABILITY_ORDER = List.of(19, 20, 34);
     public static final Set<Integer> STANDARD_ABILITIES = Set.copyOf(STANDARD_ABILITY_ORDER);
-    private static final GameConfig DUEL_V1 = new GameConfig("duel-v1", 150, 8);
+    private static final GameConfig DUEL_V1 = new GameConfig("duel-v1", 150, 15);
     public GameConfig duelV1() {
         return DUEL_V1;
     }

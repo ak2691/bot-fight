@@ -1,7 +1,8 @@
 import { ABILITY_STATS } from "../../gameconfig/Abilities.js";
 import { abilityContract, EFFECT_TYPES } from "../../gameconfig/AbilityContracts.js";
 import { applyDebuff, damageAtDistance } from "./AbilityEffectSystem.js";
-import { clamp, movingCircleCollision, movingCirclesIntersect } from "../../gameconfig/geometry.js";
+import { clamp } from "../../gameconfig/geometry.js";
+import { movingEntityCollision } from "../../gameconfig/hitboxGeometry.js";
 import { resolveShieldInteraction } from "../../gameconfig/ShieldSystem.js";
 import { ignoresHostileEffects, isProjectileHittable } from "../../gameconfig/DefensiveState.js";
 import { applyEntityDamage } from "../entities/EntityCombat.js";
@@ -57,32 +58,31 @@ export function tickProjectileWorld(world, combat) {
 export function overlapsEntity(first, second, padding = 0) {
     const firstPath = entityMovementSegment(first);
     const secondPath = entityMovementSegment(second);
-    return movingCirclesIntersect(
+    return movingEntityCollision(
+        first,
         firstPath.start,
         firstPath.end,
-        Number(first.size ?? 60) / 2 + Number(padding),
+        second,
         secondPath.start,
         secondPath.end,
-        Number(second.size ?? 0) / 2,
-    );
+        padding,
+    ).hit;
 }
 
 function findMovingColliderHit(previous, projectile, bots, world) {
     const projectileStart = { x: Number(previous.x), y: Number(previous.y) };
     const projectileEnd = { x: Number(projectile.x), y: Number(projectile.y) };
-    const projectileRadius = Number(projectile.size ?? 0) / 2;
     for (let index = 0; index < bots.length; index += 1) {
         const bot = bots[index];
         if (!isProjectileHittable(bot) || !isEnemyProjectileTarget(projectile, bot, bots)) continue;
-        const botRadius = Number(bot.size ?? 60) / 2;
         const botPath = botMovementSegment(bot, world.stepMs);
-        const collision = movingCircleCollision(
+        const collision = movingEntityCollision(
+            projectile,
             projectileStart,
             projectileEnd,
-            projectileRadius,
+            bot,
             botPath.start,
             botPath.end,
-            botRadius,
         );
         if (collision.hit) return { index, ...collision };
     }

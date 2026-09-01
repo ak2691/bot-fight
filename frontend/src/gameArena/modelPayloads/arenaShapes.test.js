@@ -22,18 +22,18 @@ test("bot arena shapes group health, stats, transform, and statuses", () => {
     const [player, opponent] = buildInitialArenaShapes(null);
 
     assert.deepEqual(player.health, { current: 150, max: 150 });
-    assert.deepEqual(player.transform.position, { x: 500, y: 500 });
+    assert.deepEqual(player.transform.position, { x: 600, y: 600 });
     assert.deepEqual(player.transform.velocity, { x: 0, y: 0 });
     assert.deepEqual(player.statusEffects, []);
     assert.equal(player.hp, undefined);
     assert.equal(player.x, undefined);
     assert.equal(opponent.health.current, 150);
-    assert.deepEqual(opponent.transform.position, { x: 500, y: 850 });
+    assert.deepEqual(opponent.transform.position, { x: 600, y: 1050 });
 });
 
 test("practice defaults use the game-facing bottom player and top opponent slots", () => {
-    assert.deepEqual(PRACTICE_PLAYER_START, { x: 500, y: 850, rotation: 0 });
-    assert.deepEqual(PRACTICE_OPPONENT_START, { x: 500, y: 150, rotation: 180 });
+    assert.deepEqual(PRACTICE_PLAYER_START, { x: 600, y: 1050, rotation: 0 });
+    assert.deepEqual(PRACTICE_OPPONENT_START, { x: 600, y: 150, rotation: 180 });
 });
 
 test("tutorial reset includes the three standard abilities without Block charges", () => {
@@ -63,10 +63,10 @@ test("match spawn shapes assign stable slots and spread each team across its row
         ["bot-user-4", 4, 2],
     ]);
     assert.deepEqual(shapes.map((shape) => [shape.x, shape.y, shape.rotation]), [
-        [1000 / 3, 150, 180],
-        [2000 / 3, 150, 180],
-        [1000 / 3, 850, 0],
-        [2000 / 3, 850, 0],
+        [400, 150, 180],
+        [800, 150, 180],
+        [400, 1050, 0],
+        [800, 1050, 0],
     ]);
     assert.deepEqual(shapes.map((shape) => shape.locked), [false, true, true, true]);
     assert.deepEqual(shapes.map((shape) => shape.isCurrentUser), [true, false, false, false]);

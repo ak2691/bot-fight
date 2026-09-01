@@ -2,6 +2,7 @@ import { compassDirection } from "../../botlogic/planner/arenaAngles.js";
 import { ABILITY_STATS } from "../../gameconfig/Abilities.js";
 import { abilityContract } from "../../gameconfig/AbilityContracts.js";
 import { abilityId as resolveAbilityId } from "../../gameconfig/AbilityRegistry.js";
+import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
 import { ENTITY_FACTORY_TYPES, entityContract, entityContractForAbility } from "../contracts/EntityContracts.js";
 import { selectableIdentitiesForAbilityEntity } from "../../modelPayloads/selectableIdentities.js";
 
@@ -179,8 +180,8 @@ function buildTransform(bot, spawn, size, context) {
         const radius = spawn.clampToRadiusStat
             ? Number(resolveValue({ stat: spawn.clampToRadiusStat, fallback: 0 }, { bot, stats: context.stats ?? {}, context }))
             : 0;
-        const width = Number(context.width ?? 1000);
-        const height = Number(context.height ?? 800);
+        const width = Number(context.width ?? ARENA_WIDTH_UNITS);
+        const height = Number(context.height ?? ARENA_HEIGHT_UNITS);
         const targetX = context.targetX ?? resolveTargetDefault(spawn.defaultX, bot.x);
         const targetY = context.targetY ?? resolveTargetDefault(spawn.defaultY, bot.y);
         return {

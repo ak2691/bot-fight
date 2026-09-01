@@ -53,7 +53,7 @@ public final class AbilityRegistry {
         register(names, 29, "static_snare");
         register(names, 30, "disruptor_dart");
         register(names, 31, "repeller_drone");
-        register(names, 32, "siphon_lance");
+        register(names, 32, "vampiric_beam");
         register(names, 33, "overclock");
         register(names, 34, "basic_strike");
         return Map.copyOf(names);

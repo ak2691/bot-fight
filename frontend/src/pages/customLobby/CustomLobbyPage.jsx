@@ -8,6 +8,7 @@ import { apiUrl } from "../../config/api";
 import { ensureCsrfHeaders } from "../../security/csrf";
 import { useMatchmaking } from "../../matchmaking/matchmaking-context";
 import CustomLobbyChat from "./CustomLobbyChat.jsx";
+import QueueAbilityGuaranteePicker from "../queue/QueueAbilityGuaranteePicker.jsx";
 
 const TEAM_NONE = 0;
 const BLUE_TEAM = 1;
@@ -140,7 +141,14 @@ export default function CustomLobbyPage() {
     const navigate = useNavigate();
     const location = useLocation();
     const { user } = useAuth();
-    const { customLobbyEvent, markActiveMatch, sendCustomLobbyChat } = useMatchmaking();
+    const {
+        customLobbyEvent,
+        markActiveMatch,
+        sendCustomLobbyChat,
+        queueGuarantees,
+        updateQueueGuarantee,
+        waitForQueueGuarantees,
+    } = useMatchmaking();
     const [lobby, setLobby] = useState(null);
     const [loadState, setLoadState] = useState("loading");
     const [error, setError] = useState(null);
@@ -418,7 +426,12 @@ export default function CustomLobbyPage() {
         if (!lobby?.lobbyId || !canStart || action !== null) return;
         const result = await performAction(
             "start",
-            () => customLobbyRequest(`/api/custom-lobbies/${encodeURIComponent(lobby.lobbyId)}/start`, { method: "POST" }),
+            async () => {
+                if (!await waitForQueueGuarantees()) {
+                    throw new Error("Guaranteed offers could not be saved. Try again before starting.");
+                }
+                return customLobbyRequest(`/api/custom-lobbies/${encodeURIComponent(lobby.lobbyId)}/start`, { method: "POST" });
+            },
             null,
             false,
         );
@@ -480,6 +493,14 @@ export default function CustomLobbyPage() {
                         </div>
                     )}
                 </header>
+
+                {lobby && (
+                    <QueueAbilityGuaranteePicker
+                        values={queueGuarantees}
+                        onChange={updateQueueGuarantee}
+                        disabled={action === "start"}
+                    />
+                )}
 
                 {loadState === "loading" && <div className="mt-10 border border-slate-800 bg-[#07111b] px-6 py-12 text-center font-mono text-xs tracking-widest text-slate-500">LOADING LOBBY...</div>}
                 {loadState === "error" && (

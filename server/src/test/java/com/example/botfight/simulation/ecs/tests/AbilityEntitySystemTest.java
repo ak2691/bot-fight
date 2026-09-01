@@ -293,7 +293,7 @@ class AbilityEntitySystemTest {
             assertThat(entity.hp()).isEqualTo(50);
             assertThat(entity.x()).isEqualTo(104.5);
         });
-        assertThat(target.hp).isEqualTo(98);
+        assertThat(target.hp).isEqualTo(97);
         assertThat(target.x).isGreaterThan(180);
     }
 
@@ -316,9 +316,9 @@ class AbilityEntitySystemTest {
         List<ArenaEntity> hit = AbilityEntitySystem.tick(
                 List.of(projectile), List.of(owner, target), new ArenaBounds(1000, 800), 100, combat);
         assertThat(hit).isEmpty();
-        assertThat(combat.damage).isEqualTo(15);
-        assertThat(target.hp).isEqualTo(85);
-        assertThat(target.x).isEqualTo(360);
+        assertThat(combat.damage).isEqualTo(20);
+        assertThat(target.hp).isEqualTo(80);
+        assertThat(target.x).isEqualTo(410);
     }
 
     @Test
@@ -338,31 +338,34 @@ class AbilityEntitySystemTest {
     }
 
     @Test
-    void gravityZonePullUsesCenterRadiusAtExactBoundaryAndExcludesOuterEdgeOverlap() {
+    void gravityZonePullIncludesBotEdgeAtExactBoundaryAndExcludesJustBeyondIt() {
         ArenaBounds arena = new ArenaBounds(1000, 800);
         ArenaEntity gravity = new ArenaEntity("gravity", "gravityZone", 1, 100, 100,
                 240, 0, 0, 0, 1000, true, 0, 0, 1.0, 14, Set.of(), 0, 0).withAgeMs(2_000);
 
-        TestCombatant exactBoundary = new TestCombatant(2, 220, 100, 60, 100);
+        TestCombatant exactBoundary = new TestCombatant(2, 270, 120, 60, 100);
         AbilityEntitySystem.tick(List.of(gravity), List.of(exactBoundary), arena, 100, noDamageCombat());
-        assertThat(exactBoundary.x).isBetween(213.9, 214.2);
+        assertThat(exactBoundary.x).isBetween(263.9, 264.2);
+        assertThat(exactBoundary.y).isEqualTo(120);
 
-        TestCombatant justOutside = new TestCombatant(2, 250, 100, 60, 100);
+        TestCombatant justOutside = new TestCombatant(2, 270.1, 120, 60, 100);
         AbilityEntitySystem.tick(List.of(gravity), List.of(justOutside), arena, 100, noDamageCombat());
-        assertThat(justOutside.x).isEqualTo(250);
+        assertThat(justOutside.x).isEqualTo(270.1);
+        assertThat(justOutside.y).isEqualTo(120);
     }
 
     @Test
-    void gravityZoneDetonationUsesCenterRadiusAtExactBoundaryAndExcludesOuterEdgeOverlap() {
+    void gravityZoneDetonationIncludesBotEdgeAtExactBoundaryAndExcludesJustBeyondIt() {
         ArenaBounds arena = new ArenaBounds(1000, 800);
         ArenaEntity gravity = new ArenaEntity("gravity", "gravityZone", 1, 100, 100,
                 240, 0, 0, 0, 2_000, true, 0, 0, 1.0, 14, Set.of(), 0, 2_900).withAgeMs(5_000);
 
-        TestCombatant exactBoundary = new TestCombatant(2, 220, 100, 60, 100);
-        TestCombatant justOutside = new TestCombatant(2, 220.1, 100, 60, 100);
-        AbilityEntitySystem.tick(List.of(gravity), List.of(exactBoundary, justOutside), arena, 100, damageCombat());
+        TestCombatant exactBoundary = new TestCombatant(2, 250, 100, 60, 100);
+        TestCombatant justOutside = new TestCombatant(2, 250.1, 100, 60, 100);
+        RecordingCombat combat = new RecordingCombat(false);
+        AbilityEntitySystem.tick(List.of(gravity), List.of(exactBoundary, justOutside), arena, 100, combat);
 
-        assertThat(exactBoundary.hp).isEqualTo(80);
+        assertThat(combat.damageCalls).isEqualTo(1);
         assertThat(justOutside.hp).isEqualTo(100);
     }
 
@@ -415,15 +418,15 @@ class AbilityEntitySystemTest {
     }
 
     @Test
-    void nullZoneUsesCenterRadiusAtExactBoundaryAndExcludesOuterEdgeOverlap() {
+    void nullZoneIncludesBotEdgeAtExactBoundaryAndExcludesJustBeyondIt() {
         ArenaBounds arena = new ArenaBounds(1000, 800);
 
-        TestCombatant exactBoundary = new TestCombatant(2, 450, 300, 60, 100);
+        TestCombatant exactBoundary = new TestCombatant(2, 480, 300, 60, 100);
         AbilityEntitySystem.tick(List.of(createEntity("zone-exact", 24, 300, 300, 0)),
                 List.of(exactBoundary), arena, 100, noDamageCombat());
         assertThat(exactBoundary.zoneSilenced).isTrue();
 
-        TestCombatant justOutside = new TestCombatant(2, 450.1, 300, 60, 100);
+        TestCombatant justOutside = new TestCombatant(2, 480.1, 300, 60, 100);
         AbilityEntitySystem.tick(List.of(createEntity("zone-outside", 24, 300, 300, 0)),
                 List.of(justOutside), arena, 100, noDamageCombat());
         assertThat(justOutside.zoneSilenced).isFalse();
@@ -513,7 +516,7 @@ class AbilityEntitySystemTest {
         assertThat(droneCombat.blocks).singleElement().satisfies(request -> {
             assertThat(request.abilityId()).isEqualTo(17);
         });
-        assertThat(droneCombat.damage).isEqualTo(3);
+        assertThat(droneCombat.damage).isEqualTo(5);
         assertThat(droneEntities).singleElement().satisfies(updatedDrone ->
                 assertThat(updatedDrone.shotVisualMs()).isEqualTo(300));
 
@@ -525,17 +528,27 @@ class AbilityEntitySystemTest {
     }
 
     @Test
-    void radialEffectsUseBotCenterDistanceInsteadOfOuterEdgeOverlap() {
-        TestCombatant target = new TestCombatant(2, 240, 100, 60, 100);
-        RecordingCombat combat = new RecordingCombat(false);
+    void radialEffectsIncludeBotEdgeContactAndExcludeAJustOutsideBot() {
         ArenaBounds arena = new ArenaBounds(1000, 800);
-        ArenaEntity mine = new ArenaEntity("mine", "proximityMine", 1, 100, 100, 24, 0, 0, 176, 500, true);
+        TestCombatant orbitalTarget = new TestCombatant(2, 260, 100, 60, 100);
+        RecordingCombat orbitalCombat = new RecordingCombat(false);
         ArenaEntity orbital = new ArenaEntity("orbital", "orbitalMarker", 1, 100, 100, 260, 0, 0, 0, 100, true);
+        AbilityEntitySystem.tick(List.of(orbital), List.of(orbitalTarget), arena, 100, orbitalCombat);
+        assertThat(orbitalCombat.damage).isEqualTo(15);
+        assertThat(orbitalTarget.hp).isEqualTo(85);
 
-        AbilityEntitySystem.tick(List.of(mine, orbital), List.of(target), arena, 100, combat);
+        TestCombatant mineTarget = new TestCombatant(2, 217.5, 100, 60, 100);
+        RecordingCombat mineCombat = new RecordingCombat(false);
+        ArenaEntity mine = new ArenaEntity("mine", "proximityMine", 1, 100, 100, 24, 0, 0, 176, 500, true);
+        AbilityEntitySystem.tick(List.of(mine), List.of(mineTarget), arena, 100, mineCombat);
+        assertThat(mineCombat.damage).isEqualTo(25);
+        assertThat(mineTarget.hp).isEqualTo(75);
 
-        assertThat(combat.damage).isZero();
-        assertThat(combat.blocks).isEmpty();
+        TestCombatant outsideTarget = new TestCombatant(2, 217.6, 100, 60, 100);
+        RecordingCombat outsideCombat = new RecordingCombat(false);
+        AbilityEntitySystem.tick(List.of(mine), List.of(outsideTarget), arena, 100, outsideCombat);
+        assertThat(outsideCombat.damage).isZero();
+        assertThat(outsideTarget.hp).isEqualTo(100);
     }
 
     @Test
@@ -599,11 +612,12 @@ class AbilityEntitySystemTest {
         private final boolean entityHit;
         private final List<BlockRequest> blocks = new ArrayList<>();
         private double damage;
+        private int damageCalls;
         private int drainCalls;
 
         private RecordingCombat(boolean entityHit) { this.entityHit = entityHit; }
         @Override public void damage(TestCombatant bot, double amount) { damage += amount; }
-        @Override public void damageFromOwner(List<TestCombatant> bots, int ownerSlot, TestCombatant target, double amount, double sourceX, double sourceY) { damage += amount; target.hp -= amount; }
+        @Override public void damageFromOwner(List<TestCombatant> bots, int ownerSlot, TestCombatant target, double amount, double sourceX, double sourceY) { damageCalls += 1; damage += amount; target.hp -= amount; }
         @Override public int damageToEntity(ArenaEntity entity, List<TestCombatant> bots, List<ArenaEntity> entities) { return 0; }
         @Override public boolean entityHitByCurrentAttack(ArenaEntity entity, List<TestCombatant> bots, List<ArenaEntity> entities) { return entityHit; }
         @Override public AbilityEntitySystem.ShieldResult shield(TestCombatant bot, double sourceX, double sourceY, int abilityId) {
@@ -649,6 +663,6 @@ class AbilityEntitySystemTest {
         @Override public void applySlow(int durationMs) { slowedMs = Math.max(slowedMs, durationMs); }
         @Override public void setZoneSilenced(boolean silenced) { zoneSilenced = silenced; }
         @Override public void applyStun(int durationMs) { stunMs = Math.max(stunMs, durationMs); }
-        @Override public void cancelPreparation() {}
+        @Override public void applyInterrupt(int durationMs) { if (durationMs > 0) applyStun(durationMs); }
     }
 }

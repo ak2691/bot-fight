@@ -225,7 +225,7 @@ class DuelSimulationServiceTest {
                         """)),
                 bot("bot-2", "Two", 2, 700, 400, idleBrain)));
 
-        assertThat(result.frames().getFirst().bots().getFirst().x() - 100).isEqualTo(-4.0);
+        assertThat(result.frames().getFirst().bots().getFirst().x() - 100).isEqualTo(-7.5);
     }
 
     @Test
@@ -240,7 +240,7 @@ class DuelSimulationServiceTest {
                         """)),
                 bot("bot-2", "Two", 2, 700, 400, idleBrain)));
 
-        assertThat(result.frames().getFirst().bots().getFirst().x() - 100).isEqualTo(-4.0);
+        assertThat(result.frames().getFirst().bots().getFirst().x() - 100).isEqualTo(-7.5);
     }
 
     @Test
@@ -694,7 +694,7 @@ class DuelSimulationServiceTest {
                         """)),
                 bot("bot-2", "Two", 2, 700, 400, idleBrain)));
 
-        assertThat(result.frames().getFirst().bots().getFirst().x() - 100).isEqualTo(4.0);
+        assertThat(result.frames().getFirst().bots().getFirst().x() - 100).isEqualTo(7.5);
     }
 
     @Test
@@ -744,7 +744,26 @@ class DuelSimulationServiceTest {
         assertThat(attacker.triggeredAbility()).isEqualTo(34);
         assertThat(attacker.abilityCooldowns()).containsEntry(34, 0);
         assertThat(attacker.abilityActiveMs()).containsEntry(34, 200);
-        assertThat(defender.hp()).isEqualTo(145);
+        assertThat(defender.hp()).isEqualTo(142);
+    }
+
+    @Test
+    void phaseStrikeHitsEveryTargetFromItsActivationRectangleAndTeleportsOnce() {
+        MatchPlaybackDTO result = service.simulate(request(arena(100), List.of(
+                botWithTeamAndLoadout("phase-striker", "Phase", 1, 100, 400, 1, "custom", customBrain("[25]", """
+                        [{"conditions":[{"type":"always"}],"action":25,"phaseFacingMode":90}]
+                        """)),
+                botWithTeamAndLoadout("phase-near", "Near", 2, 160, 400, 2, "custom", idleBrain),
+                botWithTeamAndLoadout("phase-far", "Far", 3, 190, 400, 2, "custom", idleBrain),
+                botWithTeamAndLoadout("phase-edge", "Edge", 4, 230, 400, 2, "custom", idleBrain))));
+
+        var frame = result.frames().getFirst();
+        assertThat(frame.bots().get(1).hp()).isEqualTo(135);
+        assertThat(frame.bots().get(2).hp()).isEqualTo(135);
+        assertThat(frame.bots().get(3).hp()).isEqualTo(135);
+        assertThat(frame.bots().getFirst().x()).isEqualTo(220.0);
+        assertThat(frame.bots().getFirst().y()).isEqualTo(400.0);
+        assertThat(frame.bots().getFirst().rotation()).isEqualTo(180.0);
     }
 
     @Test
@@ -863,7 +882,7 @@ class DuelSimulationServiceTest {
     }
 
     @Test
-    void windBurstReplayFramesContainAuthoritativeOneHundredFiftyUnitKnockback() {
+    void windBurstReplayFramesContainAuthoritativeTwoHundredUnitKnockback() {
         JsonNode windBurstBrain = customBrain("[18]", """
                 [{"priority":1,"conditions":[{"type":"always"}],"action":18}]
                 """);
@@ -873,10 +892,10 @@ class DuelSimulationServiceTest {
                 bot("wind-target", "Target", 2, 520, 500, "custom", customBrain("[]", "[]"))));
 
         assertThat(result.frames())
-                .anySatisfy(frame -> assertThat(frame.bots().get(1).x()).isEqualTo(670.0));
+                .anySatisfy(frame -> assertThat(frame.bots().get(1).x()).isEqualTo(720.0));
         assertThat(result.frames())
-                .filteredOn(frame -> frame.bots().get(1).x() == 670.0)
-                .allSatisfy(frame -> assertThat(frame.bots().get(1).hp()).isEqualTo(135));
+                .filteredOn(frame -> frame.bots().get(1).x() == 720.0)
+                .allSatisfy(frame -> assertThat(frame.bots().get(1).hp()).isEqualTo(130));
     }
 
     @Test
@@ -949,6 +968,22 @@ class DuelSimulationServiceTest {
                 "melee",
                 brain,
                 initialHp,
+                teamNumber);
+    }
+
+    private DuelBotRequest botWithTeamAndLoadout(String id, String username, int slot, double x, double y,
+            int teamNumber, String selectedLoadout, JsonNode brain) {
+        return new DuelBotRequest(
+                UUID.nameUUIDFromBytes(id.getBytes()),
+                username,
+                slot,
+                x,
+                y,
+                teamNumber == 1 ? 90.0 : 270.0,
+                60,
+                selectedLoadout,
+                brain,
+                null,
                 teamNumber);
     }
 
@@ -1061,7 +1096,7 @@ class DuelSimulationServiceTest {
     @Test
     void selectableSpeedUsesBotMovementUnitsPerTick() {
         JsonNode readerBrain = customBrain("[1]", """
-                [{"priority":1,"conditions":[{"type":"expression","left":"selectable.speed","comparator":"gt","selectable":"opponent","right":{"type":"number","value":7}}],"action":1}]
+                [{"priority":1,"conditions":[{"type":"expression","left":"selectable.speed","comparator":"gt","selectable":"opponent","right":{"type":"number","value":14}}],"action":1}]
                 """);
         JsonNode movementBrain = customBrain("[]", """
                 [{"priority":1,"conditions":[{"type":"always"}],"action":"move_walk","movementMode":"absolute","movementDirection":90}]
@@ -1207,6 +1242,35 @@ class DuelSimulationServiceTest {
         assertThat(second.rotation()).isEqualTo(24.0);
         assertThat(second.preparingAbility()).isEqualTo(9);
         assertThat(second.preparingMs()).isEqualTo(300);
+    }
+
+    @Test
+    void disruptorDartInterruptsAnOpponentDuringWindupBeforeActivation() {
+        JsonNode disruptorBrain = customBrain("[30]", """
+                [{"priority":1,"conditions":[{"type":"always"}],"action":30}]
+                """);
+        JsonNode casterBrain = customBrain("[9]", """
+                [{"priority":1,"conditions":[{"type":"always"}],"action":9}]
+                """);
+        MatchPlaybackDTO result = service.simulate(request(
+                arena(400),
+                botWithRotation("disruptor", "Disruptor", 1, 100, 400, "custom", disruptorBrain, 90.0),
+                botWithRotation("caster", "Caster", 2, 300, 400, "custom", casterBrain, 270.0)));
+
+        var interrupted = result.frames().stream()
+                .filter(frame -> frame.elapsedMs() == 200)
+                .findFirst()
+                .orElseThrow();
+        var target = interrupted.bots().get(1);
+        assertThat(target.hp()).isEqualTo(135);
+        assertThat(target.preparingAbility()).isNull();
+        assertThat(target.preparingMs()).isZero();
+        assertThat(target.triggeredAbility()).isNull();
+        assertThat(target.abilityCooldowns()).containsEntry(9, 6_700);
+        assertThat(target.statusEffects()).anySatisfy(status ->
+                assertThat(status.type).isEqualTo("stun"));
+        assertThat(result.frames()).noneMatch(frame ->
+                Integer.valueOf(9).equals(frame.bots().get(1).triggeredAbility()));
     }
 
     @Test

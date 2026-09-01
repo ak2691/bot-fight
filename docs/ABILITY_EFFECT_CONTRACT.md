@@ -13,15 +13,27 @@ Browser contracts: `frontend/src/gameArena/gameconfig/AbilityContracts.js`. Brow
 
 ## Delivery
 
-Current types: `self`, `melee`, `ray`, `projectile`, `radial`, `zone`, `trap`, and `summon`. Delivery owns travel, collision, and target timing. It does not imply damage or interpolation. Gravity Grenade is a projectile that creates a zone; the catalogue exposes both tags. Phase Strike uses `melee` delivery with a 100-unit range and a 90-degree facing arc; its teleport is an ordered effect.
+Current types: `self`, `melee`, `ray`, `projectile`, `radial`, `zone`, `trap`, and `summon`. Delivery owns travel, collision, and target timing. It does not imply damage or interpolation. Gravity Grenade is a projectile that creates a zone; the catalogue exposes both tags. Melee delivery defaults to an arc, but a delivery may declare a separate `geometry`. Phase Strike uses `melee` delivery with a forward `rectangle` geometry: 100 units long and 60 units wide. Its teleport is an ordered effect.
 
-For melee bot hit checks, range is measured from the attacker center to the defender center plus half the defender's size, so a defender's edge can reach the attack range. Phase Strike preserves its original 100-unit center-to-center range while adding its 90-degree facing arc. The browser preview and authoritative server must use the same range and facing arc.
+For arc melee bot hit checks, `includeTargetRadius` controls whether half the defender's size is added to the configured range. Phase Strike declares the same target-radius inclusion for its 100-by-60 forward rectangle, so contact with a bot's edge counts even when its center is just outside the raw rectangle. It has no facing arc. Its rectangle is captured at activation, so movement or a teleport later in the same tick cannot move the hitbox. If it intersects multiple opposing bots, each receives the normal effects, while the teleport is consumed once by the nearest valid hit in deterministic distance order. The `center_distance` teleport mode measures the activation bot center to the hit bot center at impact, then places the attacker on the opposite side at that same center distance. Its `phaseFacingMode` is a relative degree offset from the attacker's facing at impact: `0` keeps the facing, `90` turns clockwise, and `180` reverses it.
 
-For radial blasts and persistent zones, effect range is measured from the effect center to the bot center. A bot's outer edge does not extend the blast radius; this keeps shield bearing and damage decisions anchored to the same center point. Phase Strike uses the melee edge-inclusive range rule.
+For radial blasts, persistent zones, and trap contact, the collision radius is expanded by half the moving bot's size, so contact with the bot's outer edge counts. Damage falloff and shield-distance calculations still use the center-to-center distance, so edge contact does not change the configured damage profile.
 
 Damage falloff uses a linear profile rather than a table of range bands. A profile declares `maxDamage`, `minDamage`, `damageFalloffStart`, `damageFalloffEnd`, and the overall `range` or `radius`. Damage stays at the maximum through the start distance, interpolates mathematically to the minimum at the end distance, then stays at the minimum until the hit range ends. Browser and server execution round the same calculated value.
 
 Spawning is an effect (`spawn_entity`). Target labels and capabilities remain in `BotLoadout.js` as schema/UI metadata.
+
+Entity-backed projectile and segment contracts declare their collider shape in
+`EntityContracts`. The current projectile hitboxes are direction-aligned
+squares sized by the entity collider component; the browser preview and
+authoritative server use mirrored swept square-versus-circle collision math
+against moving bots. Other entity behavior keeps its contracted circular
+collider unless it declares a different shape. Practice-mode hitbox overlays
+read this same metadata and never participate in gameplay decisions. The
+overlay also renders the captured melee-sector or rectangle, radial, and hitscan geometry
+for direct deliveries, summon shot rays, and derived visual explosions during
+their existing active or visible-ms windows. Those debug primitives are
+presentation-only; they do not create or extend a gameplay hit window.
 
 ## Effects
 
@@ -87,6 +99,12 @@ For entity-backed abilities, this action lock is independent of the entity's
 existence. The entity contract's duration/lifetime field controls how long the
 spawned entity remains in the arena, so a bot can begin another ability after
 `activeMs` expires while its summon, trap, or zone continues operating.
+
+An `interrupt` effect cancels a bot's current preparation or active phase. A
+preparation is discarded without firing its activation effects and immediately
+enters the ability's cooldown or reload gate. An active bot-owned phase is
+stopped and enters recovery; an entity that was already spawned is not removed
+or rewound because its lifecycle remains owned by the entity contract.
 
 There is one global ability lock per bot. It is derived from the bot's action
 state rather than stored as one independent boolean: the lock is held while

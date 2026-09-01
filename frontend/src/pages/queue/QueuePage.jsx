@@ -5,6 +5,7 @@ import { useAuth } from "../../auth/auth-context";
 import { apiUrl } from "../../config/api";
 import { useMatchmaking } from "../../matchmaking/matchmaking-context";
 import { MATCH_MODES, QUEUE_MODES } from "../../matchmaking/matchModes";
+import QueueAbilityGuaranteePicker from "./QueueAbilityGuaranteePicker.jsx";
 
 function formatQueueTime(elapsedSeconds) {
     const minutes = Math.floor(elapsedSeconds / 60);
@@ -65,6 +66,8 @@ export default function QueuePage() {
         queueElapsed,
         queueReconnectRemaining,
         connectionStatus,
+        queueGuarantees,
+        updateQueueGuarantee,
         startQueue,
         cancelQueue,
         party,
@@ -147,7 +150,7 @@ export default function QueuePage() {
         }
         if (modeBlocked(mode)) return;
         setSelectedMode(mode.id);
-        void startQueue(mode.id);
+        void startQueue(mode.id, queueGuarantees);
     };
 
     return (
@@ -166,6 +169,13 @@ export default function QueuePage() {
                     <p className="font-mono text-[10px] font-bold tracking-[.24em] text-cyan-400">MATCHMAKING</p>
                     <h1 className="mt-3 font-display-action text-5xl uppercase tracking-wide text-white sm:text-7xl">Choose your queue</h1>
                 </header>
+
+                <QueueAbilityGuaranteePicker
+                    key={isQueueing ? "queue-active" : "queue-idle"}
+                    values={queueGuarantees}
+                    onChange={updateQueueGuarantee}
+                    disabled={isQueueing}
+                />
 
                 <div className="mt-10 grid gap-4 md:grid-cols-2">
                     {QUEUE_MODES.map((mode) => {

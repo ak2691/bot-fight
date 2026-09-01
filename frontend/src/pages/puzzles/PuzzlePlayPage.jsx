@@ -166,7 +166,7 @@ function PuzzleSubmissionsModal({ submissions, onClose, onLoad }) {
                         <h2 id="puzzle-submissions-title" className="mt-2 text-2xl font-bold">Your submissions</h2>
                         <p className="mt-1 text-sm text-slate-400">Your latest 10 submissions for this puzzle are stored on this device.</p>
                     </div>
-                    <button type="button" onClick={onClose} className="modal-close-button gray-button-surface" aria-label="Close submissions"><span aria-hidden="true">×</span></button>
+                    <button type="button" onClick={onClose} className="modal-close-button" aria-label="Close submissions"><span aria-hidden="true">×</span></button>
                 </header>
 
                 {submissions.length > 0 ? (

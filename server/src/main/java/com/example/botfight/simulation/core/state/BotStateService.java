@@ -8,6 +8,7 @@ import com.example.botfight.simulation.gameconfig.Abilities;
 import com.example.botfight.simulation.gameconfig.GameConfig;
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import com.example.botfight.simulation.gameconfig.HitStagger;
+import com.example.botfight.simulation.gameconfig.AbilityContracts;
 import com.example.botfight.simulation.gameconfig.AbilityContracts.EffectType;
 import com.example.botfight.simulation.gameconfig.Abilities.ResourceModel;
 import java.util.HashMap;
@@ -337,8 +338,103 @@ public class BotStateService {
         setAbilityCooldown(bot, abilityId, acceleratedCooldownMs(bot, reuseMs));
     }
 
+    /**
+     * Interrupts every bot-owned preparation or active phase without removing
+     * any already-spawned ability entity. Each interrupted phase immediately
+     * enters its normal cooldown or reload gate.
+     */
+    public static boolean interruptCurrentAbility(DuelSimulationService.Bot bot) {
+        if (bot == null || bot.hp <= 0) return false;
+        Set<Integer> abilityIds = new HashSet<>();
+        if (bot.preparingAbility != null && bot.preparingMs > 0) {
+            abilityIds.add(bot.preparingAbility);
+        }
+        bot.abilityActiveMs.forEach((abilityId, activeMs) -> {
+            if (activeMs != null && activeMs > 0) abilityIds.add(abilityId);
+        });
+        boolean interrupted = false;
+        for (Integer abilityId : abilityIds) {
+            interrupted |= interruptAbility(bot, abilityId);
+        }
+        bot.preparingAbility = null;
+        bot.preparingMs = 0;
+        bot.preparingTargetX = Double.NaN;
+        bot.preparingTargetY = Double.NaN;
+        return interrupted;
+    }
+
+    /** Applies the shared interrupt state transition and its control status. */
+    public static void applyInterrupt(DuelSimulationService.Bot bot, int durationMs,
+                                      Integer sourceAbilityId) {
+        if (bot == null || bot.hp <= 0 || bot.ignoresHostileEffects()) return;
+        interruptCurrentAbility(bot);
+        StatusEffectState stun = new StatusEffectState("stun", Math.max(0, durationMs), 0)
+                .addEffect(new StatusEffectState.Effect("stun", "constant"));
+        stun.abilityId = sourceAbilityId;
+        upsertStatusEffect(bot, stun);
+        bot.movementVelocityX = 0;
+        bot.movementVelocityY = 0;
+        bot.velocityX = 0;
+        bot.velocityY = 0;
+    }
+
+    private static boolean interruptAbility(DuelSimulationService.Bot bot, int abilityId) {
+        boolean preparing = bot.preparingAbility != null
+                && bot.preparingAbility == abilityId
+                && bot.preparingMs > 0;
+        boolean active = bot.abilityActiveMs.getOrDefault(abilityId, 0) > 0;
+        if (!preparing && !active) return false;
+
+        var definition = Abilities.definition(abilityId);
+        if (preparing) {
+            bot.preparingAbility = null;
+            bot.preparingMs = 0;
+            bot.preparingTargetX = Double.NaN;
+            bot.preparingTargetY = Double.NaN;
+        }
+        if (active) bot.abilityActiveMs.put(abilityId, 0);
+
+        boolean reloadActive = definition.resourceModel() == ResourceModel.RELOAD_WHEN_EMPTY
+                && abilityCharges(bot, abilityId) == 0
+                && bot.abilityRechargeMs.getOrDefault(abilityId, 0) > 0;
+        if (preparing && !reloadActive
+                && definition.charges() > 0
+                && definition.resourceModel() != ResourceModel.FIXED
+                && definition.resourceModel() != ResourceModel.HP
+                && abilityCharges(bot, abilityId) > 0) {
+            if (consumeAbilityCharges(bot, abilityId, 1)) {
+                reloadActive = definition.resourceModel() == ResourceModel.RELOAD_WHEN_EMPTY
+                        && abilityCharges(bot, abilityId) == 0
+                        && bot.abilityRechargeMs.getOrDefault(abilityId, 0) > 0;
+            }
+        }
+
+        if (reloadActive) {
+            bot.abilityCooldowns.put(abilityId, 0);
+            bot.abilityPendingCooldownMs.remove(abilityId);
+        } else {
+            double attackSpeed = bot.attackSpeedMultiplier > 0
+                    && Double.isFinite(bot.attackSpeedMultiplier) ? bot.attackSpeedMultiplier : 1.0;
+            int baseCooldown = definition.cooldownMs() > 0
+                    ? definition.cooldownMs() : definition.reuseCooldownMs();
+            int cooldownMs = (int) Math.round(baseCooldown / attackSpeed * cooldownStartMultiplier(bot));
+            setAbilityCooldown(bot, abilityId, cooldownMs);
+        }
+
+        var contract = AbilityContracts.all().get(abilityId);
+        if (active && contract != null && contract.execution().movement() != null) {
+            bot.dashActiveMs = 0;
+            bot.dashRemaining = 0;
+            bot.movementVelocityX = 0;
+            bot.movementVelocityY = 0;
+            bot.velocityX = 0;
+            bot.velocityY = 0;
+        }
+        return true;
+    }
+
     /** Sets a cooldown in the active or recovery phase without exposing both at once. */
-    public void setAbilityCooldown(DuelSimulationService.Bot bot, int abilityId, int cooldownMs) {
+    public static void setAbilityCooldown(DuelSimulationService.Bot bot, int abilityId, int cooldownMs) {
         int requested = Math.max(0, cooldownMs);
         int current = Math.max(
                 bot.abilityCooldowns.getOrDefault(abilityId, 0),
@@ -354,14 +450,14 @@ public class BotStateService {
         }
     }
 
-    private boolean consumeAbilityCharges(
+    private static boolean consumeAbilityCharges(
             DuelSimulationService.Bot bot, int abilityId, int amount) {
         var definition = Abilities.definition(abilityId);
         if (definition.charges() <= 0) return true;
         int current = bot.abilityCharges.getOrDefault(abilityId, 0);
         if (current <= 0) return false;
         int remaining = Math.max(0, current - Math.max(0, amount));
-            if (remaining == 0 && definition.resourceModel() == ResourceModel.FIXED) {
+        if (remaining == 0 && definition.resourceModel() == ResourceModel.FIXED) {
             bot.abilityCharges.remove(abilityId);
             bot.abilityRechargeMs.remove(abilityId);
             bot.abilityActiveMs.remove(abilityId);

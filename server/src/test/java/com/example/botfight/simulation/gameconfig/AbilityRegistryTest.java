@@ -18,6 +18,7 @@ class AbilityRegistryTest {
     @Test void lookupUsesPermanentMapKeyAndDoesNotDependOnPosition() {
         assertThat(AbilityRegistry.all().keySet()).doesNotContain(0);
         assertThat(AbilityRegistry.all().keySet()).doesNotContain(2);
+        assertThat(AbilityRegistry.all().get(32)).isEqualTo("vampiric_beam");
     }
 
     @Test void invalidPermanentIdsFailClosed() {

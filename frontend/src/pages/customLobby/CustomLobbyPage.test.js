@@ -31,6 +31,8 @@ test("custom lobby page exposes invite-only teams and owner start controls", () 
     assert.match(source, /suppressRateLimitError/);
     assert.match(source, /START CUSTOM MATCH/);
     assert.match(source, /CustomLobbyChat/);
+    assert.match(source, /QueueAbilityGuaranteePicker/);
+    assert.match(source, /waitForQueueGuarantees/);
     assert.match(source, /custom-lobby-chat--compact/);
     assert.match(source, /NotReadyRoster/);
     assert.match(source, /currentMemberIsHere \? "LEAVE TEAM" : "JOIN TEAM"/);

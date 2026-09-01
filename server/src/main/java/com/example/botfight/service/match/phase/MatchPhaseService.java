@@ -66,7 +66,7 @@ public final class MatchPhaseService {
                 && current.selectionDeadline() != null
                 && event.loadoutSelectionEndsAt() != null
                 && !current.selectionDeadline().equals(event.loadoutSelectionEndsAt())) {
-            return "loadout selection deadline does not match active deadline"
+            return "selection deadline does not match active deadline"
                     + " (event=" + event.loadoutSelectionEndsAt()
                     + ", active=" + current.selectionDeadline() + ")";
         }
@@ -92,10 +92,9 @@ public final class MatchPhaseService {
             }
             return new CurrentPhase(MatchPhase.REPLAY, activeSession.roundNumber(), null);
         }
-        return new CurrentPhase(
-                phaseForSession(activeSession),
-                activeSession.roundNumber(),
-                activeSession.loadoutSelectionEndsAt());
+        MatchPhase phase = phaseForSession(activeSession);
+        Instant selectionDeadline = activeSession.loadoutSelectionEndsAt();
+        return new CurrentPhase(phase, activeSession.roundNumber(), selectionDeadline);
     }
 
     private String replayBoundaryRejectionReason(OutboundMatchmakingEvent outbound) {

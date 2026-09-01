@@ -90,6 +90,22 @@ test("replay reconstructs direct ability visuals with the shared Bot Room durati
     assert.equal(replayAbilityVisual(frames[3].bots[0], frames, 3), null);
 });
 
+test("replay reconstructs the renamed Vampiric Beam visual from its authoritative id", () => {
+    const frames = [
+        { elapsedMs: 100, bots: [{ slot: 1, x: 100, y: 200, rotation: 10, abilityActiveMs: {} }] },
+        { elapsedMs: 200, bots: [{ slot: 1, x: 100, y: 200, rotation: 10, triggeredAbility: 32, abilityActiveMs: {} }] },
+        { elapsedMs: 300, bots: [{ slot: 1, x: 100, y: 200, rotation: 10, abilityActiveMs: {} }] },
+    ];
+
+    assert.deepEqual(replayAbilityVisual(frames[1].bots[0], frames, 1), {
+        ability: 32,
+        ms: combatVisualDurationMs(32),
+        x: 100,
+        y: 200,
+        rotation: 10,
+    });
+});
+
 test("replay keeps a lock-on target after its trigger frame", () => {
     const frames = [
         { elapsedMs: 100, bots: [{ slot: 1, abilityActiveMs: {} }] },

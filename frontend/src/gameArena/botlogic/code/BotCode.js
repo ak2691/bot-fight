@@ -586,7 +586,7 @@ function normalizedBlockActions(block) {
                     movementMode,
                     movementDirection: normalizeMovementDirection(normalizedEntry?.movementDirection, movementMode, action),
                 } : {}),
-                ...(action.orientationConfig ? { phaseFacingMode: ["face_target", "keep", "face_origin", "mirror"].includes(normalizedEntry?.phaseFacingMode) ? normalizedEntry.phaseFacingMode : "face_target" } : {}),
+                ...(action.orientationConfig ? { phaseFacingMode: boundedNumber(normalizedEntry?.phaseFacingMode, MOVEMENT_DIRECTION_MIN, MOVEMENT_DIRECTION_MAX, 0) } : {}),
                 ...(actionSupportsTarget(action) && !action.movementConfig ? {
                     targetOffsetX: boundedNumber(normalizedEntry?.targetOffsetX, -ARENA_WIDTH_UNITS, ARENA_WIDTH_UNITS, 0),
                     targetOffsetY: boundedNumber(normalizedEntry?.targetOffsetY, -ARENA_HEIGHT_UNITS, ARENA_HEIGHT_UNITS, 0),

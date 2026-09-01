@@ -31,12 +31,27 @@ public record MatchSession(
         boolean seriesComplete,
         MatchMode mode,
         int roundDurationSeconds,
-        Set<UUID> surrenderVotes) {
+        Set<UUID> surrenderVotes,
+        Map<UUID, Map<Integer, Integer>> guaranteedAbilitiesByUserId) {
     public MatchSession {
         mode = mode == null ? MatchMode.ONES : mode;
         roundDurationSeconds = MatchTimingPolicy.resolveRoundDurationSeconds(
                 mode, roundDurationSeconds);
         surrenderVotes = surrenderVotes == null ? Set.of() : Set.copyOf(surrenderVotes);
+        Map<UUID, Map<Integer, Integer>> normalizedGuarantees = new HashMap<>();
+        if (guaranteedAbilitiesByUserId != null) {
+            guaranteedAbilitiesByUserId.forEach((userId, abilities) -> {
+                if (userId == null || abilities == null) return;
+                Map<Integer, Integer> normalizedAbilities = new HashMap<>();
+                abilities.forEach((round, abilityId) -> {
+                    if (round != null && abilityId != null) {
+                        normalizedAbilities.put(round, abilityId);
+                    }
+                });
+                normalizedGuarantees.put(userId, Map.copyOf(normalizedAbilities));
+            });
+        }
+        guaranteedAbilitiesByUserId = Map.copyOf(normalizedGuarantees);
     }
 
     /** Backward-compatible full constructor with a mode and no surrender votes. */
@@ -77,7 +92,8 @@ public record MatchSession(
                 seriesComplete,
                 mode,
                 MatchTimingPolicy.defaultRoundDurationSeconds(mode),
-                Set.of());
+                Set.of(),
+                Map.of());
     }
 
     /** Compatibility constructor for callers that also provide surrender votes. */
@@ -119,7 +135,8 @@ public record MatchSession(
                 seriesComplete,
                 mode,
                 MatchTimingPolicy.defaultRoundDurationSeconds(mode),
-                surrenderVotes);
+                surrenderVotes,
+                Map.of());
     }
 
     /** Full constructor for a match with an explicit round duration. */
@@ -161,7 +178,51 @@ public record MatchSession(
                 seriesComplete,
                 mode,
                 roundDurationSeconds,
-                Set.of());
+                Set.of(),
+                Map.of());
+    }
+
+    public MatchSession(
+            UUID matchId,
+            long simulationSeed,
+            List<MatchPlayer> players,
+            Instant loadoutSelectionEndsAt,
+            Instant entityPlacementEndsAt,
+            Instant countdownEndsAt,
+            Instant buildingEndsAt,
+            int roundNumber,
+            int winsRequired,
+            List<MatchPlaybackDTO.ArenaEntityDTO> arenaEntities,
+            Map<UUID, List<MatchPlaybackDTO.ArenaEntityDTO>> entityPlacementsByUserId,
+            Instant playbackStartsAt,
+            MatchReplayDTO replayPlayback,
+            Instant resultRevealsAt,
+            Instant roundReadyAt,
+            boolean seriesComplete,
+            MatchMode mode,
+            int roundDurationSeconds,
+            Set<UUID> surrenderVotes) {
+        this(
+                matchId,
+                simulationSeed,
+                players,
+                loadoutSelectionEndsAt,
+                entityPlacementEndsAt,
+                countdownEndsAt,
+                buildingEndsAt,
+                roundNumber,
+                winsRequired,
+                arenaEntities,
+                entityPlacementsByUserId,
+                playbackStartsAt,
+                replayPlayback,
+                resultRevealsAt,
+                roundReadyAt,
+                seriesComplete,
+                mode,
+                roundDurationSeconds,
+                surrenderVotes,
+                Map.of());
     }
 
     /** Backward-compatible full constructor for existing 1v1 fixtures. */
@@ -201,11 +262,17 @@ public record MatchSession(
                 seriesComplete,
                 MatchMode.ONES,
                 MatchTimingPolicy.ONES_ROUND_SECONDS,
-                Set.of());
+                Set.of(),
+                Map.of());
     }
 
     public MatchMode mode() {
         return mode == null ? MatchMode.ONES : mode;
+    }
+
+    public Map<Integer, Integer> guaranteedAbilitiesFor(UUID userId) {
+        if (userId == null) return Map.of();
+        return guaranteedAbilitiesByUserId.getOrDefault(userId, Map.of());
     }
 
     public MatchSession(
@@ -239,7 +306,8 @@ public record MatchSession(
                 false,
                 MatchMode.ONES,
                 MatchTimingPolicy.ONES_ROUND_SECONDS,
-                Set.of());
+                Set.of(),
+                Map.of());
     }
 
     public MatchSession withArenaEntities(List<MatchPlaybackDTO.ArenaEntityDTO> nextArenaEntities) {
@@ -355,7 +423,28 @@ public record MatchSession(
                 false,
                 mode(),
                 roundDurationSeconds(),
-                surrenderVotes());
+                surrenderVotes(),
+                guaranteedAbilitiesByUserId);
+    }
+
+    public MatchSession withGuaranteedAbilities(UUID userId, Map<Integer, Integer> guarantees) {
+        if (userId == null) return this;
+        Map<UUID, Map<Integer, Integer>> nextGuarantees = new HashMap<>(guaranteedAbilitiesByUserId);
+        nextGuarantees.put(userId, guarantees == null ? Map.of() : Map.copyOf(guarantees));
+        return copy(
+                players,
+                loadoutSelectionEndsAt,
+                entityPlacementEndsAt,
+                countdownEndsAt,
+                buildingEndsAt,
+                arenaEntities,
+                entityPlacementsByUserId,
+                playbackStartsAt,
+                replayPlayback,
+                resultRevealsAt,
+                roundReadyAt,
+                seriesComplete,
+                nextGuarantees);
     }
 
     public MatchSession withLoadoutSelection(Instant deadline) {
@@ -384,7 +473,8 @@ public record MatchSession(
                 null,
                 null,
                 null,
-                false);
+                false,
+                guaranteedAbilitiesByUserId);
     }
 
     public MatchSession withSelectedLoadout(UUID userId, String selectedLoadout, boolean selected) {
@@ -445,7 +535,8 @@ public record MatchSession(
                 seriesComplete,
                 mode(),
                 roundDurationSeconds(),
-                nextVotes);
+                nextVotes,
+                guaranteedAbilitiesByUserId);
     }
 
     public MatchSession withDefaultLoadoutSelections() {
@@ -595,6 +686,36 @@ public record MatchSession(
             Instant nextResultRevealsAt,
             Instant nextRoundReadyAt,
             boolean nextSeriesComplete) {
+        return copy(
+                nextPlayers,
+                nextLoadoutSelectionEndsAt,
+                nextEntityPlacementEndsAt,
+                nextCountdownEndsAt,
+                nextBuildingEndsAt,
+                nextArenaEntities,
+                nextEntityPlacementsByUserId,
+                nextPlaybackStartsAt,
+                nextReplayPlayback,
+                nextResultRevealsAt,
+                nextRoundReadyAt,
+                nextSeriesComplete,
+                guaranteedAbilitiesByUserId);
+    }
+
+    private MatchSession copy(
+            List<MatchPlayer> nextPlayers,
+            Instant nextLoadoutSelectionEndsAt,
+            Instant nextEntityPlacementEndsAt,
+            Instant nextCountdownEndsAt,
+            Instant nextBuildingEndsAt,
+            List<MatchPlaybackDTO.ArenaEntityDTO> nextArenaEntities,
+            Map<UUID, List<MatchPlaybackDTO.ArenaEntityDTO>> nextEntityPlacementsByUserId,
+            Instant nextPlaybackStartsAt,
+            MatchReplayDTO nextReplayPlayback,
+            Instant nextResultRevealsAt,
+            Instant nextRoundReadyAt,
+            boolean nextSeriesComplete,
+            Map<UUID, Map<Integer, Integer>> nextGuaranteedAbilitiesByUserId) {
         return new MatchSession(
                 matchId,
                 simulationSeed,
@@ -614,6 +735,7 @@ public record MatchSession(
                 nextSeriesComplete,
                 mode(),
                 roundDurationSeconds(),
-                surrenderVotes());
+                surrenderVotes(),
+                nextGuaranteedAbilitiesByUserId);
     }
 }

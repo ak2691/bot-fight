@@ -3,9 +3,11 @@ import { abilityContract, EFFECT_TYPES } from "../../gameconfig/AbilityContracts
 import { applyDebuff, damageAtDistance } from "./AbilityEffectSystem.js";
 import { clamp } from "../../gameconfig/geometry.js";
 import { resolveShieldInteraction } from "../../gameconfig/ShieldSystem.js";
-import { ignoresHostileEffects } from "../../gameconfig/DefensiveState.js";
+import { ignoresHostileEffects, isAliveBot } from "../../gameconfig/DefensiveState.js";
 import { applyEntityDamage } from "../entities/EntityCombat.js";
 import { upsertStatusEffect } from "../contracts/StatusContracts.js";
+import { interruptCurrentAbility } from "../../gameconfig/AbilityResourceSystem.js";
+import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
 
 /** Applies the allowlisted effects declared by an entity's ability contract. */
 export function applyEntityEffects(bots, targetIndex, source, abilityId, combat, {
@@ -43,12 +45,16 @@ export function applyEntityEffects(bots, targetIndex, source, abilityId, combat,
         } else if (resolvedEffect.type === EFFECT_TYPES.DEBUFF) {
             nextBots[targetIndex] = applyDebuff(nextBots[targetIndex], resolvedEffect, ABILITY_STATS[abilityId] ?? {}, source, abilityId);
         } else if (resolvedEffect.type === EFFECT_TYPES.INTERRUPT) {
+            if (!isAliveBot(nextBots[targetIndex])) continue;
             nextBots[targetIndex] = upsertStatusEffect({
-                ...nextBots[targetIndex],
-                preparingAbility: null,
-                preparingMs: 0,
+                ...interruptCurrentAbility(nextBots[targetIndex]),
+                movementVelocityX: 0,
+                movementVelocityY: 0,
+                velocityX: 0,
+                velocityY: 0,
             }, {
                 type: "stun",
+                abilityId,
                 remainingMs: Number(resolvedEffect.durationMs ?? 0),
                 effects: [{ type: "stun", mode: "constant" }],
             });
@@ -65,8 +71,8 @@ function applyKnockback(target, source, distance, world, directionMode) {
     const dx = directionMode === "velocity" ? Number(source.velocityX ?? 0) : Number(target.x) - Number(source.x);
     const dy = directionMode === "velocity" ? Number(source.velocityY ?? 0) : Number(target.y) - Number(source.y);
     const magnitude = Math.max(0.001, Math.hypot(dx, dy));
-    const width = Number(world?.width ?? 1000);
-    const height = Number(world?.height ?? 800);
+    const width = Number(world?.width ?? ARENA_WIDTH_UNITS);
+    const height = Number(world?.height ?? ARENA_HEIGHT_UNITS);
     return {
         ...target,
         x: clamp(target.x + dx / magnitude * distance, target.size / 2, width - target.size / 2),
@@ -79,8 +85,8 @@ function applyPull(target, source, distance, world) {
     const dy = Number(source.y) - Number(target.y);
     const magnitude = Math.hypot(dx, dy);
     if (magnitude <= 0.001) return target;
-    const width = Number(world?.width ?? 1000);
-    const height = Number(world?.height ?? 800);
+    const width = Number(world?.width ?? ARENA_WIDTH_UNITS);
+    const height = Number(world?.height ?? ARENA_HEIGHT_UNITS);
     return {
         ...target,
         x: clamp(target.x + dx / magnitude * distance, target.size / 2, width - target.size / 2),

@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { applyDamageToShape } from "../../gameconfig/BotCombatSystem.js";
 import { CLOSING_ZONE_CONFIG } from "../../gameconfig/ArenaHazardConfig.js";
+import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
 import {
     closingZoneSafeRadius,
     tickClosingZoneWorld,
 } from "./ClosingZoneSystem.js";
 
-const arena = { width: 1000, height: 1000 };
+const arena = { width: ARENA_WIDTH_UNITS, height: ARENA_HEIGHT_UNITS };
 
 function bot(overrides = {}) {
     return {

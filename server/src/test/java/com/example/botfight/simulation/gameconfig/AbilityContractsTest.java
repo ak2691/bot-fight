@@ -31,7 +31,7 @@ class AbilityContractsTest {
                 .filteredOn(effect -> effect.type() == PULL)
                 .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(100));
         assertThat(AbilityContracts.effectAmount(9, DAMAGE)).isEqualTo(20);
-        assertThat(AbilityContracts.effectAmount(26, DAMAGE)).isEqualTo(10);
+        assertThat(AbilityContracts.effectAmount(26, DAMAGE)).isEqualTo(15);
         assertThat(AbilityContracts.effectAmount(28, DAMAGE)).isEqualTo(10);
         assertThat(AbilityContracts.effectAmount(29, DAMAGE)).isEqualTo(15);
         assertThat(AbilityContracts.effectDurationMs(9, "slow")).isEqualTo(1_000);
@@ -75,10 +75,10 @@ class AbilityContractsTest {
         assertThat(AbilityContracts.get(18).delivery()).isEqualTo(PROJECTILE);
         assertThat(AbilityContracts.get(18).effects())
                 .filteredOn(effect -> effect.type() == DAMAGE)
-                .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(15));
+                .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(20));
         assertThat(AbilityContracts.get(18).effects())
                 .filteredOn(effect -> effect.type() == KNOCKBACK)
-                .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(150));
+                .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(200));
     }
 
     @Test
@@ -91,12 +91,12 @@ class AbilityContractsTest {
     }
 
     @Test
-    void siphonLanceUsesAConfirmedSourceHealAndOverclockIsASeparateBuffEffect() {
-        AbilityContracts.Effect siphonHeal = AbilityContracts.get(32).effects().stream()
+    void vampiricBeamUsesAConfirmedSourceHealAndOverclockIsASeparateBuffEffect() {
+        AbilityContracts.Effect vampiricHeal = AbilityContracts.get(32).effects().stream()
                 .filter(effect -> effect.type() == HEALING).findFirst().orElseThrow();
-        assertThat(siphonHeal.recipient()).isEqualTo("source");
-        assertThat(siphonHeal.requiresConfirmedDamage()).isTrue();
-        assertThat(siphonHeal.mirrorsDamage()).isTrue();
+        assertThat(vampiricHeal.recipient()).isEqualTo("source");
+        assertThat(vampiricHeal.requiresConfirmedDamage()).isTrue();
+        assertThat(vampiricHeal.mirrorsDamage()).isTrue();
         assertThat(AbilityContracts.get(33).effects()).singleElement().satisfies(effect -> {
             assertThat(effect.type()).isEqualTo(AbilityContracts.EffectType.BUFF);
             assertThat(effect.subtype()).isEqualTo("overclock");
@@ -112,7 +112,7 @@ class AbilityContractsTest {
         assertThat(AbilityContracts.get(34).effects())
                 .extracting(AbilityContracts.Effect::type)
                 .containsExactly(DAMAGE);
-        assertThat(AbilityContracts.effectAmount(34, DAMAGE)).isEqualTo(5);
+        assertThat(AbilityContracts.effectAmount(34, DAMAGE)).isEqualTo(8);
         assertThat(AbilityContracts.get(34).shieldInteraction().mode()).isEqualTo(AbilityContracts.ShieldMode.IGNORE);
         assertThat(AbilityContracts.get(34).shieldInteraction().prevents()).isEmpty();
     }
@@ -156,8 +156,17 @@ class AbilityContractsTest {
         assertThat(AbilityContracts.get(19).execution().ignoresGlobalAbilityLock()).isFalse();
         assertThat(AbilityContracts.get(20).execution().faceTargetFromPayload()).isTrue();
         assertThat(AbilityContracts.get(25).execution().phaseFacingDefault())
-                .isEqualTo("face_target");
+                .isEqualTo("0");
+        assertThat(AbilityContracts.get(25).hitboxGeometry())
+                .isEqualTo(AbilityContracts.HitboxGeometry.RECTANGLE);
+        assertThat(AbilityContracts.get(25).execution().captureAtActivation()).isTrue();
+        assertThat(AbilityContracts.get(25).execution().teleportOncePerActivation()).isTrue();
         assertThat(AbilityContracts.get(7).includeTargetRadius()).isTrue();
-        assertThat(AbilityContracts.get(25).includeTargetRadius()).isFalse();
+        assertThat(AbilityContracts.get(25).includeTargetRadius()).isTrue();
+        assertThat(AbilityContracts.get(8).includeTargetRadius()).isTrue();
+        assertThat(AbilityContracts.get(26).includeTargetRadius()).isTrue();
+        assertThat(AbilityContracts.get(25).effects())
+                .filteredOn(effect -> effect.type() == AbilityContracts.EffectType.TELEPORT)
+                .singleElement().satisfies(effect -> assertThat(effect.distanceMode()).isEqualTo("center_distance"));
     }
 }

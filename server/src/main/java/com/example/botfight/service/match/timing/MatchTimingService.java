@@ -22,8 +22,8 @@ import java.util.function.Supplier;
 
 /** Owns loadout, countdown, building-deadline, and round-boundary timing. */
 public final class MatchTimingService {
-    private static final int LOADOUT_SELECTION_SECONDS = 60;
-    private static final int SUBMISSION_GRACE_SECONDS = 2;
+    private static final int LOADOUT_SELECTION_SECONDS = MatchTimingPolicy.LOADOUT_SELECTION_SECONDS;
+    private static final int SUBMISSION_GRACE_SECONDS = MatchTimingPolicy.SUBMISSION_GRACE_SECONDS;
     private static final int BUILDING_ROOM_PREPARATION_SECONDS = 2;
     private static final String BUILDING_PHASE = "BUILDING";
 
@@ -128,10 +128,10 @@ public final class MatchTimingService {
             UUID userId,
             String selectedLoadout) {
         MatchSession session = state.activeSessionsByUserId().get(userId);
-        if (session == null || session.countdownEndsAt() != null
-                || session.loadoutSelectionEndsAt() == null) {
+        if (session == null || session.countdownEndsAt() != null) {
             return List.of();
         }
+        if (session.loadoutSelectionEndsAt() == null) return List.of();
         if (!Instant.now(clock).isBefore(session.loadoutSelectionEndsAt())) {
             return startExpiredLoadoutSelection(session);
         }
@@ -226,6 +226,7 @@ public final class MatchTimingService {
     private List<OutboundMatchmakingEvent> beginInitialLoadoutSelectionLocked(UUID matchId) {
         MatchSession session = state.activeSessionForMatch(matchId);
         if (session == null || session.roundNumber() != 1 || session.countdownEndsAt() != null
+                || session.loadoutSelectionEndsAt() != null
                 || !state.initialLoadoutSelectionStartedMatchIds().add(matchId)) {
             return List.of();
         }

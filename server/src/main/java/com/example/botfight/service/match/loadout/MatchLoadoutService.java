@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -88,7 +89,7 @@ public final class MatchLoadoutService {
                 : "";
         Set<Integer> previous = previousCodes.chars().boxed().collect(Collectors.toSet());
         Set<Integer> next = nextCodes.chars().boxed().collect(Collectors.toSet());
-        Set<Integer> offered = offeredCodes(session);
+        Set<Integer> offered = offeredCodes(session, player.userId());
         Set<Integer> drafted = new HashSet<>(next);
         drafted.removeAll(previous);
         int requiredPicks = ROUND_PICK_COUNTS.getOrDefault(session.roundNumber(), 0);
@@ -115,7 +116,7 @@ public final class MatchLoadoutService {
                 : "";
         Set<Integer> previous = previousCodes.chars().boxed().collect(Collectors.toSet());
         Set<Integer> next = nextCodes.chars().boxed().collect(Collectors.toSet());
-        Set<Integer> offered = offeredCodes(session);
+        Set<Integer> offered = offeredCodes(session, player.userId());
         Set<Integer> drafted = new HashSet<>(next);
         drafted.removeAll(previous);
         int requiredPicks = ROUND_PICK_COUNTS.getOrDefault(session.roundNumber(), 0);
@@ -144,14 +145,60 @@ public final class MatchLoadoutService {
     }
 
     public List<Integer> abilityOffers(MatchSession session) {
+        UUID recipientUserId = session.players().isEmpty() ? null : session.players().get(0).userId();
+        return abilityOffersForPlayer(session, recipientUserId);
+    }
+
+    /** Returns the common round offer plus this player's preselected guarantee, if any. */
+    public List<Integer> abilityOffersForPlayer(MatchSession session, UUID recipientUserId) {
+        List<Integer> offers = commonAbilityOffers(session, recipientUserId);
+        Integer guarantee = session.guaranteedAbilitiesFor(recipientUserId)
+                .get(session.roundNumber());
+        if (guarantee != null && !offers.contains(guarantee)) {
+            offers.add(guarantee);
+        }
+        return List.copyOf(offers);
+    }
+
+    /**
+     * Normalizes the three queue slots into round-numbered guarantees. Empty
+     * slots intentionally remain absent so the normal random offer pool is
+     * used for that round.
+     */
+    public static Map<Integer, Integer> normalizeAbilityGuarantees(List<Integer> requestedAbilityIds) {
+        List<Integer> requested = requestedAbilityIds == null ? List.of() : requestedAbilityIds;
+        if (requested.size() > ROUND_ABILITIES.size()) {
+            throw new AuthException("choose at most one guaranteed ability for each round");
+        }
+
+        Map<Integer, Integer> guarantees = new java.util.LinkedHashMap<>();
+        for (int round = 1; round <= requested.size(); round++) {
+            Integer requestedId = requested.get(round - 1);
+            if (requestedId != null && !ROUND_ABILITIES.getOrDefault(round, List.of()).contains(requestedId)) {
+                throw new AuthException("guaranteed ability must belong to its round");
+            }
+            if (requestedId != null) guarantees.put(round, requestedId);
+        }
+        return Map.copyOf(guarantees);
+    }
+
+    private List<Integer> commonAbilityOffers(MatchSession session, UUID recipientUserId) {
         List<Integer> offers = new ArrayList<>(
                 ROUND_ABILITIES.getOrDefault(session.roundNumber(), List.of()));
+        Set<Integer> guaranteedIds = session.guaranteedAbilitiesByUserId().values().stream()
+                .flatMap(abilities -> abilities.values().stream())
+                .collect(Collectors.toSet());
+        offers.removeIf(guaranteedIds::contains);
         long seed = session.simulationSeed()
                 ^ (0x9E3779B97F4A7C15L * session.roundNumber());
         Collections.shuffle(offers, new Random(seed));
-        return List.copyOf(offers.subList(
+        boolean hasGuarantee = session.guaranteedAbilitiesFor(recipientUserId)
+                .containsKey(session.roundNumber());
+        int randomOfferCount = ROUND_OFFER_COUNTS.getOrDefault(session.roundNumber(), 0)
+                - (hasGuarantee ? 1 : 0);
+        return new ArrayList<>(offers.subList(
                 0,
-                Math.min(ROUND_OFFER_COUNTS.getOrDefault(session.roundNumber(), 0), offers.size())));
+                Math.min(Math.max(0, randomOfferCount), offers.size())));
     }
 
     public MatchSession withDefaultAbilitySelections(MatchSession session) {
@@ -170,8 +217,8 @@ public final class MatchLoadoutService {
         return result;
     }
 
-    private Set<Integer> offeredCodes(MatchSession session) {
-        return abilityOffers(session).stream()
+    private Set<Integer> offeredCodes(MatchSession session, UUID recipientUserId) {
+        return abilityOffersForPlayer(session, recipientUserId).stream()
                 .map(CompactAbilityCode::codeForId)
                 .filter(java.util.Objects::nonNull)
                 .map(code -> (int) code.charAt(0))
@@ -183,7 +230,7 @@ public final class MatchLoadoutService {
             MatchPlayer player,
             Set<Integer> excludedCodes,
             int pickCount) {
-        List<Integer> picks = new ArrayList<>(abilityOffers(session));
+        List<Integer> picks = new ArrayList<>(abilityOffersForPlayer(session, player.userId()));
         picks.removeIf(ability -> {
             String code = CompactAbilityCode.codeForId(ability);
             return code == null || excludedCodes.contains((int) code.charAt(0));
@@ -195,4 +242,5 @@ public final class MatchLoadoutService {
         Collections.shuffle(picks, new Random(seed));
         return picks.subList(0, Math.min(pickCount, picks.size()));
     }
+
 }

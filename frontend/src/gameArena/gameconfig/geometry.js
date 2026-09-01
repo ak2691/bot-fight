@@ -76,6 +76,53 @@ export function movingCircleCollision(firstStart, firstEnd, firstRadius, secondS
     return { hit: distance <= collisionRadius, swept: true, distance };
 }
 
+/**
+ * Resolves a moving, direction-aligned rectangle against a moving circle.
+ *
+ * The rectangle is intentionally expanded by the target radius on both local
+ * axes. That keeps the collider deterministic and inexpensive while matching
+ * the simple square hitboxes used by the arena presentation.
+ */
+export function movingRectangleCollision(
+    firstStart,
+    firstEnd,
+    firstWidth,
+    firstHeight,
+    firstRotation,
+    secondStart,
+    secondEnd,
+    secondRadius,
+) {
+    const width = Math.max(0, Number(firstWidth) || 0);
+    const height = Math.max(0, Number(firstHeight) || 0);
+    const radius = Math.max(0, Number(secondRadius) || 0);
+    const rotation = Number.isFinite(Number(firstRotation)) ? Number(firstRotation) : 0;
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    const relativeStart = toLocalPoint(
+        Number(secondStart.x) - Number(firstStart.x),
+        Number(secondStart.y) - Number(firstStart.y),
+        cos,
+        sin,
+    );
+    const relativeEnd = toLocalPoint(
+        Number(secondEnd.x) - Number(firstEnd.x),
+        Number(secondEnd.y) - Number(firstEnd.y),
+        cos,
+        sin,
+    );
+    const halfWidth = width / 2 + radius;
+    const halfHeight = height / 2 + radius;
+    const endInside = pointInsideRectangle(relativeEnd, halfWidth, halfHeight);
+    const distance = movingCirclesDistance(firstStart, firstEnd, secondStart, secondEnd);
+    if (endInside) return { hit: true, swept: false, distance };
+    return {
+        hit: segmentIntersectsRectangle(relativeStart, relativeEnd, halfWidth, halfHeight),
+        swept: true,
+        distance,
+    };
+}
+
 /** Returns whether two line segments come within the supplied distance. */
 export function segmentsWithinDistance(firstStart, firstEnd, secondStart, secondEnd, maxDistance = 0) {
     if (segmentsIntersect(firstStart, firstEnd, secondStart, secondEnd)) return true;
@@ -95,6 +142,35 @@ function pointToSegmentDistance(point, start, end) {
         ? clamp(((Number(point.x) - Number(start.x)) * dx + (Number(point.y) - Number(start.y)) * dy) / lengthSquared, 0, 1)
         : 0;
     return Math.hypot(Number(point.x) - Number(start.x) - dx * t, Number(point.y) - Number(start.y) - dy * t);
+}
+
+function toLocalPoint(x, y, cos, sin) {
+    return { x: x * cos + y * sin, y: -x * sin + y * cos };
+}
+
+function pointInsideRectangle(point, halfWidth, halfHeight) {
+    return Math.abs(point.x) <= halfWidth && Math.abs(point.y) <= halfHeight;
+}
+
+function segmentIntersectsRectangle(start, end, halfWidth, halfHeight) {
+    if (pointInsideRectangle(start, halfWidth, halfHeight)) return true;
+    let minimum = 0;
+    let maximum = 1;
+    const deltaX = end.x - start.x;
+    const deltaY = end.y - start.y;
+    for (const [origin, delta, extent] of [[start.x, deltaX, halfWidth], [start.y, deltaY, halfHeight]]) {
+        if (Math.abs(delta) <= 1e-12) {
+            if (origin < -extent || origin > extent) return false;
+            continue;
+        }
+        let near = (-extent - origin) / delta;
+        let far = (extent - origin) / delta;
+        if (near > far) [near, far] = [far, near];
+        minimum = Math.max(minimum, near);
+        maximum = Math.min(maximum, far);
+        if (minimum > maximum) return false;
+    }
+    return maximum >= 0 && minimum <= 1;
 }
 
 function segmentsIntersect(firstStart, firstEnd, secondStart, secondEnd) {

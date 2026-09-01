@@ -664,7 +664,7 @@ function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selec
             <p className="code-inspector-note">Canvas nodes show the sentence; detailed movement and ability options live here.</p>
             {definition?.variableAction && <VariableActionControls entry={entry} variables={customVariables} stateVariables={stateVariables} disabled={disabled} canAddAction={canAddAction} allowRemoveAction={!puzzleMode || canRemove} onChange={update} onPickOperand={(termIndex) => onPickActionOperand?.(node.rootIndex, node.path, node.actionIndex, termIndex)} onInspectOperand={(termIndex) => onInspectActionOperand?.(node.rootIndex, node.path, node.actionIndex, termIndex)} onRemoveAction={() => { remove(); onClose(); }} />}
             {definition?.movementConfig && <MovementConfigurationControls entry={entry} disabled={disabled} onChange={update} />}
-            {definition?.orientationConfig && <PhaseOrientationControls entry={entry} onChange={update} />}
+            {definition?.orientationConfig && <PhaseOrientationControls entry={entry} disabled={disabled} onChange={update} />}
             {needsTarget && <ActionTargetControls entry={entry} definition={definition} selectableTypes={selectableTypes} disabled={disabled} onChange={update} />}
         </>, "REMOVE ACTION", remove);
     }
@@ -900,8 +900,15 @@ function MovementConfigurationControls({ entry, disabled, onChange }) {
     </div>;
 }
 
-function PhaseOrientationControls({ entry, onChange }) {
-    return <label className="block font-mono text-[9px] text-ink-muted">LANDING FACING<select value={entry.phaseFacingMode ?? "face_target"} onChange={(event) => onChange({ ...entry, phaseFacingMode: event.target.value })} className="mt-1 h-9 w-full rounded border border-border-lo bg-zinc-900 px-2 text-white"><option value="face_target">Face target after passing through</option><option value="keep">Keep current facing</option><option value="face_origin">Face the position phased from</option><option value="mirror">Mirror facing across the phase line</option></select></label>;
+function PhaseOrientationControls({ entry, disabled, onChange }) {
+    const relativeDirection = Number.isFinite(Number(entry.phaseFacingMode)) ? Number(entry.phaseFacingMode) : 0;
+    return <label className="block font-mono text-[9px] text-ink-muted">LANDING ROTATION (RELATIVE)
+        <div className="code-movement-angle-input">
+            <DeferredNumberInput disabled={disabled} min={MOVEMENT_DIRECTION_MIN} max={MOVEMENT_DIRECTION_MAX} step={NUMBER_STEP} value={relativeDirection} fallback={0} aria-label="Phase Strike landing rotation relative to its activation facing in degrees" onCommit={(phaseFacingMode) => onChange({ ...entry, phaseFacingMode })} />
+            <span>deg</span>
+        </div>
+        <small>0 deg = keep facing · 90 deg = clockwise/right · 180 deg = reverse. Negative angles rotate counterclockwise.</small>
+    </label>;
 }
 
 function newTreeBranch(branchType, defaultVariable, priority = 1) {

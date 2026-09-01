@@ -9,6 +9,8 @@ import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
 import com.example.botfight.service.match.model.MatchEntrant;
 import com.example.botfight.service.match.simulation.MatchSimulationService;
+import com.example.botfight.service.match.loadout.MatchAbilityGuaranteeService;
+import com.example.botfight.service.match.loadout.MatchLoadoutService;
 import com.example.botfight.service.rating.EloRatingService;
 import java.time.Clock;
 import java.time.Duration;
@@ -48,6 +50,7 @@ public class MatchmakingService {
     private final Clock clock;
     private final TokenBucketRateLimiter<UUID> matchmakingRateLimiter;
     private final EloRatingService eloRatingService;
+    private final MatchAbilityGuaranteeService guaranteeService;
     /** Insertion order is the fairness source; entry keys make removal and replacement O(1). */
     private final LinkedHashMap<UUID, QueuedGroup> queueOrderById = new LinkedHashMap<>();
     /** Rating indexes keep candidate lookup bounded to the relevant Elo window. */
@@ -65,7 +68,15 @@ public class MatchmakingService {
             MatchService matchService,
             Clock clock,
             @Qualifier("matchmakingRateLimiter") TokenBucketRateLimiter<UUID> matchmakingRateLimiter) {
-        this(matchService, clock, matchmakingRateLimiter, null);
+        this(matchService, clock, matchmakingRateLimiter, null, new MatchAbilityGuaranteeService());
+    }
+
+    public MatchmakingService(
+            MatchService matchService,
+            Clock clock,
+            @Qualifier("matchmakingRateLimiter") TokenBucketRateLimiter<UUID> matchmakingRateLimiter,
+            EloRatingService eloRatingService) {
+        this(matchService, clock, matchmakingRateLimiter, eloRatingService, new MatchAbilityGuaranteeService());
     }
 
     @Autowired
@@ -73,11 +84,15 @@ public class MatchmakingService {
             MatchService matchService,
             Clock clock,
             @Qualifier("matchmakingRateLimiter") TokenBucketRateLimiter<UUID> matchmakingRateLimiter,
-            EloRatingService eloRatingService) {
+            EloRatingService eloRatingService,
+            MatchAbilityGuaranteeService guaranteeService) {
         this.matchService = matchService;
         this.clock = clock;
         this.matchmakingRateLimiter = matchmakingRateLimiter;
         this.eloRatingService = eloRatingService;
+        this.guaranteeService = guaranteeService == null
+                ? new MatchAbilityGuaranteeService()
+                : guaranteeService;
         queueByRating.put(MatchMode.ONES, new TreeMap<>());
         queueByRating.put(MatchMode.TWOS, new TreeMap<>());
     }
@@ -139,6 +154,27 @@ public class MatchmakingService {
             MatchMode mode,
             List<MatchEntrant> requestedGroup,
             UUID partyId) {
+        return joinQueue(
+                userId,
+                username,
+                principalName,
+                socketSessionId,
+                mode,
+                requestedGroup,
+                partyId,
+                List.of());
+    }
+
+    /** Joins a queue while carrying the authenticated player's queue-time guarantees. */
+    public synchronized List<OutboundMatchmakingEvent> joinQueue(
+            UUID userId,
+            String username,
+            String principalName,
+            String socketSessionId,
+            MatchMode mode,
+            List<MatchEntrant> requestedGroup,
+            UUID partyId,
+            List<Integer> guaranteedAbilityIds) {
         // A stale disconnected entry must not remain eligible when another
         // player joins after its grace window has elapsed.
         expireDisconnectedGroups(Instant.now(clock));
@@ -148,6 +184,23 @@ public class MatchmakingService {
         }
         List<MatchEntrant> group = normalizeGroup(
                 userId, username, principalName, socketSessionId, requestedGroup, resolvedMode);
+        group = group.stream()
+                .map(entrant -> entrant.guaranteedAbilities().isEmpty()
+                        ? entrant.withGuaranteedAbilities(guaranteeService.forUser(entrant.userId()))
+                        : entrant)
+                .toList();
+        Map<Integer, Integer> guarantees = MatchLoadoutService.normalizeAbilityGuarantees(
+                guaranteedAbilityIds);
+        // New clients always send the three positional slots, including nulls
+        // for "Random Ability". Older callers send an empty list, which keeps
+        // the server-side preference fallback intact.
+        if (guaranteedAbilityIds != null && !guaranteedAbilityIds.isEmpty()) {
+            group = group.stream()
+                    .map(entrant -> entrant.userId().equals(userId)
+                            ? entrant.withGuaranteedAbilities(guarantees)
+                            : entrant)
+                    .toList();
+        }
         if (resolvedMode == MatchMode.ONES && group.size() != 1) {
             throw new AuthException("A party can only queue for 2v2.");
         }
@@ -484,11 +537,14 @@ public class MatchmakingService {
         }
         // Always trust the authenticated socket's identity and session for the
         // requester, even if a caller supplied a stale group snapshot.
+        MatchEntrant requester = unique.get(requesterId);
         unique.put(requesterId, new MatchEntrant(
                 requesterId,
                 requesterUsername,
                 requesterPrincipalName,
-                requesterSocketSessionId));
+                requesterSocketSessionId,
+                requester == null ? 0 : requester.teamNumber(),
+                requester == null ? Map.of() : requester.guaranteedAbilities()));
         return List.copyOf(unique.values());
     }
 
@@ -976,7 +1032,8 @@ public class MatchmakingService {
                                     member.username(),
                                     member.principalName(),
                                     socketSessionId,
-                                    member.teamNumber())
+                                    member.teamNumber(),
+                                    member.guaranteedAbilities())
                             : member)
                     .toList();
             return new QueuedGroup(
@@ -1047,7 +1104,8 @@ public class MatchmakingService {
                                     entrant.username(),
                                     entrant.principalName(),
                                     socketSessionId,
-                                    entrant.teamNumber())
+                                    entrant.teamNumber(),
+                                    entrant.guaranteedAbilities())
                             : entrant)
                     .toList();
             return new PendingMatch(

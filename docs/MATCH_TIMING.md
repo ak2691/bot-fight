@@ -57,14 +57,25 @@ but it cannot introduce a wall-clock offset error.
   countdown. The server creates the persisted match and emits `MATCH_STARTED`
   only after both acceptance requests succeed; a provisional pairing has no
   database match yet.
-- Ability selection displays 60 seconds. `loadoutSelectionEndsAt` is the
-  authoritative deadline 62 seconds after the phase begins, including the
-  hidden two-second submission grace. If both players select early,
+- The queue and custom-lobby pages offer three optional guarantee slots, one for
+  each ability selection round. The server stores the current authenticated
+  player's choices as a transient preference and applies them independently to
+  ranked 1v1, ranked 2v2, custom-lobby, and direct-invite entrants. The queue
+  request also carries the current player's IDs for immediate ranked fallback;
+  empty slots remain empty and preserve the normal random offer pool. The server
+  validates each selected ID against its round before it can enter a match.
+- Ability selection displays 60 seconds. During this phase,
+  `loadoutSelectionEndsAt` is the authoritative deadline 62 seconds after the
+  phase begins, including the hidden two-second submission grace. If both
+  players select early,
   building-room preparation lasts up to two seconds but never extends beyond
-  that authoritative selection deadline.
+  that authoritative selection deadline. The random portion of the offer pool
+  is shared by both players; a player's selected queue guarantees are added
+  only to that player's corresponding round.
   This WebSocket countdown is a critical timing contract: do not change the
-  60-second visible interval, 62-second server interval, or two-second grace
-  without an explicit timing-contract change.
+  60/62-second ability-selection interval or the two-second grace without an
+  explicit timing-contract change. The event field keeps its existing name for
+  wire compatibility; its meaning is the active selection phase's deadline.
 - During building-room preparation the client displays "Both players have
   selected, preparing building room." Building then displays the server-owned
   round duration: 300 seconds (5 minutes) for 1v1, 360 seconds (6 minutes) for

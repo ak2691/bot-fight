@@ -29,8 +29,8 @@ public class MatchSimulationService {
     private static final int DEFAULT_BOT_HP = 150;
     // Rated rounds run until HP damage ends them or the arena's hard cap is reached.
     public static final int SIMULATION_DURATION_MS = ClosingZoneConfig.duelV1().simulationDurationMs();
-    private static final double TEAM_ONE_Y = ARENA_HEIGHT_UNITS * 0.15;
-    private static final double TEAM_TWO_Y = ARENA_HEIGHT_UNITS * 0.85;
+    private static final double TEAM_ONE_Y = ArenaUnits.SPAWN_EDGE_MARGIN;
+    private static final double TEAM_TWO_Y = ARENA_HEIGHT_UNITS - ArenaUnits.SPAWN_EDGE_MARGIN;
     private final JsonMapper jsonMapper;
     private final DuelSimulationService duelSimulationService;
 

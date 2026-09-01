@@ -99,6 +99,7 @@ Common browser fields:
 | range | Hit, targeting, or falloff range. For moving projectiles, keep it equal to the duration-phase displacement. |
 | throwRange | Maximum displacement shown for a thrown projectile or trap. Keep it separate from the impact radius or trigger radius. |
 | arcDegrees | Facing arc for abilities that use an arc. |
+| hitboxWidth | Width of a forward rectangle when the delivery declares rectangle geometry. |
 | knockback | Displacement strength for a knockback effect. |
 | pullPerTick | Displacement applied by a persistent pull effect each simulation tick. |
 | radius, zoneSize, explosionRadius | Collision or presentation geometry, depending on the contract. |
@@ -148,6 +149,11 @@ For an entity-backed ability, the bot's active phase and the entity's lifetime
 are separate. A mine, zone, or summon can remain in the arena after the bot is
 ready to use another ability.
 
+An interrupt effect cancels preparation before activation or stops the bot-owned
+active phase, then starts the normal cooldown/reload gate. It must not remove an
+already-spawned projectile, trap, zone, or summon; those continue under their
+entity contract.
+
 ### Damage falloff
 
 Use a linear profile when damage changes with distance. In the browser:
@@ -190,11 +196,11 @@ execution -> activation-time targeting/capture behavior
 | knockback | Pushes a target away. | distance |
 | pull | Pulls a target toward a point. | perTick or amount |
 | movement | Moves the source or target through a movement contract. | distance/stat references |
-| teleport | Moves a target instantly. | distance or pass-through value |
+| teleport | Moves a target instantly. | fixed distance or `distanceMode: center_distance` |
 | restore_state | Restores a captured state after a delay. | delay/completion metadata |
 | debuff | Applies a negative timed or presence status. | subtype, duration, strength |
 | buff | Applies a positive timed or presence status. | subtype, duration, strength |
-| interrupt | Interrupts or cancels an active/preparing action. | duration when needed |
+| interrupt | Cancels preparation without activation or stops a bot-owned active phase, then starts cooldown/reload. | duration when needed |
 | damage_reduction | Reduces incoming damage while active. | multiplier/amount, duration |
 | damage_immunity | Prevents damage while active. | duration |
 | damage_reflection | Reflects damage under the declared defensive rules. | multiplier/amount, duration |
@@ -272,7 +278,7 @@ not automatically add damage.
 | Delivery | Use for |
 | --- | --- |
 | self | Effects applied to the caster, such as healing or a self-buff. |
-| melee | Immediate close-range hit with optional target radius/facing arc. |
+| melee | Immediate close-range hit with optional target radius/facing arc or an explicitly declared rectangle geometry. |
 | ray | Instant line/ray hit. |
 | projectile | Moving object that collides later. |
 | radial | Immediate area effect around a center point. |
@@ -289,8 +295,9 @@ because it is active on another bot.
 
 Targeting metadata may also live in the contract's execution section. Existing
 options include target selection, facing captured at activation, phase-facing
-defaults, movement behavior, and whether an ability can ignore the global
-ability lock. Change these only when you intend to change action semantics.
+defaults, movement behavior, one-time effects within a multi-target activation,
+and whether an ability can ignore the global ability lock. Change these only
+when you intend to change action semantics.
 
 ## 4. Add or modify a status effect
 

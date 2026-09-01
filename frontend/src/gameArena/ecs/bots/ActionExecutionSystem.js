@@ -5,7 +5,7 @@ import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, ROTATION_STEP_DEG } from "../../
 import { createAbilityEntity } from "../entities/EntityFactory.js";
 import { tickBotState } from "./BotStateSystem.js";
 import { effectiveMovementSpeedMultiplier, effectiveRotationSpeedMultiplier } from "../../gameconfig/HitStagger.js";
-import { abilityResourceReady, abilityTimingReady, anotherAbilityActive, consumeAbilityCharges, setAbilityCooldownState } from "../../gameconfig/AbilityResourceSystem.js";
+import { abilityResourceReady, abilityTimingReady, anotherAbilityActive, consumeAbilityCharges, interruptCurrentAbility, setAbilityCooldownState } from "../../gameconfig/AbilityResourceSystem.js";
 import { abilityExecutionPayload } from "../../gameconfig/AbilityExecutionPayload.js";
 import { statusEffectValue, statusIsActive, STATUS_EFFECT_APPLICATIONS } from "../contracts/StatusContracts.js";
 
@@ -27,12 +27,9 @@ export function applyBotAction(shape, action, elapsedMs, applyDamage) {
     const dy = magnitude > 0.001 ? executableAction.dy / magnitude : 0;
     let next = { ...shape, rotation: normalizeAngle(Number(shape.rotation ?? 0) + clamp(executableAction.dRot ?? 0, -1, 1) * ROTATION_STEP_DEG * rotationMultiplier) };
     if (statusIsActive(shape, "stun")) {
+        next = interruptCurrentAbility(next);
         return {
             ...tickBotState(next, elapsedMs, applyDamage),
-            preparingAbility: null,
-            preparingMs: 0,
-            preparingTargetX: null,
-            preparingTargetY: null,
             dashActiveMs: 0,
             dashRemaining: 0,
             movementVelocityX: 0,
@@ -92,7 +89,8 @@ function applyMovement(next, shape, action, movement) {
         const x = clamp(shape.x + dashX * step, shape.size / 2, ARENA_WIDTH_UNITS - shape.size / 2);
         const y = clamp(shape.y + dashY * step, shape.size / 2, ARENA_HEIGHT_UNITS - shape.size / 2);
         const traveled = Math.hypot(x - shape.x, y - shape.y);
-        return { ...next, ...movementStart, x, y, dashActiveMs: traveled > 0 ? Math.max(elapsedMs, Number(shape.dashActiveMs ?? 0)) : 0, dashRemaining: Math.max(0, Number(shape.dashRemaining ?? 0) - traveled), movementVelocityX: dashX * maxMoveSpeed, movementVelocityY: dashY * maxMoveSpeed, velocityX: dashX * step / seconds, velocityY: dashY * step / seconds };
+        const dashRemaining = Math.max(0, Number(shape.dashRemaining ?? 0) - traveled);
+        return { ...next, ...movementStart, x, y, dashActiveMs: traveled > 0 && dashRemaining > 0 ? Math.max(elapsedMs, Number(shape.dashActiveMs ?? 0)) : 0, dashRemaining, movementVelocityX: dashX * maxMoveSpeed, movementVelocityY: dashY * maxMoveSpeed, velocityX: dashX * step / seconds, velocityY: dashY * step / seconds };
     }
     const velocity = nextMovementVelocity(shape, dx, dy, magnitude, maxMoveSpeed);
     return { ...next, ...movementStart, x: clamp(shape.x + velocity.dx, shape.size / 2, ARENA_WIDTH_UNITS - shape.size / 2), y: clamp(shape.y + velocity.dy, shape.size / 2, ARENA_HEIGHT_UNITS - shape.size / 2), movementVelocityX: velocity.dx, movementVelocityY: velocity.dy, velocityX: velocity.dx / seconds, velocityY: velocity.dy / seconds };

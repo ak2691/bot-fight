@@ -26,3 +26,9 @@ test("ability testing presets preserve their starting transforms in practice res
         [preset.opponentPosition.x, preset.opponentPosition.y, preset.opponentRotation, preset.opponentPosition.x, preset.opponentPosition.y, preset.opponentRotation],
     ]);
 });
+
+test("ability testing resolves Vampiric Beam by its canonical name", () => {
+    const preset = findAbilityTestingPreset("vampiric_beam");
+    assert.equal(preset?.id, 32);
+    assert.equal(preset?.label, "Vampiric Beam");
+});

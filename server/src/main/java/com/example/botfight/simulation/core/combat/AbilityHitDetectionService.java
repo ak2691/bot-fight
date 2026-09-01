@@ -6,10 +6,12 @@ import static com.example.botfight.simulation.geometry.AngleCalculator.vectorBea
 import static com.example.botfight.simulation.geometry.DistanceCalculator.rayIntersectsCircle;
 import static com.example.botfight.simulation.geometry.DistanceCalculator.segmentIntersectsCircle;
 import static com.example.botfight.simulation.geometry.DistanceCalculator.segmentsWithinDistance;
+import static com.example.botfight.simulation.geometry.DistanceCalculator.movingRectangleCollision;
 
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
 import com.example.botfight.simulation.gameconfig.Abilities;
 import com.example.botfight.simulation.gameconfig.AbilityContracts.DeliveryType;
+import com.example.botfight.simulation.gameconfig.AbilityContracts.HitboxGeometry;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -37,6 +39,17 @@ final class AbilityHitDetectionService {
             return segmentIntersectsCircle(defender.movementStartX, defender.movementStartY,
                     defender.x, defender.y, sourceX, sourceY,
                     Abilities.range(payload.abilityId()) + targetRadius);
+        }
+        if (payload.contract().hitboxGeometry() == HitboxGeometry.RECTANGLE) {
+            double range = Abilities.range(payload.abilityId());
+            double radians = compassRadians(sourceRotation(attacker, payload));
+            double centerX = sourceX + Math.cos(radians) * range / 2.0;
+            double centerY = sourceY + Math.sin(radians) * range / 2.0;
+            return movingRectangleCollision(
+                    centerX, centerY, centerX, centerY,
+                    range, Abilities.stat(payload.abilityId(), "hitboxWidth", 60), radians,
+                    defender.movementStartX, defender.movementStartY,
+                    defender.x, defender.y, targetRadius).hit();
         }
         return segmentIntersectsArc(sourceX, sourceY,
                 defender.movementStartX, defender.movementStartY, defender.x, defender.y,
@@ -114,6 +127,15 @@ final class AbilityHitDetectionService {
         double sourceY = sourceY(attacker, payload);
         double dx = targetX - sourceX, dy = targetY - sourceY;
         double targetRadius = payload.contract().includeTargetRadius() ? targetSize / 2.0 : 0;
+        if (payload.contract().hitboxGeometry() == HitboxGeometry.RECTANGLE) {
+            double radians = compassRadians(sourceRotation(attacker, payload));
+            double centerX = sourceX + Math.cos(radians) * range / 2.0;
+            double centerY = sourceY + Math.sin(radians) * range / 2.0;
+            return movingRectangleCollision(
+                    centerX, centerY, centerX, centerY,
+                    range, Abilities.stat(payload.abilityId(), "hitboxWidth", 60), radians,
+                    targetX, targetY, targetX, targetY, targetRadius).hit();
+        }
         if (Math.hypot(dx, dy) > range + targetRadius) return false;
         return payload.contract().delivery() == DeliveryType.RADIAL
                 || Math.abs(shortestDelta(sourceRotation(attacker, payload), vectorBearing(dx, dy)))

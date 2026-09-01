@@ -1,5 +1,6 @@
 import { ABILITY_STATS } from "../../gameconfig/Abilities.js";
-import { angleDelta, clamp, movingCircleCollision, movingCirclesDistance, movingCirclesIntersect, normalizeAngle, rayIntersectsCircle } from "../../gameconfig/geometry.js";
+import { angleDelta, clamp, movingCirclesDistance, movingCirclesIntersect, normalizeAngle, rayIntersectsCircle } from "../../gameconfig/geometry.js";
+import { movingEntityCollision } from "../../gameconfig/hitboxGeometry.js";
 import { advanceEntityAge, runEntityWorld, withComponentState } from "../entities/EntityWorld.js";
 import { abilityContract, DELIVERY_TYPES, EFFECT_TYPES, SHIELD_CHARGE_COSTS } from "../../gameconfig/AbilityContracts.js";
 import { damageAtDistance } from "./AbilityEffectSystem.js";
@@ -152,7 +153,7 @@ function resolveTrapTriggers(entries, world) {
                     0,
                     botPath.start,
                     botPath.end,
-                    phaseStat(stats, phase, trigger.radiusStat, 0),
+                    phaseStat(stats, phase, trigger.radiusStat, 0) + Number(bot.size ?? 60) / 2,
                 );
             }));
     }).map(({ entity }) => entity.id));
@@ -255,14 +256,14 @@ function tickSegment(entity, behavior, world, combat) {
             && !hitSlots.includes(bot.slot)
             && Number(bot.hp ?? BASE_BOT_HP) > 0
             && !ignoresHostileEffects(bot)
-        && movingCircleCollision(
-                start,
-                end,
-                Number(entity.size ?? 0) / 2,
-                botMovementSegment(bot, world.stepMs).start,
-                botMovementSegment(bot, world.stepMs).end,
-                Number(bot.size ?? 60) / 2,
-            ).hit)
+        && movingEntityCollision(
+            entity,
+            start,
+            end,
+            bot,
+            botMovementSegment(bot, world.stepMs).start,
+            botMovementSegment(bot, world.stepMs).end,
+        ).hit)
         .map((candidate) => ({
             ...candidate,
             collisionDistance: movingCirclesDistance(
@@ -524,7 +525,7 @@ function applyZoneEffects(bots, source, abilityId, effectTypes, radius, combat, 
             Number(radius),
             targetPath.start,
             targetPath.end,
-            0,
+            Number(target.size ?? 60) / 2,
         )) continue;
         if (ignoresHostileEffects(target)) continue;
         const sourceBehavior = behaviorForEntity(source);
@@ -776,14 +777,14 @@ function entityCategory(entity) {
 function overlaps(first, second, stepMs = 100) {
     const firstPath = entityMovementSegment(first, stepMs);
     const secondPath = entityMovementSegment(second, stepMs);
-    return movingCirclesIntersect(
+    return movingEntityCollision(
+        first,
         firstPath.start,
         firstPath.end,
-        Number(first.size ?? 0) / 2,
+        second,
         secondPath.start,
         secondPath.end,
-        Number(second.size ?? 0) / 2,
-    );
+    ).hit;
 }
 
 function entityMovementSegment(entity) {

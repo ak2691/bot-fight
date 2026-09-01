@@ -59,7 +59,7 @@ class MatchSimulationServiceTest {
         assertThat(duelSimulationService.capturedRequest.seed()).isEqualTo(99L);
         assertThat(duelSimulationService.capturedRequest.arena().durationMs()).isEqualTo(90_000);
         assertThat(duelSimulationService.capturedRequest.bots()).hasSize(2);
-        assertThat(duelSimulationService.capturedRequest.bots().getFirst().x()).isEqualTo(500.0);
+        assertThat(duelSimulationService.capturedRequest.bots().getFirst().x()).isEqualTo(600.0);
         assertThat(duelSimulationService.capturedRequest.bots().getFirst().y()).isEqualTo(150.0);
         assertThat(duelSimulationService.capturedRequest.bots().getFirst().brain().get("roots")).hasSize(1);
     }
@@ -173,10 +173,10 @@ class MatchSimulationServiceTest {
         assertThat(playback.initialState().bots())
                 .extracting(MatchPlaybackDTO.BotStateDTO::x, MatchPlaybackDTO.BotStateDTO::y)
                 .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple(333.333, 150.0),
-                        org.assertj.core.groups.Tuple.tuple(666.667, 150.0),
-                        org.assertj.core.groups.Tuple.tuple(333.333, 850.0),
-                        org.assertj.core.groups.Tuple.tuple(666.667, 850.0));
+                        org.assertj.core.groups.Tuple.tuple(400.0, 150.0),
+                        org.assertj.core.groups.Tuple.tuple(800.0, 150.0),
+                        org.assertj.core.groups.Tuple.tuple(400.0, 1050.0),
+                        org.assertj.core.groups.Tuple.tuple(800.0, 1050.0));
     }
 
     @Test

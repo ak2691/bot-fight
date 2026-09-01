@@ -165,6 +165,8 @@ export default function CodingPanel({
     testingRemaining = null,
     isAutoPlaying = false,
     onMeasurementToggle,
+    hitboxesEnabled = false,
+    onHitboxesToggle = null,
     isBaseTesting = false,
     finishStatus = null,
     finishError = null,
@@ -706,6 +708,11 @@ export default function CodingPanel({
                         <ControlButton icon="measure" onClick={onMeasurementToggle} disabled={!onMeasurementToggle} tone="neutral">
                             MEASURE
                         </ControlButton>
+                        {onHitboxesToggle && (
+                            <ControlButton icon="target" onClick={onHitboxesToggle} tone="neutral">
+                                {hitboxesEnabled ? "HITBOXES OFF" : "HITBOXES ON"}
+                            </ControlButton>
+                        )}
                         <ControlButton
                             icon="stats"
                             onClick={onResetArenaStats}
@@ -891,9 +898,9 @@ export default function CodingPanel({
                                         aria-label="Close bot code workspace"
                                         title="Close"
                                         onClick={() => { setIsNodeSearchOpen(false); setIsQuickSearchOpen(false); setIsCustomVariablesOpen(false); setIsLogicOpen(false); }}
-                                        className="code-toolbar-button code-toolbar-close"
+                                        className="modal-close-button"
                                     >
-                                        <span aria-hidden="true">×</span><span className="code-toolbar-close-label">CLOSE</span>
+                                        <span aria-hidden="true">×</span>
                                     </button>
                                 </div>
                             </div>

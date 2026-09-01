@@ -219,12 +219,12 @@ public class MatchmakingSocketController {
                 headers.getSessionId(),
                 mode,
                 queueGroup,
-                queueContext == null ? null : queueContext.partyId());
+                queueContext == null ? null : queueContext.partyId(),
+                payload == null ? List.of() : payload.guaranteedAbilityIds());
         publish(events);
         publishPartyQueueState(queueContext, mode, events, "WAITING");
-        beginMatchFoundSelections(events);
         scheduleMatchAcceptanceTimeouts(events);
-        scheduleLoadoutSelectionTimeouts(events);
+        scheduleSelectionTimeouts(events);
     }
 
     /** Compatibility entry point for existing direct callers and old clients. */
@@ -306,7 +306,7 @@ public class MatchmakingSocketController {
                 user.getId(),
                 headers.getSessionId());
         publish(events);
-        scheduleLoadoutSelectionTimeouts(events);
+        scheduleSelectionTimeouts(events);
     }
 
     @MessageMapping("/matchmaking.cancel")
@@ -326,7 +326,7 @@ public class MatchmakingSocketController {
     public void handleMatchmakingEventsReady(MatchmakingEventsReady ready) {
         List<OutboundMatchmakingEvent> events = ready.events();
         publish(events);
-        scheduleLoadoutSelectionTimeouts(events);
+        scheduleSelectionTimeouts(events);
     }
 
     @MessageExceptionHandler(AuthException.class)
@@ -733,6 +733,7 @@ public class MatchmakingSocketController {
                 .filter(java.util.Objects::nonNull)
                 .distinct()
                 .forEach(this::cancelScheduledDelayedMatchEvents);
+        scheduleLoadoutSelectionTimeouts(currentImmediateEvents);
         scheduleBuildingTimeouts(currentImmediateEvents);
         scheduleMatchChatClosures(currentImmediateEvents);
         Set<UUID> terminalMatchIds = currentImmediateEvents.stream()
@@ -965,17 +966,8 @@ public class MatchmakingSocketController {
                 });
     }
 
-    private void beginMatchFoundSelections(List<OutboundMatchmakingEvent> events) {
-        List<OutboundMatchmakingEvent> readyEvents = events.stream()
-                .map(OutboundMatchmakingEvent::event)
-                .filter(event -> "MATCH_FOUND".equals(event.type()) && "MATCH_FOUND".equals(event.status()))
-                .filter(event -> event.matchId() != null)
-                .map(MatchmakingEventDTO::matchId)
-                .distinct()
-                .flatMap(matchId -> matchService.beginInitialLoadoutSelection(matchId).stream())
-                .toList();
-        publish(readyEvents);
-        scheduleLoadoutSelectionTimeouts(readyEvents);
+    private void scheduleSelectionTimeouts(List<OutboundMatchmakingEvent> events) {
+        scheduleLoadoutSelectionTimeouts(events);
     }
 
     private ScheduledFuture<?> scheduleSafely(Instant runAt, String taskName, Runnable task) {
@@ -1038,7 +1030,7 @@ public class MatchmakingSocketController {
                 destination,
                 payload);
         if ("MATCH_ROUND_READY".equals(eventAtPhaseBoundary.event().type())) {
-            scheduleLoadoutSelectionTimeouts(List.of(eventAtPhaseBoundary));
+            scheduleSelectionTimeouts(List.of(eventAtPhaseBoundary));
             List<OutboundMatchmakingEvent> pendingDisconnectEvents =
                     matchService.promotePendingDisconnect(eventAtPhaseBoundary.principalName());
             if (!pendingDisconnectEvents.isEmpty()) {
@@ -1084,7 +1076,7 @@ public class MatchmakingSocketController {
                         try {
                                 List<OutboundMatchmakingEvent> replayEvents = matchService.completeSimulation(event.matchId());
                                 publish(replayEvents);
-                                scheduleLoadoutSelectionTimeouts(replayEvents);
+                                scheduleSelectionTimeouts(replayEvents);
                         } catch (RuntimeException exception) {
                             log.error(
                                     "Matchmaking authoritative replay simulation failed matchId={} round={}",

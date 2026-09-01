@@ -29,6 +29,15 @@ export const DELIVERY_TYPES = Object.freeze({
     SUMMON: "summon",
 });
 
+export const HITBOX_GEOMETRIES = Object.freeze({
+    ARC: "arc",
+    RECTANGLE: "rectangle",
+});
+
+export const TELEPORT_DISTANCE_MODES = Object.freeze({
+    CENTER_DISTANCE: "center_distance",
+});
+
 export const SHIELD_MODES = Object.freeze({
     BLOCK: "block",
     IGNORE: "ignore",
@@ -57,7 +66,7 @@ const ABILITY_CONTRACTS_BY_ID = Object.freeze({
     5: contract(DELIVERY_TYPES.PROJECTILE, [effect(EFFECT_TYPES.DAMAGE, { amount: A[5].damage }), effect(EFFECT_TYPES.DEBUFF, { debuff: "burn", durationMs: statusDurationMs(5, "burn") }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "fireball" })], ignore),
     6: contract({ type: DELIVERY_TYPES.MELEE, includeTargetRadius: true }, [effect(EFFECT_TYPES.DAMAGE, { amount: A[6].damage }), effect(EFFECT_TYPES.DEBUFF, { debuff: "stun", durationMs: statusDurationMs(6, "stun") })], ignore),
     7: contract({ type: DELIVERY_TYPES.MELEE, includeTargetRadius: true }, [effect(EFFECT_TYPES.DAMAGE, { amount: A[7].damage }), effect(EFFECT_TYPES.DEBUFF, { debuff: "bleed", durationMs: statusDurationMs(7, "bleed") })], ignore),
-    8: contract(DELIVERY_TYPES.RADIAL, [effect(EFFECT_TYPES.DAMAGE, { amount: A[8].damage }), effect(EFFECT_TYPES.KNOCKBACK, { distance: A[8].knockback })], ignore),
+    8: contract({ type: DELIVERY_TYPES.RADIAL, includeTargetRadius: true }, [effect(EFFECT_TYPES.DAMAGE, { amount: A[8].damage }), effect(EFFECT_TYPES.KNOCKBACK, { distance: A[8].knockback })], ignore),
     9: contract(DELIVERY_TYPES.RAY, [effect(EFFECT_TYPES.DAMAGE, { amount: A[9].damage }), effect(EFFECT_TYPES.DEBUFF, { debuff: "slow", durationMs: statusDurationMs(9, "slow") })], ignore),
     10: contract(DELIVERY_TYPES.SELF, [effect(EFFECT_TYPES.HEALING, { amount: A[10].healing })], ignore),
     11: contract(DELIVERY_TYPES.TRAP, [effect(EFFECT_TYPES.DAMAGE, { amount: A[11].damage }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "proximity_mine" })], ignore),
@@ -88,10 +97,12 @@ const ABILITY_CONTRACTS_BY_ID = Object.freeze({
     22: contract(DELIVERY_TYPES.ZONE, [effect(EFFECT_TYPES.DAMAGE, { amount: A[22].damage }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "orbital_zone" })], ignore),
     23: contract(DELIVERY_TYPES.SELF, [effect(EFFECT_TYPES.DAMAGE_IMMUNITY, { amount: 1, durationMs: statusDurationMs(23, "damage_immunity") })], ignore),
     24: contract(DELIVERY_TYPES.ZONE, [effect(EFFECT_TYPES.DEBUFF, { debuff: "silence", whileInside: true }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "null_zone" })], ignore),
-    25: contract(DELIVERY_TYPES.MELEE, [effect(EFFECT_TYPES.TELEPORT, { passThroughDistance: A[25].passThroughDistance }), effect(EFFECT_TYPES.DAMAGE, { amount: A[25].damage })], ignore, execution({
-        phaseFacingDefault: "face_target",
+    25: contract({ type: DELIVERY_TYPES.MELEE, geometry: HITBOX_GEOMETRIES.RECTANGLE, includeTargetRadius: true }, [effect(EFFECT_TYPES.TELEPORT, { distanceMode: TELEPORT_DISTANCE_MODES.CENTER_DISTANCE }), effect(EFFECT_TYPES.DAMAGE, { amount: A[25].damage })], ignore, execution({
+        capture: Object.freeze({ hitboxOriginX: "x", hitboxOriginY: "y", hitboxRotation: "rotation" }),
+        phaseFacingDefault: "0",
+        teleportOncePerActivation: true,
     })),
-    26: contract(DELIVERY_TYPES.RADIAL, [effect(EFFECT_TYPES.DAMAGE, { amount: A[26].damage }), effect(EFFECT_TYPES.DEBUFF, { debuff: "slow", durationMs: statusDurationMs(26, "slow") }), effect(EFFECT_TYPES.KNOCKBACK, { distance: A[26].knockback })], ignore),
+    26: contract({ type: DELIVERY_TYPES.RADIAL, includeTargetRadius: true }, [effect(EFFECT_TYPES.DAMAGE, { amount: A[26].damage }), effect(EFFECT_TYPES.DEBUFF, { debuff: "slow", durationMs: statusDurationMs(26, "slow") }), effect(EFFECT_TYPES.KNOCKBACK, { distance: A[26].knockback })], ignore),
     27: contract(DELIVERY_TYPES.ZONE, [effect(EFFECT_TYPES.PULL, { perTick: A[27].pullPerTick }), effect(EFFECT_TYPES.DAMAGE, { falloff: true }), effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "singularity_zone" })], ignore),
     28: contract(DELIVERY_TYPES.PROJECTILE, [
         effect(EFFECT_TYPES.DAMAGE, { amount: A[28].damage }),

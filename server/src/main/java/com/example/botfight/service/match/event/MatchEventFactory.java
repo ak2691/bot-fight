@@ -21,7 +21,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiFunction;
-import java.util.function.Function;
 
 /** Builds authoritative socket snapshots from a match session. */
 public final class MatchEventFactory {
@@ -33,7 +32,7 @@ public final class MatchEventFactory {
     private final MatchPersistenceService persistenceService;
     private final MatchChatService chatService;
     private final Set<UUID> initialLoadoutSelectionStartedMatchIds;
-    private final Function<MatchSession, List<Integer>> abilityOffers;
+    private final BiFunction<MatchSession, UUID, List<Integer>> abilityOffers;
     private final BiFunction<UUID, UUID, List<RoundBrainDTO>> roundBrainsForPlayer;
     private final BiFunction<UUID, UUID, Boolean> previousRoundWon;
 
@@ -43,7 +42,7 @@ public final class MatchEventFactory {
             MatchPersistenceService persistenceService,
             MatchChatService chatService,
             Set<UUID> initialLoadoutSelectionStartedMatchIds,
-            Function<MatchSession, List<Integer>> abilityOffers,
+            BiFunction<MatchSession, UUID, List<Integer>> abilityOffers,
             BiFunction<UUID, UUID, List<RoundBrainDTO>> roundBrainsForPlayer,
             BiFunction<UUID, UUID, Boolean> previousRoundWon) {
         this.clock = clock;
@@ -61,15 +60,15 @@ public final class MatchEventFactory {
             MatchPlayer player,
             String type) {
         String status = session.countdownEndsAt() != null
-                ? "PREP"
-                : session.entityPlacementEndsAt() != null
-                        ? "OBJECT_PLACEMENT"
-                        : "MATCH_FOUND".equals(type)
-                                && session.roundNumber() == 1
-                                && session.loadoutSelectionEndsAt() == null
-                                && !initialLoadoutSelectionStartedMatchIds.contains(session.matchId())
-                                ? "MATCH_FOUND"
-                                : "LOADOUT_SELECT";
+                        ? "PREP"
+                        : session.entityPlacementEndsAt() != null
+                                ? "OBJECT_PLACEMENT"
+                                : "MATCH_FOUND".equals(type)
+                                        && session.roundNumber() == 1
+                                        && session.loadoutSelectionEndsAt() == null
+                                        && !initialLoadoutSelectionStartedMatchIds.contains(session.matchId())
+                                        ? "MATCH_FOUND"
+                                        : "LOADOUT_SELECT";
         return forPlayer(session, player, type, status, null, null);
     }
 
@@ -334,12 +333,10 @@ public final class MatchEventFactory {
                     || (compactPlayback != null && compactPlayback.terminalBatch())) {
                 MatchPlayer opponent = opposingPlayer(session, player);
                 replayBatchEvent = replayBatchEvent.withReplayParticipants(
-                        player.toDto(session.entityPlacementsByUserId().containsKey(player.userId())),
-                        opponent == null ? null : opponent.toDto(
-                                session.entityPlacementsByUserId().containsKey(opponent.userId())),
+                        playerDto(session, player),
+                        opponent == null ? null : playerDto(session, opponent),
                         session.players().stream()
-                                .map(matchPlayer -> matchPlayer.toDto(
-                                        session.entityPlacementsByUserId().containsKey(matchPlayer.userId())))
+                                .map(matchPlayer -> playerDto(session, matchPlayer))
                                 .toList());
             }
             return new OutboundMatchmakingEvent(
@@ -395,6 +392,7 @@ public final class MatchEventFactory {
         Instant disconnectEndsAt = disconnectedUserId == null
                 ? null
                 : connectionService.disconnectDeadline(disconnectedUserId);
+        Instant activeSelectionDeadline = session.loadoutSelectionEndsAt();
         return new OutboundMatchmakingEvent(
                 player.principalName(),
                 new MatchmakingEventDTO(
@@ -402,15 +400,13 @@ public final class MatchEventFactory {
                         session.matchId(),
                         session.simulationSeed(),
                         status,
-                        player.toDto(session.entityPlacementsByUserId().containsKey(player.userId())),
-                        opponent == null ? null : opponent.toDto(
-                                session.entityPlacementsByUserId().containsKey(opponent.userId())),
+                        playerDto(session, player),
+                        opponent == null ? null : playerDto(session, opponent),
                         session.players().stream()
-                                .map(matchPlayer -> matchPlayer.toDto(
-                                        session.entityPlacementsByUserId().containsKey(matchPlayer.userId())))
+                                .map(matchPlayer -> playerDto(session, matchPlayer))
                                 .toList(),
                         eventNow,
-                        simulationPreparingEvent ? null : session.loadoutSelectionEndsAt(),
+                        simulationPreparingEvent ? null : activeSelectionDeadline,
                         simulationPreparingEvent ? null : session.entityPlacementEndsAt(),
                         simulationPreparingEvent ? null : session.countdownEndsAt(),
                         simulationPreparingEvent ? null : session.buildingEndsAt(),
@@ -430,7 +426,7 @@ public final class MatchEventFactory {
                         replayPhaseEvent
                                 ? null
                                 : previousRoundWon.apply(session.matchId(), player.userId()),
-                        replayPhaseEvent ? List.of() : abilityOffers.apply(session),
+                        replayPhaseEvent ? List.of() : abilityOffers.apply(session, player.userId()),
                         replayPhaseEvent ? null : ROUND_LOGIC_BLOCK_LIMIT,
                         disconnectedUserId,
                         disconnectEndsAt,
@@ -450,6 +446,10 @@ public final class MatchEventFactory {
     private int ratingChangeOrder(MatchPlayer candidate, MatchPlayer recipient) {
         if (Objects.equals(candidate.userId(), recipient.userId())) return 0;
         return candidate.teamNumber() == recipient.teamNumber() ? 1 : 2;
+    }
+
+    private MatchmakingPlayerDTO playerDto(MatchSession session, MatchPlayer player) {
+        return player.toDto(session.entityPlacementsByUserId().containsKey(player.userId()));
     }
 
     public OutboundMatchmakingEvent disconnectEventForPlayer(
@@ -491,7 +491,10 @@ public final class MatchEventFactory {
                                 ? "PREP"
                                 : session.entityPlacementEndsAt() != null
                                         ? "OBJECT_PLACEMENT"
-                                        : session.buildingEndsAt() != null ? "BUILDING" : "LOADOUT_SELECT";
+                                        : session.buildingEndsAt() != null
+                                                ? "BUILDING"
+                                                : "LOADOUT_SELECT";
+        Instant activeSelectionDeadline = session.loadoutSelectionEndsAt();
         return new OutboundMatchmakingEvent(
                 recipient.principalName(),
                 new MatchmakingEventDTO(
@@ -499,15 +502,13 @@ public final class MatchEventFactory {
                         session.matchId(),
                         session.simulationSeed(),
                         status,
-                        recipient.toDto(session.entityPlacementsByUserId().containsKey(recipient.userId())),
-                        opponent == null ? null : opponent.toDto(
-                                session.entityPlacementsByUserId().containsKey(opponent.userId())),
+                        playerDto(session, recipient),
+                        opponent == null ? null : playerDto(session, opponent),
                         session.players().stream()
-                                .map(player -> player.toDto(
-                                        session.entityPlacementsByUserId().containsKey(player.userId())))
+                                .map(player -> playerDto(session, player))
                                 .toList(),
                         Instant.now(clock),
-                        session.loadoutSelectionEndsAt(),
+                        activeSelectionDeadline,
                         session.entityPlacementEndsAt(),
                         session.countdownEndsAt(),
                         session.buildingEndsAt(),
@@ -523,7 +524,7 @@ public final class MatchEventFactory {
                         session.arenaEntities(),
                         roundBrainsForPlayer.apply(session.matchId(), recipient.userId()),
                         previousRoundWon.apply(session.matchId(), recipient.userId()),
-                        abilityOffers.apply(session),
+                        abilityOffers.apply(session, recipient.userId()),
                         ROUND_LOGIC_BLOCK_LIMIT,
                         activeDisconnectedUserId,
                         activeDisconnectEndsAt,

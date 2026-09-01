@@ -5,6 +5,7 @@ import {
     abilityChargeCount,
     abilityRechargeRemainingMs,
     consumeAbilityCharges,
+    interruptCurrentAbility,
     rechargeAbility,
     rechargeAbilityResources,
 } from "./AbilityResourceSystem.js";
@@ -147,4 +148,63 @@ test("generic charge consumption starts reloads only when a resource becomes emp
     assert.equal(abilityChargeCount(pistol.shape, 12), 0);
     assert.equal(abilityRechargeRemainingMs(pistol.shape, 12), 3_000);
 
+});
+
+test("interrupting preparation starts recovery without activating the ability", () => {
+    const interrupted = interruptCurrentAbility({
+        abilities: [9],
+        attackSpeedMultiplier: 1,
+        preparingAbility: 9,
+        preparingMs: 300,
+        preparingTargetX: 400,
+        preparingTargetY: 200,
+        abilityCooldowns: { 9: 0 },
+        abilityActiveMs: {},
+    });
+
+    assert.equal(interrupted.preparingAbility, null);
+    assert.equal(interrupted.preparingMs, 0);
+    assert.equal(interrupted.preparingTargetX, null);
+    assert.equal(interrupted.abilityActiveMs[9] ?? 0, 0);
+    assert.equal(interrupted.abilityCooldowns[9], 6_700);
+    assert.equal(interrupted.abilityPendingCooldownMs?.[9], undefined);
+});
+
+test("interrupting an active ability exposes reserved recovery and leaves reload as the only gate", () => {
+    const active = interruptCurrentAbility({
+        abilities: [9, 5],
+        attackSpeedMultiplier: 1,
+        abilityCooldowns: { 9: 0, 5: 0 },
+        abilityPendingCooldownMs: { 9: 6_700 },
+        abilityActiveMs: { 9: 300, 5: 500 },
+        abilityCharges: { 5: 0 },
+        abilityRechargeMs: { 5: 5_000 },
+    });
+
+    assert.equal(active.abilityActiveMs[9], 0);
+    assert.equal(active.abilityCooldowns[9], 6_700);
+    assert.equal(active.abilityPendingCooldownMs?.[9], undefined);
+    assert.equal(active.abilityActiveMs[5], 0);
+    assert.equal(active.abilityCooldowns[5], 0);
+    assert.equal(active.abilityRechargeMs[5], 5_000);
+});
+
+test("interrupting a dash clears its movement state", () => {
+    const interrupted = interruptCurrentAbility({
+        abilities: [19],
+        abilityCooldowns: { 19: 0 },
+        abilityActiveMs: { 19: 200 },
+        dashActiveMs: 200,
+        dashRemaining: 75,
+        movementVelocityX: 8,
+        movementVelocityY: 0,
+        velocityX: 8,
+        velocityY: 0,
+    });
+
+    assert.equal(interrupted.dashActiveMs, 0);
+    assert.equal(interrupted.dashRemaining, 0);
+    assert.equal(interrupted.movementVelocityX, 0);
+    assert.equal(interrupted.velocityX, 0);
+    assert.equal(interrupted.abilityCooldowns[19], 1_800);
 });

@@ -20,6 +20,7 @@ public record MatchmakingPlayerDTO(
             int roundWins,
             String selectedLoadout,
             boolean loadoutSelected) {
-        this(userId, username, slot, slot <= 2 ? slot : 1, finished, roundWins, selectedLoadout, loadoutSelected, false);
+        this(userId, username, slot, slot <= 2 ? slot : 1, finished, roundWins,
+                selectedLoadout, loadoutSelected, false);
     }
 }

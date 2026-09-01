@@ -1,6 +1,6 @@
 package com.example.botfight.simulation.core.combat;
 
-import static com.example.botfight.simulation.geometry.DistanceCalculator.movingCirclesIntersect;
+import static com.example.botfight.simulation.geometry.EntityHitbox.movingCollision;
 
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
 import com.example.botfight.simulation.ecs.contracts.EntityContracts;
@@ -108,8 +108,11 @@ class ArenaEntityCombatService {
     }
 
     private static boolean overlaps(ArenaEntity first, ArenaEntity second) {
-        return movingCirclesIntersect(
-                first.x() - first.velocityX(), first.y() - first.velocityY(), first.x(), first.y(), first.size() / 2.0,
-                second.x() - second.velocityX(), second.y() - second.velocityY(), second.x(), second.y(), second.size() / 2.0);
+        return movingCollision(
+                first,
+                first.x() - first.velocityX(), first.y() - first.velocityY(), first.x(), first.y(),
+                second,
+                second.x() - second.velocityX(), second.y() - second.velocityY(), second.x(), second.y(),
+                0).hit();
     }
 }

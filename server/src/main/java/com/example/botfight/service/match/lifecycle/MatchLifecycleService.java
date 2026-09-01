@@ -26,8 +26,8 @@ import java.util.UUID;
 
 /** Owns match creation, surrender, and cleanup of in-memory match state. */
 public final class MatchLifecycleService {
-    private static final int LOADOUT_SELECTION_SECONDS = 60;
-    private static final int SUBMISSION_GRACE_SECONDS = 2;
+    private static final int LOADOUT_SELECTION_SECONDS = MatchTimingPolicy.LOADOUT_SELECTION_SECONDS;
+    private static final int SUBMISSION_GRACE_SECONDS = MatchTimingPolicy.SUBMISSION_GRACE_SECONDS;
     private static final int WINS_REQUIRED = 2;
     private static final String COMPLETION_REASON_RESIGNATION = "RESIGNATION";
 
@@ -143,15 +143,24 @@ public final class MatchLifecycleService {
                 resolvedMode,
                 roundDurationSeconds);
         persistenceService.createParticipants(match, pendingSession);
-        MatchSession session = pendingSession.withLoadoutSelection(
+        MatchSession session = pendingSession;
+        for (MatchEntrant entrant : orderedEntrants) {
+            if (entrant.guaranteedAbilities() != null
+                    && !entrant.guaranteedAbilities().isEmpty()) {
+                session = session.withGuaranteedAbilities(
+                        entrant.userId(), entrant.guaranteedAbilities());
+            }
+        }
+        session = session.withLoadoutSelection(
                 loadoutSelectionDeadlineAt(Instant.now(clock)));
         state.putSession(session);
         normalizedEntrants.forEach(entrant ->
                 connectionService.registerSocket(entrant.userId(), entrant.socketSessionId()));
 
-        return session.players().stream()
+        MatchSession startedSession = session;
+        return startedSession.players().stream()
                 .map(matchPlayer -> eventFactory.forPlayer(
-                        session,
+                        startedSession,
                         matchPlayer,
                         "MATCH_STARTED",
                         "LOADOUT_SELECT",

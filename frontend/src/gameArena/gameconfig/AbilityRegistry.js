@@ -30,7 +30,7 @@ export const ABILITIES = Object.freeze({
     29: Object.freeze({ id: 29, name: "static_snare", label: "Snare Bomb", type: "ability" }),
     30: Object.freeze({ id: 30, name: "disruptor_dart", label: "Disruptor Dart", type: "ability" }),
     31: Object.freeze({ id: 31, name: "repeller_drone", label: "Repeller Drone", type: "ability" }),
-    32: Object.freeze({ id: 32, name: "siphon_lance", label: "Siphon Lance", type: "ability" }),
+    32: Object.freeze({ id: 32, name: "vampiric_beam", label: "Vampiric Beam", type: "ability" }),
     33: Object.freeze({ id: 33, name: "overclock", label: "Overclock", type: "ability" }),
     34: Object.freeze({ id: 34, name: "basic_strike", label: "Basic Strike", type: "ability" }),
 });

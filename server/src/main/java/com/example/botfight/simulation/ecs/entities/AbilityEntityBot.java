@@ -18,7 +18,8 @@ public interface AbilityEntityBot {
     void applySilence(int durationMs);
     void setZoneSilenced(boolean silenced);
     void applyStun(int durationMs);
-    void cancelPreparation();
+    /** Applies the full contract-owned interrupt transition to this bot. */
+    void applyInterrupt(int durationMs);
 
     /** Generic status hooks used by contract-declared entity effects. */
     default void applyDebuff(String subtype, int durationMs, int sourceSlot) {
@@ -29,11 +30,6 @@ public interface AbilityEntityBot {
 
     /** Optional status hook keeps existing entity-test fakes source-compatible. */
     default void applySlow(int durationMs) {}
-
-    default void applyInterrupt(int durationMs) {
-        cancelPreparation();
-        if (durationMs > 0) applyStun(durationMs);
-    }
 
     default void clearPresence(String field) {
         if ("silence".equals(field)) setZoneSilenced(false);

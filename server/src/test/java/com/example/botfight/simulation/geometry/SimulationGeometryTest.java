@@ -18,4 +18,17 @@ class SimulationGeometryTest {
         assertThat(DistanceCalculator.segmentIntersectsCircle(0, 0, 10, 0, 5, 1, 1)).isTrue();
         assertThat(DistanceCalculator.rayIntersectsCircle(0, 0, 1, 0, 10, 8, 0, 1)).isTrue();
     }
+
+    @Test
+    void rectangleCollisionUsesTheSquareFootprintInsteadOfACircularFootprint() {
+        DistanceCalculator.MovingCircleCollision square = DistanceCalculator.movingRectangleCollision(
+                0, 0, 0, 0, 20, 20, 0,
+                9, 9, 9, 9, 0);
+        DistanceCalculator.MovingCircleCollision circle = DistanceCalculator.movingCircleCollision(
+                0, 0, 0, 0, 10,
+                9, 9, 9, 9, 0);
+
+        assertThat(square.hit()).isTrue();
+        assertThat(circle.hit()).isFalse();
+    }
 }

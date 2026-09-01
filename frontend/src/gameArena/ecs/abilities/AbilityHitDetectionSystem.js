@@ -1,8 +1,8 @@
 import { ACTION_TO_ABILITY } from "../../loadout/BotLoadout.js";
 import { abilityExecutionPayload } from "../../gameconfig/AbilityExecutionPayload.js";
-import { DELIVERY_TYPES } from "../../gameconfig/AbilityContracts.js";
-import { angleDelta, clamp, segmentIntersectsCircle, segmentsWithinDistance } from "../../gameconfig/geometry.js";
-import { compassDirection, vectorToCompassDegrees } from "../../botlogic/planner/arenaAngles.js";
+import { DELIVERY_TYPES, HITBOX_GEOMETRIES } from "../../gameconfig/AbilityContracts.js";
+import { angleDelta, clamp, movingRectangleCollision, segmentIntersectsCircle, segmentsWithinDistance } from "../../gameconfig/geometry.js";
+import { compassDegreesToRadians, compassDirection, vectorToCompassDegrees } from "../../botlogic/planner/arenaAngles.js";
 
 const DIRECT_DELIVERIES = new Set([
     DELIVERY_TYPES.SELF,
@@ -57,8 +57,8 @@ export function abilityRangeHits(
     const delivery = payload.contract.delivery;
     if (delivery.type !== DELIVERY_TYPES.MELEE && delivery.type !== DELIVERY_TYPES.RADIAL) return false;
 
-    const targetRadius = delivery.includeTargetRadius ? Number(target.size ?? 60) / 2 : 0;
     const effectiveRange = Number(range ?? payload.stats.range ?? payload.stats.radius ?? 0);
+    const targetRadius = delivery.includeTargetRadius ? Number(target.size ?? 60) / 2 : 0;
     const targetPath = targetMovementSegment(target);
     if (delivery.type === DELIVERY_TYPES.RADIAL) {
         return segmentIntersectsCircle(
@@ -66,6 +66,24 @@ export function abilityRangeHits(
             targetPath.end,
             { x: Number(source.x), y: Number(source.y), size: (effectiveRange + targetRadius) * 2 },
         );
+    }
+    if (delivery.geometry === HITBOX_GEOMETRIES.RECTANGLE) {
+        const pose = capturedHitboxPose(source);
+        const direction = compassDirection(pose.rotation);
+        const center = {
+            x: pose.x + direction.x * effectiveRange / 2,
+            y: pose.y + direction.y * effectiveRange / 2,
+        };
+        return movingRectangleCollision(
+            center,
+            center,
+            effectiveRange,
+            Number(payload.stats.hitboxWidth ?? source.size ?? 60),
+            compassDegreesToRadians(pose.rotation),
+            targetPath.start,
+            targetPath.end,
+            targetRadius,
+        ).hit;
     }
     return segmentIntersectsArc(
         { x: Number(source.x), y: Number(source.y) },
@@ -75,6 +93,22 @@ export function abilityRangeHits(
         effectiveRange + targetRadius,
         Number(payload.stats.arcDegrees ?? 36) / 2,
     );
+}
+
+function capturedHitboxPose(source) {
+    return {
+        x: finiteNumber(source.hitboxOriginX, source.x),
+        y: finiteNumber(source.hitboxOriginY, source.y),
+        rotation: finiteNumber(source.hitboxRotation, source.rotation),
+    };
+}
+
+function finiteNumber(...values) {
+    for (const value of values) {
+        const number = Number(value);
+        if (Number.isFinite(number)) return number;
+    }
+    return 0;
 }
 
 export function isDirectDelivery(delivery) {

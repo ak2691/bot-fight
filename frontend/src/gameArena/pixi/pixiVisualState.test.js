@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { activeBotVisual, closingZoneDamageOccurred, ENTITY_PRESENTATION_DEFINITIONS, entityCaption, BOT_PRESENTATION_DEFINITIONS, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, grenadeDetonateProgress, grenadeVisualState, isBotShape, LOCK_ON_PRESENTATION, normalizeReplayObstacleShape, pixiLayerForShape, presentationDefinitionForShape, projectileTrailStyle, replayProjectileVelocity, shapeInterpolationMs } from "./pixiVisualState.js";
 import { REQUIRED_ARENA_PRESENTATION_PATHS } from "./arenaPresentationAssetOwner.js";
+import { hitboxGeometriesForEntity, hitboxGeometryForBot, hitboxGeometryForEntity } from "../gameconfig/hitboxGeometry.js";
 
 test("Pixi renderer classifies every combat snapshot family without changing game state", () => {
     assert.equal(isBotShape({ id: "main" }), true);
@@ -26,6 +27,117 @@ test("building and replay bot shapes resolve to the same presentation definition
     const replayShape = { id: "bot-user-7", type: "bot", userId: "user-7", slot: 1, x: 300, y: 400, rotation: 90 };
     assert.deepEqual(presentationDefinitionForShape(buildingShape), presentationDefinitionForShape(replayShape));
     assert.equal(pixiLayerForShape(buildingShape), pixiLayerForShape(replayShape));
+});
+
+test("practice hitbox geometry mirrors projectile, explosion, and persistent ability colliders", () => {
+    assert.deepEqual(hitboxGeometryForEntity({ type: "fireball", abilityId: 5, size: 30, velocityX: 10, velocityY: 0 }), {
+        shape: "rectangle",
+        width: 30,
+        height: 30,
+        rotation: 0,
+    });
+    [
+        { type: "grenadeExplosion", abilityId: 4, size: 200, radius: 100 },
+        { type: "mineExplosion", abilityId: 11, size: 175, radius: 87.5 },
+        { type: "gravityExplosion", abilityId: 14, size: 240, radius: 120 },
+        { type: "singularityExplosion", abilityId: 27, size: 280, radius: 140 },
+        { type: "staticSnareBurst", abilityId: 29, size: 240, radius: 120, phaseId: "destroyed", armed: true },
+        { type: "orbitalExplosion", abilityId: 22, size: 260, radius: 130 },
+    ].forEach(({ type, abilityId, size, radius, phaseId, armed }) => {
+        assert.deepEqual(hitboxGeometryForEntity({ type, abilityId, size, phaseId, armed, remainingMs: 100 }), {
+            shape: "circle",
+            radius,
+        }, type);
+    });
+    assert.deepEqual(hitboxGeometryForEntity({ type: "silenceWave", abilityId: 15, size: 225, velocityX: 0, velocityY: 150 }), {
+        shape: "rectangle",
+        width: 225,
+        height: 225,
+        rotation: Math.PI / 2,
+    });
+    assert.deepEqual(hitboxGeometryForEntity({ type: "nullZone", abilityId: 24, size: 300 }), {
+        shape: "circle",
+        radius: 150,
+    });
+    assert.deepEqual(hitboxGeometryForEntity({ type: "orbitalMarker", abilityId: 22, size: 260 }), {
+        shape: "circle",
+        radius: 130,
+    });
+});
+
+test("practice hitbox geometry mirrors direct melee, radial, and hitscan deliveries", () => {
+    const slash = hitboxGeometryForBot({
+        hp: 100,
+        size: 60,
+        abilityVisual: { ability: 7, ms: 200, x: 100, y: 200, rotation: 90 },
+    });
+    assert.equal(slash.shape, "sector");
+    assert.equal(slash.abilityId, 7);
+    assert.equal(slash.x, 100);
+    assert.equal(slash.y, 200);
+    assert.equal(slash.radius, 115);
+    assert.equal(slash.halfAngle, 75 * Math.PI / 180);
+    assert.equal(slash.rotation, 0);
+    assert.equal(slash.remainingMs, 200);
+
+    const phaseStrike = hitboxGeometryForBot({
+        hp: 100,
+        size: 60,
+        abilityVisual: { ability: 25, ms: 300, x: 100, y: 200, rotation: 90 },
+    });
+    assert.equal(phaseStrike.shape, "rectangle");
+    assert.equal(phaseStrike.abilityId, 25);
+    assert.equal(phaseStrike.x, 150);
+    assert.equal(phaseStrike.y, 200);
+    assert.equal(phaseStrike.width, 100);
+    assert.equal(phaseStrike.height, 60);
+    assert.equal(phaseStrike.rotation, 0);
+
+    const ray = hitboxGeometryForBot({
+        hp: 100,
+        size: 60,
+        abilityVisual: { ability: 3, ms: 500, x: 300, y: 400, rotation: 180 },
+    });
+    assert.equal(ray.shape, "ray");
+    assert.equal(ray.abilityId, 3);
+    assert.equal(ray.length, 700);
+    assert.equal(ray.x, 300);
+    assert.equal(ray.y, 400);
+    assert.equal(ray.rotation, Math.PI / 2);
+    assert.equal(ray.remainingMs, 500);
+
+    const radial = hitboxGeometryForBot({
+        hp: 100,
+        size: 60,
+        abilityActiveMs: { 26: 300 },
+        x: 500,
+        y: 500,
+        rotation: 0,
+    });
+    assert.equal(radial.shape, "circle");
+    assert.equal(radial.abilityId, 26);
+    assert.equal(radial.radius, 120);
+    assert.equal(radial.x, 500);
+    assert.equal(radial.y, 500);
+
+    assert.equal(hitboxGeometryForBot({ abilityVisual: { ability: 10, ms: 300 } }), null);
+});
+
+test("practice hitbox geometry includes summon hitscan attacks during their shot window", () => {
+    const geometries = hitboxGeometriesForEntity({
+        type: "hunterDrone",
+        abilityId: 17,
+        x: 200,
+        y: 300,
+        rotation: 90,
+        size: 28,
+        shotVisualMs: 150,
+    });
+    assert.equal(geometries.length, 2);
+    assert.equal(geometries[0].shape, "circle");
+    assert.equal(geometries[1].shape, "ray");
+    assert.equal(geometries[1].length, 200);
+    assert.equal(geometries[1].remainingMs, 150);
 });
 
 test("closing zone presentation is renderer-only and does not require an asset", () => {

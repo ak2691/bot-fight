@@ -32,13 +32,13 @@ export const ABILITY_CATALOGUE_ICONS = Object.freeze({
     static_snare: "/assets/ability-list/icons/static_snare.webp",
     disruptor_dart: "/assets/ability-list/icons/disruptor_dart.webp",
     repeller_drone: "/assets/ability-list/icons/repeller_drone.webp",
-    siphon_lance: "/assets/ability-list/icons/siphon_lance.webp",
+    vampiric_beam: "/assets/ability-list/icons/vampiric_beam.webp",
     overclock: "/assets/ability-list/icons/overclock.webp",
 });
 
 export const ABILITY_CATALOGUE_ICON_LAYOUTS = Object.freeze({
     tether_bolt: "wide",
-    siphon_lance: "wide",
+    vampiric_beam: "wide",
     disruptor_dart: "wide",
     static_snare: "square",
     overclock: "square",

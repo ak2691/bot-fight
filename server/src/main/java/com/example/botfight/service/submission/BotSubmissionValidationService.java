@@ -7,6 +7,7 @@ import com.example.botfight.simulation.gameconfig.GameConfig;
 import com.example.botfight.simulation.gameconfig.Abilities;
 import com.example.botfight.simulation.gameconfig.AbilityContracts;
 import com.example.botfight.simulation.bots.BotLogicContracts;
+import com.example.botfight.simulation.geometry.ArenaUnits;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -504,8 +505,8 @@ public class BotSubmissionValidationService {
                 validateActionAllowed(errors, actionNode, actionPath, loadoutSpec);
                 validateActionConfiguration(errors, entry, actionNode, actionPath);
                 validateSelectable(errors, entry.get("selectable"), actionPath + ".selectable");
-                if (entry.has("targetOffsetX")) validateSignedCoordinate(errors, entry.get("targetOffsetX"), actionPath + ".targetOffsetX", 1000);
-                if (entry.has("targetOffsetY")) validateSignedCoordinate(errors, entry.get("targetOffsetY"), actionPath + ".targetOffsetY", 800);
+                if (entry.has("targetOffsetX")) validateSignedCoordinate(errors, entry.get("targetOffsetX"), actionPath + ".targetOffsetX", ArenaUnits.WIDTH);
+                if (entry.has("targetOffsetY")) validateSignedCoordinate(errors, entry.get("targetOffsetY"), actionPath + ".targetOffsetY", ArenaUnits.HEIGHT);
                 if (actionNode.isIntegralNumber() && BotLogicContracts.actionContract(actionNode.intValue()) != null
                         && BotLogicContracts.actionContract(actionNode.intValue()).locationTarget()) {
                     JsonNode targetModeNode = entry.get("targetMode");
@@ -515,8 +516,8 @@ public class BotSubmissionValidationService {
                     if (!"target".equals(targetMode) && !"coordinates".equals(targetMode)) {
                         errors.add(actionPath + ".targetMode must be target or coordinates");
                     } else if ("coordinates".equals(targetMode)) {
-                        validateCoordinate(errors, entry.get("targetX"), actionPath + ".targetX", 1000);
-                        validateCoordinate(errors, entry.get("targetY"), actionPath + ".targetY", 800);
+                        validateCoordinate(errors, entry.get("targetX"), actionPath + ".targetX", ArenaUnits.WIDTH);
+                        validateCoordinate(errors, entry.get("targetY"), actionPath + ".targetY", ArenaUnits.HEIGHT);
                     }
                 }
                 String head = validationActionHead(action);
@@ -529,8 +530,8 @@ public class BotSubmissionValidationService {
         } else {
             validateActionAllowed(errors, block.get("action"), path, loadoutSpec);
             validateActionConfiguration(errors, block, block.get("action"), path);
-            if (block.has("targetOffsetX")) validateSignedCoordinate(errors, block.get("targetOffsetX"), path + ".targetOffsetX", 1000);
-            if (block.has("targetOffsetY")) validateSignedCoordinate(errors, block.get("targetOffsetY"), path + ".targetOffsetY", 800);
+            if (block.has("targetOffsetX")) validateSignedCoordinate(errors, block.get("targetOffsetX"), path + ".targetOffsetX", ArenaUnits.WIDTH);
+            if (block.has("targetOffsetY")) validateSignedCoordinate(errors, block.get("targetOffsetY"), path + ".targetOffsetY", ArenaUnits.HEIGHT);
         }
         JsonNode conditions = block.get("conditions");
         if (conditions == null || !conditions.isArray()) {
@@ -766,8 +767,8 @@ public class BotSubmissionValidationService {
             return BotLogicContracts.TARGET_MODE_TARGET;
         }
         if (BotLogicContracts.TARGET_MODE_COORDINATES.equals(mode)) {
-            validateCoordinate(errors, condition.get("targetX"), path + ".targetX", 1000);
-            validateCoordinate(errors, condition.get("targetY"), path + ".targetY", 1000);
+            validateCoordinate(errors, condition.get("targetX"), path + ".targetX", ArenaUnits.WIDTH);
+            validateCoordinate(errors, condition.get("targetY"), path + ".targetY", ArenaUnits.HEIGHT);
         } else if (BotLogicContracts.TARGET_MODE_ANGLE.equals(mode)) {
             JsonNode angle = condition.get("targetAngle");
             if (angle == null || !angle.isNumber() || !Double.isFinite(angle.asDouble())
@@ -865,8 +866,8 @@ public class BotSubmissionValidationService {
                     : BotLogicContracts.isRelativeDirection(direction);
             if (!allowedDirection) errors.add(path + ".movementDirection is not allowed for its movement mode");
             if ("coordinates".equals(mode)) {
-                validateCoordinate(errors, entry.get("targetX"), path + ".targetX", 1000);
-                validateCoordinate(errors, entry.get("targetY"), path + ".targetY", 800);
+                validateCoordinate(errors, entry.get("targetX"), path + ".targetX", ArenaUnits.WIDTH);
+                validateCoordinate(errors, entry.get("targetY"), path + ".targetY", ArenaUnits.HEIGHT);
             }
         }
         if (actionContract != null && actionContract.coordinateTarget() && !actionContract.movementConfig()) {
@@ -876,8 +877,8 @@ public class BotSubmissionValidationService {
             if (!validMode) {
                 errors.add(path + ".targetMode is not allowed");
             } else if ("coordinates".equals(mode)) {
-                validateCoordinate(errors, entry.get("targetX"), path + ".targetX", 1000);
-                validateCoordinate(errors, entry.get("targetY"), path + ".targetY", 800);
+                validateCoordinate(errors, entry.get("targetX"), path + ".targetX", ArenaUnits.WIDTH);
+                validateCoordinate(errors, entry.get("targetY"), path + ".targetY", ArenaUnits.HEIGHT);
             } else if ("angle".equals(mode)) {
                 JsonNode angle = entry.get("targetAngle");
                 if (angle == null || !angle.isNumber() || !Double.isFinite(angle.asDouble())
@@ -886,9 +887,14 @@ public class BotSubmissionValidationService {
                 }
             }
         }
-        if (actionContract != null && actionContract.orientationConfig()
-                && !BotLogicContracts.facingModes().contains(entry.path("phaseFacingMode").asText("face_target"))) {
-            errors.add(path + ".phaseFacingMode is not allowed");
+        if (actionContract != null && actionContract.orientationConfig()) {
+            JsonNode phaseFacingDirection = entry.get("phaseFacingMode");
+            if (phaseFacingDirection != null
+                    && (!phaseFacingDirection.isNumber() || !Double.isFinite(phaseFacingDirection.asDouble())
+                    || phaseFacingDirection.asDouble() < BotLogicContracts.ANGLE_MIN
+                    || phaseFacingDirection.asDouble() > BotLogicContracts.ANGLE_MAX)) {
+                errors.add(path + ".phaseFacingMode must be a relative angle from -360 to 360 degrees");
+            }
         }
     }
 

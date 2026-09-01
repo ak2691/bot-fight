@@ -117,16 +117,15 @@ public class BotMovementService {
         if (magnitude > 0) moveBot(bot, dx / magnitude, dy / magnitude, distance, arena);
     }
 
-    public void applyTeleport(Bot attacker, Bot defender, double passThroughDistance,
+    public void applyTeleport(Bot attacker, Bot defender, double teleportDistance,
                        AbilityExecutionPayload payload, Arena arena) {
         double dx = defender.x - attacker.x;
         double dy = defender.y - attacker.y;
         double distance = Math.hypot(dx, dy);
-        double bearing = com.example.botfight.simulation.geometry.AngleCalculator.vectorBearing(dx, dy);
         double originalRotation = attacker.rotation;
-        attacker.x = clamp(defender.x + dx / Math.max(1, distance) * passThroughDistance,
+        attacker.x = clamp(defender.x + dx / Math.max(1, distance) * teleportDistance,
                 attacker.size / 2.0, arena.width() - attacker.size / 2.0);
-        attacker.y = clamp(defender.y + dy / Math.max(1, distance) * passThroughDistance,
+        attacker.y = clamp(defender.y + dy / Math.max(1, distance) * teleportDistance,
                 attacker.size / 2.0, arena.height() - attacker.size / 2.0);
         attacker.movementStartX = attacker.x;
         attacker.movementStartY = attacker.y;
@@ -134,13 +133,10 @@ public class BotMovementService {
         attacker.movementVelocityY = 0;
         attacker.velocityX = 0;
         attacker.velocityY = 0;
-        String facingMode = payload.phaseFacingMode() != null
+        String facingDirection = payload.phaseFacingMode() != null
                 ? payload.phaseFacingMode() : payload.contract().execution().phaseFacingDefault();
-        if (!"keep".equals(facingMode)) {
-            attacker.rotation = "mirror".equals(facingMode)
-                    ? normalizeDegrees(2 * bearing - originalRotation)
-                    : normalizeDegrees(bearing + 180);
-        }
+        attacker.rotation = normalizeDegrees(originalRotation
+                + BotLogicContracts.relativeMovementAngle(facingDirection));
     }
 
     public void startDash(Bot bot, AbilityExecutionPayload payload, Arena arena) {

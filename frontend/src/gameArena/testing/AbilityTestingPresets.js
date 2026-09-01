@@ -77,7 +77,7 @@ function actionForAbility(abilityId) {
     const action = { action: abilityId, selectable: BOT_CODE_SELECTABLES.OPPONENT };
     if (abilityId === 19) Object.assign(action, { movementMode: "target", movementDirection: 0 });
     if ([22, 24].includes(abilityId)) action.targetMode = "target";
-    if (abilityId === 25) action.phaseFacingMode = "face_origin";
+    if (abilityId === 25) action.phaseFacingMode = 0;
     return action;
 }
 

@@ -235,7 +235,6 @@ export const MOVEMENT_DIRECTION_MAX = 360;
 export const ABSOLUTE_MOVEMENT_DIRECTIONS = Object.freeze([
     "north", "south", "east", "west", "northeast", "northwest", "southeast", "southwest", "stop",
 ]);
-export const FACING_MODES = Object.freeze(["face_target", "keep", "face_origin", "mirror"]);
 
 export const CONDITION_TYPES = Object.freeze([
     { id: BOT_CODE_CONDITIONS.ALWAYS, label: "ALWAYS", group: "Basic", requiresValue: false },

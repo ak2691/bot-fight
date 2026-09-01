@@ -13,6 +13,7 @@ import com.example.botfight.simulation.gameconfig.AbilityContracts;
 import com.example.botfight.simulation.gameconfig.AbilityContracts.DeliveryType;
 import com.example.botfight.simulation.gameconfig.AbilityContracts.EffectType;
 import com.example.botfight.simulation.gameconfig.HitStagger;
+import java.util.Comparator;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
@@ -32,6 +33,10 @@ class AbilityEffectService {
     }
 
     void resolveTriggeredAbility(Bot attacker, Bot defender, Arena arena) {
+        resolveTriggeredAbility(attacker, defender, arena, false);
+    }
+
+    private void resolveTriggeredAbility(Bot attacker, Bot defender, Arena arena, boolean skipTeleport) {
         AbilityExecutionPayload payload = AbilityExecutionPayload.fromTriggered(attacker);
         if (payload == null || !hitDetectionService.isDirectDelivery(payload.contract().delivery())) return;
         if (payload.contract().delivery() != DeliveryType.SELF
@@ -47,12 +52,12 @@ class AbilityEffectService {
                 && !defender.ignoresHostileEffects();
         if (!hostileImpact && payload.contract().delivery() != DeliveryType.SELF) return;
 
-        double sourceX = attacker.x;
-        double sourceY = attacker.y;
+        double sourceX = payload.hasCapturedPose() ? payload.capturedOriginX() : attacker.x;
+        double sourceY = payload.hasCapturedPose() ? payload.capturedOriginY() : attacker.y;
         AbilityEntitySystem.ShieldResult shield = hostileImpact
-                ? botStateService.resolveShield(defender, attacker.x, attacker.y, payload.abilityId())
+                ? botStateService.resolveShield(defender, sourceX, sourceY, payload.abilityId())
                 : AbilityEntitySystem.ShieldResult.none();
-        applyContractEffects(attacker, defender, payload, shield, arena, sourceX, sourceY);
+        applyContractEffects(attacker, defender, payload, shield, arena, sourceX, sourceY, skipTeleport);
     }
 
     void resolveTriggeredAbilities(Bot attacker, List<Bot> bots, Arena arena) {
@@ -68,10 +73,29 @@ class AbilityEffectService {
             resolveTriggeredAbility(attacker, null, arena);
             return;
         }
-        bots.stream()
+        if (!payload.contract().execution().teleportOncePerActivation()) {
+            bots.stream()
+                    .filter(defender -> defender != attacker
+                            && defender.entityTeam() != attacker.entityTeam())
+                    .forEach(defender -> resolveTriggeredAbility(attacker, defender, arena));
+            return;
+        }
+
+        double sourceX = payload.hasCapturedPose() ? payload.capturedOriginX() : attacker.x;
+        double sourceY = payload.hasCapturedPose() ? payload.capturedOriginY() : attacker.y;
+        List<Bot> hitTargets = bots.stream()
                 .filter(defender -> defender != attacker
+                        && defender.hp > 0
                         && defender.entityTeam() != attacker.entityTeam())
-                .forEach(defender -> resolveTriggeredAbility(attacker, defender, arena));
+                .filter(defender -> hitDetectionService.abilityHitsTarget(attacker, defender, payload))
+                .sorted(Comparator.comparingDouble(defender -> between(sourceX, sourceY, defender.x, defender.y)))
+                .toList();
+        boolean teleportApplied = false;
+        for (Bot defender : hitTargets) {
+            boolean canApplyTeleport = !defender.ignoresHostileEffects();
+            resolveTriggeredAbility(attacker, defender, arena, teleportApplied);
+            if (!teleportApplied && canApplyTeleport) teleportApplied = true;
+        }
     }
 
     private void applyContractEffects(Bot attacker, Bot defender,
@@ -79,7 +103,8 @@ class AbilityEffectService {
                                       AbilityEntitySystem.ShieldResult shield,
                                       Arena arena,
                                       double sourceX,
-                                      double sourceY) {
+                                      double sourceY,
+                                      boolean skipTeleport) {
         double confirmedDamage = 0;
         for (AbilityContracts.Effect effect : payload.contract().effects()) {
             if (shield.prevents(effect.type())) continue;
@@ -116,12 +141,7 @@ class AbilityEffectService {
                 case DEBUFF -> applyDebuff(attacker, defender, payload, effect);
                 case INTERRUPT -> {
                     if (defender == null || defender.hp <= 0) continue;
-                    defender.preparingAbility = null;
-                    defender.preparingMs = 0;
-                    StatusEffectState stun = new StatusEffectState("stun", effect.durationMs(), 0)
-                            .addEffect(new StatusEffectState.Effect("stun", "constant"));
-                    stun.abilityId = payload.abilityId();
-                    BotStateService.upsertStatusEffect(defender, stun);
+                    BotStateService.applyInterrupt(defender, effect.durationMs(), payload.abilityId());
                 }
                 case KNOCKBACK -> {
                     if (defender == null || arena == null) continue;
@@ -129,8 +149,11 @@ class AbilityEffectService {
                             defender.y - attacker.y, effect.amount(), arena);
                 }
                 case TELEPORT -> {
-                    if (defender != null && arena != null) {
-                        movementService.applyTeleport(attacker, defender, effect.amount(), payload, arena);
+                    if (!skipTeleport && defender != null && arena != null) {
+                        double teleportDistance = "center_distance".equals(effect.distanceMode())
+                                ? between(sourceX, sourceY, defender.x, defender.y)
+                                : effect.amount();
+                        movementService.applyTeleport(attacker, defender, teleportDistance, payload, arena);
                     }
                 }
                 case MOVEMENT -> {

@@ -7,7 +7,7 @@ test("Basic Strike is standard equipment with its direct melee contract", () => 
     assert.equal(abilityDefinition(34).label, "Basic Strike");
     assert.deepEqual(abilityDefinition(34).effects.map(({ type }) => type), ["damage"]);
     assert.ok(actionIdsForLoadout({ abilities: [] }).includes(34));
-    assert.equal(abilityDefinition(34).stats.damage, 5);
+    assert.equal(abilityDefinition(34).stats.damage, 8);
     assert.equal(abilityDefinition(34).stats.range, 80);
 });
 
@@ -21,6 +21,7 @@ test("loadout payloads contain abilities only and use the default combat stats",
     assert.equal(encodeBotLoadout({ abilities: [1] }), "custom:s");
     assert.deepEqual(decodeBotLoadout("custom:s"), { abilities: [1] });
     assert.equal(BASE_BOT_STATS.maxHp, 150);
+    assert.equal(BASE_BOT_STATS.moveSpeed, 15);
 });
 
 test("compact loadouts preserve acquisition order for status-panel positions", () => {

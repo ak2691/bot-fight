@@ -25,6 +25,7 @@ import { compassDirection } from "../../botlogic/planner/arenaAngles.js";
 import { CONCUSSIVE_SHOT_MOVEMENT_MULTIPLIER, CONCUSSIVE_SHOT_SLOW_DURATION_MS, HIT_STAGGER_DURATION_MS, HIT_STAGGER_MOVEMENT_MULTIPLIER, HIT_STAGGER_ROTATION_MULTIPLIER } from "../../gameconfig/HitStagger.js";
 import { statusEffectFor, statusIsActive, statusRemainingMs } from "../contracts/StatusContracts.js";
 import { anotherAbilityActive } from "../../gameconfig/AbilityResourceSystem.js";
+import { movingCircleCollision, movingRectangleCollision } from "../../gameconfig/geometry.js";
 
 const noDamageCombat = {
     applyDamageToShape: (bot, damage) => ({ ...bot, hp: Math.max(0, bot.hp - damage) }),
@@ -322,8 +323,32 @@ test("Repeller Drone uses the hunter drone body with low-damage knockback shots"
     assert.equal(result.entities[0].type, "hunterDrone");
     assert.equal(result.entities[0].hp, 50);
     assert.equal(result.entities[0].x, 104.5);
-    assert.equal(result.bots[0].hp, 98);
+    assert.equal(result.bots[0].hp, 97);
     assert.ok(result.bots[0].x > target.x);
+});
+
+test("Disruptor Dart interrupts a prepared ability and starts its cooldown", () => {
+    const attacker = {
+        id: "disruptor", slot: 1, x: 100, y: 100, size: 60, rotation: 90,
+        hp: 100, maxHp: 100, attackDamageMultiplier: 1, triggeredAbility: 30,
+    };
+    const defender = {
+        id: "caster", slot: 2, x: 200, y: 100, size: 60, rotation: 270,
+        hp: 100, maxHp: 100, abilities: [9],
+        preparingAbility: 9, preparingMs: 300,
+        preparingTargetX: 400, preparingTargetY: 100,
+        abilityCooldowns: { 9: 0 }, abilityActiveMs: {},
+    };
+
+    const [, interrupted] = resolveAbilityCombat(attacker, defender);
+
+    assert.equal(interrupted.hp, 85);
+    assert.equal(interrupted.preparingAbility, null);
+    assert.equal(interrupted.preparingMs, 0);
+    assert.equal(interrupted.abilityActiveMs[9] ?? 0, 0);
+    assert.equal(interrupted.abilityCooldowns[9], 6_700);
+    assert.equal(interrupted.abilityPendingCooldownMs?.[9], undefined);
+    assert.equal(statusRemainingMs(interrupted, "stun"), 250);
 });
 
 test("drones use a short bot action lock while their entities keep their duration", () => {
@@ -641,7 +666,7 @@ test("Dash exposes recovery only after its active phase ends", () => {
     assert.equal(first.x, 275);
     assert.equal(first.abilityCharges[19], undefined);
     assert.equal(first.abilityCooldowns[19], 0);
-    assert.equal(first.abilityPendingCooldownMs[19], 1300);
+    assert.equal(first.abilityPendingCooldownMs[19], 1800);
 
     const blocked = applyBotAction({ ...first, dashActiveMs: 0, dashRemaining: 0 }, action, 100, applyDamageToShape);
     assert.equal(blocked.triggeredAbility, null);
@@ -658,8 +683,39 @@ test("Dash exposes recovery only after its active phase ends", () => {
     const boundary = applyBotAction({ ...cooldownEnded, dashActiveMs: 0, dashRemaining: 0 }, action, 100, applyDamageToShape);
     assert.equal(boundary.triggeredAbility, 19);
     assert.equal(boundary.abilityCooldowns[19], 0);
-    assert.equal(boundary.abilityPendingCooldownMs[19], 1300);
+    assert.equal(boundary.abilityPendingCooldownMs[19], 1800);
     assert.equal(boundary.abilityCharges[19], undefined);
+});
+
+test("Dash clears its active movement marker when the dash segment finishes so later dashes can replay", () => {
+    const dashBase = {
+        ...base,
+        x: 200,
+        abilities: [19],
+        abilityCooldowns: { 19: 0 },
+        abilityCharges: {},
+        abilityActiveMs: {},
+    };
+    const action = { dx: 0, dy: 0, dRot: 0, abilityAction: { action: 19, targetX: 400, targetY: 100 } };
+    const first = applyBotAction(dashBase, action, 100, applyDamageToShape);
+    const finished = applyBotAction({
+        ...first,
+        abilityActiveMs: { 19: 0 },
+        abilityCooldowns: { 19: 0 },
+        abilityPendingCooldownMs: {},
+    }, { dx: 0, dy: 0, dRot: 0 }, 100, applyDamageToShape);
+
+    assert.equal(finished.dashRemaining, 0);
+    assert.equal(finished.dashActiveMs, 0);
+
+    const second = applyBotAction({
+        ...finished,
+        abilityCooldowns: { 19: 0 },
+        abilityPendingCooldownMs: {},
+        abilityActiveMs: {},
+    }, action, 100, applyDamageToShape);
+    assert.equal(second.triggeredAbility, 19);
+    assert.ok(second.dashActiveMs > 0);
 });
 
 test("declared spawned abilities resolve through normalized entity contracts", () => {
@@ -903,7 +959,7 @@ test("Frost Ring composes damage, slow, and knockback without blocking", () => {
     const attacker = { id: "owner", slot: 1, x: 100, y: 100, size: 60, rotation: 0, hp: 100, attackDamageMultiplier: 1, triggeredAbility: 26 };
     const defender = { id: "target", slot: 2, x: 180, y: 100, size: 60, rotation: 180, hp: 100, maxHp: 100 };
     const [, hit] = resolveAbilityCombat(attacker, defender);
-    assert.equal(hit.hp, 90);
+    assert.equal(hit.hp, 85);
     assert.equal(statusRemainingMs(hit, "slow"), 1500);
     assert.equal(hit.x, 240);
 
@@ -914,7 +970,7 @@ test("Frost Ring composes damage, slow, and knockback without blocking", () => {
         abilityCharges: { 2: 25 },
         abilities: [2],
     });
-    assert.equal(staleStateHit.hp, 90);
+    assert.equal(staleStateHit.hp, 85);
     assert.equal(staleStateHit.abilityCharges[2], 25);
     assert.equal(statusRemainingMs(staleStateHit, "slow"), 1500);
     assert.equal(staleStateHit.x, 240);
@@ -967,12 +1023,12 @@ test("Orbital Strike winds up for five ticks and pulses four times for flat dama
     assert.equal(world.entities.some((entity) => entity.type === "orbitalMarker"), false);
 });
 
-test("wind burst is a five-tick projectile with 15 damage and 150 knockback", () => {
+test("wind burst is a five-tick projectile with 20 damage and 200 knockback", () => {
     const attacker = { id: "owner", slot: 1, x: 100, y: 100, size: 60, rotation: 90, hp: 100, attackDamageMultiplier: 1 };
     const projectile = entityFor(attacker, 18);
     assert.equal(projectile.type, "windburstProjectile");
-    assert.equal(ABILITY_STATS[18].knockback, 150);
-    assert.equal(ABILITY_CONTRACTS[18].effects.find((effect) => effect.type === EFFECT_TYPES.KNOCKBACK).distance, 150);
+    assert.equal(ABILITY_STATS[18].knockback, 200);
+    assert.equal(ABILITY_CONTRACTS[18].effects.find((effect) => effect.type === EFFECT_TYPES.KNOCKBACK).distance, 200);
     assert.equal(projectile.velocityX, 44);
     assert.equal(projectile.velocityY, 0);
     assert.equal(projectile.size, 24);
@@ -987,8 +1043,8 @@ test("wind burst is a five-tick projectile with 15 damage and 150 knockback", ()
 
     const target = { id: "target", slot: 2, x: 210, y: 100, size: 60, rotation: 270, hp: 100, maxHp: 100 };
     const hit = tickAbilityEntityWorld({ entities: [projectile], bots: [attacker, target], stepMs: 100, width: 1000, height: 800 }, noDamageCombat);
-    assert.equal(hit.bots[1].hp, 85);
-    assert.equal(hit.bots[1].x, 360);
+    assert.equal(hit.bots[1].hp, 80);
+    assert.equal(hit.bots[1].x, 410);
     assert.equal(hit.entities.length, 0);
 });
 
@@ -1153,7 +1209,7 @@ test("Basic Heal applies 25 self-healing and respects the HP cap", () => {
     assert.equal(ABILITY_STATS[10].windupMs, 800);
 });
 
-test("Siphon Lance heals its source only after confirmed HP damage", () => {
+test("Vampiric Beam heals its source only after confirmed HP damage", () => {
     const attacker = { id: "owner", slot: 1, x: 100, y: 100, size: 60, rotation: 90, hp: 90, maxHp: 100, attackDamageMultiplier: 1, triggeredAbility: 32 };
     const target = { id: "target", slot: 2, x: 150, y: 100, size: 60, rotation: 180, hp: 100, maxHp: 100 };
     const [hitAttacker, hitTarget] = resolveAbilityCombat(attacker, target);
@@ -1220,7 +1276,7 @@ test("defensive and status abilities use preparation plus status duration, not a
         attackDamageMultiplier: 1, abilities: [24],
         abilityCooldowns: { 24: 0 }, abilityActiveMs: {},
     };
-    for (let tick = 0; tick < 15; tick += 1) {
+    for (let tick = 0; tick < 10; tick += 1) {
         nullZoneCast = applyBotAction(nullZoneCast, { abilityAction: { action: 24, targetX: 300, targetY: 300 } }, 100,
             noDamageCombat.applyDamageToShape);
     }
@@ -1320,7 +1376,7 @@ test("slash hitbox matches the inclusive 120-degree, 92-unit sweep", () => {
     for (const offset of [-60.1, 60.1]) assert.equal(abilityHitsTarget(attacker, targetAtBearing(attacker, 80, attacker.rotation + offset)), false, `outside ${offset} degrees`);
 });
 
-test("Basic Strike reaches the executor with its 5-damage, 80-range, 60-degree hitbox", () => {
+test("Basic Strike reaches the executor with its 8-damage, 80-range, 30-degree hitbox", () => {
     const attacker = {
         id: "owner", slot: 1, x: 100, y: 100, size: 60, rotation: 90,
         hp: 150, maxHp: 150, moveSpeed: 8, attackSpeedMultiplier: 1,
@@ -1334,11 +1390,11 @@ test("Basic Strike reaches the executor with its 5-damage, 80-range, 60-degree h
     assert.equal(fired.abilityPendingCooldownMs[34], 500);
 
     const centeredTarget = { id: "center", ...targetAtBearing(attacker, 60, attacker.rotation, 60), hp: 150, maxHp: 150 };
-    assert.equal(resolveAbilityCombat(fired, centeredTarget)[1].hp, 145);
-    for (const offset of [-30, 30]) {
+    assert.equal(resolveAbilityCombat(fired, centeredTarget)[1].hp, 142);
+    for (const offset of [-15, 15]) {
         assert.equal(abilityHitsTarget(fired, targetAtBearing(attacker, 60, attacker.rotation + offset, 60)), true, `at ${offset} degrees`);
     }
-    for (const offset of [-30.1, 30.1]) {
+    for (const offset of [-15.1, 15.1]) {
         assert.equal(abilityHitsTarget(fired, targetAtBearing(attacker, 60, attacker.rotation + offset, 60)), false, `outside ${offset} degrees`);
     }
 });
@@ -1376,10 +1432,11 @@ test("every browser melee hitbox reaches the defender's edge at max range", () =
     assert.equal(ABILITY_STATS[18].range, 220);
 
     const phaseAttacker = { id: "owner", x: 100, y: 100, size: 60, rotation: 90, hp: 100, attackDamageMultiplier: 1, triggeredAbility: 25 };
-    const phaseAtRange = { id: "target", x: 200, y: 100, size: defenderSize, rotation: 270, hp: 100, maxHp: 100 };
+    const phaseAtRange = { id: "target", x: 230, y: 100, size: defenderSize, rotation: 270, hp: 100, maxHp: 100 };
     assert.ok(resolveAbilityCombat(phaseAttacker, phaseAtRange)[1].hp < 100);
-    assert.equal(resolveAbilityCombat(phaseAttacker, { ...phaseAtRange, x: 201 })[1].hp, 100);
-    assert.equal(resolveAbilityCombat(phaseAttacker, { ...phaseAtRange, x: 100, y: 200 })[1].hp, 100);
+    assert.equal(resolveAbilityCombat(phaseAttacker, { ...phaseAtRange, x: 231 })[1].hp, 100);
+    assert.ok(resolveAbilityCombat(phaseAttacker, { ...phaseAtRange, x: 150, y: 160 })[1].hp < 100);
+    assert.equal(resolveAbilityCombat(phaseAttacker, { ...phaseAtRange, x: 100, y: 161 })[1].hp, 100);
 
     const stunAttacker = { x: 100, y: 100, rotation: 90, triggeredAbility: 6, abilities: [6] };
     assert.equal(abilityHitsTarget(stunAttacker, { x: 100 + 184 + defenderRadius, y: 100, size: defenderSize }), true);
@@ -1474,6 +1531,50 @@ test("Phase Strike damages normally and still teleports through stale retired st
     assert.equal(nextAttacker.movementStartY, nextAttacker.y);
     assert.ok(hit.hp < 100);
     assert.equal(hit.abilityCharges[2], 25);
+});
+
+test("Phase Strike uses one edge-inclusive forward rectangle for every target and teleports through the nearest hit", () => {
+    const attacker = {
+        id: "owner", slot: 1, teamNumber: 1, x: 100, y: 100, size: 60, rotation: 90,
+        hp: 100, maxHp: 100, attackDamageMultiplier: 1, triggeredAbility: 25,
+    };
+    const farTarget = {
+        id: "far", slot: 3, teamNumber: 2, x: 190, y: 100, size: 60, hp: 100, maxHp: 100,
+    };
+    const nearTarget = {
+        id: "near", slot: 2, teamNumber: 2, x: 160, y: 100, size: 60, hp: 100, maxHp: 100,
+    };
+    const outsideTarget = {
+        id: "outside", slot: 4, teamNumber: 2, x: 150, y: 161, size: 60, hp: 100, maxHp: 100,
+    };
+
+    const [nextAttacker, nextFar, nextNear, nextOutside] = resolveTriggeredAbilityCombatForRoster([
+        attacker, farTarget, nearTarget, outsideTarget,
+    ]);
+
+    assert.equal(nextFar.hp, 85);
+    assert.equal(nextNear.hp, 85);
+    assert.equal(nextOutside.hp, 100);
+    assert.equal(nextAttacker.x, 220);
+    assert.equal(nextAttacker.y, 100);
+});
+
+test("Phase Strike landing rotation is relative to the activation facing", () => {
+    const attacker = {
+        id: "owner", slot: 1, teamNumber: 1, x: 100, y: 100, size: 60, rotation: 30,
+        hp: 100, maxHp: 100, attackDamageMultiplier: 1, triggeredAbility: 25,
+        triggeredPhaseFacingMode: 90,
+    };
+    const target = {
+        id: "target", slot: 2, teamNumber: 2, x: 160, y: 100, size: 60, hp: 100, maxHp: 100,
+    };
+
+    const [nextAttacker, nextTarget] = resolveTriggeredAbilityCombatForRoster([attacker, target]);
+
+    assert.equal(nextAttacker.x, 220);
+    assert.equal(nextAttacker.y, 100);
+    assert.equal(nextAttacker.rotation, 120);
+    assert.equal(nextTarget.hp, 85);
 });
 
 test("temporal rewind creates a passive targetable clock zone", () => {
@@ -1732,6 +1833,22 @@ test("projectile system returns net bot damage and removes a colliding fireball"
     assert.equal(statusIsActive(result.bots[1], "burn"), true);
 });
 
+test("projectile collisions use the declared square footprint instead of a circle", () => {
+    const squareHit = movingRectangleCollision(
+        { x: 0, y: 0 }, { x: 0, y: 0 }, 20, 20, 0,
+        { x: 9, y: 9 }, { x: 9, y: 9 }, 0,
+    );
+    const circularComparison = movingCircleCollision(
+        { x: 0, y: 0 }, { x: 0, y: 0 }, 10,
+        { x: 9, y: 9 }, { x: 9, y: 9 }, 0,
+    );
+    assert.equal(squareHit.hit, true);
+    assert.equal(circularComparison.hit, false);
+    [4, 5, 15, 18, 28].forEach((abilityId) => {
+        assert.equal(ENTITY_CONTRACTS[abilityId].collider.shape, "rectangle", `ability ${abilityId}`);
+    });
+});
+
 test("projectile collision sweeps across a bot's dash segment", () => {
     const owner = { id: "owner", slot: 1, x: 700, y: 100, size: 60, hp: 100, maxHp: 100 };
     const target = {
@@ -1911,17 +2028,24 @@ test("mine, gravity, silence, drone, and orbital effects are never blocked", () 
     assert.equal(orbitalResult.bots[0].abilityCharges[2], 25);
 });
 
-test("radial effects use bot-center distance instead of outer-edge overlap", () => {
-    const outside = { id: "target", slot: 2, x: 240, y: 100, size: 60, hp: 100, maxHp: 100 };
+test("radial effects include bot-edge contact and exclude a bot just beyond the edge", () => {
+    const orbitalEdge = { id: "orbital-edge", slot: 2, x: 260, y: 100, size: 60, hp: 100, maxHp: 100 };
     const orbital = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100 }, 22, { targetX: 100, targetY: 100, clamp: (value) => value }), fuseMs: 100 };
-    const orbitalResult = tickAbilityEntityWorld({ entities: [orbital], bots: [outside], stepMs: 100, width: 1000, height: 800 }, noDamageCombat);
-    assert.equal(orbitalResult.bots[0].hp, 100);
+    const orbitalResult = tickAbilityEntityWorld({ entities: [orbital], bots: [orbitalEdge], stepMs: 100, width: 1000, height: 800 }, noDamageCombat);
+    assert.equal(orbitalResult.bots[0].hp, 85);
 
-    const mine = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }, 11), traveled: 176, armed: true };
-    const mineResult = tickAbilityEntityWorld({ entities: [mine], bots: [outside], stepMs: 100, width: 1000, height: 800 }, noDamageCombat);
-    assert.equal(mineResult.bots[0].hp, 100);
+    const orbitalOutside = { ...orbitalEdge, id: "orbital-outside", x: 260.1, hp: 100 };
+    const orbitalOutsideResult = tickAbilityEntityWorld({ entities: [orbital], bots: [orbitalOutside], stepMs: 100, width: 1000, height: 800 }, noDamageCombat);
+    assert.equal(orbitalOutsideResult.bots[0].hp, 100);
 
-    assert.equal(Math.hypot(outside.x - 100, outside.y - 100) > ABILITY_STATS[4].explosionRadius, true);
+    const mineEdge = { id: "mine-edge", slot: 2, x: 217.5, y: 100, size: 60, hp: 100, maxHp: 100 };
+    const mine = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }, 11), velocityX: 0, velocityY: 0, traveled: 176, armed: true };
+    const mineResult = tickAbilityEntityWorld({ entities: [mine], bots: [mineEdge], stepMs: 100, width: 1000, height: 800 }, noDamageCombat);
+    assert.equal(mineResult.bots[0].hp, 75);
+
+    const mineOutside = { ...mineEdge, id: "mine-outside", x: 217.6, hp: 100 };
+    const mineOutsideResult = tickAbilityEntityWorld({ entities: [mine], bots: [mineOutside], stepMs: 100, width: 1000, height: 800 }, noDamageCombat);
+    assert.equal(mineOutsideResult.bots[0].hp, 100);
 });
 
 test("another fireball refreshes burn duration without resetting its pending damage tick", () => {

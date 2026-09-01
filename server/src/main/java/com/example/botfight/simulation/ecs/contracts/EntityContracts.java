@@ -29,6 +29,7 @@ public final class EntityContracts {
     public enum BehaviorKind { TRAP, PHASE, SEGMENT, ZONE, SUMMON, DELAYED_ZONE, INTERVAL, LIFETIME, RADIAL, VISUAL_ZONE }
     public enum HitMode { ALL, NEAREST }
     public enum SelectableOwner { OWNER, NONE }
+    public enum ColliderShape { CIRCLE, RECTANGLE }
 
     public record Spawn(SpawnMode mode, RotationMode rotation, double padding,
                         String clampToRadiusStat, double defaultX, double defaultY) {}
@@ -37,7 +38,11 @@ public final class EntityContracts {
 
     public record Lifetime(TimerMode timerMode, String stat, int add) {}
 
-    public record Collider(String sizeStat, boolean hittable) {}
+    public record Collider(String sizeStat, boolean hittable, ColliderShape shape) {
+        public Collider(String sizeStat, boolean hittable) {
+            this(sizeStat, hittable, ColliderShape.CIRCLE);
+        }
+    }
 
     public record Health(String hpStat, String maxHpStat) {}
 
@@ -254,7 +259,7 @@ public final class EntityContracts {
         contracts.put(4, contract(4, "grenade", "grenade", FactoryType.ENTITY,
                 SystemType.PROJECTILE, Category.PROJECTILE, FORWARD_ZERO,
                 new Motion("speed", 0, 1), new Lifetime(TimerMode.STOPPED, null, 0),
-                new Collider("size", false), null, new InitialState(false, true), null,
+                new Collider("size", false, ColliderShape.RECTANGLE), null, new InitialState(false, true), null,
                 new Projectile(HitMode.NEAREST, derived("grenadeExplosion", "grenadeExplosion",
                         Category.ZONE, SystemType.ABILITY, BehaviorKind.RADIAL, "range", 2,
                         "explosionVisibleMs", 200, 4, true, Set.of(AbilityContracts.EffectType.DAMAGE))),
@@ -265,7 +270,7 @@ public final class EntityContracts {
         contracts.put(5, contract(5, "fireball", "fireball", FactoryType.ENTITY,
                 SystemType.PROJECTILE, Category.PROJECTILE, FORWARD,
                 new Motion("speed", 0, 1), new Lifetime(TimerMode.AGE, "durationMs", 0),
-                new Collider("size", false), null, new InitialState(false, true), null,
+                new Collider("size", false, ColliderShape.RECTANGLE), null, new InitialState(false, true), null,
                 new Projectile(HitMode.NEAREST, null), Map.of()));
 
         contracts.put(11, contract(11, "proximity_mine", "proximityMine", FactoryType.THROWN_ZONE,
@@ -310,7 +315,7 @@ public final class EntityContracts {
         contracts.put(15, contract(15, "silence_wave", "silenceWave", FactoryType.ENTITY,
                 SystemType.ABILITY, Category.PROJECTILE, SELF,
                 new Motion("speed", 0, 1), new Lifetime(TimerMode.REMAINING, "durationMs", 0),
-                new Collider("projectileSize", false), null, new InitialState(true, false),
+                new Collider("projectileSize", false, ColliderShape.RECTANGLE), null, new InitialState(true, false),
                 new Behavior(BehaviorKind.SEGMENT,
                         new Movement("segment", null, 1), null,
                         new Hit(HitMode.ALL, false, true, true, "source",
@@ -332,7 +337,7 @@ public final class EntityContracts {
         contracts.put(18, contract(18, "windburst_projectile", "windburstProjectile", FactoryType.ENTITY,
                 SystemType.ABILITY, Category.PROJECTILE, FORWARD,
                 new Motion("speed", 0, .01), new Lifetime(TimerMode.REMAINING, "durationMs", 0),
-                new Collider("size", true), null, new InitialState(true, true),
+                new Collider("size", true, ColliderShape.RECTANGLE), null, new InitialState(true, true),
                 new Behavior(BehaviorKind.SEGMENT,
                         new Movement("segment", null, .01), null,
                         new Hit(HitMode.NEAREST, true, false, false, "velocity",
@@ -397,7 +402,7 @@ public final class EntityContracts {
         contracts.put(28, contract(28, "tether_bolt", "tetherBolt", FactoryType.ENTITY,
                 SystemType.ABILITY, Category.PROJECTILE, FORWARD,
                 new Motion("speed", 0, 1), new Lifetime(TimerMode.REMAINING, "durationMs", 0),
-                new Collider("size", false), null, new InitialState(true, true),
+                new Collider("size", false, ColliderShape.RECTANGLE), null, new InitialState(true, true),
                 new Behavior(BehaviorKind.SEGMENT,
                         new Movement("segment", null, 1), null,
                         new Hit(HitMode.NEAREST, true, true, true, "source",

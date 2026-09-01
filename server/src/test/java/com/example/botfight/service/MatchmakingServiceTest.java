@@ -13,6 +13,7 @@ import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.limits.RateLimitExceededException;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;
+import com.example.botfight.service.match.loadout.MatchAbilityGuaranteeService;
 import com.example.botfight.service.match.model.MatchEntrant;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
 import com.example.botfight.service.matchmaking.MatchmakingService;
@@ -26,6 +27,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -41,14 +43,18 @@ class MatchmakingServiceTest {
     private final MutableClock clock = new MutableClock(
             Instant.parse("2026-07-24T12:00:00Z"),
             ZoneOffset.UTC);
+    private MatchAbilityGuaranteeService guaranteeService;
     private MatchmakingService service;
 
     @BeforeEach
     void setUp() {
+        guaranteeService = new MatchAbilityGuaranteeService();
         service = new MatchmakingService(
                 matchService,
                 clock,
-                new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3)));
+                new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3)),
+                null,
+                guaranteeService);
         when(matchService.activeMatchStatus(any()))
                 .thenReturn(ActiveMatchStatusDTO.none());
         when(matchService.startMatch(any(), any())).thenReturn(List.of());
@@ -124,6 +130,75 @@ class MatchmakingServiceTest {
         });
         String startedJson = jsonMapper.writeValueAsString(started);
         assertThat(startedJson).contains("bravo-secret", secondUserId.toString());
+    }
+
+    @Test
+    void carriesQueueGuaranteesIntoTheAcceptedMatch() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        var waiting = service.joinQueue(
+                firstUserId,
+                "first",
+                "first@example.com",
+                "socket-first",
+                MatchMode.ONES,
+                List.of(new MatchEntrant(
+                        firstUserId, "untrusted-name", "untrusted@example.com", "stale-socket")),
+                null,
+                Arrays.asList(1, null, 21));
+        assertThat(waiting).singleElement()
+                .extracting(event -> event.event().type())
+                .isEqualTo("QUEUE_WAITING");
+
+        var found = service.joinQueue(
+                secondUserId,
+                "second",
+                "second@example.com",
+                "socket-second");
+        UUID pendingMatchId = found.getFirst().event().matchId();
+        service.acceptMatch(pendingMatchId, firstUserId, "socket-first");
+        service.acceptMatch(pendingMatchId, secondUserId, "socket-second");
+
+        ArgumentCaptor<MatchEntrant> firstCaptor = ArgumentCaptor.forClass(MatchEntrant.class);
+        ArgumentCaptor<MatchEntrant> secondCaptor = ArgumentCaptor.forClass(MatchEntrant.class);
+        verify(matchService).startMatch(firstCaptor.capture(), secondCaptor.capture());
+
+        assertThat(firstCaptor.getValue().guaranteedAbilities())
+                .containsEntry(1, 1)
+                .containsEntry(3, 21)
+                .doesNotContainKey(2);
+        assertThat(secondCaptor.getValue().guaranteedAbilities()).isEmpty();
+    }
+
+    @Test
+    void explicitEmptyQueueSlotsClearTheSavedGuarantees() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        guaranteeService.setForUser(firstUserId, Arrays.asList(1, null, 21));
+
+        service.joinQueue(
+                firstUserId,
+                "first",
+                "first@example.com",
+                "socket-first",
+                MatchMode.ONES,
+                List.of(new MatchEntrant(
+                        firstUserId, "first", "first@example.com", "socket-first")),
+                null,
+                Arrays.asList(null, null, null));
+        var found = service.joinQueue(
+                secondUserId,
+                "second",
+                "second@example.com",
+                "socket-second");
+        UUID pendingMatchId = found.getFirst().event().matchId();
+        service.acceptMatch(pendingMatchId, firstUserId, "socket-first");
+        service.acceptMatch(pendingMatchId, secondUserId, "socket-second");
+
+        ArgumentCaptor<MatchEntrant> firstCaptor = ArgumentCaptor.forClass(MatchEntrant.class);
+        verify(matchService).startMatch(firstCaptor.capture(), any());
+
+        assertThat(firstCaptor.getValue().guaranteedAbilities()).isEmpty();
     }
 
     @Test

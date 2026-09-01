@@ -247,7 +247,6 @@ public final class BotLogicContracts {
     private static final Set<String> MOVEMENT_MODES = Set.of("target", "coordinates", "absolute");
     private static final Set<String> ABSOLUTE_DIRECTIONS = Set.of(
             "north", "south", "east", "west", "northeast", "northwest", "southeast", "southwest", "stop");
-    private static final Set<String> FACING_MODES = Set.of("face_target", "keep", "face_origin", "mirror");
     private static final Set<String> NUMERIC_COMPARATORS = Set.of("lt", "lte", "eq", "neq", "gte", "gt");
     private static final Set<String> BOOLEAN_COMPARATORS = Set.of("eq", "neq");
 
@@ -553,7 +552,6 @@ public final class BotLogicContracts {
         }
         return 0.0;
     }
-    public static Set<String> facingModes() { return FACING_MODES; }
     public static Set<String> numericComparators() { return NUMERIC_COMPARATORS; }
     public static Set<String> booleanComparators() { return BOOLEAN_COMPARATORS; }
 

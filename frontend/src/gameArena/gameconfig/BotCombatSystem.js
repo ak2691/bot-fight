@@ -1,8 +1,9 @@
 import { ignoresHostileEffects, withoutBotStatuses } from "./DefensiveState.js";
 import { HIT_STAGGER_DURATION_MS } from "./HitStagger.js";
 import { CLOSING_ZONE_TYPE } from "./ArenaHazardConfig.js";
-import { abilityContract, DELIVERY_TYPES } from "./AbilityContracts.js";
+import { abilityContract, DELIVERY_TYPES, EFFECT_TYPES } from "./AbilityContracts.js";
 import { resolveTriggeredAbilityEffects } from "../ecs/abilities/AbilityEffectSystem.js";
+import { abilityHitsTarget } from "../ecs/abilities/AbilityHitDetectionSystem.js";
 import { BASE_BOT_HP } from "../modelPayloads/arenaConstants.js";
 import {
     STATUS_EFFECT_APPLICATIONS,
@@ -30,6 +31,11 @@ export function resolveTriggeredAbilityCombatForRoster(bots) {
             nextBots[attackerIndex] = attacker;
             continue;
         }
+        const contract = abilityContract(attacker.triggeredAbility);
+        if (contract?.execution?.teleportOncePerActivation) {
+            resolveTeleportingAbilityForRoster(nextBots, attackerIndex, attacker, combat);
+            continue;
+        }
         let resolvedAgainstEnemy = false;
         for (let defenderIndex = 0; defenderIndex < nextBots.length; defenderIndex += 1) {
             if (defenderIndex === attackerIndex || !areOpposingTeams(attacker, nextBots[defenderIndex])) continue;
@@ -45,6 +51,58 @@ export function resolveTriggeredAbilityCombatForRoster(bots) {
         }
     }
     return nextBots;
+}
+
+/**
+ * Resolves a teleporting direct ability from one activation pose. Every target
+ * in the hitbox still receives the ordinary effects, but the displacement is
+ * consumed by the nearest valid target so roster order cannot overwrite the
+ * landing position.
+ */
+function resolveTeleportingAbilityForRoster(nextBots, attackerIndex, attacker, combat) {
+    const activationAttacker = { ...attacker };
+    const opposingTargets = [];
+    for (let defenderIndex = 0; defenderIndex < nextBots.length; defenderIndex += 1) {
+        if (defenderIndex === attackerIndex || !areOpposingTeams(attacker, nextBots[defenderIndex])) continue;
+        const defender = nextBots[defenderIndex];
+        if (Number(defender?.hp ?? 0) <= 0) continue;
+        if (abilityHitsTarget(activationAttacker, defender, attacker.triggeredAbility)) {
+            opposingTargets.push({ defenderIndex, defender });
+        }
+    }
+
+    opposingTargets.sort((left, right) => distanceFrom(activationAttacker, left.defender)
+        - distanceFrom(activationAttacker, right.defender));
+    if (opposingTargets.length === 0) {
+        [attacker] = resolveTriggeredAbilityEffects(attacker, null, combat, {
+            hitTestAttacker: activationAttacker,
+            effectSource: activationAttacker,
+            visualSource: activationAttacker,
+        });
+        nextBots[attackerIndex] = attacker;
+        return;
+    }
+
+    let teleportApplied = false;
+    for (const { defenderIndex, defender: originalDefender } of opposingTargets) {
+        const skipEffectTypes = teleportApplied ? new Set([EFFECT_TYPES.TELEPORT]) : null;
+        const canApplyTeleport = Number(originalDefender?.hp ?? 0) > 0
+            && !ignoresHostileEffects(originalDefender);
+        let defender = originalDefender;
+        [attacker, defender] = resolveTriggeredAbilityEffects(attacker, defender, combat, {
+            hitTestAttacker: activationAttacker,
+            effectSource: activationAttacker,
+            visualSource: activationAttacker,
+            skipEffectTypes,
+        });
+        nextBots[attackerIndex] = attacker;
+        nextBots[defenderIndex] = defender;
+        if (!teleportApplied && canApplyTeleport) teleportApplied = true;
+    }
+}
+
+function distanceFrom(first, second) {
+    return Math.hypot(Number(second?.x ?? 0) - Number(first?.x ?? 0), Number(second?.y ?? 0) - Number(first?.y ?? 0));
 }
 
 export function applyDamageToShape(shape, damage, source = null) {

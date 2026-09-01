@@ -12,6 +12,7 @@ import com.example.botfight.service.auth.UsernamePolicy;
 import com.example.botfight.service.block.BlockLookup;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;
+import com.example.botfight.service.match.loadout.MatchAbilityGuaranteeService;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
 import com.example.botfight.service.match.model.MatchEntrant;
 import com.example.botfight.service.match.timing.MatchTimingPolicy;
@@ -58,6 +59,7 @@ public class CustomLobbyService {
     private final BlockLookup blockLookup;
     private final SingleUserWebSocketSessionRegistry socketRegistry;
     private final PartyService partyService;
+    private final MatchAbilityGuaranteeService guaranteeService;
 
     private final Map<UUID, ActiveLobby> activeLobbiesById = new HashMap<>();
     private final Map<UUID, UUID> lobbyIdsByUserId = new HashMap<>();
@@ -74,7 +76,8 @@ public class CustomLobbyService {
             Clock clock,
             BlockLookup blockLookup,
             SingleUserWebSocketSessionRegistry socketRegistry,
-            PartyService partyService) {
+            PartyService partyService,
+            MatchAbilityGuaranteeService guaranteeService) {
         this.currentUserService = currentUserService;
         this.userRepository = userRepository;
         this.matchService = matchService;
@@ -84,6 +87,33 @@ public class CustomLobbyService {
         this.blockLookup = blockLookup;
         this.socketRegistry = socketRegistry;
         this.partyService = partyService;
+        this.guaranteeService = guaranteeService == null
+                ? new MatchAbilityGuaranteeService()
+                : guaranteeService;
+    }
+
+    /** Compatibility constructor for focused service tests. */
+    public CustomLobbyService(
+            CurrentUserService currentUserService,
+            UserRepository userRepository,
+            MatchService matchService,
+            TokenBucketRateLimiter<UUID> inviteRateLimiter,
+            TokenBucketRateLimiter<UUID> teamRateLimiter,
+            Clock clock,
+            BlockLookup blockLookup,
+            SingleUserWebSocketSessionRegistry socketRegistry,
+            PartyService partyService) {
+        this(
+                currentUserService,
+                userRepository,
+                matchService,
+                inviteRateLimiter,
+                teamRateLimiter,
+                clock,
+                blockLookup,
+                socketRegistry,
+                partyService,
+                new MatchAbilityGuaranteeService());
     }
 
     /** Binds a lobby member to the authenticated socket that subscribed to the lobby channel. */
@@ -370,7 +400,8 @@ public class CustomLobbyService {
                         member.user.getUsername(),
                         member.user.getEmail(),
                         currentSocketForPrincipal(member.user.getEmail()),
-                        member.teamNumber))
+                        member.teamNumber)
+                        .withGuaranteedAbilities(guaranteeService.forUser(member.user.getId())))
                 .toList();
         List<OutboundMatchmakingEvent> events = matchService.startTeamMatch(
                 entrants, MatchMode.CUSTOM, lobby.roundDurationSeconds);

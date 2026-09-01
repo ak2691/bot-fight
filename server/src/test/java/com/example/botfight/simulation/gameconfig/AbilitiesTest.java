@@ -82,20 +82,27 @@ class AbilitiesTest {
 
     @Test
     void newAbilityStatsKeepTheirSuggestedRoundStrengths() {
+        assertThat(Abilities.definition(6).damage()).isEqualTo(10);
         assertThat(Abilities.definition(9).damage()).isEqualTo(20);
         assertThat(Abilities.definition(11).damage()).isEqualTo(25);
+        assertThat(Abilities.definition(17).damage()).isEqualTo(5);
+        assertThat(Abilities.definition(18).damage()).isEqualTo(20);
+        assertThat(Abilities.stat(18, "knockback", 0)).isEqualTo(200);
         assertThat(Abilities.cooldownMs(28)).isEqualTo(7_700);
-        assertThat(Abilities.definition(26).damage()).isEqualTo(10);
+        assertThat(Abilities.definition(24).windupMs()).isEqualTo(1_000);
+        assertThat(Abilities.definition(25).damage()).isEqualTo(15);
+        assertThat(Abilities.definition(26).damage()).isEqualTo(15);
         assertThat(Abilities.definition(28).damage()).isEqualTo(10);
         assertThat(Abilities.stat(28, "pullPerTick", 0)).isEqualTo(100);
         assertThat(Abilities.definition(29).damage()).isEqualTo(15);
         assertThat(Abilities.stat(29, "hp", 0)).isEqualTo(20);
         assertThat(Abilities.cooldownMs(30)).isEqualTo(8_000);
-        assertThat(Abilities.windupMs(30)).isEqualTo(300);
+        assertThat(Abilities.windupMs(30)).isEqualTo(200);
         assertThat(Abilities.definition(30).damage()).isEqualTo(15);
         assertThat(Abilities.stat(30, "interruptMs", 0)).isEqualTo(250);
         assertThat(Abilities.statusDurationMs(30, "slow", 0)).isEqualTo(2_000);
-        assertThat(Abilities.stat(31, "knockback", 0)).isEqualTo(35);
+        assertThat(Abilities.definition(31).damage()).isEqualTo(3);
+        assertThat(Abilities.stat(31, "knockback", 0)).isEqualTo(40);
         assertThat(Abilities.definition(32).damage()).isZero();
         assertThat(Abilities.cooldownMs(32)).isEqualTo(10_000);
         assertThat(Abilities.windupMs(32)).isEqualTo(300);
@@ -125,9 +132,22 @@ class AbilitiesTest {
         assertThat(Abilities.windupMs(34)).isZero();
         assertThat(Abilities.durationMs(34)).isZero();
         assertThat(Abilities.definition(34).activeMs()).isEqualTo(200);
-        assertThat(Abilities.definition(34).damage()).isEqualTo(5);
+        assertThat(Abilities.definition(34).damage()).isEqualTo(8);
         assertThat(Abilities.range(34)).isEqualTo(80);
-        assertThat(Abilities.arcDegrees(34)).isEqualTo(60);
+        assertThat(Abilities.arcDegrees(34)).isEqualTo(30);
+    }
+
+    @Test
+    void phaseStrikeUsesAForwardRectangleProfile() {
+        assertThat(Abilities.range(25)).isEqualTo(100);
+        assertThat(Abilities.arcDegrees(25)).isZero();
+        assertThat(Abilities.stat(25, "hitboxWidth", 0)).isEqualTo(60);
+    }
+
+    @Test
+    void dashUsesTheLongerRequestedRecoveryWindow() {
+        assertThat(Abilities.cooldownMs(19)).isEqualTo(1_800);
+        assertThat(Abilities.definition(19).activeMs()).isEqualTo(200);
     }
 
     @Test

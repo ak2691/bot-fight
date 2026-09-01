@@ -1,6 +1,6 @@
 import { ABILITY_STATS, ACTION_TO_ABILITY } from "../../loadout/BotLoadout.js";
 import { statusIntervalMs } from "../../gameconfig/Abilities.js";
-import { abilityContract, DELIVERY_TYPES, EFFECT_TYPES } from "../../gameconfig/AbilityContracts.js";
+import { abilityContract, DELIVERY_TYPES, EFFECT_TYPES, TELEPORT_DISTANCE_MODES } from "../../gameconfig/AbilityContracts.js";
 import { ignoresHostileEffects, isAliveBot } from "../../gameconfig/DefensiveState.js";
 import { resolveShieldInteraction } from "../../gameconfig/ShieldSystem.js";
 import { clamp, normalizeAngle } from "../../gameconfig/geometry.js";
@@ -8,6 +8,7 @@ import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arena
 import { compassDegreesToRadians, vectorToCompassDegrees } from "../../botlogic/planner/arenaAngles.js";
 import { abilityHitsTarget, isDirectDelivery } from "./AbilityHitDetectionSystem.js";
 import { combatVisualDurationMs } from "../../gameconfig/visualState.js";
+import { interruptCurrentAbility } from "../../gameconfig/AbilityResourceSystem.js";
 import {
     STATUS_EFFECT_APPLICATIONS,
     upsertStatusEffect,
@@ -19,16 +20,22 @@ import {
 
 export { abilityHitsTarget } from "./AbilityHitDetectionSystem.js";
 
-export function resolveTriggeredAbilityEffects(attacker, defender, combat) {
+export function resolveTriggeredAbilityEffects(attacker, defender, combat, {
+    hitTestAttacker = attacker,
+    effectSource = attacker,
+    visualSource = attacker,
+    skipEffectTypes = null,
+} = {}) {
     const action = attacker?.triggeredAbility;
     const abilityId = ACTION_TO_ABILITY[action];
     const contract = abilityContract(abilityId);
     if (!abilityId || !contract || !isDirectDelivery(contract.delivery.type)) return [attacker, defender];
 
     const stats = ABILITY_STATS[abilityId] ?? {};
-    let nextAttacker = withAbilityVisual(attacker, abilityId, stats);
+    let nextAttacker = withAbilityVisual(attacker, abilityId, stats, visualSource);
     let nextDefender = defender;
-    const targetHit = contract.delivery.type === DELIVERY_TYPES.SELF || abilityHitsTarget(attacker, defender, abilityId);
+    const targetHit = contract.delivery.type === DELIVERY_TYPES.SELF
+        || abilityHitsTarget(hitTestAttacker, defender, abilityId);
     if (!targetHit) return [nextAttacker, nextDefender];
 
     const hostileImpact = contract.delivery.type !== DELIVERY_TYPES.SELF && defender && !ignoresHostileEffects(defender);
@@ -41,13 +48,14 @@ export function resolveTriggeredAbilityEffects(attacker, defender, combat) {
     let damageConfirmed = false;
     let damageConfirmedAmount = 0;
     for (const effect of contract.effects) {
+        if (skipEffectTypes?.has(effect.type)) continue;
         if (shield.preventedEffects.has(effect.type)) continue;
         const defenderHpBefore = Number(nextDefender?.hp ?? 0);
         [nextAttacker, nextDefender] = applyEffect(effect, {
             abilityId,
             stats,
             attacker: nextAttacker,
-            originalAttacker: attacker,
+            originalAttacker: effectSource,
             defender: nextDefender,
             originalDefender: defender,
             combat,
@@ -111,11 +119,32 @@ function applyEffect(effect, context) {
     if (effect.type === EFFECT_TYPES.DEBUFF) {
         return [attacker, applyDebuff(defender, effect, stats, originalAttacker, abilityId)];
     }
+    if (effect.type === EFFECT_TYPES.INTERRUPT) {
+        if (!isAliveBot(defender)) return [attacker, defender];
+        const interrupted = interruptCurrentAbility(defender);
+        return [attacker, upsertStatusEffect({
+            ...interrupted,
+            movementVelocityX: 0,
+            movementVelocityY: 0,
+            velocityX: 0,
+            velocityY: 0,
+        }, {
+            type: "stun",
+            abilityId,
+            remainingMs: Number(effect.durationMs ?? 0),
+            effects: [{ type: STATUS_EFFECT_APPLICATIONS.STUN, mode: "constant" }],
+        })];
+    }
     if (effect.type === EFFECT_TYPES.KNOCKBACK) {
         return [attacker, applyKnockback(defender, originalAttacker, Number(effect.distance ?? stats.knockback ?? 0))];
     }
     if (effect.type === EFFECT_TYPES.TELEPORT) {
-        return [applyTeleport(attacker, originalAttacker, originalDefender, Number(effect.passThroughDistance ?? stats.passThroughDistance ?? 0)), defender];
+        const source = originalAttacker ?? attacker;
+        const target = originalDefender ?? defender;
+        const teleportDistance = effect.distanceMode === TELEPORT_DISTANCE_MODES.CENTER_DISTANCE
+            ? Math.hypot(Number(target?.x ?? 0) - Number(source?.x ?? 0), Number(target?.y ?? 0) - Number(source?.y ?? 0))
+            : Number(effect.amount ?? stats.teleportDistance ?? 0);
+        return [applyTeleport(attacker, source, target, teleportDistance), defender];
     }
     if (effect.type === EFFECT_TYPES.RESTORE_STATE) {
         return [{
@@ -219,12 +248,13 @@ function applyKnockback(defender, source, distance) {
     };
 }
 
-function applyTeleport(attacker, source, target, passThroughDistance) {
+function applyTeleport(attacker, source, target, teleportDistance) {
     if (!target) return attacker;
-    const bearing = vectorToCompassDegrees(target.x - source.x, target.y - source.y);
+    const directionSource = attacker ?? source;
+    const bearing = vectorToCompassDegrees(target.x - directionSource.x, target.y - directionSource.y);
     const radians = compassDegreesToRadians(bearing);
-    const nextX = clamp(target.x + Math.cos(radians) * passThroughDistance, source.size / 2, ARENA_WIDTH_UNITS - source.size / 2);
-    const nextY = clamp(target.y + Math.sin(radians) * passThroughDistance, source.size / 2, ARENA_HEIGHT_UNITS - source.size / 2);
+    const nextX = clamp(target.x + Math.cos(radians) * teleportDistance, attacker.size / 2, ARENA_WIDTH_UNITS - attacker.size / 2);
+    const nextY = clamp(target.y + Math.sin(radians) * teleportDistance, attacker.size / 2, ARENA_HEIGHT_UNITS - attacker.size / 2);
     const next = {
         ...attacker,
         x: nextX,
@@ -236,21 +266,21 @@ function applyTeleport(attacker, source, target, passThroughDistance) {
         velocityX: 0,
         velocityY: 0,
     };
-    const facingMode = attacker?.triggeredPhaseFacingMode ?? "face_target";
-    if (facingMode === "face_target" || facingMode === "face_origin") next.rotation = normalizeAngle(bearing + 180);
-    else if (facingMode === "mirror") next.rotation = normalizeAngle(2 * bearing - Number(source.rotation ?? 0));
+    const relativeDirection = Number(attacker?.triggeredPhaseFacingMode ?? 0);
+    const originalRotation = Number(attacker?.rotation ?? source?.rotation ?? 0);
+    next.rotation = normalizeAngle(originalRotation + (Number.isFinite(relativeDirection) ? relativeDirection : 0));
     return next;
 }
 
-function withAbilityVisual(attacker, abilityId, stats) {
+function withAbilityVisual(attacker, abilityId, stats, visualSource = attacker) {
     return {
         ...attacker,
         abilityVisual: {
             ability: abilityId,
             ms: combatVisualDurationMs(abilityId, stats),
-            x: Number(attacker.x ?? 0),
-            y: Number(attacker.y ?? 0),
-            rotation: Number(attacker.rotation ?? 0),
+            x: Number(visualSource?.x ?? attacker.x ?? 0),
+            y: Number(visualSource?.y ?? attacker.y ?? 0),
+            rotation: Number(visualSource?.rotation ?? attacker.rotation ?? 0),
         },
     };
 }
