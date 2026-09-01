@@ -35,6 +35,13 @@ function formatMatchDate(value) {
     }).format(date);
 }
 
+function formatMatchYear(value) {
+    if (!value) return "Year unavailable";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Year unavailable";
+    return String(date.getFullYear());
+}
+
 function formatJoinedDate(value) {
     if (!value) return "Date unavailable";
     const date = new Date(value);
@@ -674,7 +681,7 @@ function MatchRow({ match }) {
     const participantTeams = Array.isArray(match.participantTeams) ? match.participantTeams : [];
 
     return (
-        <article className="grid min-w-0 gap-3 px-6 py-4 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:px-8">
+        <article className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-6 py-4 sm:items-center sm:px-8">
             <div className="min-w-0">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{matchModeLabel(match.mode)}</p>
                 <div className="mt-1 flex flex-col items-start gap-y-1 text-sm font-semibold text-slate-100">
@@ -694,12 +701,14 @@ function MatchRow({ match }) {
                     ))}
                 </div>
             </div>
-            <span className={`w-fit rounded-lg border px-3 py-1 font-mono text-xs font-bold tracking-wider ${resultTone[match.result] ?? resultTone.DRAW}`}>
-                {match.result}
-            </span>
-            <time className="text-sm text-slate-400 sm:text-right" dateTime={match.completedAt ?? undefined}>
-                {formatMatchDate(match.completedAt)}
-            </time>
+            <div className="flex flex-col items-end gap-1 text-right sm:flex-row sm:items-center sm:gap-4">
+                <span className={`w-fit rounded-lg border px-3 py-1 font-mono text-xs font-bold tracking-wider ${resultTone[match.result] ?? resultTone.DRAW}`}>
+                    {match.result}
+                </span>
+                <time className="text-sm text-slate-400" dateTime={match.completedAt ?? undefined}>
+                    {formatMatchYear(match.completedAt)}
+                </time>
+            </div>
         </article>
     );
 }
