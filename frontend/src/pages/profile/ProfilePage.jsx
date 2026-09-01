@@ -35,11 +35,15 @@ function formatMatchDate(value) {
     }).format(date);
 }
 
-function formatMatchYear(value) {
-    if (!value) return "Year unavailable";
+function formatMatchCalendarDate(value) {
+    if (!value) return "Date unavailable";
     const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "Year unavailable";
-    return String(date.getFullYear());
+    if (Number.isNaN(date.getTime())) return "Date unavailable";
+    return new Intl.DateTimeFormat(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+    }).format(date);
 }
 
 function formatJoinedDate(value) {
@@ -706,7 +710,7 @@ function MatchRow({ match }) {
                     {match.result}
                 </span>
                 <time className="text-sm text-slate-400" dateTime={match.completedAt ?? undefined}>
-                    {formatMatchYear(match.completedAt)}
+                    {formatMatchCalendarDate(match.completedAt)}
                 </time>
             </div>
         </article>
