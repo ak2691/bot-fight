@@ -1,6 +1,8 @@
-Bot Fight
 
-Bot Fight is a competitive multiplayer programming game where players build bots using a structured, allowlisted logic system and send them into deterministic arena fights.
+
+Bot Fight is a game where players build bots using a structured, logic system and send them into deterministic arena fights.
+
+Official website: botfightonline.com
 
 Players can:
 
