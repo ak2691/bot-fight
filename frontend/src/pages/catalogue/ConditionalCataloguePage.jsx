@@ -22,11 +22,11 @@ const DESCRIPTIONS = Object.freeze({
     "selectable.relativeBearingClockwise": "Clockwise turn needed for the Facing Entity to face a target entity, absolute coordinate, or absolute angle. The first selection must have the facing identity.",
     "selectable.relativeBearingCounterclockwise": "Counterclockwise turn needed for the Facing Entity to face a target entity, absolute coordinate, or absolute angle. The first selection must have the facing identity.",
     "selectable.facing": "The selected entity's facing direction. Only entities with the facing identity are available.",
-    "selectable.count": "Number of matching ability entities of the selected type; ordering and ordinal selection do not apply.",
+    "selectable.count": "Number of matching ability entities of the selected type.",
     "selectable.age": "Age or active timer of the selected ability entity, in seconds.",
     "selectable.edgeDistance": "Shortest edge-to-edge distance from the selected entity's hitbox to an arena boundary. Positive values measure the closest gap from the shape's nearest edge.",
     "selectable.closingZoneEdgeDistance": "Signed edge-to-edge clearance from the selected entity's hitbox to the circular closing-zone edge: positive inside, zero at the edge, and negative outside. It is unavailable until the zone starts.",
-    "selectable.exists": "True when an ability entity matching the selected type exists.",
+    "selectable.exists": "True when an ability entity exists in the arena.",
 });
 
 function describeVariable(variable) {
@@ -157,7 +157,7 @@ export default function ConditionalCataloguePage() {
                         Entities can be ordered by closest, farthest, oldest, or newest, then selected by position: first, second, and so on. <strong className="text-slate-200">Ability Entity Type Count</strong> selects only an entity type and does not use ordering or ordinal selection. Bearing pairs label their selectors <strong className="text-slate-200">Facing Entity</strong> and <strong className="text-slate-200">Target</strong>; other pairs use <strong className="text-slate-200">Entity</strong> for both.
                     </p>
                     <p className="mt-3 text-sm leading-6 text-slate-400">
-                        Edge-distance measurements are edge-to-edge: they use the nearest edge of the entity hitbox, not its center. Arena-edge values are positive inside the arena; closing-zone values are signed relative to the zone boundary.
+                        Edge-distance measurements are edge-to-edge: they use the nearest edge of the entity hitbox, not its center. Arena-edge values are positive inside the arena; closing-zone values are signed relative to the zone boundary. If you are past the closing edge where you begin to take damage, the distance will be negative.
                     </p>
                     <p className="mt-3 text-xs leading-5 text-slate-500">
                         Only entity and ability choices available in the current draft appear in the editor.

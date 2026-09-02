@@ -13,38 +13,38 @@ const ROUNDS = [0, 1, 2, 3];
 const ABILITY_TYPE_GUIDE = Object.freeze([
     {
         label: "Melee",
-        alias: "Close-range arc",
-        description: "An instant attack with no travel time. The target must be within range and inside the attacker's forward-facing angle.",
+        alias: "Close-range",
+        description: "An instant close-ranged attack.",
     },
     {
         label: "Hitscan",
         alias: "Ray",
-        description: "An instant line attack. Nothing travels through the arena; the target must intersect the ray from the attacker to its range limit.",
+        description: "An instant ray.",
     },
     {
         label: "Projectile",
         alias: "Travelling object",
-        description: "A moving object travels through the arena before applying its effect. It can be dodged, and some projectiles can be intercepted or destroyed.",
+        description: "A moving object travels through the arena for some duration.",
     },
     {
         label: "Self",
         alias: "Self-targeted",
-        description: "The ability applies its effect to the user. Self is independent from whether the status effect is positive or negative.",
+        description: "The ability applies its effect to the user.",
     },
     {
         label: "Status Effect",
         alias: "Timed modifier",
-        description: "The ability applies a positive or negative status effect. A self-targeted status effect is positive in the current catalogue.",
+        description: "The ability applies a positive or negative status effect..",
     },
     {
         label: "Radial",
         alias: "Centered effect",
-        description: "The effect resolves around a point or bot instead of following a single line or facing arc.",
+        description: "The effect starts from the center of some point or bot and applies its effect radially outward.",
     },
     {
         label: "Summon",
-        alias: "Ally entity",
-        description: "The ability creates a controllable or targetable ally entity that persists in the arena.",
+        alias: "Logical Entity",
+        description: "The ability creates a logical entity that persists in the arena for some duration.",
     },
     {
         label: "Zone",
@@ -54,7 +54,7 @@ const ABILITY_TYPE_GUIDE = Object.freeze([
     {
         label: "Trap",
         alias: "Triggered entity",
-        description: "The ability creates an entity that waits for an attack, projectile, or bot contact before resolving.",
+        description: "The ability creates an entity that persists until the end of its lifetime or some specific condition.",
     },
 ]);
 
@@ -293,41 +293,41 @@ export default function AbilityCataloguePage() {
                                     const iconPath = getAbilityCatalogueIcon(ability.id);
                                     const isSelected = selectedAbility?.id === ability.id;
                                     return (
-                                    <button
-                                        key={ability.id}
-                                        type="button"
-                                        onClick={() => selectAbility(ability)}
-                                        className={`ability-card ability-card-${round} group relative min-h-56 overflow-hidden rounded-none border p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-200 ${isSelected ? "ability-card-selected" : ""}`}
-                                        aria-label={`View ${ability.label} stats`}
-                                        aria-pressed={isSelected}
-                                    >
-                                        {iconPath && (
-                                            <img
-                                                src={iconPath}
-                                                alt=""
-                                                aria-hidden="true"
-                                                className={`ability-card-art ability-card-art-${getAbilityCatalogueIconLayout(ability.id)}`}
-                                                onError={(event) => {
-                                                    event.currentTarget.hidden = true;
-                                                }}
-                                            />
-                                        )}
-                                        <span className="ability-card-gradient" aria-hidden="true" />
-                                        <span className="absolute right-4 top-2 font-display-action text-6xl text-white/[.035]" aria-hidden="true">
-                                            {String(index + 1).padStart(2, "0")}
-                                        </span>
-                                        <span className="ability-card-content absolute inset-x-0 bottom-0 border-t border-white/10 px-5 py-4">
-                                            <span className="block font-display-action text-xl uppercase tracking-wider text-white">{ability.label}</span>
-                                            <span className="mt-2 flex flex-wrap gap-1.5">
-                                                <span className="font-mono text-[8px] font-bold tracking-[.16em] text-green-300/70">{ability.kind.toUpperCase()}</span>
-                                                {abilityTypeLabels(ability).map((type) => (
-                                                    <span key={type} className="border border-green-400/40 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-[.12em] text-green-300/80">
-                                                        {type}
-                                                    </span>
-                                                ))}
+                                        <button
+                                            key={ability.id}
+                                            type="button"
+                                            onClick={() => selectAbility(ability)}
+                                            className={`ability-card ability-card-${round} group relative min-h-56 overflow-hidden rounded-none border p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-200 ${isSelected ? "ability-card-selected" : ""}`}
+                                            aria-label={`View ${ability.label} stats`}
+                                            aria-pressed={isSelected}
+                                        >
+                                            {iconPath && (
+                                                <img
+                                                    src={iconPath}
+                                                    alt=""
+                                                    aria-hidden="true"
+                                                    className={`ability-card-art ability-card-art-${getAbilityCatalogueIconLayout(ability.id)}`}
+                                                    onError={(event) => {
+                                                        event.currentTarget.hidden = true;
+                                                    }}
+                                                />
+                                            )}
+                                            <span className="ability-card-gradient" aria-hidden="true" />
+                                            <span className="absolute right-4 top-2 font-display-action text-6xl text-white/[.035]" aria-hidden="true">
+                                                {String(index + 1).padStart(2, "0")}
                                             </span>
-                                        </span>
-                                    </button>
+                                            <span className="ability-card-content absolute inset-x-0 bottom-0 border-t border-white/10 px-5 py-4">
+                                                <span className="block font-display-action text-xl uppercase tracking-wider text-white">{ability.label}</span>
+                                                <span className="mt-2 flex flex-wrap gap-1.5">
+                                                    <span className="font-mono text-[8px] font-bold tracking-[.16em] text-green-300/70">{ability.kind.toUpperCase()}</span>
+                                                    {abilityTypeLabels(ability).map((type) => (
+                                                        <span key={type} className="border border-green-400/40 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-[.12em] text-green-300/80">
+                                                            {type}
+                                                        </span>
+                                                    ))}
+                                                </span>
+                                            </span>
+                                        </button>
                                     );
                                 })}
                             </div>

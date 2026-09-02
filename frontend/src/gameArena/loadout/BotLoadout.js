@@ -34,17 +34,17 @@ export const ABILITY_TAGS = Object.freeze({
 });
 
 const BOT_ABILITY_CATALOG = [
-    { id: 1, round: 1, visualInterpolation: "none", summary: "Dependable 92-range slash covering a 120° arc." },
+    { id: 1, round: 1, visualInterpolation: "none", summary: "Basic slash covering a 120° arc." },
     { id: 3, round: 1, visualInterpolation: "none", summary: "Shoots hitscan with distance falloff." },
-    { id: 4, round: 1, visualInterpolation: "linear", summary: "A slowing explosive projectile." },
-    { id: 5, round: 1, visualInterpolation: "linear", summary: "Projectile that burns its target." },
+    { id: 4, round: 1, visualInterpolation: "linear", summary: "An explosive projectile that triggers on hit or after some duration." },
+    { id: 5, round: 1, visualInterpolation: "linear", summary: "Projectile that deals damage and applies a burn effect." },
     { id: 6, round: 2, visualInterpolation: "none", summary: "Short-ranged stun." },
-    { id: 7, round: 1, visualInterpolation: "none", summary: "A slash with a wind-up. Has a 150° arc that also causes bleed." },
-    { id: 8, round: 2, visualInterpolation: "none", summary: "Deal 20 damage and quickly push opponents away." },
+    { id: 7, round: 1, visualInterpolation: "none", summary: "A slash with a wind-up that deals damage and applies a bleed effect." },
+    { id: 8, round: 2, visualInterpolation: "none", summary: "Quick burst that deals damage and knocks opponents away." },
     { id: 9, round: 1, visualInterpolation: "none", summary: "A projectile that slows on hit." },
     { id: 10, round: 1, visualInterpolation: "none", summary: "Channel briefly to restore 25 HP." },
     { id: 11, round: 1, visualInterpolation: "linear", summary: "Place one visible, destructible proximity trap." },
-    { id: 12, round: 1, visualInterpolation: "none", summary: "Shoots hitscan shot with distance falloff. Faster version of gun." },
+    { id: 12, round: 1, visualInterpolation: "none", summary: "Shoots hitscan shot with distance falloff. Faster version of gun but less damage." },
     { id: 13, round: 2, visualInterpolation: "none", summary: "Charge a strong beam that shocks its target." },
     { id: 14, round: 2, visualInterpolation: "linear", summary: "Spawns a gravitational pull zone and explodes after some time." },
     { id: 15, round: 2, visualInterpolation: "linear", summary: "Silences opponents on hit." },
