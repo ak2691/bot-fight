@@ -76,6 +76,7 @@ function PuzzlePlayInfoModal({ puzzle, outcome, onOpenConfiguration }) {
         ...customVariableDefinitions(puzzle.logicConfiguration),
     ];
     const description = typeof puzzle.description === "string" ? puzzle.description.trim() : "";
+    const isSolved = puzzle.solved === true || outcome?.status === "solved";
     const statusClass = outcome?.status === "solved"
         ? "border-emerald-500/60 bg-emerald-950/40 text-emerald-200"
         : outcome?.status === "error"
@@ -111,10 +112,12 @@ function PuzzlePlayInfoModal({ puzzle, outcome, onOpenConfiguration }) {
                     </div>
                 </div>
 
-                {outcome && <div role="status" className={`mt-4 rounded border px-3 py-2 font-mono text-[10px] font-bold tracking-widest ${statusClass}`}>
-                    {outcome.status === "solved" ? "PUZZLE SOLVED" : outcome.status === "error" ? "PUZZLE SERVER ERROR" : "PUZZLE FAILED"}
-                    {outcome.message && <span className="mt-1 block text-[9px] font-normal normal-case tracking-normal">{outcome.message}</span>}
-                </div>}
+                {isSolved
+                    ? <div role="status" className="mt-4 inline-flex items-center rounded-full border border-emerald-500/60 bg-emerald-950/40 px-3 py-1.5 font-mono text-[10px] font-bold tracking-widest text-emerald-200">Solved</div>
+                    : outcome && <div role="status" className={`mt-4 rounded border px-3 py-2 font-mono text-[10px] font-bold tracking-widest ${statusClass}`}>
+                        {outcome.status === "error" ? "PUZZLE SERVER ERROR" : "PUZZLE FAILED"}
+                        {outcome.message && <span className="mt-1 block text-[9px] font-normal normal-case tracking-normal">{outcome.message}</span>}
+                    </div>}
 
                 <section className="mt-5">
                     <h2 className="font-mono text-[10px] font-bold tracking-[.16em] text-emerald-200">WIN CONDITIONS:</h2>
@@ -158,19 +161,19 @@ function PuzzleStatusPage({ children }) {
 
 function PuzzleSubmissionsModal({ submissions, onClose, onLoad }) {
     return (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-labelledby="puzzle-submissions-title" tabIndex={-1} onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
-            <section className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-cyan-400/40 bg-[#07111b] p-5 text-white shadow-[0_24px_80px_rgba(0,0,0,.55)] sm:p-6">
-                <header className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
+        <div className="fixed inset-0 z-[200] grid place-items-center bg-[#02070de8] p-4 font-interface backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="puzzle-submissions-title" tabIndex={-1} onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
+            <section className="flex max-h-[min(88vh,54rem)] w-[min(42rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-slate-600/80 bg-[#171c20] text-[#f2f4f5] shadow-[0_24px_90px_rgba(0,0,0,.6)]">
+                <header className="flex items-start justify-between gap-5 border-b border-slate-700/80 px-6 py-5 sm:px-8">
                     <div>
                         <p className="font-mono text-[10px] font-bold tracking-[.2em] text-cyan-300">PUZZLE HISTORY</p>
-                        <h2 id="puzzle-submissions-title" className="mt-2 text-2xl font-bold">Your submissions</h2>
-                        <p className="mt-1 text-sm text-slate-400">Your latest 10 submissions for this puzzle are stored on this device.</p>
+                        <h2 id="puzzle-submissions-title" className="mt-2 text-2xl font-bold text-white">Submissions</h2>
+                        <p className="mt-1 text-sm text-slate-500">Your last 10 submissions</p>
                     </div>
                     <button type="button" onClick={onClose} className="modal-close-button" aria-label="Close submissions"><span aria-hidden="true">×</span></button>
                 </header>
 
                 {submissions.length > 0 ? (
-                    <ol className="mt-5 space-y-2" aria-label="Puzzle submissions">
+                    <ol className="min-h-0 overflow-y-auto p-6 pt-5 sm:px-8" aria-label="Puzzle submissions">
                         {submissions.map((submission, index) => {
                             const solved = submission.status === "solved";
                             const error = submission.status === "error";
@@ -240,6 +243,9 @@ export default function PuzzlePlayPage() {
         try {
             const result = await submitPuzzleAttempt(puzzleNumber, { brain });
             rememberPuzzleSubmission(brain, result);
+            if (result.status === "solved") {
+                setPuzzle((current) => current ? { ...current, solved: true } : current);
+            }
             setOutcome(result);
             return result;
         } catch (attemptError) {

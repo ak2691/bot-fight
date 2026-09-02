@@ -206,15 +206,12 @@ public class PuzzleService {
             int requestedSize,
             String requestedQuery,
             Authentication authentication) {
-        if (authentication != null) {
-            requireAuthenticatedGetAllowed(authentication, "puzzle-list");
-        }
         int page = Math.min(Math.max(0, requestedPage), 10_000);
         int size = Math.min(Math.max(1, requestedSize), PAGE_SIZE);
         String query = normalizeSearchQuery(requestedQuery);
         UUID userId = authentication == null
                 ? null
-                : currentUserService.requireCurrentUserId(authentication);
+                : requireAuthenticatedGetAllowed(authentication, "puzzle-list");
         PuzzleListKey cacheKey = new PuzzleListKey(page, size, userId, query);
         return databaseLookupCache.puzzleList(
                 cacheKey,
@@ -282,17 +279,25 @@ public class PuzzleService {
 
     @Transactional(readOnly = true)
     public PuzzlePlayResponseDTO getPublished(long puzzleNumber, Authentication authentication) {
-        requireAuthenticatedGetAllowed(authentication, "puzzle-detail");
-        return getPublishedInternal(puzzleNumber);
+        UUID userId = requireAuthenticatedGetAllowed(authentication, "puzzle-detail");
+        return getPublishedInternal(puzzleNumber, userId);
     }
 
     private PuzzlePlayResponseDTO getPublishedInternal(long puzzleNumber) {
-        return toPlayResponse(publishedPuzzle(puzzleNumber));
+        return getPublishedInternal(puzzleNumber, null);
     }
 
-    private void requireAuthenticatedGetAllowed(Authentication authentication, String category) {
+    private PuzzlePlayResponseDTO getPublishedInternal(long puzzleNumber, UUID userId) {
+        CachedPuzzle puzzle = publishedPuzzle(puzzleNumber);
+        boolean solved = userId != null
+                && !puzzleCompletionRepository.findByUserIdAndPuzzleIdIn(userId, List.of(puzzle.id())).isEmpty();
+        return toPlayResponse(puzzle, solved);
+    }
+
+    private UUID requireAuthenticatedGetAllowed(Authentication authentication, String category) {
         UUID userId = currentUserService.requireCurrentUserId(authentication);
         authenticatedGetRateLimiter.requireAllowed(category + ":" + userId);
+        return userId;
     }
 
     private AppUser requireAdmin(Authentication authentication) {
@@ -890,9 +895,10 @@ public class PuzzleService {
                 readJson(bot.getBrainPayload(), jsonMapper.createObjectNode()));
     }
 
-    private PuzzlePlayResponseDTO toPlayResponse(CachedPuzzle puzzle) {
+    private PuzzlePlayResponseDTO toPlayResponse(CachedPuzzle puzzle, boolean solved) {
         PuzzlePlayResponseDTO response = new PuzzlePlayResponseDTO();
         response.setPuzzleNumber(puzzle.puzzleNumber());
+        response.setSolved(solved);
         response.setName(puzzle.name());
         response.setDescription(puzzle.description());
         response.setInitialElapsedMs(puzzle.initialElapsedMs());

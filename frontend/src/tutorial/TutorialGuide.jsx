@@ -119,7 +119,7 @@ const LESSONS = [
         interactive: true,
         solution: true,
         objectives: [
-            { id: "retreat", label: "Add low-HP retreat", focus: "add-condition", hint: "When Entity HP for My Bot is below 45, walk at 180° from the target. Click the green node to configure the target.", complete: ({ configuration }) => hasConditionAndAction(configuration, (condition) => numericCondition(condition, "selectable.hp", "lt", 45, BOT_CODE_SELECTABLES.MY), movement(180)) },
+            { id: "retreat", label: "Add low-HP retreat", focus: "add-condition", hint: "When Entity HP for My Bot is below 45, walk at 180° from the target. Click on the condition Entity Hp to configure the target entity. Click the green node to configure the target.", complete: ({ configuration }) => hasConditionAndAction(configuration, (condition) => numericCondition(condition, "selectable.hp", "lt", 45, BOT_CODE_SELECTABLES.MY), movement(180)) },
             { id: "approach", label: "Add another conditional.", focus: "add-condition", hint: "When Distance Between Entities is above 100, walk at 0° from the target. Click the green node to configure the entity pair.", complete: ({ configuration }) => hasConditionAndAction(configuration, (condition) => numericCondition(condition, "selectable.distance", "gt", 100, BOT_CODE_SELECTABLES.OPPONENT), movement(0)) },
             { id: "run", label: "Run your bot", focus: "play", hint: "Close the workspace and press PLAY.", complete: runComplete },
         ],

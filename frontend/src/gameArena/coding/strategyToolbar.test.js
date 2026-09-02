@@ -192,6 +192,13 @@ test("practice loadouts save on Enter and use the shared selector and close cont
     assert.match(puzzleWorkspaceSource, /aria-label="Close puzzle configuration"[\s\S]*className="modal-close-button"/);
     assert.match(catalogueSource, /className="modal-close-button"/);
     assert.match(submissionsSource, /className="modal-close-button" aria-label="Close submissions"/);
+    assert.match(submissionsSource, /font-interface backdrop-blur-sm/);
+    assert.match(submissionsSource, /bg-\[#171c20\]/);
+    assert.match(submissionsSource, /<h2 id="puzzle-submissions-title" className="mt-2 text-2xl font-bold text-white">Submissions<\/h2>/);
+    assert.match(submissionsSource, /<p className="mt-1 text-sm text-slate-500">Your last 10 submissions<\/p>/);
+    assert.match(submissionsSource, /const isSolved = puzzle\.solved === true \|\| outcome\?\.status === "solved"[\s\S]*>Solved<\/div>/);
+    assert.match(submissionsSource, /puzzle\.solved === true/);
+    assert.match(readFileSync(fileURLToPath(new URL("../Arena.jsx", import.meta.url)), "utf8"), /PUZZLE_SUBMIT_STATUS_DURATION_MS = 3_500/);
     assert.doesNotMatch(panelSource, /code-toolbar-close|CLOSE/);
     assert.doesNotMatch(customVariablesSource, /code-toolbar-close|CLOSE/);
     assert.doesNotMatch(puzzleWorkspaceSource, /code-toolbar-close|CLOSE/);

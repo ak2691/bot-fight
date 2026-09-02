@@ -5,6 +5,7 @@ import tools.jackson.databind.JsonNode;
 
 public class PuzzlePlayResponseDTO {
     private Long puzzleNumber;
+    private boolean solved;
     private String name;
     private String description;
     private int initialElapsedMs;
@@ -22,6 +23,9 @@ public class PuzzlePlayResponseDTO {
 
     public Long getPuzzleNumber() { return puzzleNumber; }
     public void setPuzzleNumber(Long puzzleNumber) { this.puzzleNumber = puzzleNumber; }
+
+    public boolean isSolved() { return solved; }
+    public void setSolved(boolean solved) { this.solved = solved; }
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }

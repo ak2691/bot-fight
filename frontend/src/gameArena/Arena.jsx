@@ -130,6 +130,7 @@ function secondsRemaining(targetTime) {
 }
 
 const AUTO_FINISH_SAFETY_BUFFER_MS = 500;
+const PUZZLE_SUBMIT_STATUS_DURATION_MS = 3_500;
 
 function applyActionToShape(shape, action, elapsedMs) {
     return applyBotAction(shape, action, elapsedMs, applyDamageToShape);
@@ -1017,12 +1018,18 @@ export default function Arena({
                     ok: result.status === "solved",
                     message: result.message ?? (result.status === "solved" ? "PUZZLE SOLVED" : "PUZZLE FAILED"),
                 });
+                window.setTimeout(() => {
+                    if (attemptId === puzzleAttemptIdRef.current) setSubmitStatus(null);
+                }, PUZZLE_SUBMIT_STATUS_DURATION_MS);
             })
             .catch((error) => {
                 if (attemptId !== puzzleAttemptIdRef.current) return;
                 stopAutoPlay();
                 setIsEditingArena(false);
                 setSubmitStatus({ ok: false, message: error.message ?? "Puzzle simulation failed." });
+                window.setTimeout(() => {
+                    if (attemptId === puzzleAttemptIdRef.current) setSubmitStatus(null);
+                }, PUZZLE_SUBMIT_STATUS_DURATION_MS);
             })
             .finally(() => {
                 if (attemptId === puzzleAttemptIdRef.current) setIsPuzzleAttemptSubmitting(false);

@@ -2,6 +2,7 @@ package com.example.botfight.service.puzzle;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -12,12 +13,14 @@ import com.example.botfight.domain.AppUser;
 import com.example.botfight.domain.Puzzle;
 import com.example.botfight.domain.PuzzleBot;
 import com.example.botfight.domain.PuzzleBotRole;
+import com.example.botfight.domain.PuzzleCompletion;
 import com.example.botfight.domain.PuzzleStatus;
 import com.example.botfight.domain.UserRole;
 import com.example.botfight.repository.PuzzleCompletionRepository;
 import com.example.botfight.repository.PuzzleRepository;
 import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.service.cache.DatabaseLookupCache;
+import com.example.botfight.service.cache.DatabaseLookupCache.CachedPuzzle;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.submission.BotSubmissionValidationService;
 import com.example.botfight.simulation.geometry.ArenaUnits;
@@ -93,6 +96,38 @@ class PuzzleServiceTest {
         assertThat(opponent.getBrainPayload()).contains("loadout");
         verify(puzzleRepository).saveAndFlush(puzzle);
         verify(databaseLookupCache).invalidatePuzzleCatalog("puzzle-updated");
+    }
+
+    @Test
+    void playResponseIncludesTheAuthenticatedUsersPuzzleCompletion() {
+        UUID puzzleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        CachedPuzzle cachedPuzzle = new CachedPuzzle(
+                puzzleId,
+                7L,
+                "Puzzle",
+                "Description",
+                0,
+                true,
+                90_000,
+                10,
+                10,
+                10,
+                1,
+                1,
+                jsonMapper.createObjectNode(),
+                jsonMapper.createArrayNode(),
+                jsonMapper.createArrayNode(),
+                List.of());
+
+        when(currentUserService.requireCurrentUserId(authentication)).thenReturn(userId);
+        when(databaseLookupCache.publishedPuzzle(eq(7L), any())).thenReturn(cachedPuzzle);
+        when(puzzleCompletionRepository.findByUserIdAndPuzzleIdIn(userId, List.of(puzzleId)))
+                .thenReturn(List.of(new PuzzleCompletion()));
+
+        var response = service.getPublished(7L, authentication);
+
+        assertThat(response.isSolved()).isTrue();
     }
 
     private PuzzleSaveRequestDTO validUpdateRequest() throws Exception {
