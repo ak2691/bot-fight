@@ -7,12 +7,16 @@ Official website: botfightonline.com
 Players can:
 
 Build and test bots in the browser
+
 Choose abilities and loadouts
+
 Solve bot-building puzzles
+
 Play rated 1v1 and 2v2 matches
+
 Create private custom lobbies
 
-Bots are represented as declarative configurations of logic blocks, conditions, targets, actions, and values rather than arbitrary executable code. The server validates submissions and owns the authoritative simulation, match result, rating, and replay data.
+Bots are represented as declarative configurations of logic blocks, conditions, targets, actions, and values rather than typed code. The server validates submissions and owns the authoritative simulation, match result, rating, and replay data.
 
 Architecture
 React / Vite
