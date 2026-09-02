@@ -17,9 +17,10 @@ React / Vite
   ├─ Visual bot editor and practice arena
   ├─ PixiJS arena and replay rendering
   ├─ REST + STOMP/WebSocket client
+
   └─ Matchmaking, puzzles, profiles, and lobby UI
-             │
-             ▼
+           
+  
 Spring Boot ── PostgreSQL
   ├─ Authentication, sessions, CSRF, and OAuth
   ├─ Matchmaking, parties, and custom lobbies
