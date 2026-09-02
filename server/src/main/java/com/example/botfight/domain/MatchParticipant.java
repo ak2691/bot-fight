@@ -49,6 +49,9 @@ public class MatchParticipant {
     @Column(name = "rating_after")
     private Integer ratingAfter;
 
+    @Column(name = "round_wins")
+    private Integer roundWins;
+
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     private Instant createdAt;
 
@@ -122,6 +125,14 @@ public class MatchParticipant {
 
     public void setRatingAfter(Integer ratingAfter) {
         this.ratingAfter = ratingAfter;
+    }
+
+    public Integer getRoundWins() {
+        return roundWins;
+    }
+
+    public void setRoundWins(Integer roundWins) {
+        this.roundWins = roundWins;
     }
 
     public Instant getCreatedAt() {

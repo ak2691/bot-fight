@@ -157,6 +157,10 @@ public final class MatchRoundResolutionService {
 
         MatchReplayDTO playback = calculatedPlayback;
         MatchSession scoredSession = simulationSession.withRoundResult(playback.winnerUserId());
+        Map<UUID, Integer> roundWins = new HashMap<>();
+        scoredSession.players().forEach(player ->
+                roundWins.put(player.userId(), Math.max(0, player.roundWins())));
+        persistenceService.recordRoundScores(scoredSession.matchId(), roundWins);
         state.roundHistoryByMatchId()
                 .computeIfAbsent(simulationSession.matchId(), ignored -> new ArrayList<>())
                 .add(new RoundSubmissionRecord(

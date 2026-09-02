@@ -194,9 +194,24 @@ public class MatchPersistenceService {
                     participant.setSlot((short) player.slot());
                     participant.setTeamNumber((short) player.teamNumber());
                     participant.setSelectedLoadout(player.selectedLoadout());
+                    participant.setRoundWins(0);
                     return participant;
                 })
                 .toList();
+        matchParticipantRepository.saveAll(participants);
+    }
+
+    /** Stores the authoritative series score while the live session still exists. */
+    @Transactional
+    public void recordRoundScores(UUID matchId, Map<UUID, Integer> roundWinsByUserId) {
+        if (matchId == null || roundWinsByUserId == null || roundWinsByUserId.isEmpty()) return;
+        List<MatchParticipant> participants = matchParticipantRepository.findByMatchId(matchId);
+        if (participants == null || participants.isEmpty()) return;
+        participants.forEach(participant -> {
+            UUID userId = participant.getUser() == null ? null : participant.getUser().getId();
+            Integer roundWins = userId == null ? null : roundWinsByUserId.get(userId);
+            if (roundWins != null) participant.setRoundWins(Math.max(0, roundWins));
+        });
         matchParticipantRepository.saveAll(participants);
     }
 

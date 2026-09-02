@@ -6,6 +6,7 @@ import { apiUrl } from "../../config/api";
 import { matchModeLabel } from "../../matchmaking/matchModes";
 import { ensureCsrfHeaders } from "../../security/csrf";
 import AppNavbar from "../../components/AppNavbar";
+import ProfileLink from "../../components/ProfileLink.jsx";
 import SpinningBotFace from "../../components/SpinningBotFace.jsx";
 import { useDialogFocus } from "../../components/useDialogFocus.js";
 import { useNavigate, useParams } from "react-router-dom";
@@ -44,6 +45,18 @@ function formatMatchCalendarDate(value) {
         day: "numeric",
         year: "numeric",
     }).format(date);
+}
+
+function matchTeamLabel(teamNumber, fallbackIndex) {
+    if (Number(teamNumber) === 1) return "Team Blue";
+    if (Number(teamNumber) === 2) return "Team Red";
+    return `Team ${fallbackIndex + 1}`;
+}
+
+function matchTeamTone(teamNumber) {
+    if (Number(teamNumber) === 1) return "text-cyan-300";
+    if (Number(teamNumber) === 2) return "text-rose-300";
+    return "text-slate-400";
 }
 
 function formatJoinedDate(value) {
@@ -124,6 +137,7 @@ export default function ProfilePage() {
     const [googleStatus, setGoogleStatus] = useState("loading");
     const [status, setStatus] = useState("loading");
     const [isMatchesModalOpen, setIsMatchesModalOpen] = useState(false);
+    const [selectedMatch, setSelectedMatch] = useState(null);
     const [isPuzzlesModalOpen, setIsPuzzlesModalOpen] = useState(false);
     const [isRetryRateLimited, setIsRetryRateLimited] = useState(false);
     const [blockState, setBlockState] = useState("idle");
@@ -248,6 +262,7 @@ export default function ProfilePage() {
     useEffect(() => {
         setBlockState("idle");
         setBlockError(null);
+        setSelectedMatch(null);
     }, [viewedUsername]);
 
     useEffect(() => {
@@ -378,6 +393,7 @@ export default function ProfilePage() {
                         onLogout={handleLogout}
                         onAboutMeSaved={saveAboutMe}
                         onOpenMatches={() => setIsMatchesModalOpen(true)}
+                        onOpenMatchDetails={setSelectedMatch}
                         canBlock={!isOwner}
                         blockState={blockState}
                         blockError={blockError}
@@ -393,7 +409,15 @@ export default function ProfilePage() {
                     historyStatus={historyStatus}
                     hasMore={hasMore}
                     onLoadMore={() => void requestHistory(historyPage + 1, true)}
+                    onOpenMatchDetails={setSelectedMatch}
                     onClose={() => setIsMatchesModalOpen(false)}
+                />
+            )}
+
+            {selectedMatch && (
+                <MatchDetailsModal
+                    match={selectedMatch}
+                    onClose={() => setSelectedMatch(null)}
                 />
             )}
 
@@ -491,6 +515,7 @@ function ProfileContent({
     onLogout,
     onAboutMeSaved,
     onOpenMatches,
+    onOpenMatchDetails,
     canBlock,
     blockState,
     blockError,
@@ -584,6 +609,7 @@ function ProfileContent({
                     historyStatus={historyStatus}
                     isOwner={isOwner}
                     onOpenMatches={onOpenMatches}
+                    onOpenMatchDetails={onOpenMatchDetails}
                 />
                 <AboutMeCard aboutMe={profile.aboutMe} editable={isOwner} onSave={onAboutMeSaved} />
             </div>
@@ -633,7 +659,7 @@ function UserBlockButton({ username, state, error, onToggle }) {
     );
 }
 
-function RecentMatchesCard({ matches, totalMatches, historyStatus, isOwner, onOpenMatches }) {
+function RecentMatchesCard({ matches, totalMatches, historyStatus, isOwner, onOpenMatches, onOpenMatchDetails }) {
     const previewMatches = matches.slice(0, RECENT_MATCH_LIMIT);
     const isInitialError = historyStatus === "error" && matches.length === 0;
     return (
@@ -665,7 +691,13 @@ function RecentMatchesCard({ matches, totalMatches, historyStatus, isOwner, onOp
                         {isOwner ? "Your completed matches will appear here." : "This player's completed matches will appear here."}
                     </p>
                 ) : (
-                    previewMatches.map((match) => <MatchRow key={match.matchId} match={match} />)
+                    previewMatches.map((match) => (
+                        <MatchRow
+                            key={match.matchId}
+                            match={match}
+                            onOpenDetails={() => onOpenMatchDetails(match)}
+                        />
+                    ))
                 )}
             </div>
 
@@ -681,38 +713,89 @@ function RecentMatchesCard({ matches, totalMatches, historyStatus, isOwner, onOp
     );
 }
 
-function MatchRow({ match }) {
+function MatchRow({
+    match,
+    onOpenDetails = null,
+    linkParticipantNames = false,
+    showMode = true,
+    showResult = true,
+    showDate = true,
+    showTeamLabels = false,
+    roomy = false,
+}) {
     const participantTeams = Array.isArray(match.participantTeams) ? match.participantTeams : [];
+    const participantTeamNumbers = Array.isArray(match.participantTeamNumbers) ? match.participantTeamNumbers : [];
+    const isInteractive = typeof onOpenDetails === "function";
+    const gridColumns = showMode
+        ? "grid-cols-[4.25rem_minmax(0,1fr)_auto]"
+        : showResult || showDate
+            ? "grid-cols-[minmax(0,1fr)_auto]"
+            : "grid-cols-1";
+
+    const handleKeyDown = (event) => {
+        if (!isInteractive || (event.key !== "Enter" && event.key !== " ")) return;
+        event.preventDefault();
+        onOpenDetails();
+    };
 
     return (
-        <article className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-6 py-4 sm:items-center sm:px-8">
-            <div className="min-w-0">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{matchModeLabel(match.mode)}</p>
-                <div className="mt-1 flex flex-col items-start gap-y-1 text-sm font-semibold text-slate-100">
+        <article
+            className={`grid min-w-0 ${gridColumns} items-start ${roomy ? "gap-5 px-6 py-7 sm:px-10 sm:py-9" : "gap-3 px-6 py-4 sm:items-center sm:px-8"} ${isInteractive ? "cursor-pointer transition-colors hover:bg-slate-900/35 focus-visible:bg-slate-900/45 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-cyan-400" : ""}`}
+            role={isInteractive ? "button" : undefined}
+            tabIndex={isInteractive ? 0 : undefined}
+            aria-label={isInteractive ? `Open ${matchModeLabel(match.mode)} match details` : undefined}
+            onClick={isInteractive ? onOpenDetails : undefined}
+            onKeyDown={handleKeyDown}
+        >
+            {showMode && (
+                <span className="self-center w-full whitespace-nowrap rounded-md border border-slate-600/80 px-2 py-1 text-center font-mono text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                    {matchModeLabel(match.mode)}
+                </span>
+            )}
+            <div className="min-w-0 overflow-hidden">
+                <div className={`flex min-w-0 flex-col items-start gap-y-1 font-semibold text-slate-100 ${roomy ? "text-base sm:text-lg" : "text-sm"}`}>
                     {participantTeams.map((team, teamIndex) => (
                         <Fragment key={`team-${teamIndex}`}>
-                            {teamIndex > 0 && (
+                            {teamIndex > 0 && !showTeamLabels && (
                                 <span className="px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500" aria-hidden="true">
                                     vs
                                 </span>
                             )}
-                            <span className="flex flex-wrap gap-x-3 gap-y-1">
+                            {teamIndex > 0 && showTeamLabels && (
+                                <span className="h-2" aria-hidden="true" />
+                            )}
+                            {showTeamLabels && (
+                                <span className={`font-mono text-[10px] font-bold tracking-[.16em] ${matchTeamTone(participantTeamNumbers[teamIndex])}`}>
+                                    {matchTeamLabel(participantTeamNumbers[teamIndex], teamIndex)}
+                                </span>
+                            )}
+                            <span className="flex min-w-0 max-w-full flex-nowrap gap-x-3 gap-y-1 overflow-hidden">
                                 {(Array.isArray(team) ? team : []).map((username) => (
-                                    <span key={`${teamIndex}-${username}`}>{username}</span>
+                                    linkParticipantNames ? (
+                                        <ProfileLink key={`${teamIndex}-${username}`} username={username} className="min-w-0 max-w-full truncate text-slate-100">{username}</ProfileLink>
+                                    ) : (
+                                        <span key={`${teamIndex}-${username}`} className="min-w-0 max-w-full truncate">{username}</span>
+                                    )
                                 ))}
                             </span>
                         </Fragment>
                     ))}
                 </div>
             </div>
-            <div className="flex flex-col items-end gap-1 text-right sm:flex-row sm:items-center sm:gap-4">
-                <span className={`w-fit rounded-lg border px-3 py-1 font-mono text-xs font-bold tracking-wider ${resultTone[match.result] ?? resultTone.DRAW}`}>
-                    {match.result}
-                </span>
-                <time className="text-sm text-slate-400" dateTime={match.completedAt ?? undefined}>
-                    {formatMatchCalendarDate(match.completedAt)}
-                </time>
-            </div>
+            {(showResult || showDate) && (
+                <div className="flex min-w-max flex-col items-end gap-1 text-right sm:flex-row sm:items-center sm:gap-4">
+                    {showResult && (
+                        <span className={`w-fit rounded-lg border px-3 py-1 font-mono text-xs font-bold tracking-wider ${resultTone[match.result] ?? resultTone.DRAW}`}>
+                            {match.result}
+                        </span>
+                    )}
+                    {showDate && (
+                        <time className="whitespace-nowrap text-sm text-slate-400" dateTime={match.completedAt ?? undefined}>
+                            {formatMatchCalendarDate(match.completedAt)}
+                        </time>
+                    )}
+                </div>
+            )}
         </article>
     );
 }
@@ -798,7 +881,7 @@ function AboutMeCard({ aboutMe, editable, onSave }) {
     );
 }
 
-function MatchesModal({ matches, totalMatches, historyStatus, hasMore, onLoadMore, onClose }) {
+function MatchesModal({ matches, totalMatches, historyStatus, hasMore, onLoadMore, onOpenMatchDetails, onClose }) {
     const dialogRef = useRef(null);
     const closeButtonRef = useRef(null);
     const isLoadingMore = historyStatus === "loading-more";
@@ -852,7 +935,13 @@ function MatchesModal({ matches, totalMatches, historyStatus, hasMore, onLoadMor
                     ) : matches.length === 0 ? (
                         <p className="px-6 py-14 text-center text-sm text-slate-500">No completed matches yet.</p>
                     ) : (
-                        matches.map((match) => <MatchRow key={match.matchId} match={match} />)
+                        matches.map((match) => (
+                            <MatchRow
+                                key={match.matchId}
+                                match={match}
+                                onOpenDetails={() => onOpenMatchDetails(match)}
+                            />
+                        ))
                     )}
                 </div>
 
@@ -875,6 +964,114 @@ function MatchesModal({ matches, totalMatches, historyStatus, hasMore, onLoadMor
             </section>
         </div>
     );
+}
+
+function MatchDetailsModal({ match, onClose }) {
+    const dialogRef = useRef(null);
+    const closeButtonRef = useRef(null);
+
+    useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onClose, lockScroll: true });
+
+    return (
+        <div
+            className="fixed inset-0 z-[60] grid place-items-center bg-[#02070de8] p-4 backdrop-blur-sm"
+            onMouseDown={(event) => {
+                if (event.target === event.currentTarget) onClose();
+            }}
+        >
+            <section
+                ref={dialogRef}
+                className="flex max-h-[min(86vh,48rem)] w-[min(42rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-cyan-400/50 bg-[#071521] shadow-[0_24px_90px_rgba(0,0,0,.6)]"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="match-details-modal-title"
+                tabIndex={-1}
+            >
+                <header className="flex items-start justify-between gap-5 border-b border-slate-700/80 px-6 py-5 sm:px-8">
+                    <div>
+                        <p className="font-mono text-[10px] font-bold tracking-[.18em] text-cyan-400">MATCH DETAILS</p>
+                        <h2 id="match-details-modal-title" className="mt-2 text-2xl font-bold text-white">
+                            {matchModeLabel(match.mode)}
+                        </h2>
+                        <p className="mt-1 text-sm text-slate-500">{formatMatchCalendarDate(match.completedAt)}</p>
+                    </div>
+                    <button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Close match details" className="modal-close-button">
+                        <span aria-hidden="true">×</span>
+                    </button>
+                </header>
+
+                <div className="min-h-0 overflow-y-auto">
+                    <div className="border-b border-slate-800">
+                        <MatchRow match={match} linkParticipantNames showMode={false} showResult={false} showDate={false} showTeamLabels roomy />
+                    </div>
+                    <dl className="grid gap-4 px-6 py-6 sm:grid-cols-2 sm:px-8">
+                        <MatchDetail label="RESULT">
+                            <span className={`inline-flex w-fit rounded-lg border px-3 py-1 font-mono text-xs font-bold tracking-wider ${resultTone[match.result] ?? resultTone.DRAW}`}>
+                                {match.result ?? "DRAW"}
+                            </span>
+                        </MatchDetail>
+                        <MatchDetail label="SCORE">
+                            <span className="font-mono text-lg font-bold text-white">{match.score ?? "Score unavailable"}</span>
+                        </MatchDetail>
+                        <MatchDetail label="ELO CHANGE">
+                            <span className={`font-mono text-lg font-bold ${eloChangeTone(match)}`}>{formatEloChange(match)}</span>
+                        </MatchDetail>
+                        <MatchDetail label="COMPLETION">
+                            <span className="font-mono text-lg font-bold text-white">{formatCompletionReason(match.completionReason)}</span>
+                        </MatchDetail>
+                    </dl>
+                    <p className="border-t border-slate-800 px-6 py-4 text-xs text-slate-500 sm:px-8">
+                        Select a player name to open that player&apos;s profile.
+                    </p>
+                </div>
+            </section>
+        </div>
+    );
+}
+
+function MatchDetail({ label, children }) {
+    return (
+        <div className="min-w-0 rounded-lg border border-[#344047] bg-[#1B2227] px-4 py-3">
+            <dt className="font-mono text-[10px] font-bold tracking-[.16em] text-slate-500">{label}</dt>
+            <dd className="mt-2 min-w-0">{children}</dd>
+        </div>
+    );
+}
+
+function formatEloChange(match) {
+    if (!Number.isFinite(match.ratingBefore) || !Number.isFinite(match.ratingAfter)) return "Not rated";
+    const change = Number.isFinite(match.eloChange)
+        ? match.eloChange
+        : match.ratingAfter - match.ratingBefore;
+    const sign = change > 0 ? "+" : "";
+    return `${sign}${change} ELO (${match.ratingBefore} → ${match.ratingAfter})`;
+}
+
+function eloChangeTone(match) {
+    if (!Number.isFinite(match.ratingBefore) || !Number.isFinite(match.ratingAfter)) return "text-white";
+    const change = Number.isFinite(match.eloChange)
+        ? match.eloChange
+        : match.ratingAfter - match.ratingBefore;
+    if (change > 0) return "text-emerald-300";
+    if (change < 0) return "text-rose-300";
+    return "text-slate-200";
+}
+
+function formatCompletionReason(reason) {
+    const labels = {
+        SIMULATION: "Simulation",
+        RESIGNATION: "Forfeit",
+        DISCONNECTION: "Forfeit",
+        INITIAL_DISCONNECTION: "Draw",
+        MUTUAL_DISCONNECTION: "Draw",
+    };
+    if (labels[reason]) return labels[reason];
+    if (!reason) return "Completed";
+    return reason
+        .toLowerCase()
+        .split("_")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
 }
 
 function SolvedPuzzlesModal({ puzzles, totalPuzzles, puzzlesStatus, hasMore, onLoadMore, onOpenPuzzle, onClose }) {

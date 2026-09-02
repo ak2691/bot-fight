@@ -38,7 +38,6 @@ test("notifications share the authenticated transport through a separate subscri
     assert.match(source, /notificationSubscription = transport\.subscribe\(/);
     assert.match(source, /NOTIFICATION_DESTINATION/);
     assert.match(source, /setNotificationHandler/);
-    assert.match(source, /acceptDuelInvite/);
 });
 
 test("party state has its own authenticated user queue and handler lifecycle", () => {

@@ -26,7 +26,6 @@ public class WebSocketSecurityConfig {
                         "/app/matchmaking.resume",
                         "/app/matchmaking.resumeQueue",
                         "/app/matchmaking.accept",
-                        "/app/matchmaking.acceptInvite",
                         "/app/matchmaking.leave",
                         "/app/matchmaking.selectLoadout",
                         "/app/matchmaking.surrender",

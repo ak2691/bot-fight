@@ -147,11 +147,21 @@ class ProfileServiceTest {
         AppUser teammate = user("Teammate");
         AppUser opponent = user("ByteBrawler");
         AppUser opponentTwo = user("ByteSmith");
+        MatchParticipant ownParticipant = participant(match, user, (short) 1, (short) 1);
+        ownParticipant.setRoundWins(2);
+        ownParticipant.setRatingBefore(1000);
+        ownParticipant.setRatingAfter(1016);
+        MatchParticipant opponentTwoParticipant = participant(match, opponentTwo, (short) 2, (short) 4);
+        opponentTwoParticipant.setRoundWins(0);
+        MatchParticipant teammateParticipant = participant(match, teammate, (short) 1, (short) 2);
+        teammateParticipant.setRoundWins(2);
+        MatchParticipant opponentParticipant = participant(match, opponent, (short) 2, (short) 3);
+        opponentParticipant.setRoundWins(0);
         when(participantRepository.findByMatchIdIn(List.of(matchId))).thenReturn(List.of(
-                participant(match, user, (short) 1, (short) 1),
-                participant(match, opponentTwo, (short) 2, (short) 4),
-                participant(match, teammate, (short) 1, (short) 2),
-                participant(match, opponent, (short) 2, (short) 3)));
+                ownParticipant,
+                opponentTwoParticipant,
+                teammateParticipant,
+                opponentParticipant));
 
         var history = service.matchHistory(authentication, 0, " byte ", from, to);
 
@@ -162,8 +172,54 @@ class ProfileServiceTest {
             assertThat(recent.participantTeams()).containsExactly(
                     List.of("allan", "Teammate"),
                     List.of("ByteBrawler", "ByteSmith"));
+            assertThat(recent.participantTeamNumbers()).containsExactly((short) 1, (short) 2);
             assertThat(recent.result()).isEqualTo("WIN");
             assertThat(recent.completedAt()).isEqualTo(Instant.parse("2026-07-22T10:15:00Z"));
+            assertThat(recent.score()).isEqualTo("2-0");
+            assertThat(recent.ratingBefore()).isEqualTo(1000);
+            assertThat(recent.ratingAfter()).isEqualTo(1016);
+            assertThat(recent.eloChange()).isEqualTo(16);
+        });
+    }
+
+    @Test
+    void keepsThePlayerPerspectiveScoreWhenAPlayerForfeits() {
+        Authentication authentication = mock(Authentication.class);
+        AppUser user = user("allan");
+        AppUser opponent = user("rival");
+        UUID matchId = UUID.randomUUID();
+        PageRequest pageRequest = PageRequest.of(0, 20);
+        RecentMatchProjection recentMatch = mock(RecentMatchProjection.class);
+
+        when(currentUserService.requireCurrentUserId(authentication)).thenReturn(user.getId());
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(user);
+        when(participantRepository.findRecentMatches(
+                eq(user.getId()),
+                any(Instant.class),
+                eq(""),
+                eq(null),
+                eq(null),
+                eq(pageRequest)))
+                .thenReturn(new PageImpl<>(List.of(recentMatch), pageRequest, 1));
+        when(recentMatch.getMatchId()).thenReturn(matchId);
+        when(recentMatch.getTeamNumber()).thenReturn((short) 1);
+        when(recentMatch.getResult()).thenReturn(MatchResult.FORFEIT);
+        when(recentMatch.getCompletionReason()).thenReturn("RESIGNATION");
+        Match match = match(matchId);
+        MatchParticipant forfeitingPlayer = participant(match, user, (short) 1, (short) 1);
+        forfeitingPlayer.setResult(MatchResult.FORFEIT);
+        forfeitingPlayer.setRoundWins(1);
+        MatchParticipant opposingPlayer = participant(match, opponent, (short) 2, (short) 2);
+        opposingPlayer.setResult(MatchResult.WIN);
+        opposingPlayer.setRoundWins(0);
+        when(participantRepository.findByMatchIdIn(List.of(matchId)))
+                .thenReturn(List.of(forfeitingPlayer, opposingPlayer));
+
+        var history = service.matchHistory(authentication, 0, "", null, null);
+
+        assertThat(history.matches()).singleElement().satisfies(recent -> {
+            assertThat(recent.result()).isEqualTo("LOSS");
+            assertThat(recent.score()).isEqualTo("1-0");
         });
     }
 
@@ -285,6 +341,7 @@ class ProfileServiceTest {
             assertThat(recent.participantTeams()).containsExactly(
                     List.of("rival"),
                     List.of("ByteBrawler"));
+            assertThat(recent.participantTeamNumbers()).containsExactly((short) 1, (short) 2);
             assertThat(recent.result()).isEqualTo("WIN");
         });
     }

@@ -63,11 +63,6 @@ public class RateLimitConfig {
         return new TokenBucketRateLimiter<>(clock, 10, Duration.ofSeconds(1));
     }
 
-    @Bean(name = "duelInviteRateLimiter")
-    public TokenBucketRateLimiter<UUID> duelInviteRateLimiter(Clock clock) {
-        return new TokenBucketRateLimiter<>(clock, 1, Duration.ofSeconds(5));
-    }
-
     @Bean(name = "partyInviteRateLimiter")
     public TokenBucketRateLimiter<UUID> partyInviteRateLimiter(Clock clock) {
         return new TokenBucketRateLimiter<>(clock, 1, Duration.ofSeconds(5));

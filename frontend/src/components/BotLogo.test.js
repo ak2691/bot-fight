@@ -102,8 +102,6 @@ test("loading surfaces share the spinning bot face instead of generic rings or s
 
 test("custom lobby creation lives in the queue instead of public profiles", () => {
     assert.match(profileSource, /const isOwner = !viewedUsername \|\| isSelfProfile/);
-    assert.doesNotMatch(profileSource, /Invite to Custom Match/);
-    assert.doesNotMatch(profileSource, /\/api\/duel-invites/);
     assert.match(queueSource, /CREATE CUSTOM LOBBY/);
     assert.match(queueSource, /navigate\("\/custom-lobby"/);
     assert.match(queueSource, /api\/custom-lobbies\/current/);
@@ -147,4 +145,24 @@ test("profile records keep the W-L-D labels below compact numeric values", () =>
     assert.match(profileSource, /\{stats\?\.wins \?\? 0\}-\{stats\?\.losses \?\? 0\}-\{stats\?\.draws \?\? 0\}/);
     assert.match(profileSource, /text-center font-mono text-\[9px\].*W-L-D/);
     assert.doesNotMatch(profileSource, /stats\?\.wins \?\? 0\}W/);
+});
+
+test("profile match history aligns modes and exposes accessible match details", () => {
+    assert.match(profileSource, /grid-cols-\[4\.25rem_minmax\(0,1fr\)_auto\]/);
+    assert.match(profileSource, /self-center w-full whitespace-nowrap/);
+    assert.match(profileSource, /onOpenDetails=\{\(\) => onOpenMatchDetails\(match\)\}/);
+    assert.match(profileSource, /MatchDetailsModal/);
+    assert.match(profileSource, /MatchDetail label="SCORE"/);
+    assert.match(profileSource, /MatchDetail label="ELO CHANGE"/);
+    assert.match(profileSource, /bg-\[#1B2227\]/);
+    assert.match(profileSource, /function eloChangeTone/);
+    assert.match(profileSource, /showMode=\{false\} showResult=\{false\} showDate=\{false\} showTeamLabels roomy/);
+    assert.match(profileSource, /function matchTeamLabel/);
+    assert.match(profileSource, /function matchTeamTone/);
+    assert.match(profileSource, /teamIndex > 0 && !showTeamLabels/);
+    assert.match(profileSource, /teamIndex > 0 && showTeamLabels/);
+    assert.match(profileSource, /font-mono text-lg font-bold text-white/);
+    assert.match(profileSource, /flex min-w-0 max-w-full flex-nowrap .*overflow-hidden/);
+    assert.match(profileSource, /min-w-0 max-w-full truncate/);
+    assert.match(profileSource, /<ProfileLink key=\{`\$\{teamIndex\}-\$\{username\}`\}/);
 });

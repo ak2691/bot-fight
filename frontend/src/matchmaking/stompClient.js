@@ -525,19 +525,6 @@ export function createMatchmakingClient({
         acceptMatch(matchId) {
             publish("/app/matchmaking.accept", { matchId });
         },
-        async acceptDuelInvite(inviteId) {
-            await client.connect();
-            const deadline = Date.now() + 10_000;
-            while (!isTransportOpen()) {
-                if (Date.now() >= deadline) {
-                    throw new Error("The notification connection is unavailable.");
-                }
-                await new Promise((resolve) => setTimeout(resolve, 50));
-            }
-            if (!publish("/app/matchmaking.acceptInvite", { inviteId })) {
-                throw new Error("The duel invite could not be sent.");
-            }
-        },
         cancelMatch(matchId) {
             publish("/app/matchmaking.cancel", { matchId });
         },

@@ -523,7 +523,7 @@ public class ProfileService {
                 ? MatchResult.LOSS.name()
                 : match.getResult().name();
         short viewedTeamNumber = match.getTeamNumber();
-        List<List<String>> participantTeams = participantsByMatch
+        List<MatchParticipant> orderedParticipants = participantsByMatch
                 .getOrDefault(match.getMatchId(), List.of())
                 .stream()
                 .filter(participant -> participant.getUser() != null
@@ -534,22 +534,61 @@ public class ProfileService {
                         .thenComparingInt(MatchParticipant::getTeamNumber)
                         .thenComparingInt(MatchParticipant::getSlot)
                         .thenComparing(participant -> participant.getUser().getUsername(), String.CASE_INSENSITIVE_ORDER))
+                .toList();
+
+        Map<Short, List<MatchParticipant>> participantsByTeam = orderedParticipants.stream()
                 .collect(Collectors.groupingBy(
                         MatchParticipant::getTeamNumber,
                         LinkedHashMap::new,
-                        Collectors.mapping(
-                                participant -> participant.getUser().getUsername(),
-                                Collectors.toList())))
-                .values()
-                .stream()
+                        Collectors.toList()));
+        List<List<String>> participantTeams = participantsByTeam.values().stream()
+                .map(team -> team.stream()
+                        .map(participant -> participant.getUser().getUsername())
+                        .toList())
                 .toList();
+        List<Short> participantTeamNumbers = participantsByTeam.keySet().stream().toList();
+        MatchParticipant viewedParticipant = orderedParticipants.stream()
+                .filter(participant -> viewedUserId.equals(participant.getUser().getId()))
+                .findFirst()
+                .orElse(null);
+        Integer ratingBefore = viewedParticipant == null ? null : viewedParticipant.getRatingBefore();
+        Integer ratingAfter = viewedParticipant == null ? null : viewedParticipant.getRatingAfter();
+        Integer eloChange = ratingBefore == null || ratingAfter == null
+                ? null
+                : ratingAfter - ratingBefore;
 
         return new RecentMatchDTO(
                 match.getMatchId(),
                 participantTeams,
+                participantTeamNumbers,
                 result,
                 match.getCompletedAt(),
                 match.getCompletionReason(),
-                match.getMode());
+                match.getMode(),
+                matchScore(participantsByTeam),
+                ratingBefore,
+                ratingAfter,
+                eloChange);
     }
+
+    private String matchScore(Map<Short, List<MatchParticipant>> participantsByTeam) {
+        List<List<MatchParticipant>> teams = participantsByTeam.values().stream().toList();
+        if (teams.size() < 2) return "Score unavailable";
+
+        Integer firstScore = teamRoundWins(teams.get(0));
+        Integer secondScore = teamRoundWins(teams.get(1));
+        if (firstScore == null || secondScore == null) {
+            return "Score unavailable";
+        }
+        return firstScore + "-" + secondScore;
+    }
+
+    private Integer teamRoundWins(List<MatchParticipant> team) {
+        return team.stream()
+                .map(MatchParticipant::getRoundWins)
+                .filter(roundWins -> roundWins != null)
+                .findFirst()
+                .orElse(null);
+    }
+
 }

@@ -11,15 +11,12 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
     const navbarRef = useRef(null);
     const { user } = useAuth();
     const {
-        pendingInvites,
         pendingPartyInvites,
         pendingCustomLobbyInvites,
         actionPendingInviteId,
         actionError,
-        acceptInvite,
         acceptPartyInvite,
         acceptCustomLobbyInvite,
-        declineInvite,
         declinePartyInvite,
         declineCustomLobbyInvite,
     } = useNotifications();
@@ -28,7 +25,7 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
     const isHidden = navbarVisibility.pathname === pathname && navbarVisibility.hidden;
     const isCharcoalPage = ["profile", "puzzles", "puzzle-builder", "puzzle-play", "abilities", "conditionals"].includes(currentPage);
     const username = user?.username ?? "bot";
-    const pendingNotificationCount = pendingInvites.length + pendingPartyInvites.length + pendingCustomLobbyInvites.length;
+    const pendingNotificationCount = pendingPartyInvites.length + pendingCustomLobbyInvites.length;
 
     useEffect(() => {
         const navbar = navbarRef.current;
@@ -91,15 +88,12 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
                         </button>
                         {notificationsOpen && (
                             <NotificationPanel
-                                invites={pendingInvites}
                                 partyInvites={pendingPartyInvites}
                                 customLobbyInvites={pendingCustomLobbyInvites}
                                 actionPendingInviteId={actionPendingInviteId}
                                 actionError={actionError}
-                                onAccept={acceptInvite}
                                 onAcceptParty={acceptPartyInvite}
                                 onAcceptCustomLobby={acceptCustomLobbyInvite}
-                                onDecline={declineInvite}
                                 onDeclineParty={declinePartyInvite}
                                 onDeclineCustomLobby={declineCustomLobbyInvite}
                             />
@@ -142,19 +136,16 @@ function getScrollTop(target) {
 }
 
 function NotificationPanel({
-    invites,
     partyInvites,
     customLobbyInvites,
     actionPendingInviteId,
     actionError,
-    onAccept,
     onAcceptParty,
     onAcceptCustomLobby,
-    onDecline,
     onDeclineParty,
     onDeclineCustomLobby,
 }) {
-    const totalInvites = invites.length + partyInvites.length + customLobbyInvites.length;
+    const totalInvites = partyInvites.length + customLobbyInvites.length;
     return (
         <section className="absolute right-0 top-12 z-30 max-h-[min(32rem,calc(100vh-6rem))] w-[min(22rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-xl border border-fuchsia-800/80 bg-[#091521f5] p-3 shadow-[0_18px_60px_rgba(0,0,0,.45)]" aria-label="Notifications">
             <div className="flex items-center justify-between gap-3 px-2 pb-2">
@@ -166,34 +157,6 @@ function NotificationPanel({
                 <p className="px-2 py-5 text-sm text-slate-500">No pending notifications.</p>
             ) : (
                 <div className="space-y-2">
-                    {invites.map((invite) => {
-                        const isPending = String(actionPendingInviteId) === String(invite.inviteId);
-                        return (
-                            <article key={invite.inviteId} className="rounded-lg border border-slate-700/80 bg-slate-950/30 p-3">
-                                <p className="text-sm leading-5 text-slate-200">
-                                    <span className="font-bold text-white">{invite.inviterUsername}</span> invited you to a Custom Match.
-                                </p>
-                                <div className="mt-3 flex gap-2">
-                                    <button
-                                        type="button"
-                                        disabled={isPending}
-                                        onClick={() => void onAccept(invite.inviteId)}
-                                        className="min-h-9 flex-1 border border-emerald-400/50 bg-emerald-950/30 px-3 py-1.5 text-xs font-bold text-emerald-200 hover:border-emerald-300 disabled:cursor-wait disabled:opacity-50"
-                                    >
-                                        {isPending ? "Connecting..." : "Accept"}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        disabled={isPending}
-                                        onClick={() => void onDecline(invite.inviteId)}
-                                        className="min-h-9 flex-1 border border-slate-600 bg-slate-900/40 px-3 py-1.5 text-xs font-bold text-slate-300 hover:border-rose-400/60 hover:text-rose-200 disabled:cursor-wait disabled:opacity-50"
-                                    >
-                                        Decline
-                                    </button>
-                                </div>
-                            </article>
-                        );
-                    })}
                     {partyInvites.map((invite) => {
                         const isPending = String(actionPendingInviteId) === String(invite.inviteId);
                         return (

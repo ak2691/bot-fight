@@ -20,7 +20,7 @@ export const QUEUE_MODES = Object.freeze([
 export const MATCH_MODE_LABELS = Object.freeze({
     [MATCH_MODES.ONES]: "1v1",
     [MATCH_MODES.TWOS]: "2v2",
-    [MATCH_MODES.CUSTOM]: "Custom Match",
+    [MATCH_MODES.CUSTOM]: "Custom",
 });
 
 export function matchModeLabel(mode) {
