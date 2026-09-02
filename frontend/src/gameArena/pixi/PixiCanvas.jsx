@@ -340,10 +340,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
 
     function rotationHandleDistanceForShape(shape) {
         const radius = Number(shape.size ?? BOT_SIZE) / 2;
-        return Math.max(
-            rotationHandleDistance(radius),
-            botInteractionRadius(shape) + rotationHandleHitRadius() + 8,
-        );
+        return rotationHandleDistance(radius);
     }
 
     function selectionHitArea(shape) {
@@ -527,7 +524,9 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         const handleDistance = rotationHandleDistanceForShape(view.shape);
         const handleX = Math.cos(compassDegreesToRadians(view.shape.rotation)) * handleDistance;
         const handleY = Math.sin(compassDegreesToRadians(view.shape.rotation)) * handleDistance;
+        const bodyHit = localX * localX + localY * localY <= botInteractionRadius(view.shape) ** 2;
         if (canRotateBot(view.shape)
+            && !bodyHit
             && (localX - handleX) ** 2 + (localY - handleY) ** 2 <= rotationHandleHitRadius() ** 2) {
             event.stopPropagation();
             beginRotationDrag(event, view);
@@ -622,7 +621,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             const position = sampleViewPosition(view, now);
             view.container.position.set(position.x, position.y);
             view.caption.scale.set(captionScale);
-            if (isBotShape(view.shape)) drawBot(view, position, optionsRef.current.selectedId === view.shape.id, now, arenaSprites, overlappingBotIds.has(view.shape.id), canRotateBot(view.shape), rotationHandleHitRadius(), rotationHandleDistanceForShape(view.shape));
+            if (isBotShape(view.shape)) drawBot(view, position, optionsRef.current.selectedId === view.shape.id, now, arenaSprites, overlappingBotIds.has(view.shape.id), canRotateBot(view.shape), rotationHandleDistanceForShape(view.shape));
             else drawEntity(view, optionsRef.current.selectedId === view.shape.id, now, arenaSprites);
         }
         drawHitboxes(hitboxLayer, views, now, optionsRef, sampleViewPosition);
@@ -661,6 +660,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             refreshSelectionHitAreas();
         }
         if (event.button === 2 || event.button === 1 || (isTouch && !optionsRef.current.measurementEnabled)) {
+            if (isTouch && !optionsRef.current.measurementEnabled) optionsRef.current.onDeselectAll?.();
             if (optionsRef.current.lockCamera) return;
             if (isTouch) event.preventDefault();
             pan = { x: event.global.x, y: event.global.y, center: { ...viewCenter } };
@@ -848,7 +848,7 @@ function drawArena(graphics) {
     graphics.rect(2, 2, Math.max(0, ARENA_WIDTH_UNITS - 4), Math.max(0, ARENA_HEIGHT_UNITS - 4)).stroke({ color: 0x475569, width: 4 });
 }
 
-function drawBot(view, position, selected, now, arenaSprites, overlapping = false, canRotate = false, rotationHitRadius = ROTATION_HANDLE_BASE_HIT_RADIUS_UNITS, rotationDistance = null) {
+function drawBot(view, position, selected, now, arenaSprites, overlapping = false, canRotate = false, rotationDistance = null) {
     const { shape, baseSprite, graphics, rotationHandle, caption } = view;
     const colorRole = botColorRole(shape);
     const tone = colorRole === "red" ? COLORS.opponent : COLORS.player;
@@ -873,7 +873,7 @@ function drawBot(view, position, selected, now, arenaSprites, overlapping = fals
     if (selected) graphics.circle(0, 0, radius + 9).stroke({ color: COLORS.white, alpha: 0.72, width: 2 });
     drawFacingArrow(graphics, rotation, radius, tone);
     if (selected && canRotate) {
-        drawRotationHandle(rotationHandle, rotation, radius, tone, rotationHitRadius, rotationDistance);
+        drawRotationHandle(rotationHandle, rotation, radius, tone, rotationDistance);
         rotationHandle.visible = true;
     }
 
@@ -967,7 +967,7 @@ function rotationHandleDistance(radius) {
     return radius * 1.5 + 42;
 }
 
-function drawRotationHandle(graphics, rotation, radius, color, hitRadius = ROTATION_HANDLE_BASE_HIT_RADIUS_UNITS, distanceOverride = null) {
+function drawRotationHandle(graphics, rotation, radius, color, distanceOverride = null) {
     const distance = distanceOverride ?? rotationHandleDistance(radius);
     const x = Math.cos(rotation) * distance;
     const y = Math.sin(rotation) * distance;
@@ -1005,7 +1005,10 @@ function drawRotationHandle(graphics, rotation, radius, color, hitRadius = ROTAT
         tip.x - directionX * 5 - normalX * 3,
         tip.y - directionY * 5 - normalY * 3,
     ]).fill(COLORS.white);
-    graphics.hitArea = new Circle(x, y, hitRadius);
+    // Keep the drawn handle's child hit area compact. Touches in the larger
+    // surrounding target are handled by the bot container, which lets body
+    // dragging take priority when the two touch targets overlap on small screens.
+    graphics.hitArea = new Circle(x, y, ROTATION_HANDLE_BASE_HIT_RADIUS_UNITS);
 }
 
 function drawFacingArrow(graphics, rotation, radius, color) {
