@@ -77,11 +77,6 @@ function PuzzlePlayInfoModal({ puzzle, outcome, onOpenConfiguration }) {
     ];
     const description = typeof puzzle.description === "string" ? puzzle.description.trim() : "";
     const isSolved = puzzle.solved === true || outcome?.status === "solved";
-    const statusClass = outcome?.status === "solved"
-        ? "border-emerald-500/60 bg-emerald-950/40 text-emerald-200"
-        : outcome?.status === "error"
-            ? "border-amber-500/60 bg-amber-950/40 text-amber-200"
-            : "border-rose-500/60 bg-rose-950/40 text-rose-200";
 
     if (minimized) {
         return (
@@ -112,12 +107,7 @@ function PuzzlePlayInfoModal({ puzzle, outcome, onOpenConfiguration }) {
                     </div>
                 </div>
 
-                {isSolved
-                    ? <div role="status" className="mt-4 inline-flex items-center rounded-full border border-emerald-500/60 bg-emerald-950/40 px-3 py-1.5 font-mono text-[10px] font-bold tracking-widest text-emerald-200">Solved</div>
-                    : outcome && <div role="status" className={`mt-4 rounded border px-3 py-2 font-mono text-[10px] font-bold tracking-widest ${statusClass}`}>
-                        {outcome.status === "error" ? "PUZZLE SERVER ERROR" : "PUZZLE FAILED"}
-                        {outcome.message && <span className="mt-1 block text-[9px] font-normal normal-case tracking-normal">{outcome.message}</span>}
-                    </div>}
+                {isSolved && <div role="status" className="mt-4 inline-flex items-center rounded-full border border-emerald-500/60 bg-emerald-950/40 px-3 py-1.5 font-mono text-[10px] font-bold tracking-widest text-emerald-200">Solved</div>}
 
                 <section className="mt-5">
                     <h2 className="font-mono text-[10px] font-bold tracking-[.16em] text-emerald-200">WIN CONDITIONS:</h2>

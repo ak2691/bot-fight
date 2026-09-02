@@ -197,6 +197,7 @@ test("practice loadouts save on Enter and use the shared selector and close cont
     assert.match(submissionsSource, /<h2 id="puzzle-submissions-title" className="mt-2 text-2xl font-bold text-white">Submissions<\/h2>/);
     assert.match(submissionsSource, /<p className="mt-1 text-sm text-slate-500">Your last 10 submissions<\/p>/);
     assert.match(submissionsSource, /const isSolved = puzzle\.solved === true \|\| outcome\?\.status === "solved"[\s\S]*>Solved<\/div>/);
+    assert.doesNotMatch(submissionsSource, /PUZZLE SERVER ERROR|PUZZLE FAILED/);
     assert.match(submissionsSource, /puzzle\.solved === true/);
     assert.match(readFileSync(fileURLToPath(new URL("../Arena.jsx", import.meta.url)), "utf8"), /PUZZLE_SUBMIT_STATUS_DURATION_MS = 3_500/);
     assert.doesNotMatch(panelSource, /code-toolbar-close|CLOSE/);
