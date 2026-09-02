@@ -9,6 +9,16 @@
     touch-action: none;
 }
 
+.pixi-arena-surface {
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.pixi-arena-surface canvas,
+.pixi-arena-surface img {
+    -webkit-user-drag: none;
+}
+
 .ability-status-icon-button {
     display: grid;
     width: 36px;

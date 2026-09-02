@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BASE_BOT_HP } from "../modelPayloads/arenaConstants.js";
+import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, BASE_BOT_HP } from "../modelPayloads/arenaConstants.js";
 import { toSimulationBotShape } from "../modelPayloads/arenaShapes.js";
 import {
     buildAbilityTestingArenaShapes,
@@ -25,6 +25,29 @@ test("ability testing presets preserve their starting transforms in practice res
         [preset.playerPosition.x, preset.playerPosition.y, preset.playerRotation, preset.playerPosition.x, preset.playerPosition.y, preset.playerRotation],
         [preset.opponentPosition.x, preset.opponentPosition.y, preset.opponentRotation, preset.opponentPosition.x, preset.opponentPosition.y, preset.opponentRotation],
     ]);
+});
+
+test("ability testing presets use the current 1200 unit arena coordinates", () => {
+    const presets = [
+        findAbilityTestingPreset(3),
+        findAbilityTestingPreset(15),
+        findAbilityTestingPreset(24),
+        findAbilityTestingPreset(11),
+    ];
+
+    assert.ok(presets.every((preset) => preset.playerPosition.x === ARENA_WIDTH_UNITS / 2));
+    assert.deepEqual(presets.map((preset) => [preset.playerPosition.y, preset.opponentPosition.y]), [
+        [420, 780],
+        [510, 690],
+        [480, 660],
+        [540, 840],
+    ]);
+    assert.ok(presets.every((preset) => (
+        preset.playerPosition.y >= 0
+        && preset.playerPosition.y <= ARENA_HEIGHT_UNITS
+        && preset.opponentPosition.y >= 0
+        && preset.opponentPosition.y <= ARENA_HEIGHT_UNITS
+    )));
 });
 
 test("ability testing resolves Vampiric Beam by its canonical name", () => {

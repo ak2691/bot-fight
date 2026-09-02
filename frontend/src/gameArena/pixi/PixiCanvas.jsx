@@ -24,6 +24,8 @@ import "./PixiCanvas.css";
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 2.5;
 const BOT_TOUCH_TARGET_PX = 48;
+const ROTATION_HANDLE_TOUCH_TARGET_PX = 48;
+const ROTATION_HANDLE_BASE_HIT_RADIUS_UNITS = 14;
 const BOT_CAPTION_FONT_SIZE = 14;
 const BOT_CAPTION_MIN_PX = 8;
 const BOT_CAPTION_MAX_PX = 14;
@@ -330,14 +332,27 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         return Math.max(bodyRadius, BOT_TOUCH_TARGET_PX / (2 * scale));
     }
 
+    function rotationHandleHitRadius() {
+        if (!touchInput) return ROTATION_HANDLE_BASE_HIT_RADIUS_UNITS;
+        const scale = Math.max(0.001, Number(camera.scale.x) || 1);
+        return Math.max(ROTATION_HANDLE_BASE_HIT_RADIUS_UNITS, ROTATION_HANDLE_TOUCH_TARGET_PX / (2 * scale));
+    }
+
+    function rotationHandleDistanceForShape(shape) {
+        const radius = Number(shape.size ?? BOT_SIZE) / 2;
+        return Math.max(
+            rotationHandleDistance(radius),
+            botInteractionRadius(shape) + rotationHandleHitRadius() + 8,
+        );
+    }
+
     function selectionHitArea(shape) {
         const bodyRadius = isBotShape(shape) ? botInteractionRadius(shape) : botHitAreaRadius(shape);
         if (!isBotShape(shape) || optionsRef.current.selectedId !== shape.id || !canRotateBot(shape)) {
             return new Circle(0, 0, bodyRadius);
         }
-        const radius = Number(shape.size ?? BOT_SIZE) / 2;
-        const handleDistance = rotationHandleDistance(radius);
-        const handleRadius = 14;
+        const handleDistance = rotationHandleDistanceForShape(shape);
+        const handleRadius = rotationHandleHitRadius();
         const rotation = compassDegreesToRadians(shape.rotation);
         const handleX = Math.cos(rotation) * handleDistance;
         const handleY = Math.sin(rotation) * handleDistance;
@@ -509,12 +524,11 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         const position = sampleViewPosition(view);
         const localX = point.x - position.x;
         const localY = point.y - position.y;
-        const radius = Number(view.shape.size ?? BOT_SIZE) / 2;
-        const handleDistance = rotationHandleDistance(radius);
+        const handleDistance = rotationHandleDistanceForShape(view.shape);
         const handleX = Math.cos(compassDegreesToRadians(view.shape.rotation)) * handleDistance;
         const handleY = Math.sin(compassDegreesToRadians(view.shape.rotation)) * handleDistance;
         if (canRotateBot(view.shape)
-            && (localX - handleX) ** 2 + (localY - handleY) ** 2 <= 14 ** 2) {
+            && (localX - handleX) ** 2 + (localY - handleY) ** 2 <= rotationHandleHitRadius() ** 2) {
             event.stopPropagation();
             beginRotationDrag(event, view);
             return;
@@ -608,7 +622,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             const position = sampleViewPosition(view, now);
             view.container.position.set(position.x, position.y);
             view.caption.scale.set(captionScale);
-            if (isBotShape(view.shape)) drawBot(view, position, optionsRef.current.selectedId === view.shape.id, now, arenaSprites, overlappingBotIds.has(view.shape.id), canRotateBot(view.shape));
+            if (isBotShape(view.shape)) drawBot(view, position, optionsRef.current.selectedId === view.shape.id, now, arenaSprites, overlappingBotIds.has(view.shape.id), canRotateBot(view.shape), rotationHandleHitRadius(), rotationHandleDistanceForShape(view.shape));
             else drawEntity(view, optionsRef.current.selectedId === view.shape.id, now, arenaSprites);
         }
         drawHitboxes(hitboxLayer, views, now, optionsRef, sampleViewPosition);
@@ -834,7 +848,7 @@ function drawArena(graphics) {
     graphics.rect(2, 2, Math.max(0, ARENA_WIDTH_UNITS - 4), Math.max(0, ARENA_HEIGHT_UNITS - 4)).stroke({ color: 0x475569, width: 4 });
 }
 
-function drawBot(view, position, selected, now, arenaSprites, overlapping = false, canRotate = false) {
+function drawBot(view, position, selected, now, arenaSprites, overlapping = false, canRotate = false, rotationHitRadius = ROTATION_HANDLE_BASE_HIT_RADIUS_UNITS, rotationDistance = null) {
     const { shape, baseSprite, graphics, rotationHandle, caption } = view;
     const colorRole = botColorRole(shape);
     const tone = colorRole === "red" ? COLORS.opponent : COLORS.player;
@@ -859,7 +873,7 @@ function drawBot(view, position, selected, now, arenaSprites, overlapping = fals
     if (selected) graphics.circle(0, 0, radius + 9).stroke({ color: COLORS.white, alpha: 0.72, width: 2 });
     drawFacingArrow(graphics, rotation, radius, tone);
     if (selected && canRotate) {
-        drawRotationHandle(rotationHandle, rotation, radius, tone);
+        drawRotationHandle(rotationHandle, rotation, radius, tone, rotationHitRadius, rotationDistance);
         rotationHandle.visible = true;
     }
 
@@ -950,11 +964,11 @@ function distanceSquared(left, right) {
 }
 
 function rotationHandleDistance(radius) {
-    return radius * 1.5 + 30;
+    return radius * 1.5 + 42;
 }
 
-function drawRotationHandle(graphics, rotation, radius, color) {
-    const distance = rotationHandleDistance(radius);
+function drawRotationHandle(graphics, rotation, radius, color, hitRadius = ROTATION_HANDLE_BASE_HIT_RADIUS_UNITS, distanceOverride = null) {
+    const distance = distanceOverride ?? rotationHandleDistance(radius);
     const x = Math.cos(rotation) * distance;
     const y = Math.sin(rotation) * distance;
     const renderedBotRadius = radius * 1.5;
@@ -991,7 +1005,7 @@ function drawRotationHandle(graphics, rotation, radius, color) {
         tip.x - directionX * 5 - normalX * 3,
         tip.y - directionY * 5 - normalY * 3,
     ]).fill(COLORS.white);
-    graphics.hitArea = new Circle(x, y, 14);
+    graphics.hitArea = new Circle(x, y, hitRadius);
 }
 
 function drawFacingArrow(graphics, rotation, radius, color) {

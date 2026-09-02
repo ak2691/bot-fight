@@ -725,8 +725,13 @@ test("editable bots expose a shared mouse and touch rotation handle", () => {
     assert.match(source, /rotationHandle\.on\("pointerdown", \(event\) => beginRotationDrag\(event, view\)\)/);
     assert.match(source, /function beginRotationDrag\(event, view\)/);
     assert.match(source, /event\.pointerType !== "touch" && event\.button !== 0/);
-    assert.match(source, /function drawRotationHandle\(graphics, rotation, radius, color\)/);
-    assert.match(source, /drawRotationHandle\(rotationHandle, rotation, radius, tone\)/);
+    assert.match(source, /function drawRotationHandle\(graphics, rotation, radius, color, hitRadius/);
+    assert.match(source, /drawRotationHandle\(rotationHandle, rotation, radius, tone, rotationHitRadius, rotationDistance\)/);
+    assert.match(source, /const ROTATION_HANDLE_TOUCH_TARGET_PX = 48/);
+    assert.match(source, /ROTATION_HANDLE_TOUCH_TARGET_PX \/ \(2 \* scale\)/);
+    assert.match(source, /rotationHandleHitRadius\(\)/);
+    assert.match(source, /return radius \* 1\.5 \+ 42/);
+    assert.match(source, /graphics\.hitArea = new Circle\(x, y, hitRadius\)/);
     assert.match(source, /SELECT BOT \+ DRAG ROTATE HANDLE/);
     assert.match(arenaSource, /const allowBotRotation = .*isPuzzleMode/);
 });

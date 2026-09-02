@@ -1,11 +1,15 @@
 import { ALL_ABILITY_DEFINITIONS, decodeBotLoadout, encodeBotLoadout, normalizedBotLoadout } from "../loadout/BotLoadout.js";
 import { abilityIdFromBoundary } from "../gameconfig/AbilityCompatibility.js";
-import { BASE_BOT_HP } from "../modelPayloads/arenaConstants.js";
+import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, BASE_BOT_HP } from "../modelPayloads/arenaConstants.js";
 import { MAIN_SHAPE, buildOpponentShape, resetBotShapeToStartingConfiguration } from "../modelPayloads/arenaShapes.js";
 import { normalizePracticeConfig } from "../practiceRoomStorage.js";
 import { BOT_CODE_SELECTABLES } from "../botlogic/code/BotCode.js";
 
 const MOVEMENT_TEST_ABILITIES = new Set([21]);
+const TEST_CENTER_X = ARENA_WIDTH_UNITS / 2;
+const TEST_CENTER_Y = ARENA_HEIGHT_UNITS / 2;
+const DEFAULT_PLAYER_POSITION = Object.freeze({ x: TEST_CENTER_X, y: 420 });
+const DEFAULT_OPPONENT_POSITION = Object.freeze({ x: TEST_CENTER_X, y: 780 });
 
 function loadout(...abilities) {
     return encodeBotLoadout({ abilities });
@@ -123,31 +127,31 @@ function opponentCode(abilityId) {
 
 function positioningFor(abilityId) {
     const defaults = {
-        player: { x: 500, y: 350 },
-        opponent: { x: 500, y: 650 },
+        player: DEFAULT_PLAYER_POSITION,
+        opponent: DEFAULT_OPPONENT_POSITION,
         playerRotation: 180,
         opponentRotation: 0,
     };
     if ([1, 16, 23, 10, 7, 8, 17, 18, 34].includes(abilityId)) {
-        return { player: { x: 500, y: 500 }, opponent: { x: 500, y: 590 }, playerRotation: 180, opponentRotation: 0 };
+        return { player: { x: TEST_CENTER_X, y: TEST_CENTER_Y }, opponent: { x: TEST_CENTER_X, y: 708 }, playerRotation: 180, opponentRotation: 0 };
     }
     if (abilityId === 6) {
-        return { player: { x: 500, y: 500 }, opponent: { x: 500, y: 640 }, playerRotation: 180, opponentRotation: 0 };
+        return { player: { x: TEST_CENTER_X, y: TEST_CENTER_Y }, opponent: { x: TEST_CENTER_X, y: 768 }, playerRotation: 180, opponentRotation: 0 };
     }
     if (abilityId === 25) {
-        return { player: { x: 500, y: 500 }, opponent: { x: 500, y: 590 }, playerRotation: 180, opponentRotation: 0 };
+        return { player: { x: TEST_CENTER_X, y: TEST_CENTER_Y }, opponent: { x: TEST_CENTER_X, y: 708 }, playerRotation: 180, opponentRotation: 0 };
     }
     if (abilityId === 15) {
-        return { player: { x: 500, y: 425 }, opponent: { x: 500, y: 575 }, playerRotation: 180, opponentRotation: 0 };
+        return { player: { x: TEST_CENTER_X, y: 510 }, opponent: { x: TEST_CENTER_X, y: 690 }, playerRotation: 180, opponentRotation: 0 };
     }
     if (abilityId === 24) {
-        return { player: { x: 500, y: 400 }, opponent: { x: 500, y: 550 }, playerRotation: 180, opponentRotation: 0 };
+        return { player: { x: TEST_CENTER_X, y: 480 }, opponent: { x: TEST_CENTER_X, y: 660 }, playerRotation: 180, opponentRotation: 0 };
     }
     if (abilityId === 11) {
-        return { player: { x: 500, y: 450 }, opponent: { x: 500, y: 700 }, playerRotation: 180, opponentRotation: 0 };
+        return { player: { x: TEST_CENTER_X, y: 540 }, opponent: { x: TEST_CENTER_X, y: 840 }, playerRotation: 180, opponentRotation: 0 };
     }
     if (abilityId === 14) {
-        return { player: { x: 500, y: 400 }, opponent: { x: 500, y: 600 }, playerRotation: 180, opponentRotation: 0 };
+        return { player: { x: TEST_CENTER_X, y: 480 }, opponent: { x: TEST_CENTER_X, y: 720 }, playerRotation: 180, opponentRotation: 0 };
     }
     return defaults;
 }
@@ -198,8 +202,8 @@ export function buildAbilityTestingPracticeConfig(preset) {
                 teamNumber: 1,
                 slot: 1,
                 loadout: preset.playerLoadout,
-                startX: preset.playerPosition?.x ?? 500,
-                startY: preset.playerPosition?.y ?? 350,
+                startX: preset.playerPosition?.x ?? DEFAULT_PLAYER_POSITION.x,
+                startY: preset.playerPosition?.y ?? DEFAULT_PLAYER_POSITION.y,
                 rotation: preset.playerRotation ?? 180,
                 startHp: BASE_BOT_HP,
             },
@@ -208,8 +212,8 @@ export function buildAbilityTestingPracticeConfig(preset) {
                 teamNumber: 2,
                 slot: 1,
                 loadout: preset.opponentLoadout,
-                startX: preset.opponentPosition?.x ?? 500,
-                startY: preset.opponentPosition?.y ?? 650,
+                startX: preset.opponentPosition?.x ?? DEFAULT_OPPONENT_POSITION.x,
+                startY: preset.opponentPosition?.y ?? DEFAULT_OPPONENT_POSITION.y,
                 rotation: preset.opponentRotation ?? 0,
                 startHp: BASE_BOT_HP,
             },
@@ -230,15 +234,15 @@ export function buildAbilityTestingArenaShapes(preset) {
         slot: 1,
         username: "My Bot",
         userId: "ability-test-player",
-        x: preset?.playerPosition?.x ?? 500,
-        y: preset?.playerPosition?.y ?? 350,
+        x: preset?.playerPosition?.x ?? DEFAULT_PLAYER_POSITION.x,
+        y: preset?.playerPosition?.y ?? DEFAULT_PLAYER_POSITION.y,
         rotation: preset?.playerRotation ?? 180,
         combatLoadout: encodeBotLoadout(playerLoadout),
         loadout: playerLoadout,
         locked: false,
     }, {
-        startX: preset?.playerPosition?.x ?? 500,
-        startY: preset?.playerPosition?.y ?? 350,
+        startX: preset?.playerPosition?.x ?? DEFAULT_PLAYER_POSITION.x,
+        startY: preset?.playerPosition?.y ?? DEFAULT_PLAYER_POSITION.y,
         rotation: preset?.playerRotation ?? 180,
         startHp: BASE_BOT_HP,
     });
@@ -252,16 +256,16 @@ export function buildAbilityTestingArenaShapes(preset) {
         id: "opponent-model",
         type: "opponentModel",
         size: 60,
-        x: preset?.opponentPosition?.x ?? 500,
-        y: preset?.opponentPosition?.y ?? 650,
+        x: preset?.opponentPosition?.x ?? DEFAULT_OPPONENT_POSITION.x,
+        y: preset?.opponentPosition?.y ?? DEFAULT_OPPONENT_POSITION.y,
         rotation: preset?.opponentRotation ?? 0,
         combatLoadout: encodeBotLoadout(opponentLoadout),
         loadout: opponentLoadout,
         locked: false,
         opponentUsername: "Opponent 1",
     }, {
-        startX: preset?.opponentPosition?.x ?? 500,
-        startY: preset?.opponentPosition?.y ?? 650,
+        startX: preset?.opponentPosition?.x ?? DEFAULT_OPPONENT_POSITION.x,
+        startY: preset?.opponentPosition?.y ?? DEFAULT_OPPONENT_POSITION.y,
         rotation: preset?.opponentRotation ?? 0,
         startHp: BASE_BOT_HP,
     });
