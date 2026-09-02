@@ -5,9 +5,8 @@ import { abilityId } from "./AbilityRegistry.js";
 const fixedStepRange = (displacementPerTick, durationMs) => displacementPerTick * durationMs / 100;
 
 const ABILITY_STATS_BY_ID = Object.freeze({
-    1: { activationModel: "immediate", damage: 20, cooldownMs: 600, activeMs: 400, range: 92, arcDegrees: 120 },
+    1: { damage: 20, cooldownMs: 600, activeMs: 400, range: 92, arcDegrees: 120 },
     3: {
-        activationModel: "immediate",
         maxCharges: 6,
         resourceModel: "reload",
         chargeType: "ammunition",
@@ -21,7 +20,6 @@ const ABILITY_STATS_BY_ID = Object.freeze({
         range: 700,
     },
     5: {
-        activationModel: "immediate",
         maxCharges: 4,
         resourceModel: "reload",
         chargeType: "ammunition",
@@ -43,7 +41,6 @@ const ABILITY_STATS_BY_ID = Object.freeze({
     25: { cooldownMs: 1500, visualMs: 300, damage: 15, range: 100, hitboxWidth: 60 },
     20: { cooldownMs: 9_800, windupMs: 200, activeMs: 200 },
     4: {
-        activationModel: "immediate",
         cooldownMs: 12000,
         maxDamage: 40,
         minDamage: 25,
@@ -69,7 +66,7 @@ const ABILITY_STATS_BY_ID = Object.freeze({
         damageFalloffEnd: 333.33,
         range: 500,
     },
-    6: { activationModel: "immediate", cooldownMs: 9600, windupMs: 400, damage: 10, durationMs: 1200, arcDegrees: 100, range: 184, statuses: { stun: { durationMs: 1200 } } },
+    6: { cooldownMs: 9600, windupMs: 200, activeMs: 100, damage: 10, durationMs: 1200, hitboxWidth: 80, range: 184, statuses: { stun: { durationMs: 1200 } } },
     7: { cooldownMs: 4600, windupMs: 300, visualMs: 400, damage: 30, range: 115, arcDegrees: 150, bleedDamage: 2, statuses: { bleed: { durationMs: 5000, intervalMs: 1000 } } },
     8: { cooldownMs: 10000, visualMs: 500, damage: 20, radius: 110, knockback: 250 },
     9: { cooldownMs: 6700, windupMs: 500, visualMs: 300, damage: 20, statuses: { slow: { durationMs: 1000 } }, range: 500, projectile: true },
@@ -222,7 +219,6 @@ const ABILITY_STATS_BY_ID = Object.freeze({
         cooldownRecoveryMultiplier: 0.5,
     },
     34: {
-        activationModel: "immediate",
         cooldownMs: 500,
         activeMs: 200,
         visualMs: 200,

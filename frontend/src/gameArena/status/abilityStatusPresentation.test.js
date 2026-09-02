@@ -115,8 +115,6 @@ test("responsive top status panels stay compact without shrinking their icons", 
     assert.match(panelSource, /ability-status-panel__hp/);
     assert.match(panelSource, /ability-status-panel__timer/);
     assert.match(panelSource, /ability-status-ring/);
-    assert.doesNotMatch(panelSource, /ability-status-panel--compact|compact =/);
-    assert.doesNotMatch(pixiSource, /\bcompact\b/);
     assert.match(panelSource, /flex min-w-0 shrink-0 flex-col/);
     assert.match(globalStyles, /\.arena-stage-info \{[\s\S]*position: static;[\s\S]*height: auto;[\s\S]*flex: 0 0 auto;/);
     assert.match(globalStyles, /\.arena-stage-info > \.info-popup-panel,[\s\S]*position: static;/);

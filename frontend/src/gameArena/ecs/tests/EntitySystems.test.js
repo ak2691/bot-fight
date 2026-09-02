@@ -1291,6 +1291,23 @@ test("defensive and status abilities use preparation plus status duration, not a
     assert.equal(statusRemainingMs(overclock, "overclock"), 4000);
 });
 
+test("stun uses a two-tick wind-up followed by a one-tick active window", () => {
+    const bot = {
+        id: "stun-caster", slot: 1, x: 100, y: 100, size: 60, rotation: 90,
+        hp: 100, maxHp: 100, moveSpeed: 8, attackSpeedMultiplier: 1,
+        attackDamageMultiplier: 1, abilities: [6], abilityCooldowns: { 6: 0 }, abilityActiveMs: {},
+    };
+    const preparing = applyBotAction(bot, { abilityAction: { action: 6 } }, 100, noDamageCombat.applyDamageToShape);
+    assert.equal(preparing.triggeredAbility, null);
+    assert.equal(preparing.preparingAbility, 6);
+    assert.equal(preparing.preparingMs, 100);
+
+    const active = applyBotAction(preparing, { abilityAction: { action: 6 } }, 100, noDamageCombat.applyDamageToShape);
+    assert.equal(active.triggeredAbility, 6);
+    assert.equal(active.preparingAbility, null);
+    assert.equal(active.abilityActiveMs[6], 100);
+});
+
 test("the global ability lock includes preparation, not only active time", () => {
     const preparing = { preparingAbility: 16, abilityActiveMs: {} };
     assert.equal(anotherAbilityActive(preparing, 34), true);
@@ -1441,6 +1458,8 @@ test("every browser melee hitbox reaches the defender's edge at max range", () =
     const stunAttacker = { x: 100, y: 100, rotation: 90, triggeredAbility: 6, abilities: [6] };
     assert.equal(abilityHitsTarget(stunAttacker, { x: 100 + 184 + defenderRadius, y: 100, size: defenderSize }), true);
     assert.equal(abilityHitsTarget(stunAttacker, { x: 100 + 184 + defenderRadius + 1, y: 100, size: defenderSize }), false);
+    assert.equal(abilityHitsTarget(stunAttacker, { x: 100 + 92, y: 100 + 40 + defenderRadius, size: defenderSize }), true);
+    assert.equal(abilityHitsTarget(stunAttacker, { x: 100 + 92, y: 100 + 40 + defenderRadius + 1, size: defenderSize }), false);
 });
 
 test("direct melee hitboxes sweep across a moving defender", () => {

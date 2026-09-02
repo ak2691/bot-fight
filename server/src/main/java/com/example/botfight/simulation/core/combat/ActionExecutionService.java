@@ -89,10 +89,9 @@ public class ActionExecutionService {
     }
 
     /**
-     * Action selection may keep an already-started preparation or channelled
-     * action selected. This is deliberately broader than selectedAbilityReady,
-     * which is the strict value exposed to bot conditionals for a new
-     * activation.
+     * Action selection may keep an already-started preparation selected. This
+     * is deliberately broader than selectedAbilityReady, which is the strict
+     * value exposed to bot conditionals for a new activation.
      */
     public boolean selectedAbilityExecutable(Bot bot, int ability) {
         return selectedAbilityExecutable(bot, AbilityExecutionPayload.forAbility(ability));
@@ -103,9 +102,7 @@ public class ActionExecutionService {
             return false;
         boolean continuingPreparation = Integer.valueOf(payload.abilityId()).equals(bot.preparingAbility)
                 && bot.preparingMs > 0;
-        boolean continuingChannel = payload.definition().activationModel() == Abilities.ActivationModel.CHANNELLED
-                && bot.abilityActiveMs.getOrDefault(payload.abilityId(), 0) > 0;
-        return continuingPreparation || continuingChannel || selectedAbilityReady(bot, payload);
+        return continuingPreparation || selectedAbilityReady(bot, payload);
     }
 
     public int selectedAbilityCooldownMs(Bot bot, int ability) {
@@ -184,61 +181,30 @@ public class ActionExecutionService {
         boolean hitStaggerWasActive = BotStateService.statusActive(bot, "hit-stagger");
         boolean stunnedWasActive = BotStateService.statusActive(bot, "stun");
         boolean silencedWasActive = BotStateService.statusActive(bot, "silence");
-        Integer channelledAbility = activeChannelledAbility(bot);
 
         movementService.applyTickMovement(bot, action, arena, false,
                 slowedWasActive, hitStaggerWasActive);
         if (stunnedWasActive) {
             BotStateService.interruptCurrentAbility(bot);
-            if (channelledAbility != null) {
-                botStateService.setAbilityReuseCooldown(bot, channelledAbility);
-            }
             botStateService.beginTick(bot);
             return;
         }
 
         AbilityExecutionPayload payload = selectedAbilityPayload(bot, action);
         boolean blockedByStatus = payload != null
-                && payload.definition().activationModel() != Abilities.ActivationModel.CHANNELLED
                 && (silencedWasActive
                         || ("slow".equals(payload.contract().execution().blockedByStatus())
                                 && slowedWasActive));
         boolean blockedByAbilityState = payload != null
-                && payload.definition().activationModel() != Abilities.ActivationModel.CHANNELLED
                 && !blockedByStatus
                 && !selectedAbilityExecutable(bot, payload);
-        boolean channelledActive = payload != null
-                && !blockedByStatus
-                && payload.definition().activationModel() == Abilities.ActivationModel.CHANNELLED
-                && selectedAbilityExecutable(bot, payload);
-        if (channelledAbility != null
-                && (payload == null || !channelledAbility.equals(payload.abilityId()))) {
-            botStateService.setAbilityReuseCooldown(bot, channelledAbility);
-        }
-        if (channelledActive) {
-            if (channelledAbility == null
-                    || !channelledAbility.equals(payload.abilityId())) {
-                botStateService.startAbilityResource(bot, payload.abilityId());
-            }
-            bot.abilityActiveMs.put(payload.abilityId(), STEP_MS + 1);
-            setTriggeredPayload(bot, payload);
-        }
-        if (!blockedByStatus && !blockedByAbilityState && !channelledActive && payload != null
-                && payload.definition().activationModel() == Abilities.ActivationModel.IMMEDIATE) {
-            AbilityExecutionPayload activated = activateImmediateAbility(bot, payload);
-            if (activated != null)
-                setTriggeredPayload(bot, activated);
-        }
         if (blockedByStatus || blockedByAbilityState) {
             cancelPreparation(bot, payload);
-        } else if (!channelledActive && payload != null
-                && !BotStateService.statusActive(bot, "silence")
-                && payload.definition().activationModel() == Abilities.ActivationModel.CONFIGURED) {
-            AbilityExecutionPayload activated = activateConfiguredAbility(bot, payload);
+        } else if (payload != null && !BotStateService.statusActive(bot, "silence")) {
+            AbilityExecutionPayload activated = activateAbility(bot, payload);
             if (activated != null)
                 setTriggeredPayload(bot, activated);
         } else if (payload != null
-                && payload.definition().activationModel() == Abilities.ActivationModel.CONFIGURED
                 && bot.preparingAbility != null
                 && (BotStateService.statusActive(bot, "silence") || BotStateService.statusActive(bot, "stun"))) {
             cancelPreparation(bot, payload);
@@ -285,29 +251,7 @@ public class ActionExecutionService {
         bot.triggeredAbility = captured.actionId();
     }
 
-    private AbilityExecutionPayload activateImmediateAbility(
-            Bot bot, AbilityExecutionPayload payload) {
-        if (payload.definition().activationModel() != Abilities.ActivationModel.IMMEDIATE
-                || !selectedAbilityReady(bot, payload))
-            return null;
-        var definition = payload.definition();
-        double cooldownMultiplier = 1.0 / bot.attackSpeedMultiplier;
-        botStateService.startAbilityResource(bot, payload.abilityId());
-        if (definition.charges() > 0
-                && definition.resourceModel() != Abilities.ResourceModel.FIXED
-                && definition.resourceModel() != Abilities.ResourceModel.HP
-                && !botStateService.consumeAbilityCharge(bot, payload.abilityId())) {
-            return null;
-        }
-        int activeMs = activationActiveMs(payload);
-        int cooldownMs = activationCooldownMs(bot, payload, cooldownMultiplier);
-        bot.abilityActiveMs.put(payload.abilityId(), activeMs + STEP_MS);
-        botStateService.setAbilityCooldown(bot, payload.abilityId(), cooldownMs);
-        AbilityExecutionPayload activated = payload.capture(bot);
-        return activated;
-    }
-
-    private AbilityExecutionPayload activateConfiguredAbility(
+    private AbilityExecutionPayload activateAbility(
             Bot bot, AbilityExecutionPayload payload) {
         if (!selectedAbilityExecutable(bot, payload))
             return null;
@@ -365,8 +309,8 @@ public class ActionExecutionService {
 
     private static int activationActiveMs(AbilityExecutionPayload payload) {
         // Defensive effects and Overclock own their duration as statuses, not
-        // as post-activation action locks. Other existing short-lived combat
-        // visuals retain their explicit legacy active fallback.
+        // as post-activation action locks. Other short-lived combat visuals
+        // retain their explicit active fallback.
         if (payload.contract().effects().stream().anyMatch(effect -> effect.type() == EffectType.DAMAGE_REDUCTION
                 || effect.type() == EffectType.DAMAGE_IMMUNITY
                 || effect.type() == EffectType.DAMAGE_REFLECTION
@@ -374,10 +318,6 @@ public class ActionExecutionService {
             return 0;
         }
         var definition = payload.definition();
-        if (definition.activationModel() == Abilities.ActivationModel.IMMEDIATE) {
-            return definition.activeMs() > 0 ? definition.activeMs()
-                    : definition.windupMs() > 0 ? definition.windupMs() : STEP_MS;
-        }
         if (spawnsEntity(payload) && definition.activeMs() == 0)
             return 0;
         return definition.activeMs() > 0 ? definition.activeMs()
@@ -442,12 +382,4 @@ public class ActionExecutionService {
                         && !AbilityContracts.get(entry.getKey()).execution().ignoresGlobalAbilityLock());
     }
 
-    private static Integer activeChannelledAbility(Bot bot) {
-        return bot.abilityActiveMs.entrySet().stream()
-                .filter(entry -> entry.getValue() > 0)
-                .map(java.util.Map.Entry::getKey)
-                .filter(id -> Abilities.definition(id).activationModel() == Abilities.ActivationModel.CHANNELLED)
-                .findFirst()
-                .orElse(null);
-    }
 }

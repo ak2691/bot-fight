@@ -1200,8 +1200,9 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
     }
     const stunActiveMs = Number(shape.abilityActiveMs?.[6] ?? 0);
     if (stunActiveMs > 0) {
-        const opacity = clamp(stunActiveMs / Number(ABILITY_STATS[6].windupMs), 0, 1);
-        const progress = visualProgress(stunActiveMs, ABILITY_STATS[6].windupMs);
+        const activeDurationMs = Math.max(1, Number(ABILITY_STATS[6].activeMs ?? 100));
+        const opacity = clamp(stunActiveMs / activeDurationMs, 0, 1);
+        const progress = visualProgress(stunActiveMs, activeDurationMs);
         const botRadius = Number(shape.size ?? BOT_SIZE) / 2;
         showCachedEffect(view, "stun", spriteFrameAtProgress(arenaSprites.abilities.stun, progress), {
             // The supplied frame is vertically elongated; keep that long axis

@@ -53,7 +53,6 @@ export function applyBotAction(shape, action, elapsedMs, applyDamage) {
             phaseFacingMode: action?.abilityAction?.phaseFacingMode,
         }
         : null;
-    next = releaseHeldAbilities(next, abilityPayload);
     const abilityResult = executeAbility(next, abilityPayload, elapsedMs, cooldownMultiplier, { slowedWasActive });
     next = abilityResult.bot;
     const ticked = tickBotState(next, elapsedMs, applyDamage);
@@ -99,8 +98,6 @@ function applyMovement(next, shape, action, movement) {
 function executeAbility(bot, payload, elapsedMs, cooldownMultiplier, { slowedWasActive = false } = {}) {
     if (!payload || !hasAbility(bot, payload.abilityId)) return { bot, triggered: null, triggeredPayload: null };
 
-    const activationModel = payload.execution?.activationModel ?? payload.stats.activationModel ?? "configured";
-    if (activationModel === "channelled") return executeChannelledAbility(bot, payload, elapsedMs);
     if (statusIsActive(bot, "silence")
         || (payload.execution?.blockedByStatus === "slow"
             && (statusIsActive(bot, "slow") || slowedWasActive))) {
@@ -117,7 +114,7 @@ function executeAbility(bot, payload, elapsedMs, cooldownMultiplier, { slowedWas
         return cancelPreparation(bot, payload);
     }
 
-    const windupMs = activationModel === "immediate" ? 0 : Number(payload.stats.windupMs ?? 0);
+    const windupMs = Number(payload.stats.windupMs ?? 0);
     let next = bot;
     let triggered = null;
     if (windupMs > 0) {
@@ -164,23 +161,6 @@ function executeAbility(bot, payload, elapsedMs, cooldownMultiplier, { slowedWas
     };
 }
 
-function executeChannelledAbility(bot, payload, elapsedMs) {
-    const abilityId = payload.abilityId;
-    const isActive = Number(bot.abilityActiveMs?.[abilityId] ?? 0) > 0;
-    if (!isActive && anotherAbilityActive(bot, abilityId, payload.execution?.ignoresGlobalAbilityLock)) {
-        return { bot, triggered: null, triggeredPayload: null };
-    }
-    const ready = abilityResourceReady(bot, abilityId, elapsedMs)
-        && (isActive || abilityTimingReady(bot, abilityId, 0));
-    if (!ready) return { bot, triggered: null, triggeredPayload: null };
-    const activatedResource = consumeAbilityCharges(bot, abilityId, 0, { activation: true }).shape;
-    return {
-        bot: { ...activatedResource, abilityActiveMs: { ...(activatedResource.abilityActiveMs ?? {}), [abilityId]: elapsedMs + 1 } },
-        triggered: payload.actionId,
-        triggeredPayload: payload,
-    };
-}
-
 function cancelPreparation(bot, payload) {
     return bot.preparingAbility === payload?.abilityId
         ? { bot: clearPreparation(bot), triggered: null, triggeredPayload: null }
@@ -189,8 +169,8 @@ function cancelPreparation(bot, payload) {
 
 function activationActiveMs(payload) {
     // Defensive effects and Overclock own their duration as statuses, not as
-    // post-activation action locks. Other existing short-lived combat visuals
-    // retain their explicit legacy active fallback.
+    // post-activation action locks. Other short-lived combat visuals retain
+    // their explicit active fallback.
     if (payload.contract?.effects?.some((effect) => ["damage_reduction", "damage_immunity", "damage_reflection"].includes(effect.type)
         || (effect.type === "buff" && effect.buff === "overclock"))) return 0;
     const explicitActiveMs = payload.execution?.activeMs ?? payload.stats.activeMs;
@@ -291,22 +271,6 @@ function clampVelocity(velocity, maxSpeed) {
 
 function hasAbility(shape, ability) {
     return Array.isArray(shape?.abilities) && shape.abilities.includes(ability);
-}
-
-function releaseHeldAbilities(shape, selectedPayload) {
-    const selectedAbilityId = selectedPayload?.abilityId;
-    let next = shape;
-    for (const abilityValue of shape?.abilities ?? []) {
-        const payload = abilityExecutionPayload(abilityValue);
-        if (payload?.execution?.activationModel !== "channelled"
-            || payload.abilityId === selectedAbilityId
-            || Number(next.abilityActiveMs?.[payload.abilityId] ?? 0) <= 0) continue;
-        const cooldownField = payload.execution.releaseCooldownStat ?? "reuseCooldownMs";
-        const cooldownMs = Math.round(Number(payload.stats[cooldownField] ?? 0)
-            * cooldownStartMultiplier(next));
-        next = setAbilityCooldownState(next, payload.abilityId, cooldownMs);
-    }
-    return next;
 }
 
 function clearPreparation(shape) {

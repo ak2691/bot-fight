@@ -161,6 +161,10 @@ class AbilityContractsTest {
                 .isEqualTo(AbilityContracts.HitboxGeometry.RECTANGLE);
         assertThat(AbilityContracts.get(25).execution().captureAtActivation()).isTrue();
         assertThat(AbilityContracts.get(25).execution().teleportOncePerActivation()).isTrue();
+        assertThat(AbilityContracts.get(6).hitboxGeometry())
+                .isEqualTo(AbilityContracts.HitboxGeometry.RECTANGLE);
+        assertThat(AbilityContracts.get(6).includeTargetRadius()).isTrue();
+        assertThat(AbilityContracts.effectDurationMs(6, "stun")).isEqualTo(1_200);
         assertThat(AbilityContracts.get(7).includeTargetRadius()).isTrue();
         assertThat(AbilityContracts.get(25).includeTargetRadius()).isTrue();
         assertThat(AbilityContracts.get(8).includeTargetRadius()).isTrue();

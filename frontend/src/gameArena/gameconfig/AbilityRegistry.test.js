@@ -58,6 +58,12 @@ test("requested combat tuning is represented in the browser catalog", () => {
     assert.equal(ABILITY_STATS[11].damage, 25);
     assert.equal(ABILITY_STATS[11].throwRange, 176);
     assert.equal(ABILITY_STATS[6].damage, 10);
+    assert.equal(ABILITY_STATS[6].windupMs, 200);
+    assert.equal(ABILITY_STATS[6].activeMs, 100);
+    assert.equal(ABILITY_STATS[6].hitboxWidth, 80);
+    assert.equal(ABILITY_STATS[6].range, 184);
+    assert.equal(ABILITY_CONTRACTS[6].delivery.geometry, "rectangle");
+    assert.equal(ABILITY_CONTRACTS[6].delivery.includeTargetRadius, true);
     assert.equal(ABILITY_STATS[17].damage, 5);
     assert.equal(ABILITY_STATS[18].cooldownMs, 7000);
     assert.equal(ABILITY_STATS[18].windupMs, 300);

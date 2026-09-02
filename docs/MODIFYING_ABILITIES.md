@@ -123,7 +123,6 @@ new AbilityDefinition(
         charges,
         rechargeMs,
         reuseCooldownMs,
-        activationModel,
         resourceModel,
         falloffMode,
         damageFalloff,

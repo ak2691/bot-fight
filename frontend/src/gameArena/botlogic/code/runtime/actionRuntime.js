@@ -1,5 +1,4 @@
 import { abilityChargesFor, abilityIgnoresGlobalLock, abilityRechargeRemainingMs, abilityTimingReady, anotherAbilityActive } from "../../../gameconfig/AbilityResourceSystem.js";
-import { abilityContract } from "../../../gameconfig/AbilityContracts.js";
 import { abilityIdFromBoundary } from "../../../gameconfig/AbilityCompatibility.js";
 import { ACTION_HEADS, BOT_CODE_ACTIONS } from "../contracts/BotLogicContracts.js";
 
@@ -42,16 +41,14 @@ export function abilityReady(bot, ability) {
 }
 
 // Conditions use abilityReady() to describe whether a new activation can
-// start. Action selection also needs to keep an already-started wind-up or
-// channelled ability selected until its execution phase completes.
+// start. Action selection also needs to keep an already-started wind-up
+// selected until its execution phase completes.
 export function abilityActionReady(bot, ability) {
     const abilityId = abilityIdFromBoundary(ability);
     if (!botHasAbility(bot, abilityId)) return false;
     const preparingSameAbility = Number(bot?.preparingAbility) === abilityId
         && Number(bot?.preparingMs) > 0;
-    const channelledSameAbility = abilityContract(abilityId)?.execution?.activationModel === "channelled"
-        && abilityActiveMs(bot, abilityId) > 0;
-    return preparingSameAbility || channelledSameAbility || abilityReady(bot, abilityId);
+    return preparingSameAbility || abilityReady(bot, abilityId);
 }
 
 export function abilityCooldownMs(bot, ability) {

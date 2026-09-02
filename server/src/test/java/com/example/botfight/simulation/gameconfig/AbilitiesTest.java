@@ -33,7 +33,6 @@ class AbilitiesTest {
         assertThat(Abilities.CATALOG.values()).allSatisfy(definition -> {
             assertThat(definition.stats()).isNotNull();
             assertThat(definition.damageFalloff()).isNotNull();
-            assertThat(definition.activationModel()).isNotNull();
             assertThat(definition.resourceModel()).isNotNull();
         });
     }
@@ -83,6 +82,10 @@ class AbilitiesTest {
     @Test
     void newAbilityStatsKeepTheirSuggestedRoundStrengths() {
         assertThat(Abilities.definition(6).damage()).isEqualTo(10);
+        assertThat(Abilities.windupMs(6)).isEqualTo(200);
+        assertThat(Abilities.definition(6).activeMs()).isEqualTo(100);
+        assertThat(Abilities.range(6)).isEqualTo(184);
+        assertThat(Abilities.stat(6, "hitboxWidth", 0)).isEqualTo(80);
         assertThat(Abilities.definition(9).damage()).isEqualTo(20);
         assertThat(Abilities.definition(11).damage()).isEqualTo(25);
         assertThat(Abilities.definition(17).damage()).isEqualTo(5);
@@ -153,7 +156,7 @@ class AbilitiesTest {
     @Test
     void effectiveActionLocksMatchTheBrowserTimingFallbacks() {
         int[][] expectedActiveMs = {
-                {1, 400}, {3, 500}, {4, 1}, {5, 500}, {6, 1_200}, {7, 400},
+                {1, 400}, {3, 500}, {4, 1}, {5, 500}, {6, 100}, {7, 400},
                 {8, 500}, {9, 300}, {10, 300}, {11, 300}, {12, 300}, {13, 300},
                 {14, 2_000}, {15, 2_000}, {16, 0}, {17, 300}, {18, 500}, {19, 200},
                 {20, 200}, {21, 300}, {22, 0}, {23, 0}, {24, 300}, {25, 300},

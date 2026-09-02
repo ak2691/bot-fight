@@ -13,8 +13,6 @@ class AbilityExecutionPayloadTest {
 
         assertThat(payload.actionId()).isEqualTo(19);
         assertThat(payload.abilityId()).isEqualTo(19);
-        assertThat(payload.definition().activationModel())
-                .isEqualTo(com.example.botfight.simulation.gameconfig.Abilities.ActivationModel.CONFIGURED);
         assertThat(payload.contract().execution().movement()).isNotNull();
         assertThat(payload.targetX()).isEqualTo(500);
         assertThat(payload.movementDirection()).isEqualTo("north");
