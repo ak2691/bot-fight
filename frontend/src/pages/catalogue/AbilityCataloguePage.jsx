@@ -339,7 +339,6 @@ export default function AbilityCataloguePage() {
                             <p className="font-mono text-[9px] font-bold tracking-[.28em] text-green-300">COMBAT EFFECTS</p>
                             <h2 id="combat-effects-title" className="mt-1 font-display-action text-3xl uppercase tracking-wider text-white">Effect guide</h2>
                         </div>
-                        <span className="font-mono text-[9px] tracking-widest text-slate-500">STATUS · COMBAT</span>
                     </div>
                     <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                         {EFFECT_GUIDE.map((effect) => {
@@ -425,20 +424,20 @@ export default function AbilityCataloguePage() {
                         </section>
                     );
                 })}
-                </div>
+            </div>
 
-                {selectedAbility && <AbilityModal ability={selectedAbility} onClose={closeAbility} onTestAbility={testAbility} />}
-                {selectedEffect && <EffectModal key={selectedEffect.id} effect={selectedEffect} onClose={() => setSelectedEffect(null)} />}
-                {showScrollTop && (
-                    <button
-                        type="button"
-                        className="catalogue-scroll-top"
-                        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-                        aria-label="Back to top"
-                    >
-                        BACK TO TOP
-                    </button>
-                )}
-            </main>
+            {selectedAbility && <AbilityModal ability={selectedAbility} onClose={closeAbility} onTestAbility={testAbility} />}
+            {selectedEffect && <EffectModal key={selectedEffect.id} effect={selectedEffect} onClose={() => setSelectedEffect(null)} />}
+            {showScrollTop && (
+                <button
+                    type="button"
+                    className="catalogue-scroll-top"
+                    onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+                    aria-label="Back to top"
+                >
+                    BACK TO TOP
+                </button>
+            )}
+        </main>
     );
 }

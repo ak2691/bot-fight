@@ -1,5 +1,6 @@
 package com.example.botfight.service.auth;
 
+import com.example.botfight.config.BotFightSecurityProperties;
 import com.example.botfight.DTO.AuthUserDTO;
 import com.example.botfight.DTO.GoogleLinkRequestDTO;
 import com.example.botfight.DTO.UsernameRequestDTO;
@@ -10,6 +11,9 @@ import com.example.botfight.repository.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import java.io.Serializable;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -29,6 +33,7 @@ public class GoogleAuthService {
     public static final String GOOGLE_LINK_USER_SESSION_KEY = "botfight.google.link.user";
     public static final String GOOGLE_PENDING_LINK_SESSION_KEY = "botfight.google.pending.link";
     public static final String GOOGLE_PENDING_USERNAME_SESSION_KEY = "botfight.google.pending.username";
+    public static final String GOOGLE_PENDING_USERNAME_EXPIRES_AT_SESSION_KEY = "botfight.google.pending.username.expires-at";
 
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     private static final int MAX_PROVIDER_SUBJECT_LENGTH = 255;
@@ -39,6 +44,8 @@ public class GoogleAuthService {
     private final CurrentUserService currentUserService;
     private final AuthService authService;
     private final PasswordEncoder passwordEncoder;
+    private final Clock clock;
+    private final Duration googleUsernameSetupTimeout;
 
     public GoogleAuthService(
             UserRepository userRepository,
@@ -46,13 +53,17 @@ public class GoogleAuthService {
             UserAuthIdentityService identityService,
             CurrentUserService currentUserService,
             AuthService authService,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder,
+            Clock clock,
+            BotFightSecurityProperties securityProperties) {
         this.userRepository = userRepository;
         this.identityRepository = identityRepository;
         this.identityService = identityService;
         this.currentUserService = currentUserService;
         this.authService = authService;
         this.passwordEncoder = passwordEncoder;
+        this.clock = clock;
+        this.googleUsernameSetupTimeout = securityProperties.getGoogleUsernameSetupTimeout();
     }
 
     @Transactional
@@ -166,7 +177,11 @@ public class GoogleAuthService {
         UUID userId = session == null
                 ? null
                 : readUuid(session.getAttribute(GOOGLE_PENDING_USERNAME_SESSION_KEY));
-        if (userId == null) {
+        Instant expiresAt = session == null
+                ? null
+                : readInstant(session.getAttribute(GOOGLE_PENDING_USERNAME_EXPIRES_AT_SESSION_KEY));
+        if (session == null || userId == null || expiresAt == null || !clock.instant().isBefore(expiresAt)) {
+            if (session != null) clearGoogleFlowState(session);
             throw new AuthException("username setup has expired; sign in with Google again");
         }
 
@@ -270,12 +285,16 @@ public class GoogleAuthService {
         session.removeAttribute(GOOGLE_LINK_USER_SESSION_KEY);
         session.removeAttribute(GOOGLE_PENDING_LINK_SESSION_KEY);
         session.removeAttribute(GOOGLE_PENDING_USERNAME_SESSION_KEY);
+        session.removeAttribute(GOOGLE_PENDING_USERNAME_EXPIRES_AT_SESSION_KEY);
     }
 
     private void prepareUsername(HttpSession session, AppUser user) {
         session.removeAttribute(GOOGLE_LINK_USER_SESSION_KEY);
         session.removeAttribute(GOOGLE_PENDING_LINK_SESSION_KEY);
         session.setAttribute(GOOGLE_PENDING_USERNAME_SESSION_KEY, user.getId());
+        session.setAttribute(
+                GOOGLE_PENDING_USERNAME_EXPIRES_AT_SESSION_KEY,
+                clock.instant().plus(googleUsernameSetupTimeout));
     }
 
     private void clearAuthentication(HttpSession session) {
@@ -295,6 +314,10 @@ public class GoogleAuthService {
             }
         }
         return null;
+    }
+
+    private Instant readInstant(Object value) {
+        return value instanceof Instant instant ? instant : null;
     }
 
     private <T> T sessionAttribute(HttpSession session, String key, Class<T> type) {

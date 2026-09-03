@@ -5,6 +5,7 @@ import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.service.auth.GoogleAuthService;
 import com.example.botfight.service.auth.UserAuthIdentityService;
+import com.example.botfight.config.BotFightSecurityProperties;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -24,6 +25,10 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import java.util.Optional;
 import java.util.UUID;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpSession;
@@ -39,13 +44,16 @@ class GoogleAuthServiceTest {
     private final CurrentUserService currentUserService = org.mockito.Mockito.mock(CurrentUserService.class);
     private final AuthService authService = org.mockito.Mockito.mock(AuthService.class);
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+    private final BotFightSecurityProperties securityProperties = new BotFightSecurityProperties();
     private final GoogleAuthService service = new GoogleAuthService(
             userRepository,
             identityRepository,
             identityService,
             currentUserService,
             authService,
-            passwordEncoder);
+            passwordEncoder,
+            Clock.fixed(Instant.parse("2026-08-01T12:00:00Z"), ZoneOffset.UTC),
+            securityProperties);
     private final HttpServletRequest request = org.mockito.Mockito.mock(HttpServletRequest.class);
     private final HttpSession session = new MockHttpSession();
     private final OAuth2User googleUser = org.mockito.Mockito.mock(OAuth2User.class);
@@ -77,6 +85,8 @@ class GoogleAuthServiceTest {
         assertThat(result.profileLink()).isFalse();
         verify(userRepository).save(org.mockito.ArgumentMatchers.argThat(user -> user.getUsername() == null));
         assertThat(session.getAttribute(GoogleAuthService.GOOGLE_PENDING_USERNAME_SESSION_KEY)).isNotNull();
+        assertThat(session.getAttribute(GoogleAuthService.GOOGLE_PENDING_USERNAME_EXPIRES_AT_SESSION_KEY))
+                .isEqualTo(Instant.parse("2026-08-01T12:00:00Z").plus(Duration.ofMinutes(15)));
         verify(identityService).linkIdentity(
                 any(AppUser.class),
                 org.mockito.ArgumentMatchers.eq("google"),
@@ -166,6 +176,35 @@ class GoogleAuthServiceTest {
 
         assertThat(result).isSameAs(authenticatedUser);
         verify(authService).authenticateSession(any(AppUser.class), org.mockito.ArgumentMatchers.same(request));
+    }
+
+    @Test
+    void rejectsExpiredPendingUsernameSetup() {
+        when(userRepository.findByNormalizedEmail("pilot@example.com")).thenReturn(Optional.empty());
+        when(userRepository.save(any(AppUser.class))).thenAnswer(invocation -> {
+            AppUser saved = invocation.getArgument(0);
+            saved.setId(UUID.randomUUID());
+            return saved;
+        });
+
+        service.loginOrPrepareLink(googleUser, request);
+        GoogleAuthService expiredService = new GoogleAuthService(
+                userRepository,
+                identityRepository,
+                identityService,
+                currentUserService,
+                authService,
+                passwordEncoder,
+                Clock.fixed(Instant.parse("2026-08-01T12:15:00Z"), ZoneOffset.UTC),
+                securityProperties);
+        UsernameRequestDTO usernameRequest = new UsernameRequestDTO();
+        usernameRequest.setUsername("new_pilot");
+
+        assertThatThrownBy(() -> expiredService.completePendingUsername(usernameRequest, request))
+                .isInstanceOf(AuthException.class)
+                .hasMessage("username setup has expired; sign in with Google again");
+        assertThat(session.getAttribute(GoogleAuthService.GOOGLE_PENDING_USERNAME_SESSION_KEY)).isNull();
+        assertThat(session.getAttribute(GoogleAuthService.GOOGLE_PENDING_USERNAME_EXPIRES_AT_SESSION_KEY)).isNull();
     }
 
     @Test

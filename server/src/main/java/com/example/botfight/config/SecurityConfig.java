@@ -5,6 +5,8 @@ import static org.springframework.security.config.Customizer.withDefaults;
 import com.example.botfight.security.RequestPayloadLimitFilter;
 import com.example.botfight.security.GoogleOAuth2AuthenticationFailureHandler;
 import com.example.botfight.security.GoogleOAuth2AuthenticationSuccessHandler;
+import com.example.botfight.security.SessionAbsoluteMaxAgeFilter;
+import java.time.Clock;
 import java.io.IOException;
 import java.util.List;
 import jakarta.servlet.FilterChain;
@@ -37,14 +39,17 @@ public class SecurityConfig {
     private final BotFightSecurityProperties securityProperties;
     private final GoogleOAuth2AuthenticationSuccessHandler googleSuccessHandler;
     private final GoogleOAuth2AuthenticationFailureHandler googleFailureHandler;
+    private final Clock clock;
 
     public SecurityConfig(
             BotFightSecurityProperties securityProperties,
             GoogleOAuth2AuthenticationSuccessHandler googleSuccessHandler,
-            GoogleOAuth2AuthenticationFailureHandler googleFailureHandler) {
+            GoogleOAuth2AuthenticationFailureHandler googleFailureHandler,
+            Clock clock) {
         this.securityProperties = securityProperties;
         this.googleSuccessHandler = googleSuccessHandler;
         this.googleFailureHandler = googleFailureHandler;
+        this.clock = clock;
     }
 
     @Bean
@@ -58,6 +63,7 @@ public class SecurityConfig {
                 .addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class)
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable())
+                .addFilterBefore(new SessionAbsoluteMaxAgeFilter(clock, securityProperties.getSessionMaxAge()), RequestPayloadLimitFilter.class)
                 .oauth2Login(oauth -> oauth
                         .successHandler(googleSuccessHandler)
                         .failureHandler(googleFailureHandler))

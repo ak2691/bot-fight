@@ -2,6 +2,7 @@ package com.example.botfight.config;
 
 import jakarta.annotation.PostConstruct;
 import java.net.URI;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -18,6 +19,8 @@ public class BotFightSecurityProperties {
     private int maxHttpRequestBytes = 1_048_576;
     private int maxWebSocketMessageBytes = 65_536;
     private int maxWebSocketSendBufferBytes = 4_194_304;
+    private Duration googleUsernameSetupTimeout = Duration.ofMinutes(15);
+    private Duration sessionMaxAge = Duration.ZERO;
 
     @PostConstruct
     void validate() {
@@ -97,5 +100,27 @@ public class BotFightSecurityProperties {
             throw new IllegalArgumentException("WebSocket send buffer limit must be positive");
         }
         this.maxWebSocketSendBufferBytes = maxWebSocketSendBufferBytes;
+    }
+
+    public Duration getGoogleUsernameSetupTimeout() {
+        return googleUsernameSetupTimeout;
+    }
+
+    public void setGoogleUsernameSetupTimeout(Duration googleUsernameSetupTimeout) {
+        if (googleUsernameSetupTimeout == null || googleUsernameSetupTimeout.isZero() || googleUsernameSetupTimeout.isNegative()) {
+            throw new IllegalArgumentException("Google username setup timeout must be positive");
+        }
+        this.googleUsernameSetupTimeout = googleUsernameSetupTimeout;
+    }
+
+    public Duration getSessionMaxAge() {
+        return sessionMaxAge;
+    }
+
+    public void setSessionMaxAge(Duration sessionMaxAge) {
+        if (sessionMaxAge == null || sessionMaxAge.isNegative()) {
+            throw new IllegalArgumentException("Session max age must be zero or positive");
+        }
+        this.sessionMaxAge = sessionMaxAge;
     }
 }
