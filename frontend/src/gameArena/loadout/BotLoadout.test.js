@@ -61,8 +61,9 @@ test("positive catalogue effects expose their numeric strength", () => {
     ]);
 });
 
-test("charges are tagged generically with HP and ammunition subtypes", () => {
-    assert.equal(abilityDefinition(3).tags.includes(ABILITY_TAGS.AMMUNITION_CHARGES), true);
+test("charges keep the generic tag while HP charges retain their subtype", () => {
+    assert.equal(abilityDefinition(3).tags.includes(ABILITY_TAGS.CHARGES), true);
+    assert.equal(abilityDefinition(3).tags.some((tag) => tag.endsWith("charges") && tag !== ABILITY_TAGS.CHARGES), false);
     assert.deepEqual(
         ALL_ABILITY_DEFINITIONS.filter((ability) => ability.tags.includes(ABILITY_TAGS.CHARGES)).map((ability) => ability.id),
         [3, 5, 12],

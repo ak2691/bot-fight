@@ -70,6 +70,8 @@ const TAG_LABELS = Object.freeze({
     trap: "Trap",
 });
 
+const HIDDEN_ABILITY_LIST_TAGS = new Set(["status-effect"]);
+
 function statsForAbility(ability) {
     return abilityStatsForDisplay({
         ...ability,
@@ -92,7 +94,9 @@ function deliveryDetails(ability) {
 }
 
 function abilityTypeLabels(ability) {
-    return (ability.catalogueTags ?? []).map((tag) => TAG_LABELS[tag] ?? titleCase(tag));
+    return (ability.catalogueTags ?? [])
+        .filter((tag) => !HIDDEN_ABILITY_LIST_TAGS.has(tag))
+        .map((tag) => TAG_LABELS[tag] ?? titleCase(tag));
 }
 
 function playerFacingEffects(ability) {

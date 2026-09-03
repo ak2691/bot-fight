@@ -29,7 +29,6 @@ export const VISUAL_INTERPOLATION = Object.freeze({
 export const ABILITY_TAGS = Object.freeze({
     CHARGES: "charges",
     HP_CHARGES: "hp-charges",
-    AMMUNITION_CHARGES: "ammunition-charges",
     STATUS_EFFECT: "status-effect",
 });
 
@@ -133,9 +132,7 @@ function abilityCapabilities(ability) {
     if (effects.some(isStatusEffect)) catalogueTags.add(ABILITY_TAGS.STATUS_EFFECT);
     if (Number(stats.maxCharges) > 0) {
         catalogueTags.add(ABILITY_TAGS.CHARGES);
-        catalogueTags.add(stats.chargeType === "hp"
-            ? ABILITY_TAGS.HP_CHARGES
-            : ABILITY_TAGS.AMMUNITION_CHARGES);
+        if (stats.chargeType === "hp") catalogueTags.add(ABILITY_TAGS.HP_CHARGES);
     }
     const tags = new Set([identity.type, ...catalogueTags]);
     if (stats.windupMs) tags.add("wind-up");

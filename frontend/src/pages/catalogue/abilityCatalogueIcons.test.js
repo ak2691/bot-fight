@@ -100,6 +100,7 @@ test("catalogue uses compact text effect cards with detail modals and the reques
     assert.doesNotMatch(source, /<article key=\{status\.id\}/);
     assert.doesNotMatch(source, /aria-labelledby="ability-types-title"/);
     assert.doesNotMatch(source, />Ability types<\/h2>/);
+    assert.match(source, /HIDDEN_ABILITY_LIST_TAGS = new Set\(\["status-effect"\]\)/);
 });
 
 test("new catalogue artwork uses shape-aware layouts", () => {
