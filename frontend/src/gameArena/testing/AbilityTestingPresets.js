@@ -170,7 +170,6 @@ function buildPreset(ability) {
         summary: ability.summary,
         effects: ability.effects,
         delivery: ability.delivery,
-        shieldInteraction: ability.shieldInteraction,
         stats: ability.stats,
         playerLoadout,
         opponentLoadout,

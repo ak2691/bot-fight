@@ -48,7 +48,7 @@ public final class EntityContracts {
 
     public record InitialState(boolean armed, boolean damageMultiplierFromOwner) {}
 
-    public record Hit(HitMode mode, boolean removeOnHit, boolean stopOnBlocked,
+    public record Hit(HitMode mode, boolean removeOnHit,
                       boolean oncePerSlot, String knockbackDirection,
                       Set<AbilityContracts.EffectType> effectTypes) {
         public Hit {
@@ -73,7 +73,7 @@ public final class EntityContracts {
     public record EffectOverride(Double amount, Integer durationMs) {}
 
     public record Phase(String id, int startMs, Movement movement, Trigger trigger,
-                        Set<AbilityContracts.EffectType> effectTypes, boolean skipShield,
+                        Set<AbilityContracts.EffectType> effectTypes,
                         Derived explosion, Map<String, Double> statOverrides,
                         Map<AbilityContracts.EffectType, EffectOverride> effectOverrides) {
         public Phase {
@@ -83,15 +83,14 @@ public final class EntityContracts {
         }
 
         public Phase(String id, int startMs, Movement movement, Trigger trigger,
-                     Set<AbilityContracts.EffectType> effectTypes, boolean skipShield,
-                     Derived explosion) {
-            this(id, startMs, movement, trigger, effectTypes, skipShield, explosion, Map.of(), Map.of());
+                     Set<AbilityContracts.EffectType> effectTypes, Derived explosion) {
+            this(id, startMs, movement, trigger, effectTypes, explosion, Map.of(), Map.of());
         }
 
         public Phase(String id, int startMs, Movement movement, Trigger trigger,
-                     Set<AbilityContracts.EffectType> effectTypes, boolean skipShield,
-                     Derived explosion, Map<String, Double> statOverrides) {
-            this(id, startMs, movement, trigger, effectTypes, skipShield, explosion, statOverrides, Map.of());
+                     Set<AbilityContracts.EffectType> effectTypes, Derived explosion,
+                     Map<String, Double> statOverrides) {
+            this(id, startMs, movement, trigger, effectTypes, explosion, statOverrides, Map.of());
         }
     }
 
@@ -281,10 +280,10 @@ public final class EntityContracts {
                         Set.of(), Set.of(), Set.of(), null, null, null, "triggerRadius", null, null, null,
                         null, false, true, List.of(
                                 new Phase("travel", 0, new Movement("travel", null, 1), null,
-                                        Set.of(), false, null),
+                                        Set.of(), null),
                                 new Phase("armed", 800, new Movement("stopped", null, 1),
                                         new Trigger("triggerRadius", null, true, true, true, true),
-                                        Set.of(AbilityContracts.EffectType.DAMAGE), false,
+                                        Set.of(AbilityContracts.EffectType.DAMAGE),
                                         derived("mineExplosion", "mineExplosion", Category.ZONE, SystemType.ABILITY,
                                                 BehaviorKind.VISUAL_ZONE, "triggerRadius", 2, "explosionVisibleMs", 0,
                                                 11, false, Set.of()),
@@ -300,11 +299,11 @@ public final class EntityContracts {
                 new Behavior(BehaviorKind.ZONE, null, null, null, Set.of(), Set.of(), Set.of(),
                         null, null, null, null, null, null, null, null, false, true, List.of(
                                 new Phase("travel", 0, new Movement("travel", null, 1), null,
-                                        Set.of(), false, null),
+                                        Set.of(), null),
                                 new Phase("fuse", 2_000, new Movement("stopped", null, 1), null,
-                                        Set.of(AbilityContracts.EffectType.PULL), true, null),
+                                        Set.of(AbilityContracts.EffectType.PULL), null),
                                 new Phase("active", 5_000, new Movement("stopped", null, 1), null,
-                                        Set.of(AbilityContracts.EffectType.DAMAGE), false,
+                                        Set.of(AbilityContracts.EffectType.DAMAGE),
                                         derived("gravityExplosion", "gravityExplosion", Category.ZONE, SystemType.ABILITY,
                                                 BehaviorKind.VISUAL_ZONE, "zoneSize", 1, "explosionVisibleMs", 0,
                                                 14, false, Set.of())))),
@@ -318,7 +317,7 @@ public final class EntityContracts {
                 new Collider("projectileSize", false, ColliderShape.RECTANGLE), null, new InitialState(true, false),
                 new Behavior(BehaviorKind.SEGMENT,
                         new Movement("segment", null, 1), null,
-                        new Hit(HitMode.ALL, false, true, true, "source",
+                        new Hit(HitMode.ALL, false, true, "source",
                                 Set.of(AbilityContracts.EffectType.DEBUFF, AbilityContracts.EffectType.INTERRUPT)),
                          Set.of(), Set.of(), Set.of(), null, "durationMs", null, null, null, null, null, false, true),
                 null, Map.of()));
@@ -340,7 +339,7 @@ public final class EntityContracts {
                 new Collider("size", true, ColliderShape.RECTANGLE), null, new InitialState(true, true),
                 new Behavior(BehaviorKind.SEGMENT,
                         new Movement("segment", null, .01), null,
-                        new Hit(HitMode.NEAREST, true, false, false, "velocity",
+                        new Hit(HitMode.NEAREST, true, false, "velocity",
                                 Set.of(AbilityContracts.EffectType.DAMAGE, AbilityContracts.EffectType.KNOCKBACK)),
                          Set.of(), Set.of(), Set.of(), "range", "durationMs", null, null, null, null, null, false, true),
                 null, Map.of()));
@@ -389,9 +388,9 @@ public final class EntityContracts {
                                 SystemType.ABILITY, BehaviorKind.VISUAL_ZONE, "zoneSize", 1,
                                 "explosionVisibleMs", 0, 27, false, Set.of()), false, true, List.of(
                                         new Phase("fuse", 0, new Movement("stopped", null, 1), null,
-                                                Set.of(AbilityContracts.EffectType.PULL), true, null),
+                                                Set.of(AbilityContracts.EffectType.PULL), null),
                                         new Phase("active", 1_200, new Movement("stopped", null, 1), null,
-                                                Set.of(AbilityContracts.EffectType.DAMAGE), false,
+                                                Set.of(AbilityContracts.EffectType.DAMAGE),
                                                 derived("singularityExplosion", "singularityExplosion", Category.ZONE, SystemType.ABILITY,
                                                         BehaviorKind.VISUAL_ZONE, "zoneSize", 1,
                                                         "explosionVisibleMs", 0, 27, false, Set.of())))),
@@ -405,7 +404,7 @@ public final class EntityContracts {
                 new Collider("size", false, ColliderShape.RECTANGLE), null, new InitialState(true, true),
                 new Behavior(BehaviorKind.SEGMENT,
                         new Movement("segment", null, 1), null,
-                        new Hit(HitMode.NEAREST, true, true, true, "source",
+                        new Hit(HitMode.NEAREST, true, true, "source",
                                 Set.of(AbilityContracts.EffectType.DAMAGE, AbilityContracts.EffectType.PULL,
                                         AbilityContracts.EffectType.DEBUFF)),
                         Set.of(), Set.of(), Set.of(), "range", "durationMs", null, null, null, null,
@@ -428,7 +427,7 @@ public final class EntityContracts {
                                                 new Trigger("triggerRadius", "durationMs", true, true, true, false, true),
                                                 Set.of(AbilityContracts.EffectType.DAMAGE,
                                                         AbilityContracts.EffectType.DEBUFF,
-                                                        AbilityContracts.EffectType.INTERRUPT), false,
+                                                        AbilityContracts.EffectType.INTERRUPT),
                                                 derived("staticSnareBurst", "staticSnareBurst", Category.ZONE,
                                                         SystemType.ABILITY, BehaviorKind.VISUAL_ZONE,
                                                         "triggerRadius", 2, "explosionVisibleMs", 0,
@@ -437,7 +436,7 @@ public final class EntityContracts {
                                                 new Trigger("triggerRadius", "durationMs", true, true, false, false, true),
                                                 Set.of(AbilityContracts.EffectType.DAMAGE,
                                                         AbilityContracts.EffectType.DEBUFF,
-                                                        AbilityContracts.EffectType.INTERRUPT), false,
+                                                        AbilityContracts.EffectType.INTERRUPT),
                                                 derived("staticSnareBurst", "staticSnareBurst", Category.ZONE,
                                                         SystemType.ABILITY, BehaviorKind.VISUAL_ZONE,
                                                         "triggerRadius", 2, "explosionVisibleMs", 0,

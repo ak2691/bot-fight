@@ -12,8 +12,6 @@ public final class AbilityContracts {
         RESTORE_STATE, DAMAGE_REDUCTION, DAMAGE_IMMUNITY, DAMAGE_REFLECTION, SPAWN_ENTITY }
     public enum DeliveryType { SELF, MELEE, RAY, PROJECTILE, RADIAL, ZONE, TRAP, SUMMON }
     public enum HitboxGeometry { ARC, RECTANGLE }
-    public enum ShieldMode { BLOCK, IGNORE, DRAIN_WHILE_ACTIVE }
-    public enum ChargeCost { ONE, ALL, DISTANCE_SCALED }
 
     public record Effect(EffectType type, String subtype, double amount, int durationMs, boolean runtimeComputed,
                          String recipient, boolean requiresConfirmedDamage, boolean mirrorsDamage,
@@ -30,10 +28,6 @@ public final class AbilityContracts {
                       String recipient, boolean requiresConfirmedDamage, boolean mirrorsDamage) {
             this(type, subtype, amount, durationMs, runtimeComputed, recipient, requiresConfirmedDamage, mirrorsDamage, null);
         }
-    }
-    public record ShieldInteraction(ShieldMode mode, double halfArcDegrees, ChargeCost chargeCost,
-                                    Set<EffectType> prevents) {
-        public boolean prevents(EffectType type) { return prevents.contains(type); }
     }
     public record Movement(String distanceStat, String stepDistanceStat,
                            String durationStat, String trailDurationStat) {}
@@ -65,65 +59,63 @@ public final class AbilityContracts {
     }
     public record AbilityContract(DeliveryType delivery, HitboxGeometry hitboxGeometry,
                                   boolean includeTargetRadius,
-                                  List<Effect> effects, ShieldInteraction shieldInteraction,
-                                  Execution execution) {}
+                                  List<Effect> effects, Execution execution) {}
 
     private static final Execution NONE = new Execution(null, false, false, null, null);
 
-    private static final ShieldInteraction IGNORE = new ShieldInteraction(ShieldMode.IGNORE, 0, ChargeCost.ONE, Set.of());
     private static final Map<Integer, AbilityContract> CATALOG = Map.ofEntries(
-            entry(1, DeliveryType.MELEE, true, IGNORE, effect(EffectType.DAMAGE, 20)),
-            entry(3, DeliveryType.RAY, IGNORE,
+            entry(1, DeliveryType.MELEE, true, effect(EffectType.DAMAGE, 20)),
+            entry(3, DeliveryType.RAY,
                     execution(null, true, false, null, null), computed(EffectType.DAMAGE)),
-            entry(4, DeliveryType.PROJECTILE, IGNORE, computed(EffectType.DAMAGE), spawn("grenade")),
-            entry(5, DeliveryType.PROJECTILE, IGNORE, effect(EffectType.DAMAGE, 15), debuff("burn", 2, Abilities.statusDurationMs(5, "burn", 5000)), spawn("fireball")),
-            entry(6, DeliveryType.MELEE, HitboxGeometry.RECTANGLE, true, IGNORE, NONE,
+            entry(4, DeliveryType.PROJECTILE, computed(EffectType.DAMAGE), spawn("grenade")),
+            entry(5, DeliveryType.PROJECTILE, effect(EffectType.DAMAGE, 15), debuff("burn", 2, Abilities.statusDurationMs(5, "burn", 5000)), spawn("fireball")),
+            entry(6, DeliveryType.MELEE, HitboxGeometry.RECTANGLE, true, NONE,
                     effect(EffectType.DAMAGE, 10), debuff("stun", 0, Abilities.statusDurationMs(6, "stun", 1200))),
-            entry(7, DeliveryType.MELEE, true, IGNORE, effect(EffectType.DAMAGE, 30), debuff("bleed", 2, Abilities.statusDurationMs(7, "bleed", 5000))),
-            entry(8, DeliveryType.RADIAL, true, IGNORE, effect(EffectType.DAMAGE, 20), effect(EffectType.KNOCKBACK, 250)),
-            entry(9, DeliveryType.RAY, IGNORE, effect(EffectType.DAMAGE, 20), debuff("slow", 0, Abilities.statusDurationMs(9, "slow", 1000))),
-            entry(10, DeliveryType.SELF, IGNORE, effect(EffectType.HEALING, 25)),
-            entry(11, DeliveryType.TRAP, IGNORE, effect(EffectType.DAMAGE, 25), spawn("proximity_mine")),
-            entry(12, DeliveryType.RAY, IGNORE, computed(EffectType.DAMAGE)),
-            entry(13, DeliveryType.RAY, IGNORE, effect(EffectType.DAMAGE, 40), debuff("shock", 3, Abilities.statusDurationMs(13, "shock", 3000))),
-            entry(14, DeliveryType.PROJECTILE, IGNORE,
+            entry(7, DeliveryType.MELEE, true, effect(EffectType.DAMAGE, 30), debuff("bleed", 2, Abilities.statusDurationMs(7, "bleed", 5000))),
+            entry(8, DeliveryType.RADIAL, true, effect(EffectType.DAMAGE, 20), effect(EffectType.KNOCKBACK, 250)),
+            entry(9, DeliveryType.RAY, effect(EffectType.DAMAGE, 20), debuff("slow", 0, Abilities.statusDurationMs(9, "slow", 1000))),
+            entry(10, DeliveryType.SELF, effect(EffectType.HEALING, 25)),
+            entry(11, DeliveryType.TRAP, effect(EffectType.DAMAGE, 25), spawn("proximity_mine")),
+            entry(12, DeliveryType.RAY, computed(EffectType.DAMAGE)),
+            entry(13, DeliveryType.RAY, effect(EffectType.DAMAGE, 40), debuff("shock", 3, Abilities.statusDurationMs(13, "shock", 3000))),
+            entry(14, DeliveryType.PROJECTILE,
                     effect(EffectType.PULL, Abilities.stat(14, "pullPerTick", 6)),
                     computed(EffectType.DAMAGE), spawn("gravity_zone")),
-            entry(15, DeliveryType.PROJECTILE, IGNORE, debuff("silence", 0, Abilities.statusDurationMs(15, "silence", 2000)), timed(EffectType.INTERRUPT, 100), spawn("silence_wave")),
-            entry(16, DeliveryType.SELF, IGNORE,
+            entry(15, DeliveryType.PROJECTILE, debuff("silence", 0, Abilities.statusDurationMs(15, "silence", 2000)), timed(EffectType.INTERRUPT, 100), spawn("silence_wave")),
+            entry(16, DeliveryType.SELF,
                     timed(EffectType.DAMAGE_REDUCTION, .5, Abilities.statusDurationMs(16, "damage_reduction", 4000)),
                     timed(EffectType.DAMAGE_REFLECTION, .5, Abilities.statusDurationMs(16, "damage_reflection", 4000))),
-            entry(17, DeliveryType.SUMMON, IGNORE, effect(EffectType.DAMAGE, 5), spawn("hunter_drone")),
-            entry(18, DeliveryType.PROJECTILE, IGNORE, effect(EffectType.DAMAGE, Abilities.definition(18).damage()),
+            entry(17, DeliveryType.SUMMON, effect(EffectType.DAMAGE, 5), spawn("hunter_drone")),
+            entry(18, DeliveryType.PROJECTILE, effect(EffectType.DAMAGE, Abilities.definition(18).damage()),
                     effect(EffectType.KNOCKBACK, Abilities.stat(18, "knockback", 0)), spawn("windburst_projectile")),
-            entry(19, DeliveryType.SELF, IGNORE, execution("slow", new Movement("distance", "stepDistance", "activeMs", "trailMs")), effect(EffectType.MOVEMENT, 150)),
-            entry(20, DeliveryType.SELF, IGNORE, execution("target", false, true, null, null)),
-            entry(21, DeliveryType.SELF, IGNORE, timed(EffectType.RESTORE_STATE, 3000), spawn("temporal_rewind_zone")),
-            entry(22, DeliveryType.ZONE, IGNORE, effect(EffectType.DAMAGE, 15), spawn("orbital_zone")),
-            entry(23, DeliveryType.SELF, IGNORE, timed(EffectType.DAMAGE_IMMUNITY, 1, Abilities.statusDurationMs(23, "damage_immunity", 1500))),
-            entry(24, DeliveryType.ZONE, IGNORE, debuff("silence", 0, 0), spawn("null_zone")),
-            entry(25, DeliveryType.MELEE, HitboxGeometry.RECTANGLE, true, IGNORE,
+            entry(19, DeliveryType.SELF, execution("slow", new Movement("distance", "stepDistance", "activeMs", "trailMs")), effect(EffectType.MOVEMENT, 150)),
+            entry(20, DeliveryType.SELF, execution("target", false, true, null, null)),
+            entry(21, DeliveryType.SELF, timed(EffectType.RESTORE_STATE, 3000), spawn("temporal_rewind_zone")),
+            entry(22, DeliveryType.ZONE, effect(EffectType.DAMAGE, 15), spawn("orbital_zone")),
+            entry(23, DeliveryType.SELF, timed(EffectType.DAMAGE_IMMUNITY, 1, Abilities.statusDurationMs(23, "damage_immunity", 1500))),
+            entry(24, DeliveryType.ZONE, debuff("silence", 0, 0), spawn("null_zone")),
+            entry(25, DeliveryType.MELEE, HitboxGeometry.RECTANGLE, true,
                     execution(null, true, false, "0", null, true),
                     teleportByCenterDistance(), effect(EffectType.DAMAGE, 15)),
-            entry(26, DeliveryType.RADIAL, true, IGNORE,
+            entry(26, DeliveryType.RADIAL, true,
                     effect(EffectType.DAMAGE, 15), debuff("slow", 0, Abilities.statusDurationMs(26, "slow", 1_500)), effect(EffectType.KNOCKBACK, 60)),
-            entry(27, DeliveryType.ZONE, IGNORE,
+            entry(27, DeliveryType.ZONE,
                     effect(EffectType.PULL, Abilities.stat(27, "pullPerTick", 10)), computed(EffectType.DAMAGE), spawn("singularity_zone")),
-            entry(28, DeliveryType.PROJECTILE, IGNORE,
+            entry(28, DeliveryType.PROJECTILE,
                     effect(EffectType.DAMAGE, 10), effect(EffectType.PULL, Abilities.stat(28, "pullPerTick", 100)), debuff("slow", 0, Abilities.statusDurationMs(28, "slow", 1_200)),
                     spawn("tether_bolt")),
-            entry(29, DeliveryType.TRAP, IGNORE,
+            entry(29, DeliveryType.TRAP,
                     effect(EffectType.DAMAGE, Abilities.definition(29).damage()),
                     debuff("slow", 0, Abilities.statusDurationMs(29, "slow", 2_200)), timed(EffectType.INTERRUPT, 150), spawn("static_snare")),
-            entry(30, DeliveryType.RAY, IGNORE,
+            entry(30, DeliveryType.RAY,
                     effect(EffectType.DAMAGE, 15), timed(EffectType.INTERRUPT, 250), debuff("slow", 0, Abilities.statusDurationMs(30, "slow", 2_000))),
-            entry(31, DeliveryType.SUMMON, IGNORE,
+            entry(31, DeliveryType.SUMMON,
                     effect(EffectType.DAMAGE, 3), effect(EffectType.KNOCKBACK, 40), spawn("repeller_drone")),
-            entry(32, DeliveryType.RAY, IGNORE,
+            entry(32, DeliveryType.RAY,
                     computed(EffectType.DAMAGE), lifesteal("source")),
-            entry(33, DeliveryType.SELF, IGNORE,
+            entry(33, DeliveryType.SELF,
                     buff("overclock", .5, Abilities.statusDurationMs(33, "overclock", 4_000))),
-            entry(34, DeliveryType.MELEE, true, IGNORE,
+            entry(34, DeliveryType.MELEE, true,
                     effect(EffectType.DAMAGE, 8))
     );
     private static final Set<Integer> ACTIONS = CATALOG.keySet();
@@ -163,39 +155,39 @@ public final class AbilityContracts {
                 .orElse(0);
     }
     private static Map.Entry<Integer, AbilityContract> entry(int id, DeliveryType delivery,
-                                                              ShieldInteraction shield, Effect... effects) {
-        return entry(id, delivery, false, shield, NONE, effects);
+                                                              Effect... effects) {
+        return entry(id, delivery, false, NONE, effects);
     }
     private static Map.Entry<Integer, AbilityContract> entry(int id, DeliveryType delivery,
                                                               boolean includeTargetRadius,
-                                                              ShieldInteraction shield, Effect... effects) {
-        return entry(id, delivery, includeTargetRadius, shield, NONE, effects);
+                                                              Effect... effects) {
+        return entry(id, delivery, includeTargetRadius, NONE, effects);
     }
     private static Map.Entry<Integer, AbilityContract> entry(int id, DeliveryType delivery,
-                                                              ShieldInteraction shield, Execution execution,
+                                                              Execution execution,
                                                               Effect... effects) {
-        return entry(id, delivery, false, shield, execution, effects);
+        return entry(id, delivery, false, execution, effects);
     }
     private static Map.Entry<Integer, AbilityContract> entry(int id, DeliveryType delivery,
                                                               HitboxGeometry hitboxGeometry,
-                                                              ShieldInteraction shield, Execution execution,
+                                                              Execution execution,
                                                               Effect... effects) {
-        return entry(id, delivery, hitboxGeometry, false, shield, execution, effects);
+        return entry(id, delivery, hitboxGeometry, false, execution, effects);
     }
     private static Map.Entry<Integer, AbilityContract> entry(int id, DeliveryType delivery,
                                                               HitboxGeometry hitboxGeometry,
                                                               boolean includeTargetRadius,
-                                                              ShieldInteraction shield, Execution execution,
+                                                              Execution execution,
                                                               Effect... effects) {
         return Map.entry(id, new AbilityContract(delivery, hitboxGeometry, includeTargetRadius,
-                List.of(effects), shield, execution));
+                List.of(effects), execution));
     }
     private static Map.Entry<Integer, AbilityContract> entry(int id, DeliveryType delivery,
                                                               boolean includeTargetRadius,
-                                                              ShieldInteraction shield, Execution execution,
+                                                              Execution execution,
                                                               Effect... effects) {
         return Map.entry(id, new AbilityContract(delivery, HitboxGeometry.ARC, includeTargetRadius,
-                List.of(effects), shield, execution));
+                List.of(effects), execution));
     }
     private static Execution execution(Movement movement) { return new Execution(null, false, false, null, movement); }
     private static Execution execution(String blockedByStatus, Movement movement) {

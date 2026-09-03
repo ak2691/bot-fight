@@ -2,7 +2,6 @@ import { ABILITY_STATS, ACTION_TO_ABILITY } from "../../loadout/BotLoadout.js";
 import { statusIntervalMs } from "../../gameconfig/Abilities.js";
 import { abilityContract, DELIVERY_TYPES, EFFECT_TYPES, TELEPORT_DISTANCE_MODES } from "../../gameconfig/AbilityContracts.js";
 import { ignoresHostileEffects, isAliveBot } from "../../gameconfig/DefensiveState.js";
-import { resolveShieldInteraction } from "../../gameconfig/ShieldSystem.js";
 import { clamp, normalizeAngle } from "../../gameconfig/geometry.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
 import { compassDegreesToRadians, vectorToCompassDegrees } from "../../botlogic/planner/arenaAngles.js";
@@ -17,6 +16,8 @@ import {
     CONCUSSIVE_ROTATION_MULTIPLIER,
     CONCUSSIVE_SHOT_MOVEMENT_MULTIPLIER,
 } from "../../gameconfig/HitStagger.js";
+
+const BLEED_INCOMING_DAMAGE_MODIFIER = 0.25;
 
 export { abilityHitsTarget } from "./AbilityHitDetectionSystem.js";
 
@@ -39,17 +40,12 @@ export function resolveTriggeredAbilityEffects(attacker, defender, combat, {
     if (!targetHit) return [nextAttacker, nextDefender];
 
     const hostileImpact = contract.delivery.type !== DELIVERY_TYPES.SELF && defender && !ignoresHostileEffects(defender);
-    const shield = hostileImpact
-        ? resolveShieldInteraction(defender, attacker, contract.shieldInteraction)
-        : { bot: defender, preventedEffects: new Set() };
-    if (hostileImpact) nextDefender = shield.bot;
-    else if (contract.delivery.type !== DELIVERY_TYPES.SELF) return [nextAttacker, nextDefender];
+    if (!hostileImpact && contract.delivery.type !== DELIVERY_TYPES.SELF) return [nextAttacker, nextDefender];
 
     let damageConfirmed = false;
     let damageConfirmedAmount = 0;
     for (const effect of contract.effects) {
         if (skipEffectTypes?.has(effect.type)) continue;
-        if (shield.preventedEffects.has(effect.type)) continue;
         const defenderHpBefore = Number(nextDefender?.hp ?? 0);
         [nextAttacker, nextDefender] = applyEffect(effect, {
             abilityId,
@@ -231,6 +227,12 @@ export function applyDebuff(defender, effect, stats, attacker, abilityId = effec
             type: STATUS_EFFECT_APPLICATIONS.DAMAGE,
             mode: "tick",
             amount: Number(stats.bleedDamage ?? 0),
+        }, {
+            type: STATUS_EFFECT_APPLICATIONS.INCOMING_DAMAGE_MODIFIER,
+            mode: "constant",
+            damageModifier: BLEED_INCOMING_DAMAGE_MODIFIER,
+            rounding: "truncate_tenths",
+            excludedDamageSourceTypes: ["bleed"],
         }],
     });
     return defender;
@@ -322,7 +324,7 @@ function applyReactiveArmor(attacker, effect, abilityId, stats) {
         ? {
             type: STATUS_EFFECT_APPLICATIONS.INCOMING_DAMAGE_MODIFIER,
             mode: "constant",
-            multiplier: Math.max(0, Number(effect.multiplier ?? (1 - Number(effect.amount ?? 0)))),
+            damageModifier: Math.min(0, Math.max(0, Number(effect.multiplier ?? (1 - Number(effect.amount ?? 0)))) - 1),
         }
         : {
             type: STATUS_EFFECT_APPLICATIONS.DAMAGE_REFLECTION,

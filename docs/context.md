@@ -8,8 +8,8 @@ tests remain authoritative when a document is stale.
 - [`MATCH_TIMING.md`](MATCH_TIMING.md): authoritative server deadlines,
   Cristian clock conversion, and lifecycle countdown rules.
 - [`ABILITY_EFFECT_CONTRACT.md`](ABILITY_EFFECT_CONTRACT.md): declarative
-  delivery/effect/shield model and browser/server ownership. Read for effect
-  semantics, shield behavior, presentation boundaries, or contract review.
+  delivery/effect model and browser/server ownership. Read for effect
+  semantics, presentation boundaries, or contract review.
 - [`ADDING_AN_ABILITY_OR_MOVE.md`](ADDING_AN_ABILITY_OR_MOVE.md): end-to-end
   browser + server workflow and definition of done. Read first when adding or
   materially changing a move, ability, entity, targeting mode, or visual.
@@ -18,7 +18,7 @@ tests remain authoritative when a document is stale.
   checklist. Read for server implementation after the end-to-end guide.
 - [`MODIFYING_ABILITIES.md`](MODIFYING_ABILITIES.md): practical tuning guide for
   changing stats, adding existing generic effects, statuses, entities, delivery,
-  shields, visuals, and new effect types.
+  defensive effects, visuals, and new effect types.
 
 ## Audits and regression review
 

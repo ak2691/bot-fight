@@ -6,7 +6,7 @@ See [Ability Effect Contract](ABILITY_EFFECT_CONTRACT.md) for effect semantics a
 
 ## 1. Define the contract
 
-Record the stable ID, draft round, delivery, catalogue tags, targeting mode, timing/resources, geometry, damage profile, ordered effects, collision/ownership rules, spawned entity (if any), shield policy, interpolation mode, and required replay fields. Use a linear damage profile with `maxDamage`, `minDamage`, `damageFalloffStart`, and `damageFalloffEnd` instead of range-band tables. Use `status-effect` for continuing positive or negative statuses and include the percentage or numeric strength for every positive effect; use `self` independently when the delivery targets the caster. A status must use the generic `remainingMs` field, optionally `tickMs`, and an allowlisted `effects[]` list; do not introduce effect-specific timer fields or status-level cooldown fields.
+Record the stable ID, draft round, delivery, catalogue tags, targeting mode, timing/resources, geometry, damage profile, ordered effects, collision/ownership rules, spawned entity (if any), interpolation mode, and required replay fields. Use a linear damage profile with `maxDamage`, `minDamage`, `damageFalloffStart`, and `damageFalloffEnd` instead of range-band tables. Use `status-effect` for continuing positive or negative statuses and include the percentage or numeric strength for every positive effect; use `self` independently when the delivery targets the caster. A status must use the generic `remainingMs` field, optionally `tickMs`, and an allowlisted `effects[]` list; do not introduce effect-specific timer fields or status-level cooldown fields.
 
 Use capability tags only for real gameplay contracts consumed by targeting, conditions, collision, or validation. Keep browser/server milliseconds, arena units, tick order, and rounding identical.
 
@@ -19,8 +19,8 @@ Use capability tags only for real gameplay contracts consumed by targeting, cond
   tuning/contracts rather than name-based property access.
 - `gameArena/loadout/BotLoadout.js`: catalog entry, actions, draft metadata, compact loadout code, interpolation, and entity capabilities.
 - `gameArena/gameconfig/Abilities.js`: numeric definition.
-- `gameArena/gameconfig/AbilityContracts.js`: delivery, ordered effects,
-  shield interaction, and declarative activation payload metadata.
+- `gameArena/gameconfig/AbilityContracts.js`: delivery, ordered effects, and
+  declarative activation payload metadata.
 - `gameArena/botlogic/code/BotCode.js`: edit only for a new condition variable, target mode, payload shape, or action head; catalog-derived actions and targets need no duplicate list.
 - `gameArena/modelPayloads/strategyStatePayload.js`: expose only state the brain is allowed to observe.
 
@@ -72,8 +72,6 @@ Keep rotating bot content separate from anchored bars/icons. Keep a cast glow ti
 ## 5. Authoritative mirror
 
 Mirror definitions, contracts, loadout validation, action eligibility, target resolution, readiness/resources, geometry, effects, entity lifecycle, and replay state. Never treat working browser behavior as rated support.
-
-Shield policy is resolved once per impact from `shieldInteraction`; apply the remaining ordered effects. Do not independently re-apply an attached status after its hit was blocked.
 
 ## 6. Required regression coverage
 

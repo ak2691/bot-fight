@@ -5,7 +5,6 @@ Each selectable ability has one mirrored browser/server contract:
 ```text
 delivery          how effects reach a target
 effects[]         ordered game-state changes
-shieldInteraction which effects a shield prevents and at what cost
 execution         activation-time payload behavior and captured inputs
 ```
 
@@ -17,7 +16,7 @@ Current types: `self`, `melee`, `ray`, `projectile`, `radial`, `zone`, `trap`, a
 
 For arc melee bot hit checks, `includeTargetRadius` controls whether half the defender's size is added to the configured range. Phase Strike declares the same target-radius inclusion for its 100-by-60 forward rectangle, so contact with a bot's edge counts even when its center is just outside the raw rectangle. It has no facing arc. Its rectangle is captured at activation, so movement or a teleport later in the same tick cannot move the hitbox. If it intersects multiple opposing bots, each receives the normal effects, while the teleport is consumed once by the nearest valid hit in deterministic distance order. The `center_distance` teleport mode measures the activation bot center to the hit bot center at impact, then places the attacker on the opposite side at that same center distance. Its `phaseFacingMode` is a relative degree offset from the attacker's facing at impact: `0` keeps the facing, `90` turns clockwise, and `180` reverses it.
 
-For radial blasts, persistent zones, and trap contact, the collision radius is expanded by half the moving bot's size, so contact with the bot's outer edge counts. Damage falloff and shield-distance calculations still use the center-to-center distance, so edge contact does not change the configured damage profile.
+For radial blasts, persistent zones, and trap contact, the collision radius is expanded by half the moving bot's size, so contact with the bot's outer edge counts. Damage falloff still uses the center-to-center distance, so edge contact does not change the configured damage profile.
 
 Damage falloff uses a linear profile rather than a table of range bands. A profile declares `maxDamage`, `minDamage`, `damageFalloffStart`, `damageFalloffEnd`, and the overall `range` or `radius`. Damage stays at the maximum through the start distance, interpolates mathematically to the minimum at the end distance, then stays at the minimum until the hit range ends. Browser and server execution round the same calculated value.
 
@@ -51,7 +50,7 @@ presentation-only; they do not create or extend a gameplay hit window.
   `self` remains independent, so `self` plus `status-effect` identifies a
   positive self-applied status in the current catalogue.
 - Immediate control: `interrupt`.
-- Legacy defensive modifiers: `damage_reduction`, `damage_immunity`,
+- Defensive modifiers: `damage_reduction`, `damage_immunity`,
   `damage_reflection`. These carry their numeric strength in the contract and
   are applied as timed positive statuses by the generic runtime. Reactive Armor
   owns `reactive-armor` status time; Absolute Guard owns `absolute-guard`
@@ -61,6 +60,31 @@ presentation-only; they do not create or extend a gameplay hit window.
 
 Apply effects in declared order. Add a new effect class only for reusable behavior that existing classes cannot express. Generic executors switch on effect class/subtype, not ability ID.
 
+### Status-driven stat changes
+
+Status components are resolved according to how the affected stat is used,
+not by writing a new multiplier field onto the bot. Incoming damage is settled
+through one shared resolver that adds every active
+`incoming_damage_modifier` application. A modifier may declare
+`excludedDamageSourceTypes` when it should not affect a particular source
+category, and may declare `rounding: "truncate_tenths"` when its modified
+damage must be truncated to one decimal place.
+
+Bleed uses this generic path: its `+0.25` incoming-damage modifier excludes
+damage whose source is the `bleed` status itself, so its own damage-over-time
+remains unchanged while other damage is increased. The source exclusion is
+metadata on the modifier; the damage resolver does not contain a Bleed-specific
+conditional. If another weakening status is added, it can contribute another
+incoming modifier, and active modifiers add together. For example, Bleed's
+`+25%` and a `-50%` damage reduction produce a net `-25%` modifier, applied
+once to the base damage.
+
+This differs from Overclock's cooldown modifier. Overclock is read when a new
+cooldown or reload timer is created, so existing timers are intentionally not
+rewritten. The runtime therefore evaluates a status at the boundary where its
+affected value is consumed: damage at damage settlement, cooldown modifiers at
+timer creation, and movement modifiers during movement resolution.
+
 ## Generic runtime architecture
 
 New abilities must extend the declarative contracts and generic systems. Do not
@@ -69,7 +93,7 @@ describes the behavior.
 
 | Behavior | Contract shape | Browser owner | Server owner |
 | --- | --- | --- | --- |
-| Ability definition and ordered effects | ability/delivery/effect/shield/execution contract | `gameconfig/AbilityContracts.js` and `Abilities.js` | `simulation/gameconfig/AbilityContracts.java` and `Abilities.java` |
+| Ability definition and ordered effects | ability/delivery/effect/execution contract | `gameconfig/AbilityContracts.js` and `Abilities.js` | `simulation/gameconfig/AbilityContracts.java` and `Abilities.java` |
 | Persistent, targetable, moving, or delayed world object | entity type, components, lifecycle, interaction | `ecs/contracts/EntityContracts.js`, `ecs/entities/EntityFactory.js`, `ecs/abilities/AbilityEntitySystem.js` | `simulation/ecs/contracts/EntityContracts.java`, `simulation/ecs/entities/AbilityEntityFactory.java`, `simulation/ecs/abilities/AbilityEntitySystem.java` |
 | Effect applied to a bot over time | generic status record, clock, source, tick, expiry | `ecs/contracts/StatusContracts.js` and `ecs/bots/BotStatusSystem.js` | `StatusEffectState.java` and `BotStateService.java` |
 | Cooldown, charge, or active resource timing | resource map and recharge contract | `ecs/bots/BotResourceSystem.js` | `BotStateService.java` resource handling |
@@ -116,9 +140,10 @@ remain available. Dash is the declarative exception through
 an active or preparing Dash does not block another ability. Channelled abilities
 may continue their own active phase.
 
-The current duel-v1 ability set has no blocking ability or shield-absorption
-resource. The generic `abilityCharges` map remains available for ammunition
-and other explicitly contracted resources.
+The generic `abilityCharges` map remains available for ammunition and other
+explicitly contracted resources. Defensive abilities use ordinary ordered
+effects and bot-local defensive statuses; they do not use a separate shield
+interaction layer.
 
 ### Entity lifecycles, phases, and intervals
 
@@ -246,12 +271,6 @@ stronger active multiplier: normal `1.00`, hit stagger `0.85`, slow `0.50`, and
 both `0.50`. Hit stagger also multiplies the normal rotation step by `0.85`;
 slow/Concussive multiplies the normal rotation step by `0.50`.
 
-## Shields
-
-`shieldInteraction` remains an explicit extension point for future defensive
-abilities. Every active duel-v1 ability currently uses `ignore`, with no
-prevented effects and no damage absorption or displacement filtering.
-
 ## Presentation boundary
 
 Visuals may read contract/state metadata but never determine hits or mutate gameplay. Testing and replay share presentation; Java remains authoritative.
@@ -264,5 +283,4 @@ Visuals may read contract/state metadata but never determine hits or mutate game
 4. Classify timers and delayed behavior into preparation, entity lifecycle,
    status, resource, lifecycle, or deferred-state ownership.
 5. Add the visual separately.
-6. Test browser/server metadata parity, defensive-interaction metadata, and
-   real execution.
+6. Test browser/server metadata parity and real execution.

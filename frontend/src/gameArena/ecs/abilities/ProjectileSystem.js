@@ -3,7 +3,6 @@ import { abilityContract, EFFECT_TYPES } from "../../gameconfig/AbilityContracts
 import { applyDebuff, damageAtDistance } from "./AbilityEffectSystem.js";
 import { clamp } from "../../gameconfig/geometry.js";
 import { movingEntityCollision } from "../../gameconfig/hitboxGeometry.js";
-import { resolveShieldInteraction } from "../../gameconfig/ShieldSystem.js";
 import { ignoresHostileEffects, isProjectileHittable } from "../../gameconfig/DefensiveState.js";
 import { applyEntityDamage } from "../entities/EntityCombat.js";
 import { ENTITY_SYSTEM_TYPES, entityContract } from "../contracts/EntityContracts.js";
@@ -171,12 +170,9 @@ function shouldKeepProjectile(entity, contract, world) {
 function applyProjectileEffects(entity, targetIndex, bots, combat, contract, collisionDistance = undefined) {
     if (ignoresHostileEffects(bots[targetIndex])) return bots;
     const ability = abilityContract(contract.abilityId);
-    const shield = resolveShieldInteraction(bots[targetIndex], entity, ability?.shieldInteraction);
     let nextBots = [...bots];
-    nextBots[targetIndex] = shield.bot;
 
     for (const effect of ability?.effects ?? []) {
-        if (shield.preventedEffects.has(effect.type)) continue;
         if (effect.type === EFFECT_TYPES.DAMAGE) {
             const distance = Number.isFinite(Number(collisionDistance))
                 ? Number(collisionDistance)

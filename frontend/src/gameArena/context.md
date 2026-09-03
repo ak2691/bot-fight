@@ -29,7 +29,7 @@ rated results.
 - `modelPayloads/`: arena units/constants, shape construction, and the logic
   feature/state snapshot contract.
 - `gameconfig/`: browser numeric definitions, declarative effect contracts,
-  geometry, shield/defensive rules, bot combat, and visual timers.
+  geometry, defensive rules, bot combat, and visual timers.
 - `ecs/`: deterministic arena execution organized into `contracts/`, `bots/`,
   `abilities/`, and `entities/`; see `ecs/context.md` for ownership and
   boundaries.
@@ -45,7 +45,7 @@ rated results.
 | Pixi object missing, wrong layer/caption/texture | `pixi/` | shape producer and visual regression checklist |
 | Jitter, teleport smear, rotation/interpolation bug | `pixi/` | combat visual-state area and snapshot timestamps |
 | Wrong cooldown/charge/status visual | `status/`, then `ecs/` | numeric definitions and effect contracts in `gameconfig/` |
-| Damage, shield, effect, or collision bug | `gameconfig/`, then `ecs/` | arena tick orchestration and server mirror |
+| Damage, effect, or collision bug | `gameconfig/`, then `ecs/` | arena tick orchestration and server mirror |
 | Projectile/trap/summon/entity behavior | `ecs/` | combat contracts and server `simulation/ecs/` |
 | Action does not execute | `botlogic/code/`, `botlogic/planner/`, and `ecs/` | loadout action mapping and code selection |
 | Condition/target sees wrong data | `modelPayloads/` | `botlogic/code/` and shape construction |
@@ -71,7 +71,7 @@ rated results.
 ## Relevant documentation
 
 Read [`../../../docs/context.md`](../../../docs/context.md) before adding an
-ability or changing effect/shield/entity semantics. For visual, timer, transform,
+ability or changing effect/entity semantics. For visual, timer, transform,
 or simultaneous-effect work, run through the regression checklist indexed there.
 
 ## Tests

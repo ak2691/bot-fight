@@ -154,7 +154,6 @@ function abilityCapabilities(ability) {
         stats: Object.freeze({ ...stats }),
         delivery: gameplay?.delivery ?? null,
         effects,
-        shieldInteraction: gameplay?.shieldInteraction ?? null,
         catalogueTags: Object.freeze([...catalogueTags]),
         buffDetails: positiveEffectDetailsForEffects(effects),
         tags: Object.freeze([...tags]),

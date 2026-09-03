@@ -2,7 +2,6 @@ import { ABILITY_STATS } from "../../gameconfig/Abilities.js";
 import { abilityContract, EFFECT_TYPES } from "../../gameconfig/AbilityContracts.js";
 import { applyDebuff, damageAtDistance } from "./AbilityEffectSystem.js";
 import { clamp } from "../../gameconfig/geometry.js";
-import { resolveShieldInteraction } from "../../gameconfig/ShieldSystem.js";
 import { ignoresHostileEffects, isAliveBot } from "../../gameconfig/DefensiveState.js";
 import { applyEntityDamage } from "../entities/EntityCombat.js";
 import { upsertStatusEffect } from "../contracts/StatusContracts.js";
@@ -13,25 +12,18 @@ import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arena
 export function applyEntityEffects(bots, targetIndex, source, abilityId, combat, {
     effectTypes = null,
     world = null,
-    shieldChargeCost,
-    skipShield = false,
     knockbackDirection = "source",
     collisionDistance = undefined,
     effectOverrides = null,
 } = {}) {
     const target = bots[targetIndex];
-    if (!target || ignoresHostileEffects(target)) return { bots, shield: null };
+    if (!target || ignoresHostileEffects(target)) return { bots };
     const contract = abilityContract(abilityId);
-    const shield = skipShield
-        ? { bot: target, preventedEffects: new Set() }
-        : resolveShieldInteraction(target, source, contract?.shieldInteraction, { chargeCost: shieldChargeCost });
     let nextBots = [...bots];
-    nextBots[targetIndex] = shield.bot;
     const allowed = effectTypes ? new Set(effectTypes) : null;
 
     for (const effect of contract?.effects ?? []) {
         if (allowed && !allowed.has(effect.type)) continue;
-        if (shield.preventedEffects.has(effect.type)) continue;
         const resolvedEffect = {
             ...effect,
             ...(effectOverrides?.[effect.type] ?? {}),
@@ -64,7 +56,7 @@ export function applyEntityEffects(bots, targetIndex, source, abilityId, combat,
             nextBots[targetIndex] = applyPull(nextBots[targetIndex], source, Number(resolvedEffect.perTick ?? 0), world);
         }
     }
-    return { bots: nextBots, shield };
+    return { bots: nextBots };
 }
 
 function applyKnockback(target, source, distance, world, directionMode) {

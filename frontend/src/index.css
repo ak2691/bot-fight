@@ -827,6 +827,7 @@ html,
 
 .ability-catalogue {
   background-color: #171a1c;
+  scroll-behavior: smooth;
 }
 
 .conditional-catalogue {
@@ -941,13 +942,115 @@ html,
   background: none;
 }
 
+.catalogue-jump-button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  border: 1px solid #465158;
+  padding: 0 .9rem;
+  background: #202427;
+  color: #a7d99a;
+  font: 700 9px/1 "Cousine", "Courier New", monospace;
+  letter-spacing: .16em;
+  text-decoration: none;
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.catalogue-jump-button:hover,
+.catalogue-jump-button:focus-visible {
+  border-color: #72b65d;
+  background: #292e32;
+  color: #d7f5cd;
+}
+
+.catalogue-jump-button:focus-visible {
+  outline: 2px solid #c7f9b8;
+  outline-offset: 3px;
+}
+
+.catalogue-scroll-top {
+  position: fixed;
+  z-index: 40;
+  right: 1rem;
+  bottom: 1rem;
+  min-height: 36px;
+  border: 1px solid #465158;
+  padding: 0 .85rem;
+  background: rgba(32, 36, 39, .96);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .025), 0 8px 20px rgba(0, 0, 0, .24);
+  color: #a7d99a;
+  cursor: pointer;
+  font: 700 9px/1 "Cousine", "Courier New", monospace;
+  letter-spacing: .16em;
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.catalogue-scroll-top:hover,
+.catalogue-scroll-top:focus-visible {
+  border-color: #72b65d;
+  background: #292e32;
+  color: #d7f5cd;
+}
+
+.catalogue-scroll-top:focus-visible {
+  outline: 2px solid #c7f9b8;
+  outline-offset: 3px;
+}
+
+.status-effect-card {
+  border-color: #465158;
+  background: #202427;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .025), 0 6px 14px rgba(0, 0, 0, .12);
+  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.status-effect-card:hover {
+  border-color: #68747a;
+  background: #292e32;
+  transform: translateY(-2px);
+}
+
+.status-effect-card-selected {
+  border-color: #72b65d;
+  background: #292e32;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .035), 0 0 0 1px rgba(114, 182, 93, .24);
+}
+
+.status-effect-card__chevron {
+  width: 7px;
+  height: 7px;
+  border-top: 1px solid #a6afb3;
+  border-right: 1px solid #a6afb3;
+  opacity: .72;
+  transform: rotate(45deg);
+  transition: border-color 160ms ease, opacity 160ms ease;
+}
+
+.status-effect-card:hover .status-effect-card__chevron,
+.status-effect-card:focus-visible .status-effect-card__chevron {
+  border-color: #d8e0e2;
+  opacity: 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .ability-card {
+  .ability-catalogue {
+    scroll-behavior: auto;
+  }
+
+  .ability-card,
+  .status-effect-card,
+  .catalogue-jump-button,
+  .catalogue-scroll-top {
     transition: none;
   }
 
-  .ability-card:hover {
+  .ability-card:hover,
+  .status-effect-card:hover {
     transform: none;
+  }
+
+  .status-effect-card__chevron {
+    transition: none;
   }
 }
 

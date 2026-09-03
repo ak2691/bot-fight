@@ -3,17 +3,14 @@ package com.example.botfight.simulation.core.state;
 import com.example.botfight.simulation.bots.BotCodeService;
 import com.example.botfight.simulation.bots.BotLogicContracts;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
-import com.example.botfight.simulation.ecs.abilities.AbilityEntitySystem;
 import com.example.botfight.simulation.gameconfig.Abilities;
 import com.example.botfight.simulation.gameconfig.GameConfig;
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import com.example.botfight.simulation.gameconfig.HitStagger;
 import com.example.botfight.simulation.gameconfig.AbilityContracts;
-import com.example.botfight.simulation.gameconfig.AbilityContracts.EffectType;
 import com.example.botfight.simulation.gameconfig.Abilities.ResourceModel;
 import java.util.HashMap;
 import java.util.List;
-import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.ArrayList;
 import java.util.Locale;
@@ -132,7 +129,8 @@ public class BotStateService {
                 for (StatusEffectState.Effect effect : status.effects) {
                     if (!"tick".equals(effect.mode)) continue;
                     if ("damage".equals(effect.type)) {
-                        applyDamage(bot, Math.max(0, effect.amount * effect.multiplier), status.sourceSlot);
+                        applyDamage(bot, Math.max(0, effect.amount * effect.multiplier), status.sourceSlot,
+                                Double.NaN, Double.NaN, "status", status.type);
                         if (bot.hp <= 0) return;
                     } else if ("movement_lock".equals(effect.type) && effect.durationMs > 0) {
                         upsertStatusEffect(bot, new StatusEffectState("movement-lock", effect.durationMs, 0));
@@ -203,6 +201,11 @@ public class BotStateService {
                 existing.durationMs = Math.max(existing.durationMs, incomingEffect.durationMs);
                 existing.movementMultiplier = incomingEffect.movementMultiplier;
                 existing.rotationMultiplier = incomingEffect.rotationMultiplier;
+                if (incomingEffect.damageModifier != null) existing.damageModifier = incomingEffect.damageModifier;
+                if (incomingEffect.excludedDamageSourceTypes != null) {
+                    existing.excludedDamageSourceTypes = new ArrayList<>(incomingEffect.excludedDamageSourceTypes);
+                }
+                if (incomingEffect.rounding != null) existing.rounding = incomingEffect.rounding;
             }
         }
     }
@@ -238,14 +241,19 @@ public class BotStateService {
 
     public void applyDamage(DuelSimulationService.Bot target, double damage, Integer sourceSlot,
                             double sourceX, double sourceY) {
+        applyDamage(target, damage, sourceSlot, sourceX, sourceY, null, null);
+    }
+
+    private void applyDamage(DuelSimulationService.Bot target, double damage, Integer sourceSlot,
+                             double sourceX, double sourceY, String damageSourceKind,
+                             String damageSourceType) {
         if (target.hp <= 0 || target.ignoresHostileEffects()) return;
         double previousHp = target.hp;
-        double incomingDamageMultiplier = statusEffectValue(
-                target, "incoming-damage", "incoming_damage_modifier", "multiplier", 1.0);
-        double remaining = Math.max(0, damage) * Math.max(0, incomingDamageMultiplier);
-        double reactiveArmorMultiplier = statusEffectValue(
-                target, "reactive-armor", "incoming_damage_modifier", "multiplier", 1.0);
-        remaining = roundCombatValue(remaining * Math.max(0, reactiveArmorMultiplier));
+        IncomingDamage incomingDamage = incomingDamageFor(target, damageSourceKind, damageSourceType);
+        double baseDamage = Math.max(0, damage);
+        double remaining = Math.max(0, baseDamage + baseDamage * incomingDamage.damageModifier());
+        if (incomingDamage.truncateToTenths()) remaining = truncateDamageToTenths(remaining);
+        remaining = roundCombatValue(remaining);
         if (remaining > 0) target.hp = roundCombatValue(Math.max(0, target.hp - remaining));
         double appliedDamage = roundCombatValue(Math.max(0, previousHp - target.hp));
         target.damageTakenThisTick = roundCombatValue(target.damageTakenThisTick + appliedDamage);
@@ -266,28 +274,49 @@ public class BotStateService {
                 roundCombatValue(Math.max(0, damage) * reflectionMultiplier), target);
     }
 
+    private static IncomingDamage incomingDamageFor(DuelSimulationService.Bot bot,
+                                                    String damageSourceKind,
+                                                    String damageSourceType) {
+        double damageModifier = 0;
+        boolean truncateToTenths = false;
+        for (StatusEffectState status : bot.statusEffects.values()) {
+            if (status == null || !status.active()) continue;
+            for (StatusEffectState.Effect effect : status.effects) {
+                if (!"incoming_damage_modifier".equals(effect.type)
+                        || !"constant".equals(effect.mode)
+                        || damageSourceIsExcluded(effect, damageSourceKind, damageSourceType)) continue;
+                if (effect.damageModifier != null && Double.isFinite(effect.damageModifier)) {
+                    damageModifier += effect.damageModifier;
+                } else if (Double.isFinite(effect.multiplier)) {
+                    // Read older replay/status payloads by converting their factor to a delta.
+                    damageModifier += effect.multiplier - 1.0;
+                }
+                if (StatusEffectState.TRUNCATE_DAMAGE_TO_TENTHS.equals(effect.rounding)) {
+                    truncateToTenths = true;
+                }
+            }
+        }
+        return new IncomingDamage(damageModifier, truncateToTenths);
+    }
+
+    private static boolean damageSourceIsExcluded(StatusEffectState.Effect effect,
+                                                  String damageSourceKind,
+                                                  String damageSourceType) {
+        if (!"status".equals(damageSourceKind) || damageSourceType == null
+                || effect.excludedDamageSourceTypes == null) return false;
+        return effect.excludedDamageSourceTypes.stream()
+                .anyMatch(type -> damageSourceType.equalsIgnoreCase(type));
+    }
+
+    private static double truncateDamageToTenths(double value) {
+        return Math.floor(Math.max(0, value) * 10.0) / 10.0;
+    }
+
+    private record IncomingDamage(double damageModifier, boolean truncateToTenths) {
+    }
+
     private static double roundCombatValue(double value) {
         return Math.round(value * 1000.0) / 1000.0;
-    }
-
-    public AbilityEntitySystem.ShieldResult resolveShield(
-            DuelSimulationService.Bot bot,
-            double sourceX,
-            double sourceY,
-            int abilityId) {
-        return resolveShield(bot, sourceX, sourceY, abilityId, null);
-    }
-
-    public AbilityEntitySystem.ShieldResult resolveShield(
-            DuelSimulationService.Bot bot,
-            double sourceX,
-            double sourceY,
-            int abilityId,
-            Integer chargeCost) {
-        if (bot.ignoresHostileEffects()) {
-            return new AbilityEntitySystem.ShieldResult(true, EnumSet.allOf(EffectType.class));
-        }
-        return AbilityEntitySystem.ShieldResult.none();
     }
 
     public double damageMultiplier(DuelSimulationService.Bot bot) {

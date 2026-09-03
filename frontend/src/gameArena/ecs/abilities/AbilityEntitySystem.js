@@ -2,7 +2,7 @@ import { ABILITY_STATS } from "../../gameconfig/Abilities.js";
 import { angleDelta, clamp, movingCirclesDistance, movingCirclesIntersect, normalizeAngle, rayIntersectsCircle } from "../../gameconfig/geometry.js";
 import { movingEntityCollision } from "../../gameconfig/hitboxGeometry.js";
 import { advanceEntityAge, runEntityWorld, withComponentState } from "../entities/EntityWorld.js";
-import { abilityContract, DELIVERY_TYPES, EFFECT_TYPES, SHIELD_CHARGE_COSTS } from "../../gameconfig/AbilityContracts.js";
+import { abilityContract, DELIVERY_TYPES, EFFECT_TYPES } from "../../gameconfig/AbilityContracts.js";
 import { damageAtDistance } from "./AbilityEffectSystem.js";
 import { ignoresHostileEffects } from "../../gameconfig/DefensiveState.js";
 import { vectorToCompassDegrees } from "../../botlogic/planner/arenaAngles.js";
@@ -249,7 +249,6 @@ function tickSegment(entity, behavior, world, combat) {
     const hit = behavior.hit ?? {};
     const hitSlots = [...(entity.hitSlots ?? [])];
     let bots = world.bots;
-    let blocked = false;
     const candidates = world.bots
         .map((bot, index) => ({ bot, index }))
         .filter(({ bot }) => isEnemy(entity, bot, world.bots)
@@ -284,16 +283,11 @@ function tickSegment(entity, behavior, world, combat) {
             collisionDistance: candidate.collisionDistance,
         });
         bots = result.bots;
-        if (result.shield?.preventedEffects?.size && hit.stopOnBlocked) {
-            blocked = true;
-            break;
-        }
     }
     const remainingMs = Number(entity[behavior.lifetimeField] ?? 0) - Number(world.stepMs ?? 0);
     const traveled = Number(entity.traveled ?? 0) + distance;
     const hitEdge = end.x === 0 || end.x === world.width || end.y === 0 || end.y === world.height;
     const remove = (selected.length > 0 && hit.removeOnHit)
-        || blocked
         || remainingMs <= 0
         || (hitEdge && movement.clamp);
     return {
@@ -362,7 +356,7 @@ function tickZone(entity, behavior, world, combat) {
     });
     let bots = world.bots;
     if (!durationPhase && !active && behavior.preActiveEffectTypes) {
-        bots = applyZoneEffects(bots, zone, contract.abilityId, behavior.preActiveEffectTypes, Number(zone.size ?? 0) / 2, combat, world, { skipShield: true });
+        bots = applyZoneEffects(bots, zone, contract.abilityId, behavior.preActiveEffectTypes, Number(zone.size ?? 0) / 2, combat, world);
     }
     if (active) {
         bots = applyZoneEffects(bots, zone, contract.abilityId, behavior.activeEffectTypes, Number(zone.size ?? 0) / 2, combat, world);
@@ -397,10 +391,7 @@ function tickPhasedZone(entity, behavior, world, combat) {
             phaseStat(stats, phase, phase.radiusStat ?? "radius", next.size / 2),
             combat,
             world,
-            {
-                skipShield: Boolean(phase.skipShield),
-                effectOverrides: phase.effectOverrides,
-            },
+            { effectOverrides: phase.effectOverrides },
         );
     }
     if (phase?.explosion && enteredPhase) {
@@ -534,9 +525,7 @@ function applyZoneEffects(bots, source, abilityId, effectTypes, radius, combat, 
         const result = applyEntityEffects(nextBots, index, source, abilityId, combat, {
             effectTypes,
             world,
-            skipShield: options.skipShield,
             effectOverrides: options.effectOverrides,
-            shieldChargeCost: shieldChargeCostForDistance(target, source, abilityId),
             collisionDistance: movingCirclesDistance(sourcePoint, sourcePoint, targetPath.start, targetPath.end),
         });
         nextBots = result.bots;
@@ -735,15 +724,6 @@ function damageToEntity(entity, world, combat) {
         }
     }
     return damage;
-}
-
-function shieldChargeCostForDistance(target, source, abilityId) {
-    const policy = abilityContract(abilityId)?.shieldInteraction;
-    if (policy?.chargeCost !== SHIELD_CHARGE_COSTS.DISTANCE_SCALED) return undefined;
-    const stats = ABILITY_STATS[abilityId] ?? {};
-    const radius = Number(stats.explosionRadius ?? stats.radius ?? Number(source?.size ?? 0) / 2);
-    const distance = Math.hypot(Number(target.x) - Number(source?.x), Number(target.y) - Number(source?.y));
-    return clamp(Math.round(radius > 0 ? 5 - (distance / radius) * 4 : 1), 1, Number(stats.maxCharges ?? 5));
 }
 
 function isEnemy(source, target, bots) {

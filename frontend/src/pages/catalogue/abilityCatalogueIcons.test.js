@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { ABILITY_CATALOGUE_ICON_LAYOUTS, ABILITY_CATALOGUE_ICONS, getAbilityCatalogueIcon, getAbilityCatalogueIconLayout } from "../../abilityCatalogueIcons.js";
 import { BOT_ABILITIES } from "../../gameArena/loadout/BotLoadout.js";
-import { STATUS_EFFECT_GUIDE } from "./statusEffectCatalogue.js";
+import { EFFECT_GUIDE } from "./statusEffectCatalogue.js";
 
 const ICON_DIRECTORY = fileURLToPath(new URL("../../../public/assets/ability-list/icons/", import.meta.url));
 const MANIFEST_PATH = fileURLToPath(new URL("../../../scripts/ability_catalogue_icon_manifest.json", import.meta.url));
@@ -71,14 +71,33 @@ test("catalogue cards keep text accessible and artwork decorative", () => {
     assert.doesNotMatch(source, /src="\/assets\/arena-toolbar\/info-circle-icon\.png"/);
 });
 
-test("catalogue starts with a compact status-effect guide and the requested intro", () => {
+test("catalogue uses compact text effect cards with detail modals and the requested intro", () => {
     const source = readFileSync(CATALOGUE_PAGE_PATH, "utf8");
 
-    assert.equal(STATUS_EFFECT_GUIDE.length, 10);
-    assert.ok(STATUS_EFFECT_GUIDE.every(({ label, description }) => label && description));
+    assert.equal(EFFECT_GUIDE.length, 19);
+    assert.ok(EFFECT_GUIDE.every(({ label, category, description }) => label && category && description));
+    assert.equal(EFFECT_GUIDE.find(({ id }) => id === "damage_reflection")?.category, "Combat");
+    assert.equal(EFFECT_GUIDE.find(({ id }) => id === "interrupt")?.category, "Combat");
+    assert.equal(EFFECT_GUIDE.find(({ id }) => id === "hit-stagger")?.category, "Combat");
+    assert.equal(EFFECT_GUIDE.find(({ id }) => id === "knockback")?.category, "Combat");
+    assert.equal(EFFECT_GUIDE.find(({ id }) => id === "pull")?.category, "Combat");
+    assert.equal(EFFECT_GUIDE.find(({ id }) => id === "healing")?.category, "Combat");
+    assert.match(EFFECT_GUIDE.find(({ id }) => id === "interrupt")?.description ?? "", /cooldown or reload/);
+    assert.match(EFFECT_GUIDE.find(({ id }) => id === "silence")?.description ?? "", /without resetting its cooldown/);
     assert.match(source, /Explore abilities here\. Click one to inspect its details\./);
-    assert.match(source, /aria-labelledby="status-effects-title"/);
-    assert.match(source, /STATUS_EFFECT_GUIDE\.map/);
+    assert.match(source, /aria-labelledby="combat-effects-title"/);
+    assert.match(source, /EFFECT_GUIDE\.map/);
+    assert.match(source, /<EffectModal key=\{selectedEffect\.id\} effect=\{selectedEffect\}/);
+    assert.match(source, /onClick=\{\(\) => setSelectedEffect\(effect\)\}/);
+    assert.match(source, /status-effect-card__chevron/);
+    assert.match(source, /aria-label="Jump to ability round"/);
+    assert.match(source, /href=\{`#round-\$\{round\}-abilities`\}/);
+    assert.match(source, /id=\{`round-\$\{round\}-abilities`\}/);
+    assert.match(source, /catalogue-scroll-top/);
+    assert.match(source, /window\.scrollY > 180/);
+    assert.match(source, /window\.scrollTo\(\{ top: 0, behavior: "smooth" \}\)/);
+    assert.doesNotMatch(source, /iconAbilityId|EFFECT ICON/);
+    assert.doesNotMatch(source, /<article key=\{status\.id\}/);
     assert.doesNotMatch(source, /aria-labelledby="ability-types-title"/);
     assert.doesNotMatch(source, />Ability types<\/h2>/);
 });

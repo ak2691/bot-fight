@@ -467,7 +467,6 @@ class AbilityEntitySystemTest {
             assertThat(entity.type()).isEqualTo("mineExplosion");
             assertThat(entity.size()).isEqualTo(175);
         });
-        assertThat(combat.blocks).containsExactly(new BlockRequest(100, 100, 11));
         assertThat(combat.damage).isEqualTo(25);
     }
 
@@ -489,33 +488,27 @@ class AbilityEntitySystemTest {
     }
 
     @Test
-    void entityInteractionsDoNotFilterEffectsOrDrainResources() {
+    void entityInteractionsApplyEffectsWithoutLegacyBlocking() {
         TestCombatant target = new TestCombatant(2, 150, 100, 50, 100);
 
         RecordingCombat mineCombat = new RecordingCombat(true);
         ArenaEntity mine = new ArenaEntity("mine", "proximityMine", 1, 100, 100, 24, 0, 0, 176, 500, true);
         AbilityEntitySystem.tick(List.of(mine), List.of(target), new ArenaBounds(1000, 800), 100, mineCombat);
-        assertThat(mineCombat.blocks).containsExactly(new BlockRequest(100, 100, 11));
 
         RecordingCombat gravityCombat = new RecordingCombat(false);
         ArenaEntity gravity = new ArenaEntity("gravity", "gravityZone", 1, 100, 100,
                 240, 0, 0, 0, 2_000, true, 0, 0, 1.0, 14, Set.of(), 0, 2_900).withAgeMs(2_000);
         AbilityEntitySystem.tick(List.of(gravity), List.of(target), new ArenaBounds(1000, 800), 100, gravityCombat);
-        assertThat(gravityCombat.blocks).isEmpty();
 
         RecordingCombat silenceCombat = new RecordingCombat(false);
         ArenaEntity silence = createEntity("silence", 15, 100, 100, 0);
         AbilityEntitySystem.tick(List.of(silence), List.of(target), new ArenaBounds(1000, 800), 100, silenceCombat);
-        assertThat(silenceCombat.blocks).containsExactly(new BlockRequest(100, 100, 15));
         assertThat(target.silenceMs).isEqualTo(2_000);
 
         RecordingCombat droneCombat = new RecordingCombat(false);
         ArenaEntity drone = new ArenaEntity("drone", "hunterDrone", 1, 100, 100, 28, 1, 0, 0, 900, true, 50);
         List<ArenaEntity> droneEntities = AbilityEntitySystem.tick(
                 List.of(drone), List.of(target), new ArenaBounds(1000, 800), 100, droneCombat);
-        assertThat(droneCombat.blocks).singleElement().satisfies(request -> {
-            assertThat(request.abilityId()).isEqualTo(17);
-        });
         assertThat(droneCombat.damage).isEqualTo(5);
         assertThat(droneEntities).singleElement().satisfies(updatedDrone ->
                 assertThat(updatedDrone.shotVisualMs()).isEqualTo(300));
@@ -524,7 +517,6 @@ class AbilityEntitySystemTest {
         ArenaEntity orbital = new ArenaEntity("orbital", "orbitalMarker", 1, 150, 100, 260, 0, 0, 0, 100, true);
         AbilityEntitySystem.tick(List.of(orbital), List.of(target), new ArenaBounds(1000, 800), 100, orbitalCombat);
         assertThat(orbitalCombat.damage).isPositive();
-        assertThat(orbitalCombat.drainCalls).isZero();
     }
 
     @Test
@@ -552,7 +544,7 @@ class AbilityEntitySystemTest {
     }
 
     @Test
-    void absoluteGuardRejectsEveryHostileEntityMutationBeforeShieldHandling() {
+    void absoluteGuardRejectsEveryHostileEntityMutationBeforeEffectApplication() {
         TestCombatant target = new TestCombatant(2, 150, 100, 50, 100);
         target.absoluteGuard = true;
         RecordingCombat combat = new RecordingCombat(false);
@@ -576,8 +568,6 @@ class AbilityEntitySystemTest {
         ArenaEntity orbital = new ArenaEntity("orbital", "orbitalMarker", 1, 150, 100, 260, 0, 0, 0, 100, true);
         AbilityEntitySystem.tick(List.of(mine, orbital), List.of(target), arena, 100, combat);
         assertThat(combat.damage).isZero();
-        assertThat(combat.blocks).isEmpty();
-        assertThat(combat.drainCalls).isZero();
     }
 
     private static AbilityEntitySystem.Combat<TestCombatant> noDamageCombat() {
@@ -600,32 +590,19 @@ class AbilityEntitySystemTest {
             @Override public void damageFromOwner(List<TestCombatant> bots, int ownerSlot, TestCombatant target, double amount, double sourceX, double sourceY) { target.hp -= amount; }
             @Override public int damageToEntity(ArenaEntity entity, List<TestCombatant> bots, List<ArenaEntity> entities) { return 0; }
             @Override public boolean entityHitByCurrentAttack(ArenaEntity entity, List<TestCombatant> bots, List<ArenaEntity> entities) { return false; }
-            @Override public AbilityEntitySystem.ShieldResult shield(TestCombatant bot, double sourceX, double sourceY, int abilityId) {
-                return new AbilityEntitySystem.ShieldResult(false, Set.of());
-            }
         };
     }
 
-    private record BlockRequest(double x, double y, int abilityId) {}
-
     private static final class RecordingCombat implements AbilityEntitySystem.Combat<TestCombatant> {
         private final boolean entityHit;
-        private final List<BlockRequest> blocks = new ArrayList<>();
         private double damage;
         private int damageCalls;
-        private int drainCalls;
 
         private RecordingCombat(boolean entityHit) { this.entityHit = entityHit; }
         @Override public void damage(TestCombatant bot, double amount) { damage += amount; }
         @Override public void damageFromOwner(List<TestCombatant> bots, int ownerSlot, TestCombatant target, double amount, double sourceX, double sourceY) { damageCalls += 1; damage += amount; target.hp -= amount; }
         @Override public int damageToEntity(ArenaEntity entity, List<TestCombatant> bots, List<ArenaEntity> entities) { return 0; }
         @Override public boolean entityHitByCurrentAttack(ArenaEntity entity, List<TestCombatant> bots, List<ArenaEntity> entities) { return entityHit; }
-        @Override public AbilityEntitySystem.ShieldResult shield(TestCombatant bot, double sourceX, double sourceY, int abilityId) {
-            blocks.add(new BlockRequest(sourceX, sourceY, abilityId));
-            var policy = com.example.botfight.simulation.gameconfig.AbilityContracts.get(abilityId).shieldInteraction();
-            if (policy.mode() == com.example.botfight.simulation.gameconfig.AbilityContracts.ShieldMode.DRAIN_WHILE_ACTIVE) drainCalls += 1;
-            return new AbilityEntitySystem.ShieldResult(true, policy.prevents());
-        }
     }
 
     private static final class TestCombatant implements AbilityEntityBot {

@@ -11,18 +11,23 @@ export function tickBotStatus(shape, elapsedMs, applyDamage) {
     if ((shape.hp ?? 0) <= 0) return shape;
 
     const elapsed = Math.max(0, Number(elapsedMs) || 0);
-    let next = { ...shape, statusEffects: [] };
     const statuses = new Map();
     for (const rawStatus of statusEffectsFor(shape)) {
         const normalized = normalizeStatusEffect(rawStatus);
         const key = `${normalized.type}:${normalized.mode}`;
         const existing = statuses.get(key);
-        const status = existing && existing.remainingMs > normalized.remainingMs ? existing : normalized;
-        if (status.mode === "presence") {
-            statuses.set(key, status);
-            next = { ...next, statusEffects: [...statuses.values()] };
-            continue;
-        }
+        statuses.set(key, existing && existing.remainingMs > normalized.remainingMs ? existing : normalized);
+    }
+
+    // Keep every active status visible while any one status applies a tick.
+    // Incoming modifiers must see sibling statuses regardless of map order.
+    let next = { ...shape, statusEffects: [...statuses.values()] };
+    // Only statuses that existed at the start of this elapsed interval are
+    // advanced. Tick effects may create or refresh statuses for the next
+    // interval, but those statuses must not lose the same elapsed time twice.
+    for (const [key, initialStatus] of [...statuses.entries()]) {
+        const status = statuses.get(key) ?? initialStatus;
+        if (status.mode === "presence") continue;
 
         const previousRemainingMs = status.remainingMs;
         if (previousRemainingMs <= 0) {
@@ -65,7 +70,7 @@ function applyTickEffect(shape, status, effect, applyDamage) {
         return applyDamage(
             { ...shape, damageTakenThisTick: Number(shape.damageTakenThisTick ?? 0) },
             amount,
-            statusSource(status.sourceSlot),
+            statusSource(status.sourceSlot, status.type),
         );
     }
     if (effect.type === STATUS_EFFECT_APPLICATIONS.MOVEMENT_LOCK) {
@@ -80,7 +85,11 @@ function applyTickEffect(shape, status, effect, applyDamage) {
     return shape;
 }
 
-function statusSource(slot) {
+function statusSource(slot, statusType) {
     const sourceSlot = Number(slot);
-    return Number.isFinite(sourceSlot) ? { ownerSlot: sourceSlot } : null;
+    return {
+        damageSourceKind: "status",
+        damageSourceType: String(statusType ?? "").toLowerCase(),
+        ...(Number.isFinite(sourceSlot) ? { ownerSlot: sourceSlot } : {}),
+    };
 }

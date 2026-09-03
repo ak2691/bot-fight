@@ -7,7 +7,6 @@ import com.example.botfight.simulation.core.orchestration.DuelSimulationService.
 import com.example.botfight.simulation.core.state.BotMovementService;
 import com.example.botfight.simulation.core.state.BotStateService;
 import com.example.botfight.simulation.core.state.StatusEffectState;
-import com.example.botfight.simulation.ecs.abilities.AbilityEntitySystem;
 import com.example.botfight.simulation.gameconfig.Abilities;
 import com.example.botfight.simulation.gameconfig.AbilityContracts;
 import com.example.botfight.simulation.gameconfig.AbilityContracts.DeliveryType;
@@ -17,7 +16,7 @@ import java.util.Comparator;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
-/** Applies ordered direct ability effects after delivery and shield resolution. */
+/** Applies ordered direct ability effects after delivery. */
 @Service
 class AbilityEffectService {
     private final BotStateService botStateService;
@@ -54,10 +53,7 @@ class AbilityEffectService {
 
         double sourceX = payload.hasCapturedPose() ? payload.capturedOriginX() : attacker.x;
         double sourceY = payload.hasCapturedPose() ? payload.capturedOriginY() : attacker.y;
-        AbilityEntitySystem.ShieldResult shield = hostileImpact
-                ? botStateService.resolveShield(defender, sourceX, sourceY, payload.abilityId())
-                : AbilityEntitySystem.ShieldResult.none();
-        applyContractEffects(attacker, defender, payload, shield, arena, sourceX, sourceY, skipTeleport);
+        applyContractEffects(attacker, defender, payload, arena, sourceX, sourceY, skipTeleport);
     }
 
     void resolveTriggeredAbilities(Bot attacker, List<Bot> bots, Arena arena) {
@@ -100,14 +96,12 @@ class AbilityEffectService {
 
     private void applyContractEffects(Bot attacker, Bot defender,
                                       AbilityExecutionPayload payload,
-                                      AbilityEntitySystem.ShieldResult shield,
                                       Arena arena,
                                       double sourceX,
                                       double sourceY,
                                       boolean skipTeleport) {
         double confirmedDamage = 0;
         for (AbilityContracts.Effect effect : payload.contract().effects()) {
-            if (shield.prevents(effect.type())) continue;
             switch (effect.type()) {
                 case DAMAGE -> {
                     if (defender == null || defender.hp <= 0) continue;
@@ -129,7 +123,7 @@ class AbilityEffectService {
                 case DAMAGE_REDUCTION -> applyDefensiveStatus(attacker, "reactive-armor", payload,
                         effect.durationMs(),
                         new StatusEffectState.Effect("incoming_damage_modifier", "constant")
-                                .multiplier(Math.max(0, 1.0 - effect.amount())));
+                                .damageModifier(-Math.max(0, effect.amount())));
                 case DAMAGE_REFLECTION -> applyDefensiveStatus(attacker, "reactive-armor", payload,
                         effect.durationMs(),
                         new StatusEffectState.Effect("damage_reflection", "constant")
@@ -247,7 +241,11 @@ class AbilityEffectService {
                 bleed.sourceSlot = attacker.slot;
                 bleed.abilityId = payload.abilityId();
                 bleed.addEffect(new StatusEffectState.Effect("damage", "tick")
-                        .amount(AbilityContracts.effectAmount(payload.abilityId(), EffectType.DEBUFF)));
+                        .amount(AbilityContracts.effectAmount(payload.abilityId(), EffectType.DEBUFF)))
+                        .addEffect(new StatusEffectState.Effect("incoming_damage_modifier", "constant")
+                                .damageModifier(StatusEffectState.BLEED_INCOMING_DAMAGE_MODIFIER)
+                                .rounding(StatusEffectState.TRUNCATE_DAMAGE_TO_TENTHS)
+                                .excludeDamageSourceType("bleed"));
                 BotStateService.upsertStatusEffect(defender, bleed);
             }
             default -> { }

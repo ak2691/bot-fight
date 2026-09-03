@@ -131,11 +131,19 @@ public class ReplayMappingService {
             copy.source = status.source;
             copy.sourceSlot = status.sourceSlot;
             copy.abilityId = status.abilityId;
-            status.effects.forEach(effect -> copy.effects.add(new StatusEffectState.Effect(effect.type, effect.mode)
-                    .amount(effect.amount)
-                    .multiplier(effect.multiplier)
-                    .durationMs(effect.durationMs)
-                    .movement(effect.movementMultiplier, effect.rotationMultiplier)));
+            status.effects.forEach(effect -> {
+                StatusEffectState.Effect copied = new StatusEffectState.Effect(effect.type, effect.mode)
+                        .amount(effect.amount)
+                        .multiplier(effect.multiplier)
+                        .damageModifier(effect.damageModifier)
+                        .durationMs(effect.durationMs)
+                        .movement(effect.movementMultiplier, effect.rotationMultiplier)
+                        .rounding(effect.rounding);
+                if (effect.excludedDamageSourceTypes != null) {
+                    effect.excludedDamageSourceTypes.forEach(copied::excludeDamageSourceType);
+                }
+                copy.effects.add(copied);
+            });
             return copy;
         }).toList();
     }

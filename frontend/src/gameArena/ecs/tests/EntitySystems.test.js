@@ -17,8 +17,7 @@ import { abilityHitsTarget } from "../abilities/AbilityHitDetectionSystem.js";
 import { buildDeterministicLogicAction } from "../../botlogic/planner/ArenaActionPlanner.js";
 import { buildStatePayload } from "../../modelPayloads/strategyStatePayload.js";
 import { abilityDefinition, ABILITY_STATS, shouldInterpolateAbilityVisual } from "../../loadout/BotLoadout.js";
-import { ABILITY_CONTRACTS, DELIVERY_TYPES, EFFECT_TYPES, SHIELD_MODES } from "../../gameconfig/AbilityContracts.js";
-import { resolveShieldInteraction } from "../../gameconfig/ShieldSystem.js";
+import { ABILITY_CONTRACTS, DELIVERY_TYPES, EFFECT_TYPES } from "../../gameconfig/AbilityContracts.js";
 import { botStatusLabels } from "../../pixi/pixiVisualState.js";
 import { resetBotShape, toSimulationBotShape } from "../../modelPayloads/arenaShapes.js";
 import { compassDirection } from "../../botlogic/planner/arenaAngles.js";
@@ -63,8 +62,17 @@ function status(type, remainingMs, { tickMs = 0, tickElapsedMs = 0, mode = "dura
 function damageStatus(type, remainingMs, tickMs, amount, metadata = {}) {
     return status(type, remainingMs, {
         tickMs,
-        effects: [{ type: "damage", mode: "tick", amount, multiplier: metadata.multiplier ?? 1 }],
         ...metadata,
+        effects: metadata.effects ?? [
+            { type: "damage", mode: "tick", amount, multiplier: metadata.multiplier ?? 1 },
+            ...(type === "bleed" ? [{
+                type: "incoming_damage_modifier",
+                mode: "constant",
+                damageModifier: 0.25,
+                rounding: "truncate_tenths",
+                excludedDamageSourceTypes: ["bleed"],
+            }] : []),
+        ],
     });
 }
 
@@ -129,31 +137,21 @@ test("ability metadata separates instantaneous effects from interpolated motion"
     }
 });
 
-test("every selectable ability exposes delivery, effects, and a shield policy", () => {
+test("every selectable ability exposes delivery and effects without shield metadata", () => {
     for (const id of Object.keys(ABILITY_CONTRACTS).map(Number)) {
         const definition = abilityDefinition(id);
         assert.ok(definition, id);
         assert.ok(Object.values(DELIVERY_TYPES).includes(definition.delivery.type), id);
         assert.ok(Array.isArray(definition.effects), id);
-        assert.ok(Object.values(SHIELD_MODES).includes(definition.shieldInteraction.mode), id);
+        assert.equal(definition.shieldInteraction, undefined, id);
     }
     assert.equal(ABILITY_CONTRACTS[25].delivery.type, DELIVERY_TYPES.MELEE);
 });
 
-test("active ability contracts never block or filter effects", () => {
+test("active ability contracts do not expose shield filtering", () => {
     for (const [id, contract] of Object.entries(ABILITY_CONTRACTS)) {
-        assert.equal(contract.shieldInteraction.mode, SHIELD_MODES.IGNORE, id);
-        assert.deepEqual(contract.shieldInteraction.prevents, [], id);
+        assert.equal(contract.shieldInteraction, undefined, id);
     }
-});
-
-test("stale retired Block state cannot suppress an ability effect", () => {
-    const bot = { x: 100, y: 100, rotation: 180, maxHp: 100, abilityActiveMs: { 2: 100 }, abilityCharges: { 2: 25 } };
-    const result = resolveShieldInteraction(bot, { x: 0, y: 100 }, { mode: SHIELD_MODES.BLOCK, prevents: [EFFECT_TYPES.DAMAGE] });
-    assert.equal(result.bot, bot);
-    assert.equal(result.blocked, false);
-    assert.equal(result.preventedEffects.size, 0);
-    assert.equal(result.bot.abilityCharges[2], 25);
 });
 
 test("hunter drone spawns with component health and 50 hp", () => {
@@ -515,8 +513,40 @@ test("DOT, direct damage, and healing on one tick resolve as one net hp change",
     const afterDots = tickBotStatus(bot, 50, applyDamageToShape);
     const afterDirectHit = applyDamageToShape(afterDots, 8);
     const result = settlePendingHealing(afterDirectHit);
-    assert.equal(result.hp, 53);
-    assert.equal(result.damageTakenThisTick, 12);
+    assert.equal(result.hp, 50.5);
+    assert.equal(result.damageTakenThisTick, 14.5);
+});
+
+test("bleed amplifies non-bleed damage, excludes its own tick, and combines generically", () => {
+    const bot = {
+        hp: 100, maxHp: 100, slot: 2, abilities: [],
+        statusEffects: [
+            damageStatus("bleed", 5000, 1000, 2, { sourceSlot: 1 }),
+            damageStatus("burn", 5000, 1000, 2, { sourceSlot: 1 }),
+        ],
+    };
+
+    const afterStatuses = tickBotStatus(bot, 1000, applyDamageToShape);
+    assert.equal(afterStatuses.hp, 95.5);
+
+    const afterHit = applyDamageToShape(afterStatuses, 10.09, { slot: 1 });
+    assert.equal(afterHit.hp, 82.9);
+
+    const withDamageReduction = {
+        ...bot,
+        hp: 100,
+        statusEffects: [
+            damageStatus("bleed", 5000, 1000, 0),
+            status("reactive-armor", 5000, {
+                effects: [{
+                    type: "incoming_damage_modifier",
+                    mode: "constant",
+                    damageModifier: -0.5,
+                }],
+            }),
+        ],
+    };
+    assert.equal(applyDamageToShape(withDamageReduction, 10.09, { slot: 1 }).hp, 92.5);
 });
 
 test("successful damage advances the renderer hit event for consecutive hits", () => {
@@ -552,10 +582,10 @@ test("another heavy slash refreshes bleed duration without resetting its pending
         statusEffects: [damageStatus("bleed", 4000, 300, 2)],
     };
     const [, hit] = resolveAbilityCombat(attacker, defender);
-    assert.equal(hit.hp, 70);
+    assert.equal(hit.hp, 62.5);
     assert.equal(statusRemainingMs(hit, "bleed"), 5000);
     assert.equal(statusEffectFor(hit, "bleed").tickMs, 300);
-    assert.equal(tickBotStatus(hit, 300, noDamageCombat.applyDamageToShape).hp, 68);
+    assert.equal(tickBotStatus(hit, 300, noDamageCombat.applyDamageToShape).hp, 60.5);
 });
 
 test("successful hostile HP damage starts, refreshes, and never stacks hit stagger", () => {

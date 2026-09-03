@@ -32,11 +32,6 @@ public final class AbilityEntitySystem {
 
     private AbilityEntitySystem() {}
 
-    public record ShieldResult(boolean blocked, Set<EffectType> preventedEffects) {
-        public static ShieldResult none() { return new ShieldResult(false, Set.of()); }
-        public boolean prevents(EffectType effect) { return preventedEffects.contains(effect); }
-    }
-
     public interface Combat<F extends AbilityEntityBot> {
         void damage(F bot, double amount);
         void damageFromOwner(List<F> bots, int ownerSlot, F target, double amount,
@@ -44,14 +39,6 @@ public final class AbilityEntitySystem {
         int damageToEntity(ArenaEntity entity, List<F> bots, List<ArenaEntity> entities);
         boolean entityHitByCurrentAttack(ArenaEntity entity, List<F> bots, List<ArenaEntity> entities);
 
-        default ShieldResult shield(F bot, double sourceX, double sourceY, int abilityId) {
-            return ShieldResult.none();
-        }
-
-        default ShieldResult shield(F bot, double sourceX, double sourceY, int abilityId,
-                                    Integer chargeCost) {
-            return shield(bot, sourceX, sourceY, abilityId);
-        }
     }
 
     public static boolean isAbilityEntity(ArenaEntity entity) {
@@ -115,7 +102,7 @@ public final class AbilityEntitySystem {
             applyZoneEffects(bots, entry.entity(), entry.contract().abilityId(),
                     phase == null ? entry.behavior().effectTypes() : phase.effectTypes(),
                     phaseStat(entry.contract().abilityId(), phase, trigger.radiusStat(), 0),
-                    arena, combat, false, null, "source",
+                    arena, combat, "source",
                     phase == null ? Map.of() : phase.effectOverrides());
             EntityContracts.Derived explosion = phase == null || phase.explosion() == null
                     ? entry.behavior().explosion() : phase.explosion();
@@ -271,21 +258,16 @@ public final class AbilityEntitySystem {
                 .toList();
         List<HitCandidate<F>> selected = hit.mode() == EntityContracts.HitMode.NEAREST
                 ? candidates.stream().limit(1).toList() : candidates;
-        boolean blocked = false;
         for (HitCandidate<F> candidate : selected) {
             F target = candidate.bot();
             hitSlots.add(target.entitySlot());
-            ShieldResult shield = applyEntityEffects(bots, target, entity, contract.abilityId(), hit.effectTypes(),
-                    arena, combat, false, null, hit.knockbackDirection(), candidate.distance(), Map.of());
-            if (hit.stopOnBlocked() && !shield.preventedEffects().isEmpty()) {
-                blocked = true;
-                break;
-            }
+            applyEntityEffects(bots, target, entity, contract.abilityId(), hit.effectTypes(),
+                    arena, combat, hit.knockbackDirection(), candidate.distance(), Map.of());
         }
         int remaining = entity.timerMs() - stepMs;
         double traveled = entity.traveled() + moved;
         boolean atEdge = nextX == 0 || nextX == arena.width() || nextY == 0 || nextY == arena.height();
-        boolean remove = (selected.size() > 0 && hit.removeOnHit()) || blocked || remaining <= 0
+        boolean remove = (selected.size() > 0 && hit.removeOnHit()) || remaining <= 0
                 || atEdge;
         if (remove) return new TickResult(null);
         ArenaEntity next = copy(entity, nextX, nextY, entity.velocityX(), entity.velocityY(), traveled,
@@ -305,7 +287,7 @@ public final class AbilityEntitySystem {
         if (!phase.effectTypes().isEmpty()) {
             applyZoneEffects(bots, moved, contract.abilityId(), phase.effectTypes(),
                     phaseStat(contract.abilityId(), phase, behavior.radiusStat(), moved.size() / 2.0),
-                    arena, combat, phase.skipShield(), null, "source", phase.effectOverrides());
+                    arena, combat, "source", phase.effectOverrides());
         }
         boolean enteredPhase = previousPhase == null || !previousPhase.id().equals(phase.id());
         List<ArenaEntity> spawned = phase.explosion() == null || !enteredPhase
@@ -363,11 +345,11 @@ public final class AbilityEntitySystem {
         }
         if (!moving && !active && !behavior.preActiveEffectTypes().isEmpty()) {
             applyZoneEffects(bots, field, contract.abilityId(), behavior.preActiveEffectTypes(),
-                    field.size() / 2.0, arena, combat, true, null, "source");
+                    field.size() / 2.0, arena, combat, "source");
         }
         if (!moving && active && !behavior.activeEffectTypes().isEmpty()) {
             applyZoneEffects(bots, field, contract.abilityId(), behavior.activeEffectTypes(),
-                    field.size() / 2.0, arena, combat, false, null, "source");
+                    field.size() / 2.0, arena, combat, "source");
             if (behavior.explosion() != null) {
                 return new TickResult(createDerivedEntity(field, behavior.explosion()));
             }
@@ -416,7 +398,7 @@ public final class AbilityEntitySystem {
                 stat(contract.abilityId(), attack.rangeStat(), 0), target.entityX(), target.entityY(), target.entitySize() / 2.0);
         if (due && rayHit) {
             applyEntityEffects(bots, target, next, contract.abilityId(), attack.effectTypes(),
-                    arena, combat, false, null, "source", Double.NaN, Map.of());
+                    arena, combat, "source", Double.NaN, Map.of());
             next = copy(next, next.x(), next.y(), next.velocityX(), next.velocityY(), next.traveled(),
                     next.timerMs(), true, next.hp(), (int) Math.round(stat(contract.abilityId(), attack.visualStat(), 300)),
                     next.damageMultiplier());
@@ -433,7 +415,7 @@ public final class AbilityEntitySystem {
                 entity.traveled(), fuse, true, entity.hp(), entity.shotVisualMs(), entity.damageMultiplier()));
         applyZoneEffects(bots, entity, contract.abilityId(), behavior.effectTypes(),
                 stat(contract.abilityId(), behavior.radiusStat(), entity.size() / 2.0),
-                arena, combat, false, null, "source");
+                arena, combat, "source");
         return new TickResult(behavior.explosion() == null ? null : createDerivedEntity(entity, behavior.explosion()));
     }
 
@@ -449,7 +431,7 @@ public final class AbilityEntitySystem {
         while (intervalTimer <= 0) {
             applyZoneEffects(bots, entity, contract.abilityId(), behavior.effectTypes(),
                     stat(contract.abilityId(), behavior.radiusStat(), entity.size() / 2.0),
-                    arena, combat, false, null, "source");
+                    arena, combat, "source");
             if (behavior.explosion() != null) spawned.add(createDerivedEntity(entity, behavior.explosion()));
             intervalTimer += interval;
         }
@@ -474,7 +456,7 @@ public final class AbilityEntitySystem {
             int stepMs, Combat<F> combat) {
         if (!entity.hitSlots().contains(RADIAL_ONCE_SENTINEL) && !behavior.effectTypes().isEmpty()) {
             applyZoneEffects(bots, entity, contract.abilityId(), behavior.effectTypes(),
-                    entity.size() / 2.0, arena, combat, false, null, "source");
+                    entity.size() / 2.0, arena, combat, "source");
         }
         Set<Integer> hitSlots = new HashSet<>(entity.hitSlots());
         hitSlots.add(RADIAL_ONCE_SENTINEL);
@@ -494,8 +476,7 @@ public final class AbilityEntitySystem {
 
     private static <F extends AbilityEntityBot> void applyZoneEffects(
             List<F> bots, ArenaEntity source, int abilityId, Set<EffectType> effectTypes,
-            double radius, ArenaBounds arena, Combat<F> combat, boolean skipShield,
-            Integer chargeCost, String knockbackDirection,
+            double radius, ArenaBounds arena, Combat<F> combat, String knockbackDirection,
             Map<EffectType, EntityContracts.EffectOverride> effectOverrides) {
         for (F target : bots) {
             EntityContracts.EntityContract contract = EntityContracts.forEntity(source);
@@ -503,10 +484,8 @@ public final class AbilityEntitySystem {
             if (!isEnemy(source.ownerSlot(), target, bots)
                     || !withinRadius(target, source, radius) || target.ignoresHostileEffects()
                     || (behavior != null && behavior.skipOwner() && target.entitySlot() == source.ownerSlot())) continue;
-            Integer resolvedChargeCost = chargeCost != null ? chargeCost
-                    : shieldChargeCostForDistance(target, source, abilityId);
             applyEntityEffects(bots, target, source, abilityId, effectTypes, arena, combat,
-                    skipShield, resolvedChargeCost, knockbackDirection,
+                    knockbackDirection,
                     movingCirclesDistance(source.x(), source.y(), source.x(), source.y(),
                             target.entityMovementStartX(), target.entityMovementStartY(), target.entityX(), target.entityY()),
                     effectOverrides);
@@ -515,32 +494,28 @@ public final class AbilityEntitySystem {
 
     private static <F extends AbilityEntityBot> void applyZoneEffects(
             List<F> bots, ArenaEntity source, int abilityId, Set<EffectType> effectTypes,
-            double radius, ArenaBounds arena, Combat<F> combat, boolean skipShield) {
+            double radius, ArenaBounds arena, Combat<F> combat) {
         applyZoneEffects(bots, source, abilityId, effectTypes, radius, arena, combat,
-                skipShield, null, "source", Map.of());
+                "source", Map.of());
     }
 
     private static <F extends AbilityEntityBot> void applyZoneEffects(
             List<F> bots, ArenaEntity source, int abilityId, Set<EffectType> effectTypes,
-            double radius, ArenaBounds arena, Combat<F> combat, boolean skipShield,
-            Integer chargeCost, String knockbackDirection) {
+            double radius, ArenaBounds arena, Combat<F> combat, String knockbackDirection) {
         applyZoneEffects(bots, source, abilityId, effectTypes, radius, arena, combat,
-                skipShield, chargeCost, knockbackDirection, Map.of());
+                knockbackDirection, Map.of());
     }
 
-    private static <F extends AbilityEntityBot> ShieldResult applyEntityEffects(
+    private static <F extends AbilityEntityBot> void applyEntityEffects(
             List<F> bots, F target, ArenaEntity source, int abilityId,
             Set<EffectType> allowedEffects, ArenaBounds arena, Combat<F> combat,
-            boolean skipShield, Integer chargeCost, String knockbackDirection,
+            String knockbackDirection,
             double collisionDistance,
             Map<EffectType, EntityContracts.EffectOverride> effectOverrides) {
-        if (!isEnemy(source.ownerSlot(), target, bots)) return ShieldResult.none();
+        if (!isEnemy(source.ownerSlot(), target, bots)) return;
         AbilityContracts.AbilityContract contract = AbilityContracts.get(abilityId);
-        ShieldResult shield = skipShield ? ShieldResult.none()
-                : combat.shield(target, source.x(), source.y(), abilityId, chargeCost);
         for (AbilityContracts.Effect effect : contract.effects()) {
             if (!allowedEffects.isEmpty() && !allowedEffects.contains(effect.type())) continue;
-            if (shield.prevents(effect.type())) continue;
             AbilityContracts.Effect resolvedEffect = withEffectOverride(effect,
                     effectOverrides.get(effect.type()));
             switch (resolvedEffect.type()) {
@@ -576,7 +551,6 @@ public final class AbilityEntitySystem {
                 default -> { }
             }
         }
-        return shield;
     }
 
     private static <F extends AbilityEntityBot> boolean isEnemy(
@@ -827,17 +801,6 @@ public final class AbilityEntitySystem {
             return phase.statOverrides().get(name);
         }
         return stat(abilityId, name, fallback);
-    }
-
-    private static <F extends AbilityEntityBot> Integer shieldChargeCostForDistance(
-            F target, ArenaEntity source, int abilityId) {
-        AbilityContracts.ShieldInteraction policy = AbilityContracts.get(abilityId).shieldInteraction();
-        if (policy.chargeCost() != AbilityContracts.ChargeCost.DISTANCE_SCALED) return null;
-        double radius = Abilities.range(abilityId);
-        double distance = distance(target.entityX(), target.entityY(), source.x(), source.y());
-        if (radius <= 0) return 1;
-        double t = clamp(distance / radius, 0, 1);
-        return (int) clamp(Math.round(5 + (1 - 5) * t), 1, 5);
     }
 
     private static double distance(double x1, double y1, double x2, double y2) {

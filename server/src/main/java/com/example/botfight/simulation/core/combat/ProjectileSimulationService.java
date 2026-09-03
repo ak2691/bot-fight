@@ -4,7 +4,6 @@ import com.example.botfight.simulation.core.orchestration.DuelSimulationService.
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
 import com.example.botfight.simulation.core.state.BotStateService;
 import com.example.botfight.simulation.core.state.StatusEffectState;
-import com.example.botfight.simulation.ecs.abilities.AbilityEntitySystem;
 import com.example.botfight.simulation.ecs.entities.ArenaEntity;
 import com.example.botfight.simulation.ecs.entities.AbilityEntityFactory;
 import com.example.botfight.simulation.ecs.contracts.EntityContracts;
@@ -101,11 +100,7 @@ public class ProjectileSimulationService {
                         ? impact.damageDistance()
                         : Math.hypot(target.x - impact.sourceX(), target.y - impact.sourceY());
                 if (impact.radial() && distance > Abilities.range(impact.abilityId())) continue;
-                Integer chargeCost = impact.radial()
-                        ? radialShieldChargeCost(impact.abilityId(), distance) : null;
-                AbilityEntitySystem.ShieldResult shield = botStateService.resolveShield(
-                        target, impact.sourceX(), impact.sourceY(), impact.abilityId(), chargeCost);
-                applyEffects(owner, target, impact, distance, shield);
+                applyEffects(owner, target, impact, distance);
             }
         }
     }
@@ -122,11 +117,9 @@ public class ProjectileSimulationService {
                 * effect.damageMultiplier());
     }
 
-    private void applyEffects(Bot owner, Bot target, ProjectileImpact impact, double distance,
-                              AbilityEntitySystem.ShieldResult shield) {
+    private void applyEffects(Bot owner, Bot target, ProjectileImpact impact, double distance) {
         AbilityContracts.AbilityContract contract = AbilityContracts.get(impact.abilityId());
         for (AbilityContracts.Effect effect : contract.effects()) {
-            if (shield.prevents(effect.type())) continue;
             switch (effect.type()) {
                 case DAMAGE -> {
                     double baseDamage = impact.radial()
@@ -189,7 +182,11 @@ public class ProjectileSimulationService {
                 bleed.sourceSlot = sourceSlot;
                 bleed.abilityId = impact.abilityId();
                 bleed.addEffect(new StatusEffectState.Effect("damage", "tick")
-                        .amount(AbilityContracts.effectAmount(impact.abilityId(), EffectType.DEBUFF)));
+                        .amount(AbilityContracts.effectAmount(impact.abilityId(), EffectType.DEBUFF)))
+                        .addEffect(new StatusEffectState.Effect("incoming_damage_modifier", "constant")
+                                .damageModifier(StatusEffectState.BLEED_INCOMING_DAMAGE_MODIFIER)
+                                .rounding(StatusEffectState.TRUNCATE_DAMAGE_TO_TENTHS)
+                                .excludeDamageSourceType("bleed"));
                 BotStateService.upsertStatusEffect(target, bleed);
             }
             default -> { }
@@ -260,13 +257,6 @@ public class ProjectileSimulationService {
                 source.damageMultiplier(), source.abilityId(), source.hitSlots(), source.intervalTimerMs(),
                 source.phaseTimerMs(), source.ageMs(), source.tickStartHp(), source.damageTakenThisTick(),
                 source.damageTakenLastTick(), source.hpNetChangeLastTick(), source.rotation());
-    }
-
-    private static int radialShieldChargeCost(int abilityId, double distance) {
-        double radius = Abilities.range(abilityId);
-        if (radius <= 0 || distance > radius) return 0;
-        double t = Math.max(0, Math.min(1, distance / radius));
-        return (int) Math.max(1, Math.min(5, Math.round(5 + (1 - 5) * t)));
     }
 
     private static boolean shouldKeepProjectile(ArenaEntity entity,

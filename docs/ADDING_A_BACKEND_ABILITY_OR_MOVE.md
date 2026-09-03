@@ -9,8 +9,8 @@ Start with [Adding an Ability or Move](ADDING_AN_ABILITY_OR_MOVE.md) and [Abilit
 - `simulation/gameconfig/AbilityRegistry.java`: permanent positive numeric IDs and the only server-side ID/name mapping. Never derive IDs from catalog position or reuse a retired ID.
 - `simulation/gameconfig/Abilities.java`: numeric definitions for all abilities.
 - `simulation/gameconfig/GameConfig.java`: shared duel configuration access.
-- `simulation/gameconfig/AbilityContracts.java`: delivery, ordered effects,
-  shield policy, and declarative activation payload metadata.
+- `simulation/gameconfig/AbilityContracts.java`: delivery, ordered effects, and
+  declarative activation payload metadata.
 - `simulation/gameconfig/GameConfigCatalog.java`: active ruleset selection.
 
 Match browser IDs, milliseconds, arena units, ranges/arcs, damage rounding, resources, and compact loadout code. Runtime definitions, actions, state maps, entities, DTOs, and replay fields use the numeric ID. Ability names are presentation metadata only; submitted and persisted brain payloads use numeric IDs. Update the round pool and enforce cumulative picks, issued offers, and selection limits on the server. Timeout picks must come from the same deterministic offer list.
@@ -68,7 +68,7 @@ tick method for behavior that belongs to an existing contract family.
 - `simulation/ecs/abilities/AbilityEntitySystem.java`: deterministic lifecycle, collision, effects, phase changes, chain reactions, and removal.
 - `simulation/ecs/entities/ArenaBounds.java`: shared clamping and expiry bounds.
 
-Resolve `shieldInteraction` once per impact, then apply remaining effects in declared order. Specify friendly-fire eligibility, swept versus point collision, impact timing, status refresh/stack rules, and rounding. Settle simultaneous damage and healing as one net HP change.
+Apply effects in declared order. Specify friendly-fire eligibility, swept versus point collision, impact timing, status refresh/stack rules, and rounding. Settle simultaneous damage and healing as one net HP change.
 
 ## Replay
 

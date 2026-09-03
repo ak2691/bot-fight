@@ -194,7 +194,6 @@ export const ENTITY_CONTRACTS = Object.freeze({
                     startMs: 2000,
                     movement: Object.freeze({ mode: "stopped" }),
                     effectTypes: Object.freeze([EFFECT_TYPES.PULL]),
-                    skipShield: true,
                     statOverrides: Object.freeze({ speedPerTick: 0 }),
                 }),
                 Object.freeze({
@@ -240,7 +239,6 @@ export const ENTITY_CONTRACTS = Object.freeze({
             hit: Object.freeze({
                 mode: "all",
                 oncePerSlot: true,
-                stopOnBlocked: true,
                 effectTypes: Object.freeze([EFFECT_TYPES.DEBUFF, EFFECT_TYPES.INTERRUPT]),
             }),
         }),
@@ -365,7 +363,6 @@ export const ENTITY_CONTRACTS = Object.freeze({
                     startMs: 0,
                     movement: Object.freeze({ mode: "stopped" }),
                     effectTypes: Object.freeze([EFFECT_TYPES.PULL]),
-                    skipShield: true,
                     statOverrides: Object.freeze({ speedPerTick: 0 }),
                 }),
                 Object.freeze({
@@ -412,7 +409,6 @@ export const ENTITY_CONTRACTS = Object.freeze({
             hit: Object.freeze({
                 mode: "nearest",
                 removeOnHit: true,
-                stopOnBlocked: true,
                 oncePerSlot: true,
                 effectTypes: Object.freeze([EFFECT_TYPES.DAMAGE, EFFECT_TYPES.PULL, EFFECT_TYPES.DEBUFF]),
             }),

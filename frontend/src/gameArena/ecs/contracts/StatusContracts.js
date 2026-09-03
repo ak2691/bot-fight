@@ -79,6 +79,35 @@ export function statusEffectValue(shape, statusType, application, field, fallbac
     return Number.isFinite(numeric) ? numeric : fallback;
 }
 
+/**
+ * Resolves all active incoming-damage modifiers at the point damage is
+ * settled. Modifiers add together, and a modifier can exclude a structured
+ * damage-source type without requiring a status-specific branch.
+ */
+export function incomingDamageFor(shape, source = null) {
+    let damageModifier = 0;
+    let truncateToTenths = false;
+    for (const status of statusEffectsFor(shape)) {
+        if (!statusIsActive({ statusEffects: [status] }, status.type)) continue;
+        for (const effect of status.effects) {
+            if (effect.type !== STATUS_EFFECT_APPLICATIONS.INCOMING_DAMAGE_MODIFIER
+                || effect.mode !== CONSTANT_MODE
+                || damageSourceIsExcluded(effect, source)) continue;
+            const explicitModifier = Number(effect.damageModifier);
+            if (Number.isFinite(explicitModifier)) {
+                damageModifier += explicitModifier;
+            } else {
+                // Read older replay/status payloads that represented the
+                // same value as a per-effect factor.
+                const legacyMultiplier = Number(effect.multiplier);
+                if (Number.isFinite(legacyMultiplier)) damageModifier += legacyMultiplier - 1;
+            }
+            if (effect.rounding === "truncate_tenths") truncateToTenths = true;
+        }
+    }
+    return { damageModifier, truncateToTenths };
+}
+
 /** Adds or refreshes one status while preserving an active tick clock. */
 export function upsertStatusEffect(shape, incomingStatus) {
     const incoming = normalizeStatusEffect(incomingStatus);
@@ -142,4 +171,11 @@ function mergeStatusEffects(currentEffects, incomingEffects) {
 function mergeNumericMaximum(current, incoming, field) {
     if (current[field] == null || incoming[field] == null) return {};
     return { [field]: Math.max(Number(current[field]), Number(incoming[field])) };
+}
+
+function damageSourceIsExcluded(effect, source) {
+    if (source?.damageSourceKind !== "status") return false;
+    const sourceType = String(source.damageSourceType ?? "").toLowerCase();
+    return (Array.isArray(effect.excludedDamageSourceTypes) ? effect.excludedDamageSourceTypes : [])
+        .some((type) => String(type).toLowerCase() === sourceType);
 }

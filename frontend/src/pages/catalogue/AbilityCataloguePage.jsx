@@ -6,7 +6,7 @@ import { ABILITY_STATS } from "../../gameArena/gameconfig/Abilities.js";
 import { ALL_ABILITY_DEFINITIONS } from "../../gameArena/loadout/BotLoadout.js";
 import { useDialogFocus } from "../../components/useDialogFocus.js";
 import { abilityStatsForDisplay } from "./abilityStatsPresentation.js";
-import { STATUS_EFFECT_GUIDE } from "./statusEffectCatalogue.js";
+import { EFFECT_GUIDE } from "./statusEffectCatalogue.js";
 
 const ROUNDS = [0, 1, 2, 3];
 
@@ -202,11 +202,65 @@ export function AbilityModal({
                                 <dt className="text-xs text-slate-500">Effects</dt>
                                 <dd className="mt-1 text-sm leading-6 text-slate-200">{effects || "None"}</dd>
                             </div>
-                            <div>
-                                <dt className="text-xs text-slate-500">Shield interaction</dt>
-                                <dd className="mt-1 text-sm font-semibold text-slate-200">{titleCase(ability.shieldInteraction?.mode)}</dd>
-                            </div>
                         </dl>
+                    </aside>
+                </div>
+            </section>
+        </div>
+    );
+}
+
+export function EffectModal({
+    effect,
+    onClose,
+    overlayClassName = "z-50",
+}) {
+    const closeButtonRef = useRef(null);
+    const dialogRef = useRef(null);
+
+    useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onClose, lockScroll: true });
+
+    return (
+        <div className={`fixed inset-0 ${overlayClassName} grid place-items-center bg-[#02070de8] p-4 backdrop-blur-sm`} onMouseDown={(event) => {
+            if (event.target === event.currentTarget) onClose();
+        }}>
+            <section
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="effect-modal-title"
+                tabIndex={-1}
+                className="ability-modal max-h-[92vh] w-full max-w-3xl overflow-y-auto border border-green-400/60 bg-[#202427] text-white shadow-[0_32px_100px_rgba(0,0,0,.72)]"
+            >
+                <div className="relative overflow-hidden border-b border-slate-700/70 px-6 py-7 sm:px-8">
+                    <div className="relative flex items-start justify-between gap-6">
+                        <div>
+                            <p className="font-mono text-[10px] font-bold tracking-[.28em] text-green-300">{effect.category.toUpperCase()}</p>
+                            <h2 id="effect-modal-title" className="mt-2 font-display-action text-4xl uppercase tracking-wide text-white sm:text-5xl">
+                                {effect.label}
+                            </h2>
+                        </div>
+                        <button
+                            ref={closeButtonRef}
+                            type="button"
+                            onClick={onClose}
+                            aria-label={`Close ${effect.label} details`}
+                            className="modal-close-button"
+                        >
+                            <span aria-hidden="true">×</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div className="grid gap-7 px-6 py-7 sm:px-8 sm:grid-cols-[1.3fr_.7fr]">
+                    <div>
+                        <h3 className="font-mono text-[10px] font-bold tracking-[.24em] text-green-300">WHAT IT DOES</h3>
+                        <p className="mt-4 text-base leading-7 text-slate-200">{effect.description}</p>
+                    </div>
+                    <aside className="border border-slate-700/70 bg-slate-950/35 p-5">
+                        <h3 className="font-mono text-[10px] font-bold tracking-[.24em] text-green-300">CLASSIFICATION</h3>
+                        <p className="mt-4 font-display-action text-2xl uppercase tracking-wider text-slate-100">{effect.category}</p>
+
                     </aside>
                 </div>
             </section>
@@ -220,10 +274,18 @@ export default function AbilityCataloguePage() {
     const abilityFromRoute = new URLSearchParams(location.search).get("ability");
     const abilityFromRouteDefinition = ALL_ABILITY_DEFINITIONS.find(({ id }) => id === abilityFromRoute) ?? null;
     const [selectedAbility, setSelectedAbility] = useState(abilityFromRouteDefinition);
+    const [selectedEffect, setSelectedEffect] = useState(null);
+    const [showScrollTop, setShowScrollTop] = useState(false);
 
     useEffect(() => {
         setSelectedAbility(abilityFromRouteDefinition);
     }, [abilityFromRouteDefinition]);
+
+    useEffect(() => {
+        const handleScroll = () => setShowScrollTop(window.scrollY > 180);
+        window.addEventListener("scroll", handleScroll, { passive: true });
+        return () => window.removeEventListener("scroll", handleScroll);
+    }, []);
 
     const selectAbility = (ability) => {
         setSelectedAbility(ability);
@@ -254,22 +316,47 @@ export default function AbilityCataloguePage() {
                 </div>
             </header>
 
+            <nav aria-label="Jump to ability round" className="mx-auto flex max-w-7xl flex-wrap gap-2 px-5 pt-6 sm:px-8 sm:pt-8">
+                {[1, 2, 3].map((round) => (
+                    <a
+                        key={round}
+                        href={`#round-${round}-abilities`}
+                        className="catalogue-jump-button"
+                    >
+                        ROUND {round} ABILITIES
+                    </a>
+                ))}
+            </nav>
+
             <div className="mx-auto max-w-7xl space-y-12 px-5 py-12 sm:px-8 sm:py-16">
-                <section aria-labelledby="status-effects-title" className="border border-slate-700/70 bg-slate-950/30 p-5 sm:p-6">
+                <section aria-labelledby="combat-effects-title" className="border border-slate-700/70 bg-slate-950/30 p-5 sm:p-6">
                     <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-slate-700/60 pb-3">
                         <div>
                             <p className="font-mono text-[9px] font-bold tracking-[.28em] text-green-300">COMBAT EFFECTS</p>
-                            <h2 id="status-effects-title" className="mt-1 font-display-action text-3xl uppercase tracking-wider text-white">Status effects</h2>
+                            <h2 id="combat-effects-title" className="mt-1 font-display-action text-3xl uppercase tracking-wider text-white">Effect guide</h2>
                         </div>
-                        <span className="font-mono text-[9px] tracking-widest text-slate-500">HOW THEY FUNCTION</span>
+                        <span className="font-mono text-[9px] tracking-widest text-slate-500">STATUS · COMBAT</span>
                     </div>
-                    <div className="mt-4 grid gap-x-5 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
-                        {STATUS_EFFECT_GUIDE.map((status) => (
-                            <article key={status.id} className="border border-slate-700/70 bg-[#07131f] px-3 py-2.5">
-                                <h3 className="font-mono text-[10px] font-bold uppercase tracking-[.14em] text-slate-100">{status.label}</h3>
-                                <p className="mt-1 text-[11px] leading-4 text-slate-400">{status.description}</p>
-                            </article>
-                        ))}
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                        {EFFECT_GUIDE.map((effect) => {
+                            const isSelected = selectedEffect?.id === effect.id;
+                            return (
+                                <button
+                                    key={effect.id}
+                                    type="button"
+                                    onClick={() => setSelectedEffect(effect)}
+                                    className={`status-effect-card flex min-h-14 items-center justify-between gap-4 border px-4 py-2.5 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-200 ${isSelected ? "status-effect-card-selected" : ""}`}
+                                    aria-label={`View ${effect.label} details`}
+                                    aria-pressed={isSelected}
+                                >
+                                    <span className="min-w-0">
+                                        <span className="block truncate font-display-action text-lg uppercase tracking-wider text-slate-100">{effect.label}</span>
+                                        <span className="mt-0.5 block font-mono text-[8px] font-bold uppercase tracking-[.2em] text-green-300/70">{effect.category}</span>
+                                    </span>
+                                    <span className="status-effect-card__chevron shrink-0" aria-hidden="true" />
+                                </button>
+                            );
+                        })}
                     </div>
                 </section>
 
@@ -277,7 +364,7 @@ export default function AbilityCataloguePage() {
                     const roundAbilities = ALL_ABILITY_DEFINITIONS.filter((ability) => ability.round === round);
                     const standard = round === 0;
                     return (
-                        <section key={round} aria-labelledby={`round-${round}-title`}>
+                        <section id={`round-${round}-abilities`} key={round} aria-labelledby={`round-${round}-title`}>
                             <div className="mb-6 flex items-end justify-between gap-6 border-b border-slate-700/60 pb-3">
                                 <div>
                                     <p className="font-mono text-[9px] font-bold tracking-[.28em] text-slate-500">{standard ? "EVERY BOT" : `DRAFT TIER 0${round}`}</p>
@@ -334,9 +421,20 @@ export default function AbilityCataloguePage() {
                         </section>
                     );
                 })}
-            </div>
+                </div>
 
-            {selectedAbility && <AbilityModal ability={selectedAbility} onClose={closeAbility} onTestAbility={testAbility} />}
-        </main>
+                {selectedAbility && <AbilityModal ability={selectedAbility} onClose={closeAbility} onTestAbility={testAbility} />}
+                {selectedEffect && <EffectModal key={selectedEffect.id} effect={selectedEffect} onClose={() => setSelectedEffect(null)} />}
+                {showScrollTop && (
+                    <button
+                        type="button"
+                        className="catalogue-scroll-top"
+                        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+                        aria-label="Back to top"
+                    >
+                        BACK TO TOP
+                    </button>
+                )}
+            </main>
     );
 }

@@ -182,7 +182,6 @@ values. An ability's contract contains:
 ~~~text
 delivery -> how the hit reaches a target
 effects[] -> ordered game-state changes
-shieldInteraction -> which effects a shield prevents
 execution -> activation-time targeting/capture behavior
 ~~~
 
@@ -200,7 +199,7 @@ execution -> activation-time targeting/capture behavior
 | debuff | Applies a negative timed or presence status. | subtype, duration, strength |
 | buff | Applies a positive timed or presence status. | subtype, duration, strength |
 | interrupt | Cancels preparation without activation or stops a bot-owned active phase, then starts cooldown/reload. | duration when needed |
-| damage_reduction | Reduces incoming damage while active. | multiplier/amount, duration |
+| damage_reduction | Reduces incoming damage while active. | amount, converted to a negative additive modifier at runtime; duration |
 | damage_immunity | Prevents damage while active. | duration |
 | damage_reflection | Reflects damage under the declared defensive rules. | multiplier/amount, duration |
 | spawn_entity | Creates a projectile, trap, zone, or summon. | entity type and entity stats |
@@ -285,7 +284,7 @@ not automatically add damage.
 | trap | Moving or placed object that becomes armed and checks targets later. |
 | summon | Persistent owned object such as a drone. |
 
-Changing delivery can change collision timing, shield bearing, target timing,
+Changing delivery can change collision timing, target timing,
 and whether an entity is needed. Mirror the browser and server contract exactly.
 
 self is especially important: a visual/control ability such as Lock On is a
@@ -381,20 +380,16 @@ stat). Keep the projectile's configured range equal to that value. The range is
 not a `traveled`-based removal condition; lifetime, collision, and arena bounds
 still own entity removal.
 
-## 6. Change shields and defensive interactions
+## 6. Change defensive effects
 
-Each contract has a shieldInteraction. It declares which effect types a shield
-can prevent and the cost/geometry of that interaction. The current duel-v1
-catalog mostly uses ignore because there is no active shield-absorption rule.
+Defensive abilities use the same ordered effect contract as every other
+ability. Use `damage_reduction`, `damage_reflection`, or `damage_immunity`
+when the intended behavior is a timed defensive status. Hostile effects are
+skipped by the normal defensive-state check; there is no separate shield
+policy, absorption resource, or blocked-effect pass to maintain.
 
-When adding or changing a defensive ability:
-
-- declare the shield mode and prevented effect types in both contracts;
-- resolve the shield once per impact;
-- apply the remaining ordered effects only once;
-- test blocked damage, blocked status, displacement, charge cost, and replay.
-
-Do not independently re-apply an attached status after its hit was blocked.
+Test the status duration, effect strength, hostile-damage behavior, and replay
+state on both runtimes.
 
 ## 7. Change catalogue and bot-logic behavior
 
@@ -449,8 +444,8 @@ behavior. The normal sequence is:
    generic system.
 4. Implement the authoritative server effect in the corresponding combat/state
    system.
-5. Mirror shield handling, ordering, source ownership, friendly-fire behavior,
-   rounding, and status/entity interaction.
+5. Mirror effect ordering, source ownership, friendly-fire behavior, rounding,
+   and status/entity interaction.
 6. Add a contract test and a real ALWAYS-brain execution test on both sides.
 7. Add replay/presentation state only if the effect has a visible world result.
 
@@ -486,7 +481,7 @@ For a gameplay change, verify at least:
 - browser/server catalog and contract parity;
 - cooldown, windup, active, charge, and reload timing;
 - damage/healing/effect order and rounding;
-- target, ownership, friendly-fire, and shield behavior;
+- target, ownership, and friendly-fire behavior;
 - entity lifecycle and collision if an entity is involved;
 - deterministic repeated runs and replay state;
 - practice-room behavior and authoritative server behavior.

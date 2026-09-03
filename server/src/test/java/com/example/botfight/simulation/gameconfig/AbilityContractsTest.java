@@ -14,10 +14,8 @@ import org.junit.jupiter.api.Test;
 class AbilityContractsTest {
     @Test
     void activeContractsDoNotFilterEffects() {
-        assertThat(AbilityContracts.all().values()).allSatisfy(contract -> {
-            assertThat(contract.shieldInteraction().mode()).isEqualTo(AbilityContracts.ShieldMode.IGNORE);
-            assertThat(contract.shieldInteraction().prevents()).isEmpty();
-        });
+        assertThat(AbilityContracts.all().values()).allSatisfy(contract ->
+                assertThat(contract.effects()).isNotNull());
         assertThat(AbilityContracts.get(8).effects())
                 .filteredOn(effect -> effect.type() == KNOCKBACK)
                 .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(250));
@@ -47,8 +45,6 @@ class AbilityContractsTest {
         assertThat(AbilityContracts.get(26).effects())
                 .extracting(AbilityContracts.Effect::type)
                 .containsExactly(DAMAGE, AbilityContracts.EffectType.DEBUFF, KNOCKBACK);
-        assertThat(AbilityContracts.get(26).shieldInteraction().prevents()).isEmpty();
-
         assertThat(AbilityContracts.get(27).delivery())
                 .isEqualTo(AbilityContracts.DeliveryType.ZONE);
         assertThat(AbilityContracts.get(27).effects())
@@ -113,8 +109,6 @@ class AbilityContractsTest {
                 .extracting(AbilityContracts.Effect::type)
                 .containsExactly(DAMAGE);
         assertThat(AbilityContracts.effectAmount(34, DAMAGE)).isEqualTo(8);
-        assertThat(AbilityContracts.get(34).shieldInteraction().mode()).isEqualTo(AbilityContracts.ShieldMode.IGNORE);
-        assertThat(AbilityContracts.get(34).shieldInteraction().prevents()).isEmpty();
     }
 
     @Test

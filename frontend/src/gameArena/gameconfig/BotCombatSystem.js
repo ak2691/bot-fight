@@ -7,6 +7,7 @@ import { abilityHitsTarget } from "../ecs/abilities/AbilityHitDetectionSystem.js
 import { BASE_BOT_HP } from "../modelPayloads/arenaConstants.js";
 import {
     STATUS_EFFECT_APPLICATIONS,
+    incomingDamageFor,
     statusEffectValue,
     upsertStatusEffect,
 } from "../ecs/contracts/StatusContracts.js";
@@ -108,22 +109,11 @@ function distanceFrom(first, second) {
 export function applyDamageToShape(shape, damage, source = null) {
     if ((shape.hp ?? 0) <= 0) return shape;
     if (ignoresHostileEffects(shape)) return shape;
-    const incomingDamageMultiplier = statusEffectValue(
-        shape,
-        "incoming-damage",
-        STATUS_EFFECT_APPLICATIONS.INCOMING_DAMAGE_MODIFIER,
-        "multiplier",
-        1,
-    );
-    let remaining = Math.max(0, Number(damage) || 0) * Math.max(0, incomingDamageMultiplier);
-    const reactiveArmorMultiplier = statusEffectValue(
-        shape,
-        "reactive-armor",
-        STATUS_EFFECT_APPLICATIONS.INCOMING_DAMAGE_MODIFIER,
-        "multiplier",
-        1,
-    );
-    remaining = roundCombatValue(remaining * Math.max(0, reactiveArmorMultiplier));
+    const incomingDamage = incomingDamageFor(shape, source);
+    const baseDamage = Math.max(0, Number(damage) || 0);
+    let remaining = Math.max(0, baseDamage + baseDamage * incomingDamage.damageModifier);
+    if (incomingDamage.truncateToTenths) remaining = truncateDamageToTenths(remaining);
+    remaining = roundCombatValue(remaining);
     const hpBefore = Math.max(0, Number(shape.hp ?? shape.maxHp ?? BASE_BOT_HP));
     const hp = remaining > 0 ? roundCombatValue(Math.max(0, hpBefore - remaining)) : hpBefore;
     const appliedDamage = roundCombatValue(Math.max(0, hpBefore - hp));
@@ -183,6 +173,10 @@ export function applyDamageFromShapes(source, target, damage, damageSource = sou
 
 function roundCombatValue(value) {
     return Math.round(Number(value) * 1000) / 1000;
+}
+
+function truncateDamageToTenths(value) {
+    return Math.trunc(Math.max(0, Number(value) || 0) * 10) / 10;
 }
 
 function isHostileDamageSource(source, target) {
