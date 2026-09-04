@@ -1,10 +1,9 @@
 package com.example.botfight.simulation.core.combat;
 
 import static com.example.botfight.simulation.geometry.AngleCalculator.compassRadians;
-import static com.example.botfight.simulation.geometry.AngleCalculator.shortestDelta;
-import static com.example.botfight.simulation.geometry.AngleCalculator.vectorBearing;
 import static com.example.botfight.simulation.geometry.DistanceCalculator.rayIntersectsCircle;
 import static com.example.botfight.simulation.geometry.DistanceCalculator.segmentIntersectsCircle;
+import static com.example.botfight.simulation.geometry.DistanceCalculator.segmentIntersectsSector;
 import static com.example.botfight.simulation.geometry.DistanceCalculator.segmentsWithinDistance;
 import static com.example.botfight.simulation.geometry.DistanceCalculator.movingRectangleCollision;
 
@@ -13,8 +12,6 @@ import com.example.botfight.simulation.gameconfig.Abilities;
 import com.example.botfight.simulation.gameconfig.AbilityContracts;
 import com.example.botfight.simulation.gameconfig.AbilityContracts.DeliveryType;
 import com.example.botfight.simulation.gameconfig.AbilityContracts.HitboxGeometry;
-import java.util.ArrayList;
-import java.util.List;
 import org.springframework.stereotype.Service;
 
 /** Resolves declarative ability delivery geometry for bots and arena entities. */
@@ -58,13 +55,14 @@ final class AbilityHitDetectionService {
                     defender.movementStartX, defender.movementStartY,
                     defender.x, defender.y, targetRadius).hit();
         }
-        return segmentIntersectsArc(sourceX, sourceY,
+        return segmentIntersectsSector(sourceX, sourceY,
                 defender.movementStartX, defender.movementStartY, defender.x, defender.y,
                 sourceRotation(attacker, payload),
                 phaseNumber(phase == null ? null : phase.hitbox().get("range"),
-                        payload.abilityId(), Abilities.range(payload.abilityId())) + targetRadius,
+                        payload.abilityId(), Abilities.range(payload.abilityId())),
                 phaseNumber(phase == null ? null : phase.hitbox().get("arc"),
-                        payload.abilityId(), Abilities.arc(payload.abilityId())) / 2.0);
+                        payload.abilityId(), Abilities.arc(payload.abilityId())) / 2.0,
+                targetRadius);
     }
 
     private boolean movingRayHits(AbilityExecutionPayload payload, AbilityContracts.AbilityPhase phase,
@@ -85,46 +83,6 @@ final class AbilityHitDetectionService {
                 originY + directionY * phaseNumber(phase == null ? null : phase.hitbox().get("range"),
                         payload.abilityId(), Abilities.range(payload.abilityId())),
                 target.movementStartX, target.movementStartY, target.x, target.y, effectiveDistance);
-    }
-
-    private static boolean segmentIntersectsArc(double sourceX, double sourceY,
-                                                double startX, double startY,
-                                                double endX, double endY,
-                                                double rotation, double range, double halfArc) {
-        List<Double> candidates = new ArrayList<>(List.of(0.0, 1.0));
-        double dx = endX - startX;
-        double dy = endY - startY;
-        double lengthSquared = dx * dx + dy * dy;
-        if (lengthSquared > 0) {
-            candidates.add(clamp(((sourceX - startX) * dx + (sourceY - startY) * dy) / lengthSquared, 0, 1));
-        }
-        for (double boundary : new double[]{rotation - halfArc, rotation + halfArc}) {
-            double radians = compassRadians(boundary);
-            double edgeX = Math.cos(radians);
-            double edgeY = Math.sin(radians);
-            double denominator = dx * edgeY - dy * edgeX;
-            if (Math.abs(denominator) <= 1e-9) continue;
-            double sourceToStartX = sourceX - startX;
-            double sourceToStartY = sourceY - startY;
-            double t = (sourceToStartX * edgeY - sourceToStartY * edgeX) / denominator;
-            double rayDistance = (sourceToStartX * dy - sourceToStartY * dx) / denominator;
-            if (t >= 0 && t <= 1 && rayDistance >= 0 && rayDistance <= range) candidates.add(t);
-        }
-        return candidates.stream().anyMatch(t -> pointInArc(
-                sourceX, sourceY, startX + dx * t, startY + dy * t, rotation, range, halfArc));
-    }
-
-    private static boolean pointInArc(double sourceX, double sourceY, double pointX, double pointY,
-                                      double rotation, double range, double halfArc) {
-        double dx = pointX - sourceX;
-        double dy = pointY - sourceY;
-        double distance = Math.hypot(dx, dy);
-        return distance <= range && (distance <= 0.001
-                || Math.abs(shortestDelta(rotation, vectorBearing(dx, dy))) <= halfArc);
-    }
-
-    private static double clamp(double value, double min, double max) {
-        return Math.max(min, Math.min(max, value));
     }
 
     boolean rayHits(AbilityExecutionPayload payload, Bot source,
@@ -148,7 +106,6 @@ final class AbilityHitDetectionService {
         double sourceX = sourceX(attacker, payload);
         double sourceY = sourceY(attacker, payload);
         AbilityContracts.AbilityPhase phase = phase(payload);
-        double dx = targetX - sourceX, dy = targetY - sourceY;
         double targetRadius = payload.contract().includeTargetRadius() ? targetSize / 2.0 : 0;
         if (payload.contract().hitboxGeometry() == HitboxGeometry.RECTANGLE) {
             double radians = compassRadians(sourceRotation(attacker, payload));
@@ -167,11 +124,14 @@ final class AbilityHitDetectionService {
         double effectiveRange = payload.contract().delivery() == DeliveryType.RADIAL
                 ? phaseNumber(phase == null ? null : phase.hitbox().get("radius"), payload.abilityId(), range)
                 : phaseNumber(phase == null ? null : phase.hitbox().get("range"), payload.abilityId(), range);
-        if (Math.hypot(dx, dy) > effectiveRange + targetRadius) return false;
-        return payload.contract().delivery() == DeliveryType.RADIAL
-                || Math.abs(shortestDelta(sourceRotation(attacker, payload), vectorBearing(dx, dy)))
-                        <= phaseNumber(phase == null ? null : phase.hitbox().get("arc"),
-                        payload.abilityId(), Abilities.arc(payload.abilityId())) / 2.0;
+        if (payload.contract().delivery() == DeliveryType.RADIAL) {
+            return Math.hypot(targetX - sourceX, targetY - sourceY) <= effectiveRange + targetRadius;
+        }
+        return segmentIntersectsSector(sourceX, sourceY, targetX, targetY, targetX, targetY,
+                sourceRotation(attacker, payload), effectiveRange,
+                phaseNumber(phase == null ? null : phase.hitbox().get("arc"),
+                        payload.abilityId(), Abilities.arc(payload.abilityId())) / 2.0,
+                targetRadius);
     }
 
     boolean isDirectDelivery(DeliveryType delivery) {

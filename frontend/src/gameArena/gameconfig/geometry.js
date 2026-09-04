@@ -1,4 +1,4 @@
-import { compassDirection } from "../botlogic/planner/arenaAngles.js";
+import { compassDirection, vectorToCompassDegrees } from "../botlogic/planner/arenaAngles.js";
 
 export function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
 export function normalizeAngle(degrees) { return ((degrees % 360) + 360) % 360; }
@@ -21,6 +21,47 @@ export function segmentIntersectsCircle(start, end, circle) {
     const t = lengthSquared > 0 ? clamp(((circle.x - start.x) * dx + (circle.y - start.y) * dy) / lengthSquared, 0, 1) : 0;
     const nearestX = start.x + dx * t, nearestY = start.y + dy * t;
     return Math.hypot(circle.x - nearestX, circle.y - nearestY) <= Number(circle.size ?? 0) / 2;
+}
+
+/**
+ * Returns whether a moving circular target intersects a filled circular
+ * sector. The target radius is applied to the sector's radial edges and outer
+ * arc as well as its range, so collision follows the actual hitbox rather
+ * than only the target center's bearing.
+ */
+export function segmentIntersectsSector(
+    source,
+    start,
+    end,
+    rotationDegrees,
+    range,
+    halfArcDegrees,
+    targetRadius = 0,
+) {
+    const sectorRange = Math.max(0, Number(range) || 0);
+    const radius = Math.max(0, Number(targetRadius) || 0);
+    const boundedHalfArcDegrees = clamp(Number(halfArcDegrees) || 0, 0, 180);
+    const halfArc = boundedHalfArcDegrees * Math.PI / 180;
+    if (segmentIntersectsSectorAtCenter(source, start, end, rotationDegrees, sectorRange, halfArc)) return true;
+    if (radius <= 0) return false;
+
+    // The sector contains its origin, so an overlapping target hits no matter
+    // which side of the attacker's facing direction contains its center.
+    if (pointToSegmentDistance(source, start, end) <= radius) return true;
+
+    const firstBoundary = sectorBoundaryPoint(source, rotationDegrees - boundedHalfArcDegrees, sectorRange);
+    const secondBoundary = sectorBoundaryPoint(source, rotationDegrees + boundedHalfArcDegrees, sectorRange);
+    if (segmentsWithinDistance(start, end, source, firstBoundary, radius)
+        || segmentsWithinDistance(start, end, source, secondBoundary, radius)) return true;
+
+    return segmentToCircularArcDistance(
+        start,
+        end,
+        source,
+        sectorRange,
+        rotationDegrees,
+        halfArc,
+    ) <= radius;
 }
 
 /** Returns whether two circular colliders overlap at any point in one tick. */
@@ -143,6 +184,123 @@ function pointToSegmentDistance(point, start, end) {
         ? clamp(((Number(point.x) - Number(start.x)) * dx + (Number(point.y) - Number(start.y)) * dy) / lengthSquared, 0, 1)
         : 0;
     return Math.hypot(Number(point.x) - Number(start.x) - dx * t, Number(point.y) - Number(start.y) - dy * t);
+}
+
+function segmentIntersectsSectorAtCenter(source, start, end, rotationDegrees, range, halfArc) {
+    const candidates = [0, 1];
+    const dx = Number(end.x) - Number(start.x);
+    const dy = Number(end.y) - Number(start.y);
+    const lengthSquared = dx * dx + dy * dy;
+    if (lengthSquared > 0) candidates.push(clamp(
+        ((Number(source.x) - Number(start.x)) * dx + (Number(source.y) - Number(start.y)) * dy) / lengthSquared,
+        0,
+        1,
+    ));
+    for (const boundary of [
+        rotationDegrees - halfArc * 180 / Math.PI,
+        rotationDegrees + halfArc * 180 / Math.PI,
+    ]) {
+        const edge = compassDirection(boundary);
+        const denominator = dx * edge.y - dy * edge.x;
+        if (Math.abs(denominator) <= 1e-9) continue;
+        const sourceToStartX = Number(source.x) - Number(start.x);
+        const sourceToStartY = Number(source.y) - Number(start.y);
+        const t = (sourceToStartX * edge.y - sourceToStartY * edge.x) / denominator;
+        const rayDistance = (sourceToStartX * dy - sourceToStartY * dx) / denominator;
+        if (t >= 0 && t <= 1 && rayDistance >= 0 && rayDistance <= range) candidates.push(t);
+    }
+    return candidates.some((t) => pointInSector(
+        source,
+        { x: Number(start.x) + dx * t, y: Number(start.y) + dy * t },
+        rotationDegrees,
+        range,
+        halfArc,
+    ));
+}
+
+function pointInSector(source, point, rotationDegrees, range, halfArc) {
+    const dx = Number(point.x) - Number(source.x);
+    const dy = Number(point.y) - Number(source.y);
+    const distance = Math.hypot(dx, dy);
+    if (distance > range + 1e-9) return false;
+    if (distance <= 0.001 || halfArc >= Math.PI - 1e-9) return true;
+    const bearing = vectorToCompassDegrees(dx, dy);
+    const delta = ((bearing - Number(rotationDegrees) + 540) % 360) - 180;
+    return Math.abs(delta) * Math.PI / 180 <= halfArc + 1e-9;
+}
+
+function sectorBoundaryPoint(source, bearing, range) {
+    const direction = compassDirection(bearing);
+    return {
+        x: Number(source.x) + direction.x * range,
+        y: Number(source.y) + direction.y * range,
+    };
+}
+
+function segmentToCircularArcDistance(start, end, source, range, rotationDegrees, halfArc) {
+    if (range <= 0) return pointToSegmentDistance(source, start, end);
+    const firstBoundary = sectorBoundaryPoint(source, rotationDegrees - halfArc * 180 / Math.PI, range);
+    const secondBoundary = sectorBoundaryPoint(source, rotationDegrees + halfArc * 180 / Math.PI, range);
+    let minimum = Math.min(
+        pointToArcDistance(start, source, range, rotationDegrees, halfArc, firstBoundary, secondBoundary),
+        pointToArcDistance(end, source, range, rotationDegrees, halfArc, firstBoundary, secondBoundary),
+        pointToSegmentDistance(firstBoundary, start, end),
+        pointToSegmentDistance(secondBoundary, start, end),
+    );
+
+    const dx = Number(end.x) - Number(start.x);
+    const dy = Number(end.y) - Number(start.y);
+    const lengthSquared = dx * dx + dy * dy;
+    if (lengthSquared > 0) {
+        const t = clamp(((Number(source.x) - Number(start.x)) * dx
+            + (Number(source.y) - Number(start.y)) * dy) / lengthSquared, 0, 1);
+        const closest = { x: Number(start.x) + dx * t, y: Number(start.y) + dy * t };
+        if (pointAngleInSector(closest, source, rotationDegrees, halfArc)) {
+            minimum = Math.min(minimum, Math.abs(Math.hypot(
+                closest.x - Number(source.x), closest.y - Number(source.y),
+            ) - range));
+        }
+
+        const offsetX = Number(start.x) - Number(source.x);
+        const offsetY = Number(start.y) - Number(source.y);
+        const a = lengthSquared;
+        const b = 2 * (offsetX * dx + offsetY * dy);
+        const c = offsetX * offsetX + offsetY * offsetY - range * range;
+        const discriminant = b * b - 4 * a * c;
+        if (discriminant >= 0) {
+            const root = Math.sqrt(discriminant);
+            for (const intersection of [(-b - root) / (2 * a), (-b + root) / (2 * a)]) {
+                if (intersection < 0 || intersection > 1) continue;
+                const point = {
+                    x: Number(start.x) + dx * intersection,
+                    y: Number(start.y) + dy * intersection,
+                };
+                if (pointAngleInSector(point, source, rotationDegrees, halfArc)) return 0;
+            }
+        }
+    }
+    return minimum;
+}
+
+function pointToArcDistance(point, source, range, rotationDegrees, halfArc, firstBoundary, secondBoundary) {
+    if (pointAngleInSector(point, source, rotationDegrees, halfArc)) {
+        return Math.abs(Math.hypot(
+            Number(point.x) - Number(source.x), Number(point.y) - Number(source.y),
+        ) - range);
+    }
+    return Math.min(
+        Math.hypot(Number(point.x) - firstBoundary.x, Number(point.y) - firstBoundary.y),
+        Math.hypot(Number(point.x) - secondBoundary.x, Number(point.y) - secondBoundary.y),
+    );
+}
+
+function pointAngleInSector(point, source, rotationDegrees, halfArc) {
+    const dx = Number(point.x) - Number(source.x);
+    const dy = Number(point.y) - Number(source.y);
+    if (Math.hypot(dx, dy) <= 0.001 || halfArc >= Math.PI - 1e-9) return true;
+    const bearing = vectorToCompassDegrees(dx, dy);
+    const delta = ((bearing - Number(rotationDegrees) + 540) % 360) - 180;
+    return Math.abs(delta) * Math.PI / 180 <= halfArc + 1e-9;
 }
 
 function toLocalPoint(x, y, cos, sin) {

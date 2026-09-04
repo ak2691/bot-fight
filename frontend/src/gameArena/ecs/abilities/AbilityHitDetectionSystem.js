@@ -1,8 +1,8 @@
 import { ACTION_TO_ABILITY } from "../../loadout/BotLoadout.js";
 import { abilityExecutionPayload } from "../../gameconfig/AbilityExecutionPayload.js";
 import { DELIVERY_TYPES, HITBOX_GEOMETRIES } from "../../gameconfig/AbilityContracts.js";
-import { angleDelta, clamp, movingRectangleCollision, segmentIntersectsCircle, segmentsWithinDistance } from "../../gameconfig/geometry.js";
-import { compassDegreesToRadians, compassDirection, vectorToCompassDegrees } from "../../botlogic/planner/arenaAngles.js";
+import { movingRectangleCollision, segmentIntersectsCircle, segmentIntersectsSector, segmentsWithinDistance } from "../../gameconfig/geometry.js";
+import { compassDegreesToRadians, compassDirection } from "../../botlogic/planner/arenaAngles.js";
 
 const DIRECT_DELIVERIES = new Set([
     DELIVERY_TYPES.SELF,
@@ -98,13 +98,14 @@ export function abilityRangeHits(
             targetRadius,
         ).hit;
     }
-    return segmentIntersectsArc(
+    return segmentIntersectsSector(
         { x: Number(source.x), y: Number(source.y) },
         targetPath.start,
         targetPath.end,
         Number(source.rotation ?? 0),
-        effectiveRange + targetRadius,
+        effectiveRange,
         resolveHitboxNumber(hitbox.arc, payload, Number(payload.stats.arc ?? 36)) / 2,
+        targetRadius,
     );
 }
 
@@ -154,34 +155,4 @@ function targetMovementSegment(target) {
         start: { x: startX, y: startY },
         end: { x: Number(target.x), y: Number(target.y) },
     };
-}
-
-function segmentIntersectsArc(source, start, end, rotation, range, halfArc) {
-    const candidates = [0, 1];
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
-    const lengthSquared = dx * dx + dy * dy;
-    if (lengthSquared > 0) candidates.push(clamp(
-        ((source.x - start.x) * dx + (source.y - start.y) * dy) / lengthSquared,
-        0,
-        1,
-    ));
-    for (const boundary of [rotation - halfArc, rotation + halfArc]) {
-        const edge = compassDirection(boundary);
-        const denominator = dx * edge.y - dy * edge.x;
-        if (Math.abs(denominator) <= 1e-9) continue;
-        const sourceToStartX = source.x - start.x;
-        const sourceToStartY = source.y - start.y;
-        const t = (sourceToStartX * edge.y - sourceToStartY * edge.x) / denominator;
-        const rayDistance = (sourceToStartX * dy - sourceToStartY * dx) / denominator;
-        if (t >= 0 && t <= 1 && rayDistance >= 0 && rayDistance <= range) candidates.push(t);
-    }
-    return candidates.some((t) => {
-        const x = start.x + dx * t;
-        const y = start.y + dy * t;
-        const distance = Math.hypot(x - source.x, y - source.y);
-        if (distance > range) return false;
-        if (distance <= 0.001) return true;
-        return Math.abs(angleDelta(rotation, vectorToCompassDegrees(x - source.x, y - source.y))) <= halfArc;
-    });
 }

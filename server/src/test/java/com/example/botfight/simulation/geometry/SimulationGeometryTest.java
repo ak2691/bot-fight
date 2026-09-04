@@ -21,6 +21,16 @@ class SimulationGeometryTest {
     }
 
     @Test
+    void sectorCollisionUsesTheTargetCircleNotOnlyItsCenterBearing() {
+        assertThat(DistanceCalculator.segmentIntersectsSector(
+                0, 0, 0, -10, 0, -10, 180, 80, 15, 30)).isTrue();
+        assertThat(DistanceCalculator.segmentIntersectsSector(
+                0, 0, 60, 20, 60, 20, 90, 80, 15, 30)).isTrue();
+        assertThat(DistanceCalculator.segmentIntersectsSector(
+                0, 0, 0, -60, 0, -60, 180, 80, 15, 10)).isFalse();
+    }
+
+    @Test
     void rectangleCollisionUsesTheSquareFootprintInsteadOfACircularFootprint() {
         DistanceCalculator.MovingCircleCollision square = DistanceCalculator.movingRectangleCollision(
                 0, 0, 0, 0, 20, 20, 0,

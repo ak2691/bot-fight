@@ -744,6 +744,18 @@ class DuelSimulationServiceTest {
     }
 
     @Test
+    void basicStrikeHitsAnOverlappingTargetBehindTheAttacker() {
+        MatchPlaybackDTO result = service.simulate(request(
+                arena(500),
+                botWithRotation("basic-striker-overlap", "Basic", 1, 100, 410, "custom", customBrain("[]", """
+                        [{"conditions":[{"type":"always"}],"action":34}]
+                        """), 180.0),
+                botWithRotation("basic-target-overlap", "Target", 2, 100, 400, "custom", idleBrain, 0.0)));
+
+        assertThat(result.frames().getFirst().bots().get(1).hp()).isEqualTo(142);
+    }
+
+    @Test
     void phaseStrikeHitsEveryTargetFromItsActivationRectangleAndTeleportsOnce() {
         MatchPlaybackDTO result = service.simulate(request(arena(100), List.of(
                 botWithTeamAndLoadout("phase-striker", "Phase", 1, 100, 400, 1, "custom", customBrain("[25]", """

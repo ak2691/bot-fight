@@ -1446,10 +1446,10 @@ test("slash hit resolves only on its activation tick while its animation continu
     assert.equal(abilityHitsTarget({ x: 100, y: 100, rotation: 90, size: 60, triggeredAbility: null, abilities: [1] }, defender), false);
 });
 
-test("slash hitbox matches the inclusive 120-degree, 92-unit sweep", () => {
+test("slash hitbox uses the inclusive 120-degree, 92-unit sector", () => {
     const attacker = { x: 100, y: 100, rotation: 90, size: 60, triggeredAbility: 1, abilities: [1] };
     for (const offset of [-60, 60]) assert.equal(abilityHitsTarget(attacker, targetAtBearing(attacker, 80, attacker.rotation + offset)), true, `at ${offset} degrees`);
-    for (const offset of [-60.1, 60.1]) assert.equal(abilityHitsTarget(attacker, targetAtBearing(attacker, 80, attacker.rotation + offset)), false, `outside ${offset} degrees`);
+    for (const offset of [-68, 68]) assert.equal(abilityHitsTarget(attacker, targetAtBearing(attacker, 80, attacker.rotation + offset)), false, `outside ${offset} degrees`);
 });
 
 test("Basic Strike reaches the executor with its 8-damage, 80-range, 30-degree hitbox", () => {
@@ -1470,9 +1470,21 @@ test("Basic Strike reaches the executor with its 8-damage, 80-range, 30-degree h
     for (const offset of [-15, 15]) {
         assert.equal(abilityHitsTarget(fired, targetAtBearing(attacker, 60, attacker.rotation + offset, 60)), true, `at ${offset} degrees`);
     }
-    for (const offset of [-15.1, 15.1]) {
+    for (const offset of [-46, 46]) {
         assert.equal(abilityHitsTarget(fired, targetAtBearing(attacker, 60, attacker.rotation + offset, 60)), false, `outside ${offset} degrees`);
     }
+    // A target's circle can overlap the sector even when its center is just
+    // outside the authored arc angle.
+    assert.equal(abilityHitsTarget(fired, targetAtBearing(attacker, 60, attacker.rotation + 20, 60)), true);
+
+    const overlappingBehindTarget = {
+        id: "behind-but-overlapping",
+        ...targetAtBearing(attacker, 10, attacker.rotation + 180, 60),
+        hp: 150,
+        maxHp: 150,
+    };
+    assert.equal(abilityHitsTarget(fired, overlappingBehindTarget), true);
+    assert.equal(resolveAbilityCombat(fired, overlappingBehindTarget)[1].hp, 142);
 });
 
 test("heavy slash hitbox matches the inclusive 150-degree, 115-unit sweep", () => {
@@ -1483,7 +1495,7 @@ test("heavy slash hitbox matches the inclusive 150-degree, 115-unit sweep", () =
         const target = { id: `target-${offset}`, ...targetAtBearing(attacker, 80, attacker.rotation + offset), hp: 100, maxHp: 100 };
         assert.ok(resolveAbilityCombat(attacker, target)[1].hp < 100, `at ${offset} degrees`);
     }
-    for (const offset of [-75.1, 75.1]) {
+    for (const offset of [-83, 83]) {
         const target = { id: `target-${offset}`, ...targetAtBearing(attacker, 80, attacker.rotation + offset), hp: 100, maxHp: 100 };
         assert.equal(resolveAbilityCombat(attacker, target)[1].hp, 100, `outside ${offset} degrees`);
     }

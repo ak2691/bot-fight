@@ -32,6 +32,41 @@ public final class DistanceCalculator {
         return between(circleX, circleY, startX + dx * t, startY + dy * t) <= radius;
     }
 
+    /**
+     * Returns whether a moving circular target intersects a filled circular
+     * sector. The target radius is applied to the sector's radial edges and
+     * outer arc as well as its range, rather than only to the target center's
+     * bearing.
+     */
+    public static boolean segmentIntersectsSector(
+            double sourceX, double sourceY,
+            double startX, double startY, double endX, double endY,
+            double rotationDegrees, double range, double halfArcDegrees,
+            double targetRadius) {
+        double sectorRange = Math.max(0, finiteOrZero(range));
+        double radius = Math.max(0, finiteOrZero(targetRadius));
+        double halfArc = Math.min(180, Math.max(0, finiteOrZero(halfArcDegrees)));
+        if (segmentIntersectsSectorAtCenter(sourceX, sourceY, startX, startY,
+                endX, endY, rotationDegrees, sectorRange, halfArc)) return true;
+        if (radius <= 0) return false;
+
+        // The sector contains its origin, so an overlapping target hits no
+        // matter which side of the attacker's facing contains its center.
+        if (pointToSegmentDistance(sourceX, sourceY, startX, startY, endX, endY) <= radius) return true;
+
+        double firstBoundaryX = sourceX + Math.cos(AngleCalculator.compassRadians(rotationDegrees - halfArc)) * sectorRange;
+        double firstBoundaryY = sourceY + Math.sin(AngleCalculator.compassRadians(rotationDegrees - halfArc)) * sectorRange;
+        double secondBoundaryX = sourceX + Math.cos(AngleCalculator.compassRadians(rotationDegrees + halfArc)) * sectorRange;
+        double secondBoundaryY = sourceY + Math.sin(AngleCalculator.compassRadians(rotationDegrees + halfArc)) * sectorRange;
+        if (segmentsWithinDistance(startX, startY, endX, endY,
+                sourceX, sourceY, firstBoundaryX, firstBoundaryY, radius)
+                || segmentsWithinDistance(startX, startY, endX, endY,
+                sourceX, sourceY, secondBoundaryX, secondBoundaryY, radius)) return true;
+
+        return segmentToCircularArcDistance(startX, startY, endX, endY,
+                sourceX, sourceY, sectorRange, rotationDegrees, halfArc) <= radius;
+    }
+
     /** Returns whether two circular colliders overlap at any point in one tick. */
     public static boolean movingCirclesIntersect(
             double firstStartX, double firstStartY, double firstEndX, double firstEndY,
@@ -182,6 +217,123 @@ public final class DistanceCalculator {
                 ? clamp(((pointX - startX) * dx + (pointY - startY) * dy) / lengthSquared, 0, 1)
                 : 0;
         return between(pointX, pointY, startX + dx * t, startY + dy * t);
+    }
+
+    private static boolean segmentIntersectsSectorAtCenter(
+            double sourceX, double sourceY,
+            double startX, double startY, double endX, double endY,
+            double rotationDegrees, double range, double halfArc) {
+        double dx = endX - startX;
+        double dy = endY - startY;
+        double lengthSquared = dx * dx + dy * dy;
+        if (pointInSector(sourceX, sourceY, startX, startY, rotationDegrees, range, halfArc)
+                || pointInSector(sourceX, sourceY, endX, endY, rotationDegrees, range, halfArc)) return true;
+        if (lengthSquared > 0) {
+            double t = clamp(((sourceX - startX) * dx + (sourceY - startY) * dy) / lengthSquared, 0, 1);
+            if (pointInSector(sourceX, sourceY, startX + dx * t, startY + dy * t,
+                    rotationDegrees, range, halfArc)) return true;
+        }
+        for (double boundary : new double[]{rotationDegrees - halfArc, rotationDegrees + halfArc}) {
+            double radians = AngleCalculator.compassRadians(boundary);
+            double edgeX = Math.cos(radians);
+            double edgeY = Math.sin(radians);
+            double denominator = dx * edgeY - dy * edgeX;
+            if (Math.abs(denominator) <= 1e-9) continue;
+            double sourceToStartX = sourceX - startX;
+            double sourceToStartY = sourceY - startY;
+            double t = (sourceToStartX * edgeY - sourceToStartY * edgeX) / denominator;
+            double rayDistance = (sourceToStartX * dy - sourceToStartY * dx) / denominator;
+            if (t >= 0 && t <= 1 && rayDistance >= 0 && rayDistance <= range
+                    && pointInSector(sourceX, sourceY, startX + dx * t, startY + dy * t,
+                    rotationDegrees, range, halfArc)) return true;
+        }
+        return false;
+    }
+
+    private static boolean pointInSector(double sourceX, double sourceY,
+                                         double pointX, double pointY,
+                                         double rotationDegrees, double range, double halfArc) {
+        double dx = pointX - sourceX;
+        double dy = pointY - sourceY;
+        double distance = Math.hypot(dx, dy);
+        if (distance > range + 1e-9) return false;
+        if (distance <= 0.001 || halfArc >= 180 - 1e-9) return true;
+        return Math.abs(AngleCalculator.shortestDelta(rotationDegrees,
+                AngleCalculator.vectorBearing(dx, dy))) <= halfArc + 1e-9;
+    }
+
+    private static double segmentToCircularArcDistance(
+            double startX, double startY, double endX, double endY,
+            double sourceX, double sourceY, double range,
+            double rotationDegrees, double halfArc) {
+        if (range <= 0) return pointToSegmentDistance(sourceX, sourceY, startX, startY, endX, endY);
+        double firstRadians = AngleCalculator.compassRadians(rotationDegrees - halfArc);
+        double secondRadians = AngleCalculator.compassRadians(rotationDegrees + halfArc);
+        double firstBoundaryX = sourceX + Math.cos(firstRadians) * range;
+        double firstBoundaryY = sourceY + Math.sin(firstRadians) * range;
+        double secondBoundaryX = sourceX + Math.cos(secondRadians) * range;
+        double secondBoundaryY = sourceY + Math.sin(secondRadians) * range;
+        double minimum = Math.min(
+                pointToArcDistance(startX, startY, sourceX, sourceY, range,
+                        rotationDegrees, halfArc, firstBoundaryX, firstBoundaryY, secondBoundaryX, secondBoundaryY),
+                Math.min(
+                        pointToArcDistance(endX, endY, sourceX, sourceY, range,
+                                rotationDegrees, halfArc, firstBoundaryX, firstBoundaryY, secondBoundaryX, secondBoundaryY),
+                        Math.min(
+                                pointToSegmentDistance(firstBoundaryX, firstBoundaryY, startX, startY, endX, endY),
+                                pointToSegmentDistance(secondBoundaryX, secondBoundaryY, startX, startY, endX, endY))));
+
+        double dx = endX - startX;
+        double dy = endY - startY;
+        double lengthSquared = dx * dx + dy * dy;
+        if (lengthSquared <= 0) return minimum;
+        double t = clamp(((sourceX - startX) * dx + (sourceY - startY) * dy) / lengthSquared, 0, 1);
+        double closestX = startX + dx * t;
+        double closestY = startY + dy * t;
+        if (pointAngleInSector(closestX, closestY, sourceX, sourceY, rotationDegrees, halfArc)) {
+            minimum = Math.min(minimum, Math.abs(Math.hypot(closestX - sourceX, closestY - sourceY) - range));
+        }
+
+        double offsetX = startX - sourceX;
+        double offsetY = startY - sourceY;
+        double b = 2 * (offsetX * dx + offsetY * dy);
+        double c = offsetX * offsetX + offsetY * offsetY - range * range;
+        double discriminant = b * b - 4 * lengthSquared * c;
+        if (discriminant >= 0) {
+            double root = Math.sqrt(discriminant);
+            for (double intersection : new double[]{
+                    (-b - root) / (2 * lengthSquared),
+                    (-b + root) / (2 * lengthSquared)}) {
+                if (intersection < 0 || intersection > 1) continue;
+                double pointX = startX + dx * intersection;
+                double pointY = startY + dy * intersection;
+                if (pointAngleInSector(pointX, pointY, sourceX, sourceY, rotationDegrees, halfArc)) return 0;
+            }
+        }
+        return minimum;
+    }
+
+    private static double pointToArcDistance(
+            double pointX, double pointY, double sourceX, double sourceY,
+            double range, double rotationDegrees, double halfArc,
+            double firstBoundaryX, double firstBoundaryY,
+            double secondBoundaryX, double secondBoundaryY) {
+        if (pointAngleInSector(pointX, pointY, sourceX, sourceY, rotationDegrees, halfArc)) {
+            return Math.abs(Math.hypot(pointX - sourceX, pointY - sourceY) - range);
+        }
+        return Math.min(
+                between(pointX, pointY, firstBoundaryX, firstBoundaryY),
+                between(pointX, pointY, secondBoundaryX, secondBoundaryY));
+    }
+
+    private static boolean pointAngleInSector(double pointX, double pointY,
+                                              double sourceX, double sourceY,
+                                              double rotationDegrees, double halfArc) {
+        double dx = pointX - sourceX;
+        double dy = pointY - sourceY;
+        if (Math.hypot(dx, dy) <= 0.001 || halfArc >= 180 - 1e-9) return true;
+        return Math.abs(AngleCalculator.shortestDelta(rotationDegrees,
+                AngleCalculator.vectorBearing(dx, dy))) <= halfArc + 1e-9;
     }
 
     private static boolean segmentsIntersect(double firstStartX, double firstStartY,
