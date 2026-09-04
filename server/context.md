@@ -12,7 +12,9 @@ All Java paths below are under
 
 - `controller/`: REST and STOMP boundaries for auth, submissions, time, and
   matchmaking messages, notifications, duel/party invites, and custom lobbies.
-- `DTO/`: request/response and replay boundary shapes.
+- `DTO/`: request/response and replay boundary shapes, grouped by boundary area
+  under `auth/`, `profile/`, `block/`, `submission/`, `puzzle/`, `party/`,
+  `customlobby/`, `match/`, and `notification/`.
 - `service/`: business services grouped by responsibility: `auth/`,
   `submission/`, `limits/`, `matchmaking/`, `match/`, `profile/`, `rating/`,
   `puzzle/`, `invite/`, `party/`, `customlobby/`, `block/`, `notification/`, `websocket/`, and `system/`. Party membership and custom-lobby rosters are transient socket-bound runtime state; they are not persisted match roster sources. Puzzle authoring/listing owns admin
@@ -25,7 +27,9 @@ All Java paths below are under
   `submission/`, and `timing/` focused on one active-match concern. Keep FIFO
   queue pairing in `matchmaking/` separate from active-match rounds, reconnect
   deadlines, simulation, and result persistence in `match/`.
-- `domain/`: JPA entities and persisted status/result enums.
+- `domain/`: JPA entities and persisted status/result enums, grouped by owning
+  area under `auth/`, `profile/`, `rating/`, `block/`, `puzzle/`, `party/`,
+  `match/`, and `submission/`.
 - `repository/`: JPA queries. Ownership-sensitive access must include or verify
   the authenticated user and return generic not-found behavior for private data.
 - `security/` and `config/`: session identity, Spring Security/CSRF, time, and
@@ -44,7 +48,10 @@ All Java paths below are under
 - `simulation/gameconfig/`: authoritative ability definitions, effect/shield
   contracts, and the active duel configuration.
 - `simulation/ecs/`: authoritative ability-entity model, split into
-  `contracts/`, `abilities/`, and `entities/`.
+  `contracts/`, `abilities/`, and `entities/`. Phase contracts own the current
+  entity type, hitbox, visual, repeat scheduler, and allowlisted event
+  response; collision services supply target IDs and the entity system routes
+  effects into bot state without replacing the logical entity on transitions.
 - `src/main/resources/db/migration/`: append-only Flyway schema history.
 
 ## Route by task

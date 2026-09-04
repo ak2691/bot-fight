@@ -621,7 +621,7 @@ public final class BotLogicContracts {
     }
 
     private static boolean isStatusEffect(AbilityContracts.Effect effect) {
-        return effect != null && (effect.type() == AbilityContracts.EffectType.DEBUFF
+        return effect != null && (effect.type() == AbilityContracts.EffectType.STATUS
                 || effect.type() == AbilityContracts.EffectType.BUFF);
     }
 

@@ -1,8 +1,8 @@
 package com.example.botfight.repository;
 
-import com.example.botfight.domain.MatchParticipant;
-import com.example.botfight.domain.MatchMode;
-import com.example.botfight.domain.MatchResult;
+import com.example.botfight.domain.match.MatchParticipant;
+import com.example.botfight.domain.match.MatchMode;
+import com.example.botfight.domain.match.MatchResult;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;

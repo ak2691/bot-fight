@@ -14,11 +14,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
-import com.example.botfight.DTO.AuthUserDTO;
-import com.example.botfight.DTO.GoogleLinkRequestDTO;
-import com.example.botfight.DTO.UsernameRequestDTO;
-import com.example.botfight.domain.AppUser;
-import com.example.botfight.domain.UserAuthIdentity;
+import com.example.botfight.DTO.auth.AuthUserDTO;
+import com.example.botfight.DTO.auth.GoogleLinkRequestDTO;
+import com.example.botfight.DTO.auth.UsernameRequestDTO;
+import com.example.botfight.domain.auth.AppUser;
+import com.example.botfight.domain.auth.UserAuthIdentity;
 import com.example.botfight.repository.UserAuthIdentityRepository;
 import com.example.botfight.repository.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;

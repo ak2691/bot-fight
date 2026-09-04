@@ -1,6 +1,6 @@
 package com.example.botfight.service.match.model;
 
-import com.example.botfight.DTO.MatchmakingPlayerDTO;
+import com.example.botfight.DTO.match.MatchmakingPlayerDTO;
 import java.util.UUID;
 
 public record MatchPlayer(

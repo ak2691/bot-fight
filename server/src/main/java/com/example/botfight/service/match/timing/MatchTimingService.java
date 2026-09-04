@@ -1,7 +1,7 @@
 package com.example.botfight.service.match.timing;
 
-import com.example.botfight.DTO.MatchmakingEventDTO;
-import com.example.botfight.domain.BotSubmission;
+import com.example.botfight.DTO.match.MatchmakingEventDTO;
+import com.example.botfight.domain.submission.BotSubmission;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.match.coordination.MatchLockService;
 import com.example.botfight.service.match.event.MatchEventFactory;

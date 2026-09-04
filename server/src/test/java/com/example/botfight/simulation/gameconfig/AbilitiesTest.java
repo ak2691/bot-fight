@@ -8,23 +8,39 @@ class AbilitiesTest {
 
     @Test
     void grenadeDamageUsesTheCanonicalCenterFalloff() {
-        assertThat(Abilities.damageAtDistance(4, 0)).isEqualTo(40);
-        assertThat(Abilities.damageAtDistance(4, 32)).isEqualTo(32.5);
-        assertThat(Abilities.damageAtDistance(4, 64)).isEqualTo(25);
-        assertThat(Abilities.damageAtDistance(4, 70)).isEqualTo(25);
-        assertThat(Abilities.damageAtDistance(4, 71)).isZero();
+        assertThat(Abilities.amountAtDistance(4, 0)).isEqualTo(40);
+        assertThat(Abilities.amountAtDistance(4, 32)).isEqualTo(32.5);
+        assertThat(Abilities.amountAtDistance(4, 64)).isEqualTo(25);
+        assertThat(Abilities.amountAtDistance(4, 70)).isEqualTo(25);
+        assertThat(Abilities.amountAtDistance(4, 71)).isZero();
     }
 
     @Test
     void rangedDamageProfilesUseLinearEndpointsAndPlateaus() {
-        assertThat(Abilities.damageAtDistance(3, 100)).isEqualTo(15);
-        assertThat(Abilities.damageAtDistance(3, 400)).isEqualTo(10);
-        assertThat(Abilities.damageAtDistance(3, 700)).isEqualTo(5);
-        assertThat(Abilities.damageAtDistance(12, 166.665)).isEqualTo(6);
-        assertThat(Abilities.damageAtDistance(12, 400)).isEqualTo(4);
-        assertThat(Abilities.damageAtDistance(14, 45)).isEqualTo(27.5);
-        assertThat(Abilities.damageAtDistance(14, 120)).isEqualTo(20);
-        assertThat(Abilities.damageAtDistance(22, 65)).isEqualTo(15);
+        assertThat(Abilities.amountAtDistance(3, 100)).isEqualTo(15);
+        assertThat(Abilities.amountAtDistance(3, 400)).isEqualTo(10);
+        assertThat(Abilities.amountAtDistance(3, 700)).isEqualTo(5);
+        assertThat(Abilities.amountAtDistance(12, 166.665)).isEqualTo(6);
+        assertThat(Abilities.amountAtDistance(12, 400)).isEqualTo(4);
+        assertThat(Abilities.amountAtDistance(14, 45)).isEqualTo(27.5);
+        assertThat(Abilities.amountAtDistance(14, 120)).isEqualTo(20);
+        assertThat(Abilities.amountAtDistance(22, 65)).isEqualTo(15);
+    }
+
+    @Test
+    void genericAmountAndDurationProfilesClampToTheActiveAbilityRange() {
+        AbilityContracts.Falloff amountProfile = new AbilityContracts.Falloff(
+                20.0, 100.0, null, null, 0.0, 160.0);
+        assertThat(Abilities.amountAtDistance(10, 0, amountProfile, 80.0)).isEqualTo(100);
+        assertThat(Abilities.amountAtDistance(10, 40, amountProfile, 80.0)).isEqualTo(60);
+        assertThat(Abilities.amountAtDistance(10, 80, amountProfile, 80.0)).isEqualTo(20);
+        assertThat(Abilities.amountAtDistance(10, 81, amountProfile, 80.0)).isZero();
+
+        AbilityContracts.Falloff durationProfile = new AbilityContracts.Falloff(
+                null, null, 25, 100, 0.0, 160.0);
+        assertThat(Abilities.durationAtDistance(10, 40, 100, durationProfile, 80.0)).isEqualTo(63);
+        assertThat(Abilities.durationAtDistance(10, 80, 100, durationProfile, 80.0)).isEqualTo(25);
+        assertThat(Abilities.durationAtDistance(10, 81, 100, durationProfile, 80.0)).isZero();
     }
 
     @Test
@@ -32,7 +48,6 @@ class AbilitiesTest {
         assertThat(Abilities.CATALOG.keySet()).containsExactlyInAnyOrderElementsOf(AbilityContracts.all().keySet());
         assertThat(Abilities.CATALOG.values()).allSatisfy(definition -> {
             assertThat(definition.stats()).isNotNull();
-            assertThat(definition.damageFalloff()).isNotNull();
             assertThat(definition.resourceModel()).isNotNull();
         });
     }
@@ -73,10 +88,10 @@ class AbilitiesTest {
     void singularityUsesOneCenterToEdgeFalloffProfile() {
         assertThat(Abilities.statusDurationMs(26, "slow", 0)).isEqualTo(1_500);
         assertThat(Abilities.stat(26, "knockback", 0)).isEqualTo(60);
-        assertThat(Abilities.damageAtDistance(27, 0)).isEqualTo(35);
+        assertThat(Abilities.amountAtDistance(27, 0)).isEqualTo(35);
         assertThat(Abilities.stat(27, "pullPerTick", 0)).isEqualTo(10);
-        assertThat(Abilities.damageAtDistance(27, 140)).isEqualTo(15);
-        assertThat(Abilities.damageAtDistance(27, 141)).isZero();
+        assertThat(Abilities.amountAtDistance(27, 140)).isEqualTo(15);
+        assertThat(Abilities.amountAtDistance(27, 141)).isZero();
     }
 
     @Test
@@ -86,10 +101,16 @@ class AbilitiesTest {
         assertThat(Abilities.definition(6).activeMs()).isEqualTo(100);
         assertThat(Abilities.range(6)).isEqualTo(184);
         assertThat(Abilities.stat(6, "hitboxWidth", 0)).isEqualTo(80);
+        assertThat(Abilities.stat(3, "hitboxWidth", 0)).isEqualTo(5);
         assertThat(Abilities.definition(9).damage()).isEqualTo(20);
+        assertThat(Abilities.stat(9, "hitboxWidth", 0)).isEqualTo(5);
         assertThat(Abilities.definition(11).damage()).isEqualTo(25);
         assertThat(Abilities.definition(17).damage()).isEqualTo(5);
         assertThat(Abilities.definition(18).damage()).isEqualTo(20);
+        assertThat(Abilities.stat(15, "hitboxWidth", 0)).isEqualTo(150);
+        assertThat(Abilities.stat(15, "hitboxLength", 0)).isEqualTo(190);
+        assertThat(Abilities.stat(18, "hitboxWidth", 0)).isEqualTo(80);
+        assertThat(Abilities.stat(18, "hitboxLength", 0)).isEqualTo(115);
         assertThat(Abilities.stat(18, "knockback", 0)).isEqualTo(200);
         assertThat(Abilities.cooldownMs(28)).isEqualTo(7_700);
         assertThat(Abilities.definition(24).windupMs()).isEqualTo(1_000);
@@ -103,15 +124,17 @@ class AbilitiesTest {
         assertThat(Abilities.windupMs(30)).isEqualTo(200);
         assertThat(Abilities.definition(30).damage()).isEqualTo(15);
         assertThat(Abilities.stat(30, "interruptMs", 0)).isEqualTo(250);
+        assertThat(Abilities.stat(30, "hitboxWidth", 0)).isEqualTo(8);
         assertThat(Abilities.statusDurationMs(30, "slow", 0)).isEqualTo(2_000);
         assertThat(Abilities.definition(31).damage()).isEqualTo(3);
         assertThat(Abilities.stat(31, "knockback", 0)).isEqualTo(40);
         assertThat(Abilities.definition(32).damage()).isZero();
         assertThat(Abilities.cooldownMs(32)).isEqualTo(10_000);
         assertThat(Abilities.windupMs(32)).isEqualTo(300);
-        assertThat(Abilities.stat(32, "maxDamage", 0)).isEqualTo(25);
-        assertThat(Abilities.stat(32, "minDamage", 0)).isEqualTo(15);
-        assertThat(Abilities.damageAtDistance(32, 250)).isEqualTo(20);
+        assertThat(Abilities.definition(32).falloff().maxAmount()).isEqualTo(25);
+        assertThat(Abilities.definition(32).falloff().minAmount()).isEqualTo(15);
+        assertThat(Abilities.stat(32, "hitboxWidth", 0)).isEqualTo(10);
+        assertThat(Abilities.amountAtDistance(32, 250)).isEqualTo(20);
         assertThat(Abilities.stat(33, "cooldownRecoveryPercent", 0)).isEqualTo(50);
         assertThat(Abilities.stat(33, "cooldownRecoveryMultiplier", 0)).isEqualTo(0.5);
         assertThat(Abilities.durationMs(33)).isEqualTo(4_000);
@@ -137,13 +160,13 @@ class AbilitiesTest {
         assertThat(Abilities.definition(34).activeMs()).isEqualTo(200);
         assertThat(Abilities.definition(34).damage()).isEqualTo(8);
         assertThat(Abilities.range(34)).isEqualTo(80);
-        assertThat(Abilities.arcDegrees(34)).isEqualTo(30);
+        assertThat(Abilities.arc(34)).isEqualTo(30);
     }
 
     @Test
     void phaseStrikeUsesAForwardRectangleProfile() {
         assertThat(Abilities.range(25)).isEqualTo(100);
-        assertThat(Abilities.arcDegrees(25)).isZero();
+        assertThat(Abilities.arc(25)).isZero();
         assertThat(Abilities.stat(25, "hitboxWidth", 0)).isEqualTo(60);
     }
 
@@ -185,11 +208,11 @@ class AbilitiesTest {
     }
 
     @Test
-    void thrownAbilityRangesDescribeTravelWithoutReplacingImpactRadii() {
-        assertThat(Abilities.stat(4, "throwRange", 0)).isEqualTo(336);
-        assertThat(Abilities.stat(11, "throwRange", 0)).isEqualTo(176);
+    void thrownAbilityPhasesUseImpactRadiusAndSpeed() {
+        assertThat(Abilities.stat(4, "radius", 0)).isEqualTo(70);
+        assertThat(Abilities.stat(11, "speed", 0)).isEqualTo(22);
         assertThat(Abilities.range(4)).isEqualTo(70);
-        assertThat(Abilities.stat(11, "triggerRadius", 0)).isEqualTo(87.5);
+        assertThat(Abilities.stat(11, "radius", 0)).isEqualTo(87.5);
     }
 
     @Test
@@ -217,7 +240,7 @@ class AbilitiesTest {
         assertThat(Abilities.durationMs(22)).isEqualTo(1_500);
         assertThat(Abilities.definition(22).damage()).isEqualTo(15);
         assertThat(Abilities.stat(22, "intervalMs", 0)).isEqualTo(500);
-        assertThat(Abilities.damageAtDistance(22, 0)).isEqualTo(15);
-        assertThat(Abilities.damageAtDistance(22, 100)).isEqualTo(15);
+        assertThat(Abilities.amountAtDistance(22, 0)).isEqualTo(15);
+        assertThat(Abilities.amountAtDistance(22, 100)).isEqualTo(15);
     }
 }

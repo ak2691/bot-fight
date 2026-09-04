@@ -5,8 +5,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.example.botfight.domain.AppUser;
-import com.example.botfight.domain.MatchMode;
+import com.example.botfight.domain.auth.AppUser;
+import com.example.botfight.domain.match.MatchMode;
 import com.example.botfight.repository.MatchParticipantRepository;
 import com.example.botfight.repository.ProfileRepository;
 import com.example.botfight.repository.PuzzleCompletionRepository;

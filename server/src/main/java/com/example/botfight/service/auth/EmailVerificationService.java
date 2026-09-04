@@ -1,7 +1,7 @@
 package com.example.botfight.service.auth;
 
-import com.example.botfight.domain.AppUser;
-import com.example.botfight.domain.EmailVerification;
+import com.example.botfight.domain.auth.AppUser;
+import com.example.botfight.domain.auth.EmailVerification;
 import com.example.botfight.repository.EmailVerificationRepository;
 import java.time.Clock;
 import java.time.Duration;

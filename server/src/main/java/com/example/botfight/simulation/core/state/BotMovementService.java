@@ -153,7 +153,7 @@ public class BotMovementService {
         Vector direction = dashDirection(payload.movementMode(), payload.movementDirection(),
                 movementDx, movementDy);
         double beforeX = bot.x, beforeY = bot.y;
-        double stepDistance = payload.definition().stats().getOrDefault(movement.stepDistanceStat(), 75.0);
+        double stepDistance = payload.definition().stats().getOrDefault(movement.speedStat(), 75.0);
         double dashDistance = payload.definition().stats().getOrDefault(movement.distanceStat(), 150.0);
         bot.movementStartX = bot.x;
         bot.movementStartY = bot.y;

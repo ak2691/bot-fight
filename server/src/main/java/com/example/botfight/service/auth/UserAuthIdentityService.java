@@ -1,7 +1,7 @@
 package com.example.botfight.service.auth;
 
-import com.example.botfight.domain.AppUser;
-import com.example.botfight.domain.UserAuthIdentity;
+import com.example.botfight.domain.auth.AppUser;
+import com.example.botfight.domain.auth.UserAuthIdentity;
 import com.example.botfight.repository.UserAuthIdentityRepository;
 import java.util.Locale;
 import java.util.Objects;

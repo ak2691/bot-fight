@@ -4,7 +4,7 @@ import com.example.botfight.service.submission.BotSubmissionValidationService;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.example.botfight.DTO.BotSubmissionPayloadDTO;
+import com.example.botfight.DTO.submission.BotSubmissionPayloadDTO;
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import java.util.List;
 import org.junit.jupiter.api.Test;

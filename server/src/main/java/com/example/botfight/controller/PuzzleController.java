@@ -1,9 +1,9 @@
 package com.example.botfight.controller;
 
-import com.example.botfight.DTO.PuzzleAttemptRequestDTO;
-import com.example.botfight.DTO.PuzzleAttemptResponseDTO;
-import com.example.botfight.DTO.PuzzleListPageDTO;
-import com.example.botfight.DTO.PuzzlePlayResponseDTO;
+import com.example.botfight.DTO.puzzle.PuzzleAttemptRequestDTO;
+import com.example.botfight.DTO.puzzle.PuzzleAttemptResponseDTO;
+import com.example.botfight.DTO.puzzle.PuzzleListPageDTO;
+import com.example.botfight.DTO.puzzle.PuzzlePlayResponseDTO;
 import com.example.botfight.service.puzzle.PuzzleAttemptService;
 import com.example.botfight.service.puzzle.PuzzleService;
 import com.example.botfight.service.puzzle.PuzzleNotFoundException;

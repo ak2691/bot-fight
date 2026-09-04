@@ -7,9 +7,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.example.botfight.DTO.BotSubmissionPayloadDTO;
-import com.example.botfight.domain.AppUser;
-import com.example.botfight.domain.BotSubmission;
+import com.example.botfight.DTO.submission.BotSubmissionPayloadDTO;
+import com.example.botfight.domain.auth.AppUser;
+import com.example.botfight.domain.submission.BotSubmission;
 import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.service.limits.SlidingWindowRateLimiter;
 import com.example.botfight.service.match.MatchService;

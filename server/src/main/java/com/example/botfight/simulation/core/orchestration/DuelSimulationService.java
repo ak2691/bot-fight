@@ -3,11 +3,10 @@ package com.example.botfight.simulation.core.orchestration;
 import static com.example.botfight.simulation.geometry.AngleCalculator.shortestDelta;
 import static com.example.botfight.simulation.geometry.AngleCalculator.vectorBearing;
 
-import com.example.botfight.DTO.MatchPlaybackDTO;
-import com.example.botfight.DTO.MatchReplayDTO;
+import com.example.botfight.DTO.match.MatchPlaybackDTO;
+import com.example.botfight.DTO.match.MatchReplayDTO;
 import com.example.botfight.simulation.core.combat.AbilityExecutionPayload;
 import com.example.botfight.simulation.core.combat.ActionExecutionService;
-import com.example.botfight.simulation.core.combat.ProjectileSimulationService;
 import com.example.botfight.simulation.core.logic.ConditionResolutionService;
 import com.example.botfight.simulation.core.logic.TargetingService;
 import com.example.botfight.simulation.core.replay.ReplayMappingService;
@@ -56,7 +55,6 @@ public class DuelSimulationService {
     private final ConditionResolutionService conditionResolutionService;
     private final ReplayMappingService replayMappingService;
     private final BotStateService botStateService;
-    private final ProjectileSimulationService projectileSimulationService;
     private final ActionExecutionService actionExecutionService;
 
     @Autowired
@@ -64,12 +62,10 @@ public class DuelSimulationService {
             ConditionResolutionService conditionResolutionService,
             ReplayMappingService replayMappingService,
             BotStateService botStateService,
-            ProjectileSimulationService projectileSimulationService,
             ActionExecutionService actionExecutionService) {
         this.conditionResolutionService = conditionResolutionService;
         this.replayMappingService = replayMappingService;
         this.botStateService = botStateService;
-        this.projectileSimulationService = projectileSimulationService;
         this.actionExecutionService = actionExecutionService;
     }
 
@@ -150,8 +146,7 @@ public class DuelSimulationService {
         attachRoster(bots);
         bots.forEach(bot -> bot.matchElapsedMs = initialElapsedMs);
         replayRecorder.initialize(arena, bots);
-        List<ArenaEntity> projectiles = new ArrayList<>();
-        List<ArenaEntity> abilityPlacements = new ArrayList<>();
+        List<ArenaEntity> entities = new ArrayList<>();
         ClosingZoneSystem.State closingZone = null;
 
         // The browser applies its first fixed step after AUTO_STEP_MS has
@@ -161,16 +156,12 @@ public class DuelSimulationService {
         // run once beyond the requested duration, making movement and every
         // cooldown appear one tick ahead in authoritative replays.
         for (int elapsedMs = STEP_MS, tick = 1; elapsedMs <= arena.durationMs(); elapsedMs += STEP_MS, tick += 1) {
-            abilityPlacements = advanceEntityAges(abilityPlacements);
-            projectiles = advanceEntityAges(projectiles);
+            entities = advanceEntityAges(entities);
             for (Bot bot : bots) {
                 botStateService.startTick(bot);
             }
             List<Entity> selectables = new ArrayList<>();
-            abilityPlacements.stream()
-                    .map(DuelSimulationService::selectableSnapshot)
-                    .forEach(selectables::add);
-            projectiles.stream().map(DuelSimulationService::selectableSnapshot).forEach(selectables::add);
+            entities.stream().map(DuelSimulationService::selectableSnapshot).forEach(selectables::add);
             List<Action> predictedActions = bots.stream()
                     .map(bot -> predictAction(bot, firstEnemy(bot, bots), selectables, arena))
                     .toList();
@@ -183,18 +174,9 @@ public class DuelSimulationService {
             for (Bot spawningBot : bots) {
                 ArenaEntity spawn = spawningBot.abilitySpawn;
                 if (spawn == null) continue;
-                if (projectileSimulationService.manages(spawn)) projectiles.add(spawn);
-                else abilityPlacements.add(spawn);
+                entities.add(spawn);
             }
-            ProjectileSimulationService.ProjectileUpdate projectileUpdate =
-                    projectileSimulationService.updateProjectiles(projectiles, bots, arena);
-            projectiles = projectileUpdate.projectiles();
-            projectileSimulationService.applyImpacts(bots, projectileUpdate.impacts());
-            List<ArenaEntity> spawnedEffects = projectileUpdate.effects();
-            List<ArenaEntity> entitiesForTick = new ArrayList<>(abilityPlacements);
-            entitiesForTick.addAll(spawnedEffects);
-            abilityPlacements = updateAbilityPlacements(
-                    entitiesForTick, bots, arena, projectiles, List.of());
+            entities = tickAbilityEntities(entities, bots, arena);
             ClosingZoneSystem.TickResult<Bot> closingZoneUpdate = ClosingZoneSystem.tick(
                     closingZone,
                     initialElapsedMs + elapsedMs,
@@ -217,8 +199,7 @@ public class DuelSimulationService {
             closingZone = closingZoneUpdate.state();
             bots.forEach(botStateService::settleTick);
 
-            List<ArenaEntity> frameEntities = new ArrayList<>(projectiles);
-            frameEntities.addAll(abilityPlacements);
+            List<ArenaEntity> frameEntities = new ArrayList<>(entities);
             if (closingZoneUpdate.entity() != null) frameEntities.add(closingZoneUpdate.entity());
             replayRecorder.addFrame(tick, elapsedMs, bots, frameEntities);
             if (observer != null && observer.afterTick(elapsedMs, bots, frameEntities, arena)) {
@@ -629,13 +610,11 @@ public class DuelSimulationService {
         return "target";
     }
 
-    private List<ArenaEntity> updateAbilityPlacements(
-            List<ArenaEntity> placements,
+    private List<ArenaEntity> tickAbilityEntities(
+            List<ArenaEntity> entities,
             List<Bot> bots,
-            Arena arena,
-            List<ArenaEntity> projectiles,
-            List<ArenaEntity> projectileEffects) {
-        return AbilityEntitySystem.tick(placements, bots, new ArenaBounds(arena.width(), arena.height()), STEP_MS,
+            Arena arena) {
+        return AbilityEntitySystem.tick(entities, bots, new ArenaBounds(arena.width(), arena.height()), STEP_MS,
                 new AbilityEntitySystem.Combat<>() {
                     @Override
                     public void damage(Bot bot, double amount) {
@@ -658,7 +637,7 @@ public class DuelSimulationService {
                     public int damageToEntity(ArenaEntity entity, List<Bot> activeBots,
                                               List<ArenaEntity> activeEntities) {
                         return actionExecutionService.damageToDroneThisTick(
-                                entity, activeBots, projectileEffects, projectiles, activeEntities);
+                                entity, activeBots, activeEntities);
                     }
 
                     @Override
@@ -667,7 +646,7 @@ public class DuelSimulationService {
                         boolean recordedHit = activeBots.stream()
                                 .anyMatch(bot -> bot.entityHitIds.contains(entity.id()));
                         return recordedHit || actionExecutionService.mineHitByCurrentAttack(
-                                entity, activeBots, projectiles, activeEntities);
+                                entity, activeBots, activeEntities);
                     }
 
                 });

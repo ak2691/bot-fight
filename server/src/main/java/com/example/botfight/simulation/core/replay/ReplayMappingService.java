@@ -2,10 +2,11 @@ package com.example.botfight.simulation.core.replay;
 
 import static com.example.botfight.simulation.geometry.AngleCalculator.vectorBearing;
 
-import com.example.botfight.DTO.MatchPlaybackDTO;
-import com.example.botfight.DTO.MatchReplayDTO;
+import com.example.botfight.DTO.match.MatchPlaybackDTO;
+import com.example.botfight.DTO.match.MatchReplayDTO;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
 import com.example.botfight.simulation.core.state.StatusEffectState;
+import com.example.botfight.simulation.ecs.contracts.EntityContracts;
 import com.example.botfight.simulation.ecs.entities.ArenaEntity;
 import java.util.List;
 import java.util.Map;
@@ -36,10 +37,13 @@ public class ReplayMappingService {
     public MatchPlaybackDTO.ArenaEntityDTO toArenaEntity(ArenaEntity entity) {
         double rotation = Math.hypot(entity.velocityX(), entity.velocityY()) > 0.001
                 ? vectorBearing(entity.velocityX(), entity.velocityY()) : 0;
+        ReplayEntityVisual visual = replayEntityVisual(entity);
         return new MatchPlaybackDTO.ArenaEntityDTO(
                 entity.id(), entity.type(), entity.abilityId(),
                 round(entity.x()), round(entity.y()), entity.size(), rotation, entity.hp(), entity.armed(),
-                entity.timerMs(), entity.velocityX(), entity.velocityY(), entity.shotVisualMs());
+                entity.timerMs(), entity.velocityX(), entity.velocityY(), entity.shotVisualMs(),
+                visual.phaseId(), visual.visibleMs(), visual.eventType(),
+                visual.eventMs(), visual.eventSize());
     }
 
     /** Records the static bot metadata once for the compact replay. */
@@ -107,6 +111,7 @@ public class ReplayMappingService {
         boolean drone = "hunterDrone".equals(type) || "repellerDrone".equals(type);
         double rotation = Math.hypot(entity.velocityX(), entity.velocityY()) > 0.001
                 ? vectorBearing(entity.velocityX(), entity.velocityY()) : 0;
+        ReplayEntityVisual visual = replayEntityVisual(entity);
         return new MatchReplayDTO.ReplayEntityDTO(
                 entity.id(),
                 type,
@@ -120,8 +125,36 @@ public class ReplayMappingService {
                 positiveOrNull(entity.timerMs()),
                 nonZeroOrNull(entity.velocityX()),
                 nonZeroOrNull(entity.velocityY()),
-                positiveOrNull(entity.shotVisualMs()));
+                positiveOrNull(entity.shotVisualMs()),
+                visual.phaseId(),
+                visual.visibleMs(),
+                visual.eventType(),
+                visual.eventMs(),
+                visual.eventSize());
     }
+
+    /**
+     * Replay presentation must use the current phase and live visual timer.
+     * Entity snapshots are immutable, so deriving this at the mapping boundary
+     * prevents a prior phase/event descriptor from leaking into later frames.
+     */
+    private static ReplayEntityVisual replayEntityVisual(ArenaEntity entity) {
+        EntityContracts.Phase phase = EntityContracts.phaseFor(entity);
+        int eventMs = Math.max(0, entity.visualEventMs());
+        return new ReplayEntityVisual(
+                phase == null ? entity.phaseId() : phase.id(),
+                eventMs > 0 ? positiveOrNull(eventMs) : positiveOrNull(entity.visibleMs()),
+                eventMs > 0 ? entity.visualEventType() : null,
+                eventMs > 0 ? positiveOrNull(eventMs) : null,
+                eventMs > 0 ? positiveOrNull(entity.visualEventSize()) : null);
+    }
+
+    private record ReplayEntityVisual(
+            String phaseId,
+            Integer visibleMs,
+            String eventType,
+            Integer eventMs,
+            Integer eventSize) {}
 
     private static List<StatusEffectState> copyStatusEffects(DuelSimulationService.Bot bot) {
         return bot.statusEffects.values().stream().map(status -> {

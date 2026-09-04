@@ -6,9 +6,9 @@ import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.example.botfight.DTO.ActiveMatchStatusDTO;
-import com.example.botfight.DTO.CustomLobbyDTO;
-import com.example.botfight.domain.AppUser;
+import com.example.botfight.DTO.match.ActiveMatchStatusDTO;
+import com.example.botfight.DTO.customlobby.CustomLobbyDTO;
+import com.example.botfight.domain.auth.AppUser;
 import com.example.botfight.repository.UserRepository;
 import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.service.block.BlockLookup;

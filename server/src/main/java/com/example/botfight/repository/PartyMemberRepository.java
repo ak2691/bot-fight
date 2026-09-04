@@ -1,6 +1,6 @@
 package com.example.botfight.repository;
 
-import com.example.botfight.domain.PartyMember;
+import com.example.botfight.domain.party.PartyMember;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;

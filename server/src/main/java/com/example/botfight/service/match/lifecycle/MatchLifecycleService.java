@@ -1,8 +1,8 @@
 package com.example.botfight.service.match.lifecycle;
 
-import com.example.botfight.DTO.MatchPlaybackDTO;
-import com.example.botfight.domain.Match;
-import com.example.botfight.domain.MatchMode;
+import com.example.botfight.DTO.match.MatchPlaybackDTO;
+import com.example.botfight.domain.match.Match;
+import com.example.botfight.domain.match.MatchMode;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.match.chat.MatchChatService;
 import com.example.botfight.service.match.connection.MatchConnectionService;

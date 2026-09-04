@@ -10,8 +10,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.example.botfight.domain.AppUser;
-import com.example.botfight.domain.UserAuthIdentity;
+import com.example.botfight.domain.auth.AppUser;
+import com.example.botfight.domain.auth.UserAuthIdentity;
 import com.example.botfight.repository.UserAuthIdentityRepository;
 import java.util.Optional;
 import java.util.UUID;

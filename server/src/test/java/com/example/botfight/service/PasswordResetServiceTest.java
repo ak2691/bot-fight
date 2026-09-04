@@ -1,9 +1,9 @@
 package com.example.botfight.service;
 
-import com.example.botfight.DTO.PasswordResetPasswordRequestDTO;
-import com.example.botfight.DTO.PasswordResetStatusDTO;
-import com.example.botfight.domain.AppUser;
-import com.example.botfight.domain.PasswordResetRequest;
+import com.example.botfight.DTO.auth.PasswordResetPasswordRequestDTO;
+import com.example.botfight.DTO.auth.PasswordResetStatusDTO;
+import com.example.botfight.domain.auth.AppUser;
+import com.example.botfight.domain.auth.PasswordResetRequest;
 import com.example.botfight.repository.PasswordResetRequestRepository;
 import com.example.botfight.repository.UserRepository;
 import com.example.botfight.service.auth.AuthException;

@@ -447,156 +447,156 @@ export default function CustomLobbyPage() {
 
     return (
         <>
-        <main className="min-h-screen bg-[#171a1c] font-interface text-slate-100">
-            <AppNavbar account />
-            <section className="mx-auto flex min-h-[calc(100vh-72px)] w-full max-w-6xl flex-col px-5 py-8 sm:px-8 sm:py-12">
-                <button type="button" onClick={() => navigate("/queue")} className="mb-8 self-start font-mono text-[10px] font-bold tracking-[.18em] text-slate-500 hover:text-cyan-200">
-                    ← BACK TO QUEUE
-                </button>
+            <main className="min-h-screen bg-[#171a1c] font-interface text-slate-100">
+                <AppNavbar account />
+                <section className="mx-auto flex min-h-[calc(100vh-72px)] w-full max-w-6xl flex-col px-5 py-8 sm:px-8 sm:py-12">
+                    <button type="button" onClick={() => navigate("/queue")} className="mb-8 self-start font-mono text-[10px] font-bold tracking-[.18em] text-slate-500 hover:text-cyan-200">
+                        ← BACK TO QUEUE
+                    </button>
 
-                <header className="flex flex-col gap-5 border-b border-slate-800 pb-5 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="min-w-0 flex-1">
-                        <p className="font-mono text-[10px] font-bold tracking-[.24em] text-cyan-400">CUSTOM MATCHMAKING</p>
-                        <h1 className="mt-3 font-display-action text-5xl uppercase tracking-wide text-white sm:text-7xl">Custom lobby</h1>
-                        {lobby && isOwner && lobby.members.length < (lobby.capacity ?? 4) && (
-                            <form onSubmit={invitePlayer} className="mt-5 w-full max-w-sm">
-                                <div className="flex items-center gap-2">
-                                    <label className="sr-only" htmlFor="custom-lobby-invite-username">Invite player</label>
-                                    <input id="custom-lobby-invite-username" type="text" value={inviteUsername} onChange={(event) => setInviteUsername(event.target.value)} maxLength={20} placeholder="Username" className="h-10 min-w-0 flex-1 border border-slate-600 bg-[#202427] px-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-400" />
-                                    <button type="submit" disabled={!inviteUsername.trim() || action !== null} className="h-10 shrink-0 border border-cyan-300/80 bg-cyan-950/40 px-3 font-mono text-[9px] font-bold tracking-widest text-cyan-100 hover:bg-cyan-900/50 disabled:cursor-not-allowed disabled:opacity-50">{action === "invite" ? "INVITING..." : "INVITE PLAYER"}</button>
+                    <header className="flex flex-col gap-5 border-b border-slate-800 pb-5 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0 flex-1">
+                            <p className="font-mono text-[10px] font-bold tracking-[.24em] text-cyan-400">CUSTOM MATCHMAKING</p>
+                            <h1 className="mt-3 font-display-action text-5xl uppercase tracking-wide text-white sm:text-7xl">Custom lobby</h1>
+                            {lobby && isOwner && lobby.members.length < (lobby.capacity ?? 4) && (
+                                <form onSubmit={invitePlayer} className="mt-5 w-full max-w-sm">
+                                    <div className="flex items-center gap-2">
+                                        <label className="sr-only" htmlFor="custom-lobby-invite-username">Invite player</label>
+                                        <input id="custom-lobby-invite-username" type="text" value={inviteUsername} onChange={(event) => setInviteUsername(event.target.value)} maxLength={20} placeholder="Username" className="h-10 min-w-0 flex-1 border border-slate-600 bg-[#202427] px-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-400" />
+                                        <button type="submit" disabled={!inviteUsername.trim() || action !== null} className="h-10 shrink-0 border border-cyan-300/80 bg-cyan-950/40 px-3 font-mono text-[9px] font-bold tracking-widest text-cyan-100 hover:bg-cyan-900/50 disabled:cursor-not-allowed disabled:opacity-50">{action === "invite" ? "INVITING..." : "INVITE PLAYER"}</button>
+                                    </div>
+                                    {inviteStatus && <p className={`mt-2 border-t border-slate-600/80 pt-2 text-[11px] leading-4 ${inviteStatus.kind === "error" ? "text-rose-200" : "text-emerald-200"}`} role={inviteStatus.kind === "error" ? "alert" : "status"}>{inviteStatus.message}</p>}
+                                </form>
+                            )}
+                        </div>
+                        {lobby && (
+                            <div className="flex w-full shrink-0 items-start justify-between gap-4 rounded-xl border border-slate-800 bg-[#07111b] p-4 lg:ml-8 lg:w-auto lg:min-w-64">
+                                <div className="min-w-0 flex-1">
+                                    <p className="font-mono text-[10px] font-bold tracking-[.2em] text-cyan-400">INVITE ONLY</p>
+                                    <p className="mt-2 text-lg font-bold text-white">{lobby.members.length}/{lobby.capacity ?? 4} players in lobby</p>
+                                    <p className="mt-1 text-xs text-slate-500">
+                                        Owner:{" "}
+                                        {lobby.ownerUsername
+                                            ? <ProfileLink username={lobby.ownerUsername} className="text-slate-400 hover:text-cyan-200">{lobby.ownerUsername}</ProfileLink>
+                                            : "Unknown"}
+                                    </p>
+                                    <p className="mt-4 border-t border-slate-800 pt-3 font-mono text-[9px] tracking-widest text-slate-500">ROUND TIME - {formatRoundDuration(lobby.roundDurationSeconds)}</p>
                                 </div>
-                                {inviteStatus && <p className={`mt-2 border-t border-slate-600/80 pt-2 text-[11px] leading-4 ${inviteStatus.kind === "error" ? "text-rose-200" : "text-emerald-200"}`} role={inviteStatus.kind === "error" ? "alert" : "status"}>{inviteStatus.message}</p>}
-                            </form>
+                                <div className="flex shrink-0 items-start gap-2">
+                                    {isOwner && (
+                                        <button type="button" onClick={() => { setError(null); setSettingsOpen(true); }} disabled={action !== null} aria-label="Open custom lobby settings" title="Custom lobby settings" className="grid h-10 w-10 place-items-center border border-cyan-400/50 bg-cyan-950/20 text-cyan-200 hover:bg-cyan-900/40 disabled:cursor-wait disabled:opacity-50">
+                                            <MoreVerticalIcon />
+                                        </button>
+                                    )}
+                                    <button type="button" onClick={leaveLobby} disabled={action !== null} className="h-10 shrink-0 border border-rose-400/50 px-3 font-mono text-[9px] font-bold tracking-widest text-rose-200 hover:bg-rose-950/30 disabled:cursor-wait disabled:opacity-50">LEAVE LOBBY</button>
+                                </div>
+                            </div>
                         )}
-                    </div>
+                    </header>
+
                     {lobby && (
-                        <div className="flex w-full shrink-0 items-start justify-between gap-4 rounded-xl border border-slate-800 bg-[#07111b] p-4 lg:ml-8 lg:w-auto lg:min-w-64">
-                            <div className="min-w-0 flex-1">
-                                <p className="font-mono text-[10px] font-bold tracking-[.2em] text-cyan-400">INVITE ONLY · MATCH SETTINGS</p>
-                                <p className="mt-2 text-lg font-bold text-white">{lobby.members.length}/{lobby.capacity ?? 4} players in lobby</p>
-                                <p className="mt-1 text-xs text-slate-500">
-                                    Owner:{" "}
-                                    {lobby.ownerUsername
-                                        ? <ProfileLink username={lobby.ownerUsername} className="text-slate-400 hover:text-cyan-200">{lobby.ownerUsername}</ProfileLink>
-                                        : "Unknown"}
-                                </p>
-                                <p className="mt-4 border-t border-slate-800 pt-3 font-mono text-[9px] tracking-widest text-slate-500">ROUND TIME · {formatRoundDuration(lobby.roundDurationSeconds)}</p>
-                            </div>
-                            <div className="flex shrink-0 items-start gap-2">
-                                {isOwner && (
-                                    <button type="button" onClick={() => { setError(null); setSettingsOpen(true); }} disabled={action !== null} aria-label="Open custom lobby settings" title="Custom lobby settings" className="grid h-10 w-10 place-items-center border border-cyan-400/50 bg-cyan-950/20 text-cyan-200 hover:bg-cyan-900/40 disabled:cursor-wait disabled:opacity-50">
-                                        <MoreVerticalIcon />
-                                    </button>
-                                )}
-                                <button type="button" onClick={leaveLobby} disabled={action !== null} className="h-10 shrink-0 border border-rose-400/50 px-3 font-mono text-[9px] font-bold tracking-widest text-rose-200 hover:bg-rose-950/30 disabled:cursor-wait disabled:opacity-50">LEAVE LOBBY</button>
-                            </div>
+                        <QueueAbilityGuaranteePicker
+                            values={queueGuarantees}
+                            onChange={updateQueueGuarantee}
+                            disabled={action === "start"}
+                        />
+                    )}
+
+                    {loadState === "loading" && <div className="mt-10 border border-slate-800 bg-[#07111b] px-6 py-12 text-center font-mono text-xs tracking-widest text-slate-500">LOADING LOBBY...</div>}
+                    {loadState === "error" && (
+                        <div className="mt-10 border border-rose-400/40 bg-rose-950/20 px-6 py-8" role="alert">
+                            <p className="text-sm text-rose-200">{error}</p>
+                            <button type="button" onClick={createLobby} className="mt-5 h-11 border border-cyan-400/70 bg-cyan-950/40 px-5 font-mono text-[10px] font-bold tracking-widest text-cyan-100">CREATE CUSTOM LOBBY</button>
                         </div>
                     )}
-                </header>
-
-                {lobby && (
-                    <QueueAbilityGuaranteePicker
-                        values={queueGuarantees}
-                        onChange={updateQueueGuarantee}
-                        disabled={action === "start"}
-                    />
-                )}
-
-                {loadState === "loading" && <div className="mt-10 border border-slate-800 bg-[#07111b] px-6 py-12 text-center font-mono text-xs tracking-widest text-slate-500">LOADING LOBBY...</div>}
-                {loadState === "error" && (
-                    <div className="mt-10 border border-rose-400/40 bg-rose-950/20 px-6 py-8" role="alert">
-                        <p className="text-sm text-rose-200">{error}</p>
-                        <button type="button" onClick={createLobby} className="mt-5 h-11 border border-cyan-400/70 bg-cyan-950/40 px-5 font-mono text-[10px] font-bold tracking-widest text-cyan-100">CREATE CUSTOM LOBBY</button>
-                    </div>
-                )}
-                {loadState === "empty" && (
-                    <div className="mt-10 flex flex-1 items-center justify-center">
-                        <button type="button" onClick={createLobby} disabled={action !== null} className="h-12 border border-cyan-400/70 bg-cyan-950/50 px-6 font-mono text-xs font-bold tracking-widest text-cyan-100 hover:bg-cyan-900/50 disabled:cursor-wait disabled:opacity-50">{action === "create" ? "CREATING..." : "CREATE CUSTOM LOBBY"}</button>
-                    </div>
-                )}
-                {lobby && (
-                    <>
-                        <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-3 lg:items-start">
-                            <div className="lg:col-span-2 flex min-h-0 flex-col gap-5 lg:self-stretch">
-                                <div className="grid w-full gap-5 sm:grid-cols-2">
-                                    <TeamColumn
-                                        title="BLUE TEAM"
-                                        subtitle={`${teamCounts[BLUE_TEAM]}/${MAX_TEAM_SIZE} team slots`}
-                                        tone="blue"
-                                        teamNumber={BLUE_TEAM}
-                                        members={members.filter((member) => Number(member.teamNumber) === BLUE_TEAM)}
-                                        userId={user?.id}
-                                        owner={isOwner}
-                                        action={action}
-                                        onTeamChange={changeTeam}
-                                        onKick={kickPlayer}
-                                    />
-                                    <TeamColumn
-                                        title="RED TEAM"
-                                        subtitle={`${teamCounts[RED_TEAM]}/${MAX_TEAM_SIZE} team slots`}
-                                        tone="red"
-                                        teamNumber={RED_TEAM}
-                                        members={members.filter((member) => Number(member.teamNumber) === RED_TEAM)}
-                                        userId={user?.id}
-                                        owner={isOwner}
-                                        action={action}
-                                        onTeamChange={changeTeam}
-                                        onKick={kickPlayer}
-                                    />
-                                </div>
-                                <NotReadyRoster
-                                    className="min-h-0 flex-1"
-                                    members={members.filter((member) => Number(member.teamNumber) === TEAM_NONE)}
-                                    owner={isOwner}
-                                    action={action}
-                                    onKick={kickPlayer}
-                                />
-                            </div>
-                            <div className="col-span-1 grid min-h-0 gap-4 sm:grid-cols-2 lg:flex lg:flex-col">
-                                <CustomLobbyChat
-                                    messages={chatMessages}
-                                    onSend={sendLobbyChat}
-                                    notice={chatNotice}
-                                    className="custom-lobby-chat--compact min-w-0"
-                                />
-                                <div className="min-w-0 shrink-0 rounded-xl border border-slate-800 bg-[#07111b] p-4">
-                                    <p className="font-mono text-[10px] font-bold tracking-[.18em] text-slate-500">LOBBY STATUS</p>
-                                    <p className="mt-2 text-sm text-slate-300">{everyoneOnTeam && bothTeamsHavePlayers ? "All players are on a team." : "Players without a team are not ready."}</p>
-                                    {isOwner && !everyoneOnline && <p className="mt-1 text-xs text-amber-300">Every player must be online before the match can start.</p>}
-                                    {isOwner && members.length < 2 && <p className="mt-1 text-xs text-amber-300">Invite at least one more player to start.</p>}
-                                    {isOwner && !bothTeamsHavePlayers && <p className="mt-1 text-xs text-amber-300">Both Blue Team and Red Team need a player.</p>}
-                                    {isOwner && !everyoneOnTeam && members.length >= 2 && <p className="mt-1 text-xs text-amber-300">Every player must join a team before the match can start.</p>}
-                                    {!isOwner && (
-                                        <p className="mt-1 text-xs text-slate-500">
-                                            Only{" "}
-                                            {lobby.ownerUsername
-                                                ? <ProfileLink username={lobby.ownerUsername} className="text-slate-400 hover:text-cyan-200">{lobby.ownerUsername}</ProfileLink>
-                                                : "the lobby owner"}{" "}
-                                            can start this match.
-                                        </p>
-                                    )}
-                                    <button type="button" onClick={startMatch} disabled={!canStart} className="mt-4 h-11 w-full border border-emerald-400/70 bg-emerald-950/30 px-4 font-mono text-[10px] font-bold tracking-widest text-emerald-100 hover:bg-emerald-900/40 disabled:cursor-not-allowed disabled:opacity-45">{action === "start" ? "STARTING..." : "START CUSTOM MATCH"}</button>
-                                </div>
-                            </div>
+                    {loadState === "empty" && (
+                        <div className="mt-10 flex flex-1 items-center justify-center">
+                            <button type="button" onClick={createLobby} disabled={action !== null} className="h-12 border border-cyan-400/70 bg-cyan-950/50 px-6 font-mono text-xs font-bold tracking-widest text-cyan-100 hover:bg-cyan-900/50 disabled:cursor-wait disabled:opacity-50">{action === "create" ? "CREATING..." : "CREATE CUSTOM LOBBY"}</button>
                         </div>
+                    )}
+                    {lobby && (
+                        <>
+                            <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-3 lg:items-start">
+                                <div className="lg:col-span-2 flex min-h-0 flex-col gap-5 lg:self-stretch">
+                                    <div className="grid w-full gap-5 sm:grid-cols-2">
+                                        <TeamColumn
+                                            title="BLUE TEAM"
+                                            subtitle={`${teamCounts[BLUE_TEAM]}/${MAX_TEAM_SIZE} team slots`}
+                                            tone="blue"
+                                            teamNumber={BLUE_TEAM}
+                                            members={members.filter((member) => Number(member.teamNumber) === BLUE_TEAM)}
+                                            userId={user?.id}
+                                            owner={isOwner}
+                                            action={action}
+                                            onTeamChange={changeTeam}
+                                            onKick={kickPlayer}
+                                        />
+                                        <TeamColumn
+                                            title="RED TEAM"
+                                            subtitle={`${teamCounts[RED_TEAM]}/${MAX_TEAM_SIZE} team slots`}
+                                            tone="red"
+                                            teamNumber={RED_TEAM}
+                                            members={members.filter((member) => Number(member.teamNumber) === RED_TEAM)}
+                                            userId={user?.id}
+                                            owner={isOwner}
+                                            action={action}
+                                            onTeamChange={changeTeam}
+                                            onKick={kickPlayer}
+                                        />
+                                    </div>
+                                    <NotReadyRoster
+                                        className="min-h-0 flex-1"
+                                        members={members.filter((member) => Number(member.teamNumber) === TEAM_NONE)}
+                                        owner={isOwner}
+                                        action={action}
+                                        onKick={kickPlayer}
+                                    />
+                                </div>
+                                <div className="col-span-1 grid min-h-0 gap-4 sm:grid-cols-2 lg:flex lg:flex-col">
+                                    <CustomLobbyChat
+                                        messages={chatMessages}
+                                        onSend={sendLobbyChat}
+                                        notice={chatNotice}
+                                        className="custom-lobby-chat--compact min-w-0"
+                                    />
+                                    <div className="min-w-0 shrink-0 rounded-xl border border-slate-800 bg-[#07111b] p-4">
+                                        <p className="font-mono text-[10px] font-bold tracking-[.18em] text-slate-500">LOBBY STATUS</p>
+                                        <p className="mt-2 text-sm text-slate-300">{everyoneOnTeam && bothTeamsHavePlayers ? "All players are on a team." : "Players without a team are not ready."}</p>
+                                        {isOwner && !everyoneOnline && <p className="mt-1 text-xs text-amber-300">Every player must be online before the match can start.</p>}
+                                        {isOwner && members.length < 2 && <p className="mt-1 text-xs text-amber-300">Invite at least one more player to start.</p>}
+                                        {isOwner && !bothTeamsHavePlayers && <p className="mt-1 text-xs text-amber-300">Both Blue Team and Red Team need a player.</p>}
+                                        {isOwner && !everyoneOnTeam && members.length >= 2 && <p className="mt-1 text-xs text-amber-300">Every player must join a team before the match can start.</p>}
+                                        {!isOwner && (
+                                            <p className="mt-1 text-xs text-slate-500">
+                                                Only{" "}
+                                                {lobby.ownerUsername
+                                                    ? <ProfileLink username={lobby.ownerUsername} className="text-slate-400 hover:text-cyan-200">{lobby.ownerUsername}</ProfileLink>
+                                                    : "the lobby owner"}{" "}
+                                                can start this match.
+                                            </p>
+                                        )}
+                                        <button type="button" onClick={startMatch} disabled={!canStart} className="mt-4 h-11 w-full border border-emerald-400/70 bg-emerald-950/30 px-4 font-mono text-[10px] font-bold tracking-widest text-emerald-100 hover:bg-emerald-900/40 disabled:cursor-not-allowed disabled:opacity-45">{action === "start" ? "STARTING..." : "START CUSTOM MATCH"}</button>
+                                    </div>
+                                </div>
+                            </div>
 
-                    </>
-                )}
+                        </>
+                    )}
 
-                {notice && <p className="mt-5 text-sm text-emerald-300" role="status">{notice}</p>}
-                {error && loadState !== "error" && <p className="mt-5 text-sm text-rose-300" role="alert">{error}</p>}
-            </section>
-        </main>
-        {settingsOpen && (
-            <CustomLobbySettingsModal
-                roundSeconds={roundSeconds}
-                onRoundSecondsChange={setRoundSeconds}
-                onClose={closeSettings}
-                onSubmit={saveRoundDuration}
-                saving={action === "settings"}
-                error={error}
-            />
-        )}
+                    {notice && <p className="mt-5 text-sm text-emerald-300" role="status">{notice}</p>}
+                    {error && loadState !== "error" && <p className="mt-5 text-sm text-rose-300" role="alert">{error}</p>}
+                </section>
+            </main>
+            {settingsOpen && (
+                <CustomLobbySettingsModal
+                    roundSeconds={roundSeconds}
+                    onRoundSecondsChange={setRoundSeconds}
+                    onClose={closeSettings}
+                    onSubmit={saveRoundDuration}
+                    saving={action === "settings"}
+                    error={error}
+                />
+            )}
         </>
     );
 }

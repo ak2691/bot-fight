@@ -102,7 +102,7 @@ function abilityTypeLabels(ability) {
 function playerFacingEffects(ability) {
     const effects = ability.effects.flatMap((effect) => {
         if (effect.type === "spawn_entity") return [];
-        if (effect.type === "debuff" && effect.debuff) return [titleCase(effect.debuff)];
+        if (effect.type === "status" && effect.subtype) return [titleCase(effect.subtype)];
         return [titleCase(effect.type)];
     });
     return [...new Set(effects)];

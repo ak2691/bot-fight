@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.botfight.simulation.bots.ConditionEvaluationService;
 import com.example.botfight.simulation.core.combat.ActionExecutionService;
-import com.example.botfight.simulation.core.combat.ProjectileSimulationService;
 import com.example.botfight.simulation.core.logic.ConditionResolutionService;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
 import com.example.botfight.simulation.core.state.BotStateService;
@@ -111,10 +110,7 @@ class PuzzleOutcomeEvaluatorTest {
         BotStateService botStateService = new BotStateService(
                 catalog,
                 new com.example.botfight.simulation.bots.BotCodeService());
-        ProjectileSimulationService projectileSimulationService = new ProjectileSimulationService(botStateService);
-        ActionExecutionService actionExecutionService = new ActionExecutionService(
-                botStateService,
-                projectileSimulationService);
+        ActionExecutionService actionExecutionService = new ActionExecutionService(botStateService);
         return new ConditionResolutionService(new ConditionEvaluationService(), actionExecutionService);
     }
 
@@ -123,6 +119,6 @@ class PuzzleOutcomeEvaluatorTest {
         BotStateService botStateService = new BotStateService(
                 catalog,
                 new com.example.botfight.simulation.bots.BotCodeService());
-        return new ActionExecutionService(botStateService, new ProjectileSimulationService(botStateService));
+        return new ActionExecutionService(botStateService);
     }
 }

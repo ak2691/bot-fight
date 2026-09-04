@@ -3,7 +3,7 @@ package com.example.botfight.service.match.timing;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.example.botfight.domain.MatchMode;
+import com.example.botfight.domain.match.MatchMode;
 import org.junit.jupiter.api.Test;
 
 class MatchTimingPolicyTest {

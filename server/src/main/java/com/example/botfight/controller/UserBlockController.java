@@ -1,6 +1,6 @@
 package com.example.botfight.controller;
 
-import com.example.botfight.DTO.BlockStatusDTO;
+import com.example.botfight.DTO.block.BlockStatusDTO;
 import com.example.botfight.service.block.UserBlockService;
 import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;

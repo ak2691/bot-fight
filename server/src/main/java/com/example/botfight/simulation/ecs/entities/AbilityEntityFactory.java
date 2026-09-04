@@ -1,7 +1,7 @@
 package com.example.botfight.simulation.ecs.entities;
 
 import com.example.botfight.simulation.ecs.contracts.EntityContracts;
-import java.util.Set;
+import java.util.Map;
 
 /** Creates initial entity state from the declarative entity contract. */
 public final class AbilityEntityFactory {
@@ -28,11 +28,12 @@ public final class AbilityEntityFactory {
         EntityContracts.EntityContract contract = EntityContracts.forAbility(abilityId);
         if (contract == null) throw new IllegalArgumentException("No entity contract for ability: " + abilityId);
 
-        int size = (int) Math.round(EntityContracts.stat(abilityId, contract.collider().sizeStat(), 0));
+        int size = (int) Math.round(EntityContracts.stat(abilityId, contract.collider().size(), 0)
+                * contract.collider().sizeMultiplier());
         EntityContracts.Spawn spawn = contract.spawn();
         EntityContracts.Motion motion = contract.motion();
-        double speed = motion.speedStat() == null ? 0
-                : EntityContracts.stat(abilityId, motion.speedStat(), 0);
+        double speed = motion.speed() == null ? 0
+                : EntityContracts.stat(abilityId, motion.speed(), 0);
         double rotation = spawn.rotation() == EntityContracts.RotationMode.ZERO ? 0 : ownerRotation;
         double x = ownerX;
         double y = ownerY;
@@ -48,16 +49,12 @@ public final class AbilityEntityFactory {
         } else if (spawn.mode() == EntityContracts.SpawnMode.TARGET) {
             x = finiteOrDefault(targetX, spawn.defaultX());
             y = finiteOrDefault(targetY, spawn.defaultY());
-            if (spawn.clampToRadiusStat() != null) {
-                double radius = EntityContracts.stat(abilityId, spawn.clampToRadiusStat(), 0);
+            if (spawn.clampToRadius() != null) {
+                double radius = EntityContracts.stat(abilityId, spawn.clampToRadius(), 0);
                 x = clamp(x, radius, arenaWidth - radius);
                 y = clamp(y, radius, arenaHeight - radius);
             }
-        } else if (spawn.mode() == EntityContracts.SpawnMode.SELF
-                && speed > 0
-                && (contract.factory() == EntityContracts.FactoryType.THROWN_ZONE
-                || (contract.behavior() != null
-                && contract.behavior().kind() == EntityContracts.BehaviorKind.SUMMON))) {
+        } else if (spawn.mode() == EntityContracts.SpawnMode.SELF && speed > 0) {
             double radians = compassRadians(ownerRotation);
             directionX = Math.cos(radians);
             directionY = Math.sin(radians);
@@ -66,15 +63,20 @@ public final class AbilityEntityFactory {
         double traveled = motion.initialTraveled();
         EntityContracts.Lifetime lifetime = contract.lifetime();
         int timer = switch (lifetime.timerMode()) {
-            case REMAINING, FUSE -> (int) Math.round(EntityContracts.stat(abilityId, lifetime.stat(), 0)) + lifetime.add();
+            case REMAINING, FUSE -> (int) Math.round(EntityContracts.stat(abilityId, lifetime.duration(), 0)) + lifetime.add();
             default -> 0;
         };
         int hp = contract.health() == null
                 ? 0
-                : (int) Math.round(EntityContracts.stat(abilityId, contract.health().hpStat(), 0));
+                : (int) Math.round(EntityContracts.stat(abilityId, contract.health().hp(), 0));
         boolean armed = contract.initialState().armed();
         double entityDamageMultiplier = contract.initialState().damageMultiplierFromOwner()
                 ? Math.max(0, damageMultiplier) : 1.0;
+        String phaseId = contract.phases().isEmpty() ? null : contract.phases().getFirst().id();
+        // Static Snare starts in an event-controlled armed phase. Other
+        // entities are allowed to advance from their first phase by elapsed
+        // time until a transition action locks them to a later phase.
+        boolean phaseLocked = abilityId == 29;
 
         return new ArenaEntity(
                 id,
@@ -92,9 +94,21 @@ public final class AbilityEntityFactory {
                 0,
                 entityDamageMultiplier,
                 abilityId,
-                Set.of(),
                 0,
-                rotation);
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                rotation,
+                Map.of(),
+                phaseId,
+                phaseLocked,
+                0,
+                null,
+                0,
+                0);
     }
 
     private static double compassRadians(double degrees) {

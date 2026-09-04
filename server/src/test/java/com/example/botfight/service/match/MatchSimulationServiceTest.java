@@ -2,8 +2,8 @@ package com.example.botfight.service.match;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.example.botfight.DTO.MatchPlaybackDTO;
-import com.example.botfight.domain.BotSubmission;
+import com.example.botfight.DTO.match.MatchPlaybackDTO;
+import com.example.botfight.domain.submission.BotSubmission;
 import com.example.botfight.service.match.model.MatchPlayer;
 import com.example.botfight.service.match.model.MatchSession;
 import com.example.botfight.service.match.simulation.MatchSimulationService;
@@ -12,7 +12,6 @@ import com.example.botfight.simulation.core.combat.ActionExecutionService;
 import com.example.botfight.simulation.core.logic.ConditionResolutionService;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.DuelSimulationRequest;
 import com.example.botfight.simulation.core.state.BotStateService;
-import com.example.botfight.simulation.core.combat.ProjectileSimulationService;
 import com.example.botfight.simulation.core.replay.ReplayMappingService;
 import com.example.botfight.simulation.bots.BotCodeService;
 import com.example.botfight.simulation.bots.ConditionEvaluationService;
@@ -212,18 +211,17 @@ class MatchSimulationServiceTest {
     private DuelSimulationService duelSimulationService() {
         GameConfigCatalog catalog = new GameConfigCatalog();
         BotStateService botStateService = new BotStateService(catalog, new BotCodeService());
-        ProjectileSimulationService projectileSimulationService = new ProjectileSimulationService(botStateService);
-        ActionExecutionService actionExecutionService = new ActionExecutionService(botStateService, projectileSimulationService);
+        ActionExecutionService actionExecutionService = new ActionExecutionService(botStateService);
         ConditionResolutionService conditionResolutionService = new ConditionResolutionService(new ConditionEvaluationService(), actionExecutionService);
         return new DuelSimulationService(conditionResolutionService, new ReplayMappingService(),
-                botStateService, projectileSimulationService, actionExecutionService);
+                botStateService, actionExecutionService);
     }
 
     private static final class CapturingDuelSimulationService extends DuelSimulationService {
         private DuelSimulationRequest capturedRequest;
         private CapturingDuelSimulationService() {
             super(serviceConditions(), new ReplayMappingService(), serviceBotState(),
-                    serviceProjectiles(), serviceActions());
+                    serviceActions());
         }
 
         private static GameConfigCatalog serviceCatalog() {
@@ -234,12 +232,8 @@ class MatchSimulationServiceTest {
             return new BotStateService(serviceCatalog(), new BotCodeService());
         }
 
-        private static ProjectileSimulationService serviceProjectiles() {
-            return new ProjectileSimulationService(serviceBotState());
-        }
-
         private static ActionExecutionService serviceActions() {
-            return new ActionExecutionService(serviceBotState(), serviceProjectiles());
+            return new ActionExecutionService(serviceBotState());
         }
 
         private static ConditionResolutionService serviceConditions() {

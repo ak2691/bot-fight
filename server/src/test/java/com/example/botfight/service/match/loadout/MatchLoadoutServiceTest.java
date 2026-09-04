@@ -3,7 +3,7 @@ package com.example.botfight.service.match.loadout;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.example.botfight.domain.MatchMode;
+import com.example.botfight.domain.match.MatchMode;
 import com.example.botfight.service.match.model.MatchPlayer;
 import com.example.botfight.service.match.model.MatchSession;
 import com.example.botfight.simulation.gameconfig.CompactAbilityCode;

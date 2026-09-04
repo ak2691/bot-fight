@@ -1,6 +1,6 @@
 package com.example.botfight.controller;
 
-import com.example.botfight.DTO.ActiveMatchStatusDTO;
+import com.example.botfight.DTO.match.ActiveMatchStatusDTO;
 import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.service.match.MatchService;
 import java.util.UUID;

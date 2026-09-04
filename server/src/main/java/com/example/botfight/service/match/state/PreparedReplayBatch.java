@@ -1,6 +1,6 @@
 package com.example.botfight.service.match.state;
 
-import com.example.botfight.DTO.MatchReplayDTO;
+import com.example.botfight.DTO.match.MatchReplayDTO;
 
 public record PreparedReplayBatch(
         MatchReplayDTO playback,

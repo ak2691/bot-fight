@@ -1,6 +1,10 @@
 import { ABILITY_STATS } from "../../gameconfig/Abilities.js";
-import { abilityContract, EFFECT_TYPES } from "../../gameconfig/AbilityContracts.js";
-import { applyDebuff, damageAtDistance } from "./AbilityEffectSystem.js";
+import {
+    abilityContract,
+    EFFECT_TYPES,
+    resolveEffectOverride,
+} from "../../gameconfig/AbilityContracts.js";
+import { amountAtDistance, applyStatusEffect, durationAtDistance } from "./AbilityEffectSystem.js";
 import { clamp } from "../../gameconfig/geometry.js";
 import { ignoresHostileEffects, isAliveBot } from "../../gameconfig/DefensiveState.js";
 import { applyEntityDamage } from "../entities/EntityCombat.js";
@@ -15,6 +19,7 @@ export function applyEntityEffects(bots, targetIndex, source, abilityId, combat,
     knockbackDirection = "source",
     collisionDistance = undefined,
     effectOverrides = null,
+    statOverrides = null,
 } = {}) {
     const target = bots[targetIndex];
     if (!target || ignoresHostileEffects(target)) return { bots };
@@ -24,18 +29,19 @@ export function applyEntityEffects(bots, targetIndex, source, abilityId, combat,
 
     for (const effect of contract?.effects ?? []) {
         if (allowed && !allowed.has(effect.type)) continue;
-        const resolvedEffect = {
-            ...effect,
-            ...(effectOverrides?.[effect.type] ?? {}),
-        };
+        const resolvedEffect = resolveEffectOverride(effect, effectOverrides);
+        const distance = Number.isFinite(Number(collisionDistance))
+            ? Number(collisionDistance)
+            : Math.hypot(Number(source.x) - Number(nextBots[targetIndex].x), Number(source.y) - Number(nextBots[targetIndex].y));
         if (resolvedEffect.type === EFFECT_TYPES.DAMAGE) {
-            const distance = Number.isFinite(Number(collisionDistance))
-                ? Number(collisionDistance)
-                : Math.hypot(Number(source.x) - Number(nextBots[targetIndex].x), Number(source.y) - Number(nextBots[targetIndex].y));
-            const baseDamage = resolvedEffect.amount ?? damageAtDistance(abilityId, distance);
+            const baseDamage = amountAtDistance(abilityId, distance, resolvedEffect, statOverrides);
             nextBots = applyEntityDamage(nextBots, targetIndex, source, Number(baseDamage) * Number(source.damageMultiplier ?? 1), combat);
-        } else if (resolvedEffect.type === EFFECT_TYPES.DEBUFF) {
-            nextBots[targetIndex] = applyDebuff(nextBots[targetIndex], resolvedEffect, ABILITY_STATS[abilityId] ?? {}, source, abilityId);
+        } else if (resolvedEffect.type === EFFECT_TYPES.STATUS) {
+            const durationMs = durationAtDistance(abilityId, distance, resolvedEffect, statOverrides);
+            nextBots[targetIndex] = applyStatusEffect(nextBots[targetIndex], {
+                ...resolvedEffect,
+                durationMs,
+            }, ABILITY_STATS[abilityId] ?? {}, source, abilityId);
         } else if (resolvedEffect.type === EFFECT_TYPES.INTERRUPT) {
             if (!isAliveBot(nextBots[targetIndex])) continue;
             nextBots[targetIndex] = upsertStatusEffect({
@@ -47,13 +53,13 @@ export function applyEntityEffects(bots, targetIndex, source, abilityId, combat,
             }, {
                 type: "stun",
                 abilityId,
-                remainingMs: Number(resolvedEffect.durationMs ?? 0),
+                remainingMs: durationAtDistance(abilityId, distance, resolvedEffect, statOverrides),
                 effects: [{ type: "stun", mode: "constant" }],
             });
         } else if (resolvedEffect.type === EFFECT_TYPES.KNOCKBACK) {
-            nextBots[targetIndex] = applyKnockback(nextBots[targetIndex], source, Number(resolvedEffect.distance ?? ABILITY_STATS[abilityId]?.knockback ?? 0), world, knockbackDirection);
+            nextBots[targetIndex] = applyKnockback(nextBots[targetIndex], source, amountAtDistance(abilityId, distance, resolvedEffect, statOverrides), world, knockbackDirection);
         } else if (resolvedEffect.type === EFFECT_TYPES.PULL) {
-            nextBots[targetIndex] = applyPull(nextBots[targetIndex], source, Number(resolvedEffect.perTick ?? 0), world);
+            nextBots[targetIndex] = applyPull(nextBots[targetIndex], source, amountAtDistance(abilityId, distance, resolvedEffect, statOverrides), world);
         }
     }
     return { bots: nextBots };

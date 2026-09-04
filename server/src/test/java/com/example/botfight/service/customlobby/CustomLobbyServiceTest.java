@@ -9,11 +9,11 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.example.botfight.DTO.ActiveMatchStatusDTO;
-import com.example.botfight.DTO.CustomLobbyDTO;
-import com.example.botfight.DTO.MatchmakingEventDTO;
-import com.example.botfight.domain.AppUser;
-import com.example.botfight.domain.MatchMode;
+import com.example.botfight.DTO.match.ActiveMatchStatusDTO;
+import com.example.botfight.DTO.customlobby.CustomLobbyDTO;
+import com.example.botfight.DTO.match.MatchmakingEventDTO;
+import com.example.botfight.domain.auth.AppUser;
+import com.example.botfight.domain.match.MatchMode;
 import com.example.botfight.repository.UserRepository;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.auth.CurrentUserService;

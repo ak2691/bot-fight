@@ -1,9 +1,9 @@
 package com.example.botfight.controller;
 
-import com.example.botfight.DTO.NotificationEventDTO;
-import com.example.botfight.DTO.PartyDTO;
-import com.example.botfight.DTO.PartyInviteCreateRequestDTO;
-import com.example.botfight.DTO.PartyStateEventDTO;
+import com.example.botfight.DTO.notification.NotificationEventDTO;
+import com.example.botfight.DTO.party.PartyDTO;
+import com.example.botfight.DTO.party.PartyInviteCreateRequestDTO;
+import com.example.botfight.DTO.party.PartyStateEventDTO;
 import com.example.botfight.service.notification.NotificationPublisher;
 import com.example.botfight.service.party.PartyService;
 import com.example.botfight.service.party.PartyStatePublisher;
@@ -52,7 +52,7 @@ public class PartyController {
     }
 
     @PostMapping("/{partyId}/invites")
-    public com.example.botfight.DTO.PartyInviteDTO invite(
+    public com.example.botfight.DTO.party.PartyInviteDTO invite(
             Authentication authentication,
             @PathVariable UUID partyId,
             @RequestBody PartyInviteCreateRequestDTO request) {

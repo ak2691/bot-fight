@@ -1,6 +1,6 @@
 package com.example.botfight.service.submission;
 
-import com.example.botfight.domain.BotSubmission;
+import com.example.botfight.domain.submission.BotSubmission;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Component;

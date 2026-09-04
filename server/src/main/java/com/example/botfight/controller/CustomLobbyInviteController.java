@@ -1,10 +1,10 @@
 package com.example.botfight.controller;
 
-import com.example.botfight.DTO.CustomLobbyDTO;
-import com.example.botfight.DTO.CustomLobbyInviteDTO;
-import com.example.botfight.DTO.CustomLobbyInviteListDTO;
-import com.example.botfight.DTO.CustomLobbyStateEventDTO;
-import com.example.botfight.DTO.NotificationEventDTO;
+import com.example.botfight.DTO.customlobby.CustomLobbyDTO;
+import com.example.botfight.DTO.customlobby.CustomLobbyInviteDTO;
+import com.example.botfight.DTO.customlobby.CustomLobbyInviteListDTO;
+import com.example.botfight.DTO.customlobby.CustomLobbyStateEventDTO;
+import com.example.botfight.DTO.notification.NotificationEventDTO;
 import com.example.botfight.service.customlobby.CustomLobbyService;
 import com.example.botfight.service.customlobby.CustomLobbyStatePublisher;
 import com.example.botfight.service.notification.NotificationPublisher;

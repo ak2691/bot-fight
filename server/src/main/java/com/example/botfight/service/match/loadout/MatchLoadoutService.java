@@ -1,6 +1,6 @@
 package com.example.botfight.service.match.loadout;
 
-import com.example.botfight.domain.BotSubmission;
+import com.example.botfight.domain.submission.BotSubmission;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.match.model.MatchPlayer;
 import com.example.botfight.service.match.model.MatchSession;

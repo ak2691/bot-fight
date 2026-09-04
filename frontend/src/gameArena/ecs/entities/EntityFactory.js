@@ -3,7 +3,7 @@ import { ABILITY_STATS } from "../../gameconfig/Abilities.js";
 import { abilityContract } from "../../gameconfig/AbilityContracts.js";
 import { abilityId as resolveAbilityId } from "../../gameconfig/AbilityRegistry.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
-import { ENTITY_FACTORY_TYPES, entityContract, entityContractForAbility } from "../contracts/EntityContracts.js";
+import { entityContractForAbility } from "../contracts/EntityContracts.js";
 import { selectableIdentitiesForAbilityEntity } from "../../modelPayloads/selectableIdentities.js";
 
 let nextEntityId = 1;
@@ -14,8 +14,7 @@ export function createEntity({
     type,
     entityContractId,
     entityContractType,
-        entityCategory,
-        entitySystem,
+    entityCategory,
         selectableIdentities,
         owner,
     transform,
@@ -32,7 +31,6 @@ export function createEntity({
         ...(entityContractId ? { entityContractId } : {}),
         ...(entityContractType ? { entityContractType } : {}),
         ...(entityCategory ? { category: entityCategory, entityCategory } : {}),
-        ...(entitySystem ? { entitySystem } : {}),
         selectableIdentities: selectableIdentities ?? [],
         abilityId: owner.abilityId,
         ownerId: owner.id,
@@ -88,47 +86,19 @@ export function createAbilityEntity(bot, abilityValue, context = {}) {
     });
 }
 
-/** Creates a payload from an entity contract using the appropriate factory route. */
+/** Creates a payload from its entity contract. */
 export function createEntityFromContract(bot, contract, context = {}) {
     if (!contract?.runtimeType) return null;
     const options = buildEntityOptions(bot, contract, context);
-    return contract.factory === ENTITY_FACTORY_TYPES.THROWN_ZONE
-        ? thrownZoneEntity(options)
-        : createEntity(options);
-}
-
-/**
- * Generic directional zone/projectile route. The function is intentionally
- * contract-driven; the legacy positional signature remains as a compatibility
- * shim for old tests and replay tooling.
- */
-export function thrownZoneEntity(optionsOrBot, typeOrContract, abilityValue, size, durationMs) {
-    if (isEntityOptions(optionsOrBot)) return createEntity(optionsOrBot);
-
-    // Accept the historical accidental argument order as well:
-    // thrownZoneEntity("gravityZone", bot, ...).
-    if (typeof optionsOrBot === "string" && typeOrContract && typeof typeOrContract === "object") {
-        const legacyType = optionsOrBot;
-        optionsOrBot = typeOrContract;
-        typeOrContract = legacyType;
-    }
-
-    const bot = optionsOrBot;
-    const definition = entityContract(typeOrContract);
-    if (!definition) throw new Error(`No entity contract for ${typeOrContract}.`);
-    return createEntityFromContract(bot, definition, {
-        abilityId: abilityValue ?? abilityIdForEntityType(typeOrContract),
-        entityContractId: definition.abilityId,
-        sizeOverride: size,
-        durationOverride: durationMs,
-        entityContractType: typeof typeOrContract === "string" ? typeOrContract : undefined,
-    });
+    return createEntity(options);
 }
 
 function buildEntityOptions(bot, contract, context) {
     const abilityId = context.abilityId ?? bot.abilityId;
     const stats = ABILITY_STATS[abilityId] ?? {};
-    const size = Number(context.sizeOverride ?? resolveStat(contract.collider.sizeStat, { bot, stats, context }));
+    const resolvedColliderSize = Number(resolveStat(contract.collider.size, { bot, stats, context }));
+    const size = Number(context.sizeOverride ?? (resolvedColliderSize
+        * Number(contract.collider.sizeMultiplier ?? 1)));
     const transform = buildTransform(bot, contract.spawn, size, { ...context, stats });
     const motion = buildMotion(bot, contract.motion, { stats, context });
     const state = resolveRecord(contract.state, { bot, stats, context });
@@ -137,12 +107,17 @@ function buildEntityOptions(bot, contract, context) {
         stats,
         context,
     });
-    const collider = resolveRecord(contract.collider, { bot, stats, context, skip: ["sizeStat"] });
+    const collider = resolveRecord(contract.collider, {
+        bot,
+        stats,
+        context,
+        skip: ["size", "sizeMultiplier"],
+    });
     collider.size = size;
     const health = contract.health
         ? {
-            hp: Number(resolveStat(contract.health.hpStat, { bot, stats, context })),
-            maxHp: Number(resolveStat(contract.health.maxHpStat ?? contract.health.hpStat, { bot, stats, context })),
+            hp: Number(resolveStat(contract.health.hp, { bot, stats, context })),
+            maxHp: Number(resolveStat(contract.health.maxHp ?? contract.health.hp, { bot, stats, context })),
         }
         : null;
     return {
@@ -151,7 +126,6 @@ function buildEntityOptions(bot, contract, context) {
         entityContractId: context.entityContractId ?? contract.abilityId,
         entityContractType: context.entityContractType ?? contract.entityType ?? contract.runtimeType,
         entityCategory: contract.category,
-        entitySystem: contract.system,
         selectableIdentities: selectableIdentitiesForAbilityEntity(contract, abilityId),
         owner: { id: bot.id, slot: bot.slot, abilityId },
         transform,
@@ -177,8 +151,8 @@ function buildTransform(bot, spawn, size, context) {
         };
     }
     if (mode === "target") {
-        const radius = spawn.clampToRadiusStat
-            ? Number(resolveValue({ stat: spawn.clampToRadiusStat, fallback: 0 }, { bot, stats: context.stats ?? {}, context }))
+        const radius = spawn.clampToRadius
+            ? Number(resolveValue({ stat: spawn.clampToRadius, fallback: 0 }, { bot, stats: context.stats ?? {}, context }))
             : 0;
         const width = Number(context.width ?? ARENA_WIDTH_UNITS);
         const height = Number(context.height ?? ARENA_HEIGHT_UNITS);
@@ -195,9 +169,9 @@ function buildTransform(bot, spawn, size, context) {
 
 function buildMotion(bot, definition, { stats, context }) {
     const direction = compassDirection(bot.rotation);
-    const speed = Number(resolveStat(definition?.speedStat, { bot, stats, context }));
+    const speed = Number(resolveStat(definition?.speed, { bot, stats, context }));
     const traveled = context.traveledOverride ?? resolveValue(
-        definition?.traveledStat ? { stat: definition.traveledStat, fallback: 0 } : definition?.traveled,
+        definition?.traveled,
         { bot, stats, context },
     );
     return {
@@ -209,11 +183,9 @@ function buildMotion(bot, definition, { stats, context }) {
 
 function buildLifetime(definition, { bot, stats, context }) {
     const remaining = context.durationOverride
-        ?? (definition?.durationStat
-            ? Number(resolveStat(definition.durationStat, { bot, stats, context }))
-            : definition?.remainingStat
-                ? Number(resolveStat(definition.remainingStat, { bot, stats, context }))
-                : null);
+        ?? (definition?.duration
+            ? Number(resolveStat(definition.duration, { bot, stats, context }))
+            : null);
     const adjusted = remaining == null ? null : remaining + Number(definition?.add ?? 0);
     return { ageMs: 0, remainingMs: adjusted };
 }
@@ -254,25 +226,4 @@ function clampTarget(value, min, max, clamp) {
     const numeric = Number(value);
     if (typeof clamp === "function") return clamp(numeric, min, max);
     return Math.max(min, Math.min(max, numeric));
-}
-
-function isEntityOptions(value) {
-    return Boolean(value && typeof value === "object" && value.type && value.owner && value.transform);
-}
-
-function abilityIdForEntityType(type) {
-    return {
-        proximity_mine: 11,
-        proximityMine: 11,
-        gravity_zone: 14,
-        gravityZone: 14,
-        singularity_zone: 27,
-        singularityZone: 27,
-        tether_bolt: 28,
-        tetherBolt: 28,
-        static_snare: 29,
-        staticSnare: 29,
-        repeller_drone: 31,
-        repellerDrone: 31,
-    }[type] ?? null;
 }

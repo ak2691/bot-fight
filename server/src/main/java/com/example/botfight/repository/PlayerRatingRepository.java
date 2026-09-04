@@ -1,7 +1,7 @@
 package com.example.botfight.repository;
 
-import com.example.botfight.domain.MatchMode;
-import com.example.botfight.domain.PlayerRating;
+import com.example.botfight.domain.match.MatchMode;
+import com.example.botfight.domain.rating.PlayerRating;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;

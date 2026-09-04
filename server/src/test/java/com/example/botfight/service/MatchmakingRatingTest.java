@@ -7,8 +7,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.example.botfight.DTO.ActiveMatchStatusDTO;
-import com.example.botfight.domain.MatchMode;
+import com.example.botfight.DTO.match.ActiveMatchStatusDTO;
+import com.example.botfight.domain.match.MatchMode;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;

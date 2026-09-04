@@ -1,6 +1,6 @@
 package com.example.botfight.service.notification;
 
-import com.example.botfight.DTO.NotificationEventDTO;
+import com.example.botfight.DTO.notification.NotificationEventDTO;
 import com.example.botfight.service.block.BlockLookup;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;

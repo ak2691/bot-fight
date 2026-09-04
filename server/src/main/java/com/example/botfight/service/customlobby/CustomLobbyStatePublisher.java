@@ -1,7 +1,7 @@
 package com.example.botfight.service.customlobby;
 
-import com.example.botfight.DTO.CustomLobbyStateEventDTO;
-import com.example.botfight.DTO.CustomLobbyChatEventDTO;
+import com.example.botfight.DTO.customlobby.CustomLobbyStateEventDTO;
+import com.example.botfight.DTO.customlobby.CustomLobbyChatEventDTO;
 import java.util.List;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;

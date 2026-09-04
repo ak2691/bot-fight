@@ -1,6 +1,6 @@
 package com.example.botfight.repository;
 
-import com.example.botfight.domain.UserBlock;
+import com.example.botfight.domain.block.UserBlock;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;

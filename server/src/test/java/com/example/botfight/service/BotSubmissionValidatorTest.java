@@ -5,8 +5,8 @@ import com.example.botfight.service.submission.BotSubmissionValidator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.example.botfight.domain.AppUser;
-import com.example.botfight.domain.BotSubmission;
+import com.example.botfight.domain.auth.AppUser;
+import com.example.botfight.domain.submission.BotSubmission;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 

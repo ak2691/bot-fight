@@ -2,10 +2,9 @@ package com.example.botfight.simulation.core.orchestration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.example.botfight.DTO.MatchPlaybackDTO;
-import com.example.botfight.DTO.MatchReplayDTO;
+import com.example.botfight.DTO.match.MatchPlaybackDTO;
+import com.example.botfight.DTO.match.MatchReplayDTO;
 import com.example.botfight.simulation.core.combat.ActionExecutionService;
-import com.example.botfight.simulation.core.combat.ProjectileSimulationService;
 import com.example.botfight.simulation.core.logic.ConditionResolutionService;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.DuelArenaRequest;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.DuelBotRequest;
@@ -34,11 +33,10 @@ class DuelSimulationServiceTest {
     private DuelSimulationService newService() {
         GameConfigCatalog catalog = new GameConfigCatalog();
         BotStateService botStateService = new BotStateService(catalog, new com.example.botfight.simulation.bots.BotCodeService());
-        ProjectileSimulationService projectileSimulationService = new ProjectileSimulationService(botStateService);
-        ActionExecutionService actionExecutionService = new ActionExecutionService(botStateService, projectileSimulationService);
+        ActionExecutionService actionExecutionService = new ActionExecutionService(botStateService);
         ConditionResolutionService conditionResolutionService = new ConditionResolutionService(new ConditionEvaluationService(), actionExecutionService);
         return new DuelSimulationService(conditionResolutionService, new ReplayMappingService(),
-                botStateService, projectileSimulationService, actionExecutionService);
+                botStateService, actionExecutionService);
     }
 
     @Test
@@ -378,8 +376,7 @@ class DuelSimulationServiceTest {
     void abilityPhaseConditionalsTreatActivePreparationAndCooldownAsSeparateStates() {
         GameConfigCatalog catalog = new GameConfigCatalog();
         BotStateService botStateService = new BotStateService(catalog, new com.example.botfight.simulation.bots.BotCodeService());
-        ActionExecutionService actionExecutionService = new ActionExecutionService(
-                botStateService, new ProjectileSimulationService(botStateService));
+        ActionExecutionService actionExecutionService = new ActionExecutionService(botStateService);
         DuelSimulationService.Bot bot = new DuelSimulationService.Bot();
         bot.abilities = Set.of(20);
 
@@ -411,8 +408,7 @@ class DuelSimulationServiceTest {
     void unownedAbilityConditionalsResolveEveryAbilityStateAsFalseOrZero() throws Exception {
         GameConfigCatalog catalog = new GameConfigCatalog();
         BotStateService botStateService = new BotStateService(catalog, new com.example.botfight.simulation.bots.BotCodeService());
-        ActionExecutionService actionExecutionService = new ActionExecutionService(
-                botStateService, new ProjectileSimulationService(botStateService));
+        ActionExecutionService actionExecutionService = new ActionExecutionService(botStateService);
         ConditionResolutionService resolver = new ConditionResolutionService(
                 new ConditionEvaluationService(), actionExecutionService);
         DuelSimulationService.Bot player = new DuelSimulationService.Bot();
@@ -859,8 +855,30 @@ class DuelSimulationServiceTest {
         var attacker = result.frames().getFirst().bots().getFirst();
         assertThat(attacker.abilityCooldowns()).containsEntry(4, 0);
         assertThat(result.frames().getFirst().entities())
-                .anySatisfy(entity -> assertThat(entity.type()).isEqualTo("grenadeExplosion"));
+                .anySatisfy(entity -> {
+                    assertThat(entity.type()).isEqualTo("grenade");
+                    assertThat(entity.phaseId()).isEqualTo("active");
+                    assertThat(entity.visualEventType()).isNull();
+                    assertThat(entity.visibleMs()).isEqualTo(100);
+                    assertThat(entity.visualEventMs()).isNull();
+                    assertThat(entity.visualEventSize()).isNull();
+                });
         assertThat(result.frames().getFirst().bots().get(1).hp()).isLessThan(150);
+
+        MatchReplayDTO compact = service.simulateCompact(request(
+                arena(100),
+                bot("grenadier", "Grenadier", 1, 100, 400, "custom", customBrain("[4]", """
+                        [{"conditions":[{"type":"always"}],"action":4}]
+                        """)),
+                bot("target", "Target", 2, 190, 400, idleBrain)));
+        assertThat(compact.frames().getFirst().entities())
+                .anySatisfy(entity -> {
+                    assertThat(entity.phaseId()).isEqualTo("active");
+                    assertThat(entity.visualEventType()).isNull();
+                    assertThat(entity.visibleMs()).isEqualTo(100);
+                    assertThat(entity.visualEventMs()).isNull();
+                    assertThat(entity.visualEventSize()).isNull();
+                });
     }
 
     @Test

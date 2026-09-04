@@ -5,13 +5,14 @@ import { CLOSING_ZONE_TYPE } from "../gameconfig/ArenaHazardConfig.js";
 import { AUTO_STEP_MS } from "../modelPayloads/arenaConstants.js";
 import { compassDegreesToRadians } from "../botlogic/planner/arenaAngles.js";
 import { statusIsActive } from "../ecs/contracts/StatusContracts.js";
+import { entityContract, phaseForEntity } from "../ecs/contracts/EntityContracts.js";
 
-const ZONE_TYPES = new Set([CLOSING_ZONE_TYPE, "gravityZone", "gravityExplosion", "nullZone", "orbitalMarker", "orbitalExplosion", "silenceWave", "temporalRewindZone", "singularityZone", "singularityExplosion", "staticSnareBurst"]);
+const ZONE_TYPES = new Set([CLOSING_ZONE_TYPE, "grenadeExplosion", "mineExplosion", "gravityZone", "gravityExplosion", "nullZone", "orbitalMarker", "orbitalExplosion", "silenceWave", "temporalRewindZone", "singularityZone", "singularityExplosion", "staticSnareBurst"]);
 const PROJECTILE_TYPES = new Set(["grenade", "fireball", "windburstProjectile"]);
-// Authoritative replay entities expose the remaining lifetime as timerMs.
-// These derived effects are created with visibleMs in the training arena, so
-// normalize the replay timer back into that same renderer-facing field.
-const REPLAY_VISIBLE_TIMER_TYPES = new Set([
+// These names only occur in replay payloads written before phase visuals were
+// authoritative. Keep their timer fallback so historical replays remain
+// renderable; new payloads use phaseId and the normal renderer contract.
+const LEGACY_REPLAY_PHASE_VISUAL_TYPES = new Set([
     "grenadeExplosion",
     "mineExplosion",
     "gravityExplosion",
@@ -19,6 +20,9 @@ const REPLAY_VISIBLE_TIMER_TYPES = new Set([
     "singularityExplosion",
     "staticSnareBurst",
 ]);
+// Authoritative replay entities expose the remaining lifetime as timerMs.
+// Impact phases carry a visibleMs timer in the training arena, so normalize
+// the replay timer back into that same renderer-facing field.
 const PROJECTILE_TRAILS = Object.freeze({
     fireball: { color: 0xfb923c, length: 48, width: 10 },
     gravityZone: { color: 0xc4b5fd, length: 38, width: 7 },
@@ -44,8 +48,32 @@ export const ENTITY_PRESENTATION_DEFINITIONS = Object.freeze({
 export const LOCK_ON_PRESENTATION = Object.freeze({
     texturePath: ["lockOnCrosshair"],
     animation: "target",
-    markerSize: 48,
+    markerSize: ABILITY_STATS[20]?.visualSize ?? 48,
 });
+
+/** Resolves presentation metadata from the entity's current phase. */
+export function visualForShape(shape) {
+    const contract = entityContract(shape?.entityContractId ?? shape?.abilityId ?? shape?.type);
+    if (!contract) return null;
+
+    if (shape?.visualEventType && Number(shape.visualEventMs ?? 0) > 0) {
+        const visualSize = Number(shape.visualEventSize ?? shape.size ?? 0);
+        return {
+            type: shape.visualEventType,
+            ...(visualSize > 0 ? { visualSize } : {}),
+            ...(shape.visualEventMs > 0 ? { visibleMs: shape.visualEventMs } : {}),
+        };
+    }
+
+    const phaseVisual = phaseForEntity(shape)?.visual;
+    if (phaseVisual) return phaseVisual;
+    return contract.visual ?? null;
+}
+
+/** Returns the asset/presentation type selected by the entity's phase metadata. */
+export function presentationTypeForShape(shape) {
+    return visualForShape(shape)?.type ?? shape?.type;
+}
 
 export const BOT_PRESENTATION_DEFINITIONS = Object.freeze({
     20: LOCK_ON_PRESENTATION,
@@ -106,6 +134,9 @@ export function closingZoneDamageOccurred(shape, previousShape) {
 
 export function pixiLayerForShape(shape) {
     if (isBotShape(shape)) return "bots";
+    const presentationType = presentationTypeForShape(shape);
+    if (ZONE_TYPES.has(presentationType)) return "zones";
+    if (PROJECTILE_TYPES.has(presentationType)) return "projectiles";
     if (ZONE_TYPES.has(shape?.type)) return "zones";
     if (PROJECTILE_TYPES.has(shape?.type)) return "projectiles";
     return "entities";
@@ -114,21 +145,6 @@ export function pixiLayerForShape(shape) {
 export function presentationDefinitionForShape(shape) {
     if (isBotShape(shape)) return { kind: "bot", layer: "bots", texturePath: ["bot"], animation: "static" };
     if (shape?.type === CLOSING_ZONE_TYPE) return { kind: "arenaHazard", layer: "zones", animation: "geometry" };
-    if (shape?.type === "grenade") {
-        const state = grenadeVisualState(shape);
-        return {
-            kind: "entity",
-            layer: "projectiles",
-            texturePath: ["grenade", state],
-            animation: state === "detonate" ? "progress" : "time",
-            frameMs: state === "detonate" ? null : 90,
-            durationMs: state === "detonate" ? AUTO_STEP_MS * 2 : null,
-            remaining: state === "detonate" ? "grenadeDetonate" : null,
-        };
-    }
-    if (shape?.type === "proximityMine") {
-        return { kind: "entity", layer: "projectiles", texturePath: ["mine", shape.armed ? "static" : "moving"], animation: "time", frameMs: 90 };
-    }
     if (["singularityZone", "singularityExplosion"].includes(shape?.type)) {
         return { kind: "generated", layer: "zones", fallback: "graphics" };
     }
@@ -139,10 +155,63 @@ export function presentationDefinitionForShape(shape) {
             fallback: "graphics",
         };
     }
-    const definition = ENTITY_PRESENTATION_DEFINITIONS[shape?.type];
+    const presentationType = presentationTypeForShape(shape);
+    if (presentationType === "grenade") {
+        const state = visualForShape(shape)?.state ?? grenadeVisualState(shape);
+        return {
+            kind: "entity",
+            layer: "projectiles",
+            texturePath: ["grenade", state],
+            animation: state === "detonate" ? "progress" : "time",
+            frameMs: state === "detonate" ? null : 90,
+            durationMs: state === "detonate" ? AUTO_STEP_MS * 2 : null,
+            remaining: state === "detonate" ? "grenadeDetonate" : null,
+        };
+    }
+    if (presentationType === "proximityMine") {
+        const state = visualForShape(shape)?.state ?? (shape.armed ? "static" : "moving");
+        return { kind: "entity", layer: "projectiles", texturePath: ["mine", state], animation: "time", frameMs: 90 };
+    }
+    const definition = ENTITY_PRESENTATION_DEFINITIONS[presentationType];
     return definition
         ? { kind: "entity", layer: pixiLayerForShape(shape), ...definition }
         : { kind: "fallback", fallback: "hidden" };
+}
+
+/**
+ * Describes a visual instance without treating its timer as gameplay state.
+ * The Pixi view consumes this once when a phase/event begins, then advances
+ * the animation from its own presentation clock.
+ */
+export function visualAnimationDescriptorForShape(shape) {
+    const visual = visualForShape(shape);
+    const presentation = presentationDefinitionForShape(shape);
+    if (!visual && presentation.fallback === "hidden") return null;
+
+    const type = visual?.type ?? presentationTypeForShape(shape);
+    const state = visual?.state ?? "";
+    const size = Number(visual?.visualSize ?? shape?.size ?? 0);
+    const eventMs = Number(shape?.visualEventMs ?? 0);
+    const eventActive = Boolean(shape?.visualEventType) && eventMs > 0;
+    const legacyVisual = !visual && LEGACY_REPLAY_PHASE_VISUAL_TYPES.has(type);
+    const configuredVisibleMs = eventActive
+        ? Number(presentation.durationMs ?? visual?.visibleMs ?? eventMs)
+        : Number(visual?.visibleMs
+            ?? (legacyVisual
+                ? shape?.visibleMs ?? shape?.timerMs ?? presentation.durationMs
+                : 0));
+    const durationMs = Number.isFinite(configuredVisibleMs) && configuredVisibleMs > 0
+        ? configuredVisibleMs
+        : 0;
+    const remainingMs = eventActive
+        ? eventMs
+        : shape?.visibleMs != null && Number.isFinite(Number(shape.visibleMs))
+            ? Math.max(0, Number(shape.visibleMs))
+            : durationMs > 0 ? durationMs : null;
+    const eventSequence = shape?.visualEvent == null ? "" : `:${shape.visualEvent}`;
+    const phase = shape?.phaseId == null ? "" : `:${shape.phaseId}`;
+    const key = `${eventActive ? "event" : "phase"}${eventSequence}${phase}:${type}:${state}:${size}`;
+    return { key, durationMs, remainingMs, eventActive };
 }
 
 export function shapeInterpolationMs(shape) {
@@ -178,25 +247,25 @@ export function botMovementRotation(shape) {
 }
 
 export function replayProjectileVelocity(shape, previousShape, nextShape) {
-    const derivedFromPrevious = {
+    const previousVelocity = {
         velocityX: Number(shape?.x ?? 0) - Number(previousShape?.x ?? shape?.x ?? 0),
         velocityY: Number(shape?.y ?? 0) - Number(previousShape?.y ?? shape?.y ?? 0),
     };
-    const derivedFromNext = {
+    const nextVelocity = {
         velocityX: Number(nextShape?.x ?? shape?.x ?? 0) - Number(shape?.x ?? 0),
         velocityY: Number(nextShape?.y ?? shape?.y ?? 0) - Number(shape?.y ?? 0),
     };
     const hasProvidedVelocity = shape?.velocityX != null && shape?.velocityY != null
         && Number.isFinite(Number(shape.velocityX)) && Number.isFinite(Number(shape.velocityY));
     if (!hasProvidedVelocity) {
-        return Math.hypot(derivedFromPrevious.velocityX, derivedFromPrevious.velocityY) > 0.01
-            ? derivedFromPrevious
-            : derivedFromNext;
+        return Math.hypot(previousVelocity.velocityX, previousVelocity.velocityY) > 0.01
+            ? previousVelocity
+            : nextVelocity;
     }
     const provided = { velocityX: Number(shape.velocityX), velocityY: Number(shape.velocityY) };
     if (Math.hypot(provided.velocityX, provided.velocityY) > 0.01) return provided;
-    if (Math.hypot(derivedFromPrevious.velocityX, derivedFromPrevious.velocityY) > 0.01) return derivedFromPrevious;
-    if (Math.hypot(derivedFromNext.velocityX, derivedFromNext.velocityY) > 0.01) return derivedFromNext;
+    if (Math.hypot(previousVelocity.velocityX, previousVelocity.velocityY) > 0.01) return previousVelocity;
+    if (Math.hypot(nextVelocity.velocityX, nextVelocity.velocityY) > 0.01) return nextVelocity;
     return provided;
 }
 
@@ -213,16 +282,34 @@ export function normalizeReplayObstacleShape(obstacle, previousObstacle, {
     replayPhase = null,
     nextObstacle = null,
 } = {}) {
+    const normalizedAbilityId = obstacle?.abilityId == null ? null : abilityId(Number(obstacle.abilityId));
+    const phaseLocked = obstacle?.phaseId == null
+        ? obstacle?.phaseLocked
+        : true;
+    const phaseShape = {
+        ...obstacle,
+        ...(normalizedAbilityId == null ? {} : { abilityId: normalizedAbilityId }),
+        ...(phaseLocked == null ? {} : { phaseLocked }),
+    };
     const velocity = obstacle?.type === "grenade"
         ? { velocityX: Number(obstacle.velocityX ?? 0), velocityY: Number(obstacle.velocityY ?? 0) }
         : replayProjectileVelocity(obstacle, previousObstacle, nextObstacle);
-    const replayVisibleMs = REPLAY_VISIBLE_TIMER_TYPES.has(obstacle?.type)
-        ? Math.max(0, Number(obstacle?.timerMs ?? 0))
-        : null;
+    const phaseVisual = visualForShape(phaseShape);
+    const visualEventMs = Number(obstacle?.visualEventMs);
+    const replayVisibleMs = Number.isFinite(visualEventMs) && visualEventMs > 0
+        ? visualEventMs
+        : obstacle?.visibleMs != null
+            ? Math.max(0, Number(obstacle.visibleMs))
+            : Number.isFinite(Number(phaseVisual?.visibleMs)) && Number(phaseVisual.visibleMs) > 0
+                ? Number(phaseVisual.visibleMs)
+                : LEGACY_REPLAY_PHASE_VISUAL_TYPES.has(obstacle?.type)
+                    ? Math.max(0, Number(obstacle?.timerMs ?? 0))
+                : null;
     return {
         ...obstacle,
-        ...(obstacle?.abilityId == null ? {} : { abilityId: abilityId(Number(obstacle.abilityId)) }),
+        ...(normalizedAbilityId == null ? {} : { abilityId: normalizedAbilityId }),
         ...velocity,
+        ...(phaseLocked == null ? {} : { phaseLocked }),
         size: obstacle?.size ?? 60,
         rotation: obstacle?.rotation ?? 0,
         stoppedMs: obstacle?.type === "grenade" ? Number(obstacle.timerMs ?? 0) : undefined,

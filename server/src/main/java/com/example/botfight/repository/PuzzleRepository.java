@@ -1,7 +1,7 @@
 package com.example.botfight.repository;
 
-import com.example.botfight.domain.Puzzle;
-import com.example.botfight.domain.PuzzleStatus;
+import com.example.botfight.domain.puzzle.Puzzle;
+import com.example.botfight.domain.puzzle.PuzzleStatus;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;

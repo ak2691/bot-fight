@@ -1,7 +1,7 @@
 package com.example.botfight.controller;
 
-import com.example.botfight.DTO.BotSubmissionPayloadDTO;
-import com.example.botfight.DTO.BotSubmissionValidationResponseDTO;
+import com.example.botfight.DTO.submission.BotSubmissionPayloadDTO;
+import com.example.botfight.DTO.submission.BotSubmissionValidationResponseDTO;
 import com.example.botfight.service.limits.RateLimitExceededException;
 import com.example.botfight.service.submission.BotSubmissionService;
 import java.util.Map;

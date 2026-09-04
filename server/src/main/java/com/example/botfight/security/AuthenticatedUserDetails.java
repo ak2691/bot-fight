@@ -1,7 +1,7 @@
 package com.example.botfight.security;
 
-import com.example.botfight.domain.AppUser;
-import com.example.botfight.domain.UserRole;
+import com.example.botfight.domain.auth.AppUser;
+import com.example.botfight.domain.auth.UserRole;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;

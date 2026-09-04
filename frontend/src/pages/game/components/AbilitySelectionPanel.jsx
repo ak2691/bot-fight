@@ -127,13 +127,12 @@ export default function AbilitySelectionPanel({
                                             disabled={unavailable}
                                             aria-pressed={active}
                                             onClick={() => toggleAbility(ability.id)}
-                                            className={`gray-button-surface ability-card group relative block min-h-52 w-full overflow-hidden rounded-none border p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 ${
-                                                active
+                                            className={`gray-button-surface ability-card group relative block min-h-52 w-full overflow-hidden rounded-none border p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 ${active
                                                     ? "-translate-y-1 cursor-pointer border-cyan-400 bg-cyan-950/35 shadow-[0_8px_24px_rgba(8,145,178,0.12)] ring-2 ring-cyan-300/75 ring-offset-2 ring-offset-[#050d16] hover:border-cyan-300"
                                                     : unavailable
                                                         ? "cursor-not-allowed border-slate-800 bg-slate-950/45 opacity-35 saturate-0"
                                                         : "cursor-pointer border-slate-700/75 bg-[#091522]/85 hover:border-cyan-700 hover:bg-cyan-950/15"
-                                            }`}
+                                                }`}
                                         >
                                             <AbilityCatalogueIcon ability={ability} className="ability-card-art" />
                                             <span className="ability-card-gradient" aria-hidden="true" />
@@ -173,11 +172,11 @@ export default function AbilitySelectionPanel({
                             <span className="text-cyan">&#9679;</span>
                             <span className="text-cyan-100">
                                 {allPlayersReady
-                                    ? "ALL PLAYERS LOCKED · PREPARING..."
+                                    ? "ALL PLAYERS LOCKED - PREPARING..."
                                     : ownTeamReady && opponentsReady
-                                        ? "ALL TEAMS READY · PREPARING..."
+                                        ? "ALL TEAMS READY - PREPARING..."
                                         : ownTeamReady
-                                            ? "YOUR TEAM READY · WAITING FOR OPPONENTS..."
+                                            ? "YOUR TEAM READY - WAITING FOR OPPONENTS..."
                                             : "WAITING FOR ALL PLAYERS TO LOCK"}
                             </span>
                         </div>
@@ -188,7 +187,7 @@ export default function AbilitySelectionPanel({
                                 return (
                                     <div key={group.teamNumber} className="rounded border border-slate-800/80 bg-slate-950/30 px-2 py-2">
                                         <div className="mb-1 text-[9px] text-slate-500">
-                                            {isOwnTeam ? "YOUR TEAM" : `TEAM ${group.teamNumber}`} · {lockedCount}/{group.participants.length} LOCKED
+                                            {isOwnTeam ? "YOUR TEAM" : `TEAM ${group.teamNumber}`}: {lockedCount}/{group.participants.length} LOCKED
                                         </div>
                                         <div className="flex flex-wrap gap-x-3 gap-y-1">
                                             {group.participants.map((participant) => (
@@ -223,10 +222,10 @@ export default function AbilitySelectionPanel({
                             {submitting
                                 ? "LOCKING LOADOUT"
                                 : playerLocked
-                                ? "LOADOUT LOCKED"
-                                : draftedAbilities.length === draftRule.picks
-                                    ? "LOCK LOADOUT"
-                                    : `LOCK + AUTO-PICK ${draftRule.picks - draftedAbilities.length}`}
+                                    ? "LOADOUT LOCKED"
+                                    : draftedAbilities.length === draftRule.picks
+                                        ? "LOCK LOADOUT"
+                                        : `LOCK + AUTO-PICK ${draftRule.picks - draftedAbilities.length}`}
                         </button>
                     </div>
                 </div>

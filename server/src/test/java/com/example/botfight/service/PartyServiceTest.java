@@ -8,9 +8,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.example.botfight.DTO.ActiveMatchStatusDTO;
-import com.example.botfight.DTO.PartyMemberDTO;
-import com.example.botfight.domain.AppUser;
+import com.example.botfight.DTO.match.ActiveMatchStatusDTO;
+import com.example.botfight.DTO.party.PartyMemberDTO;
+import com.example.botfight.domain.auth.AppUser;
 import com.example.botfight.repository.PartyInviteRepository;
 import com.example.botfight.repository.PartyMemberRepository;
 import com.example.botfight.repository.PartyRepository;
@@ -324,7 +324,7 @@ class PartyServiceTest {
                 .containsExactly(owner.getId());
     }
 
-    private com.example.botfight.DTO.PartyDTO createPartyWithTeammate() {
+    private com.example.botfight.DTO.party.PartyDTO createPartyWithTeammate() {
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
         var created = service.create(authentication);
         when(userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(teammate.getUsername()))

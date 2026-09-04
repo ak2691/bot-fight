@@ -83,9 +83,11 @@ export function repulsorBurstDiameter(progress, maxDiameter = REPULSOR_BURST_MAX
     return max * REPULSOR_BURST_DIAMETER_SCALE[frame];
 }
 
-export function basicHealParticleSpec(index) {
+export function basicHealParticleSpec(index, visualSize = 12) {
     const safeIndex = Math.max(0, Math.min(BASIC_HEAL_PARTICLE_SPECS.length - 1, Math.floor(Number(index) || 0)));
-    return BASIC_HEAL_PARTICLE_SPECS[safeIndex];
+    const base = BASIC_HEAL_PARTICLE_SPECS[safeIndex];
+    const scale = Math.max(0.01, Number(visualSize) || 12) / 12;
+    return scale === 1 ? base : { ...base, fontSize: base.fontSize * scale };
 }
 
 export function sweepAngle(remainingMs, durationMs, startAngle, endAngle, frameStepMs = 100) {

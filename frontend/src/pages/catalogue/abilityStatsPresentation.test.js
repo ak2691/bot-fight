@@ -4,7 +4,7 @@ import { abilityStatsForDisplay } from "./abilityStatsPresentation.js";
 import { ALL_ABILITY_DEFINITIONS } from "../../gameArena/loadout/BotLoadout.js";
 
 test("ability stats expose only the player-facing vocabulary", () => {
-    const rows = abilityStatsForDisplay({ effects: [{ type: "spawn_entity" }], stats: { cooldownMs: 12000, maxDamage: 50, minDamage: 25, damageFalloffStart: 0, damageFalloffEnd: 50, range: 70, speedPerTick: 32, fuseMs: 1000 } });
+    const rows = abilityStatsForDisplay({ effects: [{ type: "spawn_entity" }], stats: { cooldownMs: 12000, falloff: { maxAmount: 50, minAmount: 25, falloffStart: 0, falloffEnd: 50 }, range: 70, speed: 32, fuseMs: 1000, visualSize: 140 } });
     assert.deepEqual(rows.map(({ label }) => label), ["Cooldown", "Min damage", "Max damage", "Falloff ends", "Range", "Duration"]);
     assert.deepEqual(rows.slice(1, 5), [
         { label: "Min damage", value: "25", section: "Damage profile" },
@@ -15,7 +15,7 @@ test("ability stats expose only the player-facing vocabulary", () => {
 });
 
 test("charges and coverage share the Charges and Arc labels", () => {
-    assert.deepEqual(abilityStatsForDisplay({ effects: [], stats: { maxCharges: 10, arcDegrees: 180 } }), [{ label: "Arc", value: "180°" }, { label: "Charges", value: "10" }]);
+    assert.deepEqual(abilityStatsForDisplay({ effects: [], stats: { maxCharges: 10, arc: 180 } }), [{ label: "Arc", value: "180°" }, { label: "Charges", value: "10" }]);
 });
 
 test("charged abilities expose their reload time", () => {
@@ -34,7 +34,7 @@ test("generic recharge metadata uses the Recharge label", () => {
 });
 
 test("status effects avoid per-tick wording", () => {
-    const rows = abilityStatsForDisplay({ effects: [{ type: "debuff", debuff: "burn", durationMs: 5000 }], stats: { damage: 15, burnDamage: 2, burnTickMs: 1000, burnDurationMs: 5000 } });
+    const rows = abilityStatsForDisplay({ effects: [{ type: "status", subtype: "burn", durationMs: 5000 }], stats: { damage: 15, burnDamage: 2, burnTickMs: 1000, burnDurationMs: 5000 } });
     assert.deepEqual(rows.map(({ label }) => label), ["Damage", "Status effect", "Status duration", "Status interval", "Status damage"]);
 });
 
@@ -44,7 +44,7 @@ test("Dash time is Active rather than Duration", () => {
 });
 
 test("Static Snare exposes its trigger radius", () => {
-    assert.deepEqual(abilityStatsForDisplay({ effects: [], stats: { triggerRadius: 75 } }), [
+    assert.deepEqual(abilityStatsForDisplay({ effects: [], stats: { radius: 75 } }), [
         { label: "Radius", value: "75 units" },
     ]);
 });
@@ -64,15 +64,24 @@ test("Snare Bomb exposes only its meaningful destruction phase attributes", () =
     assert.equal(
         abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 14))
             .some(({ section }) => ["Travel phase", "Fuse phase", "Active phase"].includes(section)),
-        false,
+        true,
     );
 });
 
-test("grenade and proximity mine expose their throw ranges", () => {
-    for (const abilityId of [4, 11]) {
-        const rows = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === abilityId));
-        assert.ok(rows.some(({ label, value }) => label === "Throw range" && value === `${abilityId === 4 ? 336 : 176} units`));
-    }
+test("grenade and proximity mine expose their impact radii", () => {
+    assert.ok(abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 4))
+        .some(({ label, value }) => label === "Radius" && value === "70 units"));
+    assert.ok(abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 11))
+        .some(({ label, value }) => label === "Radius" && value === "87.5 units"));
+});
+
+test("rectangular projectiles expose independent hitbox dimensions", () => {
+    const silenceRows = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 15));
+    const windBurstRows = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 18));
+    assert.ok(silenceRows.some(({ label, value }) => label === "Hitbox width" && value === "150 units"));
+    assert.ok(silenceRows.some(({ label, value }) => label === "Hitbox length" && value === "190 units"));
+    assert.ok(windBurstRows.some(({ label, value }) => label === "Hitbox width" && value === "80 units"));
+    assert.ok(windBurstRows.some(({ label, value }) => label === "Hitbox length" && value === "115 units"));
 });
 
 test("pull effects expose their per-tick strength", () => {

@@ -1,6 +1,6 @@
 package com.example.botfight.repository;
 
-import com.example.botfight.domain.PasswordResetRequest;
+import com.example.botfight.domain.auth.PasswordResetRequest;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;

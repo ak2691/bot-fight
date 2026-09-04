@@ -220,7 +220,7 @@ function applyMovementActivation(bot, payload, movement, elapsedMs) {
     const relative = relativeMovementVector(targetVector.x, targetVector.y, direction);
     const [ux, uy] = absolute ?? [relative.x, relative.y];
     const distance = Number(stats[movement.distanceStat] ?? 150);
-    const stepDistance = Number(stats[movement.stepDistanceStat] ?? 75);
+    const stepDistance = Number(stats[movement.speedStat] ?? 75);
     const step = Math.min(stepDistance, distance);
     const x = clamp(bot.x + ux * step, bot.size / 2, ARENA_WIDTH_UNITS - bot.size / 2), y = clamp(bot.y + uy * step, bot.size / 2, ARENA_HEIGHT_UNITS - bot.size / 2);
     const traveled = Math.hypot(x - bot.x, y - bot.y);

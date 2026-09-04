@@ -14,6 +14,8 @@ import com.example.botfight.simulation.gameconfig.AbilityContracts.EffectType;
 import com.example.botfight.simulation.gameconfig.HitStagger;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 
 /** Applies ordered direct ability effects after delivery. */
@@ -100,53 +102,60 @@ class AbilityEffectService {
                                       double sourceX,
                                       double sourceY,
                                       boolean skipTeleport) {
+        AbilityContracts.AbilityPhase phase = firstPhase(payload);
+        Map<String, AbilityContracts.EffectOverride> overrides = phase == null
+                ? Map.of() : phase.effectOverrides();
+        Double rangeOverride = phase == null ? null : phaseRange(phase.statOverrides());
         double confirmedDamage = 0;
-        for (AbilityContracts.Effect effect : payload.contract().effects()) {
-            switch (effect.type()) {
+        for (AbilityContracts.Effect effect : directPhaseEffects(payload)) {
+            double distance = defender == null ? 0 : between(sourceX, sourceY, defender.x, defender.y);
+            AbilityContracts.Effect resolved = withEffectOverride(effect, effectOverrideFor(effect, overrides));
+            resolved = withResolvedDuration(payload, resolved, distance, rangeOverride);
+            switch (resolved.type()) {
                 case DAMAGE -> {
                     if (defender == null || defender.hp <= 0) continue;
                     double hpBefore = defender.hp;
-                    double distance = between(sourceX, sourceY, defender.x, defender.y);
-                    double damage = damageForEffect(payload, distance)
+                    double damage = amountForEffect(payload, resolved, distance, rangeOverride)
                             * botStateService.damageMultiplier(attacker);
                     botStateService.applyDamage(defender, damage, attacker.slot, sourceX, sourceY);
                     confirmedDamage += Math.max(0, hpBefore - defender.hp);
                 }
                 case HEALING -> {
-                    if (effect.requiresConfirmedDamage() && confirmedDamage <= 0) continue;
-                    Bot recipient = "target".equals(effect.recipient()) || "defender".equals(effect.recipient())
+                    if (resolved.requiresConfirmedDamage() && confirmedDamage <= 0) continue;
+                    Bot recipient = "target".equals(resolved.recipient()) || "defender".equals(resolved.recipient())
                             ? defender : attacker;
                     if (recipient == null) continue;
-                    recipient.pendingHealing += effect.mirrorsDamage() ? confirmedDamage : effect.amount();
+                    recipient.pendingHealing += resolved.mirrorsDamage()
+                            ? confirmedDamage : amountForEffect(payload, resolved, distance, rangeOverride);
                 }
-                case BUFF -> applyBuff(payload, attacker, effect);
+                case BUFF -> applyBuff(payload, attacker, resolved);
                 case DAMAGE_REDUCTION -> applyDefensiveStatus(attacker, "reactive-armor", payload,
-                        effect.durationMs(),
+                        resolved.durationMs(),
                         new StatusEffectState.Effect("incoming_damage_modifier", "constant")
-                                .damageModifier(-Math.max(0, effect.amount())));
+                                .damageModifier(-Math.max(0, resolved.amount())));
                 case DAMAGE_REFLECTION -> applyDefensiveStatus(attacker, "reactive-armor", payload,
-                        effect.durationMs(),
+                        resolved.durationMs(),
                         new StatusEffectState.Effect("damage_reflection", "constant")
-                                .multiplier(Math.max(0, effect.amount())));
+                                .multiplier(Math.max(0, resolved.amount())));
                 case DAMAGE_IMMUNITY -> applyDefensiveStatus(attacker, "absolute-guard", payload,
-                        effect.durationMs(),
+                        resolved.durationMs(),
                         new StatusEffectState.Effect("damage_immunity", "constant")
-                                .amount(Math.max(0, effect.amount())));
-                case DEBUFF -> applyDebuff(attacker, defender, payload, effect);
+                                .amount(Math.max(0, resolved.amount())));
+                case STATUS -> applyStatusEffect(attacker, defender, payload, resolved);
                 case INTERRUPT -> {
                     if (defender == null || defender.hp <= 0) continue;
-                    BotStateService.applyInterrupt(defender, effect.durationMs(), payload.abilityId());
+                    BotStateService.applyInterrupt(defender, resolved.durationMs(), payload.abilityId());
                 }
                 case KNOCKBACK -> {
                     if (defender == null || arena == null) continue;
                     movementService.applyKnockback(defender, defender.x - attacker.x,
-                            defender.y - attacker.y, effect.amount(), arena);
+                            defender.y - attacker.y, amountForEffect(payload, resolved, distance, rangeOverride), arena);
                 }
                 case TELEPORT -> {
                     if (!skipTeleport && defender != null && arena != null) {
-                        double teleportDistance = "center_distance".equals(effect.distanceMode())
+                        double teleportDistance = "center_distance".equals(resolved.distanceMode())
                                 ? between(sourceX, sourceY, defender.x, defender.y)
-                                : effect.amount();
+                                : amountForEffect(payload, resolved, distance, rangeOverride);
                         movementService.applyTeleport(attacker, defender, teleportDistance, payload, arena);
                     }
                 }
@@ -160,14 +169,40 @@ class AbilityEffectService {
                     attacker.temporalRewindX = attacker.x;
                     attacker.temporalRewindY = attacker.y;
                     attacker.temporalRewindHp = attacker.hp;
-                    attacker.temporalRewindMs = effect.durationMs() > 0
-                            ? effect.durationMs() : (int) Math.round(payload.definition().stats()
+                    attacker.temporalRewindMs = resolved.durationMs() > 0
+                            ? resolved.durationMs() : (int) Math.round(payload.definition().stats()
                                     .getOrDefault("delayMs", 0.0));
                     attacker.temporalRewindPulseMs = 0;
                 }
                 default -> { }
             }
         }
+    }
+
+    /** Reads direct effects from the canonical active phase before root fallback. */
+    private static List<AbilityContracts.Effect> directPhaseEffects(AbilityExecutionPayload payload) {
+        AbilityContracts.AbilityPhase phase = firstPhase(payload);
+        if (phase == null) return payload.contract().effects();
+        AbilityContracts.PhaseEventType eventType = payload.contract().delivery()
+                == DeliveryType.SELF
+                ? AbilityContracts.PhaseEventType.ACTIVATION
+                : AbilityContracts.PhaseEventType.COLLISION;
+        AbilityContracts.PhaseEvent event = phase.events().get(eventType);
+        if (event != null && !event.actions().contains(AbilityContracts.PhaseAction.APPLY_EFFECTS)) {
+            return List.of();
+        }
+        List<AbilityContracts.Effect> declared = phase.effects().isEmpty()
+                ? payload.contract().effects() : phase.effects();
+        Set<AbilityContracts.EffectType> allowed = event == null ? Set.of() : event.effectTypes();
+        return declared.stream()
+                .filter(effect -> effect.type() != AbilityContracts.EffectType.SPAWN_ENTITY)
+                .filter(effect -> allowed.isEmpty() || allowed.contains(effect.type()))
+                .toList();
+    }
+
+    private static AbilityContracts.AbilityPhase firstPhase(AbilityExecutionPayload payload) {
+        return payload.contract().phases().isEmpty()
+                ? null : payload.contract().phases().getFirst();
     }
 
     private static void applyBuff(AbilityExecutionPayload payload, Bot target, AbilityContracts.Effect effect) {
@@ -189,8 +224,8 @@ class AbilityEffectService {
         BotStateService.upsertStatusEffect(target, status);
     }
 
-    private void applyDebuff(Bot attacker, Bot defender, AbilityExecutionPayload payload,
-                             AbilityContracts.Effect effect) {
+    private void applyStatusEffect(Bot attacker, Bot defender, AbilityExecutionPayload payload,
+                                   AbilityContracts.Effect effect) {
         if (defender == null || defender.hp <= 0) return;
         int durationMs = effect.durationMs();
         switch (effect.subtype()) {
@@ -241,7 +276,7 @@ class AbilityEffectService {
                 bleed.sourceSlot = attacker.slot;
                 bleed.abilityId = payload.abilityId();
                 bleed.addEffect(new StatusEffectState.Effect("damage", "tick")
-                        .amount(AbilityContracts.effectAmount(payload.abilityId(), EffectType.DEBUFF)))
+                        .amount(AbilityContracts.effectAmount(payload.abilityId(), EffectType.STATUS)))
                         .addEffect(new StatusEffectState.Effect("incoming_damage_modifier", "constant")
                                 .damageModifier(StatusEffectState.BLEED_INCOMING_DAMAGE_MODIFIER)
                                 .rounding(StatusEffectState.TRUNCATE_DAMAGE_TO_TENTHS)
@@ -257,12 +292,75 @@ class AbilityEffectService {
         return status;
     }
 
-    private static double damageForEffect(AbilityExecutionPayload payload, double distance) {
-        AbilityContracts.Effect damageEffect = payload.contract().effects().stream()
-                .filter(effect -> effect.type() == EffectType.DAMAGE)
-                .findFirst().orElse(null);
-        if (damageEffect == null) return 0;
-        return damageEffect.runtimeComputed() || !payload.definition().damageFalloff().isEmpty()
-                ? Abilities.damageAtDistance(payload.abilityId(), distance) : damageEffect.amount();
+    private static AbilityContracts.Effect withResolvedDuration(
+            AbilityExecutionPayload payload, AbilityContracts.Effect effect,
+            double distance, Double rangeOverride) {
+        int durationMs = durationForEffect(payload, effect, distance, rangeOverride);
+        if (durationMs == effect.durationMs()) return effect;
+        return new AbilityContracts.Effect(effect.type(), effect.subtype(), effect.amount(),
+                durationMs, effect.runtimeComputed(), effect.recipient(),
+                effect.requiresConfirmedDamage(), effect.mirrorsDamage(),
+                effect.distanceMode(), effect.falloff());
+    }
+
+    private static AbilityContracts.Effect withEffectOverride(
+            AbilityContracts.Effect effect, AbilityContracts.EffectOverride override) {
+        if (effect == null || override == null) return effect;
+        double amount = override.amount() == null ? effect.amount() : override.amount();
+        int durationMs = override.durationMs() == null ? effect.durationMs() : override.durationMs();
+        AbilityContracts.Falloff falloff = effect.falloff();
+        if (override.falloff() != null) {
+            falloff = falloff == null ? override.falloff() : falloff.mergedWith(override.falloff());
+        } else if (override.amount() != null) {
+            falloff = null;
+        }
+        if (amount == effect.amount() && durationMs == effect.durationMs()
+                && falloff == effect.falloff()) return effect;
+        return new AbilityContracts.Effect(effect.type(), effect.subtype(), amount,
+                durationMs, effect.runtimeComputed(), effect.recipient(),
+                effect.requiresConfirmedDamage(), effect.mirrorsDamage(),
+                effect.distanceMode(), falloff);
+    }
+
+    private static AbilityContracts.EffectOverride effectOverrideFor(
+            AbilityContracts.Effect effect,
+            Map<String, AbilityContracts.EffectOverride> overrides) {
+        if (effect == null || overrides == null || overrides.isEmpty()) return null;
+        String qualifiedKey = AbilityContracts.effectOverrideKey(effect);
+        AbilityContracts.EffectOverride qualified = qualifiedKey == null
+                ? null : overrides.get(qualifiedKey);
+        if (qualified != null) return qualified;
+        return effect.type() == null ? null
+                : overrides.get(effect.type().name().toLowerCase());
+    }
+
+    private static Double phaseRange(Map<String, Double> statOverrides) {
+        if (statOverrides == null) return null;
+        Double range = statOverrides.get("range");
+        return range != null ? range : statOverrides.get("radius");
+    }
+
+    private static double amountForEffect(AbilityExecutionPayload payload,
+                                          AbilityContracts.Effect effect,
+                                          double distance,
+                                          Double rangeOverride) {
+        if (effect.falloff() != null && effect.falloff().hasAmountProfile()) {
+            return Abilities.amountAtDistance(payload.abilityId(), distance,
+                    effect.falloff(), rangeOverride == null
+                            ? payload.definition().range() : rangeOverride);
+        }
+        return effect.runtimeComputed()
+                ? Abilities.amountAtDistance(payload.abilityId(), distance, null,
+                        rangeOverride == null ? payload.definition().range() : rangeOverride)
+                : effect.amount();
+    }
+
+    private static int durationForEffect(AbilityExecutionPayload payload,
+                                         AbilityContracts.Effect effect,
+                                         double distance,
+                                         Double rangeOverride) {
+        return Abilities.durationAtDistance(payload.abilityId(), distance,
+                effect.durationMs(), effect.falloff(), rangeOverride == null
+                        ? payload.definition().range() : rangeOverride);
     }
 }

@@ -1,10 +1,10 @@
 package com.example.botfight.controller;
 
-import com.example.botfight.DTO.NotificationEventDTO;
-import com.example.botfight.DTO.PartyDTO;
-import com.example.botfight.DTO.PartyInviteDTO;
-import com.example.botfight.DTO.PartyInviteListDTO;
-import com.example.botfight.DTO.PartyStateEventDTO;
+import com.example.botfight.DTO.notification.NotificationEventDTO;
+import com.example.botfight.DTO.party.PartyDTO;
+import com.example.botfight.DTO.party.PartyInviteDTO;
+import com.example.botfight.DTO.party.PartyInviteListDTO;
+import com.example.botfight.DTO.party.PartyStateEventDTO;
 import com.example.botfight.service.notification.NotificationPublisher;
 import com.example.botfight.service.party.PartyService;
 import com.example.botfight.service.party.PartyStatePublisher;

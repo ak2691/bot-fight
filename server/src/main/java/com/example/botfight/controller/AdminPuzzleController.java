@@ -1,7 +1,7 @@
 package com.example.botfight.controller;
 
-import com.example.botfight.DTO.PuzzleAdminResponseDTO;
-import com.example.botfight.DTO.PuzzleSaveRequestDTO;
+import com.example.botfight.DTO.puzzle.PuzzleAdminResponseDTO;
+import com.example.botfight.DTO.puzzle.PuzzleSaveRequestDTO;
 import com.example.botfight.service.puzzle.PuzzleNotFoundException;
 import com.example.botfight.service.puzzle.PuzzleService;
 import com.example.botfight.service.puzzle.PuzzleValidationException;

@@ -2,7 +2,7 @@ import { ABILITY_STATS } from "./Abilities.js";
 import { abilityContract, DELIVERY_TYPES, HITBOX_GEOMETRIES } from "./AbilityContracts.js";
 import { movingCircleCollision, movingRectangleCollision } from "./geometry.js";
 import { compassDegreesToRadians } from "../botlogic/planner/arenaAngles.js";
-import { entityContract } from "../ecs/contracts/EntityContracts.js";
+import { entityContract, phaseForEntity } from "../ecs/contracts/EntityContracts.js";
 import { COMBAT_VISUAL_ABILITY_IDS, combatVisualDurationMs, combatVisualRemainingMs } from "./visualState.js";
 
 export const COLLIDER_SHAPES = Object.freeze({
@@ -13,7 +13,9 @@ export const COLLIDER_SHAPES = Object.freeze({
 /** Resolves the declarative collider metadata for an arena entity. */
 export function colliderShapeForEntity(entity) {
     const contract = contractForEntity(entity);
-    return contract?.collider?.shape ?? COLLIDER_SHAPES.CIRCLE;
+    return phaseForEntity(entity)?.hitbox?.shape
+        ?? contract?.collider?.shape
+        ?? COLLIDER_SHAPES.CIRCLE;
 }
 
 /**
@@ -64,12 +66,13 @@ export function hitboxGeometryForBot(bot, position = null) {
 
     if (delivery === DELIVERY_TYPES.RAY) {
         const length = Number(stats.range ?? 0);
+        const width = Number(stats.hitboxWidth ?? 5);
         return length > 0 ? {
             shape: "ray",
             x: origin.x,
             y: origin.y,
             length,
-            width: Math.max(4, Math.min(14, Number(bot?.size ?? 60) * 0.12)),
+            width: Number.isFinite(width) && width > 0 ? width : 5,
             rotation,
             opacity,
             remainingMs,
@@ -100,7 +103,7 @@ export function hitboxGeometryForBot(bot, position = null) {
         y: origin.y,
         radius,
         rotation,
-        halfAngle: Number(stats.arcDegrees ?? 36) * Math.PI / 360,
+        halfAngle: Number(stats.arc ?? 36) * Math.PI / 360,
         opacity,
         remainingMs,
         durationMs,
@@ -120,7 +123,8 @@ export function hitboxGeometriesForEntity(entity) {
 
 /**
  * Resolves one entity-vs-entity movement collision. Projectile colliders are
- * rectangles; all other colliders retain their existing circular behavior.
+ * rectangles with independent longitudinal length and cross-axis width; all
+ * other colliders retain their existing circular fallback.
  * Keeping this dispatch in one helper prevents the renderer and the two
  * browser ECS systems from silently drifting apart.
  */
@@ -135,6 +139,10 @@ export function movingEntityCollision(
 ) {
     const firstSize = entitySize(first);
     const secondSize = entitySize(second);
+    const firstWidth = entityHitboxWidth(first);
+    const secondWidth = entityHitboxWidth(second);
+    const firstLength = entityLength(first);
+    const secondLength = entityLength(second);
     const firstShape = colliderShapeForEntity(first);
     const secondShape = colliderShapeForEntity(second);
     if (firstShape === COLLIDER_SHAPES.RECTANGLE) {
@@ -142,8 +150,8 @@ export function movingEntityCollision(
         return movingRectangleCollision(
             firstStart,
             firstEnd,
-            firstSize + extra,
-            firstSize + extra,
+            firstLength + extra,
+            firstWidth + extra,
             entityMotionAngle(first, firstStart, firstEnd),
             secondStart,
             secondEnd,
@@ -155,8 +163,8 @@ export function movingEntityCollision(
         return movingRectangleCollision(
             secondStart,
             secondEnd,
-            secondSize,
-            secondSize,
+            secondLength,
+            secondWidth,
             entityMotionAngle(second, secondStart, secondEnd),
             firstStart,
             firstEnd,
@@ -173,41 +181,53 @@ export function movingEntityCollision(
     );
 }
 
+/** Returns whether two phase-defined entities overlap during their movement. */
+export function overlapsEntity(first, second, padding = 0) {
+    const firstPath = entityMovementSegment(first);
+    const secondPath = entityMovementSegment(second);
+    return movingEntityCollision(
+        first,
+        firstPath.start,
+        firstPath.end,
+        second,
+        secondPath.start,
+        secondPath.end,
+        padding,
+    ).hit;
+}
+
 /**
- * Returns the debug geometry for an entity-backed gameplay hitbox. Derived
- * visual explosion entities are included for the duration of their impact
- * animation, but this function is never called by gameplay collision code.
+ * Returns the debug geometry for an entity-backed gameplay hitbox. The active
+ * phase owns both the collider shape and its dimensions.
  */
 export function hitboxGeometryForEntity(entity) {
     const contract = contractForEntity(entity);
     if (!contract?.collider) return null;
-    const derived = derivedForEntity(entity, contract);
-    const behavior = behaviorForEntity(entity, contract);
-    if (behavior?.kind === "lifetime") return null;
-    if (contract.category === "trap" && behavior?.kind === "phase" && !entity.armed) return null;
-    if (!derived && colliderShapeForEntity(entity) === COLLIDER_SHAPES.RECTANGLE) {
-        const size = entitySize(entity);
+    const phase = phaseForEntity(entity);
+    if (phase?.type === "self" || phase?.type === "summon" && !phase.hitbox) return null;
+    if (contract.category === "trap" && phase?.id === "travel" && !entity.armed) return null;
+    if (colliderShapeForEntity(entity) === COLLIDER_SHAPES.RECTANGLE) {
+        const width = entityHitboxWidth(entity);
+        const length = entityLength(entity);
         return {
             shape: COLLIDER_SHAPES.RECTANGLE,
-            width: size,
-            height: size,
+            width: length,
+            height: width,
             rotation: entityMotionAngle(entity),
         };
     }
 
     const stats = ABILITY_STATS[Number(contract.abilityId)] ?? {};
-    // A visual explosion uses its parent behavior to recover the radius that
-    // applied damage. Most effects also encode that radius in their size, but
-    // keeping the parent lookup makes interval effects future-proof.
-    const effectBehavior = derived ? contract.behavior ?? null : behavior;
-    const phase = activePhase(effectBehavior, entity);
-    const trigger = phase?.trigger ?? effectBehavior?.trigger;
-    const radiusStat = phase?.radiusStat ?? effectBehavior?.radiusStat ?? trigger?.radiusStat;
-    const radius = phase?.statOverrides?.[radiusStat]
-        ?? (radiusStat ? Number(stats[radiusStat]) : NaN);
+    const trigger = phase?.trigger;
+    const radiusValue = phase?.hitbox?.radius
+        ?? phase?.statOverrides?.radius
+        ?? trigger?.radius
+        ?? phase?.radius;
+    const radius = resolveStatValue(radiusValue, stats, phase);
+    const radiusMultiplier = Number(phase?.hitbox?.radiusMultiplier ?? 1);
     return {
         shape: COLLIDER_SHAPES.CIRCLE,
-        radius: Number.isFinite(radius) && radius > 0 ? radius : entitySize(entity) / 2,
+        radius: Number.isFinite(radius) && radius > 0 ? radius * radiusMultiplier : entitySize(entity) / 2,
     };
 }
 
@@ -228,12 +248,13 @@ export function entityMotionAngle(entity, start = null, end = null) {
 
 function summonAttackHitboxGeometry(entity) {
     const contract = contractForEntity(entity);
-    const behavior = contract?.behavior;
-    const attack = behavior?.kind === "summon" ? behavior.attack : null;
+    const phase = phaseForEntity(entity);
+    const attack = phase?.attack;
     const remainingMs = Number(entity?.[attack?.visualField] ?? 0);
     if (!attack || remainingMs <= 0) return null;
     const stats = ABILITY_STATS[Number(contract.abilityId)] ?? {};
-    const length = Number(stats[attack.rangeStat] ?? 0);
+    const rangeValue = attack.range ?? attack.rangeStat ?? "range";
+    const length = resolveStatValue(rangeValue, stats, phase);
     if (length <= 0) return null;
     const durationMs = Math.max(1, Number(stats[attack.visualStat] ?? 300), remainingMs);
     return {
@@ -287,26 +308,48 @@ function contractForEntity(entity) {
         ?? entity?.type);
 }
 
-function behaviorForEntity(entity, contract) {
-    return derivedForEntity(entity, contract) ?? contract?.behavior ?? null;
-}
-
-function derivedForEntity(entity, contract) {
-    if (entity?.entityBehaviorKey && contract?.derived?.[entity.entityBehaviorKey]) {
-        return contract.derived[entity.entityBehaviorKey];
-    }
-    return Object.values(contract?.derived ?? {}).find((value) => value.type === entity?.type) ?? null;
-}
-
-function activePhase(behavior, entity) {
-    const phases = behavior?.phases;
-    if (!Array.isArray(phases) || phases.length === 0) return null;
-    if (entity?.phaseId) return phases.find((phase) => phase.id === entity.phaseId) ?? null;
-    const elapsed = Math.max(0, Number(entity?.ageMs ?? 0));
-    return phases.reduce((current, phase) => phase.startMs <= elapsed
-        && (!current || phase.startMs > current.startMs) ? phase : current, null);
+function entityMovementSegment(entity) {
+    const startX = Number.isFinite(Number(entity?.movementStartX))
+        ? Number(entity.movementStartX)
+        : Number(entity?.x ?? 0) - Number(entity?.velocityX ?? 0);
+    const startY = Number.isFinite(Number(entity?.movementStartY))
+        ? Number(entity.movementStartY)
+        : Number(entity?.y ?? 0) - Number(entity?.velocityY ?? 0);
+    return {
+        start: { x: startX, y: startY },
+        end: { x: Number(entity?.x ?? 0), y: Number(entity?.y ?? 0) },
+    };
 }
 
 function entitySize(entity) {
     return Math.max(0, Number(entity?.size ?? 0));
+}
+
+function entityLength(entity) {
+    const contract = contractForEntity(entity);
+    const phase = phaseForEntity(entity);
+    const stats = ABILITY_STATS[Number(contract?.abilityId)] ?? {};
+    const lengthValue = phase?.hitbox?.length
+        ?? phase?.statOverrides?.hitboxLength
+        ?? stats.hitboxLength;
+    const length = resolveStatValue(lengthValue, stats, phase);
+    return Number.isFinite(length) && length > 0 ? length : entitySize(entity);
+}
+
+function entityHitboxWidth(entity) {
+    const contract = contractForEntity(entity);
+    const phase = phaseForEntity(entity);
+    const stats = ABILITY_STATS[Number(contract?.abilityId)] ?? {};
+    const widthValue = phase?.hitbox?.width
+        ?? phase?.statOverrides?.hitboxWidth
+        ?? stats.hitboxWidth;
+    const width = resolveStatValue(widthValue, stats, phase);
+    return Number.isFinite(width) && width > 0 ? width : entitySize(entity);
+}
+
+function resolveStatValue(value, stats, phase) {
+    if (value == null) return NaN;
+    if (typeof value === "number") return value;
+    if (typeof value === "string") return Number(phase?.statOverrides?.[value] ?? stats[value]);
+    return Number(value);
 }

@@ -9,10 +9,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.example.botfight.domain.AppUser;
-import com.example.botfight.domain.Match;
-import com.example.botfight.domain.MatchParticipant;
-import com.example.botfight.domain.MatchStatus;
+import com.example.botfight.domain.auth.AppUser;
+import com.example.botfight.domain.match.Match;
+import com.example.botfight.domain.match.MatchParticipant;
+import com.example.botfight.domain.match.MatchStatus;
 import com.example.botfight.repository.MatchParticipantRepository;
 import com.example.botfight.repository.MatchRepository;
 import com.example.botfight.repository.ProfileRepository;

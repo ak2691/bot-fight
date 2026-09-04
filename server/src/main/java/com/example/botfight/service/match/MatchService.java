@@ -1,13 +1,13 @@
 package com.example.botfight.service.match;
 
 import com.example.botfight.service.auth.AuthException;
-import com.example.botfight.DTO.MatchPlaybackDTO;
-import com.example.botfight.DTO.ActiveMatchStatusDTO;
-import com.example.botfight.DTO.MatchCodeViewResponseDTO;
-import com.example.botfight.DTO.MatchmakingEventDTO;
-import com.example.botfight.DTO.MatchmakingEventDTO.RoundBrainDTO;
-import com.example.botfight.domain.BotSubmission;
-import com.example.botfight.domain.MatchMode;
+import com.example.botfight.DTO.match.MatchPlaybackDTO;
+import com.example.botfight.DTO.match.ActiveMatchStatusDTO;
+import com.example.botfight.DTO.match.MatchCodeViewResponseDTO;
+import com.example.botfight.DTO.match.MatchmakingEventDTO;
+import com.example.botfight.DTO.match.MatchmakingEventDTO.RoundBrainDTO;
+import com.example.botfight.domain.submission.BotSubmission;
+import com.example.botfight.domain.match.MatchMode;
 import com.example.botfight.service.match.connection.MatchConnectionService;
 import com.example.botfight.service.match.connection.MatchReconnectionService;
 import com.example.botfight.service.match.coordination.MatchLockService;

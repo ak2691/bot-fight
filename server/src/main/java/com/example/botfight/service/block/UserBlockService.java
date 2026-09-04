@@ -1,7 +1,7 @@
 package com.example.botfight.service.block;
 
-import com.example.botfight.DTO.BlockStatusDTO;
-import com.example.botfight.domain.AppUser;
+import com.example.botfight.DTO.block.BlockStatusDTO;
+import com.example.botfight.domain.auth.AppUser;
 import com.example.botfight.repository.UserBlockRepository;
 import com.example.botfight.repository.UserRepository;
 import com.example.botfight.service.auth.AuthException;

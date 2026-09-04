@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.example.botfight.DTO.AuthUserDTO;
+import com.example.botfight.DTO.auth.AuthUserDTO;
 import com.example.botfight.service.auth.AuthService;
 import com.example.botfight.service.auth.GoogleAuthService;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;

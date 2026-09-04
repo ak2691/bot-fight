@@ -10,7 +10,6 @@ import com.example.botfight.simulation.ecs.entities.ArenaBounds;
 import com.example.botfight.simulation.ecs.entities.ArenaEntity;
 import java.util.List;
 import java.util.ArrayList;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class AbilityEntitySystemTest {
@@ -27,12 +26,12 @@ class AbilityEntitySystemTest {
             assertThat(entity.type()).isEqualTo(contract.runtimeType());
             assertThat(EntityContracts.forEntity(entity)).isSameAs(contract);
         }
-        assertThat(EntityContracts.systemFor(AbilityEntityFactory.create(
-                "grenade", 4, 1, 100, 200, 60, 90, 1, 0, 0, 1000, 800)))
-                .isEqualTo(EntityContracts.SystemType.PROJECTILE);
-        assertThat(EntityContracts.systemFor(AbilityEntityFactory.create(
-                "windburst", 18, 1, 100, 200, 60, 90, 1, 0, 0, 1000, 800)))
-                .isEqualTo(EntityContracts.SystemType.ABILITY);
+        assertThat(EntityContracts.phaseFor(AbilityEntityFactory.create(
+                "grenade", 4, 1, 100, 200, 60, 90, 1, 0, 0, 1000, 800)).type())
+                .isEqualTo(EntityContracts.PhaseType.PROJECTILE);
+        assertThat(EntityContracts.phaseFor(AbilityEntityFactory.create(
+                "windburst", 18, 1, 100, 200, 60, 90, 1, 0, 0, 1000, 800)).type())
+                .isEqualTo(EntityContracts.PhaseType.PROJECTILE);
     }
 
     @Test
@@ -93,9 +92,55 @@ class AbilityEntitySystemTest {
     }
 
     @Test
+    void grenadeTravelsThenArmsAfterItsOneSecondTravelPhaseWithoutCollision() {
+        ArenaBounds arena = new ArenaBounds(1000, 800);
+        ArenaEntity grenade = AbilityEntityFactory.create(
+                "grenade-1", 4, 1, 500, 450, 60, 0, 1,
+                Double.NaN, Double.NaN, arena.width(), arena.height());
+        List<ArenaEntity> active = List.of(grenade);
+
+        for (int tick = 0; tick < 9; tick += 1) {
+            int elapsedMs = (tick + 1) * 100;
+            active = active.stream().map(entity -> entity.withAgeMs(elapsedMs)).toList();
+            active = AbilityEntitySystem.tick(active, List.of(), arena, 100, noDamageCombat());
+            assertThat(active).singleElement().satisfies(entity -> {
+                assertThat(entity.phaseId()).isEqualTo("travel");
+                assertThat(Math.hypot(entity.velocityX(), entity.velocityY())).isEqualTo(32);
+            });
+        }
+
+        active = active.stream().map(entity -> entity.withAgeMs(1_000)).toList();
+        active = AbilityEntitySystem.tick(active, List.of(), arena, 100, noDamageCombat());
+        assertThat(active).singleElement().satisfies(entity -> {
+            assertThat(entity.phaseId()).isEqualTo("armed");
+            assertThat(entity.phaseLocked()).isTrue();
+            assertThat(entity.timerMs()).isEqualTo(1_000);
+            assertThat(entity.velocityX()).isZero();
+            assertThat(entity.velocityY()).isZero();
+        });
+
+        for (int tick = 0; tick < 9; tick += 1) {
+            int elapsedMs = 1_100 + tick * 100;
+            active = active.stream().map(entity -> entity.withAgeMs(elapsedMs)).toList();
+            active = AbilityEntitySystem.tick(active, List.of(), arena, 100, noDamageCombat());
+            assertThat(active).singleElement().satisfies(entity -> {
+                assertThat(entity.phaseId()).isEqualTo("armed");
+                assertThat(entity.timerMs()).isGreaterThan(0);
+            });
+        }
+
+        active = active.stream().map(entity -> entity.withAgeMs(2_000)).toList();
+        active = AbilityEntitySystem.tick(active, List.of(), arena, 100, noDamageCombat());
+        assertThat(active).singleElement().satisfies(entity -> {
+            assertThat(entity.phaseId()).isEqualTo("active");
+            assertThat(entity.timerMs()).isEqualTo(100);
+        });
+    }
+
+    @Test
     void gravityZoneTransitionsThroughDeclarativePhasesEvenWhenItCannotTranslate() {
         ArenaEntity gravity = new ArenaEntity("gravity", "gravityZone", 1, 500, 400,
-                240, 0, 0, 0, 2_000, false, 0, 0, 1.0, 14, Set.of(), 0, 0);
+                240, 0, 0, 0, 7_000, false, 0, 0, 1.0, 14, 0, 0);
         List<ArenaEntity> active = List.of(gravity);
         for (int tick = 0; tick < 19; tick += 1) {
             int elapsedMs = (tick + 1) * 100;
@@ -112,8 +157,8 @@ class AbilityEntitySystemTest {
         active = active.stream().map(entity -> entity.withAgeMs(2_000)).toList();
         ArenaEntity stopped = AbilityEntitySystem.tick(
                 active, List.of(), new ArenaBounds(1000, 800), 100, noDamageCombat()).getFirst();
-        assertThat(stopped.armed()).isFalse();
-        assertThat(EntityContracts.forEntity(stopped).behaviorFor(stopped.type()).phases().get(1).id())
+        assertThat(stopped.armed()).isTrue();
+        assertThat(EntityContracts.phaseFor(stopped).id())
                 .isEqualTo("fuse");
         assertThat(stopped.phaseTimerMs()).isZero();
         assertThat(stopped.velocityX()).isZero();
@@ -166,8 +211,11 @@ class AbilityEntitySystemTest {
         assertThat(AbilityEntitySystem.tick(
                 List.of(snare), List.of(new TestCombatant(2, 800, 700, 60, 100)),
                 new ArenaBounds(1000, 800), 100, destroyer)).singleElement().satisfies(entity -> {
-            assertThat(entity.type()).isEqualTo("staticSnareBurst");
-            assertThat(entity.size()).isEqualTo(240);
+            assertThat(entity.type()).isEqualTo("staticSnare");
+            assertThat(entity.phaseId()).isEqualTo("destroyed");
+            assertThat(entity.visualEventType()).isNull();
+            assertThat(entity.visualEventSize()).isZero();
+            assertThat(entity.size()).isEqualTo(24);
         });
     }
 
@@ -185,8 +233,11 @@ class AbilityEntitySystemTest {
         assertThat(target.slowedMs).isEqualTo(2_200);
         assertThat(target.stunMs).isEqualTo(150);
         assertThat(result).singleElement().satisfies(entity -> {
-            assertThat(entity.type()).isEqualTo("staticSnareBurst");
-            assertThat(entity.size()).isEqualTo(150);
+            assertThat(entity.type()).isEqualTo("staticSnare");
+            assertThat(entity.phaseId()).isEqualTo("triggered");
+            assertThat(entity.visualEventType()).isNull();
+            assertThat(entity.visualEventSize()).isZero();
+            assertThat(entity.size()).isEqualTo(24);
         });
     }
 
@@ -217,8 +268,11 @@ class AbilityEntitySystemTest {
         assertThat(target.slowedMs).isEqualTo(3_000);
         assertThat(target.stunMs).isEqualTo(150);
         assertThat(result).singleElement().satisfies(entity -> {
-            assertThat(entity.type()).isEqualTo("staticSnareBurst");
-            assertThat(entity.size()).isEqualTo(240);
+            assertThat(entity.type()).isEqualTo("staticSnare");
+            assertThat(entity.phaseId()).isEqualTo("destroyed");
+            assertThat(entity.visualEventType()).isNull();
+            assertThat(entity.visualEventSize()).isZero();
+            assertThat(entity.size()).isEqualTo(24);
         });
     }
 
@@ -273,8 +327,11 @@ class AbilityEntitySystemTest {
         assertThat(attacker.hp).isEqualTo(80);
         assertThat(attacker.slowedMs).isEqualTo(3_000);
         assertThat(result).singleElement().satisfies(entity -> {
-            assertThat(entity.type()).isEqualTo("staticSnareBurst");
-            assertThat(entity.size()).isEqualTo(240);
+            assertThat(entity.type()).isEqualTo("staticSnare");
+            assertThat(entity.phaseId()).isEqualTo("destroyed");
+            assertThat(entity.visualEventType()).isNull();
+            assertThat(entity.visualEventSize()).isZero();
+            assertThat(entity.size()).isEqualTo(24);
         });
     }
 
@@ -341,24 +398,24 @@ class AbilityEntitySystemTest {
     void gravityZonePullIncludesBotEdgeAtExactBoundaryAndExcludesJustBeyondIt() {
         ArenaBounds arena = new ArenaBounds(1000, 800);
         ArenaEntity gravity = new ArenaEntity("gravity", "gravityZone", 1, 100, 100,
-                240, 0, 0, 0, 1000, true, 0, 0, 1.0, 14, Set.of(), 0, 0).withAgeMs(2_000);
+                240, 0, 0, 0, 1000, true, 0, 0, 1.0, 14, 0, 0).withAgeMs(2_000);
 
-        TestCombatant exactBoundary = new TestCombatant(2, 270, 120, 60, 100);
+        TestCombatant exactBoundary = new TestCombatant(2, 250, 100, 60, 100);
         AbilityEntitySystem.tick(List.of(gravity), List.of(exactBoundary), arena, 100, noDamageCombat());
-        assertThat(exactBoundary.x).isBetween(263.9, 264.2);
-        assertThat(exactBoundary.y).isEqualTo(120);
+        assertThat(exactBoundary.x).isBetween(243.9, 244.2);
+        assertThat(exactBoundary.y).isEqualTo(100);
 
-        TestCombatant justOutside = new TestCombatant(2, 270.1, 120, 60, 100);
+        TestCombatant justOutside = new TestCombatant(2, 250.1, 100, 60, 100);
         AbilityEntitySystem.tick(List.of(gravity), List.of(justOutside), arena, 100, noDamageCombat());
-        assertThat(justOutside.x).isEqualTo(270.1);
-        assertThat(justOutside.y).isEqualTo(120);
+        assertThat(justOutside.x).isEqualTo(250.1);
+        assertThat(justOutside.y).isEqualTo(100);
     }
 
     @Test
     void gravityZoneDetonationIncludesBotEdgeAtExactBoundaryAndExcludesJustBeyondIt() {
         ArenaBounds arena = new ArenaBounds(1000, 800);
         ArenaEntity gravity = new ArenaEntity("gravity", "gravityZone", 1, 100, 100,
-                240, 0, 0, 0, 2_000, true, 0, 0, 1.0, 14, Set.of(), 0, 2_900).withAgeMs(5_000);
+                240, 0, 0, 0, 2_000, true, 0, 0, 1.0, 14, 0, 2_900).withAgeMs(5_000);
 
         TestCombatant exactBoundary = new TestCombatant(2, 250, 100, 60, 100);
         TestCombatant justOutside = new TestCombatant(2, 250.1, 100, 60, 100);
@@ -390,7 +447,11 @@ class AbilityEntitySystemTest {
         entities = entities.stream().map(entity -> entity.withAgeMs(1_200)).toList();
         entities = AbilityEntitySystem.tick(entities, List.of(target), arena, 100, combat);
         assertThat(target.hp).isLessThan(100);
-        assertThat(entities).extracting(ArenaEntity::type).containsExactly("singularityExplosion");
+        assertThat(entities).singleElement().satisfies(entity -> {
+            assertThat(entity.type()).isEqualTo("singularityZone");
+            assertThat(entity.phaseId()).isEqualTo("active");
+            assertThat(entity.visualEventType()).isNull();
+        });
         int hpAfterDetonation = target.hp;
 
         AbilityEntitySystem.tick(entities, List.of(target), arena, 100, combat);
@@ -413,8 +474,15 @@ class AbilityEntitySystemTest {
 
         assertThat(combat.damage).isEqualTo(60);
         assertThat(target.hp).isEqualTo(40);
-        assertThat(entities).extracting(ArenaEntity::type).contains("orbitalExplosion");
-        assertThat(entities).extracting(ArenaEntity::type).doesNotContain("orbitalMarker");
+        assertThat(entities).singleElement().satisfies(entity -> {
+            assertThat(entity.type()).isEqualTo("orbitalMarker");
+            assertThat(entity.visualEventType()).isEqualTo("orbitalExplosion");
+        });
+        for (int tick = 0; tick < 2; tick += 1) {
+            entities = AbilityEntitySystem.tick(entities, List.of(target), arena, 100, combat);
+            assertThat(entities).singleElement();
+        }
+        assertThat(AbilityEntitySystem.tick(entities, List.of(target), arena, 100, combat)).isEmpty();
     }
 
     @Test
@@ -448,8 +516,11 @@ class AbilityEntitySystemTest {
                 });
 
         assertThat(result).singleElement().satisfies(entity -> {
-            assertThat(entity.type()).isEqualTo("mineExplosion");
-            assertThat(entity.timerMs()).isEqualTo(300);
+            assertThat(entity.id()).isEqualTo("mine-1");
+            assertThat(entity.type()).isEqualTo("proximityMine");
+            assertThat(entity.phaseId()).isEqualTo("active");
+            assertThat(entity.visualEventType()).isNull();
+            assertThat(entity.visualEventSize()).isZero();
         });
     }
 
@@ -464,8 +535,12 @@ class AbilityEntitySystemTest {
                 List.of(mine), List.of(target), new ArenaBounds(1000, 800), 100, combat);
 
         assertThat(result).singleElement().satisfies(entity -> {
-            assertThat(entity.type()).isEqualTo("mineExplosion");
-            assertThat(entity.size()).isEqualTo(175);
+            assertThat(entity.id()).isEqualTo("mine");
+            assertThat(entity.type()).isEqualTo("proximityMine");
+            assertThat(entity.phaseId()).isEqualTo("active");
+            assertThat(entity.visualEventType()).isNull();
+            assertThat(entity.visualEventSize()).isZero();
+            assertThat(entity.size()).isEqualTo(24);
         });
         assertThat(combat.damage).isEqualTo(25);
     }
@@ -497,7 +572,7 @@ class AbilityEntitySystemTest {
 
         RecordingCombat gravityCombat = new RecordingCombat(false);
         ArenaEntity gravity = new ArenaEntity("gravity", "gravityZone", 1, 100, 100,
-                240, 0, 0, 0, 2_000, true, 0, 0, 1.0, 14, Set.of(), 0, 2_900).withAgeMs(2_000);
+                240, 0, 0, 0, 2_000, true, 0, 0, 1.0, 14, 0, 2_900).withAgeMs(2_000);
         AbilityEntitySystem.tick(List.of(gravity), List.of(target), new ArenaBounds(1000, 800), 100, gravityCombat);
 
         RecordingCombat silenceCombat = new RecordingCombat(false);

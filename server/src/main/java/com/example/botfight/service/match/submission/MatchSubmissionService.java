@@ -1,8 +1,8 @@
 package com.example.botfight.service.match.submission;
 
-import com.example.botfight.DTO.MatchmakingEventDTO.RoundBrainDTO;
-import com.example.botfight.domain.BotSubmission;
-import com.example.botfight.domain.BotSubmissionStatus;
+import com.example.botfight.DTO.match.MatchmakingEventDTO.RoundBrainDTO;
+import com.example.botfight.domain.submission.BotSubmission;
+import com.example.botfight.domain.submission.BotSubmissionStatus;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.match.event.MatchEventFactory;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;

@@ -1,6 +1,6 @@
 package com.example.botfight.repository;
 
-import com.example.botfight.domain.AppUser;
+import com.example.botfight.domain.auth.AppUser;
 import java.util.Optional;
 import java.util.UUID;
 import java.time.Instant;

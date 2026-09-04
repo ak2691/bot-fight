@@ -1,10 +1,10 @@
 package com.example.botfight.service.match.event;
 
-import com.example.botfight.DTO.MatchPlaybackDTO;
-import com.example.botfight.DTO.MatchReplayDTO;
-import com.example.botfight.DTO.MatchmakingEventDTO;
-import com.example.botfight.DTO.MatchmakingEventDTO.RoundBrainDTO;
-import com.example.botfight.DTO.MatchmakingPlayerDTO;
+import com.example.botfight.DTO.match.MatchPlaybackDTO;
+import com.example.botfight.DTO.match.MatchReplayDTO;
+import com.example.botfight.DTO.match.MatchmakingEventDTO;
+import com.example.botfight.DTO.match.MatchmakingEventDTO.RoundBrainDTO;
+import com.example.botfight.DTO.match.MatchmakingPlayerDTO;
 import com.example.botfight.service.match.chat.MatchChatService;
 import com.example.botfight.service.match.connection.MatchConnectionService;
 import com.example.botfight.service.match.model.MatchPlayer;

@@ -15,22 +15,23 @@ function number(value) {
 }
 
 function rangeForStats(stats) {
-    return stats.range ?? stats.radius ?? stats.triggerRadius ?? stats.explosionRadius ?? stats.distance;
+    return stats.range ?? stats.radius ?? stats.distance;
 }
 
 function damageRows(stats) {
-    const hasFalloff = stats.maxDamage != null || stats.minDamage != null;
+    const falloff = stats.falloff ?? {};
+    const hasFalloff = falloff.maxAmount != null || falloff.minAmount != null;
     if (!hasFalloff) return stats.damage != null ? [{ label: "Damage", value: String(stats.damage) }] : [];
 
-    const maximum = Number(stats.maxDamage ?? stats.damage ?? 0);
-    const minimum = Number(stats.minDamage ?? maximum);
+    const maximum = Number(falloff.maxAmount ?? stats.damage ?? 0);
+    const minimum = Number(falloff.minAmount ?? maximum);
     const section = "Damage profile";
     const rows = [
         { label: "Min damage", value: number(minimum), section },
         { label: "Max damage", value: number(maximum), section },
     ];
-    const falloffStart = Number(stats.damageFalloffStart ?? 0);
-    const falloffEnd = Number(stats.damageFalloffEnd ?? falloffStart);
+    const falloffStart = Number(falloff.falloffStart ?? 0);
+    const falloffEnd = Number(falloff.falloffEnd ?? falloffStart);
     const range = Number(rangeForStats(stats));
     if (falloffStart > 0) rows.push({ label: "Falloff starts", value: `${number(falloffStart)} units`, section });
     if (falloffEnd > falloffStart && Number.isFinite(range) && falloffEnd < range) {
@@ -41,10 +42,10 @@ function damageRows(stats) {
 
 function statusRows(ability, stats) {
     return (ability.effects ?? []).flatMap((effect) => {
-        if (effect.type !== "debuff" || !effect.debuff) return [];
-        const keys = STATUS_STAT_KEYS[effect.debuff] ?? {};
+        if (effect.type !== "status" || !effect.subtype) return [];
+        const keys = STATUS_STAT_KEYS[effect.subtype] ?? {};
         const duration = stats[keys.duration] ?? effect.durationMs;
-        const rows = [{ label: "Status effect", value: effect.debuff.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) }];
+        const rows = [{ label: "Status effect", value: effect.subtype.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) }];
         if (duration != null) rows.push({ label: "Status duration", value: seconds(duration) });
         if (stats[keys.interval] != null) rows.push({ label: "Status interval", value: seconds(stats[keys.interval]) });
         if (stats[keys.damage] != null) rows.push({ label: "Status damage", value: String(stats[keys.damage]) });
@@ -74,8 +75,11 @@ function phaseRows(stats) {
     return (stats.phases ?? []).flatMap((phase) => {
         const section = phase.label ?? `${titleCase(phase.id)} phase`;
         const rows = [];
-        const radius = phase.radius ?? phase.triggerRadius ?? phase.explosionRadius;
+        const radius = phase.radius;
         if (radius != null) rows.push({ label: "Radius", value: `${number(radius)} units`, section });
+        if (phase.hitboxWidth != null) rows.push({ label: "Hitbox width", value: `${number(phase.hitboxWidth)} units`, section });
+        if (phase.hitboxLength != null) rows.push({ label: "Hitbox length", value: `${number(phase.hitboxLength)} units`, section });
+        if (phase.speed != null) rows.push({ label: "Speed", value: `${number(phase.speed)} units per tick`, section });
         if (phase.damage != null) rows.push({ label: "Damage", value: number(phase.damage), section });
         for (const [status, statusStats] of Object.entries(phase.statuses ?? {})) {
             rows.push({ label: "Status effect", value: titleCase(status), section });
@@ -93,9 +97,10 @@ export function abilityStatsForDisplay(ability) {
     if (stats.windupMs != null) rows.push({ label: "Wind-up", value: seconds(stats.windupMs) });
     rows.push(...damageRows(stats));
     const range = rangeForStats(stats);
-    if (range != null) rows.push({ label: stats.radius != null || stats.triggerRadius != null || stats.explosionRadius != null ? "Radius" : "Range", value: `${number(range)} units` });
-    if (stats.throwRange != null) rows.push({ label: "Throw range", value: `${number(stats.throwRange)} units` });
-    const arc = stats.arcDegrees ?? stats.coverageDegrees;
+    if (stats.hitboxWidth != null) rows.push({ label: "Hitbox width", value: `${number(stats.hitboxWidth)} units` });
+    if (stats.hitboxLength != null) rows.push({ label: "Hitbox length", value: `${number(stats.hitboxLength)} units` });
+    if (range != null) rows.push({ label: stats.radius != null ? "Radius" : "Range", value: `${number(range)} units` });
+    const arc = stats.arc ?? stats.coverageDegrees;
     if (arc != null) rows.push({ label: "Arc", value: `${number(arc)}\u00B0` });
     const charges = stats.maxCharges;
     if (charges != null) rows.push({ label: "Charges", value: String(charges) });
@@ -108,7 +113,7 @@ export function abilityStatsForDisplay(ability) {
     }
     const hasEntity = (ability.effects ?? []).some((effect) => effect.type === "spawn_entity");
     const duration = stats.durationMs ?? (hasEntity ? stats.fuseMs ?? stats.delayMs : null);
-    const durationIsStatus = (ability.effects ?? []).some((effect) => effect.type === "debuff" && effect.durationMs === duration);
+    const durationIsStatus = (ability.effects ?? []).some((effect) => effect.type === "status" && effect.durationMs === duration);
     if (duration != null && !durationIsStatus) rows.push({ label: "Duration", value: seconds(duration) });
     rows.push(...statusRows(ability, stats));
     if (stats.healing != null) rows.push({ label: "Effect", value: `Restore ${stats.healing} HP` });

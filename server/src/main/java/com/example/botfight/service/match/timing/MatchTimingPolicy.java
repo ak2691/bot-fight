@@ -1,6 +1,6 @@
 package com.example.botfight.service.match.timing;
 
-import com.example.botfight.domain.MatchMode;
+import com.example.botfight.domain.match.MatchMode;
 
 /** Centralized round-duration policy shared by match creation and custom lobbies. */
 public final class MatchTimingPolicy {

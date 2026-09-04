@@ -1,11 +1,11 @@
 package com.example.botfight.controller;
 
-import com.example.botfight.DTO.AboutMeRequestDTO;
-import com.example.botfight.DTO.ProfileDTO;
-import com.example.botfight.DTO.MatchHistoryPageDTO;
-import com.example.botfight.DTO.ProfileSearchPageDTO;
-import com.example.botfight.DTO.SolvedPuzzlePageDTO;
-import com.example.botfight.DTO.UsernameRequestDTO;
+import com.example.botfight.DTO.profile.AboutMeRequestDTO;
+import com.example.botfight.DTO.profile.ProfileDTO;
+import com.example.botfight.DTO.match.MatchHistoryPageDTO;
+import com.example.botfight.DTO.profile.ProfileSearchPageDTO;
+import com.example.botfight.DTO.profile.SolvedPuzzlePageDTO;
+import com.example.botfight.DTO.auth.UsernameRequestDTO;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.profile.ProfileService;
 import java.time.Instant;

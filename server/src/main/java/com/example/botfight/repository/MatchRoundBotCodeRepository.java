@@ -1,6 +1,6 @@
 package com.example.botfight.repository;
 
-import com.example.botfight.domain.MatchRoundBotCode;
+import com.example.botfight.domain.match.MatchRoundBotCode;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;

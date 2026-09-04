@@ -1,16 +1,16 @@
 package com.example.botfight.service.match.persistence;
 
-import com.example.botfight.DTO.MatchPlaybackDTO;
-import com.example.botfight.DTO.MatchReplayDTO;
-import com.example.botfight.domain.AppUser;
-import com.example.botfight.domain.Match;
-import com.example.botfight.domain.MatchMode;
-import com.example.botfight.domain.MatchParticipant;
-import com.example.botfight.domain.MatchResult;
-import com.example.botfight.domain.MatchStatus;
-import com.example.botfight.domain.BotSubmission;
-import com.example.botfight.domain.BotSubmissionStatus;
-import com.example.botfight.domain.MatchRoundBotCode;
+import com.example.botfight.DTO.match.MatchPlaybackDTO;
+import com.example.botfight.DTO.match.MatchReplayDTO;
+import com.example.botfight.domain.auth.AppUser;
+import com.example.botfight.domain.match.Match;
+import com.example.botfight.domain.match.MatchMode;
+import com.example.botfight.domain.match.MatchParticipant;
+import com.example.botfight.domain.match.MatchResult;
+import com.example.botfight.domain.match.MatchStatus;
+import com.example.botfight.domain.submission.BotSubmission;
+import com.example.botfight.domain.submission.BotSubmissionStatus;
+import com.example.botfight.domain.match.MatchRoundBotCode;
 import com.example.botfight.repository.MatchParticipantRepository;
 import com.example.botfight.repository.MatchRepository;
 import com.example.botfight.repository.ProfileRepository;
@@ -602,7 +602,7 @@ public class MatchPersistenceService {
                 "match-result-profile-lookup");
         var profile = profileRepository.findByUserId(user.getId())
                 .orElseGet(() -> {
-                    var created = new com.example.botfight.domain.Profile();
+                    var created = new com.example.botfight.domain.profile.Profile();
                     created.setUser(userRepository.getReferenceById(user.getId()));
                     return created;
         });

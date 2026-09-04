@@ -1,7 +1,7 @@
 package com.example.botfight.repository;
 
-import com.example.botfight.domain.Party;
-import com.example.botfight.domain.PartyStatus;
+import com.example.botfight.domain.party.Party;
+import com.example.botfight.domain.party.PartyStatus;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;

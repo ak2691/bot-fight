@@ -2,6 +2,7 @@ package com.example.botfight.simulation.geometry;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.example.botfight.simulation.ecs.entities.ArenaEntity;
 import org.junit.jupiter.api.Test;
 
 class SimulationGeometryTest {
@@ -30,5 +31,19 @@ class SimulationGeometryTest {
 
         assertThat(square.hit()).isTrue();
         assertThat(circle.hit()).isFalse();
+    }
+
+    @Test
+    void abilityRectangleCollisionUsesIndependentHitboxLengthAndWidth() {
+        ArenaEntity silenceWave = new ArenaEntity(
+                "silence", "silence_wave", 1, 0, 0, 225,
+                1, 0, 0, 1200, true, 0, 0, 1, 15);
+
+        assertThat(EntityHitbox.movingAgainstCircle(
+                silenceWave, 0, 0, 0, 0,
+                115, 0, 115, 0, 30).hit()).isTrue();
+        assertThat(EntityHitbox.movingAgainstCircle(
+                silenceWave, 0, 0, 0, 0,
+                0, 110, 0, 110, 30).hit()).isFalse();
     }
 }

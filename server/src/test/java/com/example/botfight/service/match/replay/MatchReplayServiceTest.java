@@ -2,8 +2,8 @@ package com.example.botfight.service.match.replay;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.example.botfight.DTO.MatchPlaybackDTO;
-import com.example.botfight.DTO.MatchReplayDTO;
+import com.example.botfight.DTO.match.MatchPlaybackDTO;
+import com.example.botfight.DTO.match.MatchReplayDTO;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;

@@ -1,6 +1,6 @@
 package com.example.botfight.service.match.phase;
 
-import com.example.botfight.DTO.MatchmakingEventDTO;
+import com.example.botfight.DTO.match.MatchmakingEventDTO;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
 import com.example.botfight.service.match.model.MatchPlayer;
 import com.example.botfight.service.match.model.MatchSession;

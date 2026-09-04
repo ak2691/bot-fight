@@ -1,6 +1,6 @@
 package com.example.botfight.service.match.replay;
 
-import com.example.botfight.DTO.MatchReplayDTO;
+import com.example.botfight.DTO.match.MatchReplayDTO;
 import com.example.botfight.service.match.model.MatchPlayer;
 import com.example.botfight.service.match.model.MatchSession;
 import com.example.botfight.service.match.simulation.MatchSimulationService;

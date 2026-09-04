@@ -1,6 +1,6 @@
 package com.example.botfight.simulation.ecs.entities;
 
-import java.util.Set;
+import java.util.Map;
 
 /**
  * Canonical authoritative entity state. Flat accessors keep replay mapping
@@ -22,7 +22,6 @@ public record ArenaEntity(
         int shotVisualMs,
         double damageMultiplier,
         Integer abilityId,
-        Set<Integer> hitSlots,
         int intervalTimerMs,
         int phaseTimerMs,
         int ageMs,
@@ -30,67 +29,60 @@ public record ArenaEntity(
         double damageTakenThisTick,
         double damageTakenLastTick,
         double hpNetChangeLastTick,
-        double rotation) {
+        double rotation,
+        Map<Integer, Integer> hitLedger,
+        String phaseId,
+        boolean phaseLocked,
+        int visibleMs,
+        String visualEventType,
+        int visualEventMs,
+        int visualEventSize) {
 
     public ArenaEntity {
-        hitSlots = hitSlots == null ? Set.of() : Set.copyOf(hitSlots);
+        hitLedger = hitLedger == null ? Map.of() : Map.copyOf(hitLedger);
         ageMs = Math.max(0, ageMs);
-    }
-
-    /** Compatibility constructor for callers that predate authoritative entity rotation. */
-    public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
-                       double velocityX, double velocityY, double traveled, int timerMs, boolean armed, int hp,
-                       int shotVisualMs, double damageMultiplier, Integer abilityId, Set<Integer> hitSlots,
-                       int intervalTimerMs, int phaseTimerMs, int ageMs, double tickStartHp,
-                       double damageTakenThisTick, double damageTakenLastTick, double hpNetChangeLastTick) {
-        this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs, armed, hp,
-                shotVisualMs, damageMultiplier, abilityId, hitSlots, intervalTimerMs, phaseTimerMs, ageMs,
-                tickStartHp, damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick, 0.0);
+        visibleMs = Math.max(0, visibleMs);
+        visualEventMs = Math.max(0, visualEventMs);
+        if (visualEventMs == 0) {
+            visualEventType = null;
+            visualEventSize = 0;
+        } else {
+            visualEventSize = Math.max(0, visualEventSize);
+        }
     }
 
     public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
                        double velocityX, double velocityY, double traveled, int timerMs, boolean armed, int hp,
                        int shotVisualMs, double damageMultiplier) {
         this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs, armed, hp,
-                shotVisualMs, damageMultiplier, abilityIdForType(type), Set.of(), 0, 0, 0, 0, 0, 0, 0);
+                shotVisualMs, damageMultiplier, abilityIdForType(type), 0, 0, 0, 0, 0, 0, 0,
+                0.0, Map.of(), null, false, 0, null, 0, 0);
     }
 
     public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
                        double velocityX, double velocityY, double traveled, int timerMs, boolean armed, int hp,
                        int shotVisualMs, double damageMultiplier, Integer abilityId) {
         this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs, armed, hp,
-                shotVisualMs, damageMultiplier, abilityId, Set.of(), 0, 0, 0, 0, 0, 0, 0);
+                shotVisualMs, damageMultiplier, abilityId, 0, 0, 0, 0, 0, 0, 0,
+                0.0, Map.of(), null, false, 0, null, 0, 0);
     }
 
     public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
                        double velocityX, double velocityY, double traveled, int timerMs, boolean armed, int hp,
-                       int shotVisualMs, double damageMultiplier, Integer abilityId, Set<Integer> hitSlots) {
-        this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs, armed, hp,
-                shotVisualMs, damageMultiplier, abilityId, hitSlots, 0, 0, 0, 0, 0, 0, 0);
-    }
-
-    public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
-                       double velocityX, double velocityY, double traveled, int timerMs, boolean armed, int hp,
-                       int shotVisualMs, double damageMultiplier, Integer abilityId, Set<Integer> hitSlots,
-                       int intervalTimerMs) {
-        this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs, armed, hp,
-                shotVisualMs, damageMultiplier, abilityId, hitSlots, intervalTimerMs, 0, 0, 0, 0, 0, 0);
-    }
-
-    public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
-                       double velocityX, double velocityY, double traveled, int timerMs, boolean armed, int hp,
-                       int shotVisualMs, double damageMultiplier, Integer abilityId, Set<Integer> hitSlots,
-                       int intervalTimerMs, double rotation) {
-        this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs, armed, hp,
-                shotVisualMs, damageMultiplier, abilityId, hitSlots, intervalTimerMs, 0, 0, 0, 0, 0, 0, rotation);
-    }
-
-    public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
-                       double velocityX, double velocityY, double traveled, int timerMs, boolean armed, int hp,
-                       int shotVisualMs, double damageMultiplier, Integer abilityId, Set<Integer> hitSlots,
+                       int shotVisualMs, double damageMultiplier, Integer abilityId,
                        int intervalTimerMs, int phaseTimerMs) {
         this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs, armed, hp,
-                shotVisualMs, damageMultiplier, abilityId, hitSlots, intervalTimerMs, phaseTimerMs, 0, 0, 0, 0, 0);
+                shotVisualMs, damageMultiplier, abilityId, intervalTimerMs, phaseTimerMs, 0, 0, 0, 0, 0,
+                0.0, Map.of(), null, false, 0, null, 0, 0);
+    }
+
+    public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
+                       double velocityX, double velocityY, double traveled, int timerMs, boolean armed, int hp,
+                       int shotVisualMs, double damageMultiplier, Integer abilityId,
+                       int intervalTimerMs, double rotation) {
+        this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs, armed, hp,
+                shotVisualMs, damageMultiplier, abilityId, intervalTimerMs, 0, 0, 0, 0, 0, 0,
+                rotation, Map.of(), null, false, 0, null, 0, 0);
     }
 
     public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
@@ -118,48 +110,55 @@ public record ArenaEntity(
                 new Collider(size),
                 new Ownership(ownerSlot),
                 hp > 0 ? new Health(hp, maxHealthForType(type) > 0 ? maxHealthForType(type) : hp) : null,
-                new AbilityState(abilityId, type, armed, intervalTimerMs, phaseTimerMs));
+                new AbilityState(abilityId, type, armed, intervalTimerMs, phaseTimerMs,
+                        phaseId, phaseLocked, visibleMs, visualEventType, visualEventMs, visualEventSize));
     }
 
-    public ArenaEntity withHitSlots(Set<Integer> nextHitSlots) {
+    public ArenaEntity withHitLedger(Map<Integer, Integer> nextHitLedger) {
         return new ArenaEntity(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled,
                 timerMs, armed, hp, shotVisualMs, damageMultiplier, abilityId,
-                nextHitSlots == null ? Set.of() : Set.copyOf(nextHitSlots), intervalTimerMs, phaseTimerMs, ageMs,
-                tickStartHp, damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick, rotation);
+                intervalTimerMs, phaseTimerMs, ageMs, tickStartHp, damageTakenThisTick,
+                damageTakenLastTick, hpNetChangeLastTick, rotation,
+                nextHitLedger, phaseId, phaseLocked, visibleMs, visualEventType, visualEventMs, visualEventSize);
     }
 
     public ArenaEntity withAgeMs(int nextAgeMs) {
         return new ArenaEntity(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled,
-                timerMs, armed, hp, shotVisualMs, damageMultiplier, abilityId, hitSlots,
+                timerMs, armed, hp, shotVisualMs, damageMultiplier, abilityId,
                 intervalTimerMs, phaseTimerMs, Math.max(0, nextAgeMs), tickStartHp,
-                damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick, rotation);
+                damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick, rotation,
+                hitLedger, phaseId, phaseLocked, visibleMs, visualEventType, visualEventMs, visualEventSize);
     }
 
     public ArenaEntity withHp(int nextHp) {
         return new ArenaEntity(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled,
-                timerMs, armed, Math.max(0, nextHp), shotVisualMs, damageMultiplier, abilityId, hitSlots,
+                timerMs, armed, Math.max(0, nextHp), shotVisualMs, damageMultiplier, abilityId,
                 intervalTimerMs, phaseTimerMs, ageMs, tickStartHp, damageTakenThisTick,
-                damageTakenLastTick, hpNetChangeLastTick, rotation);
+                damageTakenLastTick, hpNetChangeLastTick, rotation,
+                hitLedger, phaseId, phaseLocked, visibleMs, visualEventType, visualEventMs, visualEventSize);
     }
 
     public ArenaEntity withDamageTakenThisTick(double damage) {
         return new ArenaEntity(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled,
-                timerMs, armed, hp, shotVisualMs, damageMultiplier, abilityId, hitSlots,
+                timerMs, armed, hp, shotVisualMs, damageMultiplier, abilityId,
                 intervalTimerMs, phaseTimerMs, ageMs, tickStartHp,
-                damageTakenThisTick + Math.max(0, damage), damageTakenLastTick, hpNetChangeLastTick, rotation);
+                damageTakenThisTick + Math.max(0, damage), damageTakenLastTick, hpNetChangeLastTick, rotation,
+                hitLedger, phaseId, phaseLocked, visibleMs, visualEventType, visualEventMs, visualEventSize);
     }
 
     public ArenaEntity beginTickMetrics() {
         return new ArenaEntity(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled,
-                timerMs, armed, hp, shotVisualMs, damageMultiplier, abilityId, hitSlots,
-                intervalTimerMs, phaseTimerMs, ageMs, hp, 0, damageTakenLastTick, hpNetChangeLastTick, rotation);
+                timerMs, armed, hp, shotVisualMs, damageMultiplier, abilityId,
+                intervalTimerMs, phaseTimerMs, ageMs, hp, 0, damageTakenLastTick, hpNetChangeLastTick, rotation,
+                hitLedger, phaseId, phaseLocked, visibleMs, visualEventType, visualEventMs, visualEventSize);
     }
 
     public ArenaEntity settleTickMetrics() {
         double netChange = Double.isFinite(tickStartHp) ? hp - tickStartHp : 0;
         return new ArenaEntity(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled,
-                timerMs, armed, hp, shotVisualMs, damageMultiplier, abilityId, hitSlots,
-                intervalTimerMs, phaseTimerMs, ageMs, hp, 0, damageTakenThisTick, netChange, rotation);
+                timerMs, armed, hp, shotVisualMs, damageMultiplier, abilityId,
+                intervalTimerMs, phaseTimerMs, ageMs, hp, 0, damageTakenThisTick, netChange, rotation,
+                hitLedger, phaseId, phaseLocked, visibleMs, visualEventType, visualEventMs, visualEventSize);
     }
 
     public record Components(Transform transform, Motion motion, Lifetime lifetime, Collider collider,
@@ -171,7 +170,13 @@ public record ArenaEntity(
     public record Ownership(int ownerSlot) {}
     public record Health(int hp, int maxHp) {}
     public record AbilityState(Integer abilityId, String type, boolean armed, int intervalTimerMs,
-                                int phaseTimerMs) {}
+                                int phaseTimerMs, String phaseId, boolean phaseLocked, int visibleMs,
+                                String visualEventType, int visualEventMs, int visualEventSize) {
+        public AbilityState(Integer abilityId, String type, boolean armed, int intervalTimerMs,
+                            int phaseTimerMs) {
+            this(abilityId, type, armed, intervalTimerMs, phaseTimerMs, null, false, 0, null, 0, 0);
+        }
+    }
 
     private static Integer abilityIdForType(String type) {
         return switch (type) {

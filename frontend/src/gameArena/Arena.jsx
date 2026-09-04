@@ -20,9 +20,8 @@ import {
     submitBotPayload
 } from "./botlogic/submission/SubmissionClient.js";
 import { isAbilityEntity, tickAbilityEntityWorld } from "./ecs/abilities/AbilityEntitySystem.js";
-import { isProjectileEntity } from "./ecs/contracts/EntityContracts.js";
+import { overlapsEntity } from "./gameconfig/hitboxGeometry.js";
 import { applyBotAction } from "./ecs/bots/ActionExecutionSystem.js";
-import { overlapsEntity, tickProjectileWorld } from "./ecs/abilities/ProjectileSystem.js";
 import {
     applyDamageFromShapes,
     applyDamageToShape,
@@ -1135,27 +1134,13 @@ export default function Arena({
                     };
                 });
                 const spawnedEntities = botsAfterActions.map((bot) => bot.abilitySpawn).filter(Boolean);
-                let projectileEntities = [...prevShapes.filter(isProjectileEntity)];
                 let abilityEntities = [...prevShapes.filter(isAbilityEntity)];
                 const previousClosingZone = prevShapes.find(isClosingZone) ?? null;
-                projectileEntities.push(...spawnedEntities.filter(isProjectileEntity));
                 abilityEntities.push(...spawnedEntities.filter(isAbilityEntity));
                 let activeBots = botsAfterActions.map((bot) => ({ ...bot, abilitySpawn: null }));
                 activeBots = resolveTriggeredAbilityCombatForRoster(activeBots);
-                const projectileUpdate = tickProjectileWorld({
-                    bots: activeBots,
-                    entities: projectileEntities,
-                    stepMs: AUTO_STEP_MS,
-                    width: ARENA_WIDTH_UNITS,
-                    height: ARENA_HEIGHT_UNITS,
-                }, { applyDamageToShape, applyDamageFromShapes });
-                const grenadeExploded = (projectileUpdate.grenadeExplosions ?? []).some((explosion) => explosion.ownerId === "opponent-model");
-                activeBots = projectileUpdate.bots;
-                projectileEntities = projectileUpdate.entities;
-                abilityEntities.push(...projectileUpdate.spawnedEntities);
                 const entityUpdate = tickAbilityEntityWorld({
                     entities: abilityEntities,
-                    projectiles: projectileEntities,
                     bots: activeBots,
                     stepMs: AUTO_STEP_MS,
                     width: ARENA_WIDTH_UNITS,
@@ -1168,6 +1153,10 @@ export default function Arena({
                     overlapsShape: overlapsEntity,
                 });
                 activeBots = entityUpdate.bots;
+                const grenadeExploded = entityUpdate.entities.some((entity) =>
+                    entity.ownerId === "opponent-model"
+                    && entity.abilityId === 4
+                    && entity.phaseId === "active");
                 const closingZoneUpdate = tickClosingZoneWorld({
                     zone: previousClosingZone,
                     bots: activeBots,
@@ -1259,7 +1248,6 @@ export default function Arena({
                 }
                 return [
                     ...settledBots.map(toCanonicalBotShape),
-                    ...projectileEntities,
                     ...abilityEntities,
                     ...(closingZoneUpdate.zone ? [closingZoneUpdate.zone] : []),
                 ];

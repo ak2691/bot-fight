@@ -1,8 +1,8 @@
 package com.example.botfight.service.matchmaking;
 
-import com.example.botfight.DTO.MatchmakingEventDTO;
-import com.example.botfight.DTO.MatchmakingPlayerDTO;
-import com.example.botfight.domain.MatchMode;
+import com.example.botfight.DTO.match.MatchmakingEventDTO;
+import com.example.botfight.DTO.match.MatchmakingPlayerDTO;
+import com.example.botfight.domain.match.MatchMode;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;

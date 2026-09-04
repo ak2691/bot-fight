@@ -1,7 +1,7 @@
 package com.example.botfight.service.puzzle;
 
-import com.example.botfight.DTO.PuzzleAttemptRequestDTO;
-import com.example.botfight.DTO.PuzzleAttemptResponseDTO;
+import com.example.botfight.DTO.puzzle.PuzzleAttemptRequestDTO;
+import com.example.botfight.DTO.puzzle.PuzzleAttemptResponseDTO;
 import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.simulation.core.combat.ActionExecutionService;

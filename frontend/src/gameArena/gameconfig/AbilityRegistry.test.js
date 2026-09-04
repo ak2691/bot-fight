@@ -10,7 +10,13 @@ import {
     legacyAbilityNameFromId,
 } from "./AbilityRegistry.js";
 import { ABILITY_STATS, abilityStats } from "./Abilities.js";
-import { ABILITY_CONTRACTS, abilityContract } from "./AbilityContracts.js";
+import {
+    ABILITY_CONTRACTS,
+    abilityContract,
+    EFFECT_TYPES,
+    effectOverrideKey,
+    resolveEffectOverride,
+} from "./AbilityContracts.js";
 
 test("ability identities are stable numeric keys independent of array position", () => {
     assert.equal(ABILITIES[3].id, 3);
@@ -22,6 +28,8 @@ test("ability identities are stable numeric keys independent of array position",
     assert.equal(abilityName(3), "gun");
     assert.equal(ABILITIES[32].name, "vampiric_beam");
     assert.equal(ABILITIES[32].label, "Vampiric Beam");
+    assert.equal(ABILITIES[8].label, "Repelling Blast");
+    assert.equal(ABILITIES[30].label, "Disruptive Beam");
     assert.equal(abilityIdFromLegacyName("retired_beam"), null);
 });
 
@@ -30,11 +38,18 @@ test("numeric identity owns tuning and contracts", () => {
     assert.equal(ABILITY_STATS[3].activeMs, 500);
     assert.equal(ABILITY_STATS[3].cooldownMs, 1000);
     assert.equal(ABILITY_STATS[3].reloadMs, 5000);
+    assert.equal(ABILITY_STATS[3].hitboxWidth, 5);
     assert.equal(ABILITY_STATS[34].damage, 8);
     assert.equal(ABILITY_STATS[34].range, 80);
-    assert.equal(ABILITY_STATS[34].arcDegrees, 30);
+    assert.equal(ABILITY_STATS[34].arc, 30);
     assert.equal(ABILITY_STATS[19].cooldownMs, 1800);
     assert.equal(ABILITY_STATS[25].hitboxWidth, 60);
+    assert.equal(ABILITY_STATS[30].hitboxWidth, 8);
+    assert.equal(ABILITY_STATS[32].hitboxWidth, 10);
+    assert.equal(ABILITY_STATS[15].hitboxWidth, 150);
+    assert.equal(ABILITY_STATS[15].hitboxLength, 190);
+    assert.equal(ABILITY_STATS[18].hitboxWidth, 80);
+    assert.equal(ABILITY_STATS[18].hitboxLength, 115);
     assert.equal(ABILITY_CONTRACTS[25].delivery.geometry, "rectangle");
     assert.equal(ABILITY_CONTRACTS[25].delivery.includeTargetRadius, true);
     assert.equal(ABILITY_CONTRACTS[25].effects[0].distanceMode, "center_distance");
@@ -48,15 +63,15 @@ test("numeric identity owns tuning and contracts", () => {
 test("requested combat tuning is represented in the browser catalog", () => {
     assert.equal(ABILITY_STATS[3].maxCharges, 6);
     assert.equal(ABILITY_STATS[3].reloadMs, 5000);
-    assert.equal(ABILITY_STATS[4].maxDamage, 40);
-    assert.equal(ABILITY_STATS[4].throwRange, 336);
+    assert.equal(ABILITY_STATS[4].falloff.maxAmount, 40);
+    assert.equal(ABILITY_STATS[4].radius, 70);
     assert.equal(ABILITY_STATS[5].cooldownMs, 300);
     assert.equal(ABILITY_STATS[5].reloadMs, 5000);
     assert.equal(ABILITY_STATS[8].cooldownMs, 10000);
     assert.equal(ABILITY_STATS[9].statuses.slow.durationMs, 1000);
     assert.equal(ABILITY_STATS[10].healing, 25);
     assert.equal(ABILITY_STATS[11].damage, 25);
-    assert.equal(ABILITY_STATS[11].throwRange, 176);
+    assert.equal(ABILITY_STATS[11].radius, 87.5);
     assert.equal(ABILITY_STATS[6].damage, 10);
     assert.equal(ABILITY_STATS[6].windupMs, 200);
     assert.equal(ABILITY_STATS[6].activeMs, 100);
@@ -88,6 +103,20 @@ test("requested combat tuning is represented in the browser catalog", () => {
     assert.equal(ABILITY_STATS[31].knockback, 40);
     assert.equal(ABILITY_STATS[32].cooldownMs, 10000);
     assert.equal(ABILITY_STATS[32].windupMs, 300);
+});
+
+test("status effect overrides address multiple status instances independently", () => {
+    const slow = { type: EFFECT_TYPES.STATUS, subtype: "slow", durationMs: 1000 };
+    const burn = { type: EFFECT_TYPES.STATUS, subtype: "burn", durationMs: 5000 };
+    const overrides = {
+        "status:slow": { durationMs: 2500 },
+        "status:burn": { durationMs: 7500 },
+    };
+
+    assert.equal(effectOverrideKey(slow), "status:slow");
+    assert.equal(effectOverrideKey(burn), "status:burn");
+    assert.equal(resolveEffectOverride(slow, overrides).durationMs, 2500);
+    assert.equal(resolveEffectOverride(burn, overrides).durationMs, 7500);
 });
 
 test("legacy names convert only through explicit allowlisted compatibility functions", () => {

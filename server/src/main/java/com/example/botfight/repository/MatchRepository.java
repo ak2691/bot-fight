@@ -1,7 +1,7 @@
 package com.example.botfight.repository;
 
-import com.example.botfight.domain.Match;
-import com.example.botfight.domain.MatchStatus;
+import com.example.botfight.domain.match.Match;
+import com.example.botfight.domain.match.MatchStatus;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;

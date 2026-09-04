@@ -36,6 +36,24 @@ class AbilityContractsTest {
         assertThat(AbilityContracts.effectAmount(11, DAMAGE)).isEqualTo(25);
         assertThat(AbilityContracts.effectAmount(30, DAMAGE)).isEqualTo(15);
         assertThat(AbilityContracts.effectDurationMs(30, "slow")).isEqualTo(2_000);
+        assertThat(AbilityContracts.get(4).effects())
+                .filteredOn(effect -> effect.type() == DAMAGE)
+                .singleElement().satisfies(effect -> {
+                    assertThat(effect.falloff().maxAmount()).isEqualTo(40);
+                    assertThat(effect.falloff().minAmount()).isEqualTo(25);
+                    assertThat(effect.falloff().falloffEnd()).isEqualTo(64);
+                });
+    }
+
+    @Test
+    void statusOverrideKeysKeepSeparateStatusInstancesAddressable() {
+        AbilityContracts.Effect slow = new AbilityContracts.Effect(
+                AbilityContracts.EffectType.STATUS, "slow", 0, 1_000, false);
+        AbilityContracts.Effect burn = new AbilityContracts.Effect(
+                AbilityContracts.EffectType.STATUS, "burn", 0, 5_000, false);
+
+        assertThat(AbilityContracts.effectOverrideKey(slow)).isEqualTo("status:slow");
+        assertThat(AbilityContracts.effectOverrideKey(burn)).isEqualTo("status:burn");
     }
 
     @Test
@@ -44,7 +62,7 @@ class AbilityContractsTest {
                 .isEqualTo(AbilityContracts.DeliveryType.RADIAL);
         assertThat(AbilityContracts.get(26).effects())
                 .extracting(AbilityContracts.Effect::type)
-                .containsExactly(DAMAGE, AbilityContracts.EffectType.DEBUFF, KNOCKBACK);
+                .containsExactly(DAMAGE, AbilityContracts.EffectType.STATUS, KNOCKBACK);
         assertThat(AbilityContracts.get(27).delivery())
                 .isEqualTo(AbilityContracts.DeliveryType.ZONE);
         assertThat(AbilityContracts.get(27).effects())
@@ -53,14 +71,14 @@ class AbilityContractsTest {
 
         assertThat(AbilityContracts.get(28).effects())
                 .extracting(AbilityContracts.Effect::type)
-                .containsExactly(DAMAGE, PULL, AbilityContracts.EffectType.DEBUFF, AbilityContracts.EffectType.SPAWN_ENTITY);
+                .containsExactly(DAMAGE, PULL, AbilityContracts.EffectType.STATUS, AbilityContracts.EffectType.SPAWN_ENTITY);
         assertThat(AbilityContracts.get(29).effects())
                 .extracting(AbilityContracts.Effect::type)
-                .containsExactly(DAMAGE, AbilityContracts.EffectType.DEBUFF, AbilityContracts.EffectType.INTERRUPT,
+                .containsExactly(DAMAGE, AbilityContracts.EffectType.STATUS, AbilityContracts.EffectType.INTERRUPT,
                         AbilityContracts.EffectType.SPAWN_ENTITY);
         assertThat(AbilityContracts.get(30).effects())
                 .extracting(AbilityContracts.Effect::type)
-                .containsExactly(DAMAGE, AbilityContracts.EffectType.INTERRUPT, AbilityContracts.EffectType.DEBUFF);
+                .containsExactly(DAMAGE, AbilityContracts.EffectType.INTERRUPT, AbilityContracts.EffectType.STATUS);
         assertThat(AbilityContracts.get(31).effects())
                 .extracting(AbilityContracts.Effect::type)
                 .containsExactly(DAMAGE, KNOCKBACK, AbilityContracts.EffectType.SPAWN_ENTITY);

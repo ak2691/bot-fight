@@ -6,6 +6,7 @@ import { ABILITY_STATS } from "../gameconfig/Abilities.js";
 import { sweepAngle } from "../gameconfig/visualState.js";
 import { animationFrameAt, FIREBALL_FRAME_INTERVAL_MS, FIREBALL_FRAME_NAMES, orderedAnimationFrames } from "./abilityAnimationFrames.js";
 import { HEAVY_SLASH_ART_ROTATION_OFFSET, heavySlashRotation } from "./pixiVisualState.js";
+import { visualRayLength } from "./rayPresentationGeometry.js";
 import { compassDegreesToRadians } from "../botlogic/planner/arenaAngles.js";
 
 const CROSSHAIR_PATH = fileURLToPath(new URL("../../assets/arena/abilities/support/crosshair.png", import.meta.url));
@@ -62,10 +63,11 @@ test("generic animation frame selection still loops unrelated projectile frames"
     assert.equal(animationFrameAt(grenadeFrames, 195, 65), "moving-001");
 });
 
-test("grenade explosions use renderer-clock sprite progression without the fallback particle burst", () => {
+test("entity visuals use a renderer-clock animation instance without the fallback particle burst", () => {
     const source = readFileSync(fileURLToPath(new URL("./PixiCanvas.jsx", import.meta.url)), "utf8");
-    assert.match(source, /entityAnimationStartedAt: entityAnimationStartTime\(shape, now\)/);
-    assert.match(source, /\(now - animationStartedAt\) \/ duration/);
+    assert.match(source, /visualAnimationStartedAt: visualAnimation.startedAt/);
+    assert.match(source, /visualAnimationElapsedMs\(view, now\)/);
+    assert.match(source, /visualAnimationIsActive\(view, now\)/);
     assert.doesNotMatch(source, /\["grenadeExplosion", "mineExplosion", "orbitalExplosion"\]/);
 });
 
@@ -78,6 +80,12 @@ test("Lock On uses the supplied white crosshair and hides the marker when its ac
     assert.match(source, /crosshair\.tint = 0xffffff/);
     assert.doesNotMatch(source, /halo\.circle/);
     assert.doesNotMatch(source, /LOCK_ON_PRESENTATION\.accentColor/);
+});
+
+test("ray sprite widths compensate for the presentation muzzle anchor", () => {
+    closeTo(visualRayLength(700), 700 / 0.96);
+    closeTo(visualRayLength(500), 500 / 0.96);
+    closeTo(visualRayLength(900, 0), 900);
 });
 
 test("Overclock uses the emerald clock status icon above the bot name", () => {

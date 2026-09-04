@@ -9,10 +9,11 @@ import { abilityActiveOpacity, basicHealParticleSpec, combatVisualRemainingMs, h
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, BOT_SIZE } from "../modelPayloads/arenaConstants.js";
 import { toSimulationBotShape } from "../modelPayloads/arenaShapes.js";
 import { interpolatePosition } from "./snapshotInterpolation.js";
-import { activeBotVisual, closingZoneDamageOccurred, entityCaption, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, grenadeDetonateProgress, heavySlashRotation, isBotShape, LOCK_ON_PRESENTATION, lockOnTargetPoint, pixiLayerForShape, presentationDefinitionForShape, projectileTrailStyle, shapeInterpolationMs } from "./pixiVisualState.js";
+import { activeBotVisual, closingZoneDamageOccurred, entityCaption, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, grenadeDetonateProgress, heavySlashRotation, isBotShape, LOCK_ON_PRESENTATION, lockOnTargetPoint, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, shapeInterpolationMs, visualAnimationDescriptorForShape, visualForShape } from "./pixiVisualState.js";
 import { spriteFrame, spriteFrameAtProgress } from "./arenaSpriteAssets.js";
 import { loadArenaPresentationAssets, retryArenaPresentationAssets } from "./arenaPresentationAssets.js";
 import { textureMuzzleAnchor } from "./abilitySpriteAssets.js";
+import { visualRayLength } from "./rayPresentationGeometry.js";
 import { advanceParticle } from "./particleMotion.js";
 import { createPresentationClock } from "./presentationClock.js";
 import { compassDegreesToRadians, vectorToCompassDegrees } from "../botlogic/planner/arenaAngles.js";
@@ -53,6 +54,37 @@ function captionScaleForCamera(cameraScale) {
     const renderedSize = BOT_CAPTION_FONT_SIZE * scale;
     const targetSize = Math.max(BOT_CAPTION_MIN_PX, Math.min(BOT_CAPTION_MAX_PX, renderedSize));
     return targetSize / renderedSize;
+}
+
+function visualAnimationStartForShape(shape, now) {
+    const descriptor = visualAnimationDescriptorForShape(shape);
+    if (!descriptor) return { key: null, durationMs: 0, startedAt: null };
+    const durationMs = Math.max(0, Number(descriptor.durationMs) || 0);
+    const remainingMs = Number(descriptor.remainingMs);
+    const elapsedMs = durationMs > 0 && Number.isFinite(remainingMs)
+        ? clamp(durationMs - Math.max(0, Math.min(durationMs, remainingMs)), 0, durationMs)
+        : 0;
+    return {
+        key: descriptor.key,
+        durationMs,
+        startedAt: now - elapsedMs,
+    };
+}
+
+function visualAnimationElapsedMs(view, now) {
+    if (!Number.isFinite(view.visualAnimationStartedAt)) return 0;
+    return Math.max(0, now - view.visualAnimationStartedAt);
+}
+
+function visualAnimationProgress(view, now) {
+    const durationMs = Math.max(0, Number(view.visualAnimationDurationMs) || 0);
+    if (durationMs <= 0) return null;
+    return clamp(visualAnimationElapsedMs(view, now) / durationMs, 0, 1);
+}
+
+function visualAnimationIsActive(view, now) {
+    const durationMs = Math.max(0, Number(view.visualAnimationDurationMs) || 0);
+    return durationMs <= 0 || visualAnimationElapsedMs(view, now) < durationMs;
 }
 
 export default function PixiCanvas({
@@ -368,6 +400,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     }
 
     function createView(shape, now = presentationClock.current()) {
+        const visualAnimation = visualAnimationStartForShape(shape, now);
         const container = new Container();
         const baseSprite = new Sprite();
         baseSprite.anchor.set(0.5);
@@ -400,10 +433,13 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             dashSmokeRotation: 0,
             dashSmokeStartedAt: null,
             repulsorBurstStartedAt: repulsorBurstStartTime(shape, now),
-            entityAnimationStartedAt: entityAnimationStartTime(shape, now),
+            visualAnimationStartedAt: visualAnimation.startedAt,
+            visualAnimationDurationMs: visualAnimation.durationMs,
+            visualAnimationKey: visualAnimation.key,
+            layer: pixiLayerForShape(shape),
             motion: { from: { x: shape.x, y: shape.y }, to: { x: shape.x, y: shape.y }, startedAt: now, durationMs: 0 },
         };
-        layers[pixiLayerForShape(shape)].addChild(container);
+        layers[view.layer].addChild(container);
         container.on("pointerdown", (event) => beginDrag(event, view));
         rotationHandle.on("pointerdown", (event) => beginRotationDrag(event, view));
         return view;
@@ -432,6 +468,18 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
                 }
             }
             const previousShape = view.shape;
+            const previousVisual = visualAnimationDescriptorForShape(previousShape);
+            const nextVisual = visualAnimationDescriptorForShape(shape);
+            const eventRestarted = nextVisual?.eventActive
+                && previousVisual?.eventActive
+                && nextVisual.key === previousVisual.key
+                && Number(nextVisual.remainingMs ?? 0) > Number(previousVisual.remainingMs ?? 0);
+            if (view.visualAnimationKey !== (nextVisual?.key ?? null) || eventRestarted) {
+                const visualAnimation = visualAnimationStartForShape(shape, now);
+                view.visualAnimationStartedAt = visualAnimation.startedAt;
+                view.visualAnimationDurationMs = visualAnimation.durationMs;
+                view.visualAnimationKey = visualAnimation.key;
+            }
             const current = sampleViewPosition(view, now);
             const wasDashing = Number(previousShape?.dashActiveMs ?? 0) > 0;
             const startsDashing = Number(shape.dashActiveMs ?? 0) > 0;
@@ -455,6 +503,11 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
                 ? 0
                 : shapeInterpolationMs(shape);
             view.shape = shape;
+            const nextLayer = pixiLayerForShape(shape);
+            if (nextLayer !== view.layer) {
+                layers[nextLayer].addChild(view.container);
+                view.layer = nextLayer;
+            }
             const target = { x: Number(shape.x), y: Number(shape.y) };
             if (target.x !== view.motion.to.x || target.y !== view.motion.to.y) {
                 view.motion = { from: current, to: target, startedAt: now, durationMs };
@@ -578,7 +631,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
 
     function spawnRepairPulseParticles(x, y) {
         for (let index = 0; index < BASIC_HEAL_PARTICLE_COUNT; index += 1) {
-            const spec = basicHealParticleSpec(index);
+            const spec = basicHealParticleSpec(index, ABILITY_STATS[10].visualSize);
             const display = new Text({
                 text: "+",
                 style: { fill: 0x6ee7b7, fontFamily: "monospace", fontSize: spec.fontSize, fontWeight: "bold", align: "center" },
@@ -890,7 +943,7 @@ function drawBot(view, position, selected, now, arenaSprites, overlapping = fals
     if (!dead) drawDashSmoke(view, position, radius, now, arenaSprites);
     const swingActiveMs = Number(shape.abilityActiveMs?.[1] ?? 0);
     if (swingActiveMs > 0) {
-        const halfArc = Number(ABILITY_STATS[1].arcDegrees) / 2;
+        const halfArc = Number(ABILITY_STATS[1].arc) / 2;
         const angle = rotation + radians(sweepAngle(swingActiveMs, ABILITY_STATS[1].activeMs, -halfArc, halfArc));
         const progress = visualProgress(swingActiveMs, ABILITY_STATS[1].activeMs);
         const forwardOffset = radius / 2;
@@ -898,8 +951,8 @@ function drawBot(view, position, selected, now, arenaSprites, overlapping = fals
             x: Math.cos(rotation) * forwardOffset,
             y: Math.sin(rotation) * forwardOffset,
             rotation: angle,
-            width: ABILITY_STATS[1].range * 2.25,
-            height: ABILITY_STATS[1].range * 2.25,
+            width: Number(ABILITY_STATS[1].visualSize ?? ABILITY_STATS[1].range * 2.25),
+            height: Number(ABILITY_STATS[1].visualSize ?? ABILITY_STATS[1].range * 2.25),
         });
     }
     drawStatusIcons(graphics, shape, radius);
@@ -1077,13 +1130,14 @@ function drawDashSmoke(view, position, radius, now, arenaSprites) {
         return;
     }
     const origin = view.dashSmokeOrigin ?? position;
+    const visualSize = Number(ABILITY_STATS[19]?.visualSize ?? radius * 3.8);
     showCachedEffect(view, "dash-smoke", spriteFrame(frames, elapsedMs, 100, false), {
         x: origin.x - position.x,
         y: origin.y - position.y,
         rotation: view.dashSmokeRotation,
         alpha: 0.92,
-        width: radius * 3.8,
-        height: radius * 1.9,
+        width: visualSize,
+        height: visualSize * 0.5,
         anchorX: 0.5,
         blendMode: "screen",
     });
@@ -1195,7 +1249,7 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
         const originX = Number(shape.gunRayOriginX ?? shape.x);
         const originY = Number(shape.gunRayOriginY ?? shape.y);
         const originRotation = Number(shape.gunRayRotation ?? shape.rotation);
-        showAbilityRayEffect(view, "gun", arenaSprites, position, originX, originY, originRotation, 3, ABILITY_STATS[3].range, alpha, 16);
+        showAbilityRayEffect(view, "gun", arenaSprites, position, originX, originY, originRotation, 3, ABILITY_STATS[3].range, alpha, Number(ABILITY_STATS[3].visualSize ?? 16));
         showMuzzleFlash(view, arenaSprites, position, originX, originY, originRotation, alpha, Number(shape.size ?? 60));
     }
     const stunActiveMs = Number(shape.abilityActiveMs?.[6] ?? 0);
@@ -1204,6 +1258,7 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
         const opacity = clamp(stunActiveMs / activeDurationMs, 0, 1);
         const progress = visualProgress(stunActiveMs, activeDurationMs);
         const botRadius = Number(shape.size ?? BOT_SIZE) / 2;
+        const stunVisualSize = Number(ABILITY_STATS[6].visualSize ?? shape.size ?? 60);
         showCachedEffect(view, "stun", spriteFrameAtProgress(arenaSprites.abilities.stun, progress), {
             // The supplied frame is vertically elongated; keep that long axis
             // aligned with the bot's facing direction and project it from
@@ -1212,8 +1267,8 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
             y: Math.sin(rotation) * botRadius,
             rotation: rotation - Math.PI / 2,
             alpha: opacity,
-            width: Number(shape.size ?? 60) * 1.8,
-            height: Number(shape.size ?? 60) * 3.6,
+            width: stunVisualSize * 1.8,
+            height: stunVisualSize * 3.6,
             anchorY: 0,
             blendMode: "screen",
         });
@@ -1261,7 +1316,7 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
             : now - view.repulsorBurstStartedAt;
         const progress = repulsorBurstProgress(elapsed, duration);
         const frameIndex = repulsorBurstFrameIndex(progress, frames.length);
-        const diameter = repulsorBurstDiameter(progress, Number(stats.radius ?? 110) * 2, frames.length);
+        const diameter = repulsorBurstDiameter(progress, Number(stats.visualSize ?? Number(stats.radius ?? 110) * 2), frames.length);
         showCachedEffect(view, "ability", frames[frameIndex], {
             x: originX - position.x,
             y: originY - position.y,
@@ -1271,17 +1326,18 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
             height: diameter,
         });
     } else if (visual === 7) {
-        const halfArc = Number(stats.arcDegrees) / 2;
+        const halfArc = Number(stats.arc) / 2;
         const sweep = heavySlashRotation(originRotation, sweepAngle(remaining, duration, -halfArc, halfArc));
-        showSlashEffect(view, arenaSprites.abilities.heavySlash, remaining, duration, sweep, ABILITY_STATS[1].range * 2.4, 0xffffff, opacity);
+        showSlashEffect(view, arenaSprites.abilities.heavySlash, remaining, duration, sweep, Number(stats.visualSize ?? ABILITY_STATS[1].range * 2.4), 0xffffff, opacity);
     } else if ([3, 12, 9, 13].includes(visual)) {
-        const height = visual === 13 ? 100 : visual === 9 ? 76 : 14;
+        const height = Number(stats.visualSize ?? (visual === 13 ? 100 : visual === 9 ? 76 : 14));
         showAbilityRayEffect(view, "ability", arenaSprites, position, originX, originY, originRotation, visual, Number(stats.range ?? 500), opacity, height);
         showMuzzleFlash(view, arenaSprites, position, originX, originY, originRotation, opacity, Number(shape.size ?? 60));
     } else if ([30, 32].includes(visual)) {
+        const rayWidth = Number(stats.hitboxWidth ?? 5);
         drawProceduralAbilityRay(graphics, position, originX, originY, originRotation,
             Number(stats.range ?? 500), visual === 30 ? 0x22d3ee : 0xef4444, opacity,
-            visual === 30 ? 8 : 10);
+            Number.isFinite(rayWidth) && rayWidth > 0 ? rayWidth : 5);
         showMuzzleFlash(view, arenaSprites, position, originX, originY, originRotation, opacity, Number(shape.size ?? 60));
     } else if (visual === 34) {
         drawProceduralAbilityRay(graphics, position, originX, originY, originRotation,
@@ -1299,8 +1355,8 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
             rotation: angle,
             alpha: opacity,
             tint: 0xf0abfc,
-            width: Number(stats.range ?? 100),
-            height: Number(stats.hitboxWidth ?? 60),
+            width: Number(stats.visualSize ?? stats.range ?? 100),
+            height: Number(stats.visualSize ?? stats.range ?? 100) * 0.6,
             anchorX: 0,
             blendMode: "screen",
         });
@@ -1323,7 +1379,7 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
         }
     } else if (visual === 16 || visual === 23) {
         const progress = visualProgress(remaining, duration);
-        const radius = 40 + progress * 16;
+        const radius = Number(stats.visualSize ?? 80) / 2 + progress * 16;
         const color = visual === 16 ? 0xfbbf24 : 0xe2e8f0;
         showCachedEffect(view, "ability", spriteFrameAtProgress(arenaSprites.abilities.shield, progress), { rotation: angle + Math.PI, alpha: 1 - progress, tint: color, width: radius * 2, height: radius * 2 });
     }
@@ -1350,15 +1406,16 @@ function showAbilityRayEffect(view, slot, arenaSprites, position, originX, origi
     const x = Number.isFinite(originX) ? originX : position.x;
     const y = Number.isFinite(originY) ? originY : position.y;
     const texture = spriteFrameAtProgress(frames, 1 - alpha);
+    const muzzleAnchor = textureMuzzleAnchor(texture);
     showCachedEffect(view, slot, texture, {
         x: x - position.x,
         y: y - position.y,
         rotation: compassDegreesToRadians(rotation),
         alpha,
         tint,
-        width: length,
+        width: visualRayLength(length, muzzleAnchor),
         height,
-        anchorX: textureMuzzleAnchor(texture),
+        anchorX: muzzleAnchor,
         blendMode: "screen",
     });
 }
@@ -1383,6 +1440,7 @@ function showMuzzleFlash(view, arenaSprites, position, originX, originY, rotatio
 
 function drawEntity(view, selected, now, arenaSprites) {
     const { shape, baseSprite, graphics, caption } = view;
+    hideCachedEffects(view);
     if (shape.type === CLOSING_ZONE_TYPE) {
         drawClosingZone(graphics, shape);
         baseSprite.visible = false;
@@ -1390,23 +1448,31 @@ function drawEntity(view, selected, now, arenaSprites) {
         caption.visible = false;
         return;
     }
+    if (!visualAnimationIsActive(view, now)) {
+        baseSprite.visible = false;
+        graphics.clear();
+        caption.text = "";
+        caption.visible = false;
+        return;
+    }
     const size = Math.max(2, Number(shape.size ?? 30));
     const radius = size / 2;
     const rotation = compassDegreesToRadians(shape.rotation);
-    hideCachedEffects(view);
+    const presentationType = presentationTypeForShape(shape);
     graphics.clear();
-    if (["singularityZone", "singularityExplosion"].includes(shape.type)) {
+    if (["singularityZone", "singularityExplosion"].includes(shape.type)
+        || ["singularityZone", "singularityExplosion"].includes(presentationType)) {
         baseSprite.visible = false;
         caption.text = "";
         caption.visible = false;
-        drawGeneratedSingularity(graphics, shape, now);
+        drawGeneratedSingularity(graphics, shape, now, visualAnimationProgress(view, now));
         if (selected) graphics.circle(0, 0, radius + 6).stroke({ color: COLORS.white, alpha: 0.8, width: 2 });
         if (Number(shape.hitFlashMs ?? 0) > 0) graphics.circle(0, 0, radius + 2).fill({ color: 0xef4444, alpha: 0.5 });
         return;
     }
     if (["tetherBolt", "staticSnare", "staticSnareBurst"].includes(shape.type)) {
         baseSprite.visible = false;
-        drawGeneratedAbilityEntity(graphics, shape, now);
+        drawGeneratedAbilityEntity(graphics, shape, now, visualAnimationProgress(view, now));
         caption.text = entityCaption(shape);
         caption.visible = Boolean(caption.text);
         caption.position.set(0, -radius - 10);
@@ -1414,31 +1480,37 @@ function drawEntity(view, selected, now, arenaSprites) {
         if (Number(shape.hitFlashMs ?? 0) > 0) graphics.circle(0, 0, radius + 2).fill({ color: 0xef4444, alpha: 0.5 });
         return;
     }
-    const orbitalRemaining = Number(shape.visibleMs ?? shape.remainingMs ?? shape.timerMs ?? 400);
-    const texture = entityTexture(shape, arenaSprites, orbitalRemaining, now, view.entityAnimationStartedAt);
+    const orbitalProgress = visualAnimationProgress(view, now);
+    const texture = entityTexture(
+        shape,
+        arenaSprites,
+        now,
+        view.visualAnimationStartedAt,
+        view.visualAnimationDurationMs,
+    );
     baseSprite.visible = texture != null;
     if (texture) baseSprite.texture = texture;
     baseSprite.rotation = entityRotation(shape, rotation);
     baseSprite.alpha = 1;
     baseSprite.tint = 0xffffff;
-    const spriteSize = entitySpriteSize(shape, size);
+    const spriteSize = entitySpriteSize(shape, entityVisualBaseSize(shape, size));
     baseSprite.width = spriteSize.width;
     baseSprite.height = spriteSize.height;
     caption.text = entityCaption(shape);
     caption.visible = Boolean(caption.text);
-    caption.position.set(0, shape.type === "nullZone" ? 0 : -radius - 10);
+    caption.position.set(0, presentationType === "nullZone" ? 0 : -radius - 10);
 
     const trailStyle = projectileTrailStyle(shape);
     if (trailStyle) drawVelocityTrail(graphics, shape, trailStyle.color, trailStyle.length, trailStyle.width, now);
 
-    if (shape.type === "orbitalExplosion") {
-        baseSprite.alpha = clamp(orbitalRemaining / 400, 0, 1);
-    } else if (shape.type === "gravityZone") {
+    if (presentationType === "orbitalExplosion") {
+        baseSprite.alpha = orbitalProgress == null ? 1 : 1 - orbitalProgress;
+    } else if (presentationType === "gravityZone") {
         if (shape.armed) baseSprite.alpha = 0.72 + Math.sin(now / 100) * 0.12;
-    } else if (["hunterDrone", "repellerDrone"].includes(shape.type)) {
+    } else if (["hunterDrone", "repellerDrone"].includes(presentationType)) {
         if (Number(shape.shotVisualMs ?? 0) > 0) {
             const alpha = clamp(Number(shape.shotVisualMs) / 300, 0.2, 1);
-                showAbilityRayEffect(view, "drone-shot", arenaSprites, { x: shape.x, y: shape.y }, shape.x, shape.y, shape.rotation, 3, 200, alpha, 16, 0x6ee7b7);
+                showAbilityRayEffect(view, "drone-shot", arenaSprites, { x: shape.x, y: shape.y }, shape.x, shape.y, shape.rotation, 3, 200, alpha, Number(ABILITY_STATS[3].visualSize ?? 16), 0x6ee7b7);
         }
     }
     if (selected) graphics.circle(0, 0, radius + 6).stroke({ color: COLORS.white, alpha: 0.8, width: 2 });
@@ -1563,12 +1635,10 @@ function drawClosingZone(graphics, shape) {
     graphics.circle(0, 0, safeRadius).stroke({ color: COLORS.closingZone, alpha: 0.86, width: 3 });
 }
 
-function drawGeneratedSingularity(graphics, shape, now) {
+function drawGeneratedSingularity(graphics, shape, now, animationProgress = null) {
     const radius = Math.max(12, Number(shape.size ?? 280) / 2);
-    const explosion = shape.type === "singularityExplosion";
-    const remaining = Number(shape.visibleMs ?? 0);
-    const visibleMs = Number(ABILITY_STATS[27]?.explosionVisibleMs ?? 400);
-    const progress = explosion ? 1 - clamp(remaining / visibleMs, 0, 1) : 0;
+    const explosion = presentationTypeForShape(shape) === "singularityExplosion";
+    const progress = explosion ? animationProgress ?? 0 : 0;
     const pulse = 0.62 + Math.sin(now / 90) * 0.14;
     if (explosion) {
         const waveRadius = radius * (0.35 + progress * 0.9);
@@ -1590,8 +1660,8 @@ function drawGeneratedSingularity(graphics, shape, now) {
     }
 }
 
-function drawGeneratedAbilityEntity(graphics, shape, now) {
-    const type = shape.type;
+function drawGeneratedAbilityEntity(graphics, shape, now, animationProgress = null) {
+    const type = presentationTypeForShape(shape);
     if (type === "tetherBolt") {
         const speed = Math.max(0.001, Math.hypot(Number(shape.velocityX ?? 0), Number(shape.velocityY ?? 0)));
         const ux = Number(shape.velocityX ?? 0) / speed;
@@ -1607,7 +1677,7 @@ function drawGeneratedAbilityEntity(graphics, shape, now) {
         return;
     }
     if (type === "staticSnare") {
-        const triggerRadius = Number(ABILITY_STATS[29]?.triggerRadius ?? 75);
+        const triggerRadius = Number(ABILITY_STATS[29]?.radius ?? 75);
         const pulse = 0.62 + Math.sin(now / 180) * 0.14;
         graphics.circle(0, 0, triggerRadius).stroke({ color: 0xfacc15, alpha: 0.22, width: 2 });
         graphics.circle(0, 0, Math.max(8, Number(shape.size ?? 24) / 2)).fill({ color: 0x713f12, alpha: 0.9 })
@@ -1617,8 +1687,7 @@ function drawGeneratedAbilityEntity(graphics, shape, now) {
     }
     if (type === "staticSnareBurst") {
         const radius = Math.max(12, Number(shape.size ?? 150) / 2);
-        const remaining = Math.max(0, Number(shape.visibleMs ?? 300));
-        const progress = 1 - clamp(remaining / Number(ABILITY_STATS[29]?.explosionVisibleMs ?? 300), 0, 1);
+        const progress = animationProgress ?? 0;
         graphics.circle(0, 0, radius * (0.35 + progress * 0.7))
             .stroke({ color: 0xfacc15, alpha: 0.9 - progress * 0.5, width: 6 });
         graphics.circle(0, 0, radius * 0.35).fill({ color: 0xf59e0b, alpha: 0.28 * (1 - progress) });
@@ -1633,58 +1702,62 @@ function drawGeneratedAbilityEntity(graphics, shape, now) {
     graphics.circle(0, 0, radius + 7).stroke({ color: 0x22d3ee, alpha: 0.24, width: 2 });
 }
 
-function entityTexture(shape, arenaSprites, orbitalRemaining, now, animationStartedAt) {
+function entityTexture(shape, arenaSprites, now, animationStartedAt, animationDurationMs) {
     const abilities = arenaSprites.abilities;
     const definition = presentationDefinitionForShape(shape);
     if (definition.fallback) return null;
     const frames = definition.texturePath.reduce((current, key) => current?.[key], abilities);
     if (!frames) return null;
     if (definition.animation === "static") return Array.isArray(frames) ? frames[0] : frames;
-    if (definition.animation === "time") return spriteFrame(frames, now, definition.frameMs);
+    const elapsedMs = Number.isFinite(animationStartedAt)
+        ? visualAnimationElapsedMs({ visualAnimationStartedAt: animationStartedAt }, now)
+        : now;
+    if (definition.animation === "time") return spriteFrame(frames, elapsedMs, definition.frameMs);
     if (definition.animation !== "progress") return null;
 
-    const duration = Number(definition.durationMs ?? 0);
-    const progress = definition.remaining === "grenadeDetonate"
-        ? grenadeDetonateProgress(shape)
-        : definition.remaining === "orbital"
-            ? 1 - clamp(orbitalRemaining / duration, 0, 1)
-            : Number.isFinite(animationStartedAt)
-                ? clamp((now - animationStartedAt) / duration, 0, 1)
-                : 1 - clamp(Number(shape.visibleMs ?? shape.remainingMs ?? duration) / duration, 0, 1);
+    const duration = Math.max(0, Number(animationDurationMs ?? definition.durationMs ?? 0));
+    const progress = duration > 0 && Number.isFinite(animationStartedAt)
+        ? clamp(elapsedMs / duration, 0, 1)
+        : definition.remaining === "grenadeDetonate"
+            ? grenadeDetonateProgress(shape)
+            : 1;
     return spriteFrameAtProgress(frames, progress);
 }
 
-function entityAnimationStartTime(shape, now) {
-    const definition = presentationDefinitionForShape(shape);
-    if (definition.animation !== "progress" || definition.remaining === "grenadeDetonate" || definition.remaining === "orbital") return null;
-    const duration = Number(definition.durationMs ?? 0);
-    if (duration <= 0) return null;
-    const remaining = Number(shape.visibleMs ?? shape.remainingMs ?? duration);
-    return now - (duration - clamp(remaining, 0, duration));
-}
-
 function entityRotation(shape, fallbackRotation) {
+    const presentationType = presentationTypeForShape(shape);
     const velocityX = Number(shape.velocityX ?? 0);
     const velocityY = Number(shape.velocityY ?? 0);
-    if (["grenade", "proximityMine", "fireball", "windburstProjectile"].includes(shape.type)
+    if (["grenade", "proximityMine", "fireball", "windburstProjectile"].includes(presentationType)
         && Math.hypot(velocityX, velocityY) > 0.01) return Math.atan2(velocityY, velocityX);
-    if (shape.type === "silenceWave") return fallbackRotation - Math.PI / 2;
-    return shape.type === "windburstProjectile" ? fallbackRotation : 0;
+    if (presentationType === "silenceWave") return fallbackRotation - Math.PI / 2;
+    return presentationType === "windburstProjectile" ? fallbackRotation : 0;
+}
+
+function entityVisualBaseSize(shape, fallback) {
+    const phaseVisualSize = Number(visualForShape(shape)?.visualSize);
+    if (Number.isFinite(phaseVisualSize) && phaseVisualSize > 0) return phaseVisualSize;
+    const visualSize = Number(ABILITY_STATS[Number(shape.abilityId)]?.visualSize);
+    return Number.isFinite(visualSize) && visualSize > 0 ? visualSize : fallback;
 }
 
 function entitySpriteSize(shape, size) {
-    if (shape.type === "orbitalMarker") return { width: size, height: size };
-    if (shape.type === "grenade") return { width: size * 10, height: size * 10 };
-    if (shape.type === "proximityMine") return { width: size * 4, height: size * 4 };
-    if (shape.type === "fireball") return { width: size * 1.6, height: size * 1.6 };
-    if (["grenadeExplosion", "mineExplosion", "gravityExplosion", "orbitalExplosion"].includes(shape.type)) return { width: size, height: size };
+    const presentationType = presentationTypeForShape(shape);
+    if (presentationType === "orbitalMarker") return { width: size, height: size };
+    if (presentationType === "grenade") return { width: size * 10, height: size * 10 };
+    if (presentationType === "proximityMine") return { width: size * 4, height: size * 4 };
+    if (presentationType === "fireball") return { width: size * 1.6, height: size * 1.6 };
+    if (["grenadeExplosion", "mineExplosion", "gravityExplosion", "orbitalExplosion"].includes(presentationType)) return { width: size, height: size };
     // Each Null Zone frame is roughly 1.25:1 and includes some visual padding.
-    // Scale it slightly past the collider diameter so its visible edge better
-    // communicates the full gameplay range.
-    if (shape.type === "nullZone") return { width: size * 1.1, height: size * 0.88 };
-    if (shape.type === "temporalRewindZone") return { width: size * 1.7, height: size * 1.7 };
-    if (shape.type === "silenceWave" || shape.type === "gravityZone") return { width: size, height: size };
-    if (shape.type === "windburstProjectile") return { width: size * 6, height: size * 4 };
+    // Keep that aspect-ratio compensation, but enlarge the presentation by
+    // about 25 units so its visible ring reaches the 300-unit collider.
+    if (presentationType === "nullZone") {
+        const visualSize = Math.max(2, size + 25);
+        return { width: visualSize * 1.1, height: visualSize * 0.88 };
+    }
+    if (presentationType === "temporalRewindZone") return { width: size * 1.7, height: size * 1.7 };
+    if (presentationType === "silenceWave" || presentationType === "gravityZone") return { width: size, height: size };
+    if (presentationType === "windburstProjectile") return { width: size * 6, height: size * 4 };
     return { width: size * 1.5, height: size * 1.5 };
 }
 

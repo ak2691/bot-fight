@@ -2,8 +2,8 @@ package com.example.botfight.service.cache;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.example.botfight.DTO.ProfileDTO;
-import com.example.botfight.DTO.PuzzleListPageDTO;
+import com.example.botfight.DTO.profile.ProfileDTO;
+import com.example.botfight.DTO.puzzle.PuzzleListPageDTO;
 import com.example.botfight.service.cache.DatabaseLookupCache.CachedMatchStats;
 import com.example.botfight.service.cache.DatabaseLookupCache.CachedPuzzle;
 import com.example.botfight.service.cache.DatabaseLookupCache.CachedRatings;

@@ -1,11 +1,11 @@
 package com.example.botfight.service.cache;
 
-import com.example.botfight.DTO.MatchHistoryPageDTO;
-import com.example.botfight.DTO.ProfileDTO;
-import com.example.botfight.DTO.ProfileSearchPageDTO;
-import com.example.botfight.DTO.PuzzleListPageDTO;
-import com.example.botfight.DTO.SolvedPuzzlePageDTO;
-import com.example.botfight.domain.PuzzleBotRole;
+import com.example.botfight.DTO.match.MatchHistoryPageDTO;
+import com.example.botfight.DTO.profile.ProfileDTO;
+import com.example.botfight.DTO.profile.ProfileSearchPageDTO;
+import com.example.botfight.DTO.puzzle.PuzzleListPageDTO;
+import com.example.botfight.DTO.profile.SolvedPuzzlePageDTO;
+import com.example.botfight.domain.puzzle.PuzzleBotRole;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.RemovalCause;

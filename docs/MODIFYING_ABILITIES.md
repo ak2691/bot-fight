@@ -74,10 +74,7 @@ ability 3:
     reloadMs: 5000,
     cooldownMs: 1000,
     activeMs: 500,
-    maxDamage: 15,
-    minDamage: 5,
-    damageFalloffStart: 100,
-    damageFalloffEnd: 700,
+    falloff: { maxAmount: 15, minAmount: 5, falloffStart: 100, falloffEnd: 700 },
     range: 700,
 },
 ~~~
@@ -94,19 +91,22 @@ Common browser fields:
 | reloadMs | Time to reload after a charged ability is empty. |
 | damage | Fixed damage amount. |
 | healing | Fixed healing amount. |
-| maxDamage, minDamage | Endpoints of a linear damage-falloff profile. |
-| damageFalloffStart, damageFalloffEnd | Distances where falloff begins and reaches minimum damage. |
-| range | Hit, targeting, or falloff range. For moving projectiles, keep it equal to the duration-phase displacement. |
-| throwRange | Maximum displacement shown for a thrown projectile or trap. Keep it separate from the impact radius or trigger radius. |
-| arcDegrees | Facing arc for abilities that use an arc. |
-| hitboxWidth | Width of a forward rectangle when the delivery declares rectangle geometry. |
+| falloff.maxAmount, falloff.minAmount | Endpoints of a linear amount-falloff profile. |
+| falloff.maxDurationMs, falloff.minDurationMs | Optional endpoints of a distance-dependent duration profile. Status effects currently use this form; their amount/strength is unchanged. |
+| falloff.falloffStart, falloff.falloffEnd | Distances where falloff begins and reaches its minimum. Both are clamped to the ability or phase maximum range. |
+| range | Hit, targeting, ray, arc, or falloff range. For moving projectiles, this is travel/display metadata and should remain equal to the duration-phase displacement; it is not the projectile's physical rectangle length. |
+| radius | Radius for a circular projectile, zone, blast, or trigger. |
+| hitboxWidth | Width of a forward rectangle or segment when the delivery declares rectangle geometry. |
+| hitboxLength | Longitudinal length of a forward rectangle or segment. Use this for projectile hitboxes; it is independent of projectile travel `range`. |
+| arc | Facing arc in degrees for abilities that use an arc. |
 | knockback | Displacement strength for a knockback effect. |
 | pullPerTick | Displacement applied by a persistent pull effect each simulation tick. |
-| radius, zoneSize, explosionRadius | Collision or presentation geometry, depending on the contract. |
-| speed, speedPerTick, moveSpeed | Movement speed for the relevant projectile/entity. |
-| phases | Declarative entity phases with `id`, `startMs`, movement, triggers, effect types, and optional entry actions. |
+| speed | Movement speed for the relevant projectile/entity. |
+| visualSize, phase.visual | Presentation-only asset/state/size metadata for a sprite-backed ability effect/entity. A phase or derived effect can select its own visual descriptor; it does not affect collision, damage, range, or authority and is intentionally omitted from catalogue rows. |
+| phases | Declarative ability/entity phases with `id`, `type`, movement, standard hitbox fields, event handlers, effects, persistence, and optional phase visuals. Use phases when delivery, movement, geometry, damage, or effects change during the lifecycle. |
 | intervalMs | Cadence for a generic `interval` entity action. Orbital Strike uses this for repeated hits. |
-| explosionVisibleMs, visualMs | Presentation timing only unless explicitly used by gameplay state. |
+| visibleMs | Presentation timing for the current phase or transient phase event visual. It does not affect gameplay lifetime unless the phase explicitly uses it as its duration. |
+| visualMs | Direct-ability cast visual timing. Persistent entity visuals should use `phase.visual.visibleMs`. |
 
 The server uses the same concepts, but its AbilityDefinition constructor is
 positional:
@@ -119,13 +119,13 @@ new AbilityDefinition(
         durationMs,
         damage,
         range,
-        arcDegrees,
+        arc,
         charges,
         rechargeMs,
         reuseCooldownMs,
         resourceModel,
         falloffMode,
-        damageFalloff,
+        falloff,
         damageOverTime,
         stats)
 ~~~
@@ -153,26 +153,46 @@ active phase, then starts the normal cooldown/reload gate. It must not remove an
 already-spawned projectile, trap, zone, or summon; those continue under their
 entity contract.
 
-### Damage falloff
+### Generic distance falloff
 
-Use a linear profile when damage changes with distance. In the browser:
+Use a linear profile when an effect's amount or duration changes with distance.
+For a damage effect, the browser catalog uses the generic `falloff` object:
 
 ~~~js
-maxDamage: 40,
-minDamage: 25,
-damageFalloffStart: 0,
-damageFalloffEnd: 64,
+falloff: {
+    maxAmount: 40,
+    minAmount: 25,
+    falloffStart: 0,
+    falloffEnd: 64,
+},
 range: 70,
 ~~~
 
-In the server, the equivalent is a list of damage anchors:
+For a duration-dependent status effect, keep the amount fixed and use the
+duration fields in the same profile:
 
-~~~java
-linearFalloff(40, 25, 0, 64)
+~~~js
+effect(EFFECT_TYPES.STATUS, {
+    subtype: "slow",
+    durationMs: 2_000,
+    falloff: {
+        maxDurationMs: 2_000,
+        minDurationMs: 750,
+        falloffStart: 0,
+        falloffEnd: 500,
+    },
+}),
 ~~~
 
-The browser and server must have the same maximum, minimum, start distance,
-end distance, overall range, and rounding behavior.
+The server's numeric catalog and phase/effect overrides use the same generic
+`Falloff` fields. The browser and server must have the same maximum, minimum,
+start distance, end distance, effective range, and rounding behavior.
+
+For a generic amount override, use the same object on the effect instance:
+
+~~~java
+new AbilityContracts.Falloff(25.0, 40.0, null, null, 0.0, 64.0)
+~~~
 
 ## 2. Add, remove, or reorder an effect
 
@@ -191,12 +211,12 @@ execution -> activation-time targeting/capture behavior
 | --- | --- | --- |
 | damage | Removes HP. | amount, or runtime-computed falloff |
 | healing | Restores HP. | amount, recipient, requiresConfirmedDamage, mirrorsDamage |
-| knockback | Pushes a target away. | distance |
-| pull | Pulls a target toward a point. | perTick or amount |
+| knockback | Pushes a target away. | amount |
+| pull | Pulls a target toward a point. | amount |
 | movement | Moves the source or target through a movement contract. | distance/stat references |
 | teleport | Moves a target instantly. | fixed distance or `distanceMode: center_distance` |
 | restore_state | Restores a captured state after a delay. | delay/completion metadata |
-| debuff | Applies a negative timed or presence status. | subtype, duration, strength |
+| status | Applies a timed or presence status. Each subtype is a separate effect object, so one phase may apply several statuses. | subtype, duration, optional duration falloff |
 | buff | Applies a positive timed or presence status. | subtype, duration, strength |
 | interrupt | Cancels preparation without activation or stops a bot-owned active phase, then starts cooldown/reload. | duration when needed |
 | damage_reduction | Reduces incoming damage while active. | amount, converted to a negative additive modifier at runtime; duration |
@@ -227,10 +247,10 @@ Browser contract:
 ~~~js
 30: contract(DELIVERY_TYPES.RAY, [
     effect(EFFECT_TYPES.DAMAGE, { amount: A[30].damage }),
-    effect(EFFECT_TYPES.KNOCKBACK, { distance: A[30].knockback }),
+    effect(EFFECT_TYPES.KNOCKBACK, { amount: A[30].knockback }),
     effect(EFFECT_TYPES.INTERRUPT, { durationMs: A[30].interruptMs }),
-    effect(EFFECT_TYPES.DEBUFF, { debuff: "slow", durationMs: A[30].statuses.slow.durationMs }),
-], ignore),
+    effect(EFFECT_TYPES.STATUS, { subtype: "slow", durationMs: A[30].statuses.slow.durationMs }),
+]),
 ~~~
 
 Server numeric catalog:
@@ -244,11 +264,11 @@ Map.of(
 Server contract:
 
 ~~~java
-entry(30, DeliveryType.RAY, IGNORE,
+entry(30, DeliveryType.RAY,
         effect(EffectType.DAMAGE, 15),
         effect(EffectType.KNOCKBACK, 100),
         timed(EffectType.INTERRUPT, 250),
-        debuff("slow", 0, 2_000)),
+        status("slow", 0, 2_000)),
 ~~~
 
 This works without new ECS code because knockback is already a generic effect.
@@ -260,7 +280,7 @@ Adding a new effect type.
 Prefer a stat when the value is intended to be easy to tune:
 
 ~~~js
-effect(EFFECT_TYPES.KNOCKBACK, { distance: A[30].knockback })
+effect(EFFECT_TYPES.KNOCKBACK, { amount: A[30].knockback })
 ~~~
 
 Some contracts currently use a direct literal, such as a fixed interrupt
@@ -299,8 +319,10 @@ when you intend to change action semantics.
 
 ## 4. Add or modify a status effect
 
-Use debuff or buff when an effect continues after the original hit. Examples
-include slow, burn, bleed, silence, stun, damage reduction, and Overclock.
+Use `status` or `buff` when an effect continues after the original hit. Each
+status subtype is declared as its own effect object; do not combine multiple
+status payloads into a single combined object. Examples include slow, burn,
+bleed, silence, stun, damage reduction, and Overclock.
 
 Status timing belongs to the ability that starts the status. Put it in nested
 catalog metadata and resolve it into the applied status instance:
@@ -312,11 +334,26 @@ statuses: {
 },
 
 // Contract
-effect(EFFECT_TYPES.DEBUFF, {
-    debuff: "slow",
+effect(EFFECT_TYPES.STATUS, {
+    subtype: "slow",
     durationMs: A[30].statuses.slow.durationMs,
 }),
 ~~~
+
+To apply more than one status, add more objects to `effects[]`:
+
+~~~js
+effects: [
+    effect(EFFECT_TYPES.STATUS, { subtype: "burn", durationMs: 5_000 }),
+    effect(EFFECT_TYPES.STATUS, { subtype: "slow", durationMs: 2_000 }),
+],
+~~~
+
+An entity phase that selects `EFFECT_TYPES.STATUS` resolves every matching
+status object. Use `effectOverrides` keys such as `status:burn` and
+`status:slow` when their durations need to differ by phase. Status amount or
+strength overrides are not currently consumed; only duration overrides and
+duration falloff are supported for statuses.
 
 Server status effects use the same generic record shape:
 
@@ -419,7 +456,7 @@ activation, execution, replay, and tests.
 
 ## 8. Change visuals without changing gameplay
 
-Visual values such as visualMs, visualDurationMs, explosionVisibleMs, sprite
+Visual values such as visualMs, visualDurationMs, phase `visibleMs`, sprite
 size, tint, glow, and animation timing belong to presentation code. They can
 make an ability clearer but must not decide:
 

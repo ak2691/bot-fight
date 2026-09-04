@@ -1,14 +1,14 @@
 package com.example.botfight.service.party;
 
-import com.example.botfight.DTO.PartyDTO;
-import com.example.botfight.DTO.PartyInviteDTO;
-import com.example.botfight.DTO.PartyMemberDTO;
-import com.example.botfight.domain.AppUser;
-import com.example.botfight.domain.Party;
-import com.example.botfight.domain.PartyInvite;
-import com.example.botfight.domain.PartyInviteStatus;
-import com.example.botfight.domain.PartyMember;
-import com.example.botfight.domain.PartyStatus;
+import com.example.botfight.DTO.party.PartyDTO;
+import com.example.botfight.DTO.party.PartyInviteDTO;
+import com.example.botfight.DTO.party.PartyMemberDTO;
+import com.example.botfight.domain.auth.AppUser;
+import com.example.botfight.domain.party.Party;
+import com.example.botfight.domain.party.PartyInvite;
+import com.example.botfight.domain.party.PartyInviteStatus;
+import com.example.botfight.domain.party.PartyMember;
+import com.example.botfight.domain.party.PartyStatus;
 import com.example.botfight.repository.PartyInviteRepository;
 import com.example.botfight.repository.PartyMemberRepository;
 import com.example.botfight.repository.PartyRepository;

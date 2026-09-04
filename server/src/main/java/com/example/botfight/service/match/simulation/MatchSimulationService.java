@@ -1,8 +1,8 @@
 package com.example.botfight.service.match.simulation;
 
-import com.example.botfight.DTO.MatchPlaybackDTO;
-import com.example.botfight.DTO.MatchReplayDTO;
-import com.example.botfight.domain.BotSubmission;
+import com.example.botfight.DTO.match.MatchPlaybackDTO;
+import com.example.botfight.DTO.match.MatchReplayDTO;
+import com.example.botfight.domain.submission.BotSubmission;
 import com.example.botfight.simulation.geometry.ArenaUnits;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.DuelArenaRequest;

@@ -22,13 +22,13 @@ public interface AbilityEntityBot {
     void applyInterrupt(int durationMs);
 
     /** Generic status hooks used by contract-declared entity effects. */
-    default void applyDebuff(String subtype, int durationMs, int sourceSlot) {
+    default void applyStatus(String subtype, int durationMs, int sourceSlot) {
         if ("silence".equals(subtype)) applySilence(durationMs);
         else if ("stun".equals(subtype)) applyStun(durationMs);
         else if ("slow".equals(subtype)) applySlow(durationMs);
     }
 
-    /** Optional status hook keeps existing entity-test fakes source-compatible. */
+    /** Optional status hook keeps lightweight entity-test fakes minimal. */
     default void applySlow(int durationMs) {}
 
     default void clearPresence(String field) {

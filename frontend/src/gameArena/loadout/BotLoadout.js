@@ -80,7 +80,7 @@ const DELIVERY_TAGS = Object.freeze({
 });
 
 const CATALOGUE_ENTITY_TAGS = new Set(["zone", "trap", "summon"]);
-const STATUS_EFFECT_TYPES = new Set([EFFECT_TYPES.DEBUFF, EFFECT_TYPES.BUFF]);
+const STATUS_EFFECT_TYPES = new Set([EFFECT_TYPES.STATUS, EFFECT_TYPES.BUFF]);
 const POSITIVE_EFFECT_TYPES = new Set([
     EFFECT_TYPES.BUFF,
     EFFECT_TYPES.DAMAGE_REDUCTION,
@@ -196,7 +196,7 @@ function isStatusEffect(effect) {
 }
 
 function statusEffectId(effect) {
-    return effect?.type === EFFECT_TYPES.BUFF ? effect.buff : effect.debuff;
+    return effect?.type === EFFECT_TYPES.BUFF ? effect.buff : effect.subtype;
 }
 
 export function abilityDefinition(id) {

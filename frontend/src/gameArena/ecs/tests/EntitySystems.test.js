@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createAbilityEntity } from "../entities/EntityFactory.js";
-import { ENTITY_CONTRACTS, entityContractForAbility, isProjectileEntity } from "../contracts/EntityContracts.js";
+import { ENTITY_CONTRACTS, entityContractForAbility, phaseTypeForEntity } from "../contracts/EntityContracts.js";
 import { isAbilityEntity, tickAbilityEntityWorld } from "../abilities/AbilityEntitySystem.js";
 import { tickBotStatus } from "../bots/BotStatusSystem.js";
 import { tickBotResources } from "../bots/BotResourceSystem.js";
@@ -9,10 +9,9 @@ import { tickBotLifecycle } from "../bots/BotLifecycleSystem.js";
 import { tickDeferredStates } from "../bots/DeferredStateSystem.js";
 import { tickBotState } from "../bots/BotStateSystem.js";
 import { applyBotAction } from "../bots/ActionExecutionSystem.js";
-import { tickProjectileWorld } from "../abilities/ProjectileSystem.js";
 import { abilityActiveOpacity, basicHealParticleSpec, BASIC_HEAL_PARTICLE_COUNT, BASIC_HEAL_PARTICLE_LIFETIME_MS, combatVisualRemainingMs, healthBarPercent, abilityVisualOpacity, REPULSOR_BURST_FRAME_COUNT, REPULSOR_BURST_FRAME_MS, REPULSOR_BURST_MAX_DIAMETER, REPULSOR_BURST_VISUAL_MS, repulsorBurstDiameter, repulsorBurstFrameIndex, repulsorBurstProgress, sweepAngle } from "../../gameconfig/visualState.js";
 import { applyDamageFromShapes, applyDamageToShape, resolveTriggeredAbilityCombat as resolveAbilityCombat, resolveTriggeredAbilityCombatForRoster, settlePendingHealing } from "../../gameconfig/BotCombatSystem.js";
-import { damageAtDistance } from "../abilities/AbilityEffectSystem.js";
+import { amountAtDistance, durationAtDistance } from "../abilities/AbilityEffectSystem.js";
 import { abilityHitsTarget } from "../abilities/AbilityHitDetectionSystem.js";
 import { buildDeterministicLogicAction } from "../../botlogic/planner/ArenaActionPlanner.js";
 import { buildStatePayload } from "../../modelPayloads/strategyStatePayload.js";
@@ -25,6 +24,7 @@ import { CONCUSSIVE_SHOT_MOVEMENT_MULTIPLIER, CONCUSSIVE_SHOT_SLOW_DURATION_MS, 
 import { statusEffectFor, statusIsActive, statusRemainingMs } from "../contracts/StatusContracts.js";
 import { anotherAbilityActive } from "../../gameconfig/AbilityResourceSystem.js";
 import { movingCircleCollision, movingRectangleCollision } from "../../gameconfig/geometry.js";
+import { movingEntityCollision } from "../../gameconfig/hitboxGeometry.js";
 
 const noDamageCombat = {
     applyDamageToShape: (bot, damage) => ({ ...bot, hp: Math.max(0, bot.hp - damage) }),
@@ -35,6 +35,8 @@ const noDamageCombat = {
 };
 
 const entityFor = (bot, abilityId, context = {}) => createAbilityEntity(bot, abilityId, context);
+const phaseVisualFor = (entity) => ENTITY_CONTRACTS[entity.abilityId]?.phases
+    ?.find((phase) => phase.id === entity.phaseId)?.visual;
 
 function targetAtBearing(attacker, distance, bearing, size = 20) {
     const direction = compassDirection(bearing);
@@ -165,7 +167,7 @@ test("hunter drone pursues targets at 4.5 units per arena tick", () => {
     const drone = entityFor({ id: "owner", slot: 1, x: 100, y: 200, rotation: 0 }, 17);
     const target = { id: "target", slot: 2, x: 500, y: 200, size: 60, hp: 100 };
     const result = tickAbilityEntityWorld({
-        entities: [drone], projectiles: [], bots: [target],
+        entities: [drone], bots: [target],
         stepMs: 100, width: 1000, height: 800,
     }, noDamageCombat);
     assert.equal(result.entities[0].x, 104.5);
@@ -176,7 +178,7 @@ test("hunter drone retains the replay-matched shot visual timer", () => {
     const drone = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 200, rotation: 90 }, 17), shotCooldownMs: 0 };
     const target = { id: "target", slot: 2, x: 200, y: 200, size: 60, hp: 100 };
     const result = tickAbilityEntityWorld({
-        entities: [drone], projectiles: [], bots: [target],
+        entities: [drone], bots: [target],
         stepMs: 50, width: 1000, height: 800,
     }, noDamageCombat);
 
@@ -187,7 +189,7 @@ test("Tether Bolt uses one generic segment hit for damage, pull, and slow", () =
     const bolt = entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 90, attackDamageMultiplier: 1 }, 28);
     const target = { id: "target", slot: 2, x: 180, y: 100, size: 60, hp: 100, maxHp: 100 };
     const result = tickAbilityEntityWorld({
-        entities: [bolt], projectiles: [], bots: [target],
+        entities: [bolt], bots: [target],
         stepMs: 100, width: 1000, height: 800,
     }, noDamageCombat);
 
@@ -211,7 +213,7 @@ test("generic segment hitboxes sweep across a bot's dash segment", () => {
         velocityY: 0,
     };
     const result = tickAbilityEntityWorld({
-        entities: [windburst], projectiles: [], bots: [owner, target],
+        entities: [windburst], bots: [owner, target],
         stepMs: 100, width: 1000, height: 800,
     }, noDamageCombat);
 
@@ -223,7 +225,7 @@ test("Static Snare uses its stronger phase when generic damage destroys it", () 
     const snare = entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }, 29);
     const target = { id: "target", slot: 2, x: 800, y: 700, size: 60, hp: 100, maxHp: 100 };
     const result = tickAbilityEntityWorld({
-        entities: [snare], projectiles: [], bots: [target],
+        entities: [snare], bots: [target],
         stepMs: 100, width: 1000, height: 800,
     }, {
         ...noDamageCombat,
@@ -232,23 +234,31 @@ test("Static Snare uses its stronger phase when generic damage destroys it", () 
     });
 
     assert.equal(result.entities.length, 1);
-    assert.equal(result.entities[0].type, "staticSnareBurst");
-    assert.equal(result.entities[0].size, 240);
+    assert.equal(result.entities[0].id, snare.id);
+    assert.equal(result.entities[0].type, "staticSnare");
+    assert.equal(result.entities[0].phaseId, "destroyed");
+    assert.equal(phaseVisualFor(result.entities[0]).type, "staticSnareBurst");
+    assert.equal(phaseVisualFor(result.entities[0]).visualSize, 240);
+    assert.equal(result.entities[0].size, 24);
 });
 
 test("Static Snare triggers once without chaining to its owner", () => {
     const snare = entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }, 29);
     const target = { id: "target", slot: 2, x: 140, y: 100, size: 60, hp: 100, maxHp: 100 };
     const result = tickAbilityEntityWorld({
-        entities: [snare], projectiles: [], bots: [target],
+        entities: [snare], bots: [target],
         stepMs: 100, width: 1000, height: 800,
     }, noDamageCombat);
 
     assert.equal(result.bots[0].hp, 85);
     assert.equal(statusRemainingMs(result.bots[0], "slow"), 2200);
     assert.equal(statusRemainingMs(result.bots[0], "stun"), 150);
-    assert.equal(result.entities[0].type, "staticSnareBurst");
-    assert.equal(result.entities[0].size, 150);
+    assert.equal(result.entities[0].id, snare.id);
+    assert.equal(result.entities[0].type, "staticSnare");
+    assert.equal(result.entities[0].phaseId, "triggered");
+    assert.equal(phaseVisualFor(result.entities[0]).type, "staticSnareBurst");
+    assert.equal(phaseVisualFor(result.entities[0]).visualSize, 150);
+    assert.equal(result.entities[0].size, 24);
 });
 
 test("Static Snare gets its stronger radius and effects when any attack destroys it", () => {
@@ -261,15 +271,19 @@ test("Static Snare gets its stronger radius and effects when any attack destroys
         triggeredAbilityDamage: (attacker, entity) => attacker.id === owner.id && entity.id === snare.id ? 20 : 0,
     };
     const result = tickAbilityEntityWorld({
-        entities: [snare], projectiles: [], bots: [owner, target],
+        entities: [snare], bots: [owner, target],
         stepMs: 100, width: 1000, height: 800,
     }, ownerShot);
 
     assert.equal(result.bots[1].hp, 80);
     assert.equal(statusRemainingMs(result.bots[1], "slow"), 3000);
     assert.equal(statusRemainingMs(result.bots[1], "stun"), 150);
-    assert.equal(result.entities[0].type, "staticSnareBurst");
-    assert.equal(result.entities[0].size, 240);
+    assert.equal(result.entities[0].id, snare.id);
+    assert.equal(result.entities[0].type, "staticSnare");
+    assert.equal(result.entities[0].phaseId, "destroyed");
+    assert.equal(phaseVisualFor(result.entities[0]).type, "staticSnareBurst");
+    assert.equal(phaseVisualFor(result.entities[0]).visualSize, 240);
+    assert.equal(result.entities[0].size, 24);
 });
 
 test("Static Snare does not detonate from a nonlethal attack hit", () => {
@@ -277,7 +291,7 @@ test("Static Snare does not detonate from a nonlethal attack hit", () => {
     const snare = entityFor(owner, 29);
     const attacker = { id: "attacker", slot: 2, x: 800, y: 700, size: 60, rotation: 90, hp: 100, triggeredAbility: 9 };
     const result = tickAbilityEntityWorld({
-        entities: [snare], projectiles: [], bots: [attacker],
+        entities: [snare], bots: [attacker],
         stepMs: 100, width: 1000, height: 800,
     }, {
         ...noDamageCombat,
@@ -295,7 +309,7 @@ test("Static Snare uses its stronger phase when an opponent destroys it and skip
     const snare = entityFor(owner, 29);
     const attacker = { id: "attacker", slot: 2, x: 140, y: 100, size: 60, rotation: 90, hp: 100, maxHp: 100, triggeredAbility: 9 };
     const result = tickAbilityEntityWorld({
-        entities: [snare], projectiles: [], bots: [owner, attacker],
+        entities: [snare], bots: [owner, attacker],
         stepMs: 100, width: 1000, height: 800,
     }, {
         ...noDamageCombat,
@@ -306,15 +320,19 @@ test("Static Snare uses its stronger phase when an opponent destroys it and skip
     assert.equal(result.bots[0].hp, 100);
     assert.equal(result.bots[1].hp, 80);
     assert.equal(statusRemainingMs(result.bots[1], "slow"), 3000);
-    assert.equal(result.entities[0].type, "staticSnareBurst");
-    assert.equal(result.entities[0].size, 240);
+    assert.equal(result.entities[0].id, snare.id);
+    assert.equal(result.entities[0].type, "staticSnare");
+    assert.equal(result.entities[0].phaseId, "destroyed");
+    assert.equal(phaseVisualFor(result.entities[0]).type, "staticSnareBurst");
+    assert.equal(phaseVisualFor(result.entities[0]).visualSize, 240);
+    assert.equal(result.entities[0].size, 24);
 });
 
 test("Repeller Drone uses the hunter drone body with low-damage knockback shots", () => {
     const drone = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 90 }, 31), shotCooldownMs: 0 };
     const target = { id: "target", slot: 2, x: 180, y: 100, size: 60, hp: 100, maxHp: 100 };
     const result = tickAbilityEntityWorld({
-        entities: [drone], projectiles: [], bots: [target],
+        entities: [drone], bots: [target],
         stepMs: 100, width: 1000, height: 800,
     }, noDamageCombat);
 
@@ -369,11 +387,15 @@ test("entity-hit records trigger an armed mine through the entity system", () =>
     const mine = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }, 11), traveled: 176, armed: true };
     const bot = { id: "attacker", slot: 2, x: 500, y: 500, size: 50, hp: 100, entityHitIds: [mine.id] };
     const result = tickAbilityEntityWorld({
-        entities: [mine], projectiles: [], bots: [bot],
+        entities: [mine], bots: [bot],
         stepMs: 50, width: 1000, height: 800,
     }, noDamageCombat);
     assert.equal(result.entities.length, 1);
-    assert.equal(result.entities[0].type, "mineExplosion");
+    assert.equal(result.entities[0].id, mine.id);
+    assert.equal(result.entities[0].type, "proximityMine");
+    assert.equal(result.entities[0].phaseId, "active");
+    assert.equal(phaseVisualFor(result.entities[0]).type, "mineExplosion");
+    assert.equal(phaseVisualFor(result.entities[0]).visualSize, 175);
     assert.equal(result.entities[0].visibleMs, 300);
 });
 
@@ -381,7 +403,7 @@ test("lock-on does not count as an attack that triggers a proximity mine", () =>
     const mine = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }, 11), traveled: 176, armed: true };
     const lockOnBot = { id: "attacker", slot: 2, x: 500, y: 500, size: 50, hp: 100, triggeredAbility: 20 };
     const result = tickAbilityEntityWorld({
-        entities: [mine], projectiles: [], bots: [lockOnBot],
+        entities: [mine], bots: [lockOnBot],
         stepMs: 50, width: 1000, height: 800,
     }, { ...noDamageCombat, abilityHitsTarget });
 
@@ -393,18 +415,22 @@ test("proximity mine triggers and damages within its increased radius", () => {
     const mine = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }, 11), traveled: 176, armed: true };
     const bot = { id: "target", slot: 2, x: 180, y: 100, size: 50, hp: 100 };
     const result = tickAbilityEntityWorld({
-        entities: [mine], projectiles: [], bots: [bot],
+        entities: [mine], bots: [bot],
         stepMs: 50, width: 1000, height: 800,
     }, noDamageCombat);
 
-    assert.equal(result.entities[0].type, "mineExplosion");
-    assert.equal(result.entities[0].size, 175);
+    assert.equal(result.entities[0].id, mine.id);
+    assert.equal(result.entities[0].type, "proximityMine");
+    assert.equal(result.entities[0].phaseId, "active");
+    assert.equal(phaseVisualFor(result.entities[0]).type, "mineExplosion");
+    assert.equal(phaseVisualFor(result.entities[0]).visualSize, 175);
+    assert.equal(result.entities[0].size, 24);
     assert.equal(result.bots[0].hp, 75);
 });
 
 test("an untriggered proximity mine advances once without duplicating", () => {
     const mine = entityFor({ id: "owner", slot: 1, x: 100, y: 400, rotation: 0 }, 11);
-    const world = { entities: [mine], projectiles: [], bots: [{ id: "target", slot: 2, x: 800, y: 700, size: 50, hp: 100 }], stepMs: 100, width: 1000, height: 800 };
+    const world = { entities: [mine], bots: [{ id: "target", slot: 2, x: 800, y: 700, size: 50, hp: 100 }], stepMs: 100, width: 1000, height: 800 };
     const first = tickAbilityEntityWorld(world, noDamageCombat);
     assert.equal(first.entities.length, 1);
     assert.equal(first.entities[0].id, mine.id);
@@ -420,7 +446,6 @@ test("proximity mine transitions from travel to armed phase within one duration"
     const mine = entityFor({ id: "owner", slot: 1, x: 100, y: 400, rotation: 0 }, 11);
     let world = {
         entities: [mine],
-        projectiles: [],
         bots: [{ id: "target", slot: 2, x: 800, y: 700, size: 50, hp: 100 }],
         stepMs: 100,
         width: 1000,
@@ -490,8 +515,8 @@ test("gravity zone transitions through declarative phases even when it cannot tr
 
 test("entity projectile ranges match duration times fixed-step displacement", () => {
     assert.equal(ABILITY_STATS[5].range, ABILITY_STATS[5].speed * ABILITY_STATS[5].durationMs / 100);
-    assert.equal(ABILITY_STATS[18].range, ABILITY_STATS[18].speedPerTick * ABILITY_STATS[18].durationMs / 100);
-    assert.equal(ABILITY_STATS[28].range, ABILITY_STATS[28].speedPerTick * ABILITY_STATS[28].durationMs / 100);
+    assert.equal(ABILITY_STATS[18].range, ABILITY_STATS[18].speed * ABILITY_STATS[18].durationMs / 100);
+    assert.equal(ABILITY_STATS[28].range, ABILITY_STATS[28].speed * ABILITY_STATS[28].durationMs / 100);
 });
 
 test("status effects are accumulated before the bot hp snapshot is returned", () => {
@@ -768,9 +793,9 @@ test("declared spawned abilities resolve through normalized entity contracts", (
         assert.ok(entity.components.motion);
         assert.ok(entity.components.lifetime);
     }
-    assert.equal(isProjectileEntity(createAbilityEntity(bot, 4)), true);
-    assert.equal(isProjectileEntity(createAbilityEntity(bot, 5)), true);
-    assert.equal(isProjectileEntity(createAbilityEntity(bot, 18)), false);
+    assert.equal(phaseTypeForEntity(createAbilityEntity(bot, 4)), "projectile");
+    assert.equal(phaseTypeForEntity(createAbilityEntity(bot, 5)), "projectile");
+    assert.equal(phaseTypeForEntity(createAbilityEntity(bot, 18)), "projectile");
     assert.equal(ENTITY_CONTRACTS.grenade, undefined);
 });
 
@@ -897,7 +922,7 @@ test("entity damage and hostile DOT use the same HP-loss stagger settlement", ()
     const owner = { id: "owner", slot: 1, x: 100, y: 100, size: 60, hp: 100, maxHp: 100 };
     const target = { id: "target", slot: 2, x: 150, y: 100, size: 60, hp: 100, maxHp: 100 };
     const fireball = { id: "fireball", type: "fireball", ownerId: "owner", ownerSlot: 1, x: 120, y: 100, size: 30, velocityX: 5, velocityY: 0, traveled: 0, damageMultiplier: 1 };
-    const projectile = tickProjectileWorld({ bots: [owner, target], entities: [fireball], stepMs: 50, width: 1000, height: 800 }, { applyDamageToShape, applyDamageFromShapes });
+    const projectile = tickAbilityEntityWorld({ bots: [owner, target], entities: [fireball], stepMs: 50, width: 1000, height: 800 }, { applyDamageToShape, applyDamageFromShapes });
     assert.equal(statusRemainingMs(projectile.bots[1], "hit-stagger"), 300);
 
     const slashAttacker = { id: "slash-owner", slot: 1, x: 100, y: 100, size: 60, rotation: 90, hp: 100, attackDamageMultiplier: 1, triggeredAbility: 7 };
@@ -931,7 +956,7 @@ test("damage to an arena entity does not stagger either bot", () => {
         { id: "target", slot: 2, x: 100, y: 100, size: 60, hp: 100, maxHp: 100 },
     ];
     const result = tickAbilityEntityWorld({
-        entities: [entityFor(bots[0], 17)], projectiles: [], bots,
+        entities: [entityFor(bots[0], 17)], bots,
         stepMs: 100, width: 1000, height: 800,
     }, {
         applyDamageToShape,
@@ -1020,7 +1045,10 @@ test("Singularity pulls during its fuse and applies one generic zone detonation"
 
     const detonated = tickAbilityEntityWorld(world, noDamageCombat);
     assert.ok(detonated.bots[0].hp < 100);
-    assert.equal(detonated.entities[0].type, "singularityExplosion");
+    assert.equal(detonated.entities[0].id, singularity.id);
+    assert.equal(detonated.entities[0].type, "singularityZone");
+    assert.equal(detonated.entities[0].phaseId, "active");
+    assert.equal(phaseVisualFor(detonated.entities[0]).type, "singularityExplosion");
     const hpAfterDetonation = detonated.bots[0].hp;
     const after = tickAbilityEntityWorld({ ...world, entities: detonated.entities, bots: detonated.bots }, noDamageCombat);
     assert.equal(after.bots[0].hp, hpAfterDetonation);
@@ -1035,8 +1063,8 @@ test("Orbital Strike winds up for five ticks and pulses four times for flat dama
     assert.equal(ABILITY_STATS[22].windupMs, 500);
     assert.equal(ABILITY_STATS[22].activeMs, 0);
     assert.equal(ABILITY_STATS[22].durationMs, 1500);
-    assert.equal(damageAtDistance(22, 0), 15);
-    assert.equal(damageAtDistance(22, 100), 15);
+    assert.equal(amountAtDistance(22, 0), 15);
+    assert.equal(amountAtDistance(22, 100), 15);
 
     let world = { entities: [orbital], bots: [target], stepMs: 100, width: 1000, height: 800 };
     const pulseTicks = [];
@@ -1049,8 +1077,9 @@ test("Orbital Strike winds up for five ticks and pulses four times for flat dama
 
     assert.deepEqual(pulseTicks, [0, 4, 9, 14]);
     assert.equal(world.bots[0].hp, 40);
-    assert.equal(world.entities.some((entity) => entity.type === "orbitalExplosion"), true);
-    assert.equal(world.entities.some((entity) => entity.type === "orbitalMarker"), false);
+    assert.equal(world.entities.some((entity) => entity.type === "orbitalMarker"
+        && entity.visualEventType === "orbitalExplosion"), true);
+    assert.equal(world.entities.some((entity) => entity.type === "orbitalExplosion"), false);
 });
 
 test("wind burst is a five-tick projectile with 20 damage and 200 knockback", () => {
@@ -1058,7 +1087,7 @@ test("wind burst is a five-tick projectile with 20 damage and 200 knockback", ()
     const projectile = entityFor(attacker, 18);
     assert.equal(projectile.type, "windburstProjectile");
     assert.equal(ABILITY_STATS[18].knockback, 200);
-    assert.equal(ABILITY_CONTRACTS[18].effects.find((effect) => effect.type === EFFECT_TYPES.KNOCKBACK).distance, 200);
+    assert.equal(ABILITY_CONTRACTS[18].effects.find((effect) => effect.type === EFFECT_TYPES.KNOCKBACK).amount, 200);
     assert.equal(projectile.velocityX, 44);
     assert.equal(projectile.velocityY, 0);
     assert.equal(projectile.size, 24);
@@ -1099,7 +1128,7 @@ test("absolute guard rejects damage, statuses, and displacement without changing
 
 test("absolute guard rejects persistent entity zones, pulses, mines, and strikes", () => {
     const guarded = { id: "target", slot: 2, x: 150, y: 100, size: 60, hp: 100, statusEffects: [status("absolute-guard", 1000)] };
-    const arena = { bots: [guarded], projectiles: [], stepMs: 100, width: 1000, height: 1000 };
+    const arena = { bots: [guarded], stepMs: 100, width: 1000, height: 1000 };
 
     const silence = entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }, 15);
     const silenced = tickAbilityEntityWorld({ ...arena, entities: [silence] }, noDamageCombat).bots[0];
@@ -1180,7 +1209,7 @@ test("combat visual timing preserves centered pulses, sword sweeps, and pistol f
     assert.ok(Math.abs(sweepAngle(300, 400, -60, 60) - (-20)) < 0.0001);
     assert.ok(Math.abs(sweepAngle(200, 400, -60, 60) - 20) < 0.0001);
     assert.equal(sweepAngle(100, 400, -60, 60), 60);
-    const heavyHalfArc = Number(ABILITY_STATS[7].arcDegrees) / 2;
+    const heavyHalfArc = Number(ABILITY_STATS[7].arc) / 2;
     assert.equal(sweepAngle(400, 400, -heavyHalfArc, heavyHalfArc), -75);
     assert.equal(sweepAngle(100, 400, -heavyHalfArc, heavyHalfArc), 75);
     assert.equal(abilityVisualOpacity({ abilityVisual: { ability: 12, ms: 150 } }, 12), 0.5);
@@ -1395,7 +1424,7 @@ test("ability animations keep their full starting frame without an opponent", ()
         assert.equal(animated.abilityVisual.ms, expectedMs, ability);
     }
     const [slash] = resolveAbilityCombat({ id: "main", x: 100, y: 100, rotation: 0, triggeredAbility: 7 }, null);
-    const heavyHalfArc = Number(ABILITY_STATS[7].arcDegrees) / 2;
+    const heavyHalfArc = Number(ABILITY_STATS[7].arc) / 2;
     assert.equal(sweepAngle(slash.abilityVisual.ms, 400, -heavyHalfArc, heavyHalfArc), -75);
 });
 
@@ -1500,6 +1529,23 @@ test("direct melee hitboxes sweep across a moving defender", () => {
     };
 
     assert.equal(abilityHitsTarget(attacker, defender), true);
+});
+
+test("instantaneous rays use their configured finite width for collision", () => {
+    for (const [ability, width] of [[3, 5], [30, 8], [32, 10]]) {
+        const attacker = { x: 100, y: 100, rotation: 90, size: 60, triggeredAbility: ability, abilities: [ability] };
+        const edgeOffset = 30 + width / 2;
+        assert.equal(
+            abilityHitsTarget(attacker, { x: 200, y: 100 + edgeOffset - 0.1, size: 60 }),
+            true,
+            `${ability} should hit inside its ray width`,
+        );
+        assert.equal(
+            abilityHitsTarget(attacker, { x: 200, y: 100 + edgeOffset + 0.1, size: 60 }),
+            false,
+            `${ability} should miss outside its ray width`,
+        );
+    }
 });
 
 test("a prepared ability cannot be replaced by another ready ability", () => {
@@ -1870,13 +1916,13 @@ test("a higher-priority fireball yields to grenade during its one-tick recovery"
     assert.deepEqual(triggered.slice(0, 2), [5, 4]);
 });
 
-test("projectile system returns net bot damage and removes a colliding fireball", () => {
+test("phase entity execution returns net bot damage and removes a colliding fireball", () => {
     const bots = [
         { id: "owner", x: 100, y: 100, size: 60, hp: 100 },
         { id: "target", x: 150, y: 100, size: 60, hp: 100 },
     ];
     const fireball = { id: "fireball", type: "fireball", ownerId: "owner", x: 120, y: 100, size: 30, velocityX: 5, velocityY: 0, traveled: 0, damageMultiplier: 1 };
-    const result = tickProjectileWorld({ bots, entities: [fireball], stepMs: 50, width: 1000, height: 800 }, noDamageCombat);
+    const result = tickAbilityEntityWorld({ bots, entities: [fireball], stepMs: 50, width: 1000, height: 800 }, noDamageCombat);
     assert.equal(result.entities.length, 0);
     assert.equal(result.bots[1].hp, 85);
     assert.equal(statusIsActive(result.bots[1], "burn"), true);
@@ -1898,14 +1944,32 @@ test("projectile collisions use the declared square footprint instead of a circl
     });
 });
 
+test("rectangular projectile collision uses independent hitbox length and width", () => {
+    const silenceWave = {
+        type: "silenceWave", abilityId: 15, x: 0, y: 0, size: 225, velocityX: 10, velocityY: 0,
+    };
+    const targetOnLengthEdge = { type: "bot", x: 115, y: 0, size: 60 };
+    const targetOutsideWidth = { type: "bot", x: 0, y: 110, size: 60 };
+    const stationaryPath = { x: 0, y: 0 };
+
+    assert.equal(movingEntityCollision(
+        silenceWave, stationaryPath, stationaryPath,
+        targetOnLengthEdge, targetOnLengthEdge, targetOnLengthEdge,
+    ).hit, true);
+    assert.equal(movingEntityCollision(
+        silenceWave, stationaryPath, stationaryPath,
+        targetOutsideWidth, targetOutsideWidth, targetOutsideWidth,
+    ).hit, false);
+});
+
 test("projectile collision sweeps across a bot's dash segment", () => {
     const owner = { id: "owner", slot: 1, x: 700, y: 100, size: 60, hp: 100, maxHp: 100 };
     const target = {
         id: "target", slot: 2, x: 425, y: 432, size: 60, hp: 100, maxHp: 100,
         movementStartX: 500, movementStartY: 432,
     };
-    const grenade = { ...entityFor(owner, 4), x: 500, y: 467.6, velocityX: 0, velocityY: 0, stoppedMs: 0 };
-    const result = tickProjectileWorld({
+    const grenade = { ...entityFor(owner, 4), x: 500, y: 467.6, velocityX: 0, velocityY: 0 };
+    const result = tickAbilityEntityWorld({
         bots: [owner, target],
         entities: [grenade],
         stepMs: 100,
@@ -1913,25 +1977,62 @@ test("projectile collision sweeps across a bot's dash segment", () => {
         height: 800,
     }, noDamageCombat);
 
-    assert.equal(result.entities.length, 0);
-    assert.equal(result.spawnedEntities.length, 1);
-    assert.equal(result.spawnedEntities[0].damageApplied, true);
+    assert.equal(result.entities.length, 1);
+    assert.equal(result.entities[0].id, grenade.id);
+    assert.equal(result.entities[0].phaseId, "active");
+    assert.equal(result.entities[0].type, "grenade");
     assert.ok(result.bots[1].hp < 100);
+});
+
+test("grenades enter armed after the one-second travel phase and activate after the armed duration", () => {
+    const owner = { id: "owner", slot: 1, x: 100, y: 400, size: 60, rotation: 0, hp: 100, maxHp: 100 };
+    const target = { id: "target", slot: 2, x: 800, y: 700, size: 60, hp: 100, maxHp: 100 };
+    let world = {
+        bots: [owner, target],
+        entities: [entityFor(owner, 4)],
+        stepMs: 100,
+        width: 1000,
+        height: 800,
+    };
+
+    for (let tick = 0; tick < 9; tick += 1) {
+        const result = tickAbilityEntityWorld(world, noDamageCombat);
+            world = { ...world, entities: result.entities, bots: result.bots };
+            assert.equal(world.entities[0].phaseId, "travel");
+            assert.equal(Math.hypot(world.entities[0].velocityX, world.entities[0].velocityY), 32);
+        }
+
+    let result = tickAbilityEntityWorld(world, noDamageCombat);
+    world = { ...world, entities: result.entities, bots: result.bots };
+    assert.equal(world.entities[0].phaseId, "armed");
+    assert.equal(world.entities[0].phaseLocked, true);
+    assert.equal(world.entities[0].remainingMs, 1000);
+    assert.equal(Math.hypot(world.entities[0].velocityX, world.entities[0].velocityY), 0);
+
+    for (let tick = 0; tick < 9; tick += 1) {
+        result = tickAbilityEntityWorld(world, noDamageCombat);
+        world = { ...world, entities: result.entities, bots: result.bots };
+        assert.equal(world.entities[0].phaseId, "armed");
+    }
+    assert.equal(world.entities[0].remainingMs, 100);
+
+    result = tickAbilityEntityWorld(world, noDamageCombat);
+    assert.equal(result.entities[0].phaseId, "active");
 });
 
 test("grenades become ability-system explosions on contact and fuse expiry", () => {
     const owner = { id: "owner", slot: 1, x: 100, y: 100, size: 60, rotation: 90, hp: 100, maxHp: 100 };
     const target = { id: "target", slot: 2, x: 150, y: 100, size: 60, hp: 100, maxHp: 100 };
-    const grenade = { ...entityFor(owner, 4), x: 120, y: 100, velocityX: 0, velocityY: 0, stoppedMs: 0 };
-    const contact = tickProjectileWorld({ bots: [owner, target], entities: [grenade], stepMs: 50, width: 1000, height: 800 }, noDamageCombat);
-    assert.equal(contact.entities.length, 0);
-    assert.equal(contact.spawnedEntities.length, 1);
-    assert.equal(isAbilityEntity(contact.spawnedEntities[0]), true);
+    const grenade = { ...entityFor(owner, 4), x: 120, y: 100, velocityX: 0, velocityY: 0 };
+    const contact = tickAbilityEntityWorld({ bots: [owner, target], entities: [grenade], stepMs: 50, width: 1000, height: 800 }, noDamageCombat);
+    assert.equal(contact.entities.length, 1);
+    assert.equal(contact.entities[0].id, grenade.id);
+    assert.equal(contact.entities[0].phaseId, "active");
+    assert.equal(isAbilityEntity(contact.entities[0]), true);
     assert.equal(contact.bots[1].hp, 60);
 
     const exploded = tickAbilityEntityWorld({
-        entities: contact.spawnedEntities,
-        projectiles: [],
+        entities: contact.entities,
         bots: contact.bots,
         stepMs: 50,
         width: 1000,
@@ -1940,18 +2041,28 @@ test("grenades become ability-system explosions on contact and fuse expiry", () 
     assert.equal(exploded.bots[1].hp, 60);
     assert.equal(exploded.entities.length, 1);
 
-    const timed = tickProjectileWorld({
+    const timed = tickAbilityEntityWorld({
         bots: [owner, { ...target, x: 184, hp: 100 }],
-        entities: [{ ...grenade, id: "timed-grenade", stoppedMs: 950 }],
+        entities: [{
+            ...grenade,
+            id: "timed-grenade",
+            phaseId: "armed",
+            phaseLocked: true,
+            armed: true,
+            velocityX: 0,
+            velocityY: 0,
+            remainingMs: 50,
+        }],
         stepMs: 50,
         width: 1000,
         height: 800,
     }, noDamageCombat);
-    assert.equal(timed.entities.length, 0);
-    assert.equal(timed.spawnedEntities[0].type, "grenadeExplosion");
+    assert.equal(timed.entities.length, 1);
+    assert.equal(timed.entities[0].id, "timed-grenade");
+    assert.equal(timed.entities[0].type, "grenade");
+    assert.equal(timed.entities[0].phaseId, "active");
     const timedExplosion = tickAbilityEntityWorld({
-        entities: timed.spawnedEntities,
-        projectiles: [],
+        entities: timed.entities,
         bots: timed.bots,
         stepMs: 50,
         width: 1000,
@@ -1961,24 +2072,43 @@ test("grenades become ability-system explosions on contact and fuse expiry", () 
 });
 
 test("grenade damage falls linearly between its configured endpoints", () => {
-    assert.equal(damageAtDistance(4, 0), 40);
-    assert.equal(damageAtDistance(4, 32), 32.5);
-    assert.equal(damageAtDistance(4, 64), 25);
-    assert.equal(damageAtDistance(4, 70), 25);
-    assert.equal(damageAtDistance(4, 71), 0);
+    assert.equal(amountAtDistance(4, 0), 40);
+    assert.equal(amountAtDistance(4, 32), 32.5);
+    assert.equal(amountAtDistance(4, 64), 25);
+    assert.equal(amountAtDistance(4, 70), 25);
+    assert.equal(amountAtDistance(4, 71), 0);
 });
 
 test("ranged damage profiles use max and min plateaus around linear falloff", () => {
-    assert.equal(damageAtDistance(3, 100), 15);
-    assert.equal(damageAtDistance(3, 700), 5);
-    assert.equal(damageAtDistance(12, 166.665), 6);
-    assert.equal(damageAtDistance(12, 400), 4);
-    assert.equal(damageAtDistance(14, 45), 27.5);
-    assert.equal(damageAtDistance(14, 120), 20);
-    assert.equal(damageAtDistance(22, 65), 15);
-    assert.equal(damageAtDistance(32, 0), 25);
-    assert.equal(damageAtDistance(32, 250), 20);
-    assert.equal(damageAtDistance(32, 500), 15);
+    assert.equal(amountAtDistance(3, 100), 15);
+    assert.equal(amountAtDistance(3, 700), 5);
+    assert.equal(amountAtDistance(12, 166.665), 6);
+    assert.equal(amountAtDistance(12, 400), 4);
+    assert.equal(amountAtDistance(14, 45), 27.5);
+    assert.equal(amountAtDistance(14, 120), 20);
+    assert.equal(amountAtDistance(22, 65), 15);
+    assert.equal(amountAtDistance(32, 0), 25);
+    assert.equal(amountAtDistance(32, 250), 20);
+    assert.equal(amountAtDistance(32, 500), 15);
+});
+
+test("generic amount and duration falloff clamp to the active ability range", () => {
+    const amountEffect = {
+        amount: 100,
+        falloff: { maxAmount: 100, minAmount: 20, falloffStart: 0, falloffEnd: 160 },
+    };
+    assert.equal(amountAtDistance(10, 0, amountEffect, { range: 80 }), 100);
+    assert.equal(amountAtDistance(10, 40, amountEffect, { range: 80 }), 60);
+    assert.equal(amountAtDistance(10, 80, amountEffect, { range: 80 }), 20);
+    assert.equal(amountAtDistance(10, 81, amountEffect, { range: 80 }), 0);
+
+    const durationEffect = {
+        durationMs: 100,
+        falloff: { maxDurationMs: 100, minDurationMs: 25, falloffStart: 0, falloffEnd: 160 },
+    };
+    assert.equal(durationAtDistance(10, 40, durationEffect, { range: 80 }), 63);
+    assert.equal(durationAtDistance(10, 80, durationEffect, { range: 80 }), 25);
+    assert.equal(durationAtDistance(10, 81, durationEffect, { range: 80 }), 0);
 });
 
 test("projectiles pass through dead bots without applying damage or status", () => {
@@ -1994,12 +2124,12 @@ test("projectiles pass through dead bots without applying damage or status", () 
         height: 800,
     };
 
-    world = { ...world, ...tickProjectileWorld(world, noDamageCombat) };
+    world = { ...world, ...tickAbilityEntityWorld(world, noDamageCombat) };
     assert.equal(world.entities.length, 1);
     assert.equal(statusRemainingMs(world.bots[1], "burn"), 0);
 
     for (let tick = 0; tick < 25 && world.entities.length > 0; tick += 1) {
-        world = { ...world, ...tickProjectileWorld(world, noDamageCombat) };
+        world = { ...world, ...tickAbilityEntityWorld(world, noDamageCombat) };
     }
     assert.equal(world.bots[1].hp, 0);
     assert.equal(statusRemainingMs(world.bots[1], "burn"), 0);
@@ -2017,7 +2147,7 @@ test("fireball lifetime, rather than traveled range, controls projectile removal
         traveled: 10_000,
         ageMs: 0,
     };
-    const stillAlive = tickProjectileWorld({
+    const stillAlive = tickAbilityEntityWorld({
         bots: [owner],
         entities: [longTraveled],
         stepMs: 100,
@@ -2026,7 +2156,7 @@ test("fireball lifetime, rather than traveled range, controls projectile removal
     }, noDamageCombat);
     assert.equal(stillAlive.entities.length, 1);
 
-    const expired = tickProjectileWorld({
+    const expired = tickAbilityEntityWorld({
         bots: [owner],
         entities: [{ ...longTraveled, ageMs: ABILITY_STATS[5].durationMs - 100 }],
         stepMs: 100,
@@ -2042,7 +2172,7 @@ test("Fireball damages normally while its burn effect remains attached", () => {
         { id: "target", x: 150, y: 100, size: 60, rotation: 270, hp: 100, maxHp: 100, abilityActiveMs: { 2: 1 }, abilityCharges: { 2: 25 } },
     ];
     const fireball = { id: "blocked-fireball", type: "fireball", ownerId: "owner", x: 120, y: 100, size: 30, velocityX: 5, velocityY: 0, traveled: 0, damageMultiplier: 1 };
-    const result = tickProjectileWorld({ bots, entities: [fireball], stepMs: 50, width: 1000, height: 800 }, { ...noDamageCombat, applyDamageToShape, applyDamageFromShapes });
+    const result = tickAbilityEntityWorld({ bots, entities: [fireball], stepMs: 50, width: 1000, height: 800 }, { ...noDamageCombat, applyDamageToShape, applyDamageFromShapes });
     assert.ok(result.bots[1].hp < 100);
     assert.equal(result.bots[1].abilityCharges[2], 25);
     assert.equal(statusRemainingMs(result.bots[1], "burn"), 5000);
@@ -2052,7 +2182,7 @@ test("mine, gravity, silence, drone, and orbital effects are never blocked", () 
     const shield = { id: "target", slot: 2, x: 150, y: 100, size: 60, rotation: 270, hp: 100, maxHp: 100, abilityActiveMs: { 2: 1 }, abilityCharges: { 2: 25 }, abilities: [2] };
     const combat = { ...noDamageCombat, applyDamageToShape, applyDamageFromShapes };
     const mine = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }, 11), traveled: 176, armed: true, hitTriggered: true };
-    const mineResult = tickAbilityEntityWorld({ entities: [mine], projectiles: [], bots: [shield], stepMs: 100, width: 1000, height: 800 }, combat);
+    const mineResult = tickAbilityEntityWorld({ entities: [mine], bots: [shield], stepMs: 100, width: 1000, height: 800 }, combat);
     assert.ok(mineResult.bots[0].hp < 100);
     assert.equal(mineResult.bots[0].abilityCharges[2], 25);
 
@@ -2103,7 +2233,7 @@ test("another fireball refreshes burn duration without resetting its pending dam
         { id: "target", x: 150, y: 100, size: 60, hp: 100, statusEffects: [damageStatus("burn", 4000, 300, 2)] },
     ];
     const fireball = { id: "refresh", type: "fireball", ownerId: "owner", x: 120, y: 100, size: 30, velocityX: 5, velocityY: 0, traveled: 0, damageMultiplier: 1 };
-    const hit = tickProjectileWorld({ bots, entities: [fireball], stepMs: 50, width: 1000, height: 800 }, noDamageCombat);
+    const hit = tickAbilityEntityWorld({ bots, entities: [fireball], stepMs: 50, width: 1000, height: 800 }, noDamageCombat);
     assert.equal(statusRemainingMs(hit.bots[1], "burn"), 5000);
     assert.equal(statusEffectFor(hit.bots[1], "burn").tickMs, 300);
 

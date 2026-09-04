@@ -1,7 +1,7 @@
 package com.example.botfight.controller;
 
-import com.example.botfight.DTO.MatchAbilityGuaranteeRequestDTO;
-import com.example.botfight.DTO.MatchAbilityGuaranteeResponseDTO;
+import com.example.botfight.DTO.match.MatchAbilityGuaranteeRequestDTO;
+import com.example.botfight.DTO.match.MatchAbilityGuaranteeResponseDTO;
 import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.service.match.loadout.MatchAbilityGuaranteeService;
 import java.util.List;

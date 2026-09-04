@@ -6,7 +6,7 @@ See [Ability Effect Contract](ABILITY_EFFECT_CONTRACT.md) for effect semantics a
 
 ## 1. Define the contract
 
-Record the stable ID, draft round, delivery, catalogue tags, targeting mode, timing/resources, geometry, damage profile, ordered effects, collision/ownership rules, spawned entity (if any), interpolation mode, and required replay fields. Use a linear damage profile with `maxDamage`, `minDamage`, `damageFalloffStart`, and `damageFalloffEnd` instead of range-band tables. Use `status-effect` for continuing positive or negative statuses and include the percentage or numeric strength for every positive effect; use `self` independently when the delivery targets the caster. A status must use the generic `remainingMs` field, optionally `tickMs`, and an allowlisted `effects[]` list; do not introduce effect-specific timer fields or status-level cooldown fields.
+Record the stable ID, draft round, delivery, catalogue tags, targeting mode, timing/resources, geometry, generic amount/duration falloff profile, ordered effects, collision/ownership rules, spawned entity (if any), interpolation mode, and required replay fields. Use `falloff: { maxAmount, minAmount, falloffStart, falloffEnd }` for a distance-dependent amount and the same `falloffStart`/`falloffEnd` with `maxDurationMs`/`minDurationMs` for a distance-dependent duration. The profile is clamped to the ability or phase maximum range. Use `status-effect` for continuing positive or negative statuses and declare each status subtype as its own effect object; a phase may contain multiple status effects. A status must use the generic `remainingMs` field, optionally `tickMs`, and an allowlisted `effects[]` list; do not introduce effect-specific timer fields or status-level cooldown fields.
 
 Use capability tags only for real gameplay contracts consumed by targeting, conditions, collision, or validation. Keep browser/server milliseconds, arena units, tick order, and rounding identical.
 
@@ -37,7 +37,7 @@ snapshot -> brain selection -> action payload -> executor -> combat/entities -> 
 | Selected action payload | `gameArena/botlogic/planner/ArenaActionPlanner.js` |
 | Readiness, resources, preparation, spawn request | `gameArena/ecs/bots/ActionExecutionSystem.js` |
 | Immediate bot combat | `gameArena/gameconfig/BotCombatSystem.js` |
-| Short-lived projectiles | `gameArena/ecs/abilities/ProjectileSystem.js` |
+| Short-lived direct effects | `gameArena/gameconfig/AbilityContracts.js`, `gameArena/ecs/abilities/AbilityEffectSystem.js` |
 | Persistent/targetable entities | `gameArena/ecs/entities/EntityFactory.js`, `gameArena/ecs/abilities/AbilityEntitySystem.js` |
 | Timed bot effects | `gameArena/ecs/contracts/StatusContracts.js`, `gameArena/ecs/bots/BotStatusSystem.js` |
 | Cooldowns, charges, active resources | `gameArena/ecs/bots/BotResourceSystem.js` |

@@ -1,7 +1,7 @@
 package com.example.botfight.service.submission;
 
-import com.example.botfight.DTO.BotSubmissionPayloadDTO;
-import com.example.botfight.DTO.BotSubmissionValidationResponseDTO;
+import com.example.botfight.DTO.submission.BotSubmissionPayloadDTO;
+import com.example.botfight.DTO.submission.BotSubmissionValidationResponseDTO;
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import com.example.botfight.simulation.gameconfig.GameConfig;
 import com.example.botfight.simulation.gameconfig.Abilities;

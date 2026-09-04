@@ -2,24 +2,28 @@ import { ABILITY_STATS } from "../../gameconfig/Abilities.js";
 import { angleDelta, clamp, movingCirclesDistance, movingCirclesIntersect, normalizeAngle, rayIntersectsCircle } from "../../gameconfig/geometry.js";
 import { movingEntityCollision } from "../../gameconfig/hitboxGeometry.js";
 import { advanceEntityAge, runEntityWorld, withComponentState } from "../entities/EntityWorld.js";
-import { abilityContract, DELIVERY_TYPES, EFFECT_TYPES } from "../../gameconfig/AbilityContracts.js";
-import { damageAtDistance } from "./AbilityEffectSystem.js";
+import { abilityContract, DELIVERY_TYPES, EFFECT_TYPES, PHASE_EVENT_TYPES, resolveEffectOverride } from "../../gameconfig/AbilityContracts.js";
+import { amountAtDistance } from "./AbilityEffectSystem.js";
 import { ignoresHostileEffects } from "../../gameconfig/DefensiveState.js";
 import { vectorToCompassDegrees } from "../../botlogic/planner/arenaAngles.js";
-import { ENTITY_CATEGORIES, ENTITY_SYSTEM_TYPES, entityContract, entitySystemType } from "../contracts/EntityContracts.js";
-import { applyEntityEffects } from "./EntityEffectSystem.js";
+import {
+    ENTITY_CATEGORIES,
+    entityContract,
+    phaseForEntity as canonicalPhaseForEntity,
+    phasesForEntity,
+} from "../contracts/EntityContracts.js";
+import { dispatchEntityEvent, transitionEntityPhase } from "./EntityEventSystem.js";
 import { BASE_BOT_HP } from "../../modelPayloads/arenaConstants.js";
 import { clearPresenceStatuses } from "../contracts/StatusContracts.js";
 
 export function isAbilityEntity(entity) {
-    return entitySystemType(entity) === ENTITY_SYSTEM_TYPES.ABILITY;
+    return phasesForEntity(entity).length > 0;
 }
 
 /**
  * Advances persistent ability entities through generic contract-defined
- * phases. Entity behavior is data in EntityContracts; this system only knows
- * how to execute lifecycle, trap, segment, zone, radial, summon, and visual
- * phases.
+ * phases. The phase type is the only runtime dispatch key for lifecycle,
+ * movement, collision, summon, and self phases.
  */
 export function tickAbilityEntityWorld(world, combat) {
     const staged = runEntityWorld({
@@ -36,13 +40,16 @@ export function tickAbilityEntityWorld(world, combat) {
     ]);
     return {
         ...staged,
-        entities: staged.entities.map((entity) => withComponentState(entity, {
-            damageTakenLastTick: Number(entity.damageTakenThisTick ?? 0),
-            damageTakenThisTick: 0,
-            hpNetChangeLastTick: entity.hp == null || entity.tickStartHp == null
-                ? 0
-                : Number(entity.hp) - Number(entity.tickStartHp),
-        })),
+        entities: staged.entities.map((entity) => {
+            const { phaseEnteredThisTick: _phaseEnteredThisTick, ...settled } = entity;
+            return withComponentState(settled, {
+                damageTakenLastTick: Number(entity.damageTakenThisTick ?? 0),
+                damageTakenThisTick: 0,
+                hpNetChangeLastTick: entity.hp == null || entity.tickStartHp == null
+                    ? 0
+                    : Number(entity.hp) - Number(entity.tickStartHp),
+            });
+        }),
     };
 }
 
@@ -53,15 +60,13 @@ function resetContractPresenceState(world) {
 function markTriggeredEntities(combat) {
     return (world) => ({
         entities: world.entities.map((entity) => {
-            const behavior = behaviorForEntity(entity);
-            if (!["trap", "phase"].includes(behavior?.kind)) return entity;
-            const phase = activePhase(entity, behavior);
-            const trigger = phase?.trigger ?? behavior.trigger ?? {};
-            const hitTriggered = trapHitByCurrentWorld(entity, behavior, world, combat);
+            const contract = contractForEntity(entity);
+            const phase = canonicalPhaseForEntity(entity);
+            if (contract?.category !== ENTITY_CATEGORIES.TRAP || !phase?.trigger) return entity;
+            const hitTriggered = trapHitByCurrentWorld(entity, phase, world, combat);
+            const trigger = phase.trigger;
             const attackTriggered = hitTriggered;
             return withComponentState(entity, {
-                // These are per-tick trigger facts. HP resolution below turns
-                // lethal damage into hitTriggered for death-gated traps.
                 hitTriggered: attackTriggered && !trigger.requiresDestruction,
                 attackTriggered,
                 destroyedByDamage: false,
@@ -73,14 +78,13 @@ function markTriggeredEntities(combat) {
 function tickTrapEntities(combat) {
     return (world) => {
         const trapEntries = world.entities
-            .map((entity) => ({ entity, contract: contractForEntity(entity), behavior: behaviorForEntity(entity) }))
-            .filter(({ behavior }) => ["trap", "phase"].includes(behavior?.kind));
+            .map((entity) => ({ entity, contract: contractForEntity(entity), phase: canonicalPhaseForEntity(entity) }))
+            .filter(({ entity, contract }) => !entity.phaseLocked
+                && contract?.category === ENTITY_CATEGORIES.TRAP);
         if (trapEntries.length === 0) return null;
 
-        const moved = trapEntries.map(({ entity, contract, behavior }) => {
-            let movedEntity = behavior.kind === "phase"
-                ? advancePhaseEntity(entity, behavior, ABILITY_STATS[contract.abilityId] ?? {}, world)
-                : advanceTrapTravel(entity, behavior, ABILITY_STATS[contract.abilityId] ?? {}, world);
+        const moved = trapEntries.map(({ entity, contract }) => {
+            let movedEntity = advancePhaseEntity(entity, phasesForEntity(contract), ABILITY_STATS[contract.abilityId] ?? {}, world);
             if (contract.health && contract.collider?.hittable) {
                 const damage = damageToEntity(movedEntity, world, combat);
                 const hp = Math.max(0, Number(movedEntity.hp ?? 0) - damage);
@@ -92,7 +96,7 @@ function tickTrapEntities(combat) {
                         : {}),
                 });
             }
-            return { entity: movedEntity, contract, behavior, phase: activePhase(movedEntity, behavior) };
+            return { entity: movedEntity, contract, phase: canonicalPhaseForEntity(movedEntity) };
         }).filter(({ entity, contract }) => !contract.health
             || Number(entity.hp ?? 0) > 0
             || Boolean(entity.hitTriggered));
@@ -106,38 +110,84 @@ function tickTrapEntities(combat) {
                 entities.push(entry.entity);
                 continue;
             }
-            bots = applyZoneEffects(
+            let nextEntity = entry.entity;
+            const currentPhase = canonicalPhaseForEntity(nextEntity) ?? entry.phase;
+            if (entry.contract.abilityId === 29 && nextEntity.destroyedByDamage) {
+                nextEntity = transitionEntityPhase(nextEntity, "destroyed", world);
+            }
+            const effectPhase = canonicalPhaseForEntity(nextEntity) ?? currentPhase;
+            const targets = trapEffectTargets(nextEntity, effectPhase, world);
+            const eventResult = dispatchEntityEvent(nextEntity, "collision", {
                 bots,
-                entry.entity,
-                entry.contract.abilityId,
-                entry.phase?.effectTypes ?? entry.behavior.effectTypes,
-                phaseStat(ABILITY_STATS[entry.contract.abilityId], entry.phase,
-                    (entry.phase?.trigger ?? entry.behavior.trigger)?.radiusStat, 0),
-                combat,
                 world,
-                {
-                    effectOverrides: entry.phase?.effectOverrides,
-                },
-            );
-            entities.push(createDerivedEntity(
-                entry.entity,
-                entry.phase?.explosion ?? entry.behavior.explosion,
-                entry.contract,
-                {
-                    spawnedThisTick: true,
-                    statOverrides: entry.phase?.statOverrides,
-                },
-            ));
+                combat,
+                phase: effectPhase,
+                targetIds: targets.map(({ bot }) => bot.id),
+                targetDistances: new Map(targets.map(({ bot, collisionDistance }) => [bot.id, collisionDistance])),
+            });
+            nextEntity = eventResult.entity;
+            bots = eventResult.bots;
+            // Mine arming is a lifecycle transition, not the damage event.
+            // Dispatch the newly entered active phase against the same target
+            // IDs in this tick so contact damage is applied exactly once while
+            // the entity identity and hit ledger remain unchanged.
+            if (nextEntity && entry.contract.abilityId === 11
+                && effectPhase?.id === "armed"
+                && canonicalPhaseForEntity(nextEntity)?.id === "active") {
+                const activePhase = canonicalPhaseForEntity(nextEntity);
+                const activeResult = dispatchEntityEvent(nextEntity, "collision", {
+                    bots,
+                    world,
+                    combat,
+                    phase: activePhase,
+                    targetIds: targets.map(({ bot }) => bot.id),
+                    targetDistances: new Map(targets.map(({ bot, collisionDistance }) => [bot.id, collisionDistance])),
+                });
+                nextEntity = activeResult.entity;
+                bots = activeResult.bots;
+            }
+            if (nextEntity?.phaseEnteredThisTick) {
+                nextEntity = consumeEnteredPhaseTick(nextEntity, world.stepMs);
+            }
+            if (nextEntity) entities.push(nextEntity);
         }
         return { entities, bots };
     };
 }
 
+function consumeEnteredPhaseTick(entity, stepMs) {
+    const step = Math.max(0, Number(stepMs ?? 0));
+    return withComponentState(entity, {
+        ...(entity.remainingMs == null ? {} : { remainingMs: Number(entity.remainingMs) - step }),
+        phaseTimerMs: Number(entity.phaseTimerMs ?? 0) + step,
+    });
+}
+
+function trapEffectTargets(entity, phase, world) {
+    const contract = contractForEntity(entity);
+    const stats = ABILITY_STATS[contract?.abilityId] ?? {};
+    const trigger = phase?.trigger ?? {};
+    const radius = phaseRadius(stats, phase, trigger.radius, Number(entity.size ?? 0) / 2);
+    const sourcePoint = { x: Number(entity.x), y: Number(entity.y) };
+    return world.bots
+        .map((bot) => {
+            if (!isEnemy(entity, bot, world.bots)
+                || Number(bot.hp ?? BASE_BOT_HP) <= 0
+                || ignoresHostileEffects(bot)) return null;
+            const path = botMovementSegment(bot, world.stepMs);
+            if (!movingCirclesIntersect(sourcePoint, sourcePoint, radius, path.start, path.end, Number(bot.size ?? 60) / 2)) return null;
+            return {
+                bot,
+                collisionDistance: movingCirclesDistance(sourcePoint, sourcePoint, path.start, path.end),
+            };
+        })
+        .filter(Boolean);
+}
+
 function resolveTrapTriggers(entries, world) {
-    const triggered = new Set(entries.filter(({ entity, behavior, contract }) => {
+    const triggered = new Set(entries.filter(({ entity, phase, contract }) => {
         const stats = ABILITY_STATS[contract.abilityId] ?? {};
-        const phase = activePhase(entity, behavior);
-        const trigger = phase?.trigger ?? behavior.trigger ?? {};
+        const trigger = phase?.trigger ?? {};
         const entityPath = entityMovementSegment(entity);
         const armedExpired = Boolean(phase?.trigger || entity.armed)
             && entity.remainingMs != null
@@ -153,7 +203,7 @@ function resolveTrapTriggers(entries, world) {
                     0,
                     botPath.start,
                     botPath.end,
-                    phaseStat(stats, phase, trigger.radiusStat, 0) + Number(bot.size ?? 60) / 2,
+                    phaseStat(stats, phase, trigger.radius, 0) + Number(bot.size ?? 60) / 2,
                 );
             }));
     }).map(({ entity }) => entity.id));
@@ -162,10 +212,10 @@ function resolveTrapTriggers(entries, world) {
     while (changed) {
         changed = false;
         for (const source of entries.filter(({ entity }) => triggered.has(entity.id))) {
-            const trigger = activePhase(source.entity, source.behavior)?.trigger ?? source.behavior.trigger;
+            const trigger = source.phase?.trigger;
             if (!trigger?.chain) continue;
             const radius = phaseStat(ABILITY_STATS[source.contract.abilityId],
-                activePhase(source.entity, source.behavior), trigger.radiusStat, 0);
+                source.phase, trigger.radius, 0);
             for (const target of entries) {
                 if (triggered.has(target.entity.id)
                     || target.contract.abilityId !== source.contract.abilityId
@@ -178,18 +228,15 @@ function resolveTrapTriggers(entries, world) {
     return entries.map((entry) => ({ ...entry, isTriggered: triggered.has(entry.entity.id) }));
 }
 
-function trapHitByCurrentWorld(entity, behavior, world, combat) {
-    const trigger = activePhase(entity, behavior)?.trigger ?? behavior.trigger ?? {};
-    const contract = contractForEntity(entity);
-    const radius = phaseStat(ABILITY_STATS[contract?.abilityId], activePhase(entity, behavior), trigger.radiusStat, entity.size ?? 0);
+function trapHitByCurrentWorld(entity, phase, world, combat) {
+    const trigger = phase?.trigger ?? {};
     if (trigger.attackHits && world.bots.some((bot) => (bot.entityHitIds ?? []).includes(entity.id))) return true;
-    if (trigger.projectileOverlap && (world.projectiles ?? []).some((projectile) => overlaps(projectile, entity, world.stepMs))) return true;
     if (trigger.projectileOverlap && world.entities.some((candidate) => candidate.id !== entity.id
-        && entityCategory(candidate) === ENTITY_CATEGORIES.PROJECTILE
+        && canonicalPhaseForEntity(candidate)?.type === "projectile"
         && overlaps(candidate, entity, world.stepMs))) return true;
     return trigger.attackHits && world.bots.some((bot) => hostileAbilityCanHitEntity(bot)
         && typeof combat.abilityHitsTarget === "function"
-        && combat.abilityHitsTarget(bot, { ...entity, size: radius }));
+        && combat.abilityHitsTarget(bot, entity));
 }
 
 function hostileAbilityCanHitEntity(bot) {
@@ -201,18 +248,29 @@ function tickRemainingEntities(combat) {
         let bots = world.bots;
         const entities = [];
         for (const entity of world.entities) {
+            if (entity.phaseEnteredThisTick) {
+                const ready = { ...entity };
+                delete ready.phaseEnteredThisTick;
+                entities.push(ready);
+                continue;
+            }
             if (entity.spawnedThisTick) {
                 const ready = { ...entity };
                 delete ready.spawnedThisTick;
                 entities.push(ready);
                 continue;
             }
-            const behavior = behaviorForEntity(entity);
-            if (!behavior || ["trap", "phase"].includes(behavior.kind)) {
+            const phase = canonicalPhaseForEntity(entity);
+            const contract = contractForEntity(entity);
+            if (!contract || !phase?.type) {
                 entities.push(entity);
                 continue;
             }
-            const result = tickBehavior(entity, behavior, { ...world, bots }, combat);
+            if (contract.category === ENTITY_CATEGORIES.TRAP && !entity.phaseLocked) {
+                entities.push(entity);
+                continue;
+            }
+            const result = tickCanonicalEntity(entity, phase, { ...world, bots }, combat);
             bots = result.bots;
             if (result.entity) entities.push(result.entity);
             if (result.spawned?.length) entities.push(...result.spawned);
@@ -221,193 +279,242 @@ function tickRemainingEntities(combat) {
     };
 }
 
-function tickBehavior(entity, behavior, world, combat) {
-    if (behavior.kind === "segment") return tickSegment(entity, behavior, world, combat);
-    if (behavior.kind === "radial") return tickRadial(entity, behavior, world, combat);
-    if (behavior.kind === "visualZone") return tickVisual(entity, behavior, world);
-    if (behavior.kind === "zone") return tickZone(entity, behavior, world, combat);
-    if (behavior.kind === "summon") return tickSummon(entity, behavior, world, combat);
-    if (behavior.kind === "delayedZone") return tickDelayedZone(entity, behavior, world, combat);
-    if (behavior.kind === "interval") return tickInterval(entity, behavior, world, combat);
-    if (behavior.kind === "lifetime") return tickLifetime(entity, world);
-    return { bots: world.bots, entity };
+/**
+ * Executes the current phase. The phase type is the only dispatch vocabulary.
+ */
+function tickCanonicalEntity(entity, phase, world, combat) {
+    const contract = contractForEntity(entity);
+    let effectivePhase = entity.phaseLocked
+        ? phase
+        : phaseAtElapsedCanonical(phasesForEntity(contract), Number(entity.ageMs ?? 0)) ?? phase;
+    let runtimeEntity = entity;
+    if (!entity.phaseLocked
+        && entity.phaseId != null
+        && effectivePhase.id !== entity.phaseId
+        && (effectivePhase.durationMs != null || effectivePhase.visual?.visibleMs != null)) {
+        // A timed phase is a lifecycle transition on the same entity ID.
+        runtimeEntity = transitionEntityPhase(entity, effectivePhase.id, world);
+        effectivePhase = canonicalPhaseForEntity(runtimeEntity) ?? effectivePhase;
+    }
+    if (effectivePhase.type === "projectile" || effectivePhase.type === "ray" || effectivePhase.type === "arc" || effectivePhase.type === "melee") {
+        return tickCanonicalProjectile(runtimeEntity, effectivePhase, world, combat);
+    }
+    if (effectivePhase.type === "zone") return tickCanonicalZone(runtimeEntity, effectivePhase, world, combat);
+    if (effectivePhase.type === "summon") return tickCanonicalSummon(runtimeEntity, effectivePhase, world, combat);
+    return { bots: world.bots, entity: runtimeEntity };
 }
 
-function tickSegment(entity, behavior, world, combat) {
+function tickCanonicalProjectile(entity, phase, world, combat) {
     const contract = contractForEntity(entity);
-    const movement = behavior.movement ?? {};
-    const scale = movement.scale === "stepRatio" ? Number(world.stepMs ?? 100) / 100 : 1;
+    const stats = ABILITY_STATS[contract?.abilityId] ?? {};
+    const phases = phasesForEntity(contract);
+    const stepMs = Number(world.stepMs ?? 0);
+    const previousPhase = phaseAtElapsedCanonical(phases, Math.max(0, Number(entity.ageMs ?? 0) - stepMs));
+    // Locked phases own their movement. An armed grenade must remain stopped
+    // even though its travel phase is still the last elapsed-time phase.
+    const movement = (entity.phaseLocked ? phase : previousPhase)?.movement ?? phase.movement ?? {};
+    const scale = movement.scale === "stepRatio" ? stepMs / 100 : 1;
     const start = { x: Number(entity.x), y: Number(entity.y) };
     const rawEnd = {
         x: start.x + Number(entity.velocityX ?? 0) * scale,
         y: start.y + Number(entity.velocityY ?? 0) * scale,
     };
-    const end = movement.clamp
+    const shouldMove = movement.mode === "travel" || movement.mode === "segment";
+    const end = shouldMove && movement.clamp
         ? { x: clamp(rawEnd.x, 0, world.width), y: clamp(rawEnd.y, 0, world.height) }
-        : rawEnd;
-    const distance = Math.hypot(end.x - start.x, end.y - start.y);
-    const hit = behavior.hit ?? {};
-    const hitSlots = [...(entity.hitSlots ?? [])];
-    let bots = world.bots;
-    const candidates = world.bots
-        .map((bot, index) => ({ bot, index }))
-        .filter(({ bot }) => isEnemy(entity, bot, world.bots)
-            && !hitSlots.includes(bot.slot)
-            && Number(bot.hp ?? BASE_BOT_HP) > 0
-            && !ignoresHostileEffects(bot)
-        && movingEntityCollision(
-            entity,
-            start,
-            end,
-            bot,
-            botMovementSegment(bot, world.stepMs).start,
-            botMovementSegment(bot, world.stepMs).end,
-        ).hit)
-        .map((candidate) => ({
-            ...candidate,
-            collisionDistance: movingCirclesDistance(
-                start,
-                end,
-                botMovementSegment(candidate.bot, world.stepMs).start,
-                botMovementSegment(candidate.bot, world.stepMs).end,
-            ),
-        }))
-        .sort((first, second) => first.collisionDistance - second.collisionDistance);
-    const selected = hit.mode === "nearest" ? candidates.slice(0, 1) : candidates;
-    for (const candidate of selected) {
-        hitSlots.push(candidate.bot.slot);
-        const result = applyEntityEffects(bots, candidate.index, entity, contract.abilityId, combat, {
-            effectTypes: hit.effectTypes,
-            world,
-            knockbackDirection: hit.knockbackDirection,
-            collisionDistance: candidate.collisionDistance,
-        });
-        bots = result.bots;
-    }
-    const remainingMs = Number(entity[behavior.lifetimeField] ?? 0) - Number(world.stepMs ?? 0);
-    const traveled = Number(entity.traveled ?? 0) + distance;
-    const hitEdge = end.x === 0 || end.x === world.width || end.y === 0 || end.y === world.height;
-    const remove = (selected.length > 0 && hit.removeOnHit)
-        || remainingMs <= 0
-        || (hitEdge && movement.clamp);
-    return {
-        bots,
-        entity: remove
-            ? null
-            : withComponentState(entity, { ...end, traveled, [behavior.lifetimeField]: remainingMs, hitSlots }),
-    };
-}
-
-function tickRadial(entity, behavior, world, combat) {
-    const contract = contractForEntity(entity);
-    let bots = world.bots;
-    if (!entity.damageApplied) {
-        bots = applyZoneEffects(bots, entity, contract.abilityId, behavior.effectTypes, Number(entity.size ?? 0) / 2, combat, world);
-    }
-    const remainingMs = Number(entity.remainingMs ?? 0) - Number(world.stepMs ?? 0);
-    return {
-        bots,
-        entity: remainingMs > 0 ? withComponentState(entity, { remainingMs, damageApplied: true }) : null,
-    };
-}
-
-function tickVisual(entity, behavior, world) {
-    const timerField = entity.visibleMs == null ? "remainingMs" : "visibleMs";
-    const remaining = Number(entity[timerField] ?? behavior.durationMs ?? 0) - Number(world.stepMs ?? 0);
-    return { bots: world.bots, entity: remaining > 0 ? withComponentState(entity, { [timerField]: remaining }) : null };
-}
-
-function tickZone(entity, behavior, world, combat) {
-    if (behavior.phases?.length) return tickPhasedZone(entity, behavior, world, combat);
-    const contract = contractForEntity(entity);
-    const stats = ABILITY_STATS[contract.abilityId] ?? {};
-    const movement = behavior.movement ?? null;
-    const movementDurationMs = movement?.durationStat == null
-        ? 0
-        : Math.max(0, Number(stats[movement.durationStat] ?? 0));
-    const hasFuse = Boolean(behavior.fuse);
-    const fuseDurationMs = hasFuse ? Math.max(0, Number(stats[behavior.fuse.stat] ?? 0)) : 0;
-    const durationPhase = movementDurationMs > 0 && !entity.armed;
-    const fusePhase = Boolean(entity.armed)
-        && hasFuse
-        && Number(entity.phaseTimerMs ?? 0) < fuseDurationMs;
-    const moving = durationPhase || (fusePhase && Boolean(movement?.continueDuringFuse));
-    const moved = durationPhase
-        ? advanceTravel(entity, movement, stats, world)
-        : moving
-            ? advanceFuseTravel(entity, world)
-            : withComponentState(entity, { velocityX: 0, velocityY: 0, armed: true });
-    const phaseTimerMs = durationPhase
-        ? Number(moved.phaseTimerMs ?? 0)
-        : hasFuse
-            ? Math.min(fuseDurationMs, Number(entity.phaseTimerMs ?? 0) + Number(world.stepMs ?? 0))
-            : 0;
-    const fuseMs = hasFuse ? Math.max(0, fuseDurationMs - phaseTimerMs) : 0;
-    const active = !durationPhase && (!hasFuse || phaseTimerMs >= fuseDurationMs);
-    const remainingMs = Number(entity.remainingMs ?? stats.durationMs ?? 0) - (active ? Number(world.stepMs ?? 0) : 0);
-    if (remainingMs <= 0) return { bots: world.bots, entity: null };
-
-    let zone = withComponentState(moved, {
-        ...(moving ? {} : { velocityX: 0, velocityY: 0 }),
-        fuseMs,
-        remainingMs,
-        phaseTimerMs,
-        armed: Boolean(moved.armed ?? true),
+        : shouldMove ? rawEnd : start;
+    const velocityX = movement.mode === "stopped" ? 0 : Number(entity.velocityX ?? 0);
+    const velocityY = movement.mode === "stopped" ? 0 : Number(entity.velocityY ?? 0);
+    const moved = withComponentState(entity, {
+        x: end.x,
+        y: end.y,
+        velocityX,
+        velocityY,
+        traveled: Number(entity.traveled ?? 0) + Math.hypot(end.x - start.x, end.y - start.y),
+        phaseId: phase.id,
+        phaseTimerMs: entity.phaseLocked
+            ? Math.max(0, Number(entity.phaseTimerMs ?? 0) + stepMs)
+            : Math.max(0, Number(entity.ageMs ?? 0) - Number(phase.startMs ?? 0)),
+        remainingMs: entity.phaseLocked
+            ? Number(entity.remainingMs ?? stats.durationMs ?? 0) - stepMs
+            : stats.durationMs != null
+                ? Number(stats.durationMs) - Number(entity.ageMs ?? 0)
+                : entity.remainingMs == null
+                    ? null
+                    : Number(entity.remainingMs) - stepMs,
+        visualEventMs: Math.max(0, Number(entity.visualEventMs ?? 0) - stepMs),
+        ...(entity.visibleMs == null ? {} : { visibleMs: Math.max(0, Number(entity.visibleMs) - stepMs) }),
     });
+    const candidates = canonicalCollisionTargets(moved, phase, world, start, end);
+    const selected = phase.hit?.mode === "nearest" ? candidates.slice(0, 1) : candidates;
+    let next = moved;
     let bots = world.bots;
-    if (!durationPhase && !active && behavior.preActiveEffectTypes) {
-        bots = applyZoneEffects(bots, zone, contract.abilityId, behavior.preActiveEffectTypes, Number(zone.size ?? 0) / 2, combat, world);
-    }
-    if (active) {
-        bots = applyZoneEffects(bots, zone, contract.abilityId, behavior.activeEffectTypes, Number(zone.size ?? 0) / 2, combat, world);
-        if (behavior.explosion) {
-            zone = createDerivedEntity(zone, behavior.explosion, contract);
+    const repeat = phase.repeat;
+    const repeatEvent = repeat?.event ?? (phase.events?.interval ? PHASE_EVENT_TYPES.INTERVAL : null);
+    const repeatHandler = repeatEvent == null ? null : phase.events?.[repeatEvent];
+    let intervalTimerMs = Number(entity.intervalTimerMs ?? 0) - stepMs;
+    const intervalMs = repeatHandler == null ? 0 : Math.max(1, resolvePhaseNumber(
+        repeat?.intervalMs
+            ?? repeatHandler.intervalMs
+            ?? phase.persistence?.intervalMs
+            ?? phase.persistence?.intervalStat
+            ?? "intervalMs",
+        stats,
+        phase,
+        stepMs,
+    ));
+    const shouldDispatch = repeatHandler == null
+        ? selected.length > 0
+        : intervalTimerMs <= 0;
+    if (shouldDispatch && selected.length > 0) {
+        const result = dispatchEntityEvent(next, repeatEvent ?? "collision", {
+            bots,
+            world,
+            combat,
+            phase,
+            targetIds: selected.map(({ bot }) => bot.id),
+            targetDistances: new Map(selected.map(({ bot, collisionDistance }) => [bot.id, collisionDistance])),
+            effectSources: new Map(selected.map(({ bot }) => [bot.id, withComponentState(next, {
+                x: start.x,
+                y: start.y,
+            })])),
+        });
+        next = result.entity;
+        bots = result.bots;
+        const enteredPhase = next && canonicalPhaseForEntity(next);
+        if (enteredPhase && enteredPhase.id !== phase.id
+            && enteredPhase.events?.collision?.actions?.includes("applyEffects")) {
+            const enteredResult = dispatchEntityEvent(next, "collision", {
+                bots,
+                world,
+                combat,
+                phase: enteredPhase,
+                targetIds: selected.map(({ bot }) => bot.id),
+                // A projectile that transitions into an impact phase has
+                // already established contact. Preserve the point-impact
+                // damage semantics while later zone ticks use their actual
+                // center distance.
+                targetDistances: new Map(selected.map(({ bot }) => [bot.id, 0])),
+            });
+            next = enteredResult.entity;
+            bots = enteredResult.bots;
         }
     }
-    return { bots, entity: zone };
+    if (repeatHandler != null) {
+        intervalTimerMs += intervalMs;
+        if (next) next = withComponentState(next, { intervalTimerMs });
+    }
+    if (!next) return { bots, entity: null };
+    const phaseExpired = phase.durationMs != null
+        && !next.phaseLocked
+        && Number(next.ageMs ?? 0) >= Number(phase.startMs ?? 0) + Number(phase.durationMs);
+    const hitEdge = end.x === 0 || end.x === world.width || end.y === 0 || end.y === world.height;
+    const removeAtEdge = Boolean(phase.movement?.clamp) && hitEdge && phase.events?.collision?.actions?.includes("remove");
+    if (phaseExpired || next.remainingMs != null && Number(next.remainingMs) <= 0 || removeAtEdge) {
+        const ended = dispatchEntityEvent(next, "lifetimeEnd", { bots, world, combat, phase });
+        return { bots: ended.bots, entity: ended.entity };
+    }
+    return { bots, entity: next };
 }
 
-function tickPhasedZone(entity, behavior, world, combat) {
+function tickCanonicalZone(entity, phase, world, combat) {
     const contract = contractForEntity(entity);
-    const stats = ABILITY_STATS[contract.abilityId] ?? {};
-    const moved = advancePhaseEntity(entity, behavior, stats, world);
-    const phase = activePhase(moved, behavior);
-    const previousPhase = entity.phaseId
-        ? behavior.phases.find((candidate) => candidate.id === entity.phaseId)
-        : phaseAtElapsed(behavior, Math.max(0, Number(entity.ageMs ?? 0) - Number(world.stepMs ?? 0)));
-    const enteredPhase = previousPhase?.id !== phase?.id;
-    const remainingMs = Number(moved.remainingMs ?? 0);
-    let bots = world.bots;
-    let next = withComponentState(moved, {
-        phaseId: phase?.id ?? moved.phaseId,
-        phaseTimerMs: moved.phaseTimerMs,
-    });
-    if (phase?.effectTypes?.length) {
-                bots = applyZoneEffects(
-            bots,
-            next,
-            contract.abilityId,
-            phase.effectTypes,
-            phaseStat(stats, phase, phase.radiusStat ?? "radius", next.size / 2),
-            combat,
-            world,
-            { effectOverrides: phase.effectOverrides },
-        );
+    const stats = ABILITY_STATS[contract?.abilityId] ?? {};
+    const stepMs = Number(world.stepMs ?? 0);
+    let nextPhase = canonicalPhaseForEntity({
+        ...entity,
+        // A phase transition action opts out of elapsed-time phase selection;
+        // ordinary phases continue to advance from their startMs values.
+        phaseId: entity.phaseLocked ? entity.phaseId : null,
+    }) ?? phase;
+    let next = entity;
+    if (!entity.phaseLocked
+        && nextPhase.id !== entity.phaseId
+        && (nextPhase.durationMs != null || nextPhase.visual?.visibleMs != null)) {
+        // A timed phase owns a fresh lifetime. Keep the same entity ID while
+        // resetting its phase timer and phase-local visual/lifetime values.
+        next = transitionEntityPhase(entity, nextPhase.id, world);
+        nextPhase = canonicalPhaseForEntity(next) ?? nextPhase;
     }
-    if (phase?.explosion && enteredPhase) {
-        return {
+    next = withComponentState(next, {
+        phaseId: nextPhase.id,
+        phaseTimerMs: next.phaseLocked
+            ? Math.max(0, Number(next.phaseTimerMs ?? 0) + stepMs)
+            : Math.max(0, Number(next.ageMs ?? 0) - Number(nextPhase.startMs ?? 0)),
+        remainingMs: Number(next.remainingMs ?? stats.durationMs ?? 0) - stepMs,
+        visualEventMs: Math.max(0, Number(next.visualEventMs ?? 0) - stepMs),
+        ...(next.visibleMs == null ? {} : { visibleMs: Math.max(0, Number(next.visibleMs) - stepMs) }),
+    });
+    let bots = world.bots;
+    const targets = canonicalCollisionTargets(next, nextPhase, world);
+    const lifecycleActive = next.remainingMs == null
+        || Number(entity.remainingMs ?? next.remainingMs) > 0;
+    const repeat = nextPhase.repeat;
+    const repeatEvent = repeat?.event ?? (nextPhase.events?.interval ? PHASE_EVENT_TYPES.INTERVAL : null);
+    const intervalHandler = repeatEvent == null ? null : nextPhase.events?.[repeatEvent];
+    if (intervalHandler && lifecycleActive) {
+        const intervalMs = Math.max(1, resolvePhaseNumber(
+            repeat?.intervalMs
+                ?? intervalHandler.intervalMs
+                ?? nextPhase.persistence?.intervalMs
+                ?? nextPhase.persistence?.intervalStat
+                ?? "intervalMs",
+            stats,
+            nextPhase,
+            stepMs,
+        ));
+        let intervalTimerMs = Number(entity.intervalTimerMs ?? 0) - stepMs;
+        const intervalCanRunOnThisTick = Number(entity.remainingMs ?? stats.durationMs ?? 0) > 0;
+        while (intervalTimerMs <= 0 && intervalCanRunOnThisTick) {
+            const result = dispatchEntityEvent(next, repeatEvent, {
+                bots,
+                world,
+                combat,
+                phase: nextPhase,
+                targetIds: targets.map(({ bot }) => bot.id),
+                targetDistances: new Map(targets.map(({ bot, collisionDistance }) => [bot.id, collisionDistance])),
+            });
+            next = result.entity;
+            bots = result.bots;
+            intervalTimerMs += intervalMs;
+            if (!next) break;
+        }
+        if (!next) return { bots, entity: null };
+        next = withComponentState(next, { intervalTimerMs });
+    } else if (lifecycleActive && nextPhase.events?.collision && targets.length > 0) {
+        const result = dispatchEntityEvent(next, "collision", {
             bots,
-            entity: null,
-            spawned: [createDerivedEntity(next, phase.explosion, contract, { statOverrides: phase.statOverrides })],
+            world,
+            combat,
+            phase: nextPhase,
+            targetIds: targets.map(({ bot }) => bot.id),
+            targetDistances: new Map(targets.map(({ bot, collisionDistance }) => [bot.id, collisionDistance])),
+        });
+        next = result.entity;
+        bots = result.bots;
+    }
+    if (!next) return { bots, entity: null };
+    if (Number(next.remainingMs ?? 0) <= 0) {
+        // A transient event visual is still carried by this same logical
+        // entity after gameplay lifetime ends. It is presentation-only while
+        // the event timer counts down, so no collision work runs above.
+        if (Number(next.visualEventMs ?? 0) > 0) return { bots, entity: next };
+        const ended = dispatchEntityEvent(next, "lifetimeEnd", { bots, world, combat, phase: nextPhase });
+        return {
+            bots: ended.bots,
+            entity: ended.entity === next && !nextPhase.events?.lifetimeEnd ? null : ended.entity,
         };
     }
-    return { bots, entity: remainingMs > 0 ? next : null };
+    return { bots, entity: next };
 }
 
-function tickSummon(entity, behavior, world, combat) {
+function tickCanonicalSummon(entity, phase, world, combat) {
+    // Summons retain their specialized seeking/health loop, but attacks go
+    // through the same phase event dispatcher as every other targetable type.
     const contract = contractForEntity(entity);
-    const stats = ABILITY_STATS[contract.abilityId] ?? {};
-    const remainingMs = Number(entity.remainingMs ?? stats.durationMs ?? 0) - Number(world.stepMs ?? 0);
+    const stats = ABILITY_STATS[contract?.abilityId] ?? {};
+    const stepMs = Number(world.stepMs ?? 0);
+    const remainingMs = Number(entity.remainingMs ?? stats.durationMs ?? 0) - stepMs;
     const damage = damageToEntity(entity, world, combat);
     const hp = Number(entity.hp ?? stats.hp ?? 0) - damage;
     if (remainingMs <= 0 || hp <= 0) return { bots: world.bots, entity: null };
@@ -420,154 +527,99 @@ function tickSummon(entity, behavior, world, combat) {
         hp,
         damageTakenThisTick: Number(entity.damageTakenThisTick ?? 0) + Math.max(0, damage),
         remainingMs,
-        shotCooldownMs: Math.max(0, Number(entity.shotCooldownMs ?? 0) - Number(world.stepMs ?? 0)),
-        shotVisualMs: Math.max(0, Number(entity.shotVisualMs ?? 0) - Number(world.stepMs ?? 0)),
+        shotCooldownMs: Math.max(0, Number(entity.shotCooldownMs ?? 0) - stepMs),
+        shotVisualMs: Math.max(0, Number(entity.shotVisualMs ?? 0) - stepMs),
     });
     if (!target) return { bots, entity: summon };
 
     const dx = target.x - summon.x;
     const dy = target.y - summon.y;
-    const distance = Math.max(1, Math.hypot(dx, dy));
+    const targetDistance = Math.max(1, Math.hypot(dx, dy));
     const desiredRotation = vectorToCompassDegrees(dx, dy);
+    const movement = phase.movement ?? {};
     const rotation = normalizeAngle(Number(summon.rotation ?? 0) + clamp(
         angleDelta(Number(summon.rotation ?? 0), desiredRotation),
-        -Number(stats[behavior.movement.turnStat] ?? 8),
-        Number(stats[behavior.movement.turnStat] ?? 8),
+        -Number(stats[movement.turn ?? "turnStepDegrees"] ?? 8),
+        Number(stats[movement.turn ?? "turnStepDegrees"] ?? 8),
     ));
+    const summonSize = Number(stats[movement.size ?? "size"] ?? summon.size ?? 28);
     summon = withComponentState(summon, {
-        x: clamp(summon.x + dx / distance * Math.min(Number(stats[behavior.movement.speedStat] ?? 0), distance), Number(stats[behavior.movement.sizeStat] ?? summon.size) / 2, world.width - Number(stats[behavior.movement.sizeStat] ?? summon.size) / 2),
-        y: clamp(summon.y + dy / distance * Math.min(Number(stats[behavior.movement.speedStat] ?? 0), distance), Number(stats[behavior.movement.sizeStat] ?? summon.size) / 2, world.height - Number(stats[behavior.movement.sizeStat] ?? summon.size) / 2),
+        x: clamp(summon.x + dx / targetDistance * Math.min(Number(stats[movement.speed ?? "speed"] ?? 0), targetDistance), summonSize / 2, world.width - summonSize / 2),
+        y: clamp(summon.y + dy / targetDistance * Math.min(Number(stats[movement.speed ?? "speed"] ?? 0), targetDistance), summonSize / 2, world.height - summonSize / 2),
         rotation,
     });
 
-    const attack = behavior.attack;
-    if (summon.shotCooldownMs <= 0 && rayIntersectsCircle(summon, rotation, Number(stats[attack.rangeStat] ?? 0), target)) {
-        const targetIndex = bots.findIndex((bot) => bot.id === target.id);
-        if (targetIndex >= 0) {
-            const result = applyEntityEffects(bots, targetIndex, summon, contract.abilityId, combat, {
-                effectTypes: attack.effectTypes,
-                world,
-            });
-            bots = result.bots;
-        }
+    const attack = phase.attack;
+    const range = resolvePhaseNumber(attack?.range ?? "range", stats, phase, 0);
+    const cooldownField = attack?.cooldownField ?? "shotCooldownMs";
+    const cooldownStat = attack?.cooldown ?? cooldownField;
+    const visualField = attack?.visualField ?? "shotVisualMs";
+    const visualStat = attack?.visual ?? visualField;
+    if (attack && Number(summon[cooldownField] ?? 0) <= 0
+        && rayIntersectsCircle(summon, rotation, range, target)) {
+        const result = dispatchEntityEvent(summon, PHASE_EVENT_TYPES.COLLISION, {
+            bots,
+            world,
+            combat,
+            phase,
+            targetIds: [target.id],
+            targetDistances: new Map([[target.id, Math.hypot(target.x - summon.x, target.y - summon.y)]]),
+            effectSources: new Map([[target.id, summon]]),
+        });
+        bots = result.bots;
+        summon = result.entity;
+        if (!summon) return { bots, entity: null };
         summon = withComponentState(summon, {
-            [attack.cooldownField]: Number(stats[attack.cooldownStat] ?? 1000),
-            [attack.visualField]: Math.max(0, Number(stats[attack.visualStat] ?? 300) - Number(world.stepMs ?? 0)),
+            [cooldownField]: resolvePhaseNumber(cooldownStat, stats, phase, 1000),
+            [visualField]: Math.max(0, resolvePhaseNumber(visualStat, stats, phase, 300) - stepMs),
         });
     }
     return { bots, entity: summon };
 }
 
-function tickDelayedZone(entity, behavior, world, combat) {
+function canonicalCollisionTargets(entity, phase, world, start = null, end = null) {
     const contract = contractForEntity(entity);
-    const fuseMs = Number(entity[behavior.fuseField] ?? 0) - Number(world.stepMs ?? 0);
-    if (fuseMs > 0) return { bots: world.bots, entity: withComponentState(entity, { [behavior.fuseField]: fuseMs }) };
-    const stats = ABILITY_STATS[contract.abilityId] ?? {};
-    const bots = applyZoneEffects(world.bots, entity, contract.abilityId, behavior.effectTypes, Number(stats[behavior.radiusStat] ?? entity.size / 2), combat, world);
-    return { bots, entity: createDerivedEntity(entity, behavior.explosion, contract) };
+    const skipOwner = Boolean(phase.skipOwner);
+    const entityStart = start ?? { x: Number(entity.x), y: Number(entity.y) };
+    const entityEnd = end ?? entityStart;
+    const radius = phaseRadius(ABILITY_STATS[contract?.abilityId] ?? {}, phase, "radius", Number(entity.size ?? 0) / 2);
+    return world.bots
+        .map((bot) => {
+            if (!isEnemy(entity, bot, world.bots)
+                || skipOwner && Number(bot.slot) === Number(entity.ownerSlot)
+                || Number(bot.hp ?? BASE_BOT_HP) <= 0
+                || ignoresHostileEffects(bot)) return null;
+            const botPath = botMovementSegment(bot, world.stepMs);
+            const collision = phase.hitbox?.shape === "circle"
+                ? movingCirclesIntersect(entityStart, entityEnd, radius, botPath.start, botPath.end, Number(bot.size ?? 60) / 2)
+                : movingEntityCollision(entity, entityStart, entityEnd, bot, botPath.start, botPath.end);
+            const hit = phase.hitbox?.shape === "circle" ? Boolean(collision) : Boolean(collision?.hit);
+            if (!hit) return null;
+            return {
+                bot,
+                collisionDistance: phase.hitbox?.shape === "circle"
+                    ? movingCirclesDistance(entityStart, entityEnd, botPath.start, botPath.end)
+                    : collision.distance ?? movingCirclesDistance(entityStart, entityEnd, botPath.start, botPath.end),
+            };
+        })
+        .filter(Boolean)
+        .sort((first, second) => first.collisionDistance - second.collisionDistance);
 }
 
-/** Applies one declarative action every configured interval. */
-function tickInterval(entity, behavior, world, combat) {
-    const contract = contractForEntity(entity);
-    const stats = ABILITY_STATS[contract.abilityId] ?? {};
-    const stepMs = Number(world.stepMs ?? 0);
-    const intervalMs = Math.max(1, Number(stats[behavior.intervalStat] ?? stepMs));
-    const remainingMs = Number(entity.remainingMs ?? stats.durationMs ?? 0) - stepMs;
-    let intervalTimerMs = Number(entity.intervalTimerMs ?? 0) - stepMs;
-    let bots = world.bots;
-    const spawned = [];
-    while (intervalTimerMs <= 0) {
-        bots = applyZoneEffects(
-            bots,
-            entity,
-            contract.abilityId,
-            behavior.effectTypes,
-            Number(stats[behavior.radiusStat] ?? entity.size / 2),
-            combat,
-            world,
-        );
-        if (behavior.explosion) spawned.push(createDerivedEntity(entity, behavior.explosion, contract));
-        intervalTimerMs += intervalMs;
-    }
-    return {
-        bots,
-        entity: remainingMs > 0
-            ? withComponentState(entity, { remainingMs, intervalTimerMs })
-            : null,
-        spawned,
-    };
+function phaseAtElapsedCanonical(phases, elapsedMs) {
+    if (!Array.isArray(phases) || phases.length === 0) return null;
+    return phases.reduce((current, candidate) => !candidate.transitionOnly
+        && Number(candidate.startMs ?? 0) >= 0
+        && Number(candidate.startMs ?? 0) <= elapsedMs
+        && (!current || Number(candidate.startMs ?? 0) > Number(current.startMs ?? 0))
+        ? candidate : current, phases[0]);
 }
 
-function tickLifetime(entity, world) {
-    const remainingMs = Number(entity.remainingMs ?? 0) - Number(world.stepMs ?? 0);
-    return { bots: world.bots, entity: remainingMs > 0 ? withComponentState(entity, { remainingMs }) : null };
-}
-
-function applyZoneEffects(bots, source, abilityId, effectTypes, radius, combat, world, options = {}) {
-    let nextBots = bots;
-    for (let index = 0; index < nextBots.length; index += 1) {
-        const target = nextBots[index];
-        const targetPath = botMovementSegment(target, world?.stepMs);
-        const sourcePoint = { x: Number(source.x), y: Number(source.y) };
-        if (!movingCirclesIntersect(
-            sourcePoint,
-            sourcePoint,
-            Number(radius),
-            targetPath.start,
-            targetPath.end,
-            Number(target.size ?? 60) / 2,
-        )) continue;
-        if (ignoresHostileEffects(target)) continue;
-        const sourceBehavior = behaviorForEntity(source);
-        if (!isEnemy(source, target, nextBots)) continue;
-        if (sourceBehavior?.skipOwner && Number(target.slot) === Number(source.ownerSlot)) continue;
-        const result = applyEntityEffects(nextBots, index, source, abilityId, combat, {
-            effectTypes,
-            world,
-            effectOverrides: options.effectOverrides,
-            collisionDistance: movingCirclesDistance(sourcePoint, sourcePoint, targetPath.start, targetPath.end),
-        });
-        nextBots = result.bots;
-    }
-    return nextBots;
-}
-
-function advanceTravel(entity, movement, stats, world) {
-    const stepMs = Number(world.stepMs ?? 0);
-    const elapsedMs = Number(entity.phaseTimerMs ?? 0) + stepMs;
-    const durationMs = Math.max(0, Number(stats[movement?.durationStat] ?? 0));
-    const radius = Number(entity.size ?? 0) / 2;
-    const nextX = clamp(Number(entity.x) + Number(entity.velocityX ?? 0), radius, world.width - radius);
-    const nextY = clamp(Number(entity.y) + Number(entity.velocityY ?? 0), radius, world.height - radius);
-    const armed = durationMs <= 0 || elapsedMs >= durationMs;
-    return withComponentState(entity, {
-        x: nextX,
-        y: nextY,
-        velocityX: armed ? 0 : Number(entity.velocityX ?? 0),
-        velocityY: armed ? 0 : Number(entity.velocityY ?? 0),
-        traveled: Number(entity.traveled ?? 0) + Math.hypot(nextX - Number(entity.x), nextY - Number(entity.y)),
-        phaseTimerMs: armed ? 0 : elapsedMs,
-        armed,
-    });
-}
-
-function advanceFuseTravel(entity, world) {
-    const radius = Number(entity.size ?? 0) / 2;
-    const nextX = clamp(Number(entity.x) + Number(entity.velocityX ?? 0), radius, world.width - radius);
-    const nextY = clamp(Number(entity.y) + Number(entity.velocityY ?? 0), radius, world.height - radius);
-    return withComponentState(entity, {
-        x: nextX,
-        y: nextY,
-        traveled: Number(entity.traveled ?? 0) + Math.hypot(nextX - Number(entity.x), nextY - Number(entity.y)),
-        armed: true,
-    });
-}
-
-function phaseAtElapsed(behavior, elapsedMs) {
-    const phases = behavior?.phases ?? [];
-    if (phases.length === 0) return null;
-    return phases.reduce((current, phase) => Number(phase.startMs ?? 0) <= elapsedMs ? phase : current, phases[0]);
+function resolvePhaseNumber(value, stats, phase, fallback = 0) {
+    if (value == null) return Number(fallback);
+    if (typeof value === "number") return value;
+    if (typeof value === "string") return Number(phase?.statOverrides?.[value] ?? stats[value] ?? fallback);
+    return Number(value?.value ?? value?.fallback ?? fallback);
 }
 
 function phaseStat(stats, phase, name, fallback = 0) {
@@ -575,37 +627,24 @@ function phaseStat(stats, phase, name, fallback = 0) {
     return Number(phase?.statOverrides?.[name] ?? stats?.[name] ?? fallback);
 }
 
-function activePhase(entity, behavior) {
-    const phases = behavior?.phases ?? [];
-    if (entity?.destroyedByDamage) {
-        const destroyed = phases.find((phase) => phase.id === "destroyed");
-        if (destroyed) return destroyed;
-    }
-    if (entity?.phaseId) {
-        const explicit = phases.find((phase) => phase.id === entity.phaseId);
-        if (explicit) return explicit;
-    }
-    if (entity?.armed) {
-        const armed = phases.find((phase) => phase.id === "armed");
-        if (armed) return armed;
-    }
-    return phaseAtElapsed(behavior, Number(entity?.ageMs ?? 0))
-        ?? (entity?.phaseId ? phases.find((phase) => phase.id === entity.phaseId) : null);
+function phaseRadius(stats, phase, fallbackStat = null, fallback = 0) {
+    const radius = phaseStat(stats, phase, phase?.hitbox?.radius ?? fallbackStat, fallback);
+    return radius * Number(phase?.hitbox?.radiusMultiplier ?? 1);
 }
 
 /** Advances a multi-phase entity from elapsed lifecycle time. */
-function advancePhaseEntity(entity, behavior, stats, world) {
+function advancePhaseEntity(entity, phases, stats, world) {
     const stepMs = Number(world.stepMs ?? 0);
     const elapsedMs = Number(entity.ageMs ?? 0);
     const previousElapsedMs = Math.max(0, elapsedMs - stepMs);
-    const previousPhase = phaseAtElapsed(behavior, previousElapsedMs);
-    const phase = phaseAtElapsed(behavior, elapsedMs) ?? previousPhase;
+    const previousPhase = phaseAtElapsedCanonical(phases, previousElapsedMs);
+    const phase = phaseAtElapsedCanonical(phases, elapsedMs) ?? previousPhase;
     const movement = previousPhase?.movement ?? {};
     const radius = Number(entity.size ?? 0) / 2;
-    const moving = movement.mode === "travel";
+    const moving = movement.mode === "travel" || movement.mode === "segment";
     let velocityX = Number(entity.velocityX ?? 0);
     let velocityY = Number(entity.velocityY ?? 0);
-    const speedOverride = previousPhase?.statOverrides?.speedPerTick ?? previousPhase?.statOverrides?.speed;
+    const speedOverride = previousPhase?.movement?.speed ?? previousPhase?.statOverrides?.speed;
     if (moving && speedOverride != null && Number.isFinite(Number(speedOverride))) {
         const magnitude = Math.hypot(velocityX, velocityY);
         if (magnitude > 0) {
@@ -635,80 +674,23 @@ function advancePhaseEntity(entity, behavior, stats, world) {
     });
 }
 
-/** Advances a trap through its throw phase, then its armed lifetime phase. */
-function advanceTrapTravel(entity, behavior, stats, world) {
-    const stepMs = Number(world.stepMs ?? 0);
-    const armedDurationMs = Number(stats.durationMs ?? Number.POSITIVE_INFINITY);
-    const phaseTimerMs = Number(entity.phaseTimerMs ?? 0);
-    if (entity.armed) {
-        const armedElapsedMs = phaseTimerMs + stepMs;
-        return withComponentState(entity, {
-            velocityX: 0,
-            velocityY: 0,
-            phaseTimerMs: armedElapsedMs,
-            remainingMs: Math.max(0, armedDurationMs - armedElapsedMs),
-            armed: true,
-        });
-    }
-
-    const movement = behavior.movement ?? {};
-    const radius = Number(entity.size ?? 0) / 2;
-    const nextX = clamp(Number(entity.x) + Number(entity.velocityX ?? 0), radius, world.width - radius);
-    const nextY = clamp(Number(entity.y) + Number(entity.velocityY ?? 0), radius, world.height - radius);
-    const traveled = Number(entity.traveled ?? 0) + Math.hypot(nextX - Number(entity.x), nextY - Number(entity.y));
-    const travelDurationMs = Math.max(0, Number(
-        movement.durationStat ? stats[movement.durationStat] : stats.durationMs ?? 0,
-    ));
-    const travelElapsedMs = phaseTimerMs + stepMs;
-    const armed = travelDurationMs <= 0 || travelElapsedMs >= travelDurationMs;
-    return withComponentState(entity, {
-        x: nextX,
-        y: nextY,
-        velocityX: armed ? 0 : Number(entity.velocityX ?? 0),
-        velocityY: armed ? 0 : Number(entity.velocityY ?? 0),
-        traveled,
-        phaseTimerMs: armed ? 0 : travelElapsedMs,
-        remainingMs: armed ? armedDurationMs : Math.max(0, travelDurationMs - travelElapsedMs),
-        armed,
-    });
-}
-
-function createDerivedEntity(source, definition, contract, { spawnedThisTick = false, statOverrides = null } = {}) {
-    if (!definition) return source;
-    const stats = ABILITY_STATS[contract.abilityId] ?? {};
-    const size = Number(statOverrides?.[definition.sizeStat] ?? stats[definition.sizeStat] ?? source.size ?? 0)
-        * Number(definition.sizeMultiplier ?? 1);
-    const visibleMs = definition.visibleStat ? Number(stats[definition.visibleStat] ?? 0) : null;
-    return withComponentState(source, {
-        id: `${source.id}-${definition.type}`,
-        type: definition.type,
-        entityBehaviorKey: definition.behaviorKey,
-        entityCategory: definition.category,
-        category: definition.category,
-        entitySystem: definition.system,
-        size,
-        velocityX: 0,
-        velocityY: 0,
-        ageMs: 0,
-        ...(visibleMs == null ? {} : { visibleMs }),
-        spawnedThisTick,
-    });
-}
-
 function damageToEntity(entity, world, combat) {
     let damage = 0;
     for (const bot of world.bots) {
         if (typeof combat.triggeredAbilityDamage === "function") damage += combat.triggeredAbilityDamage(bot, entity);
     }
-    for (const projectile of world.projectiles ?? []) {
-        const contract = contractForEntity(projectile);
-        if (contract?.projectile?.hit === "effects" && typeof combat.overlapsShape === "function" && combat.overlapsShape(projectile, entity)) {
-            damage += damageAtDistance(contract.abilityId, 0) * Number(projectile.damageMultiplier ?? 1);
-        }
-    }
     for (const effect of world.entities ?? []) {
-        const behavior = behaviorForEntity(effect);
-        if (effect.spawnedThisTick || !behavior || !["radial", "visualZone"].includes(behavior.kind)) continue;
+        if (effect.id === entity.id) continue;
+        const phase = canonicalPhaseForEntity(effect);
+        const collision = phase?.events?.collision;
+        if (phase?.type !== "zone"
+            || !phase.effects?.some((declared) =>
+                (typeof declared === "string" ? declared : declared?.type) === EFFECT_TYPES.DAMAGE)
+            || !collision?.actions?.includes("applyEffects")) continue;
+        const damageEffect = abilityContract(effect.abilityId)?.effects
+            ?.find((declared) => declared.type === EFFECT_TYPES.DAMAGE) ?? null;
+        if (!damageEffect) continue;
+        const resolvedDamageEffect = resolveEffectOverride(damageEffect, phase.effectOverrides);
         const effectPath = entityMovementSegment(effect);
         const entityPath = entityMovementSegment(entity);
         const distance = movingCirclesDistance(effectPath.start, effectPath.end, entityPath.start, entityPath.end);
@@ -719,8 +701,9 @@ function damageToEntity(entity, world, combat) {
             entityPath.start,
             entityPath.end,
             Number(entity.size ?? 0) / 2,
-        ) && behavior.damageAbilityId) {
-            damage += damageAtDistance(behavior.damageAbilityId, distance) * Number(effect.damageMultiplier ?? 1);
+        )) {
+            damage += amountAtDistance(effect.abilityId, distance, resolvedDamageEffect, phase.statOverrides)
+                * Number(effect.damageMultiplier ?? 1);
         }
     }
     return damage;
@@ -728,6 +711,7 @@ function damageToEntity(entity, world, combat) {
 
 function isEnemy(source, target, bots) {
     if (!source || !target) return false;
+    if (target.id === source.ownerId) return false;
     const owner = bots?.find((bot) => bot?.id === source.ownerId
         || (Number.isFinite(Number(source.ownerSlot)) && Number(bot?.slot) === Number(source.ownerSlot)));
     const sourceTeam = Number(owner?.teamNumber ?? source.ownerTeam);
@@ -739,19 +723,6 @@ function isEnemy(source, target, bots) {
 
 function contractForEntity(entity) {
     return entityContract(entity?.entityContractId ?? entity?.abilityId ?? entity?.entityContractType ?? entity?.type);
-}
-
-function behaviorForEntity(entity) {
-    const contract = contractForEntity(entity);
-    if (!contract) return null;
-    if (entity.entityBehaviorKey && contract.derived?.[entity.entityBehaviorKey]) return contract.derived[entity.entityBehaviorKey];
-    return Object.values(contract.derived ?? {}).find((derived) => derived.type === entity.type) ?? contract.behavior ?? null;
-}
-
-function entityCategory(entity) {
-    return entity.category
-        ?? contractForEntity(entity)?.category
-        ?? null;
 }
 
 function overlaps(first, second, stepMs = 100) {

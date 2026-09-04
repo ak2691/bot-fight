@@ -1,6 +1,6 @@
 package com.example.botfight.service.party;
 
-import com.example.botfight.DTO.PartyStateEventDTO;
+import com.example.botfight.DTO.party.PartyStateEventDTO;
 import java.util.List;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;

@@ -23,26 +23,32 @@ export function abilityHitsTarget(
     }
 
     const delivery = payload.contract.delivery;
+    const phase = payload.contract.phases?.[0] ?? null;
     if (delivery.type === DELIVERY_TYPES.SELF) return true;
-    if (delivery.type === DELIVERY_TYPES.RAY) return rayHits(attacker, target, payload);
-    return abilityRangeHits(attacker, target, payload);
+    if (delivery.type === DELIVERY_TYPES.RAY) return rayHits(attacker, target, payload, phase);
+    return abilityRangeHits(attacker, target, payload, undefined, phase);
 }
 
-export function rayHits(source, target, payloadOrAbilityId) {
+export function rayHits(source, target, payloadOrAbilityId, phase = undefined) {
     const payload = resolvePayload(payloadOrAbilityId);
     if (!source || !target || !payload || payload.contract.delivery.type !== DELIVERY_TYPES.RAY) return false;
+    const activePhase = phase ?? payload.contract.phases?.[0] ?? null;
+    const hitbox = activePhase?.hitbox ?? {};
     const direction = compassDirection(Number(source.rotation ?? 0));
     const targetRadius = Number(target.size ?? 0) / 2;
+    const rayWidth = resolveHitboxNumber(hitbox.width, payload, 5);
+    const rayRange = resolveHitboxNumber(hitbox.range, payload, Number(payload.stats.range ?? 0));
+    const effectiveDistance = targetRadius + (Number.isFinite(rayWidth) && rayWidth > 0 ? rayWidth : 5) / 2;
     const rayStart = {
         x: Number(source.x),
         y: Number(source.y),
     };
     const rayEnd = {
-        x: Number(source.x) + direction.x * Number(payload.stats.range ?? 0),
-        y: Number(source.y) + direction.y * Number(payload.stats.range ?? 0),
+        x: Number(source.x) + direction.x * rayRange,
+        y: Number(source.y) + direction.y * rayRange,
     };
     const targetPath = targetMovementSegment(target);
-    return segmentsWithinDistance(rayStart, rayEnd, targetPath.start, targetPath.end, targetRadius);
+    return segmentsWithinDistance(rayStart, rayEnd, targetPath.start, targetPath.end, effectiveDistance);
 }
 
 export function abilityRangeHits(
@@ -50,6 +56,7 @@ export function abilityRangeHits(
     target,
     payloadOrAbilityId,
     range = undefined,
+    phase = undefined,
 ) {
     const payload = resolvePayload(payloadOrAbilityId);
     if (!source || !target || !payload) return false;
@@ -57,7 +64,13 @@ export function abilityRangeHits(
     const delivery = payload.contract.delivery;
     if (delivery.type !== DELIVERY_TYPES.MELEE && delivery.type !== DELIVERY_TYPES.RADIAL) return false;
 
-    const effectiveRange = Number(range ?? payload.stats.range ?? payload.stats.radius ?? 0);
+    const activePhase = phase ?? payload.contract.phases?.[0] ?? null;
+    const hitbox = activePhase?.hitbox ?? {};
+    const effectiveRange = Number(range ?? resolveHitboxNumber(
+        delivery.type === DELIVERY_TYPES.RADIAL ? hitbox.radius : hitbox.length ?? hitbox.range,
+        payload,
+        payload.stats.range ?? payload.stats.radius ?? 0,
+    ));
     const targetRadius = delivery.includeTargetRadius ? Number(target.size ?? 60) / 2 : 0;
     const targetPath = targetMovementSegment(target);
     if (delivery.type === DELIVERY_TYPES.RADIAL) {
@@ -78,7 +91,7 @@ export function abilityRangeHits(
             center,
             center,
             effectiveRange,
-            Number(payload.stats.hitboxWidth ?? source.size ?? 60),
+            resolveHitboxNumber(hitbox.width, payload, Number(payload.stats.hitboxWidth ?? source.size ?? 60)),
             compassDegreesToRadians(pose.rotation),
             targetPath.start,
             targetPath.end,
@@ -91,7 +104,7 @@ export function abilityRangeHits(
         targetPath.end,
         Number(source.rotation ?? 0),
         effectiveRange + targetRadius,
-        Number(payload.stats.arcDegrees ?? 36) / 2,
+        resolveHitboxNumber(hitbox.arc, payload, Number(payload.stats.arc ?? 36)) / 2,
     );
 }
 
@@ -117,6 +130,16 @@ export function isDirectDelivery(delivery) {
 
 function resolvePayload(payloadOrAbilityId) {
     return abilityExecutionPayload(payloadOrAbilityId);
+}
+
+function resolveHitboxNumber(value, payload, fallback = 0) {
+    if (typeof value === "number") return value;
+    if (typeof value === "string") return Number(payload.stats[value] ?? fallback);
+    if (value && typeof value === "object") {
+        if (value.stat != null) return Number(payload.stats[value.stat] ?? value.fallback ?? fallback);
+        if (value.value != null) return Number(value.value);
+    }
+    return Number(fallback);
 }
 
 function targetMovementSegment(target) {

@@ -18,15 +18,15 @@ For arc melee bot hit checks, `includeTargetRadius` controls whether half the de
 
 For radial blasts, persistent zones, and trap contact, the collision radius is expanded by half the moving bot's size, so contact with the bot's outer edge counts. Damage falloff still uses the center-to-center distance, so edge contact does not change the configured damage profile.
 
-Damage falloff uses a linear profile rather than a table of range bands. A profile declares `maxDamage`, `minDamage`, `damageFalloffStart`, `damageFalloffEnd`, and the overall `range` or `radius`. Damage stays at the maximum through the start distance, interpolates mathematically to the minimum at the end distance, then stays at the minimum until the hit range ends. Browser and server execution round the same calculated value.
+Distance falloff is a generic linear profile rather than a table of range bands. An effect may declare `falloff: { maxAmount, minAmount, falloffStart, falloffEnd }` for a distance-dependent amount, or `falloff: { maxDurationMs, minDurationMs, falloffStart, falloffEnd }` for a distance-dependent duration. The profile is clamped to the ability's effective maximum range (or a phase `range`/`radius` override), so a start or end beyond that range cannot extend the hitbox. Values stay at the maximum through the start distance, interpolate to the minimum at the effective end distance, then remain at the minimum until the hit range ends. Browser and server execution round the same calculated value.
 
 Spawning is an effect (`spawn_entity`). Target labels and capabilities remain in `BotLoadout.js` as schema/UI metadata.
 
 Entity-backed projectile and segment contracts declare their collider shape in
 `EntityContracts`. The current projectile hitboxes are direction-aligned
-squares sized by the entity collider component; the browser preview and
-authoritative server use mirrored swept square-versus-circle collision math
-against moving bots. Other entity behavior keeps its contracted circular
+rectangles sized by the entity collider component; the browser preview and
+authoritative server use mirrored swept rectangle-versus-circle collision math
+against moving bots. Rectangle width and length are independent stats. Other entity behavior keeps its contracted circular
 collider unless it declares a different shape. Practice-mode hitbox overlays
 read this same metadata and never participate in gameplay decisions. The
 overlay also renders the captured melee-sector or rectangle, radial, and hitscan geometry
@@ -38,9 +38,13 @@ presentation-only; they do not create or extend a gameplay hit window.
 
 - HP: `damage`, `healing`.
 - Displacement: `knockback`, `pull`, `movement`, `teleport`, `restore_state`.
-- Status: `debuff`, `buff`. A timed modifier that changes a bot's stats or
+- Status: `status`, `buff`. A timed modifier that changes a bot's stats or
   functionality is applied as a bot-local status and owns its remaining time
-  and expiry through the status contracts. Overclock is the current example:
+  and expiry through the status contracts. Each status is its own effect object,
+  so one phase can declare multiple status instances, for example
+  `statusEffect("burn", ...)` and `statusEffect("slow", ...)`. Status effect
+  overrides use a qualified key such as `status:slow`, allowing each subtype to
+  receive its own duration profile. Overclock is the current positive example:
   its `buff` subtype is `overclock`; its 0.5 cooldown-start multiplier is read
   only when a new ability cooldown or charge reload timer is created, so timers
   already running when Overclock activates remain unchanged. The multiplier is
@@ -147,44 +151,121 @@ interaction layer.
 
 ### Entity lifecycles, phases, and intervals
 
-`durationMs` is the complete lifecycle of an ability-created entity. Its clock
-starts when the entity is spawned, regardless of whether the entity is still
-travelling, fused, armed, active, or waiting to expire. Projectile range is a
-derived tuning value: fixed-step displacement multiplied by the entity
-duration. It is never an alternate removal timer.
+`durationMs` is the default lifetime of an ability-created entity. A phase may
+also define its own `durationMs`; that phase-local clock starts when the phase
+is entered and ends by dispatching its `lifetimeEnd` event. This lets one
+logical entity move, arm, detonate, and expire without creating child entities.
+Projectile `range` remains a derived travel/display value when applicable; it
+is never an alternate removal timer or the projectile rectangle's length.
 
-Distinct entity behavior belongs in generic declarative phases. A phase has an
-ID, a `startMs` offset from spawn, and the actions that apply while entering or
-remaining in that phase:
+Distinct entity behavior belongs in generic declarative phases. The same
+phase shape is used by direct abilities and persistent entities:
 
-```js
-behavior: {
-    kind: "phase",
-    phases: [
-        { id: "travel", startMs: 0, movement: { mode: "travel" } },
-        {
-            id: "armed",
-            startMs: 800,
-            movement: { mode: "stopped" },
-            trigger: { radiusStat: "radius", botContact: true },
-            effectTypes: ["damage"],
-            explosion: { type: "mineExplosion" },
-        },
-    ],
-}
+```text
+Ability
+├─ metadata (name, cooldown, cast time, description, resources)
+└─ phases
+   ├─ phase 1
+   ├─ phase 2
+   └─ ...
 ```
 
+Each phase has an ID, a public `type`, optional movement/lifetime data, a
+hitbox, presentation metadata, and allowlisted event handlers. The type is the
+phase's current delivery behavior: `self`, `melee`, `ray`, `arc`, `projectile`,
+`zone`, or `summon`. Geometry uses the standard field names: circular shapes
+use `radius`, forward rectangles use `hitboxWidth`/`hitboxLength`, and rays or
+arcs use `range`, `hitboxWidth`, and `arc` as applicable. For a projectile
+rectangle, `hitboxLength` is the physical longitudinal collision dimension and
+is independent of travel/display `range`.
+
+For example, a mine can be described without naming an explosion behavior:
+
+```js
+phases: [
+    {
+        id: "travel",
+        type: "projectile",
+        movement: { mode: "travel" },
+        hitbox: { shape: "circle", radius: "size", radiusMultiplier: 0.5 },
+        visual: { type: "proximityMine", state: "moving", visualSize: 24 },
+    },
+    {
+        id: "armed",
+        type: "zone",
+        movement: { mode: "stopped" },
+        hitbox: { shape: "circle", radius: "radius" },
+        trigger: { radius: "radius", botContact: true },
+        events: {
+            collision: { actions: ["transition"], transition: "active" },
+        },
+        visual: { type: "proximityMine", state: "static", visualSize: 24 },
+    },
+    {
+        id: "active",
+        type: "zone",
+        durationMs: 300,
+        hitbox: { shape: "circle", radius: "radius" },
+        effects: ["damage"],
+        events: {
+            collision: { actions: ["applyEffects"] },
+            lifetimeEnd: { actions: ["remove"] },
+        },
+        visual: { type: "mineExplosion", visualSize: 175, visibleMs: 300 },
+    },
+]
+```
+
+The phase event boundary is intentional. Geometry systems detect a collision
+and provide target IDs; the phase event dispatcher checks the phase's
+persistence policy, then emits the phase's allowlisted payload effects to the
+bot effect/payload handlers. The entity does not directly mutate arbitrary bot
+state. A `self` phase uses the owner's ID as its target, while `summon` phases
+keep their movement/attack logic on the summon but still dispatch attacks as
+phase events.
+
+Transitions preserve the entity ID and reset phase-local state such as the
+target hit ledger, timer, and visual descriptor. Thus two copies of one
+repeating projectile keep independent ledgers and can hit the same target on
+their own schedules.
+
+Grenades use the same pattern with three explicit phases: `travel` carries a
+rectangle hitbox, `armed` keeps the stopped grenade hitbox, and `active` uses
+the circular `radius` hitbox for the explosion. The runtime entity's flat
+`size` field remains the gameplay collider's base size for simulation and
+replay compatibility. Sprite-backed entities may also define a
+presentation-only `visualSize`; it never participates in collision. Rectangle
+collision width and length are resolved
+from the ability's canonical `hitboxWidth` and `hitboxLength` stats
+independently from collider or phase hitbox metadata, so a visual sprite can
+retain its art-sized entity value without changing the gameplay hitbox.
+Contracts should describe circular geometry with its radius and apply an
+explicit size multiplier when deriving that runtime field.
+
+Sprite-backed phase contracts may also declare a presentation-only `visual`
+descriptor such as `{ type, state, visualSize, visibleMs }`. The renderer
+resolves that descriptor from the entity's current `phaseId`; transient event
+visuals may override its `type`, `visualSize`, or `visibleMs`. This keeps a
+grenade's travel, armed, and active visuals next to the lifecycle phase that
+owns them instead of using a separate explosion-size or explosion-visibility
+field.
+
 The proximity mine therefore has one `durationMs` of 20,800 ms. It travels for
-the first 800 ms, then enters its stopped armed phase. Only the armed phase
-has a trigger and damage action; the mine does not switch to a second lifetime
-clock. Gravity and Singularity use the same phase contract for travel, pull,
+the first 800 ms, then enters its stopped armed phase. The armed phase listens
+for the trigger and transitions the same entity into a short active blast
+phase, whose phase-local `durationMs` and visual are defined beside its damage
+event. Gravity and Singularity use the same phase contract for travel, pull,
 and damage/detonation behavior. Phase explosions are entry actions and occur
 once when the phase starts.
 
-For one action that repeats at a fixed cadence, use `kind: "interval"` and an
-`intervalStat`. Orbital Strike is an interval entity: each interval applies its
-declared hit/effect contract and may create its presentation event. This is
-the generic replacement for a named `pulsedZone` behavior.
+For one action that repeats at a fixed cadence, keep one phase and attach a
+`repeat` scheduler to it. Orbital Strike, for example, can use
+`repeat: { event: "interval", intervalMs: "intervalMs" }` and put its
+`applyEffects`/`emitVisual` actions in `events.interval`. The scheduler runs
+until that phase's duration or the entity lifetime ends; it does not require a
+new phase object for every pulse. `persistence.mode: "interval"` is available
+for collision events that need a per-target cooldown; the entity's target-ID
+ledger stores the last accepted event independently for each target.
 
 Classify the behavior before implementing it:
 

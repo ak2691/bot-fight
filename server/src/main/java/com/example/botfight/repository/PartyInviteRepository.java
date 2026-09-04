@@ -1,7 +1,7 @@
 package com.example.botfight.repository;
 
-import com.example.botfight.domain.PartyInvite;
-import com.example.botfight.domain.PartyInviteStatus;
+import com.example.botfight.domain.party.PartyInvite;
+import com.example.botfight.domain.party.PartyInviteStatus;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;

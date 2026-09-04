@@ -1,6 +1,6 @@
 package com.example.botfight.repository;
 
-import com.example.botfight.domain.PuzzleCompletion;
+import com.example.botfight.domain.puzzle.PuzzleCompletion;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;

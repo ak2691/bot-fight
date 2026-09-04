@@ -2,12 +2,11 @@ package com.example.botfight.simulation.core.orchestration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.example.botfight.DTO.MatchmakingEventDTO;
-import com.example.botfight.DTO.MatchReplayDTO;
+import com.example.botfight.DTO.match.MatchmakingEventDTO;
+import com.example.botfight.DTO.match.MatchReplayDTO;
 import com.example.botfight.simulation.bots.BotCodeService;
 import com.example.botfight.simulation.bots.ConditionEvaluationService;
 import com.example.botfight.simulation.core.combat.ActionExecutionService;
-import com.example.botfight.simulation.core.combat.ProjectileSimulationService;
 import com.example.botfight.simulation.core.logic.ConditionResolutionService;
 import com.example.botfight.simulation.core.replay.ReplayMappingService;
 import com.example.botfight.simulation.core.state.BotStateService;
@@ -389,16 +388,13 @@ class ConcurrentSimulationLoadTest {
     private DuelSimulationService newSimulationService() {
         GameConfigCatalog catalog = new GameConfigCatalog();
         BotStateService botStateService = new BotStateService(catalog, new BotCodeService());
-        ProjectileSimulationService projectileSimulationService = new ProjectileSimulationService(botStateService);
-        ActionExecutionService actionExecutionService = new ActionExecutionService(
-                botStateService, projectileSimulationService);
+        ActionExecutionService actionExecutionService = new ActionExecutionService(botStateService);
         ConditionResolutionService conditionResolutionService = new ConditionResolutionService(
                 new ConditionEvaluationService(), actionExecutionService);
         return new DuelSimulationService(
                 conditionResolutionService,
                 new ReplayMappingService(),
                 botStateService,
-                projectileSimulationService,
                 actionExecutionService);
     }
 

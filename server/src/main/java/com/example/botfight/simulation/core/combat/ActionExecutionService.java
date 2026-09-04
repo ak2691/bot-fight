@@ -48,17 +48,13 @@ public class ActionExecutionService {
         this.customVariableActionService = customVariableActionService;
     }
 
-    /**
-     * Compatibility constructor for focused unit tests that build the simulator
-     * directly.
-     */
-    public ActionExecutionService(BotStateService botStateService,
-            ProjectileSimulationService projectileSimulationService) {
+    /** Focused-test constructor that builds the phase-driven combat collaborators. */
+    public ActionExecutionService(BotStateService botStateService) {
         this.botStateService = botStateService;
         this.movementService = new BotMovementService();
         AbilityHitDetectionService hitDetectionService = new AbilityHitDetectionService();
         this.abilityEffectService = new AbilityEffectService(botStateService, movementService, hitDetectionService);
-        this.entityCombatService = new ArenaEntityCombatService(projectileSimulationService, hitDetectionService);
+        this.entityCombatService = new ArenaEntityCombatService(hitDetectionService);
         this.customVariableActionService = new CustomVariableActionService();
     }
 
@@ -225,15 +221,13 @@ public class ActionExecutionService {
     }
 
     public int damageToDroneThisTick(ArenaEntity drone, List<Bot> bots,
-            List<ArenaEntity> projectileEffects, List<ArenaEntity> projectiles,
-            List<ArenaEntity> placements) {
-        return entityCombatService.damageToDroneThisTick(
-                drone, bots, projectileEffects, projectiles, placements);
+            List<ArenaEntity> entities) {
+        return entityCombatService.damageToDroneThisTick(drone, bots, entities);
     }
 
     public boolean mineHitByCurrentAttack(ArenaEntity mine, List<Bot> bots,
-            List<ArenaEntity> projectiles, List<ArenaEntity> placements) {
-        return entityCombatService.mineHitByCurrentAttack(mine, bots, projectiles, placements);
+            List<ArenaEntity> entities) {
+        return entityCombatService.mineHitByCurrentAttack(mine, bots, entities);
     }
 
     private AbilityExecutionPayload selectedAbilityPayload(Bot bot, Action action) {
@@ -333,8 +327,10 @@ public class ActionExecutionService {
         if (arena == null || !spawnsEntity(payload))
             return;
         EntityContracts.EntityContract entityContract = EntityContracts.forAbility(payload.abilityId());
-        String idPrefix = entityContract != null
-                && entityContract.system() == EntityContracts.SystemType.PROJECTILE
+        EntityContracts.Phase firstPhase = entityContract == null || entityContract.phases().isEmpty()
+                ? null : entityContract.phases().getFirst();
+        String idPrefix = firstPhase != null
+                && firstPhase.type() == EntityContracts.PhaseType.PROJECTILE
                         ? entityContract.runtimeType()
                         : "ability";
         bot.abilitySpawn = AbilityEntityFactory.create(

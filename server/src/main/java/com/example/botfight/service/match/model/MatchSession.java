@@ -1,8 +1,8 @@
 package com.example.botfight.service.match.model;
 
-import com.example.botfight.DTO.MatchPlaybackDTO;
-import com.example.botfight.DTO.MatchReplayDTO;
-import com.example.botfight.domain.MatchMode;
+import com.example.botfight.DTO.match.MatchPlaybackDTO;
+import com.example.botfight.DTO.match.MatchReplayDTO;
+import com.example.botfight.domain.match.MatchMode;
 import com.example.botfight.service.match.timing.MatchTimingPolicy;
 import java.time.Instant;
 import java.util.HashMap;

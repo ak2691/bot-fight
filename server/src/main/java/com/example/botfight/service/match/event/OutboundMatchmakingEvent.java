@@ -1,6 +1,6 @@
 package com.example.botfight.service.match.event;
 
-import com.example.botfight.DTO.MatchmakingEventDTO;
+import com.example.botfight.DTO.match.MatchmakingEventDTO;
 import java.time.Instant;
 
 public record OutboundMatchmakingEvent(

@@ -1,6 +1,6 @@
 package com.example.botfight.controller;
 
-import com.example.botfight.DTO.MatchmakingEventDTO;
+import com.example.botfight.DTO.match.MatchmakingEventDTO;
 
 /**
  * STOMP destinations used by the authenticated matchmaking transport.

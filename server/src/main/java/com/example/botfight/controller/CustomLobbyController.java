@@ -1,13 +1,13 @@
 package com.example.botfight.controller;
 
-import com.example.botfight.DTO.CustomLobbyDTO;
-import com.example.botfight.DTO.CustomLobbyInviteCreateRequestDTO;
-import com.example.botfight.DTO.CustomLobbyRoundDurationRequestDTO;
-import com.example.botfight.DTO.CustomLobbyStartDTO;
-import com.example.botfight.DTO.CustomLobbyStateEventDTO;
-import com.example.botfight.DTO.CustomLobbyTeamRequestDTO;
-import com.example.botfight.DTO.MatchmakingEventDTO;
-import com.example.botfight.DTO.PartyStateEventDTO;
+import com.example.botfight.DTO.customlobby.CustomLobbyDTO;
+import com.example.botfight.DTO.customlobby.CustomLobbyInviteCreateRequestDTO;
+import com.example.botfight.DTO.customlobby.CustomLobbyRoundDurationRequestDTO;
+import com.example.botfight.DTO.customlobby.CustomLobbyStartDTO;
+import com.example.botfight.DTO.customlobby.CustomLobbyStateEventDTO;
+import com.example.botfight.DTO.customlobby.CustomLobbyTeamRequestDTO;
+import com.example.botfight.DTO.match.MatchmakingEventDTO;
+import com.example.botfight.DTO.party.PartyStateEventDTO;
 import com.example.botfight.service.customlobby.CustomLobbyService;
 import com.example.botfight.service.customlobby.CustomLobbyStatePublisher;
 import com.example.botfight.service.match.MatchService;
@@ -75,7 +75,7 @@ public class CustomLobbyController {
     }
 
     @PostMapping("/{lobbyId}/invites")
-    public com.example.botfight.DTO.CustomLobbyInviteDTO invite(
+    public com.example.botfight.DTO.customlobby.CustomLobbyInviteDTO invite(
             Authentication authentication,
             @PathVariable UUID lobbyId,
             @RequestBody CustomLobbyInviteCreateRequestDTO request) {
@@ -83,12 +83,12 @@ public class CustomLobbyController {
                 authentication,
                 lobbyId,
                 request == null ? null : request.username());
-        com.example.botfight.DTO.CustomLobbyInviteDTO invite = created.invite();
+        com.example.botfight.DTO.customlobby.CustomLobbyInviteDTO invite = created.invite();
         notificationPublisher.sendIfVisible(
                 created.recipientPrincipalName(),
                 created.recipientUserId(),
                 created.actorUserId(),
-                new com.example.botfight.DTO.NotificationEventDTO(
+                new com.example.botfight.DTO.notification.NotificationEventDTO(
                         "CUSTOM_LOBBY_INVITE_RECEIVED",
                         invite.inviteId(),
                         invite.inviteId(),

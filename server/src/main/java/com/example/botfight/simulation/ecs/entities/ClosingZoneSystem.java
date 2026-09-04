@@ -2,7 +2,6 @@ package com.example.botfight.simulation.ecs.entities;
 
 import com.example.botfight.simulation.gameconfig.ClosingZoneConfig;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Advances the authoritative arena-wide closing zone. It deliberately does
@@ -95,7 +94,7 @@ public final class ClosingZoneSystem {
         return new ArenaEntity(
                 ID, TYPE, 0, width / 2.0, height / 2.0,
                 Math.max(0, (int) Math.round(state.safeRadius() * 2)),
-                0, 0, 0, 0, true, 0, 0, 1.0, null, Set.of());
+                0, 0, 0, 0, true, 0, 0, 1.0, null);
     }
 
     private static int completedDamageTicks(int previousElapsedMs, int elapsedMs, ClosingZoneConfig config) {

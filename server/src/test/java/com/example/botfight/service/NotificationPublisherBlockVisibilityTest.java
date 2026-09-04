@@ -3,7 +3,7 @@ package com.example.botfight.service;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
-import com.example.botfight.DTO.NotificationEventDTO;
+import com.example.botfight.DTO.notification.NotificationEventDTO;
 import com.example.botfight.service.notification.NotificationPublisher;
 import java.time.Instant;
 import java.util.UUID;

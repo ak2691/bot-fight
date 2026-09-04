@@ -9,7 +9,6 @@ import com.example.botfight.simulation.core.orchestration.DuelSimulationService.
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Operand;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.SelectableSnapshot;
 import com.example.botfight.simulation.core.combat.ActionExecutionService;
-import com.example.botfight.simulation.core.combat.ProjectileSimulationService;
 import com.example.botfight.simulation.core.state.BotStateService;
 import com.example.botfight.simulation.bots.ConditionEvaluationService;
 import com.example.botfight.simulation.bots.BotCodeService;
@@ -87,8 +86,7 @@ class TargetingServiceTest {
         SelectableSnapshot grenade = target("grenade-1", "grenade", 4, 2, 100, 150, 100);
         List<Entity> entities = List.of(grenade);
         BotStateService botStateService = new BotStateService(new GameConfigCatalog(), new BotCodeService());
-        ActionExecutionService actionExecutionService = new ActionExecutionService(
-                botStateService, new ProjectileSimulationService(botStateService));
+        ActionExecutionService actionExecutionService = new ActionExecutionService(botStateService);
         ConditionResolutionService resolver = new ConditionResolutionService(
                 new ConditionEvaluationService(), actionExecutionService);
         Arena arena = new Arena(1000, 1000, 1000);

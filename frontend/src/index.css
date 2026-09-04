@@ -2877,6 +2877,11 @@ button {
   transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease, color 140ms ease;
 }
 
+.arena-toolbar-button.font-interface {
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-weight: 500;
+}
+
 .arena-toolbar-button--inline {
   width: auto;
   min-height: 2.75rem;

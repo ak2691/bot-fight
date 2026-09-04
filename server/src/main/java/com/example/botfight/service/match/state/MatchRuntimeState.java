@@ -1,6 +1,6 @@
 package com.example.botfight.service.match.state;
 
-import com.example.botfight.domain.BotSubmission;
+import com.example.botfight.domain.submission.BotSubmission;
 import com.example.botfight.service.match.model.MatchSession;
 import java.util.Collection;
 import java.util.List;

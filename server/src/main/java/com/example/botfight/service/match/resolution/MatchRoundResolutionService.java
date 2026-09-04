@@ -1,6 +1,6 @@
 package com.example.botfight.service.match.resolution;
 
-import com.example.botfight.DTO.MatchReplayDTO;
+import com.example.botfight.DTO.match.MatchReplayDTO;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.match.chat.MatchChatService;
 import com.example.botfight.service.match.connection.MatchConnectionService;
@@ -87,7 +87,7 @@ public final class MatchRoundResolutionService {
         SimulationKey simulationKey = new SimulationKey(matchId, simulationSession.roundNumber());
         try {
             long submissionsStartedNanos = System.nanoTime();
-            Map<UUID, com.example.botfight.domain.BotSubmission> submissionsByUserId =
+            Map<UUID, com.example.botfight.domain.submission.BotSubmission> submissionsByUserId =
                     submissionService.submissionsForRound(simulationSession);
             log.info(
                     "Authoritative round submissions loaded matchId={} round={} submissions={} elapsedMs={}",
@@ -149,7 +149,7 @@ public final class MatchRoundResolutionService {
 
     private List<OutboundMatchmakingEvent> completeSimulationLocked(
             MatchSession simulationSession,
-            Map<UUID, com.example.botfight.domain.BotSubmission> submissionsByUserId,
+            Map<UUID, com.example.botfight.domain.submission.BotSubmission> submissionsByUserId,
             MatchReplayDTO calculatedPlayback,
             PreparedReplay preparedReplay) {
         MatchSession currentSession = state.activeSessionForMatch(simulationSession.matchId());

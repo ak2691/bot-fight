@@ -1,11 +1,11 @@
 package com.example.botfight.service.auth;
 
-import com.example.botfight.DTO.AuthRequestDTO;
-import com.example.botfight.DTO.AuthUserDTO;
-import com.example.botfight.DTO.EmailVerificationRequestDTO;
-import com.example.botfight.DTO.PasswordChangeRequestDTO;
-import com.example.botfight.DTO.RegistrationResponseDTO;
-import com.example.botfight.domain.AppUser;
+import com.example.botfight.DTO.auth.AuthRequestDTO;
+import com.example.botfight.DTO.auth.AuthUserDTO;
+import com.example.botfight.DTO.auth.EmailVerificationRequestDTO;
+import com.example.botfight.DTO.auth.PasswordChangeRequestDTO;
+import com.example.botfight.DTO.auth.RegistrationResponseDTO;
+import com.example.botfight.domain.auth.AppUser;
 import com.example.botfight.repository.UserRepository;
 import com.example.botfight.security.AuthenticatedUserDetails;
 import jakarta.servlet.http.HttpServletRequest;
@@ -148,7 +148,7 @@ public class AuthService {
         response.setId(user.getId());
         response.setEmail(user.getEmail());
         response.setUsername(user.getUsername());
-        response.setAdmin(user.getRole() == com.example.botfight.domain.UserRole.ADMIN);
+        response.setAdmin(user.getRole() == com.example.botfight.domain.auth.UserRole.ADMIN);
         response.setHasPassword(user.getPasswordHash() != null && !user.getPasswordHash().isBlank());
         return response;
     }

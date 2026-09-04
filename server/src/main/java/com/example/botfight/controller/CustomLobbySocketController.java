@@ -1,10 +1,10 @@
 package com.example.botfight.controller;
 
-import com.example.botfight.DTO.CustomLobbyDTO;
-import com.example.botfight.DTO.CustomLobbyChatEventDTO;
-import com.example.botfight.DTO.CustomLobbyChatRequestDTO;
-import com.example.botfight.DTO.CustomLobbyStateEventDTO;
-import com.example.botfight.domain.AppUser;
+import com.example.botfight.DTO.customlobby.CustomLobbyDTO;
+import com.example.botfight.DTO.customlobby.CustomLobbyChatEventDTO;
+import com.example.botfight.DTO.customlobby.CustomLobbyChatRequestDTO;
+import com.example.botfight.DTO.customlobby.CustomLobbyStateEventDTO;
+import com.example.botfight.domain.auth.AppUser;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.service.customlobby.CustomLobbyChatService;

@@ -81,7 +81,8 @@ export function movingCircleCollision(firstStart, firstEnd, firstRadius, secondS
  *
  * The rectangle is intentionally expanded by the target radius on both local
  * axes. That keeps the collider deterministic and inexpensive while matching
- * the simple square hitboxes used by the arena presentation.
+ * the rectangular hitboxes used by the arena presentation. Width is the
+ * longitudinal dimension and height is the cross-axis dimension.
  */
 export function movingRectangleCollision(
     firstStart,

@@ -10,10 +10,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.example.botfight.DTO.AuthRequestDTO;
-import com.example.botfight.DTO.EmailVerificationRequestDTO;
-import com.example.botfight.DTO.PasswordChangeRequestDTO;
-import com.example.botfight.domain.AppUser;
+import com.example.botfight.DTO.auth.AuthRequestDTO;
+import com.example.botfight.DTO.auth.EmailVerificationRequestDTO;
+import com.example.botfight.DTO.auth.PasswordChangeRequestDTO;
+import com.example.botfight.domain.auth.AppUser;
 import com.example.botfight.repository.UserRepository;
 import com.example.botfight.security.AuthenticatedUserDetails;
 import jakarta.servlet.http.HttpServletRequest;
