@@ -14,6 +14,7 @@ import {
     createProfileRetryTokenBucket,
     PROFILE_RETRY_REFILL_INTERVAL_MS,
 } from "./profileRetryRateLimit.js";
+import { formatCompletionReason } from "./profileCompletionReason.js";
 
 const RECENT_MATCH_LIMIT = 5;
 
@@ -1055,23 +1056,6 @@ function eloChangeTone(match) {
     if (change > 0) return "text-emerald-300";
     if (change < 0) return "text-rose-300";
     return "text-slate-200";
-}
-
-function formatCompletionReason(reason) {
-    const labels = {
-        SIMULATION: "Simulation",
-        RESIGNATION: "Forfeit",
-        DISCONNECTION: "Forfeit",
-        INITIAL_DISCONNECTION: "Draw",
-        MUTUAL_DISCONNECTION: "Draw",
-    };
-    if (labels[reason]) return labels[reason];
-    if (!reason) return "Completed";
-    return reason
-        .toLowerCase()
-        .split("_")
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(" ");
 }
 
 function SolvedPuzzlesModal({ puzzles, totalPuzzles, puzzlesStatus, hasMore, onLoadMore, onOpenPuzzle, onClose }) {
