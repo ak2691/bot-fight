@@ -5,7 +5,7 @@ import {
     PHASE_ACTIONS,
     PHASE_EVENT_TYPES,
     PHASE_TYPES,
-    PERSISTENCE_MODES,
+    TARGET_POLICY_MODES,
 } from "../../gameconfig/AbilityContracts.js";
 
 /**
@@ -69,7 +69,6 @@ export const ENTITY_CONTRACTS = Object.freeze({
         },
         phases: Object.freeze([
             phase("travel", PHASE_TYPES.PROJECTILE, {
-                startMs: 0,
                 movement: {
                     mode: "travel",
                     clamp: true,
@@ -78,29 +77,25 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 visual: visual("grenade", 12, "moving"),
                 durationMs: 1000,
                 events: {
-                    [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.TRANSITION], transition: "active" },
-                    [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.TRANSITION], transition: "armed" },
+                    [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.TRANSITION], transition: { to: "active" } },
+                    [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.TRANSITION], transition: { to: "armed" } },
                 },
-                persistence: { mode: PERSISTENCE_MODES.ONCE, scope: "target" },
             }),
             phase("armed", PHASE_TYPES.PROJECTILE, {
                 // Armed is reached when the fixed one-second travel phase ends.
-                startMs: -1,
                 transitionOnly: true,
                 movement: { mode: "stopped" },
                 hitbox: { shape: "rectangle", width: "hitboxWidth", length: "hitboxLength" },
                 durationMs: 1000,
                 visual: visual("grenade", 12, "static"),
                 events: {
-                    [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.TRANSITION], transition: "active" },
-                    [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.TRANSITION], transition: "active" },
+                    [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.TRANSITION], transition: { to: "active" } },
+                    [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.TRANSITION], transition: { to: "active" } },
                 },
-                persistence: { mode: PERSISTENCE_MODES.ONCE, scope: "target" },
             }),
             phase("active", PHASE_TYPES.ZONE, {
                 // The explosion is reached by collision or armed-phase expiry;
                 // it is not an elapsed-time phase from the grenade's spawn.
-                startMs: -1,
                 transitionOnly: true,
                 movement: { mode: "stopped" },
                 hitbox: { shape: "circle", radius: "radius" },
@@ -108,10 +103,8 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 durationMs: 200,
                 visual: visual("grenadeExplosion", 140, null, 200),
                 events: {
-                    [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS] },
-                    [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.REMOVE] },
+                    [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS], targetPolicy: { mode: TARGET_POLICY_MODES.ONCE } },
                 },
-                persistence: { mode: PERSISTENCE_MODES.ONCE, scope: "target" },
             }),
         ]),
     }),
@@ -135,9 +128,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 visual: visual("fireball", 30),
                 events: {
                     [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS, PHASE_ACTIONS.REMOVE] },
-                    [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.REMOVE] },
                 },
-                persistence: { mode: PERSISTENCE_MODES.ONCE, scope: "target" },
             }),
         ]),
     }),
@@ -152,13 +143,16 @@ export const ENTITY_CONTRACTS = Object.freeze({
         state: { phaseId: "travel", phaseTimerMs: 0, armed: false },
         phases: Object.freeze([
             phase("travel", PHASE_TYPES.PROJECTILE, {
-                startMs: 0,
-                movement: { mode: "travel" },
+                movement: { mode: "travel", clamp: true },
                 hitbox: { shape: "circle", radius: "size", radiusMultiplier: 0.5 },
                 visual: visual("proximityMine", 24, "moving"),
+                durationMs: 800,
+                events: {
+                    [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.TRANSITION], transition: { to: "armed" } },
+                },
             }),
             phase("armed", PHASE_TYPES.ZONE, {
-                startMs: 800,
+                transitionOnly: true,
                 movement: { mode: "stopped" },
                 hitbox: { shape: "circle", radius: "radius" },
                 visual: visual("proximityMine", 24, "static"),
@@ -170,25 +164,25 @@ export const ENTITY_CONTRACTS = Object.freeze({
                     chain: true,
                 },
                 effects: [EFFECT_TYPES.DAMAGE],
+                durationMs: 20000,
                 events: {
                     [PHASE_EVENT_TYPES.COLLISION]: {
                         actions: [PHASE_ACTIONS.TRANSITION],
-                        transition: "active",
+                        transition: { to: "active" },
                     },
+                    [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.TRANSITION], transition: { to: "active" } },
                 },
-                persistence: { mode: PERSISTENCE_MODES.ONCE, scope: "target" },
             }),
             phase("active", PHASE_TYPES.ZONE, {
+                transitionOnly: true,
                 movement: { mode: "stopped" },
                 hitbox: { shape: "circle", radius: "radius" },
                 effects: [EFFECT_TYPES.DAMAGE],
                 durationMs: 300,
                 visual: visual("mineExplosion", 175, null, 300),
                 events: {
-                    [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS] },
-                    [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.REMOVE] },
+                    [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS], targetPolicy: { mode: TARGET_POLICY_MODES.ONCE } },
                 },
-                persistence: { mode: PERSISTENCE_MODES.ONCE, scope: "target" },
             }),
         ]),
     }),
@@ -207,32 +201,38 @@ export const ENTITY_CONTRACTS = Object.freeze({
         },
         phases: Object.freeze([
             phase("travel", PHASE_TYPES.PROJECTILE, {
-                startMs: 0,
-                movement: { mode: "travel" },
+                movement: { mode: "travel", clamp: true },
                 hitbox: { shape: "circle", radius: "radius" },
+                effects: [EFFECT_TYPES.PULL],
                 visual: visual("gravityZone", 240),
+                durationMs: 1000,
+                events: {
+                    [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS] },
+                    [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.TRANSITION], transition: { to: "fuse" } },
+                },
             }),
             phase("fuse", PHASE_TYPES.ZONE, {
-                startMs: 2000,
+                transitionOnly: true,
                 movement: { mode: "stopped" },
                 hitbox: { shape: "circle", radius: "radius" },
                 effects: [EFFECT_TYPES.PULL],
                 visual: visual("gravityZone", 240),
-                events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS] } },
-                persistence: { mode: PERSISTENCE_MODES.EVERY_TICK },
+                durationMs: 3000,
+                events: {
+                    [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS] },
+                    [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.TRANSITION], transition: { to: "active" } },
+                },
             }),
             phase("active", PHASE_TYPES.ZONE, {
-                startMs: 5000,
+                transitionOnly: true,
                 movement: { mode: "stopped" },
                 hitbox: { shape: "circle", radius: "radius" },
                 effects: [EFFECT_TYPES.DAMAGE],
                 durationMs: 300,
                 visual: visual("gravityExplosion", 240, null, 300),
                 events: {
-                    [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS] },
-                    [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.REMOVE] },
+                    [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS], targetPolicy: { mode: TARGET_POLICY_MODES.ONCE } },
                 },
-                persistence: { mode: PERSISTENCE_MODES.ONCE, scope: "target" },
             }),
         ]),
     }),
@@ -252,10 +252,8 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 effects: [EFFECT_TYPES.STATUS, EFFECT_TYPES.INTERRUPT],
                 visual: visual("silenceWave", 225),
                 events: {
-                    [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS] },
-                    [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.REMOVE] },
+                    [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS], targetPolicy: { mode: TARGET_POLICY_MODES.ONCE } },
                 },
-                persistence: { mode: PERSISTENCE_MODES.ONCE, scope: "target" },
             }),
         ]),
     }),
@@ -285,8 +283,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
                     effectTypes: [EFFECT_TYPES.DAMAGE],
                 },
                 events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS] } },
-                persistence: { mode: PERSISTENCE_MODES.INTERVAL, intervalMs: "shotCooldownMs", scope: "target" },
-                repeat: { intervalMs: "shotCooldownMs", event: PHASE_EVENT_TYPES.COLLISION },
+                repeat: { intervalMs: "shotCooldownMs", event: PHASE_EVENT_TYPES.COLLISION, startImmediately: true },
             }),
         ]),
     }),
@@ -308,9 +305,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 visual: visual("windburstProjectile", 24),
                 events: {
                     [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS, PHASE_ACTIONS.REMOVE] },
-                    [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.REMOVE] },
                 },
-                persistence: { mode: PERSISTENCE_MODES.ONCE, scope: "target" },
             }),
         ]),
     }),
@@ -355,10 +350,8 @@ export const ENTITY_CONTRACTS = Object.freeze({
                         visibleMs: "visibleMs",
                         visualSize: "visualSize",
                     },
-                    [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.REMOVE] },
                 },
-                persistence: { mode: PERSISTENCE_MODES.INTERVAL, intervalMs: "intervalMs", scope: "target" },
-                repeat: { intervalMs: "intervalMs", event: PHASE_EVENT_TYPES.INTERVAL },
+                repeat: { intervalMs: "intervalMs", event: PHASE_EVENT_TYPES.INTERVAL, startImmediately: true },
             }),
         ]),
     }),
@@ -378,7 +371,6 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 effects: [EFFECT_TYPES.STATUS],
                 visual: visual("nullZone", 300),
                 events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS] } },
-                persistence: { mode: PERSISTENCE_MODES.EVERY_TICK },
             }),
         ]),
     }),
@@ -393,26 +385,26 @@ export const ENTITY_CONTRACTS = Object.freeze({
         state: { phaseId: "fuse", phaseTimerMs: 0, armed: true },
         phases: Object.freeze([
             phase("fuse", PHASE_TYPES.ZONE, {
-                startMs: 0,
                 movement: { mode: "stopped" },
                 hitbox: { shape: "circle", radius: "radius" },
                 effects: [EFFECT_TYPES.PULL],
                 visual: visual("singularityZone", 280),
-                events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS] } },
-                persistence: { mode: PERSISTENCE_MODES.EVERY_TICK },
+                durationMs: 1200,
+                events: {
+                    [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS] },
+                    [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.TRANSITION], transition: { to: "active" } },
+                },
             }),
             phase("active", PHASE_TYPES.ZONE, {
-                startMs: 1200,
+                transitionOnly: true,
                 movement: { mode: "stopped" },
                 hitbox: { shape: "circle", radius: "radius" },
                 effects: [EFFECT_TYPES.DAMAGE],
                 durationMs: 400,
                 visual: visual("singularityExplosion", 280, null, 400),
                 events: {
-                    [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS] },
-                    [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.REMOVE] },
+                    [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS], targetPolicy: { mode: TARGET_POLICY_MODES.ONCE } },
                 },
-                persistence: { mode: PERSISTENCE_MODES.ONCE, scope: "target" },
             }),
         ]),
     }),
@@ -432,9 +424,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 effects: [EFFECT_TYPES.DAMAGE, EFFECT_TYPES.PULL, EFFECT_TYPES.STATUS],
                 events: {
                     [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS, PHASE_ACTIONS.REMOVE] },
-                    [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.REMOVE] },
                 },
-                persistence: { mode: PERSISTENCE_MODES.ONCE, scope: "target" },
             }),
         ]),
     }),
@@ -449,7 +439,6 @@ export const ENTITY_CONTRACTS = Object.freeze({
         state: { armed: true },
         phases: Object.freeze([
             phase("armed", PHASE_TYPES.ZONE, {
-                startMs: 0,
                 movement: { mode: "stopped" },
                 hitbox: { shape: "circle", radius: "radius" },
                 trigger: {
@@ -465,28 +454,24 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 events: {
                     [PHASE_EVENT_TYPES.COLLISION]: {
                         actions: [PHASE_ACTIONS.APPLY_EFFECTS, PHASE_ACTIONS.EMIT_VISUAL, PHASE_ACTIONS.TRANSITION],
-                        transition: "triggered",
+                        transition: { to: "triggered" },
+                        targetPolicy: { mode: TARGET_POLICY_MODES.ONCE },
                         visualType: "staticSnareBurst",
                         visualSize: 150,
                         visibleMs: "visibleMs",
                     },
                 },
-                persistence: { mode: PERSISTENCE_MODES.ONCE, scope: "target" },
             }),
             phase("triggered", PHASE_TYPES.ZONE, {
-                startMs: 0,
                 movement: { mode: "stopped" },
                 hitbox: { shape: "circle", radius: "radius" },
                 durationMs: 300,
                 visual: visual("staticSnareBurst", 150, null, 300),
                 skipOwner: true,
                 events: {
-                    [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.REMOVE] },
                 },
-                persistence: { mode: PERSISTENCE_MODES.ONCE, scope: "target" },
             }),
             phase("destroyed", PHASE_TYPES.ZONE, {
-                startMs: 0,
                 movement: { mode: "stopped" },
                 hitbox: { shape: "circle", radius: "radius" },
                 trigger: {
@@ -507,10 +492,8 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 durationMs: 300,
                 visual: visual("staticSnareBurst", 240, null, 300),
                 events: {
-                    [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS] },
-                    [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.REMOVE] },
+                    [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS], targetPolicy: { mode: TARGET_POLICY_MODES.ONCE } },
                 },
-                persistence: { mode: PERSISTENCE_MODES.ONCE, scope: "target" },
             }),
         ]),
     }),
@@ -542,8 +525,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
                     effectTypes: [EFFECT_TYPES.DAMAGE, EFFECT_TYPES.KNOCKBACK],
                 },
                 events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS] } },
-                persistence: { mode: PERSISTENCE_MODES.INTERVAL, intervalMs: "shotCooldownMs", scope: "target" },
-                repeat: { intervalMs: "shotCooldownMs", event: PHASE_EVENT_TYPES.COLLISION },
+                repeat: { intervalMs: "shotCooldownMs", event: PHASE_EVENT_TYPES.COLLISION, startImmediately: true },
             }),
         ]),
     }),
@@ -567,11 +549,11 @@ export function phasesForEntity(value) {
     return Array.isArray(contract?.phases) ? contract.phases : [];
 }
 
-/** Resolves the phase selected by an entity's explicit state or elapsed age. */
+/** Resolves explicit phase state, falling back to the contract's first phase. */
 export function phaseForEntity(value) {
     const phases = phasesForEntity(value);
     if (phases.length === 0) return null;
-    if (value?.phaseLocked && value?.phaseId != null) {
+    if (value?.phaseId != null) {
         const explicit = phases.find((phase) => phase.id === value.phaseId);
         if (explicit) return explicit;
     }
@@ -579,21 +561,11 @@ export function phaseForEntity(value) {
         const destroyed = phases.find((phase) => phase.id === "destroyed");
         if (destroyed) return destroyed;
     }
-    const explicit = value?.phaseId == null
-        ? null : phases.find((phase) => phase.id === value.phaseId);
-    // The factory records the first phase before elapsed-time selection has
-    // begun. Later explicit phases are event/replay state and must win.
-    if (explicit && (value?.phaseLocked || explicit !== phases[0])) return explicit;
     if (value?.armed) {
         const armed = phases.find((phase) => phase.id === "armed");
         if (armed) return armed;
     }
-    const elapsed = Math.max(0, Number(value?.ageMs ?? 0));
-    return phases.reduce((current, phase) => !phase.transitionOnly
-        && Number(phase.startMs ?? 0) >= 0
-        && Number(phase.startMs ?? 0) <= elapsed
-        && (!current || Number(phase.startMs ?? 0) > Number(current.startMs ?? 0))
-        ? phase : current, phases[0]);
+    return phases[0];
 }
 
 export function phaseTypeForEntity(value) {

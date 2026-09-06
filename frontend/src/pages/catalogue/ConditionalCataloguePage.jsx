@@ -8,24 +8,24 @@ const GROUP_ORDER = ["General", "Entity", "Health & Combat", "Position & Movemen
 
 const DESCRIPTIONS = Object.freeze({
     "match.elapsedSeconds": "Seconds elapsed since the 1v1 began.",
-    "selectable.distance": "Straight-line distance from the first selected entity to either another entity or an absolute arena coordinate. It defaults to My Bot and Opponent.",
+    "selectable.distance": "Straight-line distance from one entity to either another entity or an absolute arena coordinate. It defaults to My Bot and Opponent.",
     "selectable.hp": "Current HP of the selected entity. Entities without health report 0.",
-    "selectable.damageTakenLastTick": "Damage received by the selected entity during the last simulation tick. Entities that cannot be hit report 0.",
+    "selectable.damageTakenLastTick": "Damage received by the selected entity during the last tick. Entities that cannot be hit report 0.",
     "selectable.hpNetChangeLastTick": "The selected entity's total HP change last tick, including damage and healing. Entities without health report 0.",
     "selectable.x": "The selected entity's horizontal arena position.",
     "selectable.y": "The selected entity's vertical arena position.",
     "selectable.alive": "True when the selected entity exists and has HP remaining.",
     "selectable.absoluteBearing": "The absolute arena bearing of the Target from the Facing Entity, represented as a signed degree measurement. The first selection must have the facing identity.",
     "selectable.movementDirection": "The selected entity's direction of travel, or 0 when it has no movement direction.",
-    "selectable.speed": "The selected entity's movement speed in arena units per simulation tick, independent of direction; entities without movement speed report 0.",
+    "selectable.speed": "The selected entity's movement speed in arena units per tick.",
     "selectable.relativeBearing": "Smallest angle between the Facing Entity's facing direction and a target entity, absolute coordinate, or absolute angle. The first selection must have the facing identity.",
     "selectable.relativeBearingClockwise": "Clockwise turn needed for the Facing Entity to face a target entity, absolute coordinate, or absolute angle. The first selection must have the facing identity.",
     "selectable.relativeBearingCounterclockwise": "Counterclockwise turn needed for the Facing Entity to face a target entity, absolute coordinate, or absolute angle. The first selection must have the facing identity.",
     "selectable.facing": "The selected entity's facing direction. Only entities with the facing identity are available.",
     "selectable.count": "Number of matching ability entities of the selected type.",
     "selectable.age": "Age or active timer of the selected ability entity, in seconds.",
-    "selectable.edgeDistance": "Shortest edge-to-edge distance from the selected entity's hitbox to an arena boundary. Positive values measure the closest gap from the shape's nearest edge.",
-    "selectable.closingZoneEdgeDistance": "Signed edge-to-edge clearance from the selected entity's hitbox to the circular closing-zone edge: positive inside, zero at the edge, and negative outside. It is unavailable until the zone starts.",
+    "selectable.edgeDistance": "Distance from the selected entity to an arena boundary. Note that it measures from the center of the entity.",
+    "selectable.dangerZoneEdgeDistance": "Distance from the selected entity to the danger zone. The distance is positive when the entity is not in the danger zone, negative when it is inside the danger zone. Note that it measures from the center of the entity so the entity can be taking damage while the number is still positive.",
     "selectable.exists": "True when an ability entity exists in the arena.",
 });
 
@@ -143,7 +143,7 @@ export default function ConditionalCataloguePage() {
                     <div className="my-5 h-px bg-slate-700/70" />
                     <p className="font-mono text-[10px] font-bold tracking-[.22em] text-blue-300">CUSTOM VARIABLES</p>
                     <p className="mt-3 text-sm leading-6 text-slate-400">
-                        Create a number or boolean variable in the bot code workspace and give it an initial value. It then appears in conditional value pickers, so you can compare it just like the built-in values listed here.
+                        Create a number or boolean variable in the bot code workspace and give it an initial value. It will appear in the standard variable list, so you can compare it just like the built-in values listed here.
                     </p>
                     <p className="mt-3 text-sm leading-6 text-slate-400">
                         Use <strong className="text-slate-200">Variable: Modify Custom Variable</strong> in an action node to set a value or, for numbers, add to or subtract from it. Stored values persist between ticks during the fight.
@@ -151,17 +151,15 @@ export default function ConditionalCataloguePage() {
                     <div className="my-5 h-px bg-slate-700/70" />
                     <p className="font-mono text-[10px] font-bold tracking-[.22em] text-blue-300">ENTITY INPUTS</p>
                     <p className="mt-3 text-sm leading-6 text-slate-400">
-                        Entity selectors use the identities attached to each entity. Single-entity variables are labeled <strong className="text-slate-200">Entity</strong> and filter their options by the required identity. Position, health, movement, distance, and edge measurements accept any entity; unsupported HP or movement values resolve to 0.
+                        Entity selectors use the identities attached to each entity. <strong className="text-slate-200">Entity</strong> is a general label for all entities that can exist in the arena. The options provided can be limited by the variable.
                     </p>
                     <p className="mt-3 text-sm leading-6 text-slate-400">
-                        Entities can be ordered by closest, farthest, oldest, or newest, then selected by position: first, second, and so on. <strong className="text-slate-200">Ability Entity Type Count</strong> selects only an entity type and does not use ordering or ordinal selection. Bearing pairs label their selectors <strong className="text-slate-200">Facing Entity</strong> and <strong className="text-slate-200">Target</strong>; other pairs use <strong className="text-slate-200">Entity</strong> for both.
+                        Entities created by abilities can be ordered by closest, farthest, oldest, or newest, then selected by position: first, second, and so on.
                     </p>
                     <p className="mt-3 text-sm leading-6 text-slate-400">
-                        Edge-distance measurements are edge-to-edge: they use the nearest edge of the entity hitbox, not its center. Arena-edge values are positive inside the arena; closing-zone values are signed relative to the zone boundary. If you are past the closing edge where you begin to take damage, the distance will be negative.
+                        Edge-distance measurements use the entity's center, not its hitbox edge. Arena-edge distance is the nearest distance from that center to an arena boundary. Danger-zone distance is signed relative to the zone boundary, so it is negative when the entity's center is inside the danger zone.
                     </p>
-                    <p className="mt-3 text-xs leading-5 text-slate-500">
-                        Only entity and ability choices available in the current draft appear in the editor.
-                    </p>
+
                 </aside>
 
                 <div className="min-w-0 space-y-12">

@@ -637,7 +637,7 @@ function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selec
                     <small className="code-inspector-note">{selectablePairConfigurationNote(definition)}</small>
                 </>
                 : definition.supportsSelectable && field(selectablePickerLabel, <OrderedSelectablePicker value={condition[selectableField] ?? defaultSelectableForVariable(definition, selectableTypes)} selectableTypes={selectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => update({ [selectableField]: selectable })} />)}
-            {definition.id.endsWith("edgeDistance") && <small className="code-inspector-note">Edge distance is measured edge-to-edge from the nearest edge of the entity hitbox to the arena or closing-zone boundary, not from its center.</small>}
+            {definition.id.endsWith("edgeDistance") && <small className="code-inspector-note">Edge distance is measured from the center of the entity to the nearest arena or danger-zone boundary.</small>}
             {!definition.supportsAbility && !definition.supportsStatusEffect && !definition.supportsSelectable && <p className="code-inspector-note">This variable has no additional configuration.</p>}
         </>);
     }

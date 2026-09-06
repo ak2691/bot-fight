@@ -88,15 +88,15 @@ const ABILITY_STATS_BY_ID = Object.freeze({
     13: { cooldownMs: 10700, windupMs: 900, visualMs: 300, damage: 40, shockDamage: 3, statuses: { shock: { durationMs: 3000, intervalMs: 1000 } }, movementLockMs: 300, range: 900, hitboxWidth: 5, visualSize: 100, beam: true },
     14: {
         cooldownMs: 11000,
-        activeMs: 2000,
+        activeMs: 1000,
         entity: "gravity_zone",
         falloff: { maxAmount: 35, minAmount: 20, falloffStart: 0, falloffEnd: 90 },
         radius: 120,
         speed: 22,
         phases: [
             { id: "travel", startMs: 0, radius: 120, speed: 22 },
-            { id: "fuse", startMs: 2000, radius: 120, speed: 0 },
-            { id: "active", startMs: 5000, radius: 120, speed: 0 },
+            { id: "fuse", startMs: 1000, radius: 120, speed: 0 },
+            { id: "active", startMs: 4000, radius: 120, speed: 0 },
         ],
         pullPerTick: 6,
         durationMs: 7000,

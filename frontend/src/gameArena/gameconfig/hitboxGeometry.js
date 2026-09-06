@@ -1,5 +1,5 @@
 import { ABILITY_STATS } from "./Abilities.js";
-import { abilityContract, DELIVERY_TYPES, HITBOX_GEOMETRIES } from "./AbilityContracts.js";
+import { abilityContract } from "./AbilityContracts.js";
 import { movingCircleCollision, movingRectangleCollision } from "./geometry.js";
 import { compassDegreesToRadians } from "../botlogic/planner/arenaAngles.js";
 import { entityContract, phaseForEntity } from "../ecs/contracts/EntityContracts.js";
@@ -29,8 +29,8 @@ export function hitboxGeometryForBot(bot, position = null) {
     if (abilityId == null) return null;
 
     const contract = abilityContract(abilityId);
-    const delivery = contract?.delivery?.type;
-    if (!isHitboxDelivery(delivery)) return null;
+    const hitbox = contract?.phases?.[0]?.hitbox;
+    if (!hitbox?.shape) return null;
 
     const remainingMs = combatVisualRemainingMs(bot, abilityId);
     if (remainingMs <= 0) return null;
@@ -44,10 +44,9 @@ export function hitboxGeometryForBot(bot, position = null) {
         ?? 0);
     const opacity = Math.min(1, remainingMs / durationMs);
 
-    if (delivery === DELIVERY_TYPES.MELEE
-        && contract.delivery.geometry === HITBOX_GEOMETRIES.RECTANGLE) {
-        const length = Number(stats.range ?? 0);
-        const height = Math.max(0, Number(stats.hitboxWidth ?? bot?.size ?? 60));
+    if (hitbox.shape === "rectangle") {
+        const length = phaseStat(hitbox.length ?? hitbox.range, stats, 0);
+        const height = Math.max(0, phaseStat(hitbox.width, stats, Number(bot?.size ?? 60)));
         if (length <= 0 || height <= 0) return null;
         const direction = { x: Math.cos(rotation), y: Math.sin(rotation) };
         return {
@@ -64,9 +63,9 @@ export function hitboxGeometryForBot(bot, position = null) {
         };
     }
 
-    if (delivery === DELIVERY_TYPES.RAY) {
-        const length = Number(stats.range ?? 0);
-        const width = Number(stats.hitboxWidth ?? 5);
+    if (hitbox.shape === "ray") {
+        const length = phaseStat(hitbox.range, stats, 0);
+        const width = phaseStat(hitbox.width, stats, 5);
         return length > 0 ? {
             shape: "ray",
             x: origin.x,
@@ -81,8 +80,8 @@ export function hitboxGeometryForBot(bot, position = null) {
         } : null;
     }
 
-    if (delivery === DELIVERY_TYPES.RADIAL) {
-        const radius = Number(stats.radius ?? stats.range ?? 0);
+    if (hitbox.shape === "circle") {
+        const radius = phaseStat(hitbox.radius, stats, 0);
         return radius > 0 ? {
             shape: COLLIDER_SHAPES.CIRCLE,
             x: origin.x,
@@ -95,7 +94,8 @@ export function hitboxGeometryForBot(bot, position = null) {
         } : null;
     }
 
-    const radius = Number(stats.range ?? 0);
+    if (hitbox.shape !== "arc") return null;
+    const radius = phaseStat(hitbox.range, stats, 0);
     if (radius <= 0) return null;
     return {
         shape: "sector",
@@ -103,7 +103,7 @@ export function hitboxGeometryForBot(bot, position = null) {
         y: origin.y,
         radius,
         rotation,
-        halfAngle: Number(stats.arc ?? 36) * Math.PI / 360,
+        halfAngle: phaseStat(hitbox.arc, stats, 36) * Math.PI / 360,
         opacity,
         remainingMs,
         durationMs,
@@ -274,15 +274,21 @@ function summonAttackHitboxGeometry(entity) {
 function activeDirectAbilityForBot(bot) {
     const visualAbility = Number(bot?.abilityVisual?.ability);
     if (Number.isSafeInteger(visualAbility)
-        && isHitboxDelivery(abilityContract(visualAbility)?.delivery?.type)
+        && hasAttachedHitbox(visualAbility)
         && Number(bot?.abilityVisual?.ms ?? 0) > 0) return visualAbility;
     return COMBAT_VISUAL_ABILITY_IDS.find((abilityId) =>
-        isHitboxDelivery(abilityContract(abilityId)?.delivery?.type)
+        hasAttachedHitbox(abilityId)
         && Number(bot?.abilityActiveMs?.[abilityId] ?? 0) > 0) ?? null;
 }
 
-function isHitboxDelivery(delivery) {
-    return [DELIVERY_TYPES.MELEE, DELIVERY_TYPES.RAY, DELIVERY_TYPES.RADIAL].includes(delivery);
+function hasAttachedHitbox(abilityId) {
+    const phase = abilityContract(abilityId)?.phases?.[0];
+    return phase?.type === "botAttached" && Boolean(phase.hitbox?.shape);
+}
+
+function phaseStat(value, stats, fallback) {
+    if (typeof value === "number") return value;
+    return Number(stats?.[value] ?? fallback);
 }
 
 function botActivationOrigin(bot, position) {

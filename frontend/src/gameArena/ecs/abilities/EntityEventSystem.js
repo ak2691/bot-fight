@@ -2,7 +2,7 @@ import { ABILITY_STATS } from "../../gameconfig/Abilities.js";
 import {
     PHASE_ACTIONS,
     PHASE_EVENT_TYPES,
-    PERSISTENCE_MODES,
+    TARGET_POLICY_MODES,
 } from "../../gameconfig/AbilityContracts.js";
 import { applyEntityEffects } from "./EntityEffectSystem.js";
 import { entityContract, phaseForEntity } from "../contracts/EntityContracts.js";
@@ -44,7 +44,7 @@ export function dispatchEntityEvent(entity, eventType, {
         if (action === PHASE_ACTIONS.APPLY_EFFECTS) {
             for (const targetId of targets) {
                 const targetIndex = findTargetIndex(nextBots, targetId);
-                if (targetIndex < 0 || !canHitTarget(nextEntity, targetId, phase, world, eventType)) continue;
+                if (targetIndex < 0 || !canApplyToTarget(nextEntity, targetId, handler.targetPolicy, world)) continue;
                 const target = nextBots[targetIndex];
                 const targetDistance = targetDistances instanceof Map
                     ? targetDistances.get(targetId)
@@ -70,12 +70,12 @@ export function dispatchEntityEvent(entity, eventType, {
                     },
                 );
                 nextBots = result.bots;
-                nextEntity = recordTargetHit(nextEntity, target, phase, world);
+                nextEntity = recordTargetApplication(nextEntity, target, handler.targetPolicy, world);
             }
         } else if (action === PHASE_ACTIONS.TRANSITION) {
             nextEntity = transitionEntityPhase(
                 nextEntity,
-                handler.transition ?? handler.phaseId ?? handler.to,
+                handler.transition?.to,
                 world,
             );
         } else if (action === PHASE_ACTIONS.EMIT_VISUAL) {
@@ -126,22 +126,15 @@ export function dispatchEntityOwnerEvent(entity, eventType, options = {}) {
 }
 
 /** Returns whether this entity may affect a target during the current phase. */
-export function canHitTarget(entity, targetId, phase = phaseForEntity(entity), world = {}, eventType = null) {
-    const persistence = phase?.persistence;
-    const mode = persistence?.mode ?? PERSISTENCE_MODES.EVERY_TICK;
-    if (mode === PERSISTENCE_MODES.EVERY_TICK) return true;
-    // An INTERVAL event is already emitted by the phase scheduler. The
-    // scheduler is the cooldown for that event, so applying the same
-    // interval a second time as a per-target gate would skip the first pulse
-    // after a boundary. The ledger still governs collision events, where an
-    // entity can see a target every tick and each target needs its own clock.
-    if (eventType === PHASE_EVENT_TYPES.INTERVAL || phase?.repeat?.event === eventType) return true;
+export function canApplyToTarget(entity, targetId, targetPolicy = null, world = {}) {
+    const mode = targetPolicy?.mode ?? TARGET_POLICY_MODES.EVERY_TICK;
+    if (mode === TARGET_POLICY_MODES.EVERY_TICK) return true;
     const key = targetKey(targetId);
     const lastHit = entity?.hitLedger?.[key];
     if (!lastHit) return true;
-    if (mode === PERSISTENCE_MODES.ONCE) return false;
+    if (mode === TARGET_POLICY_MODES.ONCE) return false;
 
-    const intervalMs = persistenceIntervalMs(persistence, entity, world);
+    const intervalMs = targetPolicyIntervalMs(targetPolicy, entity, world);
     return eventTimestampMs(entity, world) - Number(lastHit.atMs ?? 0) >= intervalMs;
 }
 
@@ -176,9 +169,9 @@ export function transitionEntityPhase(entity, phaseId, world = {}) {
     return withComponentState(entity, changes);
 }
 
-function recordTargetHit(entity, target, phase, world) {
-    const mode = phase?.persistence?.mode ?? PERSISTENCE_MODES.EVERY_TICK;
-    if (mode === PERSISTENCE_MODES.EVERY_TICK) return entity;
+function recordTargetApplication(entity, target, targetPolicy, world) {
+    const mode = targetPolicy?.mode ?? TARGET_POLICY_MODES.EVERY_TICK;
+    if (mode === TARGET_POLICY_MODES.EVERY_TICK) return entity;
     const key = targetKey(target);
     return withComponentState(entity, {
         hitLedger: {
@@ -199,13 +192,9 @@ function eventTimestampMs(entity, world) {
     );
 }
 
-function persistenceIntervalMs(persistence, entity, world) {
-    const raw = persistence?.intervalMs ?? persistence?.cooldownMs ?? 0;
+function targetPolicyIntervalMs(targetPolicy, entity, world) {
+    const raw = targetPolicy?.intervalMs ?? 0;
     const value = resolveNumber(raw, entity, world, Number(world.stepMs ?? 0));
-    if (persistence?.unit === "ticks" || persistence?.intervalTicks != null) {
-        const ticks = Number(persistence.intervalTicks ?? value);
-        return Math.max(0, ticks * Number(world.stepMs ?? 0));
-    }
     return Math.max(0, value);
 }
 

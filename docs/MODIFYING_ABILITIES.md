@@ -3,6 +3,9 @@
 This is the practical guide for tuning existing abilities and extending their
 gameplay behavior.
 
+For a concise, copy-paste prompt describing a new ability, see
+[Requesting a New Ability](REQUESTING_NEW_ABILITIES.md).
+
 Machiner has two gameplay runtimes:
 
 - The browser arena is the practice-room preview.
@@ -103,7 +106,7 @@ Common browser fields:
 | pullPerTick | Displacement applied by a persistent pull effect each simulation tick. |
 | speed | Movement speed for the relevant projectile/entity. |
 | visualSize, phase.visual | Presentation-only asset/state/size metadata for a sprite-backed ability effect/entity. A phase or derived effect can select its own visual descriptor; it does not affect collision, damage, range, or authority and is intentionally omitted from catalogue rows. |
-| phases | Declarative ability/entity phases with `id`, `type`, movement, standard hitbox fields, event handlers, effects, persistence, and optional phase visuals. Use phases when delivery, movement, geometry, damage, or effects change during the lifecycle. |
+| phases | Declarative ability/entity phases with `id`, `type`, movement, standard hitbox fields, event handlers, effects, event-local target policies, and optional phase visuals. Use phases when delivery, movement, geometry, damage, or effects change during the lifecycle. |
 | intervalMs | Cadence for a generic `interval` entity action. Orbital Strike uses this for repeated hits. |
 | visibleMs | Presentation timing for the current phase or transient phase event visual. It does not affect gameplay lifetime unless the phase explicitly uses it as its duration. |
 | visualMs | Direct-ability cast visual timing. Persistent entity visuals should use `phase.visual.visibleMs`. |
@@ -403,8 +406,11 @@ Classify timers carefully:
 - During an entity's duration phase, its contracted motion is active even if
   its velocity is zero or it is clamped by the arena. The phase ends from the
   timer, never from `traveled`.
-- A phase begins at its declared `startMs`; its movement and effect actions are
-  resolved by the generic phase handler.
+- The first declared phase is the entity's initial phase. Later phases are
+  entered only by an event action with an explicit `transition.to` phase ID.
+- A phase-local `durationMs` is only a timer. When it expires, the runtime
+  dispatches `lifetimeEnd`; that event may transition elsewhere, and an
+  unhandled expiry removes the runtime object by default.
 - Moving object: phase-defined motion across one full `durationMs` lifecycle.
 - Trap: travel phase followed by an armed/trigger phase in the same lifecycle.
 - Zone/summon: entity `durationMs`; use `interval` for one repeated action.

@@ -50,7 +50,7 @@ const SELECTABLE_IDENTITY_MATRIX = Object.freeze({
     "selectable.count": [[SELECTABLE_IDENTITIES.ABILITY_ENTITY]],
     "selectable.age": [[SELECTABLE_IDENTITIES.ABILITY_ENTITY]],
     "selectable.edgeDistance": [[]],
-    "selectable.closingZoneEdgeDistance": [[]],
+    "selectable.dangerZoneEdgeDistance": [[]],
     "selectable.exists": [[SELECTABLE_IDENTITIES.ABILITY_ENTITY]],
     "bot.selectedAbilityReady": [[SELECTABLE_IDENTITIES.BOT]],
     "bot.selectedAbilityActive": [[SELECTABLE_IDENTITIES.BOT]],
@@ -722,8 +722,8 @@ test("selectable speed uses a direction-independent per-tick movement magnitude"
 
 });
 
-test("closing-zone edge distance uses signed hitbox clearance instead of target-center distance", () => {
-    const distance = STATE_VARIABLES.find((variable) => variable.id === "selectable.closingZoneEdgeDistance");
+test("danger-zone edge distance uses signed center-to-boundary distance", () => {
+    const distance = STATE_VARIABLES.find((variable) => variable.id === "selectable.dangerZoneEdgeDistance");
     assert.equal(distance.supportsSelectable, true);
     assert.equal(distance.min, -1200);
     assert.equal(distance.max, 1200);
@@ -743,7 +743,7 @@ test("closing-zone edge distance uses signed hitbox clearance instead of target-
     const zone = { x: 500, y: 500, safeRadius: 400 };
     assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
         closingZone: zone,
-        playerModel: { x: 900, y: 500, size: 60 },
+        playerModel: { x: 920, y: 500, size: 60 },
     })).primary.id, "root-1-1-1");
     assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
         closingZone: zone,
@@ -762,7 +762,41 @@ test("closing-zone edge distance uses signed hitbox clearance instead of target-
     };
     assert.equal(selectAbilityStrategyActionPlan(opponentConfiguration, payload({
         closingZone: zone,
-        objects: [{ id: "opponent-model", type: "opponentModel", x: 900, y: 500, size: 60, hp: 100 }],
+        objects: [{ id: "opponent-model", type: "opponentModel", x: 920, y: 500, size: 60, hp: 100 }],
+    })).primary.id, "root-1-1-1");
+
+    const centerInsideConfiguration = {
+        roots: [{ branches: [{ id: "center-inside", conditions: [{
+            type: "expression",
+            left: distance.id,
+            leftSelectable: "my_bot",
+            comparator: "gt",
+            right: { type: "number", value: 0 },
+        }], actions: [{ action: "swing" }] }] }],
+    };
+    assert.equal(selectAbilityStrategyActionPlan(centerInsideConfiguration, payload({
+        closingZone: zone,
+        playerModel: { x: 880, y: 500, size: 60 },
+    })).primary.id, "root-1-1-1");
+});
+
+test("arena edge distance uses the entity center instead of its hitbox edge", () => {
+    const distance = STATE_VARIABLES.find((variable) => variable.id === "selectable.edgeDistance");
+    const configuration = {
+        roots: [{ branches: [{ id: "near-edge", conditions: [{
+            type: "expression",
+            left: distance.id,
+            leftSelectable: "my_bot",
+            comparator: "lt",
+            right: { type: "number", value: 15 },
+        }], actions: [{ action: "swing" }] }] }],
+    };
+
+    assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
+        playerModel: { x: 30, y: 400, size: 60 },
+    })).primary, null);
+    assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
+        playerModel: { x: 10, y: 400, size: 60 },
     })).primary.id, "root-1-1-1");
 });
 

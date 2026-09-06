@@ -38,6 +38,23 @@ const entityFor = (bot, abilityId, context = {}) => createAbilityEntity(bot, abi
 const phaseVisualFor = (entity) => ENTITY_CONTRACTS[entity.abilityId]?.phases
     ?.find((phase) => phase.id === entity.phaseId)?.visual;
 
+test("phase contracts keep target policy on events and use explicit transition bodies", () => {
+    const phases = Object.values(ENTITY_CONTRACTS).flatMap((contract) => contract.phases);
+    assert.equal(phases.some((phase) => Object.hasOwn(phase, "persistence")), false);
+    assert.deepEqual(ENTITY_CONTRACTS[4].phases[0].events.collision.transition, { to: "active" });
+    assert.equal(ENTITY_CONTRACTS[15].phases[0].events.collision.targetPolicy.mode, "once");
+    assert.equal(ENTITY_CONTRACTS[22].phases[0].events.interval.targetPolicy, undefined);
+});
+
+test("direct hitboxes use bot-attached phases with shape-owned geometry", () => {
+    assert.equal(ABILITY_CONTRACTS[1].phases[0].type, "botAttached");
+    assert.deepEqual(ABILITY_CONTRACTS[1].phases[0].hitbox, { shape: "arc", range: "range", arc: "arc" });
+    assert.equal(ABILITY_CONTRACTS[3].phases[0].hitbox.shape, "ray");
+    assert.equal(ABILITY_CONTRACTS[6].phases[0].hitbox.shape, "rectangle");
+    assert.equal(ABILITY_CONTRACTS[8].phases[0].hitbox.shape, "circle");
+    assert.equal(ENTITY_CONTRACTS[22].phases[0].repeat.startImmediately, true);
+});
+
 function targetAtBearing(attacker, distance, bearing, size = 20) {
     const direction = compassDirection(bearing);
     return { x: attacker.x + direction.x * distance, y: attacker.y + direction.y * distance, size };
@@ -384,7 +401,7 @@ test("drones use a short bot action lock while their entities keep their duratio
 });
 
 test("entity-hit records trigger an armed mine through the entity system", () => {
-    const mine = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }, 11), traveled: 176, armed: true };
+    const mine = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }, 11), traveled: 176, armed: true, phaseId: "armed", phaseLocked: true };
     const bot = { id: "attacker", slot: 2, x: 500, y: 500, size: 50, hp: 100, entityHitIds: [mine.id] };
     const result = tickAbilityEntityWorld({
         entities: [mine], bots: [bot],
@@ -400,7 +417,7 @@ test("entity-hit records trigger an armed mine through the entity system", () =>
 });
 
 test("lock-on does not count as an attack that triggers a proximity mine", () => {
-    const mine = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }, 11), traveled: 176, armed: true };
+    const mine = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }, 11), traveled: 176, armed: true, phaseId: "armed", phaseLocked: true };
     const lockOnBot = { id: "attacker", slot: 2, x: 500, y: 500, size: 50, hp: 100, triggeredAbility: 20 };
     const result = tickAbilityEntityWorld({
         entities: [mine], bots: [lockOnBot],
@@ -412,7 +429,7 @@ test("lock-on does not count as an attack that triggers a proximity mine", () =>
 });
 
 test("proximity mine triggers and damages within its increased radius", () => {
-    const mine = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }, 11), traveled: 176, armed: true };
+    const mine = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }, 11), traveled: 176, armed: true, phaseId: "armed", phaseLocked: true };
     const bot = { id: "target", slot: 2, x: 180, y: 100, size: 50, hp: 100 };
     const result = tickAbilityEntityWorld({
         entities: [mine], bots: [bot],
@@ -496,7 +513,7 @@ test("gravity zone transitions through declarative phases even when it cannot tr
         height: 800,
     };
 
-    for (let tick = 0; tick < 19; tick += 1) {
+    for (let tick = 0; tick < 9; tick += 1) {
         const result = tickAbilityEntityWorld(world, noDamageCombat);
         world = { ...world, entities: result.entities, bots: result.bots };
         assert.equal(world.entities[0].armed, false);
@@ -506,11 +523,28 @@ test("gravity zone transitions through declarative phases even when it cannot tr
     assert.equal(world.entities[0].traveled, 0);
 
     const stopped = tickAbilityEntityWorld(world, noDamageCombat);
-    assert.equal(stopped.entities[0].armed, false);
+    assert.equal(stopped.entities[0].armed, true);
     assert.equal(stopped.entities[0].phaseId, "fuse");
     assert.equal(stopped.entities[0].phaseTimerMs, 0);
     assert.equal(stopped.entities[0].velocityX, 0);
     assert.equal(stopped.entities[0].velocityY, 0);
+});
+
+test("gravity grenade pulls nearby enemies while its one-second travel phase is active", () => {
+    assert.equal(ABILITY_STATS[14].activeMs, 1000);
+    assert.equal(ENTITY_CONTRACTS[14].phases[0].durationMs, 1000);
+    const owner = { id: "owner", slot: 1, x: 500, y: 400, size: 60, rotation: 0 };
+    const gravity = { ...entityFor(owner, 14), velocityX: 0, velocityY: 0 };
+    const target = { id: "target", slot: 2, x: 650, y: 400, size: 60, hp: 100 };
+
+    const result = tickAbilityEntityWorld({
+        entities: [gravity], bots: [target], stepMs: 100, width: 1000, height: 800,
+    }, noDamageCombat);
+
+    assert.equal(result.entities[0].phaseId, "travel");
+    assert.equal(result.entities[0].phaseTimerMs, 100);
+    assert.equal(result.bots[0].x, 644);
+    assert.equal(result.bots[0].y, 400);
 });
 
 test("entity projectile ranges match duration times fixed-step displacement", () => {
@@ -2193,7 +2227,7 @@ test("Fireball damages normally while its burn effect remains attached", () => {
 test("mine, gravity, silence, drone, and orbital effects are never blocked", () => {
     const shield = { id: "target", slot: 2, x: 150, y: 100, size: 60, rotation: 270, hp: 100, maxHp: 100, abilityActiveMs: { 2: 1 }, abilityCharges: { 2: 25 }, abilities: [2] };
     const combat = { ...noDamageCombat, applyDamageToShape, applyDamageFromShapes };
-    const mine = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }, 11), traveled: 176, armed: true, hitTriggered: true };
+    const mine = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }, 11), traveled: 176, armed: true, phaseId: "armed", phaseLocked: true, hitTriggered: true };
     const mineResult = tickAbilityEntityWorld({ entities: [mine], bots: [shield], stepMs: 100, width: 1000, height: 800 }, combat);
     assert.ok(mineResult.bots[0].hp < 100);
     assert.equal(mineResult.bots[0].abilityCharges[2], 25);
@@ -2230,7 +2264,7 @@ test("radial effects include bot-edge contact and exclude a bot just beyond the 
     assert.equal(orbitalOutsideResult.bots[0].hp, 100);
 
     const mineEdge = { id: "mine-edge", slot: 2, x: 217.5, y: 100, size: 60, hp: 100, maxHp: 100 };
-    const mine = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }, 11), velocityX: 0, velocityY: 0, traveled: 176, armed: true };
+    const mine = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }, 11), velocityX: 0, velocityY: 0, traveled: 176, armed: true, phaseId: "armed", phaseLocked: true };
     const mineResult = tickAbilityEntityWorld({ entities: [mine], bots: [mineEdge], stepMs: 100, width: 1000, height: 800 }, noDamageCombat);
     assert.equal(mineResult.bots[0].hp, 75);
 

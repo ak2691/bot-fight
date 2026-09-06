@@ -1070,14 +1070,14 @@ class DuelSimulationServiceTest {
     }
 
     @Test
-    void closingZoneEdgeDistanceUsesSignedBotHitboxClearance() {
+    void dangerZoneEdgeDistanceUsesSignedCenterToBoundaryDistance() {
         JsonNode brain = customBrain("[1]", """
                 [
-                  {"priority":1,"conditions":[{"type":"expression","left":"selectable.closingZoneEdgeDistance","leftSelectable":"my_bot","comparator":"lt","right":{"type":"number","value":0}}],"action":1}
+                  {"priority":1,"conditions":[{"type":"expression","left":"selectable.dangerZoneEdgeDistance","leftSelectable":"my_bot","comparator":"lt","right":{"type":"number","value":0}}],"action":1}
                 ]
                 """);
         MatchPlaybackDTO result = service.simulate(request(
-                arena(16_100),
+                arena(20_100),
                 bot("zone-reader", "Zone Reader", 1, 50, 50, "custom", brain),
                 bot("zone-idle", "Zone Idle", 2, 1400, 800, "custom", customBrain("[]", "[]"))));
 
@@ -1089,20 +1089,22 @@ class DuelSimulationServiceTest {
                 .satisfies(frame -> assertThat(frame.bots().getFirst().triggeredAbility()).isNull());
         assertThat(result.frames()).filteredOn(frame -> frame.elapsedMs() == 16_100)
                 .singleElement()
-                .satisfies(frame -> assertThat(frame.bots().getFirst().triggeredAbility()).isEqualTo(1));
+                .satisfies(frame -> assertThat(frame.bots().getFirst().triggeredAbility()).isNull());
+        assertThat(result.frames()).filteredOn(frame -> frame.elapsedMs() > 16_100)
+                .anySatisfy(frame -> assertThat(frame.bots().getFirst().triggeredAbility()).isEqualTo(1));
     }
 
     @Test
-    void opponentClosingZoneEdgeDistanceUsesTheOpponentBotScope() {
+    void opponentDangerZoneEdgeDistanceUsesTheOpponentBotScope() {
         JsonNode brain = customBrain("[1]", """
                 [
-                  {"priority":1,"conditions":[{"type":"expression","left":"selectable.closingZoneEdgeDistance","leftSelectable":"opponent","comparator":"lt","right":{"type":"number","value":-1}}],"action":1}
+                  {"priority":1,"conditions":[{"type":"expression","left":"selectable.dangerZoneEdgeDistance","leftSelectable":"opponent","comparator":"lt","right":{"type":"number","value":-1}}],"action":1}
                 ]
                 """);
         MatchPlaybackDTO result = service.simulate(request(
                 arena(16_100),
                 bot("zone-opponent-reader", "Zone Opponent Reader", 1, 800, 800, "custom", brain),
-                bot("zone-opponent-outside", "Zone Opponent Outside", 2, 50, 50, "custom", customBrain("[]", "[]"))));
+                bot("zone-opponent-outside", "Zone Opponent Outside", 2, 30, 30, "custom", customBrain("[]", "[]"))));
 
         assertThat(result.frames()).filteredOn(frame -> frame.elapsedMs() == 16_100)
                 .singleElement()

@@ -1481,8 +1481,12 @@ function drawEntity(view, selected, now, arenaSprites) {
         return;
     }
     const orbitalProgress = visualAnimationProgress(view, now);
+    const persistentOrbitalMarker = shape.type === "orbitalMarker";
+    const baseVisualShape = persistentOrbitalMarker
+        ? { ...shape, visualEventType: null, visualEventMs: 0, visualEventSize: 0 }
+        : shape;
     const texture = entityTexture(
-        shape,
+        baseVisualShape,
         arenaSprites,
         now,
         view.visualAnimationStartedAt,
@@ -1503,8 +1507,17 @@ function drawEntity(view, selected, now, arenaSprites) {
     const trailStyle = projectileTrailStyle(shape);
     if (trailStyle) drawVelocityTrail(graphics, shape, trailStyle.color, trailStyle.length, trailStyle.width, now);
 
-    if (presentationType === "orbitalExplosion") {
-        baseSprite.alpha = orbitalProgress == null ? 1 : 1 - orbitalProgress;
+    if (persistentOrbitalMarker && presentationType === "orbitalExplosion") {
+        const explosionFrames = arenaSprites.abilities.orbitalExplosion;
+        if (explosionFrames?.length) {
+            const progress = orbitalProgress ?? 1;
+            showCachedEffect(view, "orbital-explosion",
+                spriteFrameAtProgress(explosionFrames, progress), {
+                    alpha: 1 - progress,
+                    width: spriteSize.width,
+                    height: spriteSize.height,
+                });
+        }
     } else if (presentationType === "gravityZone") {
         if (shape.armed) baseSprite.alpha = 0.72 + Math.sin(now / 100) * 0.12;
     } else if (["hunterDrone", "repellerDrone"].includes(presentationType)) {

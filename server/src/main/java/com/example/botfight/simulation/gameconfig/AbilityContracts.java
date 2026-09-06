@@ -16,10 +16,10 @@ public final class AbilityContracts {
     public enum DeliveryType { SELF, MELEE, RAY, PROJECTILE, RADIAL, ZONE, TRAP, SUMMON }
     public enum HitboxGeometry { ARC, RECTANGLE }
     /** Public phase vocabulary used by ability authoring and direct effects. */
-    public enum PhaseType { SELF, MELEE, RAY, ARC, PROJECTILE, ZONE, SUMMON }
+    public enum PhaseType { SELF, MELEE, RAY, ARC, PROJECTILE, ZONE, SUMMON, BOT_ATTACHED }
     public enum PhaseEventType { ACTIVATION, COLLISION, INTERVAL, LIFETIME_END, DESTROYED, ENTER, EXIT }
     public enum PhaseAction { APPLY_EFFECTS, TRANSITION, REMOVE, EMIT_VISUAL }
-    public enum PersistenceMode { ONCE, EVERY_TICK, INTERVAL }
+    public enum TargetPolicyMode { ONCE, EVERY_TICK, INTERVAL }
 
     /** Generic distance-based resolution for an effect amount or duration. */
     public record Falloff(Double minAmount, Double maxAmount,
@@ -106,10 +106,14 @@ public final class AbilityContracts {
     }
 
     /** A phase event is an allowlisted instruction, never executable user code. */
+    public record Transition(String to) {}
+    public record TargetPolicy(TargetPolicyMode mode, String intervalStat, Integer intervalMs) {}
+
     public record PhaseEvent(List<PhaseAction> actions, Set<EffectType> effectTypes,
-                             String transitionPhaseId, String intervalStat,
+                             Transition transition, String intervalStat,
                              String visualType, String visibleStat,
-                             Integer visibleMs, Double visualSize) {
+                             Integer visibleMs, Double visualSize,
+                             TargetPolicy targetPolicy) {
         public PhaseEvent {
             actions = actions == null ? List.of() : List.copyOf(actions);
             effectTypes = effectTypes == null || effectTypes.isEmpty()
@@ -117,11 +121,11 @@ public final class AbilityContracts {
         }
 
         public PhaseEvent(List<PhaseAction> actions) {
-            this(actions, Set.of(), null, null, null, null, null, null);
+            this(actions, Set.of(), null, null, null, null, null, null, null);
         }
 
-        public PhaseEvent(List<PhaseAction> actions, String transitionPhaseId) {
-            this(actions, Set.of(), transitionPhaseId, null, null, null, null, null);
+        public PhaseEvent(List<PhaseAction> actions, Transition transition) {
+            this(actions, Set.of(), transition, null, null, null, null, null, null);
         }
     }
 
@@ -144,7 +148,6 @@ public final class AbilityContracts {
     public record AbilityPhase(String id, PhaseType type, Map<String, String> hitbox,
                                 List<Effect> effects,
                                 Map<PhaseEventType, PhaseEvent> events,
-                                PersistenceMode persistence, String intervalStat,
                                 Integer durationMs, Visual visual,
                                 Map<String, Double> statOverrides,
                                 Map<String, EffectOverride> effectOverrides) {
@@ -158,18 +161,14 @@ public final class AbilityContracts {
 
         public AbilityPhase(String id, PhaseType type, Map<String, String> hitbox,
                             List<Effect> effects, Map<PhaseEventType, PhaseEvent> events,
-                            PersistenceMode persistence, String intervalStat,
                             Integer durationMs, Visual visual) {
-            this(id, type, hitbox, effects, events, persistence, intervalStat,
-                    durationMs, visual, Map.of(), Map.of());
+            this(id, type, hitbox, effects, events, durationMs, visual, Map.of(), Map.of());
         }
 
         public AbilityPhase(String id, PhaseType type, Map<String, String> hitbox,
                             List<Effect> effects, Map<PhaseEventType, PhaseEvent> events,
-                            PersistenceMode persistence, String intervalStat,
                             Integer durationMs) {
-            this(id, type, hitbox, effects, events, persistence, intervalStat,
-                    durationMs, null, Map.of(), Map.of());
+            this(id, type, hitbox, effects, events, durationMs, null, Map.of(), Map.of());
         }
     }
 
@@ -313,10 +312,9 @@ public final class AbilityContracts {
                     ? PhaseEventType.ACTIVATION : PhaseEventType.COLLISION;
             events.put(eventType,
                     new PhaseEvent(List.of(PhaseAction.APPLY_EFFECTS), phaseEffects,
-                            null, null, null, null, null, null));
+                            null, null, null, null, null, null, null));
         }
-        return new AbilityPhase("active", type, hitbox, resolvedEffects, events,
-                PersistenceMode.ONCE, null, null);
+        return new AbilityPhase("active", type, hitbox, resolvedEffects, events, null);
     }
 
     /** Resolves canonical submitted ability action IDs. */
@@ -377,15 +375,26 @@ public final class AbilityContracts {
                                                               boolean includeTargetRadius,
                                                               Execution execution,
                                                               Effect... effects) {
-        return Map.entry(id, new AbilityContract(delivery, hitboxGeometry, includeTargetRadius,
-                List.of(effects), execution));
+        return Map.entry(id, contractFor(id, delivery, hitboxGeometry, includeTargetRadius,
+                execution, effects));
     }
     private static Map.Entry<Integer, AbilityContract> entry(int id, DeliveryType delivery,
                                                               boolean includeTargetRadius,
                                                               Execution execution,
                                                               Effect... effects) {
-        return Map.entry(id, new AbilityContract(delivery, HitboxGeometry.ARC, includeTargetRadius,
-                List.of(effects), execution));
+        return Map.entry(id, contractFor(id, delivery, HitboxGeometry.ARC, includeTargetRadius,
+                execution, effects));
+    }
+
+    private static AbilityContract contractFor(int id, DeliveryType delivery,
+                                                HitboxGeometry geometry,
+                                                boolean includeTargetRadius,
+                                                Execution execution,
+                                                Effect... effects) {
+        List<Effect> declared = List.of(effects);
+        List<AbilityPhase> attached = AttachedAbilityContracts.phases(id, declared);
+        return new AbilityContract(delivery, geometry, includeTargetRadius,
+                declared, execution, attached);
     }
     private static Execution execution(Movement movement) { return new Execution(null, false, false, null, movement); }
     private static Execution execution(String blockedByStatus, Movement movement) {

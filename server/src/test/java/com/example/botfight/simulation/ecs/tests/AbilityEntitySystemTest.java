@@ -14,6 +14,21 @@ import org.junit.jupiter.api.Test;
 
 class AbilityEntitySystemTest {
     @Test
+    void phaseContractsKeepTargetPolicyOnEventsAndUseExplicitTransitionBodies() {
+        EntityContracts.Phase grenadeTravel = EntityContracts.forAbility(4).phases().getFirst();
+        EntityContracts.PhaseEvent transition = grenadeTravel.events()
+                .get(EntityContracts.PhaseEventType.COLLISION);
+        EntityContracts.PhaseEvent silenceCollision = EntityContracts.forAbility(15).phases().getFirst()
+                .events().get(EntityContracts.PhaseEventType.COLLISION);
+        EntityContracts.PhaseEvent orbitalInterval = EntityContracts.forAbility(22).phases().getFirst()
+                .events().get(EntityContracts.PhaseEventType.INTERVAL);
+
+        assertThat(transition.transition().to()).isEqualTo("active");
+        assertThat(silenceCollision.targetPolicy().mode()).isEqualTo(EntityContracts.TargetPolicyMode.ONCE);
+        assertThat(orbitalInterval.targetPolicy()).isNull();
+    }
+
+    @Test
     void spawnedAbilitiesResolveThroughStableEntityContractsAndGenericFactory() {
         int[] spawnedAbilities = {4, 5, 11, 14, 15, 17, 18, 21, 22, 24, 27, 28, 29, 31};
         for (int abilityId : spawnedAbilities) {
@@ -32,6 +47,22 @@ class AbilityEntitySystemTest {
         assertThat(EntityContracts.phaseFor(AbilityEntityFactory.create(
                 "windburst", 18, 1, 100, 200, 60, 90, 1, 0, 0, 1000, 800)).type())
                 .isEqualTo(EntityContracts.PhaseType.PROJECTILE);
+    }
+
+    @Test
+    void movingEntityCentersCanReachTheArenaEdgeRegardlessOfHitboxSize() {
+        ArenaBounds arena = new ArenaBounds(1000, 800);
+        ArenaEntity silencePulse = AbilityEntityFactory.create(
+                "silence-edge", 15, 1, 900, 100, 60, 90, 1,
+                Double.NaN, Double.NaN, arena.width(), arena.height());
+
+        List<ArenaEntity> result = AbilityEntitySystem.tick(
+                List.of(silencePulse), List.of(), arena, 100, noDamageCombat());
+
+        assertThat(result).singleElement().satisfies(entity -> {
+            assertThat(entity.x()).isEqualTo(arena.width());
+            assertThat(entity.y()).isEqualTo(100);
+        });
     }
 
     @Test
@@ -76,7 +107,7 @@ class AbilityEntitySystemTest {
         ArenaEntity armedMine = active.getFirst();
         assertThat(armedMine.armed()).isTrue();
         assertThat(armedMine.traveled()).isEqualTo(176);
-        assertThat(armedMine.timerMs()).isZero();
+        assertThat(armedMine.timerMs()).isEqualTo(20_000);
         assertThat(armedMine.ageMs()).isEqualTo(800);
         assertThat(armedMine.velocityX()).isZero();
         assertThat(armedMine.velocityY()).isZero();
@@ -85,7 +116,7 @@ class AbilityEntitySystemTest {
         List<ArenaEntity> armed = AbilityEntitySystem.tick(
                 active, List.of(), new ArenaBounds(1000, 800), 100, noDamageCombat());
         assertThat(armed).singleElement().satisfies(entity -> {
-            assertThat(entity.timerMs()).isEqualTo(100);
+            assertThat(entity.timerMs()).isEqualTo(19_900);
             assertThat(entity.x()).isEqualTo(armedMine.x());
             assertThat(entity.y()).isEqualTo(armedMine.y());
         });
@@ -133,7 +164,7 @@ class AbilityEntitySystemTest {
         active = AbilityEntitySystem.tick(active, List.of(), arena, 100, noDamageCombat());
         assertThat(active).singleElement().satisfies(entity -> {
             assertThat(entity.phaseId()).isEqualTo("active");
-            assertThat(entity.timerMs()).isEqualTo(100);
+            assertThat(entity.timerMs()).isEqualTo(200);
         });
     }
 
@@ -142,7 +173,7 @@ class AbilityEntitySystemTest {
         ArenaEntity gravity = new ArenaEntity("gravity", "gravityZone", 1, 500, 400,
                 240, 0, 0, 0, 7_000, false, 0, 0, 1.0, 14, 0, 0);
         List<ArenaEntity> active = List.of(gravity);
-        for (int tick = 0; tick < 19; tick += 1) {
+        for (int tick = 0; tick < 9; tick += 1) {
             int elapsedMs = (tick + 1) * 100;
             active = active.stream().map(entity -> entity.withAgeMs(elapsedMs)).toList();
             active = AbilityEntitySystem.tick(
@@ -154,7 +185,7 @@ class AbilityEntitySystemTest {
         }
         assertThat(active.getFirst().traveled()).isZero();
 
-        active = active.stream().map(entity -> entity.withAgeMs(2_000)).toList();
+        active = active.stream().map(entity -> entity.withAgeMs(1_000)).toList();
         ArenaEntity stopped = AbilityEntitySystem.tick(
                 active, List.of(), new ArenaBounds(1000, 800), 100, noDamageCombat()).getFirst();
         assertThat(stopped.armed()).isTrue();
@@ -163,6 +194,27 @@ class AbilityEntitySystemTest {
         assertThat(stopped.phaseTimerMs()).isZero();
         assertThat(stopped.velocityX()).isZero();
         assertThat(stopped.velocityY()).isZero();
+    }
+
+    @Test
+    void gravityGrenadePullsNearbyEnemiesDuringItsOneSecondTravelPhase() {
+        ArenaBounds arena = new ArenaBounds(1000, 800);
+        assertThat(EntityContracts.forAbility(14).phases().getFirst().durationMs())
+                .isEqualTo(1_000);
+        ArenaEntity gravity = new ArenaEntity("gravity-travel", "gravityZone", 1,
+                500, 400, 240, 0, 0, 0, 7_000, false,
+                0, 0, 1.0, 14, 0, 0);
+        TestCombatant target = new TestCombatant(2, 650, 400, 60, 100);
+
+        List<ArenaEntity> result = AbilityEntitySystem.tick(
+                List.of(gravity), List.of(target), arena, 100, noDamageCombat());
+
+        assertThat(result).singleElement().satisfies(entity -> {
+            assertThat(entity.phaseId()).isEqualTo("travel");
+            assertThat(entity.phaseTimerMs()).isEqualTo(100);
+        });
+        assertThat(target.x).isEqualTo(644);
+        assertThat(target.y).isEqualTo(400);
     }
 
     @Test
@@ -398,7 +450,8 @@ class AbilityEntitySystemTest {
     void gravityZonePullIncludesBotEdgeAtExactBoundaryAndExcludesJustBeyondIt() {
         ArenaBounds arena = new ArenaBounds(1000, 800);
         ArenaEntity gravity = new ArenaEntity("gravity", "gravityZone", 1, 100, 100,
-                240, 0, 0, 0, 1000, true, 0, 0, 1.0, 14, 0, 0).withAgeMs(2_000);
+                240, 0, 0, 0, 1000, true, 0, 0, 1.0, 14, 0, 0)
+                .withAgeMs(2_000).withPhase("fuse", true);
 
         TestCombatant exactBoundary = new TestCombatant(2, 250, 100, 60, 100);
         AbilityEntitySystem.tick(List.of(gravity), List.of(exactBoundary), arena, 100, noDamageCombat());
@@ -415,7 +468,8 @@ class AbilityEntitySystemTest {
     void gravityZoneDetonationIncludesBotEdgeAtExactBoundaryAndExcludesJustBeyondIt() {
         ArenaBounds arena = new ArenaBounds(1000, 800);
         ArenaEntity gravity = new ArenaEntity("gravity", "gravityZone", 1, 100, 100,
-                240, 0, 0, 0, 2_000, true, 0, 0, 1.0, 14, 0, 2_900).withAgeMs(5_000);
+                240, 0, 0, 0, 300, true, 0, 0, 1.0, 14, 0, 0)
+                .withAgeMs(5_000).withPhase("active", true);
 
         TestCombatant exactBoundary = new TestCombatant(2, 250, 100, 60, 100);
         TestCombatant justOutside = new TestCombatant(2, 250.1, 100, 60, 100);

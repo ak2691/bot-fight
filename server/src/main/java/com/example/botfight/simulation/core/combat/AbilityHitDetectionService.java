@@ -11,7 +11,6 @@ import com.example.botfight.simulation.core.orchestration.DuelSimulationService.
 import com.example.botfight.simulation.gameconfig.Abilities;
 import com.example.botfight.simulation.gameconfig.AbilityContracts;
 import com.example.botfight.simulation.gameconfig.AbilityContracts.DeliveryType;
-import com.example.botfight.simulation.gameconfig.AbilityContracts.HitboxGeometry;
 import org.springframework.stereotype.Service;
 
 /** Resolves declarative ability delivery geometry for bots and arena entities. */
@@ -22,26 +21,27 @@ final class AbilityHitDetectionService {
         DeliveryType delivery = payload.contract().delivery();
         AbilityContracts.AbilityPhase phase = phase(payload);
         if (delivery == DeliveryType.SELF) return true;
-        if (delivery == DeliveryType.RAY) {
+        String shape = phase == null ? null : phase.hitbox().get("shape");
+        if ("ray".equals(shape)) {
             return movingRayHits(payload, phase, attacker, defender);
         }
-        if (delivery != DeliveryType.MELEE && delivery != DeliveryType.RADIAL) return false;
+        if (!"arc".equals(shape) && !"rectangle".equals(shape) && !"circle".equals(shape)) return false;
         return movingRangeHits(attacker, defender, payload, phase);
     }
 
     private boolean movingRangeHits(Bot attacker, Bot defender, AbilityExecutionPayload payload,
                                     AbilityContracts.AbilityPhase phase) {
-        DeliveryType delivery = payload.contract().delivery();
+        String shape = phase == null ? null : phase.hitbox().get("shape");
         double sourceX = sourceX(attacker, payload);
         double sourceY = sourceY(attacker, payload);
         double targetRadius = payload.contract().includeTargetRadius() ? defender.size / 2.0 : 0;
-        if (delivery == DeliveryType.RADIAL) {
+        if ("circle".equals(shape)) {
             return segmentIntersectsCircle(defender.movementStartX, defender.movementStartY,
                     defender.x, defender.y, sourceX, sourceY,
                     phaseNumber(phase == null ? null : phase.hitbox().get("radius"),
                             payload.abilityId(), Abilities.radius(payload.abilityId())) + targetRadius);
         }
-        if (payload.contract().hitboxGeometry() == HitboxGeometry.RECTANGLE) {
+        if ("rectangle".equals(shape)) {
             double range = phaseNumber(phase == null ? null
                             : phase.hitbox().getOrDefault("length", phase.hitbox().get("range")),
                     payload.abilityId(), Abilities.range(payload.abilityId()));
@@ -101,13 +101,13 @@ final class AbilityHitDetectionService {
 
     boolean abilityRangeHits(Bot attacker, double targetX, double targetY,
                             double targetSize, AbilityExecutionPayload payload, double range) {
-        if (payload == null || (payload.contract().delivery() != DeliveryType.RADIAL
-                && payload.contract().delivery() != DeliveryType.MELEE)) return false;
+        if (payload == null) return false;
         double sourceX = sourceX(attacker, payload);
         double sourceY = sourceY(attacker, payload);
         AbilityContracts.AbilityPhase phase = phase(payload);
         double targetRadius = payload.contract().includeTargetRadius() ? targetSize / 2.0 : 0;
-        if (payload.contract().hitboxGeometry() == HitboxGeometry.RECTANGLE) {
+        String shape = phase == null ? null : phase.hitbox().get("shape");
+        if ("rectangle".equals(shape)) {
             double radians = compassRadians(sourceRotation(attacker, payload));
             double effectiveLength = phaseNumber(phase == null ? null
                             : phase.hitbox().getOrDefault("length", phase.hitbox().get("range")),
@@ -121,10 +121,10 @@ final class AbilityHitDetectionService {
                     effectiveLength, effectiveWidth, radians,
                     targetX, targetY, targetX, targetY, targetRadius).hit();
         }
-        double effectiveRange = payload.contract().delivery() == DeliveryType.RADIAL
+        double effectiveRange = "circle".equals(shape)
                 ? phaseNumber(phase == null ? null : phase.hitbox().get("radius"), payload.abilityId(), range)
                 : phaseNumber(phase == null ? null : phase.hitbox().get("range"), payload.abilityId(), range);
-        if (payload.contract().delivery() == DeliveryType.RADIAL) {
+        if ("circle".equals(shape)) {
             return Math.hypot(targetX - sourceX, targetY - sourceY) <= effectiveRange + targetRadius;
         }
         return segmentIntersectsSector(sourceX, sourceY, targetX, targetY, targetX, targetY,

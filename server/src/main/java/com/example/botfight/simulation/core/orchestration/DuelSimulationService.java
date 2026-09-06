@@ -750,10 +750,9 @@ public class DuelSimulationService {
     }
 
     private static double edgeDistanceUnits(Entity entity, Arena arena) {
-        double radius = entity.size() / 2.0;
         return Math.max(0, Math.min(
-                Math.min(entity.x() - radius, arena.width() - radius - entity.x()),
-                Math.min(entity.y() - radius, arena.height() - radius - entity.y())));
+                Math.min(entity.x(), arena.width() - entity.x()),
+                Math.min(entity.y(), arena.height() - entity.y())));
     }
 
     private static double turnTowardTarget(Bot player, Entity target) {

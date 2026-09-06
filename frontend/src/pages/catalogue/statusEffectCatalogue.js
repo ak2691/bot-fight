@@ -48,13 +48,13 @@ export const EFFECT_GUIDE = Object.freeze([
         id: "damage_reduction",
         label: "Damage Reduction",
         category: STATUS_CATEGORY,
-        description: "Reduces incoming hostile damage by 50% while active.",
+        description: "Reduces incoming damage by 50% while active.",
     }),
     guideEntry({
         id: "damage_immunity",
         label: "Damage Immunity",
         category: STATUS_CATEGORY,
-        description: "Prevents hostile damage and status effects while active.",
+        description: "Protects against damage and status effects while active.",
     }),
     guideEntry({
         id: "overclock",
@@ -102,7 +102,7 @@ export const EFFECT_GUIDE = Object.freeze([
         id: "hit-stagger",
         label: "Hit Stagger",
         category: COMBAT_CATEGORY,
-        description: "Successful hostile damage briefly reduces movement and rotation speed to 85%.",
+        description: "Any damage reduces walking speed and rotation speed to 85% for 0.3 seconds.",
     }),
     guideEntry({
         id: "movement",
@@ -120,7 +120,7 @@ export const EFFECT_GUIDE = Object.freeze([
         id: "restore_state",
         label: "Restore State",
         category: COMBAT_CATEGORY,
-        description: "Returns the caster to a previously captured tick.",
+        description: "Returns the caster to a previous tick.",
     }),
 ]);
 

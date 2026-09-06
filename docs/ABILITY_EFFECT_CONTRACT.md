@@ -8,7 +8,7 @@ effects[]         ordered game-state changes
 execution         activation-time payload behavior and captured inputs
 ```
 
-Browser contracts: `frontend/src/gameArena/gameconfig/AbilityContracts.js`. Browser direct-effect execution: `frontend/src/gameArena/ecs/abilities/AbilityEffectSystem.js`. Server: `server/src/main/java/com/example/botfight/simulation/gameconfig/AbilityContracts.java`. Authoritative numeric tuning lives in `gameconfig/Abilities.java`; values calculated during execution are marked `runtimeComputed` server-side.
+Browser contracts: `frontend/src/gameArena/gameconfig/AbilityContracts.js`, with bot-hosted hitbox phases in `AttachedAbilityContracts.js`. Browser direct-effect execution: `frontend/src/gameArena/ecs/abilities/AbilityEffectSystem.js`. Server mirrors these through `simulation/gameconfig/AbilityContracts.java` and `AttachedAbilityContracts.java`. Authoritative numeric tuning lives in `gameconfig/Abilities.java`; values calculated during execution are marked `runtimeComputed` server-side.
 
 ## Delivery
 
@@ -170,10 +170,12 @@ Ability
    └─ ...
 ```
 
-Each phase has an ID, a public `type`, optional movement/lifetime data, a
-hitbox, presentation metadata, and allowlisted event handlers. The type is the
-phase's current delivery behavior: `self`, `melee`, `ray`, `arc`, `projectile`,
-`zone`, or `summon`. Geometry uses the standard field names: circular shapes
+Each phase has an unrestricted stable ID, a public `type`, optional
+movement/lifetime data, a hitbox, presentation metadata, and allowlisted event
+handlers. Entity phase types describe their runtime behavior; direct hitboxes
+use `botAttached` to state that the bot hosts their transform. Their actual
+geometry comes exclusively from `hitbox.shape`, rather than from catalogue
+labels such as melee or ray. Geometry uses the standard field names: circular shapes
 use `radius`, forward rectangles use `hitboxWidth`/`hitboxLength`, and rays or
 arcs use `range`, `hitboxWidth`, and `arc` as applicable. For a projectile
 rectangle, `hitboxLength` is the physical longitudinal collision dimension and
@@ -197,7 +199,7 @@ phases: [
         hitbox: { shape: "circle", radius: "radius" },
         trigger: { radius: "radius", botContact: true },
         events: {
-            collision: { actions: ["transition"], transition: "active" },
+            collision: { actions: ["transition"], transition: { to: "active" } },
         },
         visual: { type: "proximityMine", state: "static", visualSize: 24 },
     },
@@ -217,12 +219,14 @@ phases: [
 ```
 
 The phase event boundary is intentional. Geometry systems detect a collision
-and provide target IDs; the phase event dispatcher checks the phase's
-persistence policy, then emits the phase's allowlisted payload effects to the
-bot effect/payload handlers. The entity does not directly mutate arbitrary bot
-state. A `self` phase uses the owner's ID as its target, while `summon` phases
-keep their movement/attack logic on the summon but still dispatch attacks as
-phase events.
+and provide target IDs; the phase event dispatcher runs the phase's allowlisted
+actions. A collision handler may put a `targetPolicy` on `applyEffects` delivery
+to accept every contact, only the first contact per target, or one contact per
+target interval. Other actions such as `transition`, `emitVisual`, and `remove`
+are not target-ledger operations. The entity does not directly mutate arbitrary
+bot state. A `self` phase uses the owner's ID as its target, while `summon`
+phases keep their movement/attack logic on the summon but still dispatch attacks
+as phase events.
 
 Transitions preserve the entity ID and reset phase-local state such as the
 target hit ledger, timer, and visual descriptor. Thus two copies of one
@@ -250,22 +254,28 @@ grenade's travel, armed, and active visuals next to the lifecycle phase that
 owns them instead of using a separate explosion-size or explosion-visibility
 field.
 
-The proximity mine therefore has one `durationMs` of 20,800 ms. It travels for
-the first 800 ms, then enters its stopped armed phase. The armed phase listens
-for the trigger and transitions the same entity into a short active blast
-phase, whose phase-local `durationMs` and visual are defined beside its damage
-event. Gravity and Singularity use the same phase contract for travel, pull,
-and damage/detonation behavior. Phase explosions are entry actions and occur
-once when the phase starts.
+The proximity mine's travel phase has an 800 ms `durationMs`. Its
+`lifetimeEnd` event explicitly transitions to the stopped armed phase, whose
+own 20-second timer either expires into or collides into the short active blast
+phase. Gravity and Singularity use the same explicit event transitions for
+travel, pull, and damage/detonation behavior. Phase array order only selects
+the initial phase; elapsed entity age never selects a later phase.
+
+Phase duration only schedules `lifetimeEnd`. If the current phase handles that
+event, its declared actions decide what happens. If it has no handler, expiry
+removes the runtime object by default, so a one-phase entity such as Tether
+Bolt does not need a redundant `lifetimeEnd: remove` event.
 
 For one action that repeats at a fixed cadence, keep one phase and attach a
 `repeat` scheduler to it. Orbital Strike, for example, can use
-`repeat: { event: "interval", intervalMs: "intervalMs" }` and put its
+`repeat: { event: "interval", intervalMs: "intervalMs", startImmediately: true }` and put its
 `applyEffects`/`emitVisual` actions in `events.interval`. The scheduler runs
 until that phase's duration or the entity lifetime ends; it does not require a
-new phase object for every pulse. `persistence.mode: "interval"` is available
-for collision events that need a per-target cooldown; the entity's target-ID
-ledger stores the last accepted event independently for each target.
+new phase object for every pulse. `startImmediately: false` waits for one full
+interval before the first event. A collision handler that needs a per-target
+cooldown declares `targetPolicy: { mode: "interval", intervalMs: ... }`; the
+entity's target-ID ledger stores the last accepted effect application
+independently for each target.
 
 Classify the behavior before implementing it:
 

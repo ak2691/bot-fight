@@ -1,5 +1,6 @@
 import { ABILITY_STATS, statusDurationMs } from "./Abilities.js";
 import { abilityId as resolveAbilityId } from "./AbilityRegistry.js";
+import { attachedAbilityPhases } from "./AttachedAbilityContracts.js";
 
 export const EFFECT_TYPES = Object.freeze({
     DAMAGE: "damage",
@@ -27,13 +28,12 @@ export const DELIVERY_TYPES = Object.freeze({
     ZONE: "zone",
     TRAP: "trap",
     SUMMON: "summon",
+    BOT_ATTACHED: "botAttached",
 });
 
 /**
- * User-facing phase delivery vocabulary. Persistent phases and immediate
- * phases share the same contract; the executor decides whether a phase needs
- * an arena entity from this value rather than from an implementation-specific
- * dispatch kind.
+ * Public phase host/behavior vocabulary. Geometry belongs to `hitbox.shape`;
+ * BOT_ATTACHED identifies a phase whose transform is hosted by its caster.
  */
 export const PHASE_TYPES = Object.freeze({
     SELF: "self",
@@ -62,7 +62,7 @@ export const PHASE_ACTIONS = Object.freeze({
     EMIT_VISUAL: "emitVisual",
 });
 
-export const PERSISTENCE_MODES = Object.freeze({
+export const TARGET_POLICY_MODES = Object.freeze({
     ONCE: "once",
     EVERY_TICK: "everyTick",
     INTERVAL: "interval",
@@ -94,7 +94,6 @@ export function abilityPhase(id, type, values = {}) {
         ...values,
         ...(values.hitbox ? { hitbox: Object.freeze({ ...values.hitbox }) } : {}),
         ...(values.events ? { events: Object.freeze({ ...values.events }) } : {}),
-        ...(values.persistence ? { persistence: Object.freeze({ ...values.persistence }) } : {}),
         ...(values.visual ? { visual: Object.freeze({ ...values.visual }) } : {}),
         ...(values.effects ? { effects: Object.freeze([...values.effects]) } : {}),
         ...(values.effectOverrides ? { effectOverrides: Object.freeze({ ...values.effectOverrides }) } : {}),
@@ -144,7 +143,7 @@ const A = ABILITY_STATS;
  * target; effects control game-state changes. Visuals intentionally live
  * outside this catalog.
  */
-const ABILITY_CONTRACTS_BY_ID = Object.freeze({
+const BASE_ABILITY_CONTRACTS_BY_ID = Object.freeze({
     1: contract({ type: DELIVERY_TYPES.MELEE, includeTargetRadius: true }, [effect(EFFECT_TYPES.DAMAGE, { amount: A[1].damage })]),
     3: contract(DELIVERY_TYPES.RAY, [effect(EFFECT_TYPES.DAMAGE, { falloff: A[3].falloff })], execution({
         capture: Object.freeze({ gunRayOriginX: "x", gunRayOriginY: "y", gunRayRotation: "rotation" }),
@@ -234,6 +233,13 @@ const ABILITY_CONTRACTS_BY_ID = Object.freeze({
     ]),
 });
 
+const ABILITY_CONTRACTS_BY_ID = Object.freeze(Object.fromEntries(
+    Object.entries(BASE_ABILITY_CONTRACTS_BY_ID).map(([id, definition]) => {
+        const attachedPhases = attachedAbilityPhases(id, definition.effects);
+        return [id, attachedPhases ? Object.freeze({ ...definition, phases: attachedPhases }) : definition];
+    }),
+));
+
 export const ABILITY_CONTRACTS = ABILITY_CONTRACTS_BY_ID;
 
 function contract(delivery, effects, executionMetadata = {}) {
@@ -261,7 +267,6 @@ function defaultPhase(delivery, effects) {
                 actions: Object.freeze([PHASE_ACTIONS.APPLY_EFFECTS]),
             },
         },
-        persistence: { mode: PERSISTENCE_MODES.ONCE },
     });
 }
 

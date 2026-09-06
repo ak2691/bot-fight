@@ -88,11 +88,11 @@ class BotLogicContractsTest {
                 .isEqualTo(BotLogicContracts.VariableSource.SELECTABLE_SPEED);
         assertThat(BotLogicContracts.variableContract("selectable.speed").selectableIdentities())
                 .isEmpty();
-        assertThat(BotLogicContracts.variableContract("selectable.closingZoneEdgeDistance").source())
-                .isEqualTo(BotLogicContracts.VariableSource.SELECTABLE_CLOSING_ZONE_EDGE_DISTANCE);
-        assertThat(BotLogicContracts.variableContract("selectable.closingZoneEdgeDistance").scope())
+        assertThat(BotLogicContracts.variableContract("selectable.dangerZoneEdgeDistance").source())
+                .isEqualTo(BotLogicContracts.VariableSource.SELECTABLE_DANGER_ZONE_EDGE_DISTANCE);
+        assertThat(BotLogicContracts.variableContract("selectable.dangerZoneEdgeDistance").scope())
                 .isEqualTo(BotLogicContracts.VariableScope.SELECTABLE);
-        assertThat(BotLogicContracts.variableContract("selectable.closingZoneEdgeDistance").allowsNegativeInteger()).isTrue();
+        assertThat(BotLogicContracts.variableContract("selectable.dangerZoneEdgeDistance").allowsNegativeInteger()).isTrue();
         assertThat(BotLogicContracts.variableContract("selectable.hpNetChangeLastTick").allowsNegativeInteger()).isTrue();
         assertThat(BotLogicContracts.variableContract("selectable.hp").selectableIdentities())
                 .isEmpty();
@@ -133,7 +133,7 @@ class BotLogicContractsTest {
                         "selectable.x", "selectable.y", "selectable.alive", "selectable.absoluteBearing", "selectable.movementDirection",
                         "selectable.speed", "selectable.relativeBearing", "selectable.relativeBearingClockwise",
                         "selectable.relativeBearingCounterclockwise", "selectable.facing", "selectable.count", "selectable.age",
-                        "selectable.edgeDistance", "selectable.closingZoneEdgeDistance", "selectable.exists",
+                        "selectable.edgeDistance", "selectable.dangerZoneEdgeDistance", "selectable.exists",
                         "bot.selectedAbilityReady", "bot.selectedAbilityActive", "bot.selectedAbilityOnCooldown",
                         "bot.selectedAbilityActiveMs", "bot.selectedAbilityCooldownMs", "bot.selectedAbilityCharges",
                         "bot.selectedAbilityPreparing", "bot.selectedAbilityPreparationMs",
@@ -141,7 +141,7 @@ class BotLogicContractsTest {
         for (String variable : List.of(
                 "selectable.hp", "selectable.damageTakenLastTick", "selectable.hpNetChangeLastTick", "selectable.x",
                 "selectable.y", "selectable.alive", "selectable.movementDirection", "selectable.speed",
-                "selectable.edgeDistance", "selectable.closingZoneEdgeDistance")) {
+                "selectable.edgeDistance", "selectable.dangerZoneEdgeDistance")) {
             assertSingle(variable);
         }
         for (String variable : List.of("selectable.absoluteBearing", "selectable.relativeBearing",

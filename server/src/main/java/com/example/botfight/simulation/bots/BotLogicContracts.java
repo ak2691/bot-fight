@@ -40,6 +40,7 @@ public final class BotLogicContracts {
     public static final int NUMBER_DECIMAL_PLACES = 1;
     public static final double CUSTOM_NUMBER_LIMIT = 99_999.0;
     public static final String VARIABLE_TAG_ALLOW_NEGATIVE_INTEGER = "allow-negative-integer";
+    public static final String SELECTABLE_DANGER_ZONE_EDGE_DISTANCE = "selectable.dangerZoneEdgeDistance";
     public static final String SELECTABLE_CAPABILITY_HEALTH = "health";
     public static final String TARGET_MODE_TARGET = "target";
     public static final String TARGET_MODE_COORDINATES = "coordinates";
@@ -87,7 +88,7 @@ public final class BotLogicContracts {
         SELECTABLE_COUNT,
         SELECTABLE_AGE,
         SELECTABLE_EDGE_DISTANCE,
-        SELECTABLE_CLOSING_ZONE_EDGE_DISTANCE,
+        SELECTABLE_DANGER_ZONE_EDGE_DISTANCE,
         SELECTABLE_EXISTS,
         SELECTABLE_ALIVE,
         SELECTED_ABILITY_READY,
@@ -590,8 +591,8 @@ public final class BotLogicContracts {
         addNumbers(variables, VariableSource.SELECTABLE_COUNT, VariableScope.SELECTABLE, "selectable.count");
         addNumbers(variables, VariableSource.SELECTABLE_AGE, VariableScope.SELECTABLE, "selectable.age");
         addNumbers(variables, VariableSource.SELECTABLE_EDGE_DISTANCE, VariableScope.SELECTABLE, "selectable.edgeDistance");
-        addNumbers(variables, VariableSource.SELECTABLE_CLOSING_ZONE_EDGE_DISTANCE, VariableScope.SELECTABLE,
-                Set.of(VARIABLE_TAG_ALLOW_NEGATIVE_INTEGER), "selectable.closingZoneEdgeDistance");
+        addNumbers(variables, VariableSource.SELECTABLE_DANGER_ZONE_EDGE_DISTANCE, VariableScope.SELECTABLE,
+                Set.of(VARIABLE_TAG_ALLOW_NEGATIVE_INTEGER), SELECTABLE_DANGER_ZONE_EDGE_DISTANCE);
         addBooleans(variables, VariableSource.SELECTABLE_EXISTS, VariableScope.SELECTABLE, "selectable.exists");
         addBooleans(variables, VariableSource.SELECTABLE_ALIVE, VariableScope.SELECTABLE, "selectable.alive");
         addBooleans(variables, VariableSource.SELECTED_ABILITY_READY, VariableScope.SELECTABLE, "bot.selectedAbilityReady");

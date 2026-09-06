@@ -366,7 +366,6 @@ export function lockOnTargetPoint(shape) {
 export function entityCaption(shape) {
     if (["hunterDrone", "repellerDrone"].includes(shape?.type)) return `${formatEntityHp(shape.hp ?? 50)} HP`;
     if (shape?.type === "staticSnare") return `${formatEntityHp(shape.hp ?? 20)} HP`;
-    if (shape?.type === "orbitalMarker") return `${(Math.max(0, Number(shape.remainingMs ?? shape.fuseMs ?? 0)) / 1000).toFixed(1)}s`;
     return "";
 }
 

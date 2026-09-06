@@ -1,6 +1,6 @@
 import { ACTION_TO_ABILITY } from "../../loadout/BotLoadout.js";
 import { abilityExecutionPayload } from "../../gameconfig/AbilityExecutionPayload.js";
-import { DELIVERY_TYPES, HITBOX_GEOMETRIES } from "../../gameconfig/AbilityContracts.js";
+import { DELIVERY_TYPES } from "../../gameconfig/AbilityContracts.js";
 import { movingRectangleCollision, segmentIntersectsCircle, segmentIntersectsSector, segmentsWithinDistance } from "../../gameconfig/geometry.js";
 import { compassDegreesToRadians, compassDirection } from "../../botlogic/planner/arenaAngles.js";
 
@@ -22,16 +22,16 @@ export function abilityHitsTarget(
         return false;
     }
 
-    const delivery = payload.contract.delivery;
     const phase = payload.contract.phases?.[0] ?? null;
-    if (delivery.type === DELIVERY_TYPES.SELF) return true;
-    if (delivery.type === DELIVERY_TYPES.RAY) return rayHits(attacker, target, payload, phase);
+    const shape = phase?.hitbox?.shape;
+    if (payload.contract.delivery.type === DELIVERY_TYPES.SELF) return true;
+    if (shape === "ray") return rayHits(attacker, target, payload, phase);
     return abilityRangeHits(attacker, target, payload, undefined, phase);
 }
 
 export function rayHits(source, target, payloadOrAbilityId, phase = undefined) {
     const payload = resolvePayload(payloadOrAbilityId);
-    if (!source || !target || !payload || payload.contract.delivery.type !== DELIVERY_TYPES.RAY) return false;
+    if (!source || !target || !payload) return false;
     const activePhase = phase ?? payload.contract.phases?.[0] ?? null;
     const hitbox = activePhase?.hitbox ?? {};
     const direction = compassDirection(Number(source.rotation ?? 0));
@@ -61,26 +61,24 @@ export function abilityRangeHits(
     const payload = resolvePayload(payloadOrAbilityId);
     if (!source || !target || !payload) return false;
 
-    const delivery = payload.contract.delivery;
-    if (delivery.type !== DELIVERY_TYPES.MELEE && delivery.type !== DELIVERY_TYPES.RADIAL) return false;
-
     const activePhase = phase ?? payload.contract.phases?.[0] ?? null;
     const hitbox = activePhase?.hitbox ?? {};
+    if (!["arc", "rectangle", "circle"].includes(hitbox.shape)) return false;
     const effectiveRange = Number(range ?? resolveHitboxNumber(
-        delivery.type === DELIVERY_TYPES.RADIAL ? hitbox.radius : hitbox.length ?? hitbox.range,
+        hitbox.shape === "circle" ? hitbox.radius : hitbox.length ?? hitbox.range,
         payload,
         payload.stats.range ?? payload.stats.radius ?? 0,
     ));
-    const targetRadius = delivery.includeTargetRadius ? Number(target.size ?? 60) / 2 : 0;
+    const targetRadius = payload.contract.delivery.includeTargetRadius ? Number(target.size ?? 60) / 2 : 0;
     const targetPath = targetMovementSegment(target);
-    if (delivery.type === DELIVERY_TYPES.RADIAL) {
+    if (hitbox.shape === "circle") {
         return segmentIntersectsCircle(
             targetPath.start,
             targetPath.end,
             { x: Number(source.x), y: Number(source.y), size: (effectiveRange + targetRadius) * 2 },
         );
     }
-    if (delivery.geometry === HITBOX_GEOMETRIES.RECTANGLE) {
+    if (hitbox.shape === "rectangle") {
         const pose = capturedHitboxPose(source);
         const direction = compassDirection(pose.rotation);
         const center = {

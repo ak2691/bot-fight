@@ -130,6 +130,15 @@ public record ArenaEntity(
                 hitLedger, phaseId, phaseLocked, visibleMs, visualEventType, visualEventMs, visualEventSize);
     }
 
+    public ArenaEntity withPhase(String nextPhaseId, boolean nextPhaseLocked) {
+        return new ArenaEntity(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled,
+                timerMs, armed, hp, shotVisualMs, damageMultiplier, abilityId,
+                intervalTimerMs, phaseTimerMs, ageMs, tickStartHp, damageTakenThisTick,
+                damageTakenLastTick, hpNetChangeLastTick, rotation,
+                hitLedger, nextPhaseId, nextPhaseLocked, visibleMs, visualEventType,
+                visualEventMs, visualEventSize);
+    }
+
     public ArenaEntity withHp(int nextHp) {
         return new ArenaEntity(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled,
                 timerMs, armed, Math.max(0, nextHp), shotVisualMs, damageMultiplier, abilityId,

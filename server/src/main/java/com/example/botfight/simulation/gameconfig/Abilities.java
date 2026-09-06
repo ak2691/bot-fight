@@ -56,7 +56,7 @@ public final class Abilities {
             Map.entry(13, new AbilityDefinition(10_700, 900, 300, 0, 40, 900, 0,
                     0, 0, 0, ResourceModel.NONE, FalloffMode.CONTINUOUS,
                     null, null, Map.of("movementLockMs", 300.0, "hitboxWidth", 5.0, "visualSize", 100.0))),
-            Map.entry(14, new AbilityDefinition(11_000, 0, 2_000, 7_000, 0, 120, 0,
+            Map.entry(14, new AbilityDefinition(11_000, 0, 1_000, 7_000, 0, 120, 0,
                     0, 0, 0, ResourceModel.NONE, FalloffMode.CONTINUOUS,
                     falloff(35, 20, 0, 90), null,
                      Map.of("radius", 120.0, "speed", 22.0,

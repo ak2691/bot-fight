@@ -385,5 +385,5 @@ test("bot and entity labels derive from calculated snapshot fields", () => {
     assert.equal(entityCaption({ type: "proximityMine", armed: true }), "");
     assert.equal(entityCaption({ type: "repellerDrone", hp: 31 }), "31.0 HP");
     assert.equal(entityCaption({ type: "staticSnare", hp: 20 }), "20.0 HP");
-    assert.equal(entityCaption({ type: "orbitalMarker", fuseMs: 900 }), "0.9s");
+    assert.equal(entityCaption({ type: "orbitalMarker", fuseMs: 900 }), "");
 });

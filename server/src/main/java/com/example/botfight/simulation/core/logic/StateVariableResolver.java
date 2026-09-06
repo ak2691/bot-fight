@@ -66,8 +66,8 @@ final class StateVariableResolver {
             Map.entry(VariableSource.SELECTABLE_EDGE_DISTANCE,
                     context -> number(context.selectable() != null
                             ? edgeDistanceUnits(context.selectable(), context.arena()) : 0.0)),
-            Map.entry(VariableSource.SELECTABLE_CLOSING_ZONE_EDGE_DISTANCE,
-                    context -> closingZoneEdgeDistance(context, context.selectable())),
+            Map.entry(VariableSource.SELECTABLE_DANGER_ZONE_EDGE_DISTANCE,
+                    context -> dangerZoneEdgeDistance(context, context.selectable())),
             Map.entry(VariableSource.SELECTABLE_EXISTS,
                     context -> bool(context.selectable() != null)),
             Map.entry(VariableSource.SELECTABLE_ALIVE,
@@ -258,16 +258,15 @@ final class StateVariableResolver {
     }
 
     private static double edgeDistanceUnits(Entity entity, Arena arena) {
-        double radius = entity.size() / 2.0;
-        return Math.max(0.0, Math.min(Math.min(entity.x() - radius, arena.width() - entity.x() - radius),
-                Math.min(entity.y() - radius, arena.height() - entity.y() - radius)));
+        return Math.max(0.0, Math.min(Math.min(entity.x(), arena.width() - entity.x()),
+                Math.min(entity.y(), arena.height() - entity.y())));
     }
 
-    private static StateValue closingZoneEdgeDistance(ResolutionContext context) {
-        return closingZoneEdgeDistance(context, context.bot());
+    private static StateValue dangerZoneEdgeDistance(ResolutionContext context) {
+        return dangerZoneEdgeDistance(context, context.bot());
     }
 
-    private static StateValue closingZoneEdgeDistance(ResolutionContext context, Entity entity) {
+    private static StateValue dangerZoneEdgeDistance(ResolutionContext context, Entity entity) {
         if (entity == null) return null;
         int elapsedMs = (int) Math.min(Integer.MAX_VALUE, Math.max(0, context.player().matchElapsedMs));
         if (elapsedMs < CLOSING_ZONE_CONFIG.startDelayMs()) return null;
@@ -279,7 +278,7 @@ final class StateVariableResolver {
                 context.arena().width(), context.arena().height(), CLOSING_ZONE_CONFIG);
         if (!Double.isFinite(safeRadius)) return null;
         double centerDistance = between(entity.x(), entity.y(), context.arena().width() / 2.0, context.arena().height() / 2.0);
-        return number(safeRadius - centerDistance - entity.size() / 2.0);
+        return number(safeRadius - centerDistance);
     }
 
     private static double millisecondsToSeconds(int value) {

@@ -181,7 +181,7 @@ class AbilitiesTest {
         int[][] expectedActiveMs = {
                 {1, 400}, {3, 500}, {4, 1}, {5, 500}, {6, 100}, {7, 400},
                 {8, 500}, {9, 300}, {10, 300}, {11, 300}, {12, 300}, {13, 300},
-                {14, 2_000}, {15, 2_000}, {16, 0}, {17, 300}, {18, 500}, {19, 200},
+                {14, 1_000}, {15, 2_000}, {16, 0}, {17, 300}, {18, 500}, {19, 200},
                 {20, 200}, {21, 300}, {22, 0}, {23, 0}, {24, 300}, {25, 300},
                 {26, 300}, {27, 300}, {28, 300}, {29, 300}, {30, 300}, {31, 300},
                 {32, 300}, {33, 0}, {34, 200},
@@ -242,5 +242,10 @@ class AbilitiesTest {
         assertThat(Abilities.stat(22, "intervalMs", 0)).isEqualTo(500);
         assertThat(Abilities.amountAtDistance(22, 0)).isEqualTo(15);
         assertThat(Abilities.amountAtDistance(22, 100)).isEqualTo(15);
+    }
+
+    @Test
+    void gravityGrenadeUsesAOneSecondTravelActionWindow() {
+        assertThat(Abilities.definition(14).activeMs()).isEqualTo(1_000);
     }
 }

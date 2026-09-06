@@ -71,6 +71,12 @@ test("entity visuals use a renderer-clock animation instance without the fallbac
     assert.doesNotMatch(source, /\["grenadeExplosion", "mineExplosion", "orbitalExplosion"\]/);
 });
 
+test("Orbital Strike keeps its marker beneath pulse animations without a countdown caption", () => {
+    const canvasSource = readFileSync(PIXI_CANVAS_PATH, "utf8");
+    assert.match(canvasSource, /persistentOrbitalMarker/);
+    assert.match(canvasSource, /showCachedEffect\(view, "orbital-explosion"/);
+});
+
 test("Lock On uses the supplied white crosshair and hides the marker when its active timer ends", () => {
     assert.equal(existsSync(CROSSHAIR_PATH), true);
     const source = readFileSync(PIXI_CANVAS_PATH, "utf8");

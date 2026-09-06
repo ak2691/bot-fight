@@ -79,8 +79,8 @@ function tickTrapEntities(combat) {
     return (world) => {
         const trapEntries = world.entities
             .map((entity) => ({ entity, contract: contractForEntity(entity), phase: canonicalPhaseForEntity(entity) }))
-            .filter(({ entity, contract }) => !entity.phaseLocked
-                && contract?.category === ENTITY_CATEGORIES.TRAP);
+            .filter(({ contract, phase }) => contract?.category === ENTITY_CATEGORIES.TRAP
+                && phase?.trigger);
         if (trapEntries.length === 0) return null;
 
         const moved = trapEntries.map(({ entity, contract }) => {
@@ -266,7 +266,7 @@ function tickRemainingEntities(combat) {
                 entities.push(entity);
                 continue;
             }
-            if (contract.category === ENTITY_CATEGORIES.TRAP && !entity.phaseLocked) {
+            if (contract.category === ENTITY_CATEGORIES.TRAP && phase?.trigger) {
                 entities.push(entity);
                 continue;
             }
@@ -283,19 +283,8 @@ function tickRemainingEntities(combat) {
  * Executes the current phase. The phase type is the only dispatch vocabulary.
  */
 function tickCanonicalEntity(entity, phase, world, combat) {
-    const contract = contractForEntity(entity);
-    let effectivePhase = entity.phaseLocked
-        ? phase
-        : phaseAtElapsedCanonical(phasesForEntity(contract), Number(entity.ageMs ?? 0)) ?? phase;
-    let runtimeEntity = entity;
-    if (!entity.phaseLocked
-        && entity.phaseId != null
-        && effectivePhase.id !== entity.phaseId
-        && (effectivePhase.durationMs != null || effectivePhase.visual?.visibleMs != null)) {
-        // A timed phase is a lifecycle transition on the same entity ID.
-        runtimeEntity = transitionEntityPhase(entity, effectivePhase.id, world);
-        effectivePhase = canonicalPhaseForEntity(runtimeEntity) ?? effectivePhase;
-    }
+    const effectivePhase = phase;
+    const runtimeEntity = entity;
     if (effectivePhase.type === "projectile" || effectivePhase.type === "ray" || effectivePhase.type === "arc" || effectivePhase.type === "melee") {
         return tickCanonicalProjectile(runtimeEntity, effectivePhase, world, combat);
     }
@@ -307,12 +296,8 @@ function tickCanonicalEntity(entity, phase, world, combat) {
 function tickCanonicalProjectile(entity, phase, world, combat) {
     const contract = contractForEntity(entity);
     const stats = ABILITY_STATS[contract?.abilityId] ?? {};
-    const phases = phasesForEntity(contract);
     const stepMs = Number(world.stepMs ?? 0);
-    const previousPhase = phaseAtElapsedCanonical(phases, Math.max(0, Number(entity.ageMs ?? 0) - stepMs));
-    // Locked phases own their movement. An armed grenade must remain stopped
-    // even though its travel phase is still the last elapsed-time phase.
-    const movement = (entity.phaseLocked ? phase : previousPhase)?.movement ?? phase.movement ?? {};
+    const movement = phase.movement ?? {};
     const scale = movement.scale === "stepRatio" ? stepMs / 100 : 1;
     const start = { x: Number(entity.x), y: Number(entity.y) };
     const rawEnd = {
@@ -332,16 +317,9 @@ function tickCanonicalProjectile(entity, phase, world, combat) {
         velocityY,
         traveled: Number(entity.traveled ?? 0) + Math.hypot(end.x - start.x, end.y - start.y),
         phaseId: phase.id,
-        phaseTimerMs: entity.phaseLocked
-            ? Math.max(0, Number(entity.phaseTimerMs ?? 0) + stepMs)
-            : Math.max(0, Number(entity.ageMs ?? 0) - Number(phase.startMs ?? 0)),
-        remainingMs: entity.phaseLocked
-            ? Number(entity.remainingMs ?? stats.durationMs ?? 0) - stepMs
-            : stats.durationMs != null
-                ? Number(stats.durationMs) - Number(entity.ageMs ?? 0)
-                : entity.remainingMs == null
-                    ? null
-                    : Number(entity.remainingMs) - stepMs,
+        phaseTimerMs: Math.max(0, Number(entity.phaseTimerMs ?? 0) + stepMs),
+        remainingMs: entity.remainingMs == null
+            ? null : Number(entity.remainingMs) - stepMs,
         visualEventMs: Math.max(0, Number(entity.visualEventMs ?? 0) - stepMs),
         ...(entity.visibleMs == null ? {} : { visibleMs: Math.max(0, Number(entity.visibleMs) - stepMs) }),
     });
@@ -356,13 +334,15 @@ function tickCanonicalProjectile(entity, phase, world, combat) {
     const intervalMs = repeatHandler == null ? 0 : Math.max(1, resolvePhaseNumber(
         repeat?.intervalMs
             ?? repeatHandler.intervalMs
-            ?? phase.persistence?.intervalMs
-            ?? phase.persistence?.intervalStat
             ?? "intervalMs",
         stats,
         phase,
         stepMs,
     ));
+    if (repeatHandler != null && repeat?.startImmediately === false
+        && Number(entity.phaseTimerMs ?? 0) === 0) {
+        intervalTimerMs = intervalMs - stepMs;
+    }
     const shouldDispatch = repeatHandler == null
         ? selected.length > 0
         : intervalTimerMs <= 0;
@@ -401,18 +381,23 @@ function tickCanonicalProjectile(entity, phase, world, combat) {
         }
     }
     if (repeatHandler != null) {
-        intervalTimerMs += intervalMs;
+        if (shouldDispatch) intervalTimerMs += intervalMs;
         if (next) next = withComponentState(next, { intervalTimerMs });
     }
     if (!next) return { bots, entity: null };
     const phaseExpired = phase.durationMs != null
-        && !next.phaseLocked
-        && Number(next.ageMs ?? 0) >= Number(phase.startMs ?? 0) + Number(phase.durationMs);
+        && Number(next.phaseTimerMs ?? 0) >= Number(phase.durationMs);
     const hitEdge = end.x === 0 || end.x === world.width || end.y === 0 || end.y === world.height;
     const removeAtEdge = Boolean(phase.movement?.clamp) && hitEdge && phase.events?.collision?.actions?.includes("remove");
-    if (phaseExpired || next.remainingMs != null && Number(next.remainingMs) <= 0 || removeAtEdge) {
+    const overallExpired = phase.durationMs == null && stats.durationMs != null
+        && Number(next.ageMs ?? 0) >= Number(stats.durationMs)
+        || next.remainingMs != null && Number(next.remainingMs) <= 0;
+    if (phaseExpired || overallExpired || removeAtEdge) {
         const ended = dispatchEntityEvent(next, "lifetimeEnd", { bots, world, combat, phase });
-        return { bots: ended.bots, entity: ended.entity };
+        return {
+            bots: ended.bots,
+            entity: ended.entity === next && !phase.events?.lifetimeEnd ? null : ended.entity,
+        };
     }
     return { bots, entity: next };
 }
@@ -421,26 +406,11 @@ function tickCanonicalZone(entity, phase, world, combat) {
     const contract = contractForEntity(entity);
     const stats = ABILITY_STATS[contract?.abilityId] ?? {};
     const stepMs = Number(world.stepMs ?? 0);
-    let nextPhase = canonicalPhaseForEntity({
-        ...entity,
-        // A phase transition action opts out of elapsed-time phase selection;
-        // ordinary phases continue to advance from their startMs values.
-        phaseId: entity.phaseLocked ? entity.phaseId : null,
-    }) ?? phase;
+    const nextPhase = phase;
     let next = entity;
-    if (!entity.phaseLocked
-        && nextPhase.id !== entity.phaseId
-        && (nextPhase.durationMs != null || nextPhase.visual?.visibleMs != null)) {
-        // A timed phase owns a fresh lifetime. Keep the same entity ID while
-        // resetting its phase timer and phase-local visual/lifetime values.
-        next = transitionEntityPhase(entity, nextPhase.id, world);
-        nextPhase = canonicalPhaseForEntity(next) ?? nextPhase;
-    }
     next = withComponentState(next, {
         phaseId: nextPhase.id,
-        phaseTimerMs: next.phaseLocked
-            ? Math.max(0, Number(next.phaseTimerMs ?? 0) + stepMs)
-            : Math.max(0, Number(next.ageMs ?? 0) - Number(nextPhase.startMs ?? 0)),
+        phaseTimerMs: Math.max(0, Number(next.phaseTimerMs ?? 0) + stepMs),
         remainingMs: Number(next.remainingMs ?? stats.durationMs ?? 0) - stepMs,
         visualEventMs: Math.max(0, Number(next.visualEventMs ?? 0) - stepMs),
         ...(next.visibleMs == null ? {} : { visibleMs: Math.max(0, Number(next.visibleMs) - stepMs) }),
@@ -456,14 +426,15 @@ function tickCanonicalZone(entity, phase, world, combat) {
         const intervalMs = Math.max(1, resolvePhaseNumber(
             repeat?.intervalMs
                 ?? intervalHandler.intervalMs
-                ?? nextPhase.persistence?.intervalMs
-                ?? nextPhase.persistence?.intervalStat
                 ?? "intervalMs",
             stats,
             nextPhase,
             stepMs,
         ));
         let intervalTimerMs = Number(entity.intervalTimerMs ?? 0) - stepMs;
+        if (repeat?.startImmediately === false && Number(entity.phaseTimerMs ?? 0) === 0) {
+            intervalTimerMs = intervalMs - stepMs;
+        }
         const intervalCanRunOnThisTick = Number(entity.remainingMs ?? stats.durationMs ?? 0) > 0;
         while (intervalTimerMs <= 0 && intervalCanRunOnThisTick) {
             const result = dispatchEntityEvent(next, repeatEvent, {
@@ -494,12 +465,27 @@ function tickCanonicalZone(entity, phase, world, combat) {
         bots = result.bots;
     }
     if (!next) return { bots, entity: null };
-    if (Number(next.remainingMs ?? 0) <= 0) {
+    const phaseExpired = nextPhase.durationMs != null
+        && Number(next.phaseTimerMs ?? 0) >= Number(nextPhase.durationMs);
+    if (phaseExpired || Number(next.remainingMs ?? 0) <= 0) {
         // A transient event visual is still carried by this same logical
         // entity after gameplay lifetime ends. It is presentation-only while
         // the event timer counts down, so no collision work runs above.
         if (Number(next.visualEventMs ?? 0) > 0) return { bots, entity: next };
         const ended = dispatchEntityEvent(next, "lifetimeEnd", { bots, world, combat, phase: nextPhase });
+        const enteredPhase = ended.entity && canonicalPhaseForEntity(ended.entity);
+        if (enteredPhase && enteredPhase.id !== nextPhase.id
+            && enteredPhase.events?.collision?.actions?.includes("applyEffects")) {
+            const enteredTargets = canonicalCollisionTargets(ended.entity, enteredPhase, world);
+            return dispatchEntityEvent(ended.entity, "collision", {
+                bots: ended.bots,
+                world,
+                combat,
+                phase: enteredPhase,
+                targetIds: enteredTargets.map(({ bot }) => bot.id),
+                targetDistances: new Map(enteredTargets.map(({ bot, collisionDistance }) => [bot.id, collisionDistance])),
+            });
+        }
         return {
             bots: ended.bots,
             entity: ended.entity === next && !nextPhase.events?.lifetimeEnd ? null : ended.entity,
@@ -517,7 +503,19 @@ function tickCanonicalSummon(entity, phase, world, combat) {
     const remainingMs = Number(entity.remainingMs ?? stats.durationMs ?? 0) - stepMs;
     const damage = damageToEntity(entity, world, combat);
     const hp = Number(entity.hp ?? stats.hp ?? 0) - damage;
-    if (remainingMs <= 0 || hp <= 0) return { bots: world.bots, entity: null };
+    if (hp <= 0) return { bots: world.bots, entity: null };
+    if (remainingMs <= 0) {
+        const ended = dispatchEntityEvent(entity, "lifetimeEnd", {
+            bots: world.bots,
+            world,
+            combat,
+            phase,
+        });
+        return {
+            bots: ended.bots,
+            entity: ended.entity === entity && !phase.events?.lifetimeEnd ? null : ended.entity,
+        };
+    }
 
     let bots = world.bots;
     const target = bots
@@ -606,15 +604,6 @@ function canonicalCollisionTargets(entity, phase, world, start = null, end = nul
         .sort((first, second) => first.collisionDistance - second.collisionDistance);
 }
 
-function phaseAtElapsedCanonical(phases, elapsedMs) {
-    if (!Array.isArray(phases) || phases.length === 0) return null;
-    return phases.reduce((current, candidate) => !candidate.transitionOnly
-        && Number(candidate.startMs ?? 0) >= 0
-        && Number(candidate.startMs ?? 0) <= elapsedMs
-        && (!current || Number(candidate.startMs ?? 0) > Number(current.startMs ?? 0))
-        ? candidate : current, phases[0]);
-}
-
 function resolvePhaseNumber(value, stats, phase, fallback = 0) {
     if (value == null) return Number(fallback);
     if (typeof value === "number") return value;
@@ -632,19 +621,16 @@ function phaseRadius(stats, phase, fallbackStat = null, fallback = 0) {
     return radius * Number(phase?.hitbox?.radiusMultiplier ?? 1);
 }
 
-/** Advances a multi-phase entity from elapsed lifecycle time. */
+/** Advances a trigger-bearing entity in its explicitly selected phase. */
 function advancePhaseEntity(entity, phases, stats, world) {
     const stepMs = Number(world.stepMs ?? 0);
-    const elapsedMs = Number(entity.ageMs ?? 0);
-    const previousElapsedMs = Math.max(0, elapsedMs - stepMs);
-    const previousPhase = phaseAtElapsedCanonical(phases, previousElapsedMs);
-    const phase = phaseAtElapsedCanonical(phases, elapsedMs) ?? previousPhase;
-    const movement = previousPhase?.movement ?? {};
+    const phase = canonicalPhaseForEntity(entity) ?? phases?.[0];
+    const movement = phase?.movement ?? {};
     const radius = Number(entity.size ?? 0) / 2;
     const moving = movement.mode === "travel" || movement.mode === "segment";
     let velocityX = Number(entity.velocityX ?? 0);
     let velocityY = Number(entity.velocityY ?? 0);
-    const speedOverride = previousPhase?.movement?.speed ?? previousPhase?.statOverrides?.speed;
+    const speedOverride = phase?.movement?.speed ?? phase?.statOverrides?.speed;
     if (moving && speedOverride != null && Number.isFinite(Number(speedOverride))) {
         const magnitude = Math.hypot(velocityX, velocityY);
         if (magnitude > 0) {
@@ -659,7 +645,7 @@ function advancePhaseEntity(entity, phases, stats, world) {
         ? clamp(Number(entity.y) + velocityY, radius, world.height - radius)
         : Number(entity.y);
     const phaseId = phase?.id ?? entity.phaseId ?? null;
-    const phaseTimerMs = phase ? Math.max(0, elapsedMs - Number(phase.startMs ?? 0)) : 0;
+    const phaseTimerMs = phase ? Math.max(0, Number(entity.phaseTimerMs ?? 0) + stepMs) : 0;
     const stopped = phase?.movement?.mode === "stopped";
     return withComponentState(entity, {
         x: nextX,
@@ -669,7 +655,7 @@ function advancePhaseEntity(entity, phases, stats, world) {
         traveled: Number(entity.traveled ?? 0) + Math.hypot(nextX - Number(entity.x), nextY - Number(entity.y)),
         phaseId,
         phaseTimerMs,
-        remainingMs: Math.max(0, Number(stats.durationMs ?? entity.remainingMs ?? 0) - elapsedMs),
+        remainingMs: Math.max(0, Number(entity.remainingMs ?? stats.durationMs ?? 0) - stepMs),
         armed: phaseId === "armed" || Boolean(entity.armed),
     });
 }

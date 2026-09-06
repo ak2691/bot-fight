@@ -13,6 +13,16 @@ import org.junit.jupiter.api.Test;
 
 class AbilityContractsTest {
     @Test
+    void directHitboxesUseBotAttachedPhasesWithShapeOwnedGeometry() {
+        assertThat(AbilityContracts.get(1).phases().getFirst().type())
+                .isEqualTo(AbilityContracts.PhaseType.BOT_ATTACHED);
+        assertThat(AbilityContracts.get(1).phases().getFirst().hitbox().get("shape")).isEqualTo("arc");
+        assertThat(AbilityContracts.get(3).phases().getFirst().hitbox().get("shape")).isEqualTo("ray");
+        assertThat(AbilityContracts.get(6).phases().getFirst().hitbox().get("shape")).isEqualTo("rectangle");
+        assertThat(AbilityContracts.get(8).phases().getFirst().hitbox().get("shape")).isEqualTo("circle");
+    }
+
+    @Test
     void activeContractsDoNotFilterEffects() {
         assertThat(AbilityContracts.all().values()).allSatisfy(contract ->
                 assertThat(contract.effects()).isNotNull());

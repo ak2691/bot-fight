@@ -23,8 +23,6 @@ import {
     selectableIdentitiesForVariable,
 } from "../contracts/BotLogicContracts.js";
 
-const ENTITY_SIZE = 60;
-
 export function resolveStateVariable(state, condition, variableId, selectableId, operations) {
     if (String(variableId).startsWith(CUSTOM_VARIABLE_CONTRACT.PREFIX)) return operations.resolveCustom(state, variableId);
     const definition = STATE_VARIABLE_BY_ID.get(variableId);
@@ -91,7 +89,7 @@ const RUNTIME_RESOLVERS = Object.freeze({
     [STATE_VARIABLE_SOURCES.SELECTABLE_COUNT]: ({ normalizedSelectableId, operations, state }) => operations.matchingSelectables(state, normalizedSelectableId).length,
     [STATE_VARIABLE_SOURCES.SELECTABLE_AGE]: ({ selectable }) => millisecondsToSeconds(selectable?.ageMs ?? 0),
     [STATE_VARIABLE_SOURCES.SELECTABLE_EDGE_DISTANCE]: ({ selectable }) => selectable ? edgeDistance(selectable) : 0,
-    [STATE_VARIABLE_SOURCES.SELECTABLE_CLOSING_ZONE_EDGE_DISTANCE]: ({ state, selectable }) => closingZoneEdgeDistance(state.closingZone, selectable),
+    [STATE_VARIABLE_SOURCES.SELECTABLE_DANGER_ZONE_EDGE_DISTANCE]: ({ state, selectable }) => dangerZoneEdgeDistance(state.closingZone, selectable),
     [STATE_VARIABLE_SOURCES.SELECTABLE_EXISTS]: ({ selectable }) => Boolean(selectable),
     [STATE_VARIABLE_SOURCES.SELECTED_ABILITY_READY]: (context) => abilityReady(botForContext(context), selectedAbilityId(context)),
     [STATE_VARIABLE_SOURCES.SELECTED_ABILITY_ACTIVE]: (context) => abilityActiveMs(botForContext(context), selectedAbilityId(context)) > 0,
@@ -209,16 +207,14 @@ function signedAngleDelta(from, to) { return ((to - from + 540) % 360) - 180; }
 function clockwiseAngleDelta(from, to) { return ((to - from) % 360 + 360) % 360; }
 function edgeDistance(entity) {
     if (!entity) return 0;
-    const halfWidth = halfExtent(entity, "width");
-    const halfHeight = halfExtent(entity, "height");
     return Math.max(0, Math.min(
-        Number(entity.x) - halfWidth,
-        ARENA_WIDTH_UNITS - halfWidth - Number(entity.x),
-        Number(entity.y) - halfHeight,
-        ARENA_HEIGHT_UNITS - halfHeight - Number(entity.y),
+        Number(entity.x),
+        ARENA_WIDTH_UNITS - Number(entity.x),
+        Number(entity.y),
+        ARENA_HEIGHT_UNITS - Number(entity.y),
     ));
 }
-function closingZoneEdgeDistance(zone, entity) {
+function dangerZoneEdgeDistance(zone, entity) {
     if (!zone || !entity) return null;
     const safeRadius = Number(zone.safeRadius ?? Number(zone.size ?? 0) / 2);
     const entityX = Number(entity.x);
@@ -227,14 +223,7 @@ function closingZoneEdgeDistance(zone, entity) {
     const centerX = Number(zone.x ?? ARENA_WIDTH_UNITS / 2);
     const centerY = Number(zone.y ?? ARENA_HEIGHT_UNITS / 2);
     if (!Number.isFinite(centerX) || !Number.isFinite(centerY)) return null;
-    const entityRadius = Math.max(0, Math.max(halfExtent(entity, "width"), halfExtent(entity, "height")));
-    return safeRadius - Math.hypot(entityX - centerX, entityY - centerY) - entityRadius;
-}
-function halfExtent(entity, axis) {
-    const direct = Number(entity?.[axis]);
-    if (Number.isFinite(direct) && direct >= 0) return direct / 2;
-    const size = Number(entity?.size ?? entity?.transform?.size ?? ENTITY_SIZE);
-    return Number.isFinite(size) && size >= 0 ? size / 2 : ENTITY_SIZE / 2;
+    return safeRadius - Math.hypot(entityX - centerX, entityY - centerY);
 }
 function selectableSupportsCapability(selectableId, capability) {
     const base = canonicalBotSelectableId(selectableId).split(":")[0];
