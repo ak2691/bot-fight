@@ -220,6 +220,12 @@ public class ActionExecutionService {
         abilityEffectService.resolveTriggeredAbilities(attacker, bots, arena);
     }
 
+    /** Keeps persistent-entity status impacts on the same path as direct abilities. */
+    public void applyEntityStatus(Bot attacker, Bot defender, int abilityId,
+                                  AbilityContracts.Effect effect) {
+        abilityEffectService.applyStatusEffect(attacker, defender, abilityId, effect);
+    }
+
     public int damageToDroneThisTick(ArenaEntity drone, List<Bot> bots,
             List<ArenaEntity> entities) {
         return entityCombatService.damageToDroneThisTick(drone, bots, entities);

@@ -14,6 +14,7 @@ import com.example.botfight.simulation.core.state.BotStateService;
 import com.example.botfight.simulation.bots.BotLogicContracts;
 import com.example.botfight.simulation.ecs.entities.ClosingZoneSystem;
 import com.example.botfight.simulation.gameconfig.ClosingZoneConfig;
+import com.example.botfight.simulation.gameconfig.AbilityContracts;
 import com.example.botfight.simulation.core.state.StatusEffectState;
 import com.example.botfight.simulation.ecs.entities.AbilityEntityBot;
 import com.example.botfight.simulation.ecs.abilities.AbilityEntitySystem;
@@ -647,6 +648,16 @@ public class DuelSimulationService {
                                 .anyMatch(bot -> bot.entityHitIds.contains(entity.id()));
                         return recordedHit || actionExecutionService.mineHitByCurrentAttack(
                                 entity, activeBots, activeEntities);
+                    }
+
+                    @Override
+                    public void applyStatus(List<Bot> activeBots, int ownerSlot, Bot target,
+                                            int abilityId, AbilityContracts.Effect effect) {
+                        Bot owner = activeBots.stream()
+                                .filter(bot -> bot.slot == ownerSlot).findFirst().orElse(null);
+                        if (owner != null) {
+                            actionExecutionService.applyEntityStatus(owner, target, abilityId, effect);
+                        }
                     }
 
                 });

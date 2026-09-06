@@ -1231,6 +1231,29 @@ class DuelSimulationServiceTest {
     }
 
     @Test
+    void fireballCollisionRecordsItsBurnStatusInAuthoritativeReplayFrames() {
+        MatchPlaybackDTO result = service.simulate(request(
+                arena(2_000),
+                bot("fireball-source", "Source", 1, 100, 400, "custom", customBrain(
+                        "[5]", "[{\"conditions\":[{\"type\":\"always\"}],\"action\":5}]")),
+                bot("fireball-target", "Target", 2, 250, 400, "custom", customBrain("[]", "[]"))));
+
+        assertThat(result.frames()).anySatisfy(frame ->
+                assertThat(frame.bots().get(1).statusEffects()).anySatisfy(status -> {
+                    assertThat(status.type).isEqualTo("burn");
+                    assertThat(status.remainingMs).isPositive();
+                    assertThat(status.tickMs).isEqualTo(1_000);
+                    assertThat(status.sourceSlot).isEqualTo(1);
+                    assertThat(status.abilityId).isEqualTo(5);
+                    assertThat(status.effects).anySatisfy(effect -> {
+                        assertThat(effect.type).isEqualTo("damage");
+                        assertThat(effect.mode).isEqualTo("tick");
+                        assertThat(effect.amount).isEqualTo(2);
+                    });
+                }));
+    }
+
+    @Test
     void higherPriorityFireballYieldsToGrenadeDuringItsRecoveryTick() {
         JsonNode fireballThenGrenade = customBrain("[4,5]", """
                 [

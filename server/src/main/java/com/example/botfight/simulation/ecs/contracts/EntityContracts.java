@@ -161,9 +161,10 @@ public final class EntityContracts {
                         Integer durationMs,
                         Repeat repeat, boolean transitionOnly,
                         boolean skipOwner, Hit hit, Integer visibleMs,
-                        Attack attack) {
+                        Attack attack, List<AbilityContracts.Effect> effects) {
         public Phase {
             effectTypes = immutableEffects(effectTypes);
+            effects = effects == null ? List.of() : List.copyOf(effects);
             statOverrides = statOverrides == null ? Map.of() : Map.copyOf(statOverrides);
             effectOverrides = effectOverrides == null ? Map.of() : Map.copyOf(effectOverrides);
             events = events == null ? Map.of() : Map.copyOf(events);
@@ -281,7 +282,7 @@ public final class EntityContracts {
         return new Phase(id, startMs, movement, trigger, effects, statOverrides,
                 effectOverrides, hitbox, visual, type, events,
                 durationMs, repeat, transitionOnly, skipOwner, hit,
-                visual == null ? null : visual.visibleMs(), attack);
+                visual == null ? null : visual.visibleMs(), attack, List.of());
     }
 
     private static Phase phase(String id, PhaseType type, Movement movement,
@@ -642,7 +643,7 @@ public final class EntityContracts {
                                            InitialState initialState, List<Phase> phases) {
         return new EntityContract(abilityId, entityType, runtimeType,
                 category, spawn, SelectableOwner.OWNER, motion, lifetime, collider,
-                health, initialState, phases);
+                health, initialState, hydratePhaseEffects(abilityId, phases));
     }
 
     private static EntityContract contract(int abilityId, String entityType,
@@ -654,7 +655,19 @@ public final class EntityContracts {
                                            InitialState initialState, List<Phase> phases) {
         return new EntityContract(abilityId, entityType, runtimeType,
                 category, spawn, selectableOwner, motion, lifetime, collider, health,
-                initialState, phases);
+                initialState, hydratePhaseEffects(abilityId, phases));
+    }
+
+    private static List<Phase> hydratePhaseEffects(int abilityId, List<Phase> phases) {
+        List<AbilityContracts.Effect> abilityEffects = AbilityContracts.get(abilityId).effects();
+        return phases.stream().map(phase -> new Phase(
+                phase.id(), phase.startMs(), phase.movement(), phase.trigger(), phase.effectTypes(),
+                phase.statOverrides(), phase.effectOverrides(), phase.hitbox(), phase.visual(), phase.type(),
+                phase.events(), phase.durationMs(), phase.repeat(), phase.transitionOnly(), phase.skipOwner(),
+                phase.hit(), phase.visibleMs(), phase.attack(), abilityEffects.stream()
+                        .filter(effect -> effect.type() != AbilityContracts.EffectType.SPAWN_ENTITY)
+                        .filter(effect -> phase.effectTypes().contains(effect.type()))
+                        .toList())).toList();
     }
 
     private static Map<String, EntityContract> byType() {

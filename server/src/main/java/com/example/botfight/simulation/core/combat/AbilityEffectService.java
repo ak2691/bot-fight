@@ -226,27 +226,31 @@ class AbilityEffectService {
 
     private void applyStatusEffect(Bot attacker, Bot defender, AbilityExecutionPayload payload,
                                    AbilityContracts.Effect effect) {
+        applyStatusEffect(attacker, defender, payload.abilityId(), effect);
+    }
+
+    void applyStatusEffect(Bot attacker, Bot defender, int abilityId,
+                           AbilityContracts.Effect effect) {
         if (defender == null || defender.hp <= 0) return;
         int durationMs = effect.durationMs();
         switch (effect.subtype()) {
             case "burn" -> {
-                Abilities.DamageOverTime dot = payload.definition().damageOverTime();
                 StatusEffectState status = new StatusEffectState("burn", durationMs,
-                        Abilities.statusIntervalMs(payload.abilityId(), "burn", 1_000));
+                        Abilities.statusIntervalMs(abilityId, "burn", 1_000));
                 status.sourceSlot = attacker.slot;
-                status.abilityId = payload.abilityId();
+                status.abilityId = abilityId;
                 status.addEffect(new StatusEffectState.Effect("damage", "tick")
-                        .amount(dot == null ? 0 : dot.damage())
+                        .amount(effect.amount())
                         .multiplier(botStateService.damageMultiplier(attacker)));
                 BotStateService.upsertStatusEffect(defender, status);
             }
             case "slow" -> BotStateService.upsertStatusEffect(defender,
-                    statusWithAbility(payload.abilityId(), new StatusEffectState("slow", durationMs, 0)
+                    statusWithAbility(abilityId, new StatusEffectState("slow", durationMs, 0)
                             .addEffect(new StatusEffectState.Effect("movement_modifier", "constant")
                                     .movement(HitStagger.CONCUSSIVE_MOVEMENT_MULTIPLIER,
                                             HitStagger.CONCUSSIVE_ROTATION_MULTIPLIER))));
             case "stun" -> {
-                StatusEffectState stun = statusWithAbility(payload.abilityId(), new StatusEffectState("stun", durationMs, 0)
+                StatusEffectState stun = statusWithAbility(abilityId, new StatusEffectState("stun", durationMs, 0)
                         .addEffect(new StatusEffectState.Effect("stun", "constant")));
                 BotStateService.upsertStatusEffect(defender, stun);
                 defender.movementVelocityX = 0;
@@ -255,35 +259,36 @@ class AbilityEffectService {
                 defender.velocityY = 0;
             }
             case "silence" -> {
-                StatusEffectState silence = statusWithAbility(payload.abilityId(), new StatusEffectState("silence", durationMs, 0)
+                StatusEffectState silence = statusWithAbility(abilityId, new StatusEffectState("silence", durationMs, 0)
                         .addEffect(new StatusEffectState.Effect("silence", "constant")));
                 BotStateService.upsertStatusEffect(defender, silence);
             }
             case "shock" -> {
                 StatusEffectState shock = new StatusEffectState("shock", durationMs,
-                        Abilities.statusIntervalMs(payload.abilityId(), "shock", 1_000));
+                        Abilities.statusIntervalMs(abilityId, "shock", 1_000));
                 shock.sourceSlot = attacker.slot;
-                shock.abilityId = payload.abilityId();
+                shock.abilityId = abilityId;
                 shock.addEffect(new StatusEffectState.Effect("damage", "tick")
-                                .amount(Abilities.stat(payload.abilityId(), "shockDamage", 0)))
+                                .amount(Abilities.stat(abilityId, "shockDamage", 0)))
                         .addEffect(new StatusEffectState.Effect("movement_lock", "tick")
-                                .durationMs((int) Math.round(Abilities.stat(payload.abilityId(), "movementLockMs", 0))));
+                                .durationMs((int) Math.round(Abilities.stat(abilityId, "movementLockMs", 0))));
                 BotStateService.upsertStatusEffect(defender, shock);
             }
             case "bleed" -> {
                 StatusEffectState bleed = new StatusEffectState("bleed", durationMs,
-                        Abilities.statusIntervalMs(payload.abilityId(), "bleed", 1_000));
+                        Abilities.statusIntervalMs(abilityId, "bleed", 1_000));
                 bleed.sourceSlot = attacker.slot;
-                bleed.abilityId = payload.abilityId();
+                bleed.abilityId = abilityId;
                 bleed.addEffect(new StatusEffectState.Effect("damage", "tick")
-                        .amount(AbilityContracts.effectAmount(payload.abilityId(), EffectType.STATUS)))
+                        .amount(effect.amount()))
                         .addEffect(new StatusEffectState.Effect("incoming_damage_modifier", "constant")
                                 .damageModifier(StatusEffectState.BLEED_INCOMING_DAMAGE_MODIFIER)
                                 .rounding(StatusEffectState.TRUNCATE_DAMAGE_TO_TENTHS)
                                 .excludeDamageSourceType("bleed"));
                 BotStateService.upsertStatusEffect(defender, bleed);
             }
-            default -> { }
+            default -> throw new IllegalArgumentException(
+                    "Unsupported status effect subtype for ability " + abilityId + ": " + effect.subtype());
         }
     }
 

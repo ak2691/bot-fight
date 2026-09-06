@@ -46,6 +46,18 @@ test("phase contracts keep target policy on events and use explicit transition b
     assert.equal(ENTITY_CONTRACTS[22].phases[0].events.interval.targetPolicy, undefined);
 });
 
+test("entity phases expose complete effect payloads for contract auditing", () => {
+    for (const contract of Object.values(ENTITY_CONTRACTS)) {
+        for (const phase of contract.phases) {
+            assert.equal(phase.effects.every((effect) => effect && typeof effect === "object" && effect.type), true);
+        }
+    }
+    assert.deepEqual(
+        ENTITY_CONTRACTS[5].phases[0].effects.find(({ type }) => type === "status"),
+        { type: "status", subtype: "burn", durationMs: 5000 },
+    );
+});
+
 test("direct hitboxes use bot-attached phases with shape-owned geometry", () => {
     assert.equal(ABILITY_CONTRACTS[1].phases[0].type, "botAttached");
     assert.deepEqual(ABILITY_CONTRACTS[1].phases[0].hitbox, { shape: "arc", range: "range", arc: "arc" });

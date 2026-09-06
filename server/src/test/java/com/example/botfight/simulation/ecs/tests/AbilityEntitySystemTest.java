@@ -8,11 +8,31 @@ import com.example.botfight.simulation.ecs.entities.AbilityEntityBot;
 import com.example.botfight.simulation.ecs.entities.AbilityEntityFactory;
 import com.example.botfight.simulation.ecs.entities.ArenaBounds;
 import com.example.botfight.simulation.ecs.entities.ArenaEntity;
+import com.example.botfight.simulation.gameconfig.AbilityContracts;
 import java.util.List;
 import java.util.ArrayList;
 import org.junit.jupiter.api.Test;
 
 class AbilityEntitySystemTest {
+
+    @Test
+    void entityPhasesExposeCompleteEffectPayloadsForContractAuditing() {
+        assertThat(EntityContracts.all().values()).allSatisfy(contract ->
+                assertThat(contract.phases()).allSatisfy(phase -> {
+                    assertThat(phase.effects()).extracting(AbilityContracts.Effect::type)
+                            .containsExactlyInAnyOrderElementsOf(phase.effectTypes());
+                    assertThat(phase.effects()).allMatch(effect ->
+                            AbilityContracts.get(contract.abilityId()).effects().contains(effect));
+                }));
+
+        assertThat(EntityContracts.forAbility(5).phases().getFirst().effects())
+                .anySatisfy(effect -> {
+                    assertThat(effect.type()).isEqualTo(AbilityContracts.EffectType.STATUS);
+                    assertThat(effect.subtype()).isEqualTo("burn");
+                    assertThat(effect.amount()).isEqualTo(2);
+                    assertThat(effect.durationMs()).isEqualTo(5_000);
+                });
+    }
     @Test
     void phaseContractsKeepTargetPolicyOnEventsAndUseExplicitTransitionBodies() {
         EntityContracts.Phase grenadeTravel = EntityContracts.forAbility(4).phases().getFirst();

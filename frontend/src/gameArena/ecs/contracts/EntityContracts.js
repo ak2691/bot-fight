@@ -34,6 +34,17 @@ const visual = (type, visualSize, state = null, visibleMs = null) => Object.free
 const phase = (id, type, values = {}) => abilityPhase(id, type, values);
 
 const entity = (abilityId, definition) => {
+    const abilityEffects = abilityContract(abilityId)?.effects ?? [];
+    const phases = (definition.phases ?? []).map((phaseDefinition) => {
+        const allowedTypes = new Set((phaseDefinition.effects ?? [])
+            .map((declared) => typeof declared === "string" ? declared : declared?.type)
+            .filter(Boolean));
+        return abilityPhase(phaseDefinition.id, phaseDefinition.type, {
+            ...phaseDefinition,
+            effects: abilityEffects.filter(({ type }) => type !== EFFECT_TYPES.SPAWN_ENTITY
+                && allowedTypes.has(type)),
+        });
+    });
     const base = {
         abilityId,
         ...definition,
@@ -46,7 +57,7 @@ const entity = (abilityId, definition) => {
     };
     return Object.freeze({
         ...base,
-        phases: Object.freeze([...(definition.phases ?? [])]),
+        phases: Object.freeze(phases),
     });
 };
 

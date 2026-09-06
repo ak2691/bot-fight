@@ -38,6 +38,12 @@ public final class AbilityEntitySystem {
         int damageToEntity(ArenaEntity entity, List<F> bots, List<ArenaEntity> entities);
         boolean entityHitByCurrentAttack(ArenaEntity entity, List<F> bots,
                                          List<ArenaEntity> entities);
+
+        /** Applies a contract-owned status through the host simulation's canonical status builder. */
+        default void applyStatus(List<F> bots, int ownerSlot, F target, int abilityId,
+                                 AbilityContracts.Effect effect) {
+            target.applyStatus(effect.subtype(), effect.durationMs(), ownerSlot);
+        }
     }
 
     public static boolean isAbilityEntity(ArenaEntity entity) {
@@ -573,7 +579,9 @@ public final class AbilityEntitySystem {
         if (event == null) return new DispatchResult<>(entity, bots);
         ArenaEntity next = entity;
         Set<EffectType> effects = event.effectTypes().isEmpty()
-                ? phase.effectTypes() : event.effectTypes();
+                ? phase.effects().stream().map(AbilityContracts.Effect::type)
+                        .collect(java.util.stream.Collectors.toUnmodifiableSet())
+                : event.effectTypes();
         for (EntityContracts.PhaseAction action : event.actions()) {
             if (action == EntityContracts.PhaseAction.APPLY_EFFECTS) {
                 for (Integer targetSlot : targetSlots) {
@@ -585,7 +593,7 @@ public final class AbilityEntitySystem {
                             || !canApplyToTarget(next, targetSlot, event.targetPolicy(), stepMs)) continue;
                     applyEntityEffects(bots, target,
                             effectSources.getOrDefault(targetSlot, next),
-                            contract.abilityId(), effects, arena, combat,
+                            contract.abilityId(), phase.effects(), effects, arena, combat,
                             "source", distances.getOrDefault(targetSlot, Double.NaN),
                             phase.effectOverrides(), phase.statOverrides());
                     next = recordTargetApplication(next, targetSlot, event.targetPolicy(), stepMs);
@@ -748,13 +756,13 @@ public final class AbilityEntitySystem {
 
     private static <F extends AbilityEntityBot> void applyEntityEffects(
             List<F> bots, F target, ArenaEntity source, int abilityId,
+            List<AbilityContracts.Effect> declaredEffects,
             Set<EffectType> allowedEffects, ArenaBounds arena, Combat<F> combat,
             String knockbackDirection, double collisionDistance,
             Map<String, AbilityContracts.EffectOverride> overrides,
             Map<String, Double> statOverrides) {
         if (!isEnemy(source.ownerSlot(), target, bots)) return;
-        AbilityContracts.AbilityContract contract = AbilityContracts.get(abilityId);
-        for (AbilityContracts.Effect effect : contract.effects()) {
+        for (AbilityContracts.Effect effect : declaredEffects) {
             if (!allowedEffects.isEmpty() && !allowedEffects.contains(effect.type())) continue;
             AbilityContracts.EffectOverride override = effectOverrideFor(effect, overrides);
             AbilityContracts.Effect resolved = withEffectOverride(effect, override);
@@ -780,8 +788,8 @@ public final class AbilityEntitySystem {
                             && sourcePhase.type() == EntityContracts.PhaseType.ZONE) {
                         target.setZoneSilenced(true);
                     } else {
-                        target.applyStatus(resolved.subtype(),
-                                durationMs, source.ownerSlot());
+                        combat.applyStatus(bots, source.ownerSlot(), target, abilityId,
+                                withDuration(resolved, durationMs));
                     }
                 }
                 case INTERRUPT -> target.applyInterrupt(resolveEffectDuration(abilityId,
@@ -819,6 +827,13 @@ public final class AbilityEntitySystem {
                 default -> { }
             }
         }
+    }
+
+    private static AbilityContracts.Effect withDuration(AbilityContracts.Effect effect, int durationMs) {
+        if (durationMs == effect.durationMs()) return effect;
+        return new AbilityContracts.Effect(effect.type(), effect.subtype(), effect.amount(),
+                durationMs, effect.runtimeComputed(), effect.recipient(), effect.requiresConfirmedDamage(),
+                effect.mirrorsDamage(), effect.distanceMode(), effect.falloff());
     }
 
     private static AbilityContracts.Effect withEffectOverride(
