@@ -1,17 +1,14 @@
 import { ACTION_TO_ABILITY } from "../../loadout/BotLoadout.js";
 import { abilityExecutionPayload } from "../../gameconfig/AbilityExecutionPayload.js";
-import { DELIVERY_TYPES } from "../../gameconfig/AbilityContracts.js";
+import {
+    attachedAbilityContract,
+    attachedAbilityTargetsOwner,
+    phaseForAttachedAbility,
+} from "../../gameconfig/AttachedAbilityContracts.js";
 import { movingRectangleCollision, segmentIntersectsCircle, segmentIntersectsSector, segmentsWithinDistance } from "../../gameconfig/geometry.js";
 import { compassDegreesToRadians, compassDirection } from "../../botlogic/planner/arenaAngles.js";
 
-const DIRECT_DELIVERIES = new Set([
-    DELIVERY_TYPES.SELF,
-    DELIVERY_TYPES.MELEE,
-    DELIVERY_TYPES.RAY,
-    DELIVERY_TYPES.RADIAL,
-]);
-
-/** Resolves declarative delivery geometry without applying the resulting effects. */
+/** Resolves attached-phase geometry without applying the resulting effects. */
 export function abilityHitsTarget(
     attacker,
     target,
@@ -22,9 +19,10 @@ export function abilityHitsTarget(
         return false;
     }
 
-    const phase = payload.contract.phases?.[0] ?? null;
+    const phase = phaseForAttachedAbility(payload.abilityId);
+    if (!phase) return false;
     const shape = phase?.hitbox?.shape;
-    if (payload.contract.delivery.type === DELIVERY_TYPES.SELF) return true;
+    if (attachedAbilityTargetsOwner(payload.abilityId)) return true;
     if (shape === "ray") return rayHits(attacker, target, payload, phase);
     return abilityRangeHits(attacker, target, payload, undefined, phase);
 }
@@ -32,7 +30,7 @@ export function abilityHitsTarget(
 export function rayHits(source, target, payloadOrAbilityId, phase = undefined) {
     const payload = resolvePayload(payloadOrAbilityId);
     if (!source || !target || !payload) return false;
-    const activePhase = phase ?? payload.contract.phases?.[0] ?? null;
+    const activePhase = phase ?? phaseForAttachedAbility(payload.abilityId);
     const hitbox = activePhase?.hitbox ?? {};
     const direction = compassDirection(Number(source.rotation ?? 0));
     const targetRadius = Number(target.size ?? 0) / 2;
@@ -61,7 +59,7 @@ export function abilityRangeHits(
     const payload = resolvePayload(payloadOrAbilityId);
     if (!source || !target || !payload) return false;
 
-    const activePhase = phase ?? payload.contract.phases?.[0] ?? null;
+    const activePhase = phase ?? phaseForAttachedAbility(payload.abilityId);
     const hitbox = activePhase?.hitbox ?? {};
     if (!["arc", "rectangle", "circle"].includes(hitbox.shape)) return false;
     const effectiveRange = Number(range ?? resolveHitboxNumber(
@@ -69,7 +67,7 @@ export function abilityRangeHits(
         payload,
         payload.stats.range ?? payload.stats.radius ?? 0,
     ));
-    const targetRadius = payload.contract.delivery.includeTargetRadius ? Number(target.size ?? 60) / 2 : 0;
+    const targetRadius = hitbox.includeTargetRadius ? Number(target.size ?? 60) / 2 : 0;
     const targetPath = targetMovementSegment(target);
     if (hitbox.shape === "circle") {
         return segmentIntersectsCircle(
@@ -123,8 +121,11 @@ function finiteNumber(...values) {
     return 0;
 }
 
-export function isDirectDelivery(delivery) {
-    return DIRECT_DELIVERIES.has(delivery);
+export function isAttachedAbilityPayload(payloadOrAbilityId) {
+    const abilityId = typeof payloadOrAbilityId === "object"
+        ? payloadOrAbilityId?.abilityId
+        : payloadOrAbilityId;
+    return attachedAbilityContract(abilityId) != null;
 }
 
 function resolvePayload(payloadOrAbilityId) {

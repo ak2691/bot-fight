@@ -13,7 +13,7 @@ class AbilityExecutionPayloadTest {
 
         assertThat(payload.actionId()).isEqualTo(19);
         assertThat(payload.abilityId()).isEqualTo(19);
-        assertThat(payload.contract().execution().movement()).isNotNull();
+        assertThat(payload.contract().phases().getFirst().movement()).isNotNull();
         assertThat(payload.targetX()).isEqualTo(500);
         assertThat(payload.movementDirection()).isEqualTo("north");
     }

@@ -1,8 +1,8 @@
 import { ignoresHostileEffects, withoutBotStatuses } from "./DefensiveState.js";
 import { HIT_STAGGER_DURATION_MS } from "./HitStagger.js";
 import { CLOSING_ZONE_TYPE } from "./ArenaHazardConfig.js";
-import { abilityContract, DELIVERY_TYPES, EFFECT_TYPES } from "./AbilityContracts.js";
-import { resolveTriggeredAbilityEffects } from "../ecs/abilities/AbilityEffectSystem.js";
+import { attachedAbilityContract, EFFECT_TYPES } from "./AttachedAbilityContracts.js";
+import { abilityHasActivationEvent, resolveTriggeredAbilityEffects } from "../ecs/abilities/AbilityEffectSystem.js";
 import { abilityHitsTarget } from "../ecs/abilities/AbilityHitDetectionSystem.js";
 import { BASE_BOT_HP } from "../modelPayloads/arenaConstants.js";
 import {
@@ -26,14 +26,14 @@ export function resolveTriggeredAbilityCombatForRoster(bots) {
     for (let attackerIndex = 0; attackerIndex < nextBots.length; attackerIndex += 1) {
         let attacker = nextBots[attackerIndex];
         if (!attacker) continue;
-        const delivery = abilityContract(attacker.triggeredAbility)?.delivery?.type;
-        if (delivery === DELIVERY_TYPES.SELF) {
+        if (abilityHasActivationEvent(attacker.triggeredAbility)) {
             [attacker] = resolveTriggeredAbilityEffects(attacker, null, combat);
             nextBots[attackerIndex] = attacker;
             continue;
         }
-        const contract = abilityContract(attacker.triggeredAbility);
-        if (contract?.execution?.teleportOncePerActivation) {
+        const contract = attachedAbilityContract(attacker.triggeredAbility);
+        if (!contract) continue;
+        if (contract?.activation?.teleportOncePerActivation) {
             resolveTeleportingAbilityForRoster(nextBots, attackerIndex, attacker, combat);
             continue;
         }

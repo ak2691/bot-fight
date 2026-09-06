@@ -29,14 +29,14 @@ class AbilitiesTest {
 
     @Test
     void genericAmountAndDurationProfilesClampToTheActiveAbilityRange() {
-        AbilityContracts.Falloff amountProfile = new AbilityContracts.Falloff(
+        AttachedAbilityContracts.Falloff amountProfile = new AttachedAbilityContracts.Falloff(
                 20.0, 100.0, null, null, 0.0, 160.0);
         assertThat(Abilities.amountAtDistance(10, 0, amountProfile, 80.0)).isEqualTo(100);
         assertThat(Abilities.amountAtDistance(10, 40, amountProfile, 80.0)).isEqualTo(60);
         assertThat(Abilities.amountAtDistance(10, 80, amountProfile, 80.0)).isEqualTo(20);
         assertThat(Abilities.amountAtDistance(10, 81, amountProfile, 80.0)).isZero();
 
-        AbilityContracts.Falloff durationProfile = new AbilityContracts.Falloff(
+        AttachedAbilityContracts.Falloff durationProfile = new AttachedAbilityContracts.Falloff(
                 null, null, 25, 100, 0.0, 160.0);
         assertThat(Abilities.durationAtDistance(10, 40, 100, durationProfile, 80.0)).isEqualTo(63);
         assertThat(Abilities.durationAtDistance(10, 80, 100, durationProfile, 80.0)).isEqualTo(25);
@@ -45,7 +45,8 @@ class AbilitiesTest {
 
     @Test
     void everyAbilityContractUsesTheUnifiedNumericCatalog() {
-        assertThat(Abilities.CATALOG.keySet()).containsExactlyInAnyOrderElementsOf(AbilityContracts.all().keySet());
+        assertThat(Abilities.CATALOG.keySet())
+                .containsExactlyInAnyOrderElementsOf(AbilityRegistry.all().keySet());
         assertThat(Abilities.CATALOG.values()).allSatisfy(definition -> {
             assertThat(definition.stats()).isNotNull();
             assertThat(definition.resourceModel()).isNotNull();

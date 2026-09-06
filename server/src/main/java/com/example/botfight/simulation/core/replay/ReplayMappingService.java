@@ -8,6 +8,7 @@ import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
 import com.example.botfight.simulation.core.state.StatusEffectState;
 import com.example.botfight.simulation.ecs.contracts.EntityContracts;
 import com.example.botfight.simulation.ecs.entities.ArenaEntity;
+import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -139,7 +140,7 @@ public class ReplayMappingService {
      * prevents a prior phase/event descriptor from leaking into later frames.
      */
     private static ReplayEntityVisual replayEntityVisual(ArenaEntity entity) {
-        EntityContracts.Phase phase = EntityContracts.phaseFor(entity);
+        AttachedAbilityContracts.AbilityPhase phase = EntityContracts.phaseFor(entity);
         int eventMs = Math.max(0, entity.visualEventMs());
         return new ReplayEntityVisual(
                 phase == null ? entity.phaseId() : phase.id(),

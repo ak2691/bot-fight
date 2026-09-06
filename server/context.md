@@ -45,13 +45,16 @@ All Java paths below are under
   bot-code contract registry, and normalized condition evaluation.
 - `simulation/geometry/`: pure authoritative distance, angle, and arena-unit
   calculations.
-- `simulation/gameconfig/`: authoritative ability definitions, effect/shield
-  contracts, and the active duel configuration.
+- `simulation/gameconfig/`: authoritative ability definitions, shared effect and
+  phase contracts for direct/attached abilities, shield contracts, and the
+  active duel configuration.
 - `simulation/ecs/`: authoritative ability-entity model, split into
-  `contracts/`, `abilities/`, and `entities/`. Phase contracts own the current
-  entity type, hitbox, visual, repeat scheduler, and allowlisted event
-  response; collision services supply target IDs and the entity system routes
-  effects into bot state without replacing the logical entity on transitions.
+  `contracts/`, `abilities/`, and `entities/`. `contracts/` owns entity
+  metadata and phase catalogs built from the shared `AbilityPhase` record;
+  each entity phase declares its concrete effects, hitbox, visual, repeat
+  scheduler, and allowlisted event response. Collision services supply target
+  IDs and the entity system routes effects into bot state without replacing the
+  logical entity on transitions.
 - `src/main/resources/db/migration/`: append-only Flyway schema history.
 
 ## Route by task

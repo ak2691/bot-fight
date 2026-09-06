@@ -1,4 +1,4 @@
-import { abilityContract } from "../../../gameconfig/AbilityContracts.js";
+import { attachedAbilityContract } from "../../../gameconfig/AttachedAbilityContracts.js";
 import { entityContractForAbility } from "../../../ecs/contracts/EntityContracts.js";
 import { ABILITY_TAGS, ALL_ABILITY_DEFINITIONS, entitySelectableDefinitions } from "../../../loadout/BotLoadout.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../../modelPayloads/arenaConstants.js";
@@ -393,19 +393,19 @@ export function defaultSelectablePairForVariable(variable, selectableTypes = SEL
 }
 
 function abilityActionDefinition(ability, actionId) {
-    const contract = abilityContract(ability.id);
+    const contract = attachedAbilityContract(ability.id);
     const entity = entityContractForAbility(ability.id);
-    const movementConfig = Boolean(contract?.execution?.movement);
-    const locationTarget = entity?.spawn?.mode === "target";
+    const movementConfig = contract?.phases?.some((phase) => phase.movement?.distance != null) ?? false;
+    const locationTarget = entity?.targeting?.position === "target";
     return {
         id: actionId,
         label: `Ability: ${ability.label}`,
         head: "ability",
-        targetMode: contract?.execution?.targetMode ?? (locationTarget ? "target" : null),
+        targetMode: contract?.activation?.targetMode ?? (locationTarget ? "target" : null),
         coordinateTarget: movementConfig || locationTarget,
         locationTarget,
         movementConfig,
-        orientationConfig: Boolean(contract?.execution?.phaseFacingDefault),
+        orientationConfig: Boolean(contract?.activation?.phaseFacingDefault),
     };
 }
 

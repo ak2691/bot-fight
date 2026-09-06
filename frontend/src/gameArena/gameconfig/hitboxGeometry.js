@@ -1,5 +1,4 @@
-import { ABILITY_STATS } from "./Abilities.js";
-import { abilityContract } from "./AbilityContracts.js";
+import { attachedAbilityContract } from "./AttachedAbilityContracts.js";
 import { movingCircleCollision, movingRectangleCollision } from "./geometry.js";
 import { compassDegreesToRadians } from "../botlogic/planner/arenaAngles.js";
 import { entityContract, phaseForEntity } from "../ecs/contracts/EntityContracts.js";
@@ -28,14 +27,13 @@ export function hitboxGeometryForBot(bot, position = null) {
     const abilityId = activeDirectAbilityForBot(bot);
     if (abilityId == null) return null;
 
-    const contract = abilityContract(abilityId);
+    const contract = attachedAbilityContract(abilityId);
     const hitbox = contract?.phases?.[0]?.hitbox;
     if (!hitbox?.shape) return null;
 
     const remainingMs = combatVisualRemainingMs(bot, abilityId);
     if (remainingMs <= 0) return null;
-    const stats = ABILITY_STATS[abilityId] ?? {};
-    const durationMs = Math.max(1, combatVisualDurationMs(abilityId, stats), remainingMs);
+    const durationMs = Math.max(1, combatVisualDurationMs(abilityId), remainingMs);
     const origin = botActivationOrigin(bot, position);
     const rotation = compassDegreesToRadians(bot?.abilityVisual?.rotation
         ?? bot?.visualOriginRotation
@@ -45,8 +43,8 @@ export function hitboxGeometryForBot(bot, position = null) {
     const opacity = Math.min(1, remainingMs / durationMs);
 
     if (hitbox.shape === "rectangle") {
-        const length = phaseStat(hitbox.length ?? hitbox.range, stats, 0);
-        const height = Math.max(0, phaseStat(hitbox.width, stats, Number(bot?.size ?? 60)));
+        const length = phaseStat(hitbox.length ?? hitbox.range, {}, 0);
+        const height = Math.max(0, phaseStat(hitbox.width, {}, Number(bot?.size ?? 60)));
         if (length <= 0 || height <= 0) return null;
         const direction = { x: Math.cos(rotation), y: Math.sin(rotation) };
         return {
@@ -64,8 +62,8 @@ export function hitboxGeometryForBot(bot, position = null) {
     }
 
     if (hitbox.shape === "ray") {
-        const length = phaseStat(hitbox.range, stats, 0);
-        const width = phaseStat(hitbox.width, stats, 5);
+        const length = phaseStat(hitbox.range, {}, 0);
+        const width = phaseStat(hitbox.width, {}, 5);
         return length > 0 ? {
             shape: "ray",
             x: origin.x,
@@ -81,7 +79,7 @@ export function hitboxGeometryForBot(bot, position = null) {
     }
 
     if (hitbox.shape === "circle") {
-        const radius = phaseStat(hitbox.radius, stats, 0);
+        const radius = phaseStat(hitbox.radius, {}, 0);
         return radius > 0 ? {
             shape: COLLIDER_SHAPES.CIRCLE,
             x: origin.x,
@@ -95,7 +93,7 @@ export function hitboxGeometryForBot(bot, position = null) {
     }
 
     if (hitbox.shape !== "arc") return null;
-    const radius = phaseStat(hitbox.range, stats, 0);
+    const radius = phaseStat(hitbox.range, {}, 0);
     if (radius <= 0) return null;
     return {
         shape: "sector",
@@ -103,7 +101,7 @@ export function hitboxGeometryForBot(bot, position = null) {
         y: origin.y,
         radius,
         rotation,
-        halfAngle: phaseStat(hitbox.arc, stats, 36) * Math.PI / 360,
+        halfAngle: phaseStat(hitbox.arc, {}, 36) * Math.PI / 360,
         opacity,
         remainingMs,
         durationMs,
@@ -217,13 +215,12 @@ export function hitboxGeometryForEntity(entity) {
         };
     }
 
-    const stats = ABILITY_STATS[Number(contract.abilityId)] ?? {};
     const trigger = phase?.trigger;
     const radiusValue = phase?.hitbox?.radius
         ?? phase?.statOverrides?.radius
         ?? trigger?.radius
         ?? phase?.radius;
-    const radius = resolveStatValue(radiusValue, stats, phase);
+    const radius = resolveStatValue(radiusValue, {}, phase);
     const radiusMultiplier = Number(phase?.hitbox?.radiusMultiplier ?? 1);
     return {
         shape: COLLIDER_SHAPES.CIRCLE,
@@ -252,11 +249,10 @@ function summonAttackHitboxGeometry(entity) {
     const attack = phase?.attack;
     const remainingMs = Number(entity?.[attack?.visualField] ?? 0);
     if (!attack || remainingMs <= 0) return null;
-    const stats = ABILITY_STATS[Number(contract.abilityId)] ?? {};
     const rangeValue = attack.range ?? attack.rangeStat ?? "range";
-    const length = resolveStatValue(rangeValue, stats, phase);
+    const length = resolveStatValue(rangeValue, {}, phase);
     if (length <= 0) return null;
-    const durationMs = Math.max(1, Number(stats[attack.visualStat] ?? 300), remainingMs);
+    const durationMs = Math.max(1, Number(attack.visual ?? 300), remainingMs);
     return {
         shape: "ray",
         x: Number(entity?.x ?? 0),
@@ -282,7 +278,7 @@ function activeDirectAbilityForBot(bot) {
 }
 
 function hasAttachedHitbox(abilityId) {
-    const phase = abilityContract(abilityId)?.phases?.[0];
+    const phase = attachedAbilityContract(abilityId)?.phases?.[0];
     return phase?.type === "botAttached" && Boolean(phase.hitbox?.shape);
 }
 
@@ -332,24 +328,20 @@ function entitySize(entity) {
 }
 
 function entityLength(entity) {
-    const contract = contractForEntity(entity);
     const phase = phaseForEntity(entity);
-    const stats = ABILITY_STATS[Number(contract?.abilityId)] ?? {};
     const lengthValue = phase?.hitbox?.length
         ?? phase?.statOverrides?.hitboxLength
-        ?? stats.hitboxLength;
-    const length = resolveStatValue(lengthValue, stats, phase);
+        ?? null;
+    const length = resolveStatValue(lengthValue, {}, phase);
     return Number.isFinite(length) && length > 0 ? length : entitySize(entity);
 }
 
 function entityHitboxWidth(entity) {
-    const contract = contractForEntity(entity);
     const phase = phaseForEntity(entity);
-    const stats = ABILITY_STATS[Number(contract?.abilityId)] ?? {};
     const widthValue = phase?.hitbox?.width
         ?? phase?.statOverrides?.hitboxWidth
-        ?? stats.hitboxWidth;
-    const width = resolveStatValue(widthValue, stats, phase);
+        ?? null;
+    const width = resolveStatValue(widthValue, {}, phase);
     return Number.isFinite(width) && width > 0 ? width : entitySize(entity);
 }
 

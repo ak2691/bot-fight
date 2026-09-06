@@ -8,20 +8,18 @@ import static com.example.botfight.simulation.geometry.DistanceCalculator.segmen
 import static com.example.botfight.simulation.geometry.DistanceCalculator.movingRectangleCollision;
 
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
-import com.example.botfight.simulation.gameconfig.Abilities;
-import com.example.botfight.simulation.gameconfig.AbilityContracts;
-import com.example.botfight.simulation.gameconfig.AbilityContracts.DeliveryType;
+import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts;
 import org.springframework.stereotype.Service;
 
-/** Resolves declarative ability delivery geometry for bots and arena entities. */
+/** Resolves declarative attached-phase geometry for bots and arena entities. */
 @Service
 final class AbilityHitDetectionService {
     boolean abilityHitsTarget(Bot attacker, Bot defender, AbilityExecutionPayload payload) {
         if (attacker == null || defender == null || payload == null) return false;
-        DeliveryType delivery = payload.contract().delivery();
-        AbilityContracts.AbilityPhase phase = phase(payload);
-        if (delivery == DeliveryType.SELF) return true;
-        String shape = phase == null ? null : phase.hitbox().get("shape");
+        if (!AttachedAbilityContracts.isAttachedAbility(payload.abilityId())) return false;
+        AttachedAbilityContracts.AbilityPhase phase = phase(payload);
+        if (AttachedAbilityContracts.targetsOwner(payload.abilityId())) return true;
+        String shape = shape(phase);
         if ("ray".equals(shape)) {
             return movingRayHits(payload, phase, attacker, defender);
         }
@@ -30,70 +28,59 @@ final class AbilityHitDetectionService {
     }
 
     private boolean movingRangeHits(Bot attacker, Bot defender, AbilityExecutionPayload payload,
-                                    AbilityContracts.AbilityPhase phase) {
-        String shape = phase == null ? null : phase.hitbox().get("shape");
+                                    AttachedAbilityContracts.AbilityPhase phase) {
+        String shape = shape(phase);
         double sourceX = sourceX(attacker, payload);
         double sourceY = sourceY(attacker, payload);
-        double targetRadius = payload.contract().includeTargetRadius() ? defender.size / 2.0 : 0;
+        double targetRadius = includesTargetRadius(phase) ? defender.size / 2.0 : 0;
         if ("circle".equals(shape)) {
             return segmentIntersectsCircle(defender.movementStartX, defender.movementStartY,
                     defender.x, defender.y, sourceX, sourceY,
-                    phaseNumber(phase == null ? null : phase.hitbox().get("radius"),
-                            payload.abilityId(), Abilities.radius(payload.abilityId())) + targetRadius);
+                    numeric(hitbox(phase).radius(), 0) + targetRadius);
         }
         if ("rectangle".equals(shape)) {
-            double range = phaseNumber(phase == null ? null
-                            : phase.hitbox().getOrDefault("length", phase.hitbox().get("range")),
-                    payload.abilityId(), Abilities.range(payload.abilityId()));
+            double range = rectangleLength(phase, 0);
             double radians = compassRadians(sourceRotation(attacker, payload));
             double centerX = sourceX + Math.cos(radians) * range / 2.0;
             double centerY = sourceY + Math.sin(radians) * range / 2.0;
             return movingRectangleCollision(
                     centerX, centerY, centerX, centerY,
-                    range, phaseNumber(phase == null ? null : phase.hitbox().get("width"),
-                            payload.abilityId(), Abilities.stat(payload.abilityId(), "hitboxWidth", 60)), radians,
+                    range, numeric(hitbox(phase).width(), 60), radians,
                     defender.movementStartX, defender.movementStartY,
                     defender.x, defender.y, targetRadius).hit();
         }
         return segmentIntersectsSector(sourceX, sourceY,
                 defender.movementStartX, defender.movementStartY, defender.x, defender.y,
                 sourceRotation(attacker, payload),
-                phaseNumber(phase == null ? null : phase.hitbox().get("range"),
-                        payload.abilityId(), Abilities.range(payload.abilityId())),
-                phaseNumber(phase == null ? null : phase.hitbox().get("arc"),
-                        payload.abilityId(), Abilities.arc(payload.abilityId())) / 2.0,
+                numeric(hitbox(phase).range(), 0),
+                numeric(hitbox(phase).arc(), 0) / 2.0,
                 targetRadius);
     }
 
-    private boolean movingRayHits(AbilityExecutionPayload payload, AbilityContracts.AbilityPhase phase,
+    private boolean movingRayHits(AbilityExecutionPayload payload, AttachedAbilityContracts.AbilityPhase phase,
                                   Bot source, Bot target) {
         double radians = compassRadians(sourceRotation(source, payload));
         double directionX = Math.cos(radians);
         double directionY = Math.sin(radians);
         double targetRadius = target.size / 2.0;
-        double rayWidth = phaseNumber(phase == null ? null : phase.hitbox().get("width"),
-                payload.abilityId(), Abilities.stat(payload.abilityId(), "hitboxWidth", 5));
+        double rayWidth = numeric(hitbox(phase).width(), 5);
         double effectiveDistance = targetRadius + (Double.isFinite(rayWidth) && rayWidth > 0 ? rayWidth : 5) / 2.0;
         double originX = sourceX(source, payload);
         double originY = sourceY(source, payload);
         return segmentsWithinDistance(
                 originX, originY,
-                originX + directionX * phaseNumber(phase == null ? null : phase.hitbox().get("range"),
-                        payload.abilityId(), Abilities.range(payload.abilityId())),
-                originY + directionY * phaseNumber(phase == null ? null : phase.hitbox().get("range"),
-                        payload.abilityId(), Abilities.range(payload.abilityId())),
+                originX + directionX * numeric(hitbox(phase).range(), 0),
+                originY + directionY * numeric(hitbox(phase).range(), 0),
                 target.movementStartX, target.movementStartY, target.x, target.y, effectiveDistance);
     }
 
     boolean rayHits(AbilityExecutionPayload payload, Bot source,
                     double targetX, double targetY, double targetRadius) {
         double radians = compassRadians(sourceRotation(source, payload));
-        AbilityContracts.AbilityPhase phase = phase(payload);
-        double rayWidth = phaseNumber(phase == null ? null : phase.hitbox().get("width"),
-                payload.abilityId(), Abilities.stat(payload.abilityId(), "hitboxWidth", 5));
+        AttachedAbilityContracts.AbilityPhase phase = phase(payload);
+        double rayWidth = numeric(hitbox(phase).width(), 5);
         double effectiveRadius = targetRadius + (Double.isFinite(rayWidth) && rayWidth > 0 ? rayWidth : 5) / 2.0;
-        double range = phaseNumber(phase == null ? null : phase.hitbox().get("range"),
-                payload.abilityId(), Abilities.range(payload.abilityId()));
+        double range = numeric(hitbox(phase).range(), 0);
         return rayIntersectsCircle(sourceX(source, payload), sourceY(source, payload),
                 Math.cos(radians), Math.sin(radians), range,
                 targetX, targetY, effectiveRadius);
@@ -104,16 +91,13 @@ final class AbilityHitDetectionService {
         if (payload == null) return false;
         double sourceX = sourceX(attacker, payload);
         double sourceY = sourceY(attacker, payload);
-        AbilityContracts.AbilityPhase phase = phase(payload);
-        double targetRadius = payload.contract().includeTargetRadius() ? targetSize / 2.0 : 0;
-        String shape = phase == null ? null : phase.hitbox().get("shape");
+        AttachedAbilityContracts.AbilityPhase phase = phase(payload);
+        double targetRadius = includesTargetRadius(phase) ? targetSize / 2.0 : 0;
+        String shape = shape(phase);
         if ("rectangle".equals(shape)) {
             double radians = compassRadians(sourceRotation(attacker, payload));
-            double effectiveLength = phaseNumber(phase == null ? null
-                            : phase.hitbox().getOrDefault("length", phase.hitbox().get("range")),
-                    payload.abilityId(), range);
-            double effectiveWidth = phaseNumber(phase == null ? null : phase.hitbox().get("width"),
-                    payload.abilityId(), Abilities.stat(payload.abilityId(), "hitboxWidth", 60));
+            double effectiveLength = rectangleLength(phase, range);
+            double effectiveWidth = numeric(hitbox(phase).width(), 60);
             double centerX = sourceX + Math.cos(radians) * effectiveLength / 2.0;
             double centerY = sourceY + Math.sin(radians) * effectiveLength / 2.0;
             return movingRectangleCollision(
@@ -122,35 +106,63 @@ final class AbilityHitDetectionService {
                     targetX, targetY, targetX, targetY, targetRadius).hit();
         }
         double effectiveRange = "circle".equals(shape)
-                ? phaseNumber(phase == null ? null : phase.hitbox().get("radius"), payload.abilityId(), range)
-                : phaseNumber(phase == null ? null : phase.hitbox().get("range"), payload.abilityId(), range);
+                ? numeric(hitbox(phase).radius(), range)
+                : numeric(hitbox(phase).range(), range);
         if ("circle".equals(shape)) {
             return Math.hypot(targetX - sourceX, targetY - sourceY) <= effectiveRange + targetRadius;
         }
         return segmentIntersectsSector(sourceX, sourceY, targetX, targetY, targetX, targetY,
                 sourceRotation(attacker, payload), effectiveRange,
-                phaseNumber(phase == null ? null : phase.hitbox().get("arc"),
-                        payload.abilityId(), Abilities.arc(payload.abilityId())) / 2.0,
+                numeric(hitbox(phase).arc(), 0) / 2.0,
                 targetRadius);
     }
 
-    boolean isDirectDelivery(DeliveryType delivery) {
-        return delivery == DeliveryType.SELF || delivery == DeliveryType.MELEE
-                || delivery == DeliveryType.RAY || delivery == DeliveryType.RADIAL;
+    double phaseRange(AbilityExecutionPayload payload, double fallback) {
+        AttachedAbilityContracts.AbilityPhase phase = phase(payload);
+        AttachedAbilityContracts.Hitbox hitbox = hitbox(phase);
+        if ("circle".equals(hitbox.shape())) return numeric(hitbox.radius(), fallback);
+        if ("rectangle".equals(hitbox.shape())) return rectangleLength(phase, fallback);
+        return numeric(hitbox.range(), fallback);
     }
 
-    private static AbilityContracts.AbilityPhase phase(AbilityExecutionPayload payload) {
-        return payload == null || payload.contract().phases().isEmpty()
-                ? null : payload.contract().phases().getFirst();
+    boolean isAttachedAbility(AbilityExecutionPayload payload) {
+        return payload != null && AttachedAbilityContracts.isAttachedAbility(payload.abilityId());
     }
 
-    private static double phaseNumber(String value, int abilityId, double fallback) {
-        if (value == null) return fallback;
-        try {
-            return Double.parseDouble(value);
-        } catch (NumberFormatException ignored) {
-            return Abilities.stat(abilityId, value, fallback);
-        }
+    boolean hasActivationEvent(AbilityExecutionPayload payload) {
+        if (payload == null || payload.phases().isEmpty()) return false;
+        AttachedAbilityContracts.PhaseEvent event = payload.phases().getFirst().events()
+                .get(AttachedAbilityContracts.PhaseEventType.ACTIVATION);
+        return event != null;
+    }
+
+    private static AttachedAbilityContracts.AbilityPhase phase(AbilityExecutionPayload payload) {
+        return payload == null || payload.phases().isEmpty()
+                ? null : payload.phases().getFirst();
+    }
+
+    private static final AttachedAbilityContracts.Hitbox EMPTY_HITBOX =
+            new AttachedAbilityContracts.Hitbox(null, null, null, null, 1.0, null, null, false);
+
+    private static AttachedAbilityContracts.Hitbox hitbox(AttachedAbilityContracts.AbilityPhase phase) {
+        return phase == null || phase.hitbox() == null ? EMPTY_HITBOX : phase.hitbox();
+    }
+
+    private static String shape(AttachedAbilityContracts.AbilityPhase phase) {
+        return hitbox(phase).shape();
+    }
+
+    private static boolean includesTargetRadius(AttachedAbilityContracts.AbilityPhase phase) {
+        return hitbox(phase).includeTargetRadius();
+    }
+
+    private static double rectangleLength(AttachedAbilityContracts.AbilityPhase phase, double fallback) {
+        AttachedAbilityContracts.Hitbox hitbox = hitbox(phase);
+        return numeric(hitbox.length() == null ? hitbox.range() : hitbox.length(), fallback);
+    }
+
+    private static double numeric(Double value, double fallback) {
+        return value == null || !Double.isFinite(value) ? fallback : value;
     }
 
     private static double sourceX(Bot source, AbilityExecutionPayload payload) {

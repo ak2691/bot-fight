@@ -164,6 +164,14 @@ test("preparation, active, cooldown, and ready states use remaining-time directi
     assert.ok(Math.abs(preparing.progress - (1 / 3)) < 0.0001);
     assert.equal(abilityRingBackground(preparing), "conic-gradient(from 0deg, #facc15 0 100.00%, #64748b 100.00% 100%)");
 
+    const availableDuringPreparation = abilityStatusFor({
+        preparingAbility: 18,
+        preparingMs: 200,
+    }, 7);
+    assert.equal(availableDuringPreparation.state, "ready");
+    assert.equal(availableDuringPreparation.progress, 1);
+    assert.equal(abilityRingColorFor(7, availableDuringPreparation), "#22c55e");
+
     const active = abilityStatusFor({ abilityActiveMs: { 7: 200 } }, 7);
     assert.equal(active.state, "active");
     assert.equal(active.remainingMs, 200);

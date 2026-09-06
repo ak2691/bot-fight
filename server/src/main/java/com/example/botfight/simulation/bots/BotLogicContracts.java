@@ -2,7 +2,7 @@ package com.example.botfight.simulation.bots;
 
 import com.example.botfight.simulation.ecs.contracts.EntityContracts;
 import com.example.botfight.simulation.ecs.contracts.EntityContracts.EntityContract;
-import com.example.botfight.simulation.gameconfig.AbilityContracts;
+import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -395,16 +395,18 @@ public final class BotLogicContracts {
             if (common != null) return common;
             return null;
         }
-        if (!(action instanceof Integer abilityId) || !AbilityContracts.actions().contains(abilityId)) return null;
-        AbilityContracts.Execution execution = AbilityContracts.get(abilityId).execution();
+        if (!(action instanceof Integer abilityId) || !AttachedAbilityContracts.actions().contains(abilityId)) return null;
+        AttachedAbilityContracts.AttachedAbilityContract attachedAbilityContract = AttachedAbilityContracts.forAbility(abilityId);
+        AttachedAbilityContracts.Activation activation = AttachedAbilityContracts.activationFor(abilityId);
         EntityContract entity = EntityContracts.forAbility(abilityId);
-        boolean locationTarget = entity != null && entity.spawn().mode() == EntityContracts.SpawnMode.TARGET;
-        boolean movement = execution != null && execution.movement() != null;
-        String targetMode = execution != null ? execution.targetMode() : null;
+        boolean locationTarget = entity != null && entity.spawn().targetPosition();
+        boolean movement = attachedAbilityContract != null && attachedAbilityContract.phases().stream()
+                .anyMatch(phase -> phase.movement() != null && phase.movement().distance() != null);
+        String targetMode = activation.targetMode();
         if (targetMode == null && locationTarget) targetMode = "target";
         return new ActionContract(ActionHead.ABILITY, false, movement,
                 movement || locationTarget, locationTarget,
-                execution != null && execution.phaseFacingDefault() != null, false, targetMode);
+                activation.phaseFacingDefault() != null, false, targetMode);
     }
 
     public static boolean isAllowedAction(Object action) { return actionContract(action) != null; }
@@ -610,20 +612,28 @@ public final class BotLogicContracts {
 
     private static Set<String> buildStatusEffects() {
         Set<String> effects = new LinkedHashSet<>();
-        for (AbilityContracts.AbilityContract ability : AbilityContracts.all().values()) {
-            for (AbilityContracts.Effect effect : ability.effects()) {
-                if (isStatusEffect(effect)
-                        && effect.subtype() != null) {
-                    effects.add(effect.subtype());
-                }
-            }
+        for (AttachedAbilityContracts.AttachedAbilityContract ability : AttachedAbilityContracts.all().values()) {
+            addStatusEffects(effects, ability.phases());
+        }
+        for (EntityContract entity : EntityContracts.all().values()) {
+            addStatusEffects(effects, entity.phases());
         }
         return Collections.unmodifiableSet(effects);
     }
 
-    private static boolean isStatusEffect(AbilityContracts.Effect effect) {
-        return effect != null && (effect.type() == AbilityContracts.EffectType.STATUS
-                || effect.type() == AbilityContracts.EffectType.BUFF);
+    private static void addStatusEffects(Set<String> effects,
+                                         java.util.List<AttachedAbilityContracts.AbilityPhase> phases) {
+        for (AttachedAbilityContracts.Effect effect : phases.stream()
+                .flatMap(phase -> phase.effects().stream()).toList()) {
+            if (isStatusEffect(effect) && effect.subtype() != null) {
+                effects.add(effect.subtype());
+            }
+        }
+    }
+
+    private static boolean isStatusEffect(AttachedAbilityContracts.Effect effect) {
+        return effect != null && (effect.type() == AttachedAbilityContracts.EffectType.STATUS
+                || effect.type() == AttachedAbilityContracts.EffectType.BUFF);
     }
 
     private static void addNumbers(Map<String, VariableContract> variables, VariableSource source,

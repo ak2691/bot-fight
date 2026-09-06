@@ -1,7 +1,12 @@
 import { ABILITY_STATS, abilityStats } from "../gameconfig/Abilities.js";
 import { abilityIdentity } from "../gameconfig/AbilityRegistry.js";
 import { abilityIdFromBoundary } from "../gameconfig/AbilityCompatibility.js";
-import { abilityContract, DELIVERY_TYPES, EFFECT_TYPES } from "../gameconfig/AbilityContracts.js";
+import {
+    attachedAbilityContract,
+    attachedAbilityTargetsOwner,
+    effectsForAttachedAbility,
+    EFFECT_TYPES,
+} from "../gameconfig/AttachedAbilityContracts.js";
 import { entityContractForAbility } from "../ecs/contracts/EntityContracts.js";
 import { selectableIdentitiesForAbilityEntity } from "../modelPayloads/selectableIdentities.js";
 
@@ -68,18 +73,7 @@ const BOT_ABILITY_CATALOG = [
     { id: 34, round: 0, standard: true, visualInterpolation: "none", summary: "A quick melee attack." },
 ];
 
-const DELIVERY_TAGS = Object.freeze({
-    [DELIVERY_TYPES.SELF]: "self",
-    [DELIVERY_TYPES.MELEE]: "melee",
-    [DELIVERY_TYPES.RAY]: "ray",
-    [DELIVERY_TYPES.PROJECTILE]: "projectile",
-    [DELIVERY_TYPES.RADIAL]: "radial",
-    [DELIVERY_TYPES.ZONE]: "zone",
-    [DELIVERY_TYPES.TRAP]: "trap",
-    [DELIVERY_TYPES.SUMMON]: "summon",
-});
-
-const CATALOGUE_ENTITY_TAGS = new Set(["zone", "trap", "summon"]);
+const CATALOGUE_ENTITY_TAGS = new Set(["projectile", "zone", "trap", "summon"]);
 const STATUS_EFFECT_TYPES = new Set([EFFECT_TYPES.STATUS, EFFECT_TYPES.BUFF]);
 const POSITIVE_EFFECT_TYPES = new Set([
     EFFECT_TYPES.BUFF,
@@ -121,14 +115,18 @@ function abilityCapabilities(ability) {
         entityLabel: identity.label,
         entityCategory: entity.category.toLocaleLowerCase(),
     } : {};
-    const gameplay = abilityContract(ability.id);
+    const gameplay = attachedAbilityContract(ability.id);
     const catalogueTags = new Set();
-    const deliveryTag = DELIVERY_TAGS[gameplay?.delivery?.type];
-    if (deliveryTag) catalogueTags.add(deliveryTag);
-    if (entityMetadata.entityCategory && CATALOGUE_ENTITY_TAGS.has(entityMetadata.entityCategory)) {
+    const phaseTag = phaseCatalogueTag(ability.id, entity ?? gameplay, entityMetadata.entityCategory);
+    if (phaseTag) catalogueTags.add(phaseTag);
+    if (entityMetadata.entityCategory && CATALOGUE_ENTITY_TAGS.has(entityMetadata.entityCategory)
+        && entityMetadata.entityCategory !== phaseTag) {
         catalogueTags.add(entityMetadata.entityCategory);
     }
-    const effects = gameplay?.effects ?? Object.freeze([]);
+    const phaseEffects = (entity?.phases ?? []).flatMap((phase) => phase.effects ?? []);
+    const effects = Object.freeze([...effectsForAttachedAbility(ability.id), ...phaseEffects]
+        .filter((effect, index, values) => values.findIndex((candidate) =>
+            JSON.stringify(candidate) === JSON.stringify(effect)) === index));
     if (effects.some(isStatusEffect)) catalogueTags.add(ABILITY_TAGS.STATUS_EFFECT);
     if (Number(stats.maxCharges) > 0) {
         catalogueTags.add(ABILITY_TAGS.CHARGES);
@@ -136,7 +134,6 @@ function abilityCapabilities(ability) {
     }
     const tags = new Set([identity.type, ...catalogueTags]);
     if (stats.windupMs) tags.add("wind-up");
-    if (stats.beam) tags.add("ray");
     if (stats.durationMs) tags.add("duration");
     tags.add(ability.visualInterpolation === VISUAL_INTERPOLATION.LINEAR ? "interpolated-visual" : "instant-visual");
     return Object.freeze({
@@ -149,12 +146,28 @@ function abilityCapabilities(ability) {
         ...entityMetadata,
         selectableIdentities,
         stats: Object.freeze({ ...stats }),
-        delivery: gameplay?.delivery ?? null,
+        phaseTag,
         effects,
         catalogueTags: Object.freeze([...catalogueTags]),
         buffDetails: positiveEffectDetailsForEffects(effects),
         tags: Object.freeze([...tags]),
     });
+}
+
+/** Display-only classification derived from the phase host and hitbox. */
+function phaseCatalogueTag(abilityId, contract, entityCategory) {
+    const phase = contract?.phases?.[0];
+    if (!phase) return entityCategory ?? null;
+    if (entityCategory && ["projectile", "zone", "summon"].includes(phase.type)) return phase.type;
+    if (attachedAbilityTargetsOwner(abilityId)) return "self";
+    if (!phase.hitbox?.shape) return "self";
+    switch (phase.hitbox?.shape) {
+        case "ray": return "ray";
+        case "arc":
+        case "rectangle": return "melee";
+        case "circle": return "radial";
+        default: return null;
+    }
 }
 
 /** Full runtime metadata, including standard abilities that are not loadout choices. */

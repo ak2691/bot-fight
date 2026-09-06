@@ -1,4 +1,4 @@
-import { ABILITY_STATS } from "../../gameconfig/Abilities.js";
+import { entityContractForAbility } from "./EntityContracts.js";
 
 const snapshot = (fields) => Object.freeze(fields);
 
@@ -12,7 +12,7 @@ export const DEFERRED_STATE_CONTRACTS = Object.freeze([
         remainingField: "temporalRewindMs",
         completionVisual: Object.freeze({
             timerField: "temporalRewindPulseMs",
-            durationMs: Number(ABILITY_STATS[21]?.intervalMs ?? 400),
+            durationMs: Number(entityContractForAbility(21)?.phases?.[0]?.visual?.visibleMs ?? 400),
         }),
         completion: Object.freeze({
             type: "restoreSnapshot",

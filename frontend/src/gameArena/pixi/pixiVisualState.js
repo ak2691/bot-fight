@@ -1,6 +1,6 @@
 import { abilityDefinition, VISUAL_INTERPOLATION } from "../loadout/BotLoadout.js";
 import { abilityId } from "../gameconfig/AbilityRegistry.js";
-import { ABILITY_STATS } from "../gameconfig/Abilities.js";
+import { attachedAbilityContract } from "../gameconfig/AttachedAbilityContracts.js";
 import { CLOSING_ZONE_TYPE } from "../gameconfig/ArenaHazardConfig.js";
 import { AUTO_STEP_MS } from "../modelPayloads/arenaConstants.js";
 import { compassDegreesToRadians } from "../botlogic/planner/arenaAngles.js";
@@ -48,7 +48,7 @@ export const ENTITY_PRESENTATION_DEFINITIONS = Object.freeze({
 export const LOCK_ON_PRESENTATION = Object.freeze({
     texturePath: ["lockOnCrosshair"],
     animation: "target",
-    markerSize: ABILITY_STATS[20]?.visualSize ?? 48,
+    markerSize: Number(attachedAbilityContract(20)?.phases?.[0]?.visual?.visualSize ?? 48),
 });
 
 /** Resolves presentation metadata from the entity's current phase. */
@@ -67,7 +67,7 @@ export function visualForShape(shape) {
 
     const phaseVisual = phaseForEntity(shape)?.visual;
     if (phaseVisual) return phaseVisual;
-    return contract.visual ?? null;
+    return null;
 }
 
 /** Returns the asset/presentation type selected by the entity's phase metadata. */
@@ -229,12 +229,16 @@ export function grenadeVisualState(shape, stepMs = AUTO_STEP_MS) {
     const speed = Math.hypot(Number(shape?.velocityX ?? 0), Number(shape?.velocityY ?? 0));
     if (speed > 0.01) return "moving";
     const detonateLeadMs = Math.max(0, Number(stepMs) || AUTO_STEP_MS) * 2;
-    return Number(shape?.stoppedMs ?? 0) >= ABILITY_STATS[4].fuseMs - detonateLeadMs ? "detonate" : "static";
+    const travelDurationMs = Number(entityContract(4)?.phases
+        ?.find((phase) => phase.id === "travel")?.durationMs ?? 1000);
+    return Number(shape?.stoppedMs ?? 0) >= travelDurationMs - detonateLeadMs ? "detonate" : "static";
 }
 
 export function grenadeDetonateProgress(shape, stepMs = AUTO_STEP_MS) {
     const detonateLeadMs = Math.max(0, Number(stepMs) || AUTO_STEP_MS) * 2;
-    const detonateStartMs = Math.max(0, ABILITY_STATS[4].fuseMs - detonateLeadMs);
+    const travelDurationMs = Number(entityContract(4)?.phases
+        ?.find((phase) => phase.id === "travel")?.durationMs ?? 1000);
+    const detonateStartMs = Math.max(0, travelDurationMs - detonateLeadMs);
     return Math.min(1, Math.max(0, (Number(shape?.stoppedMs ?? 0) - detonateStartMs) / detonateLeadMs));
 }
 

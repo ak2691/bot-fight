@@ -4,20 +4,22 @@ import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Action;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
 import com.example.botfight.simulation.gameconfig.Abilities;
-import com.example.botfight.simulation.gameconfig.AbilityContracts;
+import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts;
+import com.example.botfight.simulation.ecs.contracts.EntityContracts;
+import java.util.List;
 
 /**
  * Server-owned, allowlisted description of one ability execution.
  *
  * Strategy input contains only a canonical ability action. This payload joins
- * that action to the authoritative numeric definition and effect contract so
- * execution systems do not need to identify abilities by number.
+ * that action to the authoritative numeric definition and the matching phase
+ * contract so execution systems do not need to identify abilities by number.
  */
 public record AbilityExecutionPayload(
         int actionId,
         int abilityId,
         Abilities.AbilityDefinition definition,
-        AbilityContracts.AbilityContract contract,
+        AttachedAbilityContracts.AttachedAbilityContract contract,
         double targetX,
         double targetY,
         String movementMode,
@@ -29,7 +31,7 @@ public record AbilityExecutionPayload(
 
     public static AbilityExecutionPayload from(Action action) {
         if (action == null) return null;
-        Integer abilityId = AbilityContracts.abilityForAction(action.abilityAction());
+        Integer abilityId = AttachedAbilityContracts.abilityForAction(action.abilityAction());
         return abilityId == null ? null : from(abilityId, action);
     }
 
@@ -38,7 +40,7 @@ public record AbilityExecutionPayload(
                 abilityId,
                 abilityId,
                 Abilities.definition(abilityId),
-                AbilityContracts.get(abilityId),
+                AttachedAbilityContracts.forAbility(abilityId),
                 Double.NaN,
                 Double.NaN,
                 null,
@@ -61,7 +63,7 @@ public record AbilityExecutionPayload(
     }
 
     public AbilityExecutionPayload capture(Bot bot) {
-        if (!contract.execution().captureAtActivation()) return this;
+        if (!activation().captureAtActivation()) return this;
         return new AbilityExecutionPayload(actionId, abilityId, definition, contract,
                 targetX, targetY, movementMode, movementDirection, phaseFacingMode,
                 bot.x, bot.y, bot.rotation);
@@ -72,12 +74,25 @@ public record AbilityExecutionPayload(
                 && Double.isFinite(capturedRotation);
     }
 
+    public AttachedAbilityContracts.Activation activation() {
+        return contract == null
+                ? AttachedAbilityContracts.activationFor(abilityId)
+                : contract.activation();
+    }
+
+    /** Returns the active phase list for either an attached or entity ability. */
+    public List<AttachedAbilityContracts.AbilityPhase> phases() {
+        if (contract != null) return contract.phases();
+        EntityContracts.EntityContract entity = EntityContracts.forAbility(abilityId);
+        return entity == null ? List.of() : entity.phases();
+    }
+
     private static AbilityExecutionPayload from(int abilityId, Action action) {
         return new AbilityExecutionPayload(
                 action.abilityAction(),
                 abilityId,
                 Abilities.definition(abilityId),
-                AbilityContracts.get(abilityId),
+                AttachedAbilityContracts.forAbility(abilityId),
                 action.abilityTargetX(),
                 action.abilityTargetY(),
                 action.movementMode(),

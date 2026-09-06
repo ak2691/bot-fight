@@ -17,8 +17,8 @@ import com.example.botfight.simulation.ecs.contracts.EntityContracts;
 import com.example.botfight.simulation.ecs.entities.AbilityEntityFactory;
 import com.example.botfight.simulation.ecs.entities.ArenaEntity;
 import com.example.botfight.simulation.gameconfig.Abilities;
-import com.example.botfight.simulation.gameconfig.AbilityContracts;
-import com.example.botfight.simulation.gameconfig.AbilityContracts.EffectType;
+import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts;
+import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts.EffectType;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -69,7 +69,7 @@ public class ActionExecutionService {
             return false;
         if (bot.abilityActiveMs.getOrDefault(payload.abilityId(), 0) > 0)
             return false;
-        if ("slow".equals(payload.contract().execution().blockedByStatus())
+        if ("slow".equals(phaseBlockedByStatus(payload))
                 && BotStateService.statusActive(bot, "slow"))
             return false;
         var definition = payload.definition();
@@ -77,7 +77,7 @@ public class ActionExecutionService {
                 && bot.abilityActiveMs.getOrDefault(payload.abilityId(), 0) <= 0;
         return selectedAbilityCooldownMs(bot, payload.abilityId()) <= 0
                 && !anotherAbilityActive(bot, payload.abilityId(),
-                        payload.contract().execution().ignoresGlobalAbilityLock())
+                        payload.activation().ignoresGlobalAbilityLock())
                 && (definition.charges() <= 0 || fixedResourceInactive
                         || botStateService.abilityCharges(bot, payload.abilityId()) > 0)
                 && !(definition.resourceModel() == Abilities.ResourceModel.RELOAD_WHEN_EMPTY
@@ -136,7 +136,7 @@ public class ActionExecutionService {
     }
 
     public Integer abilityForAction(Object action) {
-        return AbilityContracts.abilityForAction(action);
+        return AttachedAbilityContracts.abilityForAction(action);
     }
 
     public Integer configuredAbilityAction(StrategyBlock block) {
@@ -189,7 +189,7 @@ public class ActionExecutionService {
         AbilityExecutionPayload payload = selectedAbilityPayload(bot, action);
         boolean blockedByStatus = payload != null
                 && (silencedWasActive
-                        || ("slow".equals(payload.contract().execution().blockedByStatus())
+                        || ("slow".equals(phaseBlockedByStatus(payload))
                                 && slowedWasActive));
         boolean blockedByAbilityState = payload != null
                 && !blockedByStatus
@@ -216,13 +216,23 @@ public class ActionExecutionService {
         abilityEffectService.resolveTriggeredAbility(attacker, defender, arena);
     }
 
+    private static String phaseBlockedByStatus(AbilityExecutionPayload payload) {
+        if (payload == null) return null;
+        return payload.phases().stream()
+                .map(AttachedAbilityContracts.AbilityPhase::movement)
+                .filter(movement -> movement != null && movement.blockedByStatus() != null)
+                .map(AttachedAbilityContracts.PhaseMovement::blockedByStatus)
+                .findFirst()
+                .orElse(null);
+    }
+
     public void resolveTriggeredAbilities(Bot attacker, List<Bot> bots, Arena arena) {
         abilityEffectService.resolveTriggeredAbilities(attacker, bots, arena);
     }
 
     /** Keeps persistent-entity status impacts on the same path as direct abilities. */
     public void applyEntityStatus(Bot attacker, Bot defender, int abilityId,
-                                  AbilityContracts.Effect effect) {
+                                  AttachedAbilityContracts.Effect effect) {
         abilityEffectService.applyStatusEffect(attacker, defender, abilityId, effect);
     }
 
@@ -283,7 +293,7 @@ public class ActionExecutionService {
         bot.abilityActiveMs.put(payload.abilityId(), activeMs + STEP_MS);
         botStateService.setAbilityCooldown(bot, payload.abilityId(), cooldownMs);
         AbilityExecutionPayload activated = payload.capture(bot);
-        if (payload.contract().execution().faceTargetFromPayload()
+        if (payload.activation().faceTargetFromPayload()
                 && Double.isFinite(activated.targetX()) && Double.isFinite(activated.targetY())) {
             bot.rotation = vectorBearing(activated.targetX() - bot.x, activated.targetY() - bot.y);
             activated = activated.capture(bot);
@@ -311,10 +321,13 @@ public class ActionExecutionService {
         // Defensive effects and Overclock own their duration as statuses, not
         // as post-activation action locks. Other short-lived combat visuals
         // retain their explicit active fallback.
-        if (payload.contract().effects().stream().anyMatch(effect -> effect.type() == EffectType.DAMAGE_REDUCTION
+        boolean hasPhaseStatus = payload.phases().stream()
+                .flatMap(phase -> phase.effects().stream())
+                .anyMatch(effect -> effect.type() == EffectType.DAMAGE_REDUCTION
                 || effect.type() == EffectType.DAMAGE_IMMUNITY
                 || effect.type() == EffectType.DAMAGE_REFLECTION
-                || (effect.type() == EffectType.BUFF && "overclock".equals(effect.subtype())))) {
+                || (effect.type() == EffectType.BUFF && "overclock".equals(effect.subtype())));
+        if (hasPhaseStatus) {
             return 0;
         }
         var definition = payload.definition();
@@ -325,18 +338,17 @@ public class ActionExecutionService {
     }
 
     private static boolean spawnsEntity(AbilityExecutionPayload payload) {
-        return payload.contract().effects().stream()
-                .anyMatch(effect -> effect.type() == EffectType.SPAWN_ENTITY);
+        return EntityContracts.forAbility(payload.abilityId()) != null;
     }
 
     private static void spawnAbilityEntity(Bot bot, AbilityExecutionPayload payload, Arena arena) {
         if (arena == null || !spawnsEntity(payload))
             return;
         EntityContracts.EntityContract entityContract = EntityContracts.forAbility(payload.abilityId());
-        EntityContracts.Phase firstPhase = entityContract == null || entityContract.phases().isEmpty()
+        AttachedAbilityContracts.AbilityPhase firstPhase = entityContract == null || entityContract.phases().isEmpty()
                 ? null : entityContract.phases().getFirst();
         String idPrefix = firstPhase != null
-                && firstPhase.type() == EntityContracts.PhaseType.PROJECTILE
+                && firstPhase.type() == AttachedAbilityContracts.PhaseType.PROJECTILE
                         ? entityContract.runtimeType()
                         : "ability";
         bot.abilitySpawn = AbilityEntityFactory.create(
@@ -376,12 +388,12 @@ public class ActionExecutionService {
             return false;
         if (bot.preparingAbility != null
                 && bot.preparingAbility != ability
-                && !AbilityContracts.get(bot.preparingAbility).execution().ignoresGlobalAbilityLock())
+                && !AttachedAbilityContracts.activationFor(bot.preparingAbility).ignoresGlobalAbilityLock())
             return true;
         return bot.abilityActiveMs.entrySet().stream()
                 .anyMatch(entry -> entry.getKey() != ability
                         && entry.getValue() > 0
-                        && !AbilityContracts.get(entry.getKey()).execution().ignoresGlobalAbilityLock());
+                        && !AttachedAbilityContracts.activationFor(entry.getKey()).ignoresGlobalAbilityLock());
     }
 
 }

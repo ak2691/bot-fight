@@ -1,6 +1,4 @@
 import { compassDirection } from "../../botlogic/planner/arenaAngles.js";
-import { ABILITY_STATS } from "../../gameconfig/Abilities.js";
-import { abilityContract } from "../../gameconfig/AbilityContracts.js";
 import { abilityId as resolveAbilityId } from "../../gameconfig/AbilityRegistry.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
 import { entityContractForAbility } from "../contracts/EntityContracts.js";
@@ -61,20 +59,16 @@ export function createEntity({
 }
 
 /**
- * Interprets an ability's SPAWN_ENTITY effect and creates the matching
- * normalized payload. No caller needs to know how a particular entity moves
- * or which component fields it owns.
+ * Resolves the entity contract for an ability and creates its normalized
+ * payload. Entity existence and behavior are owned by the entity registry;
+ * direct ability contracts do not carry a duplicate spawn effect.
  */
 export function createAbilityEntity(bot, abilityValue, context = {}) {
     const abilityId = resolveAbilityId(abilityValue);
-    const contract = abilityContract(abilityValue);
-    const entityEffect = contract?.effects.find(({ type }) => type === "spawn_entity");
-    if (abilityId == null || !entityEffect?.entityType) return null;
+    if (abilityId == null) return null;
 
     const entityDefinition = entityContractForAbility(abilityId);
-    if (!entityDefinition) {
-        throw new Error(`No entity contract for ${entityEffect.entityType} (ability ${abilityId}).`);
-    }
+    if (!entityDefinition) return null;
 
     const serial = context.serial ?? null;
     return createEntityFromContract(bot, entityDefinition, {
@@ -95,12 +89,15 @@ export function createEntityFromContract(bot, contract, context = {}) {
 
 function buildEntityOptions(bot, contract, context) {
     const abilityId = context.abilityId ?? bot.abilityId;
-    const stats = ABILITY_STATS[abilityId] ?? {};
+    // Entity behavior is phase-owned. Keep the resolver context available for
+    // owner/context substitutions without importing the legacy ability stat
+    // catalogue as a second entity-definition source.
+    const stats = {};
     const resolvedColliderSize = Number(resolveStat(contract.collider.size, { bot, stats, context }));
     const size = Number(context.sizeOverride ?? (resolvedColliderSize
         * Number(contract.collider.sizeMultiplier ?? 1)));
-    const transform = buildTransform(bot, contract.spawn, size, { ...context, stats });
-    const motion = buildMotion(bot, contract.motion, { stats, context });
+    const transform = buildTransform(bot, contract.spawn, contract.targeting, size, { ...context, stats });
+    const motion = buildMotion(bot, contract.phases?.[0], { stats, context });
     const state = resolveRecord(contract.state, { bot, stats, context });
     const lifetime = buildLifetime(contract.lifetime, {
         bot,
@@ -137,43 +134,43 @@ function buildEntityOptions(bot, contract, context) {
     };
 }
 
-function buildTransform(bot, spawn, size, context) {
-    const mode = spawn?.mode ?? "self";
+function buildTransform(bot, spawn, targeting, size, context) {
     const rotation = spawn?.rotation === "zero" ? 0 : Number(bot.rotation ?? 0);
-    if (mode === "forward") {
-        const direction = compassDirection(bot.rotation);
-        const padding = Number(spawn.padding ?? 0);
-        const distance = Number(bot.size ?? 60) / 2 + size / 2 + padding;
-        return {
-            x: Number(bot.x) + direction.x * distance,
-            y: Number(bot.y) + direction.y * distance,
-            rotation,
-        };
-    }
-    if (mode === "target") {
-        const radius = spawn.clampToRadius
-            ? Number(resolveValue({ stat: spawn.clampToRadius, fallback: 0 }, { bot, stats: context.stats ?? {}, context }))
-            : 0;
+    if (targeting?.position === "target") {
+        const radius = targeting.clampToRadius == null
+            ? 0
+            : Number(typeof targeting.clampToRadius === "number"
+                ? targeting.clampToRadius
+                : resolveValue({ stat: targeting.clampToRadius, fallback: 0 }, { bot, stats: context.stats ?? {}, context }));
         const width = Number(context.width ?? ARENA_WIDTH_UNITS);
         const height = Number(context.height ?? ARENA_HEIGHT_UNITS);
-        const targetX = context.targetX ?? resolveTargetDefault(spawn.defaultX, bot.x);
-        const targetY = context.targetY ?? resolveTargetDefault(spawn.defaultY, bot.y);
+        const targetX = context.targetX ?? resolveTargetDefault(targeting.defaultX, bot.x);
+        const targetY = context.targetY ?? resolveTargetDefault(targeting.defaultY, bot.y);
         return {
             x: clampTarget(targetX, radius, width - radius, context.clamp),
             y: clampTarget(targetY, radius, height - radius, context.clamp),
             rotation,
         };
     }
-    return { x: Number(bot.x), y: Number(bot.y), rotation };
+    const offset = spawn?.offset ?? { x: 0, y: 0 };
+    const localX = Number(offset.x ?? 0);
+    const localY = Number(offset.y ?? 0);
+    const forward = compassDirection(bot.rotation);
+    const right = compassDirection(Number(bot.rotation ?? 0) + 90);
+    return {
+        x: Number(bot.x) + right.x * localX + forward.x * localY,
+        y: Number(bot.y) + right.y * localX + forward.y * localY,
+        rotation,
+    };
 }
 
-function buildMotion(bot, definition, { stats, context }) {
+function buildMotion(bot, firstPhase, { stats, context }) {
     const direction = compassDirection(bot.rotation);
-    const speed = Number(resolveStat(definition?.speed, { bot, stats, context }));
-    const traveled = context.traveledOverride ?? resolveValue(
-        definition?.traveled,
-        { bot, stats, context },
-    );
+    const speedValue = firstPhase?.movement?.speed;
+    const speed = typeof speedValue === "number"
+        ? speedValue
+        : Number(resolveStat(speedValue, { bot, stats, context }));
+    const traveled = context.traveledOverride ?? 0;
     return {
         x: direction.x * speed,
         y: direction.y * speed,
@@ -214,7 +211,10 @@ function resolveValue(value, { bot, stats, context }) {
 }
 
 function resolveStat(name, values) {
-    return name == null ? null : resolveValue({ stat: name, fallback: 0 }, values);
+    if (name == null) return null;
+    return typeof name === "number"
+        ? name
+        : resolveValue({ stat: name, fallback: 0 }, values);
 }
 
 function resolveTargetDefault(value, fallback) {

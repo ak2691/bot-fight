@@ -2,6 +2,7 @@ package com.example.botfight.simulation.geometry;
 
 import com.example.botfight.simulation.ecs.contracts.EntityContracts;
 import com.example.botfight.simulation.ecs.entities.ArenaEntity;
+import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts;
 
 /** Shared entity-shape dispatch for authoritative collision callers. */
 public final class EntityHitbox {
@@ -9,9 +10,9 @@ public final class EntityHitbox {
 
     public static boolean isRectangle(ArenaEntity entity) {
         EntityContracts.EntityContract contract = EntityContracts.forEntity(entity);
-        EntityContracts.Phase phase = EntityContracts.phaseFor(entity);
+        AttachedAbilityContracts.AbilityPhase phase = EntityContracts.phaseFor(entity);
         if (phase != null && phase.hitbox() != null) {
-            return phase.hitbox().shape() == EntityContracts.ColliderShape.RECTANGLE;
+            return "rectangle".equals(phase.hitbox().shape());
         }
         return contract != null && contract.collider() != null
                 && contract.collider().shape() == EntityContracts.ColliderShape.RECTANGLE;
@@ -89,36 +90,31 @@ public final class EntityHitbox {
     }
 
     private static double rectangleLength(ArenaEntity entity) {
-        EntityContracts.EntityContract contract = EntityContracts.forEntity(entity);
-        EntityContracts.Phase phase = EntityContracts.phaseFor(entity);
-        EntityContracts.Hitbox hitbox = phase == null ? null : phase.hitbox();
+        AttachedAbilityContracts.AbilityPhase phase = EntityContracts.phaseFor(entity);
+        AttachedAbilityContracts.Hitbox hitbox = phase == null ? null : phase.hitbox();
         if (hitbox != null && hitbox.length() != null) {
-            return EntityContracts.stat(contract.abilityId(), hitbox.length(), entitySize(entity));
+            return hitbox.length();
         }
-        return contract == null ? entitySize(entity)
-                : EntityContracts.stat(contract.abilityId(), "hitboxLength", entitySize(entity));
+        return entitySize(entity);
     }
 
     private static double rectangleWidth(ArenaEntity entity) {
-        EntityContracts.EntityContract contract = EntityContracts.forEntity(entity);
-        EntityContracts.Phase phase = EntityContracts.phaseFor(entity);
-        EntityContracts.Hitbox hitbox = phase == null ? null : phase.hitbox();
+        AttachedAbilityContracts.AbilityPhase phase = EntityContracts.phaseFor(entity);
+        AttachedAbilityContracts.Hitbox hitbox = phase == null ? null : phase.hitbox();
         if (hitbox != null && hitbox.width() != null) {
-            return EntityContracts.stat(contract.abilityId(), hitbox.width(), entitySize(entity));
+            return hitbox.width();
         }
-        return contract == null ? entitySize(entity)
-                : EntityContracts.stat(contract.abilityId(), "hitboxWidth", entitySize(entity));
+        return entitySize(entity);
     }
 
     private static double circleRadius(ArenaEntity entity) {
         EntityContracts.EntityContract contract = EntityContracts.forEntity(entity);
-        EntityContracts.Phase phase = EntityContracts.phaseFor(entity);
-        EntityContracts.Hitbox hitbox = phase == null ? null : phase.hitbox();
+        AttachedAbilityContracts.AbilityPhase phase = EntityContracts.phaseFor(entity);
+        AttachedAbilityContracts.Hitbox hitbox = phase == null ? null : phase.hitbox();
         if (contract != null && hitbox != null
-                && hitbox.shape() == EntityContracts.ColliderShape.CIRCLE
+                && "circle".equals(hitbox.shape())
                 && hitbox.radius() != null) {
-            return EntityContracts.stat(contract.abilityId(), hitbox.radius(), entitySize(entity) / 2.0)
-                    * hitbox.radiusMultiplier();
+            return hitbox.radius() * hitbox.radiusMultiplier();
         }
         return entitySize(entity) / 2.0;
     }

@@ -25,7 +25,7 @@ export function buildDeterministicLogicAction(configuration, stateSnapshot) {
                 ? offsetTarget(resolveSelectable(state, facingBlock.selectable ?? movementBlock?.selectable), facingBlock)
                 : resolveSelectable(state, movementBlock?.selectable);
     const specialTarget = abilityBlockWithTarget?.targetMode === "target"
-        || resolvedAbilityPayload?.execution?.targetMode === "target"
+        || resolvedAbilityPayload?.activation?.targetMode === "target"
         ? offsetTarget(resolveSelectable(state, abilityBlockWithTarget.selectable), abilityBlockWithTarget)
         : null;
     const movement = movementVector(movementBlock, state.player, movementTarget);

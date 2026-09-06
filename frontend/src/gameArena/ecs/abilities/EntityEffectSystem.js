@@ -1,9 +1,7 @@
-import { ABILITY_STATS } from "../../gameconfig/Abilities.js";
 import {
-    abilityContract,
     EFFECT_TYPES,
     resolveEffectOverride,
-} from "../../gameconfig/AbilityContracts.js";
+} from "../../gameconfig/AttachedAbilityContracts.js";
 import { amountAtDistance, applyStatusEffect, durationAtDistance } from "./AbilityEffectSystem.js";
 import { clamp } from "../../gameconfig/geometry.js";
 import { ignoresHostileEffects, isAliveBot } from "../../gameconfig/DefensiveState.js";
@@ -20,14 +18,14 @@ export function applyEntityEffects(bots, targetIndex, source, abilityId, combat,
     collisionDistance = undefined,
     effectOverrides = null,
     statOverrides = null,
+    effects = null,
 } = {}) {
     const target = bots[targetIndex];
     if (!target || ignoresHostileEffects(target)) return { bots };
-    const contract = abilityContract(abilityId);
     let nextBots = [...bots];
     const allowed = effectTypes ? new Set(effectTypes) : null;
 
-    for (const effect of contract?.effects ?? []) {
+    for (const effect of effects ?? []) {
         if (allowed && !allowed.has(effect.type)) continue;
         const resolvedEffect = resolveEffectOverride(effect, effectOverrides);
         const distance = Number.isFinite(Number(collisionDistance))
@@ -41,7 +39,7 @@ export function applyEntityEffects(bots, targetIndex, source, abilityId, combat,
             nextBots[targetIndex] = applyStatusEffect(nextBots[targetIndex], {
                 ...resolvedEffect,
                 durationMs,
-            }, ABILITY_STATS[abilityId] ?? {}, source, abilityId);
+            }, statOverrides ?? {}, source, abilityId);
         } else if (resolvedEffect.type === EFFECT_TYPES.INTERRUPT) {
             if (!isAliveBot(nextBots[targetIndex])) continue;
             nextBots[targetIndex] = upsertStatusEffect({

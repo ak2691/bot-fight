@@ -9,8 +9,8 @@ Start with [Adding an Ability or Move](ADDING_AN_ABILITY_OR_MOVE.md) and [Abilit
 - `simulation/gameconfig/AbilityRegistry.java`: permanent positive numeric IDs and the only server-side ID/name mapping. Never derive IDs from catalog position or reuse a retired ID.
 - `simulation/gameconfig/Abilities.java`: numeric definitions for all abilities.
 - `simulation/gameconfig/GameConfig.java`: shared duel configuration access.
-- `simulation/gameconfig/AbilityContracts.java`: delivery, ordered effects, and
-  declarative activation payload metadata.
+- `simulation/gameconfig/AttachedAbilityContracts.java`: attached phases, ordered
+  effects, geometry, visuals, events, and declarative activation metadata.
 - `simulation/gameconfig/GameConfigCatalog.java`: active ruleset selection.
 
 Match browser IDs, milliseconds, arena units, ranges/arcs, damage rounding, resources, and compact loadout code. Runtime definitions, actions, state maps, entities, DTOs, and replay fields use the numeric ID. Ability names are presentation metadata only; submitted and persisted brain payloads use numeric IDs. Update the round pool and enforce cumulative picks, issued offers, and selection limits on the server. Timeout picks must come from the same deterministic offer list.
@@ -52,7 +52,7 @@ The coordinator should:
 7. ask the bot-state service to settle accumulated HP changes and emit replay
    state through the replay mapper.
 
-Use generic variables, targets, deliveries, and effects where available. Keep the service as orchestrator; persistent zone, trap, summon, and projectile behavior belongs in the ECS, not a second simulation loop.
+Use generic variables, targets, phase events, and effects where available. Keep the service as orchestrator; persistent zone, trap, summon, and projectile behavior belongs in the ECS, not a second simulation loop.
 
 Before adding a timer or delayed behavior, classify it as action preparation,
 an ability entity lifecycle, a bot status, a resource timer, bot lifecycle

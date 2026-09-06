@@ -169,7 +169,7 @@ function buildPreset(ability) {
         kind: ability.kind,
         summary: ability.summary,
         effects: ability.effects,
-        delivery: ability.delivery,
+        phaseTag: ability.phaseTag,
         stats: ability.stats,
         playerLoadout,
         opponentLoadout,

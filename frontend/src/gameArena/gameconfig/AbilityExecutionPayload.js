@@ -1,15 +1,17 @@
 import { ABILITY_STATS } from "./Abilities.js";
-import { abilityContract } from "./AbilityContracts.js";
+import { attachedAbilityContract } from "./AttachedAbilityContracts.js";
 import { abilityId as resolveAbilityId } from "./AbilityRegistry.js";
+import { entityContractForAbility } from "../ecs/contracts/EntityContracts.js";
 
-const EMPTY_EXECUTION = Object.freeze({});
+const EMPTY_ACTIVATION = Object.freeze({});
 
 /**
  * Builds the allowlisted runtime payload consumed by arena execution systems.
  *
  * The authored action remains a small stable ID. The runtime receives this
- * payload so systems can apply the declared activation/resource behavior
- * without branching on individual ability IDs.
+ * payload so systems can apply the phase behavior without branching on
+ * individual ability IDs. Entity abilities use their entity contract here;
+ * attached abilities use their attached contract.
  */
 export function abilityExecutionPayload(value) {
     if (isExecutionPayload(value)) return value;
@@ -20,7 +22,7 @@ export function abilityExecutionPayload(value) {
     const abilityId = resolveAbilityId(rawId);
     if (abilityId == null) return null;
 
-    const contract = abilityContract(abilityId);
+    const contract = attachedAbilityContract(abilityId) ?? entityContractForAbility(abilityId);
     if (!contract) return null;
 
     return Object.freeze({
@@ -28,7 +30,7 @@ export function abilityExecutionPayload(value) {
         abilityId,
         stats: ABILITY_STATS[abilityId] ?? Object.freeze({}),
         contract,
-        execution: contract.execution ?? EMPTY_EXECUTION,
+        activation: contract.activation ?? EMPTY_ACTIVATION,
     });
 }
 
@@ -39,7 +41,7 @@ function isExecutionPayload(value) {
         && Number.isSafeInteger(value.actionId)
         && Number.isSafeInteger(value.abilityId)
         && abilityId === value.actionId
-        && value.contract === abilityContract(abilityId)
+        && value.contract === (attachedAbilityContract(abilityId) ?? entityContractForAbility(abilityId))
         && value.stats === ABILITY_STATS[abilityId]
-        && value.execution === value.contract.execution);
+        && value.activation === (value.contract.activation ?? EMPTY_ACTIVATION));
 }

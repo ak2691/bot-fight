@@ -3,6 +3,7 @@ package com.example.botfight.simulation.gameconfig;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.example.botfight.simulation.ecs.contracts.EntityContracts;
 import java.util.HashSet;
 import org.junit.jupiter.api.Test;
 
@@ -12,7 +13,11 @@ class AbilityRegistryTest {
         assertThat(AbilityRegistry.all().keySet()).allMatch(id -> id > 0);
         assertThat(new HashSet<>(AbilityRegistry.all().values())).hasSize(33);
         assertThat(Abilities.CATALOG.keySet()).containsExactlyInAnyOrderElementsOf(AbilityRegistry.all().keySet());
-        assertThat(AbilityContracts.all().keySet()).containsExactlyInAnyOrderElementsOf(AbilityRegistry.all().keySet());
+        HashSet<Integer> contractIds = new HashSet<>(AttachedAbilityContracts.all().keySet());
+        contractIds.addAll(EntityContracts.all().keySet());
+        assertThat(contractIds).containsExactlyInAnyOrderElementsOf(AbilityRegistry.all().keySet());
+        assertThat(AttachedAbilityContracts.all().keySet())
+                .doesNotContainAnyElementsOf(EntityContracts.all().keySet());
     }
 
     @Test void lookupUsesPermanentMapKeyAndDoesNotDependOnPosition() {

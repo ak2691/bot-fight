@@ -5,7 +5,7 @@ import { PROJECTILE_WALL_LENGTH, PROJECTILE_WALL_TYPE } from "../gameArena/Arena
 import { decodeBotLoadout, encodeBotLoadout } from "../gameArena/loadout/BotLoadout";
 import { AUTO_STEP_MS, BASE_BOT_HP, DEFENSE_WALL_TYPE, ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../gameArena/modelPayloads/arenaConstants";
 import { MATCH_DURATION_MS } from "../gameArena/gameconfig/ArenaHazardConfig.js";
-import { ABILITY_STATS } from "../gameArena/gameconfig/Abilities.js";
+import { attachedAbilityContract } from "../gameArena/gameconfig/AttachedAbilityContracts.js";
 import { botColorRole, normalizeReplayObstacleShape } from "../gameArena/pixi/pixiVisualState.js";
 import { compassDegreesToRadians } from "../gameArena/botlogic/planner/arenaAngles.js";
 import MatchToolIcon from "../gameArena/coding/controls/MatchToolIcon.jsx";
@@ -569,7 +569,8 @@ function replayGunRayLength(bot, entities) {
             const offsetY = ay - originY;
             const distance = (offsetX * segmentY - offsetY * segmentX) / denominator;
             const segmentT = (offsetX * directionY - offsetY * directionX) / denominator;
-            return distance >= 0 && distance <= ABILITY_STATS[3].range && segmentT >= 0 && segmentT <= 1
+            const gunRange = Number(attachedAbilityContract(3)?.phases?.[0]?.hitbox?.range ?? 0);
+            return distance >= 0 && distance <= gunRange && segmentT >= 0 && segmentT <= 1
                 ? Math.min(nearest, distance) : nearest;
-        }, ABILITY_STATS[3].range);
+        }, Number(attachedAbilityContract(3)?.phases?.[0]?.hitbox?.range ?? 0));
 }

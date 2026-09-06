@@ -1,5 +1,5 @@
 import { ABILITY_STATS, abilityMaxChargesForShape } from "./Abilities.js";
-import { abilityContract } from "./AbilityContracts.js";
+import { attachedAbilityContract } from "./AttachedAbilityContracts.js";
 import { statusEffectValue, statusIsActive, STATUS_EFFECT_APPLICATIONS } from "../ecs/contracts/StatusContracts.js";
 
 const REGENERATE_RESOURCE = "regenerate";
@@ -207,7 +207,7 @@ export function interruptAbility(shape, abilityId, { cooldownMultiplier = null }
         next = setAbilityCooldownState(next, id, configuredCooldownMs);
     }
 
-    if (active && abilityContract(id)?.execution?.movement) {
+    if (active && attachedAbilityContract(id)?.phases?.[0]?.movement?.distance != null) {
         next = {
             ...next,
             dashActiveMs: 0,
@@ -243,7 +243,7 @@ export function anotherAbilityActive(shape, abilityId, ignoresGlobalAbilityLock 
 }
 
 export function abilityIgnoresGlobalLock(abilityId) {
-    return Boolean(abilityContract(abilityId)?.execution?.ignoresGlobalAbilityLock);
+    return Boolean(attachedAbilityContract(abilityId)?.activation?.ignoresGlobalAbilityLock);
 }
 
 /** Advances every equipped charge-bearing ability through the same resource state machine. */

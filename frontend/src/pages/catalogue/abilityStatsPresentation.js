@@ -1,3 +1,5 @@
+import { phaseDisplayRows } from "./abilityCatalogueDisplay.js";
+
 const STATUS_STAT_KEYS = Object.freeze({
     burn: { damage: "burnDamage", interval: "burnTickMs", duration: "burnDurationMs" },
     bleed: { damage: "bleedDamage", interval: "bleedTickMs", duration: "bleedDurationMs" },
@@ -65,32 +67,29 @@ function pullRows(ability, stats) {
         .map((strength) => ({ label: "Pull strength", value: `${number(strength)} units per tick` }));
 }
 
-function titleCase(value) {
-    return String(value ?? "")
-        .replaceAll("_", " ")
-        .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function phaseRows(stats) {
-    return (stats.phases ?? []).flatMap((phase) => {
-        const section = phase.label ?? `${titleCase(phase.id)} phase`;
-        const rows = [];
-        const radius = phase.radius;
-        if (radius != null) rows.push({ label: "Radius", value: `${number(radius)} units`, section });
-        if (phase.hitboxWidth != null) rows.push({ label: "Hitbox width", value: `${number(phase.hitboxWidth)} units`, section });
-        if (phase.hitboxLength != null) rows.push({ label: "Hitbox length", value: `${number(phase.hitboxLength)} units`, section });
-        if (phase.speed != null) rows.push({ label: "Speed", value: `${number(phase.speed)} units per tick`, section });
-        if (phase.damage != null) rows.push({ label: "Damage", value: number(phase.damage), section });
-        for (const [status, statusStats] of Object.entries(phase.statuses ?? {})) {
-            rows.push({ label: "Status effect", value: titleCase(status), section });
-            if (statusStats?.durationMs != null) rows.push({ label: "Status duration", value: seconds(statusStats.durationMs), section });
-        }
-        return rows;
-    });
-}
-
 export function abilityStatsForDisplay(ability) {
     const stats = ability.stats ?? {};
+    const authoredPhaseRows = phaseDisplayRows(ability.id);
+    if (authoredPhaseRows.length > 0) {
+        const rows = [];
+        if (stats.cooldownMs != null) rows.push({ label: "Cooldown", value: seconds(stats.cooldownMs) });
+        if (stats.activeMs != null || stats.visualMs != null) {
+            rows.push({ label: "Active", value: seconds(stats.activeMs ?? stats.visualMs) });
+        }
+        if (stats.windupMs != null) rows.push({ label: "Wind-up", value: seconds(stats.windupMs) });
+        const duration = stats.durationMs ?? null;
+        const durationIsStatus = (ability.effects ?? []).some((effect) => effect.type === "status" && effect.durationMs === duration);
+        if (duration != null && !durationIsStatus) rows.push({ label: "Duration", value: seconds(duration) });
+        if (stats.maxCharges != null) rows.push({ label: "Charges", value: String(stats.maxCharges) });
+        const resourceDurationMs = stats.reloadMs ?? stats.rechargeMs;
+        if (stats.maxCharges != null && resourceDurationMs != null) {
+            rows.push({
+                label: stats.reloadMs != null ? "Reload" : "Recharge",
+                value: seconds(resourceDurationMs),
+            });
+        }
+        return [...rows, ...authoredPhaseRows, ...buffRows(ability)];
+    }
     const rows = [];
     if (stats.cooldownMs != null) rows.push({ label: "Cooldown", value: seconds(stats.cooldownMs) });
     if (stats.activeMs != null || stats.visualMs != null) rows.push({ label: "Active", value: seconds(stats.activeMs ?? stats.visualMs) });
@@ -111,8 +110,7 @@ export function abilityStatsForDisplay(ability) {
             value: seconds(resourceDurationMs),
         });
     }
-    const hasEntity = (ability.effects ?? []).some((effect) => effect.type === "spawn_entity");
-    const duration = stats.durationMs ?? (hasEntity ? stats.fuseMs ?? stats.delayMs : null);
+    const duration = stats.durationMs ?? null;
     const durationIsStatus = (ability.effects ?? []).some((effect) => effect.type === "status" && effect.durationMs === duration);
     if (duration != null && !durationIsStatus) rows.push({ label: "Duration", value: seconds(duration) });
     rows.push(...statusRows(ability, stats));
@@ -123,6 +121,6 @@ export function abilityStatsForDisplay(ability) {
     if (stats.knockback != null) rows.push({ label: "Effect", value: `${number(stats.knockback)}-unit knockback` });
     rows.push(...pullRows(ability, stats));
     rows.push(...buffRows(ability));
-    rows.push(...phaseRows(stats));
+    rows.push(...phaseDisplayRows(ability.id));
     return rows;
 }

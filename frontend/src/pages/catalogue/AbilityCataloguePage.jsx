@@ -85,12 +85,12 @@ function titleCase(value) {
         .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function deliveryDetails(ability) {
-    const type = ability.delivery?.type;
+function phaseProfileDetails(ability) {
+    const type = ability.phaseTag;
     const tag = type === "ray" ? "ray" : type;
     const guide = ABILITY_TYPE_GUIDE.find(({ label }) => label.toLowerCase() === TAG_LABELS[tag]?.toLowerCase());
-    if (TAG_LABELS[tag]) return { label: TAG_LABELS[tag], description: guide?.description ?? "The ability applies its effects through the delivery method shown here." };
-    return { label: titleCase(type), description: "The ability applies its effects through the delivery method shown here." };
+    if (TAG_LABELS[tag]) return { label: TAG_LABELS[tag], description: guide?.description ?? "The ability applies its effects through this phase profile." };
+    return { label: titleCase(type), description: "The ability applies its effects through this phase profile." };
 }
 
 function abilityTypeLabels(ability) {
@@ -101,7 +101,6 @@ function abilityTypeLabels(ability) {
 
 function playerFacingEffects(ability) {
     const effects = ability.effects.flatMap((effect) => {
-        if (effect.type === "spawn_entity") return [];
         if (effect.type === "status" && effect.subtype) return [titleCase(effect.subtype)];
         return [titleCase(effect.type)];
     });
@@ -118,7 +117,7 @@ export function AbilityModal({
     const dialogRef = useRef(null);
     const stats = statsForAbility(ability);
     const effects = playerFacingEffects(ability).join(" · ");
-    const delivery = deliveryDetails(ability);
+    const phaseProfile = phaseProfileDetails(ability);
     const statGroups = stats.reduce((groups, stat) => {
         const previous = groups.at(-1);
         if (stat.section && previous?.section === stat.section) {
@@ -198,9 +197,9 @@ export function AbilityModal({
                         <h3 className="font-mono text-[10px] font-bold tracking-[.24em] text-green-300">MECHANICS</h3>
                         <dl className="mt-4 space-y-5">
                             <div>
-                                <dt className="text-xs text-slate-500">Delivery</dt>
-                                <dd className="mt-1 text-sm font-semibold text-slate-200">{delivery.label}</dd>
-                                <p className="mt-1 text-xs leading-5 text-slate-400">{delivery.description}</p>
+                                <dt className="text-xs text-slate-500">Phase profile</dt>
+                                <dd className="mt-1 text-sm font-semibold text-slate-200">{phaseProfile.label}</dd>
+                                <p className="mt-1 text-xs leading-5 text-slate-400">{phaseProfile.description}</p>
                             </div>
                             <div>
                                 <dt className="text-xs text-slate-500">Effects</dt>

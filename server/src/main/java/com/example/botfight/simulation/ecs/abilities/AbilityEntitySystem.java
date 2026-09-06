@@ -10,8 +10,8 @@ import com.example.botfight.simulation.ecs.entities.AbilityEntityBot;
 import com.example.botfight.simulation.ecs.entities.ArenaBounds;
 import com.example.botfight.simulation.ecs.entities.ArenaEntity;
 import com.example.botfight.simulation.gameconfig.Abilities;
-import com.example.botfight.simulation.gameconfig.AbilityContracts;
-import com.example.botfight.simulation.gameconfig.AbilityContracts.EffectType;
+import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts;
+import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts.EffectType;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -41,7 +41,7 @@ public final class AbilityEntitySystem {
 
         /** Applies a contract-owned status through the host simulation's canonical status builder. */
         default void applyStatus(List<F> bots, int ownerSlot, F target, int abilityId,
-                                 AbilityContracts.Effect effect) {
+                                 AttachedAbilityContracts.Effect effect) {
             target.applyStatus(effect.subtype(), effect.durationMs(), ownerSlot);
         }
     }
@@ -86,12 +86,12 @@ public final class AbilityEntitySystem {
                 next.add(entry.entity());
                 continue;
             }
-            EntityContracts.Phase phase = phaseForEntry(entry);
+            AttachedAbilityContracts.AbilityPhase phase = phaseForEntry(entry);
             if (phase == null) continue;
             ArenaEntity current = entry.entity();
             boolean enteredPhase = false;
             if (entry.destroyedByDamage()) {
-                EntityContracts.Phase destroyed = EntityContracts.phaseById(current, "destroyed");
+                AttachedAbilityContracts.AbilityPhase destroyed = EntityContracts.phaseById(current, "destroyed");
                 if (destroyed != null) {
                     current = transitionToPhase(current, destroyed);
                     phase = destroyed;
@@ -100,25 +100,25 @@ public final class AbilityEntitySystem {
             }
             List<HitCandidate<F>> candidates = phaseTargets(current, phase, bots);
             DispatchResult<F> dispatched = dispatchPhaseEvent(current, entry.contract(), phase,
-                    EntityContracts.PhaseEventType.COLLISION, bots, arena, combat,
+                    AttachedAbilityContracts.PhaseEventType.COLLISION, bots, arena, combat,
                     candidates.stream().map(candidate -> candidate.bot().entitySlot()).toList(),
                     distancesBySlot(candidates), stepMs);
             ArenaEntity nextEntity = dispatched.entity();
             bots = dispatched.bots();
-            EntityContracts.Phase entered = nextEntity == null
+            AttachedAbilityContracts.AbilityPhase entered = nextEntity == null
                     ? null : EntityContracts.phaseFor(nextEntity);
             if (nextEntity != null && entry.contract().abilityId() == 11
                     && "armed".equals(phase.id()) && entered != null
                     && "active".equals(entered.id())) {
                 DispatchResult<F> active = dispatchPhaseEvent(nextEntity, entry.contract(), entered,
-                        EntityContracts.PhaseEventType.COLLISION, bots, arena, combat,
+                        AttachedAbilityContracts.PhaseEventType.COLLISION, bots, arena, combat,
                         candidates.stream().map(candidate -> candidate.bot().entitySlot()).toList(),
                         distancesBySlot(candidates), stepMs);
                 nextEntity = active.entity();
                 bots = active.bots();
                 enteredPhase = true;
             }
-            EntityContracts.Phase finalPhase = nextEntity == null
+            AttachedAbilityContracts.AbilityPhase finalPhase = nextEntity == null
                     ? null : EntityContracts.phaseFor(nextEntity);
             if (nextEntity != null && finalPhase != null && !phase.id().equals(finalPhase.id())) {
                 enteredPhase = true;
@@ -144,30 +144,31 @@ public final class AbilityEntitySystem {
     }
 
     private static boolean hasTriggerPhase(EntityEntry entry) {
-        EntityContracts.Phase phase = EntityContracts.phaseFor(entry.entity());
+        AttachedAbilityContracts.AbilityPhase phase = EntityContracts.phaseFor(entry.entity());
         return phase != null && phase.trigger() != null;
     }
 
     private static ArenaEntity advanceTriggerEntity(
             ArenaEntity entity, EntityContracts.EntityContract contract,
             ArenaBounds arena, int stepMs) {
-        EntityContracts.Phase phase = EntityContracts.phaseFor(entity);
+        AttachedAbilityContracts.AbilityPhase phase = EntityContracts.phaseFor(entity);
         if (phase == null) return entity;
-        EntityContracts.Movement movement = phase.movement();
-        String mode = movement == null ? "stopped" : movement.mode();
-        boolean moving = "travel".equals(mode) || "segment".equals(mode);
-        double scale = movement == null || movement.stepRatio() == 0 ? 1 : movement.stepRatio();
-        double nextX = moving ? entity.x() + entity.velocityX() * scale : entity.x();
-        double nextY = moving ? entity.y() + entity.velocityY() * scale : entity.y();
-        if (moving && Math.hypot(entity.velocityX(), entity.velocityY()) > 0.001) {
+        AttachedAbilityContracts.PhaseMovement movement = phase.movement();
+        double speed = movement == null ? 0 : movement.speed();
+        boolean moving = speed > 0;
+        double directionMagnitude = Math.hypot(entity.velocityX(), entity.velocityY());
+        double directionX = directionMagnitude > 0.001 ? entity.velocityX() / directionMagnitude : 0;
+        double directionY = directionMagnitude > 0.001 ? entity.velocityY() / directionMagnitude : 0;
+        double nextX = moving ? entity.x() + directionX * speed : entity.x();
+        double nextY = moving ? entity.y() + directionY * speed : entity.y();
+        if (moving) {
             nextX = clamp(nextX, 0, arena.width());
             nextY = clamp(nextY, 0, arena.height());
         }
-        String resultingMode = phase.movement() == null ? "stopped" : phase.movement().mode();
-        double velocityX = "stopped".equals(resultingMode) ? 0 : entity.velocityX();
-        double velocityY = "stopped".equals(resultingMode) ? 0 : entity.velocityY();
-        boolean armed = entity.armed() || phase.type() == EntityContracts.PhaseType.ZONE
-                || phase.type() == EntityContracts.PhaseType.SELF;
+        double velocityX = moving ? directionX * speed : 0;
+        double velocityY = moving ? directionY * speed : 0;
+        boolean armed = entity.armed() || phase.type() == AttachedAbilityContracts.PhaseType.ZONE
+                || phase.type() == AttachedAbilityContracts.PhaseType.SELF;
         int timerMs = entity.timerMs() - stepMs;
         ArenaEntity moved = copyWithPhase(entity, nextX, nextY, velocityX, velocityY,
                 entity.traveled() + distance(entity.x(), entity.y(), nextX, nextY),
@@ -182,8 +183,8 @@ public final class AbilityEntitySystem {
             List<F> bots, ArenaBounds arena, Combat<F> combat) {
         Set<String> triggered = new HashSet<>();
         for (EntityEntry entry : entries) {
-            EntityContracts.Phase phase = phaseForEntry(entry);
-            EntityContracts.Trigger trigger = phase == null ? null : phase.trigger();
+            AttachedAbilityContracts.AbilityPhase phase = phaseForEntry(entry);
+            AttachedAbilityContracts.Trigger trigger = phase == null ? null : phase.trigger();
             if (trigger == null) continue;
             boolean hit = entry.destroyedByDamage()
                     || (!trigger.requiresDestruction()
@@ -197,22 +198,21 @@ public final class AbilityEntitySystem {
                             entry.entity().x(), entry.entity().y(), 0,
                             bot.entityMovementStartX(), bot.entityMovementStartY(),
                             bot.entityX(), bot.entityY(),
-                            phaseStat(entry.contract().abilityId(), phase, trigger.radius(), 0)
+                            phaseRadius(entry.contract().abilityId(), phase, trigger.radius(), 0)
                                     + bot.entitySize() / 2.0));
-            boolean lifetimeExpired = trigger.lifetime() != null
-                    && entry.entity().ageMs() >= stat(entry.contract().abilityId(),
-                    trigger.lifetime(), Integer.MAX_VALUE);
+            boolean lifetimeExpired = trigger.lifetimeMs() != null
+                    && entry.entity().ageMs() >= trigger.lifetimeMs();
             if (lifetimeExpired || hit || contact) triggered.add(entry.entity().id());
         }
         boolean changed;
         do {
             changed = false;
             for (EntityEntry source : entries) {
-                EntityContracts.Phase phase = phaseForEntry(source);
-                EntityContracts.Trigger trigger = phase == null ? null : phase.trigger();
+                AttachedAbilityContracts.AbilityPhase phase = phaseForEntry(source);
+                AttachedAbilityContracts.Trigger trigger = phase == null ? null : phase.trigger();
                 if (!triggered.contains(source.entity().id())
                         || trigger == null || !trigger.chain()) continue;
-                double radius = phaseStat(source.contract().abilityId(), phase,
+                double radius = phaseRadius(source.contract().abilityId(), phase,
                         trigger.radius(), 0);
                 for (EntityEntry target : entries) {
                     if (triggered.contains(target.entity().id())
@@ -227,22 +227,22 @@ public final class AbilityEntitySystem {
         return triggered;
     }
 
-    private static EntityContracts.Phase phaseForEntry(EntityEntry entry) {
-        EntityContracts.Phase destroyed = entry.destroyedByDamage()
+    private static AttachedAbilityContracts.AbilityPhase phaseForEntry(EntityEntry entry) {
+        AttachedAbilityContracts.AbilityPhase destroyed = entry.destroyedByDamage()
                 ? EntityContracts.phaseById(entry.entity(), "destroyed") : null;
         return destroyed == null ? EntityContracts.phaseFor(entry.entity()) : destroyed;
     }
 
     private static <F extends AbilityEntityBot> boolean entityHitByCurrentAttack(
             ArenaEntity entity, List<ArenaEntity> allEntities, List<F> bots,
-            ArenaBounds arena, EntityContracts.Trigger trigger, Combat<F> combat) {
+            ArenaBounds arena, AttachedAbilityContracts.Trigger trigger, Combat<F> combat) {
         if (trigger.attackHits() && combat.entityHitByCurrentAttack(entity, bots, allEntities)) {
             return true;
         }
         return trigger.projectileOverlap() && allEntities.stream().anyMatch(candidate ->
                 candidate != entity
                         && EntityContracts.phaseFor(candidate) != null
-                        && EntityContracts.phaseFor(candidate).type() == EntityContracts.PhaseType.PROJECTILE
+                        && EntityContracts.phaseFor(candidate).type() == AttachedAbilityContracts.PhaseType.PROJECTILE
                         && overlaps(candidate, entity));
     }
 
@@ -250,7 +250,7 @@ public final class AbilityEntitySystem {
             ArenaEntity entity, EntityContracts.EntityContract contract,
             List<ArenaEntity> allEntities, List<F> bots, ArenaBounds arena,
             int stepMs, Combat<F> combat) {
-        EntityContracts.Phase phase = EntityContracts.phaseFor(entity);
+        AttachedAbilityContracts.AbilityPhase phase = EntityContracts.phaseFor(entity);
         if (phase == null || phase.type() == null) return new TickResult(entity);
         return switch (phase.type()) {
             case PROJECTILE, RAY, ARC, MELEE ->
@@ -259,26 +259,29 @@ public final class AbilityEntitySystem {
                     tickCanonicalZone(entity, contract, phase, bots, arena, stepMs, combat);
             case SUMMON ->
                     tickCanonicalSummon(entity, contract, phase, allEntities, bots, arena, stepMs, combat);
+            case BOT_ATTACHED ->
+                    tickCanonicalZone(entity, contract, phase, bots, arena, stepMs, combat);
         };
     }
 
     private static <F extends AbilityEntityBot> TickResult tickCanonicalProjectile(
             ArenaEntity entity, EntityContracts.EntityContract contract,
-            EntityContracts.Phase phase, List<F> bots, ArenaBounds arena,
+            AttachedAbilityContracts.AbilityPhase phase, List<F> bots, ArenaBounds arena,
             int stepMs, Combat<F> combat) {
-        EntityContracts.Movement movement = phase.movement();
-        String mode = movement == null ? "stopped" : movement.mode();
-        boolean moving = "travel".equals(mode) || "segment".equals(mode);
-        double scale = movement == null || movement.stepRatio() == 0
-                ? 1 : movement.stepRatio();
-        double nextX = moving ? entity.x() + entity.velocityX() * scale : entity.x();
-        double nextY = moving ? entity.y() + entity.velocityY() * scale : entity.y();
-        if (moving && Math.hypot(entity.velocityX(), entity.velocityY()) > 0.001) {
+        AttachedAbilityContracts.PhaseMovement movement = phase.movement();
+        double speed = movement == null ? 0 : movement.speed();
+        boolean moving = speed > 0;
+        double directionMagnitude = Math.hypot(entity.velocityX(), entity.velocityY());
+        double directionX = directionMagnitude > 0.001 ? entity.velocityX() / directionMagnitude : 0;
+        double directionY = directionMagnitude > 0.001 ? entity.velocityY() / directionMagnitude : 0;
+        double nextX = moving ? entity.x() + directionX * speed : entity.x();
+        double nextY = moving ? entity.y() + directionY * speed : entity.y();
+        if (moving) {
             nextX = clamp(nextX, 0, arena.width());
             nextY = clamp(nextY, 0, arena.height());
         }
-        double velocityX = "stopped".equals(mode) ? 0 : entity.velocityX();
-        double velocityY = "stopped".equals(mode) ? 0 : entity.velocityY();
+        double velocityX = moving ? directionX * speed : 0;
+        double velocityY = moving ? directionY * speed : 0;
         int timer = switch (contract.lifetime().timerMode()) {
                     case AGE -> entity.timerMs() + stepMs;
                     case REMAINING, FUSE -> entity.timerMs() - stepMs;
@@ -308,21 +311,19 @@ public final class AbilityEntitySystem {
                         candidate.bot().entityY(), candidate.bot().entitySize() / 2.0).hit())
                 .sorted(Comparator.comparingDouble(HitCandidate::distance)).toList();
         List<HitCandidate<F>> selected = phase.hit() != null
-                && phase.hit().mode() == EntityContracts.HitMode.NEAREST
+                && phase.hit().mode() == AttachedAbilityContracts.HitMode.NEAREST
                 ? candidates.stream().limit(1).toList() : candidates;
-        EntityContracts.Repeat repeat = phase.repeat();
-        EntityContracts.PhaseEventType repeatEvent = repeat == null ? null : repeat.event();
-        if (repeatEvent == null && phase.events().containsKey(EntityContracts.PhaseEventType.INTERVAL)) {
-            repeatEvent = EntityContracts.PhaseEventType.INTERVAL;
+        AttachedAbilityContracts.Repeat repeat = phase.repeat();
+        AttachedAbilityContracts.PhaseEventType repeatEvent = repeat == null ? null : repeat.event();
+        if (repeatEvent == null && phase.events().containsKey(AttachedAbilityContracts.PhaseEventType.INTERVAL)) {
+            repeatEvent = AttachedAbilityContracts.PhaseEventType.INTERVAL;
         }
-        EntityContracts.PhaseEvent repeatHandler = repeatEvent == null
+        AttachedAbilityContracts.PhaseEvent repeatHandler = repeatEvent == null
                 ? null : phase.events().get(repeatEvent);
         int intervalTimer = moved.intervalTimerMs() - stepMs;
         boolean scheduled = repeatHandler != null;
         int intervalMs = !scheduled ? 0 : repeat.intervalMs() != null ? repeat.intervalMs()
-                : (int) Math.round(stat(contract.abilityId(),
-                repeat.interval() != null ? repeat.interval() : repeatHandler.intervalStat(),
-                stepMs));
+                : repeatHandler.intervalMs() == null ? stepMs : repeatHandler.intervalMs();
         if (scheduled && !repeat.startImmediately() && entity.phaseTimerMs() == 0) {
             intervalTimer = intervalMs - stepMs;
         }
@@ -335,7 +336,7 @@ public final class AbilityEntitySystem {
                 || selected.isEmpty() && !scheduled
                 ? new DispatchResult<>(moved, bots)
                 : dispatchPhaseEvent(moved, contract, phase,
-                scheduled ? repeatEvent : EntityContracts.PhaseEventType.COLLISION,
+                scheduled ? repeatEvent : AttachedAbilityContracts.PhaseEventType.COLLISION,
                 bots, arena, combat,
                 selected.stream().map(candidate -> candidate.bot().entitySlot()).toList(),
                 distancesBySlot(selected), collisionSources, stepMs);
@@ -344,34 +345,33 @@ public final class AbilityEntitySystem {
         }
         ArenaEntity next = dispatched.entity();
         if (next == null) return new TickResult(null);
-        EntityContracts.Phase entered = EntityContracts.phaseFor(next);
-        if (entered != null && entered.type() == EntityContracts.PhaseType.ZONE
+        AttachedAbilityContracts.AbilityPhase entered = EntityContracts.phaseFor(next);
+        if (entered != null && entered.type() == AttachedAbilityContracts.PhaseType.ZONE
                 && !entered.id().equals(phase.id())) {
             return tickCanonicalZone(next, contract, entered, dispatched.bots(),
                     arena, stepMs, combat);
         }
         boolean edge = nextX == 0 || nextX == arena.width()
                 || nextY == 0 || nextY == arena.height();
-        EntityContracts.PhaseEvent edgeEvent = phase.events().get(
-                EntityContracts.PhaseEventType.COLLISION);
+        AttachedAbilityContracts.PhaseEvent edgeEvent = phase.events().get(
+                AttachedAbilityContracts.PhaseEventType.COLLISION);
         boolean removeAtEdge = edge && edgeEvent != null
-                && edgeEvent.actions().contains(EntityContracts.PhaseAction.REMOVE);
+                && edgeEvent.actions().contains(AttachedAbilityContracts.PhaseAction.REMOVE);
         boolean expired = phase.durationMs() != null
                 && next.phaseTimerMs() >= phase.durationMs();
         if (!expired) {
             expired = switch (contract.lifetime().timerMode()) {
-                case AGE -> next.ageMs() >= stat(contract.abilityId(),
-                        contract.lifetime().duration(), Integer.MAX_VALUE);
+                case AGE -> next.ageMs() >= contract.lifetime().duration();
                 case REMAINING, FUSE -> next.timerMs() <= 0;
                 default -> false;
             };
         }
         if (expired || removeAtEdge) {
             DispatchResult<F> ended = dispatchPhaseEvent(next, contract, phase,
-                    EntityContracts.PhaseEventType.LIFETIME_END, dispatched.bots(),
+                    AttachedAbilityContracts.PhaseEventType.LIFETIME_END, dispatched.bots(),
                     arena, combat, List.of(), Map.of(), stepMs);
             return new TickResult(ended.entity() == next
-                    && !phase.events().containsKey(EntityContracts.PhaseEventType.LIFETIME_END)
+                    && !phase.events().containsKey(AttachedAbilityContracts.PhaseEventType.LIFETIME_END)
                     ? null : ended.entity());
         }
         return new TickResult(withIntervalTimer(next, intervalTimer));
@@ -379,7 +379,7 @@ public final class AbilityEntitySystem {
 
     private static <F extends AbilityEntityBot> TickResult tickCanonicalZone(
             ArenaEntity entity, EntityContracts.EntityContract contract,
-            EntityContracts.Phase phase, List<F> bots, ArenaBounds arena,
+            AttachedAbilityContracts.AbilityPhase phase, List<F> bots, ArenaBounds arena,
             int stepMs, Combat<F> combat) {
         ArenaEntity current = entity;
         int timer = current.timerMs() - (phase.durationMs() != null
@@ -396,22 +396,19 @@ public final class AbilityEntitySystem {
         List<Integer> targetSlots = candidates.stream()
                 .map(candidate -> candidate.bot().entitySlot()).toList();
         Map<Integer, Double> distances = distancesBySlot(candidates);
-        EntityContracts.Repeat repeat = phase.repeat();
-        EntityContracts.PhaseEventType repeatEvent = repeat == null ? null : repeat.event();
-        if (repeatEvent == null && phase.events().containsKey(EntityContracts.PhaseEventType.INTERVAL)) {
-            repeatEvent = EntityContracts.PhaseEventType.INTERVAL;
+        AttachedAbilityContracts.Repeat repeat = phase.repeat();
+        AttachedAbilityContracts.PhaseEventType repeatEvent = repeat == null ? null : repeat.event();
+        if (repeatEvent == null && phase.events().containsKey(AttachedAbilityContracts.PhaseEventType.INTERVAL)) {
+            repeatEvent = AttachedAbilityContracts.PhaseEventType.INTERVAL;
         }
-        EntityContracts.PhaseEvent intervalEvent = repeatEvent == null
+        AttachedAbilityContracts.PhaseEvent intervalEvent = repeatEvent == null
                 ? null : phase.events().get(repeatEvent);
         DispatchResult<F> dispatched = new DispatchResult<>(moved, bots);
         int intervalTimer = moved.intervalTimerMs() - stepMs;
         if (intervalEvent != null && active) {
             int intervalMs = repeat != null && repeat.intervalMs() != null
                     ? repeat.intervalMs()
-                    : (int) Math.round(stat(contract.abilityId(),
-                    repeat != null && repeat.interval() != null
-                            ? repeat.interval() : phaseIntervalStat(phase, intervalEvent),
-                    stepMs));
+                    : intervalEvent.intervalMs() == null ? stepMs : intervalEvent.intervalMs();
             if (repeat != null && !repeat.startImmediately()
                     && current.phaseTimerMs() == 0) {
                 intervalTimer = intervalMs - stepMs;
@@ -424,9 +421,9 @@ public final class AbilityEntitySystem {
                         targetSlots, distances, stepMs);
                 intervalTimer += Math.max(1, intervalMs);
             }
-        } else if (active && phase.events().containsKey(EntityContracts.PhaseEventType.COLLISION)) {
+        } else if (active && phase.events().containsKey(AttachedAbilityContracts.PhaseEventType.COLLISION)) {
             dispatched = dispatchPhaseEvent(moved, contract, phase,
-                    EntityContracts.PhaseEventType.COLLISION, bots, arena, combat,
+                    AttachedAbilityContracts.PhaseEventType.COLLISION, bots, arena, combat,
                     targetSlots, distances, stepMs);
         }
         if (dispatched.entity() == null) return new TickResult(null);
@@ -439,19 +436,19 @@ public final class AbilityEntitySystem {
         if (expired) {
             if (next.visualEventMs() > 0) return new TickResult(next);
             DispatchResult<F> ended = dispatchPhaseEvent(next, contract, phase,
-                    EntityContracts.PhaseEventType.LIFETIME_END, dispatched.bots(),
+                    AttachedAbilityContracts.PhaseEventType.LIFETIME_END, dispatched.bots(),
                     arena, combat, List.of(), Map.of(), stepMs);
-            EntityContracts.Phase entered = ended.entity() == null
+            AttachedAbilityContracts.AbilityPhase entered = ended.entity() == null
                     ? null : EntityContracts.phaseFor(ended.entity());
             if (entered != null && !entered.id().equals(phase.id())) {
-                EntityContracts.PhaseEvent collision = entered.events().get(
-                        EntityContracts.PhaseEventType.COLLISION);
+                AttachedAbilityContracts.PhaseEvent collision = entered.events().get(
+                        AttachedAbilityContracts.PhaseEventType.COLLISION);
                 if (collision != null && collision.actions().contains(
-                        EntityContracts.PhaseAction.APPLY_EFFECTS)) {
+                        AttachedAbilityContracts.PhaseAction.APPLY_EFFECTS)) {
                     List<HitCandidate<F>> enteredCandidates = phaseTargets(
                             ended.entity(), entered, ended.bots());
                     return new TickResult(dispatchPhaseEvent(ended.entity(), contract,
-                            entered, EntityContracts.PhaseEventType.COLLISION,
+                            entered, AttachedAbilityContracts.PhaseEventType.COLLISION,
                             ended.bots(), arena, combat,
                             enteredCandidates.stream().map(candidate ->
                                     candidate.bot().entitySlot()).toList(),
@@ -459,7 +456,7 @@ public final class AbilityEntitySystem {
                 }
             }
             return new TickResult(ended.entity() == next
-                    && !phase.events().containsKey(EntityContracts.PhaseEventType.LIFETIME_END)
+                    && !phase.events().containsKey(AttachedAbilityContracts.PhaseEventType.LIFETIME_END)
                     ? null : ended.entity());
         }
         return new TickResult(next);
@@ -467,19 +464,18 @@ public final class AbilityEntitySystem {
 
     private static <F extends AbilityEntityBot> TickResult tickCanonicalSummon(
             ArenaEntity entity, EntityContracts.EntityContract contract,
-            EntityContracts.Phase phase, List<ArenaEntity> allEntities,
+            AttachedAbilityContracts.AbilityPhase phase, List<ArenaEntity> allEntities,
             List<F> bots, ArenaBounds arena, int stepMs, Combat<F> combat) {
-        int lifetime = (int) Math.round(stat(contract.abilityId(),
-                contract.lifetime().duration(), Abilities.durationMs(contract.abilityId())));
+        int lifetime = contract.lifetime().duration();
         int damage = Math.max(0, combat.damageToEntity(entity, bots, allEntities));
         int hp = entity.hp() - damage;
         if (hp <= 0) return new TickResult(null);
         if (entity.ageMs() >= lifetime) {
             DispatchResult<F> ended = dispatchPhaseEvent(entity, contract, phase,
-                    EntityContracts.PhaseEventType.LIFETIME_END, bots, arena, combat,
+                    AttachedAbilityContracts.PhaseEventType.LIFETIME_END, bots, arena, combat,
                     List.of(), Map.of(), stepMs);
             return new TickResult(ended.entity() == entity
-                    && !phase.events().containsKey(EntityContracts.PhaseEventType.LIFETIME_END)
+                    && !phase.events().containsKey(AttachedAbilityContracts.PhaseEventType.LIFETIME_END)
                     ? null : ended.entity());
         }
         final List<F> summonBots = bots;
@@ -498,13 +494,14 @@ public final class AbilityEntitySystem {
         double dx = target.entityX() - next.x();
         double dy = target.entityY() - next.y();
         double targetDistance = Math.max(1, Math.hypot(dx, dy));
-        EntityContracts.Movement movement = phase.movement();
-        double speed = movement == null ? 0 : stat(contract.abilityId(), movement.speed(), 0);
-        double size = stat(contract.abilityId(), "size", next.size());
+        AttachedAbilityContracts.PhaseMovement movement = phase.movement();
+        double speed = movement == null ? 0 : movement.speed();
+        double size = movement == null || movement.size() <= 0 ? next.size() : movement.size();
         double desired = vectorBearing(dx, dy);
         double current = vectorBearing(next.velocityX(), next.velocityY());
+        double turn = movement == null || movement.turnDegrees() <= 0 ? 8 : movement.turnDegrees();
         double rotation = normalizeDegrees(current
-                + clamp(shortestDelta(current, desired), -8, 8));
+                + clamp(shortestDelta(current, desired), -turn, turn));
         double radians = Math.toRadians(rotation - 90);
         double nextX = clamp(next.x() + dx / targetDistance * Math.min(speed, targetDistance),
                 size / 2, arena.width() - size / 2);
@@ -514,22 +511,20 @@ public final class AbilityEntitySystem {
                 next.traveled(), next.timerMs(), true, next.ageMs(), phase.id(), false,
                 next.visibleMs(), next.visualEventType(), next.visualEventMs(),
                 next.visualEventSize(), rotation);
-        EntityContracts.Attack attack = phase.attack();
+        AttachedAbilityContracts.Attack attack = phase.attack();
         if (attack != null && next.intervalTimerMs() <= 0
                 && rayIntersectsCircle(next.x(), next.y(), next.velocityX(), next.velocityY(),
-                stat(contract.abilityId(), attack.range(), 0), target.entityX(),
+                attack.range() == null ? 0 : attack.range(), target.entityX(),
                 target.entityY(), target.entitySize() / 2.0)) {
             DispatchResult<F> result = dispatchPhaseEvent(next, contract, phase,
-                    EntityContracts.PhaseEventType.COLLISION, bots, arena, combat,
+                    AttachedAbilityContracts.PhaseEventType.COLLISION, bots, arena, combat,
                     List.of(target.entitySlot()), Map.of(target.entitySlot(), targetDistance),
                     Map.of(target.entitySlot(), next), stepMs);
             next = result.entity();
             bots = result.bots();
             if (next != null) {
-                next = withIntervalTimer(next, (int) Math.round(stat(
-                        contract.abilityId(), attack.cooldown(), 1000)));
-                next = withShotVisual(next, (int) Math.round(stat(
-                        contract.abilityId(), attack.visual(), 300)));
+                next = withIntervalTimer(next, attack.cooldownMs() == null ? 1000 : attack.cooldownMs());
+                next = withShotVisual(next, attack.visualMs() == null ? 300 : attack.visualMs());
             }
         } else {
             next = withIntervalTimer(next,
@@ -539,9 +534,9 @@ public final class AbilityEntitySystem {
     }
 
     private static <F extends AbilityEntityBot> List<HitCandidate<F>> phaseTargets(
-            ArenaEntity entity, EntityContracts.Phase phase, List<F> bots) {
-        String radiusName = phase.hitbox() == null ? "radius" : phase.hitbox().radius();
-        double radius = phaseRadius(entity.abilityId(), phase, radiusName,
+            ArenaEntity entity, AttachedAbilityContracts.AbilityPhase phase, List<F> bots) {
+        Double radiusValue = phase.hitbox() == null ? null : phase.hitbox().radius();
+        double radius = phaseRadius(entity.abilityId(), phase, radiusValue,
                 entity.size() / 2.0);
         return bots.stream()
                 .filter(bot -> isEnemy(entity.ownerSlot(), bot, bots)
@@ -555,14 +550,9 @@ public final class AbilityEntitySystem {
                 .toList();
     }
 
-    private static String phaseIntervalStat(EntityContracts.Phase phase,
-                                            EntityContracts.PhaseEvent event) {
-        return event.intervalStat();
-    }
-
     private static <F extends AbilityEntityBot> DispatchResult<F> dispatchPhaseEvent(
             ArenaEntity entity, EntityContracts.EntityContract contract,
-            EntityContracts.Phase phase, EntityContracts.PhaseEventType eventType,
+            AttachedAbilityContracts.AbilityPhase phase, AttachedAbilityContracts.PhaseEventType eventType,
             List<F> bots, ArenaBounds arena, Combat<F> combat,
             List<Integer> targetSlots, Map<Integer, Double> distances, int stepMs) {
         return dispatchPhaseEvent(entity, contract, phase, eventType, bots, arena,
@@ -571,19 +561,19 @@ public final class AbilityEntitySystem {
 
     private static <F extends AbilityEntityBot> DispatchResult<F> dispatchPhaseEvent(
             ArenaEntity entity, EntityContracts.EntityContract contract,
-            EntityContracts.Phase phase, EntityContracts.PhaseEventType eventType,
+            AttachedAbilityContracts.AbilityPhase phase, AttachedAbilityContracts.PhaseEventType eventType,
             List<F> bots, ArenaBounds arena, Combat<F> combat,
             List<Integer> targetSlots, Map<Integer, Double> distances,
             Map<Integer, ArenaEntity> effectSources, int stepMs) {
-        EntityContracts.PhaseEvent event = phase.events().get(eventType);
+        AttachedAbilityContracts.PhaseEvent event = phase.events().get(eventType);
         if (event == null) return new DispatchResult<>(entity, bots);
         ArenaEntity next = entity;
         Set<EffectType> effects = event.effectTypes().isEmpty()
-                ? phase.effects().stream().map(AbilityContracts.Effect::type)
+                ? phase.effects().stream().map(AttachedAbilityContracts.Effect::type)
                         .collect(java.util.stream.Collectors.toUnmodifiableSet())
                 : event.effectTypes();
-        for (EntityContracts.PhaseAction action : event.actions()) {
-            if (action == EntityContracts.PhaseAction.APPLY_EFFECTS) {
+        for (AttachedAbilityContracts.PhaseAction action : event.actions()) {
+            if (action == AttachedAbilityContracts.PhaseAction.APPLY_EFFECTS) {
                 for (Integer targetSlot : targetSlots) {
                     F target = bots.stream().filter(bot -> bot.entitySlot() == targetSlot)
                             .findFirst().orElse(null);
@@ -595,17 +585,15 @@ public final class AbilityEntitySystem {
                             effectSources.getOrDefault(targetSlot, next),
                             contract.abilityId(), phase.effects(), effects, arena, combat,
                             "source", distances.getOrDefault(targetSlot, Double.NaN),
-                            phase.effectOverrides(), phase.statOverrides());
+                            phase.effectOverrides(), phaseRange(phase));
                     next = recordTargetApplication(next, targetSlot, event.targetPolicy(), stepMs);
                 }
-            } else if (action == EntityContracts.PhaseAction.TRANSITION) {
-                EntityContracts.Phase target = EntityContracts.phaseById(next,
+            } else if (action == AttachedAbilityContracts.PhaseAction.TRANSITION) {
+                AttachedAbilityContracts.AbilityPhase target = EntityContracts.phaseById(next,
                         event.transition() == null ? null : event.transition().to());
                 if (target != null) next = transitionToPhase(next, target);
-            } else if (action == EntityContracts.PhaseAction.EMIT_VISUAL) {
-                int visibleMs = event.visibleMs() != null ? event.visibleMs()
-                        : event.visibleStat() == null ? 0
-                        : (int) Math.round(stat(contract.abilityId(), event.visibleStat(), 0));
+            } else if (action == AttachedAbilityContracts.PhaseAction.EMIT_VISUAL) {
+                int visibleMs = event.visibleMs() == null ? 0 : event.visibleMs();
                 String visualType = event.visualType() != null ? event.visualType()
                         : phase.visual() == null ? null : phase.visual().type();
                 int visualSize = event.visualSize() == null
@@ -616,7 +604,7 @@ public final class AbilityEntitySystem {
                         next.velocityY(), next.traveled(), next.timerMs(), next.armed(),
                         next.ageMs(), next.phaseId(), next.phaseLocked(), visibleMs,
                         visualType, visibleMs, visualSize);
-            } else if (action == EntityContracts.PhaseAction.REMOVE) {
+            } else if (action == AttachedAbilityContracts.PhaseAction.REMOVE) {
                 next = null;
             }
             if (next == null) break;
@@ -625,23 +613,22 @@ public final class AbilityEntitySystem {
     }
 
     private static boolean canApplyToTarget(ArenaEntity entity, int targetSlot,
-                                            EntityContracts.TargetPolicy targetPolicy,
+                                             AttachedAbilityContracts.TargetPolicy targetPolicy,
                                             int stepMs) {
         if (targetPolicy == null
-                || targetPolicy.mode() == EntityContracts.TargetPolicyMode.EVERY_TICK) return true;
+                || targetPolicy.mode() == AttachedAbilityContracts.TargetPolicyMode.EVERY_TICK) return true;
         Integer previous = entity.hitLedger().get(targetSlot);
         if (previous == null) return true;
-        if (targetPolicy.mode() == EntityContracts.TargetPolicyMode.ONCE) return false;
-        int interval = targetPolicy.intervalMs() != null ? targetPolicy.intervalMs()
-                : (int) Math.round(stat(entity.abilityId(), targetPolicy.interval(), 0));
+        if (targetPolicy.mode() == AttachedAbilityContracts.TargetPolicyMode.ONCE) return false;
+        int interval = targetPolicy.intervalMs() != null ? targetPolicy.intervalMs() : stepMs;
         return eventTimestampMs(entity, stepMs) - previous >= interval;
     }
 
     private static ArenaEntity recordTargetApplication(ArenaEntity entity, int targetSlot,
-                                                       EntityContracts.TargetPolicy targetPolicy,
+                                                        AttachedAbilityContracts.TargetPolicy targetPolicy,
                                                        int stepMs) {
         if (targetPolicy == null
-                || targetPolicy.mode() == EntityContracts.TargetPolicyMode.EVERY_TICK) {
+                || targetPolicy.mode() == AttachedAbilityContracts.TargetPolicyMode.EVERY_TICK) {
             return entity;
         }
         Map<Integer, Integer> ledger = new HashMap<>(entity.hitLedger());
@@ -654,7 +641,7 @@ public final class AbilityEntitySystem {
     }
 
     private static ArenaEntity transitionToPhase(ArenaEntity entity,
-                                                  EntityContracts.Phase phase) {
+                                                  AttachedAbilityContracts.AbilityPhase phase) {
         int visibleMs = phase.visibleMs() == null ? 0 : phase.visibleMs();
         if (visibleMs <= 0 && phase.visual() != null
                 && phase.visual().visibleMs() != null) {
@@ -756,20 +743,19 @@ public final class AbilityEntitySystem {
 
     private static <F extends AbilityEntityBot> void applyEntityEffects(
             List<F> bots, F target, ArenaEntity source, int abilityId,
-            List<AbilityContracts.Effect> declaredEffects,
+            List<AttachedAbilityContracts.Effect> declaredEffects,
             Set<EffectType> allowedEffects, ArenaBounds arena, Combat<F> combat,
             String knockbackDirection, double collisionDistance,
-            Map<String, AbilityContracts.EffectOverride> overrides,
-            Map<String, Double> statOverrides) {
+            Map<String, AttachedAbilityContracts.EffectOverride> overrides,
+            Double rangeOverride) {
         if (!isEnemy(source.ownerSlot(), target, bots)) return;
-        for (AbilityContracts.Effect effect : declaredEffects) {
+        for (AttachedAbilityContracts.Effect effect : declaredEffects) {
             if (!allowedEffects.isEmpty() && !allowedEffects.contains(effect.type())) continue;
-            AbilityContracts.EffectOverride override = effectOverrideFor(effect, overrides);
-            AbilityContracts.Effect resolved = withEffectOverride(effect, override);
+            AttachedAbilityContracts.EffectOverride override = effectOverrideFor(effect, overrides);
+            AttachedAbilityContracts.Effect resolved = withEffectOverride(effect, override);
             double distance = Double.isFinite(collisionDistance)
                     ? collisionDistance
                     : distance(source.x(), source.y(), target.entityX(), target.entityY());
-            Double rangeOverride = phaseRange(statOverrides);
             switch (resolved.type()) {
                 case DAMAGE -> {
                     double base = resolveEffectAmount(abilityId, resolved, override,
@@ -781,11 +767,11 @@ public final class AbilityEntitySystem {
                 case STATUS -> {
                     int durationMs = resolveEffectDuration(abilityId, resolved,
                             distance, rangeOverride);
-                    EntityContracts.Phase sourcePhase = EntityContracts.phaseFor(source);
+                    AttachedAbilityContracts.AbilityPhase sourcePhase = EntityContracts.phaseFor(source);
                     if ("silence".equals(resolved.subtype())
                             && durationMs <= 0
                             && sourcePhase != null
-                            && sourcePhase.type() == EntityContracts.PhaseType.ZONE) {
+                            && sourcePhase.type() == AttachedAbilityContracts.PhaseType.ZONE) {
                         target.setZoneSilenced(true);
                     } else {
                         combat.applyStatus(bots, source.ownerSlot(), target, abilityId,
@@ -829,42 +815,43 @@ public final class AbilityEntitySystem {
         }
     }
 
-    private static AbilityContracts.Effect withDuration(AbilityContracts.Effect effect, int durationMs) {
+    private static AttachedAbilityContracts.Effect withDuration(AttachedAbilityContracts.Effect effect, int durationMs) {
         if (durationMs == effect.durationMs()) return effect;
-        return new AbilityContracts.Effect(effect.type(), effect.subtype(), effect.amount(),
+        return new AttachedAbilityContracts.Effect(effect.type(), effect.subtype(), effect.amount(),
                 durationMs, effect.runtimeComputed(), effect.recipient(), effect.requiresConfirmedDamage(),
-                effect.mirrorsDamage(), effect.distanceMode(), effect.falloff());
+                effect.mirrorsDamage(), effect.distanceMode(), effect.falloff(),
+                effect.intervalMs(), effect.movementLockMs());
     }
 
-    private static AbilityContracts.Effect withEffectOverride(
-            AbilityContracts.Effect effect, AbilityContracts.EffectOverride override) {
+    private static AttachedAbilityContracts.Effect withEffectOverride(
+            AttachedAbilityContracts.Effect effect, AttachedAbilityContracts.EffectOverride override) {
         if (override == null) return effect;
-        AbilityContracts.Falloff falloff = override.falloff() == null
+        AttachedAbilityContracts.Falloff falloff = override.falloff() == null
                 ? effect.falloff()
                 : (effect.falloff() == null
                     ? override.falloff() : effect.falloff().mergedWith(override.falloff()));
         if (override.amount() != null && override.falloff() == null) falloff = null;
-        return new AbilityContracts.Effect(effect.type(), effect.subtype(),
+        return new AttachedAbilityContracts.Effect(effect.type(), effect.subtype(),
                 override.amount() == null ? effect.amount() : override.amount(),
                 override.durationMs() == null ? effect.durationMs() : override.durationMs(),
                 effect.runtimeComputed(), effect.recipient(),
                 effect.requiresConfirmedDamage(), effect.mirrorsDamage(),
-                effect.distanceMode(), falloff);
+                effect.distanceMode(), falloff, effect.intervalMs(), effect.movementLockMs());
     }
 
-    private static AbilityContracts.EffectOverride effectOverrideFor(
-            AbilityContracts.Effect effect,
-            Map<String, AbilityContracts.EffectOverride> overrides) {
+    private static AttachedAbilityContracts.EffectOverride effectOverrideFor(
+            AttachedAbilityContracts.Effect effect,
+            Map<String, AttachedAbilityContracts.EffectOverride> overrides) {
         if (overrides == null || overrides.isEmpty()) return null;
-        AbilityContracts.EffectOverride override = overrides.get(
-                AbilityContracts.effectOverrideKey(effect));
+        AttachedAbilityContracts.EffectOverride override = overrides.get(
+                AttachedAbilityContracts.effectOverrideKey(effect));
         if (override != null) return override;
         return overrides.get(effect.type().name().toLowerCase());
     }
 
     private static double resolveEffectAmount(int abilityId,
-                                              AbilityContracts.Effect effect,
-                                              AbilityContracts.EffectOverride override,
+                                              AttachedAbilityContracts.Effect effect,
+                                              AttachedAbilityContracts.EffectOverride override,
                                               double distance,
                                               Double rangeOverride) {
         if (override != null && override.amount() != null
@@ -880,18 +867,25 @@ public final class AbilityEntitySystem {
     }
 
     private static int resolveEffectDuration(int abilityId,
-                                             AbilityContracts.Effect effect,
+                                             AttachedAbilityContracts.Effect effect,
                                              double distance,
                                              Double rangeOverride) {
         return Abilities.durationAtDistance(abilityId, distance,
                 effect.durationMs(), effect.falloff(), rangeOverride);
     }
 
-    private static Double phaseRange(Map<String, Double> statOverrides) {
+    private static Double phaseRange(AttachedAbilityContracts.AbilityPhase phase) {
+        if (phase == null) return null;
+        AttachedAbilityContracts.Hitbox hitbox = phase.hitbox();
+        if (hitbox != null) {
+            if (hitbox.range() != null) return hitbox.range();
+            if (hitbox.length() != null) return hitbox.length();
+            if (hitbox.radius() != null) return hitbox.radius();
+        }
+        Map<String, Double> statOverrides = phase.statOverrides();
         if (statOverrides == null) return null;
         Double range = statOverrides.get("range");
-        if (range != null) return range;
-        return statOverrides.get("radius");
+        return range != null ? range : statOverrides.get("radius");
     }
 
     private static <F extends AbilityEntityBot> boolean isEnemy(
@@ -927,26 +921,12 @@ public final class AbilityEntitySystem {
         return distance(cx, cy, closestX, closestY) <= radius;
     }
 
-    private static double phaseRadius(int abilityId, EntityContracts.Phase phase,
-                                      String radius, double fallback) {
-        double value = phase == null || radius == null ? fallback
-                : phase.statOverrides().getOrDefault(radius,
-                stat(abilityId, radius, fallback));
+    private static double phaseRadius(int abilityId, AttachedAbilityContracts.AbilityPhase phase,
+                                      Double radiusValue, double fallback) {
+        double value = radiusValue == null ? fallback : radiusValue;
         double multiplier = phase == null || phase.hitbox() == null
                 ? 1 : phase.hitbox().radiusMultiplier();
         return value * multiplier;
-    }
-
-    private static double stat(int abilityId, String name, double fallback) {
-        return EntityContracts.stat(abilityId, name, fallback);
-    }
-
-    private static double phaseStat(int abilityId, EntityContracts.Phase phase,
-                                    String name, double fallback) {
-        if (phase != null && name != null && phase.statOverrides().containsKey(name)) {
-            return phase.statOverrides().get(name);
-        }
-        return stat(abilityId, name, fallback);
     }
 
     private static <F extends AbilityEntityBot> Map<Integer, Double> distancesBySlot(

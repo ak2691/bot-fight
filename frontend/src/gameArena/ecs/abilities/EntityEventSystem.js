@@ -1,9 +1,8 @@
-import { ABILITY_STATS } from "../../gameconfig/Abilities.js";
 import {
     PHASE_ACTIONS,
     PHASE_EVENT_TYPES,
     TARGET_POLICY_MODES,
-} from "../../gameconfig/AbilityContracts.js";
+} from "../../gameconfig/AttachedAbilityContracts.js";
 import { applyEntityEffects } from "./EntityEffectSystem.js";
 import { entityContract, phaseForEntity } from "../contracts/EntityContracts.js";
 import { withComponentState } from "../entities/EntityWorld.js";
@@ -38,6 +37,12 @@ export function dispatchEntityEvent(entity, eventType, {
     const targets = normalizeTargetIds(targetIds);
     const actions = Array.isArray(handler.actions) ? handler.actions : [];
     const effectTypes = normalizeEffectTypes(handler.effects ?? phase.effects ?? phase.effectTypes);
+    const hitbox = phase?.hitbox;
+    const phaseRange = hitbox?.range ?? hitbox?.length ?? hitbox?.radius;
+    const phaseStats = {
+        ...(phase?.statOverrides ?? {}),
+        ...(phaseRange == null ? {} : { range: phaseRange, radius: phaseRange }),
+    };
 
 
     for (const action of actions) {
@@ -66,7 +71,8 @@ export function dispatchEntityEvent(entity, eventType, {
                             ? Number(targetDistance)
                             : collisionDistance,
                         effectOverrides: handler.effectOverrides ?? phase.effectOverrides,
-                        statOverrides: phase.statOverrides,
+                        statOverrides: phaseStats,
+                        effects: phase.effects,
                     },
                 );
                 nextBots = result.bots;
@@ -156,7 +162,7 @@ export function transitionEntityPhase(entity, phaseId, world = {}) {
         phaseTimerMs: 0,
         phaseLocked: true,
         phaseEnteredThisTick: true,
-        ...(nextPhase.movement?.mode === "stopped" ? { velocityX: 0, velocityY: 0 } : {}),
+        ...(Number(nextPhase.movement?.speed ?? 0) <= 0 ? { velocityX: 0, velocityY: 0 } : {}),
         // Persistence is phase-local. A target affected by a fuse phase can
         // be affected again by the damage phase of the same logical entity.
         hitLedger: {},
@@ -202,9 +208,8 @@ function resolveNumber(value, entity, world, fallback) {
     if (value == null) return fallback;
     if (typeof value === "number") return value;
     if (typeof value === "string") {
-        const stats = ABILITY_STATS[Number(entity?.abilityId)] ?? {};
-        const statValue = stats[value];
-        return statValue == null ? Number(value) || fallback : Number(statValue);
+        const numericValue = Number(value);
+        return Number.isFinite(numericValue) ? numericValue : fallback;
     }
     if (typeof value === "object") {
         if (value.stat != null) return resolveNumber(value.stat, entity, world, value.fallback ?? fallback);

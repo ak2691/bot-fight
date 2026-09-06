@@ -8,7 +8,7 @@ import com.example.botfight.simulation.ecs.entities.AbilityEntityBot;
 import com.example.botfight.simulation.ecs.entities.AbilityEntityFactory;
 import com.example.botfight.simulation.ecs.entities.ArenaBounds;
 import com.example.botfight.simulation.ecs.entities.ArenaEntity;
-import com.example.botfight.simulation.gameconfig.AbilityContracts;
+import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts;
 import java.util.List;
 import java.util.ArrayList;
 import org.junit.jupiter.api.Test;
@@ -19,15 +19,18 @@ class AbilityEntitySystemTest {
     void entityPhasesExposeCompleteEffectPayloadsForContractAuditing() {
         assertThat(EntityContracts.all().values()).allSatisfy(contract ->
                 assertThat(contract.phases()).allSatisfy(phase -> {
-                    assertThat(phase.effects()).extracting(AbilityContracts.Effect::type)
+                    assertThat(phase.effects()).extracting(AttachedAbilityContracts.Effect::type)
                             .containsExactlyInAnyOrderElementsOf(phase.effectTypes());
-                    assertThat(phase.effects()).allMatch(effect ->
-                            AbilityContracts.get(contract.abilityId()).effects().contains(effect));
+                    assertThat(phase.effects()).allMatch(effect -> effect != null
+                            && effect.type() != null);
                 }));
+
+        assertThat(EntityContracts.all().values()).allSatisfy(contract ->
+                assertThat(AttachedAbilityContracts.forAbility(contract.abilityId())).isNull());
 
         assertThat(EntityContracts.forAbility(5).phases().getFirst().effects())
                 .anySatisfy(effect -> {
-                    assertThat(effect.type()).isEqualTo(AbilityContracts.EffectType.STATUS);
+                    assertThat(effect.type()).isEqualTo(AttachedAbilityContracts.EffectType.STATUS);
                     assertThat(effect.subtype()).isEqualTo("burn");
                     assertThat(effect.amount()).isEqualTo(2);
                     assertThat(effect.durationMs()).isEqualTo(5_000);
@@ -35,16 +38,16 @@ class AbilityEntitySystemTest {
     }
     @Test
     void phaseContractsKeepTargetPolicyOnEventsAndUseExplicitTransitionBodies() {
-        EntityContracts.Phase grenadeTravel = EntityContracts.forAbility(4).phases().getFirst();
-        EntityContracts.PhaseEvent transition = grenadeTravel.events()
-                .get(EntityContracts.PhaseEventType.COLLISION);
-        EntityContracts.PhaseEvent silenceCollision = EntityContracts.forAbility(15).phases().getFirst()
-                .events().get(EntityContracts.PhaseEventType.COLLISION);
-        EntityContracts.PhaseEvent orbitalInterval = EntityContracts.forAbility(22).phases().getFirst()
-                .events().get(EntityContracts.PhaseEventType.INTERVAL);
+        AttachedAbilityContracts.AbilityPhase grenadeTravel = EntityContracts.forAbility(4).phases().getFirst();
+        AttachedAbilityContracts.PhaseEvent transition = grenadeTravel.events()
+                .get(AttachedAbilityContracts.PhaseEventType.COLLISION);
+        AttachedAbilityContracts.PhaseEvent silenceCollision = EntityContracts.forAbility(15).phases().getFirst()
+                .events().get(AttachedAbilityContracts.PhaseEventType.COLLISION);
+        AttachedAbilityContracts.PhaseEvent orbitalInterval = EntityContracts.forAbility(22).phases().getFirst()
+                .events().get(AttachedAbilityContracts.PhaseEventType.INTERVAL);
 
         assertThat(transition.transition().to()).isEqualTo("active");
-        assertThat(silenceCollision.targetPolicy().mode()).isEqualTo(EntityContracts.TargetPolicyMode.ONCE);
+        assertThat(silenceCollision.targetPolicy().mode()).isEqualTo(AttachedAbilityContracts.TargetPolicyMode.ONCE);
         assertThat(orbitalInterval.targetPolicy()).isNull();
     }
 
@@ -63,10 +66,10 @@ class AbilityEntitySystemTest {
         }
         assertThat(EntityContracts.phaseFor(AbilityEntityFactory.create(
                 "grenade", 4, 1, 100, 200, 60, 90, 1, 0, 0, 1000, 800)).type())
-                .isEqualTo(EntityContracts.PhaseType.PROJECTILE);
+                .isEqualTo(AttachedAbilityContracts.PhaseType.PROJECTILE);
         assertThat(EntityContracts.phaseFor(AbilityEntityFactory.create(
                 "windburst", 18, 1, 100, 200, 60, 90, 1, 0, 0, 1000, 800)).type())
-                .isEqualTo(EntityContracts.PhaseType.PROJECTILE);
+                .isEqualTo(AttachedAbilityContracts.PhaseType.PROJECTILE);
     }
 
     @Test

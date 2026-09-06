@@ -3,6 +3,7 @@ import { Circle, Container, Graphics, Rectangle, Sprite, Text } from "pixi.js";
 import ArenaLoadingScreen from "../../components/ArenaLoadingScreen.jsx";
 import AbilityStatusPanel from "../status/AbilityStatusPanel.jsx";
 import { ABILITY_STATS } from "../gameconfig/Abilities.js";
+import { attachedAbilityContract } from "../gameconfig/AttachedAbilityContracts.js";
 import { ABILITIES } from "../gameconfig/AbilityRegistry.js";
 import { CLOSING_ZONE_TYPE } from "../gameconfig/ArenaHazardConfig.js";
 import { abilityActiveOpacity, basicHealParticleSpec, combatVisualRemainingMs, healthBarPercent, abilityVisualOpacity, BASIC_HEAL_PARTICLE_COUNT, REPULSOR_BURST_VISUAL_MS, repulsorBurstDiameter, repulsorBurstFrameIndex, repulsorBurstProgress, sweepAngle, visualProgress } from "../gameconfig/visualState.js";
@@ -20,6 +21,7 @@ import { compassDegreesToRadians, vectorToCompassDegrees } from "../botlogic/pla
 import { hitboxGeometriesForEntity, hitboxGeometryForBot } from "../gameconfig/hitboxGeometry.js";
 import { acquirePixiApplication, attachPixiApplication, releasePixiApplication } from "./pixiApplication.js";
 import { statusIsActive } from "../ecs/contracts/StatusContracts.js";
+import { entityContract } from "../ecs/contracts/EntityContracts.js";
 import "./PixiCanvas.css";
 
 const MIN_ZOOM = 1;
@@ -28,6 +30,18 @@ const BOT_TOUCH_TARGET_PX = 48;
 const ROTATION_HANDLE_TOUCH_TARGET_PX = 48;
 const ROTATION_HANDLE_BASE_HIT_RADIUS_UNITS = 14;
 const BOT_CAPTION_FONT_SIZE = 14;
+
+function directPhaseForAbility(abilityId) {
+    return attachedAbilityContract(abilityId)?.phases?.[0] ?? null;
+}
+
+function directVisualForAbility(abilityId) {
+    return directPhaseForAbility(abilityId)?.visual ?? {};
+}
+
+function directHitboxForAbility(abilityId) {
+    return directPhaseForAbility(abilityId)?.hitbox ?? {};
+}
 const BOT_CAPTION_MIN_PX = 8;
 const BOT_CAPTION_MAX_PX = 14;
 const BOT_CAPTION_OFFSET_UNITS = 37;
@@ -631,7 +645,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
 
     function spawnRepairPulseParticles(x, y) {
         for (let index = 0; index < BASIC_HEAL_PARTICLE_COUNT; index += 1) {
-            const spec = basicHealParticleSpec(index, ABILITY_STATS[10].visualSize);
+            const spec = basicHealParticleSpec(index, directVisualForAbility(10).visualSize ?? 12);
             const display = new Text({
                 text: "+",
                 style: { fill: 0x6ee7b7, fontFamily: "monospace", fontSize: spec.fontSize, fontWeight: "bold", align: "center" },
@@ -943,16 +957,19 @@ function drawBot(view, position, selected, now, arenaSprites, overlapping = fals
     if (!dead) drawDashSmoke(view, position, radius, now, arenaSprites);
     const swingActiveMs = Number(shape.abilityActiveMs?.[1] ?? 0);
     if (swingActiveMs > 0) {
-        const halfArc = Number(ABILITY_STATS[1].arc) / 2;
-        const angle = rotation + radians(sweepAngle(swingActiveMs, ABILITY_STATS[1].activeMs, -halfArc, halfArc));
-        const progress = visualProgress(swingActiveMs, ABILITY_STATS[1].activeMs);
+        const meleeHitbox = directHitboxForAbility(1);
+        const meleeVisual = directVisualForAbility(1);
+        const activeMs = Number(ABILITY_STATS[1].activeMs ?? 400);
+        const halfArc = Number(meleeHitbox.arc ?? 0) / 2;
+        const angle = rotation + radians(sweepAngle(swingActiveMs, activeMs, -halfArc, halfArc));
+        const progress = visualProgress(swingActiveMs, activeMs);
         const forwardOffset = radius / 2;
         showCachedEffect(view, "swing", spriteFrameAtProgress(arenaSprites.abilities.meleeSlash, progress), {
             x: Math.cos(rotation) * forwardOffset,
             y: Math.sin(rotation) * forwardOffset,
             rotation: angle,
-            width: Number(ABILITY_STATS[1].visualSize ?? ABILITY_STATS[1].range * 2.25),
-            height: Number(ABILITY_STATS[1].visualSize ?? ABILITY_STATS[1].range * 2.25),
+            width: Number(meleeVisual.visualSize ?? Number(meleeHitbox.range ?? 92) * 2.25),
+            height: Number(meleeVisual.visualSize ?? Number(meleeHitbox.range ?? 92) * 2.25),
         });
     }
     drawStatusIcons(graphics, shape, radius);
@@ -1130,7 +1147,7 @@ function drawDashSmoke(view, position, radius, now, arenaSprites) {
         return;
     }
     const origin = view.dashSmokeOrigin ?? position;
-    const visualSize = Number(ABILITY_STATS[19]?.visualSize ?? radius * 3.8);
+    const visualSize = Number(directVisualForAbility(19).visualSize ?? radius * 3.8);
     showCachedEffect(view, "dash-smoke", spriteFrame(frames, elapsedMs, 100, false), {
         x: origin.x - position.x,
         y: origin.y - position.y,
@@ -1249,7 +1266,10 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
         const originX = Number(shape.gunRayOriginX ?? shape.x);
         const originY = Number(shape.gunRayOriginY ?? shape.y);
         const originRotation = Number(shape.gunRayRotation ?? shape.rotation);
-        showAbilityRayEffect(view, "gun", arenaSprites, position, originX, originY, originRotation, 3, ABILITY_STATS[3].range, alpha, Number(ABILITY_STATS[3].visualSize ?? 16));
+        const gunHitbox = directHitboxForAbility(3);
+        const gunVisual = directVisualForAbility(3);
+        showAbilityRayEffect(view, "gun", arenaSprites, position, originX, originY, originRotation, 3,
+            Number(gunHitbox.range ?? 700), alpha, Number(gunVisual.visualSize ?? 16));
         showMuzzleFlash(view, arenaSprites, position, originX, originY, originRotation, alpha, Number(shape.size ?? 60));
     }
     const stunActiveMs = Number(shape.abilityActiveMs?.[6] ?? 0);
@@ -1258,7 +1278,7 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
         const opacity = clamp(stunActiveMs / activeDurationMs, 0, 1);
         const progress = visualProgress(stunActiveMs, activeDurationMs);
         const botRadius = Number(shape.size ?? BOT_SIZE) / 2;
-        const stunVisualSize = Number(ABILITY_STATS[6].visualSize ?? shape.size ?? 60);
+        const stunVisualSize = Number(directVisualForAbility(6).visualSize ?? shape.size ?? 60);
         showCachedEffect(view, "stun", spriteFrameAtProgress(arenaSprites.abilities.stun, progress), {
             // The supplied frame is vertically elongated; keep that long axis
             // aligned with the bot's facing direction and project it from
@@ -1290,11 +1310,13 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
     const visual = activeBotVisual(shape);
     if (!visual) return;
     if (visual === 20) return;
-    const stats = ABILITY_STATS[visual] ?? {};
+    const phase = directPhaseForAbility(visual);
+    const phaseHitbox = phase?.hitbox ?? {};
+    const phaseVisual = phase?.visual ?? {};
     const selfGuardFlash = visual === 16 || visual === 23;
-    const duration = Number(stats.visualMs ?? 300);
+    const duration = Number(phaseVisual.visibleMs ?? 300);
     const activeRemainingMs = Number(shape.abilityActiveMs?.[visual] ?? 0);
-    const configuredActiveMs = Number(stats.statusDurationMs ?? stats.durationMs ?? stats.activeMs ?? duration);
+    const configuredActiveMs = Number(phaseVisual.visibleMs ?? ABILITY_STATS[visual]?.activeMs ?? duration);
     const replayActivationRemainingMs = Math.max(0, duration - Math.max(0, configuredActiveMs - activeRemainingMs));
     const remaining = selfGuardFlash
         ? Math.max(Number(shape.abilityVisual?.ms ?? 0), replayActivationRemainingMs)
@@ -1316,7 +1338,7 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
             : now - view.repulsorBurstStartedAt;
         const progress = repulsorBurstProgress(elapsed, duration);
         const frameIndex = repulsorBurstFrameIndex(progress, frames.length);
-        const diameter = repulsorBurstDiameter(progress, Number(stats.visualSize ?? Number(stats.radius ?? 110) * 2), frames.length);
+        const diameter = repulsorBurstDiameter(progress, Number(phaseVisual.visualSize ?? Number(phaseHitbox.radius ?? 110) * 2), frames.length);
         showCachedEffect(view, "ability", frames[frameIndex], {
             x: originX - position.x,
             y: originY - position.y,
@@ -1326,22 +1348,24 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
             height: diameter,
         });
     } else if (visual === 7) {
-        const halfArc = Number(stats.arc) / 2;
+        const halfArc = Number(phaseHitbox.arc ?? 0) / 2;
         const sweep = heavySlashRotation(originRotation, sweepAngle(remaining, duration, -halfArc, halfArc));
-        showSlashEffect(view, arenaSprites.abilities.heavySlash, remaining, duration, sweep, Number(stats.visualSize ?? ABILITY_STATS[1].range * 2.4), 0xffffff, opacity);
+        showSlashEffect(view, arenaSprites.abilities.heavySlash, remaining, duration, sweep,
+            Number(phaseVisual.visualSize ?? Number(directHitboxForAbility(1).range ?? 92) * 2.4), 0xffffff, opacity);
     } else if ([3, 12, 9, 13].includes(visual)) {
-        const height = Number(stats.visualSize ?? (visual === 13 ? 100 : visual === 9 ? 76 : 14));
-        showAbilityRayEffect(view, "ability", arenaSprites, position, originX, originY, originRotation, visual, Number(stats.range ?? 500), opacity, height);
+        const height = Number(phaseVisual.visualSize ?? (visual === 13 ? 100 : visual === 9 ? 76 : 14));
+        showAbilityRayEffect(view, "ability", arenaSprites, position, originX, originY, originRotation, visual,
+            Number(phaseHitbox.range ?? 500), opacity, height);
         showMuzzleFlash(view, arenaSprites, position, originX, originY, originRotation, opacity, Number(shape.size ?? 60));
     } else if ([30, 32].includes(visual)) {
-        const rayWidth = Number(stats.hitboxWidth ?? 5);
+        const rayWidth = Number(phaseHitbox.width ?? 5);
         drawProceduralAbilityRay(graphics, position, originX, originY, originRotation,
-            Number(stats.range ?? 500), visual === 30 ? 0x22d3ee : 0xef4444, opacity,
+            Number(phaseHitbox.range ?? 500), visual === 30 ? 0x22d3ee : 0xef4444, opacity,
             Number.isFinite(rayWidth) && rayWidth > 0 ? rayWidth : 5);
         showMuzzleFlash(view, arenaSprites, position, originX, originY, originRotation, opacity, Number(shape.size ?? 60));
     } else if (visual === 34) {
         drawProceduralAbilityRay(graphics, position, originX, originY, originRotation,
-            Number(stats.range ?? 80), 0xf8fafc, opacity, 6);
+            Number(phaseHitbox.range ?? 80), 0xf8fafc, opacity, 6);
     } else if (visual === 33) {
         const radius = Number(shape.size ?? BOT_SIZE) / 2;
         const pulse = 0.55 + Math.sin(now / 100) * 0.18;
@@ -1355,8 +1379,8 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
             rotation: angle,
             alpha: opacity,
             tint: 0xf0abfc,
-            width: Number(stats.visualSize ?? stats.range ?? 100),
-            height: Number(stats.visualSize ?? stats.range ?? 100) * 0.6,
+            width: Number(phaseVisual.visualSize ?? phaseHitbox.length ?? 100),
+            height: Number(phaseHitbox.width ?? 60),
             anchorX: 0,
             blendMode: "screen",
         });
@@ -1364,7 +1388,7 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
         const progress = visualProgress(remaining, duration);
         const centerX = originX - position.x;
         const centerY = originY - position.y;
-        const ringRadius = Number(stats.radius ?? 120) * (0.34 + progress * 0.66);
+        const ringRadius = Number(phaseHitbox.radius ?? 120) * (0.34 + progress * 0.66);
         graphics.circle(centerX, centerY, ringRadius)
             .stroke({ color: 0x93c5fd, alpha: opacity, width: 5 });
         graphics.circle(centerX, centerY, ringRadius * 0.72)
@@ -1379,7 +1403,7 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
         }
     } else if (visual === 16 || visual === 23) {
         const progress = visualProgress(remaining, duration);
-        const radius = Number(stats.visualSize ?? 80) / 2 + progress * 16;
+        const radius = Number(phaseVisual.visualSize ?? 80) / 2 + progress * 16;
         const color = visual === 16 ? 0xfbbf24 : 0xe2e8f0;
         showCachedEffect(view, "ability", spriteFrameAtProgress(arenaSprites.abilities.shield, progress), { rotation: angle + Math.PI, alpha: 1 - progress, tint: color, width: radius * 2, height: radius * 2 });
     }
@@ -1523,7 +1547,8 @@ function drawEntity(view, selected, now, arenaSprites) {
     } else if (["hunterDrone", "repellerDrone"].includes(presentationType)) {
         if (Number(shape.shotVisualMs ?? 0) > 0) {
             const alpha = clamp(Number(shape.shotVisualMs) / 300, 0.2, 1);
-                showAbilityRayEffect(view, "drone-shot", arenaSprites, { x: shape.x, y: shape.y }, shape.x, shape.y, shape.rotation, 3, 200, alpha, Number(ABILITY_STATS[3].visualSize ?? 16), 0x6ee7b7);
+                showAbilityRayEffect(view, "drone-shot", arenaSprites, { x: shape.x, y: shape.y }, shape.x, shape.y, shape.rotation, 3, 200, alpha,
+                    Number(directVisualForAbility(3).visualSize ?? 16), 0x6ee7b7);
         }
     }
     if (selected) graphics.circle(0, 0, radius + 6).stroke({ color: COLORS.white, alpha: 0.8, width: 2 });
@@ -1690,7 +1715,8 @@ function drawGeneratedAbilityEntity(graphics, shape, now, animationProgress = nu
         return;
     }
     if (type === "staticSnare") {
-        const triggerRadius = Number(ABILITY_STATS[29]?.radius ?? 75);
+        const triggerRadius = Number(entityContract(29)?.phases
+            ?.find((phase) => phase.id === "armed")?.trigger?.radius ?? 75);
         const pulse = 0.62 + Math.sin(now / 180) * 0.14;
         graphics.circle(0, 0, triggerRadius).stroke({ color: 0xfacc15, alpha: 0.22, width: 2 });
         graphics.circle(0, 0, Math.max(8, Number(shape.size ?? 24) / 2)).fill({ color: 0x713f12, alpha: 0.9 })
@@ -1750,8 +1776,7 @@ function entityRotation(shape, fallbackRotation) {
 function entityVisualBaseSize(shape, fallback) {
     const phaseVisualSize = Number(visualForShape(shape)?.visualSize);
     if (Number.isFinite(phaseVisualSize) && phaseVisualSize > 0) return phaseVisualSize;
-    const visualSize = Number(ABILITY_STATS[Number(shape.abilityId)]?.visualSize);
-    return Number.isFinite(visualSize) && visualSize > 0 ? visualSize : fallback;
+    return fallback;
 }
 
 function entitySpriteSize(shape, size) {

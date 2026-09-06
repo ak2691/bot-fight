@@ -22,14 +22,16 @@ Never renumber an existing ability or reuse a retired ID.
 
 ## The short version
 
-For a simple number change:
+For a simple change:
 
 1. Find the ability ID in AbilityRegistry.js.
-2. Change the browser value in frontend/src/gameArena/gameconfig/Abilities.js.
-3. Change the matching server value in
-   server/src/main/java/com/example/botfight/simulation/gameconfig/Abilities.java.
-4. If the number is an effect amount or duration, update the matching entry in
-   AbilityContracts.js and AbilityContracts.java too.
+2. If it changes damage, healing, range, radius, hitbox, speed, movement,
+   visual state, or an effect, change the owning phase in the browser contract:
+   `AttachedAbilityContracts.js` for direct abilities or `EntityContracts.js` for
+   entities.
+3. Mirror the same phase change in the matching server contract.
+4. Change `Abilities.js`/`Abilities.java` only for ability-level timing,
+   resources, identity, or a still-supported compatibility consumer.
 5. Run the focused tests, then the full frontend and server suites.
 
 Use milliseconds for time values:
@@ -51,24 +53,27 @@ fixed-step units. They are not milliseconds.
 
 | What you want to change | Browser | Authoritative server |
 | --- | --- | --- |
-| Cooldown, windup, damage, range, charges, reload, geometry | gameconfig/Abilities.js | simulation/gameconfig/Abilities.java |
-| Delivery and ordered effects | gameconfig/AbilityContracts.js | simulation/gameconfig/AbilityContracts.java |
+| Cooldown, windup, active/duration timing, charges, reload | gameconfig/Abilities.js | simulation/gameconfig/Abilities.java |
+| Phase ownership, hitboxes, movement, visuals, and ordered effects | gameconfig/AttachedAbilityContracts.js; ecs/contracts/EntityContracts.js | simulation/gameconfig/AttachedAbilityContracts.java; simulation/ecs/contracts/EntityContracts.java |
 | Status behavior and allowed status components | ecs/contracts/StatusContracts.js, ecs/bots/BotStatusSystem.js | StatusEffectState.java, BotStateService.java |
 | Projectile, trap, zone, or summon lifecycle | ecs/contracts/EntityContracts.js, ecs/entities/EntityFactory.js, ecs/abilities/AbilityEntitySystem.js | simulation/ecs/contracts/EntityContracts.java, AbilityEntityFactory.java, AbilityEntitySystem.java |
 | Ability readiness, charges, and resource timers | ecs/bots/BotResourceSystem.js | BotStateService.java |
 | Catalogue name, label, tags, draft metadata | loadout/BotLoadout.js, AbilityRegistry.js | AbilityRegistry.java, loadout/config validation |
 | Icons, animations, flashes, and other presentation | pixi/, visual-state helpers | replay/presentation metadata only; never gameplay authority |
 
-The two most important files are the numeric catalog and the effect contract:
+The two most important authoring locations are the timing/resource catalog and
+the phase contract:
 
-- Browser numeric catalog: frontend/src/gameArena/gameconfig/Abilities.js
-- Browser effects: frontend/src/gameArena/gameconfig/AbilityContracts.js
-- Server numeric catalog: server/src/main/java/com/example/botfight/simulation/gameconfig/Abilities.java
-- Server effects: server/src/main/java/com/example/botfight/simulation/gameconfig/AbilityContracts.java
+- Browser timing/resource catalog: frontend/src/gameArena/gameconfig/Abilities.js
+- Browser direct phases: frontend/src/gameArena/gameconfig/AttachedAbilityContracts.js
+- Browser entity phases: frontend/src/gameArena/ecs/contracts/EntityContracts.js
+- Server timing/resource catalog: server/src/main/java/com/example/botfight/simulation/gameconfig/Abilities.java
+- Server direct phases: server/src/main/java/com/example/botfight/simulation/gameconfig/AttachedAbilityContracts.java
+- Server entity phases: server/src/main/java/com/example/botfight/simulation/ecs/contracts/EntityContracts.java
 
 ## 1. Modify an ability stat
 
-The browser catalog is a numeric-keyed object. For example, Gun is
+The timing/resource catalog is a numeric-keyed object. For example, Gun is
 ability 3:
 
 ~~~js
@@ -77,8 +82,26 @@ ability 3:
     reloadMs: 5000,
     cooldownMs: 1000,
     activeMs: 500,
-    falloff: { maxAmount: 15, minAmount: 5, falloffStart: 100, falloffEnd: 700 },
-    range: 700,
+},
+~~~
+
+Gun's phase owns the behavior values:
+
+~~~js
+3: {
+    activation: {
+        capture: { gunRayOriginX: "x", gunRayOriginY: "y", gunRayRotation: "rotation" },
+    },
+    phases: [{
+        id: "active",
+        type: "botAttached",
+        hitbox: { shape: "ray", range: 700, width: 5 },
+        effects: [{
+            type: "damage",
+            falloff: { maxAmount: 15, minAmount: 5, falloffStart: 100, falloffEnd: 700 },
+        }],
+        events: { collision: { actions: ["applyEffects"], effectTypes: ["damage"] } },
+    }],
 },
 ~~~
 
@@ -92,27 +115,20 @@ Common browser fields:
 | durationMs | Duration phase for a continuing effect or entity, when that ability uses this field. For a moving entity, motion is active during this phase. |
 | maxCharges | Maximum ammunition/charges in the browser catalog. |
 | reloadMs | Time to reload after a charged ability is empty. |
-| damage | Fixed damage amount. |
-| healing | Fixed healing amount. |
-| falloff.maxAmount, falloff.minAmount | Endpoints of a linear amount-falloff profile. |
-| falloff.maxDurationMs, falloff.minDurationMs | Optional endpoints of a distance-dependent duration profile. Status effects currently use this form; their amount/strength is unchanged. |
-| falloff.falloffStart, falloff.falloffEnd | Distances where falloff begins and reaches its minimum. Both are clamped to the ability or phase maximum range. |
-| range | Hit, targeting, ray, arc, or falloff range. For moving projectiles, this is travel/display metadata and should remain equal to the duration-phase displacement; it is not the projectile's physical rectangle length. |
-| radius | Radius for a circular projectile, zone, blast, or trigger. |
-| hitboxWidth | Width of a forward rectangle or segment when the delivery declares rectangle geometry. |
-| hitboxLength | Longitudinal length of a forward rectangle or segment. Use this for projectile hitboxes; it is independent of projectile travel `range`. |
-| arc | Facing arc in degrees for abilities that use an arc. |
-| knockback | Displacement strength for a knockback effect. |
-| pullPerTick | Displacement applied by a persistent pull effect each simulation tick. |
-| speed | Movement speed for the relevant projectile/entity. |
-| visualSize, phase.visual | Presentation-only asset/state/size metadata for a sprite-backed ability effect/entity. A phase or derived effect can select its own visual descriptor; it does not affect collision, damage, range, or authority and is intentionally omitted from catalogue rows. |
-| phases | Declarative ability/entity phases with `id`, `type`, movement, standard hitbox fields, event handlers, effects, event-local target policies, and optional phase visuals. Use phases when delivery, movement, geometry, damage, or effects change during the lifecycle. |
+| damage, healing, falloff | Phase-owned effect payloads in the direct or entity phase contract. Do not duplicate them in the timing catalog. |
+| range, radius, hitboxWidth, hitboxLength, arc | Phase-owned hitbox geometry. A projectile's physical length is independent of travel/display range. |
+| knockback, pullPerTick | Phase-owned displacement effect values. |
+| speed | Numeric movement speed on the active entity phase. Use `0` for a stopped phase. |
+| visualSize, phase.visual | Presentation metadata on the phase that is visible at that moment. It does not affect collision, damage, range, or authority. |
+| phases | Declarative direct/entity phases with `id`, `type`, numeric movement, hitbox, event handlers, effects, target policies, and optional visuals. Use phases whenever behavior changes during the lifecycle. |
 | intervalMs | Cadence for a generic `interval` entity action. Orbital Strike uses this for repeated hits. |
 | visibleMs | Presentation timing for the current phase or transient phase event visual. It does not affect gameplay lifetime unless the phase explicitly uses it as its duration. |
 | visualMs | Direct-ability cast visual timing. Persistent entity visuals should use `phase.visual.visibleMs`. |
 
-The server uses the same concepts, but its AbilityDefinition constructor is
-positional:
+The server mirrors the same timing/resource concepts. Its positional
+`AbilityDefinition` remains a public compatibility projection, derived from
+the timing catalog and phase contracts; do not add authored phase-dependent
+values there. New behavior belongs in the phase contracts above:
 
 ~~~java
 new AbilityDefinition(
@@ -159,16 +175,19 @@ entity contract.
 ### Generic distance falloff
 
 Use a linear profile when an effect's amount or duration changes with distance.
-For a damage effect, the browser catalog uses the generic `falloff` object:
+For a damage effect, the phase effect uses the generic `falloff` object:
 
 ~~~js
-falloff: {
-    maxAmount: 40,
-    minAmount: 25,
-    falloffStart: 0,
-    falloffEnd: 64,
-},
-range: 70,
+effect(EFFECT_TYPES.DAMAGE, {
+    falloff: {
+        maxAmount: 40,
+        minAmount: 25,
+        falloffStart: 0,
+        falloffEnd: 64,
+    },
+}),
+// The phase hitbox carries the effective range.
+hitbox: { shape: "circle", radius: 70 },
 ~~~
 
 For a duration-dependent status effect, keep the amount fixed and use the
@@ -187,25 +206,26 @@ effect(EFFECT_TYPES.STATUS, {
 }),
 ~~~
 
-The server's numeric catalog and phase/effect overrides use the same generic
-`Falloff` fields. The browser and server must have the same maximum, minimum,
+The server phase and effect overrides use the same generic `Falloff` fields.
+The browser and server must have the same maximum, minimum,
 start distance, end distance, effective range, and rounding behavior.
 
 For a generic amount override, use the same object on the effect instance:
 
 ~~~java
-new AbilityContracts.Falloff(25.0, 40.0, null, null, 0.0, 64.0)
+new AttachedAbilityContracts.Falloff(25.0, 40.0, null, null, 0.0, 64.0)
 ~~~
 
 ## 2. Add, remove, or reorder an effect
 
-Stats describe values. Contracts describe what the ability does with those
-values. An ability's contract contains:
+`Abilities.js`/`Abilities.java` contain ability-level timing and resource
+metadata. Contracts describe what happens during activation and each phase.
+The phase is the source of truth for authored damage, geometry, movement,
+visuals, and effects. A direct ability's attached contract contains:
 
 ~~~text
-delivery -> how the hit reaches a target
-effects[] -> ordered game-state changes
-execution -> activation-time targeting/capture behavior
+activation -> optional activation-time targeting/capture behavior
+phases[] -> ordered phase-owned geometry, movement, visuals, events, and effects
 ~~~
 
 ### Existing effect types
@@ -216,7 +236,7 @@ execution -> activation-time targeting/capture behavior
 | healing | Restores HP. | amount, recipient, requiresConfirmedDamage, mirrorsDamage |
 | knockback | Pushes a target away. | amount |
 | pull | Pulls a target toward a point. | amount |
-| movement | Moves the source or target through a movement contract. | distance/stat references |
+| phase movement | Moves the current phase's source/entity. | numeric speed, optional distance/trail/blocked status |
 | teleport | Moves a target instantly. | fixed distance or `distanceMode: center_distance` |
 | restore_state | Restores a captured state after a delay. | delay/completion metadata |
 | status | Applies a timed or presence status. Each subtype is a separate effect object, so one phase may apply several statuses. | subtype, duration, optional duration falloff |
@@ -225,100 +245,91 @@ execution -> activation-time targeting/capture behavior
 | damage_reduction | Reduces incoming damage while active. | amount, converted to a negative additive modifier at runtime; duration |
 | damage_immunity | Prevents damage while active. | duration |
 | damage_reflection | Reflects damage under the declared defensive rules. | multiplier/amount, duration |
-| spawn_entity | Creates a projectile, trap, zone, or summon. | entity type and entity stats |
+| entity contract | Creates and advances a projectile, trap, zone, or summon when the ability ID has an entry in `EntityContracts`. | root lifetime/spawn metadata and phase-owned behavior |
 
 Effects are applied in the order listed. Reordering effects can change gameplay
 if an effect depends on a confirmed hit or changes the target's state.
 
 ### Adding an already-supported effect
 
-Suppose ability 30 should also knock the target backward by 100 units.
-
-Browser numeric catalog:
+Suppose ability 30 should also knock the target backward by 100 units. Put the
+complete gameplay payload on its active phase. The compact helpers below write
+the effect list into that phase; they do not create a second parent-level
+effect list:
 
 ~~~js
 30: {
-    damage: 15,
-    knockback: 100,
-    statuses: { slow: { durationMs: 2_000 } },
-    // existing stats...
-}
+    phases: [{
+        id: "active",
+        type: "botAttached",
+        hitbox: { shape: "ray", range: 600, width: 8 },
+        effects: [
+            { type: "damage", amount: 15 },
+            { type: "knockback", amount: 100 },
+            { type: "interrupt", durationMs: 250 },
+            { type: "status", subtype: "slow", durationMs: 2_000 },
+        ],
+        events: { collision: { actions: ["applyEffects"], effectTypes: ["damage", "knockback", "interrupt", "status"] } },
+    }],
+},
 ~~~
 
-Browser contract:
-
-~~~js
-30: contract(DELIVERY_TYPES.RAY, [
-    effect(EFFECT_TYPES.DAMAGE, { amount: A[30].damage }),
-    effect(EFFECT_TYPES.KNOCKBACK, { amount: A[30].knockback }),
-    effect(EFFECT_TYPES.INTERRUPT, { durationMs: A[30].interruptMs }),
-    effect(EFFECT_TYPES.STATUS, { subtype: "slow", durationMs: A[30].statuses.slow.durationMs }),
-]),
-~~~
-
-Server numeric catalog:
+The server mirrors the same phase payload:
 
 ~~~java
-Map.of(
-        "interruptMs", 250.0,
-        "knockback", 100.0)
-~~~
-
-Server contract:
-
-~~~java
-entry(30, DeliveryType.RAY,
-        effect(EffectType.DAMAGE, 15),
-        effect(EffectType.KNOCKBACK, 100),
-        timed(EffectType.INTERRUPT, 250),
-        status("slow", 0, 2_000)),
+entry(30, collisionPhase(30, directHitbox(30, false),
+        List.of(effect(EffectType.DAMAGE, 15),
+                effect(EffectType.KNOCKBACK, 100),
+                timed(EffectType.INTERRUPT, 250),
+                status("slow", 0, 2_000)),
+        directVisual(30)),
 ~~~
 
 This works without new ECS code because knockback is already a generic effect.
 For a new effect type that the generic runtime does not understand, see
 Adding a new effect type.
 
-### Effect values can be stats or constants
+### Effect values belong to the phase
 
-Prefer a stat when the value is intended to be easy to tune:
+Put the concrete value on the phase so the hitbox, movement, visual, and
+effects can be read together:
 
 ~~~js
-effect(EFFECT_TYPES.KNOCKBACK, { amount: A[30].knockback })
+effect(EFFECT_TYPES.KNOCKBACK, { amount: 100 })
 ~~~
 
-Some contracts currently use a direct literal, such as a fixed interrupt
-duration. If you want that value to be a regular tuning knob, add it to the
-numeric catalog in both runtimes and have both contracts read the catalog value.
-This avoids accidentally changing one runtime but not the other.
+Use a runtime-computed value only when it genuinely depends on the current
+source/target state. If a value is authored, mirror the literal in the browser
+and server phase contracts instead of creating a second phase-incomplete stat
+catalog.
 
-## 3. Change delivery and targeting
+## 3. Change phase ownership and targeting
 
-Delivery controls travel, collision, and when the target is resolved. It does
-not automatically add damage.
+There is no separate delivery label. The phase owns travel, collision geometry,
+event timing, and effects. Use an attached `botAttached` phase for an ability
+that stays on its caster. Use an `EntityContracts` root when the activation
+creates a projectile, trap, zone, or summon.
 
-| Delivery | Use for |
+| Contract choice | Use for |
 | --- | --- |
-| self | Effects applied to the caster, such as healing or a self-buff. |
-| melee | Immediate close-range hit with optional target radius/facing arc or an explicitly declared rectangle geometry. |
-| ray | Instant line/ray hit. |
-| projectile | Moving object that collides later. |
-| radial | Immediate area effect around a center point. |
-| zone | Persistent area that checks targets over time. |
-| trap | Moving or placed object that becomes armed and checks targets later. |
-| summon | Persistent owned object such as a drone. |
+| attached phase with an `activation` event | Effects applied to the caster, such as healing or a self-buff. |
+| attached phase with a `collision` event | Immediate hostile geometry, such as an arc, rectangle, circle, or ray. |
+| entity root with `projectile`/`zone`/`trap`/`summon` phases | A persistent, moving, targetable, or delayed world object. |
 
-Changing delivery can change collision timing, target timing,
-and whether an entity is needed. Mirror the browser and server contract exactly.
+Changing phase ownership or event timing can change collision timing, target
+timing, and whether an entity is needed. Mirror the browser and server phase
+contracts exactly.
 
-self is especially important: a visual/control ability such as Lock On is a
-self-delivery action and should not become a hostile mine/projectile entity just
-because it is active on another bot.
+An activation-only ability such as Lock On remains an attached phase with its
+targeting metadata and presentation; it should not become a hostile
+mine/projectile entity just because it is active on another bot.
 
-Targeting metadata may also live in the contract's execution section. Existing
+Targeting metadata lives in the contract's `activation` record. Existing
 options include target selection, facing captured at activation, phase-facing
-defaults, movement behavior, one-time effects within a multi-target activation,
-and whether an ability can ignore the global ability lock. Change these only
-when you intend to change action semantics.
+defaults, one-time effects within a multi-target activation, and whether an
+ability can ignore the global ability lock. Phase movement belongs on the phase
+itself. Change activation metadata only when you intend to change activation
+semantics.
 
 ## 4. Add or modify a status effect
 
@@ -327,36 +338,31 @@ status subtype is declared as its own effect object; do not combine multiple
 status payloads into a single combined object. Examples include slow, burn,
 bleed, silence, stun, damage reduction, and Overclock.
 
-Status timing belongs to the ability that starts the status. Put it in nested
-catalog metadata and resolve it into the applied status instance:
+Status timing belongs to the phase effect that starts the status. Put it on
+the phase effect so a later phase may own a different duration or tick cadence:
 
 ~~~js
-// Numeric catalog
-statuses: {
-    slow: { durationMs: 2000 },
-},
-
-// Contract
+// Phase contract
 effect(EFFECT_TYPES.STATUS, {
     subtype: "slow",
-    durationMs: A[30].statuses.slow.durationMs,
+    durationMs: 2_000,
 }),
 ~~~
 
-To apply more than one status, add more objects to `effects[]`:
+To apply more than one status, add more concrete objects to `effects[]`:
 
 ~~~js
 effects: [
-    effect(EFFECT_TYPES.STATUS, { subtype: "burn", durationMs: 5_000 }),
-    effect(EFFECT_TYPES.STATUS, { subtype: "slow", durationMs: 2_000 }),
+    statusEffect("burn", { amount: 2, durationMs: 5_000 }),
+    statusEffect("slow", { durationMs: 2_000 }),
 ],
 ~~~
 
-An entity phase that selects `EFFECT_TYPES.STATUS` resolves every matching
-status object. Use `effectOverrides` keys such as `status:burn` and
-`status:slow` when their durations need to differ by phase. Status amount or
-strength overrides are not currently consumed; only duration overrides and
-duration falloff are supported for statuses.
+An entity phase declares the concrete status objects it applies. If a later
+phase changes a status amount or duration, author that value directly on the
+later phase. `effectOverrides` keys such as `status:burn` and `status:slow`
+remain readable for older payloads/replays, but new contracts should not use
+them for ordinary phase differences.
 
 Server status effects use the same generic record shape:
 
@@ -380,16 +386,16 @@ If changing that behavior, update both browser/server copies.
 
 ## 5. Add or modify a projectile, trap, zone, or summon
 
-An effect such as this creates a world object:
+An ability creates a world object when its numeric ID has an entry in the
+browser and server `EntityContracts` registry. Entity creation is registry
+metadata, not an ability effect, and the delivery contract does not duplicate
+the entity type.
 
-~~~js
-effect(EFFECT_TYPES.SPAWN_ENTITY, { entityType: "proximity_mine" })
-~~~
-
-For an existing entity type, tune the supported stats in Abilities.js and
-Abilities.java: size, speed, radius, `durationMs`, HP, shot cooldown, and
-similar values. Keep phase boundaries and phase actions in the entity contract,
-not as ability-specific lifetime or fuse fields.
+For an existing entity type, tune root lifetime/spawn/health metadata and the
+phase values in `EntityContracts.js` and `EntityContracts.java`: size, speed,
+radius, hitbox, damage, status, visual, shot cooldown, and similar behavior.
+Keep ability-level timing/resources in `Abilities.js`/`Abilities.java` and keep
+phase boundaries/actions in the entity contract.
 
 For a new entity type, you usually need all of these on both runtimes:
 
@@ -458,7 +464,7 @@ secondary ability or status list is derived from the selected bot's loadout.
 
 Do not add an ability to only the picker or only the browser catalog. A rated
 ability needs browser normalization, server validation, authoritative
-activation, execution, replay, and tests.
+activation, phase execution, replay, and tests.
 
 ## 8. Change visuals without changing gameplay
 
@@ -504,7 +510,7 @@ Run the smallest relevant tests first:
 node --test src/gameArena/gameconfig/AbilityRegistry.test.js src/gameArena/gameconfig/AbilityResourceSystem.test.js src/gameArena/ecs/tests/EntitySystems.test.js
 
 # From server/
-.\mvnw.cmd test "-Dtest=AbilitiesTest,AbilityContractsTest,AbilityEntitySystemTest"
+.\mvnw.cmd test "-Dtest=AbilitiesTest,AttachedAbilityContractsTest,AbilityEntitySystemTest"
 ~~~
 
 Then run the full checks:
@@ -531,17 +537,17 @@ For a gameplay change, verify at least:
 
 ## Recommended workflow by change size
 
-### Number-only tuning
+### Number-only timing/resource tuning
 
-Edit both numeric catalogs, update effect contract values if necessary, update
-nearby expectations, and run the focused tests.
+Edit both timing/resource catalogs, update the mirrored phase contracts when
+behavior is affected, update nearby expectations, and run the focused tests.
 
 ### Existing generic effect
 
-Edit both numeric catalogs and both contracts. Usually no execution-system code
-is needed. Add a real execution test so the effect is proven to reach gameplay.
+Edit both phase contracts. Usually no execution-system code is needed. Add a
+real execution test so the effect is proven to reach gameplay.
 
-### New status, entity, delivery, or effect type
+### New status, entity, phase host, or effect type
 
 Read [Adding an Ability or Move](ADDING_AN_ABILITY_OR_MOVE.md) and [Adding an
 Authoritative Backend Ability or Move](ADDING_A_BACKEND_ABILITY_OR_MOVE.md).

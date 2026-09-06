@@ -4,7 +4,7 @@ import { abilityStatsForDisplay } from "./abilityStatsPresentation.js";
 import { ALL_ABILITY_DEFINITIONS } from "../../gameArena/loadout/BotLoadout.js";
 
 test("ability stats expose only the player-facing vocabulary", () => {
-    const rows = abilityStatsForDisplay({ effects: [{ type: "spawn_entity" }], stats: { cooldownMs: 12000, falloff: { maxAmount: 50, minAmount: 25, falloffStart: 0, falloffEnd: 50 }, range: 70, speed: 32, fuseMs: 1000, visualSize: 140 } });
+    const rows = abilityStatsForDisplay({ effects: [], stats: { cooldownMs: 12000, durationMs: 1000, falloff: { maxAmount: 50, minAmount: 25, falloffStart: 0, falloffEnd: 50 }, range: 70, speed: 32, visualSize: 140 } });
     assert.deepEqual(rows.map(({ label }) => label), ["Cooldown", "Min damage", "Max damage", "Falloff ends", "Range", "Duration"]);
     assert.deepEqual(rows.slice(1, 5), [
         { label: "Min damage", value: "25", section: "Damage profile" },
@@ -88,8 +88,15 @@ test("pull effects expose their per-tick strength", () => {
     for (const [abilityId, strength] of [[14, 6], [27, 10], [28, 100]]) {
         const ability = ALL_ABILITY_DEFINITIONS.find(({ id }) => id === abilityId);
         assert.deepEqual(
-            abilityStatsForDisplay(ability).filter(({ label }) => label === "Pull strength"),
-            [{ label: "Pull strength", value: `${strength} units per tick` }],
+            abilityStatsForDisplay(ability)
+                .filter(({ label }) => label === "Pull strength")
+                .map(({ label, value, section }) => ({ label, value, section })),
+            abilityId === 14
+                ? [
+                    { label: "Pull strength", value: `${strength} units per tick`, section: "Travel phase" },
+                    { label: "Pull strength", value: `${strength} units per tick`, section: "Fuse phase" },
+                ]
+                : [{ label: "Pull strength", value: `${strength} units per tick`, section: abilityId === 27 ? "Fuse phase" : "Active phase" }],
         );
     }
 });

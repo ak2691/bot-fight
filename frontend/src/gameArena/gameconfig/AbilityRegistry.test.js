@@ -11,12 +11,13 @@ import {
 } from "./AbilityRegistry.js";
 import { ABILITY_STATS, abilityStats } from "./Abilities.js";
 import {
-    ABILITY_CONTRACTS,
-    abilityContract,
+    ATTACHED_ABILITY_CONTRACTS,
+    attachedAbilityContract,
     EFFECT_TYPES,
     effectOverrideKey,
     resolveEffectOverride,
-} from "./AbilityContracts.js";
+} from "./AttachedAbilityContracts.js";
+import { entityContractForAbility } from "../ecs/contracts/EntityContracts.js";
 
 test("ability identities are stable numeric keys independent of array position", () => {
     assert.equal(ABILITIES[3].id, 3);
@@ -50,14 +51,14 @@ test("numeric identity owns tuning and contracts", () => {
     assert.equal(ABILITY_STATS[15].hitboxLength, 190);
     assert.equal(ABILITY_STATS[18].hitboxWidth, 80);
     assert.equal(ABILITY_STATS[18].hitboxLength, 115);
-    assert.equal(ABILITY_CONTRACTS[25].delivery.geometry, "rectangle");
-    assert.equal(ABILITY_CONTRACTS[25].delivery.includeTargetRadius, true);
-    assert.equal(ABILITY_CONTRACTS[25].effects[0].distanceMode, "center_distance");
-    assert.equal(ABILITY_CONTRACTS[25].execution.teleportOncePerActivation, true);
+    assert.equal(ATTACHED_ABILITY_CONTRACTS[25].phases[0].hitbox.shape, "rectangle");
+    assert.equal(ATTACHED_ABILITY_CONTRACTS[25].phases[0].hitbox.includeTargetRadius, true);
+    assert.equal(ATTACHED_ABILITY_CONTRACTS[25].phases[0].effects[0].distanceMode, "center_distance");
+    assert.equal(ATTACHED_ABILITY_CONTRACTS[25].activation.teleportOncePerActivation, true);
     assert.equal(abilityStats(3), ABILITY_STATS[3]);
-    assert.equal(abilityContract(3), ABILITY_CONTRACTS[3]);
+    assert.equal(attachedAbilityContract(3), ATTACHED_ABILITY_CONTRACTS[3]);
     assert.equal(ABILITY_STATS[3], abilityStats(3));
-    assert.equal(ABILITY_CONTRACTS[3], abilityContract(3));
+    assert.equal(ATTACHED_ABILITY_CONTRACTS[3], attachedAbilityContract(3));
 });
 
 test("requested combat tuning is represented in the browser catalog", () => {
@@ -77,8 +78,8 @@ test("requested combat tuning is represented in the browser catalog", () => {
     assert.equal(ABILITY_STATS[6].activeMs, 100);
     assert.equal(ABILITY_STATS[6].hitboxWidth, 80);
     assert.equal(ABILITY_STATS[6].range, 184);
-    assert.equal(ABILITY_CONTRACTS[6].delivery.geometry, "rectangle");
-    assert.equal(ABILITY_CONTRACTS[6].delivery.includeTargetRadius, true);
+    assert.equal(ATTACHED_ABILITY_CONTRACTS[6].phases[0].hitbox.shape, "rectangle");
+    assert.equal(ATTACHED_ABILITY_CONTRACTS[6].phases[0].hitbox.includeTargetRadius, true);
     assert.equal(ABILITY_STATS[17].damage, 5);
     assert.equal(ABILITY_STATS[18].cooldownMs, 7000);
     assert.equal(ABILITY_STATS[18].windupMs, 300);
@@ -140,7 +141,7 @@ test("registered IDs are unique positive integers with matching stats and contra
     for (const id of ids) {
         assert.ok(Number.isSafeInteger(id) && id > 0);
         assert.ok(ABILITY_STATS[id]);
-        assert.ok(ABILITY_CONTRACTS[id]);
+        assert.ok(ATTACHED_ABILITY_CONTRACTS[id] || entityContractForAbility(id), id);
     }
 });
 

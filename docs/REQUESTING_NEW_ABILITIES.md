@@ -7,7 +7,7 @@ browser and authoritative server implementations in parity.
 ## Concise request template
 
 ```text
-Create an ability named [name] of type [delivery/type].
+Create an ability named [name] with [attached/entity] phase behavior.
 
 Stats:
 - [stat]: [value and unit]
@@ -31,9 +31,9 @@ but ambiguous gameplay behavior should be stated explicitly.
 Provide:
 
 - **Name**: the player-facing ability name.
-- **Ability type**: projectile, zone, trap, summon, or bot-attached hitbox.
-  Melee, arc, ray, and radial are useful catalogue/delivery labels; their actual
-  collision behavior still comes from the phase hitbox shape.
+- **Ability phase ownership**: projectile, zone, trap, summon, or bot-attached
+  hitbox. Melee, arc, ray, and radial may be useful catalogue labels; actual
+  collision behavior comes from each phase's hitbox shape and event.
 - **Stats**: damage, range, speed, size, durations, cooldown, charges, status
   strength/duration, and similar values that apply.
 - **Initial phase**: list it first. Phase IDs may be any clear stable names such

@@ -1,19 +1,19 @@
-import { ABILITY_STATS, ACTION_TO_ABILITY } from "../../loadout/BotLoadout.js";
-import { statusIntervalMs } from "../../gameconfig/Abilities.js";
+import { ACTION_TO_ABILITY } from "../../loadout/BotLoadout.js";
 import {
-    abilityContract,
-    DELIVERY_TYPES,
+    attachedAbilityContract,
+    attachedAbilityTargetsOwner,
     EFFECT_TYPES,
     PHASE_ACTIONS,
     PHASE_EVENT_TYPES,
     TELEPORT_DISTANCE_MODES,
     resolveEffectOverride,
-} from "../../gameconfig/AbilityContracts.js";
+} from "../../gameconfig/AttachedAbilityContracts.js";
+import { entityContractForAbility } from "../contracts/EntityContracts.js";
 import { ignoresHostileEffects, isAliveBot } from "../../gameconfig/DefensiveState.js";
 import { clamp, normalizeAngle } from "../../gameconfig/geometry.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
 import { compassDegreesToRadians, vectorToCompassDegrees } from "../../botlogic/planner/arenaAngles.js";
-import { abilityHitsTarget, isDirectDelivery } from "./AbilityHitDetectionSystem.js";
+import { abilityHitsTarget } from "./AbilityHitDetectionSystem.js";
 import { combatVisualDurationMs } from "../../gameconfig/visualState.js";
 import { interruptCurrentAbility } from "../../gameconfig/AbilityResourceSystem.js";
 import {
@@ -29,6 +29,20 @@ const BLEED_INCOMING_DAMAGE_MODIFIER = 0.25;
 
 export { abilityHitsTarget } from "./AbilityHitDetectionSystem.js";
 
+function contractForAbility(abilityId) {
+    return attachedAbilityContract(abilityId) ?? entityContractForAbility(abilityId);
+}
+
+function activationEventFor(contract) {
+    return contract?.phases?.[0]?.events?.[PHASE_EVENT_TYPES.ACTIVATION] ?? null;
+}
+
+/** True when the first phase declares activation-owned behavior. */
+export function abilityHasActivationEvent(abilityId) {
+    const event = activationEventFor(contractForAbility(abilityId));
+    return Boolean(event);
+}
+
 export function resolveTriggeredAbilityEffects(attacker, defender, combat, {
     hitTestAttacker = attacker,
     effectSource = attacker,
@@ -37,28 +51,31 @@ export function resolveTriggeredAbilityEffects(attacker, defender, combat, {
 } = {}) {
     const action = attacker?.triggeredAbility;
     const abilityId = ACTION_TO_ABILITY[action];
-    const contract = abilityContract(abilityId);
-    if (!abilityId || !contract || !isDirectDelivery(contract.delivery.type)) return [attacker, defender];
+    const contract = contractForAbility(abilityId);
+    if (!abilityId || !contract) return [attacker, defender];
 
-    const stats = ABILITY_STATS[abilityId] ?? {};
-    let nextAttacker = withAbilityVisual(attacker, abilityId, stats, visualSource);
-    let nextDefender = defender;
     const phase = contract.phases?.[0] ?? null;
-    const phaseStats = { ...stats, ...(phase?.statOverrides ?? {}) };
-    const eventType = contract.delivery.type === DELIVERY_TYPES.SELF
-        ? PHASE_EVENT_TYPES.ACTIVATION : PHASE_EVENT_TYPES.COLLISION;
+    const phaseStats = phaseStatsFor(phase);
+    let nextAttacker = withAbilityVisual(attacker, abilityId, phase, visualSource);
+    let nextDefender = defender;
+    const isAttached = attachedAbilityContract(abilityId) != null;
+    const eventType = activationEventFor(contract)
+        ? PHASE_EVENT_TYPES.ACTIVATION
+        : isAttached ? PHASE_EVENT_TYPES.COLLISION : null;
+    if (!eventType) return [nextAttacker, nextDefender];
     const event = phase?.events?.[eventType] ?? null;
     const phaseEffects = directPhaseEffects(contract, phase, event)
         .map((effect) => resolveEffectOverride(effect, phase?.effectOverrides));
     if (event && !event.actions?.includes(PHASE_ACTIONS.APPLY_EFFECTS)) {
         return [nextAttacker, nextDefender];
     }
-    const targetHit = contract.delivery.type === DELIVERY_TYPES.SELF
+    const targetsOwner = eventType === PHASE_EVENT_TYPES.ACTIVATION;
+    const targetHit = targetsOwner
         || abilityHitsTarget(hitTestAttacker, defender, abilityId);
     if (!targetHit) return [nextAttacker, nextDefender];
 
-    const hostileImpact = contract.delivery.type !== DELIVERY_TYPES.SELF && defender && !ignoresHostileEffects(defender);
-    if (!hostileImpact && contract.delivery.type !== DELIVERY_TYPES.SELF) return [nextAttacker, nextDefender];
+    const hostileImpact = !targetsOwner && defender && !ignoresHostileEffects(defender);
+    if (!hostileImpact && !targetsOwner) return [nextAttacker, nextDefender];
 
     let damageConfirmed = false;
     let damageConfirmedAmount = 0;
@@ -89,16 +106,15 @@ export function resolveTriggeredAbilityEffects(attacker, defender, combat, {
 
 /** Resolves the effects owned by the direct ability phase in declaration order. */
 function directPhaseEffects(contract, phase, event) {
-    const declared = phase?.effects?.length ? phase.effects : contract.effects ?? [];
+    const declared = phase?.effects ?? [];
     const allowed = event?.effectTypes ?? event?.effects ?? null;
     const allowedTypes = Array.isArray(allowed)
         ? new Set(allowed.map((effect) => typeof effect === "string" ? effect : effect?.type).filter(Boolean))
         : null;
     return declared
         .flatMap((effect) => typeof effect === "string"
-            ? (contract.effects ?? []).filter((candidate) => candidate.type === effect)
+            ? declared.filter((candidate) => candidate.type === effect)
             : [effect])
-        .filter((effect) => effect?.type !== EFFECT_TYPES.SPAWN_ENTITY)
         .filter((effect) => !allowedTypes || allowedTypes.has(effect.type));
 }
 
@@ -106,17 +122,16 @@ export function triggeredAbilityDamage(attacker, target) {
     const abilityId = ACTION_TO_ABILITY[attacker?.triggeredAbility];
     if (!abilityHitsTarget(attacker, target, abilityId)) return 0;
     const distance = Math.hypot(target.x - attacker.x, target.y - attacker.y);
-    const contract = abilityContract(abilityId);
+    const contract = attachedAbilityContract(abilityId);
     if (!contract) return 0;
     const phase = contract?.phases?.[0] ?? null;
-    const eventType = contract?.delivery?.type === DELIVERY_TYPES.SELF
+    const eventType = attachedAbilityTargetsOwner(abilityId)
         ? PHASE_EVENT_TYPES.ACTIVATION : PHASE_EVENT_TYPES.COLLISION;
     const damageEffect = directPhaseEffects(contract, phase, phase?.events?.[eventType] ?? null)
         .find((effect) => effect.type === EFFECT_TYPES.DAMAGE) ?? null;
     const resolvedDamageEffect = resolveEffectOverride(damageEffect, phase?.effectOverrides);
-    return roundCombatValue(amountAtDistance(abilityId, distance, resolvedDamageEffect, {
-        ...(ABILITY_STATS[abilityId] ?? {}), ...(phase?.statOverrides ?? {}),
-    })
+    return roundCombatValue(amountAtDistance(abilityId, distance, resolvedDamageEffect,
+        phaseStatsFor(phase))
         * damageMultiplier(attacker));
 }
 
@@ -215,13 +230,13 @@ export function applyStatusEffect(defender, effect, stats, attacker, abilityId =
     if (effect.subtype === "burn") return upsertStatusEffect(defender, {
         type: "burn",
         remainingMs: durationMs,
-        tickMs: statusIntervalMs(sourceAbilityId, "burn", 1000),
+        tickMs: Number(effect.intervalMs ?? 1000),
         sourceSlot: source,
         abilityId: sourceAbilityId,
         effects: [{
             type: STATUS_EFFECT_APPLICATIONS.DAMAGE,
             mode: "tick",
-            amount: Number(stats.burnDamage ?? 0),
+            amount: Number(effect.amount ?? 0),
             multiplier: Math.max(1, Number(attacker?.damageMultiplier ?? attacker?.attackDamageMultiplier ?? 1)),
         }],
     });
@@ -260,23 +275,23 @@ export function applyStatusEffect(defender, effect, stats, attacker, abilityId =
         type: "shock",
         abilityId: sourceAbilityId,
         remainingMs: durationMs,
-        tickMs: statusIntervalMs(sourceAbilityId, "shock", 1000),
+        tickMs: Number(effect.intervalMs ?? 1000),
         sourceSlot: source,
         effects: [
-            { type: STATUS_EFFECT_APPLICATIONS.DAMAGE, mode: "tick", amount: Number(stats.shockDamage ?? 0) },
-            { type: STATUS_EFFECT_APPLICATIONS.MOVEMENT_LOCK, mode: "tick", durationMs: Number(stats.movementLockMs ?? 0) },
+            { type: STATUS_EFFECT_APPLICATIONS.DAMAGE, mode: "tick", amount: Number(effect.amount ?? 0) },
+            { type: STATUS_EFFECT_APPLICATIONS.MOVEMENT_LOCK, mode: "tick", durationMs: Number(effect.movementLockMs ?? 0) },
         ],
     });
     if (effect.subtype === "bleed") return upsertStatusEffect(defender, {
         type: "bleed",
         abilityId: sourceAbilityId,
         remainingMs: durationMs,
-        tickMs: statusIntervalMs(sourceAbilityId, "bleed", 1000),
+        tickMs: Number(effect.intervalMs ?? 1000),
         sourceSlot: source,
         effects: [{
             type: STATUS_EFFECT_APPLICATIONS.DAMAGE,
             mode: "tick",
-            amount: Number(stats.bleedDamage ?? 0),
+            amount: Number(effect.amount ?? 0),
         }, {
             type: STATUS_EFFECT_APPLICATIONS.INCOMING_DAMAGE_MODIFIER,
             mode: "constant",
@@ -324,12 +339,12 @@ function applyTeleport(attacker, source, target, teleportDistance) {
     return next;
 }
 
-function withAbilityVisual(attacker, abilityId, stats, visualSource = attacker) {
+function withAbilityVisual(attacker, abilityId, phase, visualSource = attacker) {
     return {
         ...attacker,
         abilityVisual: {
             ability: abilityId,
-            ms: combatVisualDurationMs(abilityId, stats),
+            ms: combatVisualDurationMs(abilityId, phase?.visual),
             x: Number(visualSource?.x ?? attacker.x ?? 0),
             y: Number(visualSource?.y ?? attacker.y ?? 0),
             rotation: Number(visualSource?.rotation ?? attacker.rotation ?? 0),
@@ -339,7 +354,7 @@ function withAbilityVisual(attacker, abilityId, stats, visualSource = attacker) 
 
 /** Resolves a generic effect amount, optionally using the effect's falloff profile. */
 export function amountAtDistance(abilityId, distance, effect = null, statsOverride = null) {
-    const baseStats = ABILITY_STATS[abilityId] ?? {};
+    const baseStats = statsOverride == null ? phaseStatsForAbility(abilityId) : {};
     const stats = { ...baseStats, ...(statsOverride ?? {}) };
     const profile = effect?.falloff && typeof effect.falloff === "object"
         ? effect.falloff : effect == null ? stats.falloff : null;
@@ -358,7 +373,7 @@ export function amountAtDistance(abilityId, distance, effect = null, statsOverri
 
 /** Resolves a generic effect duration, optionally using distance-based falloff. */
 export function durationAtDistance(abilityId, distance, effect, statsOverride = null) {
-    const stats = { ...(ABILITY_STATS[abilityId] ?? {}), ...(statsOverride ?? {}) };
+    const stats = { ...(statsOverride == null ? phaseStatsForAbility(abilityId) : {}), ...(statsOverride ?? {}) };
     const profile = effect?.falloff && typeof effect.falloff === "object"
         ? effect.falloff : null;
     if (!hasDurationFalloff(effect)) {
@@ -390,6 +405,35 @@ function effectRange(stats, effect, profile) {
     if (Number.isFinite(explicit) && explicit > 0) return explicit;
     const end = Number(profile?.falloffEnd);
     return Number.isFinite(end) && end > 0 ? end : 0;
+}
+
+function phaseStatsFor(phase) {
+    const hitbox = phase?.hitbox ?? {};
+    const damageEffect = phase?.effects?.find((effect) => effect?.type === EFFECT_TYPES.DAMAGE);
+    return {
+        ...(phase?.statOverrides ?? {}),
+        ...(damageEffect?.amount == null ? {} : { damage: Number(damageEffect.amount) }),
+        ...(damageEffect?.falloff == null ? {} : { falloff: damageEffect.falloff }),
+        ...(hitbox.range == null ? {} : { range: Number(hitbox.range) }),
+        ...(hitbox.radius == null ? {} : { radius: Number(hitbox.radius) }),
+        ...(hitbox.arc == null ? {} : { arc: Number(hitbox.arc) }),
+        ...(hitbox.width == null ? {} : { hitboxWidth: Number(hitbox.width) }),
+        ...(hitbox.length == null ? {} : { hitboxLength: Number(hitbox.length) }),
+    };
+}
+
+function phaseStatsForAbility(abilityId) {
+    const directPhases = attachedAbilityContract(abilityId)?.phases ?? [];
+    const entityPhases = entityContractForAbility(abilityId)?.phases ?? [];
+    const direct = directPhases.find((candidate) => candidate.effects?.some(
+        (effect) => effect?.type === EFFECT_TYPES.DAMAGE))
+        ?? directPhases.find((candidate) => candidate.effects?.length > 0)
+        ?? directPhases[0];
+    const entity = entityPhases.find((candidate) => candidate.effects?.some(
+        (effect) => effect?.type === EFFECT_TYPES.DAMAGE))
+        ?? entityPhases.find((candidate) => candidate.effects?.length > 0)
+        ?? entityPhases[0];
+    return phaseStatsFor(direct ?? entity);
 }
 
 function resolveFalloffValue(distance, minValue, maxValue, start, end, range) {

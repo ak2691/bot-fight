@@ -136,8 +136,7 @@ function timedStatus(state, remainingMs, durationMs, progress) {
 }
 
 function isReady(bot, abilityId) {
-    if (positiveNumber(bot?.abilityActiveMs?.[abilityId]) > 0
-        || (bot?.preparingAbility != null && positiveNumber(bot?.preparingMs) > 0)) return false;
+    if (positiveNumber(bot?.abilityActiveMs?.[abilityId]) > 0) return false;
     const stats = abilityDefinition(abilityId)?.stats ?? {};
     const charges = abilityChargeCountFor(bot, abilityId);
     if (charges != null && Number(charges) <= 0) return false;

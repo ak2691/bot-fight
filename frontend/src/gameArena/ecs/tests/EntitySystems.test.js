@@ -16,7 +16,7 @@ import { abilityHitsTarget } from "../abilities/AbilityHitDetectionSystem.js";
 import { buildDeterministicLogicAction } from "../../botlogic/planner/ArenaActionPlanner.js";
 import { buildStatePayload } from "../../modelPayloads/strategyStatePayload.js";
 import { abilityDefinition, ABILITY_STATS, shouldInterpolateAbilityVisual } from "../../loadout/BotLoadout.js";
-import { ABILITY_CONTRACTS, DELIVERY_TYPES, EFFECT_TYPES } from "../../gameconfig/AbilityContracts.js";
+import { ATTACHED_ABILITY_CONTRACTS, EFFECT_TYPES } from "../../gameconfig/AttachedAbilityContracts.js";
 import { botStatusLabels } from "../../pixi/pixiVisualState.js";
 import { resetBotShape, toSimulationBotShape } from "../../modelPayloads/arenaShapes.js";
 import { compassDirection } from "../../botlogic/planner/arenaAngles.js";
@@ -54,17 +54,32 @@ test("entity phases expose complete effect payloads for contract auditing", () =
     }
     assert.deepEqual(
         ENTITY_CONTRACTS[5].phases[0].effects.find(({ type }) => type === "status"),
-        { type: "status", subtype: "burn", durationMs: 5000 },
+        { type: "status", subtype: "burn", amount: 2, durationMs: 5000, intervalMs: 1000 },
     );
 });
 
 test("direct hitboxes use bot-attached phases with shape-owned geometry", () => {
-    assert.equal(ABILITY_CONTRACTS[1].phases[0].type, "botAttached");
-    assert.deepEqual(ABILITY_CONTRACTS[1].phases[0].hitbox, { shape: "arc", range: "range", arc: "arc" });
-    assert.equal(ABILITY_CONTRACTS[3].phases[0].hitbox.shape, "ray");
-    assert.equal(ABILITY_CONTRACTS[6].phases[0].hitbox.shape, "rectangle");
-    assert.equal(ABILITY_CONTRACTS[8].phases[0].hitbox.shape, "circle");
+    assert.equal(ATTACHED_ABILITY_CONTRACTS[1].phases[0].type, "botAttached");
+    assert.deepEqual(ATTACHED_ABILITY_CONTRACTS[1].phases[0].hitbox, {
+        shape: "arc", range: 92, arc: 120, includeTargetRadius: true,
+    });
+    assert.equal(ATTACHED_ABILITY_CONTRACTS[3].phases[0].hitbox.shape, "ray");
+    assert.equal(ATTACHED_ABILITY_CONTRACTS[6].phases[0].hitbox.shape, "rectangle");
+    assert.equal(ATTACHED_ABILITY_CONTRACTS[8].phases[0].hitbox.shape, "circle");
     assert.equal(ENTITY_CONTRACTS[22].phases[0].repeat.startImmediately, true);
+});
+
+test("entity existence and behavior stay in the entity registry and phases", () => {
+    for (const contract of Object.values(ATTACHED_ABILITY_CONTRACTS)) {
+        assert.equal(Object.hasOwn(contract, "effects"), false);
+    }
+    for (const contract of Object.values(ENTITY_CONTRACTS)) {
+        assert.equal(Object.hasOwn(contract, "motion"), false);
+        assert.equal(Object.hasOwn(contract, "visual"), false);
+        for (const phase of contract.phases) {
+            if (phase.movement) assert.equal(typeof phase.movement.speed, "number");
+        }
+    }
 });
 
 function targetAtBearing(attacker, distance, bearing, size = 20) {
@@ -168,19 +183,19 @@ test("ability metadata separates instantaneous effects from interpolated motion"
     }
 });
 
-test("every selectable ability exposes delivery and effects without shield metadata", () => {
-    for (const id of Object.keys(ABILITY_CONTRACTS).map(Number)) {
+test("every attached ability exposes phase effects without redundant routing metadata", () => {
+    for (const id of Object.keys(ATTACHED_ABILITY_CONTRACTS).map(Number)) {
         const definition = abilityDefinition(id);
         assert.ok(definition, id);
-        assert.ok(Object.values(DELIVERY_TYPES).includes(definition.delivery.type), id);
+        assert.ok(definition.phaseTag, id);
         assert.ok(Array.isArray(definition.effects), id);
         assert.equal(definition.shieldInteraction, undefined, id);
     }
-    assert.equal(ABILITY_CONTRACTS[25].delivery.type, DELIVERY_TYPES.MELEE);
+    assert.equal(ATTACHED_ABILITY_CONTRACTS[25].phases[0].hitbox.shape, "rectangle");
 });
 
 test("active ability contracts do not expose shield filtering", () => {
-    for (const [id, contract] of Object.entries(ABILITY_CONTRACTS)) {
+    for (const [id, contract] of Object.entries(ATTACHED_ABILITY_CONTRACTS)) {
         assert.equal(contract.shieldInteraction, undefined, id);
     }
 });
@@ -514,7 +529,7 @@ test("persistent ability entity age advances by one fixed tick and never resets"
     assert.equal(second.entities[0].components.lifetime.ageMs, 200);
 });
 
-test("gravity zone transitions through declarative phases even when it cannot translate", () => {
+test("gravity zone uses its phase-owned travel speed before entering the fuse", () => {
     const owner = { id: "owner", slot: 1, x: 500, y: 400, size: 60, rotation: 0 };
     const gravity = { ...entityFor(owner, 14), velocityX: 0, velocityY: 0, traveled: 0 };
     let world = {
@@ -532,7 +547,7 @@ test("gravity zone transitions through declarative phases even when it cannot tr
         assert.equal(world.entities[0].phaseId, "travel");
         assert.equal(world.entities[0].phaseTimerMs, (tick + 1) * 100);
     }
-    assert.equal(world.entities[0].traveled, 0);
+    assert.equal(world.entities[0].traveled, 198);
 
     const stopped = tickAbilityEntityWorld(world, noDamageCombat);
     assert.equal(stopped.entities[0].armed, true);
@@ -819,7 +834,7 @@ test("Dash clears its active movement marker when the dash segment finishes so l
     assert.ok(second.dashActiveMs > 0);
 });
 
-test("declared spawned abilities resolve through normalized entity contracts", () => {
+test("entity-backed abilities resolve through normalized entity contracts", () => {
     const bot = { id: "owner", slot: 1, x: 100, y: 200, size: 60, rotation: 90, attackDamageMultiplier: 1 };
     const spawnedAbilities = [4, 5, 11, 14, 15, 17, 18, 21, 22, 24, 27, 28, 29, 31];
     for (const abilityId of spawnedAbilities) {
@@ -1133,7 +1148,8 @@ test("wind burst is a five-tick projectile with 20 damage and 200 knockback", ()
     const projectile = entityFor(attacker, 18);
     assert.equal(projectile.type, "windburstProjectile");
     assert.equal(ABILITY_STATS[18].knockback, 200);
-    assert.equal(ABILITY_CONTRACTS[18].effects.find((effect) => effect.type === EFFECT_TYPES.KNOCKBACK).amount, 200);
+    assert.equal(ENTITY_CONTRACTS[18].phases[0].effects
+        .find((effect) => effect.type === EFFECT_TYPES.KNOCKBACK).amount, 200);
     assert.equal(projectile.velocityX, 44);
     assert.equal(projectile.velocityY, 0);
     assert.equal(projectile.size, 24);
@@ -1877,7 +1893,7 @@ test("an ALWAYS code action reaches the real fire-gun executor", () => {
     const result = applyBotAction(bot, action, 50, noDamageCombat.applyDamageToShape);
     assert.equal(action.abilityAction.action, 3);
     assert.equal(action.abilityAction.abilityPayload.abilityId, 3);
-    assert.equal(action.abilityAction.abilityPayload.execution.capture.gunRayOriginX, "x");
+    assert.equal(action.abilityAction.abilityPayload.activation.capture.gunRayOriginX, "x");
     assert.equal(action.abilityAction.targetX, undefined);
     assert.equal(action.abilityAction.targetY, undefined);
     assert.equal(action.gun, undefined);

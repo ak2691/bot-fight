@@ -66,7 +66,7 @@ export function applyBotAction(shape, action, elapsedMs, applyDamage) {
         triggeredAbility: abilityResult.triggered,
         triggeredPhaseFacingMode: abilityResult.triggered == null
             ? null
-            : abilityPayload?.phaseFacingMode ?? abilityPayload?.execution?.phaseFacingDefault ?? null,
+            : abilityPayload?.phaseFacingMode ?? abilityPayload?.activation?.phaseFacingDefault ?? null,
         abilityTargetX: abilityPayload?.targetX,
         abilityTargetY: abilityPayload?.targetY,
         abilitySpawn,
@@ -98,12 +98,13 @@ function applyMovement(next, shape, action, movement) {
 function executeAbility(bot, payload, elapsedMs, cooldownMultiplier, { slowedWasActive = false } = {}) {
     if (!payload || !hasAbility(bot, payload.abilityId)) return { bot, triggered: null, triggeredPayload: null };
 
+    const phaseMovement = payload.contract?.phases?.[0]?.movement;
     if (statusIsActive(bot, "silence")
-        || (payload.execution?.blockedByStatus === "slow"
+        || (phaseMovement?.blockedByStatus === "slow"
             && (statusIsActive(bot, "slow") || slowedWasActive))) {
         return cancelPreparation(bot, payload);
     }
-    if (anotherAbilityActive(bot, payload.abilityId, payload.execution?.ignoresGlobalAbilityLock)) {
+    if (anotherAbilityActive(bot, payload.abilityId, payload.activation?.ignoresGlobalAbilityLock)) {
         return cancelPreparation(bot, payload);
     }
     const continuingPreparation = bot.preparingAbility === payload.abilityId
@@ -171,27 +172,29 @@ function activationActiveMs(payload) {
     // Defensive effects and Overclock own their duration as statuses, not as
     // post-activation action locks. Other short-lived combat visuals retain
     // their explicit active fallback.
-    if (payload.contract?.effects?.some((effect) => ["damage_reduction", "damage_immunity", "damage_reflection"].includes(effect.type)
+    const phaseEffects = payload.contract?.phases?.flatMap((phase) => phase.effects ?? []) ?? [];
+    if (phaseEffects.some((effect) => ["damage_reduction", "damage_immunity", "damage_reflection"].includes(effect.type)
         || (effect.type === "buff" && effect.buff === "overclock"))) return 0;
-    const explicitActiveMs = payload.execution?.activeMs ?? payload.stats.activeMs;
+    const explicitActiveMs = payload.activation?.activeMs ?? payload.stats.activeMs;
     if (explicitActiveMs != null) return Math.max(0, Number(explicitActiveMs) || 0);
     return Math.max(300, Number(payload.stats.durationMs ?? payload.stats.visualMs ?? 0));
 }
 
 function applyActivationState(bot, payload, elapsedMs) {
-    const execution = payload.execution ?? {};
+    const activation = payload.activation ?? {};
     let next = bot;
-    if (execution.capture) {
+    if (activation.capture) {
         next = {
             ...next,
-            ...Object.fromEntries(Object.entries(execution.capture)
+            ...Object.fromEntries(Object.entries(activation.capture)
                 .map(([field, source]) => [field, next[source] ?? null])),
         };
     }
-    if (execution.faceTargetFromPayload && Number.isFinite(Number(payload.targetX)) && Number.isFinite(Number(payload.targetY))) {
+    if (activation.faceTargetFromPayload && Number.isFinite(Number(payload.targetX)) && Number.isFinite(Number(payload.targetY))) {
         next = { ...next, rotation: vectorToCompassDegrees(Number(payload.targetX) - next.x, Number(payload.targetY) - next.y) };
     }
-    if (execution.movement) next = applyMovementActivation(next, payload, execution.movement, elapsedMs);
+    const phaseMovement = payload.contract?.phases?.[0]?.movement;
+    if (phaseMovement?.distance != null) next = applyMovementActivation(next, payload, phaseMovement, elapsedMs);
     return next;
 }
 
@@ -207,7 +210,6 @@ function spawnForAbility(bot, payload, serial) {
 }
 
 function applyMovementActivation(bot, payload, movement, elapsedMs) {
-    const stats = payload.stats;
     const hasTarget = Number.isFinite(Number(payload.targetX)) && Number.isFinite(Number(payload.targetY));
     const targetDx = hasTarget ? Number(payload.targetX) - bot.x : 0;
     const targetDy = hasTarget ? Number(payload.targetY) - bot.y : 0;
@@ -219,12 +221,12 @@ function applyMovementActivation(bot, payload, movement, elapsedMs) {
     const absolute = payload.movementMode === "absolute" ? (directions[direction] ?? [0, 0]) : null;
     const relative = relativeMovementVector(targetVector.x, targetVector.y, direction);
     const [ux, uy] = absolute ?? [relative.x, relative.y];
-    const distance = Number(stats[movement.distanceStat] ?? 150);
-    const stepDistance = Number(stats[movement.speedStat] ?? 75);
+    const distance = Number(movement.distance ?? 150);
+    const stepDistance = Number(movement.speed ?? 75);
     const step = Math.min(stepDistance, distance);
     const x = clamp(bot.x + ux * step, bot.size / 2, ARENA_WIDTH_UNITS - bot.size / 2), y = clamp(bot.y + uy * step, bot.size / 2, ARENA_HEIGHT_UNITS - bot.size / 2);
     const traveled = Math.hypot(x - bot.x, y - bot.y);
-    const trailMs = Number(stats[movement.trailDurationStat] ?? 300);
+    const trailMs = Number(movement.trailMs ?? 300);
     return {
         ...bot,
         // A dash starts after ordinary movement for this tick. Its swept hit
@@ -233,7 +235,10 @@ function applyMovementActivation(bot, payload, movement, elapsedMs) {
         movementStartY: bot.y,
         x,
         y,
-        dashActiveMs: Number(stats[movement.durationStat] ?? 200) + elapsedMs,
+        // activeMs is ability-level timing and is intentionally invariant
+        // across phases; movement-specific distance/speed/trail values live
+        // on the phase above.
+        dashActiveMs: Number(payload.stats.activeMs ?? 200) + elapsedMs,
         dashRemaining: Math.max(0, distance - traveled),
         dashInitialDistance: distance,
         dashStepDistance: stepDistance,

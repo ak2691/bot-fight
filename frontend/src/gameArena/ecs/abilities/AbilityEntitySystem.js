@@ -1,11 +1,10 @@
-import { ABILITY_STATS } from "../../gameconfig/Abilities.js";
 import { angleDelta, clamp, movingCirclesDistance, movingCirclesIntersect, normalizeAngle, rayIntersectsCircle } from "../../gameconfig/geometry.js";
 import { movingEntityCollision } from "../../gameconfig/hitboxGeometry.js";
 import { advanceEntityAge, runEntityWorld, withComponentState } from "../entities/EntityWorld.js";
-import { abilityContract, DELIVERY_TYPES, EFFECT_TYPES, PHASE_EVENT_TYPES, resolveEffectOverride } from "../../gameconfig/AbilityContracts.js";
+import { attachedAbilityTargetsOwner, EFFECT_TYPES, PHASE_EVENT_TYPES, resolveEffectOverride } from "../../gameconfig/AttachedAbilityContracts.js";
 import { amountAtDistance } from "./AbilityEffectSystem.js";
 import { ignoresHostileEffects } from "../../gameconfig/DefensiveState.js";
-import { vectorToCompassDegrees } from "../../botlogic/planner/arenaAngles.js";
+import { compassDirection, vectorToCompassDegrees } from "../../botlogic/planner/arenaAngles.js";
 import {
     ENTITY_CATEGORIES,
     entityContract,
@@ -84,7 +83,7 @@ function tickTrapEntities(combat) {
         if (trapEntries.length === 0) return null;
 
         const moved = trapEntries.map(({ entity, contract }) => {
-            let movedEntity = advancePhaseEntity(entity, phasesForEntity(contract), ABILITY_STATS[contract.abilityId] ?? {}, world);
+            let movedEntity = advancePhaseEntity(entity, phasesForEntity(contract), {}, world);
             if (contract.health && contract.collider?.hittable) {
                 const damage = damageToEntity(movedEntity, world, combat);
                 const hp = Math.max(0, Number(movedEntity.hp ?? 0) - damage);
@@ -164,8 +163,7 @@ function consumeEnteredPhaseTick(entity, stepMs) {
 }
 
 function trapEffectTargets(entity, phase, world) {
-    const contract = contractForEntity(entity);
-    const stats = ABILITY_STATS[contract?.abilityId] ?? {};
+    const stats = {};
     const trigger = phase?.trigger ?? {};
     const radius = phaseRadius(stats, phase, trigger.radius, Number(entity.size ?? 0) / 2);
     const sourcePoint = { x: Number(entity.x), y: Number(entity.y) };
@@ -185,8 +183,8 @@ function trapEffectTargets(entity, phase, world) {
 }
 
 function resolveTrapTriggers(entries, world) {
-    const triggered = new Set(entries.filter(({ entity, phase, contract }) => {
-        const stats = ABILITY_STATS[contract.abilityId] ?? {};
+    const triggered = new Set(entries.filter(({ entity, phase }) => {
+        const stats = {};
         const trigger = phase?.trigger ?? {};
         const entityPath = entityMovementSegment(entity);
         const armedExpired = Boolean(phase?.trigger || entity.armed)
@@ -214,7 +212,7 @@ function resolveTrapTriggers(entries, world) {
         for (const source of entries.filter(({ entity }) => triggered.has(entity.id))) {
             const trigger = source.phase?.trigger;
             if (!trigger?.chain) continue;
-            const radius = phaseStat(ABILITY_STATS[source.contract.abilityId],
+            const radius = phaseStat({},
                 source.phase, trigger.radius, 0);
             for (const target of entries) {
                 if (triggered.has(target.entity.id)
@@ -240,7 +238,7 @@ function trapHitByCurrentWorld(entity, phase, world, combat) {
 }
 
 function hostileAbilityCanHitEntity(bot) {
-    return abilityContract(bot?.triggeredAbility)?.delivery?.type !== DELIVERY_TYPES.SELF;
+    return !attachedAbilityTargetsOwner(bot?.triggeredAbility);
 }
 
 function tickRemainingEntities(combat) {
@@ -295,21 +293,28 @@ function tickCanonicalEntity(entity, phase, world, combat) {
 
 function tickCanonicalProjectile(entity, phase, world, combat) {
     const contract = contractForEntity(entity);
-    const stats = ABILITY_STATS[contract?.abilityId] ?? {};
+    const stats = {};
     const stepMs = Number(world.stepMs ?? 0);
     const movement = phase.movement ?? {};
-    const scale = movement.scale === "stepRatio" ? stepMs / 100 : 1;
+    const speed = resolvePhaseNumber(movement.speed, stats, phase, 0);
+    const velocityMagnitude = Math.hypot(Number(entity.velocityX ?? 0), Number(entity.velocityY ?? 0));
+    const direction = velocityMagnitude > 0.001
+        ? {
+            x: Number(entity.velocityX ?? 0) / velocityMagnitude,
+            y: Number(entity.velocityY ?? 0) / velocityMagnitude,
+        }
+        : compassDirection(entity.rotation);
     const start = { x: Number(entity.x), y: Number(entity.y) };
     const rawEnd = {
-        x: start.x + Number(entity.velocityX ?? 0) * scale,
-        y: start.y + Number(entity.velocityY ?? 0) * scale,
+        x: start.x + direction.x * speed,
+        y: start.y + direction.y * speed,
     };
-    const shouldMove = movement.mode === "travel" || movement.mode === "segment";
-    const end = shouldMove && movement.clamp
+    const shouldMove = speed > 0;
+    const end = shouldMove
         ? { x: clamp(rawEnd.x, 0, world.width), y: clamp(rawEnd.y, 0, world.height) }
-        : shouldMove ? rawEnd : start;
-    const velocityX = movement.mode === "stopped" ? 0 : Number(entity.velocityX ?? 0);
-    const velocityY = movement.mode === "stopped" ? 0 : Number(entity.velocityY ?? 0);
+        : start;
+    const velocityX = shouldMove ? direction.x * speed : 0;
+    const velocityY = shouldMove ? direction.y * speed : 0;
     const moved = withComponentState(entity, {
         x: end.x,
         y: end.y,
@@ -388,9 +393,8 @@ function tickCanonicalProjectile(entity, phase, world, combat) {
     const phaseExpired = phase.durationMs != null
         && Number(next.phaseTimerMs ?? 0) >= Number(phase.durationMs);
     const hitEdge = end.x === 0 || end.x === world.width || end.y === 0 || end.y === world.height;
-    const removeAtEdge = Boolean(phase.movement?.clamp) && hitEdge && phase.events?.collision?.actions?.includes("remove");
-    const overallExpired = phase.durationMs == null && stats.durationMs != null
-        && Number(next.ageMs ?? 0) >= Number(stats.durationMs)
+    const removeAtEdge = hitEdge && phase.events?.collision?.actions?.includes("remove");
+    const overallExpired = phase.durationMs == null && lifetimeExpired(next, contract)
         || next.remainingMs != null && Number(next.remainingMs) <= 0;
     if (phaseExpired || overallExpired || removeAtEdge) {
         const ended = dispatchEntityEvent(next, "lifetimeEnd", { bots, world, combat, phase });
@@ -404,14 +408,14 @@ function tickCanonicalProjectile(entity, phase, world, combat) {
 
 function tickCanonicalZone(entity, phase, world, combat) {
     const contract = contractForEntity(entity);
-    const stats = ABILITY_STATS[contract?.abilityId] ?? {};
+    const stats = {};
     const stepMs = Number(world.stepMs ?? 0);
     const nextPhase = phase;
     let next = entity;
     next = withComponentState(next, {
         phaseId: nextPhase.id,
         phaseTimerMs: Math.max(0, Number(next.phaseTimerMs ?? 0) + stepMs),
-        remainingMs: Number(next.remainingMs ?? stats.durationMs ?? 0) - stepMs,
+        remainingMs: remainingLifetime(next, contract, stepMs),
         visualEventMs: Math.max(0, Number(next.visualEventMs ?? 0) - stepMs),
         ...(next.visibleMs == null ? {} : { visibleMs: Math.max(0, Number(next.visibleMs) - stepMs) }),
     });
@@ -435,7 +439,7 @@ function tickCanonicalZone(entity, phase, world, combat) {
         if (repeat?.startImmediately === false && Number(entity.phaseTimerMs ?? 0) === 0) {
             intervalTimerMs = intervalMs - stepMs;
         }
-        const intervalCanRunOnThisTick = Number(entity.remainingMs ?? stats.durationMs ?? 0) > 0;
+        const intervalCanRunOnThisTick = lifecycleActive;
         while (intervalTimerMs <= 0 && intervalCanRunOnThisTick) {
             const result = dispatchEntityEvent(next, repeatEvent, {
                 bots,
@@ -498,11 +502,11 @@ function tickCanonicalSummon(entity, phase, world, combat) {
     // Summons retain their specialized seeking/health loop, but attacks go
     // through the same phase event dispatcher as every other targetable type.
     const contract = contractForEntity(entity);
-    const stats = ABILITY_STATS[contract?.abilityId] ?? {};
+    const stats = {};
     const stepMs = Number(world.stepMs ?? 0);
-    const remainingMs = Number(entity.remainingMs ?? stats.durationMs ?? 0) - stepMs;
+    const remainingMs = remainingLifetime(entity, contract, stepMs);
     const damage = damageToEntity(entity, world, combat);
-    const hp = Number(entity.hp ?? stats.hp ?? 0) - damage;
+    const hp = Number(entity.hp ?? 0) - damage;
     if (hp <= 0) return { bots: world.bots, entity: null };
     if (remainingMs <= 0) {
         const ended = dispatchEntityEvent(entity, "lifetimeEnd", {
@@ -535,24 +539,24 @@ function tickCanonicalSummon(entity, phase, world, combat) {
     const targetDistance = Math.max(1, Math.hypot(dx, dy));
     const desiredRotation = vectorToCompassDegrees(dx, dy);
     const movement = phase.movement ?? {};
+    const turn = resolvePhaseNumber(movement.turnDegrees, stats, phase, 8);
+    const speed = resolvePhaseNumber(movement.speed, stats, phase, 0);
     const rotation = normalizeAngle(Number(summon.rotation ?? 0) + clamp(
         angleDelta(Number(summon.rotation ?? 0), desiredRotation),
-        -Number(stats[movement.turn ?? "turnStepDegrees"] ?? 8),
-        Number(stats[movement.turn ?? "turnStepDegrees"] ?? 8),
+        -turn,
+        turn,
     ));
-    const summonSize = Number(stats[movement.size ?? "size"] ?? summon.size ?? 28);
+    const summonSize = resolvePhaseNumber(movement.size, stats, phase, Number(summon.size ?? 28));
     summon = withComponentState(summon, {
-        x: clamp(summon.x + dx / targetDistance * Math.min(Number(stats[movement.speed ?? "speed"] ?? 0), targetDistance), summonSize / 2, world.width - summonSize / 2),
-        y: clamp(summon.y + dy / targetDistance * Math.min(Number(stats[movement.speed ?? "speed"] ?? 0), targetDistance), summonSize / 2, world.height - summonSize / 2),
+        x: clamp(summon.x + dx / targetDistance * Math.min(speed, targetDistance), summonSize / 2, world.width - summonSize / 2),
+        y: clamp(summon.y + dy / targetDistance * Math.min(speed, targetDistance), summonSize / 2, world.height - summonSize / 2),
         rotation,
     });
 
     const attack = phase.attack;
     const range = resolvePhaseNumber(attack?.range ?? "range", stats, phase, 0);
     const cooldownField = attack?.cooldownField ?? "shotCooldownMs";
-    const cooldownStat = attack?.cooldown ?? cooldownField;
     const visualField = attack?.visualField ?? "shotVisualMs";
-    const visualStat = attack?.visual ?? visualField;
     if (attack && Number(summon[cooldownField] ?? 0) <= 0
         && rayIntersectsCircle(summon, rotation, range, target)) {
         const result = dispatchEntityEvent(summon, PHASE_EVENT_TYPES.COLLISION, {
@@ -568,19 +572,18 @@ function tickCanonicalSummon(entity, phase, world, combat) {
         summon = result.entity;
         if (!summon) return { bots, entity: null };
         summon = withComponentState(summon, {
-            [cooldownField]: resolvePhaseNumber(cooldownStat, stats, phase, 1000),
-            [visualField]: Math.max(0, resolvePhaseNumber(visualStat, stats, phase, 300) - stepMs),
+            [cooldownField]: Number(attack.cooldown ?? 1000),
+            [visualField]: Math.max(0, Number(attack.visual ?? 300) - stepMs),
         });
     }
     return { bots, entity: summon };
 }
 
 function canonicalCollisionTargets(entity, phase, world, start = null, end = null) {
-    const contract = contractForEntity(entity);
     const skipOwner = Boolean(phase.skipOwner);
     const entityStart = start ?? { x: Number(entity.x), y: Number(entity.y) };
     const entityEnd = end ?? entityStart;
-    const radius = phaseRadius(ABILITY_STATS[contract?.abilityId] ?? {}, phase, "radius", Number(entity.size ?? 0) / 2);
+    const radius = phaseRadius({}, phase, "radius", Number(entity.size ?? 0) / 2);
     return world.bots
         .map((bot) => {
             if (!isEnemy(entity, bot, world.bots)
@@ -611,8 +614,25 @@ function resolvePhaseNumber(value, stats, phase, fallback = 0) {
     return Number(value?.value ?? value?.fallback ?? fallback);
 }
 
+function lifetimeExpired(entity, contract) {
+    const duration = Number(contract?.lifetime?.duration);
+    if (!Number.isFinite(duration)) return false;
+    return Number(entity?.ageMs ?? 0) >= duration + Number(contract?.lifetime?.add ?? 0);
+}
+
+function remainingLifetime(entity, contract, stepMs) {
+    if (entity?.remainingMs != null) return Number(entity.remainingMs) - Number(stepMs ?? 0);
+    const duration = Number(contract?.lifetime?.duration);
+    if (!Number.isFinite(duration)) return null;
+    return duration + Number(contract?.lifetime?.add ?? 0) - Number(entity?.ageMs ?? 0);
+}
+
 function phaseStat(stats, phase, name, fallback = 0) {
     if (name == null) return Number(fallback);
+    if (typeof name === "number") return name;
+    if (typeof name === "object") {
+        return Number(name.value ?? name.fallback ?? fallback);
+    }
     return Number(phase?.statOverrides?.[name] ?? stats?.[name] ?? fallback);
 }
 
@@ -627,16 +647,23 @@ function advancePhaseEntity(entity, phases, stats, world) {
     const phase = canonicalPhaseForEntity(entity) ?? phases?.[0];
     const movement = phase?.movement ?? {};
     const radius = Number(entity.size ?? 0) / 2;
-    const moving = movement.mode === "travel" || movement.mode === "segment";
+    const speed = resolvePhaseNumber(movement.speed, stats, phase, 0);
+    const moving = speed > 0;
     let velocityX = Number(entity.velocityX ?? 0);
     let velocityY = Number(entity.velocityY ?? 0);
-    const speedOverride = phase?.movement?.speed ?? phase?.statOverrides?.speed;
-    if (moving && speedOverride != null && Number.isFinite(Number(speedOverride))) {
+    if (moving) {
         const magnitude = Math.hypot(velocityX, velocityY);
         if (magnitude > 0) {
-            velocityX *= Number(speedOverride) / magnitude;
-            velocityY *= Number(speedOverride) / magnitude;
+            velocityX *= speed / magnitude;
+            velocityY *= speed / magnitude;
+        } else {
+            const direction = compassDirection(entity.rotation);
+            velocityX = direction.x * speed;
+            velocityY = direction.y * speed;
         }
+    } else {
+        velocityX = 0;
+        velocityY = 0;
     }
     const nextX = moving
         ? clamp(Number(entity.x) + velocityX, radius, world.width - radius)
@@ -646,12 +673,11 @@ function advancePhaseEntity(entity, phases, stats, world) {
         : Number(entity.y);
     const phaseId = phase?.id ?? entity.phaseId ?? null;
     const phaseTimerMs = phase ? Math.max(0, Number(entity.phaseTimerMs ?? 0) + stepMs) : 0;
-    const stopped = phase?.movement?.mode === "stopped";
     return withComponentState(entity, {
         x: nextX,
         y: nextY,
-        velocityX: stopped ? 0 : velocityX,
-        velocityY: stopped ? 0 : velocityY,
+        velocityX,
+        velocityY,
         traveled: Number(entity.traveled ?? 0) + Math.hypot(nextX - Number(entity.x), nextY - Number(entity.y)),
         phaseId,
         phaseTimerMs,
@@ -673,7 +699,7 @@ function damageToEntity(entity, world, combat) {
             || !phase.effects?.some((declared) =>
                 (typeof declared === "string" ? declared : declared?.type) === EFFECT_TYPES.DAMAGE)
             || !collision?.actions?.includes("applyEffects")) continue;
-        const damageEffect = abilityContract(effect.abilityId)?.effects
+        const damageEffect = phase.effects
             ?.find((declared) => declared.type === EFFECT_TYPES.DAMAGE) ?? null;
         if (!damageEffect) continue;
         const resolvedDamageEffect = resolveEffectOverride(damageEffect, phase.effectOverrides);

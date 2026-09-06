@@ -46,8 +46,14 @@ export function abilityVisualOpacity(shape, ability, durationMs = COMBAT_VISUAL_
 }
 
 /** Keeps bot-room and replay activation visuals on the same duration contract. */
-export function combatVisualDurationMs(abilityId, stats = ABILITY_STATS[abilityId]) {
-    const configuredMs = Number(stats?.visualDurationMs ?? stats?.visualMs ?? stats?.durationMs ?? 0);
+export function combatVisualDurationMs(abilityId, phaseVisual = null) {
+    const legacyStats = ABILITY_STATS[abilityId] ?? {};
+    const configuredMs = Number(phaseVisual?.visibleMs
+        ?? phaseVisual?.durationMs
+        ?? legacyStats.visualDurationMs
+        ?? legacyStats.visualMs
+        ?? legacyStats.durationMs
+        ?? 0);
     return Math.max(COMBAT_VISUAL_MS, Number.isFinite(configuredMs) ? configuredMs : 0);
 }
 
