@@ -47,8 +47,8 @@ function statusRows(ability, stats) {
         if (effect.type !== "status" || !effect.subtype) return [];
         const keys = STATUS_STAT_KEYS[effect.subtype] ?? {};
         const duration = stats[keys.duration] ?? effect.durationMs;
-        const rows = [{ label: "Status effect", value: effect.subtype.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) }];
-        if (duration != null) rows.push({ label: "Status duration", value: seconds(duration) });
+        const statusName = effect.subtype.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+        const rows = [{ label: "Status effect", value: duration != null ? `${statusName} (${seconds(duration)})` : statusName }];
         if (stats[keys.interval] != null) rows.push({ label: "Status interval", value: seconds(stats[keys.interval]) });
         if (stats[keys.damage] != null) rows.push({ label: "Status damage", value: String(stats[keys.damage]) });
         return rows;
@@ -57,6 +57,16 @@ function statusRows(ability, stats) {
 
 function buffRows(ability) {
     return (ability.buffDetails ?? []).map(({ label, value }) => ({ label, value }));
+}
+
+function appendUniqueRows(rows, additions) {
+    const existing = new Set(rows.map(({ label, value }) => `${label}\u0000${value}`));
+    return [...rows, ...additions.filter(({ label, value }) => {
+        const key = `${label}\u0000${value}`;
+        if (existing.has(key)) return false;
+        existing.add(key);
+        return true;
+    })];
 }
 
 function pullRows(ability, stats) {
@@ -88,7 +98,7 @@ export function abilityStatsForDisplay(ability) {
                 value: seconds(resourceDurationMs),
             });
         }
-        return [...rows, ...authoredPhaseRows, ...buffRows(ability)];
+        return appendUniqueRows([...rows, ...authoredPhaseRows], buffRows(ability));
     }
     const rows = [];
     if (stats.cooldownMs != null) rows.push({ label: "Cooldown", value: seconds(stats.cooldownMs) });

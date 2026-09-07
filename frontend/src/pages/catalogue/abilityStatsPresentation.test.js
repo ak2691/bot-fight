@@ -35,7 +35,8 @@ test("generic recharge metadata uses the Recharge label", () => {
 
 test("status effects avoid per-tick wording", () => {
     const rows = abilityStatsForDisplay({ effects: [{ type: "status", subtype: "burn", durationMs: 5000 }], stats: { damage: 15, burnDamage: 2, burnTickMs: 1000, burnDurationMs: 5000 } });
-    assert.deepEqual(rows.map(({ label }) => label), ["Damage", "Status effect", "Status duration", "Status interval", "Status damage"]);
+    assert.deepEqual(rows.map(({ label }) => label), ["Damage", "Status effect", "Status interval", "Status damage"]);
+    assert.equal(rows.find(({ label }) => label === "Status effect").value, "Burn (5 sec)");
 });
 
 test("Dash time is Active rather than Duration", () => {
@@ -57,8 +58,7 @@ test("Snare Bomb exposes only its meaningful destruction phase attributes", () =
         [
             { label: "Radius", value: "120 units", section: "On destruction" },
             { label: "Damage", value: "20", section: "On destruction" },
-            { label: "Status effect", value: "Slow", section: "On destruction" },
-            { label: "Status duration", value: "3 sec", section: "On destruction" },
+            { label: "Status effect", value: "Slow (3 sec)", section: "On destruction" },
         ],
     );
     assert.equal(
@@ -66,6 +66,14 @@ test("Snare Bomb exposes only its meaningful destruction phase attributes", () =
             .some(({ section }) => ["Travel phase", "Fuse phase", "Active phase"].includes(section)),
         true,
     );
+});
+
+test("authored status effects keep their duration in the effect value", () => {
+    for (const abilityId of [5, 6, 7, 9, 13, 15, 26, 28, 29, 30]) {
+        const rows = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === abilityId));
+        assert.equal(rows.some(({ label }) => label === "Status duration"), false, abilityId);
+        assert.ok(rows.filter(({ label }) => label === "Status effect").every(({ value }) => /\([^)]* sec\)$/.test(value)), abilityId);
+    }
 });
 
 test("grenade and proximity mine expose their impact radii", () => {
@@ -76,10 +84,29 @@ test("grenade and proximity mine expose their impact radii", () => {
 });
 
 test("rectangular projectiles expose independent hitbox dimensions", () => {
+    const grenadeRows = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 4));
+    const fireballRows = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 5));
     const silenceRows = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 15));
-    const windBurstRows = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 18));
+    const stunRows = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 6));
+    const teleportRows = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 25));
+    const tetherRows = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 28));
+    for (const rows of [grenadeRows, fireballRows, silenceRows, stunRows, teleportRows, tetherRows]) {
+        assert.equal(rows.some(({ label }) => label === "Hitbox"), false);
+    }
+    assert.ok(grenadeRows.some(({ label, value, section }) => label === "Hitbox width" && value === "12 units" && section === "Travel phase"));
+    assert.ok(grenadeRows.some(({ label, value, section }) => label === "Hitbox length" && value === "12 units" && section === "Armed phase"));
+    assert.ok(fireballRows.some(({ label, value }) => label === "Hitbox width" && value === "30 units"));
+    assert.ok(fireballRows.some(({ label, value }) => label === "Hitbox length" && value === "30 units"));
     assert.ok(silenceRows.some(({ label, value }) => label === "Hitbox width" && value === "150 units"));
     assert.ok(silenceRows.some(({ label, value }) => label === "Hitbox length" && value === "190 units"));
+    assert.ok(stunRows.some(({ label, value }) => label === "Hitbox width" && value === "80 units"));
+    assert.ok(stunRows.some(({ label, value }) => label === "Hitbox length" && value === "184 units"));
+    assert.ok(teleportRows.some(({ label, value }) => label === "Hitbox width" && value === "60 units"));
+    assert.ok(teleportRows.some(({ label, value }) => label === "Hitbox length" && value === "100 units"));
+    assert.ok(tetherRows.some(({ label, value }) => label === "Hitbox width" && value === "18 units"));
+    assert.ok(tetherRows.some(({ label, value }) => label === "Hitbox length" && value === "18 units"));
+
+    const windBurstRows = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 18));
     assert.ok(windBurstRows.some(({ label, value }) => label === "Hitbox width" && value === "80 units"));
     assert.ok(windBurstRows.some(({ label, value }) => label === "Hitbox length" && value === "115 units"));
 });
@@ -131,6 +158,26 @@ test("positive-effect percentages are included in player-facing stats", () => {
         { label: "Damage reduction", value: "50%" },
         { label: "Damage reflection", value: "50%" },
     ]);
+});
+
+test("authored positive-effect rows do not repeat generated effect metadata", () => {
+    const reactiveArmor = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 16));
+    assert.deepEqual(reactiveArmor.filter(({ label }) => label === "Damage reduction"), [{ label: "Damage reduction", value: "50%", section: "Active phase" }]);
+    assert.deepEqual(reactiveArmor.filter(({ label }) => label === "Damage reflection"), [{ label: "Damage reflection", value: "50%", section: "Active phase" }]);
+
+    const overclock = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 33));
+    assert.deepEqual(overclock.filter(({ label }) => label === "Cooldown recovery"), [{ label: "Cooldown recovery", value: "50%", section: "Active phase" }]);
+
+    const damageImmunity = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === 23));
+    assert.deepEqual(damageImmunity.filter(({ label }) => label === "Damage immunity"), [{ label: "Damage immunity", value: "100%", section: "Active phase" }]);
+
+    for (const [abilityId, duration] of [[16, "4 sec"], [23, "1.5 sec"], [33, "4 sec"]]) {
+        assert.deepEqual(
+            abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === abilityId))
+                .filter(({ label }) => label === "Duration"),
+            [{ label: "Duration", value: duration }],
+        );
+    }
 });
 
 test("every catalog ability has displayable stats", () => {
