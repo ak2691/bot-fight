@@ -28,11 +28,12 @@ rated results.
   entry point and helpers split into `configuration/`, `runtime/`, and `tests/`.
 - `modelPayloads/`: arena units/constants, shape construction, and the logic
   feature/state snapshot contract.
-- `gameconfig/`: browser numeric definitions, declarative effect contracts,
-  geometry, defensive rules, bot combat, and visual timers.
+- `gameconfig/`: browser numeric definitions, geometry, defensive rules, bot
+  combat, and visual timers.
 - `ecs/`: deterministic arena execution organized into `contracts/`, `bots/`,
-  `abilities/`, and `entities/`; see `ecs/context.md` for ownership and
-  boundaries.
+  `abilities/`, and `entities/`; `ecs/contracts/AbilityContracts.js` is the
+  canonical normalized registry for direct and spawned abilities. See
+  `ecs/context.md` for ownership and boundaries.
 - `pixi/`: renderer-only texture caching, snapshot interpolation, and mapping
   gameplay shapes/state to Pixi layers/captions/visual state.
 - `ArenaObjects.js`: transient ability-entity identifiers and presentation
@@ -61,7 +62,8 @@ rated results.
 - `modelPayloads/strategyStatePayload.js` is a logic contract, not a convenient
   view model. Coordinate/field changes require code and server parity review.
 - Ability IDs and numeric tuning are mirrored by server `simulation/gameconfig/`.
-  Entity lifecycle/effects are mirrored by server `simulation/ecs/` and
+  Ability lifecycle/effects are mirrored by server
+  `simulation/ecs/contracts/AbilityContracts.java` and
   `DuelSimulationService`.
 - Keep fixed-step timing, arena units, collision geometry, rounding, effect
   order, loadout encoding, and seeded choices aligned across runtimes.

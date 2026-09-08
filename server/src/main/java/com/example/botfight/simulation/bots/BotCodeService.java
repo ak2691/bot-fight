@@ -1,7 +1,7 @@
 package com.example.botfight.simulation.bots;
 
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
-import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import org.springframework.stereotype.Service;
@@ -18,7 +18,7 @@ public class BotCodeService {
         abilities.forEach(node -> {
             if (node.isIntegralNumber() && node.canConvertToInt()) {
                 int id = node.intValue();
-                if (AttachedAbilityContracts.actions().contains(id)) result.add(id);
+                if (AbilityContracts.actions().contains(id)) result.add(id);
             }
         });
         return result;

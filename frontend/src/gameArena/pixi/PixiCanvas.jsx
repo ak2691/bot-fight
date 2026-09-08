@@ -3,14 +3,14 @@ import { Circle, Container, Graphics, Rectangle, Sprite, Text } from "pixi.js";
 import ArenaLoadingScreen from "../../components/ArenaLoadingScreen.jsx";
 import AbilityStatusPanel from "../status/AbilityStatusPanel.jsx";
 import { ABILITY_STATS } from "../gameconfig/Abilities.js";
-import { attachedAbilityContract } from "../gameconfig/AttachedAbilityContracts.js";
+import { attachedAbilityContract } from "../ecs/contracts/AbilityContracts.js";
 import { ABILITIES } from "../gameconfig/AbilityRegistry.js";
 import { CLOSING_ZONE_TYPE } from "../gameconfig/ArenaHazardConfig.js";
 import { abilityActiveOpacity, basicHealParticleSpec, combatVisualRemainingMs, healthBarPercent, abilityVisualOpacity, BASIC_HEAL_PARTICLE_COUNT, REPULSOR_BURST_VISUAL_MS, repulsorBurstDiameter, repulsorBurstFrameIndex, repulsorBurstProgress, sweepAngle, visualProgress } from "../gameconfig/visualState.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, BOT_SIZE } from "../modelPayloads/arenaConstants.js";
 import { toSimulationBotShape } from "../modelPayloads/arenaShapes.js";
 import { interpolatePosition } from "./snapshotInterpolation.js";
-import { activeBotVisual, closingZoneDamageOccurred, entityCaption, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, grenadeDetonateProgress, heavySlashRotation, isBotShape, LOCK_ON_PRESENTATION, lockOnTargetPoint, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, shapeInterpolationMs, visualAnimationDescriptorForShape, visualForShape } from "./pixiVisualState.js";
+import { activeBotVisual, closingZoneDamageOccurred, entityCaption, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, heavySlashRotation, isBotShape, LOCK_ON_PRESENTATION, lockOnTargetPoint, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, shapeInterpolationMs, visualAnimationDescriptorForShape, visualSizeForShape } from "./pixiVisualState.js";
 import { spriteFrame, spriteFrameAtProgress } from "./arenaSpriteAssets.js";
 import { loadArenaPresentationAssets, retryArenaPresentationAssets } from "./arenaPresentationAssets.js";
 import { textureMuzzleAnchor } from "./abilitySpriteAssets.js";
@@ -18,10 +18,10 @@ import { visualRayLength } from "./rayPresentationGeometry.js";
 import { advanceParticle } from "./particleMotion.js";
 import { createPresentationClock } from "./presentationClock.js";
 import { compassDegreesToRadians, vectorToCompassDegrees } from "../botlogic/planner/arenaAngles.js";
-import { hitboxGeometriesForEntity, hitboxGeometryForBot } from "../gameconfig/hitboxGeometry.js";
+import { entityAbilitySpawnTransform, hitboxGeometriesForEntity, hitboxGeometryForBot } from "../gameconfig/hitboxGeometry.js";
 import { acquirePixiApplication, attachPixiApplication, releasePixiApplication } from "./pixiApplication.js";
 import { statusIsActive } from "../ecs/contracts/StatusContracts.js";
-import { entityContract } from "../ecs/contracts/EntityContracts.js";
+import { entityAbilityPhaseForEntity, entityAbilitySpawnForEntity, entityContract } from "../ecs/contracts/AbilityContracts.js";
 import "./PixiCanvas.css";
 
 const MIN_ZOOM = 1;
@@ -1367,7 +1367,7 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
         drawProceduralAbilityRay(graphics, position, originX, originY, originRotation,
             Number(phaseHitbox.range ?? 80), 0xf8fafc, opacity, 6);
     } else if (visual === 33) {
-        const radius = Number(shape.size ?? BOT_SIZE) / 2;
+        const radius = Number(phaseVisual.visualSize ?? shape.size ?? BOT_SIZE) / 2;
         const pulse = 0.55 + Math.sin(now / 100) * 0.18;
         graphics.circle(0, 0, radius + 12).stroke({ color: 0xfbbf24, alpha: pulse, width: 3 });
         graphics.circle(0, 0, radius + 20).stroke({ color: 0xfef3c7, alpha: pulse * 0.45, width: 2 });
@@ -1388,7 +1388,8 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
         const progress = visualProgress(remaining, duration);
         const centerX = originX - position.x;
         const centerY = originY - position.y;
-        const ringRadius = Number(phaseHitbox.radius ?? 120) * (0.34 + progress * 0.66);
+        const visualDiameter = Number(phaseVisual.visualSize ?? Number(phaseHitbox.radius ?? 120) * 2);
+        const ringRadius = visualDiameter / 2 * (0.34 + progress * 0.66);
         graphics.circle(centerX, centerY, ringRadius)
             .stroke({ color: 0x93c5fd, alpha: opacity, width: 5 });
         graphics.circle(centerX, centerY, ringRadius * 0.72)
@@ -1479,9 +1480,8 @@ function drawEntity(view, selected, now, arenaSprites) {
         caption.visible = false;
         return;
     }
-    const size = Math.max(2, Number(shape.size ?? 30));
+    const size = Math.max(2, visualSizeForShape(shape, Number(shape.size ?? 30)));
     const radius = size / 2;
-    const rotation = compassDegreesToRadians(shape.rotation);
     const presentationType = presentationTypeForShape(shape);
     graphics.clear();
     if (["singularityZone", "singularityExplosion"].includes(shape.type)
@@ -1518,7 +1518,7 @@ function drawEntity(view, selected, now, arenaSprites) {
     );
     baseSprite.visible = texture != null;
     if (texture) baseSprite.texture = texture;
-    baseSprite.rotation = entityRotation(shape, rotation);
+    baseSprite.rotation = entityVisualRotation(shape);
     baseSprite.alpha = 1;
     baseSprite.tint = 0xffffff;
     const spriteSize = entitySpriteSize(shape, entityVisualBaseSize(shape, size));
@@ -1545,10 +1545,17 @@ function drawEntity(view, selected, now, arenaSprites) {
     } else if (presentationType === "gravityZone") {
         if (shape.armed) baseSprite.alpha = 0.72 + Math.sin(now / 100) * 0.12;
     } else if (["hunterDrone", "repellerDrone"].includes(presentationType)) {
-        if (Number(shape.shotVisualMs ?? 0) > 0) {
-            const alpha = clamp(Number(shape.shotVisualMs) / 300, 0.2, 1);
-                showAbilityRayEffect(view, "drone-shot", arenaSprites, { x: shape.x, y: shape.y }, shape.x, shape.y, shape.rotation, 3, 200, alpha,
-                    Number(directVisualForAbility(3).visualSize ?? 16), 0x6ee7b7);
+        const shotPhase = entityAbilityPhaseForEntity(shape);
+        const shotTransform = entityAbilitySpawnTransform(shape, entityAbilitySpawnForEntity(shape));
+        const shotVisualMs = Number(shape.shotVisualMs ?? 0);
+        const shotDurationMs = Math.max(1, Number(
+            shotPhase?.visual?.visibleMs ?? shotPhase?.durationMs ?? 300,
+        ));
+        if (shotPhase && shotVisualMs > 0) {
+            const alpha = clamp(shotVisualMs / shotDurationMs, 0, 1);
+            showAbilityRayEffect(view, "drone-shot", arenaSprites, { x: shape.x, y: shape.y }, shotTransform.x, shotTransform.y, shotTransform.rotation, 3,
+                Number(shotPhase.hitbox?.range ?? 200), alpha,
+                Number(shotPhase.visual?.visualSize ?? 16), 0x6ee7b7);
         }
     }
     if (selected) graphics.circle(0, 0, radius + 6).stroke({ color: COLORS.white, alpha: 0.8, width: 2 });
@@ -1674,7 +1681,7 @@ function drawClosingZone(graphics, shape) {
 }
 
 function drawGeneratedSingularity(graphics, shape, now, animationProgress = null) {
-    const radius = Math.max(12, Number(shape.size ?? 280) / 2);
+    const radius = Math.max(12, visualSizeForShape(shape, Number(shape.size ?? 280)) / 2);
     const explosion = presentationTypeForShape(shape) === "singularityExplosion";
     const progress = explosion ? animationProgress ?? 0 : 0;
     const pulse = 0.62 + Math.sin(now / 90) * 0.14;
@@ -1719,20 +1726,21 @@ function drawGeneratedAbilityEntity(graphics, shape, now, animationProgress = nu
             ?.find((phase) => phase.id === "armed")?.trigger?.radius ?? 75);
         const pulse = 0.62 + Math.sin(now / 180) * 0.14;
         graphics.circle(0, 0, triggerRadius).stroke({ color: 0xfacc15, alpha: 0.22, width: 2 });
-        graphics.circle(0, 0, Math.max(8, Number(shape.size ?? 24) / 2)).fill({ color: 0x713f12, alpha: 0.9 })
+        graphics.circle(0, 0, Math.max(8, visualSizeForShape(shape, Number(shape.size ?? 24)) / 2)).fill({ color: 0x713f12, alpha: 0.9 })
             .stroke({ color: 0xfde047, alpha: pulse, width: 3 });
         graphics.moveTo(-8, 0).lineTo(8, 0).moveTo(0, -8).lineTo(0, 8).stroke({ color: 0xfef08a, alpha: 0.9, width: 2 });
         return;
     }
     if (type === "staticSnareBurst") {
-        const radius = Math.max(12, Number(shape.size ?? 150) / 2);
+        const visualSize = visualSizeForShape(shape, Number(shape.size ?? 150));
+        const radius = Math.max(12, visualSize / 2);
         const progress = animationProgress ?? 0;
         graphics.circle(0, 0, radius * (0.35 + progress * 0.7))
             .stroke({ color: 0xfacc15, alpha: 0.9 - progress * 0.5, width: 6 });
         graphics.circle(0, 0, radius * 0.35).fill({ color: 0xf59e0b, alpha: 0.28 * (1 - progress) });
         return;
     }
-    const radius = Math.max(10, Number(shape.size ?? 28) / 2);
+    const radius = Math.max(10, visualSizeForShape(shape, Number(shape.size ?? 28)) / 2);
     const pulse = 0.72 + Math.sin(now / 120) * 0.14;
     graphics.circle(0, 0, radius).fill({ color: 0x164e63, alpha: 0.95 }).stroke({ color: 0x67e8f9, alpha: pulse, width: 3 });
     graphics.circle(0, 0, radius * 0.45).fill({ color: 0x0e7490, alpha: 0.85 });
@@ -1763,20 +1771,8 @@ function entityTexture(shape, arenaSprites, now, animationStartedAt, animationDu
     return spriteFrameAtProgress(frames, progress);
 }
 
-function entityRotation(shape, fallbackRotation) {
-    const presentationType = presentationTypeForShape(shape);
-    const velocityX = Number(shape.velocityX ?? 0);
-    const velocityY = Number(shape.velocityY ?? 0);
-    if (["grenade", "proximityMine", "fireball", "windburstProjectile"].includes(presentationType)
-        && Math.hypot(velocityX, velocityY) > 0.01) return Math.atan2(velocityY, velocityX);
-    if (presentationType === "silenceWave") return fallbackRotation - Math.PI / 2;
-    return presentationType === "windburstProjectile" ? fallbackRotation : 0;
-}
-
 function entityVisualBaseSize(shape, fallback) {
-    const phaseVisualSize = Number(visualForShape(shape)?.visualSize);
-    if (Number.isFinite(phaseVisualSize) && phaseVisualSize > 0) return phaseVisualSize;
-    return fallback;
+    return visualSizeForShape(shape, fallback);
 }
 
 function entitySpriteSize(shape, size) {

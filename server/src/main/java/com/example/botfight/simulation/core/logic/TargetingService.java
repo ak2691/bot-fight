@@ -100,7 +100,7 @@ public final class TargetingService {
 
     private static List<Entity> matchingEntitySelectables(String selectableId, SelectableContract contract,
             Bot player, Bot opponent, List<Entity> entities) {
-        if (contract.owner() == com.example.botfight.simulation.ecs.contracts.EntityContracts.SelectableOwner.NONE) {
+        if (contract.owner() == com.example.botfight.simulation.ecs.contracts.AbilityContracts.SelectableOwner.NONE) {
             return entities.stream()
                     .filter(entity -> entity instanceof SelectableSnapshot snapshot
                             && contract.runtimeType().equals(snapshot.type())

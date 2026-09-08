@@ -4,8 +4,7 @@ import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Action;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
 import com.example.botfight.simulation.gameconfig.Abilities;
-import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts;
-import com.example.botfight.simulation.ecs.contracts.EntityContracts;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import java.util.List;
 
 /**
@@ -19,7 +18,7 @@ public record AbilityExecutionPayload(
         int actionId,
         int abilityId,
         Abilities.AbilityDefinition definition,
-        AttachedAbilityContracts.AttachedAbilityContract contract,
+        AbilityContracts.AbilityContract contract,
         double targetX,
         double targetY,
         String movementMode,
@@ -31,7 +30,7 @@ public record AbilityExecutionPayload(
 
     public static AbilityExecutionPayload from(Action action) {
         if (action == null) return null;
-        Integer abilityId = AttachedAbilityContracts.abilityForAction(action.abilityAction());
+        Integer abilityId = AbilityContracts.abilityForAction(action.abilityAction());
         return abilityId == null ? null : from(abilityId, action);
     }
 
@@ -40,7 +39,7 @@ public record AbilityExecutionPayload(
                 abilityId,
                 abilityId,
                 Abilities.definition(abilityId),
-                AttachedAbilityContracts.forAbility(abilityId),
+                AbilityContracts.forAbility(abilityId),
                 Double.NaN,
                 Double.NaN,
                 null,
@@ -74,16 +73,16 @@ public record AbilityExecutionPayload(
                 && Double.isFinite(capturedRotation);
     }
 
-    public AttachedAbilityContracts.Activation activation() {
+    public AbilityContracts.Activation activation() {
         return contract == null
-                ? AttachedAbilityContracts.activationFor(abilityId)
+                ? AbilityContracts.activationFor(abilityId)
                 : contract.activation();
     }
 
     /** Returns the active phase list for either an attached or entity ability. */
-    public List<AttachedAbilityContracts.AbilityPhase> phases() {
+    public List<AbilityContracts.AbilityPhase> phases() {
         if (contract != null) return contract.phases();
-        EntityContracts.EntityContract entity = EntityContracts.forAbility(abilityId);
+        AbilityContracts.AbilityContract entity = AbilityContracts.entityContractForAbility(abilityId);
         return entity == null ? List.of() : entity.phases();
     }
 
@@ -92,7 +91,7 @@ public record AbilityExecutionPayload(
                 action.abilityAction(),
                 abilityId,
                 Abilities.definition(abilityId),
-                AttachedAbilityContracts.forAbility(abilityId),
+                AbilityContracts.forAbility(abilityId),
                 action.abilityTargetX(),
                 action.abilityTargetY(),
                 action.movementMode(),

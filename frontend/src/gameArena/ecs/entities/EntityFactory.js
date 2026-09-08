@@ -1,7 +1,7 @@
 import { compassDirection } from "../../botlogic/planner/arenaAngles.js";
 import { abilityId as resolveAbilityId } from "../../gameconfig/AbilityRegistry.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
-import { entityContractForAbility } from "../contracts/EntityContracts.js";
+import { entityContractForAbility } from "../contracts/AbilityContracts.js";
 import { selectableIdentitiesForAbilityEntity } from "../../modelPayloads/selectableIdentities.js";
 
 let nextEntityId = 1;
@@ -13,14 +13,21 @@ export function createEntity({
     entityContractId,
     entityContractType,
     entityCategory,
-        selectableIdentities,
-        owner,
+    selectableIdentities,
+    owner,
     transform,
     motion = {},
     lifetime = {},
-    collider = {},
     health = null,
+    size = 0,
     state = {},
+    phaseId = null,
+    phaseTimerMs = 0,
+    intervalTimerMs = 0,
+    armed = false,
+    phaseLocked = false,
+    hitLedger = {},
+    ...runtime
 }) {
     const entityId = id ?? `${type}-${owner.id}-${Date.now()}-${nextEntityId++}`;
     return {
@@ -37,7 +44,7 @@ export function createEntity({
         x: transform.x,
         y: transform.y,
         rotation: transform.rotation ?? 0,
-        size: collider.size ?? 0,
+        size: Number(size ?? 0),
         velocityX: motion.x ?? 0,
         velocityY: motion.y ?? 0,
         traveled: motion.traveled ?? 0,
@@ -45,16 +52,22 @@ export function createEntity({
         remainingMs: lifetime.remainingMs ?? null,
         hp: health?.hp,
         maxHp: health?.maxHp,
+        phaseId,
+        phaseTimerMs,
+        intervalTimerMs,
+        armed,
+        phaseLocked,
+        hitLedger,
         locked: true,
         components: {
             transform: { ...transform },
             motion: { ...motion },
             lifetime: { ...lifetime },
-            collider: { ...collider },
             ownership: { ownerId: owner.id, ownerSlot: owner.slot, ownerTeam: owner.teamNumber },
             ...(health ? { health: { ...health } } : {}),
         },
         ...state,
+        ...runtime,
     };
 }
 
@@ -93,28 +106,21 @@ function buildEntityOptions(bot, contract, context) {
     // owner/context substitutions without importing the legacy ability stat
     // catalogue as a second entity-definition source.
     const stats = {};
-    const resolvedColliderSize = Number(resolveStat(contract.collider.size, { bot, stats, context }));
-    const size = Number(context.sizeOverride ?? (resolvedColliderSize
-        * Number(contract.collider.sizeMultiplier ?? 1)));
+    const firstPhase = contract.phases?.[0] ?? null;
+    const size = Number(context.sizeOverride ?? phaseSize(firstPhase));
     const transform = buildTransform(bot, contract.spawn, contract.targeting, size, { ...context, stats });
-    const motion = buildMotion(bot, contract.phases?.[0], { stats, context });
+    const motion = buildMotion(bot, firstPhase, { stats, context });
     const state = resolveRecord(contract.state, { bot, stats, context });
+    const healthDefinition = firstPhase?.health ?? null;
     const lifetime = buildLifetime(contract.lifetime, {
         bot,
         stats,
         context,
     });
-    const collider = resolveRecord(contract.collider, {
-        bot,
-        stats,
-        context,
-        skip: ["size", "sizeMultiplier"],
-    });
-    collider.size = size;
-    const health = contract.health
+    const health = healthDefinition
         ? {
-            hp: Number(resolveStat(contract.health.hp, { bot, stats, context })),
-            maxHp: Number(resolveStat(contract.health.maxHp ?? contract.health.hp, { bot, stats, context })),
+            hp: Number(resolveStat(healthDefinition.hp ?? healthDefinition.maxHp, { bot, stats, context })),
+            maxHp: Number(resolveStat(healthDefinition.maxHp ?? healthDefinition.hp, { bot, stats, context })),
         }
         : null;
     return {
@@ -128,10 +134,28 @@ function buildEntityOptions(bot, contract, context) {
         transform,
         motion,
         lifetime,
-        collider,
         health,
+        size,
+        phaseId: firstPhase?.id ?? null,
+        phaseTimerMs: 0,
+        intervalTimerMs: 0,
+        armed: firstPhase?.id === "armed",
         state,
     };
+}
+
+function phaseSize(phase) {
+    const visualSize = Number(phase?.visual?.visualSize);
+    if (Number.isFinite(visualSize) && visualSize > 0) return visualSize;
+
+    const hitbox = phase?.hitbox ?? {};
+    if (hitbox.shape === "circle") return Math.max(0, Number(hitbox.radius ?? 0) * 2);
+    if (hitbox.shape === "rectangle") {
+        return Math.max(Number(hitbox.width ?? 0), Number(hitbox.length ?? 0));
+    }
+    if (hitbox.shape === "ray") return Math.max(0, Number(hitbox.width ?? 0));
+    if (hitbox.shape === "arc") return Math.max(0, Number(hitbox.range ?? 0) * 2);
+    return 0;
 }
 
 function buildTransform(bot, spawn, targeting, size, context) {

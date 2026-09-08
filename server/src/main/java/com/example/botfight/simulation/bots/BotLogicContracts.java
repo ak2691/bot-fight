@@ -1,8 +1,7 @@
 package com.example.botfight.simulation.bots;
 
-import com.example.botfight.simulation.ecs.contracts.EntityContracts;
-import com.example.botfight.simulation.ecs.contracts.EntityContracts.EntityContract;
-import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts.AbilityContract;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -108,7 +107,7 @@ public final class BotLogicContracts {
                                  boolean locationTarget, boolean orientationConfig,
                                  boolean angleTarget, String targetMode) {}
 
-    public record SelectableContract(String id, EntityContracts.SelectableOwner owner,
+    public record SelectableContract(String id, AbilityContracts.SelectableOwner owner,
                                  String entityType, String runtimeType, int abilityId,
                                  Set<SelectableIdentity> selectableIdentities) {
         public SelectableContract {
@@ -269,11 +268,11 @@ public final class BotLogicContracts {
     public static Map<String, SelectableContract> selectables() {
         Map<String, SelectableContract> selectables = new LinkedHashMap<>();
         selectables.put(SELECTABLE_MY, new SelectableContract(
-                SELECTABLE_MY, EntityContracts.SelectableOwner.OWNER, null, null, 0,
+                SELECTABLE_MY, AbilityContracts.SelectableOwner.OWNER, null, null, 0,
                 Set.of(SelectableIdentity.BOT, SelectableIdentity.POSITION, SelectableIdentity.HEALTH,
                         SelectableIdentity.FACING, SelectableIdentity.MOVEMENT)));
         selectables.put(SELECTABLE_OPPONENT, new SelectableContract(
-                SELECTABLE_OPPONENT, EntityContracts.SelectableOwner.OWNER, null, null, 0,
+                SELECTABLE_OPPONENT, AbilityContracts.SelectableOwner.OWNER, null, null, 0,
                 Set.of(SelectableIdentity.BOT, SelectableIdentity.POSITION, SelectableIdentity.HEALTH,
                         SelectableIdentity.FACING, SelectableIdentity.MOVEMENT)));
         for (int index = 1; index <= MAX_NUMBERED_BOT_SELECTABLES; index++) {
@@ -283,12 +282,12 @@ public final class BotLogicContracts {
                     SelectableIdentity.BOT, SelectableIdentity.POSITION, SelectableIdentity.HEALTH,
                     SelectableIdentity.FACING, SelectableIdentity.MOVEMENT);
             selectables.put(teammate, new SelectableContract(
-                    teammate, EntityContracts.SelectableOwner.OWNER, null, null, 0, identities));
+                    teammate, AbilityContracts.SelectableOwner.OWNER, null, null, 0, identities));
             selectables.put(opponent, new SelectableContract(
-                    opponent, EntityContracts.SelectableOwner.OWNER, null, null, 0, identities));
+                    opponent, AbilityContracts.SelectableOwner.OWNER, null, null, 0, identities));
         }
-        for (EntityContract entity : EntityContracts.all().values()) {
-            if (entity.selectableOwner() == EntityContracts.SelectableOwner.NONE) {
+        for (AbilityContract entity : AbilityContracts.entityAll().values()) {
+            if (entity.selectableOwner() == AbilityContracts.SelectableOwner.NONE) {
                 selectables.put(entity.entityType(), selectable(entity, entity.entityType()));
                 continue;
             }
@@ -377,8 +376,8 @@ public final class BotLogicContracts {
 
     private static String canonicalSelectableBase(String base) {
         if (SELECTABLE_OPPONENT_LEGACY.equals(base)) return SELECTABLE_OPPONENT;
-        for (EntityContract entity : EntityContracts.all().values()) {
-            if (entity.selectableOwner() == EntityContracts.SelectableOwner.NONE) continue;
+        for (AbilityContract entity : AbilityContracts.entityAll().values()) {
+            if (entity.selectableOwner() == AbilityContracts.SelectableOwner.NONE) continue;
             if (("my_" + entity.entityType()).equals(base)) {
                 return entitySelectableId(SELECTABLE_MY, entity.entityType());
             }
@@ -395,10 +394,10 @@ public final class BotLogicContracts {
             if (common != null) return common;
             return null;
         }
-        if (!(action instanceof Integer abilityId) || !AttachedAbilityContracts.actions().contains(abilityId)) return null;
-        AttachedAbilityContracts.AttachedAbilityContract attachedAbilityContract = AttachedAbilityContracts.forAbility(abilityId);
-        AttachedAbilityContracts.Activation activation = AttachedAbilityContracts.activationFor(abilityId);
-        EntityContract entity = EntityContracts.forAbility(abilityId);
+        if (!(action instanceof Integer abilityId) || !AbilityContracts.actions().contains(abilityId)) return null;
+        AbilityContracts.AbilityContract attachedAbilityContract = AbilityContracts.attachedAbilityContract(abilityId);
+        AbilityContracts.Activation activation = AbilityContracts.activationFor(abilityId);
+        AbilityContract entity = AbilityContracts.entityContractForAbility(abilityId);
         boolean locationTarget = entity != null && entity.spawn().targetPosition();
         boolean movement = attachedAbilityContract != null && attachedAbilityContract.phases().stream()
                 .anyMatch(phase -> phase.movement() != null && phase.movement().distance() != null);
@@ -558,11 +557,11 @@ public final class BotLogicContracts {
     public static Set<String> numericComparators() { return NUMERIC_COMPARATORS; }
     public static Set<String> booleanComparators() { return BOOLEAN_COMPARATORS; }
 
-    private static SelectableContract selectable(EntityContract entity, String id) {
+    private static SelectableContract selectable(AbilityContract entity, String id) {
         Set<SelectableIdentity> identities = new LinkedHashSet<>();
         identities.add(SelectableIdentity.ABILITY_ENTITY);
         identities.add(SelectableIdentity.POSITION);
-        if (entity.health() != null && entity.collider() != null && entity.collider().hittable()) {
+        if (entity.phases().stream().anyMatch(phase -> phase.health() != null)) {
             identities.add(SelectableIdentity.HEALTH);
         }
         if (entity.abilityId() == 17 || entity.abilityId() == 31) {
@@ -612,18 +611,18 @@ public final class BotLogicContracts {
 
     private static Set<String> buildStatusEffects() {
         Set<String> effects = new LinkedHashSet<>();
-        for (AttachedAbilityContracts.AttachedAbilityContract ability : AttachedAbilityContracts.all().values()) {
+        for (AbilityContracts.AbilityContract ability : AbilityContracts.attachedAll().values()) {
             addStatusEffects(effects, ability.phases());
         }
-        for (EntityContract entity : EntityContracts.all().values()) {
+        for (AbilityContract entity : AbilityContracts.entityAll().values()) {
             addStatusEffects(effects, entity.phases());
         }
         return Collections.unmodifiableSet(effects);
     }
 
     private static void addStatusEffects(Set<String> effects,
-                                         java.util.List<AttachedAbilityContracts.AbilityPhase> phases) {
-        for (AttachedAbilityContracts.Effect effect : phases.stream()
+                                         java.util.List<AbilityContracts.AbilityPhase> phases) {
+        for (AbilityContracts.Effect effect : phases.stream()
                 .flatMap(phase -> phase.effects().stream()).toList()) {
             if (isStatusEffect(effect) && effect.subtype() != null) {
                 effects.add(effect.subtype());
@@ -631,9 +630,9 @@ public final class BotLogicContracts {
         }
     }
 
-    private static boolean isStatusEffect(AttachedAbilityContracts.Effect effect) {
-        return effect != null && (effect.type() == AttachedAbilityContracts.EffectType.STATUS
-                || effect.type() == AttachedAbilityContracts.EffectType.BUFF);
+    private static boolean isStatusEffect(AbilityContracts.Effect effect) {
+        return effect != null && (effect.type() == AbilityContracts.EffectType.STATUS
+                || effect.type() == AbilityContracts.EffectType.BUFF);
     }
 
     private static void addNumbers(Map<String, VariableContract> variables, VariableSource source,

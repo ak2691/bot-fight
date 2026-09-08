@@ -1,4 +1,4 @@
-import { entityContractForAbility } from "./EntityContracts.js";
+import { entityContractForAbility } from "./AbilityContracts.js";
 
 const snapshot = (fields) => Object.freeze(fields);
 

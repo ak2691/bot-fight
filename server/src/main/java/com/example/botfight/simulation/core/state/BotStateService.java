@@ -7,7 +7,7 @@ import com.example.botfight.simulation.gameconfig.Abilities;
 import com.example.botfight.simulation.gameconfig.GameConfig;
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import com.example.botfight.simulation.gameconfig.HitStagger;
-import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import com.example.botfight.simulation.gameconfig.Abilities.ResourceModel;
 import java.util.HashMap;
 import java.util.List;
@@ -450,7 +450,7 @@ public class BotStateService {
             setAbilityCooldown(bot, abilityId, cooldownMs);
         }
 
-        var contract = AttachedAbilityContracts.all().get(abilityId);
+        var contract = AbilityContracts.attachedAll().get(abilityId);
         boolean hasPhaseDash = contract != null && contract.phases().stream()
                 .anyMatch(phase -> phase.movement() != null && phase.movement().distance() != null);
         if (active && hasPhaseDash) {

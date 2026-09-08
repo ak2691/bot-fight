@@ -6,7 +6,7 @@ See [Ability Effect Contract](ABILITY_EFFECT_CONTRACT.md) for effect semantics a
 
 ## 1. Define the contract
 
-Record the stable ID, draft round, catalogue tags, targeting mode, timing/resources, phase ownership, geometry, generic amount/duration falloff profile, ordered effects, collision/ownership rules, spawned entity (if any), interpolation mode, and required replay fields. Put direct behavior in a `botAttached` phase; put persistent world behavior in an `EntityContracts` root and its phases. Use `falloff: { maxAmount, minAmount, falloffStart, falloffEnd }` for a distance-dependent amount and the same `falloffStart`/`falloffEnd` with `maxDurationMs`/`minDurationMs` for a distance-dependent duration. The profile is clamped to the ability or phase maximum range. Use `status-effect` for continuing positive or negative statuses and declare each status subtype as its own effect object; a phase may contain multiple status effects. A status must use the generic `remainingMs` field, optionally `tickMs`, and an allowlisted `effects[]` list; do not introduce effect-specific timer fields or status-level cooldown fields.
+Record the stable ID, draft round, catalogue tags, targeting mode, timing/resources, phase ownership, geometry, generic amount/duration falloff profile, ordered effects, collision/ownership rules, spawned entity (if any), interpolation mode, and required replay fields. Put direct behavior in a `botAttached` phase; put persistent world behavior in an `AbilityContracts` root and its phases. Use `falloff: { maxAmount, minAmount, falloffStart, falloffEnd }` for a distance-dependent amount and the same `falloffStart`/`falloffEnd` with `maxDurationMs`/`minDurationMs` for a distance-dependent duration. The profile is clamped to the ability or phase maximum range. Use `status-effect` for continuing positive or negative statuses and declare each status subtype as its own effect object; a phase may contain multiple status effects. A status must use the generic `remainingMs` field, optionally `tickMs`, and an allowlisted `effects[]` list; do not introduce effect-specific timer fields or status-level cooldown fields.
 
 Use capability tags only for real gameplay contracts consumed by targeting, conditions, collision, or validation. Keep browser/server milliseconds, arena units, tick order, and rounding identical.
 
@@ -19,7 +19,8 @@ Use capability tags only for real gameplay contracts consumed by targeting, cond
   tuning/contracts rather than name-based property access.
 - `gameArena/loadout/BotLoadout.js`: catalog entry, actions, draft metadata, compact loadout code, interpolation, and entity capabilities.
 - `gameArena/gameconfig/Abilities.js`: numeric definition.
-- `gameArena/gameconfig/AttachedAbilityContracts.js`: attached phases, ordered
+- `gameArena/ecs/contracts/AbilityContracts.js`: unified direct and spawned
+  contracts, ordered phases, geometry, events, and effects
   effects, geometry, visuals, events, and declarative activation metadata.
 - `gameArena/botlogic/code/BotCode.js`: edit only for a new condition variable, target mode, payload shape, or action head; catalog-derived actions and targets need no duplicate list.
 - `gameArena/modelPayloads/strategyStatePayload.js`: expose only state the brain is allowed to observe.
@@ -37,7 +38,7 @@ snapshot -> brain selection -> action payload -> executor -> combat/entities -> 
 | Selected action payload | `gameArena/botlogic/planner/ArenaActionPlanner.js` |
 | Readiness, resources, preparation, spawn request | `gameArena/ecs/bots/ActionExecutionSystem.js` |
 | Immediate bot combat | `gameArena/gameconfig/BotCombatSystem.js` |
-| Short-lived attached effects | `gameArena/gameconfig/AttachedAbilityContracts.js`, `gameArena/ecs/abilities/AbilityEffectSystem.js` |
+| Short-lived attached effects | `gameArena/ecs/contracts/AbilityContracts.js`, `gameArena/ecs/abilities/AbilityEffectSystem.js` |
 | Persistent/targetable entities | `gameArena/ecs/entities/EntityFactory.js`, `gameArena/ecs/abilities/AbilityEntitySystem.js` |
 | Timed bot effects | `gameArena/ecs/contracts/StatusContracts.js`, `gameArena/ecs/bots/BotStatusSystem.js` |
 | Cooldowns, charges, active resources | `gameArena/ecs/bots/BotResourceSystem.js` |

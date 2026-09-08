@@ -1,7 +1,6 @@
 package com.example.botfight.simulation.ecs.entities;
 
-import com.example.botfight.simulation.ecs.contracts.EntityContracts;
-import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import java.util.Map;
 
 /** Creates initial entity state from the declarative entity contract. */
@@ -26,17 +25,16 @@ public final class AbilityEntityFactory {
             double targetY,
             double arenaWidth,
             double arenaHeight) {
-        EntityContracts.EntityContract contract = EntityContracts.forAbility(abilityId);
+        AbilityContracts.AbilityContract contract = AbilityContracts.entityContractForAbility(abilityId);
         if (contract == null) throw new IllegalArgumentException("No entity contract for ability: " + abilityId);
 
-        int size = (int) Math.round(contract.collider().size()
-                * contract.collider().sizeMultiplier());
-        EntityContracts.Spawn spawn = contract.spawn();
-        AttachedAbilityContracts.AbilityPhase firstPhase = contract.phases().isEmpty()
+        AbilityContracts.Spawn spawn = contract.spawn();
+        AbilityContracts.AbilityPhase firstPhase = contract.phases().isEmpty()
                 ? null : contract.phases().getFirst();
+        int size = phaseSize(firstPhase);
         double speed = firstPhase == null || firstPhase.movement() == null
                 ? 0 : firstPhase.movement().speed();
-        double rotation = spawn.rotation() == EntityContracts.RotationMode.ZERO ? 0 : ownerRotation;
+        double rotation = spawn.rotation() == AbilityContracts.RotationMode.ZERO ? 0 : ownerRotation;
         double x = ownerX;
         double y = ownerY;
         double directionX = 0;
@@ -66,14 +64,14 @@ public final class AbilityEntityFactory {
         }
 
         double traveled = 0;
-        EntityContracts.Lifetime lifetime = contract.lifetime();
+        AbilityContracts.Lifetime lifetime = contract.lifetime();
         int timer = switch (lifetime.timerMode()) {
             case REMAINING, FUSE -> lifetime.duration() + lifetime.add();
             default -> 0;
         };
-        int hp = contract.health() == null
+        int hp = firstPhase == null || firstPhase.health() == null
                 ? 0
-                : (int) Math.round(contract.health().hp());
+                : (int) Math.round(firstPhase.health().hp());
         boolean armed = contract.initialState().armed();
         double entityDamageMultiplier = contract.initialState().damageMultiplierFromOwner()
                 ? Math.max(0, damageMultiplier) : 1.0;
@@ -114,6 +112,30 @@ public final class AbilityEntityFactory {
                 null,
                 0,
                 0);
+    }
+
+    private static int phaseSize(AbilityContracts.AbilityPhase phase) {
+        if (phase == null) return 0;
+        if (phase.visual() != null && phase.visual().visualSize() > 0) {
+            return (int) Math.round(phase.visual().visualSize());
+        }
+        AbilityContracts.Hitbox hitbox = phase.hitbox();
+        if (hitbox == null) return 0;
+        if ("circle".equals(hitbox.shape()) && hitbox.radius() != null) {
+            return (int) Math.round(hitbox.radius() * 2);
+        }
+        if ("rectangle".equals(hitbox.shape())) {
+            double width = hitbox.width() == null ? 0 : hitbox.width();
+            double length = hitbox.length() == null ? 0 : hitbox.length();
+            return (int) Math.round(Math.max(width, length));
+        }
+        if ("ray".equals(hitbox.shape()) && hitbox.width() != null) {
+            return (int) Math.round(hitbox.width());
+        }
+        if ("arc".equals(hitbox.shape()) && hitbox.range() != null) {
+            return (int) Math.round(hitbox.range() * 2);
+        }
+        return 0;
     }
 
     private static double compassRadians(double degrees) {

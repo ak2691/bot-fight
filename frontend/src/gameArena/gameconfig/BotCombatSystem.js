@@ -1,7 +1,7 @@
 import { ignoresHostileEffects, withoutBotStatuses } from "./DefensiveState.js";
 import { HIT_STAGGER_DURATION_MS } from "./HitStagger.js";
 import { CLOSING_ZONE_TYPE } from "./ArenaHazardConfig.js";
-import { attachedAbilityContract, EFFECT_TYPES } from "./AttachedAbilityContracts.js";
+import { attachedAbilityContract, EFFECT_TYPES } from "../ecs/contracts/AbilityContracts.js";
 import { abilityHasActivationEvent, resolveTriggeredAbilityEffects } from "../ecs/abilities/AbilityEffectSystem.js";
 import { abilityHitsTarget } from "../ecs/abilities/AbilityHitDetectionSystem.js";
 import { BASE_BOT_HP } from "../modelPayloads/arenaConstants.js";

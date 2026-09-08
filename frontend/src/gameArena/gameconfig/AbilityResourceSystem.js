@@ -1,5 +1,5 @@
 import { ABILITY_STATS, abilityMaxChargesForShape } from "./Abilities.js";
-import { attachedAbilityContract } from "./AttachedAbilityContracts.js";
+import { attachedAbilityContract } from "../ecs/contracts/AbilityContracts.js";
 import { statusEffectValue, statusIsActive, STATUS_EFFECT_APPLICATIONS } from "../ecs/contracts/StatusContracts.js";
 
 const REGENERATE_RESOURCE = "regenerate";

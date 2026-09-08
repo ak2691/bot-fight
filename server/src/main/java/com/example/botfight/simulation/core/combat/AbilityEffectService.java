@@ -8,8 +8,8 @@ import com.example.botfight.simulation.core.state.BotMovementService;
 import com.example.botfight.simulation.core.state.BotStateService;
 import com.example.botfight.simulation.core.state.StatusEffectState;
 import com.example.botfight.simulation.gameconfig.Abilities;
-import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts;
-import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts.EffectType;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts.EffectType;
 import com.example.botfight.simulation.gameconfig.HitStagger;
 import java.util.Comparator;
 import java.util.List;
@@ -104,14 +104,14 @@ class AbilityEffectService {
                                       double sourceX,
                                       double sourceY,
                                       boolean skipTeleport) {
-        AttachedAbilityContracts.AbilityPhase phase = firstPhase(payload);
-        Map<String, AttachedAbilityContracts.EffectOverride> overrides = phase == null
+        AbilityContracts.AbilityPhase phase = firstPhase(payload);
+        Map<String, AbilityContracts.EffectOverride> overrides = phase == null
                 ? Map.of() : phase.effectOverrides();
         Double rangeOverride = phase == null ? null : phaseRange(phase);
         double confirmedDamage = 0;
-        for (AttachedAbilityContracts.Effect effect : directPhaseEffects(payload)) {
+        for (AbilityContracts.Effect effect : directPhaseEffects(payload)) {
             double distance = defender == null ? 0 : between(sourceX, sourceY, defender.x, defender.y);
-            AttachedAbilityContracts.Effect resolved = withEffectOverride(effect, effectOverrideFor(effect, overrides));
+            AbilityContracts.Effect resolved = withEffectOverride(effect, effectOverrideFor(effect, overrides));
             resolved = withResolvedDuration(payload, resolved, distance, rangeOverride);
             switch (resolved.type()) {
                 case DAMAGE -> {
@@ -171,7 +171,7 @@ class AbilityEffectService {
                 default -> { }
             }
         }
-        AttachedAbilityContracts.PhaseMovement movement = phase == null ? null : phase.movement();
+        AbilityContracts.PhaseMovement movement = phase == null ? null : phase.movement();
         if (arena != null && movement != null && movement.distance() != null
                 && attacker.dashActiveMs <= 0) {
             movementService.startDash(attacker, payload, arena);
@@ -179,30 +179,44 @@ class AbilityEffectService {
     }
 
     /** Reads direct effects from the canonical active phase before root fallback. */
-    private static List<AttachedAbilityContracts.Effect> directPhaseEffects(AbilityExecutionPayload payload) {
-        AttachedAbilityContracts.AbilityPhase phase = firstPhase(payload);
+    private static List<AbilityContracts.Effect> directPhaseEffects(AbilityExecutionPayload payload) {
+        AbilityContracts.AbilityPhase phase = firstPhase(payload);
         if (phase == null) return List.of();
-        AttachedAbilityContracts.PhaseEvent event = phase.events().get(
-                AttachedAbilityContracts.PhaseEventType.ACTIVATION);
-        if (event == null && AttachedAbilityContracts.isAttachedAbility(payload.abilityId())) {
-            event = phase.events().get(AttachedAbilityContracts.PhaseEventType.COLLISION);
+        AbilityContracts.PhaseEvent event = phase.events().get(
+                AbilityContracts.PhaseEventType.ACTIVATION);
+        if (event == null && AbilityContracts.isAttachedAbility(payload.abilityId())) {
+            event = phase.events().get(AbilityContracts.PhaseEventType.COLLISION);
         }
-        if (event != null && !event.actions().contains(AttachedAbilityContracts.PhaseAction.APPLY_EFFECTS)) {
+        if (event != null && !event.actions().contains(AbilityContracts.PhaseAction.APPLY_EFFECTS)) {
             return List.of();
         }
-        List<AttachedAbilityContracts.Effect> declared = phase.effects();
-        Set<AttachedAbilityContracts.EffectType> allowed = event == null ? Set.of() : event.effectTypes();
+        AbilityContracts.PhaseEvent selectedEvent = event;
+        List<AbilityContracts.Effect> declared = phase.effects();
+        Set<AbilityContracts.EffectType> allowed = event == null ? Set.of() : event.effectTypes();
         return declared.stream()
-                .filter(effect -> allowed.isEmpty() || allowed.contains(effect.type()))
+                .filter(effect -> eventAllowsEffect(effect, selectedEvent, allowed))
                 .toList();
     }
 
-    private static AttachedAbilityContracts.AbilityPhase firstPhase(AbilityExecutionPayload payload) {
+    private static boolean eventAllowsEffect(AbilityContracts.Effect effect,
+                                              AbilityContracts.PhaseEvent event,
+                                              Set<AbilityContracts.EffectType> allowedTypes) {
+        if (effect == null || !allowedTypes.isEmpty() && !allowedTypes.contains(effect.type())) {
+            return false;
+        }
+        if (effect.type() != EffectType.STATUS || event == null || event.statusTypes().isEmpty()) {
+            return true;
+        }
+        return event.statusTypes().stream()
+                .anyMatch(statusType -> statusType.equalsIgnoreCase(effect.subtype()));
+    }
+
+    private static AbilityContracts.AbilityPhase firstPhase(AbilityExecutionPayload payload) {
         return payload.phases().isEmpty()
                 ? null : payload.phases().getFirst();
     }
 
-    private static void applyBuff(AbilityExecutionPayload payload, Bot target, AttachedAbilityContracts.Effect effect) {
+    private static void applyBuff(AbilityExecutionPayload payload, Bot target, AbilityContracts.Effect effect) {
         if (!"overclock".equals(effect.subtype())) return;
         StatusEffectState status = new StatusEffectState("overclock", effect.durationMs(), 0)
                 .addEffect(new StatusEffectState.Effect("cooldown_modifier", "constant")
@@ -222,12 +236,12 @@ class AbilityEffectService {
     }
 
     private void applyStatusEffect(Bot attacker, Bot defender, AbilityExecutionPayload payload,
-                                   AttachedAbilityContracts.Effect effect) {
+                                   AbilityContracts.Effect effect) {
         applyStatusEffect(attacker, defender, payload.abilityId(), effect);
     }
 
     void applyStatusEffect(Bot attacker, Bot defender, int abilityId,
-                           AttachedAbilityContracts.Effect effect) {
+                           AbilityContracts.Effect effect) {
         if (defender == null || defender.hp <= 0) return;
         int durationMs = effect.durationMs();
         switch (effect.subtype()) {
@@ -294,23 +308,23 @@ class AbilityEffectService {
         return status;
     }
 
-    private static AttachedAbilityContracts.Effect withResolvedDuration(
-            AbilityExecutionPayload payload, AttachedAbilityContracts.Effect effect,
+    private static AbilityContracts.Effect withResolvedDuration(
+            AbilityExecutionPayload payload, AbilityContracts.Effect effect,
             double distance, Double rangeOverride) {
         int durationMs = durationForEffect(payload, effect, distance, rangeOverride);
         if (durationMs == effect.durationMs()) return effect;
-        return new AttachedAbilityContracts.Effect(effect.type(), effect.subtype(), effect.amount(),
+        return new AbilityContracts.Effect(effect.type(), effect.subtype(), effect.amount(),
                 durationMs, effect.runtimeComputed(), effect.recipient(),
                 effect.requiresConfirmedDamage(), effect.mirrorsDamage(),
                 effect.distanceMode(), effect.falloff(), effect.intervalMs(), effect.movementLockMs());
     }
 
-    private static AttachedAbilityContracts.Effect withEffectOverride(
-            AttachedAbilityContracts.Effect effect, AttachedAbilityContracts.EffectOverride override) {
+    private static AbilityContracts.Effect withEffectOverride(
+            AbilityContracts.Effect effect, AbilityContracts.EffectOverride override) {
         if (effect == null || override == null) return effect;
         double amount = override.amount() == null ? effect.amount() : override.amount();
         int durationMs = override.durationMs() == null ? effect.durationMs() : override.durationMs();
-        AttachedAbilityContracts.Falloff falloff = effect.falloff();
+        AbilityContracts.Falloff falloff = effect.falloff();
         if (override.falloff() != null) {
             falloff = falloff == null ? override.falloff() : falloff.mergedWith(override.falloff());
         } else if (override.amount() != null) {
@@ -318,27 +332,27 @@ class AbilityEffectService {
         }
         if (amount == effect.amount() && durationMs == effect.durationMs()
                 && falloff == effect.falloff()) return effect;
-        return new AttachedAbilityContracts.Effect(effect.type(), effect.subtype(), amount,
+        return new AbilityContracts.Effect(effect.type(), effect.subtype(), amount,
                 durationMs, effect.runtimeComputed(), effect.recipient(),
                 effect.requiresConfirmedDamage(), effect.mirrorsDamage(),
                 effect.distanceMode(), falloff, effect.intervalMs(), effect.movementLockMs());
     }
 
-    private static AttachedAbilityContracts.EffectOverride effectOverrideFor(
-            AttachedAbilityContracts.Effect effect,
-            Map<String, AttachedAbilityContracts.EffectOverride> overrides) {
+    private static AbilityContracts.EffectOverride effectOverrideFor(
+            AbilityContracts.Effect effect,
+            Map<String, AbilityContracts.EffectOverride> overrides) {
         if (effect == null || overrides == null || overrides.isEmpty()) return null;
-        String qualifiedKey = AttachedAbilityContracts.effectOverrideKey(effect);
-        AttachedAbilityContracts.EffectOverride qualified = qualifiedKey == null
+        String qualifiedKey = AbilityContracts.effectOverrideKey(effect);
+        AbilityContracts.EffectOverride qualified = qualifiedKey == null
                 ? null : overrides.get(qualifiedKey);
         if (qualified != null) return qualified;
         return effect.type() == null ? null
                 : overrides.get(effect.type().name().toLowerCase());
     }
 
-    private static Double phaseRange(AttachedAbilityContracts.AbilityPhase phase) {
+    private static Double phaseRange(AbilityContracts.AbilityPhase phase) {
         if (phase == null) return null;
-        AttachedAbilityContracts.Hitbox hitbox = phase.hitbox();
+        AbilityContracts.Hitbox hitbox = phase.hitbox();
         if (hitbox != null) {
             if ("circle".equals(hitbox.shape()) && hitbox.radius() != null) return hitbox.radius();
             if (hitbox.range() != null) return hitbox.range();
@@ -349,7 +363,7 @@ class AbilityEffectService {
     }
 
     private static double amountForEffect(AbilityExecutionPayload payload,
-                                          AttachedAbilityContracts.Effect effect,
+                                          AbilityContracts.Effect effect,
                                           double distance,
                                           Double rangeOverride) {
         if (effect.falloff() != null && effect.falloff().hasAmountProfile()) {
@@ -364,7 +378,7 @@ class AbilityEffectService {
     }
 
     private static int durationForEffect(AbilityExecutionPayload payload,
-                                         AttachedAbilityContracts.Effect effect,
+                                         AbilityContracts.Effect effect,
                                          double distance,
                                          Double rangeOverride) {
         return Abilities.durationAtDistance(payload.abilityId(), distance,
@@ -374,8 +388,8 @@ class AbilityEffectService {
 
     private static double phaseRange(AbilityExecutionPayload payload) {
         if (payload == null || payload.phases().isEmpty()) return 0;
-        AttachedAbilityContracts.AbilityPhase phase = payload.phases().getFirst();
-        AttachedAbilityContracts.Hitbox hitbox = phase.hitbox();
+        AbilityContracts.AbilityPhase phase = payload.phases().getFirst();
+        AbilityContracts.Hitbox hitbox = phase.hitbox();
         if (hitbox == null) return 0;
         if ("circle".equals(hitbox.shape())) return hitbox.radius() == null ? 0 : hitbox.radius();
         if ("rectangle".equals(hitbox.shape())) {

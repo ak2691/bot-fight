@@ -3,12 +3,15 @@ import {
     attachedAbilityContract,
     attachedAbilityTargetsOwner,
     EFFECT_TYPES,
+    eventAllowsEffect,
+    eventTargetsKind,
     PHASE_ACTIONS,
     PHASE_EVENT_TYPES,
+    TARGET_KINDS,
     TELEPORT_DISTANCE_MODES,
     resolveEffectOverride,
-} from "../../gameconfig/AttachedAbilityContracts.js";
-import { entityContractForAbility } from "../contracts/EntityContracts.js";
+} from "../contracts/AbilityContracts.js";
+import { entityContractForAbility } from "../contracts/AbilityContracts.js";
 import { ignoresHostileEffects, isAliveBot } from "../../gameconfig/DefensiveState.js";
 import { clamp, normalizeAngle } from "../../gameconfig/geometry.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
@@ -115,7 +118,8 @@ function directPhaseEffects(contract, phase, event) {
         .flatMap((effect) => typeof effect === "string"
             ? declared.filter((candidate) => candidate.type === effect)
             : [effect])
-        .filter((effect) => !allowedTypes || allowedTypes.has(effect.type));
+        .filter((effect) => !allowedTypes || allowedTypes.has(effect.type))
+        .filter((effect) => eventAllowsEffect(event, effect));
 }
 
 export function triggeredAbilityDamage(attacker, target) {
@@ -127,7 +131,9 @@ export function triggeredAbilityDamage(attacker, target) {
     const phase = contract?.phases?.[0] ?? null;
     const eventType = attachedAbilityTargetsOwner(abilityId)
         ? PHASE_EVENT_TYPES.ACTIVATION : PHASE_EVENT_TYPES.COLLISION;
-    const damageEffect = directPhaseEffects(contract, phase, phase?.events?.[eventType] ?? null)
+    const event = phase?.events?.[eventType] ?? null;
+    if (!eventTargetsKind(event, TARGET_KINDS.HP_ENTITY)) return 0;
+    const damageEffect = directPhaseEffects(contract, phase, event)
         .find((effect) => effect.type === EFFECT_TYPES.DAMAGE) ?? null;
     const resolvedDamageEffect = resolveEffectOverride(damageEffect, phase?.effectOverrides);
     return roundCombatValue(amountAtDistance(abilityId, distance, resolvedDamageEffect,

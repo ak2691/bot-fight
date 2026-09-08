@@ -523,7 +523,7 @@ test("action and variable pickers use flush classic dropdown rows", () => {
     assert.match(css, /\.code-node-picker--action \{ border-color: rgba\(148, 163, 184, \.52\); background-color: #15191d; \}/);
     assert.match(css, /\.code-node-picker--variable \{ border-color: rgba\(148, 163, 184, \.52\); background-color: #15191d; \}/);
     assert.match(css, /\.code-node-search-results \{ display: grid; max-height: 300px; gap: 0; margin-top: 6px; overflow-y: auto; border: 1px solid rgba\(148, 163, 184, \.52\); background: rgba\(9, 11, 13, \.96\); padding: 4px 0; \}/);
-    assert.match(css, /\.code-node-search-results button \{ display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 0; border-radius: 0; background: transparent; padding: 9px 10px; text-align: left; \}/);
+    assert.match(css, /\.code-node-search-results button \{ display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px; border: 0; border-radius: 0; background: transparent; padding: 9px 10px; text-align: left; \}/);
     assert.match(css, /\.code-node-search-results button:hover \{ border-color: transparent; background: rgba\(203, 213, 225, \.16\); \}/);
     assert.doesNotMatch(css, /\.code-node-picker--(?:action|variable) \.code-node-search-results button \{/);
     assert.match(css, /\.code-compact-footer > button\.code-conditional-add-button \{ border-color: rgba\(125, 211, 252, \.62\); background: #081933; color: #bfdbfe; \}/);

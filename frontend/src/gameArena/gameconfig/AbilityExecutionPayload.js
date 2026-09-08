@@ -1,7 +1,7 @@
 import { ABILITY_STATS } from "./Abilities.js";
-import { attachedAbilityContract } from "./AttachedAbilityContracts.js";
+import { attachedAbilityContract } from "../ecs/contracts/AbilityContracts.js";
 import { abilityId as resolveAbilityId } from "./AbilityRegistry.js";
-import { entityContractForAbility } from "../ecs/contracts/EntityContracts.js";
+import { entityContractForAbility } from "../ecs/contracts/AbilityContracts.js";
 
 const EMPTY_ACTIVATION = Object.freeze({});
 

@@ -12,7 +12,7 @@ import com.example.botfight.simulation.core.orchestration.DuelSimulationService.
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Entity;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Vector;
 import com.example.botfight.simulation.core.combat.AbilityExecutionPayload;
-import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import com.example.botfight.simulation.gameconfig.HitStagger;
 import org.springframework.stereotype.Service;
 
@@ -140,9 +140,9 @@ public class BotMovementService {
     }
 
     public void startDash(Bot bot, AbilityExecutionPayload payload, Arena arena) {
-        AttachedAbilityContracts.AbilityPhase phase = payload.phases().isEmpty()
+        AbilityContracts.AbilityPhase phase = payload.phases().isEmpty()
                 ? null : payload.phases().getFirst();
-        AttachedAbilityContracts.PhaseMovement movement = phase == null ? null : phase.movement();
+        AbilityContracts.PhaseMovement movement = phase == null ? null : phase.movement();
         if (movement == null || movement.distance() == null) return;
         double targetX = payload.targetX();
         double targetY = payload.targetY();

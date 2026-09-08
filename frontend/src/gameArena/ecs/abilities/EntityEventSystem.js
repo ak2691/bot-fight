@@ -1,10 +1,12 @@
 import {
     PHASE_ACTIONS,
     PHASE_EVENT_TYPES,
+    TARGET_KINDS,
     TARGET_POLICY_MODES,
-} from "../../gameconfig/AttachedAbilityContracts.js";
+    eventTargetsKind,
+} from "../contracts/AbilityContracts.js";
 import { applyEntityEffects } from "./EntityEffectSystem.js";
-import { entityContract, phaseForEntity } from "../contracts/EntityContracts.js";
+import { entityContract, phaseForEntity } from "../contracts/AbilityContracts.js";
 import { withComponentState } from "../entities/EntityWorld.js";
 
 /**
@@ -36,7 +38,9 @@ export function dispatchEntityEvent(entity, eventType, {
     const emittedVisuals = [];
     const targets = normalizeTargetIds(targetIds);
     const actions = Array.isArray(handler.actions) ? handler.actions : [];
-    const effectTypes = normalizeEffectTypes(handler.effects ?? phase.effects ?? phase.effectTypes);
+    const effectTypes = normalizeEffectTypes(
+        handler.effects ?? handler.effectTypes ?? phase.effects ?? phase.effectTypes,
+    );
     const hitbox = phase?.hitbox;
     const phaseRange = hitbox?.range ?? hitbox?.length ?? hitbox?.radius;
     const phaseStats = {
@@ -47,6 +51,7 @@ export function dispatchEntityEvent(entity, eventType, {
 
     for (const action of actions) {
         if (action === PHASE_ACTIONS.APPLY_EFFECTS) {
+            if (!eventTargetsKind(handler, TARGET_KINDS.BOT)) continue;
             for (const targetId of targets) {
                 const targetIndex = findTargetIndex(nextBots, targetId);
                 if (targetIndex < 0 || !canApplyToTarget(nextEntity, targetId, handler.targetPolicy, world)) continue;
@@ -65,6 +70,7 @@ export function dispatchEntityEvent(entity, eventType, {
                     combat,
                     {
                         effectTypes,
+                        statusTypes: handler.statusTypes ?? null,
                         world,
                         knockbackDirection: handler.knockbackDirection ?? phase.knockbackDirection ?? "source",
                         collisionDistance: Number.isFinite(Number(targetDistance))
@@ -104,6 +110,7 @@ export function dispatchEntityEvent(entity, eventType, {
                 visualEvent: Number(nextEntity.visualEvent ?? 0) + 1,
                 visualEventType: visualType,
                 visualEventMs: visibleMs,
+                visualEventSize: visualSize,
                 ...(visibleMs > 0 ? { visibleMs } : {}),
             });
             emittedVisuals.push({

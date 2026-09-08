@@ -13,12 +13,12 @@ import com.example.botfight.simulation.core.logic.ConditionResolutionService;
 import com.example.botfight.simulation.core.logic.CustomVariableActionService;
 import com.example.botfight.simulation.core.state.BotMovementService;
 import com.example.botfight.simulation.core.state.BotStateService;
-import com.example.botfight.simulation.ecs.contracts.EntityContracts;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import com.example.botfight.simulation.ecs.entities.AbilityEntityFactory;
+import com.example.botfight.simulation.ecs.entities.ArenaBounds;
 import com.example.botfight.simulation.ecs.entities.ArenaEntity;
 import com.example.botfight.simulation.gameconfig.Abilities;
-import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts;
-import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts.EffectType;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts.EffectType;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -136,7 +136,7 @@ public class ActionExecutionService {
     }
 
     public Integer abilityForAction(Object action) {
-        return AttachedAbilityContracts.abilityForAction(action);
+        return AbilityContracts.abilityForAction(action);
     }
 
     public Integer configuredAbilityAction(StrategyBlock block) {
@@ -219,9 +219,9 @@ public class ActionExecutionService {
     private static String phaseBlockedByStatus(AbilityExecutionPayload payload) {
         if (payload == null) return null;
         return payload.phases().stream()
-                .map(AttachedAbilityContracts.AbilityPhase::movement)
+                .map(AbilityContracts.AbilityPhase::movement)
                 .filter(movement -> movement != null && movement.blockedByStatus() != null)
-                .map(AttachedAbilityContracts.PhaseMovement::blockedByStatus)
+                .map(AbilityContracts.PhaseMovement::blockedByStatus)
                 .findFirst()
                 .orElse(null);
     }
@@ -232,13 +232,18 @@ public class ActionExecutionService {
 
     /** Keeps persistent-entity status impacts on the same path as direct abilities. */
     public void applyEntityStatus(Bot attacker, Bot defender, int abilityId,
-                                  AttachedAbilityContracts.Effect effect) {
+                                  AbilityContracts.Effect effect) {
         abilityEffectService.applyStatusEffect(attacker, defender, abilityId, effect);
     }
 
-    public int damageToDroneThisTick(ArenaEntity drone, List<Bot> bots,
+    public int damageToEntityThisTick(ArenaEntity entity, List<Bot> bots,
             List<ArenaEntity> entities) {
-        return entityCombatService.damageToDroneThisTick(drone, bots, entities);
+        return entityCombatService.damageToEntityThisTick(entity, bots, entities);
+    }
+
+    public ArenaEntity applyEffectsToEntity(ArenaEntity entity, List<Bot> bots,
+            List<ArenaEntity> entities, ArenaBounds arena, int stepMs) {
+        return entityCombatService.applyEffectsToEntity(entity, bots, entities, arena);
     }
 
     public boolean mineHitByCurrentAttack(ArenaEntity mine, List<Bot> bots,
@@ -338,17 +343,17 @@ public class ActionExecutionService {
     }
 
     private static boolean spawnsEntity(AbilityExecutionPayload payload) {
-        return EntityContracts.forAbility(payload.abilityId()) != null;
+        return AbilityContracts.entityContractForAbility(payload.abilityId()) != null;
     }
 
     private static void spawnAbilityEntity(Bot bot, AbilityExecutionPayload payload, Arena arena) {
         if (arena == null || !spawnsEntity(payload))
             return;
-        EntityContracts.EntityContract entityContract = EntityContracts.forAbility(payload.abilityId());
-        AttachedAbilityContracts.AbilityPhase firstPhase = entityContract == null || entityContract.phases().isEmpty()
+        AbilityContracts.AbilityContract entityContract = AbilityContracts.entityContractForAbility(payload.abilityId());
+        AbilityContracts.AbilityPhase firstPhase = entityContract == null || entityContract.phases().isEmpty()
                 ? null : entityContract.phases().getFirst();
         String idPrefix = firstPhase != null
-                && firstPhase.type() == AttachedAbilityContracts.PhaseType.PROJECTILE
+                && firstPhase.type() == AbilityContracts.PhaseType.PROJECTILE
                         ? entityContract.runtimeType()
                         : "ability";
         bot.abilitySpawn = AbilityEntityFactory.create(
@@ -388,12 +393,12 @@ public class ActionExecutionService {
             return false;
         if (bot.preparingAbility != null
                 && bot.preparingAbility != ability
-                && !AttachedAbilityContracts.activationFor(bot.preparingAbility).ignoresGlobalAbilityLock())
+                && !AbilityContracts.activationFor(bot.preparingAbility).ignoresGlobalAbilityLock())
             return true;
         return bot.abilityActiveMs.entrySet().stream()
                 .anyMatch(entry -> entry.getKey() != ability
                         && entry.getValue() > 0
-                        && !AttachedAbilityContracts.activationFor(entry.getKey()).ignoresGlobalAbilityLock());
+                        && !AbilityContracts.activationFor(entry.getKey()).ignoresGlobalAbilityLock());
     }
 
 }

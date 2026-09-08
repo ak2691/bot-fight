@@ -1,7 +1,7 @@
 package com.example.botfight.simulation.core.state;
 
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
-import com.example.botfight.simulation.ecs.contracts.EntityContracts;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.ObjIntConsumer;
@@ -15,7 +15,7 @@ final class DeferredStateSystem {
                     (bot, value) -> bot.temporalRewindMs = value,
                     bot -> bot.temporalRewindPulseMs,
                     (bot, value) -> bot.temporalRewindPulseMs = value,
-                    bot -> EntityContracts.forAbility(21).phases().stream()
+                    bot -> AbilityContracts.entityContractForAbility(21).phases().stream()
                             .findFirst()
                             .map(phase -> phase.visual() == null ? null : phase.visual().visibleMs())
                             .orElse(400),

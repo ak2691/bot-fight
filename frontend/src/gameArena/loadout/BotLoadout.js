@@ -6,8 +6,8 @@ import {
     attachedAbilityTargetsOwner,
     effectsForAttachedAbility,
     EFFECT_TYPES,
-} from "../gameconfig/AttachedAbilityContracts.js";
-import { entityContractForAbility } from "../ecs/contracts/EntityContracts.js";
+} from "../ecs/contracts/AbilityContracts.js";
+import { entityContractForAbility } from "../ecs/contracts/AbilityContracts.js";
 import { selectableIdentitiesForAbilityEntity } from "../modelPayloads/selectableIdentities.js";
 
 export { ABILITY_STATS };

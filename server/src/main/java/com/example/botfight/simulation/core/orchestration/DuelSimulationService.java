@@ -14,13 +14,12 @@ import com.example.botfight.simulation.core.state.BotStateService;
 import com.example.botfight.simulation.bots.BotLogicContracts;
 import com.example.botfight.simulation.ecs.entities.ClosingZoneSystem;
 import com.example.botfight.simulation.gameconfig.ClosingZoneConfig;
-import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import com.example.botfight.simulation.core.state.StatusEffectState;
 import com.example.botfight.simulation.ecs.entities.AbilityEntityBot;
 import com.example.botfight.simulation.ecs.abilities.AbilityEntitySystem;
 import com.example.botfight.simulation.ecs.entities.ArenaBounds;
 import com.example.botfight.simulation.ecs.entities.ArenaEntity;
-import com.example.botfight.simulation.ecs.contracts.EntityContracts;
 import com.example.botfight.simulation.geometry.ArenaUnits;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -637,8 +636,16 @@ public class DuelSimulationService {
                     @Override
                     public int damageToEntity(ArenaEntity entity, List<Bot> activeBots,
                                               List<ArenaEntity> activeEntities) {
-                        return actionExecutionService.damageToDroneThisTick(
+                        return actionExecutionService.damageToEntityThisTick(
                                 entity, activeBots, activeEntities);
+                    }
+
+                    @Override
+                    public ArenaEntity applyEffectsToEntity(ArenaEntity entity,
+                            List<Bot> activeBots, List<ArenaEntity> activeEntities,
+                            ArenaBounds bounds, int stepMs) {
+                        return actionExecutionService.applyEffectsToEntity(
+                                entity, activeBots, activeEntities, bounds, stepMs);
                     }
 
                     @Override
@@ -652,7 +659,7 @@ public class DuelSimulationService {
 
                     @Override
                     public void applyStatus(List<Bot> activeBots, int ownerSlot, Bot target,
-                                            int abilityId, AttachedAbilityContracts.Effect effect) {
+                                            int abilityId, AbilityContracts.Effect effect) {
                         Bot owner = activeBots.stream()
                                 .filter(bot -> bot.slot == ownerSlot).findFirst().orElse(null);
                         if (owner != null) {
@@ -664,9 +671,9 @@ public class DuelSimulationService {
     }
 
     private static SelectableSnapshot selectableSnapshot(ArenaEntity entity) {
-        EntityContracts.EntityContract contract = EntityContracts.forEntity(entity);
-        boolean healthBearing = contract != null && contract.health() != null
-                && contract.collider() != null && contract.collider().hittable();
+        AbilityContracts.AbilityContract contract = AbilityContracts.forEntity(entity);
+        boolean healthBearing = contract != null && contract.phases().stream()
+                .anyMatch(phase -> phase.health() != null);
         return new SelectableSnapshot("ability:" + entity.ownerSlot() + ":" + entity.id(), entity.type(),
                 entity.x(), entity.y(), entity.size(), entity.ageMs(), healthBearing ? entity.hp() : 0,
                 entity.velocityX(), entity.velocityY(), entity.abilityId(), entity.ownerSlot(),

@@ -9,7 +9,8 @@ Start with [Adding an Ability or Move](ADDING_AN_ABILITY_OR_MOVE.md) and [Abilit
 - `simulation/gameconfig/AbilityRegistry.java`: permanent positive numeric IDs and the only server-side ID/name mapping. Never derive IDs from catalog position or reuse a retired ID.
 - `simulation/gameconfig/Abilities.java`: numeric definitions for all abilities.
 - `simulation/gameconfig/GameConfig.java`: shared duel configuration access.
-- `simulation/gameconfig/AttachedAbilityContracts.java`: attached phases, ordered
+- `simulation/ecs/contracts/AbilityContracts.java`: unified direct and spawned
+  contracts, ordered phases, geometry, events, and effects
   effects, geometry, visuals, events, and declarative activation metadata.
 - `simulation/gameconfig/GameConfigCatalog.java`: active ruleset selection.
 
@@ -62,7 +63,7 @@ tick method for behavior that belongs to an existing contract family.
 
 ## Persistent entities
 
-- `simulation/ecs/entities/ArenaEntity.java`: deterministic transform, motion, lifetime, collider, owner, optional HP, and phase state.
+- `simulation/ecs/entities/ArenaEntity.java`: deterministic transform, motion, lifetime, owner, runtime HP, and phase state.
 - `simulation/ecs/entities/AbilityEntityFactory.java`: initial state only; no targeting, damage, or ticking.
 - `simulation/ecs/entities/AbilityEntityBot.java`: minimal reusable bot interface.
 - `simulation/ecs/abilities/AbilityEntitySystem.java`: deterministic lifecycle, collision, effects, phase changes, chain reactions, and removal.

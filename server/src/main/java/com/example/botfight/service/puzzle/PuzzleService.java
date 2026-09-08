@@ -23,7 +23,7 @@ import com.example.botfight.service.cache.DatabaseLookupCache.PuzzleListKey;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.submission.BotSubmissionValidationService;
 import com.example.botfight.simulation.bots.BotLogicContracts;
-import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import com.example.botfight.simulation.gameconfig.CompactAbilityCode;
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import com.example.botfight.simulation.geometry.ArenaUnits;
@@ -1155,7 +1155,7 @@ public class PuzzleService {
             List<String> errors) {
         JsonNode ability = condition.get("ability");
         if (ability != null && (!ability.isIntegralNumber() || !ability.canConvertToInt()
-                || !AttachedAbilityContracts.actions().contains(ability.intValue()))) {
+                || !AbilityContracts.actions().contains(ability.intValue()))) {
             errors.add(path + ".ability is not supported");
         }
         if (variable != null && variable.requiresAbility() && ability == null) {
@@ -1217,7 +1217,7 @@ public class PuzzleService {
                 try {
                     int id = Integer.parseInt(value);
                     if (!ids.add(id)
-                            || !AttachedAbilityContracts.actions().contains(id)
+                            || !AbilityContracts.actions().contains(id)
                             || GameConfigCatalog.STANDARD_ABILITIES.contains(id)) return false;
                 } catch (NumberFormatException exception) {
                     return false;

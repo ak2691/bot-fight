@@ -1,30 +1,36 @@
 # Ability Effect Contract
 
 Each selectable ability has one mirrored browser/server timing definition and one
-phase contract family:
+normalized ability contract:
 
 ```text
 Abilities         identity, resource, cooldown, active, and duration metadata
-AttachedAbilityContracts
-                   direct abilities that stay hosted by the casting bot
-EntityContracts   abilities that create a persistent arena entity
+AbilityContracts  direct and spawned abilities in one normalized registry
 activation        optional activation-time targeting/capture metadata
 phases[]          ordered hitboxes, movement, visuals, events, and effects
 ```
 
-Browser attached contracts live in `frontend/src/gameArena/gameconfig/AttachedAbilityContracts.js`; entity-backed contracts live in `frontend/src/gameArena/ecs/contracts/EntityContracts.js`. Browser effect execution is generic in `frontend/src/gameArena/ecs/abilities/AbilityEffectSystem.js`. The server mirrors these through `simulation/gameconfig/AttachedAbilityContracts.java` and `simulation/ecs/contracts/EntityContracts.java`. `Abilities.js`/`Abilities.java` author ability identity, resource, and timing metadata; their legacy stats/definition views are derived compatibility projections. Phase behavior is authoritative in the phase contracts.
+The canonical browser and server registries are `frontend/src/gameArena/ecs/contracts/AbilityContracts.js` and `server/src/main/java/com/example/botfight/simulation/ecs/contracts/AbilityContracts.java`. Both direct bot abilities and spawned entities use the same normalized contract and phase shape; the category distinguishes whether a contract stays attached or enters the entity world. Browser effect execution is generic in `frontend/src/gameArena/ecs/abilities/AbilityEffectSystem.js`. `Abilities.js`/`Abilities.java` author ability identity, resource, and timing metadata; their legacy stats/definition views are derived compatibility projections. Phase behavior is authoritative in the unified contract.
 
 ## Phase ownership and geometry
 
 There is no separate delivery field. A phase's `type` describes its host or
 lifecycle, while `hitbox.shape` describes the actual geometry. A direct ability
 uses a `botAttached` phase; its transform stays on the owner. An entity ability
-has an `EntityContracts` root with spawn/lifetime metadata and phases such as
+has an `AbilityContracts` root with spawn/lifetime metadata and phases such as
 `projectile`, `zone`, `trap`, or `summon`. The phase event (`activation`,
 `collision`, `interval`, and so on) determines when its concrete effects run.
 Phase Strike therefore has a `botAttached` phase with a forward `rectangle`
 hitbox 100 units long and 60 units wide; its teleport is simply one ordered
 effect in that phase.
+
+An entity contract may also contain a list of small contract-owned abilities.
+For example, a summon can keep its circular body and health on its `summon`
+phase while a scheduled mini ability owns a separate ray hitbox, effects, and
+visual. Each mini ability also has its own spawn point and rotation relative to
+the entity that owns it (for example, the drone itself). The phase
+`execution.abilityId` selects that mini ability; its interval is the firing
+cadence, not a game ability cooldown.
 
 For arc melee bot hit checks, `includeTargetRadius` controls whether the defender's circular hitbox participates in filled-sector collision. When enabled, the defender radius expands the sector's radial edges and outer range, so an overlapping target or a target whose edge crosses the authored arc can be hit even when its center is outside the raw bearing. Phase Strike declares the same target-radius inclusion for its 100-by-60 forward rectangle, so contact with a bot's edge counts even when its center is just outside the raw rectangle. It has no facing arc. Its rectangle is captured at activation, so movement or a teleport later in the same tick cannot move the hitbox. If it intersects multiple opposing bots, each receives the normal effects, while the teleport is consumed once by the nearest valid hit in deterministic distance order. The `center_distance` teleport mode measures the activation bot center to the hit bot center at impact, then places the attacker on the opposite side at that same center distance. Its `phaseFacingMode` is a relative degree offset from the attacker's facing at impact: `0` keeps the facing, `90` turns clockwise, and `180` reverses it.
 
@@ -32,17 +38,17 @@ For radial blasts, persistent zones, and trap contact, the collision radius is e
 
 Distance falloff is a generic linear profile rather than a table of range bands. An effect may declare `falloff: { maxAmount, minAmount, falloffStart, falloffEnd }` for a distance-dependent amount, or `falloff: { maxDurationMs, minDurationMs, falloffStart, falloffEnd }` for a distance-dependent duration. The profile is clamped to the ability's effective maximum range (or a phase `range`/`radius` override), so a start or end beyond that range cannot extend the hitbox. Values stay at the maximum through the start distance, interpolate to the minimum at the effective end distance, then remain at the minimum until the hit range ends. Browser and server execution round the same calculated value.
 
-Entity existence is keyed by ability ID in `EntityContracts`; it is not an effect. The entity registry is the only source that decides whether an activation creates a projectile, trap, zone, or summon. Target labels and catalogue capabilities remain in `BotLoadout.js` as schema/UI metadata.
+Entity existence is keyed by ability ID in `AbilityContracts`; it is not an effect. The unified registry is the only source that decides whether an activation stays attached or creates a projectile, trap, zone, or summon. Target labels and catalogue capabilities remain in `BotLoadout.js` as schema/UI metadata.
 
-Entity-backed projectile and segment contracts declare their collider shape in
-`EntityContracts`. Entity phases reuse the shared `AbilityPhase` contract and
-own concrete effect payloads, including status subtype, amount, and duration;
-the runtime does not hydrate phase effects from an effect-type allowlist. The
-current projectile hitboxes are direction-aligned
-rectangles sized by the entity collider component; the browser preview and
-authoritative server use mirrored swept rectangle-versus-circle collision math
-against moving bots. Rectangle width and length are independent stats. Other entity behavior keeps its contracted circular
-collider unless it declares a different shape. Practice-mode hitbox overlays
+Entity-backed projectile and segment contracts declare their hitbox shape and
+dimensions on the active phase in `AbilityContracts`. Entity phases reuse the
+shared `AbilityPhase` contract and own concrete effect payloads, including
+status subtype, amount, and duration; the runtime does not hydrate phase
+effects from an effect-type allowlist. The browser preview and authoritative
+server use mirrored swept rectangle-versus-circle collision math against
+moving bots. Rectangle width and length are independent stats. Other entity
+behavior keeps its phase-owned circular hitbox unless it declares a different
+shape. Practice-mode hitbox overlays
 read this same metadata and never participate in gameplay decisions. The
 overlay also renders the captured melee-sector or rectangle, radial, and hitscan geometry
 for direct phases, summon shot rays, and derived visual explosions during
@@ -113,8 +119,8 @@ describes the behavior.
 
 | Behavior | Contract shape | Browser owner | Server owner |
 | --- | --- | --- | --- |
-| Ability definition and ordered effects | ability timing/resource metadata plus phase-owned activation, geometry, events, and effects | `gameconfig/AttachedAbilityContracts.js`, `ecs/contracts/EntityContracts.js`, and `Abilities.js` | `simulation/gameconfig/AttachedAbilityContracts.java`, `simulation/ecs/contracts/EntityContracts.java`, and `Abilities.java` |
-| Persistent, targetable, moving, or delayed world object | entity type, components, lifecycle, interaction | `ecs/contracts/EntityContracts.js`, `ecs/entities/EntityFactory.js`, `ecs/abilities/AbilityEntitySystem.js` | `simulation/ecs/contracts/EntityContracts.java`, `simulation/ecs/entities/AbilityEntityFactory.java`, `simulation/ecs/abilities/AbilityEntitySystem.java` |
+| Ability definition and ordered effects | ability timing/resource metadata plus phase-owned activation, geometry, events, and effects | `ecs/contracts/AbilityContracts.js` and `Abilities.js` | `simulation/ecs/contracts/AbilityContracts.java` and `Abilities.java` |
+| Persistent, targetable, moving, or delayed world object | entity type, components, lifecycle, interaction | `ecs/contracts/AbilityContracts.js`, `ecs/entities/EntityFactory.js`, `ecs/abilities/AbilityEntitySystem.js` | `simulation/ecs/contracts/AbilityContracts.java`, `simulation/ecs/entities/AbilityEntityFactory.java`, `simulation/ecs/abilities/AbilityEntitySystem.java` |
 | Effect applied to a bot over time | generic status record, clock, source, tick, expiry | `ecs/contracts/StatusContracts.js` and `ecs/bots/BotStatusSystem.js` | `StatusEffectState.java` and `BotStateService.java` |
 | Cooldown, charge, or active resource timing | resource map and recharge contract | `ecs/bots/BotResourceSystem.js` | `BotStateService.java` resource handling |
 | Match/transient cleanup and presentation timers | lifecycle component contract | `ecs/bots/BotLifecycleSystem.js` | bot-state tick lifecycle |
@@ -199,10 +205,12 @@ travel/display `range`. Numeric phase values are the authored form; stat-name
 references remain only at compatibility boundaries for older payloads/replays.
 
 Entity root metadata is intentionally small: `lifetime`, owner-relative `spawn`,
-`entityType`, `runtimeType`, category, collider/health ECS components, and the
-initial phase list. Root motion and root visual descriptors are not behavior
-contracts. The factory initializes motion from the first phase's numeric
-`movement.speed`, and renderers resolve visuals from the current phase. Spawn
+`entityType`, `runtimeType`, category, and the initial phase list. Root motion,
+root health, and root visual descriptors are not authored behavior contracts.
+An optional `health` record belongs to the phase that can receive damage; the
+runtime copies that phase data into its HP component. The factory initializes
+motion from the first phase's numeric `movement.speed`, and renderers resolve
+visuals from the current phase. Spawn
 offsets use the owner's facing basis: positive x is right, positive y is
 forward, negative y is behind, and `rotation: "owner"` follows the owner while
 `rotation: "zero"` is world-aligned. Target-position spawns use the authored
@@ -247,13 +255,75 @@ phases: [
 
 The phase event boundary is intentional. Geometry systems detect a collision
 and provide target IDs; the phase event dispatcher runs the phase's allowlisted
-actions. A collision handler may put a `targetPolicy` on its `applyEffects` event
+actions. Incoming damage can dispatch `hit` for nonlethal damage or `killed`
+when damage crosses the phase's HP from above zero to zero. A collision handler
+may put a `targetPolicy` on its `applyEffects` event
 to accept every contact, only the first contact per target, or one contact per
 target interval. Other actions such as `transition`, `emitVisual`, and `remove`
 are not target-ledger operations. The entity does not directly mutate arbitrary
 bot state. A `self` phase uses the owner's ID as its target, while `summon`
-phases keep their movement/attack logic on the summon but still dispatch attacks
-as phase events.
+phases keep their movement and health lifecycle on the summon. Any scheduled
+mini abilities own their delivery geometry and effects and still dispatch those
+effects as ordinary phase events.
+
+Collision events may also declare `targetKinds`, using the shared semantic
+values `BOT`, `HP_ENTITY`, or `ENTITY`. An omitted list preserves the legacy
+bot-only scope. Damage-producing entity collisions explicitly target
+`["BOT", "HP_ENTITY"]`: the source event controls whether the source applies
+effects or is removed, while the target's phase-local `health` determines
+whether it receives damage and can emit `hit` or `killed`. Two ordinary
+projectiles therefore do not collide just because their geometry overlaps.
+
+`applyEffects` may also select a subset of the phase effects. Set
+`effectTypes` on the event, for example:
+
+```js
+effects: [
+    effect("damage", { amount: 20 }),
+    statusEffect("slow", { durationMs: 1000 }),
+],
+events: {
+    collision: {
+        actions: ["applyEffects"],
+        effectTypes: ["damage"],
+    },
+}
+```
+
+Only the selected effect types run for that event; omitting `effectTypes`
+keeps the phase's complete effect list. A summon is treated as bot-like for
+an event whose target scope is bot-only, so bot-targeted status and
+displacement effects can affect a summon. Other HP-bearing entities remain
+damage-only unless the event explicitly includes `HP_ENTITY`.
+
+Status effects can be narrowed further with `statusTypes` while retaining the
+same `effectTypes: ["status"]` selection:
+
+```js
+effects: [
+    statusEffect("silence", { durationMs: 2000 }),
+    statusEffect("slow", { durationMs: 1000 }),
+],
+events: {
+    collision: {
+        actions: ["applyEffects"],
+        effectTypes: ["status"],
+        statusTypes: ["silence"],
+    },
+}
+```
+
+Only silence runs for that event. Omitting `statusTypes` applies every status
+effect selected by `effectTypes` (or every phase effect when `effectTypes` is
+also omitted).
+
+Summon status state is persistent entity payload state. Timed `silence`,
+`stun`/`interrupt`, and `slow` block or modify its movement/execution loop;
+`knockback` and `pull` move it immediately; interval statuses such as `shock`,
+`burn`, or `bleed` apply damage on their interval and can add a short movement
+lock. A `whileInside` zone status is represented as a presence status and is
+refreshed while the summon remains in the zone. Silence and interruption reset
+the summon mini-ability's execution timer, so it resumes on a fresh cadence.
 
 Transitions preserve the entity ID and reset phase-local state such as the
 target hit ledger, timer, and visual descriptor. Thus two copies of one
@@ -263,14 +333,12 @@ their own schedules.
 Grenades use the same pattern with three explicit phases: `travel` carries a
 rectangle hitbox, `armed` keeps the stopped grenade hitbox, and `active` uses
 the circular `radius` hitbox for the explosion. The runtime entity's flat
-`size` field remains the gameplay collider's base size for simulation and
-replay compatibility. Sprite-backed entities may also define a
-presentation-only `visualSize`; it never participates in collision. Rectangle
-collision width and length come from the active phase's `hitbox.width` and
-`hitbox.length`. The root collider is the entity body's ECS/replay size and may
-intentionally differ from a phase attack hitbox. Contracts should describe
-circular geometry with its phase-owned radius; any root collider scaling is
-separate ECS metadata.
+`size` field remains the physical/display footprint used by simulation and
+replay compatibility; it is derived at spawn from the first phase, while
+collision always reads the current phase's `hitbox`. Sprite-backed entities may
+also define a presentation-only `visualSize`; it never participates in
+collision. Rectangle collision width and length come from the active phase's
+`hitbox.width` and `hitbox.length`.
 
 Sprite-backed phase contracts may also declare a presentation-only `visual`
 descriptor such as `{ type, state, visualSize, visibleMs }`. The renderer
@@ -293,8 +361,8 @@ removes the runtime object by default, so a one-phase entity such as Tether
 Bolt does not need a redundant `lifetimeEnd: remove` event.
 
 For one action that repeats at a fixed cadence, keep one phase and attach a
-`repeat` scheduler to it. Orbital Strike, for example, can use
-`repeat: { event: "interval", intervalMs: "intervalMs", startImmediately: true }` and put its
+`execution` scheduler to it. Orbital Strike, for example, can use
+`execution: { event: "interval", intervalMs: "intervalMs", startImmediately: true }` and put its
 `applyEffects`/`emitVisual` actions in `events.interval`. The scheduler runs
 until that phase's duration or the entity lifetime ends; it does not require a
 new phase object for every pulse. `startImmediately: false` waits for one full
@@ -302,6 +370,13 @@ interval before the first event. A collision handler that needs a per-target
 cooldown declares `targetPolicy: { mode: "interval", intervalMs: ... }`; the
 entity's target-ID ledger stores the last accepted effect application
 independently for each target.
+
+`execution.event` and `execution.abilityId` are the two scheduler modes. `event`
+re-dispatches an event already owned by the current phase; `abilityId` selects
+one of the entity contract's embedded mini abilities and runs that ability's
+phase at the cadence. They are conceptually exclusive: an event is a response
+inside the current entity, while an embedded ability is a separate reusable
+behavior contract owned by that entity.
 
 Classify the behavior before implementing it:
 

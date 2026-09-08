@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import com.example.botfight.simulation.ecs.contracts.EntityContracts;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 
 /** Authoritative timing/resource definitions plus a derived compatibility view. */
 public final class Abilities {
@@ -86,49 +86,52 @@ public final class Abilities {
     }
 
     private static PhaseProjection phaseProjection(int id, TimingDefinition timing) {
-        AttachedAbilityContracts.AttachedAbilityContract direct = AttachedAbilityContracts.all().get(id);
-        EntityContracts.EntityContract entity = EntityContracts.forAbility(id);
-        List<AttachedAbilityContracts.AbilityPhase> phases = entity != null && !entity.phases().isEmpty()
+        AbilityContracts.AbilityContract direct = AbilityContracts.attachedAll().get(id);
+        AbilityContracts.AbilityContract entity = AbilityContracts.entityContractForAbility(id);
+        List<AbilityContracts.AbilityPhase> phases = entity != null && !entity.phases().isEmpty()
                 ? entity.phases()
                 : direct == null ? List.of() : direct.phases();
-        List<AttachedAbilityContracts.Effect> effects = phases.stream()
+        List<AbilityContracts.AbilityPhase> embeddedPhases = entity == null ? List.of()
+                : entity.abilities().stream()
+                        .flatMap(ability -> ability.phases().stream())
+                        .toList();
+        List<AbilityContracts.AbilityPhase> behaviorPhases = Stream.concat(
+                phases.stream(), embeddedPhases.stream()).toList();
+        List<AbilityContracts.Effect> effects = behaviorPhases.stream()
                 .flatMap(phase -> phase.effects().stream())
                 .distinct()
                 .toList();
-        AttachedAbilityContracts.AbilityPhase behaviorPhase = phases.stream()
+        AbilityContracts.AbilityPhase behaviorPhase = behaviorPhases.stream()
                 .filter(phase -> phase.effects().stream()
-                        .anyMatch(effect -> effect.type() == AttachedAbilityContracts.EffectType.DAMAGE))
+                        .anyMatch(effect -> effect.type() == AbilityContracts.EffectType.DAMAGE))
                 .findFirst()
-                .orElseGet(() -> phases.stream()
+                .orElseGet(() -> behaviorPhases.stream()
                         .filter(phase -> !phase.effects().isEmpty())
                         .findFirst()
-                        .orElse(phases.isEmpty() ? null : phases.getFirst()));
-        AttachedAbilityContracts.AbilityPhase movementPhase = phases.stream()
+                        .orElse(behaviorPhases.isEmpty() ? null : behaviorPhases.getFirst()));
+        AbilityContracts.AbilityPhase movementPhase = phases.stream()
                 .filter(phase -> phase.movement() != null && phase.movement().speed() > 0)
                 .findFirst()
                 .orElseGet(() -> phases.stream()
                         .filter(phase -> phase.movement() != null)
                         .findFirst()
                         .orElse(null));
-        AttachedAbilityContracts.AbilityPhase visualPhase = phases.stream()
+        AbilityContracts.AbilityPhase visualPhase = phases.stream()
                 .filter(phase -> phase.visual() != null)
                 .findFirst()
                 .orElse(null);
-        AttachedAbilityContracts.Hitbox hitbox = behaviorPhase == null ? null : behaviorPhase.hitbox();
+        AbilityContracts.Hitbox hitbox = behaviorPhase == null ? null : behaviorPhase.hitbox();
         if (hitbox == null) {
-            hitbox = phases.stream().map(AttachedAbilityContracts.AbilityPhase::hitbox)
+            hitbox = phases.stream().map(AbilityContracts.AbilityPhase::hitbox)
                     .filter(value -> value != null).findFirst().orElse(null);
         }
-        AttachedAbilityContracts.Attack attack = phases.stream().map(AttachedAbilityContracts.AbilityPhase::attack)
-                .filter(value -> value != null).findFirst().orElse(null);
-        AttachedAbilityContracts.PhaseMovement movement = movementPhase == null ? null : movementPhase.movement();
+        AbilityContracts.PhaseMovement movement = movementPhase == null ? null : movementPhase.movement();
         boolean movingProjectile = entity != null
-                && entity.category() == EntityContracts.Category.PROJECTILE;
+                && entity.category() == AbilityContracts.Category.PROJECTILE;
         Double movingRange = movingProjectile && timing.durationMs() > 0
                 && movement != null && movement.speed() > 0
                 ? movement.speed() * timing.durationMs() / 100.0 : null;
-        double range = attack != null && attack.range() != null ? attack.range()
-                : movingRange != null ? movingRange : hitboxValue(hitbox, "range");
+        double range = movingRange != null ? movingRange : hitboxValue(hitbox, "range");
         double arc = hitbox == null || hitbox.arc() == null ? 0 : hitbox.arc();
         Map<String, Double> stats = new LinkedHashMap<>();
         if (range > 0) stats.put("range", range);
@@ -144,70 +147,77 @@ public final class Abilities {
             stats.put("visualSize", visualPhase.visual().visualSize());
         }
         Integer visibleMs = phases.stream()
-                .map(AttachedAbilityContracts.AbilityPhase::visual)
+                .map(AbilityContracts.AbilityPhase::visual)
                 .filter(value -> value != null && value.visibleMs() != null)
-                .map(AttachedAbilityContracts.Visual::visibleMs)
+                .map(AbilityContracts.Visual::visibleMs)
                 .findFirst().orElse(null);
         Integer eventVisibleMs = phases.stream()
                 .flatMap(phase -> phase.events().values().stream())
-                .map(AttachedAbilityContracts.PhaseEvent::visibleMs)
+                .map(AbilityContracts.PhaseEvent::visibleMs)
                 .filter(value -> value != null)
                 .findFirst().orElse(null);
         if (visibleMs == null) visibleMs = eventVisibleMs;
         if (visibleMs != null) stats.put("visibleMs", visibleMs.doubleValue());
-        AttachedAbilityContracts.AbilityPhase repeatedPhase = phases.stream()
-                .filter(phase -> phase.repeat() != null).findFirst().orElse(null);
-        if (repeatedPhase != null && repeatedPhase.repeat().intervalMs() != null) {
-            stats.put("intervalMs", repeatedPhase.repeat().intervalMs().doubleValue());
+        AbilityContracts.AbilityPhase repeatedPhase = phases.stream()
+                .filter(phase -> phase.execution() != null).findFirst().orElse(null);
+        if (repeatedPhase != null && repeatedPhase.execution().intervalMs() != null) {
+            stats.put("intervalMs", repeatedPhase.execution().intervalMs().doubleValue());
         }
-        if (attack != null) {
-            if (attack.range() != null) stats.put("range", attack.range());
-            if (attack.cooldownMs() != null) stats.put("shotCooldownMs", attack.cooldownMs().doubleValue());
-            if (attack.visualMs() != null) stats.put("shotVisualMs", attack.visualMs().doubleValue());
+        AbilityContracts.Visual embeddedVisual = embeddedPhases.stream()
+                .map(AbilityContracts.AbilityPhase::visual)
+                .filter(value -> value != null && value.visibleMs() != null)
+                .findFirst().orElse(null);
+        if (embeddedVisual != null) {
+            stats.put("shotVisualMs", embeddedVisual.visibleMs().doubleValue());
         }
-        if (entity != null) {
-            if (entity.collider() != null) stats.put("size", entity.collider().size());
-            if (entity.health() != null) stats.put("hp", entity.health().hp());
+        if (entity != null && !entity.phases().isEmpty()) {
+            AbilityContracts.AbilityPhase firstPhase = entity.phases().getFirst();
+            stats.put("size", phaseSize(firstPhase));
+            AbilityContracts.Health health = entity.phases().stream()
+                    .map(AbilityContracts.AbilityPhase::health)
+                    .filter(java.util.Objects::nonNull)
+                    .findFirst().orElse(null);
+            if (health != null) stats.put("hp", health.hp());
         }
-        AttachedAbilityContracts.Effect damage = effects.stream()
-                .filter(effect -> effect.type() == AttachedAbilityContracts.EffectType.DAMAGE)
+        AbilityContracts.Effect damage = effects.stream()
+                .filter(effect -> effect.type() == AbilityContracts.EffectType.DAMAGE)
                 .findFirst().orElse(null);
-        AttachedAbilityContracts.Effect healing = effects.stream()
-                .filter(effect -> effect.type() == AttachedAbilityContracts.EffectType.HEALING)
+        AbilityContracts.Effect healing = effects.stream()
+                .filter(effect -> effect.type() == AbilityContracts.EffectType.HEALING)
                 .findFirst().orElse(null);
-        AttachedAbilityContracts.Effect knockback = effects.stream()
-                .filter(effect -> effect.type() == AttachedAbilityContracts.EffectType.KNOCKBACK)
+        AbilityContracts.Effect knockback = effects.stream()
+                .filter(effect -> effect.type() == AbilityContracts.EffectType.KNOCKBACK)
                 .findFirst().orElse(null);
-        AttachedAbilityContracts.Effect pull = effects.stream()
-                .filter(effect -> effect.type() == AttachedAbilityContracts.EffectType.PULL)
+        AbilityContracts.Effect pull = effects.stream()
+                .filter(effect -> effect.type() == AbilityContracts.EffectType.PULL)
                 .findFirst().orElse(null);
-        AttachedAbilityContracts.Effect interrupt = effects.stream()
-                .filter(effect -> effect.type() == AttachedAbilityContracts.EffectType.INTERRUPT)
+        AbilityContracts.Effect interrupt = effects.stream()
+                .filter(effect -> effect.type() == AbilityContracts.EffectType.INTERRUPT)
                 .findFirst().orElse(null);
-        AttachedAbilityContracts.Effect restore = effects.stream()
-                .filter(effect -> effect.type() == AttachedAbilityContracts.EffectType.RESTORE_STATE)
+        AbilityContracts.Effect restore = effects.stream()
+                .filter(effect -> effect.type() == AbilityContracts.EffectType.RESTORE_STATE)
                 .findFirst().orElse(null);
         if (healing != null && !healing.mirrorsDamage()) stats.put("healing", healing.amount());
         if (knockback != null) stats.put("knockback", knockback.amount());
         if (pull != null) stats.put("pullPerTick", pull.amount());
         if (interrupt != null) stats.put("interruptMs", (double) interrupt.durationMs());
         if (restore != null) stats.put("delayMs", (double) restore.durationMs());
-        AttachedAbilityContracts.Effect overclock = effects.stream()
-                .filter(effect -> effect.type() == AttachedAbilityContracts.EffectType.BUFF
+        AbilityContracts.Effect overclock = effects.stream()
+                .filter(effect -> effect.type() == AbilityContracts.EffectType.BUFF
                         && "overclock".equals(effect.subtype()))
                 .findFirst().orElse(null);
         if (overclock != null) {
             stats.put("cooldownRecoveryPercent", overclock.amount() * 100);
             stats.put("cooldownRecoveryMultiplier", 1 - overclock.amount());
         }
-        AttachedAbilityContracts.Effect statusWithMovementLock = effects.stream()
+        AbilityContracts.Effect statusWithMovementLock = effects.stream()
                 .filter(effect -> effect.movementLockMs() != null)
                 .findFirst().orElse(null);
         if (statusWithMovementLock != null) {
             stats.put("movementLockMs", statusWithMovementLock.movementLockMs().doubleValue());
         }
         DamageOverTime damageOverTime = effects.stream()
-                .filter(effect -> effect.type() == AttachedAbilityContracts.EffectType.STATUS
+                .filter(effect -> effect.type() == AbilityContracts.EffectType.STATUS
                         && "burn".equals(effect.subtype()))
                 .findFirst()
                 .map(effect -> new DamageOverTime((int) Math.round(effect.amount())))
@@ -217,7 +227,25 @@ public final class Abilities {
                 damage == null ? null : damage.falloff(), damageOverTime, stats);
     }
 
-    private static double hitboxValue(AttachedAbilityContracts.Hitbox hitbox, String field) {
+    private static double phaseSize(AbilityContracts.AbilityPhase phase) {
+        if (phase == null) return 0;
+        if (phase.visual() != null && phase.visual().visualSize() > 0) {
+            return phase.visual().visualSize();
+        }
+        AbilityContracts.Hitbox hitbox = phase.hitbox();
+        if (hitbox == null) return 0;
+        if ("circle".equals(hitbox.shape()) && hitbox.radius() != null) return hitbox.radius() * 2;
+        if ("rectangle".equals(hitbox.shape())) {
+            double width = hitbox.width() == null ? 0 : hitbox.width();
+            double length = hitbox.length() == null ? 0 : hitbox.length();
+            return Math.max(width, length);
+        }
+        if ("ray".equals(hitbox.shape()) && hitbox.width() != null) return hitbox.width();
+        if ("arc".equals(hitbox.shape()) && hitbox.range() != null) return hitbox.range() * 2;
+        return 0;
+    }
+
+    private static double hitboxValue(AbilityContracts.Hitbox hitbox, String field) {
         if (hitbox == null) return 0;
         return switch (field) {
             case "range" -> hitbox.range() != null ? hitbox.range()
@@ -248,9 +276,9 @@ public final class Abilities {
     }
 
     public static Map<String, StatusDefinition> statuses(int id) {
-        AttachedAbilityContracts.AttachedAbilityContract direct = AttachedAbilityContracts.all().get(id);
-        EntityContracts.EntityContract entity = EntityContracts.forAbility(id);
-        Stream<AttachedAbilityContracts.AbilityPhase> phases = direct == null
+        AbilityContracts.AbilityContract direct = AbilityContracts.attachedAll().get(id);
+        AbilityContracts.AbilityContract entity = AbilityContracts.entityContractForAbility(id);
+        Stream<AbilityContracts.AbilityPhase> phases = direct == null
                 ? Stream.empty() : direct.phases().stream();
         if (entity != null) phases = Stream.concat(phases, entity.phases().stream());
         return phases
@@ -289,13 +317,13 @@ public final class Abilities {
 
     private static double amountAtDistance(int id, double distance, Double rangeOverride) {
         AbilityDefinition ability = definition(id);
-        AttachedAbilityContracts.Falloff profile = ability.falloff();
+        AbilityContracts.Falloff profile = ability.falloff();
         if (profile == null || !profile.hasAmountProfile()) return ability.damage();
         return amountAtDistance(id, distance, profile, rangeOverride);
     }
 
     public static double amountAtDistance(int id, double distance,
-                                          AttachedAbilityContracts.Falloff profile,
+                                          AbilityContracts.Falloff profile,
                                           Double rangeOverride) {
         if (profile == null || !profile.hasAmountProfile()) {
             return amountAtDistance(id, distance, rangeOverride);
@@ -312,7 +340,7 @@ public final class Abilities {
 
     /** Resolves a caller-supplied generic duration profile in milliseconds. */
     public static int durationAtDistance(int id, double distance, int defaultDurationMs,
-                                         AttachedAbilityContracts.Falloff profile,
+                                         AbilityContracts.Falloff profile,
                                          Double rangeOverride) {
         if (profile == null || !profile.hasDurationProfile()) {
             return Math.max(0, defaultDurationMs);
@@ -361,7 +389,7 @@ public final class Abilities {
             int reuseCooldownMs,
             ResourceModel resourceModel,
             FalloffMode falloffMode,
-            AttachedAbilityContracts.Falloff falloff,
+            AbilityContracts.Falloff falloff,
             DamageOverTime damageOverTime,
             Map<String, Double> stats) {}
 
@@ -370,7 +398,7 @@ public final class Abilities {
                                     int reuseCooldownMs, ResourceModel resourceModel) {}
 
     private record PhaseProjection(double damage, double range, double arc,
-                                   AttachedAbilityContracts.Falloff falloff,
+                                   AbilityContracts.Falloff falloff,
                                    DamageOverTime damageOverTime,
                                    Map<String, Double> stats) {}
 

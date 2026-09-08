@@ -1,7 +1,7 @@
-import { attachedAbilityContract } from "./AttachedAbilityContracts.js";
+import { attachedAbilityContract } from "../ecs/contracts/AbilityContracts.js";
 import { movingCircleCollision, movingRectangleCollision } from "./geometry.js";
-import { compassDegreesToRadians } from "../botlogic/planner/arenaAngles.js";
-import { entityContract, phaseForEntity } from "../ecs/contracts/EntityContracts.js";
+import { compassDegreesToRadians, compassDirection } from "../botlogic/planner/arenaAngles.js";
+import { entityAbilityPhaseForEntity, entityAbilitySpawnForEntity, entityContract, phaseForEntity } from "../ecs/contracts/AbilityContracts.js";
 import { COMBAT_VISUAL_ABILITY_IDS, combatVisualDurationMs, combatVisualRemainingMs } from "./visualState.js";
 
 export const COLLIDER_SHAPES = Object.freeze({
@@ -9,11 +9,22 @@ export const COLLIDER_SHAPES = Object.freeze({
     RECTANGLE: "rectangle",
 });
 
+/** Resolves an entity-owned ability's local spawn point and firing rotation. */
+export function entityAbilitySpawnTransform(entity, spawn = null, ownerRotation = null) {
+    const rotation = Number(ownerRotation ?? entity?.rotation ?? 0);
+    const offset = spawn?.offset ?? {};
+    const forward = compassDirection(rotation);
+    const right = compassDirection(rotation + 90);
+    return {
+        x: Number(entity?.x ?? 0) + right.x * Number(offset.x ?? 0) + forward.x * Number(offset.y ?? 0),
+        y: Number(entity?.y ?? 0) + right.y * Number(offset.x ?? 0) + forward.y * Number(offset.y ?? 0),
+        rotation: spawn?.rotation === "zero" ? 0 : rotation,
+    };
+}
+
 /** Resolves the declarative collider metadata for an arena entity. */
 export function colliderShapeForEntity(entity) {
-    const contract = contractForEntity(entity);
     return phaseForEntity(entity)?.hitbox?.shape
-        ?? contract?.collider?.shape
         ?? COLLIDER_SHAPES.CIRCLE;
 }
 
@@ -114,8 +125,8 @@ export function hitboxGeometriesForEntity(entity) {
     const geometries = [];
     const collider = hitboxGeometryForEntity(entity);
     if (collider) geometries.push(collider);
-    const attack = summonAttackHitboxGeometry(entity);
-    if (attack) geometries.push(attack);
+    const scheduledAbility = summonAbilityHitboxGeometry(entity);
+    if (scheduledAbility) geometries.push(scheduledAbility);
     return geometries;
 }
 
@@ -135,8 +146,6 @@ export function movingEntityCollision(
     secondEnd,
     padding = 0,
 ) {
-    const firstSize = entitySize(first);
-    const secondSize = entitySize(second);
     const firstWidth = entityHitboxWidth(first);
     const secondWidth = entityHitboxWidth(second);
     const firstLength = entityLength(first);
@@ -153,7 +162,7 @@ export function movingEntityCollision(
             entityMotionAngle(first, firstStart, firstEnd),
             secondStart,
             secondEnd,
-            secondSize / 2,
+            entityCircleRadius(second),
         );
     }
     if (secondShape === COLLIDER_SHAPES.RECTANGLE) {
@@ -166,16 +175,16 @@ export function movingEntityCollision(
             entityMotionAngle(second, secondStart, secondEnd),
             firstStart,
             firstEnd,
-            firstSize / 2 + extra / 2,
+            entityCircleRadius(first) + extra / 2,
         );
     }
     return movingCircleCollision(
         firstStart,
         firstEnd,
-        firstSize / 2 + Math.max(0, Number(padding) || 0),
+        entityCircleRadius(first) + Math.max(0, Number(padding) || 0),
         secondStart,
         secondEnd,
-        secondSize / 2,
+        entityCircleRadius(second),
     );
 }
 
@@ -200,7 +209,7 @@ export function overlapsEntity(first, second, padding = 0) {
  */
 export function hitboxGeometryForEntity(entity) {
     const contract = contractForEntity(entity);
-    if (!contract?.collider) return null;
+    if (!contract) return null;
     const phase = phaseForEntity(entity);
     if (phase?.type === "self" || phase?.type === "summon" && !phase.hitbox) return null;
     if (contract.category === "trap" && phase?.id === "travel" && !entity.armed) return null;
@@ -243,23 +252,27 @@ export function entityMotionAngle(entity, start = null, end = null) {
     return compassDegreesToRadians(entity?.rotation ?? 0);
 }
 
-function summonAttackHitboxGeometry(entity) {
+function summonAbilityHitboxGeometry(entity) {
     const contract = contractForEntity(entity);
-    const phase = phaseForEntity(entity);
-    const attack = phase?.attack;
-    const remainingMs = Number(entity?.[attack?.visualField] ?? 0);
-    if (!attack || remainingMs <= 0) return null;
-    const rangeValue = attack.range ?? attack.rangeStat ?? "range";
+    const phase = entityAbilityPhaseForEntity(entity);
+    const transform = entityAbilitySpawnTransform(entity, entityAbilitySpawnForEntity(entity));
+    const remainingMs = Number(entity?.shotVisualMs ?? 0);
+    if (!phase || remainingMs <= 0) return null;
+    const rangeValue = phase.hitbox?.range ?? phase.hitbox?.length;
     const length = resolveStatValue(rangeValue, {}, phase);
     if (length <= 0) return null;
-    const durationMs = Math.max(1, Number(attack.visual ?? 300), remainingMs);
+    const durationMs = Math.max(
+        1,
+        Number(phase.visual?.visibleMs ?? phase.durationMs ?? 300),
+        remainingMs,
+    );
     return {
         shape: "ray",
-        x: Number(entity?.x ?? 0),
-        y: Number(entity?.y ?? 0),
+        x: transform.x,
+        y: transform.y,
         length,
-        width: Math.max(4, Math.min(12, Number(entity?.size ?? 28) * 0.2)),
-        rotation: compassDegreesToRadians(entity?.rotation ?? 0),
+        width: Math.max(1, Number(phase.hitbox?.width ?? 5)),
+        rotation: compassDegreesToRadians(transform.rotation),
         opacity: Math.min(1, remainingMs / durationMs),
         remainingMs,
         durationMs,
@@ -325,6 +338,19 @@ function entityMovementSegment(entity) {
 
 function entitySize(entity) {
     return Math.max(0, Number(entity?.size ?? 0));
+}
+
+function entityCircleRadius(entity) {
+    const phase = phaseForEntity(entity);
+    const hitbox = phase?.hitbox;
+    if (hitbox?.shape === COLLIDER_SHAPES.CIRCLE) {
+        const radius = resolveStatValue(hitbox.radius, {}, phase);
+        const multiplier = Number(hitbox.radiusMultiplier ?? 1);
+        if (Number.isFinite(radius) && radius >= 0 && Number.isFinite(multiplier)) {
+            return radius * multiplier;
+        }
+    }
+    return entitySize(entity) / 2;
 }
 
 function entityLength(entity) {

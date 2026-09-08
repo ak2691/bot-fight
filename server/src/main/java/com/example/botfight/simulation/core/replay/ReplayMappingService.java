@@ -1,14 +1,11 @@
 package com.example.botfight.simulation.core.replay;
 
-import static com.example.botfight.simulation.geometry.AngleCalculator.vectorBearing;
-
 import com.example.botfight.DTO.match.MatchPlaybackDTO;
 import com.example.botfight.DTO.match.MatchReplayDTO;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
 import com.example.botfight.simulation.core.state.StatusEffectState;
-import com.example.botfight.simulation.ecs.contracts.EntityContracts;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import com.example.botfight.simulation.ecs.entities.ArenaEntity;
-import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -36,12 +33,10 @@ public class ReplayMappingService {
     }
 
     public MatchPlaybackDTO.ArenaEntityDTO toArenaEntity(ArenaEntity entity) {
-        double rotation = Math.hypot(entity.velocityX(), entity.velocityY()) > 0.001
-                ? vectorBearing(entity.velocityX(), entity.velocityY()) : 0;
         ReplayEntityVisual visual = replayEntityVisual(entity);
         return new MatchPlaybackDTO.ArenaEntityDTO(
                 entity.id(), entity.type(), entity.abilityId(),
-                round(entity.x()), round(entity.y()), entity.size(), rotation, entity.hp(), entity.armed(),
+                round(entity.x()), round(entity.y()), entity.size(), entity.rotation(), entity.hp(), entity.armed(),
                 entity.timerMs(), entity.velocityX(), entity.velocityY(), entity.shotVisualMs(),
                 visual.phaseId(), visual.visibleMs(), visual.eventType(),
                 visual.eventMs(), visual.eventSize());
@@ -110,8 +105,6 @@ public class ReplayMappingService {
     private MatchReplayDTO.ReplayEntityDTO toReplayEntity(ArenaEntity entity) {
         String type = entity.type();
         boolean drone = "hunterDrone".equals(type) || "repellerDrone".equals(type);
-        double rotation = Math.hypot(entity.velocityX(), entity.velocityY()) > 0.001
-                ? vectorBearing(entity.velocityX(), entity.velocityY()) : 0;
         ReplayEntityVisual visual = replayEntityVisual(entity);
         return new MatchReplayDTO.ReplayEntityDTO(
                 entity.id(),
@@ -120,7 +113,7 @@ public class ReplayMappingService {
                 round(entity.x()),
                 round(entity.y()),
                 entity.size(),
-                nonZeroOrNull(rotation),
+                nonZeroOrNull(entity.rotation()),
                 replayEntityHp(entity.hp(), drone),
                 entity.armed(),
                 positiveOrNull(entity.timerMs()),
@@ -140,7 +133,7 @@ public class ReplayMappingService {
      * prevents a prior phase/event descriptor from leaking into later frames.
      */
     private static ReplayEntityVisual replayEntityVisual(ArenaEntity entity) {
-        AttachedAbilityContracts.AbilityPhase phase = EntityContracts.phaseFor(entity);
+        AbilityContracts.AbilityPhase phase = AbilityContracts.phaseFor(entity);
         int eventMs = Math.max(0, entity.visualEventMs());
         return new ReplayEntityVisual(
                 phase == null ? entity.phaseId() : phase.id(),

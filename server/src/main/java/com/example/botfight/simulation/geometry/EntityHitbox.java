@@ -1,21 +1,16 @@
 package com.example.botfight.simulation.geometry;
 
-import com.example.botfight.simulation.ecs.contracts.EntityContracts;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import com.example.botfight.simulation.ecs.entities.ArenaEntity;
-import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts;
 
 /** Shared entity-shape dispatch for authoritative collision callers. */
 public final class EntityHitbox {
     private EntityHitbox() {}
 
     public static boolean isRectangle(ArenaEntity entity) {
-        EntityContracts.EntityContract contract = EntityContracts.forEntity(entity);
-        AttachedAbilityContracts.AbilityPhase phase = EntityContracts.phaseFor(entity);
-        if (phase != null && phase.hitbox() != null) {
-            return "rectangle".equals(phase.hitbox().shape());
-        }
-        return contract != null && contract.collider() != null
-                && contract.collider().shape() == EntityContracts.ColliderShape.RECTANGLE;
+        AbilityContracts.AbilityPhase phase = AbilityContracts.phaseFor(entity);
+        return phase != null && phase.hitbox() != null
+                && "rectangle".equals(phase.hitbox().shape());
     }
 
     public static DistanceCalculator.MovingCircleCollision movingCollision(
@@ -90,8 +85,8 @@ public final class EntityHitbox {
     }
 
     private static double rectangleLength(ArenaEntity entity) {
-        AttachedAbilityContracts.AbilityPhase phase = EntityContracts.phaseFor(entity);
-        AttachedAbilityContracts.Hitbox hitbox = phase == null ? null : phase.hitbox();
+        AbilityContracts.AbilityPhase phase = AbilityContracts.phaseFor(entity);
+        AbilityContracts.Hitbox hitbox = phase == null ? null : phase.hitbox();
         if (hitbox != null && hitbox.length() != null) {
             return hitbox.length();
         }
@@ -99,8 +94,8 @@ public final class EntityHitbox {
     }
 
     private static double rectangleWidth(ArenaEntity entity) {
-        AttachedAbilityContracts.AbilityPhase phase = EntityContracts.phaseFor(entity);
-        AttachedAbilityContracts.Hitbox hitbox = phase == null ? null : phase.hitbox();
+        AbilityContracts.AbilityPhase phase = AbilityContracts.phaseFor(entity);
+        AbilityContracts.Hitbox hitbox = phase == null ? null : phase.hitbox();
         if (hitbox != null && hitbox.width() != null) {
             return hitbox.width();
         }
@@ -108,9 +103,9 @@ public final class EntityHitbox {
     }
 
     private static double circleRadius(ArenaEntity entity) {
-        EntityContracts.EntityContract contract = EntityContracts.forEntity(entity);
-        AttachedAbilityContracts.AbilityPhase phase = EntityContracts.phaseFor(entity);
-        AttachedAbilityContracts.Hitbox hitbox = phase == null ? null : phase.hitbox();
+        AbilityContracts.AbilityContract contract = AbilityContracts.forEntity(entity);
+        AbilityContracts.AbilityPhase phase = AbilityContracts.phaseFor(entity);
+        AbilityContracts.Hitbox hitbox = phase == null ? null : phase.hitbox();
         if (contract != null && hitbox != null
                 && "circle".equals(hitbox.shape())
                 && hitbox.radius() != null) {

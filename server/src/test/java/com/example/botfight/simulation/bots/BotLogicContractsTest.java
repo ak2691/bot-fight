@@ -2,18 +2,18 @@ package com.example.botfight.simulation.bots;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.example.botfight.simulation.ecs.contracts.EntityContracts;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class BotLogicContractsTest {
     @Test
-    void targetsAreDerivedFromEntityContracts() {
+    void targetsAreDerivedFromAbilityContracts() {
         assertThat(BotLogicContracts.selectableContract("opponent_grenade").runtimeType()).isEqualTo("grenade");
         assertThat(BotLogicContracts.selectableContract("my_null_zone").runtimeType()).isEqualTo("nullZone");
         assertThat(BotLogicContracts.selectableContract("opponent_orbital_zone").owner())
-                .isEqualTo(EntityContracts.SelectableOwner.OWNER);
+                .isEqualTo(AbilityContracts.SelectableOwner.OWNER);
         assertThat(BotLogicContracts.selectableContract("opponent_singularity_zone").runtimeType())
                 .isEqualTo("singularityZone");
         assertThat(BotLogicContracts.selectableContract("opponent_1_fireball").runtimeType())
@@ -27,12 +27,12 @@ class BotLogicContractsTest {
         assertThat(BotLogicContracts.selectableIds()).contains("opponent_1_fireball", "opponent_2_fireball", "teammate_1_fireball")
                 .doesNotContain("opponent_fireball", "my_fireball");
         assertThat(BotLogicContracts.selectableContract("singularity_zone")).isNull();
-        assertThat(EntityContracts.all().values())
-                .allMatch(entity -> entity.selectableOwner() == EntityContracts.SelectableOwner.OWNER);
+        assertThat(AbilityContracts.entityAll().values())
+                .allMatch(entity -> entity.selectableOwner() == AbilityContracts.SelectableOwner.OWNER);
     }
 
     @Test
-    void actionCapabilitiesAreDerivedFromAbilityAndEntityContracts() {
+    void actionCapabilitiesAreDerivedFromAbilityAndAbilityContracts() {
         assertThat(BotLogicContracts.actionContract(22).locationTarget()).isTrue();
         assertThat(BotLogicContracts.actionContract(24).coordinateTarget()).isTrue();
         assertThat(BotLogicContracts.actionContract(25).orientationConfig()).isTrue();

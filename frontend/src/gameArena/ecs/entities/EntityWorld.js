@@ -22,10 +22,6 @@ export function withComponentState(entity, changes) {
                 y: next.y,
                 rotation: next.rotation ?? 0,
             },
-            collider: {
-                ...next.components?.collider,
-                size: next.size ?? 0,
-            },
             motion: {
                 ...next.components?.motion,
                 x: next.velocityX ?? 0,

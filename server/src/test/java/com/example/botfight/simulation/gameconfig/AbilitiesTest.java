@@ -2,6 +2,7 @@ package com.example.botfight.simulation.gameconfig;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import org.junit.jupiter.api.Test;
 
 class AbilitiesTest {
@@ -29,14 +30,14 @@ class AbilitiesTest {
 
     @Test
     void genericAmountAndDurationProfilesClampToTheActiveAbilityRange() {
-        AttachedAbilityContracts.Falloff amountProfile = new AttachedAbilityContracts.Falloff(
+        AbilityContracts.Falloff amountProfile = new AbilityContracts.Falloff(
                 20.0, 100.0, null, null, 0.0, 160.0);
         assertThat(Abilities.amountAtDistance(10, 0, amountProfile, 80.0)).isEqualTo(100);
         assertThat(Abilities.amountAtDistance(10, 40, amountProfile, 80.0)).isEqualTo(60);
         assertThat(Abilities.amountAtDistance(10, 80, amountProfile, 80.0)).isEqualTo(20);
         assertThat(Abilities.amountAtDistance(10, 81, amountProfile, 80.0)).isZero();
 
-        AttachedAbilityContracts.Falloff durationProfile = new AttachedAbilityContracts.Falloff(
+        AbilityContracts.Falloff durationProfile = new AbilityContracts.Falloff(
                 null, null, 25, 100, 0.0, 160.0);
         assertThat(Abilities.durationAtDistance(10, 40, 100, durationProfile, 80.0)).isEqualTo(63);
         assertThat(Abilities.durationAtDistance(10, 80, 100, durationProfile, 80.0)).isEqualTo(25);

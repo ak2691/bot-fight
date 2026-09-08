@@ -1,11 +1,11 @@
 import { abilityDefinition, VISUAL_INTERPOLATION } from "../loadout/BotLoadout.js";
 import { abilityId } from "../gameconfig/AbilityRegistry.js";
-import { attachedAbilityContract } from "../gameconfig/AttachedAbilityContracts.js";
+import { attachedAbilityContract } from "../ecs/contracts/AbilityContracts.js";
 import { CLOSING_ZONE_TYPE } from "../gameconfig/ArenaHazardConfig.js";
 import { AUTO_STEP_MS } from "../modelPayloads/arenaConstants.js";
 import { compassDegreesToRadians } from "../botlogic/planner/arenaAngles.js";
 import { statusIsActive } from "../ecs/contracts/StatusContracts.js";
-import { entityContract, phaseForEntity } from "../ecs/contracts/EntityContracts.js";
+import { entityContract, phaseForEntity } from "../ecs/contracts/AbilityContracts.js";
 
 const ZONE_TYPES = new Set([CLOSING_ZONE_TYPE, "grenadeExplosion", "mineExplosion", "gravityZone", "gravityExplosion", "nullZone", "orbitalMarker", "orbitalExplosion", "silenceWave", "temporalRewindZone", "singularityZone", "singularityExplosion", "staticSnareBurst"]);
 const PROJECTILE_TYPES = new Set(["grenade", "fireball", "windburstProjectile"]);
@@ -29,16 +29,22 @@ const PROJECTILE_TRAILS = Object.freeze({
 });
 
 export const ENTITY_PRESENTATION_DEFINITIONS = Object.freeze({
-    hunterDrone: { texturePath: ["drone"], animation: "static" },
+    hunterDrone: {
+        texturePath: ["drone"], animation: "static", rotationOffset: -Math.PI / 2,
+    },
     // Keep previously recorded repeller replays on the shared drone art.
-    repellerDrone: { texturePath: ["drone"], animation: "static" },
+    repellerDrone: {
+        texturePath: ["drone"], animation: "static", rotationOffset: -Math.PI / 2,
+    },
     windburstProjectile: { texturePath: ["windburst"], animation: "time", frameMs: 65 },
     fireball: { texturePath: ["fireball"], animation: "time", frameMs: 65 },
     grenadeExplosion: { texturePath: ["grenadeMineExplosion"], animation: "progress", durationMs: 200, remaining: "visible" },
     mineExplosion: { texturePath: ["grenadeMineExplosion"], animation: "progress", durationMs: 300, remaining: "visible" },
     gravityExplosion: { texturePath: ["grenadeMineExplosion"], animation: "progress", durationMs: 300, remaining: "visible" },
     gravityZone: { texturePath: ["gravityGrenade"], animation: "time", frameMs: 65 },
-    silenceWave: { texturePath: ["silencePulse"], animation: "time", frameMs: 80 },
+    silenceWave: {
+        texturePath: ["silencePulse"], animation: "time", frameMs: 80, rotationOffset: -Math.PI / 2,
+    },
     nullZone: { texturePath: ["nullZone"], animation: "time", frameMs: 100 },
     temporalRewindZone: { texturePath: ["temporalRewind"], animation: "progress", durationMs: 3100, remaining: "remaining" },
     orbitalMarker: { texturePath: ["orbitalMarker"], animation: "static" },
@@ -70,9 +76,22 @@ export function visualForShape(shape) {
     return null;
 }
 
+/** Returns the phase/event visual diameter used by entity renderers. */
+export function visualSizeForShape(shape, fallback = 0) {
+    const visualSize = Number(visualForShape(shape)?.visualSize);
+    return Number.isFinite(visualSize) && visualSize > 0 ? visualSize : fallback;
+}
+
 /** Returns the asset/presentation type selected by the entity's phase metadata. */
 export function presentationTypeForShape(shape) {
     return visualForShape(shape)?.type ?? shape?.type;
+}
+
+/** Returns the canvas rotation for an entity's visual art. */
+export function entityVisualRotation(shape) {
+    const presentation = presentationDefinitionForShape(shape);
+    const rotationOffset = Number(presentation?.rotationOffset ?? 0);
+    return compassDegreesToRadians(shape?.rotation) + rotationOffset;
 }
 
 export const BOT_PRESENTATION_DEFINITIONS = Object.freeze({
@@ -170,7 +189,9 @@ export function presentationDefinitionForShape(shape) {
     }
     if (presentationType === "proximityMine") {
         const state = visualForShape(shape)?.state ?? (shape.armed ? "static" : "moving");
-        return { kind: "entity", layer: "projectiles", texturePath: ["mine", state], animation: "time", frameMs: 90 };
+        return {
+            kind: "entity", layer: "projectiles", texturePath: ["mine", state], animation: "time", frameMs: 90,
+        };
     }
     const definition = ENTITY_PRESENTATION_DEFINITIONS[presentationType];
     return definition

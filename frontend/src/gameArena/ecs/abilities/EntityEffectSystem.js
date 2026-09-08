@@ -1,7 +1,7 @@
 import {
     EFFECT_TYPES,
     resolveEffectOverride,
-} from "../../gameconfig/AttachedAbilityContracts.js";
+} from "../contracts/AbilityContracts.js";
 import { amountAtDistance, applyStatusEffect, durationAtDistance } from "./AbilityEffectSystem.js";
 import { clamp } from "../../gameconfig/geometry.js";
 import { ignoresHostileEffects, isAliveBot } from "../../gameconfig/DefensiveState.js";
@@ -13,6 +13,7 @@ import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arena
 /** Applies the allowlisted effects declared by an entity's ability contract. */
 export function applyEntityEffects(bots, targetIndex, source, abilityId, combat, {
     effectTypes = null,
+    statusTypes = null,
     world = null,
     knockbackDirection = "source",
     collisionDistance = undefined,
@@ -27,6 +28,11 @@ export function applyEntityEffects(bots, targetIndex, source, abilityId, combat,
 
     for (const effect of effects ?? []) {
         if (allowed && !allowed.has(effect.type)) continue;
+        if (effect.type === EFFECT_TYPES.STATUS
+            && Array.isArray(statusTypes)
+            && statusTypes.length > 0
+            && !statusTypes.some((statusType) =>
+                String(statusType).toLowerCase() === String(effect.subtype ?? "").toLowerCase())) continue;
         const resolvedEffect = resolveEffectOverride(effect, effectOverrides);
         const distance = Number.isFinite(Number(collisionDistance))
             ? Number(collisionDistance)

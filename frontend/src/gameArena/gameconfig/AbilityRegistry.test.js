@@ -11,13 +11,15 @@ import {
 } from "./AbilityRegistry.js";
 import { ABILITY_STATS, abilityStats } from "./Abilities.js";
 import {
+    ABILITY_CONTRACTS,
     ATTACHED_ABILITY_CONTRACTS,
     attachedAbilityContract,
+    ENTITY_CONTRACTS,
     EFFECT_TYPES,
     effectOverrideKey,
     resolveEffectOverride,
-} from "./AttachedAbilityContracts.js";
-import { entityContractForAbility } from "../ecs/contracts/EntityContracts.js";
+} from "../ecs/contracts/AbilityContracts.js";
+import { entityContractForAbility } from "../ecs/contracts/AbilityContracts.js";
 
 test("ability identities are stable numeric keys independent of array position", () => {
     assert.equal(ABILITIES[3].id, 3);
@@ -73,6 +75,12 @@ test("requested combat tuning is represented in the browser catalog", () => {
     assert.equal(ABILITY_STATS[10].healing, 25);
     assert.equal(ABILITY_STATS[11].damage, 25);
     assert.equal(ABILITY_STATS[11].radius, 87.5);
+    assert.equal(ABILITY_STATS[11].range, 87.5);
+    assert.equal(ABILITY_STATS[14].range, 120);
+    assert.equal(ABILITY_STATS[3].hitboxLength, 700);
+    assert.equal(ABILITY_STATS[4].hitboxWidth, undefined);
+    assert.equal(ABILITY_STATS[17].hitboxWidth, 5);
+    assert.equal(ABILITY_STATS[31].hitboxWidth, 5);
     assert.equal(ABILITY_STATS[6].damage, 10);
     assert.equal(ABILITY_STATS[6].windupMs, 200);
     assert.equal(ABILITY_STATS[6].activeMs, 100);
@@ -143,6 +151,19 @@ test("registered IDs are unique positive integers with matching stats and contra
         assert.ok(ABILITY_STATS[id]);
         assert.ok(ATTACHED_ABILITY_CONTRACTS[id] || entityContractForAbility(id), id);
     }
+});
+
+test("one normalized contract registry covers direct and spawned abilities", () => {
+    assert.equal(Object.keys(ABILITY_CONTRACTS).length, 33);
+    assert.equal(Object.keys(ATTACHED_ABILITY_CONTRACTS).length, 19);
+    assert.equal(Object.keys(ENTITY_CONTRACTS).length, 14);
+    for (const contract of Object.values(ABILITY_CONTRACTS)) {
+        assert.ok(contract.category);
+        assert.ok(contract.spawn);
+        assert.ok(contract.activation);
+        assert.ok(contract.phases.length > 0);
+    }
+    assert.deepEqual(ENTITY_CONTRACTS[15].phases[0].events.collision.targetKinds, ["BOT"]);
 });
 
 test("missing IDs stay missing instead of shifting later abilities", () => {

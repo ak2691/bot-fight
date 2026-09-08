@@ -4,9 +4,10 @@ import {
     attachedAbilityContract,
     attachedAbilityTargetsOwner,
     phaseForAttachedAbility,
-} from "../../gameconfig/AttachedAbilityContracts.js";
+} from "../contracts/AbilityContracts.js";
 import { movingRectangleCollision, segmentIntersectsCircle, segmentIntersectsSector, segmentsWithinDistance } from "../../gameconfig/geometry.js";
 import { compassDegreesToRadians, compassDirection } from "../../botlogic/planner/arenaAngles.js";
+import { phaseForEntity } from "../contracts/AbilityContracts.js";
 
 /** Resolves attached-phase geometry without applying the resulting effects. */
 export function abilityHitsTarget(
@@ -32,18 +33,19 @@ export function rayHits(source, target, payloadOrAbilityId, phase = undefined) {
     if (!source || !target || !payload) return false;
     const activePhase = phase ?? phaseForAttachedAbility(payload.abilityId);
     const hitbox = activePhase?.hitbox ?? {};
-    const direction = compassDirection(Number(source.rotation ?? 0));
-    const targetRadius = Number(target.size ?? 0) / 2;
+    const pose = capturedHitboxPose(source);
+    const direction = compassDirection(pose.rotation);
+    const targetRadius = targetHitRadius(target);
     const rayWidth = resolveHitboxNumber(hitbox.width, payload, 5);
     const rayRange = resolveHitboxNumber(hitbox.range, payload, Number(payload.stats.range ?? 0));
     const effectiveDistance = targetRadius + (Number.isFinite(rayWidth) && rayWidth > 0 ? rayWidth : 5) / 2;
     const rayStart = {
-        x: Number(source.x),
-        y: Number(source.y),
+        x: pose.x,
+        y: pose.y,
     };
     const rayEnd = {
-        x: Number(source.x) + direction.x * rayRange,
-        y: Number(source.y) + direction.y * rayRange,
+        x: pose.x + direction.x * rayRange,
+        y: pose.y + direction.y * rayRange,
     };
     const targetPath = targetMovementSegment(target);
     return segmentsWithinDistance(rayStart, rayEnd, targetPath.start, targetPath.end, effectiveDistance);
@@ -62,22 +64,22 @@ export function abilityRangeHits(
     const activePhase = phase ?? phaseForAttachedAbility(payload.abilityId);
     const hitbox = activePhase?.hitbox ?? {};
     if (!["arc", "rectangle", "circle"].includes(hitbox.shape)) return false;
+    const pose = capturedHitboxPose(source);
     const effectiveRange = Number(range ?? resolveHitboxNumber(
         hitbox.shape === "circle" ? hitbox.radius : hitbox.length ?? hitbox.range,
         payload,
         payload.stats.range ?? payload.stats.radius ?? 0,
     ));
-    const targetRadius = hitbox.includeTargetRadius ? Number(target.size ?? 60) / 2 : 0;
+    const targetRadius = hitbox.includeTargetRadius ? targetHitRadius(target) : 0;
     const targetPath = targetMovementSegment(target);
     if (hitbox.shape === "circle") {
         return segmentIntersectsCircle(
             targetPath.start,
             targetPath.end,
-            { x: Number(source.x), y: Number(source.y), size: (effectiveRange + targetRadius) * 2 },
+            { x: pose.x, y: pose.y, size: (effectiveRange + targetRadius) * 2 },
         );
     }
     if (hitbox.shape === "rectangle") {
-        const pose = capturedHitboxPose(source);
         const direction = compassDirection(pose.rotation);
         const center = {
             x: pose.x + direction.x * effectiveRange / 2,
@@ -95,10 +97,10 @@ export function abilityRangeHits(
         ).hit;
     }
     return segmentIntersectsSector(
-        { x: Number(source.x), y: Number(source.y) },
+        { x: pose.x, y: pose.y },
         targetPath.start,
         targetPath.end,
-        Number(source.rotation ?? 0),
+        pose.rotation,
         effectiveRange,
         resolveHitboxNumber(hitbox.arc, payload, Number(payload.stats.arc ?? 36)) / 2,
         targetRadius,
@@ -107,9 +109,12 @@ export function abilityRangeHits(
 
 function capturedHitboxPose(source) {
     return {
-        x: finiteNumber(source.hitboxOriginX, source.x),
-        y: finiteNumber(source.hitboxOriginY, source.y),
-        rotation: finiteNumber(source.hitboxRotation, source.rotation),
+        // Direct ray activations and delayed rectangular hitboxes use
+        // different authored capture field names, but both represent the
+        // same immutable firing pose used by the server resolver.
+        x: finiteNumber(source.hitboxOriginX, source.gunRayOriginX, source.visualOriginX, source.x),
+        y: finiteNumber(source.hitboxOriginY, source.gunRayOriginY, source.visualOriginY, source.y),
+        rotation: finiteNumber(source.hitboxRotation, source.gunRayRotation, source.visualOriginRotation, source.rotation),
     };
 }
 
@@ -154,4 +159,17 @@ function targetMovementSegment(target) {
         start: { x: startX, y: startY },
         end: { x: Number(target.x), y: Number(target.y) },
     };
+}
+
+function targetHitRadius(target) {
+    const phase = phaseForEntity(target);
+    const hitbox = phase?.hitbox;
+    if (hitbox?.shape === "circle") {
+        const radius = Number(hitbox.radius);
+        const multiplier = Number(hitbox.radiusMultiplier ?? 1);
+        if (Number.isFinite(radius) && radius >= 0 && Number.isFinite(multiplier)) {
+            return radius * multiplier;
+        }
+    }
+    return Number(target.size ?? 0) / 2;
 }

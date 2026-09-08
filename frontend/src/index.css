@@ -2026,7 +2026,7 @@ button {
 
 .code-node-search-label input:focus { border-color: rgba(148, 163, 184, .52); box-shadow: none; }
 .code-node-search-results { display: grid; max-height: 300px; gap: 0; margin-top: 6px; overflow-y: auto; border: 1px solid rgba(148, 163, 184, .52); background: rgba(9, 11, 13, .96); padding: 4px 0; }
-.code-node-search-results button { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 0; border-radius: 0; background: transparent; padding: 9px 10px; text-align: left; }
+.code-node-search-results button { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px; border: 0; border-radius: 0; background: transparent; padding: 9px 10px; text-align: left; }
 .code-node-search-results button:hover { border-color: transparent; background: rgba(203, 213, 225, .16); }
 .code-node-search-group + .code-node-search-group { margin-top: 6px; border-top: 1px solid rgba(148, 163, 184, .18); padding-top: 4px; }
 .code-node-search-group-title { margin: 0; padding: 6px 10px 3px; color: #67e8f9; font: 700 8px/1.2 "Cousine", monospace; letter-spacing: .16em; text-transform: uppercase; }

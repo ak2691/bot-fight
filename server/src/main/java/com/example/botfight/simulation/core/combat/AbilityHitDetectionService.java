@@ -8,7 +8,7 @@ import static com.example.botfight.simulation.geometry.DistanceCalculator.segmen
 import static com.example.botfight.simulation.geometry.DistanceCalculator.movingRectangleCollision;
 
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
-import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import org.springframework.stereotype.Service;
 
 /** Resolves declarative attached-phase geometry for bots and arena entities. */
@@ -16,9 +16,9 @@ import org.springframework.stereotype.Service;
 final class AbilityHitDetectionService {
     boolean abilityHitsTarget(Bot attacker, Bot defender, AbilityExecutionPayload payload) {
         if (attacker == null || defender == null || payload == null) return false;
-        if (!AttachedAbilityContracts.isAttachedAbility(payload.abilityId())) return false;
-        AttachedAbilityContracts.AbilityPhase phase = phase(payload);
-        if (AttachedAbilityContracts.targetsOwner(payload.abilityId())) return true;
+        if (!AbilityContracts.isAttachedAbility(payload.abilityId())) return false;
+        AbilityContracts.AbilityPhase phase = phase(payload);
+        if (AbilityContracts.targetsOwner(payload.abilityId())) return true;
         String shape = shape(phase);
         if ("ray".equals(shape)) {
             return movingRayHits(payload, phase, attacker, defender);
@@ -28,7 +28,7 @@ final class AbilityHitDetectionService {
     }
 
     private boolean movingRangeHits(Bot attacker, Bot defender, AbilityExecutionPayload payload,
-                                    AttachedAbilityContracts.AbilityPhase phase) {
+                                    AbilityContracts.AbilityPhase phase) {
         String shape = shape(phase);
         double sourceX = sourceX(attacker, payload);
         double sourceY = sourceY(attacker, payload);
@@ -57,7 +57,7 @@ final class AbilityHitDetectionService {
                 targetRadius);
     }
 
-    private boolean movingRayHits(AbilityExecutionPayload payload, AttachedAbilityContracts.AbilityPhase phase,
+    private boolean movingRayHits(AbilityExecutionPayload payload, AbilityContracts.AbilityPhase phase,
                                   Bot source, Bot target) {
         double radians = compassRadians(sourceRotation(source, payload));
         double directionX = Math.cos(radians);
@@ -77,7 +77,7 @@ final class AbilityHitDetectionService {
     boolean rayHits(AbilityExecutionPayload payload, Bot source,
                     double targetX, double targetY, double targetRadius) {
         double radians = compassRadians(sourceRotation(source, payload));
-        AttachedAbilityContracts.AbilityPhase phase = phase(payload);
+        AbilityContracts.AbilityPhase phase = phase(payload);
         double rayWidth = numeric(hitbox(phase).width(), 5);
         double effectiveRadius = targetRadius + (Double.isFinite(rayWidth) && rayWidth > 0 ? rayWidth : 5) / 2.0;
         double range = numeric(hitbox(phase).range(), 0);
@@ -91,7 +91,7 @@ final class AbilityHitDetectionService {
         if (payload == null) return false;
         double sourceX = sourceX(attacker, payload);
         double sourceY = sourceY(attacker, payload);
-        AttachedAbilityContracts.AbilityPhase phase = phase(payload);
+        AbilityContracts.AbilityPhase phase = phase(payload);
         double targetRadius = includesTargetRadius(phase) ? targetSize / 2.0 : 0;
         String shape = shape(phase);
         if ("rectangle".equals(shape)) {
@@ -118,46 +118,46 @@ final class AbilityHitDetectionService {
     }
 
     double phaseRange(AbilityExecutionPayload payload, double fallback) {
-        AttachedAbilityContracts.AbilityPhase phase = phase(payload);
-        AttachedAbilityContracts.Hitbox hitbox = hitbox(phase);
+        AbilityContracts.AbilityPhase phase = phase(payload);
+        AbilityContracts.Hitbox hitbox = hitbox(phase);
         if ("circle".equals(hitbox.shape())) return numeric(hitbox.radius(), fallback);
         if ("rectangle".equals(hitbox.shape())) return rectangleLength(phase, fallback);
         return numeric(hitbox.range(), fallback);
     }
 
     boolean isAttachedAbility(AbilityExecutionPayload payload) {
-        return payload != null && AttachedAbilityContracts.isAttachedAbility(payload.abilityId());
+        return payload != null && AbilityContracts.isAttachedAbility(payload.abilityId());
     }
 
     boolean hasActivationEvent(AbilityExecutionPayload payload) {
         if (payload == null || payload.phases().isEmpty()) return false;
-        AttachedAbilityContracts.PhaseEvent event = payload.phases().getFirst().events()
-                .get(AttachedAbilityContracts.PhaseEventType.ACTIVATION);
+        AbilityContracts.PhaseEvent event = payload.phases().getFirst().events()
+                .get(AbilityContracts.PhaseEventType.ACTIVATION);
         return event != null;
     }
 
-    private static AttachedAbilityContracts.AbilityPhase phase(AbilityExecutionPayload payload) {
+    private static AbilityContracts.AbilityPhase phase(AbilityExecutionPayload payload) {
         return payload == null || payload.phases().isEmpty()
                 ? null : payload.phases().getFirst();
     }
 
-    private static final AttachedAbilityContracts.Hitbox EMPTY_HITBOX =
-            new AttachedAbilityContracts.Hitbox(null, null, null, null, 1.0, null, null, false);
+    private static final AbilityContracts.Hitbox EMPTY_HITBOX =
+            new AbilityContracts.Hitbox(null, null, null, null, 1.0, null, null, false);
 
-    private static AttachedAbilityContracts.Hitbox hitbox(AttachedAbilityContracts.AbilityPhase phase) {
+    private static AbilityContracts.Hitbox hitbox(AbilityContracts.AbilityPhase phase) {
         return phase == null || phase.hitbox() == null ? EMPTY_HITBOX : phase.hitbox();
     }
 
-    private static String shape(AttachedAbilityContracts.AbilityPhase phase) {
+    private static String shape(AbilityContracts.AbilityPhase phase) {
         return hitbox(phase).shape();
     }
 
-    private static boolean includesTargetRadius(AttachedAbilityContracts.AbilityPhase phase) {
+    private static boolean includesTargetRadius(AbilityContracts.AbilityPhase phase) {
         return hitbox(phase).includeTargetRadius();
     }
 
-    private static double rectangleLength(AttachedAbilityContracts.AbilityPhase phase, double fallback) {
-        AttachedAbilityContracts.Hitbox hitbox = hitbox(phase);
+    private static double rectangleLength(AbilityContracts.AbilityPhase phase, double fallback) {
+        AbilityContracts.Hitbox hitbox = hitbox(phase);
         return numeric(hitbox.length() == null ? hitbox.range() : hitbox.length(), fallback);
     }
 

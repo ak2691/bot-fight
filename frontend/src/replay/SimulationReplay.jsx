@@ -5,7 +5,7 @@ import { PROJECTILE_WALL_LENGTH, PROJECTILE_WALL_TYPE } from "../gameArena/Arena
 import { decodeBotLoadout, encodeBotLoadout } from "../gameArena/loadout/BotLoadout";
 import { AUTO_STEP_MS, BASE_BOT_HP, DEFENSE_WALL_TYPE, ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../gameArena/modelPayloads/arenaConstants";
 import { MATCH_DURATION_MS } from "../gameArena/gameconfig/ArenaHazardConfig.js";
-import { attachedAbilityContract } from "../gameArena/gameconfig/AttachedAbilityContracts.js";
+import { attachedAbilityContract } from "../gameArena/ecs/contracts/AbilityContracts.js";
 import { botColorRole, normalizeReplayObstacleShape } from "../gameArena/pixi/pixiVisualState.js";
 import { compassDegreesToRadians } from "../gameArena/botlogic/planner/arenaAngles.js";
 import MatchToolIcon from "../gameArena/coding/controls/MatchToolIcon.jsx";

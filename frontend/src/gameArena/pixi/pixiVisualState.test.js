@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { activeBotVisual, closingZoneDamageOccurred, ENTITY_PRESENTATION_DEFINITIONS, entityCaption, BOT_PRESENTATION_DEFINITIONS, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, grenadeDetonateProgress, grenadeVisualState, isBotShape, LOCK_ON_PRESENTATION, normalizeReplayObstacleShape, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, replayProjectileVelocity, shapeInterpolationMs, visualAnimationDescriptorForShape, visualForShape } from "./pixiVisualState.js";
+import { activeBotVisual, closingZoneDamageOccurred, ENTITY_PRESENTATION_DEFINITIONS, entityCaption, BOT_PRESENTATION_DEFINITIONS, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, grenadeVisualState, isBotShape, LOCK_ON_PRESENTATION, normalizeReplayObstacleShape, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, replayProjectileVelocity, shapeInterpolationMs, visualAnimationDescriptorForShape, visualForShape, visualSizeForShape } from "./pixiVisualState.js";
 import { REQUIRED_ARENA_PRESENTATION_PATHS } from "./arenaPresentationAssetOwner.js";
 import { hitboxGeometriesForEntity, hitboxGeometryForBot, hitboxGeometryForEntity } from "../gameconfig/hitboxGeometry.js";
 
@@ -42,6 +42,22 @@ test("phase entities resolve their own visual descriptors", () => {
         visualSize: 175,
         visibleMs: 300,
     });
+});
+
+test("entity renderers use the active phase or event visual size", () => {
+    assert.equal(visualSizeForShape({ type: "staticSnare", abilityId: 29, phaseId: "armed", size: 24 }), 24);
+    assert.equal(visualSizeForShape({ type: "staticSnare", abilityId: 29, phaseId: "triggered", size: 24 }), 150);
+    assert.equal(visualSizeForShape({ type: "staticSnare", abilityId: 29, phaseId: "destroyed", size: 24 }), 240);
+    assert.equal(visualSizeForShape({
+        type: "staticSnare",
+        abilityId: 29,
+        phaseId: "armed",
+        size: 24,
+        visualEventType: "staticSnareBurst",
+        visualEventMs: 300,
+        visualEventSize: 240,
+    }), 240);
+    assert.equal(visualSizeForShape({ type: "unknown", size: 24 }, 12), 12);
 });
 
 test("practice hitbox geometry mirrors projectile, explosion, and persistent ability colliders", () => {
@@ -170,6 +186,15 @@ test("practice hitbox geometry includes summon hitscan attacks during their shot
     assert.equal(geometries[1].shape, "ray");
     assert.equal(geometries[1].length, 200);
     assert.equal(geometries[1].remainingMs, 150);
+    assert.equal(hitboxGeometriesForEntity({
+        type: "hunterDrone",
+        abilityId: 17,
+        x: 200,
+        y: 300,
+        rotation: 90,
+        size: 28,
+        shotVisualMs: 0,
+    }).length, 1);
 });
 
 test("closing zone presentation is renderer-only and does not require an asset", () => {
@@ -252,6 +277,16 @@ test("Dash trails follow movement instead of bot facing", () => {
 
 test("Block is not an active bot presentation", () => {
     assert.equal(BOT_PRESENTATION_DEFINITIONS[2], undefined);
+});
+
+test("directional summon visuals follow their authoritative facing", () => {
+    assert.equal(ENTITY_PRESENTATION_DEFINITIONS.hunterDrone.rotationOffset, -Math.PI / 2);
+    assert.equal(entityVisualRotation({ type: "hunterDrone", rotation: 0 }), -Math.PI);
+    assert.equal(entityVisualRotation({ type: "hunterDrone", rotation: 90 }), -Math.PI / 2);
+    assert.equal(entityVisualRotation({ type: "repellerDrone", rotation: 180 }), 0);
+    assert.equal(entityVisualRotation({
+        type: "fireball", rotation: 90, velocityX: 0, velocityY: 100,
+    }), 0);
 });
 
 test("replay projectiles recover motion from adjacent frames when velocity is absent", () => {

@@ -1,6 +1,10 @@
 import { abilityId } from "./AbilityRegistry.js";
-import { attachedAbilityContract, EFFECT_TYPES } from "./AttachedAbilityContracts.js";
-import { entityContractForAbility } from "../ecs/contracts/EntityContracts.js";
+import {
+    attachedAbilityContract,
+    EFFECT_TYPES,
+    entityAbilityPhaseForEntity,
+    entityContractForAbility,
+} from "../ecs/contracts/AbilityContracts.js";
 
 // Ability-level timing and resource metadata. Behavior that can change while
 // an ability is active belongs to a phase contract, not this catalog.
@@ -48,7 +52,9 @@ function phasesFor(abilityValue) {
 }
 
 function allEffectsFor(id, phases) {
-    const effects = phases.flatMap((phase) => phase.effects ?? []);
+    const embeddedPhase = entityAbilityPhaseForEntity(id);
+    const effects = [...phases, ...(embeddedPhase ? [embeddedPhase] : [])]
+        .flatMap((phase) => phase.effects ?? []);
     return effects.filter((effect, index, values) => values.findIndex((candidate) =>
         JSON.stringify(candidate) === JSON.stringify(effect)) === index);
 }
@@ -62,22 +68,26 @@ function phaseProjection(id) {
     const entity = entityContractForAbility(id);
     const timing = ABILITY_TIMING_BY_ID[id] ?? {};
     const effects = allEffectsFor(id, phases);
+    const embeddedPhase = entityAbilityPhaseForEntity(id);
+    const projectionPhases = [...phases, ...(embeddedPhase ? [embeddedPhase] : [])];
     const damageEffect = firstEffect(effects, EFFECT_TYPES.DAMAGE);
-    const behaviorPhase = phases.find((phase) => phase.effects?.some(
+    const behaviorPhase = projectionPhases.find((phase) => phase.effects?.some(
         (effect) => effect?.type === EFFECT_TYPES.DAMAGE))
-        ?? phases.find((phase) => phase.effects?.length > 0)
-        ?? phases[0]
+        ?? projectionPhases.find((phase) => phase.effects?.length > 0)
+        ?? projectionPhases[0]
         ?? {};
     const movementPhase = phases.find((phase) => Number(phase.movement?.speed) > 0)
         ?? phases.find((phase) => phase.movement)
         ?? {};
     const visualPhase = phases.find((phase) => phase.visual) ?? {};
     const geometry = behaviorPhase.hitbox ?? phases.find((phase) => phase.hitbox)?.hitbox ?? {};
-    const attack = phases.find((phase) => phase.attack)?.attack ?? {};
     const movement = movementPhase.movement ?? {};
-    const timingRange = Number(timing.durationMs) > 0 && Number(movement.speed) > 0
+    const movingProjectile = entity?.category === "projectile";
+    const timingRange = movingProjectile
+        && Number(timing.durationMs) > 0
+        && Number(movement.speed) > 0
         ? Number(movement.speed) * Number(timing.durationMs) / 100 : null;
-    const range = Number(attack.range
+    const range = Number(embeddedPhase?.hitbox?.range
         ?? (timingRange != null ? timingRange : null)
         ?? geometry.range ?? geometry.length ?? geometry.radius ?? 0);
     const stats = {};
@@ -111,8 +121,8 @@ function phaseProjection(id) {
     if (geometry.radius != null) stats.radius = Number(geometry.radius);
     if (range > 0) stats.range = range;
     if (geometry.arc != null) stats.arc = Number(geometry.arc);
-    const width = phases.map((phase) => phase.hitbox?.width).find((value) => value != null);
-    const length = phases.map((phase) => phase.hitbox?.length).find((value) => value != null);
+    const width = geometry.width;
+    const length = geometry.length ?? (geometry.shape === "ray" ? geometry.range : null);
     if (width != null) stats.hitboxWidth = Number(width);
     if (length != null) stats.hitboxLength = Number(length);
     if (movement.speed != null) stats.speed = Number(movement.speed);
@@ -122,11 +132,15 @@ function phaseProjection(id) {
     if (movement.turnDegrees != null) stats.turnStepDegrees = Number(movement.turnDegrees);
     if (visualPhase.visual?.visualSize != null) stats.visualSize = Number(visualPhase.visual.visualSize);
     if (visualPhase.visual?.visibleMs != null) stats.visualMs = Number(visualPhase.visual.visibleMs);
-    if (behaviorPhase.repeat?.intervalMs != null) stats.intervalMs = Number(behaviorPhase.repeat.intervalMs);
-    if (behaviorPhase.attack?.cooldown != null) stats.shotCooldownMs = Number(behaviorPhase.attack.cooldown);
-    if (behaviorPhase.attack?.visual != null) stats.shotVisualMs = Number(behaviorPhase.attack.visual);
-    if (entity?.collider?.size != null) stats.size = Number(entity.collider.size);
-    if (entity?.health?.hp != null) stats.hp = Number(entity.health.hp);
+    if (behaviorPhase.execution?.intervalMs != null) stats.intervalMs = Number(behaviorPhase.execution.intervalMs);
+    if (embeddedPhase?.visual?.visibleMs != null) stats.shotVisualMs = Number(embeddedPhase.visual.visibleMs);
+    const entityPhase = entity?.phases?.[0] ?? null;
+    const entityVisualSize = Number(entityPhase?.visual?.visualSize);
+    if (Number.isFinite(entityVisualSize) && entityVisualSize > 0) {
+        stats.size = entityVisualSize;
+    }
+    const entityHealth = entity?.phases?.find((phase) => phase?.health)?.health;
+    if (entityHealth?.hp != null) stats.hp = Number(entityHealth.hp);
     if (restore?.delayMs == null && restore?.durationMs != null) stats.delayMs = Number(restore.durationMs);
     const buff = effects.find((effect) => effect?.type === EFFECT_TYPES.BUFF && effect?.buff === "overclock");
     if (buff?.amount != null) {

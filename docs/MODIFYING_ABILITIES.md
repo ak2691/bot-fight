@@ -27,8 +27,7 @@ For a simple change:
 1. Find the ability ID in AbilityRegistry.js.
 2. If it changes damage, healing, range, radius, hitbox, speed, movement,
    visual state, or an effect, change the owning phase in the browser contract:
-   `AttachedAbilityContracts.js` for direct abilities or `EntityContracts.js` for
-   entities.
+   `AbilityContracts.js` for both direct and entity-backed abilities.
 3. Mirror the same phase change in the matching server contract.
 4. Change `Abilities.js`/`Abilities.java` only for ability-level timing,
    resources, identity, or a still-supported compatibility consumer.
@@ -54,9 +53,9 @@ fixed-step units. They are not milliseconds.
 | What you want to change | Browser | Authoritative server |
 | --- | --- | --- |
 | Cooldown, windup, active/duration timing, charges, reload | gameconfig/Abilities.js | simulation/gameconfig/Abilities.java |
-| Phase ownership, hitboxes, movement, visuals, and ordered effects | gameconfig/AttachedAbilityContracts.js; ecs/contracts/EntityContracts.js | simulation/gameconfig/AttachedAbilityContracts.java; simulation/ecs/contracts/EntityContracts.java |
+| Phase ownership, hitboxes, movement, visuals, and ordered effects | ecs/contracts/AbilityContracts.js | simulation/ecs/contracts/AbilityContracts.java |
 | Status behavior and allowed status components | ecs/contracts/StatusContracts.js, ecs/bots/BotStatusSystem.js | StatusEffectState.java, BotStateService.java |
-| Projectile, trap, zone, or summon lifecycle | ecs/contracts/EntityContracts.js, ecs/entities/EntityFactory.js, ecs/abilities/AbilityEntitySystem.js | simulation/ecs/contracts/EntityContracts.java, AbilityEntityFactory.java, AbilityEntitySystem.java |
+| Projectile, trap, zone, or summon lifecycle | ecs/contracts/AbilityContracts.js, ecs/entities/EntityFactory.js, ecs/abilities/AbilityEntitySystem.js | simulation/ecs/contracts/AbilityContracts.java, AbilityEntityFactory.java, AbilityEntitySystem.java |
 | Ability readiness, charges, and resource timers | ecs/bots/BotResourceSystem.js | BotStateService.java |
 | Catalogue name, label, tags, draft metadata | loadout/BotLoadout.js, AbilityRegistry.js | AbilityRegistry.java, loadout/config validation |
 | Icons, animations, flashes, and other presentation | pixi/, visual-state helpers | replay/presentation metadata only; never gameplay authority |
@@ -65,11 +64,9 @@ The two most important authoring locations are the timing/resource catalog and
 the phase contract:
 
 - Browser timing/resource catalog: frontend/src/gameArena/gameconfig/Abilities.js
-- Browser direct phases: frontend/src/gameArena/gameconfig/AttachedAbilityContracts.js
-- Browser entity phases: frontend/src/gameArena/ecs/contracts/EntityContracts.js
+- Browser direct and entity phases: frontend/src/gameArena/ecs/contracts/AbilityContracts.js
 - Server timing/resource catalog: server/src/main/java/com/example/botfight/simulation/gameconfig/Abilities.java
-- Server direct phases: server/src/main/java/com/example/botfight/simulation/gameconfig/AttachedAbilityContracts.java
-- Server entity phases: server/src/main/java/com/example/botfight/simulation/ecs/contracts/EntityContracts.java
+- Server direct and entity phases: server/src/main/java/com/example/botfight/simulation/ecs/contracts/AbilityContracts.java
 
 ## 1. Modify an ability stat
 
@@ -213,7 +210,7 @@ start distance, end distance, effective range, and rounding behavior.
 For a generic amount override, use the same object on the effect instance:
 
 ~~~java
-new AttachedAbilityContracts.Falloff(25.0, 40.0, null, null, 0.0, 64.0)
+new AbilityContracts.Falloff(25.0, 40.0, null, null, 0.0, 64.0)
 ~~~
 
 ## 2. Add, remove, or reorder an effect
@@ -245,7 +242,7 @@ phases[] -> ordered phase-owned geometry, movement, visuals, events, and effects
 | damage_reduction | Reduces incoming damage while active. | amount, converted to a negative additive modifier at runtime; duration |
 | damage_immunity | Prevents damage while active. | duration |
 | damage_reflection | Reflects damage under the declared defensive rules. | multiplier/amount, duration |
-| entity contract | Creates and advances a projectile, trap, zone, or summon when the ability ID has an entry in `EntityContracts`. | root lifetime/spawn metadata and phase-owned behavior |
+| entity contract | Creates and advances a projectile, trap, zone, or summon when the ability ID has an entry in `AbilityContracts`. | root lifetime/spawn metadata and phase-owned behavior |
 
 Effects are applied in the order listed. Reordering effects can change gameplay
 if an effect depends on a confirmed hit or changes the target's state.
@@ -307,7 +304,7 @@ catalog.
 
 There is no separate delivery label. The phase owns travel, collision geometry,
 event timing, and effects. Use an attached `botAttached` phase for an ability
-that stays on its caster. Use an `EntityContracts` root when the activation
+that stays on its caster. Use an `AbilityContracts` root when the activation
 creates a projectile, trap, zone, or summon.
 
 | Contract choice | Use for |
@@ -387,12 +384,12 @@ If changing that behavior, update both browser/server copies.
 ## 5. Add or modify a projectile, trap, zone, or summon
 
 An ability creates a world object when its numeric ID has an entry in the
-browser and server `EntityContracts` registry. Entity creation is registry
+browser and server `AbilityContracts` registry. Entity creation is registry
 metadata, not an ability effect, and the delivery contract does not duplicate
 the entity type.
 
 For an existing entity type, tune root lifetime/spawn/health metadata and the
-phase values in `EntityContracts.js` and `EntityContracts.java`: size, speed,
+phase values in `AbilityContracts.js` and `AbilityContracts.java`: size, speed,
 radius, hitbox, damage, status, visual, shot cooldown, and similar behavior.
 Keep ability-level timing/resources in `Abilities.js`/`Abilities.java` and keep
 phase boundaries/actions in the entity contract.
@@ -510,7 +507,7 @@ Run the smallest relevant tests first:
 node --test src/gameArena/gameconfig/AbilityRegistry.test.js src/gameArena/gameconfig/AbilityResourceSystem.test.js src/gameArena/ecs/tests/EntitySystems.test.js
 
 # From server/
-.\mvnw.cmd test "-Dtest=AbilitiesTest,AttachedAbilityContractsTest,AbilityEntitySystemTest"
+.\mvnw.cmd test "-Dtest=AbilitiesTest,AbilityContractsTest,AbilityEntitySystemTest"
 ~~~
 
 Then run the full checks:

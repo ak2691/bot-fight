@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createAbilityEntity } from "../entities/EntityFactory.js";
-import { ENTITY_CONTRACTS, entityContractForAbility, phaseTypeForEntity } from "../contracts/EntityContracts.js";
+import { ENTITY_CONTRACTS, entityContractForAbility, phaseTypeForEntity } from "../contracts/AbilityContracts.js";
 import { isAbilityEntity, tickAbilityEntityWorld } from "../abilities/AbilityEntitySystem.js";
 import { tickBotStatus } from "../bots/BotStatusSystem.js";
 import { tickBotResources } from "../bots/BotResourceSystem.js";
@@ -16,7 +16,7 @@ import { abilityHitsTarget } from "../abilities/AbilityHitDetectionSystem.js";
 import { buildDeterministicLogicAction } from "../../botlogic/planner/ArenaActionPlanner.js";
 import { buildStatePayload } from "../../modelPayloads/strategyStatePayload.js";
 import { abilityDefinition, ABILITY_STATS, shouldInterpolateAbilityVisual } from "../../loadout/BotLoadout.js";
-import { ATTACHED_ABILITY_CONTRACTS, EFFECT_TYPES } from "../../gameconfig/AttachedAbilityContracts.js";
+import { ATTACHED_ABILITY_CONTRACTS, EFFECT_TYPES, TARGET_KINDS, eventAllowsEffect } from "../contracts/AbilityContracts.js";
 import { botStatusLabels } from "../../pixi/pixiVisualState.js";
 import { resetBotShape, toSimulationBotShape } from "../../modelPayloads/arenaShapes.js";
 import { compassDirection } from "../../botlogic/planner/arenaAngles.js";
@@ -24,7 +24,7 @@ import { CONCUSSIVE_SHOT_MOVEMENT_MULTIPLIER, CONCUSSIVE_SHOT_SLOW_DURATION_MS, 
 import { statusEffectFor, statusIsActive, statusRemainingMs } from "../contracts/StatusContracts.js";
 import { anotherAbilityActive } from "../../gameconfig/AbilityResourceSystem.js";
 import { movingCircleCollision, movingRectangleCollision } from "../../gameconfig/geometry.js";
-import { movingEntityCollision } from "../../gameconfig/hitboxGeometry.js";
+import { entityAbilitySpawnTransform, movingEntityCollision } from "../../gameconfig/hitboxGeometry.js";
 
 const noDamageCombat = {
     applyDamageToShape: (bot, damage) => ({ ...bot, hp: Math.max(0, bot.hp - damage) }),
@@ -44,6 +44,26 @@ test("phase contracts keep target policy on events and use explicit transition b
     assert.deepEqual(ENTITY_CONTRACTS[4].phases[0].events.collision.transition, { to: "active" });
     assert.equal(ENTITY_CONTRACTS[15].phases[0].events.collision.targetPolicy.mode, "once");
     assert.equal(ENTITY_CONTRACTS[22].phases[0].events.interval.targetPolicy, undefined);
+    assert.deepEqual(ENTITY_CONTRACTS[5].phases[0].events.collision.targetKinds,
+        [TARGET_KINDS.BOT, TARGET_KINDS.HP_ENTITY]);
+    assert.deepEqual(ENTITY_CONTRACTS[29].phases[2].events.collision.targetKinds,
+        [TARGET_KINDS.BOT, TARGET_KINDS.HP_ENTITY]);
+});
+
+test("apply-effects events can select individual status subtypes", () => {
+    const event = {
+        effectTypes: [EFFECT_TYPES.STATUS],
+        statusTypes: ["silence"],
+    };
+    assert.equal(eventAllowsEffect(event, {
+        type: EFFECT_TYPES.STATUS, subtype: "silence",
+    }), true);
+    assert.equal(eventAllowsEffect(event, {
+        type: EFFECT_TYPES.STATUS, subtype: "slow",
+    }), false);
+    assert.equal(eventAllowsEffect({ effectTypes: [EFFECT_TYPES.STATUS] }, {
+        type: EFFECT_TYPES.STATUS, subtype: "slow",
+    }), true);
 });
 
 test("entity phases expose complete effect payloads for contract auditing", () => {
@@ -66,7 +86,34 @@ test("direct hitboxes use bot-attached phases with shape-owned geometry", () => 
     assert.equal(ATTACHED_ABILITY_CONTRACTS[3].phases[0].hitbox.shape, "ray");
     assert.equal(ATTACHED_ABILITY_CONTRACTS[6].phases[0].hitbox.shape, "rectangle");
     assert.equal(ATTACHED_ABILITY_CONTRACTS[8].phases[0].hitbox.shape, "circle");
-    assert.equal(ENTITY_CONTRACTS[22].phases[0].repeat.startImmediately, true);
+    assert.equal(ENTITY_CONTRACTS[22].phases[0].execution.startImmediately, true);
+});
+
+test("drone bodies are HP colliders while their mini abilities own the ray attack", () => {
+    for (const abilityId of [17, 31]) {
+        const contract = ENTITY_CONTRACTS[abilityId];
+        assert.deepEqual(contract.phases[0].hitbox, { shape: "circle", radius: 14 });
+        assert.equal(contract.phases[0].events.collision, undefined);
+        assert.equal(contract.phases[0].effects.length, 0);
+    assert.deepEqual(contract.phases[0].execution, {
+            abilityId: "primary", intervalMs: 1000, startImmediately: true,
+        });
+        assert.deepEqual(contract.abilities[0].spawn, {
+            offset: { x: 0, y: 0 }, rotation: "owner",
+        });
+        assert.deepEqual(contract.abilities[0].phases[0].hitbox, {
+            shape: "ray", range: 200, width: 5,
+        });
+    }
+});
+
+test("entity ability spawn offsets are relative to the drone", () => {
+    const transform = entityAbilitySpawnTransform(
+        { x: 100, y: 100, rotation: 0 },
+        { offset: { x: 10, y: 20 }, rotation: "owner" },
+    );
+
+    assert.deepEqual(transform, { x: 110, y: 80, rotation: 0 });
 });
 
 test("entity existence and behavior stay in the entity registry and phases", () => {
@@ -204,7 +251,7 @@ test("hunter drone spawns with component health and 50 hp", () => {
     const drone = entityFor({ id: "owner", slot: 1, x: 100, y: 200, rotation: 0 }, 17);
     assert.equal(drone.hp, 50);
     assert.equal(drone.components.health.hp, 50);
-    assert.equal(drone.components.collider.hittable, true);
+    assert.equal(ENTITY_CONTRACTS[17].phases[0].health.maxHp, 50);
 });
 
 test("hunter drone pursues targets at 4.5 units per arena tick", () => {
@@ -219,7 +266,7 @@ test("hunter drone pursues targets at 4.5 units per arena tick", () => {
 });
 
 test("hunter drone retains the replay-matched shot visual timer", () => {
-    const drone = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 200, rotation: 90 }, 17), shotCooldownMs: 0 };
+    const drone = entityFor({ id: "owner", slot: 1, x: 100, y: 200, rotation: 90 }, 17);
     const target = { id: "target", slot: 2, x: 200, y: 200, size: 60, hp: 100 };
     const result = tickAbilityEntityWorld({
         entities: [drone], bots: [target],
@@ -283,6 +330,9 @@ test("Static Snare uses its stronger phase when generic damage destroys it", () 
     assert.equal(result.entities[0].phaseId, "destroyed");
     assert.equal(phaseVisualFor(result.entities[0]).type, "staticSnareBurst");
     assert.equal(phaseVisualFor(result.entities[0]).visualSize, 240);
+    assert.equal(result.entities[0].visualEventType, "staticSnareBurst");
+    assert.equal(result.entities[0].visualEventSize, 240);
+    assert.ok(result.entities[0].visualEventMs > 0);
     assert.equal(result.entities[0].size, 24);
 });
 
@@ -303,6 +353,75 @@ test("Static Snare triggers once without chaining to its owner", () => {
     assert.equal(phaseVisualFor(result.entities[0]).type, "staticSnareBurst");
     assert.equal(phaseVisualFor(result.entities[0]).visualSize, 150);
     assert.equal(result.entities[0].size, 24);
+});
+
+test("Static Snare uses bot contact instead of projectile overlap", () => {
+    assert.equal(Object.hasOwn(ENTITY_CONTRACTS[29].phases[0].trigger, "attackHits"), false);
+    assert.equal(Object.hasOwn(ENTITY_CONTRACTS[29].phases[0].trigger, "projectileOverlap"), false);
+    assert.equal(ENTITY_CONTRACTS[29].phases[0].hitbox.radius, 12);
+    const snareOwner = { id: "snare-owner", slot: 1, x: 100, y: 100, rotation: 0, hp: 100, maxHp: 100 };
+    const projectileOwner = { id: "projectile-owner", slot: 2, x: 900, y: 700, rotation: 90, hp: 100, maxHp: 100 };
+    const target = { id: "target", slot: 3, x: 500, y: 700, size: 60, hp: 100, maxHp: 100 };
+    const snare = entityFor(snareOwner, 29);
+    const fireball = {
+        ...entityFor(projectileOwner, 5),
+        x: 160,
+        y: 100,
+        velocityX: 0,
+        velocityY: 0,
+    };
+
+    const result = tickAbilityEntityWorld({
+        entities: [snare, fireball],
+        bots: [snareOwner, projectileOwner, target],
+        stepMs: 100,
+        width: 1000,
+        height: 800,
+    }, noDamageCombat);
+
+    assert.equal(result.entities.find((entity) => entity.abilityId === 29)?.phaseId, "armed");
+    assert.equal(result.bots[2].hp, 100);
+});
+
+test("Proximity Mine uses bot contact only after arming", () => {
+    const trigger = ENTITY_CONTRACTS[11].phases[1].trigger;
+    assert.deepEqual(trigger, { radius: 87.5, botContact: true });
+    assert.deepEqual(ENTITY_CONTRACTS[11].phases[1].effects, []);
+});
+
+test("Static Snare takes damage from a colliding projectile without inheriting its status", () => {
+    const snareOwner = { id: "snare-owner", slot: 1, x: 100, y: 100, rotation: 0, hp: 100, maxHp: 100 };
+    const projectileOwner = { id: "projectile-owner", slot: 2, x: 900, y: 700, rotation: 90, hp: 100, maxHp: 100 };
+    const snare = entityFor(snareOwner, 29);
+    const fireball = {
+        ...entityFor(projectileOwner, 5),
+        x: 100,
+        y: 100,
+        velocityX: 0,
+        velocityY: 0,
+    };
+
+    const result = tickAbilityEntityWorld({
+        entities: [snare, fireball],
+        bots: [snareOwner, projectileOwner],
+        stepMs: 100,
+        width: 1000,
+        height: 800,
+    }, noDamageCombat);
+
+    const damagedSnare = result.entities.find((entity) => entity.abilityId === 29);
+    assert.equal(damagedSnare?.phaseId, "armed");
+    assert.equal(damagedSnare?.hp, 5);
+    assert.equal(damagedSnare?.statusEffects, undefined);
+    assert.equal(result.entities.some((entity) => entity.abilityId === 5), false);
+
+    const next = tickAbilityEntityWorld({
+        ...result,
+        width: 1000,
+        height: 800,
+        stepMs: 100,
+    }, noDamageCombat);
+    assert.equal(next.entities.find((entity) => entity.abilityId === 29)?.hp, 5);
 });
 
 test("Static Snare gets its stronger radius and effects when any attack destroys it", () => {
@@ -373,7 +492,7 @@ test("Static Snare uses its stronger phase when an opponent destroys it and skip
 });
 
 test("Repeller Drone uses the hunter drone body with low-damage knockback shots", () => {
-    const drone = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 90 }, 31), shotCooldownMs: 0 };
+    const drone = entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 90 }, 31);
     const target = { id: "target", slot: 2, x: 180, y: 100, size: 60, hp: 100, maxHp: 100 };
     const result = tickAbilityEntityWorld({
         entities: [drone], bots: [target],
@@ -385,6 +504,61 @@ test("Repeller Drone uses the hunter drone body with low-damage knockback shots"
     assert.equal(result.entities[0].x, 104.5);
     assert.equal(result.bots[0].hp, 97);
     assert.ok(result.bots[0].x > target.x);
+});
+
+test("drone body contact does not apply the mini ability effects", () => {
+    const hunter = entityFor({ id: "hunter-owner", slot: 1, x: 100, y: 100, rotation: 90 }, 17);
+    const repeller = entityFor({ id: "repeller-owner", slot: 2, x: 100, y: 100, rotation: 270 }, 31);
+    const result = tickAbilityEntityWorld({
+        entities: [hunter, repeller], bots: [],
+        stepMs: 100, width: 1000, height: 800,
+    }, noDamageCombat);
+
+    assert.deepEqual(result.entities.map((entity) => entity.hp), [50, 50]);
+});
+
+test("summons accept bot-targeted presence effects and reset their execution timer", () => {
+    const owner = { id: "owner", slot: 1, x: 100, y: 100, rotation: 90, hp: 100 };
+    const enemy = { id: "enemy", slot: 2, x: 300, y: 300, size: 60, hp: 100 };
+    const zone = entityFor(owner, 24, {
+        id: "null-zone",
+        targetX: enemy.x,
+        targetY: enemy.y,
+        clamp: (value) => value,
+    });
+    const drone = entityFor(enemy, 17, { id: "drone" });
+    const result = tickAbilityEntityWorld({
+        bots: [owner, enemy],
+        entities: [zone, drone],
+        stepMs: 100,
+        width: 1000,
+        height: 800,
+    }, noDamageCombat);
+
+    assert.equal(statusIsActive(result.entities[1], "silence"), true);
+    assert.equal(statusEffectFor(result.entities[1], "silence").mode, "presence");
+    assert.equal(result.entities[1].intervalTimerMs, 1000);
+    assert.equal(result.entities[1].shotVisualMs, 0);
+});
+
+test("summon shock deals interval damage and adds its movement lock", () => {
+    const owner = { id: "owner", slot: 1, x: 700, y: 100, size: 60, hp: 100 };
+    const enemy = { id: "enemy", slot: 2, x: 300, y: 100, size: 60, hp: 100 };
+    const drone = {
+        ...entityFor(enemy, 17, { id: "drone" }),
+        statusEffects: [damageStatus("shock", 1000, 1000, 3, { movementLockMs: 300 })],
+    };
+    const result = tickAbilityEntityWorld({
+        bots: [owner, enemy],
+        entities: [drone],
+        stepMs: 1000,
+        width: 1000,
+        height: 800,
+    }, noDamageCombat);
+
+    assert.equal(result.entities[0].hp, 47);
+    assert.equal(statusIsActive(result.entities[0], "stun"), true);
+    assert.equal(result.entities[0].x, drone.x);
 });
 
 test("Disruptor Dart interrupts a prepared ability and starts its cooldown", () => {
@@ -427,7 +601,7 @@ test("drones use a short bot action lock while their entities keep their duratio
     assert.equal(activated.abilitySpawn.remainingMs, 6000);
 });
 
-test("entity-hit records trigger an armed mine through the entity system", () => {
+test("entity-hit records do not trigger a proximity mine without bot contact", () => {
     const mine = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }, 11), traveled: 176, armed: true, phaseId: "armed", phaseLocked: true };
     const bot = { id: "attacker", slot: 2, x: 500, y: 500, size: 50, hp: 100, entityHitIds: [mine.id] };
     const result = tickAbilityEntityWorld({
@@ -437,10 +611,8 @@ test("entity-hit records trigger an armed mine through the entity system", () =>
     assert.equal(result.entities.length, 1);
     assert.equal(result.entities[0].id, mine.id);
     assert.equal(result.entities[0].type, "proximityMine");
-    assert.equal(result.entities[0].phaseId, "active");
-    assert.equal(phaseVisualFor(result.entities[0]).type, "mineExplosion");
-    assert.equal(phaseVisualFor(result.entities[0]).visualSize, 175);
-    assert.equal(result.entities[0].visibleMs, 300);
+    assert.equal(result.entities[0].phaseId, "armed");
+    assert.equal(phaseVisualFor(result.entities[0]).type, "proximityMine");
 });
 
 test("lock-on does not count as an attack that triggers a proximity mine", () => {
@@ -1809,6 +1981,18 @@ test("gun activation retains a fading ray for the active duration", () => {
     assert.equal(abilityActiveOpacity(faded, 3), 0.1);
 });
 
+test("gun collision uses the captured firing pose after the bot moves", () => {
+    const bot = {
+        id: "main", slot: 1, x: 100, y: 100, size: 60, rotation: 0,
+        hp: 100, maxHp: 100, moveSpeed: 8, attackSpeedMultiplier: 1,
+        attackDamageMultiplier: 1, abilities: [3], abilityCharges: { 3: 10 },
+        abilityCooldowns: { 3: 0 }, abilityRechargeMs: { 3: 0 }, abilityActiveMs: {},
+    };
+    const fired = applyBotAction(bot, { abilityAction: { action: 3 } }, 50, noDamageCombat.applyDamageToShape);
+    const movedAfterFiring = { ...fired, x: 1000, y: 100, rotation: 180 };
+    assert.equal(abilityHitsTarget(movedAfterFiring, { x: 100, y: 0, size: 20 }), true);
+});
+
 test("a dead bot clears one-tick attacks while their visuals finish", () => {
     const dead = {
         id: "main", slot: 1, x: 100, y: 100, size: 60, rotation: 0,
@@ -2014,7 +2198,7 @@ test("projectile collisions use the declared square footprint instead of a circl
     assert.equal(squareHit.hit, true);
     assert.equal(circularComparison.hit, false);
     [4, 5, 15, 18, 28].forEach((abilityId) => {
-        assert.equal(ENTITY_CONTRACTS[abilityId].collider.shape, "rectangle", `ability ${abilityId}`);
+        assert.equal(ENTITY_CONTRACTS[abilityId].phases[0].hitbox.shape, "rectangle", `ability ${abilityId}`);
     });
 });
 
@@ -2270,7 +2454,7 @@ test("mine, gravity, silence, drone, and orbital effects are never blocked", () 
     assert.equal(statusRemainingMs(silenceResult.bots[0], "silence"), 2000);
     assert.equal(silenceResult.bots[0].abilityCharges[2], 25);
 
-    const drone = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 90 }, 17), shotCooldownMs: 0 };
+    const drone = entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 90 }, 17);
     const droneResult = tickAbilityEntityWorld({ entities: [drone], bots: [shield], stepMs: 100, width: 1000, height: 800 }, combat);
     assert.ok(droneResult.bots[0].hp < 100);
     assert.equal(droneResult.bots[0].abilityCharges[2], 25);

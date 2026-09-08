@@ -1,5 +1,5 @@
-import { attachedAbilityContract } from "../../../gameconfig/AttachedAbilityContracts.js";
-import { entityContractForAbility } from "../../../ecs/contracts/EntityContracts.js";
+import { attachedAbilityContract } from "../../../ecs/contracts/AbilityContracts.js";
+import { entityContractForAbility } from "../../../ecs/contracts/AbilityContracts.js";
 import { ABILITY_TAGS, ALL_ABILITY_DEFINITIONS, entitySelectableDefinitions } from "../../../loadout/BotLoadout.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../../modelPayloads/arenaConstants.js";
 import { BOT_SELECTABLE_IDENTITIES, SELECTABLE_DEPENDENCIES, SELECTABLE_IDENTITIES, selectableHasIdentity } from "../../../modelPayloads/selectableIdentities.js";
@@ -421,7 +421,7 @@ function selectableDefinitionsForAbility(ability) {
             kind: "entity",
             entityType: entity.entityType,
             runtimeType: entity.runtimeType,
-            healthBearing: Boolean(entity.health && entity.collider?.hittable),
+            healthBearing: Boolean(entity.phases?.some((phase) => phase?.health)),
             selectableIdentities: ability.selectableIdentities,
             tags: ability.tags,
         }];
@@ -437,7 +437,7 @@ function selectableDefinitionsForAbility(ability) {
         kind: "entity",
         entityType: entity.entityType,
         runtimeType: entity.runtimeType,
-        healthBearing: Boolean(entity.health && entity.collider?.hittable),
+        healthBearing: Boolean(entity.phases?.some((phase) => phase?.health)),
         selectableIdentities: ability.selectableIdentities,
         tags: ability.tags,
     }));

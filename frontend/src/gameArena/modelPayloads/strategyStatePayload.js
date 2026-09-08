@@ -5,7 +5,7 @@ import { toSimulationBotShape } from "./arenaShapes.js";
 import { isClosingZone } from "../ecs/entities/ClosingZoneSystem.js";
 import { truncateToNumberPrecision } from "../botlogic/code/configuration/constants.js";
 import { normalizeStatusEffect, statusEffectsFor } from "../ecs/contracts/StatusContracts.js";
-import { entityContract } from "../ecs/contracts/EntityContracts.js";
+import { phaseForEntity } from "../ecs/contracts/AbilityContracts.js";
 import { BOT_SELECTABLE_IDENTITIES, selectableIdentitiesForAbilityEntity } from "./selectableIdentities.js";
 
 export function buildStatePayload(currentShapes, selectedLoadout, actorId = "main") {
@@ -81,10 +81,10 @@ function objectPayload(shape, actorId, actorShape, botShapes) {
             owner: role.role === "teammate" ? "my" : "opponent",
         };
     }
-    const contract = entityContract(shape.abilityId ?? shape.entityContractType ?? shape.type);
-    const healthBearing = Boolean(contract?.health && contract?.collider?.hittable);
+    const phase = phaseForEntity(shape);
+    const healthBearing = Boolean(phase?.health);
     const selectableIdentities = shape.selectableIdentities
-        ?? selectableIdentitiesForAbilityEntity(contract, shape.abilityId ?? contract?.abilityId);
+        ?? selectableIdentitiesForAbilityEntity(shape, shape.abilityId);
     return {
         id: shape.id,
         ownerId: shape.ownerId,
@@ -98,7 +98,7 @@ function objectPayload(shape, actorId, actorShape, botShapes) {
         type: shape.type,
         x: truncateToNumberPrecision(Number(shape.x ?? 0)),
         y: truncateToNumberPrecision(Number(shape.y ?? 0)),
-        size: shape.size ?? shape.components?.collider?.size ?? 0,
+        size: shape.size ?? 0,
         ageMs: Math.max(0, Number(shape.ageMs ?? shape.components?.lifetime?.ageMs ?? 0)),
         rotation: truncateToNumberPrecision(Number(shape.rotation ?? 0)),
         velocityX: truncateToNumberPrecision(Number(shape.velocityX ?? 0)),

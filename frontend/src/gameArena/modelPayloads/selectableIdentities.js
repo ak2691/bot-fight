@@ -1,3 +1,5 @@
+import { phaseForEntity } from "../ecs/contracts/AbilityContracts.js";
+
 export const SELECTABLE_IDENTITIES = Object.freeze({
     BOT: "bot",
     ABILITY_ENTITY: "ability-entity",
@@ -22,10 +24,11 @@ export const SELECTABLE_DEPENDENCIES = Object.freeze({
 
 export function selectableIdentitiesForAbilityEntity(entity, abilityId = entity?.abilityId) {
     if (!entity) return Object.freeze([]);
+    const hasHealth = Boolean(phaseForEntity(entity)?.health);
     return Object.freeze([
         SELECTABLE_IDENTITIES.ABILITY_ENTITY,
         SELECTABLE_IDENTITIES.POSITION,
-        ...(entity.health && entity.collider?.hittable ? [SELECTABLE_IDENTITIES.HEALTH] : []),
+        ...(hasHealth ? [SELECTABLE_IDENTITIES.HEALTH] : []),
         ...([17, 31].includes(Number(abilityId)) ? [SELECTABLE_IDENTITIES.FACING, SELECTABLE_IDENTITIES.MOVEMENT] : []),
     ]);
 }

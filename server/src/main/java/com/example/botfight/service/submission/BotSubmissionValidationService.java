@@ -5,7 +5,7 @@ import com.example.botfight.DTO.submission.BotSubmissionValidationResponseDTO;
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import com.example.botfight.simulation.gameconfig.GameConfig;
 import com.example.botfight.simulation.gameconfig.Abilities;
-import com.example.botfight.simulation.gameconfig.AttachedAbilityContracts;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import com.example.botfight.simulation.bots.BotLogicContracts;
 import com.example.botfight.simulation.geometry.ArenaUnits;
 import java.util.ArrayList;
@@ -37,7 +37,7 @@ public class BotSubmissionValidationService {
     private static final int MAX_ROOTS = 100;
     private static final int MAX_ROOT_NAME_LENGTH = 25;
     private static final int MAX_CONDITIONS_PER_BLOCK = MAX_TOTAL_CONDITIONS;
-    private static final Set<Integer> ALLOWED_ABILITIES = Set.copyOf(AttachedAbilityContracts.actions());
+    private static final Set<Integer> ALLOWED_ABILITIES = Set.copyOf(AbilityContracts.actions());
 
     private final JsonMapper jsonMapper;
     private final GameConfigCatalog combatLoadoutes;
@@ -401,7 +401,7 @@ public class BotSubmissionValidationService {
 
     private Integer abilityForAction(JsonNode action) {
         return action != null && action.isIntegralNumber() && action.canConvertToInt()
-                ? AttachedAbilityContracts.abilityForAction(action.intValue()) : null;
+                ? AbilityContracts.abilityForAction(action.intValue()) : null;
     }
 
     private boolean usesOpponentBotSelectable(JsonNode node, String field) {
