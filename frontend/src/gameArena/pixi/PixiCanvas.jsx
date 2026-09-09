@@ -442,6 +442,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             rotationHandle,
             caption,
             shape,
+            authoritativeShape: shape,
             blockHeldStartedAt: null,
             dashSmokeOrigin: null,
             dashSmokeRotation: 0,
@@ -481,14 +482,21 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
                     spawnBurst(shape.x, shape.y, explosionColor(shape.type), shape.type === "orbitalExplosion" ? 30 : 18);
                 }
             }
-            const previousShape = view.shape;
-            const previousVisual = visualAnimationDescriptorForShape(previousShape);
+            const previousShape = view.authoritativeShape ?? view.shape;
+            const previousRenderShape = view.shape;
+            const previousVisual = visualAnimationDescriptorForShape(previousRenderShape);
             const nextVisual = visualAnimationDescriptorForShape(shape);
             const eventRestarted = nextVisual?.eventActive
                 && previousVisual?.eventActive
                 && nextVisual.key === previousVisual.key
                 && Number(nextVisual.remainingMs ?? 0) > Number(previousVisual.remainingMs ?? 0);
-            if (view.visualAnimationKey !== (nextVisual?.key ?? null) || eventRestarted) {
+            const priorEventStillPlaying = previousVisual?.eventActive
+                && !nextVisual?.eventActive
+                && Number.isFinite(view.visualAnimationStartedAt)
+                && now - view.visualAnimationStartedAt
+                    < Math.max(0, Number(view.visualAnimationDurationMs) || 0);
+            if (!priorEventStillPlaying
+                && (view.visualAnimationKey !== (nextVisual?.key ?? null) || eventRestarted)) {
                 const visualAnimation = visualAnimationStartForShape(shape, now);
                 view.visualAnimationStartedAt = visualAnimation.startedAt;
                 view.visualAnimationDurationMs = visualAnimation.durationMs;
@@ -516,7 +524,13 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             const durationMs = drag?.id === shape.id || shouldSnapReplayTransition
                 ? 0
                 : shapeInterpolationMs(shape);
-            view.shape = shape;
+            // Keep a just-emitted semantic event alive on the presentation
+            // clock until its frontend-owned animation finishes. The
+            // authoritative shape itself remains event-free on the next tick.
+            view.authoritativeShape = shape;
+            view.shape = priorEventStillPlaying
+                ? { ...shape, eventType: previousRenderShape.eventType, eventSequence: previousRenderShape.eventSequence }
+                : shape;
             const nextLayer = pixiLayerForShape(shape);
             if (nextLayer !== view.layer) {
                 layers[nextLayer].addChild(view.container);
@@ -536,7 +550,10 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             const hasLegacyHitFlash = hitParticleEvent == null
                 && Number(shape.hitFlashMs ?? 0) > 0
                 && Number(previousShape?.hitFlashMs ?? 0) <= 0;
-            if (hasHitParticleEvent || hasLegacyHitFlash) {
+            const hasLocalHpDamage = hitParticleEvent == null
+                && shape.hp != null && previousShape?.hp != null
+                && Number(shape.hp) < Number(previousShape.hp);
+            if (hasHitParticleEvent || hasLegacyHitFlash || hasLocalHpDamage) {
                 spawnBurst(current.x, current.y, 0xfca5a5, 12);
             }
             if (isBotShape(shape) && closingZoneDamageOccurred(shape, previousShape)) {
@@ -689,7 +706,10 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             view.container.position.set(position.x, position.y);
             view.caption.scale.set(captionScale);
             if (isBotShape(view.shape)) drawBot(view, position, optionsRef.current.selectedId === view.shape.id, now, arenaSprites, overlappingBotIds.has(view.shape.id), canRotateBot(view.shape), rotationHandleDistanceForShape(view.shape));
-            else drawEntity(view, optionsRef.current.selectedId === view.shape.id, now, arenaSprites);
+            else {
+                drawEntity(view, optionsRef.current.selectedId === view.shape.id, now, arenaSprites);
+                drawStatusIcons(view.graphics, view.shape, Number(view.shape.size ?? 0) / 2, 44);
+            }
         }
         drawHitboxes(hitboxLayer, views, now, optionsRef, sampleViewPosition);
         drawLockOnMarkers(layers.lockOn, lockOnMarkers, botViews, arenaSprites);
@@ -1172,14 +1192,14 @@ const STATUS_ICON_STYLE = Object.freeze({
     OVERCLOCK: { foreground: 0xa7f3d0, background: 0x022c22, border: 0x34d399 },
 });
 
-function drawStatusIcons(graphics, shape, radius) {
+function drawStatusIcons(graphics, shape, radius, verticalGap = 64) {
     const statuses = botStatusLabels(shape);
     if (!statuses.length) return;
     const tileSize = 22;
     const gap = 4;
     const totalWidth = statuses.length * tileSize + (statuses.length - 1) * gap;
     const startX = -totalWidth / 2;
-    const y = -radius - 64;
+    const y = -radius - verticalGap;
     statuses.forEach((status, index) => {
         const x = startX + index * (tileSize + gap);
         const style = STATUS_ICON_STYLE[status];
@@ -1507,7 +1527,7 @@ function drawEntity(view, selected, now, arenaSprites) {
     const orbitalProgress = visualAnimationProgress(view, now);
     const persistentOrbitalMarker = shape.type === "orbitalMarker";
     const baseVisualShape = persistentOrbitalMarker
-        ? { ...shape, visualEventType: null, visualEventMs: 0, visualEventSize: 0 }
+        ? { ...shape, eventType: null, eventSequence: 0, visualEventType: null, visualEventMs: 0, visualEventSize: 0 }
         : shape;
     const texture = entityTexture(
         baseVisualShape,
@@ -1551,8 +1571,12 @@ function drawEntity(view, selected, now, arenaSprites) {
         const shotDurationMs = Math.max(1, Number(
             shotPhase?.visual?.visibleMs ?? shotPhase?.durationMs ?? 300,
         ));
-        if (shotPhase && shotVisualMs > 0) {
-            const alpha = clamp(shotVisualMs / shotDurationMs, 0, 1);
+        const semanticShot = String(shape.eventType ?? "").toLowerCase() === "collision"
+            && Number(shape.eventSequence ?? 0) > 0;
+        if (shotPhase && (shotVisualMs > 0 || semanticShot)) {
+            const alpha = semanticShot
+                ? 1 - clamp(visualAnimationElapsedMs(view, now) / shotDurationMs, 0, 1)
+                : clamp(shotVisualMs / shotDurationMs, 0, 1);
             showAbilityRayEffect(view, "drone-shot", arenaSprites, { x: shape.x, y: shape.y }, shotTransform.x, shotTransform.y, shotTransform.rotation, 3,
                 Number(shotPhase.hitbox?.range ?? 200), alpha,
                 Number(shotPhase.visual?.visualSize ?? 16), 0x6ee7b7);

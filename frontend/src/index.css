@@ -504,6 +504,142 @@ html,
   background-color: #1b252c;
 }
 
+.auth-content--showcase {
+  max-width: 1120px;
+  grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
+  gap: clamp(3rem, 7vw, 6.5rem);
+}
+
+.auth-showcase {
+  min-width: 0;
+}
+
+.auth-showcase-copy {
+  max-width: 620px;
+  margin-bottom: 1.5rem;
+}
+
+.auth-showcase-eyebrow {
+  margin-bottom: .55rem;
+  color: #67e8f9;
+  font: 700 .8rem/1.2 "Cousine", "Courier New", monospace;
+  letter-spacing: .22em;
+}
+
+.auth-showcase-copy > p:last-child {
+  max-width: 570px;
+  margin-top: .8rem;
+  color: #b8c5d1;
+  font-size: .98rem;
+  line-height: 1.65;
+}
+
+.auth-showcase-video-frame {
+  position: relative;
+  width: min(100%, 574px);
+  margin-inline: auto;
+  overflow: hidden;
+  border: 1px solid rgba(103, 232, 249, .5);
+  border-radius: 14px;
+  background: #081016;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .42), 0 0 28px rgba(34, 211, 238, .1);
+}
+
+.auth-showcase-video-frame::after {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(255, 255, 255, .07);
+  border-radius: inherit;
+  content: "";
+  pointer-events: none;
+}
+
+.auth-showcase-video {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.auth-showcase-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 1rem;
+  padding: 0;
+  color: #d5e3ec;
+  font-size: .75rem;
+  font-weight: 700;
+  letter-spacing: .035em;
+  list-style: none;
+}
+
+.auth-showcase-steps li {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: .55rem;
+  border-left: 1px solid rgba(103, 232, 249, .24);
+  padding: .25rem .8rem;
+}
+
+.auth-showcase-steps li:first-child {
+  border-left: 0;
+  padding-left: 0;
+}
+
+.auth-showcase-steps span {
+  color: #67e8f9;
+  font: 700 .65rem/1 "Cousine", "Courier New", monospace;
+}
+
+.auth-showcase-format {
+  margin-top: .8rem;
+  color: #8ea5b5;
+  font: 700 .68rem/1.3 "Cousine", "Courier New", monospace;
+  letter-spacing: .08em;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+@media (max-width: 900px) {
+  .auth-content--showcase {
+    max-width: 520px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3.5rem;
+  }
+
+  .auth-showcase-copy {
+    text-align: center;
+  }
+
+  .auth-showcase-copy > p:last-child {
+    margin-right: auto;
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .auth-content--showcase {
+    gap: 3rem;
+  }
+
+  .auth-showcase-copy > p:last-child {
+    font-size: .88rem;
+    line-height: 1.55;
+  }
+
+  .auth-showcase-steps {
+    gap: .7rem;
+    font-size: .68rem;
+  }
+
+  .auth-showcase-steps li {
+    flex-direction: column;
+    gap: .3rem;
+    padding: .2rem .35rem;
+    text-align: center;
+  }
+}
+
 .home-grid::after {
   position: absolute;
   inset: 0;
@@ -2580,10 +2716,24 @@ button {
 }
 
 .code-custom-variables-dialog {
+  width: min(94vw, 880px);
+  height: min(72dvh, 430px);
   min-width: 0;
   min-height: 0;
   max-width: calc(100vw - 2rem);
   max-height: calc(100dvh - 2rem);
+}
+
+.code-custom-variable-fields {
+  grid-template-columns: 14rem 7rem 7rem;
+  justify-content: start;
+  gap: .625rem;
+  padding-bottom: 1rem;
+}
+
+.code-custom-variable-fields > label {
+  width: auto;
+  min-width: 0;
 }
 
 .code-custom-variables-dialog .code-custom-variable-add-button {
@@ -2695,19 +2845,19 @@ button {
   }
 
   .code-custom-variables-overlay {
-    align-items: stretch;
+    align-items: center;
     padding: .5rem;
   }
 
   .code-custom-variables-dialog {
-    width: 100%;
+    width: calc(100% - 1rem);
     max-width: none;
-    height: 100%;
-    max-height: none;
+    height: min(84dvh, 520px);
+    max-height: calc(100dvh - 1rem);
   }
 
   .code-custom-variables-dialog > .grid {
-    grid-template-rows: minmax(128px, 34%) minmax(0, 1fr);
+    grid-template-rows: minmax(min(250px, 45dvh), 1fr) auto;
   }
 
   .code-custom-variables-dialog > .grid > aside {
@@ -2718,20 +2868,39 @@ button {
 
   .code-custom-variables-dialog > .grid > main {
     min-width: 0;
+    overflow: hidden;
   }
 
-  .code-custom-variables-dialog > footer {
-    padding: 10px 12px;
-  }
-
-  /* iOS and some Android browsers focus-zoom controls below 16px. Keep the
-     workspace layout compact while giving every editable/selectable control a
-     mobile-safe focus size. */
+  /* Keep graph and inspector typography proportional to the compact canvas.
+     These controls intentionally opt out of mobile browser focus enlargement. */
   .code-workspace input,
   .code-workspace select,
   .code-workspace textarea {
-    font-size: 16px !important;
+    font-size: clamp(9px, 2.7vw, 11px) !important;
     line-height: 1.2;
+  }
+
+  .code-custom-variables-dialog input,
+  .code-custom-variables-dialog select,
+  .code-custom-variables-dialog textarea {
+    font-size: clamp(9px, 2.7vw, 11px) !important;
+  }
+
+  .code-custom-variables-dialog main > div {
+    padding: 10px;
+  }
+
+  .code-custom-variable-fields {
+    grid-template-columns: minmax(0, 1.35fr) minmax(4.25rem, .75fr) minmax(5.25rem, 1fr);
+    gap: 6px;
+    padding-top: 10px;
+    padding-bottom: 14px;
+  }
+
+  .code-custom-variable-fields > label {
+    width: auto;
+    min-width: 0;
+    font-size: clamp(6px, 1.8vw, 8px);
   }
 
   .code-node-search-results button,
@@ -3073,6 +3242,7 @@ button {
 }
 
 .tutorial-guide-panel {
+  position: relative;
   box-sizing: border-box;
   width: 19rem;
   height: 26rem;
@@ -3083,6 +3253,16 @@ button {
   overflow: hidden;
 }
 
+.tutorial-guide-panel > .tutorial-guide-content > div:first-child > .puzzle-info-minimize {
+  position: absolute;
+  top: .4rem;
+  right: .4rem;
+}
+
+.tutorial-guide-panel > .tutorial-guide-content > div:first-child {
+  padding-right: calc(28px + .8rem);
+}
+
 .tutorial-guide-content {
   min-height: 0;
   flex: 1 1 auto;
@@ -3090,6 +3270,51 @@ button {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+}
+
+.tutorial-guide-button.info-popup-minimized {
+  border-width: 2px;
+  border-color: rgba(103, 232, 249, .9);
+  background: rgb(8, 31, 45);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, .2), 0 8px 24px rgba(0, 0, 0, .55), 0 0 18px rgba(34, 211, 238, .2);
+}
+
+.tutorial-guide-button__icon {
+  flex: none;
+  filter: brightness(1.35) drop-shadow(0 0 4px rgba(103, 232, 249, .55));
+}
+
+/* On phones, the tutorial guide is a compact fixed step control. Expanding it
+   opens a popover above the control without changing the arena layout. */
+@media (max-width: 640px) {
+  .arena-stage-info__tutorial > .tutorial-guide-button.info-popup-minimized {
+    position: fixed;
+    top: auto;
+    right: 1rem;
+    bottom: calc(1rem + env(safe-area-inset-bottom));
+    left: auto;
+    z-index: 80;
+    min-width: 4.25rem;
+    min-height: 2.75rem;
+    justify-content: center;
+    padding: .55rem .7rem;
+  }
+
+  .tutorial-guide-button__label {
+    display: none;
+  }
+
+  .arena-stage-info__tutorial > .tutorial-guide-panel.info-popup-panel {
+    position: fixed;
+    top: auto;
+    right: 1rem;
+    bottom: calc(1rem + env(safe-area-inset-bottom));
+    left: auto;
+    z-index: 80;
+    width: min(19rem, calc(100vw - 2rem));
+    height: min(26rem, calc(100svh - 6.5rem - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+    max-height: none;
+  }
 }
 
 .puzzle-page {
@@ -3700,9 +3925,9 @@ button {
 @media (max-width: 900px) {
   .code-custom-variables-dialog > header {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 36px;
-    grid-template-rows: auto auto;
-    align-items: start;
+    grid-template-columns: minmax(0, 1fr) auto 36px;
+    grid-template-rows: auto;
+    align-items: center;
     gap: 8px;
     min-height: 0;
     padding: 10px 12px;
@@ -3721,15 +3946,17 @@ button {
   }
 
   .code-custom-variables-dialog > header > div:last-child > button:first-child {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    width: 100%;
-    min-height: 40px;
-    margin-top: 1px;
+    grid-column: 2;
+    grid-row: 1;
+    width: auto;
+    min-height: 34px;
+    margin-top: 0;
+    padding-right: 10px;
+    padding-left: 10px;
   }
 
   .code-custom-variables-dialog > header > div:last-child > button:last-child {
-    grid-column: 2;
+    grid-column: 3;
     grid-row: 1;
     width: 36px;
     min-width: 36px;
@@ -3885,7 +4112,7 @@ button {
   display: flex;
   min-height: 34px;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: .75rem;
   border: 0;
   border-left: 1px solid rgba(103, 232, 249, .65);
@@ -3895,6 +4122,11 @@ button {
   color: #bae6fd;
   text-align: left;
   text-shadow: 0 1px 3px rgba(0, 0, 0, .95);
+}
+
+.code-workspace-coach-minimized {
+  width: auto;
+  max-width: max-content;
 }
 
 .code-workspace-coach-minimized:hover {
@@ -3919,9 +4151,12 @@ button {
     max-width: calc(100vw - 1rem);
   }
 
-  .code-workspace-coach,
-  .code-workspace-coach-minimized {
+  .code-workspace-coach {
     width: clamp(14rem, 24vw, 16rem);
+  }
+
+  .code-workspace-coach-minimized {
+    width: auto;
   }
 }
 
@@ -3955,9 +4190,17 @@ button {
     font-size: 15px;
   }
 
-  .code-workspace-coach,
-  .code-workspace-coach-minimized {
+  .code-workspace-coach {
     width: min(15rem, calc(100% - 1rem));
     margin: 0;
+  }
+
+  .code-workspace-coach-minimized {
+    width: auto;
+    margin: 0;
+  }
+
+  .tutorial-guide-panel .text-lg {
+    font-size: clamp(12px, 3.5vw, 15px);
   }
 }

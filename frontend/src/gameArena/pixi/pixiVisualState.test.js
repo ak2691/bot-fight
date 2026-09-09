@@ -401,6 +401,27 @@ test("visual animation descriptors treat timers as one-time trigger state", () =
     assert.equal(orbitalPulse.remainingMs, 300);
 });
 
+test("semantic replay events resolve repeating visuals from the frontend contract", () => {
+    const shape = {
+        type: "orbitalMarker",
+        abilityId: 22,
+        phaseId: "active",
+        phaseTimerMs: 600,
+        eventType: "interval",
+        eventSequence: 2,
+    };
+
+    assert.deepEqual(visualForShape(shape), {
+        type: "orbitalExplosion",
+        visualSize: 260,
+        visibleMs: 400,
+    });
+    const descriptor = visualAnimationDescriptorForShape(shape);
+    assert.equal(descriptor.eventActive, true);
+    assert.equal(descriptor.durationMs, 400);
+    assert.equal(descriptor.remainingMs, 400);
+});
+
 test("bot and entity labels derive from calculated snapshot fields", () => {
     assert.deepEqual(botStatusLabels({ statusEffects: [
         { type: "burn", remainingMs: 100 },

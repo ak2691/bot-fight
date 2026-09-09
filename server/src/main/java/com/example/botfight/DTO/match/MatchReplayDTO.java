@@ -1,11 +1,12 @@
 package com.example.botfight.DTO.match;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.example.botfight.simulation.core.state.StatusEffectState;
+import com.example.botfight.simulation.ecs.entities.ArenaEntity;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import com.fasterxml.jackson.annotation.JsonInclude;
 
 /** Compact presentation-only replay payload sent over the matchmaking socket. */
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -325,23 +326,15 @@ public record MatchReplayDTO(
             Integer timerMs,
             Double velocityX,
             Double velocityY,
-            Integer shotVisualMs,
             String phaseId,
-            Integer visibleMs,
-            String visualEventType,
-            Integer visualEventMs,
-            Integer visualEventSize) {
-        public ReplayEntityDTO(String id, String type, Integer abilityId, double x, double y, int size,
-                               Double rotation, Integer hp, Boolean armed, Integer timerMs,
-                               Double velocityX, Double velocityY, Integer shotVisualMs) {
-            this(id, type, abilityId, x, y, size, rotation, hp, armed, timerMs, velocityX, velocityY,
-                    shotVisualMs, null, null, null, null, null);
-        }
+            Integer phaseTimerMs,
+            String eventType,
+            Integer eventSequence,
+            List<ArenaEntity.EntityStatus> statusEffects) {
 
         private static ReplayEntityDTO from(MatchPlaybackDTO.ArenaEntityDTO entity) {
             String type = entity.type();
             boolean drone = "hunterDrone".equals(type) || "repellerDrone".equals(type);
-            Integer visualEventMs = positiveOrNull(entity.visualEventMs());
             return new ReplayEntityDTO(
                     entity.id(),
                     type,
@@ -355,12 +348,11 @@ public record MatchReplayDTO(
                     positiveOrNull(entity.timerMs()),
                     nonZeroOrNull(entity.velocityX()),
                     nonZeroOrNull(entity.velocityY()),
-                    positiveOrNull(entity.shotVisualMs()),
                     entity.phaseId(),
-                    visualEventMs == null ? positiveOrNull(entity.visibleMs()) : visualEventMs,
-                    visualEventMs == null ? null : entity.visualEventType(),
-                    visualEventMs,
-                    visualEventMs == null ? null : positiveOrNull(entity.visualEventSize()));
+                    entity.phaseTimerMs(),
+                    entity.eventType(),
+                    positiveOrNull(entity.eventSequence()),
+                    null);
         }
     }
 

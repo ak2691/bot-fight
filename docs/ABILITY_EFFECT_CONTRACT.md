@@ -348,6 +348,15 @@ grenade's travel, armed, and active visuals next to the lifecycle phase that
 owns them instead of using a separate explosion-size or explosion-visibility
 field.
 
+That presentation descriptor is a browser contract, not replay state. Replay
+payloads carry the authoritative phase and gameplay clocks (`phaseId`,
+`phaseTimerMs`) plus semantic event occurrences (`eventType`,
+`eventSequence`); they do not carry a visual type, size, or visibility
+countdown. The frontend resolves each semantic event through its local ability
+contract, so practice, live rendering, and replay use the same visual mapping.
+For repeating events, the incremented sequence identifies a new occurrence;
+the renderer owns the visual duration and animation timing.
+
 The proximity mine's travel phase has an 800 ms `durationMs`. Its
 `lifetimeEnd` event explicitly transitions to the stopped armed phase, whose
 own 20-second timer either expires into or collides into the short active blast

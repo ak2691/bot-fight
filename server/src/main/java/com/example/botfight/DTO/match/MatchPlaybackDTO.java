@@ -1,5 +1,6 @@
 package com.example.botfight.DTO.match;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.example.botfight.simulation.core.state.StatusEffectState;
 import java.util.List;
 import java.util.Map;
@@ -130,6 +131,7 @@ public record MatchPlaybackDTO(
         }
     }
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public record ArenaEntityDTO(
             String id,
             String type,
@@ -143,29 +145,24 @@ public record MatchPlaybackDTO(
             Integer timerMs,
             Double velocityX,
             Double velocityY,
-            Integer shotVisualMs,
             String phaseId,
-            Integer visibleMs,
-            String visualEventType,
-            Integer visualEventMs,
-            Integer visualEventSize) {
-        public ArenaEntityDTO(String id, String type, Integer abilityId, double x, double y, int size,
-                              double rotation, int hp, Boolean armed, Integer timerMs,
-                              Double velocityX, Double velocityY, Integer shotVisualMs) {
-            this(id, type, abilityId, x, y, size, rotation, hp, armed, timerMs, velocityX, velocityY,
-                    shotVisualMs, null, null, null, null, null);
-        }
+            Integer phaseTimerMs,
+            String eventType,
+            Integer eventSequence) {
 
         public ArenaEntityDTO(String id, String type, double x, double y, int size) {
-            this(id, type, null, x, y, size, 0, 0, null, null, null, null, null);
+            this(id, type, null, x, y, size, 0, 0, null, null, null, null,
+                    null, null, null, null);
         }
 
         public ArenaEntityDTO(String id, String type, double x, double y, int size, double rotation) {
-            this(id, type, null, x, y, size, rotation, 0, null, null, null, null, null);
+            this(id, type, null, x, y, size, rotation, 0, null, null, null, null,
+                    null, null, null, null);
         }
 
         public ArenaEntityDTO(String id, String type, double x, double y, int size, double rotation, int hp) {
-            this(id, type, null, x, y, size, rotation, hp, null, null, null, null, null);
+            this(id, type, null, x, y, size, rotation, hp, null, null, null, null,
+                    null, null, null, null);
         }
     }
 

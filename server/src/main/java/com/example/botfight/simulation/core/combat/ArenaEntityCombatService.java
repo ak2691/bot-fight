@@ -29,6 +29,7 @@ class ArenaEntityCombatService {
         boolean summonTarget = targetPhase != null
                 && targetPhase.type() == AbilityContracts.PhaseType.SUMMON;
         for (Bot bot : bots) {
+            if (summonTarget && !ownersAreHostile(bot.slot, entity.ownerSlot(), bots)) continue;
             double distance = Math.hypot(entity.x() - bot.x, entity.y() - bot.y);
             AbilityExecutionPayload payload = AbilityExecutionPayload.fromTriggered(bot);
             if (payload == null || !hitDetectionService.isAttachedAbility(payload)) continue;
@@ -47,6 +48,10 @@ class ArenaEntityCombatService {
         for (ArenaEntity effect : entities) {
             if (effect == null || effect.id().equals(entity.id())) continue;
             AbilityContracts.AbilityPhase phase = AbilityContracts.phaseFor(effect);
+            boolean summonSource = phase != null
+                    && phase.type() == AbilityContracts.PhaseType.SUMMON;
+            if ((summonTarget || summonSource)
+                    && !ownersAreHostile(effect.ownerSlot(), entity.ownerSlot(), bots)) continue;
             if (!phaseHasEventEffect(phase, AbilityContracts.PhaseEventType.COLLISION, EffectType.DAMAGE)
                     || !eventCanAffectHpEntity(phase.events().get(
                             AbilityContracts.PhaseEventType.COLLISION), summonTarget)
@@ -83,7 +88,7 @@ class ArenaEntityCombatService {
                     : AbilityContracts.PhaseEventType.COLLISION;
             AbilityContracts.PhaseEvent event = phase == null ? null
                     : phase.events().get(eventType);
-            if (!canAffectEntity(event, bot.slot, target.ownerSlot(), summonTarget)
+            if (!canAffectEntity(event, bot.slot, target.ownerSlot(), summonTarget, bots)
                     || !attachedAbilityHitsEntity(payload, bot, next)) continue;
             double distance = Math.hypot(next.x() - bot.x, next.y() - bot.y);
             next = applyImpact(next, new EffectSource(bot.slot, bot.x, bot.y,
@@ -92,11 +97,11 @@ class ArenaEntityCombatService {
         }
         for (ArenaEntity source : entities) {
             if (source == null || source.id().equals(target.id())
-                    || source.ownerSlot() == target.ownerSlot()) continue;
+                    || !ownersAreHostile(source.ownerSlot(), target.ownerSlot(), bots)) continue;
             AbilityContracts.AbilityPhase phase = AbilityContracts.phaseFor(source);
             AbilityContracts.PhaseEvent event = phase == null ? null
                     : phase.events().get(AbilityContracts.PhaseEventType.COLLISION);
-            if (!canAffectEntity(event, source.ownerSlot(), target.ownerSlot(), summonTarget)
+            if (!canAffectEntity(event, source.ownerSlot(), target.ownerSlot(), summonTarget, bots)
                     || !overlaps(source, next)) continue;
             double distance = phase != null && phase.type() == AbilityContracts.PhaseType.PROJECTILE
                     ? 0 : Math.hypot(source.x() - next.x(), source.y() - next.y());
@@ -113,10 +118,22 @@ class ArenaEntityCombatService {
 
     private static boolean canAffectEntity(AbilityContracts.PhaseEvent event,
                                             int sourceOwnerSlot, int targetOwnerSlot,
-                                            boolean summonTarget) {
+                                            boolean summonTarget, List<Bot> bots) {
         return eventHasApplyEffects(event)
-                && sourceOwnerSlot != targetOwnerSlot
+                && (summonTarget
+                        ? ownersAreHostile(sourceOwnerSlot, targetOwnerSlot, bots)
+                        : sourceOwnerSlot != targetOwnerSlot)
                 && eventCanAffectHpEntity(event, summonTarget);
+    }
+
+    private static boolean ownersAreHostile(int sourceOwnerSlot, int targetOwnerSlot,
+                                            List<Bot> bots) {
+        Bot sourceOwner = bots.stream().filter(bot -> bot.slot == sourceOwnerSlot).findFirst().orElse(null);
+        Bot targetOwner = bots.stream().filter(bot -> bot.slot == targetOwnerSlot).findFirst().orElse(null);
+        if (sourceOwner != null && targetOwner != null) {
+            return sourceOwner.entityTeam() != targetOwner.entityTeam();
+        }
+        return sourceOwnerSlot != targetOwnerSlot;
     }
 
     private static boolean eventCanAffectHpEntity(AbilityContracts.PhaseEvent event,
@@ -224,12 +241,11 @@ class ArenaEntityCombatService {
                 ? 1_000 : phase.execution().intervalMs();
         return new ArenaEntity(entity.id(), entity.type(), entity.ownerSlot(), entity.x(), entity.y(),
                 entity.size(), entity.velocityX(), entity.velocityY(), entity.traveled(), entity.timerMs(),
-                entity.armed(), entity.hp(), entity.shotVisualMs(), entity.damageMultiplier(),
+                entity.armed(), entity.hp(), entity.damageMultiplier(),
                 entity.abilityId(), Math.max(1, interval), entity.phaseTimerMs(), entity.ageMs(),
                 entity.tickStartHp(), entity.damageTakenThisTick(), entity.damageTakenLastTick(),
                 entity.hpNetChangeLastTick(), entity.rotation(), entity.hitLedger(), entity.phaseId(),
-                entity.phaseLocked(), entity.visibleMs(), entity.visualEventType(), entity.visualEventMs(),
-                entity.visualEventSize(), entity.statusEffects());
+                entity.phaseLocked(), entity.statusEffects(), entity.eventSequence(), entity.eventType());
     }
 
     private static ArenaEntity moveEntity(ArenaEntity target, EffectSource source,

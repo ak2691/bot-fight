@@ -242,7 +242,8 @@ test("arena and puzzle code workspaces share compact controls and pinch zoom", (
     const compactZoom = css.slice(css.indexOf("@media (max-width: 1350px) {\n  .code-workspace .code-toolbar-zoom"), css.indexOf("@media (max-width: 600px) {", css.indexOf("@media (max-width: 1350px) {\n  .code-workspace .code-toolbar-zoom")));
     assert.match(compactZoom, /height: 48px;/);
     assert.doesNotMatch(compactZoom, /height: 32px;/);
-    assert.match(css, /\.code-custom-variables-dialog > header > div:last-child > button:first-child[\s\S]*grid-column: 1 \/ -1;/);
+    assert.match(css, /\.code-custom-variables-dialog > header > div:last-child > button:first-child[\s\S]*grid-column: 2;/);
+    assert.match(css, /\.code-custom-variable-fields \{[\s\S]*grid-template-columns: 14rem 7rem 7rem;[\s\S]*gap: \.625rem;/);
     assert.match(css, /\.code-workspace-coach \{[\s\S]*background: #07111b;/);
     assert.match(css, /\.tutorial-guide-panel \{[\s\S]*height: 26rem;[\s\S]*display: flex;[\s\S]*overflow: hidden;/);
     assert.match(css, /\.tutorial-guide-content \{[\s\S]*flex: 1 1 auto;[\s\S]*overflow-y: auto;/);

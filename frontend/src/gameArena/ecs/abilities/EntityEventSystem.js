@@ -91,6 +91,10 @@ export function dispatchEntityEvent(entity, eventType, {
                 world,
             );
         } else if (action === PHASE_ACTIONS.EMIT_VISUAL) {
+            // The simulation records only the semantic event occurrence. The
+            // renderer resolves its asset, size, and animation duration from
+            // the browser ability contract.
+            const semanticEventType = String(eventType).toLowerCase();
             const visual = phase.visual ?? null;
             const eventVisual = handler.visual ?? null;
             const visibleMs = resolveNumber(
@@ -107,6 +111,11 @@ export function dispatchEntityEvent(entity, eventType, {
                 Number(nextEntity.size ?? 0),
             );
             nextEntity = withComponentState(nextEntity, {
+                eventSequence: Number(nextEntity.eventSequence ?? 0) + 1,
+                eventType: semanticEventType,
+                // These are frontend-only presentation state for the live
+                // practice arena; they never cross the authoritative replay
+                // boundary.
                 visualEvent: Number(nextEntity.visualEvent ?? 0) + 1,
                 visualEventType: visualType,
                 visualEventMs: visibleMs,
@@ -114,9 +123,7 @@ export function dispatchEntityEvent(entity, eventType, {
                 ...(visibleMs > 0 ? { visibleMs } : {}),
             });
             emittedVisuals.push({
-                type: visualType,
-                size: visualSize,
-                visibleMs,
+                eventType: semanticEventType,
             });
         } else if (action === PHASE_ACTIONS.REMOVE) {
             nextEntity = null;
@@ -159,7 +166,7 @@ export function transitionEntityPhase(entity, phaseId, world = {}) {
     if (!nextPhase) return entity;
 
     const visualLifetime = resolveNumber(
-        nextPhase.durationMs ?? nextPhase.visual?.visibleMs,
+        nextPhase.durationMs,
         entity,
         world,
         null,
@@ -174,10 +181,7 @@ export function transitionEntityPhase(entity, phaseId, world = {}) {
         // be affected again by the damage phase of the same logical entity.
         hitLedger: {},
         ...(nextPhase.type === "zone" || nextPhase.type === "self" ? { armed: true } : {}),
-        ...(visualLifetime == null ? {} : {
-            remainingMs: visualLifetime,
-            visibleMs: visualLifetime,
-        }),
+        ...(visualLifetime == null ? {} : { remainingMs: visualLifetime }),
     };
     return withComponentState(entity, changes);
 }

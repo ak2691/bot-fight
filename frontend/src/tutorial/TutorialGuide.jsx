@@ -89,11 +89,10 @@ const LESSONS = [
         title: "Get comfortable in the arena",
         objective: "Learn the basic arena tools.",
         steps: [
-            "Open BOT CODE in the right-hand panel to build and edit your bot's logic.",
-            "Click MEASURE, then click two points in the arena to see the distance between them. Click again to start a new measurement.",
-            "Drag a bot to move it. Select a bot, then drag its rotate handle to turn it.",
-            "Drag empty space to pan around the arena.",
-            "Use the mouse wheel or pinch to zoom in and out.",
+            "Select OPEN BOT CODE in the panel under the arena or on the right to view the code workspace.",
+            "Select MEASURE to measure distances or coordinates by selecting anywhere in the arena.",
+            "Select the bots to move or rotate them.",
+            "You can zoom in on the arena, or pan it while zoomed in.",
             "For the rest of the tutorial, you will not be able to select and move the bots as there will be objectives for you to complete."
         ],
     },
@@ -364,7 +363,7 @@ export function TutorialCodeCoach({ step, progress, onShowSolution, solutionShow
     if (minimized) {
         return (
             <button type="button" onClick={() => setMinimized(false)} className="code-workspace-coach-minimized" aria-label="Expand tutorial workspace hint">
-                <span className="font-mono text-[8px] font-bold tracking-[.16em] text-cyan-200">GUIDE {coach.stepCount > 1 ? `${coach.stepIndex + 1}/${coach.stepCount}` : coach.eyebrow}</span>
+                <span className="font-mono text-[8px] font-bold tracking-[.16em] text-cyan-200">GUIDE{coach.stepCount > 1 ? ` ${coach.stepIndex + 1}/${coach.stepCount}` : ""}</span>
                 <span aria-hidden="true" className="font-mono text-sm text-cyan-200">+</span>
             </button>
         );
@@ -383,16 +382,19 @@ export function TutorialCodeCoach({ step, progress, onShowSolution, solutionShow
 }
 
 export default function TutorialGuide({ step, onStepChange, challenge, onAbilityCatalogue, onConditionalCatalogue, onPuzzles, progress }) {
-    const [minimized, setMinimized] = useState(false);
+    const [minimized, setMinimized] = useState(() => (
+        typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches
+    ));
     const current = LESSONS[step] ?? LESSONS[0];
     const completedIds = new Set(progress?.completedIds ?? []);
     const canAdvance = !current.objectives?.length || progress?.allComplete;
 
     if (minimized) {
         return (
-            <button type="button" onClick={() => setMinimized(false)} className="tutorial-guide-button info-popup-minimized gray-button-surface flex items-center gap-2 rounded-lg border border-cyan-400/40 px-3 py-2 text-left shadow-2xl" aria-label="Expand tutorial information">
-                <span className="font-mono text-[9px] font-bold tracking-[.16em] text-slate-300">{current.eyebrow} - {step + 1}/{LESSONS.length}</span>
-                <img src="/assets/arena-toolbar/info-circle-icon.png" alt="" aria-hidden="true" className="info-circle-icon h-5 w-5" />
+            <button type="button" onClick={() => setMinimized(false)} className="tutorial-guide-button info-popup-minimized gray-button-surface flex items-center gap-2 rounded-lg border border-cyan-400/40 px-3 py-2 text-left shadow-2xl" aria-label={`Open tutorial step ${step + 1} of ${LESSONS.length}`} aria-expanded="false" aria-controls="tutorial-guide-panel">
+                <span className="tutorial-guide-button__label font-mono text-[9px] font-bold tracking-[.16em] text-slate-300">{current.eyebrow} - </span>
+                <span className="font-mono text-[10px] font-bold text-cyan-200">{step + 1}/{LESSONS.length}</span>
+                <img src="/assets/arena-toolbar/info-circle-icon.png" alt="" aria-hidden="true" className="tutorial-guide-button__icon info-circle-icon h-5 w-5" />
             </button>
         );
     }
@@ -400,7 +402,7 @@ export default function TutorialGuide({ step, onStepChange, challenge, onAbility
     const activeObjective = current.objectives?.find((objective) => !completedIds.has(objective.id));
 
     return (
-        <section className="tutorial-guide-panel info-popup-panel w-[19rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-cyan-400/30 bg-[#07111b] shadow-[0_18px_50px_rgba(0,0,0,.48)]" aria-label="Tutorial mission tracker">
+        <section id="tutorial-guide-panel" className="tutorial-guide-panel info-popup-panel w-[19rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-cyan-400/30 bg-[#07111b] shadow-[0_18px_50px_rgba(0,0,0,.48)]" aria-label="Tutorial mission tracker">
             <div className="tutorial-guide-content p-3.5">
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">

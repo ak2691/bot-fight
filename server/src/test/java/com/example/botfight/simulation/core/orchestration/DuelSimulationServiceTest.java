@@ -870,10 +870,7 @@ class DuelSimulationServiceTest {
                 .anySatisfy(entity -> {
                     assertThat(entity.type()).isEqualTo("grenade");
                     assertThat(entity.phaseId()).isEqualTo("active");
-                    assertThat(entity.visualEventType()).isNull();
-                    assertThat(entity.visibleMs()).isEqualTo(100);
-                    assertThat(entity.visualEventMs()).isNull();
-                    assertThat(entity.visualEventSize()).isNull();
+                    assertThat(entity.eventType()).isNull();
                 });
         assertThat(result.frames().getFirst().bots().get(1).hp()).isLessThan(150);
 
@@ -886,10 +883,7 @@ class DuelSimulationServiceTest {
         assertThat(compact.frames().getFirst().entities())
                 .anySatisfy(entity -> {
                     assertThat(entity.phaseId()).isEqualTo("active");
-                    assertThat(entity.visualEventType()).isNull();
-                    assertThat(entity.visibleMs()).isEqualTo(100);
-                    assertThat(entity.visualEventMs()).isNull();
-                    assertThat(entity.visualEventSize()).isNull();
+                    assertThat(entity.eventType()).isNull();
                 });
     }
 

@@ -274,6 +274,9 @@ class MatchReplayDTOTest {
                                 2_000,
                                 null,
                                 null,
+                                null,
+                                null,
+                                null,
                                 null)))),
                 null,
                 null,
@@ -286,7 +289,7 @@ class MatchReplayDTOTest {
     }
 
     @Test
-    void compactReplayDoesNotCarryExpiredEntityVisualEvents() {
+    void compactReplayCarriesPhaseClocksWithoutVisualState() {
         MatchPlaybackDTO.ArenaEntityDTO grenade = new MatchPlaybackDTO.ArenaEntityDTO(
                 "grenade",
                 "grenade",
@@ -300,12 +303,10 @@ class MatchReplayDTOTest {
                 100,
                 0d,
                 0d,
-                0,
                 "active",
                 200,
-                "grenadeExplosion",
-                0,
-                140);
+                null,
+                null);
         MatchPlaybackDTO playback = new MatchPlaybackDTO(
                 UUID.randomUUID(),
                 "duel-v1",
@@ -319,9 +320,30 @@ class MatchReplayDTOTest {
         MatchReplayDTO.ReplayEntityDTO entity = MatchReplayDTO.from(playback)
                 .frames().getFirst().entities().getFirst();
 
-        assertThat(entity.visibleMs()).isEqualTo(200);
-        assertThat(entity.visualEventType()).isNull();
-        assertThat(entity.visualEventMs()).isNull();
-        assertThat(entity.visualEventSize()).isNull();
+        assertThat(entity.phaseId()).isEqualTo("active");
+        assertThat(entity.phaseTimerMs()).isEqualTo(200);
+        assertThat(entity.eventType()).isNull();
+    }
+
+    @Test
+    void compactReplaySerializesSemanticEntityEventsWithoutPresentationFields() {
+        MatchPlaybackDTO.ArenaEntityDTO orbital = new MatchPlaybackDTO.ArenaEntityDTO(
+                "orbital-1", "orbitalMarker", 22, 300, 240, 260, 0, 0, true,
+                1_000, null, null, "active", 600, "interval", 2);
+        MatchPlaybackDTO playback = new MatchPlaybackDTO(
+                UUID.randomUUID(), "duel-v1", "COMPLETED",
+                new MatchPlaybackDTO.ArenaStateDTO(1_000, 800, List.of(), List.of()),
+                List.of(new MatchPlaybackDTO.ReplayFrameDTO(6, 600, List.of(), List.of(orbital))),
+                null, null, null);
+
+        MatchReplayDTO.ReplayEntityDTO entity = MatchReplayDTO.from(playback)
+                .frames().getFirst().entities().getFirst();
+        String json = jsonMapper.writeValueAsString(MatchReplayDTO.from(playback));
+
+        assertThat(entity.phaseTimerMs()).isEqualTo(600);
+        assertThat(entity.eventType()).isEqualTo("interval");
+        assertThat(entity.eventSequence()).isEqualTo(2);
+        assertThat(json).contains("\"phaseTimerMs\":600", "\"eventType\":\"interval\"", "\"eventSequence\":2");
+        assertThat(json).doesNotContain("visualEventType", "visualEventMs", "visualEventSize", "visibleMs", "shotVisualMs");
     }
 }

@@ -17,6 +17,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -260,9 +261,7 @@ public final class AbilityEntitySystem {
         int timerMs = entity.timerMs() - stepMs;
         ArenaEntity moved = copyWithPhase(entity, nextX, nextY, velocityX, velocityY,
                 entity.traveled() + distance(entity.x(), entity.y(), nextX, nextY),
-                timerMs, armed, entity.ageMs(), phase.id(), entity.phaseLocked(),
-                Math.max(0, entity.visibleMs() - stepMs), entity.visualEventType(),
-                Math.max(0, entity.visualEventMs() - stepMs), entity.visualEventSize());
+                timerMs, armed, entity.ageMs(), phase.id(), entity.phaseLocked());
         return withPhaseTimer(moved, entity.phaseTimerMs() + stepMs);
     }
 
@@ -422,9 +421,7 @@ public final class AbilityEntitySystem {
                 };
         ArenaEntity moved = copyWithPhase(entity, nextX, nextY, velocityX, velocityY,
                 entity.traveled() + distance(entity.x(), entity.y(), nextX, nextY),
-                timer, entity.armed(), entity.ageMs(), phase.id(), entity.phaseLocked(),
-                Math.max(0, entity.visibleMs() - stepMs), entity.visualEventType(),
-                Math.max(0, entity.visualEventMs() - stepMs), entity.visualEventSize());
+                timer, entity.armed(), entity.ageMs(), phase.id(), entity.phaseLocked());
         moved = withPhaseTimer(moved, entity.phaseTimerMs() + stepMs);
 
         final double collisionNextX = nextX;
@@ -523,8 +520,7 @@ public final class AbilityEntitySystem {
                 ? stepMs : 0);
         ArenaEntity moved = copyWithPhase(current, current.x(), current.y(), 0, 0,
                 current.traveled(), timer, true, current.ageMs(), phase.id(),
-                current.phaseLocked(), Math.max(0, current.visibleMs() - stepMs), current.visualEventType(),
-                Math.max(0, current.visualEventMs() - stepMs), current.visualEventSize());
+                current.phaseLocked());
         moved = withPhaseTimer(moved, current.phaseTimerMs() + stepMs);
         List<HitCandidate<F>> candidates = phaseTargets(moved, phase, bots);
         boolean active = contract.lifetime().timerMode() != AbilityContracts.TimerMode.REMAINING
@@ -570,7 +566,7 @@ public final class AbilityEntitySystem {
                 && contract.lifetime().timerMode() == AbilityContracts.TimerMode.REMAINING
                 && next.timerMs() <= 0;
         if (expired) {
-            if (next.visualEventMs() > 0) return new TickResult(next);
+            if (next.eventType() != null) return new TickResult(next);
             DispatchResult<F> ended = dispatchPhaseEvent(next, contract, phase,
                     AbilityContracts.PhaseEventType.LIFETIME_END, dispatched.bots(),
                     arena, combat, List.of(), Map.of(), stepMs);
@@ -618,11 +614,8 @@ public final class AbilityEntitySystem {
         boolean killedByDamage = previousHp > 0 && hp <= 0 && damage > 0;
         ArenaEntity next = copyWithPhase(effected, effected.x(), effected.y(),
                 effected.velocityX(), effected.velocityY(), effected.traveled(), effected.timerMs(),
-                true, effected.ageMs(), phase.id(), false, Math.max(0, effected.visibleMs() - stepMs),
-                effected.visualEventType(), Math.max(0, effected.visualEventMs() - stepMs),
-                effected.visualEventSize()).withHp(hp);
+                true, effected.ageMs(), phase.id(), false).withHp(hp);
         if (legacyDamage) next = next.withDamageTakenThisTick(damage);
-        next = withShotVisual(next, Math.max(0, next.shotVisualMs() - stepMs));
         next = withIntervalTimer(next, Math.max(0, next.intervalTimerMs() - stepMs));
         List<F> currentBots = bots;
         if (damage > 0) {
@@ -683,8 +676,7 @@ public final class AbilityEntitySystem {
                 size / 2, arena.height() - size / 2);
         next = copyWithPhase(next, nextX, nextY, Math.cos(radians), Math.sin(radians),
                 next.traveled(), next.timerMs(), true, next.ageMs(), phase.id(), false,
-                next.visibleMs(), next.visualEventType(), next.visualEventMs(),
-                next.visualEventSize(), rotation);
+                rotation);
         AbilityContracts.AbilityPhase abilityPhase = AbilityContracts.entityAbilityPhaseFor(next);
         AbilityContracts.Spawn abilitySpawn = AbilityContracts.entityAbilitySpawnFor(next);
         AbilitySpawnTransform abilityTransform = abilitySpawnTransform(next, abilitySpawn, rotation);
@@ -708,12 +700,11 @@ public final class AbilityEntitySystem {
             currentBots = result.bots();
             if (next != null) {
                 int intervalMs = execution.intervalMs() == null ? 1_000 : execution.intervalMs();
-                int visualMs = abilityPhase.visual() == null
-                        ? abilityPhase.durationMs() == null ? 300 : abilityPhase.durationMs()
-                        : abilityPhase.visual().visibleMs() == null
-                                ? 300 : abilityPhase.visual().visibleMs();
                 next = withIntervalTimer(next, Math.max(1, intervalMs));
-                next = withShotVisual(next, Math.max(0, visualMs - stepMs));
+                // Embedded ability executions are semantic events. The browser
+                // contract decides which presentation represents a collision.
+                next = next.withEvent(AbilityContracts.PhaseEventType.COLLISION.name()
+                        .toLowerCase(Locale.ROOT));
             }
         }
         return new TickResult(next);
@@ -879,17 +870,10 @@ public final class AbilityEntitySystem {
                         event.transition() == null ? null : event.transition().to());
                 if (target != null) next = transitionToPhase(next, target);
             } else if (action == AbilityContracts.PhaseAction.EMIT_VISUAL) {
-                int visibleMs = event.visibleMs() == null ? 0 : event.visibleMs();
-                String visualType = event.visualType() != null ? event.visualType()
-                        : phase.visual() == null ? null : phase.visual().type();
-                int visualSize = event.visualSize() == null
-                        ? phase.visual() == null ? next.size()
-                        : (int) Math.round(phase.visual().visualSize())
-                        : (int) Math.round(event.visualSize());
-                next = copyWithPhase(next, next.x(), next.y(), next.velocityX(),
-                        next.velocityY(), next.traveled(), next.timerMs(), next.armed(),
-                        next.ageMs(), next.phaseId(), next.phaseLocked(), visibleMs,
-                        visualType, visibleMs, visualSize);
+                // The authoritative runtime records only that the allowlisted
+                // event occurred. Visual type, size, and duration are resolved
+                // by the browser contract from this semantic event.
+                next = next.withEvent(eventType.name().toLowerCase(Locale.ROOT));
             } else if (action == AbilityContracts.PhaseAction.REMOVE) {
                 next = null;
             }
@@ -928,23 +912,10 @@ public final class AbilityEntitySystem {
 
     private static ArenaEntity transitionToPhase(ArenaEntity entity,
                                                   AbilityContracts.AbilityPhase phase) {
-        int visibleMs = phase.visibleMs() == null ? 0 : phase.visibleMs();
-        if (visibleMs <= 0 && phase.visual() != null
-                && phase.visual().visibleMs() != null) {
-            visibleMs = phase.visual().visibleMs();
-        }
-        int duration = phase.durationMs() == null
-                ? (visibleMs > 0 ? visibleMs : entity.timerMs()) : phase.durationMs();
-        // A phase visual is resolved from phaseId by the renderer. Only an
-        // explicit EMIT_VISUAL action belongs in the transient event fields.
-        // Preserve an already-emitted event when the same tick also
-        // transitions phase (for example, a snare's collision burst).
-        String visualEventType = entity.visualEventType();
-        int visualEventMs = entity.visualEventMs();
-        int visualEventSize = entity.visualEventSize();
+        int duration = phase.durationMs() == null ? entity.timerMs() : phase.durationMs();
         ArenaEntity transitioned = copyWithPhase(entity, entity.x(), entity.y(), 0, 0,
                 entity.traveled(), duration, true, entity.ageMs(), phase.id(), true,
-                visibleMs, visualEventType, visualEventMs, visualEventSize);
+                entity.rotation());
         return withPhaseTimer(transitioned.withHitLedger(Map.of()), 0);
     }
 
@@ -952,23 +923,19 @@ public final class AbilityEntitySystem {
         return new ArenaEntity(entity.id(), entity.type(), entity.ownerSlot(), entity.x(),
                 entity.y(), entity.size(), entity.velocityX(), entity.velocityY(),
                 entity.traveled(), entity.timerMs(), entity.armed(), entity.hp(),
-                entity.shotVisualMs(), entity.damageMultiplier(), entity.abilityId(),
+                entity.damageMultiplier(), entity.abilityId(),
                 timer, entity.phaseTimerMs(), entity.ageMs(),
                 entity.tickStartHp(), entity.damageTakenThisTick(),
                 entity.damageTakenLastTick(), entity.hpNetChangeLastTick(), entity.rotation(),
                 entity.hitLedger(), entity.phaseId(), entity.phaseLocked(),
-                entity.visibleMs(), entity.visualEventType(), entity.visualEventMs(),
-                entity.visualEventSize(), entity.statusEffects());
+                entity.statusEffects(), entity.eventSequence(), entity.eventType());
     }
 
     private static ArenaEntity consumeEnteredPhaseTick(ArenaEntity entity, int stepMs) {
         ArenaEntity consumed = copyWithPhase(entity, entity.x(), entity.y(),
                 entity.velocityX(), entity.velocityY(), entity.traveled(),
                 entity.timerMs() - Math.max(0, stepMs), entity.armed(), entity.ageMs(),
-                entity.phaseId(), entity.phaseLocked(),
-                Math.max(0, entity.visibleMs() - Math.max(0, stepMs)),
-                entity.visualEventType(), Math.max(0, entity.visualEventMs() - Math.max(0, stepMs)),
-                entity.visualEventSize());
+                entity.phaseId(), entity.phaseLocked());
         return withPhaseTimer(consumed, entity.phaseTimerMs() + Math.max(0, stepMs));
     }
 
@@ -976,55 +943,35 @@ public final class AbilityEntitySystem {
         return new ArenaEntity(entity.id(), entity.type(), entity.ownerSlot(), entity.x(),
                 entity.y(), entity.size(), entity.velocityX(), entity.velocityY(),
                 entity.traveled(), entity.timerMs(), entity.armed(), entity.hp(),
-                entity.shotVisualMs(), entity.damageMultiplier(), entity.abilityId(),
+                entity.damageMultiplier(), entity.abilityId(),
                 entity.intervalTimerMs(), phaseTimerMs, entity.ageMs(),
                 entity.tickStartHp(), entity.damageTakenThisTick(),
                 entity.damageTakenLastTick(), entity.hpNetChangeLastTick(), entity.rotation(),
                 entity.hitLedger(), entity.phaseId(), entity.phaseLocked(),
-                entity.visibleMs(), entity.visualEventType(), entity.visualEventMs(),
-                entity.visualEventSize(), entity.statusEffects());
-    }
-
-    private static ArenaEntity withShotVisual(ArenaEntity entity, int visualMs) {
-        return new ArenaEntity(entity.id(), entity.type(), entity.ownerSlot(), entity.x(),
-                entity.y(), entity.size(), entity.velocityX(), entity.velocityY(),
-                entity.traveled(), entity.timerMs(), entity.armed(), entity.hp(),
-                visualMs, entity.damageMultiplier(), entity.abilityId(),
-                entity.intervalTimerMs(), entity.phaseTimerMs(), entity.ageMs(),
-                entity.tickStartHp(), entity.damageTakenThisTick(),
-                entity.damageTakenLastTick(), entity.hpNetChangeLastTick(), entity.rotation(),
-                entity.hitLedger(), entity.phaseId(), entity.phaseLocked(),
-                entity.visibleMs(), entity.visualEventType(), entity.visualEventMs(),
-                entity.visualEventSize(), entity.statusEffects());
+                entity.statusEffects(), entity.eventSequence(), entity.eventType());
     }
 
     private static ArenaEntity copyWithPhase(ArenaEntity source, double x, double y,
                                              double velocityX, double velocityY,
                                              double traveled, int timerMs, boolean armed,
-                                             int ageMs, String phaseId, boolean phaseLocked,
-                                             int visibleMs, String visualEventType,
-                                             int visualEventMs, int visualEventSize) {
+                                             int ageMs, String phaseId, boolean phaseLocked) {
         return copyWithPhase(source, x, y, velocityX, velocityY, traveled, timerMs,
-                armed, ageMs, phaseId, phaseLocked, visibleMs, visualEventType,
-                visualEventMs, visualEventSize, source.rotation());
+                armed, ageMs, phaseId, phaseLocked, source.rotation());
     }
 
     private static ArenaEntity copyWithPhase(ArenaEntity source, double x, double y,
                                              double velocityX, double velocityY,
                                              double traveled, int timerMs, boolean armed,
                                              int ageMs, String phaseId, boolean phaseLocked,
-                                             int visibleMs, String visualEventType,
-                                             int visualEventMs, int visualEventSize,
                                              double rotation) {
         return new ArenaEntity(source.id(), source.type(), source.ownerSlot(), x, y,
                 source.size(), velocityX, velocityY, traveled, timerMs, armed, source.hp(),
-                source.shotVisualMs(), source.damageMultiplier(), source.abilityId(),
+                source.damageMultiplier(), source.abilityId(),
                 source.intervalTimerMs(), source.phaseTimerMs(), ageMs,
                 source.tickStartHp(), source.damageTakenThisTick(),
                 source.damageTakenLastTick(), source.hpNetChangeLastTick(), rotation,
-                source.hitLedger(), phaseId, phaseLocked, Math.max(0, visibleMs),
-                visualEventType, Math.max(0, visualEventMs),
-                Math.max(0, visualEventSize), source.statusEffects());
+                source.hitLedger(), phaseId, phaseLocked, source.statusEffects(),
+                source.eventSequence(), source.eventType());
     }
 
     private static <F extends AbilityEntityBot> void applyEntityEffects(

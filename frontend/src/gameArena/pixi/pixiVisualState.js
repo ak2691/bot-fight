@@ -5,7 +5,7 @@ import { CLOSING_ZONE_TYPE } from "../gameconfig/ArenaHazardConfig.js";
 import { AUTO_STEP_MS } from "../modelPayloads/arenaConstants.js";
 import { compassDegreesToRadians } from "../botlogic/planner/arenaAngles.js";
 import { statusIsActive } from "../ecs/contracts/StatusContracts.js";
-import { entityContract, phaseForEntity } from "../ecs/contracts/AbilityContracts.js";
+import { entityAbilityPhaseForEntity, entityContract, phaseForEntity } from "../ecs/contracts/AbilityContracts.js";
 
 const ZONE_TYPES = new Set([CLOSING_ZONE_TYPE, "grenadeExplosion", "mineExplosion", "gravityZone", "gravityExplosion", "nullZone", "orbitalMarker", "orbitalExplosion", "silenceWave", "temporalRewindZone", "singularityZone", "singularityExplosion", "staticSnareBurst"]);
 const PROJECTILE_TYPES = new Set(["grenade", "fireball", "windburstProjectile"]);
@@ -20,9 +20,8 @@ const LEGACY_REPLAY_PHASE_VISUAL_TYPES = new Set([
     "singularityExplosion",
     "staticSnareBurst",
 ]);
-// Authoritative replay entities expose the remaining lifetime as timerMs.
-// Impact phases carry a visibleMs timer in the training arena, so normalize
-// the replay timer back into that same renderer-facing field.
+// Authoritative replay entities expose gameplay lifetime and phase clocks.
+// Presentation duration is resolved only from the browser contract below.
 const PROJECTILE_TRAILS = Object.freeze({
     fireball: { color: 0xfb923c, length: 48, width: 10 },
     gravityZone: { color: 0xc4b5fd, length: 38, width: 7 },
@@ -62,6 +61,33 @@ export function visualForShape(shape) {
     const contract = entityContract(shape?.entityContractId ?? shape?.abilityId ?? shape?.type);
     if (!contract) return null;
 
+    const semanticEventType = String(shape?.eventType ?? "").toLowerCase();
+    const eventSequence = Number(shape?.eventSequence ?? 0);
+    if (semanticEventType && eventSequence > 0) {
+        const phase = phaseForEntity(shape);
+        const embeddedPhase = entityAbilityPhaseForEntity(shape);
+        const handler = phase?.events?.[semanticEventType]
+            ?? embeddedPhase?.events?.[semanticEventType]
+            ?? null;
+        const eventVisual = handler?.visual
+            ?? (embeddedPhase?.events?.[semanticEventType] ? embeddedPhase.visual : null)
+            ?? null;
+        const eventType = handler?.visualType ?? eventVisual?.type
+            ?? (semanticEventType === "collision" ? embeddedPhase?.visual?.type : null);
+        if (eventType) {
+            return {
+                type: eventType,
+                ...(handler?.visualSize == null && eventVisual?.visualSize == null
+                    ? {} : { visualSize: Number(handler?.visualSize ?? eventVisual?.visualSize) }),
+                ...(handler?.visibleMs == null && eventVisual?.visibleMs == null
+                    ? {} : { visibleMs: Number(handler?.visibleMs ?? eventVisual?.visibleMs) }),
+            };
+        }
+    }
+
+    // Live practice state from older clients may still carry a frontend-only
+    // visual descriptor. It is never produced by the authoritative replay
+    // mapper, but retaining this fallback keeps local training compatible.
     if (shape?.visualEventType && Number(shape.visualEventMs ?? 0) > 0) {
         const visualSize = Number(shape.visualEventSize ?? shape.size ?? 0);
         return {
@@ -213,10 +239,14 @@ export function visualAnimationDescriptorForShape(shape) {
     const state = visual?.state ?? "";
     const size = Number(visual?.visualSize ?? shape?.size ?? 0);
     const eventMs = Number(shape?.visualEventMs ?? 0);
-    const eventActive = Boolean(shape?.visualEventType) && eventMs > 0;
+    const semanticEventActive = Boolean(shape?.eventType)
+        && Number(shape?.eventSequence ?? 0) > 0;
+    const eventActive = semanticEventActive || (Boolean(shape?.visualEventType) && eventMs > 0);
     const legacyVisual = !visual && LEGACY_REPLAY_PHASE_VISUAL_TYPES.has(type);
     const configuredVisibleMs = eventActive
-        ? Number(presentation.durationMs ?? visual?.visibleMs ?? eventMs)
+        ? Number(semanticEventActive
+            ? visual?.visibleMs ?? presentation.durationMs ?? eventMs
+            : presentation.durationMs ?? visual?.visibleMs ?? eventMs)
         : Number(visual?.visibleMs
             ?? (legacyVisual
                 ? shape?.visibleMs ?? shape?.timerMs ?? presentation.durationMs
@@ -224,12 +254,21 @@ export function visualAnimationDescriptorForShape(shape) {
     const durationMs = Number.isFinite(configuredVisibleMs) && configuredVisibleMs > 0
         ? configuredVisibleMs
         : 0;
+    const currentPhase = phaseForEntity(shape);
+    const phaseDurationMs = Number(currentPhase?.durationMs ?? visual?.visibleMs ?? 0);
+    const hasPhaseClock = shape?.phaseTimerMs != null;
+    const phaseElapsedMs = Number(shape?.phaseTimerMs ?? 0);
+    const phaseRemainingMs = hasPhaseClock && phaseDurationMs > 0
+        ? Math.max(0, phaseDurationMs - Math.max(0, phaseElapsedMs))
+        : null;
     const remainingMs = eventActive
-        ? eventMs
-        : shape?.visibleMs != null && Number.isFinite(Number(shape.visibleMs))
+        ? (eventMs > 0 ? eventMs : durationMs)
+        : phaseRemainingMs ?? (shape?.visibleMs != null && Number.isFinite(Number(shape.visibleMs))
             ? Math.max(0, Number(shape.visibleMs))
-            : durationMs > 0 ? durationMs : null;
-    const eventSequence = shape?.visualEvent == null ? "" : `:${shape.visualEvent}`;
+            : durationMs > 0 ? durationMs : null);
+    const eventSequence = shape?.eventSequence != null
+        ? `:${shape.eventSequence}`
+        : shape?.visualEvent == null ? "" : `:${shape.visualEvent}`;
     const phase = shape?.phaseId == null ? "" : `:${shape.phaseId}`;
     const key = `${eventActive ? "event" : "phase"}${eventSequence}${phase}:${type}:${state}:${size}`;
     return { key, durationMs, remainingMs, eventActive };
@@ -311,25 +350,14 @@ export function normalizeReplayObstacleShape(obstacle, previousObstacle, {
     const phaseLocked = obstacle?.phaseId == null
         ? obstacle?.phaseLocked
         : true;
-    const phaseShape = {
-        ...obstacle,
-        ...(normalizedAbilityId == null ? {} : { abilityId: normalizedAbilityId }),
-        ...(phaseLocked == null ? {} : { phaseLocked }),
-    };
     const velocity = obstacle?.type === "grenade"
         ? { velocityX: Number(obstacle.velocityX ?? 0), velocityY: Number(obstacle.velocityY ?? 0) }
         : replayProjectileVelocity(obstacle, previousObstacle, nextObstacle);
-    const phaseVisual = visualForShape(phaseShape);
-    const visualEventMs = Number(obstacle?.visualEventMs);
-    const replayVisibleMs = Number.isFinite(visualEventMs) && visualEventMs > 0
-        ? visualEventMs
-        : obstacle?.visibleMs != null
-            ? Math.max(0, Number(obstacle.visibleMs))
-            : Number.isFinite(Number(phaseVisual?.visibleMs)) && Number(phaseVisual.visibleMs) > 0
-                ? Number(phaseVisual.visibleMs)
-                : LEGACY_REPLAY_PHASE_VISUAL_TYPES.has(obstacle?.type)
-                    ? Math.max(0, Number(obstacle?.timerMs ?? 0))
-                : null;
+    const legacyVisibleMs = obstacle?.visibleMs != null
+        ? Math.max(0, Number(obstacle.visibleMs))
+        : LEGACY_REPLAY_PHASE_VISUAL_TYPES.has(obstacle?.type)
+            ? Math.max(0, Number(obstacle?.timerMs ?? 0))
+            : null;
     return {
         ...obstacle,
         ...(normalizedAbilityId == null ? {} : { abilityId: normalizedAbilityId }),
@@ -341,7 +369,7 @@ export function normalizeReplayObstacleShape(obstacle, previousObstacle, {
         armed: obstacle?.armed,
         fuseMs: obstacle?.timerMs,
         remainingMs: obstacle?.timerMs,
-        ...(replayVisibleMs == null ? {} : { visibleMs: replayVisibleMs }),
+        ...(legacyVisibleMs == null ? {} : { visibleMs: legacyVisibleMs }),
         captureBySlot: { 1: obstacle?.slotOneCaptureMs ?? 0, 2: obstacle?.slotTwoCaptureMs ?? 0 },
         ...(obstacle?.type === CLOSING_ZONE_TYPE
             ? {

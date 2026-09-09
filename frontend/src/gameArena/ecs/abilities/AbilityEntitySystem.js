@@ -754,7 +754,7 @@ function applyIncomingEntityEffects(target, world, combat) {
     }
 
     for (const source of world.entities ?? []) {
-        if (!source || source.id === target.id || !entityOwnersAreHostile(source, target)) continue;
+        if (!source || source.id === target.id || !entityOwnersAreHostile(source, target, world.bots)) continue;
         const phase = canonicalPhaseForEntity(source);
         const event = phase?.events?.[PHASE_EVENT_TYPES.COLLISION];
         const collision = entityEffectCollision(source, target);
@@ -1086,13 +1086,15 @@ function advancePhaseEntity(entity, phases, stats, world) {
 
 function damageToEntity(entity, world, combat) {
     let damage = 0;
+    const teamProtectedSummon = canonicalPhaseForEntity(entity)?.type === "summon";
     for (const bot of world.bots) {
+        if (teamProtectedSummon && !isEnemy(entity, bot, world.bots)) continue;
         if (typeof combat.triggeredAbilityDamage === "function") damage += combat.triggeredAbilityDamage(bot, entity);
     }
     for (const effect of world.entities ?? []) {
         if (effect.id === entity.id) continue;
         const phase = canonicalPhaseForEntity(effect);
-        const collision = damagingEntityCollision(effect, entity);
+        const collision = damagingEntityCollision(effect, entity, world.bots);
         if (!collision) continue;
         const damageEffect = phase.effects
             ?.find((declared) => declared.type === EFFECT_TYPES.DAMAGE) ?? null;
@@ -1116,8 +1118,8 @@ function entityCollisionRemovalIds(world) {
         if (!collisionEvent?.actions?.includes(PHASE_ACTIONS.APPLY_EFFECTS)
             || !collisionEvent.actions.includes(PHASE_ACTIONS.REMOVE)) continue;
         for (const target of targets) {
-            if (source.id === target.id || !entityOwnersAreHostile(source, target)) continue;
-            if (damagingEntityCollision(source, target)) {
+            if (source.id === target.id || !entityOwnersAreHostile(source, target, world.bots)) continue;
+            if (damagingEntityCollision(source, target, world.bots)) {
                 removed.add(source.id);
                 break;
             }
@@ -1126,10 +1128,10 @@ function entityCollisionRemovalIds(world) {
     return removed;
 }
 
-function damagingEntityCollision(source, target) {
+function damagingEntityCollision(source, target, bots = []) {
     const phase = canonicalPhaseForEntity(source);
     const collisionEvent = phase?.events?.[PHASE_EVENT_TYPES.COLLISION];
-    if (!entityOwnersAreHostile(source, target)
+    if (!entityOwnersAreHostile(source, target, bots)
         || !eventCanAffectHpEntity(collisionEvent, canonicalPhaseForEntity(target)?.type === "summon")
         || !phase?.effects?.some((declared) =>
             (typeof declared === "string" ? declared : declared?.type) === EFFECT_TYPES.DAMAGE)
@@ -1147,10 +1149,15 @@ function damagingEntityCollision(source, target) {
     return collision?.hit ? collision : null;
 }
 
-function entityOwnersAreHostile(source, target) {
+function entityOwnersAreHostile(source, target, bots = []) {
     if (!source || !target || source.id === target.id) return false;
-    return source.ownerSlot == null || target.ownerSlot == null
-        || Number(source.ownerSlot) !== Number(target.ownerSlot);
+    if (source.ownerSlot == null || target.ownerSlot == null) return true;
+    const sourceOwner = bots.find((bot) => Number(bot?.slot) === Number(source.ownerSlot));
+    const targetOwner = bots.find((bot) => Number(bot?.slot) === Number(target.ownerSlot));
+    const sourceTeam = Number(sourceOwner?.teamNumber);
+    const targetTeam = Number(targetOwner?.teamNumber);
+    if (sourceTeam > 0 && targetTeam > 0) return sourceTeam !== targetTeam;
+    return Number(source.ownerSlot) !== Number(target.ownerSlot);
 }
 
 function isEnemy(source, target, bots) {

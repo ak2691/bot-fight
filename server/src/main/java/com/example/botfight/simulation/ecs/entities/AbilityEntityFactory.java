@@ -1,6 +1,7 @@
 package com.example.botfight.simulation.ecs.entities;
 
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
+import java.util.List;
 import java.util.Map;
 
 /** Creates initial entity state from the declarative entity contract. */
@@ -94,7 +95,6 @@ public final class AbilityEntityFactory {
                 timer,
                 armed,
                 hp,
-                0,
                 entityDamageMultiplier,
                 abilityId,
                 0,
@@ -108,10 +108,9 @@ public final class AbilityEntityFactory {
                 Map.of(),
                 phaseId,
                 phaseLocked,
+                List.of(),
                 0,
-                null,
-                0,
-                0);
+                null);
     }
 
     private static int phaseSize(AbilityContracts.AbilityPhase phase) {

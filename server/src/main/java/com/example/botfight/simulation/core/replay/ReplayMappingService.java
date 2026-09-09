@@ -33,13 +33,13 @@ public class ReplayMappingService {
     }
 
     public MatchPlaybackDTO.ArenaEntityDTO toArenaEntity(ArenaEntity entity) {
-        ReplayEntityVisual visual = replayEntityVisual(entity);
+        String phaseId = replayEntityPhaseId(entity);
         return new MatchPlaybackDTO.ArenaEntityDTO(
                 entity.id(), entity.type(), entity.abilityId(),
                 round(entity.x()), round(entity.y()), entity.size(), entity.rotation(), entity.hp(), entity.armed(),
-                entity.timerMs(), entity.velocityX(), entity.velocityY(), entity.shotVisualMs(),
-                visual.phaseId(), visual.visibleMs(), visual.eventType(),
-                visual.eventMs(), visual.eventSize());
+                entity.timerMs(), entity.velocityX(), entity.velocityY(),
+                phaseId, positiveOrNull(entity.phaseTimerMs()), entity.eventType(),
+                positiveOrNull(entity.eventSequence()));
     }
 
     /** Records the static bot metadata once for the compact replay. */
@@ -105,7 +105,7 @@ public class ReplayMappingService {
     private MatchReplayDTO.ReplayEntityDTO toReplayEntity(ArenaEntity entity) {
         String type = entity.type();
         boolean drone = "hunterDrone".equals(type) || "repellerDrone".equals(type);
-        ReplayEntityVisual visual = replayEntityVisual(entity);
+        String phaseId = replayEntityPhaseId(entity);
         return new MatchReplayDTO.ReplayEntityDTO(
                 entity.id(),
                 type,
@@ -119,36 +119,22 @@ public class ReplayMappingService {
                 positiveOrNull(entity.timerMs()),
                 nonZeroOrNull(entity.velocityX()),
                 nonZeroOrNull(entity.velocityY()),
-                positiveOrNull(entity.shotVisualMs()),
-                visual.phaseId(),
-                visual.visibleMs(),
-                visual.eventType(),
-                visual.eventMs(),
-                visual.eventSize());
+                phaseId,
+                positiveOrNull(entity.phaseTimerMs()),
+                entity.eventType(),
+                positiveOrNull(entity.eventSequence()),
+                entity.statusEffects().isEmpty() ? null : entity.statusEffects());
     }
 
     /**
-     * Replay presentation must use the current phase and live visual timer.
-     * Entity snapshots are immutable, so deriving this at the mapping boundary
-     * prevents a prior phase/event descriptor from leaking into later frames.
+     * Replay entities carry authoritative lifecycle/phase state plus semantic
+     * event occurrences. The browser contract owns the presentation mapping;
+     * no visual type, size, or duration is copied into the replay payload.
      */
-    private static ReplayEntityVisual replayEntityVisual(ArenaEntity entity) {
+    private static String replayEntityPhaseId(ArenaEntity entity) {
         AbilityContracts.AbilityPhase phase = AbilityContracts.phaseFor(entity);
-        int eventMs = Math.max(0, entity.visualEventMs());
-        return new ReplayEntityVisual(
-                phase == null ? entity.phaseId() : phase.id(),
-                eventMs > 0 ? positiveOrNull(eventMs) : positiveOrNull(entity.visibleMs()),
-                eventMs > 0 ? entity.visualEventType() : null,
-                eventMs > 0 ? positiveOrNull(eventMs) : null,
-                eventMs > 0 ? positiveOrNull(entity.visualEventSize()) : null);
+        return phase == null ? entity.phaseId() : phase.id();
     }
-
-    private record ReplayEntityVisual(
-            String phaseId,
-            Integer visibleMs,
-            String eventType,
-            Integer eventMs,
-            Integer eventSize) {}
 
     private static List<StatusEffectState> copyStatusEffects(DuelSimulationService.Bot bot) {
         return bot.statusEffects.values().stream().map(status -> {

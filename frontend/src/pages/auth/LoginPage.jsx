@@ -108,6 +108,7 @@ export default function LoginPage() {
 
     return (
         <AuthLayout
+            showcase
             footer={<Link className="auth-switch-link flex min-h-12 w-full items-center justify-center rounded-lg border border-cyan-500/40 bg-cyan-950/30 px-3 py-3 text-center text-base font-semibold hover:border-cyan-300 hover:bg-cyan-900/40" to="/register">No account yet? Sign up!</Link>}
         >
                     {googleLinkRequired && (

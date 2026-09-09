@@ -339,9 +339,7 @@ class AbilityEntitySystemTest {
                 new ArenaBounds(1000, 800), 100, destroyer)).singleElement().satisfies(entity -> {
             assertThat(entity.type()).isEqualTo("staticSnare");
             assertThat(entity.phaseId()).isEqualTo("destroyed");
-            assertThat(entity.visualEventType()).isEqualTo("staticSnareBurst");
-            assertThat(entity.visualEventSize()).isEqualTo(240);
-            assertThat(entity.visualEventMs()).isGreaterThan(0);
+            assertThat(entity.eventType()).isEqualTo("killed");
             assertThat(entity.size()).isEqualTo(24);
         });
     }
@@ -405,8 +403,7 @@ class AbilityEntitySystemTest {
         assertThat(result).singleElement().satisfies(entity -> {
             assertThat(entity.type()).isEqualTo("staticSnare");
             assertThat(entity.phaseId()).isEqualTo("triggered");
-            assertThat(entity.visualEventType()).isNull();
-            assertThat(entity.visualEventSize()).isZero();
+            assertThat(entity.eventType()).isEqualTo("trigger");
             assertThat(entity.size()).isEqualTo(24);
         });
     }
@@ -440,9 +437,7 @@ class AbilityEntitySystemTest {
         assertThat(result).singleElement().satisfies(entity -> {
             assertThat(entity.type()).isEqualTo("staticSnare");
             assertThat(entity.phaseId()).isEqualTo("destroyed");
-            assertThat(entity.visualEventType()).isEqualTo("staticSnareBurst");
-            assertThat(entity.visualEventSize()).isEqualTo(240);
-            assertThat(entity.visualEventMs()).isGreaterThan(0);
+            assertThat(entity.eventType()).isEqualTo("killed");
             assertThat(entity.size()).isEqualTo(24);
         });
     }
@@ -500,9 +495,7 @@ class AbilityEntitySystemTest {
         assertThat(result).singleElement().satisfies(entity -> {
             assertThat(entity.type()).isEqualTo("staticSnare");
             assertThat(entity.phaseId()).isEqualTo("destroyed");
-            assertThat(entity.visualEventType()).isEqualTo("staticSnareBurst");
-            assertThat(entity.visualEventSize()).isEqualTo(240);
-            assertThat(entity.visualEventMs()).isGreaterThan(0);
+            assertThat(entity.eventType()).isEqualTo("killed");
             assertThat(entity.size()).isEqualTo(24);
         });
     }
@@ -624,7 +617,7 @@ class AbilityEntitySystemTest {
         assertThat(entities).singleElement().satisfies(entity -> {
             assertThat(entity.type()).isEqualTo("singularityZone");
             assertThat(entity.phaseId()).isEqualTo("active");
-            assertThat(entity.visualEventType()).isNull();
+            assertThat(entity.eventType()).isNull();
         });
         int hpAfterDetonation = target.hp;
 
@@ -648,13 +641,10 @@ class AbilityEntitySystemTest {
 
         assertThat(combat.damage).isEqualTo(60);
         assertThat(target.hp).isEqualTo(40);
-        assertThat(entities).singleElement().satisfies(entity -> {
-            assertThat(entity.type()).isEqualTo("orbitalMarker");
-            assertThat(entity.visualEventType()).isEqualTo("orbitalExplosion");
-        });
+        assertThat(entities).isEmpty();
         for (int tick = 0; tick < 2; tick += 1) {
             entities = AbilityEntitySystem.tick(entities, List.of(target), arena, 100, combat);
-            assertThat(entities).singleElement();
+            assertThat(entities).isEmpty();
         }
         assertThat(AbilityEntitySystem.tick(entities, List.of(target), arena, 100, combat)).isEmpty();
     }
@@ -693,8 +683,7 @@ class AbilityEntitySystemTest {
             assertThat(entity.id()).isEqualTo("mine-1");
             assertThat(entity.type()).isEqualTo("proximityMine");
             assertThat(entity.phaseId()).isEqualTo("armed");
-            assertThat(entity.visualEventType()).isNull();
-            assertThat(entity.visualEventSize()).isZero();
+            assertThat(entity.eventType()).isNull();
         });
     }
 
@@ -712,8 +701,7 @@ class AbilityEntitySystemTest {
             assertThat(entity.id()).isEqualTo("mine");
             assertThat(entity.type()).isEqualTo("proximityMine");
             assertThat(entity.phaseId()).isEqualTo("active");
-            assertThat(entity.visualEventType()).isNull();
-            assertThat(entity.visualEventSize()).isZero();
+            assertThat(entity.eventType()).isNull();
             assertThat(entity.size()).isEqualTo(24);
         });
         assertThat(combat.damage).isEqualTo(25);
@@ -760,7 +748,7 @@ class AbilityEntitySystemTest {
                 List.of(drone), List.of(target), new ArenaBounds(1000, 800), 100, droneCombat);
         assertThat(droneCombat.damage).isEqualTo(5);
         assertThat(droneEntities).singleElement().satisfies(updatedDrone ->
-                assertThat(updatedDrone.shotVisualMs()).isEqualTo(200));
+                assertThat(updatedDrone.eventType()).isEqualTo("collision"));
 
         RecordingCombat orbitalCombat = new RecordingCombat(false);
         ArenaEntity orbital = new ArenaEntity("orbital", "orbitalMarker", 1, 150, 100, 260, 0, 0, 0, 100, true);
