@@ -2,6 +2,10 @@
 @import "tailwindcss";
 
 @layer utilities {
+  .font-ui {
+    font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  }
+
   .font-interface {
     font-family: "DM Sans", system-ui, sans-serif;
     font-weight: 500;
@@ -3029,6 +3033,10 @@ button {
 .arena-toolbar-button.font-interface {
   font-family: "DM Sans", system-ui, sans-serif;
   font-weight: 500;
+}
+
+.arena-toolbar-button.font-ui {
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
 }
 
 .arena-toolbar-button--inline {
