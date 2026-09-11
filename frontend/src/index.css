@@ -519,17 +519,17 @@ html,
 }
 
 .auth-showcase-copy {
-  max-width: 620px;
+  width: min(100%, 574px);
+  margin-inline: auto;
   margin-bottom: 1.5rem;
+  text-align: center;
 }
 
 .auth-showcase-tagline {
-  max-width: 570px;
-  color: #dbeafe;
-  font-size: clamp(1rem, 1.6vw, 1.25rem);
-  font-weight: 600;
-  line-height: 1.45;
-  letter-spacing: .01em;
+  color: #67e8f9;
+  font: 700 .8rem/1.2 "Cousine", "Courier New", monospace;
+  letter-spacing: .22em;
+  text-transform: uppercase;
 }
 
 .auth-showcase-video-frame {
@@ -596,14 +596,6 @@ html,
     gap: 3.5rem;
   }
 
-  .auth-showcase-copy {
-    text-align: center;
-  }
-
-  .auth-showcase-tagline {
-    margin-right: auto;
-    margin-left: auto;
-  }
 }
 
 @media (max-width: 480px) {
