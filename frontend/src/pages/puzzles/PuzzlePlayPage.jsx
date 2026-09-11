@@ -80,15 +80,15 @@ function PuzzlePlayInfoModal({ puzzle, outcome, onOpenConfiguration }) {
 
     if (minimized) {
         return (
-            <button type="button" onClick={() => setMinimized(false)} className="info-popup-minimized gray-button-surface flex items-center gap-3 rounded-lg border border-cyan-400/40 px-4 py-3 text-left shadow-2xl" aria-label="Expand puzzle information">
-                <span className="font-mono text-sm font-bold tracking-[.12em] text-cyan-300">Puzzle Info</span>
-                <img src="/assets/arena-toolbar/info-circle-icon.png" alt="" aria-hidden="true" className="info-circle-icon h-5 w-5" />
+            <button type="button" onClick={() => setMinimized(false)} className="puzzle-info-button tutorial-guide-button info-popup-minimized gray-button-surface flex items-center gap-2 rounded-lg border border-cyan-400/40 px-3 py-2 text-left shadow-2xl" aria-label="Expand puzzle information" aria-expanded="false" aria-controls="puzzle-info-panel">
+                <span className="tutorial-guide-button__label font-mono text-[9px] font-bold tracking-[.16em] text-slate-300">Puzzle Info</span>
+                <img src="/assets/arena-toolbar/info-circle-icon.png" alt="" aria-hidden="true" className="tutorial-guide-button__icon info-circle-icon h-5 w-5" />
             </button>
         );
     }
 
     return (
-        <aside className="info-popup-panel puzzle-info-panel w-[19rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-cyan-400/30 bg-[#07111b] shadow-[0_18px_50px_rgba(0,0,0,.48)]" aria-label="Puzzle information">
+        <aside id="puzzle-info-panel" className="info-popup-panel puzzle-info-panel w-[19rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-cyan-400/30 bg-[#07111b] shadow-[0_18px_50px_rgba(0,0,0,.48)]" aria-label="Puzzle information">
             <div className="p-3.5">
                 <div className="flex items-start justify-between gap-3">
                     <p className="min-w-0 flex-1 break-words font-mono text-lg font-bold leading-tight text-white">{puzzle.puzzleNumber}. {puzzle.name}</p>

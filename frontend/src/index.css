@@ -519,19 +519,13 @@ html,
   margin-bottom: 1.5rem;
 }
 
-.auth-showcase-eyebrow {
-  margin-bottom: .55rem;
-  color: #67e8f9;
-  font: 700 .8rem/1.2 "Cousine", "Courier New", monospace;
-  letter-spacing: .22em;
-}
-
-.auth-showcase-copy > p:last-child {
+.auth-showcase-tagline {
   max-width: 570px;
-  margin-top: .8rem;
-  color: #b8c5d1;
-  font-size: .98rem;
-  line-height: 1.65;
+  color: #dbeafe;
+  font-size: clamp(1rem, 1.6vw, 1.25rem);
+  font-weight: 600;
+  line-height: 1.45;
+  letter-spacing: .01em;
 }
 
 .auth-showcase-video-frame {
@@ -591,15 +585,6 @@ html,
   font: 700 .65rem/1 "Cousine", "Courier New", monospace;
 }
 
-.auth-showcase-format {
-  margin-top: .8rem;
-  color: #8ea5b5;
-  font: 700 .68rem/1.3 "Cousine", "Courier New", monospace;
-  letter-spacing: .08em;
-  text-align: right;
-  text-transform: uppercase;
-}
-
 @media (max-width: 900px) {
   .auth-content--showcase {
     max-width: 520px;
@@ -611,7 +596,7 @@ html,
     text-align: center;
   }
 
-  .auth-showcase-copy > p:last-child {
+  .auth-showcase-tagline {
     margin-right: auto;
     margin-left: auto;
   }
@@ -620,11 +605,6 @@ html,
 @media (max-width: 480px) {
   .auth-content--showcase {
     gap: 3rem;
-  }
-
-  .auth-showcase-copy > p:last-child {
-    font-size: .88rem;
-    line-height: 1.55;
   }
 
   .auth-showcase-steps {
@@ -3287,7 +3267,8 @@ button {
 /* On phones, the tutorial guide is a compact fixed step control. Expanding it
    opens a popover above the control without changing the arena layout. */
 @media (max-width: 640px) {
-  .arena-stage-info__tutorial > .tutorial-guide-button.info-popup-minimized {
+  .arena-stage-info__tutorial > .tutorial-guide-button.info-popup-minimized,
+  .arena-stage-info > .puzzle-info-button.info-popup-minimized {
     position: fixed;
     top: auto;
     right: 1rem;
@@ -3304,7 +3285,8 @@ button {
     display: none;
   }
 
-  .arena-stage-info__tutorial > .tutorial-guide-panel.info-popup-panel {
+  .arena-stage-info__tutorial > .tutorial-guide-panel.info-popup-panel,
+  .arena-stage-info > .puzzle-info-panel.info-popup-panel {
     position: fixed;
     top: auto;
     right: 1rem;
@@ -3312,8 +3294,15 @@ button {
     left: auto;
     z-index: 80;
     width: min(19rem, calc(100vw - 2rem));
+  }
+
+  .arena-stage-info__tutorial > .tutorial-guide-panel.info-popup-panel {
     height: min(26rem, calc(100svh - 6.5rem - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
     max-height: none;
+  }
+
+  .arena-stage-info > .puzzle-info-panel.info-popup-panel {
+    max-height: calc(100svh - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   }
 }
 

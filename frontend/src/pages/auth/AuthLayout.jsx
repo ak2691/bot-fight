@@ -52,10 +52,9 @@ export default function AuthLayout({ title, subtitle, children, footer, showBran
 
 function AuthShowcase() {
     return (
-        <section className="auth-showcase" aria-labelledby="auth-showcase-title">
+        <section className="auth-showcase" aria-label="About Bot Fight">
             <div className="auth-showcase-copy">
-                <p id="auth-showcase-title" className="auth-showcase-eyebrow">PROGRAM. FIGHT. ADAPT.</p>
-                <p>Use a visual programming system to build your bot, then watch it battle other players’ bots.</p>
+                <p className="auth-showcase-tagline"><span>Program your bot.</span>{" "}<span>Watch it battle.</span></p>
             </div>
 
             <div className="auth-showcase-video-frame">
@@ -78,7 +77,6 @@ function AuthShowcase() {
                 <li><span>02</span> Build logic</li>
                 <li><span>03</span> Battle</li>
             </ol>
-            <p className="auth-showcase-format">Repeat for a best of three.</p>
         </section>
     );
 }

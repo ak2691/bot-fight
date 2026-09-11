@@ -31,7 +31,12 @@ function DeferredNumberInput({ value, onCommit, min, max, fallback = 0, ...props
         setDraft(String(normalized));
         onCommit(normalized);
     };
-    return <input {...props} type="text" inputMode="decimal" value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={commit} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); commit(); event.currentTarget.blur(); } }} />;
+    return <input {...props} type="text" inputMode="decimal" value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={commit} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } }} />;
+}
+
+function DeferredTextInput({ value, onCommit, ...props }) {
+    const [draft, setDraft] = useState(String(value ?? ""));
+    return <input {...props} value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={() => onCommit(draft)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } }} />;
 }
 
 export default function CustomVariablesModal({ configuration, currentValues, maxSlots = MAX_CUSTOM_VARIABLE_SLOTS, idPrefix = "custom", disabled, onChange, onClose }) {
@@ -76,7 +81,7 @@ export default function CustomVariablesModal({ configuration, currentValues, max
                 {selectedVariable && <div className="p-5 sm:p-6">
                     <div className="flex items-center justify-between gap-4 border-b border-border-lo pb-3"><p className="font-mono text-[8px] tracking-[.18em] text-emerald-400">VARIABLE CONFIGURATION</p><div className="flex items-center gap-3"><span className="font-mono text-[8px] font-bold text-emerald-300">CURRENT: {String(currentValues?.[selectedVariable.id] ?? selectedVariable.initialValue)}</span><button type="button" disabled={disabled} onClick={removeSelectedVariable} className="arena-toolbar-button arena-toolbar-button--red code-custom-variable-delete-button">DELETE</button></div></div>
                     <div className="code-custom-variable-fields grid items-end gap-2.5 pt-4">
-                        <label className="w-56 min-w-40 font-mono text-[8px] text-ink-muted">NAME<input aria-label="Variable name" disabled={disabled} value={selectedVariable.name} maxLength={40} onChange={(event) => update(selectedIndex, { name: event.target.value })} className="mt-1 h-8 w-full rounded border border-border-mid bg-zinc-950 px-2 font-mono text-[9px] text-white" /></label>
+                        <label className="w-56 min-w-40 font-mono text-[8px] text-ink-muted">NAME<DeferredTextInput key={`${selectedVariable.id}:${selectedVariable.name}`} aria-label="Variable name" disabled={disabled} value={selectedVariable.name} maxLength={40} onCommit={(name) => update(selectedIndex, { name })} className="mt-1 h-8 w-full rounded border border-border-mid bg-zinc-950 px-2 font-mono text-[9px] text-white" /></label>
                         <label className="w-28 shrink-0 font-mono text-[8px] text-ink-muted">TYPE<select disabled={disabled} value={selectedVariable.valueType} onChange={(event) => update(selectedIndex, { valueType: event.target.value, initialValue: event.target.value === "boolean" ? false : 0 })} className="mt-1 h-8 w-full rounded border border-border-mid bg-zinc-950 px-2 font-mono text-[9px] text-white"><option value="number">NUMBER</option><option value="boolean">BOOLEAN</option></select></label>
                         <label className="w-28 shrink-0 font-mono text-[8px] text-ink-muted">STARTING VALUE{selectedVariable.valueType === "boolean" ? <select disabled={disabled} value={String(selectedVariable.initialValue ?? false)} onChange={(event) => update(selectedIndex, { initialValue: event.target.value === "true" })} className="mt-1 h-8 w-full rounded border border-border-lo bg-zinc-950 px-2 font-mono text-[9px] text-white"><option value="false">FALSE</option><option value="true">TRUE</option></select> : <DeferredNumberInput key={selectedVariable.id} disabled={disabled} min={CUSTOM_NUMBER_MIN} max={CUSTOM_NUMBER_MAX} value={selectedVariable.initialValue ?? 0} onCommit={(initialValue) => update(selectedIndex, { initialValue })} className="mt-1 h-8 w-full rounded border border-border-lo bg-zinc-950 px-2 font-mono text-[9px] text-white" />}</label>
                     </div>

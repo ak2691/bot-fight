@@ -653,6 +653,13 @@ test("custom variable configuration only defines variables and starting values",
     assert.match(source, /valueType: event\.target\.value/);
     assert.match(source, /STARTING VALUE/);
     assert.match(source, /arena-toolbar-button arena-toolbar-button--red code-custom-variable-delete-button/);
+    assert.match(source, /value=\{draft\} onChange=\{\(event\) => setDraft\(event\.target\.value\)\} onBlur=\{commit\}/);
+    assert.match(source, /event\.key === "Enter"[\s\S]*event\.currentTarget\.blur\(\)/);
+    assert.doesNotMatch(source, /event\.key === "Enter"[^{]*\{[^}]*commit\(\)/);
+    assert.match(source, /function DeferredTextInput/);
+    assert.match(source, /onBlur=\{\(\) => onCommit\(draft\)\}/);
+    assert.match(source, /aria-label="Variable name"[\s\S]*onCommit=\{\(name\) => update\(selectedIndex, \{ name \}\)\}/);
+    assert.doesNotMatch(source, /aria-label="Variable name"[^>]*onChange=\{\(event\) => update/);
 });
 
 test("modify custom variables use conditional-style operands and layered inspectors", () => {
