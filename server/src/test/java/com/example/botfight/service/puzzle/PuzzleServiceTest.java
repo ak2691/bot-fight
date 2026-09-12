@@ -78,6 +78,7 @@ class PuzzleServiceTest {
         when(puzzleRepository.findByPuzzleNumber(7L)).thenReturn(Optional.of(puzzle));
         when(puzzleRepository.saveAndFlush(puzzle)).thenReturn(puzzle);
         when(botValidationService.validateForSimulation(any())).thenReturn(List.of());
+        when(botValidationService.validateConditionRulesForSimulation(any())).thenReturn(List.of());
 
         PuzzleSaveRequestDTO request = validUpdateRequest();
         var response = service.update(7L, request, authentication);
@@ -95,6 +96,7 @@ class PuzzleServiceTest {
         assertThat(opponent.getStartX()).isEqualTo(30.0);
         assertThat(opponent.getBrainPayload()).contains("loadout");
         verify(puzzleRepository).saveAndFlush(puzzle);
+        verify(botValidationService).validateConditionRulesForSimulation(request.getLogicConfiguration());
         verify(databaseLookupCache).invalidatePuzzleCatalog("puzzle-updated");
     }
 

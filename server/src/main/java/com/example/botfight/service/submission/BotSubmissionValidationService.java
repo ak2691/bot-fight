@@ -71,7 +71,18 @@ public class BotSubmissionValidationService {
     /** Validates an in-memory brain with the same logic contract as a saved submission. */
     public List<String> validateForSimulation(JsonNode brain) {
         List<String> errors = new ArrayList<>();
-        validateBrain(errors, brain, combatLoadoutes.duelV1());
+        validateBrain(errors, brain, combatLoadoutes.duelV1(), true);
+        return List.copyOf(errors);
+    }
+
+    /**
+     * Validates a condition-driven rules graph without requiring executable bot actions.
+     * Puzzle outcome roots use the same allowlisted conditions and custom variables as bot
+     * brains, but win and lose branches intentionally do not execute an action.
+     */
+    public List<String> validateConditionRulesForSimulation(JsonNode brain) {
+        List<String> errors = new ArrayList<>();
+        validateBrain(errors, brain, combatLoadoutes.duelV1(), false);
         return List.copyOf(errors);
     }
 
@@ -94,6 +105,11 @@ public class BotSubmissionValidationService {
     }
 
     private void validateBrain(List<String> errors, JsonNode brain, GameConfig loadoutSpec) {
+        validateBrain(errors, brain, loadoutSpec, true);
+    }
+
+    private void validateBrain(List<String> errors, JsonNode brain, GameConfig loadoutSpec,
+            boolean requireExecutableActions) {
         if (!requireObject(errors, brain, "brain")) {
             return;
         }
@@ -108,7 +124,7 @@ public class BotSubmissionValidationService {
         validateNodePositions(errors, brain.get("nodePositions"));
         Map<String, String> customVariableTypes = customVariableTypes(brain);
         if (countConditionSlots(brain) > MAX_TOTAL_CONDITIONS) errors.add("brain exceeds the total condition limit");
-        validateActionsAgainstLoadout(errors, brain);
+        if (requireExecutableActions) validateActionsAgainstLoadout(errors, brain);
 
         if (brain.has("blocks")) errors.add("brain.blocks is no longer supported");
         if (brain.has("clusters")) errors.add("brain.clusters is no longer supported");
@@ -118,7 +134,7 @@ public class BotSubmissionValidationService {
             errors.add("brain.roots must be an array");
             return;
         }
-        validateLogicRoots(errors, roots, loadoutSpec, customVariableTypes);
+        validateLogicRoots(errors, roots, loadoutSpec, customVariableTypes, requireExecutableActions);
     }
 
     private void validateNodePositions(List<String> errors, JsonNode positions) {
@@ -419,7 +435,8 @@ public class BotSubmissionValidationService {
                 && BotLogicContracts.SELECTABLE_OPPONENT.equals(selectable.asText());
     }
 
-    private void validateLogicRoots(List<String> errors, JsonNode roots, GameConfig loadoutSpec, Map<String, String> customVariableTypes) {
+    private void validateLogicRoots(List<String> errors, JsonNode roots, GameConfig loadoutSpec,
+            Map<String, String> customVariableTypes, boolean requireExecutableActions) {
         if (!roots.isArray()) {
             errors.add("brain.roots must be an array");
             return;
@@ -444,21 +461,24 @@ public class BotSubmissionValidationService {
                 errors.add(path + ".branches must be an array");
                 continue;
             }
-            validateTreeBranches(errors, branches, path + ".branches", loadoutSpec, customVariableTypes, branchCount, conditionCount);
+            validateTreeBranches(errors, branches, path + ".branches", loadoutSpec, customVariableTypes,
+                    branchCount, conditionCount, requireExecutableActions);
         }
         if (branchCount[0] > MAX_LOGIC_BLOCKS) errors.add("brain tree actions exceed the action node limit");
         if (conditionCount[0] > MAX_TOTAL_CONDITIONS) errors.add("brain tree exceeds the total condition limit");
     }
 
     private void validateTreeBranches(List<String> errors, JsonNode branches, String path,
-            GameConfig loadoutSpec, Map<String, String> customVariableTypes, int[] branchCount, int[] conditionCount) {
+            GameConfig loadoutSpec, Map<String, String> customVariableTypes, int[] branchCount,
+            int[] conditionCount, boolean requireExecutableActions) {
         for (int index = 0; index < branches.size(); index++) {
             JsonNode branch = branches.get(index);
             String branchPath = path + "[" + index + "]";
-            branchCount[0] += executableActionCount(branch);
+            if (requireExecutableActions) branchCount[0] += executableActionCount(branch);
             conditionCount[0] += conditionCount(branch);
             validateTreePriority(errors, branch, branchPath, MAX_LOGIC_BLOCKS);
-            validateLogicBlock(errors, branch, branchPath, loadoutSpec, customVariableTypes);
+            validateLogicBlock(errors, branch, branchPath, loadoutSpec, customVariableTypes,
+                    requireExecutableActions);
             String type = branch != null && branch.hasNonNull("branchType") ? branch.get("branchType").asText() : "if";
             if (index == 0 && !"if".equals(type)) errors.add(branchPath + ".branchType must be if for the first sibling");
             if (index > 0 && !"if".equals(type) && !"else".equals(type)) errors.add(branchPath + ".branchType must be if or else");
@@ -466,7 +486,8 @@ public class BotSubmissionValidationService {
             JsonNode children = branch != null ? branch.get("children") : null;
             if (children != null) {
                 if (!children.isArray()) errors.add(branchPath + ".children must be an array");
-                else validateTreeBranches(errors, children, branchPath + ".children", loadoutSpec, customVariableTypes, branchCount, conditionCount);
+                else validateTreeBranches(errors, children, branchPath + ".children", loadoutSpec,
+                        customVariableTypes, branchCount, conditionCount, requireExecutableActions);
             }
         }
     }
@@ -492,12 +513,28 @@ public class BotSubmissionValidationService {
         return conditions != null && conditions.isArray() ? conditions.size() : 0;
     }
 
-    private void validateLogicBlock(List<String> errors, JsonNode block, String path, GameConfig loadoutSpec, Map<String, String> customVariableTypes) {
+    private void validateLogicBlock(List<String> errors, JsonNode block, String path, GameConfig loadoutSpec,
+            Map<String, String> customVariableTypes, boolean requireExecutableActions) {
         if (!block.isObject()) {
             errors.add(path + " must be an object");
             return;
         }
         validateSelectable(errors, block.get("selectable"), path + ".selectable");
+        if (requireExecutableActions) validateLogicBlockActions(errors, block, path, loadoutSpec);
+        JsonNode conditions = block.get("conditions");
+        if (conditions == null || !conditions.isArray()) {
+            errors.add(path + ".conditions must be an array");
+        } else if (conditions.size() > MAX_CONDITIONS_PER_BLOCK) {
+            errors.add(path + ".conditions exceeds the condition limit");
+        } else {
+            for (int index = 0; index < conditions.size(); index++) {
+                validateConditionAllowed(errors, conditions.get(index), path + ".conditions[" + index + "]", loadoutSpec, customVariableTypes);
+            }
+        }
+    }
+
+    private void validateLogicBlockActions(List<String> errors, JsonNode block, String path,
+            GameConfig loadoutSpec) {
         JsonNode actions = block.get("actions");
         if (actions != null && actions.isArray() && !actions.isEmpty()) {
             Set<String> heads = new HashSet<>();
@@ -541,16 +578,6 @@ public class BotSubmissionValidationService {
             validateActionConfiguration(errors, block, block.get("action"), path);
             if (block.has("targetOffsetX")) validateSignedCoordinate(errors, block.get("targetOffsetX"), path + ".targetOffsetX", ArenaUnits.WIDTH);
             if (block.has("targetOffsetY")) validateSignedCoordinate(errors, block.get("targetOffsetY"), path + ".targetOffsetY", ArenaUnits.HEIGHT);
-        }
-        JsonNode conditions = block.get("conditions");
-        if (conditions == null || !conditions.isArray()) {
-            errors.add(path + ".conditions must be an array");
-        } else if (conditions.size() > MAX_CONDITIONS_PER_BLOCK) {
-            errors.add(path + ".conditions exceeds the condition limit");
-        } else {
-            for (int index = 0; index < conditions.size(); index++) {
-                validateConditionAllowed(errors, conditions.get(index), path + ".conditions[" + index + "]", loadoutSpec, customVariableTypes);
-            }
         }
     }
 

@@ -672,7 +672,7 @@ public class PuzzleService {
         }
         if (!hasWinRoot) errors.add("logicConfiguration must contain at least one win condition");
 
-        errors.addAll(botValidationService.validateForSimulation(configuration).stream()
+        errors.addAll(botValidationService.validateConditionRulesForSimulation(configuration).stream()
                 .map(error -> "logicConfiguration: " + error)
                 .toList());
     }

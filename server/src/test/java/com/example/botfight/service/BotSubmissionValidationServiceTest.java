@@ -444,7 +444,7 @@ class BotSubmissionValidationServiceTest {
                       ],"children":[]}
                     ]},
                     {"kind":"win","branches":[
-                      {"action":"none","conditions":[
+                      {"conditions":[
                         {"type":"expression","left":"custom.puzzle.counter","comparator":"gte","right":{"type":"number","value":1}}
                       ],"actions":[],"children":[]}
                     ]}
@@ -452,9 +452,29 @@ class BotSubmissionValidationServiceTest {
                 }
                 """);
 
-        var errors = service.validateForSimulation(puzzleRules);
+        var errors = service.validateConditionRulesForSimulation(puzzleRules);
 
         assertThat(errors).isEmpty();
+    }
+
+    @Test
+    void conditionRuleValidationStillRejectsUnsupportedConditions() throws Exception {
+        JsonNode puzzleRules = jsonMapper.readTree("""
+                {
+                  "version":"bot-logic-tree-v1",
+                  "customVariables":[],
+                  "roots":[{"kind":"win","branches":[{
+                    "conditions":[{"type":"execute-user-code"}],
+                    "actions":[],
+                    "children":[]
+                  }]}]
+                }
+                """);
+
+        var errors = service.validateConditionRulesForSimulation(puzzleRules);
+
+        assertThat(errors).contains(
+                "brain.roots[0].branches[0].conditions[0].type must be always or expression");
     }
 
     @Test
