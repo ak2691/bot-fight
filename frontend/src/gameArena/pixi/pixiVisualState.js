@@ -62,6 +62,124 @@ function semanticVisualEventActive(shape) {
         && (shape?.visualEventMs == null || Number(shape.visualEventMs) > 0);
 }
 
+export const VISUAL_LIFECYCLES = Object.freeze({
+    PHASE: "phase",
+    EVENT: "event",
+});
+
+export const VISUAL_SPAWN_MODES = Object.freeze({
+    ENTITY: "entity",
+    EVENT: "event",
+});
+
+const VISUAL_EVENT_FIELDS = Object.freeze([
+    "eventType",
+    "eventSequence",
+    "visualEvent",
+    "visualEventType",
+    "visualEventMs",
+    "visualEventSize",
+]);
+
+/** Removes event-only presentation fields before resolving a phase visual. */
+export function shapeWithoutVisualEvent(shape) {
+    const phaseShape = { ...shape };
+    for (const field of VISUAL_EVENT_FIELDS) delete phaseShape[field];
+    return phaseShape;
+}
+
+function visualEventSequence(shape) {
+    const sequence = Number(shape?.eventSequence ?? shape?.visualEvent ?? 0);
+    return Number.isFinite(sequence) && sequence > 0 ? sequence : 0;
+}
+
+function visualStartForDescriptor(descriptor, now) {
+    const durationMs = Math.max(0, Number(descriptor?.durationMs) || 0);
+    const remainingMs = Number(descriptor?.remainingMs);
+    const elapsedMs = durationMs > 0 && Number.isFinite(remainingMs)
+        ? Math.min(durationMs, Math.max(0, durationMs - Math.max(0, remainingMs)))
+        : 0;
+    const spawnedAt = Number(now) - elapsedMs;
+    return {
+        durationMs,
+        spawnedAt: Number.isFinite(spawnedAt) ? spawnedAt : Number(now),
+    };
+}
+
+/**
+ * Creates the common lifecycle record used by phase-bound and event visuals.
+ * Phase visuals follow their source entity; event visuals are fixed at the
+ * coordinates where the event was observed and expire on their own clock.
+ */
+export function visualInstanceForShape(shape, now, lifecycle = VISUAL_LIFECYCLES.EVENT) {
+    const eventVisual = lifecycle === VISUAL_LIFECYCLES.EVENT;
+    const sourceShape = eventVisual ? shape : shapeWithoutVisualEvent(shape);
+    const descriptor = visualAnimationDescriptorForShape(sourceShape);
+    const visual = visualForShape(sourceShape);
+    if (!descriptor || !visual) return null;
+    if (eventVisual && !descriptor.eventActive) return null;
+    if (!eventVisual && descriptor.eventActive) return null;
+
+    const sourceId = sourceShape?.id == null ? null : String(sourceShape.id);
+    const sequence = visualEventSequence(sourceShape);
+    const visualType = visual.type ?? sourceShape?.type;
+    if (!sourceId || !visualType) return null;
+
+    const { durationMs, spawnedAt } = visualStartForDescriptor(descriptor, now);
+    if (eventVisual && durationMs <= 0) return null;
+    const x = Number(sourceShape?.visualOriginX ?? sourceShape?.x ?? 0);
+    const y = Number(sourceShape?.visualOriginY ?? sourceShape?.y ?? 0);
+    const rotation = Number(sourceShape?.visualOriginRotation ?? sourceShape?.rotation ?? 0);
+    const normalizedX = Number.isFinite(x) ? x : 0;
+    const normalizedY = Number.isFinite(y) ? y : 0;
+    const normalizedRotation = Number.isFinite(rotation) ? rotation : 0;
+    const phaseId = sourceShape?.phaseId == null ? null : String(sourceShape.phaseId);
+    const id = eventVisual
+        ? `event:${sourceId}:${sequence}:${visualType}`
+        : `phase:${sourceId}:${phaseId ?? "default"}:${visualType}`;
+    const instanceShape = eventVisual
+        ? {
+            ...sourceShape,
+            type: visualType,
+            x: normalizedX,
+            y: normalizedY,
+            rotation: normalizedRotation,
+            eventType: sourceShape.eventType ?? "visual",
+            eventSequence: sequence,
+            visualEvent: sourceShape.visualEvent ?? sequence,
+            visualEventType: visualType,
+            visualEventMs: descriptor.remainingMs ?? durationMs,
+            visualEventSize: visual.visualSize,
+        }
+        : sourceShape;
+
+    return {
+        id,
+        sourceId,
+        lifecycle,
+        spawnMode: eventVisual ? VISUAL_SPAWN_MODES.EVENT : VISUAL_SPAWN_MODES.ENTITY,
+        followEntity: !eventVisual,
+        key: descriptor.key,
+        phaseId,
+        eventType: eventVisual ? String(sourceShape.eventType ?? "visual") : null,
+        eventSequence: eventVisual ? sequence : null,
+        type: visualType,
+        x: normalizedX,
+        y: normalizedY,
+        rotation: normalizedRotation,
+        spawnedAt,
+        expiresAt: durationMs > 0 ? spawnedAt + durationMs : null,
+        durationMs,
+        shape: instanceShape,
+    };
+}
+
+/** Returns whether a visual instance is still within its presentation life. */
+export function visualInstanceIsActive(instance, now) {
+    return Boolean(instance)
+        && (instance.expiresAt == null || Number(now) < Number(instance.expiresAt));
+}
+
 /** Resolves presentation metadata from the entity's current phase. */
 export function visualForShape(shape) {
     const contract = entityContract(shape?.entityContractId ?? shape?.abilityId ?? shape?.type);

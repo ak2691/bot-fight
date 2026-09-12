@@ -330,9 +330,6 @@ test("Static Snare uses its stronger phase when generic damage destroys it", () 
     assert.equal(result.entities[0].phaseId, "destroyed");
     assert.equal(phaseVisualFor(result.entities[0]).type, "staticSnareBurst");
     assert.equal(phaseVisualFor(result.entities[0]).visualSize, 240);
-    assert.equal(result.entities[0].visualEventType, "staticSnareBurst");
-    assert.equal(result.entities[0].visualEventSize, 240);
-    assert.ok(result.entities[0].visualEventMs > 0);
     assert.equal(result.entities[0].size, 24);
 });
 

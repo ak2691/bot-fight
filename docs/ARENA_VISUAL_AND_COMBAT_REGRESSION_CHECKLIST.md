@@ -11,6 +11,13 @@ Use this when an ability, entity, replay field, or bot visual changes.
 
 ## Timed visuals
 
+- Phase-bound visuals belong to the entity/phase view, follow its transform, and
+  end when that visual phase ends; standalone event visuals are independent
+  instances keyed by event occurrence and remain at their spawn transform until
+  their own expiry.
+- Once spawned, each transient visual owns its presentation start and expiry;
+  later gameplay snapshots, source removal, or repeated events must not replace
+  its `visualMs` countdown.
 - Rays derive opacity from remaining visual time.
 - Melee sweeps derive pose from active time and render from first through final active frame.
 - Keep activation visuals separate from gameplay-effect duration/status icons.

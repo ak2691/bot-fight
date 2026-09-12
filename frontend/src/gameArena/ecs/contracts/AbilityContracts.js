@@ -859,19 +859,13 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 skipOwner: true,
                 events: {
                     [PHASE_EVENT_TYPES.TRIGGER]: {
-                        targetKinds: BOT_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS, PHASE_ACTIONS.EMIT_VISUAL, PHASE_ACTIONS.TRANSITION],
+                        targetKinds: BOT_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS, PHASE_ACTIONS.TRANSITION],
                         transition: { to: "triggered" },
                         targetPolicy: { mode: TARGET_POLICY_MODES.ONCE },
-                        visualType: "staticSnareBurst",
-                        visualSize: 150,
-                        visibleMs: 300,
                     },
                     [PHASE_EVENT_TYPES.KILLED]: {
-                        actions: [PHASE_ACTIONS.EMIT_VISUAL, PHASE_ACTIONS.TRANSITION],
+                        actions: [PHASE_ACTIONS.TRANSITION],
                         transition: { to: "destroyed" },
-                        visualType: "staticSnareBurst",
-                        visualSize: 240,
-                        visibleMs: 300,
                     },
                 },
             }),

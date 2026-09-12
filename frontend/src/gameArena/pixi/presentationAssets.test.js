@@ -68,12 +68,17 @@ test("entity visuals use a renderer-clock animation instance without the fallbac
     assert.match(source, /visualAnimationStartedAt: visualAnimation.startedAt/);
     assert.match(source, /visualAnimationElapsedMs\(view, now\)/);
     assert.match(source, /visualAnimationIsActive\(view, now\)/);
+    assert.match(source, /const visualViews = new Map\(\)/);
+    assert.match(source, /spawnStandaloneVisual\(shape, now\)/);
+    assert.match(source, /drawStandaloneVisual\(view, now, arenaSprites\)/);
     assert.doesNotMatch(source, /\["grenadeExplosion", "mineExplosion", "orbitalExplosion"\]/);
 });
 
 test("Orbital Strike keeps its marker beneath pulse animations without a countdown caption", () => {
     const canvasSource = readFileSync(PIXI_CANVAS_PATH, "utf8");
     assert.match(canvasSource, /persistentOrbitalMarker/);
+    assert.match(canvasSource, /if \(!animationActive && !persistentOrbitalMarker\)/);
+    assert.match(canvasSource, /presentationType === "orbitalExplosion" && animationActive/);
     assert.match(canvasSource, /showCachedEffect\(view, "orbital-explosion"/);
 });
 

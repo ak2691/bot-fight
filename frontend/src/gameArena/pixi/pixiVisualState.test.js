@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { activeBotVisual, closingZoneDamageOccurred, ENTITY_PRESENTATION_DEFINITIONS, entityCaption, BOT_PRESENTATION_DEFINITIONS, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, grenadeVisualState, isBotShape, LOCK_ON_PRESENTATION, normalizeReplayObstacleShape, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, replayProjectileVelocity, shapeInterpolationMs, visualAnimationDescriptorForShape, visualForShape, visualSizeForShape } from "./pixiVisualState.js";
+import { activeBotVisual, closingZoneDamageOccurred, ENTITY_PRESENTATION_DEFINITIONS, entityCaption, BOT_PRESENTATION_DEFINITIONS, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, grenadeVisualState, isBotShape, LOCK_ON_PRESENTATION, normalizeReplayObstacleShape, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, replayProjectileVelocity, shapeInterpolationMs, shapeWithoutVisualEvent, visualAnimationDescriptorForShape, visualForShape, visualInstanceForShape, visualInstanceIsActive, VISUAL_LIFECYCLES, VISUAL_SPAWN_MODES, visualSizeForShape } from "./pixiVisualState.js";
 import { REQUIRED_ARENA_PRESENTATION_PATHS } from "./arenaPresentationAssetOwner.js";
 import { hitboxGeometriesForEntity, hitboxGeometryForBot, hitboxGeometryForEntity } from "../gameconfig/hitboxGeometry.js";
 
@@ -439,6 +439,64 @@ test("live repeating event visuals stop when their presentation timer reaches ze
     const completedPulse = { ...activePulse, visualEventMs: 0 };
     assert.equal(visualForShape(completedPulse).type, "orbitalMarker");
     assert.equal(visualAnimationDescriptorForShape(completedPulse).eventActive, false);
+});
+
+test("event visuals become independent fixed-position instances", () => {
+    const spawned = {
+        id: "orbital-1",
+        type: "orbitalMarker",
+        x: 500,
+        y: 300,
+        remainingMs: 900,
+        eventType: "interval",
+        eventSequence: 3,
+        visualEvent: 3,
+        visualEventType: "orbitalExplosion",
+        visualEventMs: 100,
+        visualEventSize: 260,
+    };
+    const instance = visualInstanceForShape(spawned, 1000);
+
+    assert.equal(instance.id, "event:orbital-1:3:orbitalExplosion");
+    assert.equal(instance.lifecycle, VISUAL_LIFECYCLES.EVENT);
+    assert.equal(instance.spawnMode, VISUAL_SPAWN_MODES.EVENT);
+    assert.equal(instance.followEntity, false);
+    assert.equal(instance.spawnedAt, 700);
+    assert.equal(instance.expiresAt, 1100);
+    assert.equal(instance.x, 500);
+    assert.equal(instance.y, 300);
+    assert.equal(instance.shape.type, "orbitalExplosion");
+    assert.equal(visualInstanceIsActive(instance, 1099), true);
+    assert.equal(visualInstanceIsActive(instance, 1100), false);
+});
+
+test("repeated event occurrences get separate visual instances while phase visuals follow entities", () => {
+    const first = visualInstanceForShape({
+        id: "orbital-1", type: "orbitalMarker", abilityId: 22, phaseId: "active",
+        x: 500, y: 300, eventType: "interval", eventSequence: 3,
+        visualEventType: "orbitalExplosion", visualEventMs: 400, visualEventSize: 260,
+    }, 1000);
+    const second = visualInstanceForShape({
+        id: "orbital-1", type: "orbitalMarker", abilityId: 22, phaseId: "active",
+        x: 540, y: 320, eventType: "interval", eventSequence: 4,
+        visualEventType: "orbitalExplosion", visualEventMs: 400, visualEventSize: 260,
+    }, 1100);
+    const phase = visualInstanceForShape({
+        id: "snare-1", type: "staticSnare", abilityId: 29, phaseId: "triggered",
+        phaseTimerMs: 100, x: 200, y: 150,
+    }, 1000, VISUAL_LIFECYCLES.PHASE);
+
+    assert.notEqual(first.id, second.id);
+    assert.equal(first.x, 500);
+    assert.equal(second.x, 540);
+    assert.equal(phase.lifecycle, VISUAL_LIFECYCLES.PHASE);
+    assert.equal(phase.spawnMode, VISUAL_SPAWN_MODES.ENTITY);
+    assert.equal(phase.followEntity, true);
+    assert.equal(phase.expiresAt, 1200);
+    assert.deepEqual(shapeWithoutVisualEvent({
+        eventType: "collision", eventSequence: 1, visualEventType: "impact", visualEventMs: 100,
+        visualEventSize: 20, visualEvent: 1, type: "staticSnare", x: 1,
+    }), { type: "staticSnare", x: 1 });
 });
 
 test("bot and entity labels derive from calculated snapshot fields", () => {

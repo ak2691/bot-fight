@@ -10,7 +10,7 @@ import { abilityActiveOpacity, basicHealParticleSpec, combatVisualRemainingMs, h
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, BOT_SIZE } from "../modelPayloads/arenaConstants.js";
 import { toSimulationBotShape } from "../modelPayloads/arenaShapes.js";
 import { interpolatePosition } from "./snapshotInterpolation.js";
-import { activeBotVisual, closingZoneDamageOccurred, entityCaption, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, heavySlashRotation, isBotShape, LOCK_ON_PRESENTATION, lockOnTargetPoint, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, shapeInterpolationMs, visualAnimationDescriptorForShape, visualSizeForShape } from "./pixiVisualState.js";
+import { activeBotVisual, closingZoneDamageOccurred, entityCaption, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, heavySlashRotation, isBotShape, LOCK_ON_PRESENTATION, lockOnTargetPoint, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, shapeInterpolationMs, shapeWithoutVisualEvent, visualAnimationDescriptorForShape, visualForShape, visualInstanceForShape, visualInstanceIsActive, VISUAL_LIFECYCLES, visualSizeForShape } from "./pixiVisualState.js";
 import { spriteFrame, spriteFrameAtProgress } from "./arenaSpriteAssets.js";
 import { loadArenaPresentationAssets, retryArenaPresentationAssets } from "./arenaPresentationAssets.js";
 import { textureMuzzleAnchor } from "./abilitySpriteAssets.js";
@@ -311,6 +311,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     if (arenaSprites.abilities.bot?.source) arenaSprites.abilities.bot.source.scaleMode = "linear";
 
     const views = new Map();
+    const visualViews = new Map();
     const lockOnMarkers = new Map();
     const particles = [];
     let zoom = MIN_ZOOM;
@@ -413,8 +414,14 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         for (const view of views.values()) view.container.hitArea = selectionHitArea(view.shape);
     }
 
-    function createView(shape, now = presentationClock.current()) {
-        const visualAnimation = visualAnimationStartForShape(shape, now);
+    function createView(shape, now = presentationClock.current(), visualInstance = null) {
+        const visualAnimation = visualInstance
+            ? {
+                key: visualInstance.key,
+                durationMs: visualInstance.durationMs,
+                startedAt: visualInstance.spawnedAt,
+            }
+            : visualAnimationStartForShape(shape, now);
         const container = new Container();
         const baseSprite = new Sprite();
         baseSprite.anchor.set(0.5);
@@ -432,8 +439,9 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         caption.eventMode = "none";
         container.addChild(baseSprite, graphics, rotationHandle, caption);
         container.eventMode = isBotShape(shape) ? "static" : "none";
-        container.cursor = canEditBot(shape) ? "grab" : "default";
-        container.hitArea = selectionHitArea(shape);
+        if (visualInstance) container.eventMode = "none";
+        container.cursor = visualInstance ? "default" : canEditBot(shape) ? "grab" : "default";
+        container.hitArea = visualInstance ? null : selectionHitArea(shape);
         const view = {
             container,
             baseSprite,
@@ -443,6 +451,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             caption,
             shape,
             authoritativeShape: shape,
+            visualInstance,
             blockHeldStartedAt: null,
             dashSmokeOrigin: null,
             dashSmokeRotation: 0,
@@ -455,8 +464,10 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             motion: { from: { x: shape.x, y: shape.y }, to: { x: shape.x, y: shape.y }, startedAt: now, durationMs: 0 },
         };
         layers[view.layer].addChild(container);
-        container.on("pointerdown", (event) => beginDrag(event, view));
-        rotationHandle.on("pointerdown", (event) => beginRotationDrag(event, view));
+        if (!visualInstance) {
+            container.on("pointerdown", (event) => beginDrag(event, view));
+            rotationHandle.on("pointerdown", (event) => beginRotationDrag(event, view));
+        }
         return view;
     }
 
@@ -465,8 +476,40 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         return interpolatePosition(view.motion.from, view.motion.to, alpha);
     }
 
+    function destroyVisualView(id) {
+        const view = visualViews.get(id);
+        if (!view) return;
+        view.container.destroy({ children: true });
+        visualViews.delete(id);
+    }
+
+    function removeVisualViewsForSource(sourceId) {
+        for (const [id, view] of visualViews) {
+            if (view.visualInstance?.sourceId === String(sourceId)) destroyVisualView(id);
+        }
+    }
+
+    function pruneExpiredVisualViews(now) {
+        for (const [id, view] of visualViews) {
+            if (!visualInstanceIsActive(view.visualInstance, now)) {
+                destroyVisualView(id);
+            }
+        }
+    }
+
+    function spawnStandaloneVisual(shape, now) {
+        const instance = visualInstanceForShape(shape, now, VISUAL_LIFECYCLES.EVENT);
+        if (!instance || visualViews.has(instance.id)) return;
+        const view = createView(instance.shape, now, instance);
+        visualViews.set(instance.id, view);
+        if (["mineExplosion", "orbitalExplosion"].includes(instance.type)) {
+            spawnBurst(instance.x, instance.y, explosionColor(instance.type), instance.type === "orbitalExplosion" ? 30 : 18);
+        }
+    }
+
     function syncShapes(nextShapes) {
         const now = presentationClock.current();
+        pruneExpiredVisualViews(now);
         const nextIds = new Set(nextShapes.map((shape) => shape.id));
         for (const [id, view] of views) {
             if (nextIds.has(id)) continue;
@@ -474,33 +517,50 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             views.delete(id);
         }
         for (const shape of nextShapes) {
+            const phaseShape = shapeWithoutVisualEvent(shape);
+            const nextPhaseVisualInstance = visualInstanceForShape(
+                phaseShape,
+                now,
+                VISUAL_LIFECYCLES.PHASE,
+            );
             let view = views.get(shape.id);
+            const previousShape = view?.authoritativeShape ?? null;
+            const previousEventSequence = Number(previousShape?.eventSequence ?? previousShape?.visualEvent ?? 0);
+            const nextEventSequence = Number(shape?.eventSequence ?? shape?.visualEvent ?? 0);
+            const previousReplayFrameIndex = Number(previousShape?.replayFrameIndex);
+            const replayFrameIndex = Number(shape.replayFrameIndex);
+            const hasReplayFrameIndices = Number.isFinite(previousReplayFrameIndex) && Number.isFinite(replayFrameIndex);
+            const replayReset = hasReplayFrameIndices
+                && previousReplayFrameIndex > replayFrameIndex;
+            const eventSequenceChanged = Number.isFinite(nextEventSequence)
+                && nextEventSequence > 0
+                && (!Number.isFinite(previousEventSequence)
+                    || nextEventSequence !== previousEventSequence);
+            if (replayReset) removeVisualViewsForSource(shape.id);
+            if ((view == null || eventSequenceChanged || replayReset) && nextEventSequence > 0) {
+                spawnStandaloneVisual(shape, now);
+            }
             if (!view) {
-                view = createView(shape, now);
+                view = createView(phaseShape, now, nextPhaseVisualInstance);
                 views.set(shape.id, view);
-                if (["mineExplosion", "orbitalExplosion"].includes(shape.type)) {
-                    spawnBurst(shape.x, shape.y, explosionColor(shape.type), shape.type === "orbitalExplosion" ? 30 : 18);
+                if (["mineExplosion", "orbitalExplosion"].includes(phaseShape.type)) {
+                    spawnBurst(phaseShape.x, phaseShape.y, explosionColor(phaseShape.type), phaseShape.type === "orbitalExplosion" ? 30 : 18);
                 }
             }
-            const previousShape = view.authoritativeShape ?? view.shape;
             const previousRenderShape = view.shape;
             const previousVisual = visualAnimationDescriptorForShape(previousRenderShape);
-            const nextVisual = visualAnimationDescriptorForShape(shape);
-            const eventRestarted = nextVisual?.eventActive
-                && previousVisual?.eventActive
+            const nextVisual = visualAnimationDescriptorForShape(phaseShape);
+            const phaseVisualRewound = nextVisual
+                && previousVisual
+                && !previousVisual.eventActive
                 && nextVisual.key === previousVisual.key
                 && Number(nextVisual.remainingMs ?? 0) > Number(previousVisual.remainingMs ?? 0);
-            const priorEventStillPlaying = previousVisual?.eventActive
-                && !nextVisual?.eventActive
-                && Number.isFinite(view.visualAnimationStartedAt)
-                && now - view.visualAnimationStartedAt
-                    < Math.max(0, Number(view.visualAnimationDurationMs) || 0);
-            if (!priorEventStillPlaying
-                && (view.visualAnimationKey !== (nextVisual?.key ?? null) || eventRestarted)) {
-                const visualAnimation = visualAnimationStartForShape(shape, now);
+            if (view.visualAnimationKey !== (nextVisual?.key ?? null) || phaseVisualRewound) {
+                const visualAnimation = visualAnimationStartForShape(phaseShape, now);
                 view.visualAnimationStartedAt = visualAnimation.startedAt;
                 view.visualAnimationDurationMs = visualAnimation.durationMs;
                 view.visualAnimationKey = visualAnimation.key;
+                view.visualInstance = nextPhaseVisualInstance;
             }
             const current = sampleViewPosition(view, now);
             const wasDashing = Number(previousShape?.dashActiveMs ?? 0) > 0;
@@ -511,9 +571,6 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
                 view.dashSmokeRotation = botMovementRotation(shape) + Math.PI / 2;
                 view.dashSmokeStartedAt = now;
             }
-            const previousReplayFrameIndex = Number(previousShape?.replayFrameIndex);
-            const replayFrameIndex = Number(shape.replayFrameIndex);
-            const hasReplayFrameIndices = Number.isFinite(previousReplayFrameIndex) && Number.isFinite(replayFrameIndex);
             const replayFrameGap = hasReplayFrameIndices ? replayFrameIndex - previousReplayFrameIndex : 0;
             const shouldSnapReplayTransition = hasReplayFrameIndices && (
                 replayFrameGap > 1
@@ -524,26 +581,21 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             const durationMs = drag?.id === shape.id || shouldSnapReplayTransition
                 ? 0
                 : shapeInterpolationMs(shape);
-            // Keep a just-emitted semantic event alive on the presentation
-            // clock until its frontend-owned animation finishes. The
-            // authoritative shape itself remains event-free on the next tick.
             view.authoritativeShape = shape;
-            view.shape = priorEventStillPlaying
-                ? { ...shape, eventType: previousRenderShape.eventType, eventSequence: previousRenderShape.eventSequence }
-                : shape;
-            const nextLayer = pixiLayerForShape(shape);
+            view.shape = phaseShape;
+            const nextLayer = pixiLayerForShape(phaseShape);
             if (nextLayer !== view.layer) {
                 layers[nextLayer].addChild(view.container);
                 view.layer = nextLayer;
             }
-            const target = { x: Number(shape.x), y: Number(shape.y) };
+            const target = { x: Number(phaseShape.x), y: Number(phaseShape.y) };
             if (target.x !== view.motion.to.x || target.y !== view.motion.to.y) {
                 view.motion = { from: current, to: target, startedAt: now, durationMs };
             }
-            view.container.eventMode = isBotShape(shape) ? "static" : "none";
-            view.container.cursor = canEditBot(shape) ? "grab" : "default";
-            view.rotationHandle.cursor = canRotateBot(shape) ? "grab" : "default";
-            view.container.hitArea = selectionHitArea(shape);
+            view.container.eventMode = isBotShape(phaseShape) ? "static" : "none";
+            view.container.cursor = canEditBot(phaseShape) ? "grab" : "default";
+            view.rotationHandle.cursor = canRotateBot(phaseShape) ? "grab" : "default";
+            view.container.hitArea = selectionHitArea(phaseShape);
             const hitParticleEvent = shape.hitParticleEvent;
             const hasHitParticleEvent = hitParticleEvent != null
                 && hitParticleEvent !== previousShape?.hitParticleEvent;
@@ -560,7 +612,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
                 spawnBurst(current.x, current.y, 0xc084fc, 6);
             }
             const previousAbility = activeBotVisual(previousShape);
-            const nextAbility = activeBotVisual(shape);
+            const nextAbility = activeBotVisual(phaseShape);
             if (nextAbility === 8) {
                 if (previousAbility !== nextAbility || view.repulsorBurstStartedAt == null) {
                     view.repulsorBurstStartedAt = repulsorBurstStartTime(shape, now);
@@ -568,10 +620,10 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             } else {
                 view.repulsorBurstStartedAt = null;
             }
-            if (isBotShape(shape) && nextAbility === 25 && previousAbility !== nextAbility) {
-                spawnBurst(shape.x, shape.y, 0xc4b5fd, 12);
+            if (isBotShape(phaseShape) && nextAbility === 25 && previousAbility !== nextAbility) {
+                spawnBurst(phaseShape.x, phaseShape.y, 0xc4b5fd, 12);
             }
-            if (isBotShape(shape) && nextAbility === 10 && previousAbility !== nextAbility) {
+            if (isBotShape(phaseShape) && nextAbility === 10 && previousAbility !== nextAbility) {
                 spawnRepairPulseParticles(current.x, current.y);
             }
         }
@@ -710,6 +762,15 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
                 drawEntity(view, optionsRef.current.selectedId === view.shape.id, now, arenaSprites);
                 drawStatusIcons(view.graphics, view.shape, Number(view.shape.size ?? 0) / 2, 44);
             }
+        }
+        for (const [id, view] of visualViews) {
+            const instance = view.visualInstance;
+            if (!visualInstanceIsActive(instance, now)) {
+                destroyVisualView(id);
+                continue;
+            }
+            view.container.position.set(instance.x, instance.y);
+            drawStandaloneVisual(view, now, arenaSprites);
         }
         drawHitboxes(hitboxLayer, views, now, optionsRef, sampleViewPosition);
         drawLockOnMarkers(layers.lockOn, lockOnMarkers, botViews, arenaSprites);
@@ -914,6 +975,10 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             app.canvas.removeEventListener("pointercancel", handleTouchPointerEnd);
             app.canvas.removeEventListener("contextmenu", preventContextMenu);
             app.canvas.removeEventListener("pointerleave", clearMeasurementHover);
+            for (const [id, view] of visualViews) {
+                view.container.destroy({ children: true });
+                visualViews.delete(id);
+            }
         },
     };
 }
@@ -1465,6 +1530,66 @@ function showAbilityRayEffect(view, slot, arenaSprites, position, originX, origi
     });
 }
 
+function drawStandaloneVisual(view, now, arenaSprites) {
+    const { shape, baseSprite, graphics, caption } = view;
+    hideCachedEffects(view);
+    graphics.clear();
+    baseSprite.visible = false;
+    caption.text = "";
+    caption.visible = false;
+
+    const presentationType = presentationTypeForShape(shape);
+    const progress = visualAnimationProgress(view, now);
+    if (["singularityZone", "singularityExplosion"].includes(presentationType)) {
+        drawGeneratedSingularity(graphics, shape, now, progress);
+        return;
+    }
+    if (["tetherBolt", "staticSnare", "staticSnareBurst"].includes(presentationType)) {
+        drawGeneratedAbilityEntity(graphics, shape, now, progress);
+        return;
+    }
+    if (presentationType === "gun") {
+        const shotPhase = entityAbilityPhaseForEntity(shape);
+        const shotTransform = entityAbilitySpawnTransform(shape, entityAbilitySpawnForEntity(shape));
+        if (!shotPhase) return;
+        const durationMs = Math.max(1, Number(shotPhase.visual?.visibleMs ?? shotPhase.durationMs ?? 300));
+        const alpha = 1 - clamp(visualAnimationElapsedMs(view, now) / durationMs, 0, 1);
+        showAbilityRayEffect(
+            view,
+            "standalone-ray",
+            arenaSprites,
+            { x: shape.x, y: shape.y },
+            shotTransform.x,
+            shotTransform.y,
+            shotTransform.rotation,
+            3,
+            Number(shotPhase.hitbox?.range ?? 200),
+            alpha,
+            Number(visualForShape(shape)?.visualSize ?? 16),
+            0x6ee7b7,
+        );
+        return;
+    }
+
+    const texture = entityTexture(
+        shape,
+        arenaSprites,
+        now,
+        view.visualAnimationStartedAt,
+        view.visualAnimationDurationMs,
+    );
+    if (!texture) return;
+    const size = Math.max(2, visualSizeForShape(shape, Number(shape.size ?? 30)));
+    const spriteSize = entitySpriteSize(shape, size);
+    baseSprite.texture = texture;
+    baseSprite.visible = true;
+    baseSprite.rotation = entityVisualRotation(shape);
+    baseSprite.alpha = 1;
+    baseSprite.tint = 0xffffff;
+    baseSprite.width = spriteSize.width;
+    baseSprite.height = spriteSize.height;
+}
+
 function showMuzzleFlash(view, arenaSprites, position, originX, originY, rotation, alpha, botSize) {
     const frames = arenaSprites.abilities.muzzleFlash;
     if (!frames?.length) return;
@@ -1485,7 +1610,13 @@ function showMuzzleFlash(view, arenaSprites, position, originX, originY, rotatio
 
 function drawEntity(view, selected, now, arenaSprites) {
     const { shape, baseSprite, graphics, caption } = view;
+    if (view.visualInstance?.lifecycle === VISUAL_LIFECYCLES.EVENT) {
+        drawStandaloneVisual(view, now, arenaSprites);
+        return;
+    }
     hideCachedEffects(view);
+    const persistentOrbitalMarker = shape.type === "orbitalMarker";
+    const animationActive = visualAnimationIsActive(view, now);
     if (shape.type === CLOSING_ZONE_TYPE) {
         drawClosingZone(graphics, shape);
         baseSprite.visible = false;
@@ -1493,7 +1624,7 @@ function drawEntity(view, selected, now, arenaSprites) {
         caption.visible = false;
         return;
     }
-    if (!visualAnimationIsActive(view, now)) {
+    if (!animationActive && !persistentOrbitalMarker) {
         baseSprite.visible = false;
         graphics.clear();
         caption.text = "";
@@ -1525,7 +1656,6 @@ function drawEntity(view, selected, now, arenaSprites) {
         return;
     }
     const orbitalProgress = visualAnimationProgress(view, now);
-    const persistentOrbitalMarker = shape.type === "orbitalMarker";
     const baseVisualShape = persistentOrbitalMarker
         ? { ...shape, eventType: null, eventSequence: 0, visualEventType: null, visualEventMs: 0, visualEventSize: 0 }
         : shape;
@@ -1551,7 +1681,7 @@ function drawEntity(view, selected, now, arenaSprites) {
     const trailStyle = projectileTrailStyle(shape);
     if (trailStyle) drawVelocityTrail(graphics, shape, trailStyle.color, trailStyle.length, trailStyle.width, now);
 
-    if (persistentOrbitalMarker && presentationType === "orbitalExplosion") {
+    if (persistentOrbitalMarker && presentationType === "orbitalExplosion" && animationActive) {
         const explosionFrames = arenaSprites.abilities.orbitalExplosion;
         if (explosionFrames?.length) {
             const progress = orbitalProgress ?? 1;
@@ -1571,12 +1701,8 @@ function drawEntity(view, selected, now, arenaSprites) {
         const shotDurationMs = Math.max(1, Number(
             shotPhase?.visual?.visibleMs ?? shotPhase?.durationMs ?? 300,
         ));
-        const semanticShot = String(shape.eventType ?? "").toLowerCase() === "collision"
-            && Number(shape.eventSequence ?? 0) > 0;
-        if (shotPhase && (shotVisualMs > 0 || semanticShot)) {
-            const alpha = semanticShot
-                ? 1 - clamp(visualAnimationElapsedMs(view, now) / shotDurationMs, 0, 1)
-                : clamp(shotVisualMs / shotDurationMs, 0, 1);
+        if (shotPhase && shotVisualMs > 0) {
+            const alpha = clamp(shotVisualMs / shotDurationMs, 0, 1);
             showAbilityRayEffect(view, "drone-shot", arenaSprites, { x: shape.x, y: shape.y }, shotTransform.x, shotTransform.y, shotTransform.rotation, 3,
                 Number(shotPhase.hitbox?.range ?? 200), alpha,
                 Number(shotPhase.visual?.visualSize ?? 16), 0x6ee7b7);
