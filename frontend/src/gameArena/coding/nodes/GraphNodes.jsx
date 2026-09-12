@@ -314,7 +314,7 @@ function NodeKindPicker({ selectedLoadout, onCancel, onChooseAction }) {
     </div>;
 }
 
-function VariableOperandPicker({ operand, stateVariables, numericOnly = false, onChoose, onClose }) {
+function VariableOperandPicker({ operand, stateVariables, numericOnly = false, valueType = null, onChoose, onClose }) {
     const [query, setQuery] = useState("");
     const [activeIndex, setActiveIndex] = useState(-1);
     const pickerRef = useRef(null);
@@ -326,9 +326,11 @@ function VariableOperandPicker({ operand, stateVariables, numericOnly = false, o
         searchInputRef.current?.select();
     }, []);
     const normalized = query.trim().toLocaleLowerCase();
-    const compatibleDefinitions = stateVariables.filter((variable) => !numericOnly && operand !== 2 || variable.valueType === "number");
+    const compatibleDefinitions = stateVariables.filter((variable) => valueType
+        ? variable.valueType === valueType
+        : (!numericOnly && operand !== 2 || variable.valueType === "number"));
     const matches = (label, id) => !normalized || `${label} ${id}`.toLocaleLowerCase().includes(normalized);
-    const showAlways = operand === 1 && !numericOnly && matches("ALWAYS", "always");
+    const showAlways = operand === 1 && !numericOnly && !valueType && matches("ALWAYS", "always");
     const definitions = [
         ...(showAlways ? [{ id: "always", label: "ALWAYS", valueType: "boolean" }] : []),
         ...compatibleDefinitions.filter((definition) => matches(definition.label, definition.id)),
@@ -849,7 +851,7 @@ function VariableActionControls({ entry, variables, stateVariables, disabled, ca
     };
     return <div className="min-w-0 space-y-2 overflow-hidden">
         <select disabled={disabled} value={selected.id} onChange={(event) => changeVariable(event.target.value)} className="h-8 w-full min-w-0 rounded border border-border-lo bg-zinc-950 px-2 text-white">{variables.map((variable) => <option key={variable.id} value={variable.id}>{variable.name}</option>)}</select>
-        {selected.valueType === "boolean" ? <div className="code-variable-action-row"><select disabled={disabled} aria-label="Variable action operator" value={CUSTOM_VARIABLE_OPERATIONS.SET} className="code-operator-socket code-variable-action-operator"><option value={CUSTOM_VARIABLE_OPERATIONS.SET}>=</option></select><select disabled={disabled} aria-label="Boolean value" value={String(entry.value ?? false)} onChange={(event) => onChange({ ...entry, variableId: selected.id, operation: CUSTOM_VARIABLE_OPERATIONS.SET, value: event.target.value === "true" })}><option value="false">FALSE</option><option value="true">TRUE</option></select>{allowRemoveAction && <button type="button" className="code-condition-row-remove" disabled={disabled} onClick={onRemoveAction} aria-label="Remove variable action">×</button>}</div> : <div className="space-y-2">
+        {selected.valueType === "boolean" ? <BooleanVariableActionRow entry={entry} stateVariables={stateVariables} disabled={disabled} allowRemoveAction={allowRemoveAction} onChange={onChange} onPickOperand={() => onPickOperand?.(0)} onInspectOperand={() => onInspectOperand?.(0)} onRemoveAction={onRemoveAction} /> : <div className="space-y-2">
             {terms.map((term, termIndex) => {
                 const operand = term?.operand ?? { type: "number", value: 0 };
                 const operandDefinition = operand.type === "variable" ? stateVariables.find((variable) => variable.id === operand.value) : null;
@@ -864,6 +866,18 @@ function VariableActionControls({ entry, variables, stateVariables, disabled, ca
             <button type="button" disabled={disabled || !canAddAction || terms.length >= MAX_VARIABLE_ACTION_TERMS} onClick={addTerm} className="text-emerald-300">+ OPERAND</button>
         </div>}
     </div>;
+}
+
+function BooleanVariableActionRow({ entry, stateVariables, disabled, allowRemoveAction, onChange, onPickOperand, onInspectOperand, onRemoveAction }) {
+    const operand = entry.operand ?? { type: "boolean", value: entry.value ?? false };
+    const operandDefinition = operand.type === "variable" ? stateVariables.find((variable) => variable.id === operand.value && variable.valueType === "boolean") : null;
+    const updateOperand = (nextOperand) => {
+        const next = { ...entry, operation: CUSTOM_VARIABLE_OPERATIONS.SET, operand: nextOperand };
+        delete next.value;
+        delete next.terms;
+        onChange(next);
+    };
+    return <div className="code-variable-action-row"><select disabled={disabled} aria-label="Variable action operator" value={CUSTOM_VARIABLE_OPERATIONS.SET} className="code-operator-socket code-variable-action-operator"><option value={CUSTOM_VARIABLE_OPERATIONS.SET}>=</option></select><div className={`code-condition-input code-variable-action-input ${operandDefinition ? "is-variable" : "is-raw"}`} data-node-drag-ignore="true" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>{operandDefinition ? <button type="button" className="code-condition-input-value code-variable-action-input-value" onClick={onInspectOperand} disabled={disabled}><span className="code-variable-action-input-label">{operandDefinition.label}</span></button> : <select data-node-drag-ignore="true" aria-label="Boolean value" disabled={disabled} value={String(operand.value ?? false)} onChange={(event) => updateOperand({ type: "boolean", value: event.target.value === "true" })} className="code-operator-socket code-condition-boolean-input"><option value="false">FALSE</option><option value="true">TRUE</option></select>}<button type="button" className="code-condition-input-toggle" disabled={disabled} onClick={operandDefinition ? () => updateOperand({ type: "boolean", value: false }) : onPickOperand} aria-label={operandDefinition ? "Use a raw boolean" : "Choose a boolean variable"} title={operandDefinition ? "Use a raw boolean" : "Choose a variable"}><span aria-hidden="true">{operandDefinition ? "−" : "+"}</span></button></div>{allowRemoveAction && <button type="button" className="code-condition-row-remove" disabled={disabled} onClick={onRemoveAction} aria-label="Remove variable action">×</button>}</div>;
 }
 
 function MovementConfigurationControls({ entry, disabled, onChange }) {

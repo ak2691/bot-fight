@@ -104,3 +104,15 @@ test("a zero modulo operand is a safe no-op in browser training", () => {
 
     assert.equal(selectAbilityStrategyActionPlan(normalized, payload()).customVariables["custom.counter"], 9);
 });
+
+test("boolean custom-variable actions can copy another boolean variable", () => {
+    const normalized = normalizeAbilityStrategyConfiguration(configuration([
+        { action: "variable", variableId: "custom.result", operation: "set", operand: { type: "variable", value: "custom.source" } },
+    ], [
+        { id: "custom.result", name: "Result", valueType: "boolean", initialValue: false },
+        { id: "custom.source", name: "Source", valueType: "boolean", initialValue: true },
+    ]));
+
+    assert.deepEqual(normalized.roots[0].branches[0].actions[0].operand, { type: "variable", value: "custom.source" });
+    assert.equal(selectAbilityStrategyActionPlan(normalized, payload()).customVariables["custom.result"], true);
+});

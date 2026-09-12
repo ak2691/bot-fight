@@ -288,7 +288,16 @@ public class BotSubmissionValidationService {
             if (type == null) errors.add(path + ".variableId references an unknown custom variable");
             JsonNode value = node.get("value");
             String operation = node.hasNonNull("operation") ? node.get("operation").asText() : "set";
-            if ("boolean".equals(type) && (value == null || !value.isBoolean() || !"set".equals(operation))) errors.add(path + " boolean variable actions must set true or false");
+            JsonNode booleanOperand = node.get("operand");
+            if ("boolean".equals(type)) {
+                boolean validLiteral = value != null && value.isBoolean();
+                boolean validOperandLiteral = booleanOperand != null && "boolean".equals(booleanOperand.path("type").asText("")) && booleanOperand.path("value").isBoolean();
+                boolean validOperandVariable = booleanOperand != null && "variable".equals(booleanOperand.path("type").asText(""))
+                        && "boolean".equals(types.get(booleanOperand.path("value").asText("")));
+                if (!(validLiteral || validOperandLiteral || validOperandVariable) || !"set".equals(operation)) {
+                    errors.add(path + " boolean variable actions must set a boolean value or variable");
+                }
+            }
             JsonNode terms = node.get("terms");
             JsonNode operand = node.get("operand");
             if ("number".equals(type) && terms != null) {

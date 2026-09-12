@@ -346,6 +346,8 @@ test("boolean condition inputs use the comparator socket styling", () => {
 
     assert.match(source, /boolean value[\s\S]*className="code-operator-socket code-condition-boolean-input"/);
     assert.match(css, /\.code-condition-input > select\.code-condition-boolean-input[\s\S]*color: #bae6fd/);
+    assert.match(css, /\.code-condition-boolean-input option \{[\s\S]*background-color: #1e293b;[\s\S]*color: #e2e8f0;/);
+    assert.match(css, /\.code-condition-boolean-input option:checked \{ background-color: #334155; \}/);
 });
 
 test("action target inspectors switch to coordinates and preserve target offsets", () => {
@@ -504,7 +506,7 @@ test("each condition row has its own remove control", () => {
 test("ALWAYS is offered from the variable operand picker", () => {
     const source = readCodingSource();
 
-    assert.match(source, /const showAlways = operand === 1 && !numericOnly && matches\("ALWAYS", "always"\);/);
+    assert.match(source, /const showAlways = operand === 1 && !numericOnly && !valueType && matches\("ALWAYS", "always"\);/);
     assert.match(source, /id: "always", label: "ALWAYS", valueType: "boolean"/);
     assert.match(source, /operandPicker\.operand === 1 && variableId === "always"/);
     assert.match(source, /\? \{ type: "always", \.\.\.\(condition\.join === "or" \? \{ join: "or" \} : \{\}\) \}/);
@@ -672,6 +674,8 @@ test("modify custom variables use conditional-style operands and layered inspect
     assert.match(source, /updateTerms\(\[\.\.\.terms/);
     assert.match(source, /code-variable-action-input-value/);
     assert.match(source, /code-variable-action-input-label/);
+    assert.match(source, /function BooleanVariableActionRow/);
+    assert.match(source, /aria-label=\{operandDefinition \? "Use a raw boolean" : "Choose a boolean variable"\}/);
     assert.match(source, /code-variable-action-input/);
     assert.doesNotMatch(source, /operandDefinition\.suffix/);
     assert.doesNotMatch(source, /function addVariableAction/);
@@ -681,13 +685,14 @@ test("modify custom variables use conditional-style operands and layered inspect
     assert.match(source, /setActionOperandInspector/);
     assert.match(source, /onDismissOperandPicker/);
     assert.match(css, /\.code-inspector--secondary/);
-    assert.match(css, /\.code-variable-action-operator \{ min-width: 68px/);
+    assert.match(css, /\.code-inspector-body select\.code-variable-action-operator \{[\s\S]*width: 100%;[\s\S]*min-width: 0;[\s\S]*height: 32px;[\s\S]*border-color: rgba\(71, 85, 105, \.92\);[\s\S]*background: rgba\(8, 17, 29, \.94\);[\s\S]*color: #e2e8f0;/);
+    assert.match(css, /\.code-inspector-body select\.code-variable-action-operator:focus \{[\s\S]*border-color: #67e8f9;[\s\S]*outline: 2px solid rgba\(34, 211, 238, \.72\);/);
     assert.match(css, /\.code-inspector-body \.code-condition-input > input/);
     assert.match(css, /\.code-variable-action-input-value[\s\S]*text-overflow: ellipsis/);
     assert.match(css, /\.code-variable-action-input-label[\s\S]*text-overflow: ellipsis/);
     assert.match(css, /\.code-condition-input\.code-variable-action-input[\s\S]*width: 100%[\s\S]*max-width: 100%/);
     assert.match(css, /\.code-compact-condition[\s\S]*grid-template-columns: 34px max-content 64px max-content 30px/);
-    assert.match(css, /\.code-variable-action-row[\s\S]*grid-template-columns: minmax\(68px, 76px\) minmax\(0, 1fr\) 30px/);
+    assert.match(css, /\.code-variable-action-row[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\) 30px/);
     assert.match(css, /\.code-condition-row-remove[\s\S]*width: 30px[\s\S]*height: 30px[\s\S]*margin-left: 0/);
     assert.match(css, /\.code-inspector-header button \{ color: #94a3b8; font-size: 28px; \}/);
     assert.match(css, /\.code-inspector-header button > span \{ color: inherit; font: inherit; letter-spacing: 0; \}/);

@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import {
     createExpressionCondition,
+    CUSTOM_VARIABLE_OPERATIONS,
     defaultSelectableForVariable,
     MAX_ROOT_NAME_LENGTH,
     MAX_ROOT_NODES,
@@ -664,11 +665,19 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         if (!operandPicker) return;
         if (operandPicker.kind === "action") {
             const definition = stateVariables.find((variable) => variable.id === variableId);
-            if (!definition || definition.valueType !== "number") return;
+            const actionEntry = graphBranchActions(treeBranchAt(roots[operandPicker.rootIndex]?.branches, operandPicker.path))[operandPicker.actionIndex];
+            const targetVariable = configuration.customVariables?.find((variable) => variable.id === actionEntry?.variableId);
+            if (!definition || definition.valueType !== targetVariable?.valueType) return;
             updateBranch(operandPicker.rootIndex, operandPicker.path, (branch) => {
                 const actions = graphBranchActions(branch);
                 return setGraphActions(branch, actions.map((entry, index) => {
                     if (index !== operandPicker.actionIndex) return entry;
+                    if (targetVariable.valueType === "boolean") {
+                        const next = { ...entry, operation: CUSTOM_VARIABLE_OPERATIONS.SET, operand: { type: "variable", value: definition.id, ...(definition.supportsSelectable ? { selectable: defaultSelectableForVariable(definition, selectableTypes) } : {}) } };
+                        delete next.value;
+                        delete next.terms;
+                        return next;
+                    }
                     const terms = variableActionTerms(entry);
                     const next = { ...entry, terms: terms.map((term, termIndex) => termIndex === operandPicker.termIndex
                         ? { ...term, operand: { type: "variable", value: definition.id, ...(definition.supportsSelectable ? { selectable: defaultSelectableForVariable(definition, selectableTypes) } : {}) } }
@@ -743,6 +752,13 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         const actions = graphBranchActions(current);
         return setGraphActions(current, actions.map((entry, index) => {
             if (index !== actionIndex) return entry;
+            const targetVariable = configuration.customVariables?.find((variable) => variable.id === entry.variableId);
+            if (targetVariable?.valueType === "boolean") {
+                const next = { ...entry, operation: CUSTOM_VARIABLE_OPERATIONS.SET, operand };
+                delete next.value;
+                delete next.terms;
+                return next;
+            }
             const terms = variableActionTerms(entry);
             const next = { ...entry, terms: terms.map((term, index) => index === termIndex ? { ...term, operand } : term) };
             delete next.operation;
@@ -759,6 +775,12 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         : null;
     const actionOperandDefinition = actionOperand?.type === "variable"
         ? stateVariables.find((variable) => variable.id === actionOperand.value)
+        : null;
+    const pickerActionEntry = operandPicker?.kind === "action"
+        ? graphBranchActions(treeBranchAt(roots[operandPicker.rootIndex]?.branches, operandPicker.path))[operandPicker.actionIndex]
+        : null;
+    const pickerActionValueType = pickerActionEntry
+        ? configuration.customVariables?.find((variable) => variable.id === pickerActionEntry.variableId)?.valueType ?? "number"
         : null;
     const addRootConditional = (event, node, rootNode) => {
         event.stopPropagation();
@@ -800,7 +822,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
             </div>
             {isSearchOpen && <SearchRootNodesModal roots={roots} nodes={graph.roots} disabled={disabled} canRemove={canRemove} quick={isQuickSearchOpen} onSelect={centerOnRoot} onPriorityChange={setRootOrder} onRemove={removeRootNode} onDeleteAll={() => { if (window.confirm("Delete all roots?")) commitConfiguration({ ...configuration, roots: [] }); }} onClose={onSearchClose} />}
             {!isSearchOpen && !isExternalConfigurationOpen && nodePicker && <NodeKindPicker type={nodePicker.type} stateVariables={stateVariables} selectableTypes={selectableTypes} selectedLoadout={selectedLoadout} onCancel={() => setNodePicker(null)} onChooseAction={(actionId) => addAction(nodePicker.rootIndex, nodePicker.path, actionId)} />}
-            {!isSearchOpen && !isExternalConfigurationOpen && !nodePicker && operandPicker && <VariableOperandPicker operand={operandPicker.kind === "action" ? 1 : operandPicker.operand} numericOnly={operandPicker.kind === "action"} stateVariables={stateVariables} onChoose={chooseOperandVariable} onClose={() => setOperandPicker(null)} />}
+            {!isSearchOpen && !isExternalConfigurationOpen && !nodePicker && operandPicker && <VariableOperandPicker operand={operandPicker.kind === "action" ? 1 : operandPicker.operand} numericOnly={operandPicker.kind === "action" && pickerActionValueType === "number"} valueType={operandPicker.kind === "action" ? pickerActionValueType : null} stateVariables={stateVariables} onChoose={chooseOperandVariable} onClose={() => setOperandPicker(null)} />}
             <div onPointerDown={beginMarquee} onClick={clearCanvasSelectionFromSurface} className="code-graph-surface absolute left-0 top-0 bg-[#171b20] bg-[radial-gradient(circle,rgba(100,116,139,.24)_1px,transparent_1px)] bg-[size:20px_20px]" style={{ width: canvasWidth, height: canvasHeight, transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}>
                 <svg className="pointer-events-none absolute inset-0 overflow-hidden" width={canvasWidth} height={canvasHeight}>
                     {graph.edges.map((edge) => <path key={edge.id} d={graphEdgePath(edge, nodeOffsets)} fill="none" stroke="rgba(165,180,252,.72)" strokeWidth="2" />)}

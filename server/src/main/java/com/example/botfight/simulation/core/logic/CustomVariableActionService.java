@@ -8,6 +8,7 @@ import com.example.botfight.simulation.core.orchestration.DuelSimulationService.
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Entity;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Operand;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.StrategyBlock;
+import com.example.botfight.simulation.core.orchestration.DuelSimulationService.StateValue;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
@@ -25,7 +26,18 @@ public final class CustomVariableActionService {
         String type = bot.customVariableTypes.get(id);
         if (type == null) return;
         if ("boolean".equals(type)) {
-            bot.customVariables.put(id, block.targetOffsetX() != 0);
+            JsonNode operand = block.variableTerms();
+            if (operand != null && operand.isObject() && "variable".equals(textValue(field(operand, "type"), ""))) {
+                StateValue resolved = conditionResolutionService.resolveStateVariable(
+                        textValue(field(operand, "value"), ""), textValue(field(operand, "selectable"), "opponent"),
+                        new Condition(BotLogicContracts.CONDITION_EXPRESSION, 0, BotLogicContracts.SELECTABLE_OPPONENT, null, null, "", null, "", "eq", Operand.bool(false), "and"),
+                        bot, opponent, entities, arena);
+                bot.customVariables.put(id, resolved != null && resolved.booleanValue());
+            } else if (operand != null && operand.isObject() && "boolean".equals(textValue(field(operand, "type"), ""))) {
+                bot.customVariables.put(id, field(operand, "value") != null && field(operand, "value").asBoolean(false));
+            } else {
+                bot.customVariables.put(id, block.targetOffsetX() != 0);
+            }
             return;
         }
         double current = ((Number) bot.customVariables.getOrDefault(id, 0.0)).doubleValue();

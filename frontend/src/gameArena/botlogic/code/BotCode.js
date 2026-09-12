@@ -603,7 +603,9 @@ function normalizedBlockActions(block) {
                     variableId: String(normalizedEntry?.variableId ?? ""),
                     ...(normalizedEntry?.value === true || normalizedEntry?.value === false
                         ? { value: normalizedEntry.value }
-                        : { terms: normalizedEntry.terms }),
+                        : normalizedEntry?.operand?.type === "boolean" || normalizedEntry?.operand?.type === "variable"
+                            ? { operation: CUSTOM_VARIABLE_OPERATIONS.SET, operand: normalizedEntry.operand }
+                            : { terms: normalizedEntry.terms }),
                 } : {}),
             });
         }
@@ -711,6 +713,14 @@ function normalizeVariableActionOperand(operand) {
 
 function normalizeVariableActionEntry(entry) {
     if (entry?.value === true || entry?.value === false) return { ...entry, operation: CUSTOM_VARIABLE_OPERATIONS.SET };
+    if (entry?.operand?.type === "boolean" || entry?.operand?.type === "variable") {
+        const normalized = { ...entry, operation: CUSTOM_VARIABLE_OPERATIONS.SET, operand: entry.operand.type === "variable"
+            ? { type: "variable", value: String(entry.operand.value ?? ""), ...(entry.operand.selectable ? { selectable: String(entry.operand.selectable) } : {}) }
+            : { type: "boolean", value: Boolean(entry.operand.value) } };
+        delete normalized.value;
+        delete normalized.terms;
+        return normalized;
+    }
     const legacy = [{
         operator: entry?.operation ?? CUSTOM_VARIABLE_OPERATIONS.SET,
         operand: entry?.operand ?? { type: "number", value: entry?.value ?? 0 },

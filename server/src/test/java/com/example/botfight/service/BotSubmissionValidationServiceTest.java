@@ -1024,6 +1024,24 @@ class BotSubmissionValidationServiceTest {
     }
 
     @Test
+    void acceptsBooleanVariableActionsThatCopyBooleanCustomVariables() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","customVariables":[
+                  {"id":"custom.result","name":"Result","valueType":"boolean","initialValue":false},
+                  {"id":"custom.source","name":"Source","valueType":"boolean","initialValue":true}],
+                 "roots":[{"branches":[{"branchType":"if","conditions":[{"type":"always"}],
+                   "actions":[{"action":"variable","variableId":"custom.result","operation":"set",
+                     "operand":{"type":"variable","value":"custom.source"}}],"children":[]}]}]}
+                """));
+
+        var result = service.validate(payload);
+
+        assertThat(result.isAccepted()).isTrue();
+        assertThat(result.getErrors()).isEmpty();
+    }
+
+    @Test
     void customVariableOperandsConsumeActionSlotsWithoutCreatingActionEntries() throws Exception {
         String fillerActions = java.util.stream.IntStream.range(0, 98)
                 .mapToObj(index -> "{\"action\":\"move_walk\"}")

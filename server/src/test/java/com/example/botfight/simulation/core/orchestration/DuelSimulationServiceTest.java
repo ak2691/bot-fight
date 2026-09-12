@@ -1370,6 +1370,28 @@ class DuelSimulationServiceTest {
     }
 
     @Test
+    void authoritativeSimulatorCopiesBooleanCustomVariables() throws Exception {
+        JsonNode variableBrain = jsonMapper.readTree("""
+                {
+                  "version":"bot-logic-tree-v1",
+                  "customVariables":[
+                    {"id":"custom.result","name":"Result","valueType":"boolean","initialValue":false},
+                    {"id":"custom.source","name":"Source","valueType":"boolean","initialValue":true}],
+                  "roots":[
+                    {"priority":1,"branches":[{"branchType":"if","priority":1,"conditions":[{"type":"always"}],"actions":[{"action":"variable","variableId":"custom.result","operation":"set","operand":{"type":"variable","value":"custom.source"}}],"children":[]}]},
+                    {"priority":2,"branches":[{"branchType":"if","priority":1,"conditions":[{"type":"expression","left":"custom.result","comparator":"eq","right":{"type":"boolean","value":true}}],"actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":90}],"children":[]}]}
+                  ]
+                }
+                """);
+        MatchPlaybackDTO result = service.simulate(request(
+                arena(400),
+                bot("boolean-variables", "Boolean Variables", 1, 100, 400, "custom", variableBrain),
+                bot("idle-boolean-variables", "Idle", 2, 700, 400, "custom", customBrain("[]", "[]"))));
+
+        assertThat(result.frames().getLast().bots().getFirst().x()).isGreaterThan(100);
+    }
+
+    @Test
     void authoritativeSimulatorActivatesAbilityFromIncrementedCustomVariable() throws Exception {
         JsonNode variableBrain = jsonMapper.readTree("""
                 {

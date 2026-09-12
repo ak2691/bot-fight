@@ -14,11 +14,21 @@ test("notification panel caps its height and scrolls through invite cards", () =
     assert.match(source, /<section className="absolute right-0 top-12 z-30 max-h-\[min\(32rem,calc\(100vh-6rem\)\)\][\s\S]*overflow-y-auto overscroll-contain/);
 });
 
-test("notification panel uses the purple notification-count accent", () => {
+test("notification panel uses the party popover outline and purple notification accent", () => {
     const source = readFileSync(APP_NAVBAR_PATH, "utf8");
 
-    assert.match(source, /border-fuchsia-800\/80/);
+    assert.match(source, /className="absolute[^\"]*border-2 border-slate-500\/80[^\"]*" aria-label="Notifications"/);
     assert.match(source, /tracking-\[\.2em\] text-fuchsia-400">NOTIFICATIONS/);
+});
+
+test("notification panel closes on outside clicks and Escape", () => {
+    const source = readFileSync(APP_NAVBAR_PATH, "utf8");
+
+    assert.match(source, /if \(!notificationsPopoverRef\.current\?\.contains\(event\.target\)\) setNotificationsOpen\(false\);/);
+    assert.match(source, /if \(event\.key === "Escape"\) setNotificationsOpen\(false\);/);
+    assert.match(source, /document\.addEventListener\("pointerdown", handlePointerDown\);/);
+    assert.match(source, /document\.removeEventListener\("pointerdown", handlePointerDown\);/);
+    assert.match(source, /ref=\{notificationsPopoverRef\} className="relative"/);
 });
 
 test("stale party and lobby accepts remove their consumed invite cards", () => {

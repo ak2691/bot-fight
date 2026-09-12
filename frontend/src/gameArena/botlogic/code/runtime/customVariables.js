@@ -101,7 +101,10 @@ export function applyVariableAction(block, state, definitions, operations) {
         ?? (!block.variableId ? definitions[0] : null);
     if (!definition) return;
     if (definition.valueType === "boolean") {
-        state.player.customVariables[definition.id] = Boolean(block.value);
+        const operand = block.operand ?? { type: "boolean", value: block.value };
+        state.player.customVariables[definition.id] = operand.type === "variable"
+            ? Boolean(operations.resolveVariable(state, { selectable: operand.selectable }, operand.value, operand.selectable))
+            : Boolean(operand.value);
         return;
     }
     const current = Number(state.player.customVariables[definition.id] ?? definition.initialValue);

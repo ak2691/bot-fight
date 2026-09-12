@@ -20,12 +20,30 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
         declinePartyInvite,
         declineCustomLobbyInvite,
     } = useNotifications();
+    const notificationsPopoverRef = useRef(null);
     const [notificationsOpen, setNotificationsOpen] = useState(false);
     const [navbarVisibility, setNavbarVisibility] = useState({ pathname: null, hidden: false });
     const isHidden = navbarVisibility.pathname === pathname && navbarVisibility.hidden;
     const isCharcoalPage = ["profile", "puzzles", "puzzle-builder", "puzzle-play", "abilities", "conditionals"].includes(currentPage);
     const username = user?.username ?? "bot";
     const pendingNotificationCount = pendingPartyInvites.length + pendingCustomLobbyInvites.length;
+
+    useEffect(() => {
+        if (!notificationsOpen) return undefined;
+
+        const handlePointerDown = (event) => {
+            if (!notificationsPopoverRef.current?.contains(event.target)) setNotificationsOpen(false);
+        };
+        const handleKeyDown = (event) => {
+            if (event.key === "Escape") setNotificationsOpen(false);
+        };
+        document.addEventListener("pointerdown", handlePointerDown);
+        document.addEventListener("keydown", handleKeyDown);
+        return () => {
+            document.removeEventListener("pointerdown", handlePointerDown);
+            document.removeEventListener("keydown", handleKeyDown);
+        };
+    }, [notificationsOpen]);
 
     useEffect(() => {
         const navbar = navbarRef.current;
@@ -66,7 +84,7 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
             {account ? (
                 <nav className="flex items-center gap-1 sm:gap-2" aria-label="Account navigation">
                     <PartyPopover onOpen={() => setNotificationsOpen(false)} />
-                    <div className="relative">
+                    <div ref={notificationsPopoverRef} className="relative">
                         <button
                             type="button"
                             onClick={() => setNotificationsOpen((open) => !open)}
@@ -147,7 +165,7 @@ function NotificationPanel({
 }) {
     const totalInvites = partyInvites.length + customLobbyInvites.length;
     return (
-        <section className="absolute right-0 top-12 z-30 max-h-[min(32rem,calc(100vh-6rem))] w-[min(22rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-xl border border-fuchsia-800/80 bg-[#091521f5] p-3 shadow-[0_18px_60px_rgba(0,0,0,.45)]" aria-label="Notifications">
+        <section className="absolute right-0 top-12 z-30 max-h-[min(32rem,calc(100vh-6rem))] w-[min(22rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-xl border-2 border-slate-500/80 bg-[#091521f5] p-3 shadow-[0_18px_60px_rgba(0,0,0,.45)]" aria-label="Notifications">
             <div className="flex items-center justify-between gap-3 px-2 pb-2">
                 <h2 className="font-mono text-[10px] font-bold tracking-[.2em] text-fuchsia-400">NOTIFICATIONS</h2>
                 <span className="text-xs text-slate-500">{totalInvites} pending</span>

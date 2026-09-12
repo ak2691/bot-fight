@@ -147,7 +147,7 @@ const LESSONS = [
         objectives: [
             { id: "challenge", label: "Land Heavy Slash within 2 seconds", focus: "play", hint: "Press PLAY and land Heavy Slash before the timer expires.", complete: runComplete },
         ],
-        workspaceCoach: { eyebrow: "BUILD THE ATTACK", title: "Rotate, close, then Heavy Slash", copy: "Add Rotate: Face Target, a close-in movement rule, and Heavy Slash. Then run the bot.", focus: "add-action" },
+        workspaceCoach: { eyebrow: "BUILD THE ATTACK", title: "Rotate, check, then Heavy Slash", copy: "Add Rotate: Face Target. Use Relative Bearing to ensure you only use Heavy Slash when it will hit. Then run the bot.", focus: "add-action" },
     },
     {
         lessonNumber: "6",
@@ -160,7 +160,7 @@ const LESSONS = [
         objectives: [
             { id: "challenge", label: "Land Heavy Slash within 1 second", focus: "play", hint: "Press PLAY and land Heavy Slash before the timer expires.", complete: runComplete },
         ],
-        workspaceCoach: { eyebrow: "BUILD THE ATTACK", title: "Lock On, close, then Heavy Slash", copy: "Add Lock On, a close-in movement rule, and Heavy Slash. Then run the bot.", focus: "add-action" },
+        workspaceCoach: { eyebrow: "BUILD THE ATTACK", title: "Lock On, then Heavy Slash", copy: "Add Lock On and Heavy Slash. Then run the bot.", focus: "add-action" },
     },
     {
         lessonNumber: "7",
