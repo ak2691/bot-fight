@@ -1064,6 +1064,21 @@ class DuelSimulationServiceTest {
     }
 
     @Test
+    void relativeBearingComparisonValuesClampToTheirRuntimeRanges() throws Exception {
+        List<Condition> conditions = ConditionResolutionService.normalizeConditions(jsonMapper.readTree("""
+                [
+                  {"type":"expression","left":"selectable.relativeBearing","comparator":"eq","right":{"type":"number","value":1000}},
+                  {"type":"expression","left":"selectable.relativeBearingClockwise","comparator":"eq","right":{"type":"number","value":-100}},
+                  {"type":"expression","left":"selectable.relativeBearingCounterclockwise","comparator":"eq","right":{"type":"number","value":1000}}
+                ]
+                """));
+
+        assertThat(conditions.get(0).right().numberValue()).isEqualTo(180.0);
+        assertThat(conditions.get(1).right().numberValue()).isEqualTo(0.0);
+        assertThat(conditions.get(2).right().numberValue()).isEqualTo(360.0);
+    }
+
+    @Test
     void dangerZoneEdgeDistanceUsesSignedCenterToBoundaryDistance() {
         JsonNode brain = customBrain("[1]", """
                 [

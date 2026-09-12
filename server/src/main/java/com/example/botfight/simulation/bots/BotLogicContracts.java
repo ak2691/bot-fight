@@ -220,6 +220,16 @@ public final class BotLogicContracts {
             return angle() && source != VariableSource.SELECTABLE_RELATIVE_BEARING;
         }
 
+        public boolean boundedRelativeBearing() {
+            return source == VariableSource.SELECTABLE_RELATIVE_BEARING
+                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING_CLOCKWISE
+                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE;
+        }
+
+        public double relativeBearingMaximum() {
+            return source == VariableSource.SELECTABLE_RELATIVE_BEARING ? 180.0 : 360.0;
+        }
+
         public boolean nonNegativeTime() {
             return source == VariableSource.MATCH_ELAPSED_SECONDS
                     || source == VariableSource.SELECTABLE_AGE;

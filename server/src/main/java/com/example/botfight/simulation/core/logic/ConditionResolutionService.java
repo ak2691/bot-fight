@@ -90,7 +90,7 @@ public class ConditionResolutionService {
                     abilityId(field(condition, "ability")),
                     textValue(field(condition, "statusEffect"), ""),
                     textValue(field(condition, "comparator"), "lt"),
-                    normalizeOperand(rightNode),
+                    normalizeOperand(rightNode, leftContract),
                     index > 0 && BotLogicContracts.JOIN_OR.equals(textValue(field(condition, "join"), "and")) ? BotLogicContracts.JOIN_OR : "and",
                     targetMode,
                     targetX,
@@ -346,12 +346,16 @@ public class ConditionResolutionService {
         return node != null && node.isIntegralNumber() && node.canConvertToInt() ? node.intValue() : null;
     }
 
-    private static Operand normalizeOperand(JsonNode node) {
+    private static Operand normalizeOperand(JsonNode node, BotLogicContracts.VariableContract leftContract) {
         if (node == null || !node.isObject()) return Operand.number(0.0);
         String type = textValue(node.get("type"), "number");
         if ("variable".equals(type)) return Operand.variable(textValue(node.get("value"), ""));
         if ("boolean".equals(type)) return Operand.bool(booleanValue(node.get("value"), true));
-        return Operand.number(numberValue(node.get("value"), 0.0));
+        double value = numberValue(node.get("value"), 0.0);
+        if (leftContract != null && leftContract.boundedRelativeBearing()) {
+            value = Math.max(0.0, Math.min(leftContract.relativeBearingMaximum(), value));
+        }
+        return Operand.number(value);
     }
 
     private static String normalizeSelectable(String selectable, String fallback,

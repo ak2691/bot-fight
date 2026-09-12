@@ -31,6 +31,8 @@ test("admin puzzle updates use PUT and expose no delete endpoint", () => {
 test("puzzle save canonicalizes both rule conditions and staged bot brains", () => {
     assert.match(workspaceSource, /normalizeConditions\(branch\.conditions, customVariables, SELECTABLE_TYPES\)/);
     assert.match(workspaceSource, /branches: normalizePuzzleBranches\(root\?\.branches, normalizedKind/);
+    assert.match(workspaceSource, /const normalizedBranch = stripLegacyActionFields\(branch\)/);
+    assert.match(workspaceSource, /if \(kind !== "modify"\) normalizedBranch\.actions = \[\]/);
     assert.match(builderSource, /const normalizedLogic = normalizePuzzleLogic\(draft\.puzzleLogic\)/);
     assert.match(builderSource, /winConditions: flattenPuzzleConditions\(normalizedLogic, "win"\)/);
     assert.match(builderSource, /opponentBot: requestBot\(draft\.opponentBot\)/);

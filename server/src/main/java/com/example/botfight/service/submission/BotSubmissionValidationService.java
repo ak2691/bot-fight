@@ -715,6 +715,10 @@ public class BotSubmissionValidationService {
             if ("number".equals(rightType)) {
                 if (rightValue == null || !rightValue.isNumber()) {
                     errors.add(path + ".right.value must be a number");
+                } else if (variableContract != null && variableContract.boundedRelativeBearing()) {
+                    if (!Double.isFinite(rightValue.asDouble())) {
+                        errors.add(path + ".right.value must be a finite relative bearing");
+                    }
                 } else if (variableContract != null && variableContract.angle()
                         && (!Double.isFinite(rightValue.asDouble())
                         || rightValue.asDouble() < BotLogicContracts.ANGLE_MIN

@@ -422,6 +422,25 @@ test("semantic replay events resolve repeating visuals from the frontend contrac
     assert.equal(descriptor.remainingMs, 400);
 });
 
+test("live repeating event visuals stop when their presentation timer reaches zero", () => {
+    const activePulse = {
+        type: "orbitalMarker",
+        abilityId: 22,
+        phaseId: "active",
+        eventType: "interval",
+        eventSequence: 3,
+        visualEventType: "orbitalExplosion",
+        visualEventMs: 100,
+        visualEventSize: 260,
+    };
+    assert.equal(visualForShape(activePulse).type, "orbitalExplosion");
+    assert.equal(visualAnimationDescriptorForShape(activePulse).eventActive, true);
+
+    const completedPulse = { ...activePulse, visualEventMs: 0 };
+    assert.equal(visualForShape(completedPulse).type, "orbitalMarker");
+    assert.equal(visualAnimationDescriptorForShape(completedPulse).eventActive, false);
+});
+
 test("bot and entity labels derive from calculated snapshot fields", () => {
     assert.deepEqual(botStatusLabels({ statusEffects: [
         { type: "burn", remainingMs: 100 },

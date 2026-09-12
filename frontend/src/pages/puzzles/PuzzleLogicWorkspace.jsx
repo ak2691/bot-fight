@@ -141,7 +141,8 @@ function normalizePuzzleBranches(branches, kind, conditionNumbers, customVariabl
     if (!Array.isArray(branches)) return branches;
     const conditionKind = ["win", "lose", "modify"].includes(kind) ? kind : "other";
     return branches.map((branch) => {
-        const normalizedBranch = kind === "modify" ? stripLegacyActionFields(branch) : { ...branch };
+        const normalizedBranch = stripLegacyActionFields(branch);
+        if (kind !== "modify") normalizedBranch.actions = [];
         const normalizedConditions = Array.isArray(branch?.conditions)
             ? (selectableTypes === SELECTABLE_TYPES
                 ? normalizeConditions(branch.conditions, customVariables, SELECTABLE_TYPES)

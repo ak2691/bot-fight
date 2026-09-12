@@ -1062,15 +1062,34 @@ test("numeric-string ability selections preserve Dash active-state conditions", 
     })).primary.id, "root-1-1-1");
 });
 
-test("angle condition inputs use signed full-turn bounds", () => {
+test("angle condition inputs use bounds matching their runtime ranges", () => {
     const angles = STATE_VARIABLES.filter((variable) => variable.suffix === "deg");
     assert.ok(angles.length > 0);
-    assert.ok(angles.every((variable) => variable.angle && variable.min === -360 && variable.max === 360));
+    assert.ok(angles.every((variable) => variable.angle));
+    assert.deepEqual(
+        Object.fromEntries(angles.map(({ id, min, max }) => [id, [min, max]])),
+        {
+            "selectable.absoluteBearing": [-360, 360],
+            "selectable.movementDirection": [-360, 360],
+            "selectable.relativeBearing": [0, 180],
+            "selectable.relativeBearingClockwise": [0, 360],
+            "selectable.relativeBearingCounterclockwise": [0, 360],
+            "selectable.facing": [-360, 360],
+        },
+    );
 
     const normalized = normalizeAbilityStrategyConfiguration({
-        roots: [{ branches: [{ conditions: [{ type: "expression", left: "selectable.facing", comparator: "gt", right: { type: "number", value: 999 } }], actions: [] }] }],
+        roots: [{ branches: [{ conditions: [
+            { type: "expression", left: "selectable.facing", comparator: "gt", right: { type: "number", value: 999 } },
+            { type: "expression", left: "selectable.relativeBearing", comparator: "gt", right: { type: "number", value: 1000 } },
+            { type: "expression", left: "selectable.relativeBearingClockwise", comparator: "gt", right: { type: "number", value: -100 } },
+            { type: "expression", left: "selectable.relativeBearingCounterclockwise", comparator: "gt", right: { type: "number", value: 1000 } },
+        ], actions: [] }] }],
     });
     assert.equal(normalized.roots[0].branches[0].conditions[0].right.value, 360);
+    assert.equal(normalized.roots[0].branches[0].conditions[1].right.value, 180);
+    assert.equal(normalized.roots[0].branches[0].conditions[2].right.value, 0);
+    assert.equal(normalized.roots[0].branches[0].conditions[3].right.value, 360);
 });
 
 test("conditional measurement units stay in catalogue metadata except for inline degrees", () => {

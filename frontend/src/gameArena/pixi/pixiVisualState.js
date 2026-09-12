@@ -56,14 +56,19 @@ export const LOCK_ON_PRESENTATION = Object.freeze({
     markerSize: Number(attachedAbilityContract(20)?.phases?.[0]?.visual?.visualSize ?? 48),
 });
 
+function semanticVisualEventActive(shape) {
+    return Boolean(shape?.eventType)
+        && Number(shape?.eventSequence ?? 0) > 0
+        && (shape?.visualEventMs == null || Number(shape.visualEventMs) > 0);
+}
+
 /** Resolves presentation metadata from the entity's current phase. */
 export function visualForShape(shape) {
     const contract = entityContract(shape?.entityContractId ?? shape?.abilityId ?? shape?.type);
     if (!contract) return null;
 
     const semanticEventType = String(shape?.eventType ?? "").toLowerCase();
-    const eventSequence = Number(shape?.eventSequence ?? 0);
-    if (semanticEventType && eventSequence > 0) {
+    if (semanticVisualEventActive(shape)) {
         const phase = phaseForEntity(shape);
         const embeddedPhase = entityAbilityPhaseForEntity(shape);
         const handler = phase?.events?.[semanticEventType]
@@ -239,8 +244,7 @@ export function visualAnimationDescriptorForShape(shape) {
     const state = visual?.state ?? "";
     const size = Number(visual?.visualSize ?? shape?.size ?? 0);
     const eventMs = Number(shape?.visualEventMs ?? 0);
-    const semanticEventActive = Boolean(shape?.eventType)
-        && Number(shape?.eventSequence ?? 0) > 0;
+    const semanticEventActive = semanticVisualEventActive(shape);
     const eventActive = semanticEventActive || (Boolean(shape?.visualEventType) && eventMs > 0);
     const legacyVisual = !visual && LEGACY_REPLAY_PHASE_VISUAL_TYPES.has(type);
     const configuredVisibleMs = eventActive

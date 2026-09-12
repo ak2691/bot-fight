@@ -876,6 +876,22 @@ class BotSubmissionValidationServiceTest {
     }
 
     @Test
+    void acceptsFiniteOutOfRangeRelativeBearingValuesForAuthoritativeClamping() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","roots":[{"branches":[{"branchType":"if",
+                  "conditions":[
+                    {"type":"expression","left":"selectable.relativeBearing","comparator":"lt","right":{"type":"number","value":-100}},
+                    {"type":"expression","left":"selectable.relativeBearingClockwise","comparator":"lt","right":{"type":"number","value":1000}},
+                    {"type":"expression","left":"selectable.relativeBearingCounterclockwise","comparator":"lt","right":{"type":"number","value":1000000}}
+                  ],
+                  "actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"children":[]}]}]}
+                """));
+
+        assertThat(service.validate(payload).getErrors()).isEmpty();
+    }
+
+    @Test
     void acceptsCoordinateDistanceAndAbsoluteAngleBearingConditions() throws Exception {
         BotSubmissionPayloadDTO payload = validPayload();
         payload.setBrain(jsonMapper.readTree("""
