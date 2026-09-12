@@ -17,7 +17,7 @@ test("notification panel caps its height and scrolls through invite cards", () =
 test("notification panel uses the party popover outline and purple notification accent", () => {
     const source = readFileSync(APP_NAVBAR_PATH, "utf8");
 
-    assert.match(source, /className="absolute[^\"]*border-2 border-slate-500\/80[^\"]*" aria-label="Notifications"/);
+    assert.match(source, /className="absolute[^"]*border-2 border-slate-500\/80[^"]*" aria-label="Notifications"/);
     assert.match(source, /tracking-\[\.2em\] text-fuchsia-400">NOTIFICATIONS/);
 });
 
