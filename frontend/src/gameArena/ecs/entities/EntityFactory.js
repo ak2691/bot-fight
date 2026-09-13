@@ -23,6 +23,7 @@ export function createEntity({
     state = {},
     phaseId = null,
     phaseTimerMs = 0,
+    eventScheduleState = {},
     intervalTimerMs = 0,
     armed = false,
     phaseLocked = false,
@@ -54,6 +55,7 @@ export function createEntity({
         maxHp: health?.maxHp,
         phaseId,
         phaseTimerMs,
+        eventScheduleState,
         intervalTimerMs,
         armed,
         phaseLocked,
@@ -74,7 +76,8 @@ export function createEntity({
 /**
  * Resolves the entity contract for an ability and creates its normalized
  * payload. Entity existence and behavior are owned by the entity registry;
- * direct ability contracts do not carry a duplicate spawn effect.
+ * direct ability contracts use their spawn only for attached hitbox/visual
+ * pose resolution and never create an arena entity here.
  */
 export function createAbilityEntity(bot, abilityValue, context = {}) {
     const abilityId = resolveAbilityId(abilityValue);
@@ -138,6 +141,7 @@ function buildEntityOptions(bot, contract, context) {
         size,
         phaseId: firstPhase?.id ?? null,
         phaseTimerMs: 0,
+        eventScheduleState: {},
         intervalTimerMs: 0,
         armed: firstPhase?.id === "armed",
         state,
@@ -159,7 +163,10 @@ function phaseSize(phase) {
 }
 
 function buildTransform(bot, spawn, targeting, size, context) {
-    const rotation = spawn?.rotation === "zero" ? 0 : Number(bot.rotation ?? 0);
+    const ownerRotation = Number(bot.rotation ?? 0);
+    const rotation = spawn?.rotationSpace === "world"
+        ? Number(spawn.rotation ?? 0)
+        : ownerRotation + Number(spawn?.rotation ?? 0);
     if (targeting?.position === "target") {
         const radius = targeting.clampToRadius == null
             ? 0

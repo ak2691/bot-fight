@@ -34,20 +34,37 @@ class AbilityEntitySystemTest {
                     assertThat(effect.amount()).isEqualTo(2);
                     assertThat(effect.durationMs()).isEqualTo(5_000);
                 });
+
+        AbilityContracts.AbilityContract attached =
+                AbilityContracts.attachedAbilityContract(1);
+        assertThat(attached.spawn().offsetX()).isZero();
+        assertThat(attached.spawn().offsetY()).isZero();
+        assertThat(attached.phases().getFirst().events()
+                .get(AbilityContracts.PhaseEventType.COLLISION).schedule().mode())
+                .isEqualTo(AbilityContracts.EventScheduleMode.ONCE);
+        assertThat(AbilityContracts.entityAll().values())
+                .allSatisfy(contract -> assertThat(contract.phases()).allSatisfy(phase ->
+                        assertThat(phase.events().values()).allSatisfy(event ->
+                                assertThat(event.schedule()).isNotNull())));
     }
     @Test
-    void phaseContractsKeepTargetPolicyOnEventsAndUseExplicitTransitionBodies() {
+    void phaseContractsKeepTargetPolicyOnEventsAndUseExplicitCollisionSchedules() {
         AbilityContracts.AbilityPhase grenadeTravel = AbilityContracts.entityContractForAbility(4).phases().getFirst();
         AbilityContracts.PhaseEvent transition = grenadeTravel.events()
                 .get(AbilityContracts.PhaseEventType.COLLISION);
         AbilityContracts.PhaseEvent silenceCollision = AbilityContracts.entityContractForAbility(15).phases().getFirst()
                 .events().get(AbilityContracts.PhaseEventType.COLLISION);
-        AbilityContracts.PhaseEvent orbitalInterval = AbilityContracts.entityContractForAbility(22).phases().getFirst()
-                .events().get(AbilityContracts.PhaseEventType.INTERVAL);
+        AbilityContracts.AbilityPhase orbitalPhase = AbilityContracts.entityContractForAbility(22).phases().getFirst();
+        AbilityContracts.PhaseEvent orbitalCollision = orbitalPhase.events()
+                .get(AbilityContracts.PhaseEventType.COLLISION);
 
         assertThat(transition.transition().to()).isEqualTo("active");
         assertThat(silenceCollision.targetPolicy().mode()).isEqualTo(AbilityContracts.TargetPolicyMode.ONCE);
-        assertThat(orbitalInterval.targetPolicy()).isNull();
+        assertThat(orbitalCollision.targetPolicy()).isNull();
+        assertThat(orbitalCollision.schedule().mode())
+                .isEqualTo(AbilityContracts.EventScheduleMode.REPEAT);
+        assertThat(orbitalCollision.schedule().intervalMs()).isEqualTo(500);
+        assertThat(orbitalPhase.execution()).isNull();
         assertThat(AbilityContracts.entityContractForAbility(5).phases().getFirst()
                 .events().get(AbilityContracts.PhaseEventType.COLLISION).targetKinds())
                 .containsExactly(AbilityContracts.TargetKind.BOT,
@@ -129,8 +146,9 @@ class AbilityEntitySystemTest {
                 .satisfies(ability -> {
                     assertThat(ability.spawn().offsetX()).isZero();
                     assertThat(ability.spawn().offsetY()).isZero();
-                    assertThat(ability.spawn().rotation())
-                            .isEqualTo(AbilityContracts.RotationMode.OWNER);
+                    assertThat(ability.spawn().rotation()).isZero();
+                    assertThat(ability.spawn().rotationSpace())
+                            .isEqualTo(AbilityContracts.RotationSpace.OWNER);
                     assertThat(ability.phases()).singleElement()
                             .satisfies(phase -> assertThat(phase.hitbox().shape()).isEqualTo("ray"));
                 });
@@ -181,7 +199,8 @@ class AbilityEntitySystemTest {
         ArenaEntity armedMine = active.getFirst();
         assertThat(armedMine.armed()).isTrue();
         assertThat(armedMine.traveled()).isEqualTo(176);
-        assertThat(armedMine.timerMs()).isEqualTo(20_000);
+        assertThat(armedMine.timerMs()).isEqualTo(800);
+        assertThat(armedMine.phaseTimerMs()).isZero();
         assertThat(armedMine.ageMs()).isEqualTo(800);
         assertThat(armedMine.velocityX()).isZero();
         assertThat(armedMine.velocityY()).isZero();
@@ -190,7 +209,8 @@ class AbilityEntitySystemTest {
         List<ArenaEntity> armed = AbilityEntitySystem.tick(
                 active, List.of(), new ArenaBounds(1000, 800), 100, noDamageCombat());
         assertThat(armed).singleElement().satisfies(entity -> {
-            assertThat(entity.timerMs()).isEqualTo(19_900);
+            assertThat(entity.timerMs()).isEqualTo(700);
+            assertThat(entity.phaseTimerMs()).isEqualTo(100);
             assertThat(entity.x()).isEqualTo(armedMine.x());
             assertThat(entity.y()).isEqualTo(armedMine.y());
         });
@@ -219,7 +239,8 @@ class AbilityEntitySystemTest {
         assertThat(active).singleElement().satisfies(entity -> {
             assertThat(entity.phaseId()).isEqualTo("armed");
             assertThat(entity.phaseLocked()).isTrue();
-            assertThat(entity.timerMs()).isEqualTo(1_000);
+            assertThat(entity.timerMs()).isZero();
+            assertThat(entity.phaseTimerMs()).isZero();
             assertThat(entity.velocityX()).isZero();
             assertThat(entity.velocityY()).isZero();
         });
@@ -230,7 +251,8 @@ class AbilityEntitySystemTest {
             active = AbilityEntitySystem.tick(active, List.of(), arena, 100, noDamageCombat());
             assertThat(active).singleElement().satisfies(entity -> {
                 assertThat(entity.phaseId()).isEqualTo("armed");
-                assertThat(entity.timerMs()).isGreaterThan(0);
+                assertThat(entity.timerMs()).isZero();
+                assertThat(entity.phaseTimerMs()).isGreaterThan(0);
             });
         }
 
@@ -238,7 +260,8 @@ class AbilityEntitySystemTest {
         active = AbilityEntitySystem.tick(active, List.of(), arena, 100, noDamageCombat());
         assertThat(active).singleElement().satisfies(entity -> {
             assertThat(entity.phaseId()).isEqualTo("active");
-            assertThat(entity.timerMs()).isEqualTo(200);
+            assertThat(entity.timerMs()).isZero();
+            assertThat(entity.phaseTimerMs()).isZero();
         });
     }
 
@@ -339,7 +362,7 @@ class AbilityEntitySystemTest {
                 new ArenaBounds(1000, 800), 100, destroyer)).singleElement().satisfies(entity -> {
             assertThat(entity.type()).isEqualTo("staticSnare");
             assertThat(entity.phaseId()).isEqualTo("destroyed");
-            assertThat(entity.eventType()).isEqualTo("killed");
+            assertThat(entity.eventType()).isEqualTo("collision");
             assertThat(entity.size()).isEqualTo(24);
         });
     }
@@ -437,7 +460,7 @@ class AbilityEntitySystemTest {
         assertThat(result).singleElement().satisfies(entity -> {
             assertThat(entity.type()).isEqualTo("staticSnare");
             assertThat(entity.phaseId()).isEqualTo("destroyed");
-            assertThat(entity.eventType()).isEqualTo("killed");
+            assertThat(entity.eventType()).isEqualTo("collision");
             assertThat(entity.size()).isEqualTo(24);
         });
     }
@@ -495,7 +518,7 @@ class AbilityEntitySystemTest {
         assertThat(result).singleElement().satisfies(entity -> {
             assertThat(entity.type()).isEqualTo("staticSnare");
             assertThat(entity.phaseId()).isEqualTo("destroyed");
-            assertThat(entity.eventType()).isEqualTo("killed");
+            assertThat(entity.eventType()).isEqualTo("collision");
             assertThat(entity.size()).isEqualTo(24);
         });
     }
@@ -617,7 +640,7 @@ class AbilityEntitySystemTest {
         assertThat(entities).singleElement().satisfies(entity -> {
             assertThat(entity.type()).isEqualTo("singularityZone");
             assertThat(entity.phaseId()).isEqualTo("active");
-            assertThat(entity.eventType()).isNull();
+            assertThat(entity.eventType()).isEqualTo("collision");
         });
         int hpAfterDetonation = target.hp;
 
@@ -701,7 +724,7 @@ class AbilityEntitySystemTest {
             assertThat(entity.id()).isEqualTo("mine");
             assertThat(entity.type()).isEqualTo("proximityMine");
             assertThat(entity.phaseId()).isEqualTo("active");
-            assertThat(entity.eventType()).isNull();
+            assertThat(entity.eventType()).isEqualTo("collision");
             assertThat(entity.size()).isEqualTo(24);
         });
         assertThat(combat.damage).isEqualTo(25);

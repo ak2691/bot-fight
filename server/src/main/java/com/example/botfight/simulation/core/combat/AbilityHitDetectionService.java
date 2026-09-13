@@ -166,14 +166,14 @@ final class AbilityHitDetectionService {
     }
 
     private static double sourceX(Bot source, AbilityExecutionPayload payload) {
-        return payload.hasCapturedPose() ? payload.capturedOriginX() : source.x;
+        return payload.pose(source).x();
     }
 
     private static double sourceY(Bot source, AbilityExecutionPayload payload) {
-        return payload.hasCapturedPose() ? payload.capturedOriginY() : source.y;
+        return payload.pose(source).y();
     }
 
     private static double sourceRotation(Bot source, AbilityExecutionPayload payload) {
-        return payload.hasCapturedPose() ? payload.capturedRotation() : source.rotation;
+        return payload.pose(source).rotation();
     }
 }

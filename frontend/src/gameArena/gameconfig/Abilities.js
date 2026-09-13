@@ -132,7 +132,12 @@ function phaseProjection(id) {
     if (movement.turnDegrees != null) stats.turnStepDegrees = Number(movement.turnDegrees);
     if (visualPhase.visual?.visualSize != null) stats.visualSize = Number(visualPhase.visual.visualSize);
     if (visualPhase.visual?.visibleMs != null) stats.visualMs = Number(visualPhase.visual.visibleMs);
-    if (behaviorPhase.execution?.intervalMs != null) stats.intervalMs = Number(behaviorPhase.execution.intervalMs);
+    const scheduledEvent = projectionPhases
+        .flatMap((phase) => Object.values(phase.events ?? {}))
+        .find((event) => event?.schedule?.mode === "repeat");
+    const collisionIntervalMs = scheduledEvent?.schedule?.intervalMs
+        ?? behaviorPhase.execution?.intervalMs;
+    if (collisionIntervalMs != null) stats.intervalMs = Number(collisionIntervalMs);
     if (embeddedPhase?.visual?.visibleMs != null) stats.shotVisualMs = Number(embeddedPhase.visual.visibleMs);
     const entityPhase = entity?.phases?.[0] ?? null;
     const entityVisualSize = Number(entityPhase?.visual?.visualSize);

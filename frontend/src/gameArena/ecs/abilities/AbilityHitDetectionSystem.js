@@ -8,6 +8,7 @@ import {
 import { movingRectangleCollision, segmentIntersectsCircle, segmentIntersectsSector, segmentsWithinDistance } from "../../gameconfig/geometry.js";
 import { compassDegreesToRadians, compassDirection } from "../../botlogic/planner/arenaAngles.js";
 import { phaseForEntity } from "../contracts/AbilityContracts.js";
+import { attachedAbilityPose } from "../../gameconfig/hitboxGeometry.js";
 
 /** Resolves attached-phase geometry without applying the resulting effects. */
 export function abilityHitsTarget(
@@ -33,7 +34,7 @@ export function rayHits(source, target, payloadOrAbilityId, phase = undefined) {
     if (!source || !target || !payload) return false;
     const activePhase = phase ?? phaseForAttachedAbility(payload.abilityId);
     const hitbox = activePhase?.hitbox ?? {};
-    const pose = capturedHitboxPose(source);
+    const pose = capturedHitboxPose(source, payload);
     const direction = compassDirection(pose.rotation);
     const targetRadius = targetHitRadius(target);
     const rayWidth = resolveHitboxNumber(hitbox.width, payload, 5);
@@ -64,7 +65,7 @@ export function abilityRangeHits(
     const activePhase = phase ?? phaseForAttachedAbility(payload.abilityId);
     const hitbox = activePhase?.hitbox ?? {};
     if (!["arc", "rectangle", "circle"].includes(hitbox.shape)) return false;
-    const pose = capturedHitboxPose(source);
+    const pose = capturedHitboxPose(source, payload);
     const effectiveRange = Number(range ?? resolveHitboxNumber(
         hitbox.shape === "circle" ? hitbox.radius : hitbox.length ?? hitbox.range,
         payload,
@@ -107,23 +108,12 @@ export function abilityRangeHits(
     );
 }
 
-function capturedHitboxPose(source) {
-    return {
-        // Direct ray activations and delayed rectangular hitboxes use
-        // different authored capture field names, but both represent the
-        // same immutable firing pose used by the server resolver.
-        x: finiteNumber(source.hitboxOriginX, source.gunRayOriginX, source.visualOriginX, source.x),
-        y: finiteNumber(source.hitboxOriginY, source.gunRayOriginY, source.visualOriginY, source.y),
-        rotation: finiteNumber(source.hitboxRotation, source.gunRayRotation, source.visualOriginRotation, source.rotation),
-    };
-}
-
-function finiteNumber(...values) {
-    for (const value of values) {
-        const number = Number(value);
-        if (Number.isFinite(number)) return number;
-    }
-    return 0;
+function capturedHitboxPose(source, payload) {
+    // Direct ray activations and delayed rectangular hitboxes use different
+    // authored capture field names, but both represent the same immutable
+    // firing pose. Abilities without capture fields must use their root spawn
+    // instead of stale capture fields left by a previous ability.
+    return attachedAbilityPose(source, payload.contract?.spawn, payload.activation?.capture);
 }
 
 export function isAttachedAbilityPayload(payloadOrAbilityId) {

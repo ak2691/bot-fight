@@ -88,7 +88,6 @@ export function dispatchEntityEvent(entity, eventType, {
             nextEntity = transitionEntityPhase(
                 nextEntity,
                 handler.transition?.to,
-                world,
             );
         } else if (action === PHASE_ACTIONS.EMIT_VISUAL) {
             // The simulation records only the semantic event occurrence. The
@@ -159,21 +158,16 @@ export function canApplyToTarget(entity, targetId, targetPolicy = null, world = 
 }
 
 /** Changes phase without replacing the entity identity. */
-export function transitionEntityPhase(entity, phaseId, world = {}) {
+export function transitionEntityPhase(entity, phaseId) {
     if (!entity || phaseId == null) return entity;
     const contract = entityContract(entity.entityContractId ?? entity.abilityId ?? entity.type);
     const nextPhase = contract?.phases?.find((phase) => phase.id === phaseId);
     if (!nextPhase) return entity;
 
-    const visualLifetime = resolveNumber(
-        nextPhase.durationMs,
-        entity,
-        world,
-        null,
-    );
     const changes = {
         phaseId,
         phaseTimerMs: 0,
+        eventScheduleState: {},
         phaseLocked: true,
         phaseEnteredThisTick: true,
         ...(Number(nextPhase.movement?.speed ?? 0) <= 0 ? { velocityX: 0, velocityY: 0 } : {}),
@@ -181,7 +175,6 @@ export function transitionEntityPhase(entity, phaseId, world = {}) {
         // be affected again by the damage phase of the same logical entity.
         hitLedger: {},
         ...(nextPhase.type === "zone" || nextPhase.type === "self" ? { armed: true } : {}),
-        ...(visualLifetime == null ? {} : { remainingMs: visualLifetime }),
     };
     return withComponentState(entity, changes);
 }

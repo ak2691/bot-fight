@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createAbilityEntity } from "../entities/EntityFactory.js";
-import { ENTITY_CONTRACTS, entityContractForAbility, phaseTypeForEntity } from "../contracts/AbilityContracts.js";
+import { ENTITY_CONTRACTS, EVENT_SCHEDULE_MODES, entityContractForAbility, phaseTypeForEntity } from "../contracts/AbilityContracts.js";
 import { isAbilityEntity, tickAbilityEntityWorld } from "../abilities/AbilityEntitySystem.js";
 import { tickBotStatus } from "../bots/BotStatusSystem.js";
 import { tickBotResources } from "../bots/BotResourceSystem.js";
@@ -17,14 +17,14 @@ import { buildDeterministicLogicAction } from "../../botlogic/planner/ArenaActio
 import { buildStatePayload } from "../../modelPayloads/strategyStatePayload.js";
 import { abilityDefinition, ABILITY_STATS, shouldInterpolateAbilityVisual } from "../../loadout/BotLoadout.js";
 import { ATTACHED_ABILITY_CONTRACTS, EFFECT_TYPES, TARGET_KINDS, eventAllowsEffect } from "../contracts/AbilityContracts.js";
-import { botStatusLabels } from "../../pixi/pixiVisualState.js";
+import { botStatusLabels, visualForShape } from "../../pixi/pixiVisualState.js";
 import { resetBotShape, toSimulationBotShape } from "../../modelPayloads/arenaShapes.js";
 import { compassDirection } from "../../botlogic/planner/arenaAngles.js";
 import { CONCUSSIVE_SHOT_MOVEMENT_MULTIPLIER, CONCUSSIVE_SHOT_SLOW_DURATION_MS, HIT_STAGGER_DURATION_MS, HIT_STAGGER_MOVEMENT_MULTIPLIER, HIT_STAGGER_ROTATION_MULTIPLIER } from "../../gameconfig/HitStagger.js";
 import { statusEffectFor, statusIsActive, statusRemainingMs } from "../contracts/StatusContracts.js";
 import { anotherAbilityActive } from "../../gameconfig/AbilityResourceSystem.js";
 import { movingCircleCollision, movingRectangleCollision } from "../../gameconfig/geometry.js";
-import { entityAbilitySpawnTransform, movingEntityCollision } from "../../gameconfig/hitboxGeometry.js";
+import { attachedAbilitySpawnTransform, entityAbilitySpawnTransform, movingEntityCollision } from "../../gameconfig/hitboxGeometry.js";
 
 const noDamageCombat = {
     applyDamageToShape: (bot, damage) => ({ ...bot, hp: Math.max(0, bot.hp - damage) }),
@@ -38,16 +38,26 @@ const entityFor = (bot, abilityId, context = {}) => createAbilityEntity(bot, abi
 const phaseVisualFor = (entity) => ENTITY_CONTRACTS[entity.abilityId]?.phases
     ?.find((phase) => phase.id === entity.phaseId)?.visual;
 
-test("phase contracts keep target policy on events and use explicit transition bodies", () => {
+test("phase contracts keep target policy on events and use generic event schedules", () => {
     const phases = Object.values(ENTITY_CONTRACTS).flatMap((contract) => contract.phases);
     assert.equal(phases.some((phase) => Object.hasOwn(phase, "persistence")), false);
     assert.deepEqual(ENTITY_CONTRACTS[4].phases[0].events.collision.transition, { to: "active" });
     assert.equal(ENTITY_CONTRACTS[15].phases[0].events.collision.targetPolicy.mode, "once");
-    assert.equal(ENTITY_CONTRACTS[22].phases[0].events.interval.targetPolicy, undefined);
+    assert.equal(ENTITY_CONTRACTS[15].phases[0].events.collision.schedule.mode, EVENT_SCHEDULE_MODES.CONTINUOUS);
+    assert.equal(ENTITY_CONTRACTS[22].phases[0].events.interval, undefined);
+    assert.equal(ENTITY_CONTRACTS[22].phases[0].events.collision.targetPolicy, undefined);
+    assert.deepEqual(ENTITY_CONTRACTS[22].phases[0].events.collision.schedule, {
+        mode: EVENT_SCHEDULE_MODES.REPEAT, intervalMs: 500, startImmediately: true,
+    });
+    assert.equal(ENTITY_CONTRACTS[22].phases[0].execution, undefined);
     assert.deepEqual(ENTITY_CONTRACTS[5].phases[0].events.collision.targetKinds,
         [TARGET_KINDS.BOT, TARGET_KINDS.HP_ENTITY]);
+    assert.equal(ENTITY_CONTRACTS[5].phases[0].events.collision.schedule.mode,
+        EVENT_SCHEDULE_MODES.CONTINUOUS);
     assert.deepEqual(ENTITY_CONTRACTS[29].phases[2].events.collision.targetKinds,
         [TARGET_KINDS.BOT, TARGET_KINDS.HP_ENTITY]);
+    assert.equal(phases.every((phase) => Object.values(phase.events ?? {})
+        .every((event) => event.schedule?.mode)), true);
 });
 
 test("apply-effects events can select individual status subtypes", () => {
@@ -86,7 +96,81 @@ test("direct hitboxes use bot-attached phases with shape-owned geometry", () => 
     assert.equal(ATTACHED_ABILITY_CONTRACTS[3].phases[0].hitbox.shape, "ray");
     assert.equal(ATTACHED_ABILITY_CONTRACTS[6].phases[0].hitbox.shape, "rectangle");
     assert.equal(ATTACHED_ABILITY_CONTRACTS[8].phases[0].hitbox.shape, "circle");
-    assert.equal(ENTITY_CONTRACTS[22].phases[0].execution.startImmediately, true);
+    assert.equal(ENTITY_CONTRACTS[22].phases[0].events.collision.schedule.mode, EVENT_SCHEDULE_MODES.REPEAT);
+});
+
+test("attached abilities use the same normalized envelope and center spawn", () => {
+    const attached = ATTACHED_ABILITY_CONTRACTS[1];
+    const entity = ENTITY_CONTRACTS[4];
+    assert.deepEqual(Object.keys(attached).sort(), Object.keys(entity).sort());
+    assert.deepEqual(attached.spawn.offset, { x: 0, y: 0 });
+    assert.equal(attached.spawn.rotation, 0);
+    assert.equal(attached.spawn.rotationSpace, "owner");
+    assert.equal(attached.phases[0].events.collision.schedule.mode, EVENT_SCHEDULE_MODES.ONCE);
+    assert.equal(Object.hasOwn(attached.phases[0], "eventType"), false);
+});
+
+test("attached ability spawn offsets are relative to the bot", () => {
+    const bot = { x: 100, y: 100, rotation: 90 };
+    const ownerRelative = attachedAbilitySpawnTransform(bot, {
+        offset: { x: 10, y: 20 }, rotation: 180, rotationSpace: "owner",
+    });
+    assert.ok(Math.abs(ownerRelative.x - 120) < 0.000001);
+    assert.ok(Math.abs(ownerRelative.y - 110) < 0.000001);
+    assert.equal(ownerRelative.rotation, 270);
+
+    const worldFacing = attachedAbilitySpawnTransform(bot, {
+        offset: { x: 10, y: 20 }, rotation: 0, rotationSpace: "world",
+    });
+    assert.ok(Math.abs(worldFacing.x - 120) < 0.000001);
+    assert.ok(Math.abs(worldFacing.y - 110) < 0.000001);
+    assert.equal(worldFacing.rotation, 0);
+});
+
+test("once collision does not wait for a target that enters after phase entry", () => {
+    const owner = { id: "owner", slot: 1, x: 100, y: 100, size: 60, rotation: 0 };
+    const target = { id: "target", slot: 2, x: 500, y: 100, size: 60, hp: 100, maxHp: 100 };
+    const singularity = {
+        ...entityFor(owner, 27, { targetX: 200, targetY: 100, clamp: (value) => value }),
+        x: 200,
+        y: 100,
+        phaseId: "active",
+        phaseLocked: true,
+        phaseTimerMs: 0,
+    };
+    const first = tickAbilityEntityWorld({
+        entities: [singularity], bots: [target], stepMs: 50, width: 1000, height: 800,
+    }, noDamageCombat);
+    const second = tickAbilityEntityWorld({
+        entities: first.entities,
+        bots: [{ ...target, x: 200 }],
+        stepMs: 50, width: 1000, height: 800,
+    }, noDamageCombat);
+
+    assert.equal(first.bots[0].hp, 100);
+    assert.equal(second.bots[0].hp, 100);
+    assert.equal(second.entities.length, 0);
+});
+
+test("projectile once remains continuous and can hit a target after it enters the path", () => {
+    const owner = { id: "owner", slot: 1, x: 100, y: 100, size: 60, rotation: 90 };
+    const projectile = {
+        ...entityFor(owner, 15), x: 100, y: 100, velocityX: 150, velocityY: 0,
+    };
+    const combat = { ...noDamageCombat, applyDamageToShape, applyDamageFromShapes };
+    const first = tickAbilityEntityWorld({
+        entities: [projectile],
+        bots: [{ id: "target", slot: 2, x: 500, y: 100, size: 60, hp: 100, maxHp: 100 }],
+        stepMs: 100, width: 1000, height: 800,
+    }, combat);
+    const second = tickAbilityEntityWorld({
+        entities: first.entities,
+        bots: [{ id: "target", slot: 2, x: 250, y: 100, size: 60, hp: 100, maxHp: 100 }],
+        stepMs: 100, width: 1000, height: 800,
+    }, combat);
+
+    assert.equal(statusRemainingMs(first.bots[0], "silence"), 0);
+    assert.ok(statusRemainingMs(second.bots[0], "silence") > 0);
 });
 
 test("drone bodies are HP colliders while their mini abilities own the ray attack", () => {
@@ -99,7 +183,7 @@ test("drone bodies are HP colliders while their mini abilities own the ray attac
             abilityId: "primary", intervalMs: 1000, startImmediately: true,
         });
         assert.deepEqual(contract.abilities[0].spawn, {
-            offset: { x: 0, y: 0 }, rotation: "owner",
+            offset: { x: 0, y: 0 }, rotation: 0, rotationSpace: "owner",
         });
         assert.deepEqual(contract.abilities[0].phases[0].hitbox, {
             shape: "ray", range: 200, width: 5,
@@ -110,7 +194,7 @@ test("drone bodies are HP colliders while their mini abilities own the ray attac
 test("entity ability spawn offsets are relative to the drone", () => {
     const transform = entityAbilitySpawnTransform(
         { x: 100, y: 100, rotation: 0 },
-        { offset: { x: 10, y: 20 }, rotation: "owner" },
+        { offset: { x: 10, y: 20 }, rotation: 0, rotationSpace: "owner" },
     );
 
     assert.deepEqual(transform, { x: 110, y: 80, rotation: 0 });
@@ -347,8 +431,9 @@ test("Static Snare triggers once without chaining to its owner", () => {
     assert.equal(result.entities[0].id, snare.id);
     assert.equal(result.entities[0].type, "staticSnare");
     assert.equal(result.entities[0].phaseId, "triggered");
-    assert.equal(phaseVisualFor(result.entities[0]).type, "staticSnareBurst");
-    assert.equal(phaseVisualFor(result.entities[0]).visualSize, 150);
+    assert.equal(result.entities[0].visualEventType, "staticSnareBurst");
+    assert.equal(result.entities[0].visualEventSize, 150);
+    assert.equal(result.entities[0].visualEventMs, 300);
     assert.equal(result.entities[0].size, 24);
 });
 
@@ -1279,6 +1364,8 @@ test("Singularity pulls during its fuse and applies one generic zone detonation"
     assert.equal(detonated.entities[0].type, "singularityZone");
     assert.equal(detonated.entities[0].phaseId, "active");
     assert.equal(phaseVisualFor(detonated.entities[0]).type, "singularityExplosion");
+    assert.equal(visualForShape(detonated.entities[0]).type, "singularityExplosion");
+    assert.equal(detonated.entities[0].visualEventType, "singularityExplosion");
     const hpAfterDetonation = detonated.bots[0].hp;
     const after = tickAbilityEntityWorld({ ...world, entities: detonated.entities, bots: detonated.bots }, noDamageCombat);
     assert.equal(after.bots[0].hp, hpAfterDetonation);
@@ -1289,7 +1376,7 @@ test("Orbital Strike winds up for five ticks and pulses four times for flat dama
     const target = { id: "target", slot: 2, x: 200, y: 100, size: 60, hp: 100, maxHp: 100 };
     const orbital = entityFor(owner, 22, { targetX: 200, targetY: 100, clamp: (value) => value });
     assert.equal(orbital.remainingMs, 1500);
-    assert.equal(orbital.intervalTimerMs, 0);
+    assert.deepEqual(orbital.eventScheduleState, {});
     assert.equal(ABILITY_STATS[22].windupMs, 500);
     assert.equal(ABILITY_STATS[22].activeMs, 0);
     assert.equal(ABILITY_STATS[22].durationMs, 1500);
@@ -1307,9 +1394,9 @@ test("Orbital Strike winds up for five ticks and pulses four times for flat dama
 
     assert.deepEqual(pulseTicks, [0, 4, 9, 14]);
     assert.equal(world.bots[0].hp, 40);
-    assert.equal(world.entities.some((entity) => entity.type === "orbitalMarker"
-        && entity.visualEventType === "orbitalExplosion"), true);
-    assert.equal(world.entities.some((entity) => entity.type === "orbitalExplosion"), false);
+    // The final pulse's visual is emitted before the gameplay entity expires;
+    // the renderer owns that event visual after the entity is removed.
+    assert.equal(world.entities.length, 0);
 });
 
 test("wind burst is a five-tick projectile with 20 damage and 200 knockback", () => {
@@ -2261,7 +2348,7 @@ test("grenades enter armed after the one-second travel phase and activate after 
     world = { ...world, entities: result.entities, bots: result.bots };
     assert.equal(world.entities[0].phaseId, "armed");
     assert.equal(world.entities[0].phaseLocked, true);
-    assert.equal(world.entities[0].remainingMs, 1000);
+    assert.equal(world.entities[0].remainingMs, null);
     assert.equal(Math.hypot(world.entities[0].velocityX, world.entities[0].velocityY), 0);
 
     for (let tick = 0; tick < 9; tick += 1) {
@@ -2269,7 +2356,7 @@ test("grenades enter armed after the one-second travel phase and activate after 
         world = { ...world, entities: result.entities, bots: result.bots };
         assert.equal(world.entities[0].phaseId, "armed");
     }
-    assert.equal(world.entities[0].remainingMs, 100);
+    assert.equal(world.entities[0].remainingMs, null);
 
     result = tickAbilityEntityWorld(world, noDamageCombat);
     assert.equal(result.entities[0].phaseId, "active");
@@ -2284,7 +2371,7 @@ test("grenades become ability-system explosions on contact and fuse expiry", () 
     assert.equal(contact.entities[0].id, grenade.id);
     assert.equal(contact.entities[0].phaseId, "active");
     assert.equal(isAbilityEntity(contact.entities[0]), true);
-    assert.equal(contact.bots[1].hp, 60);
+    assert.equal(Math.round(contact.bots[1].hp * 100) / 100, 70.28);
 
     const exploded = tickAbilityEntityWorld({
         entities: contact.entities,
@@ -2293,7 +2380,7 @@ test("grenades become ability-system explosions on contact and fuse expiry", () 
         width: 1000,
         height: 800,
     }, noDamageCombat);
-    assert.equal(exploded.bots[1].hp, 60);
+    assert.equal(exploded.bots[1].hp, contact.bots[1].hp);
     assert.equal(exploded.entities.length, 1);
 
     const timed = tickAbilityEntityWorld({
@@ -2306,7 +2393,7 @@ test("grenades become ability-system explosions on contact and fuse expiry", () 
             armed: true,
             velocityX: 0,
             velocityY: 0,
-            remainingMs: 50,
+            phaseTimerMs: 1000,
         }],
         stepMs: 50,
         width: 1000,
@@ -2323,6 +2410,7 @@ test("grenades become ability-system explosions on contact and fuse expiry", () 
         width: 1000,
         height: 800,
     }, noDamageCombat);
+    assert.equal(timed.bots[1].hp, 75);
     assert.equal(timedExplosion.bots[1].hp, 75);
 });
 

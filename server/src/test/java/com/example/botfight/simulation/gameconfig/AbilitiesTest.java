@@ -236,7 +236,7 @@ class AbilitiesTest {
     }
 
     @Test
-    void orbitalStrikeUsesFiveTickPreparationAndGenericIntervalDamage() {
+    void orbitalStrikeUsesFiveTickPreparationAndRepeatedCollisionDamage() {
         assertThat(Abilities.windupMs(22)).isEqualTo(500);
         assertThat(Abilities.definition(22).activeMs()).isZero();
         assertThat(Abilities.durationMs(22)).isEqualTo(1_500);

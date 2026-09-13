@@ -36,13 +36,50 @@ public record ArenaEntity(
         boolean phaseLocked,
         List<EntityStatus> statusEffects,
         int eventSequence,
-        String eventType) {
+        String eventType,
+        Map<String, EventScheduleState> eventScheduleState) {
 
     public ArenaEntity {
         hitLedger = hitLedger == null ? Map.of() : Map.copyOf(hitLedger);
         statusEffects = statusEffects == null ? List.of() : List.copyOf(statusEffects);
+        eventScheduleState = eventScheduleState == null ? Map.of() : Map.copyOf(eventScheduleState);
         ageMs = Math.max(0, ageMs);
         eventSequence = Math.max(0, eventSequence);
+    }
+
+    /** Source-compatible full constructor for entities without scheduler state. */
+    public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
+                       double velocityX, double velocityY, double traveled, int timerMs,
+                       boolean armed, int hp, double damageMultiplier,
+                       Integer abilityId, int intervalTimerMs, int phaseTimerMs, int ageMs,
+                       double tickStartHp, double damageTakenThisTick,
+                       double damageTakenLastTick, double hpNetChangeLastTick,
+                       double rotation, Map<Integer, Integer> hitLedger,
+                       String phaseId, boolean phaseLocked, List<EntityStatus> statusEffects,
+                       int eventSequence, String eventType) {
+        this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs,
+                armed, hp, damageMultiplier, abilityId, intervalTimerMs, phaseTimerMs,
+                ageMs, tickStartHp, damageTakenThisTick, damageTakenLastTick,
+                hpNetChangeLastTick, rotation, hitLedger, phaseId, phaseLocked,
+                statusEffects, eventSequence, eventType, Map.of());
+    }
+
+    /** Compatibility constructor for the former collision-specific state. */
+    public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
+                       double velocityX, double velocityY, double traveled, int timerMs,
+                       boolean armed, int hp, double damageMultiplier,
+                       Integer abilityId, int intervalTimerMs, int ignoredLegacyScheduleTimerMs,
+                       boolean ignoredLegacyPhaseEntryFlag, int phaseTimerMs, int ageMs,
+                       double tickStartHp, double damageTakenThisTick,
+                       double damageTakenLastTick, double hpNetChangeLastTick,
+                       double rotation, Map<Integer, Integer> hitLedger,
+                       String phaseId, boolean phaseLocked, List<EntityStatus> statusEffects,
+                       int eventSequence, String eventType) {
+        this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs,
+                armed, hp, damageMultiplier, abilityId, intervalTimerMs,
+                phaseTimerMs, ageMs, tickStartHp, damageTakenThisTick,
+                damageTakenLastTick, hpNetChangeLastTick, rotation, hitLedger, phaseId,
+                phaseLocked, statusEffects, eventSequence, eventType, Map.of());
     }
 
     /** Compatibility constructor for callers that do not carry entity statuses. */
@@ -82,8 +119,8 @@ public record ArenaEntity(
                        double velocityX, double velocityY, double traveled, int timerMs,
                        boolean armed, int hp, int ignoredShotVisualMs, double damageMultiplier) {
         this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs,
-                armed, hp, damageMultiplier, abilityIdForType(type), 0, 0, 0, 0, 0, 0, 0,
-                0.0, Map.of(), null, false, List.of(), 0, null);
+                armed, hp, damageMultiplier, abilityIdForType(type), 0, 0, false, 0, 0,
+                0.0, 0.0, 0.0, 0.0, 0.0, Map.of(), null, false, List.of(), 0, null);
     }
 
     public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
@@ -91,8 +128,8 @@ public record ArenaEntity(
                        boolean armed, int hp, int ignoredShotVisualMs, double damageMultiplier,
                        Integer abilityId) {
         this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs,
-                armed, hp, damageMultiplier, abilityId, 0, 0, 0, 0, 0, 0, 0, 0.0,
-                Map.of(), null, false, List.of(), 0, null);
+                armed, hp, damageMultiplier, abilityId, 0, 0, false, 0, 0,
+                0.0, 0.0, 0.0, 0.0, 0.0, Map.of(), null, false, List.of(), 0, null);
     }
 
     public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
@@ -101,7 +138,7 @@ public record ArenaEntity(
                        Integer abilityId, int intervalTimerMs, int phaseTimerMs) {
         this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs,
                 armed, hp, damageMultiplier, abilityId, intervalTimerMs, phaseTimerMs, 0,
-                0, 0, 0, 0, 0.0, Map.of(), null, false, List.of(), 0, null);
+                0.0, 0.0, 0.0, 0.0, 0.0, Map.of(), null, false, List.of(), 0, null);
     }
 
     public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
@@ -109,8 +146,8 @@ public record ArenaEntity(
                        boolean armed, int hp, int ignoredShotVisualMs, double damageMultiplier,
                        Integer abilityId, int intervalTimerMs, double rotation) {
         this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs,
-                armed, hp, damageMultiplier, abilityId, intervalTimerMs, 0, 0, 0, 0, 0,
-                0, rotation, Map.of(), null, false, List.of(), 0, null);
+                armed, hp, damageMultiplier, abilityId, intervalTimerMs, 0, 0,
+                0.0, 0.0, 0.0, 0.0, rotation, Map.of(), null, false, List.of(), 0, null);
     }
 
     public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
@@ -208,6 +245,16 @@ public record ArenaEntity(
                 x, y, velocityX, velocityY, rotation);
     }
 
+    public ArenaEntity withEventScheduleState(
+            Map<String, EventScheduleState> nextEventScheduleState) {
+        return new ArenaEntity(id, type, ownerSlot, x, y, size, velocityX, velocityY,
+                traveled, timerMs, armed, hp, damageMultiplier, abilityId,
+                intervalTimerMs, phaseTimerMs, ageMs,
+                tickStartHp, damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick,
+                rotation, hitLedger, phaseId, phaseLocked, statusEffects, eventSequence,
+                eventType, nextEventScheduleState);
+    }
+
     public ArenaEntity withPosition(double nextX, double nextY,
                                     double nextVelocityX, double nextVelocityY) {
         return copy(hitLedger, phaseId, phaseLocked, statusEffects, eventSequence, eventType,
@@ -227,7 +274,8 @@ public record ArenaEntity(
                 damageMultiplier, abilityId, intervalTimerMs, phaseTimerMs, nextAgeMs,
                 tickStartHp, nextDamageTakenThisTick, nextDamageTakenLastTick,
                 nextHpNetChangeLastTick, nextRotation, nextHitLedger, nextPhaseId,
-                nextPhaseLocked, nextStatusEffects, nextEventSequence, nextEventType);
+                nextPhaseLocked, nextStatusEffects, nextEventSequence, nextEventType,
+                eventScheduleState);
     }
 
     private ArenaEntity withTickStartHp(double nextTickStartHp) {
@@ -236,7 +284,7 @@ public record ArenaEntity(
                 intervalTimerMs, phaseTimerMs, ageMs, nextTickStartHp,
                 damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick,
                 rotation, hitLedger, phaseId, phaseLocked, statusEffects,
-                eventSequence, eventType);
+                eventSequence, eventType, eventScheduleState);
     }
 
     public record EntityStatus(String type, int remainingMs, int intervalMs,
@@ -254,6 +302,13 @@ public record ArenaEntity(
             tickElapsedMs = Math.max(0, tickElapsedMs);
             amount = Math.max(0, amount);
             movementLockMs = Math.max(0, movementLockMs);
+        }
+    }
+
+    public record EventScheduleState(int timerMs, int occurrences, boolean initialized) {
+        public EventScheduleState {
+            timerMs = Math.max(0, timerMs);
+            occurrences = Math.max(0, occurrences);
         }
     }
 

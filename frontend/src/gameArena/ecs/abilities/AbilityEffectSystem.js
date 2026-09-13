@@ -17,6 +17,7 @@ import { clamp, normalizeAngle } from "../../gameconfig/geometry.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
 import { compassDegreesToRadians, vectorToCompassDegrees } from "../../botlogic/planner/arenaAngles.js";
 import { abilityHitsTarget } from "./AbilityHitDetectionSystem.js";
+import { attachedAbilityPose } from "../../gameconfig/hitboxGeometry.js";
 import { combatVisualDurationMs } from "../../gameconfig/visualState.js";
 import { interruptCurrentAbility } from "../../gameconfig/AbilityResourceSystem.js";
 import {
@@ -346,14 +347,16 @@ function applyTeleport(attacker, source, target, teleportDistance) {
 }
 
 function withAbilityVisual(attacker, abilityId, phase, visualSource = attacker) {
+    const contract = contractForAbility(abilityId);
+    const pose = attachedAbilityPose(visualSource, contract?.spawn, contract?.activation?.capture);
     return {
         ...attacker,
         abilityVisual: {
             ability: abilityId,
             ms: combatVisualDurationMs(abilityId, phase?.visual),
-            x: Number(visualSource?.x ?? attacker.x ?? 0),
-            y: Number(visualSource?.y ?? attacker.y ?? 0),
-            rotation: Number(visualSource?.rotation ?? attacker.rotation ?? 0),
+            x: pose.x,
+            y: pose.y,
+            rotation: pose.rotation,
         },
     };
 }

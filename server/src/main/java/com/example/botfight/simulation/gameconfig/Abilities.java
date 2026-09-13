@@ -158,11 +158,20 @@ public final class Abilities {
                 .findFirst().orElse(null);
         if (visibleMs == null) visibleMs = eventVisibleMs;
         if (visibleMs != null) stats.put("visibleMs", visibleMs.doubleValue());
-        AbilityContracts.AbilityPhase repeatedPhase = phases.stream()
-                .filter(phase -> phase.execution() != null).findFirst().orElse(null);
-        if (repeatedPhase != null && repeatedPhase.execution().intervalMs() != null) {
-            stats.put("intervalMs", repeatedPhase.execution().intervalMs().doubleValue());
-        }
+        AbilityContracts.PhaseEvent repeatedEvent = phases.stream()
+                .flatMap(phase -> phase.events().values().stream())
+                .filter(event -> event.schedule() != null
+                        && event.schedule().mode() == AbilityContracts.EventScheduleMode.REPEAT)
+                .findFirst().orElse(null);
+        Integer intervalMs = repeatedEvent == null
+                ? phases.stream()
+                        .map(AbilityContracts.AbilityPhase::execution)
+                        .filter(java.util.Objects::nonNull)
+                        .map(AbilityContracts.Execution::intervalMs)
+                        .filter(java.util.Objects::nonNull)
+                        .findFirst().orElse(null)
+                : repeatedEvent.schedule().intervalMs();
+        if (intervalMs != null) stats.put("intervalMs", intervalMs.doubleValue());
         AbilityContracts.Visual embeddedVisual = embeddedPhases.stream()
                 .map(AbilityContracts.AbilityPhase::visual)
                 .filter(value -> value != null && value.visibleMs() != null)

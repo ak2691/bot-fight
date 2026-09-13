@@ -20,21 +20,50 @@ public final class AbilityContracts {
         RESTORE_STATE, DAMAGE_REDUCTION, DAMAGE_IMMUNITY, DAMAGE_REFLECTION }
     /** Public phase vocabulary used by ability authoring and direct effects. */
     public enum PhaseType { SELF, MELEE, RAY, ARC, PROJECTILE, ZONE, SUMMON, BOT_ATTACHED }
-    public enum PhaseEventType { ACTIVATION, COLLISION, TRIGGER, HIT, KILLED, INTERVAL, LIFETIME_END, ENTER, EXIT }
+    public enum PhaseEventType { ACTIVATION, COLLISION, TRIGGER, HIT, KILLED, LIFETIME_END, ENTER, EXIT }
     public enum PhaseAction { APPLY_EFFECTS, TRANSITION, REMOVE, EMIT_VISUAL }
     public enum TargetPolicyMode { ONCE, EVERY_TICK, INTERVAL }
+    public enum EventScheduleMode { ONCE, REPEAT, CONTINUOUS }
+    public record EventSchedule(EventScheduleMode mode, Integer intervalMs,
+                                boolean startImmediately, Integer count) {
+        public EventSchedule {
+            mode = mode == null ? EventScheduleMode.ONCE : mode;
+            intervalMs = intervalMs == null ? null : Math.max(1, intervalMs);
+            count = count == null || count <= 0 ? null : count;
+            if (mode != EventScheduleMode.REPEAT) {
+                intervalMs = null;
+                count = null;
+            }
+        }
+
+        public EventSchedule(EventScheduleMode mode) {
+            this(mode, null, true, null);
+        }
+
+        public EventSchedule(EventScheduleMode mode, int intervalMs,
+                             boolean startImmediately) {
+            this(mode, intervalMs, startImmediately, null);
+        }
+    }
+
     /** Semantic target categories used by entity collision events. */
     public enum TargetKind { BOT, HP_ENTITY, ENTITY }
 
     public enum Category { BOT_ATTACHED, PROJECTILE, TRAP, SUMMON, ZONE }
-    public enum RotationMode { OWNER, ZERO }
+    public enum RotationSpace { OWNER, WORLD }
     public enum TimerMode { NONE, AGE, REMAINING, STOPPED, FUSE }
     public enum SelectableOwner { OWNER, NONE }
 
     /** Owner-relative spawn metadata. Movement belongs to phases, never spawn. */
     public record Spawn(double offsetX, double offsetY, boolean targetPosition,
-                        RotationMode rotation, double clampToRadius,
-                        double defaultX, double defaultY) {}
+                        double rotation, RotationSpace rotationSpace,
+                        double clampToRadius, double defaultX, double defaultY) {
+        public Spawn {
+            rotation = Double.isFinite(rotation)
+                    ? Math.max(-360, Math.min(360, rotation)) : 0;
+            rotationSpace = rotationSpace == null ? RotationSpace.OWNER : rotationSpace;
+        }
+    }
 
     public record Lifetime(TimerMode timerMode, int duration, int add) {}
     public record InitialState(boolean armed, boolean damageMultiplierFromOwner) {}
@@ -239,7 +268,7 @@ public final class AbilityContracts {
     public record EntityAbility(String id, Spawn spawn, List<AbilityPhase> phases) {
         public EntityAbility {
             spawn = spawn == null
-                    ? new Spawn(0, 0, false, RotationMode.OWNER, 0, 500, 400)
+                    ? new Spawn(0, 0, false, 0, RotationSpace.OWNER, 0, 500, 400)
                     : spawn;
             phases = phases == null ? List.of() : List.copyOf(phases);
         }
@@ -250,7 +279,7 @@ public final class AbilityContracts {
     }
 
     public record PhaseEvent(List<PhaseAction> actions, Set<EffectType> effectTypes,
-                             Transition transition, Integer intervalMs,
+                             Transition transition, EventSchedule schedule,
                              String visualType,
                              Integer visibleMs, Double visualSize,
                              TargetPolicy targetPolicy, List<TargetKind> targetKinds,
@@ -268,20 +297,11 @@ public final class AbilityContracts {
         }
 
         public PhaseEvent(List<PhaseAction> actions, Set<EffectType> effectTypes,
-                          Transition transition, Integer intervalMs,
+                          Transition transition, EventSchedule schedule,
                           String visualType, Integer visibleMs, Double visualSize,
                           TargetPolicy targetPolicy, List<TargetKind> targetKinds) {
-            this(actions, effectTypes, transition, intervalMs, visualType, visibleMs,
+            this(actions, effectTypes, transition, schedule, visualType, visibleMs,
                     visualSize, targetPolicy, targetKinds, Set.of());
-        }
-
-        /** Compatibility constructor for events that retain the default bot scope. */
-        public PhaseEvent(List<PhaseAction> actions, Set<EffectType> effectTypes,
-                          Transition transition, Integer intervalMs,
-                          String visualType, Integer visibleMs, Double visualSize,
-                          TargetPolicy targetPolicy) {
-            this(actions, effectTypes, transition, intervalMs, visualType,
-                    visibleMs, visualSize, targetPolicy, List.of(), Set.of());
         }
 
         public PhaseEvent(List<PhaseAction> actions) {
@@ -290,6 +310,11 @@ public final class AbilityContracts {
 
         public PhaseEvent(List<PhaseAction> actions, Transition transition) {
             this(actions, Set.of(), transition, null, null, null, null, null, List.of(), Set.of());
+        }
+
+        public PhaseEvent withSchedule(EventSchedule nextSchedule) {
+            return new PhaseEvent(actions, effectTypes, transition, nextSchedule,
+                    visualType, visibleMs, visualSize, targetPolicy, targetKinds, statusTypes);
         }
     }
 
@@ -318,7 +343,19 @@ public final class AbilityContracts {
                                Map<String, EffectOverride> effectOverrides, int startMs) {
         public AbilityPhase {
             effects = effects == null ? List.of() : List.copyOf(effects);
-            events = events == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(events));
+            Map<PhaseEventType, PhaseEvent> normalizedEvents = new LinkedHashMap<>();
+            if (events != null) {
+                events.forEach((eventType, event) -> {
+                    if (event == null || event.schedule() != null) {
+                        normalizedEvents.put(eventType, event);
+                    } else {
+                        EventScheduleMode mode = eventType == PhaseEventType.COLLISION
+                                ? EventScheduleMode.CONTINUOUS : EventScheduleMode.ONCE;
+                        normalizedEvents.put(eventType, event.withSchedule(new EventSchedule(mode)));
+                    }
+                });
+            }
+            events = Collections.unmodifiableMap(normalizedEvents);
             statOverrides = statOverrides == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(statOverrides));
             effectOverrides = effectOverrides == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(effectOverrides));
         }
@@ -366,6 +403,16 @@ public final class AbilityContracts {
                     visibleMs, statOverrides, effectOverrides, startMs);
         }
 
+        public AbilityPhase withEventSchedule(PhaseEventType eventType,
+                                              EventSchedule schedule) {
+            Map<PhaseEventType, PhaseEvent> nextEvents = new LinkedHashMap<>(events);
+            PhaseEvent event = nextEvents.get(eventType);
+            if (event != null) nextEvents.put(eventType, event.withSchedule(schedule));
+            return new AbilityPhase(id, type, movement, trigger, hitbox, health, effects,
+                    visual, nextEvents, durationMs, execution, transitionOnly, skipOwner, hit,
+                    visibleMs, statOverrides, effectOverrides, startMs);
+        }
+
         /** The effect types are derived from the concrete payloads for compatibility. */
         public Set<EffectType> effectTypes() {
             if (effects.isEmpty()) return Set.of();
@@ -394,7 +441,7 @@ public final class AbilityContracts {
         public AbilityContract {
             category = category == null ? Category.BOT_ATTACHED : category;
             spawn = spawn == null
-                    ? new Spawn(0, 0, false, RotationMode.OWNER, 0, 500, 400)
+                    ? new Spawn(0, 0, false, 0, RotationSpace.OWNER, 0, 500, 400)
                     : spawn;
             selectableOwner = selectableOwner == null ? SelectableOwner.OWNER : selectableOwner;
             lifetime = lifetime == null ? new Lifetime(TimerMode.NONE, 0, 0) : lifetime;
@@ -561,10 +608,25 @@ public final class AbilityContracts {
                 new Activation(null, false, false, null, false, false), phases);
     }
 
+    /** Authoring overload for an attached ability with an owner-relative root spawn. */
+    private static AbilityContract attachedAbility(int abilityId, Spawn spawn,
+                                                    AbilityPhase... phases) {
+        return attachedAbility(abilityId, spawn,
+                new Activation(null, false, false, null, false, false), phases);
+    }
+
     private static AbilityContract attachedAbility(int abilityId, Activation activation,
                                                     AbilityPhase... phases) {
+        return attachedAbility(abilityId,
+                new Spawn(0, 0, false, 0, RotationSpace.OWNER, 0, 500, 400),
+                activation, phases);
+    }
+
+    private static AbilityContract attachedAbility(int abilityId, Spawn spawn,
+                                                    Activation activation,
+                                                    AbilityPhase... phases) {
         return new AbilityContract(abilityId, null, null, Category.BOT_ATTACHED,
-                new Spawn(0, 0, false, RotationMode.OWNER, 0, 500, 400),
+                spawn,
                 SelectableOwner.OWNER, new Lifetime(TimerMode.NONE, 0, 0),
                 new InitialState(false, false), activation, List.of(phases), List.of());
     }
@@ -626,7 +688,8 @@ public final class AbilityContracts {
                 ? phaseEffects.contains(EffectType.DAMAGE) ? DAMAGE_TARGET_KINDS : BOT_TARGET_KINDS
                 : List.of();
         return new PhaseEvent(List.of(PhaseAction.APPLY_EFFECTS), phaseEffects,
-                null, null, null, null, null, null, targetKinds);
+                null, new EventSchedule(EventScheduleMode.ONCE),
+                null, null, null, null, targetKinds);
     }
 
 
@@ -703,15 +766,15 @@ public final class AbilityContracts {
         return Collections.unmodifiableSet(EnumSet.copyOf(effects));
     }
 
-    private static final Spawn SELF = new Spawn(0, 0, false, RotationMode.OWNER, 0, 500, 400);
+    private static final Spawn SELF = new Spawn(0, 0, false, 0, RotationSpace.OWNER, 0, 500, 400);
     /** Default spawn for an embedded ability: centered on its owning entity. */
-    private static final Spawn ENTITY_ABILITY_SELF = new Spawn(0, 0, false, RotationMode.OWNER, 0, 500, 400);
-    private static final Spawn FORWARD = new Spawn(0, 47, false, RotationMode.OWNER, 0, 500, 400);
-    private static final Spawn FORWARD_ZERO = new Spawn(0, 38, false, RotationMode.ZERO, 0, 500, 400);
-    private static final Spawn FORWARD_WIND = new Spawn(0, 44, false, RotationMode.OWNER, 0, 500, 400);
-    private static final Spawn FORWARD_TETHER = new Spawn(0, 41, false, RotationMode.OWNER, 0, 500, 400);
-    private static final Spawn TARGET = new Spawn(0, 0, true, RotationMode.ZERO, 0, 500, 400);
-    private static final Spawn NULL_ZONE_TARGET = new Spawn(0, 0, true, RotationMode.ZERO, 150, 500, 400);
+    private static final Spawn ENTITY_ABILITY_SELF = new Spawn(0, 0, false, 0, RotationSpace.OWNER, 0, 500, 400);
+    private static final Spawn FORWARD = new Spawn(0, 47, false, 0, RotationSpace.OWNER, 0, 500, 400);
+    private static final Spawn FORWARD_WORLD = new Spawn(0, 38, false, 0, RotationSpace.WORLD, 0, 500, 400);
+    private static final Spawn FORWARD_WIND = new Spawn(0, 44, false, 0, RotationSpace.OWNER, 0, 500, 400);
+    private static final Spawn FORWARD_TETHER = new Spawn(0, 41, false, 0, RotationSpace.OWNER, 0, 500, 400);
+    private static final Spawn TARGET = new Spawn(0, 0, true, 0, RotationSpace.WORLD, 0, 500, 400);
+    private static final Spawn NULL_ZONE_TARGET = new Spawn(0, 0, true, 0, RotationSpace.WORLD, 150, 500, 400);
     private static final Map<Integer, AbilityContract> ENTITY_BY_ABILITY = entityCatalog();
     private static final Map<String, AbilityContract> ENTITY_BY_TYPE = entityByType();
 
@@ -845,10 +908,10 @@ public final class AbilityContracts {
     public static Spawn entityAbilitySpawnFor(ArenaEntity entity) {
         AbilityPhase phase = phaseFor(entity);
         if (phase == null || phase.execution() == null) {
-            return new Spawn(0, 0, false, RotationMode.OWNER, 0, 500, 400);
+            return new Spawn(0, 0, false, 0, RotationSpace.OWNER, 0, 500, 400);
         }
         EntityAbility ability = entityAbilityFor(entity, phase.execution().abilityId());
-        return ability == null ? new Spawn(0, 0, false, RotationMode.OWNER, 0, 500, 400)
+        return ability == null ? new Spawn(0, 0, false, 0, RotationSpace.OWNER, 0, 500, 400)
                 : ability.spawn();
     }
 
@@ -884,8 +947,8 @@ public final class AbilityContracts {
             Map<PhaseEventType, PhaseEvent> events,
             Integer durationMs, Execution execution, boolean transitionOnly,
             boolean skipOwner, Hit hit,
-            Map<String, Double> statOverrides,
-            Map<String, EffectOverride> effectOverrides) {
+             Map<String, Double> statOverrides,
+             Map<String, EffectOverride> effectOverrides) {
         return new AbilityPhase(id, type, movement, trigger,
                 hitbox, null, effects, visual, events, durationMs, execution, transitionOnly,
                 skipOwner, hit, visual == null ? null : visual.visibleMs(),
@@ -953,7 +1016,9 @@ public final class AbilityContracts {
                                                      Set<EffectType> effects,
                                                      String visualType, Integer visibleMs,
                                                      Double visualSize, Integer intervalMs) {
-        return new PhaseEvent(actions, effects, null, intervalMs,
+        EventSchedule schedule = intervalMs == null ? null
+                : new EventSchedule(EventScheduleMode.REPEAT, intervalMs, true);
+        return new PhaseEvent(actions, effects, null, schedule,
                 visualType, visibleMs, visualSize, null, BOT_TARGET_KINDS);
     }
 
@@ -970,10 +1035,17 @@ public final class AbilityContracts {
                 null, null, null, null, targetPolicy, DAMAGE_TARGET_KINDS);
     }
 
+    private static PhaseEvent damageVisualEvent(String visualType, int visibleMs,
+                                                double visualSize,
+                                                PhaseAction... actions) {
+        return new PhaseEvent(List.of(actions), Set.of(), null, null,
+                visualType, visibleMs, visualSize, null, DAMAGE_TARGET_KINDS);
+    }
+
     private static Map<Integer, AbilityContract> entityCatalog() {
         Map<Integer, AbilityContract> contracts = new LinkedHashMap<>();
 
-        contracts.put(4, contract(4, "grenade", "grenade", Category.PROJECTILE, FORWARD_ZERO,
+        contracts.put(4, contract(4, "grenade", "grenade", Category.PROJECTILE, FORWARD_WORLD,
                 new Lifetime(TimerMode.STOPPED, 0, 0),
                 new InitialState(false, true), List.of(
                         phase("travel", 0, PhaseType.PROJECTILE,
@@ -1000,12 +1072,14 @@ public final class AbilityContracts {
                                 new PhaseMovement(0), null,
                                 circle(70), effects(computedDamage(
                                         new Falloff(25.0, 40.0, null, null, 0.0, 64.0))),
-                                new Visual("grenadeExplosion", 140, 200),
-                                Map.of(PhaseEventType.COLLISION,
-                                        damageEvent(new TargetPolicy(
-                                                TargetPolicyMode.ONCE),
-                                                PhaseAction.APPLY_EFFECTS)),
-                                 200, null, true, false, null, Map.of(), Map.of()))));
+                                 new Visual("grenadeExplosion", 140, 200),
+                                 Map.of(PhaseEventType.COLLISION,
+                                         damageVisualEvent("grenadeExplosion", 200, 140,
+                                                 PhaseAction.APPLY_EFFECTS,
+                                                 PhaseAction.EMIT_VISUAL)),
+                                 100, null, true, false, null, Map.of(), Map.of())
+                                 .withEventSchedule(PhaseEventType.COLLISION,
+                                         new EventSchedule(EventScheduleMode.ONCE)))));
 
         contracts.put(5, contract(5, "fireball", "fireball", Category.PROJECTILE, FORWARD,
                 new Lifetime(TimerMode.AGE, 1_200, 0),
@@ -1045,12 +1119,14 @@ public final class AbilityContracts {
                         phase("active", PhaseType.ZONE,
                                 new PhaseMovement(0), null,
                                 circle(87.5), effects(damage(25)),
-                                new Visual("mineExplosion", 175, 300),
-                                Map.of(PhaseEventType.COLLISION,
-                                        damageEvent(new TargetPolicy(
-                                                TargetPolicyMode.ONCE),
-                                                PhaseAction.APPLY_EFFECTS)),
-                                300, null, true, false, null, Map.of(), Map.of()))));
+                                 new Visual("mineExplosion", 175, 300),
+                                 Map.of(PhaseEventType.COLLISION,
+                                         damageVisualEvent("mineExplosion", 300, 175,
+                                                 PhaseAction.APPLY_EFFECTS,
+                                                 PhaseAction.EMIT_VISUAL)),
+                                 100, null, true, false, null, Map.of(), Map.of())
+                                  .withEventSchedule(PhaseEventType.COLLISION,
+                                          new EventSchedule(EventScheduleMode.ONCE)))));
 
         contracts.put(14, contract(14, "gravity_zone", "gravityZone", Category.ZONE, SELF,
                 new Lifetime(TimerMode.REMAINING, 7_000, 0),
@@ -1077,12 +1153,14 @@ public final class AbilityContracts {
                                 new PhaseMovement(0), null,
                                 circle(120), effects(computedDamage(
                                         new Falloff(20.0, 35.0, null, null, 0.0, 90.0))),
-                                new Visual("gravityExplosion", 240, 300),
-                                Map.of(PhaseEventType.COLLISION,
-                                        damageEvent(new TargetPolicy(
-                                                TargetPolicyMode.ONCE),
-                                                PhaseAction.APPLY_EFFECTS)),
-                                300, null, true, false, null, Map.of(), Map.of()))));
+                                 new Visual("gravityExplosion", 240, 300),
+                                 Map.of(PhaseEventType.COLLISION,
+                                         damageVisualEvent("gravityExplosion", 300, 240,
+                                                 PhaseAction.APPLY_EFFECTS,
+                                                 PhaseAction.EMIT_VISUAL)),
+                                 100, null, true, false, null, Map.of(), Map.of())
+                                  .withEventSchedule(PhaseEventType.COLLISION,
+                                          new EventSchedule(EventScheduleMode.ONCE)))));
 
         contracts.put(15, contract(15, "silence_wave", "silenceWave", Category.PROJECTILE, SELF,
                 new Lifetime(TimerMode.REMAINING, 1_200, 0),
@@ -1094,11 +1172,13 @@ public final class AbilityContracts {
                                         status("silence", 0, 2_000),
                                         interrupt(100)),
                                 new Visual("silenceWave", 225),
-                                Map.of(PhaseEventType.COLLISION,
-                                        event(new TargetPolicy(
-                                                TargetPolicyMode.ONCE),
-                                                PhaseAction.APPLY_EFFECTS)),
-                                null))));
+                                 Map.of(PhaseEventType.COLLISION,
+                                         event(new TargetPolicy(
+                                                 TargetPolicyMode.ONCE),
+                                                 PhaseAction.APPLY_EFFECTS)),
+                                 null)
+                                 .withEventSchedule(PhaseEventType.COLLISION,
+                                         new EventSchedule(EventScheduleMode.CONTINUOUS)))));
 
         contracts.put(17, droneContract(17, "hunter_drone", "hunterDrone",
                 effects(damage(5))));
@@ -1143,15 +1223,16 @@ public final class AbilityContracts {
                                 new PhaseMovement(0),
                                 circle(130), effects(damage(15)),
                                 new Visual("orbitalMarker", 260),
-                                Map.of(PhaseEventType.INTERVAL,
-                                        event(List.of(PhaseAction.APPLY_EFFECTS,
-                                                        PhaseAction.EMIT_VISUAL),
-                                                Set.of(EffectType.DAMAGE),
-                                                "orbitalExplosion", 400, 260.0,
-                                                500)),
-                                null, new Execution(
-                                        PhaseEventType.INTERVAL, null, 500, true),
-                                false, true, null, Map.of(), Map.of()))));
+                                 Map.of(PhaseEventType.COLLISION,
+                                         event(List.of(PhaseAction.APPLY_EFFECTS,
+                                                         PhaseAction.EMIT_VISUAL),
+                                                 Set.of(EffectType.DAMAGE),
+                                                 "orbitalExplosion", 400, 260.0,
+                                                 null)),
+                                 null, null,
+                                 false, true, null, Map.of(), Map.of())
+                                  .withEventSchedule(PhaseEventType.COLLISION,
+                                          new EventSchedule(EventScheduleMode.REPEAT, 500, true)))));
 
         contracts.put(24, contract(24, "null_zone", "nullZone", Category.ZONE, NULL_ZONE_TARGET,
                 new Lifetime(TimerMode.REMAINING, 5_000, 0),
@@ -1181,12 +1262,14 @@ public final class AbilityContracts {
                                 new PhaseMovement(0), null,
                                 circle(140), effects(computedDamage(
                                         new Falloff(15.0, 35.0, null, null, 0.0, 140.0))),
-                                new Visual("singularityExplosion", 280, 400),
-                                Map.of(PhaseEventType.COLLISION,
-                                        damageEvent(new TargetPolicy(
-                                                TargetPolicyMode.ONCE),
-                                                PhaseAction.APPLY_EFFECTS)),
-                                400, null, true, true, null, Map.of(), Map.of()))));
+                                 new Visual("singularityExplosion", 280, 400),
+                                 Map.of(PhaseEventType.COLLISION,
+                                         damageVisualEvent("singularityExplosion", 400, 280,
+                                                 PhaseAction.APPLY_EFFECTS,
+                                                 PhaseAction.EMIT_VISUAL)),
+                                 100, null, true, true, null, Map.of(), Map.of())
+                                  .withEventSchedule(PhaseEventType.COLLISION,
+                                          new EventSchedule(EventScheduleMode.ONCE)))));
 
         contracts.put(28, contract(28, "tether_bolt", "tetherBolt", Category.PROJECTILE, FORWARD_TETHER,
                 new Lifetime(TimerMode.REMAINING, 1_100, 0),
@@ -1214,12 +1297,13 @@ public final class AbilityContracts {
                                         status("slow", 0, 2_200),
                                         interrupt(150)),
                                 new Visual("staticSnare", 24),
-                                Map.of(PhaseEventType.TRIGGER,
-                                                event(List.of(PhaseAction.APPLY_EFFECTS,
-                                                                PhaseAction.EMIT_VISUAL,
-                                                                PhaseAction.TRANSITION),
-                                                        "triggered", new TargetPolicy(
-                                                                TargetPolicyMode.ONCE)),
+                                 Map.of(PhaseEventType.TRIGGER,
+                                                 new PhaseEvent(List.of(PhaseAction.APPLY_EFFECTS,
+                                                                 PhaseAction.TRANSITION,
+                                                                 PhaseAction.EMIT_VISUAL),
+                                                         Set.of(), new Transition("triggered"), null,
+                                                         "staticSnareBurst", 300, 150.0, null,
+                                                         BOT_TARGET_KINDS),
                                         PhaseEventType.KILLED,
                                                 event(List.of(PhaseAction.EMIT_VISUAL,
                                                                 PhaseAction.TRANSITION),
@@ -1229,8 +1313,8 @@ public final class AbilityContracts {
                         phase("triggered", -1, PhaseType.ZONE,
                                 new PhaseMovement(0), null,
                                 circle(75), effects(),
-                                new Visual("staticSnareBurst", 150, 300),
-                                Map.of(), 300, null, false, true, null, Map.of(), Map.of()),
+                                 null,
+                                 Map.of(), 100, null, false, true, null, Map.of(), Map.of()),
                         phase("destroyed", -1, PhaseType.ZONE,
                                 new PhaseMovement(0),
                                 null,
@@ -1239,12 +1323,14 @@ public final class AbilityContracts {
                                         status("slow", 0, 3_000),
                                         interrupt(150)),
                                 new Visual("staticSnareBurst", 240, 300),
-                                Map.of(PhaseEventType.COLLISION,
-                                        damageEvent(new TargetPolicy(
-                                                TargetPolicyMode.ONCE),
-                                                PhaseAction.APPLY_EFFECTS)),
-                                300, null, false, true, null,
-                                 Map.of(), Map.of()))));
+                                 Map.of(PhaseEventType.COLLISION,
+                                         damageVisualEvent("staticSnareBurst", 300, 240,
+                                                 PhaseAction.APPLY_EFFECTS,
+                                                 PhaseAction.EMIT_VISUAL)),
+                                 100, null, false, true, null,
+                                  Map.of(), Map.of())
+                                 .withEventSchedule(PhaseEventType.COLLISION,
+                                         new EventSchedule(EventScheduleMode.ONCE)))));
 
         return Collections.unmodifiableMap(contracts);
     }

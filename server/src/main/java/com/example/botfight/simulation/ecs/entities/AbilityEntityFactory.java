@@ -35,7 +35,8 @@ public final class AbilityEntityFactory {
         int size = phaseSize(firstPhase);
         double speed = firstPhase == null || firstPhase.movement() == null
                 ? 0 : firstPhase.movement().speed();
-        double rotation = spawn.rotation() == AbilityContracts.RotationMode.ZERO ? 0 : ownerRotation;
+        double rotation = spawn.rotationSpace() == AbilityContracts.RotationSpace.WORLD
+                ? spawn.rotation() : ownerRotation + spawn.rotation();
         double x = ownerX;
         double y = ownerY;
         double directionX = 0;

@@ -245,7 +245,8 @@ class ArenaEntityCombatService {
                 entity.abilityId(), Math.max(1, interval), entity.phaseTimerMs(), entity.ageMs(),
                 entity.tickStartHp(), entity.damageTakenThisTick(), entity.damageTakenLastTick(),
                 entity.hpNetChangeLastTick(), entity.rotation(), entity.hitLedger(), entity.phaseId(),
-                entity.phaseLocked(), entity.statusEffects(), entity.eventSequence(), entity.eventType());
+                entity.phaseLocked(), entity.statusEffects(), entity.eventSequence(), entity.eventType(),
+                entity.eventScheduleState());
     }
 
     private static ArenaEntity moveEntity(ArenaEntity target, EffectSource source,

@@ -47,10 +47,21 @@ export const PHASE_EVENT_TYPES = Object.freeze({
     TRIGGER: "trigger",
     HIT: "hit",
     KILLED: "killed",
-    INTERVAL: "interval",
     LIFETIME_END: "lifetimeEnd",
     ENTER: "enter",
     EXIT: "exit",
+});
+
+/** Determines when any phase event is evaluated. */
+export const EVENT_SCHEDULE_MODES = Object.freeze({
+    ONCE: "once",
+    REPEAT: "repeat",
+    CONTINUOUS: "continuous",
+});
+
+export const SPAWN_ROTATION_SPACES = Object.freeze({
+    OWNER: "owner",
+    WORLD: "world",
 });
 
 export const PHASE_ACTIONS = Object.freeze({
@@ -113,11 +124,50 @@ export function eventAllowsEffect(event, effect) {
     return true;
 }
 
+function defaultEventSchedule(eventType) {
+    return {
+        mode: eventType === PHASE_EVENT_TYPES.COLLISION
+            ? EVENT_SCHEDULE_MODES.CONTINUOUS
+            : EVENT_SCHEDULE_MODES.ONCE,
+    };
+}
+
+function normalizeEventSchedule(schedule, eventType) {
+    const source = schedule && typeof schedule === "object" ? schedule : {};
+    const allowedModes = Object.values(EVENT_SCHEDULE_MODES);
+    let mode = allowedModes.includes(source.mode)
+        ? source.mode
+        : defaultEventSchedule(eventType).mode;
+    // Continuous evaluation is meaningful only for collision detection. All
+    // other event kinds remain one-shot unless explicitly repeated.
+    if (mode === EVENT_SCHEDULE_MODES.CONTINUOUS
+        && eventType !== PHASE_EVENT_TYPES.COLLISION) {
+        mode = EVENT_SCHEDULE_MODES.ONCE;
+    }
+    const intervalMs = Number(source.intervalMs);
+    const count = Number(source.count);
+    return Object.freeze({
+        ...source,
+        mode,
+        ...(mode === EVENT_SCHEDULE_MODES.REPEAT
+            ? {
+                intervalMs: Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : 1,
+                ...(Number.isFinite(count) && count > 0
+                    ? { count: Math.max(1, Math.trunc(count)) }
+                    : {}),
+                startImmediately: source.startImmediately == null
+                    ? true : Boolean(source.startImmediately),
+            }
+            : {}),
+    });
+}
+
 function normalizeEvents(events) {
     return Object.freeze(Object.fromEntries(Object.entries(events).map(([eventType, event]) => {
         if (!event || typeof event !== "object") return [eventType, event];
         return [eventType, Object.freeze({
             ...event,
+            schedule: normalizeEventSchedule(event.schedule, eventType),
             ...(Array.isArray(event.actions)
                 ? { actions: Object.freeze([...event.actions]) }
                 : {}),
@@ -191,67 +241,57 @@ export function resolveEffectOverride(effectValue, overrides) {
     };
 }
 
-export const applyEffectsEvent = (effects, targetKinds = null, statusTypes = null) => Object.freeze({
-    actions: Object.freeze([PHASE_ACTIONS.APPLY_EFFECTS]),
-    effectTypes: Object.freeze([...new Set(effects.map(({ type }) => type).filter(Boolean))]),
-    ...(targetKinds ? { targetKinds } : {}),
-    ...(Array.isArray(statusTypes) && statusTypes.length > 0
-        ? { statusTypes: Object.freeze([...new Set(statusTypes
-            .map((statusType) => String(statusType).toLowerCase()).filter(Boolean))]) }
-        : {}),
-});
-
 /** A small contract-defined ability owned by an entity such as a drone. */
+function normalizeSpawn(spawn = null) {
+    const source = spawn && typeof spawn === "object" ? spawn : {};
+    const legacyRotation = source.rotation;
+    const rotationSpace = legacyRotation === "zero"
+        || source.rotationSpace === SPAWN_ROTATION_SPACES.WORLD
+        ? SPAWN_ROTATION_SPACES.WORLD
+        : SPAWN_ROTATION_SPACES.OWNER;
+    const rawRotation = legacyRotation === "owner" || legacyRotation === "zero"
+        || legacyRotation == null ? 0 : Number(legacyRotation);
+    const rotation = Number.isFinite(rawRotation)
+        ? Math.max(-360, Math.min(360, rawRotation)) : 0;
+    return Object.freeze({
+        offset: Object.freeze({
+            x: Number(source.offset?.x ?? 0),
+            y: Number(source.offset?.y ?? 0),
+        }),
+        rotation,
+        rotationSpace,
+    });
+}
+
 const entityAbility = (id, { phases = [], spawn = null } = {}) => Object.freeze({
     id,
-    spawn: Object.freeze({
-        offset: Object.freeze({
-            x: Number(spawn?.offset?.x ?? 0),
-            y: Number(spawn?.offset?.y ?? 0),
-        }),
-        rotation: spawn?.rotation === "zero" ? "zero" : "owner",
-    }),
+    spawn: normalizeSpawn(spawn),
     phases: Object.freeze(phases ?? []),
 });
 
 /**
  * Builds the normalized phase envelope used by every ability contract.
  *
- * The object form is kept only as a small authoring convenience for direct
- * bot-attached abilities; it is normalized immediately into { id, type, events }.
- * Entity contracts use the explicit phase(id, type, values) form below.
+ * The object form is a small authoring convenience shared by attached and
+ * spawned phases. Event selection is always declared in the phase's `events`
+ * object; there is no separate eventType field.
  */
 export function phase(idOrValues, type = PHASE_TYPES.BOT_ATTACHED, values = {}) {
     if (idOrValues && typeof idOrValues === "object" && !Array.isArray(idOrValues)) {
         const {
             id = "active",
             type: objectType = PHASE_TYPES.BOT_ATTACHED,
-            eventType = null,
             ...phaseValues
         } = idOrValues;
-        const effects = phaseValues.effects ?? [];
-        const generatedEvent = eventType
-            ? applyEffectsEvent(
-                effects,
-                eventType === PHASE_EVENT_TYPES.COLLISION
-                    && effects.some(({ type: effectType }) => effectType === EFFECT_TYPES.DAMAGE)
-                    ? DAMAGE_TARGET_KINDS
-                    : null,
-            )
-            : null;
-        return abilityPhase(id, objectType, {
-            ...phaseValues,
-            ...(eventType
-                ? { events: { ...(phaseValues.events ?? {}), [eventType]: generatedEvent } }
-                : {}),
-        });
+        return abilityPhase(id, objectType, phaseValues);
     }
     return abilityPhase(idOrValues, type, values);
 }
 
-function attachedAbility({ activation = {}, phase: activePhase }) {
+function attachedAbility({ activation = {}, phase: activePhase, spawn = null }) {
     return Object.freeze({
         activation: Object.freeze({ ...activation }),
+        spawn: normalizeSpawn(spawn),
         phases: Object.freeze([activePhase]),
     });
 }
@@ -262,91 +302,113 @@ function attachedAbility({ activation = {}, phase: activePhase }) {
  */
 const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
     1: attachedAbility({
-        phase: phase({ eventType: PHASE_EVENT_TYPES.COLLISION,
+        phase: phase({
             hitbox: { shape: "arc", range: 92, arc: 120, includeTargetRadius: true },
             effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 20 })],
             visual: { type: "meleeSlash", visualSize: 207, visibleMs: 400 },
+            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
         }),
     }),
     3: attachedAbility({
         activation: {
             capture: Object.freeze({ gunRayOriginX: "x", gunRayOriginY: "y", gunRayRotation: "rotation" }),
         },
-        phase: phase({ eventType: PHASE_EVENT_TYPES.COLLISION,
+        phase: phase({
             hitbox: { shape: "ray", range: 700, width: 5 },
             effects: [effect(EFFECT_TYPES.DAMAGE, {
                 falloff: { maxAmount: 15, minAmount: 5, falloffStart: 100, falloffEnd: 700 },
             })],
             visual: { type: "gun", visualSize: 16, visibleMs: 500 },
+            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
         }),
     }),
     6: attachedAbility({
-        phase: phase({ eventType: PHASE_EVENT_TYPES.COLLISION,
+        phase: phase({
             hitbox: { shape: "rectangle", length: 184, width: 80, includeTargetRadius: true },
             effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 10 }), statusEffect("stun", { durationMs: 1200 })],
             visual: { type: "stun", visualSize: 60, visibleMs: 100 },
+            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
         }),
     }),
     7: attachedAbility({
-        phase: phase({ eventType: PHASE_EVENT_TYPES.COLLISION,
+        phase: phase({
             hitbox: { shape: "arc", range: 115, arc: 150, includeTargetRadius: true },
             effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 30 }), statusEffect("bleed", {
                 amount: 2, durationMs: 5000, intervalMs: 1000,
             })],
             visual: { type: "heavySlash", visualSize: 220.8, visibleMs: 400 },
+            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
         }),
     }),
     8: attachedAbility({
-        phase: phase({ eventType: PHASE_EVENT_TYPES.COLLISION,
+        phase: phase({
             hitbox: { shape: "circle", radius: 110, includeTargetRadius: true },
             effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 20 }), effect(EFFECT_TYPES.KNOCKBACK, { amount: 250 })],
             visual: { type: "repulsorBurst", visualSize: 220, visibleMs: 500 },
+            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
         }),
     }),
     9: attachedAbility({
-        phase: phase({ eventType: PHASE_EVENT_TYPES.COLLISION,
+        phase: phase({
             hitbox: { shape: "ray", range: 500, width: 5 },
             effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 20 }), statusEffect("slow", { durationMs: 1000 })],
             visual: { type: "concussiveShot", visualSize: 76, visibleMs: 300 },
+            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
         }),
     }),
     10: attachedAbility({
-        phase: phase({ eventType: PHASE_EVENT_TYPES.ACTIVATION,
+        phase: phase({
             effects: [effect(EFFECT_TYPES.HEALING, { amount: 25 })],
             visual: { type: "basicHeal", visualSize: 12, visibleMs: 300 },
+            events: { [PHASE_EVENT_TYPES.ACTIVATION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE } } },
         }),
     }),
     12: attachedAbility({
-        phase: phase({ eventType: PHASE_EVENT_TYPES.COLLISION,
+        phase: phase({
             hitbox: { shape: "ray", range: 500, width: 5 },
             effects: [effect(EFFECT_TYPES.DAMAGE, {
                 falloff: { maxAmount: 8, minAmount: 4, falloffStart: 0, falloffEnd: 333.33 },
             })],
             visual: { type: "pistol", visualSize: 14, visibleMs: 300 },
+            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
         }),
     }),
     13: attachedAbility({
-        phase: phase({ eventType: PHASE_EVENT_TYPES.COLLISION,
+        phase: phase({
             hitbox: { shape: "ray", range: 900, width: 5 },
             effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 40 }), statusEffect("shock", {
                 amount: 3, durationMs: 3000, intervalMs: 1000, movementLockMs: 300,
             })],
             visual: { type: "railShot", visualSize: 100, visibleMs: 300 },
+            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
         }),
     }),
     16: attachedAbility({
-        phase: phase({ eventType: PHASE_EVENT_TYPES.ACTIVATION,
+        phase: phase({
             effects: [
                 effect(EFFECT_TYPES.DAMAGE_REDUCTION, { amount: 0.5, multiplier: 0.5, durationMs: 4000 }),
                 effect(EFFECT_TYPES.DAMAGE_REFLECTION, { amount: 0.5, multiplier: 0.5, durationMs: 4000 }),
             ],
             visual: { type: "reactiveArmor", visualSize: 80, visibleMs: 300 },
+            events: { [PHASE_EVENT_TYPES.ACTIVATION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE } } },
         }),
     }),
     19: attachedAbility({
-        phase: phase({ eventType: PHASE_EVENT_TYPES.ACTIVATION,
+        phase: phase({
             movement: { distance: 150, speed: 75, trailMs: 300, blockedByStatus: "slow" },
             visual: { type: "dash", visualSize: 114, visibleMs: 300 },
+            events: { [PHASE_EVENT_TYPES.ACTIVATION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE } } },
         }),
     }),
     20: attachedAbility({
@@ -354,9 +416,11 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
         phase: phase({ visual: { type: "lockOn", visualSize: 48, visibleMs: 200 } }),
     }),
     23: attachedAbility({
-        phase: phase({ eventType: PHASE_EVENT_TYPES.ACTIVATION,
+        phase: phase({
             effects: [effect(EFFECT_TYPES.DAMAGE_IMMUNITY, { amount: 1, durationMs: 1500 })],
             visual: { type: "absoluteGuard", visualSize: 80, visibleMs: 300 },
+            events: { [PHASE_EVENT_TYPES.ACTIVATION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE } } },
         }),
     }),
     25: attachedAbility({
@@ -365,17 +429,19 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
             phaseFacingDefault: "0",
             teleportOncePerActivation: true,
         },
-        phase: phase({ eventType: PHASE_EVENT_TYPES.COLLISION,
+        phase: phase({
             hitbox: { shape: "rectangle", length: 100, width: 60, includeTargetRadius: true },
             effects: [
                 effect(EFFECT_TYPES.TELEPORT, { distanceMode: TELEPORT_DISTANCE_MODES.CENTER_DISTANCE }),
                 effect(EFFECT_TYPES.DAMAGE, { amount: 15 }),
             ],
             visual: { type: "phaseStrike", visualSize: 100, visibleMs: 300 },
+            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
         }),
     }),
     26: attachedAbility({
-        phase: phase({ eventType: PHASE_EVENT_TYPES.COLLISION,
+        phase: phase({
             hitbox: { shape: "circle", radius: 120, includeTargetRadius: true },
             effects: [
                 effect(EFFECT_TYPES.DAMAGE, { amount: 15 }),
@@ -383,10 +449,12 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
                 effect(EFFECT_TYPES.KNOCKBACK, { amount: 60 }),
             ],
             visual: { type: "frostRing", visualSize: 240, visibleMs: 300 },
+            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
         }),
     }),
     30: attachedAbility({
-        phase: phase({ eventType: PHASE_EVENT_TYPES.COLLISION,
+        phase: phase({
             hitbox: { shape: "ray", range: 600, width: 8 },
             effects: [
                 effect(EFFECT_TYPES.DAMAGE, { amount: 15 }),
@@ -394,10 +462,12 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
                 statusEffect("slow", { durationMs: 2000 }),
             ],
             visual: { type: "disruptorDart", visualSize: 8, visibleMs: 300 },
+            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
         }),
     }),
     32: attachedAbility({
-        phase: phase({ eventType: PHASE_EVENT_TYPES.COLLISION,
+        phase: phase({
             hitbox: { shape: "ray", range: 500, width: 10 },
             effects: [
                 effect(EFFECT_TYPES.DAMAGE, {
@@ -408,21 +478,27 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
                 }),
             ],
             visual: { type: "vampiricBeam", visualSize: 10, visibleMs: 300 },
+            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
         }),
     }),
     33: attachedAbility({
-        phase: phase({ eventType: PHASE_EVENT_TYPES.ACTIVATION,
+        phase: phase({
             effects: [effect(EFFECT_TYPES.BUFF, {
                 buff: "overclock", amount: 0.5, multiplier: 0.5, durationMs: 4000,
             })],
             visual: { type: "overclock", visualSize: 80, visibleMs: 300 },
+            events: { [PHASE_EVENT_TYPES.ACTIVATION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE } } },
         }),
     }),
     34: attachedAbility({
-        phase: phase({ eventType: PHASE_EVENT_TYPES.COLLISION,
+        phase: phase({
             hitbox: { shape: "arc", range: 80, arc: 30, includeTargetRadius: true },
             effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 8 })],
             visual: { type: "basicStrike", visualSize: 80, visibleMs: 200 },
+            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
         }),
     }),
 });
@@ -438,7 +514,7 @@ export const ATTACHED_ABILITY_CONTRACTS = Object.freeze(Object.fromEntries(
         entityType: null,
         runtimeType: null,
         category: ENTITY_CATEGORIES.BOT_ATTACHED,
-        spawn: Object.freeze({ offset: Object.freeze({ x: 0, y: 0 }), rotation: "owner" }),
+        spawn: normalizeSpawn(definition.spawn),
         targeting: Object.freeze({ owner: "owner" }),
         lifetime: Object.freeze({}),
         state: Object.freeze({}),
@@ -450,11 +526,12 @@ export const ATTACHED_ABILITY_CONTRACTS = Object.freeze(Object.fromEntries(
 
 const contextValue = (name, fallback = null) => Object.freeze({ context: name, fallback });
 const ownerStat = (name, fallback = 0) => Object.freeze({ ownerStat: name, fallback });
-const visual = (type, visualSize, state = null, visibleMs = null) => Object.freeze({
+const visual = (type, visualSize, state = null, visibleMs = null, lifecycle = null) => Object.freeze({
     type,
     ...(state == null ? {} : { state }),
     visualSize,
     ...(visibleMs == null ? {} : { visibleMs }),
+    ...(lifecycle == null ? {} : { lifecycle }),
 });
 
 const entity = (abilityId, definition) => {
@@ -462,7 +539,7 @@ const entity = (abilityId, definition) => {
         abilityId,
         activation: Object.freeze({}),
         ...definition,
-        spawn: Object.freeze({ offset: Object.freeze({ x: 0, y: 0 }), rotation: "owner", ...(definition.spawn ?? {}) }),
+        spawn: normalizeSpawn(definition.spawn),
         targeting: Object.freeze({ owner: "owner", ...(definition.targeting ?? {}) }),
         lifetime: Object.freeze({ ...(definition.lifetime ?? {}) }),
         state: Object.freeze({ ...(definition.state ?? {}) }),
@@ -485,7 +562,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
         runtimeType: "grenade",
         category: ENTITY_CATEGORIES.PROJECTILE,
         // Offset is measured from the owner's center in arena units.
-        spawn: { offset: { x: 0, y: 38 }, rotation: "zero" },
+        spawn: { offset: { x: 0, y: 38 }, rotation: 0, rotationSpace: "world" },
         state: { damageMultiplier: contextValue("damageMultiplier", ownerStat("attackDamageMultiplier", 1)) },
         phases: Object.freeze([
             phase("travel", PHASE_TYPES.PROJECTILE, {
@@ -517,10 +594,17 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 movement: { speed: 0 },
                 hitbox: { shape: "circle", radius: 70 },
                 effects: [effect(EFFECT_TYPES.DAMAGE, { falloff: { maxAmount: 40, minAmount: 25, falloffStart: 0, falloffEnd: 64 } })],
-                durationMs: 200,
-                visual: visual("grenadeExplosion", 140, null, 200),
+                durationMs: 100,
+                visual: visual("grenadeExplosion", 140, null, 200, "event"),
                 events: {
-                    [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: DAMAGE_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS], targetPolicy: { mode: TARGET_POLICY_MODES.ONCE } },
+                    [PHASE_EVENT_TYPES.COLLISION]: {
+                        targetKinds: DAMAGE_TARGET_KINDS,
+                        actions: [PHASE_ACTIONS.APPLY_EFFECTS, PHASE_ACTIONS.EMIT_VISUAL],
+                        visualType: "grenadeExplosion",
+                        visibleMs: 200,
+                        visualSize: 140,
+                        schedule: { mode: EVENT_SCHEDULE_MODES.ONCE },
+                    },
                 },
             }),
         ]),
@@ -529,7 +613,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
         entityType: "fireball",
         runtimeType: "fireball",
         category: ENTITY_CATEGORIES.PROJECTILE,
-        spawn: { offset: { x: 0, y: 47 }, rotation: "owner" },
+        spawn: { offset: { x: 0, y: 47 }, rotation: 0, rotationSpace: "owner" },
         lifetime: { duration: 1200 },
         state: {
             damageMultiplier: contextValue("damageMultiplier", ownerStat("attackDamageMultiplier", 1)),
@@ -553,7 +637,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
         entityType: "proximity_mine",
         runtimeType: "proximityMine",
         category: ENTITY_CATEGORIES.TRAP,
-        spawn: { offset: { x: 0, y: 0 }, rotation: "owner" },
+        spawn: { offset: { x: 0, y: 0 }, rotation: 0, rotationSpace: "owner" },
         lifetime: { duration: 20800 },
         phases: Object.freeze([
             phase("travel", PHASE_TYPES.PROJECTILE, {
@@ -588,10 +672,17 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 movement: { speed: 0 },
                 hitbox: { shape: "circle", radius: 87.5 },
                 effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 25 })],
-                durationMs: 300,
-                visual: visual("mineExplosion", 175, null, 300),
+                durationMs: 100,
+                visual: visual("mineExplosion", 175, null, 300, "event"),
                 events: {
-                    [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: DAMAGE_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS], targetPolicy: { mode: TARGET_POLICY_MODES.ONCE } },
+                    [PHASE_EVENT_TYPES.COLLISION]: {
+                        targetKinds: DAMAGE_TARGET_KINDS,
+                        actions: [PHASE_ACTIONS.APPLY_EFFECTS, PHASE_ACTIONS.EMIT_VISUAL],
+                        visualType: "mineExplosion",
+                        visibleMs: 300,
+                        visualSize: 175,
+                        schedule: { mode: EVENT_SCHEDULE_MODES.ONCE },
+                    },
                 },
             }),
         ]),
@@ -600,7 +691,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
         entityType: "gravity_zone",
         runtimeType: "gravityZone",
         category: ENTITY_CATEGORIES.ZONE,
-        spawn: { offset: { x: 0, y: 0 }, rotation: "owner" },
+        spawn: { offset: { x: 0, y: 0 }, rotation: 0, rotationSpace: "owner" },
         lifetime: { duration: 7000 },
         phases: Object.freeze([
             phase("travel", PHASE_TYPES.PROJECTILE, {
@@ -631,10 +722,17 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 movement: { speed: 0 },
                 hitbox: { shape: "circle", radius: 120 },
                 effects: [effect(EFFECT_TYPES.DAMAGE, { falloff: { maxAmount: 35, minAmount: 20, falloffStart: 0, falloffEnd: 90 } })],
-                durationMs: 300,
-                visual: visual("gravityExplosion", 240, null, 300),
+                durationMs: 100,
+                visual: visual("gravityExplosion", 240, null, 300, "event"),
                 events: {
-                    [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: DAMAGE_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS], targetPolicy: { mode: TARGET_POLICY_MODES.ONCE } },
+                    [PHASE_EVENT_TYPES.COLLISION]: {
+                        targetKinds: DAMAGE_TARGET_KINDS,
+                        actions: [PHASE_ACTIONS.APPLY_EFFECTS, PHASE_ACTIONS.EMIT_VISUAL],
+                        visualType: "gravityExplosion",
+                        visibleMs: 300,
+                        visualSize: 240,
+                        schedule: { mode: EVENT_SCHEDULE_MODES.ONCE },
+                    },
                 },
             }),
         ]),
@@ -643,7 +741,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
         entityType: "silence_wave",
         runtimeType: "silenceWave",
         category: ENTITY_CATEGORIES.PROJECTILE,
-        spawn: { offset: { x: 0, y: 0 }, rotation: "owner" },
+        spawn: { offset: { x: 0, y: 0 }, rotation: 0, rotationSpace: "owner" },
         lifetime: { duration: 1200 },
         phases: Object.freeze([
             phase("active", PHASE_TYPES.PROJECTILE, {
@@ -655,7 +753,8 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 ],
                 visual: visual("silenceWave", 225),
                 events: {
-                    [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: BOT_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS], targetPolicy: { mode: TARGET_POLICY_MODES.ONCE } },
+                    [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: BOT_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                        schedule: { mode: EVENT_SCHEDULE_MODES.CONTINUOUS }, targetPolicy: { mode: TARGET_POLICY_MODES.ONCE } },
                 },
             }),
         ]),
@@ -664,7 +763,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
         entityType: "hunter_drone",
         runtimeType: "hunterDrone",
         category: ENTITY_CATEGORIES.SUMMON,
-        spawn: { offset: { x: 0, y: 0 }, rotation: "owner" },
+        spawn: { offset: { x: 0, y: 0 }, rotation: 0, rotationSpace: "owner" },
         lifetime: { duration: 6000 },
         phases: Object.freeze([
             phase("active", PHASE_TYPES.SUMMON, {
@@ -680,7 +779,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
         ]),
         abilities: Object.freeze([
             entityAbility("primary", {
-                spawn: { offset: { x: 0, y: 0 }, rotation: "owner" },
+                spawn: { offset: { x: 0, y: 0 }, rotation: 0, rotationSpace: "owner" },
                 phases: [
                     phase("active", PHASE_TYPES.RAY, {
                         hitbox: { shape: "ray", range: 200, width: 5 },
@@ -698,7 +797,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
         entityType: "windburst_projectile",
         runtimeType: "windburstProjectile",
         category: ENTITY_CATEGORIES.PROJECTILE,
-        spawn: { offset: { x: 0, y: 44 }, rotation: "owner" },
+        spawn: { offset: { x: 0, y: 44 }, rotation: 0, rotationSpace: "owner" },
         lifetime: { duration: 500 },
         state: { damageMultiplier: contextValue("damageMultiplier", ownerStat("attackDamageMultiplier", 1)) },
         phases: Object.freeze([
@@ -720,7 +819,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
         entityType: "temporal_rewind_zone",
         runtimeType: "temporalRewindZone",
         category: ENTITY_CATEGORIES.ZONE,
-        spawn: { offset: { x: 0, y: 0 }, rotation: "owner" },
+        spawn: { offset: { x: 0, y: 0 }, rotation: 0, rotationSpace: "owner" },
         // The entity world advances the newly spawned zone during the same
         // arena step in which the ability is activated.
         lifetime: { duration: 3100, add: 0 },
@@ -742,7 +841,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
         entityType: "orbital_zone",
         runtimeType: "orbitalMarker",
         category: ENTITY_CATEGORIES.ZONE,
-        spawn: { offset: { x: 0, y: 0 }, rotation: "zero" },
+        spawn: { offset: { x: 0, y: 0 }, rotation: 0, rotationSpace: "world" },
         targeting: { owner: "owner", position: "target", defaultX: 500, defaultY: 400 },
         lifetime: { duration: 1500, add: 0 },
         phases: Object.freeze([
@@ -752,15 +851,14 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 visual: visual("orbitalMarker", 260),
                 skipOwner: true,
                 events: {
-                    [PHASE_EVENT_TYPES.INTERVAL]: {
+                    [PHASE_EVENT_TYPES.COLLISION]: {
                         targetKinds: BOT_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS, PHASE_ACTIONS.EMIT_VISUAL],
-                        intervalMs: 500,
                         visualType: "orbitalExplosion",
                         visibleMs: 400,
                         visualSize: 260,
+                        schedule: { mode: EVENT_SCHEDULE_MODES.REPEAT, intervalMs: 500, startImmediately: true },
                     },
                 },
-                execution: { intervalMs: 500, event: PHASE_EVENT_TYPES.INTERVAL, startImmediately: true },
             }),
         ]),
     }),
@@ -768,7 +866,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
         entityType: "null_zone",
         runtimeType: "nullZone",
         category: ENTITY_CATEGORIES.ZONE,
-        spawn: { offset: { x: 0, y: 0 }, rotation: "zero" },
+        spawn: { offset: { x: 0, y: 0 }, rotation: 0, rotationSpace: "world" },
         targeting: { position: "target", clampToRadius: 150, defaultX: "owner.x", defaultY: "owner.y" },
         lifetime: { duration: 5000 },
         phases: Object.freeze([
@@ -784,7 +882,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
         entityType: "singularity_zone",
         runtimeType: "singularityZone",
         category: ENTITY_CATEGORIES.ZONE,
-        spawn: { offset: { x: 0, y: 0 }, rotation: "zero" },
+        spawn: { offset: { x: 0, y: 0 }, rotation: 0, rotationSpace: "world" },
         targeting: { owner: "owner", position: "target", defaultX: 500, defaultY: 400 },
         lifetime: { duration: 1300 },
         phases: Object.freeze([
@@ -804,10 +902,17 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 movement: { speed: 0 },
                 hitbox: { shape: "circle", radius: 140 },
                 effects: [effect(EFFECT_TYPES.DAMAGE, { falloff: { maxAmount: 35, minAmount: 15, falloffStart: 0, falloffEnd: 140 } })],
-                durationMs: 400,
-                visual: visual("singularityExplosion", 280, null, 400),
+                durationMs: 100,
+                visual: visual("singularityExplosion", 280, null, 400, "event"),
                 events: {
-                    [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: DAMAGE_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS], targetPolicy: { mode: TARGET_POLICY_MODES.ONCE } },
+                    [PHASE_EVENT_TYPES.COLLISION]: {
+                        targetKinds: DAMAGE_TARGET_KINDS,
+                        actions: [PHASE_ACTIONS.APPLY_EFFECTS, PHASE_ACTIONS.EMIT_VISUAL],
+                        visualType: "singularityExplosion",
+                        visibleMs: 400,
+                        visualSize: 280,
+                        schedule: { mode: EVENT_SCHEDULE_MODES.ONCE },
+                    },
                 },
             }),
         ]),
@@ -816,7 +921,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
         entityType: "tether_bolt",
         runtimeType: "tetherBolt",
         category: ENTITY_CATEGORIES.PROJECTILE,
-        spawn: { offset: { x: 0, y: 41 }, rotation: "owner" },
+        spawn: { offset: { x: 0, y: 41 }, rotation: 0, rotationSpace: "owner" },
         lifetime: { duration: 1100 },
         state: { damageMultiplier: contextValue("damageMultiplier", ownerStat("attackDamageMultiplier", 1)) },
         phases: Object.freeze([
@@ -838,7 +943,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
         entityType: "static_snare",
         runtimeType: "staticSnare",
         category: ENTITY_CATEGORIES.TRAP,
-        spawn: { offset: { x: 0, y: 0 }, rotation: "owner" },
+        spawn: { offset: { x: 0, y: 0 }, rotation: 0, rotationSpace: "owner" },
         lifetime: { duration: 16000 },
         phases: Object.freeze([
             phase("armed", PHASE_TYPES.ZONE, {
@@ -859,9 +964,12 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 skipOwner: true,
                 events: {
                     [PHASE_EVENT_TYPES.TRIGGER]: {
-                        targetKinds: BOT_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS, PHASE_ACTIONS.TRANSITION],
+                        targetKinds: BOT_TARGET_KINDS,
+                        actions: [PHASE_ACTIONS.APPLY_EFFECTS, PHASE_ACTIONS.TRANSITION, PHASE_ACTIONS.EMIT_VISUAL],
                         transition: { to: "triggered" },
-                        targetPolicy: { mode: TARGET_POLICY_MODES.ONCE },
+                        visualType: "staticSnareBurst",
+                        visibleMs: 300,
+                        visualSize: 150,
                     },
                     [PHASE_EVENT_TYPES.KILLED]: {
                         actions: [PHASE_ACTIONS.TRANSITION],
@@ -872,8 +980,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
             phase("triggered", PHASE_TYPES.ZONE, {
                 movement: { speed: 0 },
                 hitbox: { shape: "circle", radius: 75 },
-                durationMs: 300,
-                visual: visual("staticSnareBurst", 150, null, 300),
+                durationMs: 100,
                 skipOwner: true,
                 events: {
                 },
@@ -887,10 +994,17 @@ export const ENTITY_CONTRACTS = Object.freeze({
                     effect(EFFECT_TYPES.INTERRUPT, { durationMs: 150 }),
                 ],
                 skipOwner: true,
-                durationMs: 300,
-                visual: visual("staticSnareBurst", 240, null, 300),
+                durationMs: 100,
+                visual: visual("staticSnareBurst", 240, null, 300, "event"),
                 events: {
-                    [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: DAMAGE_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS], targetPolicy: { mode: TARGET_POLICY_MODES.ONCE } },
+                    [PHASE_EVENT_TYPES.COLLISION]: {
+                        targetKinds: DAMAGE_TARGET_KINDS,
+                        actions: [PHASE_ACTIONS.APPLY_EFFECTS, PHASE_ACTIONS.EMIT_VISUAL],
+                        visualType: "staticSnareBurst",
+                        visibleMs: 300,
+                        visualSize: 240,
+                        schedule: { mode: EVENT_SCHEDULE_MODES.ONCE },
+                    },
                 },
             }),
         ]),
@@ -901,7 +1015,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
         // ability 31 still owns a separate mini-ability contract for knockback shots.
         runtimeType: "hunterDrone",
         category: ENTITY_CATEGORIES.SUMMON,
-        spawn: { offset: { x: 0, y: 0 }, rotation: "owner" },
+        spawn: { offset: { x: 0, y: 0 }, rotation: 0, rotationSpace: "owner" },
         lifetime: { duration: 6000 },
         phases: Object.freeze([
             phase("active", PHASE_TYPES.SUMMON, {
@@ -917,7 +1031,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
         ]),
         abilities: Object.freeze([
             entityAbility("primary", {
-                spawn: { offset: { x: 0, y: 0 }, rotation: "owner" },
+                spawn: { offset: { x: 0, y: 0 }, rotation: 0, rotationSpace: "owner" },
                 phases: [
                     phase("active", PHASE_TYPES.RAY, {
                         hitbox: { shape: "ray", range: 200, width: 5 },
@@ -1057,7 +1171,8 @@ export function entityAbilityPhaseForEntity(value, abilityId = null) {
 export function entityAbilitySpawnForEntity(value, abilityId = null) {
     return entityAbilityForEntity(value, abilityId)?.spawn ?? {
         offset: { x: 0, y: 0 },
-        rotation: "owner",
+        rotation: 0,
+        rotationSpace: "owner",
     };
 }
 

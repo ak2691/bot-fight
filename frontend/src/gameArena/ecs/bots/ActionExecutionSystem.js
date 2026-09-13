@@ -8,6 +8,7 @@ import { effectiveMovementSpeedMultiplier, effectiveRotationSpeedMultiplier } fr
 import { abilityResourceReady, abilityTimingReady, anotherAbilityActive, consumeAbilityCharges, interruptCurrentAbility, setAbilityCooldownState } from "../../gameconfig/AbilityResourceSystem.js";
 import { abilityExecutionPayload } from "../../gameconfig/AbilityExecutionPayload.js";
 import { statusEffectValue, statusIsActive, STATUS_EFFECT_APPLICATIONS } from "../contracts/StatusContracts.js";
+import { attachedAbilitySpawnTransform } from "../../gameconfig/hitboxGeometry.js";
 
 /** Converts one selected action payload into the bot's next component state. */
 export function applyBotAction(shape, action, elapsedMs, applyDamage) {
@@ -183,15 +184,22 @@ function activationActiveMs(payload) {
 function applyActivationState(bot, payload, elapsedMs) {
     const activation = payload.activation ?? {};
     let next = bot;
+    if (activation.faceTargetFromPayload && Number.isFinite(Number(payload.targetX)) && Number.isFinite(Number(payload.targetY))) {
+        next = { ...next, rotation: vectorToCompassDegrees(Number(payload.targetX) - next.x, Number(payload.targetY) - next.y) };
+    }
     if (activation.capture) {
+        // Capture the new activation from the current owner pose. Do not read
+        // an older capture field that may still be present on the bot shape.
+        const pose = attachedAbilitySpawnTransform(next, payload.contract?.spawn);
         next = {
             ...next,
             ...Object.fromEntries(Object.entries(activation.capture)
-                .map(([field, source]) => [field, next[source] ?? null])),
+                .map(([field, source]) => [field,
+                    source === "x" ? pose.x
+                        : source === "y" ? pose.y
+                            : source === "rotation" ? pose.rotation
+                                : next[source] ?? null])),
         };
-    }
-    if (activation.faceTargetFromPayload && Number.isFinite(Number(payload.targetX)) && Number.isFinite(Number(payload.targetY))) {
-        next = { ...next, rotation: vectorToCompassDegrees(Number(payload.targetX) - next.x, Number(payload.targetY) - next.y) };
     }
     const phaseMovement = payload.contract?.phases?.[0]?.movement;
     if (phaseMovement?.distance != null) next = applyMovementActivation(next, payload, phaseMovement, elapsedMs);

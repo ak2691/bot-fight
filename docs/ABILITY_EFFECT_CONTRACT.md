@@ -16,10 +16,11 @@ The canonical browser and server registries are `frontend/src/gameArena/ecs/cont
 
 There is no separate delivery field. A phase's `type` describes its host or
 lifecycle, while `hitbox.shape` describes the actual geometry. A direct ability
-uses a `botAttached` phase; its transform stays on the owner. An entity ability
-has an `AbilityContracts` root with spawn/lifetime metadata and phases such as
+uses a `botAttached` phase and the contract root's `spawn` describes where that
+phase starts relative to the bot. An entity ability has an `AbilityContracts`
+root with spawn/lifetime metadata and phases such as
 `projectile`, `zone`, `trap`, or `summon`. The phase event (`activation`,
-`collision`, `interval`, and so on) determines when its concrete effects run.
+`collision`, `trigger`, and so on) determines when its concrete effects run.
 Phase Strike therefore has a `botAttached` phase with a forward `rectangle`
 hitbox 100 units long and 60 units wide; its teleport is simply one ordered
 effect in that phase.
@@ -28,7 +29,8 @@ An entity contract may also contain a list of small contract-owned abilities.
 For example, a summon can keep its circular body and health on its `summon`
 phase while a scheduled mini ability owns a separate ray hitbox, effects, and
 visual. Each mini ability also has its own spawn point and rotation relative to
-the entity that owns it (for example, the drone itself). The phase
+the entity that owns it (for example, the drone itself). Direct bot abilities
+use the same spawn contract relative to the bot. The phase
 `execution.abilityId` selects that mini ability; its interval is the firing
 cadence, not a game ability cooldown.
 
@@ -204,7 +206,8 @@ arcs use `range`, `width`, and `arc` as applicable. For a projectile rectangle,
 travel/display `range`. Numeric phase values are the authored form; stat-name
 references remain only at compatibility boundaries for older payloads/replays.
 
-Entity root metadata is intentionally small: `lifetime`, owner-relative `spawn`,
+Entity and direct-ability root metadata is intentionally small: `lifetime`,
+owner-relative `spawn`,
 `entityType`, `runtimeType`, category, and the initial phase list. Root motion,
 root health, and root visual descriptors are not authored behavior contracts.
 An optional `health` record belongs to the phase that can receive damage; the
@@ -212,9 +215,10 @@ runtime copies that phase data into its HP component. The factory initializes
 motion from the first phase's numeric `movement.speed`, and renderers resolve
 visuals from the current phase. Spawn
 offsets use the owner's facing basis: positive x is right, positive y is
-forward, negative y is behind, and `rotation: "owner"` follows the owner while
-`rotation: "zero"` is world-aligned. Target-position spawns use the authored
-target coordinates instead of an owner-relative offset.
+forward, and negative y is behind. Spawn rotation is numeric and bounded to
+`-360..360`; `rotationSpace: "owner"` adds it to the owner's facing, while
+`rotationSpace: "world"` treats it as an absolute world rotation. Target-position
+spawns use the authored target coordinates instead of an owner-relative offset.
 
 For example, a mine can be described without naming an explosion behavior:
 
@@ -234,7 +238,11 @@ phases: [
         hitbox: { shape: "circle", radius: 87.5 },
         trigger: { radius: 87.5, botContact: true },
         events: {
-            collision: { actions: ["transition"], transition: { to: "active" } },
+            collision: {
+                actions: ["transition"],
+                transition: { to: "active" },
+                schedule: { mode: "once" },
+            },
         },
         visual: { type: "proximityMine", state: "static", visualSize: 24 },
     },
@@ -245,7 +253,10 @@ phases: [
         hitbox: { shape: "circle", radius: 87.5 },
         effects: ["damage"],
         events: {
-            collision: { actions: ["applyEffects"] },
+            collision: {
+                actions: ["applyEffects"],
+                schedule: { mode: "once" },
+            },
             lifetimeEnd: { actions: ["remove"] },
         },
         visual: { type: "mineExplosion", visualSize: 175, visibleMs: 300 },
@@ -326,9 +337,10 @@ refreshed while the summon remains in the zone. Silence and interruption reset
 the summon mini-ability's execution timer, so it resumes on a fresh cadence.
 
 Transitions preserve the entity ID and reset phase-local state such as the
-target hit ledger, timer, and visual descriptor. Thus two copies of one
-repeating projectile keep independent ledgers and can hit the same target on
-their own schedules.
+target hit ledger, phase timer, and generic event-schedule state.
+They do not reset the root entity lifetime or use a visual duration as a
+gameplay timer. Thus two copies of one repeating projectile keep independent
+ledgers and can hit the same target on their own schedules.
 
 Grenades use the same pattern with three explicit phases: `travel` carries a
 rectangle hitbox, `armed` keeps the stopped grenade hitbox, and `active` uses
@@ -341,12 +353,14 @@ collision. Rectangle collision width and length come from the active phase's
 `hitbox.width` and `hitbox.length`.
 
 Sprite-backed phase contracts may also declare a presentation-only `visual`
-descriptor such as `{ type, state, visualSize, visibleMs }`. The renderer
-resolves that descriptor from the entity's current `phaseId`; transient event
-visuals may override its `type`, `visualSize`, or `visibleMs`. This keeps a
-grenade's travel, armed, and active visuals next to the lifecycle phase that
-owns them instead of using a separate explosion-size or explosion-visibility
-field.
+descriptor such as `{ type, state, visualSize, visibleMs, lifecycle }`.
+`lifecycle: "phase"` (the default) makes the visual follow the entity until
+the phase ends. `lifecycle: "event"` marks metadata for a transient event
+visual; the renderer creates a fixed-position instance only when that phase's
+event emits it. Its `visibleMs` belongs to the visual instance, not to the
+entity or phase lifetime. This keeps a grenade's travel/armed visuals attached
+to the entity while its explosion can finish independently after the active
+gameplay phase ends.
 
 That presentation descriptor is a browser contract, not replay state. Replay
 payloads carry the authoritative phase and gameplay clocks (`phaseId`,
@@ -359,33 +373,77 @@ the renderer owns the visual duration and animation timing.
 
 The proximity mine's travel phase has an 800 ms `durationMs`. Its
 `lifetimeEnd` event explicitly transitions to the stopped armed phase, whose
-own 20-second timer either expires into or collides into the short active blast
-phase. Gravity and Singularity use the same explicit event transitions for
-travel, pull, and damage/detonation behavior. Phase array order only selects
-the initial phase; elapsed entity age never selects a later phase.
+own 20-second timer either expires into or collides into the short 100 ms
+active blast phase. The blast's 300 ms event visual is separate from that
+gameplay duration. Gravity, Grenade, and Singularity use the same explicit
+event transitions for travel, pull, and damage/detonation behavior. Phase
+array order only selects the initial phase; elapsed entity age never selects a
+later phase.
 
 Phase duration only schedules `lifetimeEnd`. If the current phase handles that
 event, its declared actions decide what happens. If it has no handler, expiry
 removes the runtime object by default, so a one-phase entity such as Tether
 Bolt does not need a redundant `lifetimeEnd: remove` event.
 
-For one action that repeats at a fixed cadence, keep one phase and attach a
-`execution` scheduler to it. Orbital Strike, for example, can use
-`execution: { event: "interval", intervalMs: "intervalMs", startImmediately: true }` and put its
-`applyEffects`/`emitVisual` actions in `events.interval`. The scheduler runs
-until that phase's duration or the entity lifetime ends; it does not require a
-new phase object for every pulse. `startImmediately: false` waits for one full
-interval before the first event. A collision handler that needs a per-target
-cooldown declares `targetPolicy: { mode: "interval", intervalMs: ... }`; the
-entity's target-ID ledger stores the last accepted effect application
-independently for each target.
+Event cadence is declared by each phase event's generic `schedule`, not by a
+special collision field or by the root entity lifetime:
 
-`execution.event` and `execution.abilityId` are the two scheduler modes. `event`
-re-dispatches an event already owned by the current phase; `abilityId` selects
-one of the entity contract's embedded mini abilities and runs that ability's
-phase at the cadence. They are conceptually exclusive: an event is a response
-inside the current entity, while an embedded ability is a separate reusable
-behavior contract owned by that entity.
+```js
+events: {
+    collision: {
+        actions: ["applyEffects"],
+        schedule: { mode: "once" },
+    },
+}
+```
+
+`once` evaluates the event immediately when the phase's event checker starts.
+For collision, this is the phase-entry check used by explosions and impacts:
+something entering the hitbox later is too late. A projectile instead uses
+`continuous`, which checks collision geometry every fixed simulation tick while
+the projectile travels. A `targetPolicy` such as `{ mode: "once" }` remains a
+separate per-target ledger rule, so a projectile can wait for contact and then
+avoid damaging that same target repeatedly.
+
+`repeat` evaluates the same event at a fixed cadence and can be used by any
+event kind. For example, Orbital Strike keeps its 1,500 ms marker entity but
+declares four collision occurrences at 500 ms cadence:
+
+```js
+events: {
+    collision: {
+        actions: ["applyEffects", "emitVisual"],
+        schedule: {
+            mode: "repeat",
+            intervalMs: 500,
+            startImmediately: true,
+        },
+    },
+}
+```
+
+`continuous` is reserved for collision geometry. For other event kinds it is
+normalized to one occurrence; those events can use `repeat` if they need a
+generic cadence later, such as a multi-activation dash. `startImmediately:
+false` waits for the first full interval. A large simulation step can catch up
+multiple due repeat occurrences, while normal fixed ticks produce one at a
+time. The schedule state is reset when the phase changes, so repeated events
+from one phase do not accidentally continue into another phase.
+
+`targetPolicy` answers which selected targets may receive effects; it does not
+choose when the event checker runs. The event key (`collision`, `activation`,
+`trigger`, and so on) identifies what is evaluated, while `schedule` identifies
+when it is evaluated.
+
+`execution` is now reserved for a summon/entity's embedded mini ability, such
+as a drone firing its ray. It must not be used to turn the owning entity's
+collision event into an interval scheduler.
+
+The three clocks have separate ownership: root `lifetime` controls whether the
+entity exists at all, phase `durationMs` controls phase transitions, and event
+visual `visibleMs` controls only the renderer's standalone visual instance.
+For example, an explosion phase can last 100 ms for gameplay while its
+400 ms visual remains at the impact position after the entity is removed.
 
 Classify the behavior before implementing it:
 

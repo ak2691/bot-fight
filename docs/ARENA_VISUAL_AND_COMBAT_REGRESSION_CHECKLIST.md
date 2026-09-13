@@ -23,6 +23,14 @@ Use this when an ability, entity, replay field, or bot visual changes.
 - Keep activation visuals separate from gameplay-effect duration/status icons.
 - Temporal Rewind keeps saved activation coordinates; its completion visual occurs there.
 
+## Collision schedules
+
+- `once` effects are checked when the phase event checker starts; a target entering an explosion later is not retroactively hit.
+- `continuous` collision effects check every fixed simulation tick; projectile `targetPolicy: once` remains a per-target ledger rule.
+- `repeat` effects check at scheduled cadence; Orbital Strike's 500 ms repeats do not create a continuously active hitbox.
+- Event keys identify what is checked and `schedule` identifies when; target policy remains a separate target-selection rule.
+- Root entity lifetime, phase duration, and event-visual duration are tested independently; a 100 ms explosion may keep a 300–400 ms standalone visual alive.
+
 ## Combat state
 
 - Each source in a tick reads the latest accumulated bot state, never a stale pre-hit snapshot.

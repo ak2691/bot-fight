@@ -7,6 +7,8 @@ import com.example.botfight.simulation.gameconfig.Abilities;
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import java.util.List;
 
+import static com.example.botfight.simulation.geometry.AngleCalculator.compassRadians;
+
 /**
  * Server-owned, allowlisted description of one ability execution.
  *
@@ -27,6 +29,9 @@ public record AbilityExecutionPayload(
         double capturedOriginX,
         double capturedOriginY,
         double capturedRotation) {
+
+    /** The resolved origin and facing of the ability's active hitbox/visual. */
+    public record Pose(double x, double y, double rotation) {}
 
     public static AbilityExecutionPayload from(Action action) {
         if (action == null) return null;
@@ -63,14 +68,23 @@ public record AbilityExecutionPayload(
 
     public AbilityExecutionPayload capture(Bot bot) {
         if (!activation().captureAtActivation()) return this;
+        Pose pose = spawnPose(bot);
         return new AbilityExecutionPayload(actionId, abilityId, definition, contract,
                 targetX, targetY, movementMode, movementDirection, phaseFacingMode,
-                bot.x, bot.y, bot.rotation);
+                pose.x(), pose.y(), pose.rotation());
     }
 
     public boolean hasCapturedPose() {
         return Double.isFinite(capturedOriginX) && Double.isFinite(capturedOriginY)
                 && Double.isFinite(capturedRotation);
+    }
+
+    /** Resolves the pose used by direct attached geometry and presentation. */
+    public Pose pose(Bot bot) {
+        if (hasCapturedPose()) {
+            return new Pose(capturedOriginX, capturedOriginY, capturedRotation);
+        }
+        return spawnPose(bot);
     }
 
     public AbilityContracts.Activation activation() {
@@ -84,6 +98,33 @@ public record AbilityExecutionPayload(
         if (contract != null) return contract.phases();
         AbilityContracts.AbilityContract entity = AbilityContracts.entityContractForAbility(abilityId);
         return entity == null ? List.of() : entity.phases();
+    }
+
+    private Pose spawnPose(Bot bot) {
+        if (bot == null) return new Pose(0, 0, 0);
+        AbilityContracts.Spawn spawn = contract == null ? null : contract.spawn();
+        if (spawn == null || !AbilityContracts.isAttachedAbility(abilityId)) {
+            return new Pose(bot.x, bot.y, bot.rotation);
+        }
+
+        double rotation = spawn.rotationSpace() == AbilityContracts.RotationSpace.WORLD
+                ? spawn.rotation() : bot.rotation + spawn.rotation();
+        if (spawn.targetPosition()) {
+            double x = Double.isFinite(targetX) ? targetX : spawn.defaultX();
+            double y = Double.isFinite(targetY) ? targetY : spawn.defaultY();
+            return new Pose(x, y, rotation);
+        }
+
+        double radians = compassRadians(bot.rotation);
+        double forwardX = Math.cos(radians);
+        double forwardY = Math.sin(radians);
+        double rightRadians = compassRadians(bot.rotation + 90);
+        double rightX = Math.cos(rightRadians);
+        double rightY = Math.sin(rightRadians);
+        return new Pose(
+                bot.x + rightX * spawn.offsetX() + forwardX * spawn.offsetY(),
+                bot.y + rightY * spawn.offsetX() + forwardY * spawn.offsetY(),
+                rotation);
     }
 
     private static AbilityExecutionPayload from(int abilityId, Action action) {

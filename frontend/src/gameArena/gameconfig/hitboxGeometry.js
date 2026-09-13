@@ -15,11 +15,42 @@ export function entityAbilitySpawnTransform(entity, spawn = null, ownerRotation 
     const offset = spawn?.offset ?? {};
     const forward = compassDirection(rotation);
     const right = compassDirection(rotation + 90);
+    const rotationOffset = Number(spawn?.rotation ?? 0);
+    const spawnRotation = spawn?.rotationSpace === "world"
+        ? rotationOffset : rotation + rotationOffset;
     return {
         x: Number(entity?.x ?? 0) + right.x * Number(offset.x ?? 0) + forward.x * Number(offset.y ?? 0),
         y: Number(entity?.y ?? 0) + right.y * Number(offset.x ?? 0) + forward.y * Number(offset.y ?? 0),
-        rotation: spawn?.rotation === "zero" ? 0 : rotation,
+        rotation: spawnRotation,
     };
+}
+
+/** Resolves a direct attached ability's owner-relative spawn point. */
+export function attachedAbilitySpawnTransform(bot, spawn = null, ownerRotation = null) {
+    return entityAbilitySpawnTransform(bot, spawn, ownerRotation);
+}
+
+/**
+ * Resolves a direct ability pose, using authored activation capture fields when
+ * present and otherwise resolving the root spawn against the current owner.
+ */
+export function attachedAbilityPose(bot, spawn = null, capture = null) {
+    const captureFields = capture && typeof capture === "object"
+        ? Object.entries(capture) : [];
+    const fieldForSource = (source) => captureFields.find(([, value]) => value === source)?.[0];
+    const xField = fieldForSource("x");
+    const yField = fieldForSource("y");
+    const rotationField = fieldForSource("rotation");
+    const hasCapturedPose = [xField, yField, rotationField]
+        .every((field) => field && Number.isFinite(Number(bot?.[field])));
+    if (hasCapturedPose) {
+        return {
+            x: Number(bot[xField]),
+            y: Number(bot[yField]),
+            rotation: Number(bot[rotationField]),
+        };
+    }
+    return attachedAbilitySpawnTransform(bot, spawn);
 }
 
 /** Resolves the declarative collider metadata for an arena entity. */

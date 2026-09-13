@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { activeBotVisual, closingZoneDamageOccurred, ENTITY_PRESENTATION_DEFINITIONS, entityCaption, BOT_PRESENTATION_DEFINITIONS, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, grenadeVisualState, isBotShape, LOCK_ON_PRESENTATION, normalizeReplayObstacleShape, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, replayProjectileVelocity, shapeInterpolationMs, shapeWithoutVisualEvent, visualAnimationDescriptorForShape, visualForShape, visualInstanceForShape, visualInstanceIsActive, VISUAL_LIFECYCLES, VISUAL_SPAWN_MODES, visualSizeForShape } from "./pixiVisualState.js";
+import { activeBotVisual, closingZoneDamageOccurred, ENTITY_PRESENTATION_DEFINITIONS, entityCaption, BOT_PRESENTATION_DEFINITIONS, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, grenadeVisualState, isBotShape, LOCK_ON_PRESENTATION, normalizeReplayObstacleShape, pixiLayerForShape, presentationDefinitionForShape, projectileTrailStyle, replayProjectileVelocity, shapeInterpolationMs, shapeWithoutVisualEvent, visualAnimationDescriptorForShape, visualForShape, visualInstanceForShape, visualInstanceIsActive, VISUAL_LIFECYCLES, VISUAL_SPAWN_MODES, visualSizeForShape } from "./pixiVisualState.js";
 import { REQUIRED_ARENA_PRESENTATION_PATHS } from "./arenaPresentationAssetOwner.js";
 import { hitboxGeometriesForEntity, hitboxGeometryForBot, hitboxGeometryForEntity } from "../gameconfig/hitboxGeometry.js";
 
@@ -29,25 +29,43 @@ test("building and replay bot shapes resolve to the same presentation definition
     assert.equal(pixiLayerForShape(buildingShape), pixiLayerForShape(replayShape));
 });
 
-test("phase entities resolve their own visual descriptors", () => {
+test("phase entities resolve phase visuals separately from event visuals", () => {
     assert.deepEqual(visualForShape({ type: "grenade", abilityId: 4, phaseId: "travel" }), {
         type: "grenade",
         state: "moving",
         visualSize: 12,
     });
-    assert.equal(presentationTypeForShape({ type: "grenade", abilityId: 4, phaseId: "active" }), "grenadeExplosion");
-    assert.equal(pixiLayerForShape({ type: "grenade", abilityId: 4, phaseId: "active" }), "zones");
-    assert.deepEqual(visualForShape({ type: "proximityMine", abilityId: 11, phaseId: "active", phaseLocked: true }), {
+    assert.equal(visualForShape({ type: "grenade", abilityId: 4, phaseId: "active" }), null);
+    assert.equal(presentationDefinitionForShape({ type: "grenade", abilityId: 4, phaseId: "active" }).fallback, "hidden");
+    assert.equal(pixiLayerForShape({ type: "grenade", abilityId: 4, phaseId: "active" }), "projectiles");
+    assert.deepEqual(visualForShape({
+        type: "proximityMine", abilityId: 11, phaseId: "active", phaseLocked: true,
+        eventType: "collision", eventSequence: 1,
+    }), {
         type: "mineExplosion",
         visualSize: 175,
         visibleMs: 300,
     });
 });
 
+test("Temporal Rewind uses a looping phase animation instead of a one-frame snapshot", () => {
+    const shape = { type: "temporalRewindZone", abilityId: 21, phaseId: "active", phaseTimerMs: 1_500 };
+    assert.deepEqual(presentationDefinitionForShape(shape), {
+        kind: "entity",
+        layer: "zones",
+        texturePath: ["temporalRewind"],
+        animation: "time",
+        frameMs: 100,
+    });
+    const descriptor = visualAnimationDescriptorForShape(shape);
+    assert.equal(descriptor.eventActive, false);
+    assert.equal(descriptor.remainingMs, 1_600);
+});
+
 test("entity renderers use the active phase or event visual size", () => {
     assert.equal(visualSizeForShape({ type: "staticSnare", abilityId: 29, phaseId: "armed", size: 24 }), 24);
-    assert.equal(visualSizeForShape({ type: "staticSnare", abilityId: 29, phaseId: "triggered", size: 24 }), 150);
-    assert.equal(visualSizeForShape({ type: "staticSnare", abilityId: 29, phaseId: "destroyed", size: 24 }), 240);
+    assert.equal(visualSizeForShape({ type: "staticSnare", abilityId: 29, phaseId: "triggered", size: 24 }), 0);
+    assert.equal(visualSizeForShape({ type: "staticSnare", abilityId: 29, phaseId: "destroyed", size: 24 }), 0);
     assert.equal(visualSizeForShape({
         type: "staticSnare",
         abilityId: 29,
@@ -375,15 +393,17 @@ test("replay phase visuals use the same renderer contract as live entities", () 
     );
 });
 
-test("visual animation descriptors treat timers as one-time trigger state", () => {
+test("visual animation descriptors keep event timers separate from phase clocks", () => {
     const grenade = visualAnimationDescriptorForShape({
         type: "grenade",
         abilityId: 4,
         phaseId: "active",
         phaseLocked: true,
-        visibleMs: 100,
+        eventType: "collision",
+        eventSequence: 1,
+        visualEventMs: 100,
     });
-    assert.equal(grenade.eventActive, false);
+    assert.equal(grenade.eventActive, true);
     assert.equal(grenade.durationMs, 200);
     assert.equal(grenade.remainingMs, 100);
 
@@ -407,7 +427,7 @@ test("semantic replay events resolve repeating visuals from the frontend contrac
         abilityId: 22,
         phaseId: "active",
         phaseTimerMs: 600,
-        eventType: "interval",
+        eventType: "collision",
         eventSequence: 2,
     };
 
@@ -427,7 +447,7 @@ test("live repeating event visuals stop when their presentation timer reaches ze
         type: "orbitalMarker",
         abilityId: 22,
         phaseId: "active",
-        eventType: "interval",
+        eventType: "collision",
         eventSequence: 3,
         visualEventType: "orbitalExplosion",
         visualEventMs: 100,
@@ -448,7 +468,7 @@ test("event visuals become independent fixed-position instances", () => {
         x: 500,
         y: 300,
         remainingMs: 900,
-        eventType: "interval",
+        eventType: "collision",
         eventSequence: 3,
         visualEvent: 3,
         visualEventType: "orbitalExplosion",
@@ -473,16 +493,16 @@ test("event visuals become independent fixed-position instances", () => {
 test("repeated event occurrences get separate visual instances while phase visuals follow entities", () => {
     const first = visualInstanceForShape({
         id: "orbital-1", type: "orbitalMarker", abilityId: 22, phaseId: "active",
-        x: 500, y: 300, eventType: "interval", eventSequence: 3,
+        x: 500, y: 300, eventType: "collision", eventSequence: 3,
         visualEventType: "orbitalExplosion", visualEventMs: 400, visualEventSize: 260,
     }, 1000);
     const second = visualInstanceForShape({
         id: "orbital-1", type: "orbitalMarker", abilityId: 22, phaseId: "active",
-        x: 540, y: 320, eventType: "interval", eventSequence: 4,
+        x: 540, y: 320, eventType: "collision", eventSequence: 4,
         visualEventType: "orbitalExplosion", visualEventMs: 400, visualEventSize: 260,
     }, 1100);
     const phase = visualInstanceForShape({
-        id: "snare-1", type: "staticSnare", abilityId: 29, phaseId: "triggered",
+        id: "grenade-1", type: "grenade", abilityId: 4, phaseId: "travel",
         phaseTimerMs: 100, x: 200, y: 150,
     }, 1000, VISUAL_LIFECYCLES.PHASE);
 
@@ -492,7 +512,7 @@ test("repeated event occurrences get separate visual instances while phase visua
     assert.equal(phase.lifecycle, VISUAL_LIFECYCLES.PHASE);
     assert.equal(phase.spawnMode, VISUAL_SPAWN_MODES.ENTITY);
     assert.equal(phase.followEntity, true);
-    assert.equal(phase.expiresAt, 1200);
+    assert.equal(phase.expiresAt, null);
     assert.deepEqual(shapeWithoutVisualEvent({
         eventType: "collision", eventSequence: 1, visualEventType: "impact", visualEventMs: 100,
         visualEventSize: 20, visualEvent: 1, type: "staticSnare", x: 1,

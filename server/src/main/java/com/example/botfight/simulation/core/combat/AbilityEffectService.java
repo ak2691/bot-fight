@@ -54,8 +54,9 @@ class AbilityEffectService {
                 && !defender.ignoresHostileEffects();
         if (!hostileImpact && !targetsOwner) return;
 
-        double sourceX = payload.hasCapturedPose() ? payload.capturedOriginX() : attacker.x;
-        double sourceY = payload.hasCapturedPose() ? payload.capturedOriginY() : attacker.y;
+        AbilityExecutionPayload.Pose pose = payload.pose(attacker);
+        double sourceX = pose.x();
+        double sourceY = pose.y();
         applyContractEffects(attacker, defender, payload, arena, sourceX, sourceY, skipTeleport);
     }
 
@@ -66,9 +67,10 @@ class AbilityEffectService {
         // Browser combat attaches the transient visual before applying any
         // effect (including teleport). Preserve that exact activation pose in
         // the authoritative frame so replay can use the same origin.
-        attacker.visualOriginX = attacker.x;
-        attacker.visualOriginY = attacker.y;
-        attacker.visualOriginRotation = attacker.rotation;
+        AbilityExecutionPayload.Pose pose = payload.pose(attacker);
+        attacker.visualOriginX = pose.x();
+        attacker.visualOriginY = pose.y();
+        attacker.visualOriginRotation = pose.rotation();
         if (hitDetectionService.hasActivationEvent(payload)) {
             resolveTriggeredAbility(attacker, null, arena);
             return;
@@ -81,8 +83,8 @@ class AbilityEffectService {
             return;
         }
 
-        double sourceX = payload.hasCapturedPose() ? payload.capturedOriginX() : attacker.x;
-        double sourceY = payload.hasCapturedPose() ? payload.capturedOriginY() : attacker.y;
+        double sourceX = pose.x();
+        double sourceY = pose.y();
         List<Bot> hitTargets = bots.stream()
                 .filter(defender -> defender != attacker
                         && defender.hp > 0

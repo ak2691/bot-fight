@@ -4,6 +4,7 @@ import { advanceEntityAge, runEntityWorld, withComponentState } from "../entitie
 import {
     attachedAbilityContract,
     attachedAbilityTargetsOwner,
+    EVENT_SCHEDULE_MODES,
     EFFECT_TYPES,
     entityAbilitySpawnForEntity,
     eventAllowsEffect,
@@ -390,7 +391,8 @@ function tickCanonicalProjectile(entity, phase, world, combat) {
         velocityY,
         traveled: Number(entity.traveled ?? 0) + Math.hypot(end.x - start.x, end.y - start.y),
         phaseId: phase.id,
-        phaseTimerMs: Math.max(0, Number(entity.phaseTimerMs ?? 0) + stepMs),
+        phaseTimerMs: Math.max(0, Number(entity.phaseTimerMs ?? 0)
+            + (entity.phaseEnteredThisTick ? 0 : stepMs)),
         remainingMs: entity.remainingMs == null
             ? null : Number(entity.remainingMs) - stepMs,
         visualEventMs: Math.max(0, Number(entity.visualEventMs ?? 0) - stepMs),
@@ -400,27 +402,13 @@ function tickCanonicalProjectile(entity, phase, world, combat) {
     const selected = phase.hit?.mode === "nearest" ? candidates.slice(0, 1) : candidates;
     let next = moved;
     let bots = world.bots;
-    const execution = phase.execution;
-    const executionEvent = execution?.event ?? (phase.events?.interval ? PHASE_EVENT_TYPES.INTERVAL : null);
-    const executionHandler = executionEvent == null ? null : phase.events?.[executionEvent];
-    let intervalTimerMs = Number(entity.intervalTimerMs ?? 0) - stepMs;
-    const intervalMs = executionHandler == null ? 0 : Math.max(1, resolvePhaseNumber(
-        execution?.intervalMs
-            ?? executionHandler.intervalMs
-            ?? "intervalMs",
-        stats,
-        phase,
-        stepMs,
-    ));
-    if (executionHandler != null && execution?.startImmediately === false
-        && Number(entity.phaseTimerMs ?? 0) === 0) {
-        intervalTimerMs = intervalMs - stepMs;
-    }
-    const shouldDispatch = executionHandler == null
-        ? selected.length > 0
-        : intervalTimerMs <= 0;
-    if (shouldDispatch && selected.length > 0) {
-        const result = dispatchEntityEvent(next, executionEvent ?? "collision", {
+    const collisionEvent = phase.events?.[PHASE_EVENT_TYPES.COLLISION];
+    const collisionChecks = collisionCheckCount(entity, phase, stepMs, stats);
+    for (let check = 0; check < collisionChecks.count && next; check += 1) {
+        const hasTargets = selected.length > 0;
+        const emitsVisual = collisionEvent?.actions?.includes(PHASE_ACTIONS.EMIT_VISUAL);
+        if (!hasTargets && !emitsVisual) continue;
+        const result = dispatchEntityEvent(next, PHASE_EVENT_TYPES.COLLISION, {
             bots,
             world,
             combat,
@@ -436,26 +424,29 @@ function tickCanonicalProjectile(entity, phase, world, combat) {
         bots = result.bots;
         const enteredPhase = next && canonicalPhaseForEntity(next);
         if (enteredPhase && enteredPhase.id !== phase.id
-            && enteredPhase.events?.collision?.actions?.includes("applyEffects")) {
-            const enteredResult = dispatchEntityEvent(next, "collision", {
+            && enteredPhase.events?.collision?.actions?.includes(PHASE_ACTIONS.APPLY_EFFECTS)) {
+            // The new phase owns the collision contract. Re-evaluate its
+            // hitbox at the transition position instead of carrying the
+            // travel-phase target list into an impact/explosion phase.
+            const enteredTargets = canonicalCollisionTargets(next, enteredPhase, world);
+            const enteredResult = dispatchEntityEvent(next, PHASE_EVENT_TYPES.COLLISION, {
                 bots,
                 world,
                 combat,
                 phase: enteredPhase,
-                targetIds: selected.map(({ bot }) => bot.id),
+                targetIds: enteredTargets.map(({ bot }) => bot.id),
                 // A projectile that transitions into an impact phase has
-                // already established contact. Preserve the point-impact
-                // damage semantics while later zone ticks use their actual
-                // center distance.
-                targetDistances: new Map(selected.map(({ bot }) => [bot.id, 0])),
+                // already established contact. The entered phase still
+                // decides whether that contact is point-like or area-based.
+                targetDistances: new Map(enteredTargets.map(({ bot, collisionDistance }) => [bot.id, collisionDistance])),
             });
             next = enteredResult.entity;
             bots = enteredResult.bots;
+            if (next) next = markScheduledEvent(next, PHASE_EVENT_TYPES.COLLISION);
         }
     }
-    if (executionHandler != null) {
-        if (shouldDispatch) intervalTimerMs += intervalMs;
-        if (next) next = withComponentState(next, { intervalTimerMs });
+    if (next && canonicalPhaseForEntity(next)?.id === phase.id) {
+        next = withEventScheduleState(next, PHASE_EVENT_TYPES.COLLISION, collisionChecks.state);
     }
     if (!next) return { bots, entity: null };
     const phaseExpired = phase.durationMs != null
@@ -466,6 +457,34 @@ function tickCanonicalProjectile(entity, phase, world, combat) {
         || next.remainingMs != null && Number(next.remainingMs) <= 0;
     if (phaseExpired || overallExpired || removeAtEdge) {
         const ended = dispatchEntityEvent(next, "lifetimeEnd", { bots, world, combat, phase });
+        const enteredPhase = ended.entity && canonicalPhaseForEntity(ended.entity);
+        if (enteredPhase && enteredPhase.id !== phase.id
+            && enteredPhase.events?.collision?.actions?.includes(PHASE_ACTIONS.APPLY_EFFECTS)) {
+            // A phase reached through lifetime expiry still gets its own
+            // once collision check. This is how a timed grenade fuse
+            // enters an impact/explosion phase without carrying the travel
+            // phase's hitbox or target list into it.
+            const enteredTargets = canonicalCollisionTargets(ended.entity, enteredPhase, world);
+            const enteredResult = dispatchEntityEvent(ended.entity, PHASE_EVENT_TYPES.COLLISION, {
+                bots: ended.bots,
+                world,
+                combat,
+                phase: enteredPhase,
+                targetIds: enteredTargets.map(({ bot }) => bot.id),
+                targetDistances: new Map(enteredTargets.map(({ bot, collisionDistance }) => [bot.id, collisionDistance])),
+            });
+            return {
+                bots: enteredResult.bots,
+                entity: enteredResult.entity
+                    ? withComponentState(enteredResult.entity, {
+                        phaseTimerMs: 0,
+                        eventScheduleState: markScheduledEventState(
+                            enteredResult.entity.eventScheduleState,
+                            PHASE_EVENT_TYPES.COLLISION),
+                    })
+                    : null,
+            };
+        }
         return {
             bots: ended.bots,
             entity: ended.entity === next && !phase.events?.lifetimeEnd ? null : ended.entity,
@@ -482,50 +501,24 @@ function tickCanonicalZone(entity, phase, world, combat) {
     let next = entity;
     next = withComponentState(next, {
         phaseId: nextPhase.id,
-        phaseTimerMs: Math.max(0, Number(next.phaseTimerMs ?? 0) + stepMs),
+        phaseTimerMs: Math.max(0, Number(next.phaseTimerMs ?? 0)
+            + (next.phaseEnteredThisTick ? 0 : stepMs)),
         remainingMs: remainingLifetime(next, contract, stepMs),
         visualEventMs: Math.max(0, Number(next.visualEventMs ?? 0) - stepMs),
         ...(next.visibleMs == null ? {} : { visibleMs: Math.max(0, Number(next.visibleMs) - stepMs) }),
     });
     let bots = world.bots;
-    const targets = canonicalCollisionTargets(next, nextPhase, world);
     const lifecycleActive = next.remainingMs == null
         || Number(entity.remainingMs ?? next.remainingMs) > 0;
-    const execution = nextPhase.execution;
-    const executionEvent = execution?.event ?? (nextPhase.events?.interval ? PHASE_EVENT_TYPES.INTERVAL : null);
-    const executionHandler = executionEvent == null ? null : nextPhase.events?.[executionEvent];
-    if (executionHandler && lifecycleActive) {
-        const intervalMs = Math.max(1, resolvePhaseNumber(
-            execution?.intervalMs
-                ?? executionHandler.intervalMs
-                ?? "intervalMs",
-            stats,
-            nextPhase,
-            stepMs,
-        ));
-        let intervalTimerMs = Number(entity.intervalTimerMs ?? 0) - stepMs;
-        if (execution?.startImmediately === false && Number(entity.phaseTimerMs ?? 0) === 0) {
-            intervalTimerMs = intervalMs - stepMs;
-        }
-        const intervalCanRunOnThisTick = lifecycleActive;
-        while (intervalTimerMs <= 0 && intervalCanRunOnThisTick) {
-                const result = dispatchEntityEvent(next, executionEvent, {
-                bots,
-                world,
-                combat,
-                phase: nextPhase,
-                targetIds: targets.map(({ bot }) => bot.id),
-                targetDistances: new Map(targets.map(({ bot, collisionDistance }) => [bot.id, collisionDistance])),
-            });
-            next = result.entity;
-            bots = result.bots;
-            intervalTimerMs += intervalMs;
-            if (!next) break;
-        }
-        if (!next) return { bots, entity: null };
-        next = withComponentState(next, { intervalTimerMs });
-    } else if (lifecycleActive && nextPhase.events?.collision && targets.length > 0) {
-        const result = dispatchEntityEvent(next, "collision", {
+    const collisionEvent = nextPhase.events?.[PHASE_EVENT_TYPES.COLLISION];
+    const collisionChecks = collisionCheckCount(entity, nextPhase, stepMs, stats);
+    const targets = collisionChecks.count > 0
+        ? canonicalCollisionTargets(next, nextPhase, world) : [];
+    for (let check = 0; check < collisionChecks.count && lifecycleActive && next; check += 1) {
+        const hasTargets = targets.length > 0;
+        const emitsVisual = collisionEvent?.actions?.includes(PHASE_ACTIONS.EMIT_VISUAL);
+        if (!hasTargets && !emitsVisual) continue;
+        const result = dispatchEntityEvent(next, PHASE_EVENT_TYPES.COLLISION, {
             bots,
             world,
             combat,
@@ -537,19 +530,18 @@ function tickCanonicalZone(entity, phase, world, combat) {
         bots = result.bots;
     }
     if (!next) return { bots, entity: null };
+    if (canonicalPhaseForEntity(next)?.id === nextPhase.id) {
+        next = withEventScheduleState(next, PHASE_EVENT_TYPES.COLLISION, collisionChecks.state);
+    }
     const phaseExpired = nextPhase.durationMs != null
         && Number(next.phaseTimerMs ?? 0) >= Number(nextPhase.durationMs);
-    if (phaseExpired || Number(next.remainingMs ?? 0) <= 0) {
-        // A transient event visual is still carried by this same logical
-        // entity after gameplay lifetime ends. It is presentation-only while
-        // the event timer counts down, so no collision work runs above.
-        if (Number(next.visualEventMs ?? 0) > 0) return { bots, entity: next };
+    if (phaseExpired || next.remainingMs != null && Number(next.remainingMs) <= 0) {
         const ended = dispatchEntityEvent(next, "lifetimeEnd", { bots, world, combat, phase: nextPhase });
         const enteredPhase = ended.entity && canonicalPhaseForEntity(ended.entity);
         if (enteredPhase && enteredPhase.id !== nextPhase.id
             && enteredPhase.events?.collision?.actions?.includes("applyEffects")) {
             const enteredTargets = canonicalCollisionTargets(ended.entity, enteredPhase, world);
-            return dispatchEntityEvent(ended.entity, "collision", {
+            const enteredResult = dispatchEntityEvent(ended.entity, "collision", {
                 bots: ended.bots,
                 world,
                 combat,
@@ -557,6 +549,17 @@ function tickCanonicalZone(entity, phase, world, combat) {
                 targetIds: enteredTargets.map(({ bot }) => bot.id),
                 targetDistances: new Map(enteredTargets.map(({ bot, collisionDistance }) => [bot.id, collisionDistance])),
             });
+            return {
+                bots: enteredResult.bots,
+                entity: enteredResult.entity
+                    ? withComponentState(enteredResult.entity, {
+                        phaseTimerMs: 0,
+                        eventScheduleState: markScheduledEventState(
+                            enteredResult.entity.eventScheduleState,
+                            PHASE_EVENT_TYPES.COLLISION),
+                    })
+                    : null,
+            };
         }
         return {
             bots: ended.bots,
@@ -972,11 +975,9 @@ function moveEntityToward(target, source, distance, world) {
 }
 
 function canonicalCollisionTargets(entity, phase, world, start = null, end = null) {
-    const targetEventType = phase.execution?.event
-        ?? (phase.events?.[PHASE_EVENT_TYPES.INTERVAL]
-            ? PHASE_EVENT_TYPES.INTERVAL : PHASE_EVENT_TYPES.COLLISION);
-    const targetEvent = phase.events?.[targetEventType]
-        ?? phase.events?.[PHASE_EVENT_TYPES.COLLISION];
+    // Collision cadence belongs to the collision event's schedule.
+    // `execution` is reserved for embedded summon abilities.
+    const targetEvent = phase.events?.[PHASE_EVENT_TYPES.COLLISION];
     if (!eventTargetsKind(targetEvent, TARGET_KINDS.BOT)) return [];
     const skipOwner = Boolean(phase.skipOwner);
     const entityStart = start ?? { x: Number(entity.x), y: Number(entity.y) };
@@ -1003,6 +1004,105 @@ function canonicalCollisionTargets(entity, phase, world, start = null, end = nul
         })
         .filter(Boolean)
         .sort((first, second) => first.collisionDistance - second.collisionDistance);
+}
+
+function collisionCheckCount(entity, phase, stepMs, stats) {
+    return scheduledEventCount(entity, phase, PHASE_EVENT_TYPES.COLLISION, stepMs, stats);
+}
+
+/**
+ * Generic phase-event scheduler. The event key describes what is evaluated;
+ * its schedule describes when it is evaluated. `once` fires on phase entry,
+ * `repeat` fires on a fixed cadence, and `continuous` is reserved for
+ * collision geometry that is checked every simulation tick.
+ */
+function scheduledEventCount(entity, phase, eventType, stepMs, stats) {
+    const handler = phase?.events?.[eventType];
+    const currentState = entity?.eventScheduleState ?? {};
+    if (!handler) return { count: 0, state: currentState[eventType] ?? {} };
+
+    const schedule = handler.schedule ?? {
+        mode: eventType === PHASE_EVENT_TYPES.COLLISION
+            ? EVENT_SCHEDULE_MODES.CONTINUOUS : EVENT_SCHEDULE_MODES.ONCE,
+    };
+    const previous = currentState[eventType] ?? {};
+    const mode = schedule.mode;
+    if (mode === EVENT_SCHEDULE_MODES.CONTINUOUS) {
+        return {
+            count: eventType === PHASE_EVENT_TYPES.COLLISION ? 1 : previous.occurrences ? 0 : 1,
+            state: eventType === PHASE_EVENT_TYPES.COLLISION
+                ? previous : { initialized: true, occurrences: 1 },
+        };
+    }
+    if (mode === EVENT_SCHEDULE_MODES.ONCE) {
+        const count = Number(previous.occurrences ?? 0) > 0 ? 0 : 1;
+        return {
+            count,
+            state: { initialized: true, occurrences: Number(previous.occurrences ?? 0) + count },
+        };
+    }
+
+    const intervalMs = Math.max(1, resolvePhaseNumber(
+        schedule.intervalMs,
+        stats,
+        phase,
+        Math.max(1, stepMs),
+    ));
+    const maxOccurrences = Number(schedule.count);
+    const previousOccurrences = Math.max(0, Number(previous.occurrences ?? 0));
+    if (Number.isFinite(maxOccurrences) && maxOccurrences > 0
+        && previousOccurrences >= Math.trunc(maxOccurrences)) {
+        return {
+            count: 0,
+            state: { initialized: true, occurrences: previousOccurrences, timerMs: null },
+        };
+    }
+    const initialized = previous.initialized === true;
+    let timerMs = initialized
+        ? Number(previous.timerMs ?? 0) - Math.max(0, stepMs)
+        : (schedule.startImmediately === false ? intervalMs : 0) - Math.max(0, stepMs);
+    let count = 0;
+    while (timerMs <= 0 && count < 100) {
+        if (Number.isFinite(maxOccurrences) && maxOccurrences > 0
+            && previousOccurrences + count >= Math.trunc(maxOccurrences)) break;
+        count += 1;
+        timerMs += intervalMs;
+    }
+    return {
+        count,
+        state: {
+            initialized: true,
+            occurrences: previousOccurrences + count,
+            timerMs,
+        },
+    };
+}
+
+function withEventScheduleState(entity, eventType, state) {
+    return withComponentState(entity, {
+        eventScheduleState: {
+            ...(entity?.eventScheduleState ?? {}),
+            [eventType]: state ?? {},
+        },
+    });
+}
+
+function markScheduledEventState(scheduleState, eventType) {
+    const previous = scheduleState?.[eventType] ?? {};
+    return {
+        ...(scheduleState ?? {}),
+        [eventType]: {
+            ...previous,
+            initialized: true,
+            occurrences: Math.max(1, Number(previous.occurrences ?? 0)),
+        },
+    };
+}
+
+function markScheduledEvent(entity, eventType) {
+    return withComponentState(entity, {
+        eventScheduleState: markScheduledEventState(entity?.eventScheduleState, eventType),
+    });
 }
 
 function resolvePhaseNumber(value, stats, phase, fallback = 0) {
@@ -1079,7 +1179,10 @@ function advancePhaseEntity(entity, phases, stats, world) {
         traveled: Number(entity.traveled ?? 0) + Math.hypot(nextX - Number(entity.x), nextY - Number(entity.y)),
         phaseId,
         phaseTimerMs,
-        remainingMs: Math.max(0, Number(entity.remainingMs ?? stats.durationMs ?? 0) - stepMs),
+        // A missing root lifetime stays missing. Phase duration belongs to the
+        // phase clock and must not be copied into the entity lifetime field.
+        remainingMs: entity.remainingMs == null
+            ? null : Math.max(0, Number(entity.remainingMs) - stepMs),
         armed: phaseId === "armed" || Boolean(entity.armed),
     });
 }

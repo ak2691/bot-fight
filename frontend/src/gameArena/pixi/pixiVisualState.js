@@ -45,7 +45,10 @@ export const ENTITY_PRESENTATION_DEFINITIONS = Object.freeze({
         texturePath: ["silencePulse"], animation: "time", frameMs: 80, rotationOffset: -Math.PI / 2,
     },
     nullZone: { texturePath: ["nullZone"], animation: "time", frameMs: 100 },
-    temporalRewindZone: { texturePath: ["temporalRewind"], animation: "progress", durationMs: 3100, remaining: "remaining" },
+    // Temporal Rewind is a persistent phase visual. Its clock loops through
+    // the clock frames for the entity's whole gameplay lifetime; the delayed
+    // restore effect is not also used as a visual progress timer.
+    temporalRewindZone: { texturePath: ["temporalRewind"], animation: "time", frameMs: 100 },
     orbitalMarker: { texturePath: ["orbitalMarker"], animation: "static" },
     orbitalExplosion: { texturePath: ["orbitalExplosion"], animation: "progress", durationMs: 400, remaining: "orbital" },
 });
@@ -189,11 +192,16 @@ export function visualForShape(shape) {
     if (semanticVisualEventActive(shape)) {
         const phase = phaseForEntity(shape);
         const embeddedPhase = entityAbilityPhaseForEntity(shape);
-        const handler = phase?.events?.[semanticEventType]
-            ?? embeddedPhase?.events?.[semanticEventType]
+        // `interval` was the pre-collision-scheduler event name. Resolve it
+        // through the current collision handler so old replays still render,
+        // while new authoritative frames use `collision` directly.
+        const contractEventType = semanticEventType === "interval"
+            ? "collision" : semanticEventType;
+        const handler = phase?.events?.[contractEventType]
+            ?? embeddedPhase?.events?.[contractEventType]
             ?? null;
         const eventVisual = handler?.visual
-            ?? (embeddedPhase?.events?.[semanticEventType] ? embeddedPhase.visual : null)
+            ?? (embeddedPhase?.events?.[contractEventType] ? embeddedPhase.visual : null)
             ?? null;
         const eventType = handler?.visualType ?? eventVisual?.type
             ?? (semanticEventType === "collision" ? embeddedPhase?.visual?.type : null);
@@ -221,6 +229,7 @@ export function visualForShape(shape) {
     }
 
     const phaseVisual = phaseForEntity(shape)?.visual;
+    if (phaseVisual?.lifecycle === "event") return null;
     if (phaseVisual) return phaseVisual;
     return null;
 }
@@ -313,6 +322,13 @@ export function pixiLayerForShape(shape) {
 export function presentationDefinitionForShape(shape) {
     if (isBotShape(shape)) return { kind: "bot", layer: "bots", texturePath: ["bot"], animation: "static" };
     if (shape?.type === CLOSING_ZONE_TYPE) return { kind: "arenaHazard", layer: "zones", animation: "geometry" };
+    const phaseVisual = phaseForEntity(shape)?.visual;
+    const frontendEventActive = Boolean(shape?.visualEventType) && Number(shape?.visualEventMs ?? 0) > 0;
+    if (phaseVisual?.lifecycle === "event"
+        && !semanticVisualEventActive(shape)
+        && !frontendEventActive) {
+        return { kind: "fallback", fallback: "hidden" };
+    }
     if (["singularityZone", "singularityExplosion"].includes(shape?.type)) {
         return { kind: "generated", layer: "zones", fallback: "graphics" };
     }
@@ -377,7 +393,13 @@ export function visualAnimationDescriptorForShape(shape) {
         ? configuredVisibleMs
         : 0;
     const currentPhase = phaseForEntity(shape);
-    const phaseDurationMs = Number(currentPhase?.durationMs ?? visual?.visibleMs ?? 0);
+    const phaseCount = entityContract(shape)?.phases?.length ?? 0;
+    const entityLifetimeMs = phaseCount === 1
+        ? Number(entityContract(shape)?.lifetime?.duration ?? 0)
+        : 0;
+    // A phase clock describes gameplay existence. A visual's visibleMs is an
+    // event/animation duration and must not extend or shorten that phase.
+    const phaseDurationMs = Number(currentPhase?.durationMs ?? entityLifetimeMs ?? 0);
     const hasPhaseClock = shape?.phaseTimerMs != null;
     const phaseElapsedMs = Number(shape?.phaseTimerMs ?? 0);
     const phaseRemainingMs = hasPhaseClock && phaseDurationMs > 0
