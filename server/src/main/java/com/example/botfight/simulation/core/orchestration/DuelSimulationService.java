@@ -453,6 +453,7 @@ public class DuelSimulationService {
             branch.blocks().stream()
                     .filter(block -> strategyBlockExecutableNow(block, player, opponent, entities))
                     .forEach(selected::add);
+            break;
         }
         return selected;
     }

@@ -11,10 +11,18 @@ export function evaluateConditionNode(condition, state, evaluateExpression) {
 
 export function evaluateConditionNodes(conditions, state, evaluateExpression) {
     if (!conditions.length) return true;
-    return conditions.reduce((matches, condition, index) => {
+    let anyGroupMatches = false;
+    let currentGroupMatches = true;
+    conditions.forEach((condition, index) => {
         const conditionMatches = evaluateConditionNode(condition, state, evaluateExpression);
-        return index > 0 && condition.join === CONDITION_JOINS.OR ? matches || conditionMatches : matches && conditionMatches;
-    }, true);
+        if (index > 0 && condition.join === CONDITION_JOINS.OR) {
+            anyGroupMatches ||= currentGroupMatches;
+            currentGroupMatches = conditionMatches;
+        } else {
+            currentGroupMatches &&= conditionMatches;
+        }
+    });
+    return anyGroupMatches || currentGroupMatches;
 }
 
 export function compareValues(left, comparator, right, valueType) {

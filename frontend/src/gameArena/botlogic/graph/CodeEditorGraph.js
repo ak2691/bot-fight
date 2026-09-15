@@ -29,6 +29,7 @@ export function createCodeEditorGraph() {
         variables: [],
         targets: [],
         connections: [],
+        detachedBranches: [],
     };
 }
 
@@ -106,7 +107,27 @@ export function sanitizeCodeEditorGraph(graph) {
             port: String(connection.port),
         }))
         : [];
-    return { version: CODE_EDITOR_GRAPH_VERSION, variables, targets, connections };
+    const detachedIds = new Set();
+    const detachedBranches = Array.isArray(source.detachedBranches)
+        ? source.detachedBranches.slice(0, 50).filter((entry) => {
+            const id = String(entry?.id ?? entry?.branch?.id ?? "").trim();
+            if (!id || detachedIds.has(id) || !entry?.branch || typeof entry.branch !== "object") return false;
+            detachedIds.add(id);
+            return true;
+        }).map((entry) => ({
+            id: String(entry.id ?? entry.branch.id),
+            branch: clone(entry.branch),
+            position: {
+                x: Math.max(0, Math.min(10_000, Number(entry.position?.x) || 0)),
+                y: Math.max(0, Math.min(6_000, Number(entry.position?.y) || 0)),
+            },
+            nodePositions: Object.fromEntries(Object.entries(entry.nodePositions ?? {}).slice(0, 200).map(([key, position]) => [String(key), {
+                x: Math.max(0, Math.min(10_000, Number(position?.x) || 0)),
+                y: Math.max(0, Math.min(6_000, Number(position?.y) || 0)),
+            }])),
+        }))
+        : [];
+    return { version: CODE_EDITOR_GRAPH_VERSION, variables, targets, connections, detachedBranches };
 }
 
 function connectionForTarget(graph, targetId, port) {

@@ -67,7 +67,6 @@ import {
     VARIABLE_SELECTABLE_TYPES,
     selectableIdentitiesForVariable,
     selectableMatchesVariable,
-    ABSOLUTE_MOVEMENT_DIRECTIONS,
     MOVEMENT_DIRECTION_MAX,
     MOVEMENT_DIRECTION_MIN,
     abilityDefinitionsForVariable,
@@ -651,7 +650,7 @@ function formatOrdinal(value) {
 }
 
 function normalizeMovementDirection(value, mode, action) {
-    if (action?.id === BOT_CODE_ACTIONS.MOVE_WALK && mode === "absolute") {
+    if (mode === "absolute") {
         const legacyDirection = {
             north: 0,
             northeast: 45,
@@ -674,9 +673,6 @@ function normalizeMovementDirection(value, mode, action) {
         const numeric = text == null || text === "" ? Number.NaN : Number(text);
         if (Number.isFinite(numeric)) return truncateToNumberPrecision(clamp(numeric, MOVEMENT_DIRECTION_MIN, MOVEMENT_DIRECTION_MAX));
         return 0;
-    }
-    if (mode === "absolute") {
-        return ABSOLUTE_MOVEMENT_DIRECTIONS.includes(value) ? value : "north";
     }
     const text = typeof value === "string" ? value.trim() : value;
     const numeric = text == null || text === "" ? Number.NaN : Number(text);

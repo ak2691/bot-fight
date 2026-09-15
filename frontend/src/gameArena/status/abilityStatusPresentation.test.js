@@ -51,7 +51,7 @@ test("numbered status markers are enabled only for player matches and replays", 
     const arenaSource = readFileSync(fileURLToPath(new URL("../Arena.jsx", import.meta.url)), "utf8");
     const replaySource = readFileSync(fileURLToPath(new URL("../../replay/SimulationReplay.jsx", import.meta.url)), "utf8");
     assert.match(arenaSource, /showParticipantNumbers=\{isMatchTesting\}/);
-    assert.match(arenaSource, /const abilityInfoEnabled = isPracticeRoom \|\| isPuzzleMode \|\| isPuzzleBuilder \|\|/);
+    assert.match(arenaSource, /const abilityInfoEnabled = tutorialMode \|\| isPracticeRoom \|\| isPuzzleMode \|\| isPuzzleBuilder \|\|/);
     assert.match(replaySource, /showParticipantNumbers lockCamera/);
 });
 

@@ -637,6 +637,14 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
 
     function beginDrag(event, view) {
         if (!isBotShape(view.shape)) return;
+        if (optionsRef.current.measurementEnabled && event.button === 0) {
+            event.stopPropagation();
+            const point = camera.toLocal(event.global);
+            const rounded = { x: Math.round(clamp(point.x, 0, ARENA_WIDTH_UNITS)), y: Math.round(clamp(point.y, 0, ARENA_HEIGHT_UNITS)) };
+            const current = optionsRef.current.measurementPoints ?? [];
+            optionsRef.current.onMeasurementPointsChange?.(current.length >= 2 ? [rounded] : [...current, rounded]);
+            return;
+        }
         if (event.target === view.rotationHandle) return;
         if (event.button === 2) {
             if (!canRotateBot(view.shape)) return;

@@ -1,5 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
     ACTION_TYPES,
     SELECTABLE_TYPES,
@@ -40,13 +41,16 @@ import { normalizePriority, priorityForNode } from "../../botlogic/code/configur
 import { actionTypesForLoadout } from "../../gameconfig/CombatLoadouts.js";
 import { abilityIdFromBoundary } from "../../gameconfig/AbilityCompatibility.js";
 import {
+    ACTION_TO_ABILITY,
     STANDARD_ABILITY_IDS,
     decodeBotLoadout,
     decodeSandboxLoadout,
     statusEffectDefinitionsForAbilities,
 } from "../../loadout/BotLoadout.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
+import { getAbilityCatalogueIcon } from "../../../abilityCatalogueIcons.js";
 import { useDialogFocus } from "../../../components/useDialogFocus.js";
+import ArenaDegreesCompass from "../../../components/ArenaDegreesCompass.jsx";
 import { useExclusiveSearchMenu } from "../utils/codeMenuEvents.js";
 import RootNodePriorityInput from "../controls/RootNodePriorityInput.jsx";
 import MatchToolIcon from "../controls/MatchToolIcon.jsx";
@@ -116,8 +120,19 @@ function actionNodeWidth(entry, selectedLoadout, selectableTypes) {
     const selected = actionTypes.find((action) => action.id === entry.action) ?? actionTypes[0];
     const describedTarget = formatActionTargetLabel(entry, selected, selectableTypes);
     const actionLabel = formatActionNodeLabel(selected?.label ?? "Action");
-    if (!describedTarget) return Math.max(160, Math.ceil(actionLabel.length * 6.6 + 63));
-    return Math.max(160, Math.ceil(Math.max(actionLabel.length, `Target: ${describedTarget}`.length) * 6.6 + 63));
+    if (!describedTarget) return Math.max(200, Math.ceil(actionLabel.length * 6.6 + 110));
+    return Math.max(200, Math.ceil(Math.max(actionLabel.length, `Target: ${describedTarget}`.length) * 6.6 + 110));
+}
+
+function actionNodeHeight(entry, selectedLoadout, stateVariables) {
+    const selected = actionTypesForLoadout(ACTION_TYPES, selectedLoadout).find((action) => action.id === entry.action);
+    if (!selected?.variableAction) return 62;
+    const expressionLength = variableActionTerms(entry).reduce((length, term) => {
+        const definition = term.operand?.type === "variable" ? stateVariables.find((variable) => variable.id === term.operand.value) : null;
+        return length + String(definition?.label ?? term.operand?.value ?? 0).length + 3;
+    }, 0);
+    const actionLabelLength = Math.max(18, formatActionNodeLabel(selected.label).length + 6);
+    return 62 + Math.max(1, Math.ceil(expressionLength / actionLabelLength)) * 24;
 }
 
 function buildLogicGraph(roots, stateVariables = VISIBLE_STATE_VARIABLES, selectedLoadout = null, selectableTypes = SELECTABLE_TYPES) {
@@ -136,7 +151,7 @@ function buildLogicGraph(roots, stateVariables = VISIBLE_STATE_VARIABLES, select
         const actions = graphBranchActions(branch);
         const descendantsWidth = actions.reduce((sum, entry) => sum + actionNodeWidth(entry, selectedLoadout, selectableTypes) + GRAPH_NODE_GAP, 0)
             + (branch.children ?? []).reduce((sum, child) => sum + measureBranch(child), 0);
-        const conditionHeight = 94 + Math.max(1, Array.isArray(branch.conditions) ? branch.conditions.length : 1) * 42;
+        const conditionHeight = 94 + Math.max(1, Array.isArray(branch.conditions) ? branch.conditions.length : 1) * 52;
         const nodeWidth = conditionNodeWidth(branch, stateVariables);
         const condition = { id: conditionGraphNodeId(branch.id, rootId), rootId, branchId: branch.id, rootIndex, path, x: left + width / 2 - nodeWidth / 2, y, width: nodeWidth, height: conditionHeight, priority: priorityForNode(branch, (path[path.length - 1] ?? 0) + 1) };
         graph.conditions.push(condition);
@@ -147,7 +162,7 @@ function buildLogicGraph(roots, stateVariables = VISIBLE_STATE_VARIABLES, select
         const childY = y + conditionHeight + 70;
         actions.forEach((entry, actionIndex) => {
             const actionWidth = actionNodeWidth(entry, selectedLoadout, selectableTypes);
-            const action = { id: actionGraphNodeId(branch.id, actionIndex, rootId), rootId, branchId: branch.id, rootIndex, path, actionIndex, x: childX + GRAPH_NODE_GAP / 2, y: childY, width: actionWidth, height: 54 };
+            const action = { id: actionGraphNodeId(branch.id, actionIndex, rootId), rootId, branchId: branch.id, rootIndex, path, actionIndex, x: childX + GRAPH_NODE_GAP / 2, y: childY, width: actionWidth, height: actionNodeHeight(entry, selectedLoadout, stateVariables) };
             graph.actions.push(action);
             graph.edges.push({ id: `${condition.id}->${action.id}`, fromId: condition.id, toId: action.id, x1: condition.x + condition.width / 2, y1: condition.y + condition.height, x2: action.x + action.width / 2, y2: action.y });
             childX += actionWidth + GRAPH_NODE_GAP;
@@ -255,7 +270,7 @@ function addGraphAction(branch, selectedLoadout, requestedAction = null, customV
     }]);
 }
 
-function NodeKindPicker({ selectedLoadout, onCancel, onChooseAction }) {
+function NodeKindPicker({ selectedLoadout, onCancel, onChooseAction, title = "ADD ACTION NODE" }) {
     const [query, setQuery] = useState("");
     const [activeIndex, setActiveIndex] = useState(-1);
     const pickerRef = useRef(null);
@@ -306,7 +321,6 @@ function NodeKindPicker({ selectedLoadout, onCancel, onChooseAction }) {
             if (action) onChooseAction(action.id);
         }
     };
-    const title = "ADD ACTION NODE";
     return <div ref={pickerRef} className="code-node-picker code-node-picker--action absolute left-20 top-4 z-40 w-80 border bg-[#15191d] p-4 font-mono text-[10px] text-white shadow-2xl" role="dialog" aria-label={title} data-node-drag-ignore="true" onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onCancel(); } }} onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between gap-3"><strong className="tracking-[.12em] text-cyan-200">{title}</strong><button type="button" onClick={onCancel} className="modal-close-button" aria-label={`Close ${title}`}><span aria-hidden="true">×</span></button></div>
         <label className="code-node-search-label"><span className="sr-only">Search actions</span><input ref={searchInputRef} autoFocus value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(-1); optionRefs.current = []; }} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onCancel(); } else moveFromSearch(event); }} placeholder="Search actions…" /></label>
@@ -314,7 +328,7 @@ function NodeKindPicker({ selectedLoadout, onCancel, onChooseAction }) {
     </div>;
 }
 
-function VariableOperandPicker({ operand, stateVariables, numericOnly = false, valueType = null, onChoose, onClose }) {
+function VariableOperandPicker({ operand, stateVariables, numericOnly = false, valueType = null, onChoose, onUseRawNumber = null, onClose }) {
     const [query, setQuery] = useState("");
     const [activeIndex, setActiveIndex] = useState(-1);
     const pickerRef = useRef(null);
@@ -377,11 +391,72 @@ function VariableOperandPicker({ operand, stateVariables, numericOnly = false, v
     return <div ref={pickerRef} className="code-node-picker code-node-picker--variable absolute left-20 top-4 z-40 w-80 border bg-[#15191d] p-4 font-mono text-[10px] text-white shadow-2xl" role="dialog" aria-label={title} data-node-drag-ignore="true" onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } }} onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between gap-3"><strong className="tracking-[.12em] text-cyan-200">{title}</strong><button type="button" onClick={onClose} className="modal-close-button" aria-label="Close variable search"><span aria-hidden="true">×</span></button></div>
         <label className="code-node-search-label"><span className="sr-only">Search variables</span><input ref={searchInputRef} autoFocus value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(-1); optionRefs.current = []; }} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } else moveFromSearch(event); }} placeholder="Search variables…" /></label>
+        {operand === 2 && onUseRawNumber && <button type="button" className="code-variable-raw-input" onClick={onUseRawNumber}>RAW INPUT</button>}
         <div className="code-node-search-results">{groupedDefinitions.map((group) => <section className="code-node-search-group" key={group.category}><h3 className="code-node-search-group-title">{group.category}</h3>{group.options.map((definition) => { const index = definitions.indexOf(definition); return <button ref={(element) => { optionRefs.current[index] = element; }} key={definition.id} tabIndex={index === activeIndex ? 0 : -1} className={index === activeIndex ? "is-keyboard-active" : ""} type="button" onKeyDown={(event) => moveFromOption(event, index)} onClick={() => onChoose(definition.id)}><strong>{definition.label}</strong></button>; })}</section>)}{!definitions.length && <p>No variables match “{query}”.</p>}</div>
     </div>;
 }
 
-function ConditionalOperandBox({ operand, condition, stateVariables, disabled, selected, onPickVariable, onInspectVariable, onOpenVariablePicker, onUseRawNumber, onNumberChange, onBooleanChange, numberDefinition = null, tutorialFocus = false }) {
+function SelectableToken({ value, selectableTypes = SELECTABLE_TYPES }) {
+    const [baseValue, encodedOrder, encodedOrdinal] = canonicalBotSelectableId(value).split(":");
+    const definition = selectableTypes.find((selectable) => selectable.id === baseValue);
+    const ordinal = Math.max(1, Math.min(100, Number(encodedOrdinal) || 1));
+    const order = ["closest", "farthest", "oldest", "newest"].includes(encodedOrder) ? encodedOrder : null;
+    let label = definition?.label ?? baseValue;
+    let side = "neutral";
+    if (definition?.kind === "entity") {
+        const ownerLabel = definition.role === "self" ? "ME" : definition.role === "teammate" ? `T${definition.botIndex ?? ""}` : definition.role === "opponent" ? `O${definition.botIndex ?? 1}` : "";
+        const ownerSide = definition.role === "opponent" ? "enemy" : definition.role === "self" || definition.role === "teammate" ? "friendly" : "neutral";
+        const entityOrder = order ?? "closest";
+        return <span className="code-config-entity-signature" title={formatSelectableLabel(value, selectableTypes)}><AbilityToken abilityId={definition.abilityId} label={definition.label.replace(/\s+by\s+.+$/, "")} />{ownerLabel && <span className={`code-config-token code-config-token--${ownerSide}`}>{ownerLabel}</span>}<span className="code-config-token code-config-token--order">{entityOrder[0].toUpperCase()}{ordinal}</span></span>;
+    } else if (definition?.role === "self" || baseValue === BOT_CODE_SELECTABLES.MY) {
+        label = "ME";
+        side = "friendly";
+    } else if (definition?.role === "teammate") {
+        label = `T${definition.botIndex ?? ""}`;
+        side = "friendly";
+    } else if (definition?.role === "opponent" || baseValue === BOT_CODE_SELECTABLES.OPPONENT) {
+        label = `O${definition?.botIndex ?? 1}`;
+        side = "enemy";
+    }
+    return <span className={`code-config-token code-config-token--${side}`} title={formatSelectableLabel(value, selectableTypes)}>{order && <span className="code-config-token-order">{order[0].toUpperCase()}{ordinal}</span>}{label}</span>;
+}
+
+function CoordinateToken({ x, y }) {
+    return <span className="code-config-token code-config-token--coordinate" title="Absolute arena coordinates"><span aria-hidden="true">⌖</span>{Number(x)}, {Number(y)}</span>;
+}
+
+function AngleToken({ value, absolute = false }) {
+    return <span className={`code-config-token code-config-token--angle ${absolute ? "is-absolute" : ""}`} title={absolute ? "Absolute arena angle" : "Angle relative to target"}><span aria-hidden="true">↟</span>{Number(value) || 0}°</span>;
+}
+
+function AbilityToken({ abilityId, label = "Ability" }) {
+    const iconPath = getAbilityCatalogueIcon(abilityId);
+    return iconPath ? <span className="code-config-ability" title={label}><img src={iconPath} alt="" aria-hidden="true" /></span> : null;
+}
+
+function VariableConfigurationSignature({ definition, condition, operand, selectableTypes = SELECTABLE_TYPES }) {
+    if (!definition) return null;
+    const parts = [];
+    if (definition.supportsAbility && condition.ability != null) {
+        const ability = definition.abilityOptions?.find((candidate) => String(candidate.id) === String(condition.ability));
+        parts.push(<AbilityToken key="ability" abilityId={condition.ability} label={ability?.label ?? "Selected ability"} />);
+    }
+    if (definition.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR) {
+        const defaults = defaultSelectablePairForVariable(definition, selectableTypes);
+        parts.push(<SelectableToken key="first" value={condition.selectable1 ?? defaults[0]} selectableTypes={selectableTypes} />);
+        parts.push(<span key="arrow" className="code-config-relation" aria-hidden="true">→</span>);
+        const mode = conditionTargetMode(condition, definition);
+        if (mode === TARGET_MODES.COORDINATES) parts.push(<CoordinateToken key="coordinates" x={condition.targetX ?? ARENA_WIDTH_UNITS / 2} y={condition.targetY ?? ARENA_HEIGHT_UNITS / 2} />);
+        else if (mode === TARGET_MODES.ANGLE) parts.push(<AngleToken key="angle" value={condition.targetAngle ?? 0} absolute />);
+        else parts.push(<SelectableToken key="second" value={condition.selectable2 ?? condition.selectable ?? defaults[1]} selectableTypes={selectableTypes} />);
+    } else if (definition.supportsSelectable) {
+        const field = operand === 1 ? "leftSelectable" : "rightSelectable";
+        parts.push(<SelectableToken key="entity" value={condition[field] ?? defaultSelectableForVariable(definition, selectableTypes)} selectableTypes={selectableTypes} />);
+    }
+    return parts.length ? <span className="code-variable-signature">{parts}</span> : null;
+}
+
+function ConditionalOperandBox({ operand, condition, stateVariables, selectableTypes = SELECTABLE_TYPES, disabled, selected, onPickVariable, onInspectVariable, onOpenVariablePicker, onNumberChange, onBooleanChange, numberDefinition = null, tutorialFocus = false }) {
     const variableDefinition = operand === 1
         ? stateVariables.find((variable) => variable.id === condition.left)
             ?? STATE_VARIABLES.find((variable) => variable.id === condition.left)
@@ -397,25 +472,30 @@ function ConditionalOperandBox({ operand, condition, stateVariables, disabled, s
     const numberStep = numberDefinition?.step ?? NUMBER_STEP;
     const integerNumber = numberStep >= 1;
     return <div className={`code-condition-input ${variableLabel ? "is-variable" : "is-raw"} ${tutorialFocus ? "tutorial-control-focus" : ""}`} data-node-drag-ignore="true" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
-        {variableLabel ? <button type="button" className={`code-condition-input-value ${selected ? "is-selected" : ""}`} onClick={onOpenVariablePicker ?? onInspectVariable} aria-label={`Configure ${variableLabel}`}>{variableLabel}{operand === 2 && variableDefinition.suffix && <span className="code-condition-input-unit">{variableDefinition.suffix}</span>}</button>
+        {variableLabel ? <button type="button" className={`code-condition-input-value ${selected ? "is-selected" : ""}`} onClick={onOpenVariablePicker ?? onInspectVariable} aria-label={`Configure ${variableLabel}`}><span className="code-condition-input-copy"><span className="code-condition-input-label">{variableLabel}{operand === 2 && variableDefinition.suffix && <span className="code-condition-input-unit">{variableDefinition.suffix}</span>}</span><VariableConfigurationSignature definition={variableDefinition} condition={condition} operand={operand} selectableTypes={selectableTypes} /></span></button>
             : rawBoolean ? <select data-node-drag-ignore="true" aria-label={`Input ${operand} boolean value`} disabled={disabled} value={String(condition.right.value)} onChange={(event) => onBooleanChange(event.target.value === "true")} className="code-operator-socket code-condition-boolean-input"><option value="true">TRUE</option><option value="false">FALSE</option></select>
             : rawNumber ? <><DeferredNumberInput digitsOnly={integerNumber && !signedNumber} integerOnly={integerNumber} data-node-drag-ignore="true" aria-label={`Input ${operand} number`} disabled={disabled} min={numberDefinition?.min ?? CUSTOM_NUMBER_MIN} max={numberDefinition?.max ?? CUSTOM_NUMBER_MAX} step={numberStep} value={condition.right.value} onCommit={onNumberChange} />{numberSuffix && <span className="code-condition-input-unit">{numberSuffix}</span>}</>
             : <span className="code-condition-input-placeholder">INPUT {operand}</span>}
-        {variableLabel && operand === 2
-            ? <button type="button" className="code-condition-input-toggle" disabled={disabled} onClick={onUseRawNumber} aria-label={`Use a raw number for input ${operand}`} title="Use a raw number"><span aria-hidden="true">−</span></button>
-            : <button type="button" className="code-condition-input-toggle" disabled={disabled} onClick={onPickVariable} aria-label={`Use a variable for input ${operand}`} title="Choose a variable"><span aria-hidden="true">+</span></button>}
+        <button type="button" className="code-condition-input-toggle" disabled={disabled} onClick={onPickVariable} aria-label={`Edit input ${operand}`} title="Edit input"><span aria-hidden="true">✎</span></button>
     </div>;
 }
 
-function GraphConditionNode({ node, branch, disabled, canRemove, canAddAction, canAddCondition, maxConditions = MAX_CONDITIONS_PER_BRANCH, stateVariables, defaultVariable, selectableTypes, nodeOffsets, beginNodeDrag, selected, standalone = false, puzzleMode = false, puzzleLabel = "Conditional", onSelect, onPriorityChange, onPickVariable, onOpenVariablePicker, onInspectVariable, onUseRawNumber, onRemoveCondition, inspectedVariable, onChange, onRemove, onAddParentConditional, onAddChildConditional, onAddAction, tutorialFocus }) {
+function GraphConditionNode({ node, branch, disabled, canRemove, canAddAction, canAddCondition, maxConditions = MAX_CONDITIONS_PER_BRANCH, stateVariables, defaultVariable, selectableTypes, nodeOffsets, beginNodeDrag, selected, standalone = false, puzzleMode = false, puzzleLabel = "Conditional", detached = false, showWireTool = true, attaching = false, onSnip, onBeginAttach, onSelect, onPriorityChange, onPickVariable, onOpenVariablePicker, onInspectVariable, onRemoveCondition, inspectedVariable, onChange, onRemove, onAddChildConditional, onAddAction, tutorialFocus }) {
     const conditions = Array.isArray(branch.conditions) ? branch.conditions : [];
     const updateCondition = (rowIndex, updater) => onChange({ conditions: conditions.map((condition, index) => index === rowIndex ? updater(condition) : condition) });
+    const toggleConditionJoin = (rowIndex) => updateCondition(rowIndex, (current) => {
+        if (current.join !== "or") return { ...current, join: "or" };
+        const next = { ...current };
+        delete next.join;
+        return next;
+    });
     const addJoinedCondition = (join) => onChange({ conditions: [...conditions, { ...createExpressionCondition(defaultVariable, selectableTypes), ...(join === "or" ? { join: "or" } : {}) }] });
-    return <section onClick={onSelect} onPointerDown={(event) => { if (!standalone) beginNodeDrag(event, node.id); }} className={`code-graph-node code-graph-node--conditional ${standalone ? "relative w-full" : "absolute"} rounded-sm border bg-zinc-950 shadow-2xl ${selected ? "is-inspected" : ""}`} style={standalone ? { width: "100%" } : { ...graphNodeStyle(node, nodeOffsets), width: node.width }}>
+    return <section onClick={onSelect} onPointerDown={(event) => { if (!standalone) beginNodeDrag(event, node.id); }} className={`code-graph-node code-graph-node--conditional ${detached ? "is-detached" : ""} ${standalone ? "relative w-full" : "absolute"} rounded-sm border bg-zinc-950 shadow-2xl ${selected ? "is-inspected" : ""}`} style={standalone ? { width: "100%" } : { ...graphNodeStyle(node, nodeOffsets), width: node.width }}>
+        {!standalone && showWireTool && <button type="button" data-node-drag-ignore="true" className={`code-condition-wire-tool ${attaching ? "is-attaching" : ""}`} disabled={disabled} onClick={(event) => { event.stopPropagation(); if (detached) onBeginAttach?.(); else onSnip?.(); }} aria-label={detached ? "Attach conditional" : "Snip conditional"} title={detached ? "Attach conditional" : "Snip conditional"}><span aria-hidden="true">{detached ? "⤴" : "✂"}</span></button>}
         <header className="code-compact-header code-node-header--conditional">
-            {standalone || puzzleMode ? <span className="min-w-0 flex-1 truncate text-sky-100">{puzzleLabel}</span> : <><span className="code-node-badge">{node.path.length}</span><span className="min-w-0 flex flex-1 items-center gap-1 truncate text-sky-100">Conditional <RootNodePriorityInput priority={priorityForNode(branch, (node.path[node.path.length - 1] ?? 0) + 1)} max={MAX_LOGIC_BLOCKS} disabled={disabled} onCommit={onPriorityChange} ariaLabel={`Priority for Conditional ${priorityForNode(branch, (node.path[node.path.length - 1] ?? 0) + 1)}`} className="code-conditional-priority" /></span><button type="button" data-node-drag-ignore="true" className="code-conditional-add-button" disabled={disabled || !canAddCondition} onClick={(event) => { event.stopPropagation(); onAddParentConditional(); }}>+IF</button></>}
+            {standalone || puzzleMode ? <span className="min-w-0 flex-1 truncate text-sky-100">{puzzleLabel}</span> : <><span className="code-node-badge">{detached ? "?" : node.path.length}</span><span className="min-w-0 flex flex-1 items-center gap-1 truncate text-sky-100">{detached ? "Detached Conditional" : "Conditional"} {detached ? <span className="code-conditional-priority code-conditional-priority--detached" aria-label="Detached conditional has no priority">?</span> : <RootNodePriorityInput priority={priorityForNode(branch, (node.path[node.path.length - 1] ?? 0) + 1)} max={MAX_LOGIC_BLOCKS} disabled={disabled} onCommit={onPriorityChange} ariaLabel={`Priority for Conditional ${priorityForNode(branch, (node.path[node.path.length - 1] ?? 0) + 1)}`} className="code-conditional-priority" />}</span></>}
         </header>
-        <div className="space-y-2 p-3">
+        <><div className="space-y-2 p-3">
             {conditions.map((condition, index) => {
                 const leftDefinition = stateVariables.find((variable) => variable.id === condition.left)
                     ?? STATE_VARIABLES.find((variable) => variable.id === condition.left)
@@ -424,8 +504,10 @@ function GraphConditionNode({ node, branch, disabled, canRemove, canAddAction, c
                 const comparator = comparators.some((candidate) => candidate.id === condition.comparator) ? condition.comparator : comparators[0]?.id ?? "eq";
                 return <div key={`${index}-${condition.type}`} className="code-compact-condition-wrap">
                     <div className="code-compact-condition">
-                    <span data-node-drag-ignore="true" className="code-condition-prefix font-mono text-[9px] text-amber-200">{index ? (condition.join === "or" ? "OR" : "AND") : "IF"}</span>
-                    {condition.type === "always" ? <button type="button" data-node-drag-ignore="true" className="code-condition-socket col-span-3" disabled={disabled} onClick={(event) => { event.stopPropagation(); onPickVariable(index, 1); }} aria-label={`Choose a variable for condition ${index + 1}`}>ALWAYS</button> : <><ConditionalOperandBox operand={1} condition={condition} stateVariables={stateVariables} disabled={disabled} selected={inspectedVariable?.rowIndex === index && inspectedVariable?.operand === 1} onPickVariable={() => onPickVariable(index, 1)} onOpenVariablePicker={onOpenVariablePicker ? () => onOpenVariablePicker(index, 1) : null} onInspectVariable={() => onInspectVariable(index, 1)} tutorialFocus={tutorialFocus === "add-condition" && index === 0} /><select data-node-drag-ignore="true" aria-label="Comparator" disabled={disabled} value={comparator} onClick={(event) => event.stopPropagation()} onChange={(event) => updateCondition(index, (current) => ({ ...current, comparator: event.target.value }))} className="code-operator-socket">{comparators.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}</select><ConditionalOperandBox operand={2} condition={condition} stateVariables={stateVariables} numberDefinition={leftDefinition} disabled={disabled} selected={inspectedVariable?.rowIndex === index && inspectedVariable?.operand === 2} onPickVariable={() => onPickVariable(index, 2)} onOpenVariablePicker={onOpenVariablePicker ? () => onOpenVariablePicker(index, 2) : null} onInspectVariable={() => onInspectVariable(index, 2)} onUseRawNumber={() => onUseRawNumber(index)} onNumberChange={(value) => updateCondition(index, (current) => ({ ...current, right: { type: "number", value } }))} onBooleanChange={(value) => updateCondition(index, (current) => ({ ...current, right: { type: "boolean", value } }))} /></>}
+                    {index === 0
+                        ? <span data-node-drag-ignore="true" className="code-condition-prefix font-mono text-[9px] text-amber-200">IF</span>
+                        : <button type="button" data-node-drag-ignore="true" disabled={disabled} className="code-condition-prefix code-condition-join-toggle font-mono text-[9px] text-amber-200" aria-label={`Change ${condition.join === "or" ? "OR" : "AND"} to ${condition.join === "or" ? "AND" : "OR"}`} title="Toggle AND / OR" onClick={(event) => { event.stopPropagation(); toggleConditionJoin(index); }}>{condition.join === "or" ? "OR" : "AND"}</button>}
+                    {condition.type === "always" ? <div className="code-condition-input is-variable col-span-3" data-node-drag-ignore="true" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}><button type="button" className="code-condition-input-value" disabled={disabled} onClick={() => onPickVariable(index, 1)} aria-label={`Configure ALWAYS for condition ${index + 1}`}><span className="code-condition-input-copy"><span className="code-condition-input-label">ALWAYS</span></span></button><button type="button" className="code-condition-input-toggle" disabled={disabled} onClick={() => onPickVariable(index, 1)} aria-label={`Edit input 1 for condition ${index + 1}`} title="Edit input"><span aria-hidden="true">✎</span></button></div> : <><ConditionalOperandBox operand={1} condition={condition} stateVariables={stateVariables} selectableTypes={selectableTypes} disabled={disabled} selected={inspectedVariable?.rowIndex === index && inspectedVariable?.operand === 1} onPickVariable={() => onPickVariable(index, 1)} onOpenVariablePicker={onOpenVariablePicker ? () => onOpenVariablePicker(index, 1) : null} onInspectVariable={() => onInspectVariable(index, 1)} tutorialFocus={tutorialFocus === "add-condition" && index === 0} /><select data-node-drag-ignore="true" aria-label="Comparator" disabled={disabled} value={comparator} onClick={(event) => event.stopPropagation()} onChange={(event) => updateCondition(index, (current) => ({ ...current, comparator: event.target.value }))} className="code-operator-socket">{comparators.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}</select><ConditionalOperandBox operand={2} condition={condition} stateVariables={stateVariables} selectableTypes={selectableTypes} numberDefinition={leftDefinition} disabled={disabled} selected={inspectedVariable?.rowIndex === index && inspectedVariable?.operand === 2} onPickVariable={() => onPickVariable(index, 2)} onOpenVariablePicker={onOpenVariablePicker ? () => onOpenVariablePicker(index, 2) : null} onInspectVariable={() => onInspectVariable(index, 2)} onNumberChange={(value) => updateCondition(index, (current) => ({ ...current, right: { type: "number", value } }))} onBooleanChange={(value) => updateCondition(index, (current) => ({ ...current, right: { type: "boolean", value } }))} /></>}
                     <button type="button" data-node-drag-ignore="true" className="code-condition-row-remove" disabled={disabled} onClick={(event) => { event.stopPropagation(); onRemoveCondition(index); }} aria-label={`Remove condition ${index + 1}`} title="Remove condition">×</button>
                     </div>
                 </div>;
@@ -438,7 +520,7 @@ function GraphConditionNode({ node, branch, disabled, canRemove, canAddAction, c
                 <button type="button" data-node-drag-ignore="true" className={`code-action-add-button ${tutorialFocus === "add-action" && !graphBranchActions(branch).length ? "tutorial-control-focus" : ""}`} disabled={disabled || !canAddAction} onClick={(event) => { event.stopPropagation(); onAddAction(); }}>+ ACTION</button>
                 <button type="button" data-node-drag-ignore="true" disabled={!canRemove} onClick={(event) => { event.stopPropagation(); onRemove(); }} className="code-condition-node-remove" aria-label="Remove conditional node" title="Remove conditional node">×</button></>}
             {!standalone && puzzleMode && <button type="button" data-node-drag-ignore="true" disabled={!canRemove} onClick={(event) => { event.stopPropagation(); onRemove(); }} className="code-condition-node-remove" aria-label="Remove puzzle condition" title="Remove puzzle condition">×</button>}
-        </footer>
+        </footer></>
     </section>;
 }
 
@@ -519,21 +601,14 @@ function PuzzleConditionNode({ title, conditions = [], stateVariables = VISIBLE_
             onPriorityChange={() => {}}
             onPickVariable={openVariablePicker}
             onInspectVariable={(rowIndex, operand) => { setOperandPicker(null); setInspectedVariable({ kind: "condition-variable", id: node.id, rowIndex, operand }); }}
-            onUseRawNumber={(rowIndex) => updateConditions(conditions.map((condition, index) => {
-                if (index !== rowIndex) return condition;
-                const next = { ...condition, right: { type: "number", value: 0 } };
-                delete next.rightSelectable;
-                return next;
-            }))}
             onRemoveCondition={removeCondition}
             inspectedVariable={inspectedVariable}
             onChange={({ conditions: nextConditions }) => updateConditions(nextConditions)}
             onRemove={() => {}}
-            onAddParentConditional={() => {}}
             onAddChildConditional={() => {}}
             onAddAction={() => {}}
         />
-        {operandPicker && <VariableOperandPicker operand={operandPicker.operand} stateVariables={stateVariables} numericOnly={operandPicker.operand === 2} onChoose={chooseOperandVariable} onClose={() => setOperandPicker(null)} />}
+        {operandPicker && <VariableOperandPicker operand={operandPicker.operand} stateVariables={stateVariables} numericOnly={operandPicker.operand === 2} onChoose={chooseOperandVariable} onUseRawNumber={operandPicker.operand === 2 ? () => { updateConditions(conditions.map((condition, index) => { if (index !== operandPicker.rowIndex) return condition; const next = { ...condition, right: { type: "number", value: 0 } }; delete next.rightSelectable; return next; })); setOperandPicker(null); } : null} onClose={() => setOperandPicker(null)} />}
         {inspectedVariable && <LogicNodeInspector
             inspectedNode={inspectedVariable}
             graph={graph}
@@ -553,15 +628,46 @@ function PuzzleConditionNode({ title, conditions = [], stateVariables = VISIBLE_
     </div>;
 }
 
-function GraphActionNode({ node, entry, disabled, selectedLoadout, selectableTypes, nodeOffsets, beginNodeDrag, selectedNode, onInspect, onRemove, canRemove = true, puzzleMode = false }) {
+function ActionConfigurationSignature({ entry, definition, selectableTypes }) {
+    const mode = actionTargetMode(entry, definition);
+    if (mode === "absolute" && definition?.movementConfig) return <span className="code-action-target"><AngleToken value={absoluteMovementAngle(entry.movementDirection)} absolute /><span className="code-config-caption">ABSOLUTE</span></span>;
+    if (mode === "angle") return <span className="code-action-target"><AngleToken value={entry.targetAngle ?? 0} absolute /><span className="code-config-caption">ABSOLUTE</span></span>;
+    if (!mode) return null;
+    const target = mode === "coordinates"
+        ? <CoordinateToken x={entry.targetX ?? ARENA_WIDTH_UNITS / 2} y={entry.targetY ?? ARENA_HEIGHT_UNITS / 2} />
+        : <SelectableToken value={entry.selectable ?? BOT_CODE_SELECTABLES.OPPONENT} selectableTypes={selectableTypes} />;
+    return <span className="code-action-target">{definition?.movementConfig && <AngleToken value={relativeMovementAngle(entry.movementDirection)} />}<span className="code-config-caption">{definition?.movementConfig ? "FROM" : "TARGET"}</span>{target}</span>;
+}
+
+function VariableActionExpression({ entry, customVariables, stateVariables, selectableTypes }) {
+    const target = customVariables.find((variable) => variable.id === entry.variableId);
+    if (!target) return null;
+    const terms = target.valueType === "boolean"
+        ? [{ operator: CUSTOM_VARIABLE_OPERATIONS.SET, operand: entry.operand ?? { type: "boolean", value: entry.value ?? false } }]
+        : variableActionTerms(entry);
+    return <span className="code-variable-action-expression" aria-label={`Expression for ${target.name}`}>
+        {terms.map((term, index) => {
+            const operand = term.operand ?? { type: target.valueType, value: target.valueType === "boolean" ? false : 0 };
+            const definition = operand.type === "variable" ? stateVariables.find((variable) => variable.id === operand.value) : null;
+            const operator = term.operator === CUSTOM_VARIABLE_OPERATIONS.SUBTRACT ? "−" : term.operator === CUSTOM_VARIABLE_OPERATIONS.ADD ? "+" : term.operator === CUSTOM_VARIABLE_OPERATIONS.MODULO ? "%" : "=";
+            return <span className="code-variable-expression-term" key={`expression-${index}`}><span className="code-variable-expression-operator">{operator}</span>{definition ? <span className="code-variable-expression-variable"><span>{definition.label}</span><VariableConfigurationSignature definition={definition} condition={{ ...operand, rightSelectable: operand.selectable }} operand={2} selectableTypes={selectableTypes} /></span> : <span className="code-config-token code-config-token--coordinate">{String(operand.value ?? 0).toUpperCase()}</span>}</span>;
+        })}
+    </span>;
+}
+
+function GraphActionNode({ node, entry, disabled, selectedLoadout, selectableTypes, stateVariables = [], customVariables = [], nodeOffsets, beginNodeDrag, selectedNode, onInspect, onEditAction, onRemove, canRemove = true, puzzleMode = false }) {
     const actionTypes = actionTypesForLoadout(ACTION_TYPES, selectedLoadout);
     const selected = actionTypes.find((action) => action.id === entry.action) ?? actionTypes[0];
     const describedTarget = formatActionTargetLabel(entry, selected, selectableTypes);
+    const abilityId = ACTION_TO_ABILITY[entry.action];
     return <section onClick={onInspect} onPointerDown={(event) => beginNodeDrag(event, node.id)} className={`code-graph-node code-graph-node--action absolute rounded-sm border shadow-2xl ${selectedNode ? "is-inspected" : ""}`} style={{ ...graphNodeStyle(node, nodeOffsets), width: node.width }}>
         <header className="code-action-bar code-node-header--action">
-            <span className="code-action-label">{formatActionNodeLabel(selected?.label ?? "Action")}</span>
-            {describedTarget && <span className="code-action-target">Target: {describedTarget}</span>}
+            <span className="code-action-heading">{abilityId != null && <AbilityToken abilityId={abilityId} label={selected?.label} />}<span className="code-action-label">{formatActionNodeLabel(selected?.label ?? "Action")}</span></span>
+            <span className="sr-only">{describedTarget}</span>
+            <ActionConfigurationSignature entry={entry} definition={selected} selectableTypes={selectableTypes} />
+            {selected?.variableAction && <VariableActionExpression entry={entry} customVariables={customVariables} stateVariables={stateVariables} selectableTypes={selectableTypes} />}
         </header>
+        {!puzzleMode && <button type="button" data-node-drag-ignore="true" disabled={disabled} onClick={onEditAction} className="code-action-edit-button" aria-label="Change action" title="Change action">✎</button>}
         {(!puzzleMode || canRemove) && <button type="button" data-node-drag-ignore="true" disabled={disabled || (puzzleMode && !canRemove)} onClick={(event) => { event.stopPropagation(); onRemove(); }} className="code-compact-remove code-condition-node-remove" aria-label="Remove action">×</button>}
     </section>;
 }
@@ -664,7 +770,7 @@ function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selec
         const needsTarget = targetMode !== null && targetMode !== "absolute";
         return panel("ACTION", definition?.label ?? "Action", <>
             <p className="code-inspector-note">Canvas nodes show the sentence; detailed movement and ability options live here.</p>
-            {definition?.variableAction && <VariableActionControls entry={entry} variables={customVariables} stateVariables={stateVariables} disabled={disabled} canAddAction={canAddAction} allowRemoveAction={!puzzleMode || canRemove} onChange={update} onPickOperand={(termIndex) => onPickActionOperand?.(node.rootIndex, node.path, node.actionIndex, termIndex)} onInspectOperand={(termIndex) => onInspectActionOperand?.(node.rootIndex, node.path, node.actionIndex, termIndex)} onRemoveAction={() => { remove(); onClose(); }} />}
+            {definition?.variableAction && <VariableActionControls entry={entry} variables={customVariables} stateVariables={stateVariables} selectableTypes={selectableTypes} disabled={disabled} canAddAction={canAddAction} allowRemoveAction={!puzzleMode || canRemove} onChange={update} onPickOperand={(termIndex) => onPickActionOperand?.(node.rootIndex, node.path, node.actionIndex, termIndex)} onInspectOperand={(termIndex) => onInspectActionOperand?.(node.rootIndex, node.path, node.actionIndex, termIndex)} onRemoveAction={() => { remove(); onClose(); }} />}
             {definition?.movementConfig && <MovementConfigurationControls entry={entry} disabled={disabled} onChange={update} />}
             {definition?.orientationConfig && <PhaseOrientationControls entry={entry} disabled={disabled} onChange={update} />}
             {needsTarget && <ActionTargetControls entry={entry} definition={definition} selectableTypes={selectableTypes} disabled={disabled} onChange={update} />}
@@ -717,8 +823,7 @@ function ActionTargetControls({ entry, definition, selectableTypes, disabled, on
     if (mode === "angle") {
         return <div>
             {modeControl}
-            <label className="code-inspector-field"><span>ANGLE</span><DeferredNumberInput disabled={disabled} min={-360} max={360} value={entry.targetAngle ?? 0} fallback={0} aria-label="Absolute rotation angle" onCommit={(targetAngle) => onChange({ ...entry, targetAngle })} /><span className="code-inspector-field-unit">deg</span></label>
-            <small>0 deg = north · 90 deg = east · 180 deg = south · 270 deg = west. Negative angles are also valid.</small>
+            <label className="code-inspector-field"><span className="code-movement-label-row">ANGLE <AbsoluteArenaAngleHelpButton /></span><DeferredNumberInput disabled={disabled} min={-360} max={360} value={entry.targetAngle ?? 0} fallback={0} aria-label="Absolute rotation angle" onCommit={(targetAngle) => onChange({ ...entry, targetAngle })} /><span className="code-inspector-field-unit">deg</span></label>
         </div>;
     }
     if (mode === "coordinates") {
@@ -766,8 +871,7 @@ function ConditionTargetControls({ condition, definition, selectableTypes, defau
     if (mode === TARGET_MODES.ANGLE) {
         return <div>
             {modeControl}
-            <label className="code-inspector-field"><span>ABSOLUTE ANGLE</span><DeferredNumberInput disabled={disabled} min={-360} max={360} value={condition.targetAngle ?? 0} fallback={0} aria-label="Target absolute angle" onCommit={(targetAngle) => onChange({ targetAngle })} /><span className="code-inspector-field-unit">deg</span></label>
-            <small>0 deg = north · 90 deg = east · 180 deg = south · 270 deg = west. Negative angles are also valid.</small>
+            <label className="code-inspector-field"><span className="code-movement-label-row">ABSOLUTE ANGLE <AbsoluteArenaAngleHelpButton /></span><DeferredNumberInput disabled={disabled} min={-360} max={360} value={condition.targetAngle ?? 0} fallback={0} aria-label="Target absolute angle" onCommit={(targetAngle) => onChange({ targetAngle })} /><span className="code-inspector-field-unit">deg</span></label>
         </div>;
     }
     if (mode === TARGET_MODES.COORDINATES) {
@@ -812,7 +916,7 @@ function variableActionTerms(entry) {
     }];
 }
 
-function VariableActionControls({ entry, variables, stateVariables, disabled, canAddAction, allowRemoveAction = true, onChange, onPickOperand, onInspectOperand, onRemoveAction }) {
+function VariableActionControls({ entry, variables, stateVariables, selectableTypes = SELECTABLE_TYPES, disabled, canAddAction, allowRemoveAction = true, onChange, onPickOperand, onInspectOperand, onRemoveAction }) {
     const selected = variables.find((variable) => variable.id === entry.variableId) ?? variables[0];
     if (!selected) return <div className="font-mono text-[9px] text-amber-300">CREATE A CUSTOM VARIABLE FIRST</div>;
     const terms = variableActionTerms(entry);
@@ -857,11 +961,7 @@ function VariableActionControls({ entry, variables, stateVariables, disabled, ca
                 const operandDefinition = operand.type === "variable" ? stateVariables.find((variable) => variable.id === operand.value) : null;
                 const operation = term?.operator ?? (termIndex === 0 ? CUSTOM_VARIABLE_OPERATIONS.SET : CUSTOM_VARIABLE_OPERATIONS.ADD);
                 const updateTerm = (updates) => updateTerms(terms.map((current, index) => index === termIndex ? { ...current, ...updates } : current));
-                const changeOperandType = () => {
-                    if (operand.type === "variable") updateTerm({ operand: { type: "number", value: 0 } });
-                    else onPickOperand?.(termIndex);
-                };
-                return <div className="code-variable-action-row" key={`variable-term-${termIndex}`}><select disabled={disabled} aria-label={`Variable action operator ${termIndex + 1}`} value={operation} onChange={(event) => updateTerm({ operator: event.target.value })} className="code-operator-socket code-variable-action-operator">{termIndex === 0 && <option value={CUSTOM_VARIABLE_OPERATIONS.SET}>=</option>}<option value={CUSTOM_VARIABLE_OPERATIONS.ADD}>+</option><option value={CUSTOM_VARIABLE_OPERATIONS.SUBTRACT}>−</option><option value={CUSTOM_VARIABLE_OPERATIONS.MODULO}>%</option></select><div className={`code-condition-input code-variable-action-input ${operandDefinition ? "is-variable" : "is-raw"}`} data-node-drag-ignore="true" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}><>{operandDefinition ? <button type="button" className="code-condition-input-value code-variable-action-input-value" onClick={() => onInspectOperand?.(termIndex)} disabled={disabled}><span className="code-variable-action-input-label">{operandDefinition.label}</span></button> : <DeferredNumberInput disabled={disabled} min={CUSTOM_NUMBER_MIN} max={CUSTOM_NUMBER_MAX} value={operand.value ?? 0} onCommit={(value) => updateTerm({ operand: { type: "number", value } })} />}</><button type="button" className="code-condition-input-toggle" disabled={disabled} onClick={changeOperandType} aria-label={operandDefinition ? "Use a raw number" : "Choose a variable"} title={operandDefinition ? "Use a raw number" : "Choose a variable"}><span aria-hidden="true">{operandDefinition ? "−" : "+"}</span></button></div>{allowRemoveAction && <button type="button" className="code-condition-row-remove" disabled={disabled} onClick={() => removeTerm(termIndex)} aria-label={`Remove variable operand ${termIndex + 1}`}>×</button>}</div>;
+                return <div className="code-variable-action-row" key={`variable-term-${termIndex}`}><select disabled={disabled} aria-label={`Variable action operator ${termIndex + 1}`} value={operation} onChange={(event) => updateTerm({ operator: event.target.value })} className="code-operator-socket code-variable-action-operator">{termIndex === 0 && <option value={CUSTOM_VARIABLE_OPERATIONS.SET}>=</option>}<option value={CUSTOM_VARIABLE_OPERATIONS.ADD}>+</option><option value={CUSTOM_VARIABLE_OPERATIONS.SUBTRACT}>−</option><option value={CUSTOM_VARIABLE_OPERATIONS.MODULO}>%</option></select><div className={`code-condition-input code-variable-action-input ${operandDefinition ? "is-variable" : "is-raw"}`} data-node-drag-ignore="true" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>{operandDefinition ? <button type="button" className="code-condition-input-value code-variable-action-input-value" onClick={() => onInspectOperand?.(termIndex)} disabled={disabled}><span className="code-condition-input-copy"><span className="code-variable-action-input-label">{operandDefinition.label}</span><VariableConfigurationSignature definition={operandDefinition} condition={{ ...operand, rightSelectable: operand.selectable }} operand={2} selectableTypes={selectableTypes} /></span></button> : <DeferredNumberInput disabled={disabled} min={CUSTOM_NUMBER_MIN} max={CUSTOM_NUMBER_MAX} value={operand.value ?? 0} onCommit={(value) => updateTerm({ operand: { type: "number", value } })} />}<button type="button" className="code-condition-input-toggle" disabled={disabled} onClick={() => onPickOperand?.(termIndex)} aria-label={`Edit variable operand ${termIndex + 1}`} title="Edit input"><span aria-hidden="true">✎</span></button></div>{allowRemoveAction && <button type="button" className="code-condition-row-remove" disabled={disabled} onClick={() => removeTerm(termIndex)} aria-label={`Remove variable operand ${termIndex + 1}`}>×</button>}</div>;
             })}
             <button type="button" disabled={disabled || !canAddAction || terms.length >= MAX_VARIABLE_ACTION_TERMS} onClick={addTerm} className="text-emerald-300">+ OPERAND</button>
         </div>}
@@ -877,41 +977,82 @@ function BooleanVariableActionRow({ entry, stateVariables, disabled, allowRemove
         delete next.terms;
         onChange(next);
     };
-    return <div className="code-variable-action-row"><select disabled={disabled} aria-label="Variable action operator" value={CUSTOM_VARIABLE_OPERATIONS.SET} className="code-operator-socket code-variable-action-operator"><option value={CUSTOM_VARIABLE_OPERATIONS.SET}>=</option></select><div className={`code-condition-input code-variable-action-input ${operandDefinition ? "is-variable" : "is-raw"}`} data-node-drag-ignore="true" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>{operandDefinition ? <button type="button" className="code-condition-input-value code-variable-action-input-value" onClick={onInspectOperand} disabled={disabled}><span className="code-variable-action-input-label">{operandDefinition.label}</span></button> : <select data-node-drag-ignore="true" aria-label="Boolean value" disabled={disabled} value={String(operand.value ?? false)} onChange={(event) => updateOperand({ type: "boolean", value: event.target.value === "true" })} className="code-operator-socket code-condition-boolean-input"><option value="false">FALSE</option><option value="true">TRUE</option></select>}<button type="button" className="code-condition-input-toggle" disabled={disabled} onClick={operandDefinition ? () => updateOperand({ type: "boolean", value: false }) : onPickOperand} aria-label={operandDefinition ? "Use a raw boolean" : "Choose a boolean variable"} title={operandDefinition ? "Use a raw boolean" : "Choose a variable"}><span aria-hidden="true">{operandDefinition ? "−" : "+"}</span></button></div>{allowRemoveAction && <button type="button" className="code-condition-row-remove" disabled={disabled} onClick={onRemoveAction} aria-label="Remove variable action">×</button>}</div>;
+    return <div className="code-variable-action-row"><select disabled={disabled} aria-label="Variable action operator" value={CUSTOM_VARIABLE_OPERATIONS.SET} className="code-operator-socket code-variable-action-operator"><option value={CUSTOM_VARIABLE_OPERATIONS.SET}>=</option></select><div className={`code-condition-input code-variable-action-input ${operandDefinition ? "is-variable" : "is-raw"}`} data-node-drag-ignore="true" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>{operandDefinition ? <button type="button" className="code-condition-input-value code-variable-action-input-value" onClick={onInspectOperand} disabled={disabled}><span className="code-condition-input-copy"><span className="code-variable-action-input-label">{operandDefinition.label}</span><VariableConfigurationSignature definition={operandDefinition} condition={{ ...operand, rightSelectable: operand.selectable }} operand={2} /></span></button> : <select data-node-drag-ignore="true" aria-label="Boolean value" disabled={disabled} value={String(operand.value ?? false)} onChange={(event) => updateOperand({ type: "boolean", value: event.target.value === "true" })} className="code-operator-socket code-condition-boolean-input"><option value="false">FALSE</option><option value="true">TRUE</option></select>}<button type="button" className="code-condition-input-toggle" disabled={disabled} onClick={onPickOperand} aria-label="Edit boolean operand" title="Edit input"><span aria-hidden="true">✎</span></button></div>{allowRemoveAction && <button type="button" className="code-condition-row-remove" disabled={disabled} onClick={onRemoveAction} aria-label="Remove variable action">×</button>}</div>;
 }
 
 function MovementConfigurationControls({ entry, disabled, onChange }) {
+    const [showRelativeAngleHelp, setShowRelativeAngleHelp] = useState(false);
     const mode = entry.movementMode ?? "target";
-    const isWalk = entry.action === BOT_CODE_ACTIONS.MOVE_WALK;
-    const absolute = ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest", "stop"];
     const relativeDirection = relativeMovementAngle(entry.movementDirection);
     const absoluteDegreeDirection = absoluteMovementAngle(entry.movementDirection);
-    const absoluteDirection = absolute.includes(entry.movementDirection) ? entry.movementDirection : "north";
     const changeMode = (nextMode) => onChange({
         ...entry,
         movementMode: nextMode,
-        movementDirection: nextMode === "absolute" ? (isWalk ? absoluteDegreeDirection : "north") : relativeDirection,
+        movementDirection: nextMode === "absolute" ? absoluteDegreeDirection : relativeDirection,
     });
     return <div className="space-y-2">
-        <label className="block font-mono text-[9px] text-ink-muted">MOVEMENT MODE
-            <select disabled={disabled} value={mode} onChange={(event) => changeMode(event.target.value)} className="mt-1 h-9 w-full rounded border border-border-lo bg-zinc-900 px-2 font-mono text-[9px] text-white"><option value="target">Relative to target</option><option value="coordinates">Relative to coordinates</option><option value="absolute">Absolute arena direction</option></select>
+        <label className="code-inspector-field">MOVEMENT MODE
+            <select disabled={disabled} value={mode} onChange={(event) => changeMode(event.target.value)}><option value="target">Relative to target</option><option value="coordinates">Relative to coordinates</option><option value="absolute">Absolute arena direction</option></select>
         </label>
-        {mode === "absolute" && isWalk ? <label className="block font-mono text-[9px] text-ink-muted">MOVEMENT DIRECTION
+        {mode === "absolute" ? <label className="code-inspector-field"><span className="code-movement-label-row">MOVEMENT DIRECTION <AbsoluteArenaAngleHelpButton /></span>
             <div className="code-movement-angle-input">
                 <DeferredNumberInput disabled={disabled} min={MOVEMENT_DIRECTION_MIN} max={MOVEMENT_DIRECTION_MAX} step={NUMBER_STEP} value={absoluteDegreeDirection} fallback={0} aria-label="Absolute arena movement direction in degrees" onCommit={(movementDirection) => onChange({ ...entry, movementDirection })} />
                 <span>deg</span>
             </div>
-            <small>0 deg = north · 90 deg = east · 180 deg = south · 270 deg = west. Negative angles are also valid.</small>
-        </label> : mode === "absolute" ? <label className="block font-mono text-[9px] text-ink-muted">MOVEMENT DIRECTION
-            <select disabled={disabled} value={absoluteDirection} onChange={(event) => onChange({ ...entry, movementDirection: event.target.value })} className="mt-1 h-9 w-full rounded border border-border-lo bg-zinc-900 px-2 font-mono text-[9px] text-white">{absolute.map((direction) => <option key={direction} value={direction}>{direction.replace("stop", "hold ground").replaceAll("_", " ").toUpperCase()}</option>)}</select>
-        </label> : <label className="block font-mono text-[9px] text-ink-muted">MOVEMENT DIRECTION
+        </label> : <div className="code-inspector-field"><span className="code-movement-label-row">MOVEMENT DIRECTION <button type="button" className="code-angle-help-button" aria-label="Explain relative movement angles" title="Explain relative movement angles" onClick={() => setShowRelativeAngleHelp(true)}>i</button></span>
             <div className="code-movement-angle-input">
                 <DeferredNumberInput disabled={disabled} min={MOVEMENT_DIRECTION_MIN} max={MOVEMENT_DIRECTION_MAX} step={NUMBER_STEP} value={relativeDirection} fallback={0} aria-label="Movement direction in degrees" onCommit={(movementDirection) => onChange({ ...entry, movementDirection })} />
                 <span>deg</span>
             </div>
-            <small>0 deg = toward · 90 deg = right perpendicular · 180 deg = away · 270 deg = left perpendicular. Negative angles are also valid.</small>
-        </label>}
+        </div>}
+        {showRelativeAngleHelp && <RelativeMovementAngleModal onClose={() => setShowRelativeAngleHelp(false)} />}
     </div>;
+}
+
+function AbsoluteArenaAngleHelpButton() {
+    const [open, setOpen] = useState(false);
+    const dialogRef = useRef(null);
+    useDialogFocus(dialogRef, { onClose: () => setOpen(false), lockScroll: true, enabled: open });
+    return <>
+        <button type="button" className="code-angle-help-button" aria-label="Show arena compass degrees" title="Show arena compass degrees" onClick={(event) => { event.preventDefault(); setOpen(true); }}>i</button>
+        {open && createPortal(<div className="code-angle-help-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
+            <section ref={dialogRef} className="code-angle-help-dialog" role="dialog" aria-modal="true" aria-labelledby="absolute-angle-help-title" tabIndex={-1}>
+                <header><div><span>MOVEMENT GUIDE</span><h2 id="absolute-angle-help-title">Arena compass degrees</h2></div><button type="button" onClick={() => setOpen(false)} className="modal-close-button" aria-label="Close arena compass guide"><span aria-hidden="true">×</span></button></header>
+                <ArenaDegreesCompass className="mt-4" />
+            </section>
+        </div>, document.body)}
+    </>;
+}
+
+function RelativeMovementAngleModal({ onClose }) {
+    const dialogRef = useRef(null);
+    useDialogFocus(dialogRef, { onClose, lockScroll: true });
+    const examples = [
+        { angle: "0°", caption: "Toward the target", className: "is-zero" },
+        { angle: "90°", caption: "Right", className: "is-ninety" },
+        { angle: "180°", caption: "Away from the target", className: "is-one-eighty" },
+        { angle: "270°", caption: "Left", className: "is-two-seventy" },
+    ];
+    return createPortal(<div className="code-angle-help-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+        <section ref={dialogRef} className="code-angle-help-dialog" role="dialog" aria-modal="true" aria-labelledby="relative-angle-help-title" tabIndex={-1}>
+            <header><div><span>MOVEMENT GUIDE</span><h2 id="relative-angle-help-title">Relative movement angles</h2></div><button type="button" onClick={onClose} className="modal-close-button" aria-label="Close relative movement angle guide"><span aria-hidden="true">×</span></button></header>
+            <p>Angles are measured from the moving bot’s line to its target. It is completely relative based on that line.</p>
+            <div className="code-angle-help-grid">{examples.map((example) => <article key={example.angle}><RelativeAngleDiagram className={example.className} /><strong>{example.angle}</strong><span>{example.caption}</span></article>)}</div>
+            <div className="code-angle-help-relative-example"><RelativeAngleDiagram className="is-zero is-vertical" /><div><strong>Same angle, different positions</strong><p>Both diagrams show 0°. Whether the target is beside or above the bot, 0° always points directly toward it.</p></div></div>
+            <small>Negative angles also work: −90° is equivalent to 270°.</small>
+        </section>
+    </div>, document.body);
+}
+
+function RelativeAngleDiagram({ className = "" }) {
+    return <svg className={`code-angle-diagram ${className}`} viewBox="0 0 180 100" aria-hidden="true">
+        <defs><marker id={`relative-angle-arrow-${className.replaceAll(" ", "-")}`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" /></marker></defs>
+        <line className="code-angle-target-line" x1="42" y1="50" x2="138" y2="50" />
+        <circle className="code-angle-bot" cx="42" cy="50" r="13" />
+        <circle className="code-angle-target" cx="138" cy="50" r="13" />
+        <line className="code-angle-move-arrow" x1="42" y1="50" x2="78" y2="50" markerEnd={`url(#relative-angle-arrow-${className.replaceAll(" ", "-")})`} />
+        <text x="42" y="54">BOT</text><text x="138" y="54">TGT</text>
+    </svg>;
 }
 
 function PhaseOrientationControls({ entry, disabled, onChange }) {

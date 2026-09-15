@@ -84,10 +84,10 @@ import {
 } from "./persistence/arenaStrategyStorage.js";
 import {
     TUTORIAL_COMPLETION_PREFIX,
-    TUTORIAL_SOLUTION_PREFIX,
-    loadTutorialBooleanState,
+    loadTutorialProgress,
     loadTutorialStrategyConfiguration,
     saveTutorialBooleanState,
+    saveTutorialProgress,
     tutorialChallengeForScenario,
     tutorialStrategyConfigurationKey,
 } from "./persistence/tutorialStorage.js";
@@ -169,7 +169,9 @@ export default function Arena({
     const isPuzzleMode = Boolean(puzzleMode);
     const usesPuzzleSetup = isPuzzleBuilder || isPuzzleMode;
     const [storedPracticeRoom] = useState(() => isPracticeRoom ? readPracticeRoomDraft() : null);
-    const initialTutorialStep = Math.max(0, Math.min(TUTORIAL_STEP_COUNT - 1, Number(location.state?.tutorialStep) || 0));
+    const requestedTutorialStep = Number(location.state?.tutorialStep);
+    const restoredTutorialStep = Number.isInteger(requestedTutorialStep) ? requestedTutorialStep : loadTutorialProgress(0);
+    const initialTutorialStep = Math.max(0, Math.min(TUTORIAL_STEP_COUNT - 1, restoredTutorialStep));
     const initialTutorialScenario = getTutorialScenario(initialTutorialStep);
     const catalogueAbilityId = isPracticeRoom
         ? new URLSearchParams(location.search).get("ability")
@@ -184,7 +186,7 @@ export default function Arena({
     const matchId = matchContext?.matchId;
     const matchUserId = matchContext?.player?.userId;
     const isMatchTesting = Boolean(matchId && matchUserId);
-    const abilityInfoEnabled = isPracticeRoom || isPuzzleMode || isPuzzleBuilder || (isMatchTesting && finishStatus === "BUILDING");
+    const abilityInfoEnabled = tutorialMode || isPracticeRoom || isPuzzleMode || isPuzzleBuilder || (isMatchTesting && finishStatus === "BUILDING");
     // Tutorial, practice, puzzle, and live-match arenas share the same
     // responsive shell. The tutorial used to opt out of the fixed-layout
     // breakpoints, which made its toolbar and status panels disappear at
@@ -273,6 +275,15 @@ export default function Arena({
                     : loadStoredStrategyConfiguration(opponentStrategyStorageKey),
         opponentLoadout,
     ));
+    // The fixed-step interval is intentionally started only by the Play control.
+    // Keep its editable inputs live so code changes take effect on the next tick
+    // without restarting the preview (and therefore without resetting its state).
+    const testingConfigurationRef = useRef(testingConfiguration);
+    const opponentTestingConfigurationRef = useRef(opponentTestingConfiguration);
+    useLayoutEffect(() => {
+        testingConfigurationRef.current = testingConfiguration;
+        opponentTestingConfigurationRef.current = opponentTestingConfiguration;
+    }, [opponentTestingConfiguration, testingConfiguration]);
     const [sandboxCodeCopies, setSandboxCodeCopies] = useState({});
     const [practiceBotConfigurations, setPracticeBotConfigurations] = useState({});
 
@@ -301,9 +312,6 @@ export default function Arena({
     const [isPuzzleConfigOpen, setIsPuzzleConfigOpen] = useState(false);
     const [tutorialStep, setTutorialStep] = useState(initialTutorialStep);
     const [tutorialInfoHost, setTutorialInfoHost] = useState(null);
-    const [solutionShown, setSolutionShown] = useState(() => tutorialMode
-        ? loadTutorialBooleanState(TUTORIAL_SOLUTION_PREFIX, initialTutorialStep)
-        : false);
     const [tutorialChallenge, setTutorialChallenge] = useState(() => tutorialChallengeForScenario(initialTutorialStep, initialTutorialScenario));
 
     const autoIntervalRef = useRef(null);
@@ -565,7 +573,6 @@ export default function Arena({
         setOpponentTestingConfiguration(sanitizeStrategyConfigurationForLoadout(scenario.opponentCode, scenario.opponentLoadout));
         setShapes(lessonShapes);
         releaseTutorialArenaFreeze();
-        setSolutionShown(loadTutorialBooleanState(TUTORIAL_SOLUTION_PREFIX, tutorialStep));
         setTutorialChallenge(tutorialChallengeForScenario(tutorialStep, scenario));
     }, [releaseTutorialArenaFreeze, tutorialMode, tutorialStep]);
 
@@ -1092,7 +1099,7 @@ export default function Arena({
             setShapes((prevShapes) => {
                 const stateSnapshot = buildStatePayload(prevShapes, selectedLoadout);
                 if (!isMatchTesting && !tutorialMode) {
-                    const conditionInspections = inspectAbilityStrategyConditions(testingConfiguration, stateSnapshot);
+                    const conditionInspections = inspectAbilityStrategyConditions(testingConfigurationRef.current, stateSnapshot);
                     const conditionState = JSON.stringify(conditionInspections);
                     if (loggedTrainingConditionStateRef.current !== conditionState) {
                         loggedTrainingConditionStateRef.current = conditionState;
@@ -1112,9 +1119,9 @@ export default function Arena({
                 const mainBefore = botBefores.find((bot) => bot.id === "main") ?? null;
                 const botsAfterActions = botBefores.map((bot) => {
                     const configuration = bot.id === "main"
-                        ? testingConfiguration
+                        ? testingConfigurationRef.current
                         : bot.id === "opponent-model"
-                            ? opponentTestingConfiguration
+                            ? opponentTestingConfigurationRef.current
                             : bot.strategyConfiguration;
                     const botLoadout = bot.id === "main"
                         ? selectedLoadout
@@ -1187,6 +1194,8 @@ export default function Arena({
                     const customVariableIncreased = run.goal === "custom_variable"
                         && Number.isFinite(customVariableValue)
                         && customVariableValue >= run.customVariableStartValue + 5;
+                    const opponentDefeated = (run.goal === "defeat_opponent" || run.goal === "defeat_opponent_survive")
+                        && Number(opponentAfter.hp) <= 0;
                     const priorityPassed = run.goal === "priority"
                         && remainingMs === 0
                         && run.priorityOrderCorrect;
@@ -1202,11 +1211,17 @@ export default function Arena({
                                         ? hit
                                         : run.goal === "custom_variable"
                                             ? customVariableIncreased
+                                            : run.goal === "defeat_opponent"
+                                                ? opponentDefeated
+                                            : run.goal === "defeat_opponent_survive"
+                                                ? opponentDefeated
                                             : run.goal === "priority"
                                                 ? priorityPassed
                                                 : false;
                     const failed = run.goal === "survive"
                         ? !survived
+                        : run.goal === "defeat_opponent" ? !survived || remainingMs === 0
+                        : run.goal === "defeat_opponent_survive" ? !survived || remainingMs === 0
                         : run.goal === "priority" ? remainingMs === 0 : tookDamage || remainingMs === 0;
                     const priorityInitialPassed = passed && run.goal === "priority" && run.priorityStage === "initial";
                     const priorityFinalPassed = passed && run.goal === "priority" && run.priorityStage === "final";
@@ -1216,6 +1231,8 @@ export default function Arena({
                                 : run.goal === "combo" ? "combo_passed"
                                     : run.goal === "basic_strike" ? "basic_strike_passed"
                                         : run.goal === "custom_variable" ? "custom_variable_passed"
+                                            : run.goal === "defeat_opponent" ? "defeat_opponent_passed"
+                                            : run.goal === "defeat_opponent_survive" ? "defeat_opponent_survive_passed"
                                             : run.goal === "priority" ? (priorityFinalPassed ? "priority_final_passed" : "priority_initial_passed")
                                                 : "dodge_passed"
                         : failed
@@ -1226,6 +1243,10 @@ export default function Arena({
                                             ? tookDamage ? "basic_strike_took_damage" : "basic_strike_timed_out"
                                             : run.goal === "custom_variable"
                                                 ? "custom_variable_timed_out"
+                                                : run.goal === "defeat_opponent"
+                                                    ? !survived ? "defeat_opponent_defeated" : "defeat_opponent_timed_out"
+                                                : run.goal === "defeat_opponent_survive"
+                                                    ? !survived ? "defeat_opponent_survive_defeated" : "defeat_opponent_survive_timed_out"
                                                 : run.goal === "priority"
                                                     ? "priority_failed"
                                                     : tookDamage ? "dodge_took_damage" : "dodge_timed_out"
@@ -1276,16 +1297,17 @@ export default function Arena({
         setOpponentTestingConfiguration(sanitizeStrategyConfigurationForLoadout(scenario.opponentCode, scenario.opponentLoadout));
         setShapes(buildTutorialArenaShapes(nextStep));
         releaseTutorialArenaFreeze();
-        setSolutionShown(loadTutorialBooleanState(TUTORIAL_SOLUTION_PREFIX, nextStep));
         setTutorialChallenge(tutorialChallengeForScenario(nextStep, scenario));
         setTutorialStep(nextStep);
+        saveTutorialProgress(nextStep);
     };
 
-    const toggleTutorialSolution = () => {
-        const nextShown = !solutionShown;
-        updateTestingConfiguration(nextShown ? tutorialScenario.solution : tutorialScenario.emptyCode);
-        setSolutionShown(nextShown);
-        if (tutorialMode) saveTutorialBooleanState(TUTORIAL_SOLUTION_PREFIX, tutorialStep, nextShown);
+    useEffect(() => {
+        if (tutorialMode) saveTutorialProgress(tutorialStep);
+    }, [tutorialMode, tutorialStep]);
+
+    const applyTutorialSolution = () => {
+        updateTestingConfiguration(tutorialScenario.solution);
     };
 
     const resetArenaStats = () => {
@@ -1548,7 +1570,7 @@ export default function Arena({
                         tutorialMode={tutorialMode}
                         tutorialGuideHost={tutorialInfoHost}
                         tutorialStep={tutorialStep}
-                        onShowTutorialSolution={toggleTutorialSolution}
+                        onShowTutorialSolution={applyTutorialSolution}
                         tutorialGuideProps={tutorialMode ? {
                             step: tutorialStep,
                             onStepChange: handleTutorialStepChange,
@@ -1556,8 +1578,7 @@ export default function Arena({
                             onAbilityCatalogue: () => navigate("/ability-catalogue"),
                             onConditionalCatalogue: () => navigate("/conditionals"),
                             onPuzzles: () => navigate("/puzzles"),
-                            onShowSolution: toggleTutorialSolution,
-                            solutionShown,
+                            onShowSolution: applyTutorialSolution,
                         } : null}
                     />
                 </div>

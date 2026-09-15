@@ -317,6 +317,7 @@ export default function CodingPanel({
         ? activeConfigurationSource
         : { version: "bot-logic-tree-v1", roots: [], customVariables: [] };
     const activeConfiguration = normalizedActiveConfiguration;
+    const detachedBranchCount = activeConfiguration?.editorGraph?.detachedBranches?.length ?? 0;
     const activeLoadout = activeLoadoutSource;
     const validation = validateAbilityStrategyConfiguration(normalizedActiveConfiguration);
     const isBotCodeLocked = isMatchTesting && (
@@ -705,6 +706,7 @@ export default function CodingPanel({
                                 {isPuzzleSubmitting ? "SUBMITTING" : "SUBMIT PUZZLE"}
                             </ControlButton>
                         )}
+                        {onPuzzleSubmit && detachedBranchCount > 0 && <p className="code-detached-submit-note">{detachedBranchCount} detached {detachedBranchCount === 1 ? "branch is" : "branches are"} saved here but will not run.</p>}
                         <ControlButton icon="measure" onClick={onMeasurementToggle} disabled={!onMeasurementToggle} tone="neutral">
                             MEASURE
                         </ControlButton>
@@ -741,6 +743,7 @@ export default function CodingPanel({
                                                 ? "SUBMITTING"
                                                 : "SUBMIT"}
                             </ControlButton>
+                            {detachedBranchCount > 0 && <p className="code-detached-submit-note">{detachedBranchCount} detached {detachedBranchCount === 1 ? "branch is" : "branches are"} saved here but will not run.</p>}
                             <ControlButton
                                 icon="flag"
                                 onClick={onSurrenderMatch}
@@ -905,7 +908,7 @@ export default function CodingPanel({
                                 </div>
                             </div>
                         </header>
-                        {tutorialMode && <TutorialCodeCoach step={tutorialStep} progress={tutorialProgress} onShowSolution={onShowTutorialSolution} solutionShown={tutorialGuideProps?.solutionShown} />}
+                        {tutorialMode && <TutorialCodeCoach step={tutorialStep} progress={tutorialProgress} onShowSolution={onShowTutorialSolution} />}
                         </div>
                         {isMatchTesting && !editingOpponent && currentRound < 0 && (
                             <div className="border-b border-border-lo bg-zinc-950 px-4 py-2">

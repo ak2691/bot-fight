@@ -45,6 +45,13 @@ test("home action rows keep the ability stack at the standard action height", ()
     assert.match(stylesSource, /\.home-action-ability-card-3\s*\{[\s\S]*?transform: translateY\(-50%\) rotate\(16deg\);/);
 });
 
+test("the bottom tutorial link emphasizes its onboarding copy", () => {
+    assert.match(source, /aria-label="Open tutorial"/);
+    assert.match(source, /font-bold text-slate-200">New to Bot Fight\?<\/span>/);
+    assert.match(source, /font-extrabold tracking-wide text-cyan-200">Tutorial<\/span>/);
+    assert.doesNotMatch(source, /home-tutorial-callout/);
+});
+
 test("floating action nodes use the current movement label and targeting description", () => {
     assert.match(floatingSource, /label: "Walk", target: "180 deg from Opponent"/);
     assert.match(floatingSource, /label: "Walk", target: "0 deg from Opponent"/);

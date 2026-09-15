@@ -125,14 +125,14 @@ public class ConditionResolutionService {
             List<Entity> entities,
             Arena arena,
             Map<String, Double> angleOverrides) {
-        boolean matches = true;
+        List<Boolean> matches = new ArrayList<>();
+        List<String> joins = new ArrayList<>();
         for (int index = 0; index < conditions.size(); index += 1) {
             Condition condition = conditions.get(index);
-            boolean conditionMatches = evaluateCondition(
-                    condition, player, opponent, entities, arena, angleOverrides);
-            matches = comparisonService.combine(matches, conditionMatches, index == 0, condition.join());
+            matches.add(evaluateCondition(condition, player, opponent, entities, arena, angleOverrides));
+            joins.add(condition.join());
         }
-        return matches;
+        return comparisonService.evaluateJoined(matches, joins);
     }
 
     private boolean evaluateAllAndAngleGroups(

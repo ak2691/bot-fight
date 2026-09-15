@@ -173,11 +173,6 @@ class AbilityEffectService {
                 default -> { }
             }
         }
-        AbilityContracts.PhaseMovement movement = phase == null ? null : phase.movement();
-        if (arena != null && movement != null && movement.distance() != null
-                && attacker.dashActiveMs <= 0) {
-            movementService.startDash(attacker, payload, arena);
-        }
     }
 
     /** Reads direct effects from the canonical active phase before root fallback. */

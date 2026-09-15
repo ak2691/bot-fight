@@ -118,7 +118,7 @@ export default function HomePage({ activeMatch = false, activeMatchId = null }) 
                         </span>
                         <span>Puzzles</span>
                     </button>
-                    <button type="button" onClick={() => navigate("/tutorial")} className="home-tutorial-button min-h-11 px-4 py-2 text-sm font-semibold text-slate-400 hover:text-cyan-200">New to Bot Fight? <span className="text-cyan-300">Tutorial</span></button>
+                    <button type="button" onClick={() => navigate("/tutorial")} className="home-tutorial-button min-h-11 px-4 py-2 text-sm" aria-label="Open tutorial"><span className="font-bold text-slate-200">New to Bot Fight?</span> <span className="font-extrabold tracking-wide text-cyan-200">Tutorial</span></button>
                 </div>
                 <Link to="/credits" className="mx-auto mt-2 inline-flex min-h-11 items-center px-4 py-2 text-sm font-semibold text-slate-500 hover:border-transparent hover:text-cyan-200">Credits</Link>
             </section>

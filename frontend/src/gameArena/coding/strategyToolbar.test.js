@@ -211,13 +211,18 @@ test("code graph nodes can be dragged from their surfaces without stealing contr
 
     assert.equal(source.includes("event.target?.closest?.("), true);
     assert.match(source, /\[data-node-drag-ignore\]/);
-    assert.match(source, /<section key=\{node\.id\} onClick=\{\(event\) => selectGraphNode\(event, node\.id\)\}/);
+    assert.match(source, /<section key=\{node\.id\} onClick=\{\(event\) => \{ if \(attachingDetachedId\)/);
     assert.match(source, /function GraphConditionNode[\s\S]*beginNodeDrag\(event, node\.id\)/);
     assert.match(source, /function GraphActionNode[\s\S]*beginNodeDrag\(event, node\.id\)/);
     assert.match(source, /selectedNodeIds\.includes\(key\)/);
+    assert.match(source, /const boundedDelta = graphNodesToMove\.reduce/);
+    assert.match(source, /x: startOffset\.x \+ groupDelta\.x/);
+    assert.match(source, /y: startOffset\.y \+ groupDelta\.y/);
     assert.match(source, /onPointerDown=\{beginMarquee\}/);
     assert.match(source, /window\.addEventListener\("keydown"/);
     assert.match(source, /data-node-drag-ignore="true" className="code-condition-prefix/);
+    assert.match(source, /toggleConditionJoin/);
+    assert.match(source, /aria-label=\{`Change \$\{condition\.join === "or" \? "OR" : "AND"\} to/);
 });
 
 test("arena and puzzle code workspaces share compact controls and pinch zoom", () => {
@@ -311,7 +316,11 @@ test("compact conditions own their comparator and actions summarize inspector ta
     assert.match(source, /className="code-operator-socket"/);
     assert.match(source, /className="code-action-label">\{formatActionNodeLabel\(selected\?\.label \?\? "Action"\)\}/);
     assert.doesNotMatch(source, /Move: \$\{selected\?\.label/);
-    assert.match(source, /className="code-action-target">Target: \{describedTarget\}/);
+    assert.match(source, /function ActionConfigurationSignature/);
+    assert.match(source, /<AngleToken value=\{relativeMovementAngle\(entry\.movementDirection\)\}/);
+    assert.match(source, /<SelectableToken value=\{entry\.selectable \?\? BOT_CODE_SELECTABLES\.OPPONENT\}/);
+    assert.match(source, /<CoordinateToken x=\{entry\.targetX/);
+    assert.match(source, /ACTION_TO_ABILITY\[entry\.action\]/);
     assert.match(source, /function actionNodeWidth/);
     assert.match(source, /function formatActionNodeLabel/);
     assert.match(source, /Move\|Movement\|Rotate\|Ability/);
@@ -352,6 +361,7 @@ test("boolean condition inputs use the comparator socket styling", () => {
 
 test("action target inspectors switch to coordinates and preserve target offsets", () => {
     const source = readFileSync(NODES_PATH, "utf8");
+    const css = readFileSync(CSS_PATH, "utf8");
 
     assert.match(source, /function actionTargetMode\(entry, definition\)/);
     assert.match(source, /entry\?\.movementMode === "coordinates" \? "coordinates" : "target"/);
@@ -363,9 +373,25 @@ test("action target inspectors switch to coordinates and preserve target offsets
     assert.match(source, /targetOffsetY/);
     assert.match(source, /formatCoordinateTargetLabel/);
     assert.match(source, /<span>deg<\/span>/);
-    assert.match(source, /0 deg = toward/);
+    assert.match(source, /Explain relative movement angles/);
+    assert.match(source, /function RelativeMovementAngleModal/);
+    assert.match(source, /Angles are measured from the moving bot’s line to its target\. It is completely relative based on that line\./);
+    assert.match(source, /caption: "Right"/);
+    assert.match(source, /caption: "Left"/);
+    assert.match(source, /x2="78"/);
+    assert.match(css, /\.code-angle-help-dialog > header \.modal-close-button \{ color: #fff; font-size: 28px; \}/);
+    assert.match(source, /Both diagrams show 0°/);
     const movementControls = source.slice(source.indexOf("function MovementConfigurationControls"), source.indexOf("function PhaseOrientationControls"));
     assert.doesNotMatch(movementControls, /targetOffsetX|targetOffsetY/);
+});
+
+test("running previews read bot-code edits without restarting playback", () => {
+    const source = readFileSync(ARENA_PATH, "utf8");
+
+    assert.match(source, /testingConfigurationRef\.current = testingConfiguration/);
+    assert.match(source, /opponentTestingConfigurationRef\.current = opponentTestingConfiguration/);
+    assert.match(source, /inspectAbilityStrategyConditions\(testingConfigurationRef\.current, stateSnapshot\)/);
+    assert.match(source, /bot\.id === "main"[\s\S]*\? testingConfigurationRef\.current[\s\S]*\? opponentTestingConfigurationRef\.current/);
 });
 
 test("action node picker provides an auto-focused search", () => {
@@ -406,7 +432,7 @@ test("condition graph wiring follows the rendered node bottom", () => {
 
     assert.match(source, /const ROOT_NODE_HEIGHT = 144;/);
     assert.match(source, /height: ROOT_NODE_HEIGHT/);
-    assert.match(source, /const conditionHeight = 94 \+ Math\.max\(1,[\s\S]*\* 42/);
+    assert.match(source, /const conditionHeight = 94 \+ Math\.max\(1,[\s\S]*\* 52/);
     assert.match(source, /childY = y \+ conditionHeight \+ 70/);
 });
 
@@ -427,17 +453,18 @@ test("conditional nodes expand to fit complete variable names", () => {
     assert.match(source, /GRAPH_NODE_WIDTH, 1200/);
 });
 
-test("conditional operand icon toggles replace literals and restore raw numbers", () => {
+test("conditional operand pencils open the variable picker and expose raw input explicitly", () => {
     const source = readCodingSource();
     const variablePicker = source.slice(source.indexOf("function VariableOperandPicker"), source.indexOf("function ConditionalOperandBox"));
 
     assert.match(source, /function ConditionalOperandBox/);
-    assert.match(source, /aria-label=\{`Use a variable for input \$\{operand\}`\}/);
+    assert.match(source, /aria-label=\{`Edit input \$\{operand\}`\}/);
     assert.match(source, /function VariableOperandPicker/);
     assert.match(source, /<input ref=\{searchInputRef\} autoFocus value=\{query\}/);
     assert.match(source, /right: \{ type: "variable", value: definition\.id \}/);
     assert.match(source, /onClick=\{onPickVariable\}/);
-    assert.match(source, /aria-label=\{`Use a raw number for input \$\{operand\}`\}/);
+    assert.match(variablePicker, />RAW INPUT<\/button>/);
+    assert.match(source, /onUseRawNumber=\{operandPicker\.kind === "action" \? \(\) => setRawActionInput/);
     assert.match(source, /right: \{ type: "number", value: 0 \}/);
     assert.match(source, /className="code-condition-input-toggle"/);
     assert.match(source, /onClick=\{onOpenVariablePicker \?\? onInspectVariable\}/);
@@ -468,13 +495,15 @@ test("raw number inputs accept digits only and retain the original caret present
     assert.match(css, /\.code-condition-input\.is-raw > input \{ caret-color: transparent; \}/);
 });
 
-test("clicking empty canvas space deselects an active raw input", () => {
+test("empty-canvas pointer down commits focused inputs and dismisses configuration", () => {
     const source = readCodingSource();
-    const clearFromSurface = source.slice(source.indexOf("const clearCanvasSelectionFromSurface"), source.indexOf("const selectGraphNode"));
+    const clearFromSurface = source.slice(source.indexOf("const dismissConfigurationFromSurfacePointerDown"), source.indexOf("const selectGraphNode"));
 
-    assert.match(clearFromSurface, /event\.target !== event\.currentTarget/);
-    assert.match(clearFromSurface, /document\.activeElement\?\.closest\?\.\("\.code-condition-input\.is-raw, \.code-root-name"\)/);
-    assert.match(clearFromSurface, /document\.activeElement\.blur\(\)/);
+    assert.match(clearFromSurface, /document\.activeElement/);
+    assert.match(clearFromSurface, /\.code-inspector, \.code-condition-input\.is-raw, \.code-root-name/);
+    assert.match(clearFromSurface, /activeElement\.blur\(\)/);
+    assert.match(source, /if \(event\.button === 0 && event\.target === event\.currentTarget\) dismissConfigurationFromSurfacePointerDown/);
+    assert.doesNotMatch(source, /onClick=\{clearCanvasSelectionFromSurface\}/);
 });
 
 test("variable condition searches render visual category headings", () => {
@@ -510,7 +539,8 @@ test("ALWAYS is offered from the variable operand picker", () => {
     assert.match(source, /id: "always", label: "ALWAYS", valueType: "boolean"/);
     assert.match(source, /operandPicker\.operand === 1 && variableId === "always"/);
     assert.match(source, /\? \{ type: "always", \.\.\.\(condition\.join === "or" \? \{ join: "or" \} : \{\}\) \}/);
-    assert.match(source, /Choose a variable for condition/);
+    assert.match(source, /Configure ALWAYS for condition/);
+    assert.match(source, /Edit input 1 for condition/);
 });
 
 test("action and variable pickers use flush classic dropdown rows", () => {
@@ -521,7 +551,8 @@ test("action and variable pickers use flush classic dropdown rows", () => {
     assert.match(source, /code-node-picker code-node-picker--variable/);
     assert.doesNotMatch(source, /code-node-picker code-node-picker--(?:action|variable)[^\n]*rounded/);
     assert.match(source, /className="code-conditional-add-button"/);
-    assert.equal((source.match(/className="code-conditional-add-button"/g) ?? []).length, 2);
+    assert.equal((source.match(/className="code-conditional-add-button"/g) ?? []).length, 1);
+    assert.match(source, /className=\{`code-condition-wire-tool/);
     assert.match(source, /code-action-add-button/);
     assert.match(css, /\.code-node-picker--action \{ border-color: rgba\(148, 163, 184, \.52\); background-color: #15191d; \}/);
     assert.match(css, /\.code-node-picker--variable \{ border-color: rgba\(148, 163, 184, \.52\); background-color: #15191d; \}/);
@@ -534,14 +565,22 @@ test("action and variable pickers use flush classic dropdown rows", () => {
     assert.doesNotMatch(css, /\.code-compact-footer > button\.code-action-add-button[^\n]*linear-gradient/);
 });
 
-test("conditional nodes show depth and add a parent conditional", () => {
+test("conditional nodes show depth and expose snip and attach controls", () => {
     const source = readCodingSource();
+    const css = readFileSync(CSS_PATH, "utf8");
 
-    assert.match(source, /<span className="code-node-badge">\{node\.path\.length\}<\/span>/);
-    assert.match(source, /const nextRoots = insertParentLogicBranch\(roots, node\.rootIndex, node\.path, parent\);/);
-    assert.match(source, /const nextGraph = buildLogicGraph\(nextRoots, stateVariables, selectedLoadout, selectableTypes\);/);
-    assert.match(source, /positionOverrides\[nextParent\.id\]/);
-    assert.match(source, /const mappedPath = \[\.\.\.candidate\.path\.slice\(0, node\.path\.length\), 0/);
+    assert.match(source, /<span className="code-node-badge">\{detached \? "\?" : node\.path\.length\}<\/span>/);
+    assert.match(source, /aria-label=\{detached \? "Attach conditional" : "Snip conditional"\}/);
+    assert.match(source, /const snipBranch = \(node, branch\) =>/);
+    assert.match(source, /const attachDetachedBranch = \(targetNode\) =>/);
+    assert.match(source, /const attachingToRoot = !Array\.isArray\(targetNode\.path\)/);
+    assert.match(source, /branches: \[\.\.\.\(root\.branches \?\? \[\]\), branch\]/);
+    assert.match(source, /if \(attachingDetachedId\) \{ event\.stopPropagation\(\); attachDetachedBranch\(node\); \} else selectGraphNode\(event, node\.id\)/);
+    assert.match(source, /removeBranchWithoutPromotion/);
+    assert.match(source, /detachedBranches: detachedBranches\.filter/);
+    assert.match(source, /detachedGraphs\.flatMap\(\(item\) => item\.actions\)/);
+    assert.match(source, /detached \? <span className="code-conditional-priority code-conditional-priority--detached"/);
+    assert.match(css, /\.code-condition-wire-tool \{[\s\S]*top: 0;/);
     assert.match(source, /onAddChildConditional=\{\(\) =>/);
     assert.match(source, /children: \[\.\.\.\(current\.children \?\? \[\]\), child\]/);
     assert.match(source, /positionInsertedGraphNode\(node, previousChild, nextChild, nodeOffsetsRef\.current, CONDITION_TO_CHILD_GAP\)/);
@@ -675,7 +714,7 @@ test("modify custom variables use conditional-style operands and layered inspect
     assert.match(source, /code-variable-action-input-value/);
     assert.match(source, /code-variable-action-input-label/);
     assert.match(source, /function BooleanVariableActionRow/);
-    assert.match(source, /aria-label=\{operandDefinition \? "Use a raw boolean" : "Choose a boolean variable"\}/);
+    assert.match(source, /aria-label="Edit boolean operand"/);
     assert.match(source, /code-variable-action-input/);
     assert.doesNotMatch(source, /operandDefinition\.suffix/);
     assert.doesNotMatch(source, /function addVariableAction/);
@@ -683,28 +722,34 @@ test("modify custom variables use conditional-style operands and layered inspect
     assert.match(source, /className="code-condition-row-remove"/);
     assert.match(source, /kind: "action"/);
     assert.match(source, /setActionOperandInspector/);
+    assert.match(source, /if \(actionOperandInspector\) \{[\s\S]*setActionOperandInspector\(null\);[\s\S]*return;/);
     assert.match(source, /onDismissOperandPicker/);
+    assert.match(source, /function VariableActionExpression/);
+    assert.match(source, /code-variable-action-expression/);
     assert.match(css, /\.code-inspector--secondary/);
-    assert.match(css, /\.code-inspector-body select\.code-variable-action-operator \{[\s\S]*width: 100%;[\s\S]*min-width: 0;[\s\S]*height: 32px;[\s\S]*border-color: rgba\(71, 85, 105, \.92\);[\s\S]*background: rgba\(8, 17, 29, \.94\);[\s\S]*color: #e2e8f0;/);
+    assert.match(css, /\.code-variable-action-row \{[\s\S]*grid-template-columns: 64px minmax\(0, 1fr\) 30px;/);
+    assert.match(css, /\.code-inspector-body select\.code-variable-action-operator \{[\s\S]*width: 100%;[\s\S]*min-width: 0;[\s\S]*height: 42px;[\s\S]*border-color: rgba\(71, 85, 105, \.92\);[\s\S]*background: rgba\(8, 17, 29, \.94\);[\s\S]*color: #e2e8f0;/);
     assert.match(css, /\.code-inspector-body select\.code-variable-action-operator:focus \{[\s\S]*border-color: #67e8f9;[\s\S]*outline: 2px solid rgba\(34, 211, 238, \.72\);/);
     assert.match(css, /\.code-inspector-body \.code-condition-input > input/);
+    assert.match(css, /\.code-inspector-body \.code-condition-input > input,[\s\S]*font: 700 9px\/1 "Cousine", "Courier New", monospace;[\s\S]*text-align: left;/);
     assert.match(css, /\.code-variable-action-input-value[\s\S]*text-overflow: ellipsis/);
     assert.match(css, /\.code-variable-action-input-label[\s\S]*text-overflow: ellipsis/);
     assert.match(css, /\.code-condition-input\.code-variable-action-input[\s\S]*width: 100%[\s\S]*max-width: 100%/);
     assert.match(css, /\.code-compact-condition[\s\S]*grid-template-columns: 34px max-content 64px max-content 30px/);
-    assert.match(css, /\.code-variable-action-row[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\) 30px/);
-    assert.match(css, /\.code-condition-row-remove[\s\S]*width: 30px[\s\S]*height: 30px[\s\S]*margin-left: 0/);
+    assert.match(css, /\.code-condition-row-remove[\s\S]*width: 30px[\s\S]*height: 42px[\s\S]*margin-left: 0/);
     assert.match(css, /\.code-inspector-header button \{ color: #94a3b8; font-size: 28px; \}/);
     assert.match(css, /\.code-inspector-header button > span \{ color: inherit; font: inherit; letter-spacing: 0; \}/);
     assert.match(css, /\.code-condition-row-remove:hover:not\(:disabled\)[\s\S]*rgba\(127, 29, 29, \.38\)/);
 });
 
-test("code graph has no standalone variable, target, or connection workflow", () => {
+test("code graph has no standalone variable or target connection workflow", () => {
     const source = readCodingSource();
 
     assert.doesNotMatch(source, /Add variable node|Add target node|setConnecting|selectConnectionSource|variableTargetPortId|graphConnectionPath/);
-    assert.doesNotMatch(source, /const editorGraph|editorGraph\.|connections\.map/);
-    assert.match(source, /delete clean\.editorGraph/);
+    assert.match(source, /const editorGraph = useMemo/);
+    assert.match(source, /editorGraph\.detachedBranches/);
+    assert.doesNotMatch(source, /connections\.map/);
+    assert.doesNotMatch(source, /delete clean\.editorGraph/);
     assert.doesNotMatch(source, /code-condition-inline-config/);
 });
 

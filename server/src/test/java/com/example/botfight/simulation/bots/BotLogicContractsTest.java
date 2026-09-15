@@ -197,14 +197,15 @@ class BotLogicContractsTest {
     }
 
     @Test
-    void absoluteWalkDirectionsUseBoundedCompassDegrees() {
+    void absoluteMovementDirectionsUseBoundedCompassDegreesAndAcceptLegacyAliases() {
         assertThat(BotLogicContracts.isAbsoluteDirection(BotLogicContracts.ACTION_MOVE_WALK, "-90")).isTrue();
         assertThat(BotLogicContracts.isAbsoluteDirection(BotLogicContracts.ACTION_MOVE_WALK, "360")).isTrue();
         assertThat(BotLogicContracts.isAbsoluteDirection(BotLogicContracts.ACTION_MOVE_WALK, "361")).isFalse();
-        assertThat(BotLogicContracts.isAbsoluteDirection(BotLogicContracts.ACTION_MOVE_WALK, "east")).isFalse();
+        assertThat(BotLogicContracts.isAbsoluteDirection(BotLogicContracts.ACTION_MOVE_WALK, "east")).isTrue();
         assertThat(BotLogicContracts.absoluteWalkDirection("-90")).isEqualTo(-90.0);
         assertThat(BotLogicContracts.absoluteWalkDirection("12.39")).isEqualTo(12.3);
         assertThat(BotLogicContracts.isAbsoluteDirection(19, "east")).isTrue();
+        assertThat(BotLogicContracts.isAbsoluteDirection(19, "90")).isTrue();
     }
 
     @Test

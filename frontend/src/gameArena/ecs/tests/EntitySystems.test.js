@@ -16,7 +16,7 @@ import { abilityHitsTarget } from "../abilities/AbilityHitDetectionSystem.js";
 import { buildDeterministicLogicAction } from "../../botlogic/planner/ArenaActionPlanner.js";
 import { buildStatePayload } from "../../modelPayloads/strategyStatePayload.js";
 import { abilityDefinition, ABILITY_STATS, shouldInterpolateAbilityVisual } from "../../loadout/BotLoadout.js";
-import { ATTACHED_ABILITY_CONTRACTS, EFFECT_TYPES, TARGET_KINDS, eventAllowsEffect } from "../contracts/AbilityContracts.js";
+import { ATTACHED_ABILITY_CONTRACTS, EFFECT_TYPES, PHASE_ACTIONS, PHASE_EVENT_TYPES, TARGET_KINDS, eventAllowsEffect } from "../contracts/AbilityContracts.js";
 import { botStatusLabels, visualForShape } from "../../pixi/pixiVisualState.js";
 import { resetBotShape, toSimulationBotShape } from "../../modelPayloads/arenaShapes.js";
 import { compassDirection } from "../../botlogic/planner/arenaAngles.js";
@@ -108,6 +108,20 @@ test("attached abilities use the same normalized envelope and center spawn", () 
     assert.equal(attached.spawn.rotationSpace, "owner");
     assert.equal(attached.phases[0].events.collision.schedule.mode, EVENT_SCHEDULE_MODES.ONCE);
     assert.equal(Object.hasOwn(attached.phases[0], "eventType"), false);
+});
+
+test("Dash and Lock On declare their utility as explicit phase actions", () => {
+    const dash = ATTACHED_ABILITY_CONTRACTS[19];
+    const lockOn = ATTACHED_ABILITY_CONTRACTS[20];
+
+    assert.deepEqual(dash.phases[0].effects, []);
+    assert.deepEqual(dash.phases[0].events[PHASE_EVENT_TYPES.ACTIVATION].actions,
+        [PHASE_ACTIONS.START_MOVEMENT]);
+    assert.deepEqual(lockOn.activation, { targetMode: "target" });
+    assert.deepEqual(lockOn.phases[0].orientation,
+        { mode: "faceTarget", targetSource: "activationTarget" });
+    assert.deepEqual(lockOn.phases[0].events[PHASE_EVENT_TYPES.ACTIVATION].actions,
+        [PHASE_ACTIONS.START_ORIENTATION]);
 });
 
 test("attached ability spawn offsets are relative to the bot", () => {

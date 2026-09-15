@@ -6,11 +6,19 @@ normalized ability contract:
 ```text
 Abilities         identity, resource, cooldown, active, and duration metadata
 AbilityContracts  direct and spawned abilities in one normalized registry
-activation        optional activation-time targeting/capture metadata
-phases[]          ordered hitboxes, movement, visuals, events, and effects
+activation        optional activation-time input/capture metadata
+phases[]          ordered hitboxes, movement, orientation, visuals, events, and effects
 ```
 
 The canonical browser and server registries are `frontend/src/gameArena/ecs/contracts/AbilityContracts.js` and `server/src/main/java/com/example/botfight/simulation/ecs/contracts/AbilityContracts.java`. Both direct bot abilities and spawned entities use the same normalized contract and phase shape; the category distinguishes whether a contract stays attached or enters the entity world. Browser effect execution is generic in `frontend/src/gameArena/ecs/abilities/AbilityEffectSystem.js`. `Abilities.js`/`Abilities.java` author ability identity, resource, and timing metadata; their legacy stats/definition views are derived compatibility projections. Phase behavior is authoritative in the unified contract.
+
+Activation metadata only describes inputs required to start an ability, such as
+target selection or captured action parameters. Ability functionality belongs
+to phases. Activation events use explicit allowlisted actions: `applyEffects`
+reads `phase.effects`, `startMovement` reads `phase.movement`, and
+`startOrientation` reads `phase.orientation`. An action must not stand in for a
+missing component; in particular, movement-only phases do not declare
+`applyEffects` with an empty effect list.
 
 ## Phase ownership and geometry
 

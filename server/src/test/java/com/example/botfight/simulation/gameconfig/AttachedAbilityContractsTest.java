@@ -177,8 +177,17 @@ class AbilityContractsTest {
                 .isEqualTo(75.0);
         assertThat(AbilityContracts.get(19).phases().getFirst().movement().blockedByStatus())
                 .isEqualTo("slow");
+        assertThat(AbilityContracts.get(19).phases().getFirst().effects()).isEmpty();
+        assertThat(AbilityContracts.get(19).phases().getFirst().events()
+                .get(AbilityContracts.PhaseEventType.ACTIVATION).actions())
+                .containsExactly(AbilityContracts.PhaseAction.START_MOVEMENT);
         assertThat(AbilityContracts.get(19).activation().ignoresGlobalAbilityLock()).isFalse();
-        assertThat(AbilityContracts.get(20).activation().faceTargetFromPayload()).isTrue();
+        assertThat(AbilityContracts.get(20).activation().targetMode()).isEqualTo("target");
+        assertThat(AbilityContracts.get(20).phases().getFirst().orientation())
+                .isEqualTo(new AbilityContracts.PhaseOrientation("faceTarget", "activationTarget"));
+        assertThat(AbilityContracts.get(20).phases().getFirst().events()
+                .get(AbilityContracts.PhaseEventType.ACTIVATION).actions())
+                .containsExactly(AbilityContracts.PhaseAction.START_ORIENTATION);
         assertThat(AbilityContracts.get(25).activation().phaseFacingDefault())
                 .isEqualTo("0");
         assertThat(AbilityContracts.get(25).phases().getFirst().hitbox().shape())

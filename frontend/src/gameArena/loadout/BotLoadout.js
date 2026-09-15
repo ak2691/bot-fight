@@ -43,7 +43,7 @@ const BOT_ABILITY_CATALOG = [
     { id: 4, round: 1, visualInterpolation: "linear", summary: "An explosive projectile that triggers on hit or after some duration." },
     { id: 5, round: 1, visualInterpolation: "linear", summary: "Projectile that deals damage and applies a burn effect." },
     { id: 6, round: 2, visualInterpolation: "none", summary: "Short-ranged stun." },
-    { id: 7, round: 1, visualInterpolation: "none", summary: "A slash with a wind-up that deals damage and applies a bleed effect." },
+    { id: 7, round: 1, visualInterpolation: "none", summary: "A slash with preparation time that deals damage and applies a bleed effect." },
     { id: 8, round: 2, visualInterpolation: "none", summary: "Quick burst that deals damage and knocks opponents away." },
     { id: 9, round: 1, visualInterpolation: "none", summary: "A projectile that slows on hit." },
     { id: 10, round: 1, visualInterpolation: "none", summary: "Channel briefly to restore 25 HP." },
@@ -133,7 +133,7 @@ function abilityCapabilities(ability) {
         if (stats.chargeType === "hp") catalogueTags.add(ABILITY_TAGS.HP_CHARGES);
     }
     const tags = new Set([identity.type, ...catalogueTags]);
-    if (stats.windupMs) tags.add("wind-up");
+    if (stats.windupMs) tags.add("preparation");
     if (stats.durationMs) tags.add("duration");
     tags.add(ability.visualInterpolation === VISUAL_INTERPOLATION.LINEAR ? "interpolated-visual" : "instant-visual");
     return Object.freeze({

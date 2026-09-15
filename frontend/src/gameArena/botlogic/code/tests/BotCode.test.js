@@ -18,7 +18,7 @@ import {
 import { getTutorialScenario, hasTutorialPriorityOrder, TUTORIAL_STEP_COUNT } from "../../../../tutorial/TutorialPresets.js";
 import { ABILITY_TAGS, ACTION_TYPES, STATE_VARIABLES, SELECTABLE_DEPENDENCIES, SELECTABLE_IDENTITIES, SELECTABLE_TYPES, TARGET_MODES, VARIABLE_TAGS, VARIABLE_SELECTABLE_TYPES, VISIBLE_STATE_VARIABLES, abilityDefinitionsForVariable, selectableIdentitiesForVariable, selectableMatchesVariable, variableHasTag } from "../contracts/BotLogicContracts.js";
 import { ALL_ABILITY_DEFINITIONS, statusEffectDefinitionsForAbilities } from "../../../loadout/BotLoadout.js";
-import { compareAngleValues } from "../runtime/conditionEvaluator.js";
+import { compareAngleValues, evaluateConditionNodes } from "../runtime/conditionEvaluator.js";
 import { matchingStrategySelectables, resolveAbilityStrategySelectable } from "../runtime/targeting.js";
 import { absoluteMovementAngle, normalizeRelativeMovementDegrees, relativeMovementAngle, relativeMovementVector, vectorToCompassDegrees } from "../../planner/arenaAngles.js";
 import { buildDeterministicLogicAction } from "../../planner/ArenaActionPlanner.js";
@@ -31,6 +31,15 @@ function payload(overrides = {}) {
         objects: overrides.objects ?? [{ id: "opponent-model", type: "opponentModel", x: 600, y: 400, hp: 100, rotation: 180 }],
     };
 }
+
+test("OR separates groups of AND conditions", () => {
+    const condition = (value, join = undefined) => ({ type: "expression", value, ...(join ? { join } : {}) });
+    const evaluate = (values) => evaluateConditionNodes(values, null, (entry) => entry.value);
+
+    assert.equal(evaluate([condition(true), condition(true), condition(false, "or"), condition(false)]), true);
+    assert.equal(evaluate([condition(false), condition(true), condition(true, "or"), condition(true)]), true);
+    assert.equal(evaluate([condition(true), condition(false), condition(true, "or"), condition(false)]), false);
+});
 
 const SELECTABLE_IDENTITY_MATRIX = Object.freeze({
     "selectable.distance": [[], []],
@@ -832,6 +841,7 @@ test("conditional ability choices expose active state and remaining active time"
     assert.equal(active.valueType, "boolean");
     assert.equal(onCooldown.valueType, "boolean");
     assert.equal(activeTime.valueType, "number");
+    assert.equal(activeTime.label, "Bot Ability Active Time Left");
     assert.equal(activeTime.unit, "seconds");
     assert.equal(activeTime.suffix, undefined);
     assert.equal(activeTime.min, 0);
@@ -1129,7 +1139,7 @@ test("movement actions normalize relative angles and discard movement offsets", 
 
 });
 
-test("absolute walk angles use the north-zero clockwise compass", () => {
+test("absolute movement angles use the north-zero clockwise compass", () => {
     const normalized = normalizeAbilityStrategyConfiguration({
         roots: [{ branches: [{ actions: [{
             action: "move_walk",
@@ -1140,6 +1150,15 @@ test("absolute walk angles use the north-zero clockwise compass", () => {
     assert.equal(normalized.roots[0].branches[0].actions[0].movementDirection, -90);
     assert.equal(absoluteMovementAngle("east"), 90);
     assert.equal(absoluteMovementAngle("west"), 270);
+
+    const normalizedDash = normalizeAbilityStrategyConfiguration({
+        roots: [{ branches: [{ actions: [{
+            action: 19,
+            movementMode: "absolute",
+            movementDirection: "east",
+        }] }] }],
+    });
+    assert.equal(normalizedDash.roots[0].branches[0].actions[0].movementDirection, 90);
 
     const actionFor = (movementDirection) => buildDeterministicLogicAction({
         roots: [{ branches: [{ conditions: [{ type: "always" }], actions: [{
@@ -1550,10 +1569,10 @@ test("conditional priority switches values without moving siblings", () => {
 
 test("tutorial teaches rotate before lock on", () => {
     const basicStrikeScenario = getTutorialScenario(3);
-    const rotateScenario = getTutorialScenario(4);
-    const lockOnScenario = getTutorialScenario(5);
-    const dodgeScenario = getTutorialScenario(6);
-    const combineScenario = getTutorialScenario(7);
+    const rotateScenario = getTutorialScenario(5);
+    const lockOnScenario = getTutorialScenario(6);
+    const dodgeScenario = getTutorialScenario(7);
+    const combineScenario = getTutorialScenario(8);
     const rotateActions = rotateScenario.solution.roots.flatMap((root) => root.branches.flatMap((branch) => branch.actions ?? []));
     const lockOnActions = lockOnScenario.solution.roots.flatMap((root) => root.branches.flatMap((branch) => branch.actions ?? []));
     const basicStrikeActions = basicStrikeScenario.solution.roots.flatMap((root) => root.branches.flatMap((branch) => branch.actions ?? []));
@@ -1573,13 +1592,13 @@ test("tutorial teaches rotate before lock on", () => {
 });
 
 test("tutorial priority lesson keeps roots in place while swapping priorities", () => {
-    const scenario = getTutorialScenario(9);
-    assert.equal(TUTORIAL_STEP_COUNT, 14);
+    const scenario = getTutorialScenario(4);
+    assert.equal(TUTORIAL_STEP_COUNT, 18);
     assert.equal(scenario.id, "priority");
-    assert.equal(getTutorialScenario(10).id, "game-overview");
-    assert.equal(getTutorialScenario(11).id, "ability-catalogue");
-    assert.equal(getTutorialScenario(12).id, "conditional-catalogue");
-    assert.equal(getTutorialScenario(13).id, "puzzles");
+    assert.equal(getTutorialScenario(14).id, "game-overview");
+    assert.equal(getTutorialScenario(15).id, "ability-catalogue");
+    assert.equal(getTutorialScenario(16).id, "conditional-catalogue");
+    assert.equal(getTutorialScenario(17).id, "puzzles");
     assert.deepEqual(scenario.emptyCode.roots.map((root) => root.name), ["Dash", "Lock On"]);
     assert.deepEqual(scenario.emptyCode.roots.map((root) => root.priority), [1, 2]);
     assert.deepEqual(scenario.solution.roots.map((root) => root.id), scenario.emptyCode.roots.map((root) => root.id));

@@ -14,6 +14,11 @@ test("ability stats expose only the player-facing vocabulary", () => {
     ]);
 });
 
+test("ability preparation uses the same player-facing term as bot variables", () => {
+    const rows = abilityStatsForDisplay({ effects: [], stats: { windupMs: 300 } });
+    assert.deepEqual(rows, [{ label: "Preparation time", value: "0.3 sec" }]);
+});
+
 test("charges and coverage share the Charges and Arc labels", () => {
     assert.deepEqual(abilityStatsForDisplay({ effects: [], stats: { maxCharges: 10, arc: 180 } }), [{ label: "Arc", value: "180°" }, { label: "Charges", value: "10" }]);
 });

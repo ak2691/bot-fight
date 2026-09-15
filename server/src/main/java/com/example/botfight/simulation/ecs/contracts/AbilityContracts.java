@@ -21,7 +21,7 @@ public final class AbilityContracts {
     /** Public phase vocabulary used by ability authoring and direct effects. */
     public enum PhaseType { SELF, MELEE, RAY, ARC, PROJECTILE, ZONE, SUMMON, BOT_ATTACHED }
     public enum PhaseEventType { ACTIVATION, COLLISION, TRIGGER, HIT, KILLED, LIFETIME_END, ENTER, EXIT }
-    public enum PhaseAction { APPLY_EFFECTS, TRANSITION, REMOVE, EMIT_VISUAL }
+    public enum PhaseAction { APPLY_EFFECTS, START_MOVEMENT, START_ORIENTATION, TRANSITION, REMOVE, EMIT_VISUAL }
     public enum TargetPolicyMode { ONCE, EVERY_TICK, INTERVAL }
     public enum EventScheduleMode { ONCE, REPEAT, CONTINUOUS }
     public record EventSchedule(EventScheduleMode mode, Integer intervalMs,
@@ -135,18 +135,18 @@ public final class AbilityContracts {
         }
     }
     public record Activation(String targetMode, boolean captureAtActivation,
-                             boolean faceTargetFromPayload, String phaseFacingDefault,
+                             String phaseFacingDefault,
                              boolean ignoresGlobalAbilityLock,
                              boolean teleportOncePerActivation) {
         public Activation(String targetMode, boolean captureAtActivation,
-                         boolean faceTargetFromPayload, String phaseFacingDefault,
+                         String phaseFacingDefault,
                          boolean ignoresGlobalAbilityLock) {
-            this(targetMode, captureAtActivation, faceTargetFromPayload,
+            this(targetMode, captureAtActivation,
                     phaseFacingDefault, ignoresGlobalAbilityLock, false);
         }
         public Activation(String targetMode, boolean captureAtActivation,
-                         boolean faceTargetFromPayload, String phaseFacingDefault) {
-            this(targetMode, captureAtActivation, faceTargetFromPayload,
+                         String phaseFacingDefault) {
+            this(targetMode, captureAtActivation,
                     phaseFacingDefault, false, false);
         }
     }
@@ -238,6 +238,9 @@ public final class AbilityContracts {
             this(speed, 0, 0, distance, trailMs, blockedByStatus);
         }
     }
+
+    /** Facing behavior owned by the currently active phase. */
+    public record PhaseOrientation(String mode, String targetSource) {}
 
     public record Trigger(Double radius, Integer lifetimeMs, boolean attackHits,
                           boolean projectileOverlap, boolean botContact,
@@ -340,7 +343,8 @@ public final class AbilityContracts {
                                Integer durationMs, Execution execution, boolean transitionOnly,
                                boolean skipOwner, Hit hit, Integer visibleMs,
                                Map<String, Double> statOverrides,
-                               Map<String, EffectOverride> effectOverrides, int startMs) {
+                               Map<String, EffectOverride> effectOverrides, int startMs,
+                               PhaseOrientation orientation) {
         public AbilityPhase {
             effects = effects == null ? List.of() : List.copyOf(effects);
             Map<PhaseEventType, PhaseEvent> normalizedEvents = new LinkedHashMap<>();
@@ -365,7 +369,7 @@ public final class AbilityContracts {
                             Integer durationMs, Visual visual) {
             this(id, type, null, null, hitbox, null, effects, visual, events, durationMs,
                     null, false, false, null, visual == null ? null : visual.visibleMs(),
-                    Map.of(), Map.of(), 0);
+                    Map.of(), Map.of(), 0, null);
         }
 
         public AbilityPhase(String id, PhaseType type, PhaseMovement movement,
@@ -379,7 +383,7 @@ public final class AbilityContracts {
                             Map<PhaseEventType, PhaseEvent> events, Integer durationMs,
                             Visual visual) {
             this(id, type, movement, null, hitbox, null, effects, visual, events, durationMs,
-                    null, false, false, null, null, Map.of(), Map.of(), 0);
+                    null, false, false, null, null, Map.of(), Map.of(), 0, null);
         }
 
         public AbilityPhase(String id, PhaseType type, Hitbox hitbox,
@@ -394,13 +398,13 @@ public final class AbilityContracts {
             this(id, type, movement, null, hitbox, null, effects, visual, events,
                     null, null, false, false, null,
                     visual == null ? null : visual.visibleMs(),
-                    Map.of(), Map.of(), 0);
+                    Map.of(), Map.of(), 0, null);
         }
 
         public AbilityPhase withHealth(Health nextHealth) {
             return new AbilityPhase(id, type, movement, trigger, hitbox, nextHealth, effects,
                     visual, events, durationMs, execution, transitionOnly, skipOwner, hit,
-                    visibleMs, statOverrides, effectOverrides, startMs);
+                    visibleMs, statOverrides, effectOverrides, startMs, orientation);
         }
 
         public AbilityPhase withEventSchedule(PhaseEventType eventType,
@@ -410,7 +414,13 @@ public final class AbilityContracts {
             if (event != null) nextEvents.put(eventType, event.withSchedule(schedule));
             return new AbilityPhase(id, type, movement, trigger, hitbox, health, effects,
                     visual, nextEvents, durationMs, execution, transitionOnly, skipOwner, hit,
-                    visibleMs, statOverrides, effectOverrides, startMs);
+                    visibleMs, statOverrides, effectOverrides, startMs, orientation);
+        }
+
+        public AbilityPhase withOrientation(PhaseOrientation nextOrientation) {
+            return new AbilityPhase(id, type, movement, trigger, hitbox, health, effects,
+                    visual, events, durationMs, execution, transitionOnly, skipOwner, hit,
+                    visibleMs, statOverrides, effectOverrides, startMs, nextOrientation);
         }
 
         /** The effect types are derived from the concrete payloads for compatibility. */
@@ -447,7 +457,7 @@ public final class AbilityContracts {
             lifetime = lifetime == null ? new Lifetime(TimerMode.NONE, 0, 0) : lifetime;
             initialState = initialState == null ? new InitialState(false, false) : initialState;
             activation = activation == null
-                    ? new Activation(null, false, false, null, false, false)
+                    ? new Activation(null, false, null, false, false)
                     : activation;
             phases = phases == null ? List.of() : List.copyOf(phases);
             abilities = abilities == null ? List.of() : List.copyOf(abilities);
@@ -467,7 +477,7 @@ public final class AbilityContracts {
                         PhaseEventType.COLLISION)));
 
         contracts.put(3, attachedAbility(3, 
-                new Activation(null, true, false, null, false, false),
+                new Activation(null, true, null, false, false),
                 phase("active", PhaseType.BOT_ATTACHED,
                         ray(700, 5),
                         effects(computedDamage(new Falloff(5.0, 15.0, null, null, 100.0, 700.0))),
@@ -537,15 +547,16 @@ public final class AbilityContracts {
                         null,
                         effects(),
                         visual("dash", 114, 300),
-                        PhaseEventType.ACTIVATION)));
+                        PhaseEventType.ACTIVATION, PhaseAction.START_MOVEMENT)));
 
         contracts.put(20, attachedAbility(20, 
-                new Activation("target", false, true, null, false, false),
+                new Activation("target", false, null, false, false),
                 phase("active", PhaseType.BOT_ATTACHED,
                         null,
                         effects(),
                         visual("lockOn", 48, 200),
-                        null)));
+                        PhaseEventType.ACTIVATION, PhaseAction.START_ORIENTATION)
+                        .withOrientation(new PhaseOrientation("faceTarget", "activationTarget"))));
 
         contracts.put(23, attachedAbility(23, 
                 phase("active", PhaseType.BOT_ATTACHED,
@@ -555,7 +566,7 @@ public final class AbilityContracts {
                         PhaseEventType.ACTIVATION)));
 
         contracts.put(25, attachedAbility(25, 
-                new Activation(null, true, false, "0", false, true),
+                new Activation(null, true, "0", false, true),
                 phase("active", PhaseType.BOT_ATTACHED,
                         rectangle(60, 100, true),
                         effects(teleportByCenterDistance(), damage(15)),
@@ -605,14 +616,14 @@ public final class AbilityContracts {
 
     private static AbilityContract attachedAbility(int abilityId, AbilityPhase... phases) {
         return attachedAbility(abilityId,
-                new Activation(null, false, false, null, false, false), phases);
+                new Activation(null, false, null, false, false), phases);
     }
 
     /** Authoring overload for an attached ability with an owner-relative root spawn. */
     private static AbilityContract attachedAbility(int abilityId, Spawn spawn,
                                                     AbilityPhase... phases) {
         return attachedAbility(abilityId, spawn,
-                new Activation(null, false, false, null, false, false), phases);
+                new Activation(null, false, null, false, false), phases);
     }
 
     private static AbilityContract attachedAbility(int abilityId, Activation activation,
@@ -637,11 +648,25 @@ public final class AbilityContracts {
         return phase(id, type, null, hitbox, effects, visual, eventType);
     }
 
+    private static AbilityPhase phase(String id, PhaseType type, Hitbox hitbox,
+                                      List<Effect> effects, Visual visual,
+                                      PhaseEventType eventType, PhaseAction action) {
+        return phase(id, type, null, hitbox, effects, visual, eventType, action);
+    }
+
     private static AbilityPhase phase(String id, PhaseType type, PhaseMovement movement,
                                       Hitbox hitbox, List<Effect> effects, Visual visual,
                                       PhaseEventType eventType) {
         Map<PhaseEventType, PhaseEvent> events = eventType == null
                 ? Map.of() : Map.of(eventType, effectEvent(effects, eventType));
+        return new AbilityPhase(id, type, movement, hitbox, effects, visual, events);
+    }
+
+    private static AbilityPhase phase(String id, PhaseType type, PhaseMovement movement,
+                                      Hitbox hitbox, List<Effect> effects, Visual visual,
+                                      PhaseEventType eventType, PhaseAction action) {
+        Map<PhaseEventType, PhaseEvent> events = eventType == null
+                ? Map.of() : Map.of(eventType, event(action));
         return new AbilityPhase(id, type, movement, hitbox, effects, visual, events);
     }
 
@@ -833,7 +858,7 @@ public final class AbilityContracts {
     public static Activation activationFor(int abilityId) {
         AbilityContract contract = ATTACHED_BY_ABILITY.get(abilityId);
         return contract == null
-                ? new Activation(null, false, false, null, false, false)
+                ? new Activation(null, false, null, false, false)
                 : contract.activation();
     }
 
@@ -952,7 +977,7 @@ public final class AbilityContracts {
         return new AbilityPhase(id, type, movement, trigger,
                 hitbox, null, effects, visual, events, durationMs, execution, transitionOnly,
                 skipOwner, hit, visual == null ? null : visual.visibleMs(),
-                statOverrides, effectOverrides, startMs);
+                statOverrides, effectOverrides, startMs, null);
     }
 
     private static AbilityPhase phase(
@@ -1394,7 +1419,7 @@ public final class AbilityContracts {
                                            List<EntityAbility> abilities) {
         return new AbilityContract(abilityId, entityType, runtimeType, category, spawn,
                 selectableOwner, lifetime, initialState,
-                new Activation(null, false, false, null, false, false), phases, abilities);
+                new Activation(null, false, null, false, false), phases, abilities);
     }
 
     private static Map<String, AbilityContract> entityByType() {

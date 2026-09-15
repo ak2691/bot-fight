@@ -331,7 +331,7 @@ class DuelSimulationServiceTest {
 
     @Test
     void expressionConditionsReadAbilityActiveStateAndRemainingSeconds() {
-        JsonNode activeAwareBrain = customBrain("[20]", """
+        JsonNode activeAwareBrain = independentRootBrain("[20]", """
                 [
                   {"priority":1,"conditions":[{"type":"always"}],"action":20},
                   {"priority":2,"conditions":[
@@ -1201,7 +1201,7 @@ class DuelSimulationServiceTest {
     @Test
     void globalAbilityLockBlocksDifferentAbilitiesDuringActivePhase() {
         JsonNode idle = customBrain("[]", "[]");
-        JsonNode fireballFirst = customBrain("[5,9]", """
+        JsonNode fireballFirst = independentRootBrain("[5,9]", """
                 [
                   {"priority":1,"conditions":[{"type":"always"}],"action":5},
                   {"priority":2,"conditions":[{"type":"always"}],"action":9}
@@ -1223,7 +1223,7 @@ class DuelSimulationServiceTest {
                 && Integer.valueOf(9).equals(frame.bots().getFirst().preparingAbility()));
         assertThat(afterFireball.frames()).anyMatch(frame -> Integer.valueOf(9).equals(frame.bots().getFirst().preparingAbility()));
 
-        JsonNode concussiveFirst = customBrain("[5,9]", """
+        JsonNode concussiveFirst = independentRootBrain("[5,9]", """
                 [
                   {"priority":1,"conditions":[{"type":"always"}],"action":9},
                   {"priority":2,"conditions":[{"type":"always"}],"action":5}
@@ -1264,7 +1264,7 @@ class DuelSimulationServiceTest {
 
     @Test
     void higherPriorityFireballYieldsToGrenadeDuringItsRecoveryTick() {
-        JsonNode fireballThenGrenade = customBrain("[4,5]", """
+        JsonNode fireballThenGrenade = independentRootBrain("[4,5]", """
                 [
                   {"priority":1,"conditions":[{"type":"always"}],"action":5},
                   {"priority":2,"conditions":[{"type":"always"}],"action":4}
@@ -1284,7 +1284,7 @@ class DuelSimulationServiceTest {
 
     @Test
     void abilityPreparationDoesNotInterruptMovementOrRotation() {
-        JsonNode castingBrain = customBrain("[9]", """
+        JsonNode castingBrain = independentRootBrain("[9]", """
                 [
                   {"priority":1,"conditions":[{"type":"always"}],"action":"move_walk","movementMode":"absolute","movementDirection":90},
                   {"priority":2,"conditions":[{"type":"always"}],"action":"rotate_toward_enemy","selectable":"opponent"},
@@ -1494,6 +1494,24 @@ class DuelSimulationServiceTest {
 
     private JsonNode customBrain(String abilitiesJson, String branchesJson) {
         return treeBrain(abilitiesJson, branchesJson);
+    }
+
+    private JsonNode independentRootBrain(String abilitiesJson, String branchesJson) {
+        try {
+            JsonNode branches = jsonMapper.readTree(branchesJson);
+            StringBuilder roots = new StringBuilder("[");
+            for (int index = 0; index < branches.size(); index += 1) {
+                if (index > 0) roots.append(',');
+                roots.append("{\"priority\":").append(index + 1)
+                        .append(",\"branches\":[").append(branches.get(index)).append("]}");
+            }
+            roots.append(']');
+            return jsonMapper.readTree("""
+                    {"version":"bot-logic-tree-v1","loadout":{"abilities":%s},"roots":%s}
+                    """.formatted(abilitiesJson, roots));
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
     }
 
     private JsonNode newAbilityDemoBrain() {

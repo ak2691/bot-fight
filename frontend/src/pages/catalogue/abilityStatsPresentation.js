@@ -86,7 +86,7 @@ export function abilityStatsForDisplay(ability) {
         if (stats.activeMs != null || stats.visualMs != null) {
             rows.push({ label: "Active", value: seconds(stats.activeMs ?? stats.visualMs) });
         }
-        if (stats.windupMs != null) rows.push({ label: "Wind-up", value: seconds(stats.windupMs) });
+        if (stats.windupMs != null) rows.push({ label: "Preparation time", value: seconds(stats.windupMs) });
         const duration = stats.durationMs ?? null;
         const durationIsStatus = (ability.effects ?? []).some((effect) => effect.type === "status" && effect.durationMs === duration);
         if (duration != null && !durationIsStatus) rows.push({ label: "Duration", value: seconds(duration) });
@@ -103,7 +103,7 @@ export function abilityStatsForDisplay(ability) {
     const rows = [];
     if (stats.cooldownMs != null) rows.push({ label: "Cooldown", value: seconds(stats.cooldownMs) });
     if (stats.activeMs != null || stats.visualMs != null) rows.push({ label: "Active", value: seconds(stats.activeMs ?? stats.visualMs) });
-    if (stats.windupMs != null) rows.push({ label: "Wind-up", value: seconds(stats.windupMs) });
+    if (stats.windupMs != null) rows.push({ label: "Preparation time", value: seconds(stats.windupMs) });
     rows.push(...damageRows(stats));
     const range = rangeForStats(stats);
     if (stats.hitboxWidth != null) rows.push({ label: "Hitbox width", value: `${number(stats.hitboxWidth)} units` });

@@ -537,11 +537,9 @@ public final class BotLogicContracts {
         return truncateToNumberPrecision(Math.max(ANGLE_MIN, Math.min(ANGLE_MAX, value)));
     }
 
-    /** Walk uses compass degrees; ability movement keeps its existing named aliases. */
+    /** Absolute movement uses compass degrees; named aliases remain valid for older saved brains. */
     public static boolean isAbsoluteDirection(Object action, String direction) {
-        return ACTION_MOVE_WALK.equals(action)
-                ? isAbsoluteWalkDirection(direction)
-                : absoluteDirections().contains(direction);
+        return isAbsoluteWalkDirection(direction) || absoluteDirections().contains(direction);
     }
 
     public static boolean isRelativeDirection(String direction) {

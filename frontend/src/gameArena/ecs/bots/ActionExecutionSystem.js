@@ -1,5 +1,5 @@
 import { BASE_BOT_STATS } from "../../loadout/BotLoadout.js";
-import { compassDirection, relativeMovementVector, vectorToCompassDegrees } from "../../botlogic/planner/arenaAngles.js";
+import { absoluteMovementAngle, compassDirection, relativeMovementVector, vectorToCompassDegrees } from "../../botlogic/planner/arenaAngles.js";
 import { clamp, normalizeAngle } from "../../gameconfig/geometry.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, ROTATION_STEP_DEG } from "../../modelPayloads/arenaConstants.js";
 import { createAbilityEntity } from "../entities/EntityFactory.js";
@@ -9,6 +9,7 @@ import { abilityResourceReady, abilityTimingReady, anotherAbilityActive, consume
 import { abilityExecutionPayload } from "../../gameconfig/AbilityExecutionPayload.js";
 import { statusEffectValue, statusIsActive, STATUS_EFFECT_APPLICATIONS } from "../contracts/StatusContracts.js";
 import { attachedAbilitySpawnTransform } from "../../gameconfig/hitboxGeometry.js";
+import { PHASE_ACTIONS, PHASE_EVENT_TYPES } from "../contracts/AbilityContracts.js";
 
 /** Converts one selected action payload into the bot's next component state. */
 export function applyBotAction(shape, action, elapsedMs, applyDamage) {
@@ -183,8 +184,13 @@ function activationActiveMs(payload) {
 
 function applyActivationState(bot, payload, elapsedMs) {
     const activation = payload.activation ?? {};
+    const phase = payload.contract?.phases?.[0];
+    const actions = phase?.events?.[PHASE_EVENT_TYPES.ACTIVATION]?.actions ?? [];
     let next = bot;
-    if (activation.faceTargetFromPayload && Number.isFinite(Number(payload.targetX)) && Number.isFinite(Number(payload.targetY))) {
+    if (actions.includes(PHASE_ACTIONS.START_ORIENTATION)
+        && phase?.orientation?.mode === "faceTarget"
+        && phase.orientation.targetSource === "activationTarget"
+        && Number.isFinite(Number(payload.targetX)) && Number.isFinite(Number(payload.targetY))) {
         next = { ...next, rotation: vectorToCompassDegrees(Number(payload.targetX) - next.x, Number(payload.targetY) - next.y) };
     }
     if (activation.capture) {
@@ -201,8 +207,10 @@ function applyActivationState(bot, payload, elapsedMs) {
                                 : next[source] ?? null])),
         };
     }
-    const phaseMovement = payload.contract?.phases?.[0]?.movement;
-    if (phaseMovement?.distance != null) next = applyMovementActivation(next, payload, phaseMovement, elapsedMs);
+    const phaseMovement = phase?.movement;
+    if (actions.includes(PHASE_ACTIONS.START_MOVEMENT) && phaseMovement?.distance != null) {
+        next = applyMovementActivation(next, payload, phaseMovement, elapsedMs);
+    }
     return next;
 }
 
@@ -226,7 +234,8 @@ function applyMovementActivation(bot, payload, movement, elapsedMs) {
         : compassDirection(bot.rotation);
     const directions = { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0], northeast: [Math.SQRT1_2, -Math.SQRT1_2], northwest: [-Math.SQRT1_2, -Math.SQRT1_2], southeast: [Math.SQRT1_2, Math.SQRT1_2], southwest: [-Math.SQRT1_2, Math.SQRT1_2], stop: [0, 0] };
     const direction = payload.movementDirection ?? 0;
-    const absolute = payload.movementMode === "absolute" ? (directions[direction] ?? [0, 0]) : null;
+    const absoluteVector = compassDirection(absoluteMovementAngle(direction));
+    const absolute = payload.movementMode === "absolute" ? (directions[direction] ?? [absoluteVector.x, absoluteVector.y]) : null;
     const relative = relativeMovementVector(targetVector.x, targetVector.y, direction);
     const [ux, uy] = absolute ?? [relative.x, relative.y];
     const distance = Number(movement.distance ?? 150);

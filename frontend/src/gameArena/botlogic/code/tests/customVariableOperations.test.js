@@ -8,7 +8,7 @@ import {
     selectAbilityStrategyActionPlan,
 } from "../BotCode.js";
 
-function payload(customVariables = {}) {
+function payload(customVariables = {}, playerOverrides = {}) {
     return {
         playerModel: {
             x: 400,
@@ -17,6 +17,7 @@ function payload(customVariables = {}) {
             abilities: [],
             abilityCooldowns: {},
             customVariables,
+            ...playerOverrides,
         },
         objects: [{
             id: "opponent-model",
@@ -115,4 +116,23 @@ test("boolean custom-variable actions can copy another boolean variable", () => 
 
     assert.deepEqual(normalized.roots[0].branches[0].actions[0].operand, { type: "variable", value: "custom.source" });
     assert.equal(selectAbilityStrategyActionPlan(normalized, payload()).customVariables["custom.result"], true);
+});
+
+test("the first matching sibling prevents an ALWAYS fallback from overwriting its variable action", () => {
+    const variable = { id: "custom.cooling", name: "Cooling", valueType: "boolean", initialValue: false };
+    const setCooling = (value) => ({ action: "variable", variableId: variable.id, operand: { type: "boolean", value } });
+    const normalized = normalizeAbilityStrategyConfiguration({
+        customVariables: [variable],
+        roots: [{ branches: [
+            {
+                priority: 1,
+                conditions: [{ type: "expression", left: "bot.selectedAbilityOnCooldown", ability: 1, comparator: "eq", right: { type: "boolean", value: true } }],
+                actions: [setCooling(true)],
+            },
+            { priority: 2, conditions: [{ type: "always" }], actions: [setCooling(false)] },
+        ] }],
+    });
+
+    assert.equal(selectAbilityStrategyActionPlan(normalized, payload({}, { abilities: [1], abilityCooldowns: { 1: 500 } })).customVariables[variable.id], true);
+    assert.equal(selectAbilityStrategyActionPlan(normalized, payload({}, { abilities: [1] })).customVariables[variable.id], false);
 });

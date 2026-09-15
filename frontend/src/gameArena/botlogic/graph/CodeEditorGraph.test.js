@@ -14,6 +14,8 @@ import {
     sanitizeCodeEditorGraph,
     variableTargetPortId,
 } from "./CodeEditorGraph.js";
+import { sanitizeStrategyConfigurationForLoadout } from "../../persistence/arenaStrategyStorage.js";
+import { DEFAULT_BOT_CONFIGURATION_ID } from "../../gameconfig/CombatLoadouts.js";
 import { normalizeAbilityStrategyConfiguration, STATE_VARIABLES } from "../code/BotCode.js";
 
 function configuration(condition, action = { action: "move_walk", movementMode: "target", movementDirection: 0, selectable: "opponent" }) {
@@ -27,7 +29,7 @@ function configuration(condition, action = { action: "move_walk", movementMode: 
 test("editor graph starts empty instead of spawning nodes from the payload", () => {
     const source = configuration({ type: "expression", left: "selectable.hp", leftSelectable: "my_bot", comparator: "lt", right: { type: "variable", value: "selectable.hp" }, rightSelectable: "opponent" });
     const graph = graphFromCodeConfiguration(source);
-    assert.deepEqual(graph, { version: CODE_EDITOR_GRAPH_VERSION, variables: [], targets: [], connections: [] });
+    assert.deepEqual(graph, { version: CODE_EDITOR_GRAPH_VERSION, variables: [], targets: [], connections: [], detachedBranches: [] });
     assert.deepEqual(editorGraphForConfiguration(source), graph);
 
     const compiled = compileCodeEditorGraph(source, graph);
@@ -84,6 +86,38 @@ test("action targets compile from a target node without changing normalized acti
     const changed = connectCodeEditorPorts(graph, "target-node", "action:branch:0:target", "target", STATE_VARIABLES);
     const compiled = compileCodeEditorGraph(source, changed);
     assert.equal(normalizeAbilityStrategyConfiguration(compiled).roots[0].branches[0].actions[0].selectable, "opponent_1");
+});
+
+test("detached branches remain editor-only and are stripped from normalized brains", () => {
+    const source = configuration({ type: "expression", left: "selectable.hp", leftSelectable: "my_bot", comparator: "lt", right: { type: "number", value: 30 } });
+    const detached = source.roots[0].branches[0];
+    const graph = sanitizeCodeEditorGraph({
+        ...createCodeEditorGraph(),
+        detachedBranches: [{ id: detached.id, branch: detached, position: { x: 340, y: 220 } }],
+    });
+    assert.equal(graph.detachedBranches[0].branch.id, "branch");
+    assert.deepEqual(graph.detachedBranches[0].position, { x: 340, y: 220 });
+    assert.equal(normalizeAbilityStrategyConfiguration({ ...source, editorGraph: graph }).editorGraph, undefined);
+});
+
+test("loadout sanitization preserves detached editor branches and sanitizes their actions", () => {
+    const source = configuration({ type: "expression", left: "selectable.hp", leftSelectable: "my_bot", comparator: "lt", right: { type: "number", value: 30 } });
+    const detached = {
+        ...source.roots[0].branches[0],
+        actions: [{ action: "not-a-real-action", selectable: "opponent" }],
+    };
+    const sanitized = sanitizeStrategyConfigurationForLoadout({
+        ...source,
+        editorGraph: {
+            ...createCodeEditorGraph(),
+            detachedBranches: [{ id: detached.id, branch: detached, position: { x: 340, y: 220 } }],
+        },
+    }, DEFAULT_BOT_CONFIGURATION_ID);
+
+    assert.equal(sanitized.editorGraph.detachedBranches.length, 1);
+    assert.equal(sanitized.editorGraph.detachedBranches[0].branch.id, detached.id);
+    assert.equal(sanitized.editorGraph.detachedBranches[0].branch.actions[0].action, "none");
+    assert.equal(sanitized.roots[0].branches.length, 1);
 });
 
 test("movement target connections do not copy target offsets", () => {

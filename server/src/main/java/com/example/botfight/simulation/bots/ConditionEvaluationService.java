@@ -1,13 +1,24 @@
 package com.example.botfight.simulation.bots;
 
+import java.util.List;
 import org.springframework.stereotype.Service;
 
 /** Owns comparator and boolean-join semantics for normalized bot conditions. */
 @Service
 public class ConditionEvaluationService {
-    public boolean combine(boolean accumulated, boolean current, boolean first, String join) {
-        if (first) return current;
-        return BotLogicContracts.JOIN_OR.equals(join) ? accumulated || current : accumulated && current;
+    public boolean evaluateJoined(List<Boolean> matches, List<String> joins) {
+        if (matches.isEmpty()) return true;
+        boolean anyGroupMatches = false;
+        boolean currentGroupMatches = true;
+        for (int index = 0; index < matches.size(); index += 1) {
+            if (index > 0 && BotLogicContracts.JOIN_OR.equals(joins.get(index))) {
+                anyGroupMatches |= currentGroupMatches;
+                currentGroupMatches = matches.get(index);
+            } else {
+                currentGroupMatches &= matches.get(index);
+            }
+        }
+        return anyGroupMatches || currentGroupMatches;
     }
 
     public boolean compareBooleans(boolean left, String comparator, boolean right) {

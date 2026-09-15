@@ -66,6 +66,8 @@ export const SPAWN_ROTATION_SPACES = Object.freeze({
 
 export const PHASE_ACTIONS = Object.freeze({
     APPLY_EFFECTS: "applyEffects",
+    START_MOVEMENT: "startMovement",
+    START_ORIENTATION: "startOrientation",
     TRANSITION: "transition",
     REMOVE: "remove",
     EMIT_VISUAL: "emitVisual",
@@ -195,6 +197,7 @@ export function abilityPhase(id, type, values = {}) {
         type,
         ...values,
         ...(values.movement ? { movement: Object.freeze({ ...values.movement }) } : {}),
+        ...(values.orientation ? { orientation: Object.freeze({ ...values.orientation }) } : {}),
         ...(values.hitbox ? { hitbox: Object.freeze({ ...values.hitbox }) } : {}),
         ...(values.health ? { health: Object.freeze({ ...values.health }) } : {}),
         ...(values.events ? { events: normalizeEvents(values.events) } : {}),
@@ -407,13 +410,18 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
         phase: phase({
             movement: { distance: 150, speed: 75, trailMs: 300, blockedByStatus: "slow" },
             visual: { type: "dash", visualSize: 114, visibleMs: 300 },
-            events: { [PHASE_EVENT_TYPES.ACTIVATION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+            events: { [PHASE_EVENT_TYPES.ACTIVATION]: { actions: [PHASE_ACTIONS.START_MOVEMENT],
                 schedule: { mode: EVENT_SCHEDULE_MODES.ONCE } } },
         }),
     }),
     20: attachedAbility({
-        activation: { targetMode: "target", faceTargetFromPayload: true },
-        phase: phase({ visual: { type: "lockOn", visualSize: 48, visibleMs: 200 } }),
+        activation: { targetMode: "target" },
+        phase: phase({
+            orientation: { mode: "faceTarget", targetSource: "activationTarget" },
+            visual: { type: "lockOn", visualSize: 48, visibleMs: 200 },
+            events: { [PHASE_EVENT_TYPES.ACTIVATION]: { actions: [PHASE_ACTIONS.START_ORIENTATION],
+                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE } } },
+        }),
     }),
     23: attachedAbility({
         phase: phase({

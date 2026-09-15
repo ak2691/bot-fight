@@ -28,6 +28,7 @@ function selectTreeBranches(branches, state, operations) {
         if (!matches) continue;
         selected.push(...selectTreeBranches(branch.children, state, operations));
         if (operations.blockHasExecutableAction(branch, state)) selected.push(branch);
+        break;
     }
     return selected;
 }

@@ -197,7 +197,7 @@ public class ActionExecutionService {
         if (blockedByStatus || blockedByAbilityState) {
             cancelPreparation(bot, payload);
         } else if (payload != null && !BotStateService.statusActive(bot, "silence")) {
-            AbilityExecutionPayload activated = activateAbility(bot, payload);
+            AbilityExecutionPayload activated = activateAbility(bot, payload, arena);
             if (activated != null)
                 setTriggeredPayload(bot, activated);
         } else if (payload != null
@@ -267,7 +267,7 @@ public class ActionExecutionService {
     }
 
     private AbilityExecutionPayload activateAbility(
-            Bot bot, AbilityExecutionPayload payload) {
+            Bot bot, AbilityExecutionPayload payload, Arena arena) {
         if (!selectedAbilityExecutable(bot, payload))
             return null;
         int windup = payload.definition().windupMs();
@@ -298,10 +298,24 @@ public class ActionExecutionService {
         bot.abilityActiveMs.put(payload.abilityId(), activeMs + STEP_MS);
         botStateService.setAbilityCooldown(bot, payload.abilityId(), cooldownMs);
         AbilityExecutionPayload activated = payload.capture(bot);
-        if (payload.activation().faceTargetFromPayload()
+        AbilityContracts.AbilityPhase phase = activated.phases().isEmpty()
+                ? null : activated.phases().getFirst();
+        AbilityContracts.PhaseEvent activationEvent = phase == null ? null
+                : phase.events().get(AbilityContracts.PhaseEventType.ACTIVATION);
+        List<AbilityContracts.PhaseAction> actions = activationEvent == null
+                ? List.of() : activationEvent.actions();
+        if (actions.contains(AbilityContracts.PhaseAction.START_ORIENTATION)
+                && phase.orientation() != null
+                && "faceTarget".equals(phase.orientation().mode())
+                && "activationTarget".equals(phase.orientation().targetSource())
                 && Double.isFinite(activated.targetX()) && Double.isFinite(activated.targetY())) {
             bot.rotation = vectorBearing(activated.targetX() - bot.x, activated.targetY() - bot.y);
             activated = activated.capture(bot);
+        }
+        if (actions.contains(AbilityContracts.PhaseAction.START_MOVEMENT)
+                && phase.movement() != null && phase.movement().distance() != null
+                && bot.dashActiveMs <= 0) {
+            movementService.startDash(bot, activated, arena);
         }
         return activated;
     }
