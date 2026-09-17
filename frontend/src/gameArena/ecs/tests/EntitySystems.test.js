@@ -1021,19 +1021,23 @@ test("hit stagger scales allocated movement and rotation for exactly three 100 m
 
 });
 
-test("movement acceleration is half top speed and steering follows the velocity angle", () => {
+test("walking starts, turns, and stops immediately without acceleration", () => {
     const fast = { ...base, moveSpeed: 20 };
-    const accelerating = applyBotAction(fast, { dx: 1, dy: 0 }, 100, applyDamageToShape);
-    assert.equal(accelerating.x, 110);
-    assert.equal(accelerating.movementVelocityX, 10);
+    const moving = applyBotAction(fast, { dx: 1, dy: 0 }, 100, applyDamageToShape);
+    assert.equal(moving.x, 120);
+    assert.equal(moving.movementVelocityX, 20);
 
-    const topSpeed = applyBotAction(accelerating, { dx: 1, dy: 0 }, 100, applyDamageToShape);
-    assert.equal(topSpeed.x, 130);
-    assert.equal(topSpeed.movementVelocityX, 20);
+    const turning = applyBotAction(moving, { dx: 0, dy: 1 }, 100, applyDamageToShape);
+    assert.equal(turning.x, 120);
+    assert.equal(turning.y, 120);
+    assert.equal(turning.movementVelocityX, 0);
+    assert.equal(turning.movementVelocityY, 20);
 
-    const turning = applyBotAction(topSpeed, { dx: 0, dy: 1 }, 100, applyDamageToShape);
-    assert.ok(Math.abs(turning.movementVelocityX - (20 - 10 / Math.SQRT2)) < 1e-9);
-    assert.ok(Math.abs(turning.movementVelocityY - 10 / Math.SQRT2) < 1e-9);
+    const stopped = applyBotAction(turning, { dx: 0, dy: 0 }, 100, applyDamageToShape);
+    assert.equal(stopped.x, 120);
+    assert.equal(stopped.y, 120);
+    assert.equal(stopped.movementVelocityX, 0);
+    assert.equal(stopped.movementVelocityY, 0);
 });
 
 test("Dash exposes recovery only after its active phase ends", () => {
@@ -1916,12 +1920,12 @@ test("ability preparation does not interrupt movement or rotation", () => {
     const action = { dx: 1, dy: 0, dRot: 1, abilityAction: { action: 9 } };
 
     const first = applyBotAction(bot, action, 100, noDamageCombat.applyDamageToShape);
-    assert.equal(first.x, 104);
+    assert.equal(first.x, 108);
     assert.equal(first.rotation, 12);
     assert.equal(first.preparingAbility, 9);
 
     const second = applyBotAction(first, action, 100, noDamageCombat.applyDamageToShape);
-    assert.equal(second.x, 112);
+    assert.equal(second.x, 116);
     assert.equal(second.rotation, 24);
     assert.equal(second.preparingAbility, 9);
     assert.equal(second.preparingMs, 300);

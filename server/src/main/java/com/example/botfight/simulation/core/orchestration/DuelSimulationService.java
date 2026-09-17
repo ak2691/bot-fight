@@ -448,12 +448,13 @@ public class DuelSimulationService {
             boolean matches = "else".equals(branch.branchType())
                     || conditionResolutionService.evaluateConditions(conditionBlock.conditions(), player, opponent, entities, arena);
             if (!matches) continue;
+            int selectedCount = selected.size();
             List<StrategyBlock> child = selectTreeBranch(branch.children(), player, opponent, entities, arena);
             selected.addAll(child);
             branch.blocks().stream()
                     .filter(block -> strategyBlockExecutableNow(block, player, opponent, entities))
                     .forEach(selected::add);
-            break;
+            if (selected.size() > selectedCount) break;
         }
         return selected;
     }

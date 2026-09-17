@@ -64,10 +64,11 @@ test("play stays in the bot-code panel above the code workspace button", () => {
 
 test("puzzle play is a local preview and puzzle submission is a separate action", () => {
     const arenaSource = readFileSync(ARENA_PATH, "utf8");
-    const runAutoPlay = arenaSource.match(/const runAutoPlay = \(\) => \{[\s\S]*?const customVariableGoal/);
+    const runAutoPlay = arenaSource.match(/const runAutoPlay = \(\) => \{[\s\S]*?setIsEditingArena\(false\);/);
 
     assert.ok(runAutoPlay);
     assert.doesNotMatch(runAutoPlay[0], /submitPuzzleAttempt\(\)/);
+    assert.doesNotMatch(runAutoPlay[0], /tutorialRunRef|customVariableGoal|priorityOrderCorrect/);
     assert.match(arenaSource, /onPuzzleSubmit=\{isPuzzleMode && onPuzzleAttempt \? submitPuzzleAttempt : null\}/);
 });
 
@@ -211,7 +212,8 @@ test("code graph nodes can be dragged from their surfaces without stealing contr
 
     assert.equal(source.includes("event.target?.closest?.("), true);
     assert.match(source, /\[data-node-drag-ignore\]/);
-    assert.match(source, /<section key=\{node\.id\} onClick=\{\(event\) => \{ if \(attachingDetachedId\)/);
+    assert.match(source, /<GraphRootNode[\s\S]*onSelect=\{\(event\) => \{ if \(attachingDetachedId\)/);
+    assert.match(source, /function GraphRootNode[\s\S]*onPointerDown=\{onPointerDown\}/);
     assert.match(source, /function GraphConditionNode[\s\S]*beginNodeDrag\(event, node\.id\)/);
     assert.match(source, /function GraphActionNode[\s\S]*beginNodeDrag\(event, node\.id\)/);
     assert.match(source, /selectedNodeIds\.includes\(key\)/);
@@ -300,11 +302,13 @@ test("roots expose editable names and priorities with root-only search", () => {
 
 test("root priority edits refresh the graph and root search from one configuration", () => {
     const board = readFileSync(BOARD_PATH, "utf8");
+    const nodes = readFileSync(NODES_PATH, "utf8");
 
     assert.match(board, /const roots = useMemo\(\(\) => normalizeRoots\(configuration\.roots \?\? \[\]\), \[configuration\.roots\]\)/);
     assert.match(board, /const setRootOrder = \(rootIndex, priority\) => \{[\s\S]*setRootPriority\(roots, rootIndex, priority\)[\s\S]*commitConfiguration\(\{ \.\.\.configuration, roots: reordered \}\);/);
     assert.match(board, /<SearchRootNodesModal roots=\{roots\} nodes=\{graph\.roots\}[\s\S]*onPriorityChange=\{setRootOrder\}/);
-    assert.match(board, /<RootNodePriorityInput priority=\{priorityForNode\(rootNode, node\.rootIndex \+ 1\)\}[\s\S]*onCommit=\{\(priority\) => setRootOrder\(node\.rootIndex, priority\)\}/);
+    assert.match(board, /<GraphRootNode[\s\S]*onPriorityChange=\{\(priority\) => setRootOrder\(node\.rootIndex, priority\)\}/);
+    assert.match(nodes, /function GraphRootNode[\s\S]*<RootNodePriorityInput priority=\{priorityForNode\(rootNode, node\.rootIndex \+ 1\)\}[\s\S]*onCommit=\{onPriorityChange\}/);
 });
 
 test("compact conditions own their comparator and actions summarize inspector targets", () => {
@@ -573,6 +577,7 @@ test("conditional nodes show depth and expose snip and attach controls", () => {
     assert.match(source, /aria-label=\{detached \? "Attach conditional" : "Snip conditional"\}/);
     assert.match(source, /const snipBranch = \(node, branch\) =>/);
     assert.match(source, /const attachDetachedBranch = \(targetNode\) =>/);
+    assert.match(source, /if \(disabled \|\| attachingDetachedId \|\| event\.button !== 0/);
     assert.match(source, /const attachingToRoot = !Array\.isArray\(targetNode\.path\)/);
     assert.match(source, /branches: \[\.\.\.\(root\.branches \?\? \[\]\), branch\]/);
     assert.match(source, /if \(attachingDetachedId\) \{ event\.stopPropagation\(\); attachDetachedBranch\(node\); \} else selectGraphNode\(event, node\.id\)/);
@@ -587,11 +592,23 @@ test("conditional nodes show depth and expose snip and attach controls", () => {
     assert.doesNotMatch(source, /siblingIndex === 0 \? "IF" : "ELSE IF"/);
 });
 
+test("bot ability configuration selects the bot entity before the ability", () => {
+    const source = readFileSync(NODES_PATH, "utf8");
+    const inspectorStart = source.indexOf('return panel(`INPUT ${inspectedNode.operand} VARIABLE`');
+    const inspectorEnd = source.indexOf('if (inspectedNode.kind === "action")', inspectorStart);
+    const inspector = source.slice(inspectorStart, inspectorEnd);
+
+    assert.match(source, /if \(definition\?\.supportsAbility\) return "Bot Entity"/);
+    assert.ok(inspector.indexOf("definition.supportsSelectable") < inspector.indexOf("definition.supportsAbility && abilityOptions.length"));
+    assert.match(source, /definition\.supportsAbility \? "BOT ENTITY" : "ENTITY"/);
+});
+
 test("root conditional controls do not change graph selection", () => {
     const source = readCodingSource();
 
     assert.match(source, /const addRootConditional = \(event, node, rootNode\) => \{\s*event\.stopPropagation\(\);/);
-    assert.match(source, /onClick=\{\(event\) => addRootConditional\(event, node, rootNode\)\}/);
+    assert.match(source, /onAddConditional=\{addRootConditional\}/);
+    assert.match(source, /function GraphRootNode[\s\S]*onClick=\{\(event\) => onAddConditional\(event, node, rootNode\)\}/);
 });
 
 test("removing a conditional promotes its child branches", () => {

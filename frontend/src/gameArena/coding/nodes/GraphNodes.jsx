@@ -31,6 +31,8 @@ import {
     MAX_CONDITIONS_PER_BRANCH,
     MAX_LOGIC_BLOCKS,
     MAX_VARIABLE_ACTION_TERMS,
+    MAX_ROOT_NAME_LENGTH,
+    MAX_ROOT_NODES,
     countActionSlots,
     countConditionSlots,
     canonicalBotSelectableId,
@@ -98,6 +100,33 @@ function DeferredNumberInput({ value, onCommit, min = CUSTOM_NUMBER_MIN, max = C
 const GRAPH_NODE_WIDTH = 380;
 const GRAPH_NODE_GAP = 72;
 const ROOT_NODE_HEIGHT = 144;
+
+function RootNameInput({ value, disabled, ariaLabel, onCommit }) {
+    const committedValue = String(value ?? "Root");
+    const [draft, setDraft] = useState(committedValue);
+
+    useEffect(() => {
+        setDraft(committedValue);
+    }, [committedValue]);
+
+    return <input
+        type="text"
+        maxLength={MAX_ROOT_NAME_LENGTH}
+        value={draft}
+        disabled={disabled}
+        aria-label={ariaLabel}
+        data-node-drag-ignore="true"
+        onPointerDown={(event) => event.stopPropagation()}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={() => onCommit(draft)}
+        onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            event.currentTarget.blur();
+        }}
+        className="code-root-name"
+    />;
+}
 
 function conditionNodeWidth(branch, stateVariables) {
     const labelFor = (id) => stateVariables.find((variable) => variable.id === id)?.label ?? id ?? "Input";
@@ -212,6 +241,31 @@ function graphEdgePath(edge, offsets) {
     const x2 = edge.x2 + to.x;
     const y2 = edge.y2 + to.y;
     return `M ${x1} ${y1} C ${x1} ${y1 + 70}, ${x2} ${y2 - 70}, ${x2} ${y2}`;
+}
+
+function GraphRootNode({ node, rootNode, nodeOffsets, disabled, canRemove, puzzleMode = false, graphConditionCount = 0, maxTotalConditions = 0, selected = false, tutorialFocus, onSelect = () => {}, onPointerDown = () => {}, onPriorityChange = () => {}, onNameChange = () => {}, onAddConditional = () => {}, onRemove = () => {} }) {
+    const label = `Root ${priorityForNode(rootNode, node.rootIndex + 1)}`;
+    return <section
+        onClick={onSelect}
+        onPointerDown={onPointerDown}
+        className={`code-graph-node code-graph-node--root absolute w-[300px] rounded-sm shadow-2xl ${selected ? "is-selected" : ""}`}
+        style={graphNodeStyle(node, nodeOffsets)}
+    >
+        <header className="code-root-header">
+            {puzzleMode
+                ? <span className="code-root-label">PUZZLE RULE</span>
+                : <span className="code-root-label">Root <RootNodePriorityInput priority={priorityForNode(rootNode, node.rootIndex + 1)} max={MAX_ROOT_NODES} disabled={disabled} onCommit={onPriorityChange} ariaLabel={`Priority for ${label}`} className="code-root-priority" /></span>}
+        </header>
+        <div className="code-root-body">
+            {puzzleMode
+                ? <span className="code-root-name code-root-name--puzzle" aria-label={`Name for ${label}`}>{rootNode?.name ?? "Puzzle Rule"}</span>
+                : <RootNameInput value={rootNode?.name} disabled={disabled} ariaLabel={`Name for ${label}`} onCommit={onNameChange} />}
+            <div className="code-root-actions">
+                {!puzzleMode && <button type="button" disabled={disabled || graphConditionCount >= maxTotalConditions} onClick={(event) => onAddConditional(event, node, rootNode)} className={`code-root-action code-root-action--conditional ${tutorialFocus === "add-condition" && !rootNode?.branches?.length ? "tutorial-control-focus" : ""}`}>+ CONDITIONAL</button>}
+                <button type="button" disabled={!canRemove} onClick={(event) => { event.stopPropagation(); onRemove(event); }} className="code-root-action code-root-action--remove">REMOVE</button>
+            </div>
+        </div>
+    </section>;
 }
 
 function treeBranchAt(branches, path = []) {
@@ -678,10 +732,10 @@ function selectablePairConfigurationNote(definition) {
     return "Relative bearing compares the Facing Entity's facing direction with a target entity, absolute coordinates, or an absolute angle.";
 }
 
-function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selectableTypes, selectableAbilityIds = null, selectedLoadout, customVariables, disabled, canRemove, canAddAction, puzzleMode = false, onClose, updateBranch, onPickActionOperand, onInspectActionOperand, onDismissOperandPicker, onChangeConditionVariable, onRemoveAction }) {
+function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selectableTypes, selectableAbilityIds = null, selectedLoadout, customVariables, disabled, canRemove, canAddAction, puzzleMode = false, onClose, updateBranch, onPickActionOperand, onInspectActionOperand, onDismissOperandPicker, onChangeConditionVariable, onRemoveAction, className = "", focusEnabled = true }) {
     const dialogRef = useRef(null);
-    useDialogFocus(dialogRef, { onClose });
-    const panel = (eyebrow, title, body, removeLabel = "", onRemove = null) => <aside ref={dialogRef} className="code-inspector" data-node-drag-ignore="true" role="dialog" aria-modal="true" onPointerDown={(event) => event.stopPropagation()}>
+    useDialogFocus(dialogRef, { onClose, enabled: focusEnabled });
+    const panel = (eyebrow, title, body, removeLabel = "", onRemove = null) => <aside ref={dialogRef} className={`code-inspector ${className}`} data-node-drag-ignore="true" role="dialog" aria-modal="true" onPointerDown={(event) => event.stopPropagation()}>
         <header className="code-inspector-header"><div><span>{eyebrow}</span><h2>{title}</h2></div><button type="button" onClick={onClose} className="modal-close-button" aria-label="Close inspector"><span aria-hidden="true">×</span></button></header>
         <div className="code-inspector-body" onClick={(event) => { if (event.target === event.currentTarget) onDismissOperandPicker?.(); }}>{body}</div>
         {onRemove && <footer className="code-inspector-footer"><button type="button" disabled={disabled || !canRemove} onClick={() => { onRemove(); onClose(); }}>{removeLabel}</button></footer>}
@@ -734,8 +788,6 @@ function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selec
         return panel(`INPUT ${inspectedNode.operand} VARIABLE`, definition.label, <>
             <p className="code-inspector-note">Configure this variable without adding controls to the conditional node.</p>
             {onChangeConditionVariable && <button type="button" onClick={() => onChangeConditionVariable(inspectedNode.rowIndex, inspectedNode.operand)} className="mb-4 min-h-9 w-full border border-cyan-700/70 bg-cyan-950/40 px-3 font-mono text-[9px] font-bold tracking-[.12em] text-cyan-200 hover:border-cyan-400 hover:bg-cyan-900/50">CHANGE VARIABLE</button>}
-            {definition.supportsAbility && abilityOptions.length > 0 && field("Ability", <select disabled={disabled} value={selectedCondition.ability ?? abilityOptions[0].id} onChange={(event) => update({ ability: abilityIdFromBoundary(event.target.value) })}>{abilityOptions.map((ability) => <option key={ability.id} value={ability.id}>{ability.label}</option>)}</select>)}
-            {definition.supportsStatusEffect && statusEffectOptions.length > 0 && field("Status effect", <select disabled={disabled} value={selectedCondition.statusEffect ?? ""} onChange={(event) => update({ statusEffect: normalizeStatusEffectSelection(event.target.value, statusEffectOptions) })}><option value="" disabled>Choose status effect</option>{statusEffectOptions.map((effect) => <option key={effect.id} value={effect.id}>{effect.label}</option>)}</select>)}
             {definition.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR
                 ? <>
                     {field(selectableSelectorLabel(definition, 0), <OrderedSelectablePicker disabled={disabled} value={condition.selectable1 ?? selectablePairDefaults[0]} selectableTypes={pairEntitySelectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => update({ selectable1: selectable })} />)}
@@ -745,6 +797,8 @@ function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selec
                     <small className="code-inspector-note">{selectablePairConfigurationNote(definition)}</small>
                 </>
                 : definition.supportsSelectable && field(selectablePickerLabel, <OrderedSelectablePicker value={condition[selectableField] ?? defaultSelectableForVariable(definition, selectableTypes)} selectableTypes={selectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(selectable) => update({ [selectableField]: selectable })} />)}
+            {definition.supportsAbility && abilityOptions.length > 0 && field("Ability", <select disabled={disabled} value={selectedCondition.ability ?? abilityOptions[0].id} onChange={(event) => update({ ability: abilityIdFromBoundary(event.target.value) })}>{abilityOptions.map((ability) => <option key={ability.id} value={ability.id}>{ability.label}</option>)}</select>)}
+            {definition.supportsStatusEffect && statusEffectOptions.length > 0 && field("Status effect", <select disabled={disabled} value={selectedCondition.statusEffect ?? ""} onChange={(event) => update({ statusEffect: normalizeStatusEffectSelection(event.target.value, statusEffectOptions) })}><option value="" disabled>Choose status effect</option>{statusEffectOptions.map((effect) => <option key={effect.id} value={effect.id}>{effect.label}</option>)}</select>)}
             {definition.id.endsWith("edgeDistance") && <small className="code-inspector-note">Edge distance is measured from the center of the entity to the nearest arena or danger-zone boundary.</small>}
             {!definition.supportsAbility && !definition.supportsStatusEffect && !definition.supportsSelectable && <p className="code-inspector-note">This variable has no additional configuration.</p>}
         </>);
@@ -777,6 +831,49 @@ function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selec
         </>, "REMOVE ACTION", remove);
     }
     return null;
+}
+
+function TutorialLogicInspector({ kind, condition = { type: "always" }, action = null, customVariables = [], selectedLoadout = null, stateVariables = VISIBLE_STATE_VARIABLES, selectableTypes = SELECTABLE_TYPES, className = "" }) {
+    const branchId = `tutorial-inspector-branch-${kind}`;
+    const rootId = `tutorial-inspector-root-${kind}`;
+    const branch = {
+        id: branchId,
+        branchType: "if",
+        priority: 1,
+        conditions: [condition],
+        actions: action ? [action] : [],
+        children: [],
+    };
+    const root = {
+        id: rootId,
+        name: "Tutorial preview",
+        priority: 1,
+        branches: [branch],
+    };
+    const graph = buildLogicGraph([root], stateVariables, selectedLoadout, selectableTypes);
+    const node = kind === "condition" ? graph.conditions[0] : graph.actions[0];
+    if (!node) return null;
+    const inspectedNode = kind === "condition"
+        ? { kind: "condition-variable", id: node.id, rowIndex: 0, operand: 1 }
+        : { kind: "action", id: node.id };
+    return <LogicNodeInspector
+        inspectedNode={inspectedNode}
+        graph={graph}
+        roots={[root]}
+        stateVariables={stateVariables}
+        selectableTypes={selectableTypes}
+        selectableAbilityIds={selectableAbilityIdsForLoadouts(selectedLoadout, selectedLoadout)}
+        selectedLoadout={selectedLoadout}
+        customVariables={customVariables}
+        disabled
+        canRemove={false}
+        canAddAction={false}
+        onClose={() => {}}
+        updateBranch={() => {}}
+        onDismissOperandPicker={() => {}}
+        className={`tutorial-code-inspector-preview ${className}`}
+        focusEnabled={false}
+    />;
 }
 
 function actionTargetMode(entry, definition) {
@@ -900,9 +997,9 @@ function ActionVariableInspector({ definition, operand, selectableTypes, disable
         <header className="code-inspector-header"><div><span>MODIFY INPUT VARIABLE</span><h2>{definition.label}</h2></div><button type="button" onClick={onClose} className="modal-close-button" aria-label="Close variable inspector"><span aria-hidden="true">×</span></button></header>
         <div className="code-inspector-body">
             <p className="code-inspector-note">Configure this action input without closing the modify custom variable action.</p>
+            {definition.supportsSelectable && <label className="code-inspector-field"><span>{definition.supportsAbility ? "BOT ENTITY" : "ENTITY"}</span><OrderedSelectablePicker disabled={disabled} value={selectable} selectableTypes={selectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(nextSelectable) => update({ selectable: nextSelectable })} /></label>}
             {definition.supportsAbility && definition.abilityOptions?.length > 0 && <label className="code-inspector-field"><span>ABILITY</span><select disabled={disabled} value={selectedAbilityOptionValue(operand?.ability, definition.abilityOptions)} onChange={(event) => update({ ability: abilityIdFromBoundary(event.target.value) })}>{definition.abilityOptions.map((ability) => <option key={ability.id} value={ability.id}>{ability.label}</option>)}</select></label>}
             {definition.supportsStatusEffect && definition.statusEffectOptions?.length > 0 && <label className="code-inspector-field"><span>STATUS EFFECT</span><select disabled={disabled} value={selectedStatusOptionValue(operand?.statusEffect, definition.statusEffectOptions)} onChange={(event) => update({ statusEffect: normalizeStatusEffectSelection(event.target.value, definition.statusEffectOptions) })}><option value="" disabled>Choose status effect</option>{definition.statusEffectOptions.map((effect) => <option key={effect.id} value={effect.id}>{effect.label}</option>)}</select></label>}
-            {definition.supportsSelectable && <label className="code-inspector-field"><span>ENTITY</span><OrderedSelectablePicker disabled={disabled} value={selectable} selectableTypes={selectableOptions} allowOrdering={definition.selectableOrderable !== false} onChange={(nextSelectable) => update({ selectable: nextSelectable })} /></label>}
             {!definition.supportsAbility && !definition.supportsStatusEffect && !definition.supportsSelectable && <p className="code-inspector-note">This variable has no additional configuration.</p>}
         </div>
     </aside>;
@@ -1488,6 +1585,7 @@ function selectableSelectorLabel(definition, pairSlot = null) {
     if (definition?.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR) {
         return definition.selectableSelectorLabels?.[pairSlot] ?? "Entity";
     }
+    if (definition?.supportsAbility) return "Bot Entity";
     return "Entity";
 }
 
@@ -1573,10 +1671,12 @@ export {
     variableActionTerms,
     ConditionalOperandBox,
     ActionVariableInspector,
+    GraphRootNode,
     GraphConditionNode,
     PuzzleConditionNode,
     GraphActionNode,
     LogicNodeInspector,
+    TutorialLogicInspector,
     conditionGraphNodeId,
     actionGraphNodeId,
     graphEdgePath,

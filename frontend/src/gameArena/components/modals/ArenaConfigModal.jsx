@@ -89,7 +89,7 @@ export default function ArenaConfigModal({ draft, defaults = null, onClose, onSa
 
     return (
         <div className="fixed inset-0 z-[110] grid place-items-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-            <section ref={dialogRef} className="max-h-[92vh] w-[min(92vw,560px)] overflow-y-auto rounded-xl border border-cyan-700/70 bg-[#11171a] shadow-2xl" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
+            <section ref={dialogRef} className="arena-config-modal max-h-[92vh] w-[min(92vw,560px)] overflow-y-auto rounded-xl border border-cyan-700/70 bg-[#11171a] shadow-2xl" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
                 <header className="flex items-center justify-between gap-4 border-b border-slate-700/80 bg-slate-950/70 px-5 py-4">
                     <div><p className="font-mono text-[9px] font-bold tracking-[.2em] text-cyan-300">{eyebrow}</p><h2 id={titleId} className="mt-1 text-lg font-bold text-white">{title}</h2></div>
                     <button type="button" onClick={onClose} aria-label={`Close ${title}`} className="modal-close-button"><span aria-hidden="true">×</span></button>

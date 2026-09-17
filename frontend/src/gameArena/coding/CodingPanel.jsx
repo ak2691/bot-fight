@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
     CONDITION_TYPES,
@@ -18,7 +18,7 @@ import {
 import { statusEffectDefinitionsForAbilities } from "../loadout/BotLoadout.js";
 import { priorityForNode } from "../botlogic/code/configuration/identifiers.js";
 import CustomVariablesModal from "./modals/CustomVariablesModal.jsx";
-import TutorialGuide, { getTutorialProgress, TutorialCodeCoach } from "../../tutorial/TutorialGuide.jsx";
+import TutorialGuide from "../../tutorial/TutorialGuide.jsx";
 import { botColorRole } from "../pixi/pixiVisualState.js";
 import { useDialogFocus } from "../../components/useDialogFocus.js";
 import {
@@ -38,23 +38,6 @@ import { TreeLogicBoard } from "./LogicBoard.jsx";
 
 const MIN_ZOOM = 0.45;
 const MAX_ZOOM = 1.35;
-const TUTORIAL_OPENED_LOGIC_STORAGE_KEY = "arena-tutorial-opened-bot-code-v1";
-
-function loadTutorialOpenedLogic() {
-    try {
-        return localStorage.getItem(TUTORIAL_OPENED_LOGIC_STORAGE_KEY) === "true";
-    } catch {
-        return false;
-    }
-}
-
-function saveTutorialOpenedLogic() {
-    try {
-        localStorage.setItem(TUTORIAL_OPENED_LOGIC_STORAGE_KEY, "true");
-    } catch {
-        // Tutorial memory is best-effort when browser storage is unavailable.
-    }
-}
 
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -188,14 +171,10 @@ export default function CodingPanel({
     isPuzzleSubmitting = false,
     logicLimits = null,
     opponentReadOnly = false,
-    tutorialMode = false,
     tutorialGuideProps = null,
-    tutorialGuideHost = null,
-    tutorialStep = 0,
-    onShowTutorialSolution,
+    onWorkspaceOpen = null,
 }) {
     const [isLogicOpen, setIsLogicOpen] = useState(false);
-    const [hasOpenedLogic, setHasOpenedLogic] = useState(() => tutorialMode && loadTutorialOpenedLogic());
     const [isCustomVariablesOpen, setIsCustomVariablesOpen] = useState(false);
     const [isNodeSearchOpen, setIsNodeSearchOpen] = useState(false);
     const [isQuickSearchOpen, setIsQuickSearchOpen] = useState(false);
@@ -204,6 +183,20 @@ export default function CodingPanel({
     const [canvasPan, setCanvasPan] = useState({ x: 40, y: 36 });
     const logicBoardRef = useRef(null);
     const logicDialogRef = useRef(null);
+    const workspaceToolbarRef = useRef(null);
+    const [workspaceToolbarHeight, setWorkspaceToolbarHeight] = useState(84);
+    useLayoutEffect(() => {
+        if (!isLogicOpen || !workspaceToolbarRef.current) return undefined;
+        const toolbar = workspaceToolbarRef.current;
+        const updateToolbarHeight = () => {
+            setWorkspaceToolbarHeight(Math.max(84, Math.ceil(toolbar.getBoundingClientRect().height)));
+        };
+        updateToolbarHeight();
+        if (typeof ResizeObserver === "undefined") return undefined;
+        const observer = new ResizeObserver(updateToolbarHeight);
+        observer.observe(toolbar);
+        return () => observer.disconnect();
+    }, [isLogicOpen]);
     const closeTopLogicLayer = () => {
         if (isNodeSearchOpen) {
             setIsNodeSearchOpen(false);
@@ -380,14 +373,13 @@ export default function CodingPanel({
     const isCodeEditingLocked = isBotCodeLocked || activeCodeReadOnly;
     const openLogicWorkspace = useCallback((quickSearch = false) => {
         if (isBotCodeLocked) return;
-        setHasOpenedLogic(true);
-        if (tutorialMode) saveTutorialOpenedLogic();
+        onWorkspaceOpen?.();
         setIsLogicOpen(true);
         if (quickSearch) {
             setIsQuickSearchOpen(true);
             setIsNodeSearchOpen(true);
         }
-    }, [isBotCodeLocked, tutorialMode]);
+    }, [isBotCodeLocked, onWorkspaceOpen]);
     useEffect(() => {
         const handleWorkspaceShortcut = (event) => {
             const textEntry = event.target?.closest?.("input,textarea,select,[contenteditable=\"true\"]");
@@ -454,17 +446,6 @@ export default function CodingPanel({
     const currentRoundBlockCount = totalActiveBlocks;
     const roundBlockLimit = maxActionNodes;
     const totalRounds = isMatchTesting ? 3 : Math.max(1, (matchContext?.winsRequired ?? 1) * 2 - 1);
-    const tutorialProgress = tutorialMode
-        ? getTutorialProgress(tutorialStep, configuration, { hasOpenedLogic, isAutoPlaying, challenge: tutorialGuideProps?.challenge })
-        : null;
-    const tutorialFocus = tutorialProgress?.focus;
-    const handleTutorialStepChange = (nextStep) => {
-        setIsLogicOpen(false);
-        setIsCustomVariablesOpen(false);
-        setIsNodeSearchOpen(false);
-        setIsQuickSearchOpen(false);
-        tutorialGuideProps?.onStepChange?.(nextStep);
-    };
     const visibleConditionTypes = CONDITION_TYPES;
     const visibleStateVariables = useMemo(() => {
         const ownAbilities = abilityIdsForConfiguration(activeLoadout);
@@ -668,7 +649,7 @@ export default function CodingPanel({
                         onClick={onAutoPlayToggle}
                         disabled={isBaseTesting || isTesting}
                         tone="neutral"
-                        className={tutorialFocus === "play" ? "tutorial-control-focus mt-4" : "mt-4"}
+                        className="mt-4"
                     >
                         {isAutoPlaying ? "PAUSE" : "PLAY"}
                     </ControlButton>
@@ -676,7 +657,7 @@ export default function CodingPanel({
                         type="button"
                         disabled={isBotCodeLocked}
                         onClick={() => openLogicWorkspace(false)}
-                        className={`arena-toolbar-button ${isBotCodeLocked ? "arena-toolbar-button--neutral" : "arena-toolbar-button--primary"} mt-2 ${tutorialFocus === "open-code" ? "tutorial-control-focus" : ""}`}
+                        className={`arena-toolbar-button ${isBotCodeLocked ? "arena-toolbar-button--neutral" : "arena-toolbar-button--primary"} mt-2`}
                     >
                         <ToolIcon name="node" /> {isBotCodeLocked ? "BOT CODE SUBMITTED" : "OPEN BOT CODE"}
                     </button>
@@ -782,15 +763,11 @@ export default function CodingPanel({
                 )}
             </div>
 
-            {tutorialGuideProps && tutorialGuideHost && createPortal(
-                <TutorialGuide {...tutorialGuideProps} onStepChange={handleTutorialStepChange} progress={tutorialProgress} />,
-                tutorialGuideHost,
-            )}
             {isLogicOpen && !isBotCodeLocked && typeof document !== "undefined" && createPortal(
                 <div className="code-workspace-overlay fixed inset-0 z-40 flex items-center justify-center overflow-hidden bg-black/70 px-4 py-5">
-                    <section ref={logicDialogRef} className="code-workspace testing-mono relative flex h-[min(90vh,820px)] w-[min(94vw,1440px)] flex-col overflow-hidden rounded-sm border border-border-mid bg-[#111519] shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="code-workspace-title" tabIndex={-1}>
+                    <section ref={logicDialogRef} style={{ "--tutorial-workspace-toolbar-height": `${workspaceToolbarHeight}px` }} className="code-workspace testing-mono relative flex h-[min(90vh,820px)] w-[min(94vw,1440px)] flex-col overflow-hidden rounded-sm border border-border-mid bg-[#111519] shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="code-workspace-title" tabIndex={-1}>
                         <div className="code-workspace-top-layer">
-                        <header className="code-toolbar flex min-h-[84px] flex-shrink-0 items-center gap-4 border-b border-white/10 bg-[#12161a] px-5 py-3 shadow-[0_8px_24px_rgba(0,0,0,.18)]">
+                        <header ref={workspaceToolbarRef} className="code-toolbar flex min-h-[84px] flex-shrink-0 items-center gap-4 border-b border-white/10 bg-[#12161a] px-5 py-3 shadow-[0_8px_24px_rgba(0,0,0,.18)]">
                             <div className="code-toolbar-title flex-none">
                                 <div id="code-workspace-title" className="font-mono text-[11px] font-bold tracking-widest text-cyan">BOT CODE WORKSPACE</div>
                                 <div className="mt-1 truncate font-mono text-[8px] tracking-wide text-ink-muted">
@@ -862,14 +839,14 @@ export default function CodingPanel({
                                     </div>
                                 )}
                                 <div className="code-toolbar-tools">
-                                    <button type="button" onClick={() => { setIsQuickSearchOpen(false); setIsNodeSearchOpen(true); }} className={`code-toolbar-button ${tutorialFocus === "search-roots" ? "tutorial-control-focus" : ""}`}><span aria-hidden="true" className="code-toolbar-icon">⌕</span> SEARCH ROOTS <kbd className="code-toolbar-shortcut">/</kbd></button>
-                                    <button type="button" onClick={() => setIsCustomVariablesOpen(true)} className={`code-toolbar-button ${tutorialFocus === "custom-variables" ? "tutorial-control-focus" : ""}`}><span aria-hidden="true" className="code-toolbar-icon">{'{ }'}</span> CUSTOM VARIABLES</button>
+                                    <button type="button" onClick={() => { setIsQuickSearchOpen(false); setIsNodeSearchOpen(true); }} className="code-toolbar-button"><span aria-hidden="true" className="code-toolbar-icon">⌕</span> SEARCH ROOTS <kbd className="code-toolbar-shortcut">/</kbd></button>
+                                    <button type="button" onClick={() => setIsCustomVariablesOpen(true)} className="code-toolbar-button"><span aria-hidden="true" className="code-toolbar-icon">{'{ }'}</span> CUSTOM VARIABLES</button>
                                     <button
                                         type="button"
                                         disabled={isCodeEditingLocked || isTesting || !viewingCurrentRound
                                             || totalRootNodes >= MAX_ROOT_NODES}
                                         onClick={addRootNode}
-                                        className={`code-toolbar-button code-toolbar-button-primary ${tutorialFocus === "add-root" ? "tutorial-control-focus" : ""}`}
+                                        className="code-toolbar-button code-toolbar-button-primary"
                                     >
                                         <span aria-hidden="true" className="code-toolbar-icon">＋</span> ADD ROOT ({totalRootNodes}/{MAX_ROOT_NODES})
                                     </button>
@@ -908,8 +885,12 @@ export default function CodingPanel({
                                 </div>
                             </div>
                         </header>
-                        {tutorialMode && <TutorialCodeCoach step={tutorialStep} progress={tutorialProgress} onShowSolution={onShowTutorialSolution} />}
                         </div>
+                        {tutorialGuideProps && (
+                            <div className="tutorial-workspace-lesson-host">
+                                <TutorialGuide {...tutorialGuideProps} variant="workspace" />
+                            </div>
+                        )}
                         {isMatchTesting && !editingOpponent && currentRound < 0 && (
                             <div className="border-b border-border-lo bg-zinc-950 px-4 py-2">
                                 {currentRound >= 3 && <div className="mb-2 border border-amber-800/70 bg-amber-950/30 px-3 py-2 font-mono text-[9px] tracking-widest text-amber-200">ROUNDS 1-2 LOGIC ARCHIVED · NOT USED FOR YOUR NEW ROLE</div>}
@@ -952,7 +933,6 @@ export default function CodingPanel({
                                 onPanChange={setCanvasPan}
                                 onZoomChange={changeZoom}
                                 onPinchZoom={applyPinchZoom}
-                                tutorialFocus={tutorialFocus}
                                 canUndo={!isCodeEditingLocked && !isTesting && (editHistory[activeCode]?.undo?.length ?? 0) > 0}
                                 canRedo={!isCodeEditingLocked && !isTesting && (editHistory[activeCode]?.redo?.length ?? 0) > 0}
                                 onUndo={() => travelHistory("undo")}

@@ -1544,6 +1544,18 @@ test("root priority switches values without moving roots or changing execution",
     assert.equal(selectAbilityStrategyActionPlan({ roots: switched }, payload()).ability.action, 9);
 });
 
+test("a matching conditional with an unavailable ability falls through to the next conditional", () => {
+    const configuration = { roots: [{ branches: [
+        { id: "cooling-down", branchType: "if", priority: 1, conditions: [{ type: "always" }], actions: [{ action: "swing" }] },
+        { id: "ready", branchType: "if", priority: 2, conditions: [{ type: "always" }], actions: [{ action: "concussive_shot" }] },
+    ] }] };
+    const plan = selectAbilityStrategyActionPlan(configuration, payload({
+        playerModel: { abilityCooldowns: { 1: 500 } },
+    }));
+
+    assert.equal(plan.ability.action, 9);
+});
+
 test("root priority swaps an occupied priority without changing root positions", () => {
     const roots = Array.from({ length: 6 }, (_, index) => ({
         id: `root-${index + 1}`,
@@ -1593,12 +1605,12 @@ test("tutorial teaches rotate before lock on", () => {
 
 test("tutorial priority lesson keeps roots in place while swapping priorities", () => {
     const scenario = getTutorialScenario(4);
-    assert.equal(TUTORIAL_STEP_COUNT, 18);
+    assert.equal(TUTORIAL_STEP_COUNT, 16);
     assert.equal(scenario.id, "priority");
-    assert.equal(getTutorialScenario(14).id, "game-overview");
-    assert.equal(getTutorialScenario(15).id, "ability-catalogue");
-    assert.equal(getTutorialScenario(16).id, "conditional-catalogue");
-    assert.equal(getTutorialScenario(17).id, "puzzles");
+    assert.equal(getTutorialScenario(12).id, "game-overview");
+    assert.equal(getTutorialScenario(13).id, "ability-catalogue");
+    assert.equal(getTutorialScenario(14).id, "conditional-catalogue");
+    assert.equal(getTutorialScenario(15).id, "puzzles");
     assert.deepEqual(scenario.emptyCode.roots.map((root) => root.name), ["Dash", "Lock On"]);
     assert.deepEqual(scenario.emptyCode.roots.map((root) => root.priority), [1, 2]);
     assert.deepEqual(scenario.solution.roots.map((root) => root.id), scenario.emptyCode.roots.map((root) => root.id));

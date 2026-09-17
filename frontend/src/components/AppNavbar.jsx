@@ -24,7 +24,7 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
     const [notificationsOpen, setNotificationsOpen] = useState(false);
     const [navbarVisibility, setNavbarVisibility] = useState({ pathname: null, hidden: false });
     const isHidden = navbarVisibility.pathname === pathname && navbarVisibility.hidden;
-    const isCharcoalPage = ["profile", "puzzles", "puzzle-builder", "puzzle-play", "abilities", "conditionals"].includes(currentPage);
+    const isCharcoalPage = ["profile", "puzzles", "puzzle-builder", "puzzle-play", "abilities", "conditionals", "tutorial"].includes(currentPage);
     const username = user?.username ?? "bot";
     const pendingNotificationCount = pendingPartyInvites.length + pendingCustomLobbyInvites.length;
 

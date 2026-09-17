@@ -26,9 +26,10 @@ function selectTreeBranches(branches, state, operations) {
     for (const branch of ordered) {
         const matches = branch.branchType === "else" || operations.evaluateConditions(branch.conditions, state);
         if (!matches) continue;
+        const selectedCount = selected.length;
         selected.push(...selectTreeBranches(branch.children, state, operations));
         if (operations.blockHasExecutableAction(branch, state)) selected.push(branch);
-        break;
+        if (selected.length > selectedCount) break;
     }
     return selected;
 }

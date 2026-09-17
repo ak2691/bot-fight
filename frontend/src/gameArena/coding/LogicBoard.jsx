@@ -3,8 +3,6 @@ import {
     createExpressionCondition,
     CUSTOM_VARIABLE_OPERATIONS,
     defaultSelectableForVariable,
-    MAX_ROOT_NAME_LENGTH,
-    MAX_ROOT_NODES,
     MAX_LOGIC_BLOCKS,
     MAX_TOTAL_CONDITIONS,
     normalizeRoots,
@@ -12,12 +10,9 @@ import {
     setLogicBranchPriority,
     setLogicRootPriority as setRootPriority,
 } from "../botlogic/code/BotCode.js";
-import RootNodePriorityInput from "./controls/RootNodePriorityInput.jsx";
 import SearchRootNodesModal from "./modals/SearchRootNodesModal.jsx";
-import { priorityForNode } from "../botlogic/code/configuration/identifiers.js";
 import {
     buildLogicGraph,
-    graphNodeStyle,
     treeBranchAt,
     updateTreeBranch,
     normalizeSiblingTypes,
@@ -27,6 +22,7 @@ import {
     NodeKindPicker,
     VariableOperandPicker,
     GraphConditionNode,
+    GraphRootNode,
     GraphActionNode,
     LogicNodeInspector,
     ActionVariableInspector,
@@ -71,33 +67,6 @@ function sameGraphPath(first, second) {
 
 function detachedNodePositionKey(node) {
     return node.actionIndex == null ? `condition:${node.branchId}` : `action:${node.branchId}:${node.actionIndex}`;
-}
-
-function RootNameInput({ value, disabled, ariaLabel, onCommit }) {
-    const committedValue = String(value ?? "Root");
-    const [draft, setDraft] = useState(committedValue);
-
-    useEffect(() => {
-        setDraft(committedValue);
-    }, [committedValue]);
-
-    return <input
-        type="text"
-        maxLength={MAX_ROOT_NAME_LENGTH}
-        value={draft}
-        disabled={disabled}
-        aria-label={ariaLabel}
-        data-node-drag-ignore="true"
-        onPointerDown={(event) => event.stopPropagation()}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={() => onCommit(draft)}
-        onKeyDown={(event) => {
-            if (event.key !== "Enter") return;
-            event.preventDefault();
-            event.currentTarget.blur();
-        }}
-        className="code-root-name"
-    />;
 }
 
 function absoluteGraphNodePosition(node, offsets) {
@@ -545,7 +514,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         nodePositions: nodePositionsForGraph(graphNodes, nodeOffsetsRef.current),
     });
     const beginNodeDrag = (event, key) => {
-        if (disabled || event.button !== 0 || event.target?.closest?.("button,input,select,textarea,label,a,[role=\"button\"],[data-node-drag-ignore]")) return;
+        if (disabled || attachingDetachedId || event.button !== 0 || event.target?.closest?.("button,input,select,textarea,label,a,[role=\"button\"],[data-node-drag-ignore]")) return;
         if (event.pointerType === "touch") event.preventDefault();
         event.stopPropagation();
         const dragNodeIds = selectedNodeIds.includes(key) ? selectedNodeIds : [key];
@@ -1039,12 +1008,25 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
                 }} />}
                 {graph.roots.map((node) => {
                     const rootNode = roots[node.rootIndex];
-                    const label = `Root ${priorityForNode(rootNode, node.rootIndex + 1)}`;
-                    return <section key={node.id} onClick={(event) => { if (attachingDetachedId) { event.stopPropagation(); attachDetachedBranch(node); } else selectGraphNode(event, node.id); }} onPointerDown={(event) => beginNodeDrag(event, node.id)} className={`code-graph-node code-graph-node--root absolute w-[300px] rounded-sm shadow-2xl ${selectedNodeIds.includes(node.id) ? "is-selected" : ""}`} style={graphNodeStyle(node, nodeOffsets)}>
-                        <header className="code-root-header">{puzzleMode ? <span className="code-root-label">PUZZLE RULE</span> : <span className="code-root-label">Root <RootNodePriorityInput priority={priorityForNode(rootNode, node.rootIndex + 1)} max={MAX_ROOT_NODES} disabled={disabled} onCommit={(priority) => setRootOrder(node.rootIndex, priority)} ariaLabel={`Priority for ${label}`} className="code-root-priority" /></span>}</header>
-                        <div className="code-root-body">{puzzleMode ? <span className="code-root-name code-root-name--puzzle" aria-label={`Name for ${label}`}>{rootNode?.name ?? "Puzzle Rule"}</span> : <RootNameInput value={rootNode?.name} disabled={disabled} ariaLabel={`Name for ${label}`} onCommit={(name) => updateRoot(node.rootIndex, { name })} />}<div className="code-root-actions">{!puzzleMode && <button type="button" disabled={disabled || graphConditionCount >= maxTotalConditions} onClick={(event) => addRootConditional(event, node, rootNode)} className={`code-root-action code-root-action--conditional ${tutorialFocus === "add-condition" && !rootNode.branches?.length ? "tutorial-control-focus" : ""}`}>+ CONDITIONAL</button>}<button type="button" disabled={!canRemove} onClick={(event) => { event.stopPropagation(); removeRootNode(node.rootIndex); }} className="code-root-action code-root-action--remove">REMOVE</button></div>
-                        </div>
-                    </section>;
+                    return <GraphRootNode
+                        key={node.id}
+                        node={node}
+                        rootNode={rootNode}
+                        nodeOffsets={nodeOffsets}
+                        disabled={disabled}
+                        canRemove={canRemove}
+                        puzzleMode={puzzleMode}
+                        graphConditionCount={graphConditionCount}
+                        maxTotalConditions={maxTotalConditions}
+                        selected={selectedNodeIds.includes(node.id)}
+                        tutorialFocus={tutorialFocus}
+                        onSelect={(event) => { if (attachingDetachedId) { event.stopPropagation(); attachDetachedBranch(node); } else selectGraphNode(event, node.id); }}
+                        onPointerDown={(event) => beginNodeDrag(event, node.id)}
+                        onPriorityChange={(priority) => setRootOrder(node.rootIndex, priority)}
+                        onNameChange={(name) => updateRoot(node.rootIndex, { name })}
+                        onAddConditional={addRootConditional}
+                        onRemove={() => removeRootNode(node.rootIndex)}
+                    />;
                 })}
                 {graph.conditions.map((node) => {
                     const branch = treeBranchAt(roots[node.rootIndex]?.branches, node.path);

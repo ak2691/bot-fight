@@ -6,6 +6,7 @@ import { buildStatePayload } from "../gameArena/modelPayloads/strategyStatePaylo
 import { stateFromPayload } from "../gameArena/botlogic/code/runtime/runtimeState.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../gameArena/modelPayloads/arenaConstants.js";
 import { BOT_CODE_ACTIONS } from "../gameArena/botlogic/code/contracts/BotLogicContracts.js";
+import { TUTORIAL_CATEGORIES, TUTORIAL_ENDING, TUTORIAL_INTRODUCTION, TUTORIAL_INTRODUCTION_VISUALS, TUTORIAL_LESSONS, getTutorialLesson } from "./TutorialContent.js";
 
 const emptyPayload = {
     playerModel: {
@@ -20,15 +21,15 @@ const emptyPayload = {
 };
 
 test("tutorial scenarios follow the reordered lesson sequence", () => {
-    assert.equal(TUTORIAL_STEP_COUNT, 18);
+    assert.equal(TUTORIAL_STEP_COUNT, 16);
     assert.deepEqual(
         Array.from({ length: TUTORIAL_STEP_COUNT }, (_, index) => getTutorialScenario(index).id),
-        ["arena-basics", "movement", "distance", "basic-strike", "priority", "rotate", "lock-on", "dodge", "combine", "orbiting", "vulnerability-1", "vulnerability-2", "custom-variable", "combo-and-kite", "game-overview", "ability-catalogue", "conditional-catalogue", "puzzles"],
+        ["arena-basics", "movement", "distance", "basic-strike", "priority", "rotate", "lock-on", "dodge", "combine", "vulnerability-1", "custom-variable", "combo-and-kite", "game-overview", "ability-catalogue", "conditional-catalogue", "puzzles"],
     );
 });
 
 test("custom-variable tutorial solution adds one to Variable 1", () => {
-    const solution = normalizeAbilityStrategyConfiguration(getTutorialScenario(12).solution);
+    const solution = normalizeAbilityStrategyConfiguration(getTutorialScenario(10).solution);
     const plan = selectAbilityStrategyActionPlan(solution, emptyPayload);
 
     assert.deepEqual(solution.customVariables, [{ id: "custom.variable-1", name: "Variable 1", valueType: "number", initialValue: 0 }]);
@@ -88,31 +89,12 @@ test("My Bot starts below the opponent in every tutorial lesson", () => {
     }
 });
 
-test("orbiting tutorial equips Slash and encodes the tactical solution", () => {
-    const scenario = getTutorialScenario(9);
-    const solution = normalizeAbilityStrategyConfiguration(scenario.solution);
-    const actions = solution.roots.flatMap((root) => root.branches.flatMap((branch) => branch.actions));
-
-    assert.equal(scenario.id, "orbiting");
-    assert.equal(scenario.goal, "defeat_opponent");
-    assert.equal(scenario.playerLoadout, "sandbox:1");
-    assert.equal(scenario.opponentLoadout, "sandbox:1");
-    assert.equal(actions.some((action) => action.action === TUTORIAL_ACTIONS.DASH && action.movementDirection === 45), true);
-    assert.equal(actions.some((action) => action.action === TUTORIAL_ACTIONS.LOCK_ON), true);
-    assert.equal(actions.some((action) => action.action === TUTORIAL_ACTIONS.SLASH), true);
-    assert.equal(actions.some((action) => action.action === TUTORIAL_ACTIONS.BASIC_STRIKE), true);
-});
-
-test("vulnerability tutorials configure their distinct attacks and tactics", () => {
-    const first = getTutorialScenario(10);
-    const second = getTutorialScenario(11);
-    const [firstPlayer, firstOpponent] = buildTutorialArenaShapes(10);
+test("vulnerability tutorial configures its attacks and tactics", () => {
+    const first = getTutorialScenario(9);
+    const [firstPlayer, firstOpponent] = buildTutorialArenaShapes(9);
     const firstConditions = first.solution.roots.flatMap((root) => root.branches.flatMap((branch) => branch.conditions));
     const firstMovementBranches = first.solution.roots[1].branches;
     const firstSlashConditions = first.solution.roots[3].branches[0].conditions;
-    const secondConditions = second.solution.roots.flatMap((root) => root.branches.flatMap((branch) => branch.conditions));
-    const secondActions = second.solution.roots.flatMap((root) => root.branches.flatMap((branch) => branch.actions));
-    const secondRootOne = second.solution.roots[0].branches;
 
     assert.equal(first.id, "vulnerability-1");
     assert.equal(first.goal, "defeat_opponent_survive");
@@ -125,30 +107,17 @@ test("vulnerability tutorials configure their distinct attacks and tactics", () 
     assert.deepEqual(first.solution.roots[0].branches.map((branch) => branch.actions[0].movementDirection), [90, 180]);
     assert.deepEqual(first.solution.roots[0].branches.map((branch) => branch.actions.length), [1, 1]);
     assert.deepEqual(firstMovementBranches.map((branch) => branch.actions[0].movementDirection), [120, 90, 30, 90]);
+    assert.equal(firstMovementBranches[0].conditions[0].right.value, 110);
     assert.equal(firstMovementBranches[0].conditions.some((condition) => condition.left === "bot.selectedAbilityOnCooldown" && condition.ability === TUTORIAL_ACTIONS.DASH && condition.leftSelectable === "my_bot"), true);
     assert.equal(firstMovementBranches[2].conditions.some((condition) => condition.left === "bot.selectedAbilityReady" && condition.ability === TUTORIAL_ACTIONS.DASH && condition.leftSelectable === "my_bot"), true);
     assert.deepEqual(firstMovementBranches[2].conditions.map((condition) => condition.join ?? "and"), ["and", "or", "and"]);
     assert.deepEqual(firstSlashConditions.map((condition) => ({ left: condition.left, comparator: condition.comparator, ability: condition.ability, value: condition.right.value })), [{ left: "bot.selectedAbilityCooldownMs", comparator: "gt", ability: TUTORIAL_ACTIONS.HEAVY_SLASH, value: 0.5 }]);
 
-    assert.equal(second.id, "vulnerability-2");
-    assert.equal(second.opponentLoadout, "sandbox:6,7");
-    assert.equal(buildTutorialArenaShapes(11)[0].hp, 40);
-    assert.equal(buildTutorialArenaShapes(11)[0].maxHp, 150);
-    assert.equal(second.solution.roots.length, 5);
-    assert.equal(secondConditions.some((condition) => condition.left === "bot.selectedAbilityReady" && condition.ability === TUTORIAL_ACTIONS.STUN), true);
-    assert.equal(secondConditions.some((condition) => condition.left === "bot.selectedAbilityOnCooldown" && condition.ability === TUTORIAL_ACTIONS.HEAVY_SLASH), true);
-    assert.equal(secondActions.some((action) => action.action === TUTORIAL_ACTIONS.DASH && action.movementDirection === 0), true);
-    assert.deepEqual(secondRootOne[0].conditions.map((condition) => condition.left), ["selectable.distance", "bot.selectedAbilityReady"]);
-    assert.deepEqual(secondRootOne[1].actions.map((action) => [action.action, action.movementDirection]), [[TUTORIAL_ACTIONS.DASH, 180], [BOT_CODE_ACTIONS.MOVE_WALK, 180]]);
-    assert.deepEqual(secondRootOne[2].conditions.map((condition) => condition.join ?? "and"), ["and", "and", "or", "and", "and"]);
-    assert.equal(second.solution.roots[1].branches[0].conditions[0].right.value, 120);
-    assert.equal(second.solution.roots[3].branches[0].conditions[0].right.value, 0.5);
-    assert.equal(second.solution.roots[4].branches[0].conditions[0].right.value, 90);
 });
 
 test("combo and kite tutorial cycles its combo and responds to edge pressure", () => {
-    const scenario = getTutorialScenario(13);
-    const [player] = buildTutorialArenaShapes(13);
+    const scenario = getTutorialScenario(11);
+    const [player] = buildTutorialArenaShapes(11);
     const solution = normalizeAbilityStrategyConfiguration(scenario.solution);
     const comboBranches = solution.roots[0].branches;
     const allActions = solution.roots.flatMap((root) => root.branches.flatMap((branch) => branch.actions));
@@ -196,4 +165,51 @@ test("tutorial solutions use the relaxed bearing and context-aware dashes", () =
     assert.equal(heavySlashRoot.priority, 1);
     assert.equal(heavySlashRoot.branches[0].actions[0].action, TUTORIAL_ACTIONS.HEAVY_SLASH);
     assert.equal(slash.right.value, 75);
+});
+
+test("new tutorial catalogue has four categories and keeps Some Theories descriptive-only", () => {
+    assert.deepEqual(TUTORIAL_CATEGORIES.map((category) => category.id), ["basics", "timing", "arena-edges", "custom-variables"]);
+    assert.equal(TUTORIAL_LESSONS.length, 12);
+    assert.equal(getTutorialLesson("some-theories").scenarioId, undefined);
+    const firstSteps = getTutorialLesson("first-steps").description.at(-1);
+    assert.equal(firstSteps.type, "steps");
+    assert.equal(firstSteps.items.at(-1), "Click Play to see your code work");
+    assert.equal(TUTORIAL_LESSONS.filter((lesson) => lesson.scenarioId).length, 11);
+});
+
+test("tutorial introduction maps node visuals and avoids em dashes", () => {
+    assert.deepEqual(Object.values(TUTORIAL_INTRODUCTION_VISUALS), ["root-priorities", "conditional-examples", "action-examples", "configuration-examples", "custom-variable-examples"]);
+    assert.equal(TUTORIAL_INTRODUCTION.some((paragraph) => paragraph.includes(String.fromCharCode(0x2014))), false);
+    assert.equal(TUTORIAL_ENDING.some((paragraph) => paragraph.includes(String.fromCharCode(0x2014))), false);
+});
+
+test("new tutorial lessons resolve focused practice presets", () => {
+    const fireballs = getTutorialScenario(getTutorialLesson("fireballs-in-range").scenarioId);
+    const dontMiss = getTutorialScenario(getTutorialLesson("dont-miss").scenarioId);
+    const dodging = getTutorialScenario(getTutorialLesson("dodging").scenarioId);
+    const abilityVariables = getTutorialScenario(getTutorialLesson("bot-ability-variables").scenarioId);
+    const edges = getTutorialScenario(getTutorialLesson("keep-running").scenarioId);
+    const customVariables = getTutorialScenario(getTutorialLesson("custom-variable-basics").scenarioId);
+    const [dontMissPlayer, dontMissOpponent] = buildTutorialArenaShapes("dont-miss");
+    const dontMissBranch = dontMiss.solution.roots[0].branches[0];
+
+    assert.equal(fireballs.playerLoadout, "sandbox:5");
+    assert.equal(fireballs.solution.roots[0].branches[1].actions[0].action, TUTORIAL_ACTIONS.FIREBALL);
+    assert.equal(dontMiss.playerLoadout, "sandbox:5");
+    assert.equal(dontMissBranch.conditions[0].left, "selectable.relativeBearing");
+    assert.equal(dontMissBranch.conditions[0].right.value, 10);
+    assert.equal(dontMissBranch.actions[0].action, TUTORIAL_ACTIONS.FIREBALL);
+    assert.equal(dontMiss.solution.roots[1].branches[0].conditions[0].type, "always");
+    assert.equal(dontMiss.solution.roots[1].branches[0].actions[0].action, BOT_CODE_ACTIONS.ROTATE_TOWARD_TARGET);
+    assert.equal(Math.hypot(
+        dontMissPlayer.transform.position.x - dontMissOpponent.transform.position.x,
+        dontMissPlayer.transform.position.y - dontMissOpponent.transform.position.y,
+    ), 300);
+    assert.equal(dontMissPlayer.transform.rotation, 180);
+    assert.equal(dodging.opponentLoadout, "sandbox:4,5");
+    assert.equal(dodging.playerHp, 1);
+    assert.equal(abilityVariables.opponentLoadout, "sandbox:7");
+    assert.equal(abilityVariables.playerHp, 1);
+    assert.equal(edges.opponentCode.roots[1].branches[0].actions[0].action, BOT_CODE_ACTIONS.MOVE_WALK);
+    assert.deepEqual(customVariables.solution.customVariables, [{ id: "custom.variable-1", name: "Variable 1", valueType: "number", initialValue: 0 }]);
 });

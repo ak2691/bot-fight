@@ -100,8 +100,8 @@ public class BotMovementService {
         if (!rewoundThisTick && !continuingDash
                 && !BotStateService.statusActive(bot, "stun")
                 && !BotStateService.statusActive(bot, "movement-lock")) {
-            Vector movementVelocity = nextMovementVelocity(
-                    bot, action, actionMagnitude, bot.moveSpeed * movementSpeedMultiplier);
+            Vector movementVelocity = movementVelocity(
+                    action, actionMagnitude, bot.moveSpeed * movementSpeedMultiplier);
             bot.movementVelocityX = movementVelocity.dx();
             bot.movementVelocityY = movementVelocity.dy();
             moveBotByVelocity(bot, movementVelocity.dx(), movementVelocity.dy(), arena);
@@ -229,29 +229,10 @@ public class BotMovementService {
         bot.velocityY = 0;
     }
 
-    private static Vector nextMovementVelocity(Bot bot, Action action, double magnitude, double maxSpeed) {
-        double acceleration = Math.max(0.0, maxSpeed * 0.5);
-        Vector desired = magnitude > 0.001
+    private static Vector movementVelocity(Action action, double magnitude, double maxSpeed) {
+        return magnitude > 0.001
                 ? new Vector(action.dx() / magnitude * maxSpeed, action.dy() / magnitude * maxSpeed)
                 : new Vector(0, 0);
-        return steerVelocity(new Vector(bot.movementVelocityX, bot.movementVelocityY), desired,
-                acceleration, maxSpeed);
-    }
-
-    private static Vector steerVelocity(Vector current, Vector target, double maxDelta, double maxSpeed) {
-        double deltaX = target.dx() - current.dx(), deltaY = target.dy() - current.dy();
-        double distance = Math.hypot(deltaX, deltaY);
-        if (distance > maxDelta && distance > 0) {
-            deltaX = deltaX / distance * maxDelta;
-            deltaY = deltaY / distance * maxDelta;
-        }
-        return clampVelocity(new Vector(current.dx() + deltaX, current.dy() + deltaY), maxSpeed);
-    }
-
-    private static Vector clampVelocity(Vector velocity, double maxSpeed) {
-        double speed = Math.hypot(velocity.dx(), velocity.dy());
-        return speed > maxSpeed && speed > 0
-                ? new Vector(velocity.dx() / speed * maxSpeed, velocity.dy() / speed * maxSpeed) : velocity;
     }
 
     private static void moveBotByVelocity(Bot bot, double velocityX, double velocityY, Arena arena) {

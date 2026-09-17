@@ -93,7 +93,7 @@ function applyMovement(next, shape, action, movement) {
         const dashRemaining = Math.max(0, Number(shape.dashRemaining ?? 0) - traveled);
         return { ...next, ...movementStart, x, y, dashActiveMs: traveled > 0 && dashRemaining > 0 ? Math.max(elapsedMs, Number(shape.dashActiveMs ?? 0)) : 0, dashRemaining, movementVelocityX: dashX * maxMoveSpeed, movementVelocityY: dashY * maxMoveSpeed, velocityX: dashX * step / seconds, velocityY: dashY * step / seconds };
     }
-    const velocity = nextMovementVelocity(shape, dx, dy, magnitude, maxMoveSpeed);
+    const velocity = movementVelocity(dx, dy, magnitude, maxMoveSpeed);
     return { ...next, ...movementStart, x: clamp(shape.x + velocity.dx, shape.size / 2, ARENA_WIDTH_UNITS - shape.size / 2), y: clamp(shape.y + velocity.dy, shape.size / 2, ARENA_HEIGHT_UNITS - shape.size / 2), movementVelocityX: velocity.dx, movementVelocityY: velocity.dy, velocityX: velocity.dx / seconds, velocityY: velocity.dy / seconds };
 }
 
@@ -268,27 +268,10 @@ function applyMovementActivation(bot, payload, movement, elapsedMs) {
     };
 }
 
-function nextMovementVelocity(shape, inputX, inputY, magnitude, maxSpeed) {
-    const current = { dx: Number(shape.movementVelocityX ?? 0), dy: Number(shape.movementVelocityY ?? 0) };
-    const acceleration = Math.max(0, maxSpeed * 0.5);
-    const target = !Number.isFinite(magnitude) || magnitude <= 0.001
+function movementVelocity(inputX, inputY, magnitude, maxSpeed) {
+    return !Number.isFinite(magnitude) || magnitude <= 0.001
         ? { dx: 0, dy: 0 }
         : { dx: inputX * maxSpeed, dy: inputY * maxSpeed };
-    return steerVelocity(current, target, acceleration, maxSpeed);
-}
-
-function steerVelocity(current, target, maxDelta, maxSpeed) {
-    // The bounded vector delta incorporates the angle between current and target
-    // directions, so turns brake proportionally instead of using a fixed step.
-    const delta = { dx: target.dx - current.dx, dy: target.dy - current.dy };
-    const distance = Math.hypot(delta.dx, delta.dy);
-    if (!Number.isFinite(distance) || distance <= maxDelta) return clampVelocity(target, maxSpeed);
-    return clampVelocity({ dx: current.dx + delta.dx / distance * maxDelta, dy: current.dy + delta.dy / distance * maxDelta }, maxSpeed);
-}
-
-function clampVelocity(velocity, maxSpeed) {
-    const speed = Math.hypot(velocity.dx, velocity.dy);
-    return !Number.isFinite(speed) || speed <= maxSpeed ? velocity : { dx: velocity.dx / speed * maxSpeed, dy: velocity.dy / speed * maxSpeed };
 }
 
 function hasAbility(shape, ability) {

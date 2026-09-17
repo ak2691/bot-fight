@@ -223,7 +223,7 @@ class DuelSimulationServiceTest {
                         """)),
                 bot("bot-2", "Two", 2, 700, 400, idleBrain)));
 
-        assertThat(result.frames().getFirst().bots().getFirst().x() - 100).isEqualTo(-7.5);
+        assertThat(result.frames().getFirst().bots().getFirst().x() - 100).isEqualTo(-15.0);
     }
 
     @Test
@@ -238,7 +238,23 @@ class DuelSimulationServiceTest {
                         """)),
                 bot("bot-2", "Two", 2, 700, 400, idleBrain)));
 
-        assertThat(result.frames().getFirst().bots().getFirst().x() - 100).isEqualTo(-7.5);
+        assertThat(result.frames().getFirst().bots().getFirst().x() - 100).isEqualTo(-15.0);
+    }
+
+    @Test
+    void unavailableAbilityFallsThroughToTheNextMatchingConditional() {
+        MatchPlaybackDTO result = service.simulate(request(
+                arena(2_000),
+                bot("fallback-attacker", "Attacker", 1, 100, 400, "custom", customBrain("[34,1]", """
+                        [
+                          {"priority":1,"conditions":[{"type":"always"}],"action":34},
+                          {"priority":2,"conditions":[{"type":"always"}],"action":1}
+                        ]
+                        """)),
+                bot("fallback-target", "Target", 2, 160, 400, idleBrain)));
+
+        assertThat(result.frames()).anyMatch(frame -> Integer.valueOf(34).equals(frame.bots().getFirst().triggeredAbility()));
+        assertThat(result.frames()).anyMatch(frame -> Integer.valueOf(1).equals(frame.bots().getFirst().triggeredAbility()));
     }
 
     @Test
@@ -690,7 +706,7 @@ class DuelSimulationServiceTest {
                         """)),
                 bot("bot-2", "Two", 2, 700, 400, idleBrain)));
 
-        assertThat(result.frames().getFirst().bots().getFirst().x() - 100).isEqualTo(7.5);
+        assertThat(result.frames().getFirst().bots().getFirst().x() - 100).isEqualTo(15.0);
     }
 
     @Test
@@ -1147,9 +1163,9 @@ class DuelSimulationServiceTest {
                 bot("speed-reader", "Reader", 1, 400, 400, "custom", readerBrain),
                 bot("speed-target", "Target", 2, 700, 400, "custom", movementBrain)));
 
-        assertThat(result.frames()).filteredOn(frame -> frame.elapsedMs() < 300)
+        assertThat(result.frames()).filteredOn(frame -> frame.elapsedMs() < 200)
                 .noneMatch(frame -> Integer.valueOf(1).equals(frame.bots().getFirst().triggeredAbility()));
-        assertThat(result.frames()).filteredOn(frame -> frame.elapsedMs() == 300)
+        assertThat(result.frames()).filteredOn(frame -> frame.elapsedMs() == 200)
                 .singleElement()
                 .satisfies(frame -> assertThat(frame.bots().getFirst().triggeredAbility()).isEqualTo(1));
     }

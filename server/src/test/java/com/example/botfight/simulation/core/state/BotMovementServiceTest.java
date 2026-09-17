@@ -78,6 +78,35 @@ class BotMovementServiceTest {
         assertThat(attacker.movementVelocityY).isZero();
     }
 
+    @Test
+    void walkingStartsTurnsAndStopsImmediatelyWithoutAcceleration() {
+        Bot bot = player(100, 100);
+        bot.size = 60;
+        bot.moveSpeed = 20;
+        DuelSimulationService.Arena arena = new DuelSimulationService.Arena(1000, 800, 1000);
+
+        service.applyTickMovement(bot, action(1, 0), arena, false, false, false);
+        assertThat(bot.x).isEqualTo(120);
+        assertThat(bot.y).isEqualTo(100);
+        assertThat(bot.movementVelocityX).isEqualTo(20);
+
+        service.applyTickMovement(bot, action(0, 1), arena, false, false, false);
+        assertThat(bot.x).isEqualTo(120);
+        assertThat(bot.y).isEqualTo(120);
+        assertThat(bot.movementVelocityX).isZero();
+        assertThat(bot.movementVelocityY).isEqualTo(20);
+
+        service.applyTickMovement(bot, action(0, 0), arena, false, false, false);
+        assertThat(bot.x).isEqualTo(120);
+        assertThat(bot.y).isEqualTo(120);
+        assertThat(bot.movementVelocityX).isZero();
+        assertThat(bot.movementVelocityY).isZero();
+    }
+
+    private static DuelSimulationService.Action action(double dx, double dy) {
+        return new DuelSimulationService.Action(dx, dy, 0, null, 0, 0, null, null, null);
+    }
+
     private static Bot player(double x, double y) {
         Bot player = new Bot();
         player.x = x;

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { monotonicEpochNowMs } from "../matchmaking/networkDelayEstimator.js";
 import AppNavbar from "../components/AppNavbar";
 import PixiCanvas from "./pixi/PixiCanvas.jsx";
@@ -83,21 +83,16 @@ import {
     saveStoredStrategyConfiguration,
 } from "./persistence/arenaStrategyStorage.js";
 import {
-    TUTORIAL_COMPLETION_PREFIX,
     loadTutorialProgress,
     loadTutorialStrategyConfiguration,
-    saveTutorialBooleanState,
-    saveTutorialProgress,
-    tutorialChallengeForScenario,
     tutorialStrategyConfigurationKey,
 } from "./persistence/tutorialStorage.js";
 import {
     buildTutorialArenaShapes,
     getTutorialScenario,
     TUTORIAL_STEP_COUNT,
-    TUTORIAL_ACTIONS,
-    hasTutorialPriorityOrder,
 } from "../tutorial/TutorialPresets.js";
+import TutorialGuide from "../tutorial/TutorialGuide.jsx";
 
 function finalizeTickMeasurements(shape, before) {
     if (!shape) return shape;
@@ -157,7 +152,6 @@ export default function Arena({
     onPuzzleAttempt = null,
     logicLimits = null,
 }) {
-    const navigate = useNavigate();
     const location = useLocation();
     const isPracticeRoom = location.pathname === "/practice";
 
@@ -169,9 +163,14 @@ export default function Arena({
     const isPuzzleMode = Boolean(puzzleMode);
     const usesPuzzleSetup = isPuzzleBuilder || isPuzzleMode;
     const [storedPracticeRoom] = useState(() => isPracticeRoom ? readPracticeRoomDraft() : null);
+    const requestedTutorialScenarioId = tutorialMode
+        ? new URLSearchParams(location.search).get("lesson")
+        : null;
     const requestedTutorialStep = Number(location.state?.tutorialStep);
     const restoredTutorialStep = Number.isInteger(requestedTutorialStep) ? requestedTutorialStep : loadTutorialProgress(0);
-    const initialTutorialStep = Math.max(0, Math.min(TUTORIAL_STEP_COUNT - 1, restoredTutorialStep));
+    const initialTutorialStep = requestedTutorialScenarioId
+        ? requestedTutorialScenarioId
+        : Math.max(0, Math.min(TUTORIAL_STEP_COUNT - 1, restoredTutorialStep));
     const initialTutorialScenario = getTutorialScenario(initialTutorialStep);
     const catalogueAbilityId = isPracticeRoom
         ? new URLSearchParams(location.search).get("ability")
@@ -253,6 +252,7 @@ export default function Arena({
     const [selectedId, setSelectedId] = useState(null);
     const [submitStatus, setSubmitStatus] = useState(null);
     const [isAutoPlaying, setIsAutoPlaying] = useState(false);
+    const [tutorialLessonMinimized, setTutorialLessonMinimized] = useState(true);
     const [isPuzzleAttemptSubmitting, setIsPuzzleAttemptSubmitting] = useState(false);
     const [measurementEnabled, setMeasurementEnabled] = useState(false);
     const [measurementPoints, setMeasurementPoints] = useState([]);
@@ -310,17 +310,13 @@ export default function Arena({
     }, []);
     const [isPracticeConfigOpen, setIsPracticeConfigOpen] = useState(false);
     const [isPuzzleConfigOpen, setIsPuzzleConfigOpen] = useState(false);
-    const [tutorialStep, setTutorialStep] = useState(initialTutorialStep);
-    const [tutorialInfoHost, setTutorialInfoHost] = useState(null);
-    const [tutorialChallenge, setTutorialChallenge] = useState(() => tutorialChallengeForScenario(initialTutorialStep, initialTutorialScenario));
+    const tutorialStep = initialTutorialStep;
 
     const autoIntervalRef = useRef(null);
     const handleFinishMatchRef = useRef(null);
     const autoFinishDeadlineRef = useRef(null);
     const finishInFlightRef = useRef(false);
-    const tutorialRunRef = useRef(null);
     const puzzleAttemptIdRef = useRef(0);
-    const tutorialResetTimerRef = useRef(null);
     const tutorialScenario = getTutorialScenario(tutorialStep);
     const isTutorialArenaIntro = tutorialMode && tutorialScenario.id === "arena-basics";
     const allowBotRotation = isPracticeRoom || isPuzzleBuilder || isPuzzleMode || isTutorialArenaIntro || (isMatchTesting && finishStatus === "BUILDING");
@@ -538,19 +534,6 @@ export default function Arena({
             clearInterval(autoIntervalRef.current);
             autoIntervalRef.current = null;
         }
-        if (tutorialResetTimerRef.current) {
-            clearTimeout(tutorialResetTimerRef.current);
-            tutorialResetTimerRef.current = null;
-        }
-    }, []);
-
-    const releaseTutorialArenaFreeze = useCallback(() => {
-        if (tutorialResetTimerRef.current) clearTimeout(tutorialResetTimerRef.current);
-        setIsAutoPlaying(true);
-        tutorialResetTimerRef.current = window.setTimeout(() => {
-            tutorialResetTimerRef.current = null;
-            setIsAutoPlaying(false);
-        }, 100);
     }, []);
 
     useEffect(() => {
@@ -559,10 +542,9 @@ export default function Arena({
             clearInterval(autoIntervalRef.current);
             autoIntervalRef.current = null;
         }
-        tutorialRunRef.current = null;
         const scenario = getTutorialScenario(tutorialStep);
         const lessonShapes = buildTutorialArenaShapes(tutorialStep);
-        // This effect resets the external tutorial arena when the lesson changes.
+        // Initialize the selected preset when a tutorial practice room opens.
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setIsAutoPlaying(false);
         setIsEditingArena(true);
@@ -572,9 +554,7 @@ export default function Arena({
         setTestingConfiguration(sanitizeStrategyConfigurationForLoadout(loadTutorialStrategyConfiguration(tutorialStep, scenario.emptyCode), scenario.playerLoadout));
         setOpponentTestingConfiguration(sanitizeStrategyConfigurationForLoadout(scenario.opponentCode, scenario.opponentLoadout));
         setShapes(lessonShapes);
-        releaseTutorialArenaFreeze();
-        setTutorialChallenge(tutorialChallengeForScenario(tutorialStep, scenario));
-    }, [releaseTutorialArenaFreeze, tutorialMode, tutorialStep]);
+    }, [tutorialMode, tutorialStep]);
 
     useEffect(() => {
         if (!isAbilityTesting || !catalogueAbilityTestingPreset) return;
@@ -1045,47 +1025,11 @@ export default function Arena({
     const runAutoPlay = () => {
         if (isAutoPlaying) return;
         if (isPuzzleMode) onPuzzleOutcome?.(null);
-        const customVariableGoal = tutorialMode && tutorialScenario.goal === "custom_variable";
-        const customVariable = customVariableGoal
-            ? (testingConfiguration.customVariables ?? []).find((variable) => (
-                variable?.valueType === "number"
-                && String(variable?.name ?? "").trim() === "Variable 1"
-            ))
-            : null;
-        const priorityGoal = tutorialMode && tutorialScenario.goal === "priority";
-        const priorityStage = priorityGoal && tutorialChallenge?.initialRunComplete ? "final" : "initial";
-        const priorityOrderCorrect = !priorityGoal
-            || (priorityStage === "initial"
-                ? hasTutorialPriorityOrder(testingConfiguration, TUTORIAL_ACTIONS.DASH, TUTORIAL_ACTIONS.LOCK_ON)
-                : hasTutorialPriorityOrder(testingConfiguration, TUTORIAL_ACTIONS.LOCK_ON, TUTORIAL_ACTIONS.DASH));
         setIsEditingArena(false);
         setIsAutoPlaying(true);
         setSelectedId(null);
         if (tutorialMode) {
             const freshShapes = buildTutorialArenaShapes(tutorialStep);
-            const main = toSimulationBotShape(freshShapes.find((shape) => shape.id === "main"));
-            const opponent = toSimulationBotShape(freshShapes.find((shape) => shape.id === "opponent-model"));
-            tutorialRunRef.current = tutorialScenario.durationMs ? {
-                deadline: monotonicEpochNowMs() + tutorialScenario.durationMs,
-                durationMs: tutorialScenario.durationMs,
-                goal: tutorialScenario.goal,
-                playerHp: main.hp,
-                opponentHp: opponent.hp,
-                customVariableId: customVariable?.id ?? null,
-                customVariableStartValue: Number(customVariable?.initialValue ?? 0),
-                priorityStage,
-                priorityOrderCorrect,
-            } : null;
-            if (!tutorialScenario.durationMs) {
-                saveTutorialBooleanState(TUTORIAL_COMPLETION_PREFIX, tutorialStep, true);
-            }
-            setTutorialChallenge((current) => ({
-                ...current,
-                status: tutorialScenario.durationMs ? "running" : "idle",
-                remainingMs: tutorialScenario.durationMs ?? 0,
-                completed: current.completed || !tutorialScenario.durationMs,
-                code: tutorialScenario.durationMs ? "reading_code" : "demonstration_running",
-            }));
             setShapes(freshShapes);
         } else if (isPuzzleMode || isPracticeRoom) {
             // Puzzle and practice playback start from the current arena state.
@@ -1160,10 +1104,6 @@ export default function Arena({
                     overlapsShape: overlapsEntity,
                 });
                 activeBots = entityUpdate.bots;
-                const grenadeExploded = entityUpdate.entities.some((entity) =>
-                    entity.ownerId === "opponent-model"
-                    && entity.abilityId === 4
-                    && entity.phaseId === "active");
                 const closingZoneUpdate = tickClosingZoneWorld({
                     zone: previousClosingZone,
                     bots: activeBots,
@@ -1179,94 +1119,7 @@ export default function Arena({
                         bot,
                         botBefores.find((before) => before.id === bot.id),
                     ));
-                const mainAfter = settledBots.find((bot) => bot.id === "main") ?? null;
-                const opponentAfter = settledBots.find((bot) => bot.id === "opponent-model") ?? null;
                 abilityEntities = entityUpdate.entities;
-                if (tutorialMode && tutorialRunRef.current && opponentAfter) {
-                    const run = tutorialRunRef.current;
-                    const remainingMs = Math.max(0, run.deadline - monotonicEpochNowMs());
-                    const hit = opponentAfter.hp < run.opponentHp;
-                    const tookDamage = mainAfter.hp < run.playerHp;
-                    const survived = Number(mainAfter.hp) > 0;
-                    const customVariableValue = run.goal === "custom_variable" && run.customVariableId
-                        ? Number(mainAfter.customVariables?.[run.customVariableId])
-                        : Number.NaN;
-                    const customVariableIncreased = run.goal === "custom_variable"
-                        && Number.isFinite(customVariableValue)
-                        && customVariableValue >= run.customVariableStartValue + 5;
-                    const opponentDefeated = (run.goal === "defeat_opponent" || run.goal === "defeat_opponent_survive")
-                        && Number(opponentAfter.hp) <= 0;
-                    const priorityPassed = run.goal === "priority"
-                        && remainingMs === 0
-                        && run.priorityOrderCorrect;
-                    const passed = run.goal === "survive"
-                        ? remainingMs === 0 && survived
-                        : run.goal === "heavy_slash"
-                            ? hit
-                            : run.goal === "combo"
-                                ? hit && !tookDamage
-                                : run.goal === "dodge_grenade"
-                                    ? grenadeExploded && !tookDamage
-                                    : run.goal === "basic_strike"
-                                        ? hit
-                                        : run.goal === "custom_variable"
-                                            ? customVariableIncreased
-                                            : run.goal === "defeat_opponent"
-                                                ? opponentDefeated
-                                            : run.goal === "defeat_opponent_survive"
-                                                ? opponentDefeated
-                                            : run.goal === "priority"
-                                                ? priorityPassed
-                                                : false;
-                    const failed = run.goal === "survive"
-                        ? !survived
-                        : run.goal === "defeat_opponent" ? !survived || remainingMs === 0
-                        : run.goal === "defeat_opponent_survive" ? !survived || remainingMs === 0
-                        : run.goal === "priority" ? remainingMs === 0 : tookDamage || remainingMs === 0;
-                    const priorityInitialPassed = passed && run.goal === "priority" && run.priorityStage === "initial";
-                    const priorityFinalPassed = passed && run.goal === "priority" && run.priorityStage === "final";
-                    const code = passed
-                        ? run.goal === "survive" ? "survive_passed"
-                            : run.goal === "heavy_slash" ? "heavy_slash_passed"
-                                : run.goal === "combo" ? "combo_passed"
-                                    : run.goal === "basic_strike" ? "basic_strike_passed"
-                                        : run.goal === "custom_variable" ? "custom_variable_passed"
-                                            : run.goal === "defeat_opponent" ? "defeat_opponent_passed"
-                                            : run.goal === "defeat_opponent_survive" ? "defeat_opponent_survive_passed"
-                                            : run.goal === "priority" ? (priorityFinalPassed ? "priority_final_passed" : "priority_initial_passed")
-                                                : "dodge_passed"
-                        : failed
-                            ? run.goal === "survive" ? "survive_defeated"
-                                : run.goal === "heavy_slash" ? "heavy_slash_timed_out"
-                                    : run.goal === "combo" ? tookDamage ? "combo_took_damage" : "combo_timed_out"
-                                        : run.goal === "basic_strike"
-                                            ? tookDamage ? "basic_strike_took_damage" : "basic_strike_timed_out"
-                                            : run.goal === "custom_variable"
-                                                ? "custom_variable_timed_out"
-                                                : run.goal === "defeat_opponent"
-                                                    ? !survived ? "defeat_opponent_defeated" : "defeat_opponent_timed_out"
-                                                : run.goal === "defeat_opponent_survive"
-                                                    ? !survived ? "defeat_opponent_survive_defeated" : "defeat_opponent_survive_timed_out"
-                                                : run.goal === "priority"
-                                                    ? "priority_failed"
-                                                    : tookDamage ? "dodge_took_damage" : "dodge_timed_out"
-                            : "reading_code";
-                    if (passed && !priorityInitialPassed) saveTutorialBooleanState(TUTORIAL_COMPLETION_PREFIX, tutorialStep, true);
-                    setTutorialChallenge((current) => ({
-                        ...current,
-                        status: passed ? "passed" : failed ? "failed" : "running",
-                        remainingMs,
-                        completed: current.completed || (passed && !priorityInitialPassed),
-                        initialRunComplete: current.initialRunComplete || priorityInitialPassed,
-                        hit,
-                        dodged: !tookDamage,
-                        code,
-                    }));
-                    if (passed || failed) {
-                        tutorialRunRef.current = null;
-                        window.setTimeout(() => stopAutoPlay(), 0);
-                    }
-                }
                 return [
                     ...settledBots.map(toCanonicalBotShape),
                     ...abilityEntities,
@@ -1282,32 +1135,6 @@ export default function Arena({
             autoIntervalRef.current = null;
         }
         setIsAutoPlaying(false);
-    };
-
-    const handleTutorialStepChange = (nextStep) => {
-        if (!tutorialMode) return;
-        stopAutoPlay();
-        tutorialRunRef.current = null;
-        const scenario = getTutorialScenario(nextStep);
-        setIsEditingArena(true);
-        setSelectedId(null);
-        setSelectedLoadout(scenario.playerLoadout);
-        setOpponentLoadout(scenario.opponentLoadout);
-        setTestingConfiguration(sanitizeStrategyConfigurationForLoadout(loadTutorialStrategyConfiguration(nextStep, scenario.emptyCode), scenario.playerLoadout));
-        setOpponentTestingConfiguration(sanitizeStrategyConfigurationForLoadout(scenario.opponentCode, scenario.opponentLoadout));
-        setShapes(buildTutorialArenaShapes(nextStep));
-        releaseTutorialArenaFreeze();
-        setTutorialChallenge(tutorialChallengeForScenario(nextStep, scenario));
-        setTutorialStep(nextStep);
-        saveTutorialProgress(nextStep);
-    };
-
-    useEffect(() => {
-        if (tutorialMode) saveTutorialProgress(tutorialStep);
-    }, [tutorialMode, tutorialStep]);
-
-    const applyTutorialSolution = () => {
-        updateTestingConfiguration(tutorialScenario.solution);
     };
 
     const resetArenaStats = () => {
@@ -1353,10 +1180,6 @@ export default function Arena({
         if (isAutoPlaying) {
             stopAutoPlay();
             setIsEditingArena(true);
-            if (tutorialMode && tutorialRunRef.current) {
-                tutorialRunRef.current = null;
-                setTutorialChallenge((current) => ({ ...current, status: "idle", code: "stopped" }));
-            }
             return;
         }
         runAutoPlay();
@@ -1490,7 +1313,16 @@ export default function Arena({
                             {(arenaInfo || tutorialMode) && (
                                 <div className="arena-stage-info">
                                     {arenaInfo}
-                                    {tutorialMode && <div ref={setTutorialInfoHost} className="arena-stage-info__tutorial" />}
+                                    {tutorialMode && (
+                                        <div className="arena-stage-info__tutorial">
+                                            <TutorialGuide
+                                                lessonId={tutorialScenario.id}
+                                                variant="arena"
+                                                minimized={tutorialLessonMinimized}
+                                                onMinimizedChange={setTutorialLessonMinimized}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
                             )}
                             <div className="arena-stage-canvas flex min-h-0 w-full flex-1 items-center justify-center">
@@ -1567,19 +1399,10 @@ export default function Arena({
                         onPuzzleSubmit={isPuzzleMode && onPuzzleAttempt ? submitPuzzleAttempt : null}
                         isPuzzleSubmitting={isPuzzleAttemptSubmitting}
                         logicLimits={usesPuzzleSetup ? logicLimits : null}
-                        tutorialMode={tutorialMode}
-                        tutorialGuideHost={tutorialInfoHost}
-                        tutorialStep={tutorialStep}
-                        onShowTutorialSolution={applyTutorialSolution}
                         tutorialGuideProps={tutorialMode ? {
-                            step: tutorialStep,
-                            onStepChange: handleTutorialStepChange,
-                            challenge: tutorialChallenge,
-                            onAbilityCatalogue: () => navigate("/ability-catalogue"),
-                            onConditionalCatalogue: () => navigate("/conditionals"),
-                            onPuzzles: () => navigate("/puzzles"),
-                            onShowSolution: applyTutorialSolution,
+                            lessonId: tutorialScenario.id,
                         } : null}
+                        onWorkspaceOpen={tutorialMode ? () => setTutorialLessonMinimized(true) : null}
                     />
                 </div>
             </div>

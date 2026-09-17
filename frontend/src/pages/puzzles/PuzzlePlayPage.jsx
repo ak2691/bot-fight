@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/auth-context";
 import AppNavbar from "../../components/AppNavbar.jsx";
@@ -69,6 +69,8 @@ function PuzzleConditionItem({ condition, variableDefinitions, onOpenConfigurati
 
 function PuzzlePlayInfoModal({ puzzle, outcome, onOpenConfiguration }) {
     const [minimized, setMinimized] = useState(false);
+    const descriptionRef = useRef(null);
+    const descriptionScrollTopRef = useRef(0);
     const winConditions = Array.isArray(puzzle.winConditions) ? puzzle.winConditions : [];
     const loseConditions = Array.isArray(puzzle.loseConditions) ? puzzle.loseConditions : [];
     const variableDefinitions = [
@@ -77,23 +79,35 @@ function PuzzlePlayInfoModal({ puzzle, outcome, onOpenConfiguration }) {
     ];
     const description = typeof puzzle.description === "string" ? puzzle.description.trim() : "";
     const isSolved = puzzle.solved === true || outcome?.status === "solved";
+    useLayoutEffect(() => {
+        if (!minimized && descriptionRef.current) {
+            descriptionRef.current.scrollTop = descriptionScrollTopRef.current;
+        }
+    }, [minimized, puzzle.id]);
 
     if (minimized) {
         return (
             <button type="button" onClick={() => setMinimized(false)} className="puzzle-info-button tutorial-guide-button info-popup-minimized gray-button-surface flex items-center gap-2 rounded-lg border border-cyan-400/40 px-3 py-2 text-left shadow-2xl" aria-label="Expand puzzle information" aria-expanded="false" aria-controls="puzzle-info-panel">
-                <span className="tutorial-guide-button__label font-mono text-[9px] font-bold tracking-[.16em] text-slate-300">Puzzle Info</span>
-                <img src="/assets/arena-toolbar/info-circle-icon.png" alt="" aria-hidden="true" className="tutorial-guide-button__icon info-circle-icon h-5 w-5" />
+                <span className="tutorial-guide-button__label font-mono text-[9px] font-bold tracking-[.16em] text-slate-300">PUZZLE INFO</span>
+                <img src="/assets/homepage/book-icon.svg" alt="" aria-hidden="true" className="tutorial-guide-button__icon h-5 w-5" />
             </button>
         );
     }
 
     return (
-        <aside id="puzzle-info-panel" className="info-popup-panel puzzle-info-panel w-[19rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-cyan-400/30 bg-[#07111b] shadow-[0_18px_50px_rgba(0,0,0,.48)]" aria-label="Puzzle information">
-            <div className="p-3.5">
-                <div className="flex items-start justify-between gap-3">
-                    <p className="min-w-0 flex-1 break-words font-mono text-lg font-bold leading-tight text-white">{puzzle.puzzleNumber}. {puzzle.name}</p>
-                    <button type="button" onClick={() => setMinimized(true)} className="puzzle-info-minimize" aria-label="Minimize puzzle information" title="Minimize puzzle information"><span aria-hidden="true">-</span></button>
+        <aside id="puzzle-info-panel" className="tutorial-guide-panel puzzle-info-panel info-popup-panel w-[19rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-cyan-400/30 bg-[#07111b] shadow-[0_18px_50px_rgba(0,0,0,.48)]" aria-label="Puzzle information">
+            <div className="tutorial-guide-header flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                    <p className="font-mono text-[9px] font-bold tracking-[.16em] text-cyan-300">PUZZLE</p>
+                    <p className="mt-2 break-words font-mono text-lg font-bold leading-tight text-white">{puzzle.puzzleNumber}. {puzzle.name}</p>
                 </div>
+                <button type="button" onClick={() => setMinimized(true)} className="puzzle-info-minimize" aria-label="Minimize puzzle information" title="Minimize puzzle information"><span aria-hidden="true">-</span></button>
+            </div>
+            <div
+                ref={descriptionRef}
+                onScroll={(event) => { descriptionScrollTopRef.current = event.currentTarget.scrollTop; }}
+                className="tutorial-guide-content p-3.5"
+            >
                 {description && <p className="mt-2 whitespace-pre-wrap text-[11px] leading-4 text-slate-300">{description}</p>}
 
                 <div className="mt-5 grid grid-cols-2 gap-4 border-y border-white/10 py-3 font-mono text-[9px]">

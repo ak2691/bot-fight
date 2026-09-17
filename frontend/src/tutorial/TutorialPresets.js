@@ -35,6 +35,7 @@ const ability = (actionId, selectable = BOT_CODE_SELECTABLES.OPPONENT, fields = 
 export const TUTORIAL_ACTIONS = Object.freeze({
     SLASH: abilityIdFromLegacyName("slash"),
     STUN: abilityIdFromLegacyName("stun"),
+    FIREBALL: abilityIdFromLegacyName("fireball"),
     RAIL_SHOT: abilityIdFromLegacyName("rail_shot"),
     GRENADE: abilityIdFromLegacyName("grenade"),
     HEAVY_SLASH: abilityIdFromLegacyName("heavy_slash"),
@@ -130,6 +131,68 @@ function stepEightCustomVariableSolution() {
     };
 }
 
+function retreatLessonSolution() {
+    return code([
+        root(1, [branch("tutorial-retreat-if", [compare("selectable.hp", "lt", 100, BOT_CODE_SELECTABLES.MY)], [move(180)])]),
+    ]);
+}
+
+function dashLessonSolution() {
+    return code([
+        root(1, [branch("tutorial-dash-if", [always()], [ability(TUTORIAL_ACTIONS.DASH, BOT_CODE_SELECTABLES.OPPONENT, { movementMode: "target", movementDirection: 90 })])]),
+    ]);
+}
+
+function lockOnLessonSolution() {
+    return code([
+        root(1, [branch("tutorial-lock-on-if", [always()], [ability(TUTORIAL_ACTIONS.LOCK_ON)])]),
+    ]);
+}
+
+function fireballsLessonSolution() {
+    return code([
+        root(1, [
+            branch("tutorial-fireball-approach-if", [comparePair("selectable.distance", "gt", 432)], [move(0)]),
+            branch("tutorial-fireball-shoot-if", [comparePair("selectable.distance", "lte", 432)], [ability(TUTORIAL_ACTIONS.FIREBALL)], 2),
+        ]),
+    ]);
+}
+
+function fireballAimLessonSolution() {
+    return code([
+        root(1, [branch("tutorial-dont-miss-fireball-if", [comparePair("selectable.relativeBearing", "lte", 10)], [ability(TUTORIAL_ACTIONS.FIREBALL)])]),
+        root(2, [branch("tutorial-dont-miss-aim-if", [always()], [face()])]),
+    ]);
+}
+
+function dodgingLessonSolution() {
+    return code([
+        root(1, [branch("tutorial-dodge-if", [always()], [ability(TUTORIAL_ACTIONS.DASH, BOT_CODE_SELECTABLES.OPPONENT, { movementMode: "target", movementDirection: 90 })])]),
+    ]);
+}
+
+function keepRunningLessonSolution() {
+    return code([
+        root(1, [branch("tutorial-edge-retreat-if", [compare("selectable.edgeDistance", "lte", 150, BOT_CODE_SELECTABLES.MY)], [move(180)])]),
+        root(2, [branch("tutorial-edge-approach-if", [compare("selectable.edgeDistance", "gt", 150, BOT_CODE_SELECTABLES.MY)], [move(0)])]),
+    ]);
+}
+
+function customVariableBasicsSolution() {
+    const variableId = "custom.variable-1";
+    return {
+        ...code([
+            root(1, [branch("tutorial-custom-variable-add-if", [always()], [{
+                action: BOT_CODE_ACTIONS.VARIABLE,
+                variableId,
+                terms: [{ operator: "add", operand: { type: "number", value: 1 } }],
+            }])]),
+            root(2, [branch("tutorial-custom-variable-dash-if", [compare(variableId, "gte", 10)], [ability(TUTORIAL_ACTIONS.DASH)])]),
+        ]),
+        customVariables: [{ id: variableId, name: "Variable 1", valueType: "number", initialValue: 0 }],
+    };
+}
+
 function stepSevenSolution() {
     return code([
         root(1, [branch("lesson-7-slash-if", [
@@ -212,6 +275,15 @@ const selectedAbilityTime = (left, comparator, value, selectedAbility, leftSelec
     ability: selectedAbility,
 });
 
+function abilityVariablesLessonSolution() {
+    return code([
+        root(1, [branch("tutorial-ability-variable-face-if", [always()], [face()])]),
+        root(2, [branch("tutorial-ability-variable-attack-if", [
+            selectedAbilityTime("bot.selectedAbilityCooldownMs", "gt", 0.5, TUTORIAL_ACTIONS.HEAVY_SLASH),
+        ], [ability(TUTORIAL_ACTIONS.SLASH)])]),
+    ]);
+}
+
 function vulnerabilityOneSolution() {
     const preparing = (selectedAbility) => selectedAbilityState("bot.selectedAbilityPreparing", true, selectedAbility);
     const coolingDown = (selectedAbility, selectable = BOT_CODE_SELECTABLES.OPPONENT) => selectedAbilityState("bot.selectedAbilityOnCooldown", true, selectedAbility, selectable);
@@ -228,7 +300,7 @@ function vulnerabilityOneSolution() {
         ]),
         root(2, [
             branch("lesson-10-space-without-dash", [
-                comparePair("selectable.distance", "lte", 100),
+                comparePair("selectable.distance", "lte", 110),
                 coolingDown(TUTORIAL_ACTIONS.DASH, BOT_CODE_SELECTABLES.MY),
             ], [move(120)]),
             branch("lesson-10-orbit-inside-slash-range", [
@@ -370,6 +442,27 @@ function grenadeOpponent() {
     ]);
 }
 
+function fireballAndGrenadeOpponent() {
+    const playerDashReady = selectedAbilityState("bot.selectedAbilityReady", true, TUTORIAL_ACTIONS.DASH, BOT_CODE_SELECTABLES.OPPONENT);
+    return code([
+        root(1, [branch("opponent-dodge-grenade-if", [playerDashReady], [face(), ability(TUTORIAL_ACTIONS.GRENADE)])]),
+        root(2, [branch("opponent-dodge-fireball-if", [playerDashReady], [face(), ability(TUTORIAL_ACTIONS.FIREBALL)])]),
+    ]);
+}
+
+function heavySlashOpponent() {
+    return code([
+        root(1, [branch("opponent-heavy-slash-if", [always()], [face(), ability(TUTORIAL_ACTIONS.HEAVY_SLASH)])]),
+    ]);
+}
+
+function chasingOpponent() {
+    return code([
+        root(1, [branch("opponent-chase-face-if", [always()], [face()])]),
+        root(2, [branch("opponent-chase-move-if", [always()], [move(0)])]),
+    ]);
+}
+
 const SCENARIO_DEFINITIONS = [
     // Preserve each lesson's old relationship to the arena center as the world grows to 1200 units.
     { id: "arena-basics", playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialCode, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(150), opponentY: tutorialY(-140), playerRotation: 0, opponentRotation: 180 } },
@@ -390,6 +483,19 @@ const SCENARIO_DEFINITIONS = [
     { id: "ability-catalogue", playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialCode, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(150), opponentY: tutorialY(-100), playerRotation: 0, opponentRotation: 180 } },
     { id: "conditional-catalogue", playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialCode, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(150), opponentY: tutorialY(-100), playerRotation: 0, opponentRotation: 180 } },
     { id: "puzzles", playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialCode, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(150), opponentY: tutorialY(-100), playerRotation: 0, opponentRotation: 180 } },
+
+    // The catalogue tutorial uses these focused practice rooms. The older
+    // scenario definitions above remain available for saved local sessions.
+    { id: "first-steps", playerLoadout: loadout(), opponentLoadout: loadout(), solution: stepOneSolution, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(180), opponentY: tutorialY(-120), playerRotation: 0, opponentRotation: 180 } },
+    { id: "retreat", playerLoadout: loadout(), opponentLoadout: loadout(1), solution: retreatLessonSolution, opponentCode: meleeOpponent, spawn: { playerY: tutorialY(80), opponentY: tutorialY(-20), playerRotation: 0, opponentRotation: 180 } },
+    { id: "dash-basics", playerLoadout: loadout(), opponentLoadout: loadout(), solution: dashLessonSolution, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(190), opponentY: tutorialY(-120), playerRotation: 0, opponentRotation: 180 } },
+    { id: "lock-on-basics", playerLoadout: loadout(), opponentLoadout: loadout(), solution: lockOnLessonSolution, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(100), opponentY: tutorialY(-80), playerRotation: 180, opponentRotation: 180 } },
+    { id: "fireballs-in-range", playerLoadout: loadout(5), opponentLoadout: loadout(), solution: fireballsLessonSolution, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(300), opponentY: tutorialY(-300), playerRotation: 0, opponentRotation: 180 } },
+    { id: "dont-miss", playerLoadout: loadout(5), opponentLoadout: loadout(), solution: fireballAimLessonSolution, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(150), opponentY: tutorialY(-150), playerRotation: 180, opponentRotation: 180 } },
+    { id: "dodging", playerLoadout: loadout(), opponentLoadout: loadout(4, 5), solution: dodgingLessonSolution, opponentCode: fireballAndGrenadeOpponent, playerHp: 1, spawn: { playerY: tutorialY(70), opponentY: tutorialY(-80), playerRotation: 0, opponentRotation: 180 } },
+    { id: "bot-ability-variables", playerLoadout: loadout(1), opponentLoadout: loadout(7), solution: abilityVariablesLessonSolution, opponentCode: heavySlashOpponent, playerHp: 1, spawn: { playerY: tutorialY(95), opponentY: tutorialY(-20), playerRotation: 0, opponentRotation: 180 } },
+    { id: "keep-running", playerLoadout: loadout(), opponentLoadout: loadout(), solution: keepRunningLessonSolution, opponentCode: chasingOpponent, spawn: { playerY: tutorialY(400), opponentY: tutorialY(-120), playerRotation: 0, opponentRotation: 180 } },
+    { id: "custom-variable-basics", playerLoadout: loadout(), opponentLoadout: loadout(), solution: customVariableBasicsSolution, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(150), opponentY: tutorialY(-100), playerRotation: 0, opponentRotation: 180 } },
 ];
 
 const SCENARIO_ORDER = [
@@ -402,9 +508,7 @@ const SCENARIO_ORDER = [
     "lock-on",
     "dodge",
     "combine",
-    "orbiting",
     "vulnerability-1",
-    "vulnerability-2",
     "custom-variable",
     "combo-and-kite",
     "game-overview",
@@ -419,8 +523,10 @@ const SCENARIOS = SCENARIO_ORDER.map((scenarioId) => (
 
 export const TUTORIAL_STEP_COUNT = SCENARIOS.length;
 
-export function getTutorialScenario(step) {
-    const source = SCENARIOS[Math.max(0, Math.min(SCENARIOS.length - 1, Number(step) || 0))];
+export function getTutorialScenario(stepOrId) {
+    const source = typeof stepOrId === "string"
+        ? SCENARIO_DEFINITIONS.find((scenario) => scenario.id === stepOrId) ?? SCENARIOS[0]
+        : SCENARIOS[Math.max(0, Math.min(SCENARIOS.length - 1, Number(stepOrId) || 0))];
     return { ...source, emptyCode: (source.emptyCode ?? createEmptyTutorialCode)(), solution: source.solution(), opponentCode: source.opponentCode() };
 }
 
