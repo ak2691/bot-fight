@@ -2,7 +2,7 @@ import { encodeSandboxLoadout } from "../gameArena/loadout/BotLoadout.js";
 import { MAIN_SHAPE, buildOpponentShape, resetBotShape } from "../gameArena/modelPayloads/arenaShapes.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../gameArena/modelPayloads/arenaConstants.js";
 import { createCodeRoot, createDefaultAbilityStrategyConfiguration } from "../gameArena/botlogic/code/configuration/configurationFactories.js";
-import { BOT_CODE_ACTIONS, BOT_CODE_SELECTABLES } from "../gameArena/botlogic/code/contracts/BotLogicContracts.js";
+import { BOT_CODE_ACTIONS, BOT_CODE_SELECTABLES, CUSTOM_VARIABLE_OPERATIONS } from "../gameArena/botlogic/code/contracts/BotLogicContracts.js";
 import { abilityIdFromLegacyName } from "../gameArena/gameconfig/AbilityRegistry.js";
 
 const TUTORIAL_CENTER_X = ARENA_WIDTH_UNITS / 2;
@@ -25,10 +25,14 @@ const always = () => ({ type: "always" });
 const compare = (left, comparator, value, leftSelectable = undefined) => ({
     type: "expression", left, comparator, right: { type: "number", value }, ...(leftSelectable ? { leftSelectable } : {}),
 });
+const compareBoolean = (left, value) => ({
+    type: "expression", left, comparator: "eq", right: { type: "boolean", value },
+});
 const comparePair = (left, comparator, value, selectable1 = BOT_CODE_SELECTABLES.MY, selectable2 = BOT_CODE_SELECTABLES.OPPONENT) => ({
     type: "expression", left, comparator, right: { type: "number", value }, selectable1, selectable2,
 });
 const move = (direction, selectable = BOT_CODE_SELECTABLES.OPPONENT) => ({ action: BOT_CODE_ACTIONS.MOVE_WALK, movementMode: "target", movementDirection: direction, selectable });
+const moveAbsolute = (direction) => ({ action: BOT_CODE_ACTIONS.MOVE_WALK, movementMode: "absolute", movementDirection: direction });
 const face = (selectable = BOT_CODE_SELECTABLES.OPPONENT) => ({ action: BOT_CODE_ACTIONS.ROTATE_TOWARD_TARGET, selectable });
 const ability = (actionId, selectable = BOT_CODE_SELECTABLES.OPPONENT, fields = {}) => ({ action: actionId, selectable, ...fields });
 
@@ -143,6 +147,12 @@ function dashLessonSolution() {
     ]);
 }
 
+function aimingLessonSolution() {
+    return code([
+        root(1, [branch("tutorial-aiming-face-if", [always()], [face()])]),
+    ]);
+}
+
 function lockOnLessonSolution() {
     return code([
         root(1, [branch("tutorial-lock-on-if", [always()], [ability(TUTORIAL_ACTIONS.LOCK_ON)])]),
@@ -190,6 +200,37 @@ function customVariableBasicsSolution() {
             root(2, [branch("tutorial-custom-variable-dash-if", [compare(variableId, "gte", 10)], [ability(TUTORIAL_ACTIONS.DASH)])]),
         ]),
         customVariables: [{ id: variableId, name: "Variable 1", valueType: "number", initialValue: 0 }],
+    };
+}
+
+function aimingPatrolOpponent() {
+    const countId = "custom.aiming-count";
+    const numberTerm = (operator, value) => ({ operator, operand: { type: "number", value } });
+    const lockId = "custom.aiming-lock";
+    const modifyCount = (terms) => ({ action: BOT_CODE_ACTIONS.VARIABLE, variableId: countId, terms });
+    const setLock = (value) => ({ action: BOT_CODE_ACTIONS.VARIABLE, variableId: lockId, value });
+    return {
+        ...code([
+            root(1, [
+                branch("tutorial-aiming-patrol-edge", [
+                    compare("selectable.edgeDistance", "lte", 100, BOT_CODE_SELECTABLES.MY),
+                    compareBoolean(lockId, false),
+                ], [
+                    modifyCount([
+                        numberTerm(CUSTOM_VARIABLE_OPERATIONS.ADD, 1),
+                        numberTerm(CUSTOM_VARIABLE_OPERATIONS.MODULO, 1000),
+                        numberTerm(CUSTOM_VARIABLE_OPERATIONS.MODULO, 2),
+                    ]),
+                    setLock(true),
+                ]),
+                branch("tutorial-aiming-patrol-left", [compare(countId, "eq", 0)], [moveAbsolute(270), setLock(false)], 2),
+                branch("tutorial-aiming-patrol-right", [compare(countId, "eq", 1)], [moveAbsolute(90), setLock(false)], 3),
+            ]),
+        ]),
+        customVariables: [
+            { id: countId, name: "Count", valueType: "number", initialValue: 0 },
+            { id: lockId, name: "Lock", valueType: "boolean", initialValue: false },
+        ],
     };
 }
 
@@ -490,6 +531,7 @@ const SCENARIO_DEFINITIONS = [
     { id: "first-steps", playerLoadout: loadout(), opponentLoadout: loadout(), solution: stepOneSolution, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(180), opponentY: tutorialY(-120), playerRotation: 0, opponentRotation: 180 } },
     { id: "retreat", playerLoadout: loadout(), opponentLoadout: loadout(1), solution: retreatLessonSolution, opponentCode: meleeOpponent, spawn: { playerY: tutorialY(80), opponentY: tutorialY(-20), playerRotation: 0, opponentRotation: 180 } },
     { id: "dash-basics", playerLoadout: loadout(), opponentLoadout: loadout(), solution: dashLessonSolution, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(190), opponentY: tutorialY(-120), playerRotation: 0, opponentRotation: 180 } },
+    { id: "aiming-basics", playerLoadout: loadout(5), opponentLoadout: loadout(), solution: aimingLessonSolution, opponentCode: aimingPatrolOpponent, spawn: { playerY: tutorialY(300), opponentY: tutorialY(0), playerRotation: 180, opponentRotation: 180 } },
     { id: "lock-on-basics", playerLoadout: loadout(), opponentLoadout: loadout(), solution: lockOnLessonSolution, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(100), opponentY: tutorialY(-80), playerRotation: 180, opponentRotation: 180 } },
     { id: "fireballs-in-range", playerLoadout: loadout(5), opponentLoadout: loadout(), solution: fireballsLessonSolution, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(300), opponentY: tutorialY(-300), playerRotation: 0, opponentRotation: 180 } },
     { id: "dont-miss", playerLoadout: loadout(5), opponentLoadout: loadout(), solution: fireballAimLessonSolution, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(150), opponentY: tutorialY(-150), playerRotation: 180, opponentRotation: 180 } },

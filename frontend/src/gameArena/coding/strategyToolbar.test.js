@@ -252,7 +252,8 @@ test("arena and puzzle code workspaces share compact controls and pinch zoom", (
     assert.match(css, /\.code-custom-variables-dialog > header > div:last-child > button:first-child[\s\S]*grid-column: 2;/);
     assert.match(css, /\.code-custom-variable-fields \{[\s\S]*grid-template-columns: 14rem 7rem 7rem;[\s\S]*gap: \.625rem;/);
     assert.match(css, /\.code-workspace-coach \{[\s\S]*background: #07111b;/);
-    assert.match(css, /\.tutorial-guide-panel \{[\s\S]*height: 26rem;[\s\S]*display: flex;[\s\S]*overflow: hidden;/);
+    assert.match(css, /\.tutorial-guide-panel \{[\s\S]*height: var\(--tutorial-guide-panel-height, 20rem\);[\s\S]*display: flex;[\s\S]*overflow: hidden;/);
+    assert.match(css, /\.tutorial-guide-navigation \{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
     assert.match(css, /\.tutorial-guide-content \{[\s\S]*flex: 1 1 auto;[\s\S]*overflow-y: auto;/);
     assert.match(css, /\.arena-stage-info \{[\s\S]*position: absolute;[\s\S]*height: 100%;[\s\S]*pointer-events: none;/);
     assert.match(css, /\.arena-stage-info > \.info-popup-minimized,[\s\S]*position: absolute;[\s\S]*left: 0;[\s\S]*pointer-events: auto;/);

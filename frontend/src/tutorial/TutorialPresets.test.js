@@ -169,12 +169,13 @@ test("tutorial solutions use the relaxed bearing and context-aware dashes", () =
 
 test("new tutorial catalogue has four categories and keeps Some Theories descriptive-only", () => {
     assert.deepEqual(TUTORIAL_CATEGORIES.map((category) => category.id), ["basics", "timing", "arena-edges", "custom-variables"]);
-    assert.equal(TUTORIAL_LESSONS.length, 12);
+    assert.equal(TUTORIAL_LESSONS.length, 13);
+    assert.deepEqual(TUTORIAL_CATEGORIES[0].lessons.map((lesson) => lesson.id), ["first-steps", "retreat", "basic-strike", "dash-basics", "aiming-basics", "lock-on-basics"]);
     assert.equal(getTutorialLesson("some-theories").scenarioId, undefined);
     const firstSteps = getTutorialLesson("first-steps").description.at(-1);
     assert.equal(firstSteps.type, "steps");
     assert.equal(firstSteps.items.at(-1), "Click Play to see your code work");
-    assert.equal(TUTORIAL_LESSONS.filter((lesson) => lesson.scenarioId).length, 11);
+    assert.equal(TUTORIAL_LESSONS.filter((lesson) => lesson.scenarioId).length, 12);
 });
 
 test("tutorial introduction maps node visuals and avoids em dashes", () => {
@@ -186,6 +187,7 @@ test("tutorial introduction maps node visuals and avoids em dashes", () => {
 test("new tutorial lessons resolve focused practice presets", () => {
     const fireballs = getTutorialScenario(getTutorialLesson("fireballs-in-range").scenarioId);
     const dontMiss = getTutorialScenario(getTutorialLesson("dont-miss").scenarioId);
+    const aiming = getTutorialScenario(getTutorialLesson("aiming-basics").scenarioId);
     const dodging = getTutorialScenario(getTutorialLesson("dodging").scenarioId);
     const abilityVariables = getTutorialScenario(getTutorialLesson("bot-ability-variables").scenarioId);
     const edges = getTutorialScenario(getTutorialLesson("keep-running").scenarioId);
@@ -206,6 +208,61 @@ test("new tutorial lessons resolve focused practice presets", () => {
         dontMissPlayer.transform.position.y - dontMissOpponent.transform.position.y,
     ), 300);
     assert.equal(dontMissPlayer.transform.rotation, 180);
+    const [aimingPlayer, aimingOpponent] = buildTutorialArenaShapes("aiming-basics");
+    assert.equal(aiming.playerLoadout, "sandbox:5");
+    assert.equal(aiming.opponentLoadout, "sandbox:");
+    assert.equal(Math.hypot(
+        aimingPlayer.transform.position.x - aimingOpponent.transform.position.x,
+        aimingPlayer.transform.position.y - aimingOpponent.transform.position.y,
+    ), 300);
+    assert.deepEqual(aiming.opponentCode.customVariables, [
+        { id: "custom.aiming-count", name: "Count", valueType: "number", initialValue: 0 },
+        { id: "custom.aiming-lock", name: "Lock", valueType: "boolean", initialValue: false },
+    ]);
+    assert.equal(aiming.opponentCode.roots.length, 1);
+    assert.deepEqual(aiming.opponentCode.roots[0].branches.slice(1).map((branch) => branch.actions[0].movementDirection), [270, 90]);
+    const aimingEdgeBranch = aiming.opponentCode.roots[0].branches[0];
+    assert.deepEqual(aimingEdgeBranch.conditions.map((condition) => ({ left: condition.left, comparator: condition.comparator, right: condition.right })), [
+        { left: "selectable.edgeDistance", comparator: "lte", right: { type: "number", value: 100 } },
+        { left: "custom.aiming-lock", comparator: "eq", right: { type: "boolean", value: false } },
+    ]);
+    assert.deepEqual(aimingEdgeBranch.actions[0].terms.map((term) => term.operator), ["add", "modulo", "modulo"]);
+    assert.deepEqual(aimingEdgeBranch.actions[0].terms.map((term) => term.operand.value), [1, 1000, 2]);
+    assert.deepEqual(aimingEdgeBranch.actions[1], { action: BOT_CODE_ACTIONS.VARIABLE, variableId: "custom.aiming-lock", value: true });
+    assert.deepEqual(aiming.opponentCode.roots[0].branches.slice(1).map((branch) => branch.actions[1]), [
+        { action: BOT_CODE_ACTIONS.VARIABLE, variableId: "custom.aiming-lock", value: false },
+        { action: BOT_CODE_ACTIONS.VARIABLE, variableId: "custom.aiming-lock", value: false },
+    ]);
+
+    const aimingConfiguration = normalizeAbilityStrategyConfiguration(aiming.opponentCode);
+    const centerPayload = buildStatePayload(buildTutorialArenaShapes("aiming-basics"), aiming.opponentLoadout, "opponent-model");
+    const centerPlan = selectAbilityStrategyActionPlan(aimingConfiguration, centerPayload);
+    assert.equal(centerPlan.customVariables["custom.aiming-lock"], false);
+    assert.equal(centerPlan.movement.movementDirection, 270);
+
+    const edgeShapes = buildTutorialArenaShapes("aiming-basics").map((shape) => shape.id === "opponent-model" ? { ...shape, x: 100 } : shape);
+    const edgePayload = buildStatePayload(edgeShapes, aiming.opponentLoadout, "opponent-model");
+    const edgePlan = selectAbilityStrategyActionPlan(aimingConfiguration, edgePayload);
+    assert.equal(edgePlan.customVariables["custom.aiming-count"], 1);
+    assert.equal(edgePlan.customVariables["custom.aiming-lock"], true);
+    assert.equal(edgePlan.movement, undefined);
+
+    const movementPayload = {
+        ...edgePayload,
+        playerModel: { ...edgePayload.playerModel, customVariables: edgePlan.customVariables },
+    };
+    const movementPlan = selectAbilityStrategyActionPlan(aimingConfiguration, movementPayload);
+    assert.equal(movementPlan.customVariables["custom.aiming-count"], 1);
+    assert.equal(movementPlan.customVariables["custom.aiming-lock"], false);
+    assert.equal(movementPlan.movement.movementDirection, 90);
+
+    const movedShapes = buildTutorialArenaShapes("aiming-basics").map((shape) => shape.id === "opponent-model" ? { ...shape, x: 115 } : shape);
+    const movedPayload = buildStatePayload(movedShapes, aiming.opponentLoadout, "opponent-model");
+    movedPayload.playerModel.customVariables = movementPlan.customVariables;
+    const movedPlan = selectAbilityStrategyActionPlan(aimingConfiguration, movedPayload);
+    assert.equal(movedPlan.customVariables["custom.aiming-count"], 1);
+    assert.equal(movedPlan.customVariables["custom.aiming-lock"], false);
+    assert.equal(movedPlan.movement.movementDirection, 90);
     assert.equal(dodging.opponentLoadout, "sandbox:4,5");
     assert.equal(dodging.playerHp, 1);
     assert.equal(dodging.opponentCode.roots[0].branches[0].actions[0].action, BOT_CODE_ACTIONS.ROTATE_TOWARD_TARGET);

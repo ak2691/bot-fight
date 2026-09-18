@@ -80,6 +80,10 @@ export const TUTORIAL_CATEGORIES = Object.freeze([
                 "Dash is another one of the three base abilities you have. Your base movement speed is 12 units per tick, and each tick is 100 milliseconds. Dash covers 200 units in two ticks. Pretty good!",
                 "Try it out and experiment. Look through all the configuration settings and think about what you can do with dashing. No, seriously, get comfortable with this.",
             ]),
+            lesson("aiming-basics", "Aiming", [
+                "Use Rotate: Face Target to aim your bot. A bot can track any target you give it, whether that target is another bot, a coordinate in the arena, or an offset from that target.",
+                "Experiment with the targeting configurations. The opponent bot will move left and right, and you have the Fireball ability to test your aim.",
+            ]),
             lesson("lock-on-basics", "Lock On", [
                 "Lock On is the last of the three base abilities. It rotates your bot immediately onto a target. Try it out! It is basically a single-tick aimbot.",
             ]),
