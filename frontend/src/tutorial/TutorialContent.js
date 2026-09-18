@@ -52,7 +52,8 @@ export const TUTORIAL_CATEGORIES = Object.freeze([
         description: Object.freeze([]),
         lessons: Object.freeze([
             lesson("first-steps", "First Steps", [
-                "Wake your bot up! It needs to move.",
+                "Wake your bot up! It needs to move. Start by clicking Open Bot Code. You can open the lesson up inside the workspace.",
+
                 instructionSteps(
                     "Add a root node.",
                     "Add a conditional node by clicking + Conditional. Click the pencil icon to change the variable and select ALWAYS. ALWAYS will always be true.",
