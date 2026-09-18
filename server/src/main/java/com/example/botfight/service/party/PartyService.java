@@ -190,6 +190,7 @@ public class PartyService {
         return activePartiesById.values().stream()
                 .filter(party -> membersFor(party).stream().anyMatch(member ->
                         member.getUser() != null
+                                && !member.getUser().isGuest()
                                 && principalName.equals(member.getUser().getEmail())))
                 .findFirst()
                 .map(this::toDTO)
@@ -233,7 +234,11 @@ public class PartyService {
                             requesterPrincipalName,
                             requesterSocketSessionId)
                             .withGuaranteedAbilities(guaranteeService.forUser(requesterId))),
-                    List.of(new PartyRecipient(requesterPrincipalName, requesterId)));
+                    List.of(new PartyRecipient(requesterPrincipalName, requesterId)),
+                    userIsGuest(requesterId));
+        }
+        if (userIsGuest(requesterId)) {
+            throw new AuthException("Guests cannot join parties.");
         }
         requireQueueLeader(party, requesterId);
         List<PartyMember> members = membersFor(party);
@@ -253,12 +258,14 @@ public class PartyService {
                 party.getId(),
                 toDTO(party),
                 entrants,
-                recipientsFor(party));
+                recipientsFor(party),
+                members.stream().anyMatch(member -> member.getUser() != null && member.getUser().isGuest()));
     }
 
     @Transactional
     public synchronized PartyDTO create(Authentication authentication) {
         AppUser user = currentUserService.requireCurrentUser(authentication);
+        rejectGuest(user);
         rejectActiveMatch(user.getId());
 
         Party existing = activePartyForUser(user.getId());
@@ -282,6 +289,7 @@ public class PartyService {
             UUID partyId,
             String requestedUsername) {
         AppUser inviter = currentUserService.requireCurrentUser(authentication);
+        rejectGuest(inviter);
         inviteRateLimiter.requireAllowed(inviter.getId());
         Party party = requirePartyForUpdate(partyId);
         requireLeader(party, inviter.getId());
@@ -297,7 +305,9 @@ public class PartyService {
         String username = UsernamePolicy.clean(requestedUsername);
         UsernamePolicy.validate(username);
         AppUser invitee = userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(username)
+                .filter(user -> !user.isGuest())
                 .orElseThrow(() -> new AuthException("player could not be found"));
+        rejectGuest(invitee);
         if (inviter.getId().equals(invitee.getId())) {
             throw new AuthException("you cannot invite yourself");
         }
@@ -336,6 +346,7 @@ public class PartyService {
 
     @Transactional(readOnly = true)
     public synchronized List<PartyInviteDTO> incoming(Authentication authentication) {
+        if (currentUserService.isGuest(authentication)) return List.of();
         UUID inviteeId = currentUserService.requireCurrentUserId(authentication);
         Instant now = clock.instant();
         return invitesById.values().stream()
@@ -359,6 +370,7 @@ public class PartyService {
         PartyInvite invite = requirePendingInviteForAccept(inviteId, inviteeId);
         Party party = requirePartyForUpdate(invite.getParty().getId());
         AppUser invitee = invite.getInvitee();
+        rejectGuest(invitee);
         if (party.getStatus() != PartyStatus.ACTIVE) {
             throw new InviteTargetUnavailableException("Party no longer exists");
         }
@@ -407,6 +419,7 @@ public class PartyService {
     @Transactional
     public synchronized LeaveResult leave(Authentication authentication, UUID partyId) {
         AppUser user = currentUserService.requireCurrentUser(authentication);
+        rejectGuest(user);
         Party party = requirePartyForUpdate(partyId);
         if (partyIdsByUserId.get(user.getId()) == null
                 || !partyId.equals(partyIdsByUserId.get(user.getId()))) {
@@ -421,6 +434,7 @@ public class PartyService {
             UUID partyId,
             UUID targetUserId) {
         AppUser leader = currentUserService.requireCurrentUser(authentication);
+        rejectGuest(leader);
         Party party = requirePartyForUpdate(partyId);
         requireLeader(party, leader.getId());
         if (targetUserId == null || leader.getId().equals(targetUserId)) {
@@ -721,6 +735,12 @@ public class PartyService {
         }
     }
 
+    private void rejectGuest(AppUser user) {
+        if (user != null && user.isGuest()) {
+            throw new AuthException("Guests cannot join parties.");
+        }
+    }
+
     private PartyInvite pendingInviteFor(UUID partyId, UUID inviteeId) {
         return invitesById.values().stream()
                 .filter(invite -> invite.getParty() != null
@@ -797,7 +817,8 @@ public class PartyService {
                         member.getUser().getUsername(),
                         member.getSlot(),
                         ownerId != null && ownerId.equals(member.getUser().getId()),
-                        isMemberOnline(member)))
+                        isMemberOnline(member),
+                        member.getUser().isGuest()))
                 .toList();
         return new PartyDTO(
                 party.getId(),
@@ -836,6 +857,11 @@ public class PartyService {
         }
         String registeredSocket = socketSessionIdsByUserId.get(member.getUser().getId());
         return registeredSocket != null && !registeredSocket.isBlank();
+    }
+
+    private boolean userIsGuest(UUID userId) {
+        return userId != null
+                && userRepository.findById(userId).map(AppUser::isGuest).orElse(false);
     }
 
     public record CreatedInvite(
@@ -879,7 +905,8 @@ public class PartyService {
             UUID partyId,
             PartyDTO party,
             List<MatchEntrant> entrants,
-            List<PartyRecipient> recipients) {
+            List<PartyRecipient> recipients,
+            boolean hasGuest) {
     }
 
     public record DeclinedInvite(

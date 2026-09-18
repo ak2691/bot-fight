@@ -36,6 +36,7 @@ import {
 import { localReplaySchedule, mergeReplayFrames } from "../../../replay/replayPresentation.js";
 import { useMatchmaking } from "../../../matchmaking/matchmaking-context";
 import useMatchmakingSocket from "./useMatchmakingSocket.js";
+import { useAuth } from "../../../auth/auth-context";
 
 const COUNTDOWN_UPDATE_INTERVAL_MS = 250;
 const LOADOUT_DRAFT_STORAGE_PREFIX = "match-loadout-draft:";
@@ -262,6 +263,10 @@ export function useMatchLifecycle({ navigate }) {
     const {
         clearActiveMatch,
     } = useMatchmaking();
+    const { isGuest, user } = useAuth();
+    const clientIdentityKey = user?.id == null
+        ? null
+        : `${user.id}:${isGuest ? "guest" : "registered"}`;
     const clientRef = useRef(null);
     const codeViewResponderRef = useRef(null);
     const playbackRef = useRef(null);
@@ -892,6 +897,7 @@ export function useMatchLifecycle({ navigate }) {
         onChatEvent: handleChatEvent,
         onStatus: handleSocketStatus,
         onEvent: handleMatchEvent,
+        identityKey: clientIdentityKey,
     });
 
     useEffect(() => {

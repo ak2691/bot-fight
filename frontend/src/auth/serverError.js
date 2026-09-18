@@ -8,7 +8,7 @@ export function isServerErrorStatus(status) {
 }
 
 export function defaultAuthRoute(user) {
-    return user?.authenticated === true ? "/home" : "/login";
+    return user?.authenticated === true || user?.guest === true ? "/home" : "/login";
 }
 
 export function serverErrorMessage(error) {

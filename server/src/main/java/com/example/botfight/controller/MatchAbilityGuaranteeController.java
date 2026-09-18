@@ -29,7 +29,7 @@ public class MatchAbilityGuaranteeController {
     @GetMapping("/ability-guarantees")
     public MatchAbilityGuaranteeResponseDTO get(Authentication authentication) {
         return MatchAbilityGuaranteeResponseDTO.from(
-                guaranteeService.forUser(currentUserService.requireCurrentUserId(authentication)));
+                guaranteeService.forUser(currentUserService.requireRegisteredUser(authentication).getId()));
     }
 
     @PostMapping("/ability-guarantees")
@@ -39,7 +39,7 @@ public class MatchAbilityGuaranteeController {
         List<Integer> requested = request == null ? List.of() : request.guaranteedAbilityIds();
         return MatchAbilityGuaranteeResponseDTO.from(
                 guaranteeService.setForUser(
-                        currentUserService.requireCurrentUserId(authentication),
+                        currentUserService.requireRegisteredUser(authentication).getId(),
                         requested));
     }
 }

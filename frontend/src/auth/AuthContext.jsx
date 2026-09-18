@@ -37,6 +37,7 @@ async function authFetch(path, options = {}) {
 
 function normalizeCurrentUserResponse(currentUser) {
     if (isAuthenticatedResponse(currentUser)) return currentUser;
+    if (currentUser?.guest === true) return currentUser;
     if (isAnonymousResponse(currentUser)) return GUEST_USER;
     throw new Error("Invalid authentication response");
 }
@@ -81,6 +82,16 @@ export function AuthProvider({ children }) {
         setAuthError(null);
         setUser(loggedInUser);
         return loggedInUser;
+    }, []);
+
+    const playAsGuest = useCallback(async () => {
+        const guestUser = await authFetch("/api/auth/guest", {
+            method: "POST",
+            body: JSON.stringify({}),
+        });
+        setAuthError(null);
+        setUser(guestUser);
+        return guestUser;
     }, []);
 
     const register = useCallback(async ({ email, username, password }) => {
@@ -193,7 +204,9 @@ export function AuthProvider({ children }) {
         isLoading,
         authError,
         isAuthenticated: user?.authenticated === true,
+        isGuest: user?.guest === true,
         login,
+        playAsGuest,
         register,
         verifyEmail,
         resendVerification,
@@ -208,7 +221,7 @@ export function AuthProvider({ children }) {
         updateAboutMe,
         logout,
         refreshUser,
-    }), [user, isLoading, authError, login, register, verifyEmail, resendVerification, requestPasswordReset, verifyPasswordReset, passwordResetStatus, resetPassword, changePassword, linkGoogleAccount, completeGoogleUsername, updateUsername, updateAboutMe, logout, refreshUser]);
+    }), [user, isLoading, authError, login, playAsGuest, register, verifyEmail, resendVerification, requestPasswordReset, verifyPasswordReset, passwordResetStatus, resetPassword, changePassword, linkGoogleAccount, completeGoogleUsername, updateUsername, updateAboutMe, logout, refreshUser]);
 
     return (
         <AuthContext.Provider value={value}>

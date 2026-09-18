@@ -261,6 +261,9 @@ public class PuzzleService {
     @Transactional
     public void recordSolved(long puzzleNumber, Authentication authentication) {
         AppUser user = currentUserService.requireCurrentUser(authentication);
+        if (user.isGuest()) {
+            return;
+        }
         CachedPuzzle puzzle = publishedPuzzle(puzzleNumber);
         databaseLookupCache.logDatabaseWrite(
                 "puzzle-completions",

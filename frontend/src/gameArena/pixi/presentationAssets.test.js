@@ -145,7 +145,7 @@ test("small responsive arenas keep a high-enough backing resolution", () => {
     assert.match(source, /Math\.max\(MIN_ARENA_RENDERER_RESOLUTION, ratio\)/);
 });
 
-test("Pixi modules stay out of login until the authenticated asset gate starts", () => {
+test("Pixi modules stay out of login until the signed-in asset gate starts", () => {
     const hookSource = readFileSync(PRESENTATION_ASSET_HOOK_PATH, "utf8");
     const providerSource = readFileSync(PRESENTATION_ASSET_PROVIDER_PATH, "utf8");
     const protectedRouteSource = readFileSync(PROTECTED_ROUTE_PATH, "utf8");
@@ -153,7 +153,7 @@ test("Pixi modules stay out of login until the authenticated asset gate starts",
     assert.doesNotMatch(hookSource, /from ["']\.\/pixiApplication\.js["']/);
     assert.match(hookSource, /import\("\.\/arenaPresentationAssets\.js"\)/);
     assert.match(hookSource, /import\("\.\/pixiApplication\.js"\)/);
-    assert.match(providerSource, /useArenaPresentationAssets\(\{ enabled: isAuthenticated && !isLoading \}\)/);
+    assert.match(providerSource, /enabled: \(isAuthenticated \|\| isGuest\) && !isLoading/);
     assert.doesNotMatch(providerSource, /showDetailedProgress/);
     assert.match(protectedRouteSource, /useArenaPresentationAssetsContext/);
     assert.doesNotMatch(protectedRouteSource, /AssetsLoadingScreen/);

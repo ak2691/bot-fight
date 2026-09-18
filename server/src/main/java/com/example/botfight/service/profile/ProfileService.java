@@ -155,7 +155,7 @@ public class ProfileService {
     public ProfileDTO updateUsername(Authentication authentication, UsernameRequestDTO request) {
         UUID userId = currentUserService.requireCurrentUserId(authentication);
         profileUpdateRateLimiter.requireAllowed(userId);
-        AppUser user = currentUserService.requireCurrentUser(authentication);
+        AppUser user = requireRegisteredUser(authentication);
         String username = UsernamePolicy.clean(request == null ? null : request.getUsername());
         UsernamePolicy.validate(username);
         if (userRepository.existsByUsernameIgnoreCaseAndIdNot(username, user.getId())) {
@@ -180,7 +180,7 @@ public class ProfileService {
     public ProfileDTO updateAboutMe(Authentication authentication, AboutMeRequestDTO request) {
         UUID userId = currentUserService.requireCurrentUserId(authentication);
         profileUpdateRateLimiter.requireAllowed(userId);
-        AppUser user = currentUserService.requireCurrentUser(authentication);
+        AppUser user = requireRegisteredUser(authentication);
         String aboutMe = normalizeAboutMe(request == null ? null : request.getAboutMe());
         databaseLookupCache.logDatabaseWrite(
                 "profile-summary",
@@ -200,16 +200,31 @@ public class ProfileService {
 
     private CachedUser currentUser(Authentication authentication) {
         UUID userId = currentUserService.requireCurrentUserId(authentication);
+        if (currentUserService.isGuest(authentication)) {
+            AppUser guest = currentUserService.requireCurrentUser(authentication);
+            return new CachedUser(
+                    guest.getId(), guest.getUsername(), guest.getCreatedAt(), true);
+        }
         return databaseLookupCache.currentUser(
                 userId,
                 () -> {
                     AppUser user = currentUserService.requireCurrentUser(authentication);
-                    return new CachedUser(user.getId(), user.getUsername(), user.getCreatedAt());
+                    return new CachedUser(
+                            user.getId(), user.getUsername(), user.getCreatedAt(), user.isGuest());
                 });
     }
 
+    private AppUser requireRegisteredUser(Authentication authentication) {
+        AppUser user = currentUserService.requireCurrentUser(authentication);
+        if (user.isGuest()) {
+            throw new AuthException("create an account to use this feature");
+        }
+        return user;
+    }
+
     private ProfileDTO profileForUser(AppUser user) {
-        return profileForUser(new CachedUser(user.getId(), user.getUsername(), user.getCreatedAt()));
+        return profileForUser(new CachedUser(
+                user.getId(), user.getUsername(), user.getCreatedAt(), user.isGuest()));
     }
 
     private ProfileDTO profileForUser(CachedUser user) {
@@ -217,6 +232,20 @@ public class ProfileService {
     }
 
     private ProfileDTO loadProfileSummary(CachedUser user) {
+        if (user.guest()) {
+            return new ProfileDTO(
+                    user.username(),
+                    user.createdAt(),
+                    "",
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    new ProfileDTO.QueueStats(
+                            new ProfileDTO.ModeStats(0, 0, 0, null),
+                            new ProfileDTO.ModeStats(0, 0, 0, null)));
+        }
         String aboutMe = profileRepository.findByUserId(user.id())
                 .map(Profile::getAboutMe)
                 .orElse("");
@@ -225,7 +254,7 @@ public class ProfileService {
                 () -> loadMatchStats(user.id()));
         CachedRatings ratings = databaseLookupCache.profileRatings(
                 user.id(),
-                () -> loadRatings(user.id()));
+                () -> loadRatings(user));
         long wins = matchStats.wins();
         long losses = matchStats.losses();
         long draws = matchStats.draws();
@@ -254,15 +283,18 @@ public class ProfileService {
                 queueStats);
     }
 
-    private CachedRatings loadRatings(UUID userId) {
+    private CachedRatings loadRatings(CachedUser user) {
+        if (user.guest()) {
+            return new CachedRatings(null, null);
+        }
         if (eloRatingService == null) {
             return new CachedRatings(
                     EloRatingService.DEFAULT_RATING,
                     EloRatingService.DEFAULT_RATING);
         }
         return new CachedRatings(
-                eloRatingService.ratingFor(userId, MatchMode.ONES),
-                eloRatingService.ratingFor(userId, MatchMode.TWOS));
+                eloRatingService.ratingFor(user.id(), MatchMode.ONES),
+                eloRatingService.ratingFor(user.id(), MatchMode.TWOS));
     }
 
     private CachedMatchStats loadMatchStats(UUID userId) {
@@ -335,6 +367,7 @@ public class ProfileService {
             Instant toExclusive) {
         requireAuthenticatedGetAllowed(authentication, "match-history");
         CachedUser user = currentUser(authentication);
+        if (user.guest()) return emptyMatchHistory(page);
         return matchHistoryForUser(user, page, query, fromInclusive, toExclusive);
     }
 
@@ -355,6 +388,7 @@ public class ProfileService {
     public SolvedPuzzlePageDTO solvedPuzzles(Authentication authentication, int page) {
         requireAuthenticatedGetAllowed(authentication, "solved-puzzles");
         CachedUser user = currentUser(authentication);
+        if (user.guest()) return emptySolvedPuzzles(page);
         return solvedPuzzlesForUser(user, page);
     }
 
@@ -386,7 +420,7 @@ public class ProfileService {
                     Sort.by(Sort.Direction.ASC, "username", "id"));
             Page<AppUser> profiles = searchQuery.isBlank()
                     ? Page.empty(pageRequest)
-                    : userRepository.findByEmailVerifiedTrueAndUsernameContainingIgnoreCaseOrderByUsernameAscIdAsc(
+                    : userRepository.findByGuestFalseAndEmailVerifiedTrueAndUsernameContainingIgnoreCaseOrderByUsernameAscIdAsc(
                             searchQuery,
                             pageRequest);
             List<ProfileSearchPageDTO.ProfileSearchResultDTO> results = profiles.getContent().stream()
@@ -408,7 +442,7 @@ public class ProfileService {
             Instant fromInclusive,
             Instant toExclusive) {
         return matchHistoryForUser(
-                new CachedUser(user.getId(), user.getUsername(), user.getCreatedAt()),
+                new CachedUser(user.getId(), user.getUsername(), user.getCreatedAt(), user.isGuest()),
                 page,
                 query,
                 fromInclusive,
@@ -467,7 +501,7 @@ public class ProfileService {
 
     private SolvedPuzzlePageDTO solvedPuzzlesForUser(AppUser user, int page) {
         return solvedPuzzlesForUser(
-                new CachedUser(user.getId(), user.getUsername(), user.getCreatedAt()),
+                new CachedUser(user.getId(), user.getUsername(), user.getCreatedAt(), user.isGuest()),
                 page);
     }
 
@@ -506,8 +540,20 @@ public class ProfileService {
         return databaseLookupCache.publicUser(
                 cacheKey,
                 () -> userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(normalizedUsername)
-                        .map(user -> new CachedUser(user.getId(), user.getUsername(), user.getCreatedAt()))
+                        .filter(user -> !user.isGuest())
+                        .map(user -> new CachedUser(
+                                user.getId(), user.getUsername(), user.getCreatedAt(), user.isGuest()))
                         .orElseThrow(() -> new AuthException("profile not found")));
+    }
+
+    private MatchHistoryPageDTO emptyMatchHistory(int page) {
+        int normalizedPage = Math.min(Math.max(0, page), MAX_HISTORY_PAGE);
+        return new MatchHistoryPageDTO(List.of(), normalizedPage, MATCH_PAGE_SIZE, false, 0);
+    }
+
+    private SolvedPuzzlePageDTO emptySolvedPuzzles(int page) {
+        int normalizedPage = Math.min(Math.max(0, page), MAX_PUZZLE_PAGE);
+        return new SolvedPuzzlePageDTO(List.of(), normalizedPage, PUZZLE_PAGE_SIZE, false, 0);
     }
 
     private void requireAuthenticatedGetAllowed(Authentication authentication, String category) {

@@ -17,6 +17,7 @@ import com.example.botfight.service.match.loadout.MatchAbilityGuaranteeService;
 import com.example.botfight.service.match.model.MatchEntrant;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
 import com.example.botfight.service.matchmaking.MatchmakingService;
+import com.example.botfight.service.matchmaking.QueuePool;
 import com.example.botfight.service.rating.EloRatingService;
 import com.example.botfight.DTO.match.ActiveMatchStatusDTO;
 import com.example.botfight.DTO.match.MatchmakingEventDTO;
@@ -130,6 +131,66 @@ class MatchmakingServiceTest {
         });
         String startedJson = jsonMapper.writeValueAsString(started);
         assertThat(startedJson).contains("bravo-secret", secondUserId.toString());
+    }
+
+    @Test
+    void keepsGuestAndRegisteredPlayersInSeparatePools() {
+        UUID guestOne = UUID.randomUUID();
+        UUID registered = UUID.randomUUID();
+        UUID guestTwo = UUID.randomUUID();
+
+        var guestWaiting = service.joinQueue(
+                guestOne,
+                "Guest-ONE",
+                "guest-one@example.invalid",
+                "guest-socket-one",
+                MatchMode.ONES,
+                List.of(new MatchEntrant(
+                        guestOne, "Guest-ONE", "guest-one@example.invalid", "guest-socket-one")),
+                null,
+                List.of(),
+                QueuePool.GUEST);
+        var registeredWaiting = service.joinQueue(
+                registered,
+                "registered",
+                "registered@example.com",
+                "registered-socket",
+                MatchMode.ONES,
+                List.of(new MatchEntrant(
+                        registered, "registered", "registered@example.com", "registered-socket")),
+                null,
+                List.of(),
+                QueuePool.REGISTERED);
+
+        assertThat(guestWaiting).singleElement()
+                .extracting(event -> event.event().type())
+                .isEqualTo("QUEUE_WAITING");
+        assertThat(registeredWaiting).singleElement()
+                .extracting(event -> event.event().type())
+                .isEqualTo("QUEUE_WAITING");
+
+        when(matchService.startMatch(any(), any(), eq(MatchMode.ONES), eq(false)))
+                .thenReturn(List.of());
+        var guestMatchFound = service.joinQueue(
+                guestTwo,
+                "Guest-TWO",
+                "guest-two@example.invalid",
+                "guest-socket-two",
+                MatchMode.ONES,
+                List.of(new MatchEntrant(
+                        guestTwo, "Guest-TWO", "guest-two@example.invalid", "guest-socket-two")),
+                null,
+                List.of(),
+                QueuePool.GUEST);
+
+        assertThat(guestMatchFound).hasSize(2)
+                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo("MATCH_FOUND"));
+        UUID pendingMatchId = guestMatchFound.getFirst().event().matchId();
+        service.acceptMatch(pendingMatchId, guestOne, "guest-socket-one");
+        service.acceptMatch(pendingMatchId, guestTwo, "guest-socket-two");
+
+        verify(matchService).startMatch(any(), any(), eq(MatchMode.ONES), eq(false));
+        verify(matchService, never()).startMatch(any(), any(), eq(MatchMode.ONES), eq(true));
     }
 
     @Test

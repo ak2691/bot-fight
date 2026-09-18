@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.example.botfight.DTO.match.ActiveMatchStatusDTO;
@@ -14,6 +16,7 @@ import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.match.model.MatchEntrant;
 import com.example.botfight.service.matchmaking.MatchmakingService;
+import com.example.botfight.service.matchmaking.QueuePool;
 import com.example.botfight.service.rating.EloRatingService;
 import java.time.Clock;
 import java.time.Duration;
@@ -43,6 +46,81 @@ class MatchmakingRatingTest {
                 new TokenBucketRateLimiter<>(clock, 5, Duration.ofSeconds(3)),
                 eloRatingService);
         when(matchService.activeMatchStatus(any())).thenReturn(ActiveMatchStatusDTO.none());
+    }
+
+    @Test
+    void guestQueueUsesFifoWithoutReadingOrIndexingEloRatings() {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+
+        service.joinQueue(
+                first,
+                "guest-one",
+                "guest-one@example.invalid",
+                "guest-one-socket",
+                MatchMode.ONES,
+                List.of(new MatchEntrant(
+                        first, "guest-one", "guest-one@example.invalid", "guest-one-socket")),
+                null,
+                List.of(),
+                QueuePool.GUEST);
+        var found = service.joinQueue(
+                second,
+                "guest-two",
+                "guest-two@example.invalid",
+                "guest-two-socket",
+                MatchMode.ONES,
+                List.of(new MatchEntrant(
+                        second, "guest-two", "guest-two@example.invalid", "guest-two-socket")),
+                null,
+                List.of(),
+                QueuePool.GUEST);
+
+        assertThat(found).hasSize(2)
+                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo("MATCH_FOUND"));
+        verify(eloRatingService, never()).ratingsFor(any(), any());
+    }
+
+    @Test
+    void guestTwoVTwoUsesTheFirstFourGuestsWithoutRatingMatching() {
+        List<UUID> guests = List.of(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID());
+
+        for (int index = 0; index < guests.size() - 1; index++) {
+            UUID guest = guests.get(index);
+            String username = "guest-" + index;
+            String principal = username + "@example.invalid";
+            service.joinQueue(
+                    guest,
+                    username,
+                    principal,
+                    username + "-socket",
+                    MatchMode.TWOS,
+                    List.of(new MatchEntrant(guest, username, principal, username + "-socket")),
+                    null,
+                    List.of(),
+                    QueuePool.GUEST);
+        }
+
+        UUID fourth = guests.getLast();
+        var found = service.joinQueue(
+                fourth,
+                "guest-3",
+                "guest-3@example.invalid",
+                "guest-3-socket",
+                MatchMode.TWOS,
+                List.of(new MatchEntrant(
+                        fourth, "guest-3", "guest-3@example.invalid", "guest-3-socket")),
+                null,
+                List.of(),
+                QueuePool.GUEST);
+
+        assertThat(found).hasSize(4)
+                .allSatisfy(event -> assertThat(event.event().type()).isEqualTo("MATCH_FOUND"));
+        verify(eloRatingService, never()).ratingsFor(any(), any());
     }
 
     @Test

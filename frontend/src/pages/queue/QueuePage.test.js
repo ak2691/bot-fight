@@ -19,7 +19,7 @@ test("queue errors use only the shared red popup instead of an inline queue card
 
 test("route changes do not leave and rejoin an active queue", () => {
     const providerSource = readFileSync(MATCHMAKING_PROVIDER_PATH, "utf8");
-    const queueEffect = providerSource.match(/useEffect\(\(\) => \{\s*if \(!isAuthenticated \|\| !queueConnectionEnabled\)[\s\S]*?\}, \[[\s\S]*?queueConnectionEnabled[\s\S]*?\]\);/);
+    const queueEffect = providerSource.match(/useEffect\(\(\) => \{\s*if \(!hasGameAccess \|\| !queueConnectionEnabled\)[\s\S]*?\}, \[[\s\S]*?queueConnectionEnabled[\s\S]*?\]\);/);
 
     assert.ok(queueEffect);
     assert.match(providerSource, /const navigateRef = useRef\(navigate\)/);

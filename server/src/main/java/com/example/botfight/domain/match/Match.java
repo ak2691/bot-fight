@@ -32,6 +32,9 @@ public class Match {
     @Column(name = "mode", nullable = false, length = 20)
     private MatchMode mode = MatchMode.ONES;
 
+    @Column(nullable = false)
+    private boolean ranked = true;
+
     @Column(name = "ruleset_version", nullable = false, length = 50)
     private String rulesetVersion;
 
@@ -86,6 +89,14 @@ public class Match {
 
     public void setMode(MatchMode mode) {
         this.mode = mode == null ? MatchMode.ONES : mode;
+    }
+
+    public boolean isRanked() {
+        return ranked;
+    }
+
+    public void setRanked(boolean ranked) {
+        this.ranked = ranked;
     }
 
     public String getRulesetVersion() {

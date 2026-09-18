@@ -36,6 +36,12 @@ class WebSocketSecurityConfigTest {
                 .build();
 
         assertThat(manager.authorize(authenticationSupplier, queueResumeMessage).isGranted()).isTrue();
+
+        Message<byte[]> cancelMessage = MessageBuilder.withPayload(new byte[0])
+                .setHeader(SimpMessageHeaderAccessor.MESSAGE_TYPE_HEADER, SimpMessageType.MESSAGE)
+                .setHeader(SimpMessageHeaderAccessor.DESTINATION_HEADER, "/app/matchmaking.cancel")
+                .build();
+        assertThat(manager.authorize(authenticationSupplier, cancelMessage).isGranted()).isTrue();
     }
 
     @Test
@@ -87,6 +93,43 @@ class WebSocketSecurityConfigTest {
                 .build();
 
         assertThat(manager.authorize(() -> authentication, send).isGranted()).isTrue();
+    }
+
+    @Test
+    void guestsMayUseMatchmakingButNotSocialDestinations() {
+        MessageMatcherDelegatingAuthorizationManager.Builder messages =
+                MessageMatcherDelegatingAuthorizationManager.builder();
+        AuthorizationManager<Message<?>> manager =
+                new WebSocketSecurityConfig().messageAuthorizationManager(messages);
+        Authentication authentication = new TestingAuthenticationToken("guest", "password", "ROLE_GUEST");
+
+        Message<byte[]> matchmaking = MessageBuilder.withPayload(new byte[0])
+                .setHeader(SimpMessageHeaderAccessor.MESSAGE_TYPE_HEADER, SimpMessageType.MESSAGE)
+                .setHeader(SimpMessageHeaderAccessor.DESTINATION_HEADER, "/app/matchmaking.join")
+                .build();
+        Message<byte[]> matchSubscription = MessageBuilder.withPayload(new byte[0])
+                .setHeader(SimpMessageHeaderAccessor.MESSAGE_TYPE_HEADER, SimpMessageType.SUBSCRIBE)
+                .setHeader(SimpMessageHeaderAccessor.DESTINATION_HEADER, "/user/queue/match")
+                .build();
+        assertThat(manager.authorize(() -> authentication, matchmaking).isGranted()).isTrue();
+        assertThat(manager.authorize(() -> authentication, matchSubscription).isGranted()).isTrue();
+
+        for (String destination : new String[] {
+                "/user/queue/notifications",
+                "/user/queue/party",
+                "/user/queue/custom-lobby"}) {
+            Message<byte[]> subscribe = MessageBuilder.withPayload(new byte[0])
+                    .setHeader(SimpMessageHeaderAccessor.MESSAGE_TYPE_HEADER, SimpMessageType.SUBSCRIBE)
+                    .setHeader(SimpMessageHeaderAccessor.DESTINATION_HEADER, destination)
+                    .build();
+            assertThat(manager.authorize(() -> authentication, subscribe).isGranted()).isFalse();
+        }
+
+        Message<byte[]> customLobbyChat = MessageBuilder.withPayload(new byte[0])
+                .setHeader(SimpMessageHeaderAccessor.MESSAGE_TYPE_HEADER, SimpMessageType.MESSAGE)
+                .setHeader(SimpMessageHeaderAccessor.DESTINATION_HEADER, "/app/custom-lobby.chat")
+                .build();
+        assertThat(manager.authorize(() -> authentication, customLobbyChat).isGranted()).isFalse();
     }
 
     @Test

@@ -108,7 +108,7 @@ function PuzzlePlayInfoModal({ puzzle, outcome, onOpenConfiguration }) {
                 onScroll={(event) => { descriptionScrollTopRef.current = event.currentTarget.scrollTop; }}
                 className="tutorial-guide-content p-3.5"
             >
-                {description && <p className="mt-2 whitespace-pre-wrap text-[11px] leading-4 text-slate-300">{description}</p>}
+                {description && <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-300">{description}</p>}
 
                 <div className="mt-5 grid grid-cols-2 gap-4 border-y border-white/10 py-3 font-mono text-[9px]">
                     <div>

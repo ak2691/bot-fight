@@ -2,17 +2,25 @@ import { useId, useLayoutEffect, useRef, useState } from "react";
 import { getTutorialLesson } from "./TutorialContent.js";
 import TutorialNodeVisual from "./TutorialNodeVisuals.jsx";
 
-function LessonDescription({ description, className = "", visuals = null }) {
+function LessonDescription({ description, className = "", visuals = null, compact = false, showStepNumbers = true }) {
+    const bodyTextClass = compact ? "text-sm leading-6" : "text-base leading-7";
+    const visualTextWidthClass = visuals ? "max-w-5xl" : "";
     return (
         <div className={`space-y-4 ${className}`}>
             {description.map((paragraph, index) => (
                 <div key={typeof paragraph === "string" ? paragraph : `${paragraph.type}-${index}`}>
                     {paragraph?.type === "steps" ? (
-                        <ol className={`tutorial-guide-steps list-decimal space-y-2 pl-6 text-base leading-7 text-slate-200 ${visuals ? "max-w-4xl" : ""}`}>
-                            {paragraph.items.map((step) => <li key={step}>{step}</li>)}
-                        </ol>
+                        showStepNumbers ? (
+                            <ol className={`tutorial-guide-steps list-decimal space-y-2 pl-6 ${bodyTextClass} text-slate-200 ${visualTextWidthClass}`}>
+                                {paragraph.items.map((step) => <li key={step}>{step}</li>)}
+                            </ol>
+                        ) : (
+                            <div className={`tutorial-guide-steps space-y-2 ${bodyTextClass} text-slate-200 ${visualTextWidthClass}`}>
+                                {paragraph.items.map((step) => <p key={step}>{step}</p>)}
+                            </div>
+                        )
                     ) : (
-                        <p className={`text-base leading-7 text-slate-200 ${visuals ? "max-w-4xl" : ""}`}>
+                        <p className={`${bodyTextClass} text-slate-200 ${visualTextWidthClass}`}>
                             {paragraph.split("\n").map((line, index) => (
                                 <span key={`${index}-${line}`}>
                                     {index > 0 && <br />}
@@ -83,7 +91,7 @@ export default function TutorialGuide({ lessonId, minimized: minimizedProp = nul
                 onScroll={(event) => { descriptionScrollTopRef.current = event.currentTarget.scrollTop; }}
                 className="tutorial-guide-content p-3.5"
             >
-                <LessonDescription description={lesson.description} />
+                <LessonDescription description={lesson.description} compact />
             </div>
         </aside>
     );

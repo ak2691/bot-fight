@@ -1,5 +1,6 @@
 import Arena from "../../../gameArena/Arena";
 import MatchChat from "../../../matchmaking/MatchChat";
+import { useAuth } from "../../../auth/auth-context";
 import { DisconnectNotice } from "./MatchHeader.jsx";
 
 export default function MatchView({
@@ -24,7 +25,8 @@ export default function MatchView({
     chatRateLimitNotice,
     chatClosedNotice,
 }) {
-    const chat = matchContext?.matchId ? (
+    const { isGuest } = useAuth();
+    const chat = !isGuest && matchContext?.matchId ? (
         <MatchChat
             messages={chatMessages}
             minimized={chatMinimized}

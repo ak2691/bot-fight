@@ -6,6 +6,7 @@ export default function useMatchmakingSocket({
     onEvent,
     onChatEvent,
     onStatus,
+    identityKey,
 }) {
     const callbackRef = useRef({ onEvent, onChatEvent, onStatus });
     const [socketStatus, setSocketStatus] = useState("IDLE");
@@ -28,7 +29,12 @@ export default function useMatchmakingSocket({
                 setSocketStatus(status);
                 callbackRef.current.onStatus?.(status);
             },
-        }, { autoReconnect: true, autoJoinOnConnect: false, clearPendingEvents: true });
+        }, {
+            autoReconnect: true,
+            autoJoinOnConnect: false,
+            clearPendingEvents: true,
+            identityKey,
+        });
 
         clientRef.current = client;
         client.resumeReconnect?.();
@@ -48,7 +54,7 @@ export default function useMatchmakingSocket({
             // leave transport lifetime and notification reconnects to the
             // notification owner.
         };
-    }, [clientRef]);
+    }, [clientRef, identityKey]);
 
     return { socketStatus };
 }

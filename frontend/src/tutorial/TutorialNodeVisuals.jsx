@@ -55,7 +55,7 @@ function edgeKey(edge, index) {
 
 function AbstractNodeGroup({ type, nodes, registerNode }) {
     return (
-        <div className="tutorial-node-abstract__group">
+        <div className={`tutorial-node-abstract__group tutorial-node-abstract__group--${type}`}>
             {nodes.map((node) => (
                 <div
                     key={node.id}

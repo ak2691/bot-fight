@@ -338,9 +338,9 @@ html,
   bottom: auto;
   left: .5rem;
   z-index: 30;
-  width: clamp(20rem, 25vw, 23rem);
+  width: min(19rem, calc(100vw - 2rem));
   height: min(26rem, calc(100svh - 84px - env(safe-area-inset-top) - 1rem));
-  max-width: min(23rem, calc(100vw - 1rem));
+  max-width: calc(100vw - 2rem);
   max-height: none;
   border-radius: .75rem;
   pointer-events: auto;
@@ -1160,21 +1160,21 @@ html,
   width: 100%;
   flex-wrap: wrap;
   justify-content: center;
-  gap: .6rem;
+  gap: .45rem;
 }
 
 .tutorial-node-abstract__node {
   display: flex;
-  min-width: 7.5rem;
-  min-height: 2.75rem;
+  min-width: 6.75rem;
+  min-height: 2.5rem;
   align-items: center;
   justify-content: center;
   flex-direction: column;
   gap: .2rem;
   border: 1px solid;
-  padding: .65rem .8rem;
+  padding: .55rem .6rem;
   color: #f8fafc;
-  font: 700 11px/1.2 "Cousine", "Courier New", monospace;
+  font: 700 10px/1.2 "Cousine", "Courier New", monospace;
   letter-spacing: .06em;
   text-align: center;
 }
@@ -1236,6 +1236,37 @@ html,
   margin-top: .35rem;
   color: #cffafe;
   font-weight: 700;
+}
+
+@media (max-width: 720px) {
+  .tutorial-node-visual {
+    padding: .75rem;
+  }
+
+  .tutorial-node-abstract {
+    padding: .75rem;
+  }
+
+  .tutorial-node-abstract__group {
+    gap: .25rem;
+    flex-wrap: nowrap;
+  }
+
+  .tutorial-node-abstract__group--action {
+    justify-content: space-between;
+  }
+
+  .tutorial-node-abstract__node {
+    min-width: 0;
+    flex: 0 1 6.75rem;
+    padding: .45rem .25rem;
+    font-size: 9px;
+    letter-spacing: .03em;
+  }
+
+  .tutorial-node-abstract__status {
+    font-size: 8px;
+  }
 }
 
 .conditional-row {
@@ -4882,8 +4913,8 @@ button {
 
 @media (max-width: 1180px) {
   .puzzle-info-panel {
-    width: clamp(16rem, 28vw, 18rem);
-    max-width: calc(100vw - 1rem);
+    width: min(19rem, calc(100vw - 2rem));
+    max-width: calc(100vw - 2rem);
   }
 
   .info-popup-minimized {

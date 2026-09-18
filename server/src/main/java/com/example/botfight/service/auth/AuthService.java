@@ -8,8 +8,12 @@ import com.example.botfight.DTO.auth.RegistrationResponseDTO;
 import com.example.botfight.domain.auth.AppUser;
 import com.example.botfight.repository.UserRepository;
 import com.example.botfight.security.AuthenticatedUserDetails;
+import com.example.botfight.service.limits.RateLimitExceededException;
 import jakarta.servlet.http.HttpServletRequest;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Locale;
+import java.util.UUID;
 import java.util.regex.Pattern;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -24,6 +28,10 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuthService {
 
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+    private static final Duration GUEST_SESSION_DURATION = Duration.ofHours(24);
+    private static final int MAX_ACTIVE_GUEST_ACCOUNTS = 5_000;
+    private static final int GUEST_USERNAME_SUFFIX_LENGTH = 12;
+    private static final int GUEST_USERNAME_GENERATION_ATTEMPTS = 5;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailVerificationService emailVerificationService;
@@ -127,6 +135,53 @@ public class AuthService {
         return toAuthUser(user);
     }
 
+    @Transactional
+    public synchronized AuthUserDTO playAsGuest(HttpServletRequest httpRequest) {
+        Instant now = Instant.now();
+        Authentication existingAuthentication = SecurityContextHolder.getContext().getAuthentication();
+        if (existingAuthentication != null
+                && existingAuthentication.isAuthenticated()
+                && existingAuthentication.getPrincipal() instanceof AuthenticatedUserDetails principal) {
+            AppUser existingUser = userRepository.findById(principal.getId()).orElse(null);
+            if (existingUser != null && existingUser.isGuest() && existingUser.isGuestActive(now)) {
+                return AuthUserDTO.temporaryGuest(existingUser);
+            }
+            if (existingUser != null && !existingUser.isGuest()) {
+                throw new AuthException("log out before starting guest mode");
+            }
+        }
+
+        if (userRepository.countByGuestTrueAndGuestExpiresAtAfter(now) >= MAX_ACTIVE_GUEST_ACCOUNTS) {
+            throw RateLimitExceededException.tooManyRequests(Duration.ofSeconds(30));
+        }
+
+        AppUser guest = new AppUser();
+        guest.setUsername(nextGuestUsername());
+        guest.setEmail("guest-" + UUID.randomUUID() + "@guest.invalid");
+        guest.setNormalizedEmail(guest.getEmail().toLowerCase(Locale.ROOT));
+        guest.setEmailVerified(true);
+        guest.setGuest(true);
+        guest.setRole(com.example.botfight.domain.auth.UserRole.GUEST);
+        guest.setGuestExpiresAt(now.plus(GUEST_SESSION_DURATION));
+        AppUser savedGuest = userRepository.save(guest);
+        authenticateSession(savedGuest, httpRequest);
+        return AuthUserDTO.temporaryGuest(savedGuest);
+    }
+
+    private String nextGuestUsername() {
+        for (int attempt = 0; attempt < GUEST_USERNAME_GENERATION_ATTEMPTS; attempt++) {
+            String suffix = UUID.randomUUID().toString()
+                    .replace("-", "")
+                    .substring(0, GUEST_USERNAME_SUFFIX_LENGTH)
+                    .toUpperCase(Locale.ROOT);
+            String username = "Guest-" + suffix;
+            if (!userRepository.existsByUsernameIgnoreCase(username)) {
+                return username;
+            }
+        }
+        throw new AuthException("guest mode is temporarily unavailable; try again");
+    }
+
     @Transactional(readOnly = true)
     public AuthUserDTO currentUser(Authentication authentication) {
         if (authentication == null
@@ -135,14 +190,19 @@ public class AuthService {
             return AuthUserDTO.guest();
         }
 
+        Instant now = Instant.now();
         return userRepository.findById(principal.getId())
                 .filter(AppUser::isEmailVerified)
+                .filter(user -> user.isGuestActive(now))
                 .filter(user -> UsernamePolicy.isValid(user.getUsername()))
                 .map(this::toAuthUser)
                 .orElseGet(AuthUserDTO::guest);
     }
 
     public AuthUserDTO toAuthUser(AppUser user) {
+        if (user != null && user.isGuest()) {
+            return AuthUserDTO.temporaryGuest(user);
+        }
         AuthUserDTO response = new AuthUserDTO();
         response.setAuthenticated(true);
         response.setId(user.getId());
@@ -166,6 +226,9 @@ public class AuthService {
 
         AppUser user = userRepository.findById(principal.getId())
                 .orElseThrow(() -> new AuthException("authenticated user was not found"));
+        if (user.isGuest()) {
+            throw new AuthException("create an account before changing a password");
+        }
         if (user.getPasswordHash() == null || user.getPasswordHash().isBlank()) {
             throw new AuthException("This account does not use password authentication.");
         }

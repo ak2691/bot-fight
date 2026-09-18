@@ -371,7 +371,10 @@ public class DatabaseLookupCache {
         }
     }
 
-    public record CachedUser(UUID id, String username, Instant createdAt) {
+    public record CachedUser(UUID id, String username, Instant createdAt, boolean guest) {
+        public CachedUser(UUID id, String username, Instant createdAt) {
+            this(id, username, createdAt, false);
+        }
     }
 
     public record CachedMatchStats(
@@ -390,7 +393,10 @@ public class DatabaseLookupCache {
         }
     }
 
-    public record CachedRatings(int ones, int twos) {
+    public record CachedRatings(Integer ones, Integer twos) {
+        public CachedRatings(int ones, int twos) {
+            this(Integer.valueOf(ones), Integer.valueOf(twos));
+        }
     }
 
     public record PuzzleListKey(int page, int size, UUID userId, String query) {

@@ -43,7 +43,9 @@ function customLobbyInviteFromNotification(event, username) {
 }
 
 export default function NotificationsProvider({ children }) {
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, user } = useAuth();
+    const hasSocialAccess = isAuthenticated;
+    const clientIdentityKey = user?.id == null ? null : `${user.id}:registered`;
     const navigate = useNavigate();
     const navigateRef = useRef(navigate);
     const clientRef = useRef(null);
@@ -97,7 +99,7 @@ export default function NotificationsProvider({ children }) {
     }, []);
 
     useEffect(() => {
-        if (!isAuthenticated) {
+        if (!hasSocialAccess) {
             hiddenInviteIdsRef.current.clear();
             setPendingPartyInvites([]);
             setPendingCustomLobbyInvites([]);
@@ -148,7 +150,12 @@ export default function NotificationsProvider({ children }) {
 
         const client = getActiveMatchmakingClient(
             { onNotification: handleNotification },
-            { autoReconnect: true, autoJoinOnConnect: false },
+            {
+                autoReconnect: true,
+                autoJoinOnConnect: false,
+                allowNotificationSubscription: true,
+                identityKey: clientIdentityKey,
+            },
         );
         clientRef.current = client;
         client.setNotificationHandler?.(handleNotification);
@@ -163,10 +170,10 @@ export default function NotificationsProvider({ children }) {
             client.clearPendingNotifications?.();
             void forceDisconnectActiveMatchmakingClient(client);
         };
-    }, [isAuthenticated, refreshIncomingInvites]);
+    }, [clientIdentityKey, hasSocialAccess, refreshIncomingInvites]);
 
     useEffect(() => {
-        if (!isAuthenticated) return undefined;
+        if (!hasSocialAccess) return undefined;
         const removeExpired = () => {
             const now = Date.now();
             setPendingPartyInvites((current) => removeExpiredInvites(
@@ -186,7 +193,7 @@ export default function NotificationsProvider({ children }) {
         removeExpired();
         const intervalId = window.setInterval(removeExpired, 1000);
         return () => window.clearInterval(intervalId);
-    }, [isAuthenticated]);
+    }, [hasSocialAccess]);
 
     useEffect(() => {
         if (!actionError) return undefined;

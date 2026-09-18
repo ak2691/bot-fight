@@ -54,7 +54,7 @@ function App() {
             <Route
               path="/home"
               element={(
-                <ProtectedRoute>
+                <ProtectedRoute allowGuest>
                   <ActiveMatchProtectedRoute>
                     <HomePage />
                   </ActiveMatchProtectedRoute>
@@ -68,7 +68,7 @@ function App() {
             <Route
               path="/practice"
               element={(
-                <ProtectedRoute>
+                <ProtectedRoute allowGuest>
                   <Arena />
                 </ProtectedRoute>
               )}
@@ -76,7 +76,7 @@ function App() {
             <Route
               path="/ability-catalogue"
               element={(
-                <ProtectedRoute>
+                <ProtectedRoute allowGuest>
                   <AbilityCataloguePage />
                 </ProtectedRoute>
               )}
@@ -84,7 +84,7 @@ function App() {
             <Route
               path="/conditionals"
               element={(
-                <ProtectedRoute>
+                <ProtectedRoute allowGuest>
                   <ConditionalCataloguePage />
                 </ProtectedRoute>
               )}
@@ -92,7 +92,7 @@ function App() {
             <Route
               path="/queue"
               element={(
-                <ProtectedRoute>
+                <ProtectedRoute allowGuest>
                   <ActiveMatchProtectedRoute>
                     <QueuePage />
                   </ActiveMatchProtectedRoute>
@@ -112,7 +112,7 @@ function App() {
             <Route
               path="/tutorial"
               element={(
-                <ProtectedRoute>
+                <ProtectedRoute allowGuest>
                   <TutorialPage />
                 </ProtectedRoute>
               )}
@@ -120,7 +120,7 @@ function App() {
             <Route
               path="/puzzles"
               element={(
-                <ProtectedRoute>
+                <ProtectedRoute allowGuest>
                   <PuzzleListPage />
                 </ProtectedRoute>
               )}
@@ -128,7 +128,7 @@ function App() {
             <Route
               path="/puzzles/:puzzleNumber"
               element={(
-                <ProtectedRoute>
+                <ProtectedRoute allowGuest>
                   <PuzzlePlayPage />
                 </ProtectedRoute>
               )}
@@ -156,7 +156,7 @@ function App() {
             <Route
               path="/match"
               element={(
-                <ProtectedRoute>
+                <ProtectedRoute allowGuest>
                   <MatchProtectedRoute>
                     <GamePage />
                   </MatchProtectedRoute>
@@ -166,7 +166,7 @@ function App() {
             <Route
               path="/profile"
               element={(
-                <ProtectedRoute>
+                <ProtectedRoute allowGuest>
                   <ProfilePage />
                 </ProtectedRoute>
               )}
@@ -174,7 +174,7 @@ function App() {
             <Route
               path="/profile/search"
               element={(
-                <ProtectedRoute>
+                <ProtectedRoute allowGuest>
                   <ProfileSearchPage />
                 </ProtectedRoute>
               )}
@@ -182,7 +182,7 @@ function App() {
             <Route
               path="/profile/:username"
               element={(
-                <ProtectedRoute>
+                <ProtectedRoute allowGuest>
                   <ProfilePage />
                 </ProtectedRoute>
               )}

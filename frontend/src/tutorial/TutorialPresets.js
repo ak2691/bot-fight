@@ -445,8 +445,9 @@ function grenadeOpponent() {
 function fireballAndGrenadeOpponent() {
     const playerDashReady = selectedAbilityState("bot.selectedAbilityReady", true, TUTORIAL_ACTIONS.DASH, BOT_CODE_SELECTABLES.OPPONENT);
     return code([
-        root(1, [branch("opponent-dodge-grenade-if", [playerDashReady], [face(), ability(TUTORIAL_ACTIONS.GRENADE)])]),
-        root(2, [branch("opponent-dodge-fireball-if", [playerDashReady], [face(), ability(TUTORIAL_ACTIONS.FIREBALL)])]),
+        root(1, [branch("opponent-dodge-face-if", [always()], [face()])]),
+        root(2, [branch("opponent-dodge-grenade-if", [playerDashReady], [ability(TUTORIAL_ACTIONS.GRENADE)])]),
+        root(3, [branch("opponent-dodge-fireball-if", [playerDashReady], [ability(TUTORIAL_ACTIONS.FIREBALL)])]),
     ]);
 }
 

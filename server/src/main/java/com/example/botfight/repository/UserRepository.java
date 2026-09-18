@@ -1,6 +1,7 @@
 package com.example.botfight.repository;
 
 import com.example.botfight.domain.auth.AppUser;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.time.Instant;
@@ -22,6 +23,10 @@ public interface UserRepository extends JpaRepository<AppUser, UUID> {
             String username,
             Pageable pageable);
 
+    Page<AppUser> findByGuestFalseAndEmailVerifiedTrueAndUsernameContainingIgnoreCaseOrderByUsernameAscIdAsc(
+            String username,
+            Pageable pageable);
+
     Optional<AppUser> findByNormalizedEmail(String normalizedEmail);
 
     boolean existsByUsernameIgnoreCase(String username);
@@ -29,6 +34,10 @@ public interface UserRepository extends JpaRepository<AppUser, UUID> {
     boolean existsByUsernameIgnoreCaseAndIdNot(String username, UUID id);
 
     boolean existsByNormalizedEmail(String normalizedEmail);
+
+    long countByGuestTrueAndGuestExpiresAtAfter(Instant now);
+
+    List<AppUser> findByGuestTrueOrderByIdAsc();
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Transactional

@@ -10,6 +10,7 @@ public class AuthUserDTO {
     private String username;
     private boolean admin;
     private boolean hasPassword;
+    private boolean guest;
 
     public boolean isAuthenticated() {
         return authenticated;
@@ -59,10 +60,27 @@ public class AuthUserDTO {
         this.hasPassword = hasPassword;
     }
 
+    public boolean isGuest() {
+        return guest;
+    }
+
+    public void setGuest(boolean guest) {
+        this.guest = guest;
+    }
+
     public static AuthUserDTO guest() {
         AuthUserDTO user = new AuthUserDTO();
         user.setAuthenticated(false);
         user.setUsername("guest");
+        return user;
+    }
+
+    public static AuthUserDTO temporaryGuest(com.example.botfight.domain.auth.AppUser guestUser) {
+        AuthUserDTO user = new AuthUserDTO();
+        user.setAuthenticated(false);
+        user.setGuest(true);
+        user.setId(guestUser.getId());
+        user.setUsername(guestUser.getUsername());
         return user;
     }
 }

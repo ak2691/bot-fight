@@ -25,6 +25,7 @@ import com.example.botfight.service.match.model.MatchChatSubmission;
 import com.example.botfight.service.match.model.MatchChatSubmissionStatus;
 import com.example.botfight.service.matchmaking.MatchmakingEventsReady;
 import com.example.botfight.service.matchmaking.MatchmakingService;
+import com.example.botfight.service.matchmaking.QueuePool;
 import com.example.botfight.service.party.PartyService;
 import com.example.botfight.service.party.PartyStatePublisher;
 import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
@@ -180,7 +181,7 @@ public class MatchmakingSocketController {
                         publish(events);
                         scheduleMatchAcceptanceTimeouts(events);
                     } catch (RuntimeException exception) {
-                        log.error("Ranked matchmaking queue sweep failed", exception);
+                        log.error("Matchmaking queue sweep failed", exception);
                     }
                 },
                 MATCHMAKING_QUEUE_SWEEP_INTERVAL);
@@ -205,6 +206,14 @@ public class MatchmakingSocketController {
                         principal.getName(),
                         headers.getSessionId())
                 : null;
+        if (user.isGuest()
+                && queueContext != null
+                && (queueContext.partyId() != null || queueContext.entrants().size() != 1)) {
+            throw new AuthException("Guests cannot join parties.");
+        }
+        if (!user.isGuest() && queueContext != null && queueContext.hasGuest()) {
+            throw new AuthException("Guests cannot join parties.");
+        }
         List<MatchEntrant> queueGroup = queueContext != null
                 ? queueContext.entrants()
                 : List.of(new MatchEntrant(
@@ -220,7 +229,8 @@ public class MatchmakingSocketController {
                 mode,
                 queueGroup,
                 queueContext == null ? null : queueContext.partyId(),
-                payload == null ? List.of() : payload.guaranteedAbilityIds());
+                payload == null ? List.of() : payload.guaranteedAbilityIds(),
+                user.isGuest() ? QueuePool.GUEST : QueuePool.REGISTERED);
         publish(events);
         publishPartyQueueState(queueContext, mode, events, "WAITING");
         scheduleMatchAcceptanceTimeouts(events);
@@ -501,6 +511,9 @@ public class MatchmakingSocketController {
     @MessageMapping("/matchmaking.chat")
     public void chat(@Payload MatchChatRequestDTO payload, Principal principal) {
         AppUser user = requireUser(principal);
+        if (user.isGuest()) {
+            throw new AuthException("Guest chat is disabled.");
+        }
         MatchChatSubmission submission = payload == null || payload.channel() == null
                 ? matchService.submitChatMessage(
                         user.getId(),

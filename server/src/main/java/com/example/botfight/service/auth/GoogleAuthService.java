@@ -209,7 +209,7 @@ public class GoogleAuthService {
 
     @Transactional(readOnly = true)
     public boolean isGoogleLinked(Authentication authentication) {
-        AppUser user = currentUserService.requireCurrentUser(authentication);
+        AppUser user = requireRegisteredUser(authentication);
         return isGoogleLinked(user);
     }
 
@@ -221,8 +221,16 @@ public class GoogleAuthService {
 
     @Transactional(readOnly = true)
     public void beginLink(Authentication authentication, HttpServletRequest request) {
-        AppUser user = currentUserService.requireCurrentUser(authentication);
+        AppUser user = requireRegisteredUser(authentication);
         request.getSession(true).setAttribute(GOOGLE_LINK_USER_SESSION_KEY, user.getId());
+    }
+
+    private AppUser requireRegisteredUser(Authentication authentication) {
+        AppUser user = currentUserService.requireCurrentUser(authentication);
+        if (user.isGuest()) {
+            throw new AuthException("create an account to use this feature");
+        }
+        return user;
     }
 
     public void clearFlowState(HttpServletRequest request) {

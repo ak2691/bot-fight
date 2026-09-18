@@ -17,6 +17,7 @@ import { apiUrl } from "../config/api";
 import { ensureCsrfHeaders } from "../security/csrf";
 import { serverErrorMessage } from "../auth/serverError.js";
 import {
+    forceDisconnectActiveMatchmakingClient,
     getActiveMatchmakingClient,
     getEstimatedOneWayNetworkDelayMs,
 } from "./stompClient";
@@ -84,7 +85,12 @@ export default function MatchmakingProvider({ children }) {
     const navigate = useNavigate();
     const navigateRef = useRef(navigate);
     navigateRef.current = navigate;
-    const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+    const { isAuthenticated, isGuest, isLoading: authLoading, user } = useAuth();
+    const hasGameAccess = isAuthenticated || isGuest;
+    const hasSocialAccess = isAuthenticated;
+    const clientIdentityKey = user?.id == null
+        ? null
+        : `${user.id}:${isGuest ? "guest" : "registered"}`;
     const matchFoundRef = useRef(false);
     const matchmakingClientRef = useRef(null);
     const partyClientRef = useRef(null);
@@ -320,7 +326,7 @@ export default function MatchmakingProvider({ children }) {
     ), []);
 
     const handleCustomLobbyEvent = useCallback((event) => {
-        if (!isAuthenticated || !event) return;
+        if (!hasSocialAccess || !event) return;
         setCustomLobbyEvent(event);
         if (event.type === "CUSTOM_LOBBY_MATCH_STARTED" && event.matchId) {
             markActiveMatch(event.matchId);
@@ -331,17 +337,23 @@ export default function MatchmakingProvider({ children }) {
                 },
             });
         }
-    }, [isAuthenticated, markActiveMatch, navigate]);
+    }, [hasSocialAccess, markActiveMatch, navigate]);
 
     useEffect(() => {
-        if (!isAuthenticated) {
+        if (!hasGameAccess) {
             setActiveMatchStatus({ loading: false, activeMatch: false, matchId: null, error: null });
             return undefined;
         }
         const controller = new AbortController();
         void refreshActiveMatchStatus(controller.signal);
         return () => controller.abort();
-    }, [isAuthenticated, refreshActiveMatchStatus]);
+    }, [hasGameAccess, refreshActiveMatchStatus]);
+
+    useEffect(() => {
+        if (hasGameAccess) return undefined;
+        void forceDisconnectActiveMatchmakingClient();
+        return undefined;
+    }, [hasGameAccess]);
 
     const clearPendingAcceptance = useCallback((message = null) => {
         pendingAcceptanceRef.current = null;
@@ -382,7 +394,7 @@ export default function MatchmakingProvider({ children }) {
     }, []);
 
     const handlePartyEvent = useCallback((event) => {
-        if (!isAuthenticated || !event) return;
+        if (!hasSocialAccess || !event) return;
         setPartyLoading(false);
         setPartyError(null);
         const eventPartyId = event.partyId == null ? null : String(event.partyId);
@@ -469,10 +481,10 @@ export default function MatchmakingProvider({ children }) {
         setQueueStartedAt(Number.isFinite(eventStartedAt) ? eventStartedAt : Date.now());
         setQueueElapsed(0);
         setIsQueueing(true);
-    }, [clearPendingAcceptance, isAuthenticated, user?.id]);
+    }, [clearPendingAcceptance, hasSocialAccess, user?.id]);
 
     useEffect(() => {
-        if (!isAuthenticated) {
+        if (!hasSocialAccess) {
             partyIdRef.current = null;
             partyQueueActiveRef.current = false;
             partyQueueOwnerRef.current = false;
@@ -489,7 +501,11 @@ export default function MatchmakingProvider({ children }) {
         let disposed = false;
         const client = getActiveMatchmakingClient(
             { onPartyEvent: handlePartyEvent },
-            { autoReconnect: true, autoJoinOnConnect: false },
+            {
+                autoReconnect: true,
+                autoJoinOnConnect: false,
+                identityKey: clientIdentityKey,
+            },
         );
         partyClientRef.current = client;
         client.setPartyHandler?.(handlePartyEvent);
@@ -503,10 +519,10 @@ export default function MatchmakingProvider({ children }) {
             if (disposed) client.setPartyHandler?.(null);
             client.unsubscribeParty?.();
         };
-    }, [handlePartyEvent, isAuthenticated, user?.id]);
+    }, [clientIdentityKey, handlePartyEvent, hasSocialAccess, user?.id]);
 
     useEffect(() => {
-        if (!isAuthenticated) {
+        if (!hasSocialAccess) {
             setCustomLobbyEvent(null);
             customLobbyClientRef.current = null;
             return undefined;
@@ -519,7 +535,11 @@ export default function MatchmakingProvider({ children }) {
                     if (!disposed) handleCustomLobbyEvent(event);
                 },
             },
-            { autoReconnect: true, autoJoinOnConnect: false },
+            {
+                autoReconnect: true,
+                autoJoinOnConnect: false,
+                identityKey: clientIdentityKey,
+            },
         );
         customLobbyClientRef.current = client;
         client.subscribeCustomLobby?.();
@@ -532,7 +552,7 @@ export default function MatchmakingProvider({ children }) {
             client.unsubscribeCustomLobby?.();
             client.setCustomLobbyHandler?.(null);
         };
-    }, [handleCustomLobbyEvent, isAuthenticated]);
+    }, [clientIdentityKey, handleCustomLobbyEvent, hasSocialAccess]);
 
     useEffect(() => {
         queueTokenBucketRef.current = createQueueTokenBucket();
@@ -563,7 +583,7 @@ export default function MatchmakingProvider({ children }) {
         if (queueStartInFlightRef.current) return;
         const selectedMode = String(mode ?? "ONES").trim().toUpperCase() || "ONES";
         const normalizedGuarantees = normalizeQueueGuarantees(guaranteedAbilityIds);
-        void persistQueueGuarantees(normalizedGuarantees);
+        if (isAuthenticated) void persistQueueGuarantees(normalizedGuarantees);
         queueGuaranteesRef.current = normalizedGuarantees;
         setQueueGuarantees(normalizedGuarantees);
         if (party?.members?.some((member) => member.online === false)) {
@@ -627,6 +647,7 @@ export default function MatchmakingProvider({ children }) {
         party,
         persistQueueGuarantees,
         queueConnectionEnabled,
+        isAuthenticated,
         verifyActiveMatchForQueue,
     ]);
 
@@ -653,9 +674,9 @@ export default function MatchmakingProvider({ children }) {
     }, [cancelPendingAcceptance]);
 
     useEffect(() => {
-        if (authLoading || isAuthenticated || !isQueueing) return;
+        if (authLoading || hasGameAccess || !isQueueing) return;
         window.queueMicrotask(cancelQueue);
-    }, [authLoading, cancelQueue, isAuthenticated, isQueueing]);
+    }, [authLoading, cancelQueue, hasGameAccess, isQueueing]);
 
     useEffect(() => {
         if (!isQueueing || queueStartedAt == null) return undefined;
@@ -710,7 +731,7 @@ export default function MatchmakingProvider({ children }) {
     }, [acceptanceAuthoritativeDeadlineMs, clearPendingAcceptance, pendingAcceptance]);
 
     useEffect(() => {
-        if (!isAuthenticated || !queueConnectionEnabled) return undefined;
+        if (!hasGameAccess || !queueConnectionEnabled) return undefined;
 
         let disposed = false;
         matchFoundRef.current = partyQueueMatchFoundRef.current;
@@ -794,7 +815,9 @@ export default function MatchmakingProvider({ children }) {
                     if (queueStartRequestedRef.current) {
                         queueStartRequestedRef.current = false;
                         queueEntryKnownRef.current = true;
-                        client.joinQueue(queueModeRef.current, queueGuaranteesRef.current);
+                        client.joinQueue(
+                            queueModeRef.current,
+                            queueGuaranteesRef.current);
                         return;
                     }
                     if (queueEntryKnownRef.current) {
@@ -818,7 +841,9 @@ export default function MatchmakingProvider({ children }) {
                     if (queueStartRequestedRef.current) {
                         queueStartRequestedRef.current = false;
                         queueEntryKnownRef.current = true;
-                        client.joinQueue(queueModeRef.current, queueGuaranteesRef.current);
+                        client.joinQueue(
+                            queueModeRef.current,
+                            queueGuaranteesRef.current);
                         return;
                     }
                     const hadQueue = isQueueingRef.current || queueEntryKnownRef.current;
@@ -951,7 +976,12 @@ export default function MatchmakingProvider({ children }) {
                     navigateRef.current("/match");
                 }
             },
-        }, { autoReconnect: true, autoJoinOnConnect: false });
+        }, {
+            autoReconnect: true,
+            autoJoinOnConnect: false,
+            allowNotificationSubscription: hasSocialAccess,
+            identityKey: clientIdentityKey,
+        });
         matchmakingClientRef.current = client;
         client.subscribeMatchmaking?.();
         client.resumeReconnect?.();
@@ -966,7 +996,9 @@ export default function MatchmakingProvider({ children }) {
         };
     }, [
         clearPendingAcceptance,
-        isAuthenticated,
+        clientIdentityKey,
+        hasGameAccess,
+        hasSocialAccess,
         markActiveMatch,
         queueConnectionEnabled,
         user?.id,

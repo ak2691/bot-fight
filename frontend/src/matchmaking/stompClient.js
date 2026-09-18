@@ -58,6 +58,7 @@ export function createMatchmakingClient({
     onStatus,
     autoReconnect = false,
     autoJoinOnConnect = false,
+    allowNotificationSubscription = true,
 }) {
     let eventHandler = onEvent;
     let chatEventHandler = onChatEvent;
@@ -81,6 +82,7 @@ export function createMatchmakingClient({
     let matchSubscriptionRequested = false;
     let partySubscriptionRequested = false;
     let customLobbySubscriptionRequested = false;
+    let notificationSubscriptionEnabled = allowNotificationSubscription;
     let matchmakingSubscription = null;
     let matchSubscription = null;
     let matchChatSubscription = null;
@@ -235,11 +237,14 @@ export function createMatchmakingClient({
     const subscribeRequestedDestinations = (transport) => {
         if (!transport?.connected) return;
 
-        if (!notificationSubscription) {
+        if (notificationSubscriptionEnabled && !notificationSubscription) {
             notificationSubscription = transport.subscribe(
                 NOTIFICATION_DESTINATION,
                 (message) => deliverNotification(JSON.parse(message.body)),
             );
+        } else if (!notificationSubscriptionEnabled && notificationSubscription) {
+            unsubscribe(notificationSubscription);
+            notificationSubscription = null;
         }
 
         if (partySubscriptionRequested && !partySubscription) {
@@ -419,6 +424,15 @@ export function createMatchmakingClient({
                 events.forEach((event) => notificationHandler?.(event));
             }
         },
+        setNotificationSubscriptionEnabled(enabled) {
+            notificationSubscriptionEnabled = enabled !== false;
+            if (!notificationSubscriptionEnabled) {
+                unsubscribe(notificationSubscription);
+                notificationSubscription = null;
+                return;
+            }
+            if (isTransportOpen()) subscribeRequestedDestinations(stompClient);
+        },
         setPartyHandler(nextHandler) {
             partyEventHandler = nextHandler;
             if (partyEventHandler && pendingPartyEvents.length > 0) {
@@ -589,16 +603,33 @@ export function createMatchmakingClient({
 }
 
 let activeMatchmakingClient = null;
+let activeMatchmakingIdentityKey = null;
 
 export function getActiveMatchmakingClient(handlers, options = {}) {
+    const hasIdentityKey = Object.prototype.hasOwnProperty.call(options, "identityKey");
+    if (activeMatchmakingClient
+        && hasIdentityKey
+        && activeMatchmakingIdentityKey !== options.identityKey) {
+        const previousClient = activeMatchmakingClient;
+        activeMatchmakingClient = null;
+        activeMatchmakingIdentityKey = null;
+        void previousClient.disconnect?.();
+    }
     if (!activeMatchmakingClient) {
         activeMatchmakingClient = createMatchmakingClient({
             ...handlers,
             autoReconnect: options.autoReconnect ?? true,
             autoJoinOnConnect: options.autoJoinOnConnect ?? true,
+            allowNotificationSubscription: options.allowNotificationSubscription ?? true,
         });
+        activeMatchmakingIdentityKey = hasIdentityKey ? options.identityKey : null;
     } else {
         if (options.clearPendingEvents) activeMatchmakingClient.clearPendingEvents?.();
+        if (Object.prototype.hasOwnProperty.call(options, "allowNotificationSubscription")) {
+            activeMatchmakingClient.setNotificationSubscriptionEnabled?.(
+                options.allowNotificationSubscription,
+            );
+        }
         if (handlers && ("onEvent" in handlers || "onChatEvent" in handlers || "onStatus" in handlers)) {
             activeMatchmakingClient.setHandlers(handlers);
         }
@@ -616,7 +647,10 @@ export function getActiveMatchmakingClient(handlers, options = {}) {
 }
 
 export function forceDisconnectActiveMatchmakingClient(client = activeMatchmakingClient) {
-    if (activeMatchmakingClient === client) activeMatchmakingClient = null;
+    if (activeMatchmakingClient === client) {
+        activeMatchmakingClient = null;
+        activeMatchmakingIdentityKey = null;
+    }
     client?.setNotificationHandler?.(null);
     client?.clearPendingNotifications?.();
     client?.setPartyHandler?.(null);

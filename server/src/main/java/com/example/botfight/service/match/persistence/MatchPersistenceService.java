@@ -141,13 +141,18 @@ public class MatchPersistenceService {
     }
 
     public Match createMatch() {
-        return createMatch(MatchMode.ONES);
+        return createMatch(MatchMode.ONES, true);
     }
 
     public Match createMatch(MatchMode mode) {
+        return createMatch(mode, mode != MatchMode.CUSTOM);
+    }
+
+    public Match createMatch(MatchMode mode, boolean ranked) {
         Match match = new Match();
         match.setStatus(MatchStatus.RUNNING);
         match.setMode(mode);
+        match.setRanked(ranked);
         match.setRulesetVersion(MatchSimulationService.DUEL_RULESET_VERSION);
         match.setSimulationSeed(ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE));
         match.setStartedAt(Instant.now(clock));

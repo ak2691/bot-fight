@@ -9,7 +9,7 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
     const navigate = useNavigate();
     const { pathname } = useLocation();
     const navbarRef = useRef(null);
-    const { user } = useAuth();
+    const { user, isAuthenticated, isGuest } = useAuth();
     const {
         pendingPartyInvites,
         pendingCustomLobbyInvites,
@@ -83,8 +83,8 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
 
             {account ? (
                 <nav className="flex items-center gap-1 sm:gap-2" aria-label="Account navigation">
-                    <PartyPopover onOpen={() => setNotificationsOpen(false)} />
-                    <div ref={notificationsPopoverRef} className="relative">
+                    {!isGuest && <PartyPopover onOpen={() => setNotificationsOpen(false)} />}
+                    {!isGuest && <div ref={notificationsPopoverRef} className="relative">
                         <button
                             type="button"
                             onClick={() => setNotificationsOpen((open) => !open)}
@@ -116,7 +116,7 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
                                 onDeclineCustomLobby={declineCustomLobbyInvite}
                             />
                         )}
-                    </div>
+                    </div>}
                     {user?.admin === true && (
                         <button
                             type="button"
@@ -142,6 +142,15 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
                         </span>
                         <span className="hidden max-w-32 truncate sm:block">{username}</span>
                     </button>
+                    {isGuest && !isAuthenticated && (
+                        <button
+                            type="button"
+                            onClick={() => navigate("/login")}
+                            className="app-navbar-control min-h-11 px-3 font-mono text-[10px] font-bold tracking-widest text-cyan-200"
+                        >
+                            SIGN IN
+                        </button>
+                    )}
                 </nav>
             ) : children}
         </header>

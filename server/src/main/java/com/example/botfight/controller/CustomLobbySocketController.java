@@ -46,6 +46,9 @@ public class CustomLobbySocketController {
     @MessageMapping("/custom-lobby.chat")
     public void chat(@Payload CustomLobbyChatRequestDTO payload, Principal principal) {
         AppUser user = requireUser(principal);
+        if (user.isGuest()) {
+            throw new AuthException("Guest chat is disabled.");
+        }
         CustomLobbyChatSubmission submission = customLobbyChatService.submit(
                 user.getId(),
                 principal.getName(),

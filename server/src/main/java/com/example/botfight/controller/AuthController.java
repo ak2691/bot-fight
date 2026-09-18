@@ -117,6 +117,12 @@ public class AuthController {
         return ResponseEntity.ok(authService.login(request, httpRequest));
     }
 
+    @PostMapping("/guest")
+    public ResponseEntity<AuthUserDTO> guest(HttpServletRequest httpRequest) {
+        requireAuthLimits("guest", null, httpRequest);
+        return ResponseEntity.status(HttpStatus.CREATED).body(authService.playAsGuest(httpRequest));
+    }
+
     @PostMapping({"/password-reset/request", "/forgot-password"})
     public ResponseEntity<PasswordResetRequestResponseDTO> requestPasswordReset(
             @RequestBody PasswordResetRequestDTO request,
@@ -213,7 +219,9 @@ public class AuthController {
         // rate limiting protects this idempotent endpoint; do not turn a temporary
         // application limiter response into a client-side logout.
         AuthUserDTO currentUser = authService.currentUser(authentication);
-        if (!currentUser.isAuthenticated() && hasInvalidSessionCookie(request)) {
+        if (!currentUser.isAuthenticated()
+                && !currentUser.isGuest()
+                && hasInvalidSessionCookie(request)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(currentUser);
         }
         return ResponseEntity.ok(currentUser);

@@ -208,6 +208,10 @@ test("new tutorial lessons resolve focused practice presets", () => {
     assert.equal(dontMissPlayer.transform.rotation, 180);
     assert.equal(dodging.opponentLoadout, "sandbox:4,5");
     assert.equal(dodging.playerHp, 1);
+    assert.equal(dodging.opponentCode.roots[0].branches[0].actions[0].action, BOT_CODE_ACTIONS.ROTATE_TOWARD_TARGET);
+    assert.equal(dodging.opponentCode.roots[1].branches[0].conditions[0].ability, TUTORIAL_ACTIONS.DASH);
+    assert.equal(dodging.opponentCode.roots[2].branches[0].conditions[0].ability, TUTORIAL_ACTIONS.DASH);
+    assert.deepEqual(dodging.opponentCode.roots.slice(1).flatMap((rootNode) => rootNode.branches[0].actions.map((action) => action.action)), [TUTORIAL_ACTIONS.GRENADE, TUTORIAL_ACTIONS.FIREBALL]);
     assert.equal(abilityVariables.opponentLoadout, "sandbox:7");
     assert.equal(abilityVariables.playerHp, 1);
     assert.equal(edges.opponentCode.roots[1].branches[0].actions[0].action, BOT_CODE_ACTIONS.MOVE_WALK);

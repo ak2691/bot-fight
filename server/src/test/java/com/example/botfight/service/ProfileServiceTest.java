@@ -271,7 +271,7 @@ class ProfileServiceTest {
 
         when(currentUserService.requireCurrentUserId(authentication)).thenReturn(viewer.getId());
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(viewer);
-        when(userRepository.findByEmailVerifiedTrueAndUsernameContainingIgnoreCaseOrderByUsernameAscIdAsc(
+        when(userRepository.findByGuestFalseAndEmailVerifiedTrueAndUsernameContainingIgnoreCaseOrderByUsernameAscIdAsc(
                 "byte",
                 pageRequest))
                 .thenReturn(new PageImpl<>(List.of(first, second), pageRequest, 21));

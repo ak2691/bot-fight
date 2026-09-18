@@ -36,6 +36,9 @@ test("active-match route identity is bound to matchmaking events, not the chat s
 test("notifications share the authenticated transport through a separate subscription", () => {
     assert.match(source, /NOTIFICATION_DESTINATION = "\/user\/queue\/notifications"/);
     assert.match(source, /notificationSubscription = transport\.subscribe\(/);
+    assert.match(source, /allowNotificationSubscription/);
+    assert.match(source, /setNotificationSubscriptionEnabled/);
+    assert.match(source, /activeMatchmakingIdentityKey/);
     assert.match(source, /NOTIFICATION_DESTINATION/);
     assert.match(source, /setNotificationHandler/);
 });

@@ -5,8 +5,9 @@ import ArenaLoadingScreen from "../components/ArenaLoadingScreen.jsx";
 import { isArenaPresentationGateReady } from "../gameArena/pixi/useArenaPresentationAssets.js";
 import { useArenaPresentationAssetsContext } from "../gameArena/pixi/ArenaPresentationAssetsContext.js";
 
-export default function ProtectedRoute({ children }) {
-    const { isAuthenticated, isLoading, authError, refreshUser } = useAuth();
+export default function ProtectedRoute({ children, allowGuest = false }) {
+    const { isAuthenticated, isGuest, isLoading, authError, refreshUser } = useAuth();
+    const hasAccess = isAuthenticated || (allowGuest && isGuest);
     const assets = useArenaPresentationAssetsContext();
     const location = useLocation();
 
@@ -14,7 +15,7 @@ export default function ProtectedRoute({ children }) {
         return <ArenaLoadingScreen />;
     }
 
-    if (authError && !isAuthenticated) {
+    if (authError && !isAuthenticated && !(allowGuest && isGuest)) {
         return (
             <ArenaLoadingScreen
                 label={authUnavailableMessage(authError)}
@@ -23,7 +24,7 @@ export default function ProtectedRoute({ children }) {
         );
     }
 
-    if (!isAuthenticated) {
+    if (!hasAccess) {
         return <Navigate to="/login" replace state={{ from: location }} />;
     }
 

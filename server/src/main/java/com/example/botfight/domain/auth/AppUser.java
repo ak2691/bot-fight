@@ -35,6 +35,13 @@ public class AppUser {
     @Column(nullable = false, length = 20)
     private UserRole role = UserRole.USER;
 
+    @Column(name = "is_guest", nullable = false)
+    private boolean guest;
+
+    @Column(name = "guest_expires_at")
+    private Instant guestExpiresAt;
+
+
     @Column(name = "email_verified", nullable = false)
     private boolean emailVerified = true;
 
@@ -90,6 +97,26 @@ public class AppUser {
 
     public void setRole(UserRole role) {
         this.role = role;
+    }
+
+    public boolean isGuest() {
+        return guest || getRole() == UserRole.GUEST;
+    }
+
+    public void setGuest(boolean guest) {
+        this.guest = guest;
+    }
+
+    public Instant getGuestExpiresAt() {
+        return guestExpiresAt;
+    }
+
+    public void setGuestExpiresAt(Instant guestExpiresAt) {
+        this.guestExpiresAt = guestExpiresAt;
+    }
+
+    public boolean isGuestActive(Instant now) {
+        return !isGuest() || (guestExpiresAt != null && now != null && now.isBefore(guestExpiresAt));
     }
 
     public boolean isEmailVerified() {

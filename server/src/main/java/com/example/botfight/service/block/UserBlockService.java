@@ -39,7 +39,7 @@ public class UserBlockService implements BlockLookup {
 
     @Transactional
     public BlockStatusDTO block(Authentication authentication, String requestedUsername) {
-        AppUser blocker = currentUserService.requireCurrentUser(authentication);
+        AppUser blocker = requireRegisteredUser(authentication);
         AppUser blocked = findVerifiedUser(requestedUsername);
         rejectSelf(blocker, blocked);
         userBlockRepository.insertIfAbsent(blocker.getId(), blocked.getId());
@@ -48,7 +48,7 @@ public class UserBlockService implements BlockLookup {
 
     @Transactional
     public BlockStatusDTO unblock(Authentication authentication, String requestedUsername) {
-        UUID blockerId = currentUserService.requireCurrentUserId(authentication);
+        UUID blockerId = requireRegisteredUser(authentication).getId();
         AppUser blocked = findVerifiedUser(requestedUsername);
         if (blockerId.equals(blocked.getId())) {
             throw new AuthException("you cannot unblock yourself");
@@ -59,7 +59,7 @@ public class UserBlockService implements BlockLookup {
 
     @Transactional(readOnly = true)
     public BlockStatusDTO status(Authentication authentication, String requestedUsername) {
-        UUID blockerId = currentUserService.requireCurrentUserId(authentication);
+        UUID blockerId = requireRegisteredUser(authentication).getId();
         AppUser blocked = findVerifiedUser(requestedUsername);
         if (blockerId.equals(blocked.getId())) {
             return new BlockStatusDTO(false);
@@ -71,6 +71,7 @@ public class UserBlockService implements BlockLookup {
         String username = UsernamePolicy.clean(requestedUsername);
         UsernamePolicy.validate(username);
         return userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(username)
+                .filter(user -> !user.isGuest())
                 .orElseThrow(() -> new AuthException("player could not be found"));
     }
 
@@ -78,5 +79,13 @@ public class UserBlockService implements BlockLookup {
         if (blocker.getId().equals(blocked.getId())) {
             throw new AuthException("you cannot block yourself");
         }
+    }
+
+    private AppUser requireRegisteredUser(Authentication authentication) {
+        AppUser user = currentUserService.requireCurrentUser(authentication);
+        if (user.isGuest()) {
+            throw new AuthException("create an account to use this feature");
+        }
+        return user;
     }
 }

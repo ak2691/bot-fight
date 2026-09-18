@@ -128,7 +128,7 @@ public class EloRatingService {
      */
     @Transactional
     public void applyRatedResult(Match match, List<MatchParticipant> participants) {
-        if (match == null || !isRatedMode(match.getMode()) || participants == null
+        if (match == null || !match.isRanked() || !isRatedMode(match.getMode()) || participants == null
                 || participants.isEmpty()) {
             return;
         }

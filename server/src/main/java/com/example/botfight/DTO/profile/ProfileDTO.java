@@ -42,7 +42,7 @@ public record ProfileDTO(
     public record QueueStats(ModeStats ones, ModeStats twos) {
     }
 
-    public record ModeStats(long wins, long losses, long draws, int elo) {
+    public record ModeStats(long wins, long losses, long draws, Integer elo) {
         public ModeStats(long wins, long losses, int elo) {
             this(wins, losses, 0, elo);
         }

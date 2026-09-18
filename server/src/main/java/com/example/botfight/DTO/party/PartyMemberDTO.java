@@ -7,5 +7,10 @@ public record PartyMemberDTO(
         String username,
         int slot,
         boolean leader,
-        boolean online) {
+        boolean online,
+        boolean guest) {
+
+    public PartyMemberDTO(UUID userId, String username, int slot, boolean leader, boolean online) {
+        this(userId, username, slot, leader, online, false);
+    }
 }

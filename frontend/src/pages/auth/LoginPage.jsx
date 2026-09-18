@@ -10,13 +10,14 @@ import googleIconUrl from "../../assets/googleicon.png";
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 export default function LoginPage() {
-    const { isAuthenticated, isLoading, login, linkGoogleAccount, completeGoogleUsername } = useAuth();
+    const { isAuthenticated, isLoading, login, playAsGuest, linkGoogleAccount, completeGoogleUsername } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [isPasswordVisible, setIsPasswordVisible] = useState(false);
     const [fieldErrors, setFieldErrors] = useState({});
     const [formError, setFormError] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isGuestSubmitting, setIsGuestSubmitting] = useState(false);
     const navigate = useNavigate();
     const location = useLocation();
     const googleStatus = new URLSearchParams(location.search).get("google");
@@ -89,6 +90,19 @@ export default function LoginPage() {
             setUsernameErrorMessage(userFacingAuthError(err, "That username could not be saved. Choose another and try again."));
         } finally {
             setIsUsernameSubmitting(false);
+        }
+    };
+
+    const handlePlayAsGuest = async () => {
+        setFormError(null);
+        setIsGuestSubmitting(true);
+        try {
+            await playAsGuest();
+            navigate("/home", { replace: true });
+        } catch (err) {
+            setFormError(userFacingAuthError(err, "Guest mode could not be started. Try again."));
+        } finally {
+            setIsGuestSubmitting(false);
         }
     };
 
@@ -205,6 +219,14 @@ export default function LoginPage() {
                         <img src={googleIconUrl} alt="" aria-hidden="true" className="h-5 w-5 shrink-0" />
                         <span>Log in with Google</span>
                     </a>
+                    <button
+                        type="button"
+                        onClick={() => void handlePlayAsGuest()}
+                        disabled={isSubmitting || isGuestSubmitting}
+                        className="mt-4 w-full text-center text-sm font-semibold text-cyan-300 hover:text-cyan-100 disabled:cursor-wait disabled:opacity-60"
+                    >
+                        Play as guest
+                    </button>
         </AuthLayout>
     );
 }

@@ -99,7 +99,7 @@ export const TUTORIAL_CATEGORIES = Object.freeze([
             ]),
             lesson("dont-miss", "Don't Miss", [
                 "Fireball is a projectile, so aim matters. Your bot starts about 300 units away from Opponent 1. Keep your bot pointed close to the target before you shoot.",
-                "Create a root and add a conditional node by clicking + Conditional. Set up this statement: If Relative Bearing to Target From Entity (Shortest) is less than or equal to 10 degrees, then use Fireball. At this distance, that keeps the Fireball path within the opponent's hitbox.",
+                "Create a root and add a conditional node by clicking + Conditional. Set up this statement: If Relative Bearing Of Target From Entity (Shortest) is less than or equal to 10 degrees, then use Fireball. At this distance, that keeps the Fireball path within the opponent's hitbox.",
                 "Add a new root, add a conditional node by clicking + Conditional, set it to ALWAYS, and add the Rotation: Face Target action to start aiming.",
             ]),
             lesson("dodging", "Dodging", [

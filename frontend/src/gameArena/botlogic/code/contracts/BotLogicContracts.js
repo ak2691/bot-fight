@@ -271,11 +271,11 @@ const GENERIC_ABILITY_VARIABLES = [
     ["selectedAbilityReady", "Ability Ready", "boolean", STATE_VARIABLE_SOURCES.SELECTED_ABILITY_READY, {}],
     ["selectedAbilityActive", "Ability Active", "boolean", STATE_VARIABLE_SOURCES.SELECTED_ABILITY_ACTIVE, {}],
     ["selectedAbilityOnCooldown", "Ability On Cooldown", "boolean", STATE_VARIABLE_SOURCES.SELECTED_ABILITY_ON_COOLDOWN, {}],
-    ["selectedAbilityActiveMs", "Ability Active Time Left", "number", STATE_VARIABLE_SOURCES.SELECTED_ABILITY_ACTIVE_MS, { min: 0, max: 60, unit: "seconds", step: 0.1 }],
-    ["selectedAbilityCooldownMs", "Ability Cooldown", "number", STATE_VARIABLE_SOURCES.SELECTED_ABILITY_COOLDOWN_MS, { min: 0, max: 60, unit: "seconds", step: 0.1 }],
+    ["selectedAbilityActiveMs", "Ability Active Time", "number", STATE_VARIABLE_SOURCES.SELECTED_ABILITY_ACTIVE_MS, { min: 0, max: 60, unit: "seconds", step: 0.1 }],
+    ["selectedAbilityCooldownMs", "Ability Cooldown Time", "number", STATE_VARIABLE_SOURCES.SELECTED_ABILITY_COOLDOWN_MS, { min: 0, max: 60, unit: "seconds", step: 0.1 }],
     ["selectedAbilityCharges", "Ability Charges", "number", STATE_VARIABLE_SOURCES.SELECTED_ABILITY_CHARGES, { min: 0, max: 100, unit: "charges", step: 1, requiredTag: ABILITY_TAGS.CHARGES }],
     ["selectedAbilityPreparing", "Ability Preparing", "boolean", STATE_VARIABLE_SOURCES.SELECTED_ABILITY_PREPARING, { requiredTag: "preparation" }],
-    ["selectedAbilityPreparationMs", "Ability Preparation Time Left", "number", STATE_VARIABLE_SOURCES.SELECTED_ABILITY_PREPARATION_MS, { min: 0, max: 10, unit: "seconds", step: 0.1, requiredTag: "preparation" }],
+    ["selectedAbilityPreparationMs", "Ability Preparation Time", "number", STATE_VARIABLE_SOURCES.SELECTED_ABILITY_PREPARATION_MS, { min: 0, max: 10, unit: "seconds", step: 0.1, requiredTag: "preparation" }],
 ].flatMap(([field, label, valueType, runtimeSource, options]) => [
     variableDefinition(`bot.${field}`, `Bot ${label}`, valueType, {
         group: "Abilities & Status",

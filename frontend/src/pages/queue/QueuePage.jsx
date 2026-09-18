@@ -21,6 +21,7 @@ function numericStat(value) {
 }
 
 function formatQueueElo(stats) {
+    if (stats?.elo == null) return "N/A";
     return numericStat(stats?.elo) ?? "...";
 }
 
@@ -72,7 +73,7 @@ function QueueArrow() {
 
 export default function QueuePage() {
     const navigate = useNavigate();
-    const { user } = useAuth();
+    const { user, isGuest } = useAuth();
     const profileCacheKey = user?.authenticated === true ? user.id ?? user.username : null;
     const [customLobby, setCustomLobby] = useState(null);
     const [customLobbyChecked, setCustomLobbyChecked] = useState(false);
@@ -93,6 +94,11 @@ export default function QueuePage() {
     const [partyQueueNotice, setPartyQueueNotice] = useState(null);
 
     useEffect(() => {
+        if (isGuest) {
+            setCustomLobby(null);
+            setCustomLobbyChecked(true);
+            return undefined;
+        }
         let disposed = false;
         const loadCurrentCustomLobby = async () => {
             try {
@@ -113,7 +119,7 @@ export default function QueuePage() {
         return () => {
             disposed = true;
         };
-    }, []);
+    }, [isGuest]);
 
     useEffect(() => {
         let disposed = false;
@@ -189,6 +195,11 @@ export default function QueuePage() {
                 <header className="max-w-2xl">
                     <p className="font-mono text-[10px] font-bold tracking-[.24em] text-cyan-400">MATCHMAKING</p>
                     <h1 className="mt-3 font-display-action text-5xl uppercase tracking-wide text-white sm:text-7xl">Choose your queue</h1>
+                    {isGuest && (
+                        <p className="mt-4 max-w-xl rounded-lg border border-amber-400/35 bg-amber-950/20 px-4 py-3 text-xs leading-5 text-amber-200" role="status">
+                            Guest matches are against other guests only. No Elo or match history is saved.
+                        </p>
+                    )}
                 </header>
 
                 <QueueAbilityGuaranteePicker
@@ -249,7 +260,7 @@ export default function QueuePage() {
                         );
                     })}
 
-                    <button
+                    {!isGuest && <button
                         type="button"
                         onClick={() => navigate("/custom-lobby", hasCustomLobby ? undefined : { state: { create: true } })}
                         disabled={isQueueing || !customLobbyChecked}
@@ -269,7 +280,7 @@ export default function QueuePage() {
                             </span>
                             <QueueArrow />
                         </span>
-                    </button>
+                    </button>}
                 </div>
 
                 {(partyQueueBlocked || partyHasOfflineMember) && (

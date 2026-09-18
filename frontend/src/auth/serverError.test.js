@@ -16,6 +16,7 @@ test("only 5xx responses keep the custom server error route visible", () => {
 
 test("healthy auth probes return to the authenticated or guest default route", () => {
     assert.equal(defaultAuthRoute({ authenticated: true }), "/home");
+    assert.equal(defaultAuthRoute({ authenticated: false, guest: true }), "/home");
     assert.equal(defaultAuthRoute({ authenticated: false }), "/login");
     assert.equal(defaultAuthRoute(null), "/login");
 });

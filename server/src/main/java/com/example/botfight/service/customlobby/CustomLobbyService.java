@@ -136,6 +136,7 @@ public class CustomLobbyService {
         return activeLobbiesById.values().stream()
                 .filter(lobby -> lobby.members.values().stream().anyMatch(member ->
                         member.user.getEmail() != null
+                                && !member.user.isGuest()
                                 && principalName.equals(member.user.getEmail())))
                 .findFirst()
                 .map(this::toDTO)
@@ -174,6 +175,7 @@ public class CustomLobbyService {
 
     public synchronized CustomLobbyDTO create(Authentication authentication) {
         AppUser user = currentUserService.requireCurrentUser(authentication);
+        rejectGuest(user);
         rejectActiveMatch(user.getId());
         ActiveLobby existing = activeLobbyForUser(user.getId());
         if (existing != null) return toDTO(existing);
@@ -191,6 +193,7 @@ public class CustomLobbyService {
             UUID lobbyId,
             String requestedUsername) {
         AppUser inviter = currentUserService.requireCurrentUser(authentication);
+        rejectGuest(inviter);
         inviteRateLimiter.requireAllowed(inviter.getId());
         ActiveLobby lobby = requireLobby(lobbyId);
         requireOwner(lobby, inviter.getId());
@@ -202,7 +205,9 @@ public class CustomLobbyService {
         String username = UsernamePolicy.clean(requestedUsername);
         UsernamePolicy.validate(username);
         AppUser invitee = userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(username)
+                .filter(user -> !user.isGuest())
                 .orElseThrow(() -> new AuthException("player could not be found"));
+        rejectGuest(invitee);
         if (inviter.getId().equals(invitee.getId())) {
             throw new AuthException("you cannot invite yourself");
         }
@@ -240,6 +245,7 @@ public class CustomLobbyService {
     }
 
     public synchronized List<CustomLobbyInviteDTO> incoming(Authentication authentication) {
+        if (currentUserService.isGuest(authentication)) return List.of();
         UUID inviteeId = currentUserService.requireCurrentUserId(authentication);
         Instant now = clock.instant();
         return invitesById.values().stream()
@@ -257,6 +263,7 @@ public class CustomLobbyService {
     public synchronized AcceptedInvite accept(Authentication authentication, UUID inviteId) {
         UUID inviteeId = currentUserService.requireCurrentUserId(authentication);
         LobbyInvite invite = requirePendingInviteForAccept(inviteId, inviteeId);
+        rejectGuest(invite.invitee);
         rejectActiveMatch(inviteeId);
         if (blockLookup.isBlocked(inviteeId, invite.inviter.getId())
                 || blockLookup.isBlocked(invite.inviter.getId(), inviteeId)) {
@@ -305,6 +312,7 @@ public class CustomLobbyService {
             UUID lobbyId,
             Integer requestedTeamNumber) {
         AppUser user = currentUserService.requireCurrentUser(authentication);
+        rejectGuest(user);
         ActiveLobby lobby = requireMember(lobbyId, user.getId());
         requireLobbyAvailable(lobby);
         int teamNumber = requestedTeamNumber == null ? -1 : requestedTeamNumber;
@@ -333,6 +341,7 @@ public class CustomLobbyService {
             UUID lobbyId,
             Integer requestedRoundDurationSeconds) {
         AppUser owner = currentUserService.requireCurrentUser(authentication);
+        rejectGuest(owner);
         ActiveLobby lobby = requireLobby(lobbyId);
         requireOwner(lobby, owner.getId());
         requireLobbyAvailable(lobby);
@@ -349,6 +358,7 @@ public class CustomLobbyService {
 
     public synchronized LobbyChange leave(Authentication authentication, UUID lobbyId) {
         AppUser user = currentUserService.requireCurrentUser(authentication);
+        rejectGuest(user);
         ActiveLobby lobby = requireMember(lobbyId, user.getId());
         requireLobbyAvailable(lobby);
         return removeMember(lobby, user.getId());
@@ -359,6 +369,7 @@ public class CustomLobbyService {
             UUID lobbyId,
             UUID targetUserId) {
         AppUser owner = currentUserService.requireCurrentUser(authentication);
+        rejectGuest(owner);
         ActiveLobby lobby = requireLobby(lobbyId);
         requireOwner(lobby, owner.getId());
         requireLobbyAvailable(lobby);
@@ -374,6 +385,7 @@ public class CustomLobbyService {
     /** Starts the authoritative match once every member has joined a team. */
     public synchronized StartedMatch start(Authentication authentication, UUID lobbyId) {
         AppUser owner = currentUserService.requireCurrentUser(authentication);
+        rejectGuest(owner);
         ActiveLobby lobby = requireLobby(lobbyId);
         requireOwner(lobby, owner.getId());
         requireLobbyAvailable(lobby);
@@ -566,6 +578,12 @@ public class CustomLobbyService {
     private void rejectActiveMatch(UUID userId) {
         if (matchService.activeMatchStatus(userId).activeMatch()) {
             throw new AuthException("players must be outside an active match");
+        }
+    }
+
+    private void rejectGuest(AppUser user) {
+        if (user != null && user.isGuest()) {
+            throw new AuthException("Guests cannot use custom lobbies.");
         }
     }
 

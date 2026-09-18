@@ -140,7 +140,7 @@ function CustomLobbySettingsModal({ roundSeconds, onRoundSecondsChange, onClose,
 export default function CustomLobbyPage() {
     const navigate = useNavigate();
     const location = useLocation();
-    const { user } = useAuth();
+    const { user, isGuest } = useAuth();
     const {
         customLobbyEvent,
         markActiveMatch,
@@ -553,12 +553,14 @@ export default function CustomLobbyPage() {
                                     />
                                 </div>
                                 <div className="col-span-1 grid min-h-0 gap-4 sm:grid-cols-2 lg:flex lg:flex-col">
-                                    <CustomLobbyChat
-                                        messages={chatMessages}
-                                        onSend={sendLobbyChat}
-                                        notice={chatNotice}
-                                        className="custom-lobby-chat--compact min-w-0"
-                                    />
+                                    {!isGuest && (
+                                        <CustomLobbyChat
+                                            messages={chatMessages}
+                                            onSend={sendLobbyChat}
+                                            notice={chatNotice}
+                                            className="custom-lobby-chat--compact min-w-0"
+                                        />
+                                    )}
                                     <div className="min-w-0 shrink-0 rounded-xl border border-slate-800 bg-[#07111b] p-4">
                                         <p className="font-mono text-[10px] font-bold tracking-[.18em] text-slate-500">LOBBY STATUS</p>
                                         <p className="mt-2 text-sm text-slate-300">{everyoneOnTeam && bothTeamsHavePlayers ? "All players are on a team." : "Players without a team are not ready."}</p>

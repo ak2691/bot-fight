@@ -66,7 +66,15 @@ public final class MatchLifecycleService {
             MatchEntrant opponent,
             MatchEntrant player,
             MatchMode mode) {
-        return startMatchInternal(List.of(opponent, player), mode, false);
+        return startMatchInternal(List.of(opponent, player), mode, false, mode != MatchMode.CUSTOM, null);
+    }
+
+    public List<OutboundMatchmakingEvent> startMatch(
+            MatchEntrant opponent,
+            MatchEntrant player,
+            MatchMode mode,
+            boolean ranked) {
+        return startMatchInternal(List.of(opponent, player), mode, false, ranked, null);
     }
 
     public List<OutboundMatchmakingEvent> startTeamMatch(
@@ -79,20 +87,39 @@ public final class MatchLifecycleService {
             List<MatchEntrant> entrants,
             MatchMode mode,
             Integer requestedRoundDurationSeconds) {
-        return startMatchInternal(entrants, mode, false, requestedRoundDurationSeconds);
+        return startMatchInternal(
+                entrants,
+                mode,
+                false,
+                mode != MatchMode.CUSTOM,
+                requestedRoundDurationSeconds);
+    }
+
+    public List<OutboundMatchmakingEvent> startTeamMatch(
+            List<MatchEntrant> entrants,
+            MatchMode mode,
+            boolean ranked) {
+        return startMatchInternal(entrants, mode, false, ranked, null);
     }
 
     private List<OutboundMatchmakingEvent> startMatchInternal(
             List<MatchEntrant> entrants,
             MatchMode mode,
             boolean useLegacyCreateMatch) {
-        return startMatchInternal(entrants, mode, useLegacyCreateMatch, null);
+        MatchMode resolvedMode = mode == null ? MatchMode.ONES : mode;
+        return startMatchInternal(
+                entrants,
+                mode,
+                useLegacyCreateMatch,
+                useLegacyCreateMatch || resolvedMode != MatchMode.CUSTOM,
+                null);
     }
 
     private List<OutboundMatchmakingEvent> startMatchInternal(
             List<MatchEntrant> entrants,
             MatchMode mode,
             boolean useLegacyCreateMatch,
+            boolean ranked,
             Integer requestedRoundDurationSeconds) {
         MatchMode resolvedMode = mode == null ? MatchMode.ONES : mode;
         int roundDurationSeconds;
@@ -107,9 +134,7 @@ public final class MatchLifecycleService {
         }
         List<MatchEntrant> normalizedEntrants = normalizeEntrants(entrants);
         validateRoster(normalizedEntrants, resolvedMode);
-        Match match = useLegacyCreateMatch
-                ? persistenceService.createMatch()
-                : persistenceService.createMatch(resolvedMode);
+        Match match = persistenceService.createMatch(resolvedMode, ranked);
         long seed = match.getSimulationSeed();
         List<MatchEntrant> orderedEntrants = useLegacyCreateMatch
                 && normalizedEntrants.size() == 2

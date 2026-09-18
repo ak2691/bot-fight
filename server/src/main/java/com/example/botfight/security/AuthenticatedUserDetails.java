@@ -5,6 +5,7 @@ import com.example.botfight.domain.auth.UserRole;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
+import java.time.Instant;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -16,6 +17,8 @@ public class AuthenticatedUserDetails implements UserDetails {
     private final String username;
     private final String passwordHash;
     private final UserRole role;
+    private final boolean guest;
+    private final Instant guestExpiresAt;
 
     public AuthenticatedUserDetails(AppUser user) {
         this.id = user.getId();
@@ -23,6 +26,8 @@ public class AuthenticatedUserDetails implements UserDetails {
         this.username = user.getUsername();
         this.passwordHash = user.getPasswordHash();
         this.role = user.getRole();
+        this.guest = user.isGuest();
+        this.guestExpiresAt = user.getGuestExpiresAt();
     }
 
     public UUID getId() {
@@ -35,6 +40,18 @@ public class AuthenticatedUserDetails implements UserDetails {
 
     public String getDisplayUsername() {
         return username;
+    }
+
+    public boolean isGuest() {
+        return guest;
+    }
+
+    public Instant getGuestExpiresAt() {
+        return guestExpiresAt;
+    }
+
+    public boolean isGuestActive(Instant now) {
+        return !guest || (guestExpiresAt != null && now != null && now.isBefore(guestExpiresAt));
     }
 
     @Override

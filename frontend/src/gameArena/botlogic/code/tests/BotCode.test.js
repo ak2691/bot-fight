@@ -841,7 +841,7 @@ test("conditional ability choices expose active state and remaining active time"
     assert.equal(active.valueType, "boolean");
     assert.equal(onCooldown.valueType, "boolean");
     assert.equal(activeTime.valueType, "number");
-    assert.equal(activeTime.label, "Bot Ability Active Time Left");
+    assert.equal(activeTime.label, "Bot Ability Active Time");
     assert.equal(activeTime.unit, "seconds");
     assert.equal(activeTime.suffix, undefined);
     assert.equal(activeTime.min, 0);

@@ -112,7 +112,7 @@ function appendUniqueSolvedPuzzles(current, next) {
 }
 
 export default function ProfilePage() {
-    const { user, updateUsername, updateAboutMe, changePassword, logout } = useAuth();
+    const { user, isGuest, updateUsername, updateAboutMe, changePassword, logout } = useAuth();
     const { hideInvitesFrom } = useNotifications();
     const navigate = useNavigate();
     const { username: routeUsername } = useParams();
@@ -172,11 +172,11 @@ export default function ProfilePage() {
                 fetch(profileUrl(requestUsername), { credentials: "include" }),
                 fetch(historyUrl(0, requestUsername), { credentials: "include" }),
                 fetch(solvedPuzzlesUrl(0, requestUsername), { credentials: "include" }),
-                isOwner
+                isOwner && !isGuest
                     ? fetch(apiUrl("/api/auth/google/status"), { credentials: "include" })
                     : Promise.resolve(null),
             ]);
-            if (!profileResponse.ok || !historyResponse.ok || !solvedPuzzlesResponse.ok || (isOwner && !googleResponse?.ok)) {
+            if (!profileResponse.ok || !historyResponse.ok || !solvedPuzzlesResponse.ok || (isOwner && !isGuest && !googleResponse?.ok)) {
                 throw new Error("profile request failed");
             }
             const [nextProfile, history, solvedPuzzlePage, google] = await Promise.all([
@@ -210,7 +210,7 @@ export default function ProfilePage() {
             setSolvedPuzzlesStatus("error");
             setStatus("error");
         }
-    }, [isOwner, viewedUsername]);
+    }, [isGuest, isOwner, viewedUsername]);
 
     const requestHistory = useCallback(async (page, append) => {
         const historyRequestId = ++historyRequestRef.current;
@@ -267,7 +267,7 @@ export default function ProfilePage() {
     }, [viewedUsername]);
 
     useEffect(() => {
-        if (isOwner || !viewedUsername) {
+        if (isGuest || isOwner || !viewedUsername) {
             setBlockState("idle");
             setBlockError(null);
             return undefined;
@@ -296,7 +296,7 @@ export default function ProfilePage() {
             mounted = false;
             controller.abort();
         };
-    }, [isOwner, viewedUsername]);
+    }, [isGuest, isOwner, viewedUsername]);
 
     useEffect(() => () => {
         if (retryRateLimitTimeoutRef.current !== null) {
@@ -387,6 +387,7 @@ export default function ProfilePage() {
                         onOpenPuzzles={() => setIsPuzzlesModalOpen(true)}
                         googleLinked={googleLinked}
                         googleStatus={googleStatus}
+                        isGuest={isGuest}
                         isOwner={isOwner}
                         hasPassword={user?.hasPassword === true}
                         onUsernameSaved={saveUsername}
@@ -509,6 +510,7 @@ function ProfileContent({
     onOpenPuzzles,
     googleLinked,
     googleStatus,
+    isGuest,
     isOwner,
     hasPassword,
     onUsernameSaved,
@@ -544,12 +546,12 @@ function ProfileContent({
                 <dl className="mt-7 border-t border-slate-700/70 pt-4">
                     <Stat
                         label="PUZZLES SOLVED"
-                        value={profile.puzzlesSolved ?? 0}
+                        value={isGuest ? "N/A" : (profile.puzzlesSolved ?? 0)}
                         tone="text-cyan-300"
                         labelClassName="font-mono text-sm font-bold tracking-[.14em] text-slate-400"
                         valueClassName="font-interface-numeric text-2xl font-bold"
                         showColon={false}
-                        onClick={onOpenPuzzles}
+                        onClick={isGuest ? undefined : onOpenPuzzles}
                     />
                 </dl>
 
@@ -560,7 +562,7 @@ function ProfileContent({
                     </time>
                 </div>
 
-                {canBlock && (
+                {canBlock && !isGuest && (
                     <UserBlockButton
                         username={profile.username}
                         state={blockState}
@@ -569,9 +571,9 @@ function ProfileContent({
                     />
                 )}
 
-                {isOwner && <UsernameEditor username={profile.username} onSave={onUsernameSaved} onLogout={onLogout} />}
+                {isOwner && !isGuest && <UsernameEditor username={profile.username} onSave={onUsernameSaved} onLogout={onLogout} />}
 
-                {isOwner && (
+                {isOwner && !isGuest && (
                     <PasswordSettings
                         hasPassword={hasPassword}
                         googleLinked={googleLinked}
@@ -579,7 +581,7 @@ function ProfileContent({
                     />
                 )}
 
-                {isOwner && (
+                {isOwner && !isGuest && (
                     <div className="mt-7 border-t border-cyan-900/70 pt-5">
                         <p className="font-mono text-[10px] font-bold tracking-[.18em] text-cyan-400">CONNECTED SIGN-IN</p>
                         <h2 className="mt-2 text-lg font-bold text-white">Google account</h2>
@@ -608,11 +610,12 @@ function ProfileContent({
                     matches={matches}
                     totalMatches={totalMatches}
                     historyStatus={historyStatus}
+                    isGuest={isGuest}
                     isOwner={isOwner}
                     onOpenMatches={onOpenMatches}
                     onOpenMatchDetails={onOpenMatchDetails}
                 />
-                <AboutMeCard aboutMe={profile.aboutMe} editable={isOwner} onSave={onAboutMeSaved} />
+                <AboutMeCard aboutMe={profile.aboutMe} editable={isOwner && !isGuest} onSave={onAboutMeSaved} />
             </div>
         </div>
     );
@@ -625,7 +628,7 @@ function QueueModeStatsCard({ label, stats }) {
             <div className="mt-6">
                 <p className="font-mono text-[11px] font-bold tracking-[.18em] text-slate-400">ELO</p>
                 <p className="mt-1 whitespace-nowrap font-mono text-3xl font-bold tracking-normal text-white">
-                    {stats?.elo ?? 1000}
+                    {stats?.elo ?? "N/A"}
                 </p>
             </div>
             <div className="my-5 border-t border-slate-700/80" />
@@ -660,9 +663,19 @@ function UserBlockButton({ username, state, error, onToggle }) {
     );
 }
 
-function RecentMatchesCard({ matches, totalMatches, historyStatus, isOwner, onOpenMatches, onOpenMatchDetails }) {
+function RecentMatchesCard({ matches, totalMatches, historyStatus, isGuest, isOwner, onOpenMatches, onOpenMatchDetails }) {
     const previewMatches = matches.slice(0, RECENT_MATCH_LIMIT);
     const isInitialError = historyStatus === "error" && matches.length === 0;
+    if (isGuest) {
+        return (
+            <section className="overflow-hidden rounded-2xl border border-cyan-900/80 bg-[#091521ed] p-6 shadow-[0_18px_60px_rgba(0,0,0,.24)] sm:p-8">
+                <h2 className="text-2xl font-bold text-white">Match history</h2>
+                <p className="mt-3 text-sm leading-6 text-slate-400">
+                    Guest matches are temporary and are not saved. Create an account to keep your results.
+                </p>
+            </section>
+        );
+    }
     return (
         <section className="overflow-hidden rounded-2xl border border-cyan-900/80 bg-[#091521ed] shadow-[0_18px_60px_rgba(0,0,0,.24)]">
             <div className="flex flex-col gap-4 border-b border-slate-700/70 px-6 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-8">

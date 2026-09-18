@@ -254,6 +254,15 @@ public class MatchService {
     }
 
     @Transactional
+    public List<OutboundMatchmakingEvent> startMatch(
+            MatchEntrant opponent,
+            MatchEntrant player,
+            MatchMode mode,
+            boolean ranked) {
+        return matchLifecycleService.startMatch(opponent, player, mode, ranked);
+    }
+
+    @Transactional
     public List<OutboundMatchmakingEvent> startTeamMatch(
             List<MatchEntrant> entrants,
             MatchMode mode) {
@@ -266,6 +275,14 @@ public class MatchService {
             MatchMode mode,
             Integer roundDurationSeconds) {
         return matchLifecycleService.startTeamMatch(entrants, mode, roundDurationSeconds);
+    }
+
+    @Transactional
+    public List<OutboundMatchmakingEvent> startTeamMatch(
+            List<MatchEntrant> entrants,
+            MatchMode mode,
+            boolean ranked) {
+        return matchLifecycleService.startTeamMatch(entrants, mode, ranked);
     }
 
     @Transactional
