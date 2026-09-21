@@ -254,6 +254,9 @@ test("arena and puzzle code workspaces share compact controls and pinch zoom", (
     assert.match(css, /\.code-workspace-coach \{[\s\S]*background: #07111b;/);
     assert.match(css, /\.tutorial-guide-panel \{[\s\S]*height: var\(--tutorial-guide-panel-height, 20rem\);[\s\S]*display: flex;[\s\S]*overflow: hidden;/);
     assert.match(css, /\.tutorial-guide-navigation \{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
+    assert.match(css, /--tutorial-guide-navigation-gap: 0rem;/);
+    assert.match(css, /\.tutorial-guide-navigation \{[\s\S]*border-top: 0;[\s\S]*border-radius: 0 0 \.75rem \.75rem;/);
+    assert.match(css, /\.tutorial-guide-panel\.info-popup-panel \{\s*border-radius: \.75rem \.75rem 0 0;/);
     assert.match(css, /\.tutorial-guide-content \{[\s\S]*flex: 1 1 auto;[\s\S]*overflow-y: auto;/);
     assert.match(css, /\.arena-stage-info \{[\s\S]*position: absolute;[\s\S]*height: 100%;[\s\S]*pointer-events: none;/);
     assert.match(css, /\.arena-stage-info > \.info-popup-minimized,[\s\S]*position: absolute;[\s\S]*left: 0;[\s\S]*pointer-events: auto;/);

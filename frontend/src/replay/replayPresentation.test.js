@@ -287,7 +287,7 @@ test("authoritative frames beginning at the first 100 ms tick use a zero-based b
     assert.equal(replayFrameIndexForElapsedMs(frames, 4_500), 39);
 });
 
-test("replay presentation interpolates transforms on the authoritative timeline", () => {
+test("replay presentation interpolates positions but keeps authoritative rotations", () => {
     const frame = {
         elapsedMs: 100,
         bots: [{ slot: 1, x: 100, y: 200, rotation: 350, hp: 100 }],
@@ -299,8 +299,8 @@ test("replay presentation interpolates transforms on the authoritative timeline"
         entities: [{ id: "fireball", x: 200, y: 400, rotation: 20 }],
     };
     const interpolated = interpolateReplayFrame(frame, nextFrame, 150);
-    assert.deepEqual(interpolated.bots[0], { slot: 1, x: 150, y: 150, rotation: 360, hp: 100 });
-    assert.deepEqual(interpolated.entities[0], { id: "fireball", x: 150, y: 350, rotation: 10 });
+    assert.deepEqual(interpolated.bots[0], { slot: 1, x: 150, y: 150, rotation: 350, hp: 100 });
+    assert.deepEqual(interpolated.entities[0], { id: "fireball", x: 150, y: 350, rotation: 0 });
 });
 
 test("replay damage matching remains slot-based after bot metadata hydration", () => {
@@ -386,7 +386,7 @@ test("the replay handoff follows the timeline between initial state and the firs
 
     assert.deepEqual(initialReplayHandoffFrame(initialState, firstFrame, 0).bots[0], initialState.bots[0]);
     assert.deepEqual(initialReplayHandoffFrame(initialState, firstFrame, 50).bots[0], {
-        userId: "one", x: 110, y: 190, rotation: 360,
+        userId: "one", x: 110, y: 190, rotation: 350,
     });
 });
 

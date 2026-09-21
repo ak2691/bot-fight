@@ -53,6 +53,11 @@ export default function TutorialPage() {
     const selectedLesson = getTutorialLesson(lessonId);
     const [showScrollTop, setShowScrollTop] = useState(false);
 
+    const openCatalogue = (path) => {
+        navigate(path);
+        window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    };
+
     useEffect(() => {
         const handleScroll = () => setShowScrollTop(window.scrollY > 180);
         window.addEventListener("scroll", handleScroll, { passive: true });
@@ -123,6 +128,14 @@ export default function TutorialPage() {
                         <h2 id="tutorial-ending-title" className="font-display-action text-3xl uppercase tracking-wider text-white sm:text-4xl">The End</h2>
                     </div>
                     <LessonDescription description={TUTORIAL_ENDING} className="mt-6 max-w-5xl" />
+                    <nav aria-label="Continue learning" className="mt-6 flex flex-wrap gap-3 border-t border-slate-700/60 pt-5">
+                        <button type="button" onClick={() => openCatalogue("/ability-catalogue")} className="tutorial-try-button">
+                            View Ability Catalogue
+                        </button>
+                        <button type="button" onClick={() => openCatalogue("/conditionals")} className="tutorial-try-button">
+                            View Conditional Catalogue
+                        </button>
+                    </nav>
                 </section>
             </div>
 

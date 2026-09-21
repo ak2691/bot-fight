@@ -31,6 +31,7 @@ export const TUTORIAL_ENDING = Object.freeze([
     "Now, how does an actual match play out? A match is best of three rounds. When you start a match, you get 1 minute to select abilities from a randomly chosen pool for that round. After both players have chosen, you get 5 minutes to program your bot in a 1v1 match or 6 minutes in a 2v2 match.",
     "First round: Select 3 abilities from 6 options.\nSecond round: Select 2 abilities from 4 options.\nThird round: Select 1 ability from 3 options.",
     "You can also select a guaranteed offer for each round before a match.",
+    "Want to learn more before you fight? The Ability Catalogue explains what every ability and status effect does. The Conditional Catalogue covers the rest of the conditionals and game-state variables you can use to program your bot.",
 ]);
 
 const instructionSteps = (...items) => Object.freeze({

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { buildTutorialArenaShapes, getTutorialScenario, hasTutorialPriorityOrder, TUTORIAL_ACTIONS, TUTORIAL_STEP_COUNT } from "./TutorialPresets.js";
 import { normalizeAbilityStrategyConfiguration, selectAbilityStrategyActionPlan } from "../gameArena/botlogic/code/BotCode.js";
 import { buildStatePayload } from "../gameArena/modelPayloads/strategyStatePayload.js";
@@ -182,6 +184,20 @@ test("tutorial introduction maps node visuals and avoids em dashes", () => {
     assert.deepEqual(Object.values(TUTORIAL_INTRODUCTION_VISUALS), ["root-priorities", "conditional-examples", "action-examples", "configuration-examples", "custom-variable-examples"]);
     assert.equal(TUTORIAL_INTRODUCTION.some((paragraph) => paragraph.includes(String.fromCharCode(0x2014))), false);
     assert.equal(TUTORIAL_ENDING.some((paragraph) => paragraph.includes(String.fromCharCode(0x2014))), false);
+});
+
+test("tutorial ending points players to both gameplay catalogues", () => {
+    const endingCopy = TUTORIAL_ENDING.join(" ");
+    const pageSource = readFileSync(fileURLToPath(new URL("./TutorialPage.jsx", import.meta.url)), "utf8");
+
+    assert.match(endingCopy, /Ability Catalogue/);
+    assert.match(endingCopy, /status effect/);
+    assert.match(endingCopy, /Conditional Catalogue/);
+    assert.match(pageSource, /openCatalogue\("\/ability-catalogue"\)/);
+    assert.match(pageSource, /openCatalogue\("\/conditionals"\)/);
+    assert.match(pageSource, /window\.scrollTo\(\{ top: 0, left: 0, behavior: "auto" \}\)/);
+    assert.match(pageSource, />\s*View Ability Catalogue\s*</);
+    assert.match(pageSource, />\s*View Conditional Catalogue\s*</);
 });
 
 test("new tutorial lessons resolve focused practice presets", () => {

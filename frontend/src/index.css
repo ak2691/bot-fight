@@ -283,7 +283,7 @@ html,
   pointer-events: none;
   --tutorial-guide-panel-height: 20rem;
   --tutorial-guide-navigation-height: 2.75rem;
-  --tutorial-guide-navigation-gap: .5rem;
+  --tutorial-guide-navigation-gap: 0rem;
 }
 
 .arena-stage-info > .info-popup-panel,
@@ -324,7 +324,7 @@ html,
   height: min(var(--tutorial-guide-panel-height), calc(100svh - 84px - env(safe-area-inset-top) - 1rem));
   max-width: calc(100vw - 2rem);
   max-height: none;
-  border-radius: .75rem;
+  border-radius: .75rem .75rem 0 0;
   pointer-events: auto;
 }
 
@@ -697,125 +697,97 @@ html,
 
 .home-floating-pair {
   position: absolute;
-  width: 260px;
-  opacity: .58;
+  width: 340px;
+  height: 180px;
+  opacity: .52;
   filter: brightness(.88) saturate(.88);
 }
 
-.home-floating-pair-content {
-  font: 700 8.5px/1.2 "Cousine", "Courier New", monospace;
+.home-floating-tree {
+  position: relative;
+  width: 340px;
+  height: 180px;
   animation: home-node-float 7s ease-in-out infinite alternate;
 }
 
-.home-floating-pair.is-wide { width: 330px; }
-
-.home-floating-action {
-  position: relative;
-  display: flex;
-  box-sizing: border-box;
-  width: min(100%, 248px);
-  min-width: 0;
-  max-width: 248px;
-  flex-direction: column;
-  gap: 4px;
-  border: 1px solid #72b65d;
-  border-radius: 5px;
-  background: linear-gradient(180deg, #4d8257 0%, #3f7049 52%, #31583a 100%);
-  padding: 9px 34px 9px 10px;
-  color: #e4f5df;
-  box-shadow: 0 10px 28px rgba(44, 112, 63, .2);
-}
-
-.home-floating-action strong,
-.home-floating-action > span:not(.home-floating-delete) {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  line-height: 1.2;
-}
-
-.home-floating-action > span:not(.home-floating-delete) { color: #b9d8b2; }
-
-.home-floating-pair.is-wide .home-floating-action {
-  width: min(100%, 286px);
-  max-width: 286px;
-}
-
-.home-floating-conditional {
-  position: relative;
-  overflow: hidden;
-  border: 1px solid #43a6d1;
-  border-radius: 5px;
-  background: #171a1c;
-  color: #d9f2fc;
-  box-shadow: 0 10px 28px rgba(24, 113, 154, .2);
-}
-
-.home-floating-conditional header {
-  position: relative;
-  display: flex;
-  min-height: 30px;
-  align-items: center;
-  gap: 6px;
-  background: linear-gradient(180deg, #347895 0%, #286583 55%, #204f67 100%);
-  padding: 6px 34px 6px 7px;
-}
-
-.home-floating-badge,
-.home-floating-row > span,
-.home-floating-conditional footer span {
-  display: inline-flex;
-  min-height: 22px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(67, 166, 209, .62);
-  border-radius: 3px;
-  background: #101820;
-  padding: 0 5px;
-}
-
-.home-floating-rows { padding: 6px; }
-.home-floating-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; gap: 4px; margin-top: 4px; }
-.home-floating-row:first-child { margin-top: 0; }
-.home-floating-row > span { min-width: 0; line-height: 1.15; text-align: left; }
-.home-floating-row .home-floating-value { justify-content: flex-start; white-space: normal; overflow-wrap: anywhere; }
-.home-floating-row-delete { border: 0 !important; background: transparent !important; color: #ef8585; font-size: 16px; }
-.home-floating-conditional footer { display: flex; gap: 4px; border-top: 1px solid rgba(148, 163, 184, .16); padding: 6px; }
-.home-floating-conditional footer span { min-height: 21px; padding: 0 5px; font-size: 7px; }
-.home-floating-conditional footer .home-floating-parent-add { border-color: rgba(125, 211, 252, .62); background: #081933; color: #bfdbfe; }
-.home-floating-conditional footer .home-floating-action-add { border-color: #72b65d; color: #d2efc9; }
-.home-floating-delete { position: absolute; top: 0; right: 0; display: grid; width: 28px; height: 28px; place-items: center; background: #a93636; color: #fff; font-size: 18px; }
-
-.home-floating-wire {
+.home-floating-tree__wires {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
   display: block;
   width: 100%;
-  height: 34px;
+  height: 100%;
   overflow: visible;
+  pointer-events: none;
 }
 
-.home-floating-wire path {
+.home-floating-tree__wires path {
   fill: none;
-  stroke: #8794c7;
-  stroke-width: 1.5;
-  vector-effect: non-scaling-stroke;
+  stroke: rgba(165, 180, 252, .72);
+  stroke-width: 2;
+  stroke-linecap: round;
 }
 
-.home-floating-pair .home-floating-action { margin: 0 auto; }
-.home-float-pair-1 { top: 3%; left: 2%; transform: rotate(-2.5deg); }
-.home-float-pair-2 { bottom: 2%; left: 3%; transform: rotate(2deg); }
-.home-float-pair-3 { top: 3%; right: 3%; transform: rotate(2.5deg); }
-.home-float-pair-4 { right: 1.5%; bottom: 1%; transform: rotate(-1.5deg); }
-.home-floating-pair:nth-child(2n) .home-floating-pair-content { animation-delay: -2.8s; animation-duration: 8.5s; }
-.home-floating-pair:nth-child(3n) .home-floating-pair-content { animation-delay: -4.2s; animation-duration: 9.5s; }
+.home-floating-tree__stages {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-rows: 32px 32px 32px;
+  row-gap: 34px;
+  align-content: start;
+  box-sizing: border-box;
+  padding-top: 8px;
+}
+
+.home-floating-tree__stage,
+.home-floating-tree__group {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.home-floating-tree__stage { width: 100%; }
+.home-floating-tree__group { width: 100%; gap: 12px; }
+
+.home-floating-tree .tutorial-node-abstract__node {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 32px;
+  height: 32px;
+  padding: .35rem .45rem;
+  font: 700 9px/1.1 "Cousine", "Courier New", monospace;
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+
+.home-floating-tree .tutorial-node-abstract__node--root { width: 74px; }
+.home-floating-tree .tutorial-node-abstract__node--conditional { width: 100px; }
+.home-floating-tree .tutorial-node-abstract__node--action {
+  width: 96px;
+  flex-direction: row;
+  gap: .35rem;
+}
+
+.home-floating-action-icon {
+  flex: 0 0 16px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .6));
+}
+
+.home-float-pair-1 { top: 7%; left: 3%; transform: rotate(-2.5deg); transform-origin: left top; }
+.home-float-pair-2 { bottom: 6%; left: 1%; transform: rotate(1.8deg); transform-origin: left bottom; }
+.home-float-pair-3 { top: 10%; right: 1%; transform: rotate(2.3deg); transform-origin: right top; }
+.home-float-pair-4 { right: 3%; bottom: 5%; transform: rotate(-1.7deg); transform-origin: right bottom; }
+.home-floating-pair:nth-child(2n) .home-floating-tree { animation-delay: -2.8s; animation-duration: 8.5s; }
+.home-floating-pair:nth-child(3n) .home-floating-tree { animation-delay: -4.2s; animation-duration: 9.5s; }
 
 @keyframes home-node-float {
-  from { transform: translate3d(0, -4px, 0); }
-  to { transform: translate3d(0, 8px, 0); }
+  from { top: -4px; }
+  to { top: 8px; }
 }
 
 @media (max-width: 1100px) {
-  .home-floating-pair { opacity: .3; transform: scale(.78); }
-  .home-float-pair-1, .home-float-pair-2 { transform-origin: left center; }
-  .home-float-pair-3, .home-float-pair-4 { transform-origin: right center; }
+  .home-floating-pair { opacity: .3; }
 }
 
 @media (max-width: 800px) {
@@ -823,7 +795,7 @@ html,
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .home-floating-pair-content { animation: none; }
+  .home-floating-tree { animation: none; }
 }
 
 .asset-loading-bot {
@@ -3744,11 +3716,11 @@ button {
 }
 
 .tutorial-guide-panel.info-popup-panel {
-  border-radius: .75rem;
+  border-radius: .75rem .75rem 0 0;
 }
 
 .arena-stage-info__tutorial > .tutorial-guide-panel.info-popup-panel {
-  border-radius: .75rem;
+  border-radius: .75rem .75rem 0 0;
 }
 
 .arena-stage-info__tutorial > .tutorial-guide-panel.info-popup-panel,
@@ -3777,7 +3749,8 @@ button {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   overflow: hidden;
   border: 1px solid rgba(103, 232, 249, .3);
-  border-radius: .75rem;
+  border-top: 0;
+  border-radius: 0 0 .75rem .75rem;
   background: #07111b;
   box-shadow: 0 12px 30px rgba(0, 0, 0, .38);
 }
@@ -4687,10 +4660,10 @@ button {
   left: auto;
   z-index: 31;
   width: min(19rem, calc(100vw - 2rem));
-  height: calc(var(--tutorial-guide-panel-height, 20rem) + var(--tutorial-guide-navigation-height, 2.75rem) + var(--tutorial-guide-navigation-gap, .5rem));
+  height: calc(var(--tutorial-guide-panel-height, 20rem) + var(--tutorial-guide-navigation-height, 2.75rem) + var(--tutorial-guide-navigation-gap, 0rem));
   --tutorial-guide-panel-height: 20rem;
   --tutorial-guide-navigation-height: 2.75rem;
-  --tutorial-guide-navigation-gap: .5rem;
+  --tutorial-guide-navigation-gap: 0rem;
   border-left: 0;
   background: transparent;
   pointer-events: auto;
@@ -4716,7 +4689,7 @@ button {
   max-width: none;
   max-height: none;
   border: 1px solid rgba(103, 232, 249, .3);
-  border-radius: .75rem;
+  border-radius: .75rem .75rem 0 0;
   background: #07111b;
   box-shadow: 0 18px 50px rgba(0, 0, 0, .48);
 }
@@ -4805,7 +4778,7 @@ button {
     height: min(var(--tutorial-guide-panel-height), calc(100svh - 6.5rem - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
     max-width: calc(100vw - 2rem);
     max-height: none;
-    border-radius: .75rem;
+    border-radius: .75rem .75rem 0 0;
     box-shadow: 0 18px 50px rgba(0, 0, 0, .48);
   }
 
@@ -4858,7 +4831,7 @@ button {
     bottom: auto;
     left: auto;
     width: min(19rem, calc(100vw - 2rem));
-    height: calc(var(--tutorial-guide-panel-height, 20rem) + var(--tutorial-guide-navigation-height, 2.75rem) + var(--tutorial-guide-navigation-gap, .5rem));
+    height: calc(var(--tutorial-guide-panel-height, 20rem) + var(--tutorial-guide-navigation-height, 2.75rem) + var(--tutorial-guide-navigation-gap, 0rem));
     border-left: 0;
     background: transparent;
   }
@@ -4874,14 +4847,14 @@ button {
     max-width: none;
     max-height: none;
     border: 1px solid rgba(103, 232, 249, .3);
-    border-radius: .75rem;
+    border-radius: .75rem .75rem 0 0;
     background: #07111b;
     box-shadow: 0 18px 50px rgba(0, 0, 0, .48);
   }
 
   .tutorial-workspace-lesson-host:has(> .tutorial-guide-panel) .tutorial-guide-navigation {
     position: absolute;
-    top: calc(var(--tutorial-guide-panel-height, 20rem) + var(--tutorial-guide-navigation-gap, .5rem));
+    top: calc(var(--tutorial-guide-panel-height, 20rem) + var(--tutorial-guide-navigation-gap, 0rem));
     right: 0;
     left: 0;
     width: 100%;

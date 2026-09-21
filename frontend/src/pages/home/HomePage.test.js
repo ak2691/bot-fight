@@ -19,6 +19,10 @@ const puzzleBuilderSource = readFileSync(
     fileURLToPath(new URL("../puzzles/PuzzleBuilderPage.jsx", import.meta.url)),
     "utf8",
 );
+const authLayoutSource = readFileSync(
+    fileURLToPath(new URL("../auth/AuthLayout.jsx", import.meta.url)),
+    "utf8",
+);
 
 test("the home match action returns to an active match instead of queueing", () => {
     assert.match(source, /function HomePage\(\{ activeMatch = false, activeMatchId = null \}\)/);
@@ -52,16 +56,52 @@ test("the bottom tutorial link emphasizes its onboarding copy", () => {
     assert.doesNotMatch(source, /home-tutorial-callout/);
 });
 
-test("floating action nodes use the current movement label and targeting description", () => {
-    assert.match(floatingSource, /label: "Walk", target: "180 deg from Opponent"/);
-    assert.match(floatingSource, /label: "Walk", target: "0 deg from Opponent"/);
-    assert.doesNotMatch(floatingSource, /label: "Movement: Walk"/);
-    assert.doesNotMatch(floatingSource, /Away From Opponent|Toward Opponent/);
+test("home nodes use the tutorial-style root, conditional, and action visuals", () => {
+    assert.match(floatingSource, /type="root"/);
+    assert.match(floatingSource, /type="conditional"/);
+    assert.match(floatingSource, /type="action"/);
+    assert.match(floatingSource, /tutorial-node-abstract__node--\$\{type\}/);
+    assert.doesNotMatch(floatingSource, /GraphConditionNode|GraphActionNode|selectable\.relativeBearing/);
 });
 
-test("home bearing nodes use the compact display label", () => {
-    assert.match(floatingSource, /"Relative Bearing of Target From Entity"/);
-    assert.doesNotMatch(floatingSource, /"Relative Bearing of Target From Entity \(Shortest\)"/);
+test("home trees show the requested action labels and catalogue icons", () => {
+    for (const label of ["Heavy Slash", "Dash In", "Walk Away", "Face Target", "Fireball", "Stun", "Dash Away", "Slash"]) {
+        assert.match(floatingSource, new RegExp(`label: "${label}"`));
+    }
+    assert.match(floatingSource, /getAbilityCatalogueIcon\(abilityId\)/);
+    assert.match(floatingSource, /code-config-ability home-floating-action-icon/);
+    assert.match(floatingSource, /abilityId: 7/);
+    assert.match(floatingSource, /abilityId: 19/);
+    assert.match(floatingSource, /abilityId: 20/);
+});
+
+test("home and authentication share the workspace node background", () => {
+    assert.match(source, /<FloatingLogicBackground \/>/);
+    assert.match(authLayoutSource, /<FloatingLogicBackground \/>/);
+    assert.match(floatingSource, /home-float-pair-1/);
+    assert.match(floatingSource, /home-float-pair-2/);
+    assert.match(floatingSource, /home-float-pair-3/);
+    assert.match(floatingSource, /home-float-pair-4/);
+});
+
+test("home tutorial-style trees stay compact in their four corners", () => {
+    assert.match(stylesSource, /\.home-floating-pair \{[\s\S]*?width: 340px;[\s\S]*?height: 180px;/);
+    assert.match(stylesSource, /\.home-floating-tree \{[\s\S]*?width: 340px;[\s\S]*?height: 180px;/);
+    assert.match(stylesSource, /\.home-float-pair-1 \{ top: 7%; left: 3%;[\s\S]*?\}/);
+    assert.match(stylesSource, /\.home-float-pair-2 \{ bottom: 6%; left: 1%;[\s\S]*?\}/);
+    assert.match(stylesSource, /\.home-float-pair-3 \{ top: 10%; right: 1%;[\s\S]*?\}/);
+    assert.match(stylesSource, /\.home-float-pair-4 \{ right: 3%; bottom: 5%;[\s\S]*?\}/);
+    assert.match(stylesSource, /\.home-float-pair-1 \{[\s\S]*?transform: rotate\(-2\.5deg\)/);
+    assert.match(stylesSource, /\.home-float-pair-4 \{[\s\S]*?transform: rotate\(-1\.7deg\)/);
+});
+
+test("home tree floating avoids transformed outline resampling", () => {
+    const animationBlock = stylesSource.slice(
+        stylesSource.indexOf("@keyframes home-node-float"),
+        stylesSource.indexOf("@media (max-width: 1100px)", stylesSource.indexOf("@keyframes home-node-float")),
+    );
+    assert.match(animationBlock, /from \{ top: -4px; \}[\s\S]*?to \{ top: 8px; \}/);
+    assert.doesNotMatch(animationBlock, /transform:/);
 });
 
 test("admin puzzle starting stats give your bot the cyan panel treatment", () => {

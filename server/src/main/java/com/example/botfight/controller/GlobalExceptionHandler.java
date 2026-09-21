@@ -66,10 +66,20 @@ public class GlobalExceptionHandler {
         return response(HttpStatus.CONFLICT, "The request conflicts with existing data", request, exception);
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    ResponseEntity<ApiError> handleIllegalArgument(
+            IllegalArgumentException exception,
+            HttpServletRequest request) {
+        return response(HttpStatus.BAD_REQUEST,
+                "Request payload or parameters are invalid",
+                request,
+                exception);
+    }
+
     @ExceptionHandler(AuthException.class)
     ResponseEntity<ApiError> handleForbidden(AuthException exception, HttpServletRequest request) {
         String message = exception instanceof InviteTargetUnavailableException
-                ? exception.getMessage()
+                ? "Invitation target is no longer available"
                 : "Request is not authorized";
         return response(HttpStatus.FORBIDDEN, message, request, null);
     }
@@ -78,7 +88,10 @@ public class GlobalExceptionHandler {
     ResponseEntity<ApiError> handleSubmissionConflict(
             SubmissionConflictException exception,
             HttpServletRequest request) {
-        return response(HttpStatus.CONFLICT, exception.getMessage(), request, null);
+        return response(HttpStatus.CONFLICT,
+                "The request conflicts with existing data",
+                request,
+                exception);
     }
 
     @ExceptionHandler(Exception.class)

@@ -358,9 +358,9 @@ function finiteValue(...values) {
 }
 
 /**
- * Interpolates only presentation transforms between authoritative frames.
- * Gameplay state, timers, HP, and effects remain sourced from the current
- * authoritative frame.
+ * Interpolates only presentation positions between authoritative frames.
+ * Rotation, gameplay state, timers, HP, and effects remain sourced from the
+ * current authoritative frame.
  */
 export function interpolateReplayFrame(frame, nextFrame, elapsedMs) {
     if (!frame || !nextFrame) return frame;
@@ -386,7 +386,6 @@ function interpolateFrameShapes(shapes, nextShapes, keyFor, alpha) {
             ...shape,
             x: interpolateNumber(shape.x, next.x, alpha),
             y: interpolateNumber(shape.y, next.y, alpha),
-            rotation: interpolateDegrees(shape.rotation, next.rotation, alpha),
         };
     });
 }
@@ -405,7 +404,6 @@ export function initialReplayHandoffFrame(initialState, firstFrame, elapsedMs) {
                 ...bot,
                 x: interpolateNumber(bot.x, next.x, alpha),
                 y: interpolateNumber(bot.y, next.y, alpha),
-                rotation: interpolateDegrees(bot.rotation, next.rotation, alpha),
             };
         }),
         entities: initialState?.entities ?? [],
@@ -422,13 +420,6 @@ function interpolateNumber(from, to, alpha) {
     const start = Number(from) || 0;
     const end = Number(to);
     return start + ((Number.isFinite(end) ? end : start) - start) * alpha;
-}
-
-function interpolateDegrees(from, to, alpha) {
-    const start = Number(from) || 0;
-    const end = Number.isFinite(Number(to)) ? Number(to) : start;
-    const delta = ((end - start + 540) % 360) - 180;
-    return start + delta * alpha;
 }
 
 function clampedRoundWins(value) {
