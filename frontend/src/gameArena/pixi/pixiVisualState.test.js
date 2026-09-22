@@ -271,6 +271,12 @@ test("Pixi movement interpolation follows canonical ability metadata", () => {
     assert.equal(shapeInterpolationMs({ abilityId: 5, interpolationMs: 125 }), 125);
 });
 
+test("Tether Bolt return interpolation follows its 150-unit phase speed", () => {
+    const shape = { type: "tetherBolt", abilityId: 28, phaseId: "return", phaseTimerMs: 100 };
+    assert.equal(shapeInterpolationMs(shape, { x: 500, y: 100 }, { x: 350, y: 100 }), 100);
+    assert.ok(Math.abs(shapeInterpolationMs(shape, { x: 500, y: 100 }, { x: 400, y: 100 }) - (2 / 3 * 100)) < 0.000001);
+});
+
 test("moving projectile snapshots opt into animated trail presentation", () => {
     assert.deepEqual(projectileTrailStyle({ type: "fireball", velocityX: 10, velocityY: 0 }), { color: 0xfb923c, length: 48, width: 10 });
     assert.equal(projectileTrailStyle({ type: "grenade", velocityX: 10, velocityY: 0 }), null);

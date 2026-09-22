@@ -50,6 +50,15 @@ test("ability testing presets use the current 1200 unit arena coordinates", () =
     )));
 });
 
+test("ability showcase positions Frost Ring inside its radial hitbox and moves Snare Bomb's opponent in", () => {
+    const frostRing = findAbilityTestingPreset(26);
+    assert.equal(frostRing.opponentPosition.y - frostRing.playerPosition.y, 120);
+
+    const snareBomb = findAbilityTestingPreset(29);
+    assert.match(JSON.stringify(snareBomb.opponentCode), /move_walk/);
+    assert.match(JSON.stringify(snareBomb.opponentCode), /target/);
+});
+
 test("ability testing resolves Vampiric Beam by its canonical name", () => {
     const preset = findAbilityTestingPreset("vampiric_beam");
     assert.equal(preset?.id, 32);

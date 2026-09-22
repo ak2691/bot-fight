@@ -18,6 +18,8 @@ import repulsorBlastUrl from "../../assets/arena/abilities/repulsorblast/sprites
 import regularShieldUrl from "../../assets/arena/abilities/shields/regular-shield.png";
 import orbitalMarkerUrl from "../../assets/arena/abilities/orbital-strike/orbital-strike-marker.png";
 import orbitalExplosionUrl from "../../assets/arena/abilities/orbital-strike/orbitalstrike-explosion/spritesheet.png";
+import frostRingSheetUrl from "../../assets/arena/abilities/frostring/IceShatter_96x96.png";
+import singularityAtlasUrl from "../../assets/arena/abilities/singularity/atlas_11.webp";
 import meleeSlashesUrl from "../../assets/arena/melee-slashes-sheet.png";
 import windburstSheetUrl from "../../assets/arena/abilities/wind-burst/atlas_17.webp";
 import grenadeMoving001Url from "../../assets/arena/abilities/projectiles/grenade/moving-001.png";
@@ -80,6 +82,8 @@ export function loadAbilitySpriteCatalogue(loadAsset = defaultLoadAsset) {
         loadAsset(regularShieldUrl, "effect.shield"),
         loadAsset(orbitalMarkerUrl, "entity.orbitalMarker"),
         loadAsset(orbitalExplosionUrl, "entity.orbitalExplosion"),
+        loadAsset(frostRingSheetUrl, "effect.frostRing"),
+        loadAsset(singularityAtlasUrl, "entity.singularity"),
         loadAsset(meleeSlashesUrl, "effect.meleeSlashes"),
         loadAsset(windburstSheetUrl, "projectile.windburstProjectile"),
         loadFrames(FIREBALL_URLS, "projectile.fireball", loadAsset),
@@ -91,7 +95,8 @@ export function loadAbilitySpriteCatalogue(loadAsset = defaultLoadAsset) {
         loadFrames(MINE_DETONATE_URLS, "projectile.proximityMine.detonate", loadAsset),
         loadFrames(PHASE_STRIKE_URLS, "effect.phaseStrike", loadAsset),
     ]).then(([bot, drone, fireGun, muzzleFlash, concussiveShot, railShot, stun, dashSmoke, grenadeMineExplosion,
-            gravityGrenade, silencePulse, nullZone, temporalRewind, basicHeal, lockOnCrosshair, repulsorBlast, regularShield, orbitalMarker, orbitalExplosion, meleeSlashes,
+            gravityGrenade, silencePulse, nullZone, temporalRewind, basicHeal, lockOnCrosshair, repulsorBlast, regularShield, orbitalMarker, orbitalExplosion, frostRing, singularity,
+            meleeSlashes,
             windburst, fireball, grenadeMoving, grenadeStatic, grenadeDetonate, mineMoving, mineStatic, mineDetonate,
             phaseStrike]) => ({
             bot,
@@ -134,6 +139,8 @@ export function loadAbilitySpriteCatalogue(loadAsset = defaultLoadAsset) {
             meleeSlash: sliceGrid(meleeSlashes, 6, 2).slice(0, 6),
             heavySlash: sliceGrid(meleeSlashes, 6, 2).slice(6, 12),
             orbitalExplosion: sliceGrid(orbitalExplosion, 9, 1),
+            frostRing: sliceGrid(frostRing, 49, 1),
+            singularity: pingPongFrames(sliceGrid(singularity, 2, 2)),
             phaseStrike,
         }));
 }
@@ -153,6 +160,11 @@ function loadFrames(urls, assetKey, loadAsset) {
 function withMuzzleAnchors(frames, anchors) {
     frames.forEach((frame, index) => MUZZLE_ANCHORS.set(frame, anchors[index] ?? 0));
     return frames;
+}
+
+function pingPongFrames(frames) {
+    if (!frames?.length) return [];
+    return [...frames, ...frames.slice(1, -1).reverse()];
 }
 
 function sliceGrid(sheetTexture, columns, rows) {

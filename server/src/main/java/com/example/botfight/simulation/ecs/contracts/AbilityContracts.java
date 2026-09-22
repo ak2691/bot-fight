@@ -153,9 +153,18 @@ public final class AbilityContracts {
 
     /** A phase event is an allowlisted instruction, never executable user code. */
     public record Transition(String to) {}
-    public record TargetPolicy(TargetPolicyMode mode, String intervalStat, Integer intervalMs) {
+    public record TargetPolicy(TargetPolicyMode mode, String intervalStat, Integer intervalMs,
+                               String source, boolean bind) {
         public TargetPolicy(TargetPolicyMode mode) {
-            this(mode, null, null);
+            this(mode, null, null, null, false);
+        }
+
+        public TargetPolicy(TargetPolicyMode mode, String intervalStat, Integer intervalMs) {
+            this(mode, intervalStat, intervalMs, null, false);
+        }
+
+        public TargetPolicy(TargetPolicyMode mode, String source) {
+            this(mode, null, null, source, false);
         }
 
         public String interval() { return intervalStat; }
@@ -226,16 +235,21 @@ public final class AbilityContracts {
 
     /** Numeric movement owned by the currently active phase. */
     public record PhaseMovement(double speed, double turnDegrees, double size,
-                                Double distance, Integer trailMs, String blockedByStatus) {
+                                Double distance, Integer trailMs, String blockedByStatus,
+                                String direction) {
         public PhaseMovement(double speed) {
-            this(speed, 0, 0, null, null, null);
+            this(speed, 0, 0, null, null, null, null);
         }
         public PhaseMovement(double speed, double turnDegrees, double size) {
-            this(speed, turnDegrees, size, null, null, null);
+            this(speed, turnDegrees, size, null, null, null, null);
         }
         public PhaseMovement(double speed, double distance, int trailMs,
                              String blockedByStatus) {
-            this(speed, 0, 0, distance, trailMs, blockedByStatus);
+            this(speed, 0, 0, distance, trailMs, blockedByStatus, null);
+        }
+
+        public PhaseMovement(double speed, String direction) {
+            this(speed, 0, 0, null, null, null, direction);
         }
     }
 
@@ -508,7 +522,7 @@ public final class AbilityContracts {
         contracts.put(9, attachedAbility(9, 
                 phase("active", PhaseType.BOT_ATTACHED,
                         ray(500, 5),
-                        effects(damage(20), status("slow", 0, 1000)),
+                        effects(damage(20), status("slow", 0, 3_000)),
                         visual("concussiveShot", 76, 300),
                         PhaseEventType.COLLISION)));
 
@@ -576,14 +590,14 @@ public final class AbilityContracts {
         contracts.put(26, attachedAbility(26, 
                 phase("active", PhaseType.BOT_ATTACHED,
                         circle(120, true),
-                        effects(damage(15), status("slow", 0, 1_500), knockback(60)),
-                        visual("frostRing", 240, 300),
+                        effects(damage(15), status("slow", 0, 2_000), knockback(60)),
+                        visual("frostRing", 320, 300),
                         PhaseEventType.COLLISION)));
 
         contracts.put(30, attachedAbility(30, 
                 phase("active", PhaseType.BOT_ATTACHED,
                         ray(600, 8),
-                        effects(damage(15), timed(EffectType.INTERRUPT, 250), status("slow", 0, 2_000)),
+                        effects(damage(20), timed(EffectType.INTERRUPT, 250), status("slow", 0, 1_500)),
                         visual("disruptorDart", 8, 300),
                         PhaseEventType.COLLISION)));
 
@@ -1143,7 +1157,7 @@ public final class AbilityContracts {
                                 20_000, null, true, false, null, Map.of(), Map.of()),
                         phase("active", PhaseType.ZONE,
                                 new PhaseMovement(0), null,
-                                circle(87.5), effects(damage(25)),
+                                circle(87.5), effects(damage(30)),
                                  new Visual("mineExplosion", 175, 300),
                                  Map.of(PhaseEventType.COLLISION,
                                          damageVisualEvent("mineExplosion", 300, 175,
@@ -1296,20 +1310,41 @@ public final class AbilityContracts {
                                   .withEventSchedule(PhaseEventType.COLLISION,
                                           new EventSchedule(EventScheduleMode.ONCE)))));
 
-        contracts.put(28, contract(28, "tether_bolt", "tetherBolt", Category.PROJECTILE, FORWARD_TETHER,
-                new Lifetime(TimerMode.REMAINING, 1_100, 0),
+        contracts.put(28, contract(28, "tether_bolt", "tetherBolt", Category.PROJECTILE, SELF,
+                new Lifetime(TimerMode.REMAINING, 600, 0),
                 new InitialState(true, true), List.of(
-                        phase("active", PhaseType.PROJECTILE,
-                                new PhaseMovement(42),
+                        phase("outbound", PhaseType.PROJECTILE,
+                                new PhaseMovement(100, "forward"),
+                                null,
                                 rectangle(18, 18),
                                 effects(damage(10),
-                                        pull(100),
                                         status("slow", 0, 1_200)),
-                                null,
+                                visual("tetherBolt", 18, 600),
                                 Map.of(PhaseEventType.COLLISION,
-                                        damageEvent(null, PhaseAction.APPLY_EFFECTS,
-                                                PhaseAction.REMOVE)),
-                                null))));
+                                        new PhaseEvent(
+                                                List.of(PhaseAction.APPLY_EFFECTS),
+                                                Set.of(), null, null,
+                                                null, null, null,
+                                                new TargetPolicy(TargetPolicyMode.ONCE, null, null, null, true),
+                                                DAMAGE_TARGET_KINDS),
+                                        PhaseEventType.LIFETIME_END,
+                                        event(List.of(PhaseAction.TRANSITION), "return")),
+                                400, null, false, false,
+                                new Hit(HitMode.NEAREST, false, true, "source"),
+                                Map.of(), Map.of()) ,
+                        phase("return", PhaseType.PROJECTILE,
+                                new PhaseMovement(150, "backward"),
+                                null,
+                                rectangle(18, 18),
+                                effects(pull(150)),
+                                visual("tetherBolt", 18, 600),
+                                Map.of(PhaseEventType.COLLISION,
+                                        event(new TargetPolicy(TargetPolicyMode.EVERY_TICK,
+                                                null, null, "tethered", false),
+                                                PhaseAction.APPLY_EFFECTS)),
+                                200, null, false, false, null, Map.of(), Map.of())
+                                .withEventSchedule(PhaseEventType.COLLISION,
+                                        new EventSchedule(EventScheduleMode.REPEAT, 100, true, 2)))));
 
         contracts.put(29, contract(29, "static_snare", "staticSnare", Category.TRAP, SELF,
                 new Lifetime(TimerMode.AGE, 16_000, 0),
@@ -1318,7 +1353,7 @@ public final class AbilityContracts {
                                 new PhaseMovement(0),
                                 new Trigger(75.0, 16_000, true),
                                 circle(12), effects(
-                                        damage(15),
+                                        damage(25),
                                         status("slow", 0, 2_200),
                                         interrupt(150)),
                                 new Visual("staticSnare", 24),
@@ -1327,12 +1362,12 @@ public final class AbilityContracts {
                                                                  PhaseAction.TRANSITION,
                                                                  PhaseAction.EMIT_VISUAL),
                                                          Set.of(), new Transition("triggered"), null,
-                                                         "staticSnareBurst", 300, 150.0, null,
+                                                         "grenadeExplosion", 200, 150.0, null,
                                                          BOT_TARGET_KINDS),
                                         PhaseEventType.KILLED,
                                                 event(List.of(PhaseAction.EMIT_VISUAL,
                                                                 PhaseAction.TRANSITION),
-                                                        "destroyed", "staticSnareBurst", 300, 240.0)),
+                                                        "destroyed", "orbitalExplosion", 400, 240.0)),
                                 null, null, false, true, null, Map.of(), Map.of())
                                 .withHealth(new Health(20, 20)),
                         phase("triggered", -1, PhaseType.ZONE,
@@ -1344,12 +1379,12 @@ public final class AbilityContracts {
                                 new PhaseMovement(0),
                                 null,
                                 circle(120), effects(
-                                        damage(20),
+                                        damage(40),
                                         status("slow", 0, 3_000),
                                         interrupt(150)),
-                                new Visual("staticSnareBurst", 240, 300),
+                                new Visual("orbitalExplosion", 240, 400),
                                  Map.of(PhaseEventType.COLLISION,
-                                         damageVisualEvent("staticSnareBurst", 300, 240,
+                                         damageVisualEvent("orbitalExplosion", 400, 240,
                                                  PhaseAction.APPLY_EFFECTS,
                                                  PhaseAction.EMIT_VISUAL)),
                                  100, null, false, true, null,

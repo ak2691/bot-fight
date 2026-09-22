@@ -47,7 +47,6 @@ import {
     STANDARD_ABILITY_IDS,
     decodeBotLoadout,
     decodeSandboxLoadout,
-    statusEffectDefinitionsForAbilities,
 } from "../../loadout/BotLoadout.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
 import { getAbilityCatalogueIcon } from "../../../abilityCatalogueIcons.js";
@@ -786,7 +785,6 @@ function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selec
         const statusEffectOptions = scopedDefinition.statusEffectOptions ?? [];
         const selectablePickerLabel = selectableSelectorLabel(definition);
         return panel(`INPUT ${inspectedNode.operand} VARIABLE`, definition.label, <>
-            <p className="code-inspector-note">Configure this variable without adding controls to the conditional node.</p>
             {onChangeConditionVariable && <button type="button" onClick={() => onChangeConditionVariable(inspectedNode.rowIndex, inspectedNode.operand)} className="mb-4 min-h-9 w-full border border-cyan-700/70 bg-cyan-950/40 px-3 font-mono text-[9px] font-bold tracking-[.12em] text-cyan-200 hover:border-cyan-400 hover:bg-cyan-900/50">CHANGE VARIABLE</button>}
             {definition.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR
                 ? <>
@@ -823,7 +821,6 @@ function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selec
         const targetMode = actionTargetMode(entry, definition);
         const needsTarget = targetMode !== null && targetMode !== "absolute";
         return panel("ACTION", definition?.label ?? "Action", <>
-            <p className="code-inspector-note">Canvas nodes show the sentence; detailed movement and ability options live here.</p>
             {definition?.variableAction && <VariableActionControls entry={entry} variables={customVariables} stateVariables={stateVariables} selectableTypes={selectableTypes} disabled={disabled} canAddAction={canAddAction} allowRemoveAction={!puzzleMode || canRemove} onChange={update} onPickOperand={(termIndex) => onPickActionOperand?.(node.rootIndex, node.path, node.actionIndex, termIndex)} onInspectOperand={(termIndex) => onInspectActionOperand?.(node.rootIndex, node.path, node.actionIndex, termIndex)} onRemoveAction={() => { remove(); onClose(); }} />}
             {definition?.movementConfig && <MovementConfigurationControls entry={entry} disabled={disabled} onChange={update} />}
             {definition?.orientationConfig && <PhaseOrientationControls entry={entry} disabled={disabled} onChange={update} />}
@@ -1153,14 +1150,60 @@ function RelativeAngleDiagram({ className = "" }) {
 }
 
 function PhaseOrientationControls({ entry, disabled, onChange }) {
+    const [showPhaseStrikeHelp, setShowPhaseStrikeHelp] = useState(false);
     const relativeDirection = Number.isFinite(Number(entry.phaseFacingMode)) ? Number(entry.phaseFacingMode) : 0;
-    return <label className="block font-mono text-[9px] text-ink-muted">LANDING ROTATION (RELATIVE)
+    return <div className="code-inspector-field">
+        <span className="code-movement-label-row">LANDING ROTATION (RELATIVE) <button type="button" className="code-angle-help-button" aria-label="Explain Phase Strike landing rotation" title="Explain Phase Strike landing rotation" onClick={() => setShowPhaseStrikeHelp(true)}>i</button></span>
         <div className="code-movement-angle-input">
             <DeferredNumberInput disabled={disabled} min={MOVEMENT_DIRECTION_MIN} max={MOVEMENT_DIRECTION_MAX} step={NUMBER_STEP} value={relativeDirection} fallback={0} aria-label="Phase Strike landing rotation relative to its activation facing in degrees" onCommit={(phaseFacingMode) => onChange({ ...entry, phaseFacingMode })} />
             <span>deg</span>
         </div>
-        <small>0 deg = keep facing · 90 deg = clockwise/right · 180 deg = reverse. Negative angles rotate counterclockwise.</small>
-    </label>;
+        {showPhaseStrikeHelp && <PhaseStrikeLandingModal onClose={() => setShowPhaseStrikeHelp(false)} />}
+    </div>;
+}
+
+function PhaseStrikeLandingModal({ onClose }) {
+    const dialogRef = useRef(null);
+    useDialogFocus(dialogRef, { onClose, lockScroll: true });
+    return createPortal(<div className="code-angle-help-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+        <section ref={dialogRef} className="code-angle-help-dialog" role="dialog" aria-modal="true" aria-labelledby="phase-strike-landing-help-title" tabIndex={-1}>
+            <header><div><span>PHASE STRIKE GUIDE</span><h2 id="phase-strike-landing-help-title">Landing rotation</h2></div><button type="button" onClick={onClose} className="modal-close-button" aria-label="Close Phase Strike landing rotation guide"><span aria-hidden="true">×</span></button></header>
+            <p>At 180°, Phase Strike travels forward from the activation facing, phases through the target, then lands behind it facing back toward where it came from.</p>
+            <PhaseStrikeLandingDiagram />
+            <div className="code-angle-help-relative-example"><div><strong>THE ROTATION HAPPENS AFTER THE HIT</strong><p>The travel direction comes from the bot’s original facing. The landing rotation is applied only after the bot reaches the far side of the target. For other values, the bot rotates by this value relative to the facing it had when the ability started.</p></div></div>
+        </section>
+    </div>, document.body);
+}
+
+function PhaseStrikeLandingDiagram() {
+    return <svg className="code-phase-strike-diagram" viewBox="0 0 560 210" role="img" aria-label="Phase Strike at 180 degrees: the bot faces and hits the target, phases through it, then lands behind the target facing backward">
+        <defs>
+            <marker id="phase-strike-travel-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" /></marker>
+            <marker id="phase-strike-facing-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" /></marker>
+        </defs>
+        <rect className="code-phase-panel" x="8" y="10" width="260" height="190" rx="3" />
+        <rect className="code-phase-panel" x="292" y="10" width="260" height="190" rx="3" />
+        <text className="code-phase-panel-label" x="138" y="32">BEFORE HIT</text>
+        <text className="code-phase-panel-label" x="422" y="32">AFTER HIT · 180°</text>
+
+        <line className="code-phase-lane" x1="34" y1="105" x2="242" y2="105" />
+        <circle className="code-angle-bot" cx="70" cy="105" r="19" />
+        <circle className="code-angle-target" cx="212" cy="105" r="19" />
+        <line className="code-phase-facing" x1="70" y1="105" x2="105" y2="105" markerEnd="url(#phase-strike-facing-arrow)" />
+        <line className="code-phase-travel" x1="91" y1="105" x2="190" y2="105" markerEnd="url(#phase-strike-travel-arrow)" />
+        <text className="code-phase-entity-label" x="70" y="109">BOT</text>
+        <text className="code-phase-entity-label" x="212" y="109">TGT</text>
+        <text className="code-phase-caption" x="138" y="158">faces target · hits forward</text>
+
+        <line className="code-phase-lane" x1="318" y1="105" x2="526" y2="105" />
+        <line className="code-phase-trail" x1="318" y1="105" x2="478" y2="105" markerEnd="url(#phase-strike-travel-arrow)" />
+        <circle className="code-angle-target" cx="406" cy="105" r="19" />
+        <circle className="code-angle-bot" cx="490" cy="105" r="19" />
+        <line className="code-phase-facing" x1="490" y1="105" x2="455" y2="105" markerEnd="url(#phase-strike-facing-arrow)" />
+        <text className="code-phase-entity-label" x="406" y="109">TGT</text>
+        <text className="code-phase-entity-label" x="490" y="109">BOT</text>
+        <text className="code-phase-caption" x="422" y="158">lands behind · faces back</text>
+    </svg>;
 }
 
 function newTreeBranch(branchType, defaultVariable, priority = 1) {
@@ -1603,17 +1646,9 @@ function variableWithSelectableOptions(definition, condition, operand, selectabl
         ? abilityDefinitionsForVariable(definition, available)
             .filter((ability) => !visibleAbilityIds || visibleAbilityIds.has(ability.id))
         : definition.abilityOptions;
-    const visibleStatusIds = Array.isArray(definition.statusEffectOptions) && definition.statusEffectOptions.length
-        ? new Set(definition.statusEffectOptions.map((effect) => effect.id))
-        : null;
-    const statusEffectOptions = definition.selectableDependency === SELECTABLE_DEPENDENCIES.STATUS_EFFECT_LOADOUT
-        ? statusEffectDefinitionsForAbilities(available)
-            .filter((effect) => !visibleStatusIds || visibleStatusIds.has(effect.id))
-        : definition.statusEffectOptions;
     return {
         ...definition,
         ...(definition.selectableDependency === SELECTABLE_DEPENDENCIES.ABILITY_LOADOUT ? { abilityOptions } : {}),
-        ...(definition.selectableDependency === SELECTABLE_DEPENDENCIES.STATUS_EFFECT_LOADOUT ? { statusEffectOptions } : {}),
     };
 }
 

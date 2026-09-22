@@ -62,7 +62,7 @@ test("Snare Bomb exposes only its meaningful destruction phase attributes", () =
         abilityStatsForDisplay(ability).filter(({ section }) => section === "On destruction"),
         [
             { label: "Radius", value: "120 units", section: "On destruction" },
-            { label: "Damage", value: "20", section: "On destruction" },
+            { label: "Damage", value: "40", section: "On destruction" },
             { label: "Status effect", value: "Slow (3 sec)", section: "On destruction" },
         ],
     );
@@ -117,7 +117,7 @@ test("rectangular projectiles expose independent hitbox dimensions", () => {
 });
 
 test("pull effects expose their per-tick strength", () => {
-    for (const [abilityId, strength] of [[14, 6], [27, 10], [28, 100]]) {
+    for (const [abilityId, strength] of [[14, 6], [27, 10], [28, 150]]) {
         const ability = ALL_ABILITY_DEFINITIONS.find(({ id }) => id === abilityId);
         assert.deepEqual(
             abilityStatsForDisplay(ability)
@@ -128,7 +128,7 @@ test("pull effects expose their per-tick strength", () => {
                     { label: "Pull strength", value: `${strength} units per tick`, section: "Travel phase" },
                     { label: "Pull strength", value: `${strength} units per tick`, section: "Fuse phase" },
                 ]
-                : [{ label: "Pull strength", value: `${strength} units per tick`, section: abilityId === 27 ? "Fuse phase" : "Active phase" }],
+                : [{ label: "Pull strength", value: `${strength} units per tick`, section: abilityId === 27 ? "Fuse phase" : "Return phase" }],
         );
     }
 });

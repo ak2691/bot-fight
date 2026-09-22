@@ -26,6 +26,8 @@ const PROJECTILE_TRAILS = Object.freeze({
     fireball: { color: 0xfb923c, length: 48, width: 10 },
     gravityZone: { color: 0xc4b5fd, length: 38, width: 7 },
 });
+const FROST_RING_FRAME_MS = 300 / 49;
+const SINGULARITY_FRAME_MS = 100;
 
 export const ENTITY_PRESENTATION_DEFINITIONS = Object.freeze({
     hunterDrone: {
@@ -51,6 +53,9 @@ export const ENTITY_PRESENTATION_DEFINITIONS = Object.freeze({
     temporalRewindZone: { texturePath: ["temporalRewind"], animation: "time", frameMs: 100 },
     orbitalMarker: { texturePath: ["orbitalMarker"], animation: "static" },
     orbitalExplosion: { texturePath: ["orbitalExplosion"], animation: "progress", durationMs: 400, remaining: "orbital" },
+    singularityZone: { texturePath: ["singularity"], animation: "time", frameMs: SINGULARITY_FRAME_MS },
+    singularityExplosion: { texturePath: ["orbitalExplosion"], animation: "progress", durationMs: 400, remaining: "orbital" },
+    frostRing: { texturePath: ["frostRing"], animation: "progress", durationMs: 300 },
 });
 
 export const LOCK_ON_PRESENTATION = Object.freeze({
@@ -329,9 +334,6 @@ export function presentationDefinitionForShape(shape) {
         && !frontendEventActive) {
         return { kind: "fallback", fallback: "hidden" };
     }
-    if (["singularityZone", "singularityExplosion"].includes(shape?.type)) {
-        return { kind: "generated", layer: "zones", fallback: "graphics" };
-    }
     if (["tetherBolt", "staticSnare", "staticSnareBurst"].includes(shape?.type)) {
         return {
             kind: "generated",
@@ -418,8 +420,19 @@ export function visualAnimationDescriptorForShape(shape) {
     return { key, durationMs, remainingMs, eventActive };
 }
 
-export function shapeInterpolationMs(shape) {
+export function shapeInterpolationMs(shape, from = null, to = null) {
     if (abilityDefinition(shape?.abilityId)?.visualInterpolation === VISUAL_INTERPOLATION.NONE) return 0;
+    if (shape?.type === "tetherBolt"
+        && shape?.phaseId === "return"
+        && Number(shape?.phaseTimerMs ?? 0) > 0
+        && from && to) {
+        const speed = Number(phaseForEntity(shape)?.movement?.speed ?? 0);
+        const distance = Math.hypot(
+            Number(to.x ?? 0) - Number(from.x ?? 0),
+            Number(to.y ?? 0) - Number(from.y ?? 0),
+        );
+        if (speed > 0.001 && distance > 0.001) return AUTO_STEP_MS * distance / speed;
+    }
     return Math.max(0, Number(shape?.interpolationMs ?? AUTO_STEP_MS));
 }
 

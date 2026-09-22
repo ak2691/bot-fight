@@ -374,18 +374,28 @@ test("hunter drone retains the replay-matched shot visual timer", () => {
     assert.equal(result.entities[0].shotVisualMs, 250);
 });
 
-test("Tether Bolt uses one generic segment hit for damage, pull, and slow", () => {
-    const bolt = entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 90, attackDamageMultiplier: 1 }, 28);
-    const target = { id: "target", slot: 2, x: 180, y: 100, size: 60, hp: 100, maxHp: 100 };
-    const result = tickAbilityEntityWorld({
-        entities: [bolt], bots: [target],
+test("Tether Bolt extends four ticks, returns two ticks, and applies damage, pull, and slow", () => {
+    const owner = { id: "owner", slot: 1, x: 100, y: 100, size: 60, hp: 100, maxHp: 100, rotation: 90, attackDamageMultiplier: 1 };
+    const bolt = entityFor(owner, 28);
+    const target = { id: "target", slot: 2, x: 400, y: 100, size: 60, hp: 100, maxHp: 100 };
+    let world = {
+        entities: [bolt], bots: [owner, target],
         stepMs: 100, width: 1000, height: 800,
-    }, noDamageCombat);
+    };
 
-    assert.equal(result.entities.length, 0);
-    assert.equal(result.bots[0].hp, 90);
-    assert.equal(statusRemainingMs(result.bots[0], "slow"), 1200);
-    assert.ok(result.bots[0].x < target.x);
+    for (let tick = 1; tick <= 6; tick += 1) {
+        world = tickAbilityEntityWorld(world, noDamageCombat);
+        if (tick < 6) assert.equal(world.entities.length, 1);
+        if (tick <= 3) assert.equal(world.entities[0].phaseId, "outbound");
+        if (tick === 4) assert.equal(world.bots[1].x, 250);
+        if (tick === 5) assert.equal(world.bots[1].x, 100);
+    }
+
+    assert.equal(world.entities.length, 0);
+    assert.equal(world.bots[1].hp, 90);
+    assert.equal(statusRemainingMs(world.bots[1], "slow"), 1200);
+    assert.equal(statusRemainingMs(world.bots[1], "stun"), 0);
+    assert.equal(world.bots[1].x, 100);
 });
 
 test("generic segment hitboxes sweep across a bot's dash segment", () => {
@@ -426,7 +436,7 @@ test("Static Snare uses its stronger phase when generic damage destroys it", () 
     assert.equal(result.entities[0].id, snare.id);
     assert.equal(result.entities[0].type, "staticSnare");
     assert.equal(result.entities[0].phaseId, "destroyed");
-    assert.equal(phaseVisualFor(result.entities[0]).type, "staticSnareBurst");
+    assert.equal(phaseVisualFor(result.entities[0]).type, "orbitalExplosion");
     assert.equal(phaseVisualFor(result.entities[0]).visualSize, 240);
     assert.equal(result.entities[0].size, 24);
 });
@@ -439,15 +449,15 @@ test("Static Snare triggers once without chaining to its owner", () => {
         stepMs: 100, width: 1000, height: 800,
     }, noDamageCombat);
 
-    assert.equal(result.bots[0].hp, 85);
+    assert.equal(result.bots[0].hp, 75);
     assert.equal(statusRemainingMs(result.bots[0], "slow"), 2200);
     assert.equal(statusRemainingMs(result.bots[0], "stun"), 150);
     assert.equal(result.entities[0].id, snare.id);
     assert.equal(result.entities[0].type, "staticSnare");
     assert.equal(result.entities[0].phaseId, "triggered");
-    assert.equal(result.entities[0].visualEventType, "staticSnareBurst");
+    assert.equal(result.entities[0].visualEventType, "grenadeExplosion");
     assert.equal(result.entities[0].visualEventSize, 150);
-    assert.equal(result.entities[0].visualEventMs, 300);
+    assert.equal(result.entities[0].visualEventMs, 200);
     assert.equal(result.entities[0].size, 24);
 });
 
@@ -534,13 +544,13 @@ test("Static Snare gets its stronger radius and effects when any attack destroys
         stepMs: 100, width: 1000, height: 800,
     }, ownerShot);
 
-    assert.equal(result.bots[1].hp, 80);
+    assert.equal(result.bots[1].hp, 60);
     assert.equal(statusRemainingMs(result.bots[1], "slow"), 3000);
     assert.equal(statusRemainingMs(result.bots[1], "stun"), 150);
     assert.equal(result.entities[0].id, snare.id);
     assert.equal(result.entities[0].type, "staticSnare");
     assert.equal(result.entities[0].phaseId, "destroyed");
-    assert.equal(phaseVisualFor(result.entities[0]).type, "staticSnareBurst");
+    assert.equal(phaseVisualFor(result.entities[0]).type, "orbitalExplosion");
     assert.equal(phaseVisualFor(result.entities[0]).visualSize, 240);
     assert.equal(result.entities[0].size, 24);
 });
@@ -577,12 +587,12 @@ test("Static Snare uses its stronger phase when an opponent destroys it and skip
     });
 
     assert.equal(result.bots[0].hp, 100);
-    assert.equal(result.bots[1].hp, 80);
+    assert.equal(result.bots[1].hp, 60);
     assert.equal(statusRemainingMs(result.bots[1], "slow"), 3000);
     assert.equal(result.entities[0].id, snare.id);
     assert.equal(result.entities[0].type, "staticSnare");
     assert.equal(result.entities[0].phaseId, "destroyed");
-    assert.equal(phaseVisualFor(result.entities[0]).type, "staticSnareBurst");
+    assert.equal(phaseVisualFor(result.entities[0]).type, "orbitalExplosion");
     assert.equal(phaseVisualFor(result.entities[0]).visualSize, 240);
     assert.equal(result.entities[0].size, 24);
 });
@@ -672,7 +682,7 @@ test("Disruptor Dart interrupts a prepared ability and starts its cooldown", () 
 
     const [, interrupted] = resolveAbilityCombat(attacker, defender);
 
-    assert.equal(interrupted.hp, 85);
+    assert.equal(interrupted.hp, 80);
     assert.equal(interrupted.preparingAbility, null);
     assert.equal(interrupted.preparingMs, 0);
     assert.equal(interrupted.abilityActiveMs[9] ?? 0, 0);
@@ -737,7 +747,7 @@ test("proximity mine triggers and damages within its increased radius", () => {
     assert.equal(phaseVisualFor(result.entities[0]).type, "mineExplosion");
     assert.equal(phaseVisualFor(result.entities[0]).visualSize, 175);
     assert.equal(result.entities[0].size, 24);
-    assert.equal(result.bots[0].hp, 75);
+    assert.equal(result.bots[0].hp, 70);
 });
 
 test("an untriggered proximity mine advances once without duplicating", () => {
@@ -845,7 +855,7 @@ test("gravity grenade pulls nearby enemies while its one-second travel phase is 
 test("entity projectile ranges match duration times fixed-step displacement", () => {
     assert.equal(ABILITY_STATS[5].range, ABILITY_STATS[5].speed * ABILITY_STATS[5].durationMs / 100);
     assert.equal(ABILITY_STATS[18].range, ABILITY_STATS[18].speed * ABILITY_STATS[18].durationMs / 100);
-    assert.equal(ABILITY_STATS[28].range, ABILITY_STATS[28].speed * ABILITY_STATS[28].durationMs / 100);
+    assert.equal(ABILITY_STATS[28].range, 400);
 });
 
 test("status effects are accumulated before the bot hp snapshot is returned", () => {
@@ -1266,18 +1276,18 @@ test("entity damage and hostile DOT use the same HP-loss stagger settlement", ()
 });
 
 test("Concussive Shot remains independent and wins the combined movement multiplier", () => {
-    assert.equal(CONCUSSIVE_SHOT_SLOW_DURATION_MS, 1000);
+    assert.equal(CONCUSSIVE_SHOT_SLOW_DURATION_MS, 3000);
     assert.equal(CONCUSSIVE_SHOT_MOVEMENT_MULTIPLIER, 0.50);
     const attacker = { id: "owner", slot: 1, x: 100, y: 100, size: 60, rotation: 90, hp: 100, attackDamageMultiplier: 1, triggeredAbility: 9 };
     const target = { id: "target", slot: 2, x: 150, y: 100, size: 60, rotation: 270, hp: 100, maxHp: 100 };
     const [, hit] = resolveAbilityCombat(attacker, target);
     assert.equal(hit.hp, 80);
-    assert.equal(statusRemainingMs(hit, "slow"), 1000);
+    assert.equal(statusRemainingMs(hit, "slow"), 3000);
     assert.equal(statusRemainingMs(hit, "hit-stagger"), 300);
 
     const moved = applyBotAction({ ...hit, x: 200, moveSpeed: 10, movementVelocityX: 10 }, { dx: 1, dy: 0 }, 100, applyDamageToShape);
     assert.equal(moved.x, 205);
-    assert.equal(statusRemainingMs(moved, "slow"), 900);
+    assert.equal(statusRemainingMs(moved, "slow"), 2900);
     assert.equal(statusRemainingMs(moved, "hit-stagger"), 200);
     const ordinaryHit = applyDamageToShape({ ...moved, hp: 80, statusEffects: [status("slow", 1000)] }, 1, attacker);
     assert.equal(statusRemainingMs(ordinaryHit, "slow"), 1000);
@@ -1321,7 +1331,7 @@ test("Concussive and rail shots apply damage and attached effects without blocki
         assert.ok(hit.hp < 100, ability);
         assert.equal(hit.abilityCharges[2], 25, ability);
         if (ability === 9) {
-            assert.equal(statusRemainingMs(hit, "slow"), 1000, ability);
+            assert.equal(statusRemainingMs(hit, "slow"), 3000, ability);
             assert.equal(statusRemainingMs(hit, "shock"), 0, ability);
         } else {
             assert.equal(statusRemainingMs(hit, "slow"), 0, ability);
@@ -1348,7 +1358,7 @@ test("Frost Ring composes damage, slow, and knockback without blocking", () => {
     const defender = { id: "target", slot: 2, x: 180, y: 100, size: 60, rotation: 180, hp: 100, maxHp: 100 };
     const [, hit] = resolveAbilityCombat(attacker, defender);
     assert.equal(hit.hp, 85);
-    assert.equal(statusRemainingMs(hit, "slow"), 1500);
+    assert.equal(statusRemainingMs(hit, "slow"), 2000);
     assert.equal(hit.x, 240);
 
     const [, staleStateHit] = resolveAbilityCombat(attacker, {
@@ -1360,7 +1370,7 @@ test("Frost Ring composes damage, slow, and knockback without blocking", () => {
     });
     assert.equal(staleStateHit.hp, 85);
     assert.equal(staleStateHit.abilityCharges[2], 25);
-    assert.equal(statusRemainingMs(staleStateHit, "slow"), 1500);
+    assert.equal(statusRemainingMs(staleStateHit, "slow"), 2000);
     assert.equal(staleStateHit.x, 240);
 });
 
@@ -1906,7 +1916,7 @@ test("a prepared ability cannot be replaced by another ready ability", () => {
     const preparing = applyBotAction(bot, { abilityAction: { action: 9 } }, 100, noDamageCombat.applyDamageToShape);
     const stillPreparing = applyBotAction(preparing, { abilityAction: { action: 12 } }, 100, noDamageCombat.applyDamageToShape);
     assert.equal(stillPreparing.preparingAbility, 9);
-    assert.equal(stillPreparing.preparingMs, 300);
+    assert.equal(stillPreparing.preparingMs, 800);
     assert.equal(stillPreparing.abilityCooldowns[12], 0);
 });
 
@@ -1928,7 +1938,7 @@ test("ability preparation does not interrupt movement or rotation", () => {
     assert.equal(second.x, 116);
     assert.equal(second.rotation, 24);
     assert.equal(second.preparingAbility, 9);
-    assert.equal(second.preparingMs, 300);
+    assert.equal(second.preparingMs, 800);
 });
 
 test("special activation keeps the full authoritative active and cooldown timers", () => {
@@ -2213,7 +2223,7 @@ test("a global ability lock blocks a different ability until the active phase en
     assert.ok(preparingAfterFireball.abilityActiveMs[5] > 0);
 
     let afterConcussive = bot;
-    for (let tick = 0; tick < 10; tick += 1) {
+    for (let tick = 0; tick < 20; tick += 1) {
         const action = buildDeterministicLogicAction(configuration(9, 5), buildStatePayload([afterConcussive, opponent], "custom"));
         afterConcussive = applyBotAction(afterConcussive, action, 50, noDamageCombat.applyDamageToShape);
     }
@@ -2581,7 +2591,7 @@ test("radial effects include bot-edge contact and exclude a bot just beyond the 
     const mineEdge = { id: "mine-edge", slot: 2, x: 217.5, y: 100, size: 60, hp: 100, maxHp: 100 };
     const mine = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100, rotation: 0 }, 11), velocityX: 0, velocityY: 0, traveled: 176, armed: true, phaseId: "armed", phaseLocked: true };
     const mineResult = tickAbilityEntityWorld({ entities: [mine], bots: [mineEdge], stepMs: 100, width: 1000, height: 800 }, noDamageCombat);
-    assert.equal(mineResult.bots[0].hp, 75);
+    assert.equal(mineResult.bots[0].hp, 70);
 
     const mineOutside = { ...mineEdge, id: "mine-outside", x: 217.6, hp: 100 };
     const mineOutsideResult = tickAbilityEntityWorld({ entities: [mine], bots: [mineOutside], stepMs: 100, width: 1000, height: 800 }, noDamageCombat);

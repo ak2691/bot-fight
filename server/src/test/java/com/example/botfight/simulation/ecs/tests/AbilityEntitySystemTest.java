@@ -18,8 +18,8 @@ class AbilityEntitySystemTest {
     void entityPhasesExposeCompleteEffectPayloadsForContractAuditing() {
         assertThat(AbilityContracts.entityAll().values()).allSatisfy(contract ->
                 assertThat(contract.phases()).allSatisfy(phase -> {
-                    assertThat(phase.effects()).extracting(AbilityContracts.Effect::type)
-                            .containsExactlyInAnyOrderElementsOf(phase.effectTypes());
+                    assertThat(phase.effects().stream().map(AbilityContracts.Effect::type).distinct().toList())
+                            .containsExactlyInAnyOrderElementsOf(phase.effectTypes().stream().toList());
                     assertThat(phase.effects()).allMatch(effect -> effect != null
                             && effect.type() != null);
                 }));
@@ -329,20 +329,30 @@ class AbilityEntitySystemTest {
     }
 
     @Test
-    void tetherBoltComposesDamagePullAndSlowThroughTheSegmentSystem() {
+    void tetherBoltExtendsFourTicksReturnsTwoTicksAndAppliesItsEffects() {
         TestCombatant owner = new TestCombatant(1, 100, 100, 60, 100);
         ArenaEntity bolt = AbilityEntityFactory.create(
                 "tether-1", 28, 1, owner.x, owner.y, owner.size, 90, 1,
                 Double.NaN, Double.NaN, 1000, 800);
-        TestCombatant target = new TestCombatant(2, 180, 100, 60, 100);
+        TestCombatant target = new TestCombatant(2, 400, 100, 60, 100);
 
-        List<ArenaEntity> result = AbilityEntitySystem.tick(
-                List.of(bolt), List.of(owner, target), new ArenaBounds(1000, 800), 100, damageCombat());
+        List<ArenaEntity> result = List.of(bolt);
+        for (int tick = 1; tick <= 6; tick += 1) {
+            result = AbilityEntitySystem.tick(
+                    result, List.of(owner, target), new ArenaBounds(1000, 800), 100, damageCombat());
+            if (tick < 6) assertThat(result).hasSize(1);
+            if (tick <= 3) assertThat(result.getFirst().phaseId()).isEqualTo("outbound");
+            if (tick == 3) assertThat(result.getFirst().hitLedger()).containsKey(2);
+            if (tick == 4) assertThat(result.getFirst().phaseId()).isEqualTo("return");
+            if (tick == 4) assertThat(target.x).isEqualTo(250);
+            if (tick == 5) assertThat(target.x).isEqualTo(100);
+        }
 
         assertThat(result).isEmpty();
         assertThat(target.hp).isEqualTo(90);
         assertThat(target.slowedMs).isEqualTo(1_200);
-        assertThat(target.x).isEqualTo(80);
+        assertThat(target.stunMs).isZero();
+        assertThat(target.x).isEqualTo(100);
     }
 
     @Test
@@ -420,7 +430,7 @@ class AbilityEntitySystemTest {
         List<ArenaEntity> result = AbilityEntitySystem.tick(
                 List.of(snare), List.of(target), new ArenaBounds(1000, 800), 100, damageCombat());
 
-        assertThat(target.hp).isEqualTo(85);
+        assertThat(target.hp).isEqualTo(75);
         assertThat(target.slowedMs).isEqualTo(2_200);
         assertThat(target.stunMs).isEqualTo(150);
         assertThat(result).singleElement().satisfies(entity -> {
@@ -454,7 +464,7 @@ class AbilityEntitySystemTest {
                 List.of(snare), List.of(owner, target), new ArenaBounds(1000, 800), 100, ownerAttack);
 
         assertThat(owner.hp).isEqualTo(100);
-        assertThat(target.hp).isEqualTo(80);
+        assertThat(target.hp).isEqualTo(60);
         assertThat(target.slowedMs).isEqualTo(3_000);
         assertThat(target.stunMs).isEqualTo(150);
         assertThat(result).singleElement().satisfies(entity -> {
@@ -513,7 +523,7 @@ class AbilityEntitySystemTest {
                 List.of(snare), List.of(owner, attacker), new ArenaBounds(1000, 800), 100, opponentAttack);
 
         assertThat(owner.hp).isEqualTo(100);
-        assertThat(attacker.hp).isEqualTo(80);
+        assertThat(attacker.hp).isEqualTo(60);
         assertThat(attacker.slowedMs).isEqualTo(3_000);
         assertThat(result).singleElement().satisfies(entity -> {
             assertThat(entity.type()).isEqualTo("staticSnare");
@@ -727,7 +737,7 @@ class AbilityEntitySystemTest {
             assertThat(entity.eventType()).isEqualTo("collision");
             assertThat(entity.size()).isEqualTo(24);
         });
-        assertThat(combat.damage).isEqualTo(25);
+        assertThat(combat.damage).isEqualTo(30);
     }
 
     @Test
@@ -793,8 +803,8 @@ class AbilityEntitySystemTest {
         RecordingCombat mineCombat = new RecordingCombat(false);
         ArenaEntity mine = new ArenaEntity("mine", "proximityMine", 1, 100, 100, 24, 0, 0, 176, 500, true);
         AbilityEntitySystem.tick(List.of(mine), List.of(mineTarget), arena, 100, mineCombat);
-        assertThat(mineCombat.damage).isEqualTo(25);
-        assertThat(mineTarget.hp).isEqualTo(75);
+        assertThat(mineCombat.damage).isEqualTo(30);
+        assertThat(mineTarget.hp).isEqualTo(70);
 
         TestCombatant outsideTarget = new TestCombatant(2, 217.6, 100, 60, 100);
         RecordingCombat outsideCombat = new RecordingCombat(false);

@@ -16,7 +16,7 @@ const ABILITY_TIMING_BY_ID = Object.freeze({
     6: { cooldownMs: 9600, windupMs: 200, activeMs: 100, durationMs: 1200 },
     7: { cooldownMs: 4600, windupMs: 300, activeMs: 400 },
     8: { cooldownMs: 10000, activeMs: 500 },
-    9: { cooldownMs: 6700, windupMs: 500, activeMs: 300 },
+    9: { cooldownMs: 6700, windupMs: 1000, activeMs: 300 },
     10: { cooldownMs: 11700, windupMs: 800, activeMs: 300 },
     11: { cooldownMs: 10000, activeMs: 300, durationMs: 20800 },
     12: { maxCharges: 10, resourceModel: "reload", chargeType: "ammunition", reloadMs: 3000, cooldownMs: 400, activeMs: 300 },
@@ -35,7 +35,7 @@ const ABILITY_TIMING_BY_ID = Object.freeze({
     25: { cooldownMs: 1500, activeMs: 300 },
     26: { cooldownMs: 8700, activeMs: 300 },
     27: { cooldownMs: 18000, activeMs: 300, durationMs: 1300 },
-    28: { cooldownMs: 7700, activeMs: 300, windupMs: 300, durationMs: 1100 },
+    28: { cooldownMs: 7700, activeMs: 300, windupMs: 300, durationMs: 600 },
     29: { cooldownMs: 10000, activeMs: 300, durationMs: 16000 },
     30: { cooldownMs: 8000, windupMs: 200, activeMs: 300 },
     31: { cooldownMs: 9000, activeMs: 300, durationMs: 6000 },
@@ -82,11 +82,15 @@ function phaseProjection(id) {
     const visualPhase = phases.find((phase) => phase.visual) ?? {};
     const geometry = behaviorPhase.hitbox ?? phases.find((phase) => phase.hitbox)?.hitbox ?? {};
     const movement = movementPhase.movement ?? {};
-    const movingProjectile = entity?.category === "projectile";
+    const movingProjectile = entity?.category === "projectile"
+        && movementPhase != null
+        && behaviorPhase != null
+        && movementPhase.id === behaviorPhase.id;
+    const movingPhaseDuration = Number(movementPhase.durationMs ?? timing.durationMs);
     const timingRange = movingProjectile
-        && Number(timing.durationMs) > 0
+        && movingPhaseDuration > 0
         && Number(movement.speed) > 0
-        ? Number(movement.speed) * Number(timing.durationMs) / 100 : null;
+        ? Number(movement.speed) * movingPhaseDuration / 100 : null;
     const range = Number(embeddedPhase?.hitbox?.range
         ?? (timingRange != null ? timingRange : null)
         ?? geometry.range ?? geometry.length ?? geometry.radius ?? 0);

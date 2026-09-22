@@ -73,6 +73,7 @@ export function dispatchEntityEvent(entity, eventType, {
                         statusTypes: handler.statusTypes ?? null,
                         world,
                         knockbackDirection: handler.knockbackDirection ?? phase.knockbackDirection ?? "source",
+                        pullDirection: handler.pullDirection ?? phase.pullDirection ?? "source",
                         collisionDistance: Number.isFinite(Number(targetDistance))
                             ? Number(targetDistance)
                             : collisionDistance,
@@ -163,6 +164,8 @@ export function transitionEntityPhase(entity, phaseId) {
     const contract = entityContract(entity.entityContractId ?? entity.abilityId ?? entity.type);
     const nextPhase = contract?.phases?.find((phase) => phase.id === phaseId);
     if (!nextPhase) return entity;
+    const preservesTargetLedger = Object.values(nextPhase.events ?? {}).some((event) =>
+        event?.targetPolicy?.source === "tethered");
 
     const changes = {
         phaseId,
@@ -173,7 +176,7 @@ export function transitionEntityPhase(entity, phaseId) {
         ...(Number(nextPhase.movement?.speed ?? 0) <= 0 ? { velocityX: 0, velocityY: 0 } : {}),
         // Persistence is phase-local. A target affected by a fuse phase can
         // be affected again by the damage phase of the same logical entity.
-        hitLedger: {},
+        hitLedger: preservesTargetLedger ? (entity.hitLedger ?? {}) : {},
         ...(nextPhase.type === "zone" || nextPhase.type === "self" ? { armed: true } : {}),
     };
     return withComponentState(entity, changes);
@@ -181,9 +184,15 @@ export function transitionEntityPhase(entity, phaseId) {
 
 function recordTargetApplication(entity, target, targetPolicy, world) {
     const mode = targetPolicy?.mode ?? TARGET_POLICY_MODES.EVERY_TICK;
-    if (mode === TARGET_POLICY_MODES.EVERY_TICK) return entity;
     const key = targetKey(target);
+    const changes = targetPolicy?.bind
+        ? { tetheredTargetIds: [...new Set([...(entity.tetheredTargetIds ?? []), key])] }
+        : {};
+    if (mode === TARGET_POLICY_MODES.EVERY_TICK) return Object.keys(changes).length > 0
+        ? withComponentState(entity, changes)
+        : entity;
     return withComponentState(entity, {
+        ...changes,
         hitLedger: {
             ...(entity.hitLedger ?? {}),
             // The entity clock is advanced at the start of a fixed tick. Store

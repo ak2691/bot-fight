@@ -383,8 +383,8 @@ class DuelSimulationServiceTest {
 
         var first = result.frames().getFirst().bots().getFirst();
         var second = result.frames().get(1).bots().getFirst();
-        assertThat(first.preparingMs()).isEqualTo(400);
-        assertThat(second.preparingMs()).isEqualTo(300);
+        assertThat(first.preparingMs()).isEqualTo(900);
+        assertThat(second.preparingMs()).isEqualTo(800);
         assertThat(second.x()).isGreaterThan(first.x());
     }
 
@@ -1315,13 +1315,13 @@ class DuelSimulationServiceTest {
         var first = result.frames().getFirst().bots().getFirst();
         var second = result.frames().get(1).bots().getFirst();
         assertThat(first.preparingAbility()).isEqualTo(9);
-        assertThat(first.preparingMs()).isEqualTo(400);
+        assertThat(first.preparingMs()).isEqualTo(900);
         assertThat(first.x()).isGreaterThan(100.0);
         assertThat(first.rotation()).isEqualTo(12.0);
         assertThat(second.x()).isGreaterThan(first.x());
         assertThat(second.rotation()).isEqualTo(24.0);
         assertThat(second.preparingAbility()).isEqualTo(9);
-        assertThat(second.preparingMs()).isEqualTo(300);
+        assertThat(second.preparingMs()).isEqualTo(800);
     }
 
     @Test
@@ -1342,7 +1342,7 @@ class DuelSimulationServiceTest {
                 .findFirst()
                 .orElseThrow();
         var target = interrupted.bots().get(1);
-        assertThat(target.hp()).isEqualTo(135);
+        assertThat(target.hp()).isEqualTo(130);
         assertThat(target.preparingAbility()).isNull();
         assertThat(target.preparingMs()).isZero();
         assertThat(target.triggeredAbility()).isNull();

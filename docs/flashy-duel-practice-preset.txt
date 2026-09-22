@@ -1,0 +1,390 @@
+Flashy Duel practice-room preset reference
+
+Archived from frontend/src/gameArena/testing/FlashyDuelPreset.js on 2026-09-22.
+This is intentionally not wired into the application right now.
+Restore the JavaScript source if the Practice Room showcase is requested again.
+
+```js
+import { abilityIdFromLegacyName } from "../gameconfig/AbilityRegistry.js";
+import { encodeSandboxLoadout } from "../loadout/BotLoadout.js";
+import { createDefaultAbilityStrategyConfiguration } from "../botlogic/code/configuration/configurationFactories.js";
+import { BOT_CODE_ACTIONS, BOT_CODE_SELECTABLES } from "../botlogic/code/contracts/BotLogicContracts.js";
+import { normalizePracticeConfig } from "../practiceRoomStorage.js";
+import { PUZZLE_OPPONENT_TEAM, PUZZLE_PLAYER_TEAM } from "../../pages/puzzles/puzzleRoster.js";
+
+const MY_BOT = BOT_CODE_SELECTABLES.MY;
+const OPPONENT = BOT_CODE_SELECTABLES.OPPONENT;
+
+const ABILITIES = Object.freeze({
+    HEAVY_SLASH: abilityIdFromLegacyName("heavy_slash"),
+    GRENADE: abilityIdFromLegacyName("grenade"),
+    FIREBALL: abilityIdFromLegacyName("fireball"),
+    STUN: abilityIdFromLegacyName("stun"),
+    REPELLING_BLAST: abilityIdFromLegacyName("repulsor_burst"),
+    SILENCE_PULSE: abilityIdFromLegacyName("silence_pulse"),
+    TEMPORAL_REWIND: abilityIdFromLegacyName("temporal_rewind"),
+    PHASE_STRIKE: abilityIdFromLegacyName("phase_strike"),
+    FROST_RING: abilityIdFromLegacyName("frost_ring"),
+    SINGULARITY: abilityIdFromLegacyName("singularity"),
+    TETHER_BOLT: abilityIdFromLegacyName("tether_bolt"),
+    DASH: abilityIdFromLegacyName("dash"),
+    LOCK_ON: abilityIdFromLegacyName("lock_on"),
+    BASIC_STRIKE: abilityIdFromLegacyName("basic_strike"),
+});
+
+const PLAYER_ABILITIES = Object.freeze([
+    ABILITIES.HEAVY_SLASH,
+    ABILITIES.GRENADE,
+    ABILITIES.TETHER_BOLT,
+    ABILITIES.PHASE_STRIKE,
+    ABILITIES.REPELLING_BLAST,
+    ABILITIES.SINGULARITY,
+]);
+
+const OPPONENT_ABILITIES = Object.freeze([
+    ABILITIES.FIREBALL,
+    ABILITIES.GRENADE,
+    ABILITIES.FROST_RING,
+    ABILITIES.STUN,
+    ABILITIES.SILENCE_PULSE,
+    ABILITIES.TEMPORAL_REWIND,
+]);
+
+const PLAYER_START = Object.freeze({ x: 360, y: 840, rotation: 45 });
+const OPPONENT_START = Object.freeze({ x: 840, y: 360, rotation: 225 });
+
+function always() {
+    return { type: "always" };
+}
+
+function numberCondition(left, comparator, value, leftSelectable = MY_BOT, ability = null) {
+    return {
+        type: "expression",
+        left,
+        comparator,
+        right: { type: "number", value },
+        leftSelectable,
+        ...(ability == null ? {} : { ability }),
+    };
+}
+
+function pairCondition(left, comparator, value, selectable1 = MY_BOT, selectable2 = OPPONENT) {
+    return {
+        type: "expression",
+        left,
+        comparator,
+        right: { type: "number", value },
+        selectable1,
+        selectable2,
+    };
+}
+
+function booleanCondition(left, value, ability, leftSelectable = MY_BOT) {
+    return {
+        type: "expression",
+        left,
+        comparator: "eq",
+        right: { type: "boolean", value },
+        leftSelectable,
+        ...(ability == null ? {} : { ability }),
+    };
+}
+
+function abilityReady(ability, selectable = MY_BOT) {
+    return booleanCondition("bot.selectedAbilityReady", true, ability, selectable);
+}
+
+function abilityReadyOrPreparing(ability, selectable = MY_BOT) {
+    return [
+        abilityReady(ability, selectable),
+        { ...booleanCondition("bot.selectedAbilityPreparing", true, ability, selectable), join: "or" },
+    ];
+}
+
+function abilityPreparing(ability, selectable = OPPONENT) {
+    return booleanCondition("bot.selectedAbilityPreparing", true, ability, selectable);
+}
+
+function abilityCooldownAbove(ability, seconds, selectable = MY_BOT) {
+    return numberCondition("bot.selectedAbilityCooldownMs", "gt", seconds, selectable, ability);
+}
+
+function entityExists(selectable) {
+    return booleanCondition("selectable.exists", true, null, selectable);
+}
+
+function branch(id, conditions, actions, priority = 1) {
+    return { id, branchType: "if", priority, conditions, actions, children: [] };
+}
+
+function root(id, priority, branches, name) {
+    return {
+        id,
+        name,
+        priority,
+        branches,
+    };
+}
+
+function code(roots) {
+    return { ...createDefaultAbilityStrategyConfiguration(), roots };
+}
+
+function abilityAction(action, selectable = OPPONENT, fields = {}) {
+    return { action, selectable, ...fields };
+}
+
+function walk(direction, selectable = OPPONENT) {
+    return {
+        action: BOT_CODE_ACTIONS.MOVE_WALK,
+        movementMode: "target",
+        movementDirection: direction,
+        selectable,
+    };
+}
+
+function face(selectable = OPPONENT) {
+    return abilityAction(BOT_CODE_ACTIONS.ROTATE_TOWARD_TARGET, selectable);
+}
+
+function dash(selectable = OPPONENT, direction = 0) {
+    return abilityAction(ABILITIES.DASH, selectable, {
+        movementMode: "target",
+        movementDirection: direction,
+    });
+}
+
+function attack(ability, selectable = OPPONENT, fields = {}) {
+    return abilityAction(ability, selectable, fields);
+}
+
+function buildMyBotCode() {
+    return code([
+        root("flashy-my-dodge", 1, [
+            branch("my-dodge-singularity", [entityExists("opponent_1_singularity_zone")], [dash("opponent_1_singularity_zone", 90), walk(90)]),
+            branch("my-dodge-grenade", [entityExists("opponent_1_grenade")], [dash("opponent_1_grenade", 90), walk(90)], 2),
+            branch("my-dodge-fireball", [entityExists("opponent_1_fireball")], [dash("opponent_1_fireball", -90), walk(-90)], 3),
+            branch("my-dodge-tether", [entityExists("opponent_1_tether_bolt")], [walk(90)], 4),
+            branch("my-dodge-fireball-windup", [abilityPreparing(ABILITIES.FIREBALL)], [dash(OPPONENT, 90), walk(90)], 5),
+            branch("my-dodge-grenade-windup", [abilityPreparing(ABILITIES.GRENADE)], [walk(-90)], 6),
+            branch("my-dodge-stun-windup", [abilityPreparing(ABILITIES.STUN)], [dash(OPPONENT, 90), walk(90)], 7),
+            branch("my-dodge-silence-windup", [abilityPreparing(ABILITIES.SILENCE_PULSE)], [walk(-90)], 8),
+        ]),
+        root("flashy-my-position", 2, [
+            branch("my-edge-step", [numberCondition("selectable.edgeDistance", "lte", 160)], [walk(90)]),
+            branch("my-danger-zone-break-inside", [
+                numberCondition("selectable.dangerZoneEdgeDistance", "gte", 1),
+                numberCondition("selectable.dangerZoneEdgeDistance", "lte", 70),
+            ], [dash(OPPONENT, 0), walk(0)], 2),
+            branch("my-danger-zone-break-outside", [numberCondition("selectable.dangerZoneEdgeDistance", "lt", -1)], [dash(OPPONENT, 0), walk(0)], 3),
+            branch("my-close-kite", [
+                pairCondition("selectable.distance", "lte", 155),
+                abilityCooldownAbove(ABILITIES.HEAVY_SLASH, 0.2),
+                abilityCooldownAbove(ABILITIES.PHASE_STRIKE, 0.2),
+            ], [walk(90)], 4),
+        ]),
+        root("flashy-my-lock-on", 3, [
+            branch("my-lock-on-high-bearing", [
+                pairCondition("selectable.relativeBearing", "gte", 70),
+                abilityReady(ABILITIES.LOCK_ON),
+            ], [attack(ABILITIES.LOCK_ON)], 1),
+        ]),
+        root("flashy-my-dash", 4, [
+            branch("my-dash-away-from-close-threat", [
+                pairCondition("selectable.distance", "lte", 190),
+                abilityPreparing(ABILITIES.STUN),
+                abilityReady(ABILITIES.DASH),
+            ], [dash(OPPONENT, 180)], 1),
+            branch("my-dash-in-for-pressure", [
+                pairCondition("selectable.distance", "gt", 520),
+                pairCondition("selectable.relativeBearing", "lte", 80),
+                abilityReady(ABILITIES.DASH),
+            ], [dash(OPPONENT, 0)], 2),
+        ]),
+        root("flashy-my-attacks", 5, [
+            branch("my-singularity-opener", [
+                pairCondition("selectable.distance", "gte", 280),
+                pairCondition("selectable.distance", "lte", 520),
+                pairCondition("selectable.relativeBearing", "lte", 85),
+                abilityReady(ABILITIES.SINGULARITY),
+            ], [attack(ABILITIES.SINGULARITY)], 1),
+            branch("my-grenade-pressure", [
+                pairCondition("selectable.distance", "gte", 260),
+                pairCondition("selectable.distance", "lte", 650),
+                pairCondition("selectable.relativeBearing", "lte", 85),
+                abilityReady(ABILITIES.GRENADE),
+            ], [attack(ABILITIES.GRENADE)], 2),
+            branch("my-tether-follow-up", [
+                pairCondition("selectable.distance", "gte", 190),
+                pairCondition("selectable.distance", "lte", 420),
+                pairCondition("selectable.relativeBearing", "lte", 85),
+                ...abilityReadyOrPreparing(ABILITIES.TETHER_BOLT),
+            ], [attack(ABILITIES.TETHER_BOLT)], 3),
+            branch("my-phase-through", [
+                pairCondition("selectable.distance", "gte", 90),
+                pairCondition("selectable.distance", "lte", 245),
+                pairCondition("selectable.relativeBearing", "lte", 75),
+                abilityReady(ABILITIES.PHASE_STRIKE),
+            ], [attack(ABILITIES.PHASE_STRIKE, OPPONENT, { phaseFacingMode: 180 })], 4),
+            branch("my-repelling-reset", [
+                pairCondition("selectable.distance", "lte", 140),
+                abilityReady(ABILITIES.REPELLING_BLAST),
+            ], [attack(ABILITIES.REPELLING_BLAST)], 5),
+            branch("my-heavy-slash-combo", [
+                pairCondition("selectable.distance", "lte", 115),
+                pairCondition("selectable.relativeBearing", "lte", 75),
+                ...abilityReadyOrPreparing(ABILITIES.HEAVY_SLASH),
+            ], [attack(ABILITIES.HEAVY_SLASH)], 6),
+            branch("my-basic-strike-filler", [
+                pairCondition("selectable.distance", "lte", 95),
+                pairCondition("selectable.relativeBearing", "lte", 80),
+                abilityReady(ABILITIES.BASIC_STRIKE),
+            ], [attack(ABILITIES.BASIC_STRIKE)], 7),
+        ]),
+        root("flashy-my-movement", 6, [
+            branch("my-movement-edge", [numberCondition("selectable.edgeDistance", "lte", 160)], [walk(90)]),
+            branch("my-movement-approach", [pairCondition("selectable.distance", "gt", 520)], [walk(0)], 2),
+            branch("my-movement-orbit-close", [pairCondition("selectable.distance", "lte", 155)], [walk(90)], 3),
+            branch("my-movement-orbit-mid", [pairCondition("selectable.distance", "lte", 430)], [walk(90)], 4),
+            branch("my-movement-wait-for-window", [always()], [walk(0)], 5),
+        ]),
+        root("flashy-my-face", 7, [
+            branch("my-face-target", [always()], [face()]),
+        ]),
+    ]);
+}
+
+function buildOpponentCode() {
+    return code([
+        root("flashy-opponent-dodge", 1, [
+            branch("opponent-dodge-singularity", [entityExists("opponent_1_singularity_zone")], [dash("opponent_1_singularity_zone", 90), walk(90)]),
+            branch("opponent-dodge-grenade", [entityExists("opponent_1_grenade")], [dash("opponent_1_grenade", -90), walk(-90)], 2),
+            branch("opponent-dodge-tether", [entityExists("opponent_1_tether_bolt")], [walk(90)], 3),
+            branch("opponent-dodge-heavy-windup", [abilityPreparing(ABILITIES.HEAVY_SLASH, OPPONENT)], [dash(OPPONENT, 90), walk(90)], 4),
+            branch("opponent-dodge-phase-windup", [abilityPreparing(ABILITIES.PHASE_STRIKE, OPPONENT)], [walk(-90)], 5),
+        ]),
+        root("flashy-opponent-survival", 2, [
+            branch("opponent-rewind-low-health", [
+                numberCondition("selectable.hp", "lte", 70),
+                abilityReady(ABILITIES.TEMPORAL_REWIND),
+            ], [attack(ABILITIES.TEMPORAL_REWIND, MY_BOT)], 1),
+            branch("opponent-edge-step", [numberCondition("selectable.edgeDistance", "lte", 160)], [walk(-90)], 2),
+            branch("opponent-danger-zone-break-inside", [
+                numberCondition("selectable.dangerZoneEdgeDistance", "gte", 1),
+                numberCondition("selectable.dangerZoneEdgeDistance", "lte", 70),
+            ], [dash(OPPONENT, 0), walk(0)], 3),
+            branch("opponent-danger-zone-break-outside", [numberCondition("selectable.dangerZoneEdgeDistance", "lt", -1)], [dash(OPPONENT, 0), walk(0)], 4),
+        ]),
+        root("flashy-opponent-lock-on", 3, [
+            branch("opponent-lock-on-high-bearing", [
+                pairCondition("selectable.relativeBearing", "gte", 65),
+                abilityReady(ABILITIES.LOCK_ON),
+            ], [attack(ABILITIES.LOCK_ON)], 1),
+        ]),
+        root("flashy-opponent-dash", 4, [
+            branch("opponent-dash-away", [
+                pairCondition("selectable.distance", "lte", 175),
+                abilityReady(ABILITIES.DASH),
+            ], [dash(OPPONENT, 180)], 1),
+            branch("opponent-dash-in", [
+                pairCondition("selectable.distance", "gt", 500),
+                pairCondition("selectable.relativeBearing", "lte", 80),
+                abilityReady(ABILITIES.DASH),
+            ], [dash(OPPONENT, 0)], 2),
+        ]),
+        root("flashy-opponent-attacks", 5, [
+            branch("opponent-silence-opener", [
+                pairCondition("selectable.distance", "lte", 210),
+                pairCondition("selectable.relativeBearing", "lte", 85),
+                ...abilityReadyOrPreparing(ABILITIES.SILENCE_PULSE),
+            ], [attack(ABILITIES.SILENCE_PULSE)], 1),
+            branch("opponent-frost-ring", [
+                pairCondition("selectable.distance", "lte", 140),
+                abilityReady(ABILITIES.FROST_RING),
+            ], [attack(ABILITIES.FROST_RING)], 2),
+            branch("opponent-stun-combo", [
+                pairCondition("selectable.distance", "lte", 180),
+                pairCondition("selectable.relativeBearing", "lte", 75),
+                ...abilityReadyOrPreparing(ABILITIES.STUN),
+            ], [attack(ABILITIES.STUN)], 3),
+            branch("opponent-grenade-spacing", [
+                pairCondition("selectable.distance", "gte", 240),
+                pairCondition("selectable.distance", "lte", 620),
+                pairCondition("selectable.relativeBearing", "lte", 85),
+                abilityReady(ABILITIES.GRENADE),
+            ], [attack(ABILITIES.GRENADE)], 4),
+            branch("opponent-fireball-spacing", [
+                pairCondition("selectable.distance", "gte", 300),
+                pairCondition("selectable.distance", "lte", 700),
+                pairCondition("selectable.relativeBearing", "lte", 60),
+                abilityReady(ABILITIES.FIREBALL),
+            ], [attack(ABILITIES.FIREBALL)], 5),
+        ]),
+        root("flashy-opponent-movement", 6, [
+            branch("opponent-movement-edge", [numberCondition("selectable.edgeDistance", "lte", 160)], [walk(-90)]),
+            branch("opponent-movement-approach", [pairCondition("selectable.distance", "gt", 520)], [walk(0)], 2),
+            branch("opponent-movement-kite-cooldowns", [
+                pairCondition("selectable.distance", "lte", 175),
+                abilityCooldownAbove(ABILITIES.STUN, 0.2),
+                abilityCooldownAbove(ABILITIES.FROST_RING, 0.2),
+                abilityCooldownAbove(ABILITIES.SILENCE_PULSE, 0.2),
+            ], [walk(-90)], 3),
+            branch("opponent-movement-pressure", [pairCondition("selectable.distance", "lte", 240)], [walk(0)], 4),
+            branch("opponent-movement-orbit", [pairCondition("selectable.distance", "lte", 450)], [walk(-90)], 5),
+            branch("opponent-movement-wait", [always()], [walk(0)], 6),
+        ]),
+        root("flashy-opponent-face", 7, [
+            branch("opponent-face-target", [always()], [face()]),
+        ]),
+    ]);
+}
+
+function practiceConfig(playerLoadout, opponentLoadout) {
+    return normalizePracticeConfig({
+        playerTeamSize: 1,
+        opponentTeamSize: 1,
+        initialElapsedMs: 0,
+        bots: [
+            {
+                role: "PLAYER",
+                teamNumber: PUZZLE_PLAYER_TEAM,
+                slot: 1,
+                loadout: playerLoadout,
+                startX: PLAYER_START.x,
+                startY: PLAYER_START.y,
+                rotation: PLAYER_START.rotation,
+                startHp: 150,
+            },
+            {
+                role: "OPPONENT",
+                teamNumber: PUZZLE_OPPONENT_TEAM,
+                slot: 1,
+                loadout: opponentLoadout,
+                startX: OPPONENT_START.x,
+                startY: OPPONENT_START.y,
+                rotation: OPPONENT_START.rotation,
+                startHp: 150,
+            },
+        ],
+    });
+}
+
+export function buildFlashyDuelPreset() {
+    const playerLoadout = encodeSandboxLoadout({ abilities: PLAYER_ABILITIES });
+    const opponentLoadout = encodeSandboxLoadout({ abilities: OPPONENT_ABILITIES });
+    return {
+        id: "flashy-duel",
+        label: "Flashy Duel",
+        playerLoadout,
+        opponentLoadout,
+        playerCode: buildMyBotCode(),
+        opponentCode: buildOpponentCode(),
+        practiceConfig: practiceConfig(playerLoadout, opponentLoadout),
+    };
+}
+
+export { ABILITIES as FLASHY_DUEL_ABILITY_IDS, PLAYER_ABILITIES as FLASHY_DUEL_PLAYER_ABILITIES, OPPONENT_ABILITIES as FLASHY_DUEL_OPPONENT_ABILITIES };
+
+
+```
+

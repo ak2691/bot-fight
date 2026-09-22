@@ -359,7 +359,7 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
     9: attachedAbility({
         phase: phase({
             hitbox: { shape: "ray", range: 500, width: 5 },
-            effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 20 }), statusEffect("slow", { durationMs: 1000 })],
+            effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 20 }), statusEffect("slow", { durationMs: 3000 })],
             visual: { type: "concussiveShot", visualSize: 76, visibleMs: 300 },
             events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
                 schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
@@ -453,10 +453,10 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
             hitbox: { shape: "circle", radius: 120, includeTargetRadius: true },
             effects: [
                 effect(EFFECT_TYPES.DAMAGE, { amount: 15 }),
-                statusEffect("slow", { durationMs: 1500 }),
+                statusEffect("slow", { durationMs: 2000 }),
                 effect(EFFECT_TYPES.KNOCKBACK, { amount: 60 }),
             ],
-            visual: { type: "frostRing", visualSize: 240, visibleMs: 300 },
+            visual: { type: "frostRing", visualSize: 320, visibleMs: 300 },
             events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
                 schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
         }),
@@ -465,9 +465,9 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
         phase: phase({
             hitbox: { shape: "ray", range: 600, width: 8 },
             effects: [
-                effect(EFFECT_TYPES.DAMAGE, { amount: 15 }),
+                effect(EFFECT_TYPES.DAMAGE, { amount: 20 }),
                 effect(EFFECT_TYPES.INTERRUPT, { durationMs: 250 }),
-                statusEffect("slow", { durationMs: 2000 }),
+                statusEffect("slow", { durationMs: 1500 }),
             ],
             visual: { type: "disruptorDart", visualSize: 8, visibleMs: 300 },
             events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
@@ -679,7 +679,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 transitionOnly: true,
                 movement: { speed: 0 },
                 hitbox: { shape: "circle", radius: 87.5 },
-                effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 25 })],
+                effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 30 })],
                 durationMs: 100,
                 visual: visual("mineExplosion", 175, null, 300, "event"),
                 events: {
@@ -929,21 +929,47 @@ export const ENTITY_CONTRACTS = Object.freeze({
         entityType: "tether_bolt",
         runtimeType: "tetherBolt",
         category: ENTITY_CATEGORIES.PROJECTILE,
-        spawn: { offset: { x: 0, y: 41 }, rotation: 0, rotationSpace: "owner" },
-        lifetime: { duration: 1100 },
+        spawn: { offset: { x: 0, y: 0 }, rotation: 0, rotationSpace: "owner" },
+        lifetime: { duration: 600 },
         state: { damageMultiplier: contextValue("damageMultiplier", ownerStat("attackDamageMultiplier", 1)) },
         phases: Object.freeze([
-            phase("active", PHASE_TYPES.PROJECTILE, {
-                movement: { speed: 42 },
+            phase("outbound", PHASE_TYPES.PROJECTILE, {
+                movement: { speed: 100, direction: "forward" },
                 hitbox: { shape: "rectangle", width: 18, length: 18 },
+                visual: visual("tetherBolt", 18),
                 effects: [
                     effect(EFFECT_TYPES.DAMAGE, { amount: 10 }),
-                    effect(EFFECT_TYPES.PULL, { amount: 100 }),
                     statusEffect("slow", { durationMs: 1200 }),
                 ],
                 events: {
-                    [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: DAMAGE_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS, PHASE_ACTIONS.REMOVE] },
+                    [PHASE_EVENT_TYPES.COLLISION]: {
+                        targetKinds: DAMAGE_TARGET_KINDS,
+                        actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                        targetPolicy: { mode: "once", bind: true },
+                    },
+                    [PHASE_EVENT_TYPES.LIFETIME_END]: {
+                        actions: [PHASE_ACTIONS.TRANSITION],
+                        transition: { to: "return" },
+                    },
                 },
+                durationMs: 400,
+                hit: { mode: "nearest" },
+            }),
+            phase("return", PHASE_TYPES.PROJECTILE, {
+                movement: { speed: 150, direction: "backward" },
+                hitbox: { shape: "rectangle", width: 18, length: 18 },
+                visual: visual("tetherBolt", 18),
+                effects: [effect(EFFECT_TYPES.PULL, { amount: 150 })],
+                events: {
+                    [PHASE_EVENT_TYPES.COLLISION]: {
+                        targetKinds: BOT_TARGET_KINDS,
+                        actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                        targetPolicy: { mode: "everyTick", source: "tethered" },
+                        pullDirection: "owner",
+                        schedule: { mode: EVENT_SCHEDULE_MODES.REPEAT, intervalMs: 100, count: 2 },
+                    },
+                },
+                durationMs: 200,
             }),
         ]),
     }),
@@ -965,7 +991,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
                     chain: false,
                 },
                 effects: [
-                    effect(EFFECT_TYPES.DAMAGE, { amount: 15 }),
+                    effect(EFFECT_TYPES.DAMAGE, { amount: 25 }),
                     statusEffect("slow", { durationMs: 2200 }),
                     effect(EFFECT_TYPES.INTERRUPT, { durationMs: 150 }),
                 ],
@@ -975,8 +1001,8 @@ export const ENTITY_CONTRACTS = Object.freeze({
                         targetKinds: BOT_TARGET_KINDS,
                         actions: [PHASE_ACTIONS.APPLY_EFFECTS, PHASE_ACTIONS.TRANSITION, PHASE_ACTIONS.EMIT_VISUAL],
                         transition: { to: "triggered" },
-                        visualType: "staticSnareBurst",
-                        visibleMs: 300,
+                        visualType: "grenadeExplosion",
+                        visibleMs: 200,
                         visualSize: 150,
                     },
                     [PHASE_EVENT_TYPES.KILLED]: {
@@ -997,19 +1023,19 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 movement: { speed: 0 },
                 hitbox: { shape: "circle", radius: 120 },
                 effects: [
-                    effect(EFFECT_TYPES.DAMAGE, { amount: 20 }),
+                    effect(EFFECT_TYPES.DAMAGE, { amount: 40 }),
                     statusEffect("slow", { durationMs: 3000 }),
                     effect(EFFECT_TYPES.INTERRUPT, { durationMs: 150 }),
                 ],
                 skipOwner: true,
                 durationMs: 100,
-                visual: visual("staticSnareBurst", 240, null, 300, "event"),
+                visual: visual("orbitalExplosion", 240, null, 400, "event"),
                 events: {
                     [PHASE_EVENT_TYPES.COLLISION]: {
                         targetKinds: DAMAGE_TARGET_KINDS,
                         actions: [PHASE_ACTIONS.APPLY_EFFECTS, PHASE_ACTIONS.EMIT_VISUAL],
-                        visualType: "staticSnareBurst",
-                        visibleMs: 300,
+                        visualType: "orbitalExplosion",
+                        visibleMs: 400,
                         visualSize: 240,
                         schedule: { mode: EVENT_SCHEDULE_MODES.ONCE },
                     },

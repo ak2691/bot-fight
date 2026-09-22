@@ -24,10 +24,8 @@ test("every registered ability has one generated catalogue icon", () => {
     assert.equal(Object.keys(ABILITY_CATALOGUE_ICONS).length, BOT_ABILITIES.length + 2);
     for (const ability of BOT_ABILITIES) {
         const iconPath = getAbilityCatalogueIcon(ability.id);
-        const iconFilename = ability.name === "singularity" ? "singularity (2).webp" : `${LEGACY_ICON_FILENAMES[ability.name] ?? ability.name}.webp`;
-        const expectedIconPath = ability.name === "singularity"
-            ? "/assets/ability-list/icons/singularity%20%282%29.webp"
-            : `/assets/ability-list/icons/${iconFilename}`;
+        const iconFilename = `${LEGACY_ICON_FILENAMES[ability.name] ?? ability.name}.webp`;
+        const expectedIconPath = `/assets/ability-list/icons/${iconFilename}`;
         assert.equal(iconPath, expectedIconPath);
         assert.equal(existsSync(`${ICON_DIRECTORY}${iconFilename}`), true, ability.id);
     }
@@ -52,6 +50,8 @@ test("icon extraction manifest covers the catalog and keeps explicit frame contr
     assert.deepEqual(manifest.icons.rail_shot.grid, { columns: 2, rows: 5, used_frames: 9, frame_index: 6 });
     assert.deepEqual(manifest.icons.gravity_grenade.grid, { columns: 10, rows: 10, used_frames: 91, frame_index: 55 });
     assert.deepEqual(manifest.icons.silence_pulse.grid, { columns: 2, rows: 3, used_frames: 5, frame_index: 2 });
+    assert.deepEqual(manifest.icons.frost_ring.grid, { columns: 49, rows: 1, frame_index: 19 });
+    assert.deepEqual(manifest.icons.singularity.grid, { columns: 2, rows: 2, frame_index: 0 });
     assert.deepEqual(manifest.icons.reactive_armor.procedural, "status_symbol");
     assert.deepEqual(manifest.icons.absolute_guard.procedural, "status_symbol");
     assert.notEqual(manifest.icons.reactive_armor.status, manifest.icons.absolute_guard.status);

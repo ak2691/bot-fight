@@ -126,7 +126,7 @@ public final class AbilityEntitySystem {
                 next.add(current);
                 continue;
             }
-            List<HitCandidate<F>> candidates = phaseTargets(current, phase, bots);
+            List<HitCandidate<F>> candidates = phaseTargets(current, phase, bots, triggerEvent);
             AbilityContracts.PhaseEventType eventType = entry.killedByDamage()
                     ? AbilityContracts.PhaseEventType.COLLISION : triggerEvent;
             DispatchResult<F> dispatched = dispatchPhaseEvent(current, entry.contract(), phase,
@@ -140,7 +140,8 @@ public final class AbilityEntitySystem {
             if (nextEntity != null && eventType != AbilityContracts.PhaseEventType.COLLISION
                     && entered != null && !entered.id().equals(phase.id())
                     && entered.events().containsKey(AbilityContracts.PhaseEventType.COLLISION)) {
-                List<HitCandidate<F>> enteredCandidates = phaseTargets(nextEntity, entered, bots);
+                List<HitCandidate<F>> enteredCandidates = phaseTargets(nextEntity, entered, bots,
+                        AbilityContracts.PhaseEventType.COLLISION);
                 DispatchResult<F> active = dispatchPhaseEvent(nextEntity, entry.contract(), entered,
                         AbilityContracts.PhaseEventType.COLLISION, bots, arena, combat,
                         enteredCandidates.stream().map(candidate -> candidate.bot().entitySlot()).toList(),
@@ -250,8 +251,19 @@ public final class AbilityEntitySystem {
         double speed = movement == null ? 0 : movement.speed();
         boolean moving = speed > 0;
         double directionMagnitude = Math.hypot(entity.velocityX(), entity.velocityY());
-        double directionX = directionMagnitude > 0.001 ? entity.velocityX() / directionMagnitude : 0;
-        double directionY = directionMagnitude > 0.001 ? entity.velocityY() / directionMagnitude : 0;
+        double baseDirectionX;
+        double baseDirectionY;
+        if (directionMagnitude > 0.001) {
+            baseDirectionX = entity.velocityX() / directionMagnitude;
+            baseDirectionY = entity.velocityY() / directionMagnitude;
+        } else {
+            double radians = Math.toRadians(entity.rotation() - 90.0);
+            baseDirectionX = Math.cos(radians);
+            baseDirectionY = Math.sin(radians);
+        }
+        boolean backwards = movement != null && "backward".equals(movement.direction());
+        double directionX = backwards ? -baseDirectionX : baseDirectionX;
+        double directionY = backwards ? -baseDirectionY : baseDirectionY;
         double nextX = moving ? entity.x() + directionX * speed : entity.x();
         double nextY = moving ? entity.y() + directionY * speed : entity.y();
         if (moving) {
@@ -408,8 +420,22 @@ public final class AbilityEntitySystem {
         double speed = movement == null ? 0 : movement.speed();
         boolean moving = speed > 0;
         double directionMagnitude = Math.hypot(entity.velocityX(), entity.velocityY());
-        double directionX = directionMagnitude > 0.001 ? entity.velocityX() / directionMagnitude : 0;
-        double directionY = directionMagnitude > 0.001 ? entity.velocityY() / directionMagnitude : 0;
+        double baseDirectionX;
+        double baseDirectionY;
+        if (directionMagnitude > 0.001) {
+            baseDirectionX = entity.velocityX() / directionMagnitude;
+            baseDirectionY = entity.velocityY() / directionMagnitude;
+        } else if (movement != null && "backward".equals(movement.direction())) {
+            double radians = Math.toRadians(entity.rotation() - 90.0);
+            baseDirectionX = Math.cos(radians);
+            baseDirectionY = Math.sin(radians);
+        } else {
+            baseDirectionX = 0;
+            baseDirectionY = 0;
+        }
+        boolean backwards = movement != null && "backward".equals(movement.direction());
+        double directionX = backwards ? -baseDirectionX : baseDirectionX;
+        double directionY = backwards ? -baseDirectionY : baseDirectionY;
         double nextX = moving ? entity.x() + directionX * speed : entity.x();
         double nextY = moving ? entity.y() + directionY * speed : entity.y();
         if (moving) {
@@ -432,9 +458,13 @@ public final class AbilityEntitySystem {
         final double collisionNextY = nextY;
         final ArenaEntity collisionEntity = moved;
         final List<F> collisionBots = bots;
-        List<HitCandidate<F>> candidates = eventTargetsKind(
-                phase.events().get(AbilityContracts.PhaseEventType.COLLISION),
-                AbilityContracts.TargetKind.BOT) ? bots.stream()
+        AbilityContracts.PhaseEvent collisionEvent = phase.events().get(
+                AbilityContracts.PhaseEventType.COLLISION);
+        boolean tetheredCollision = collisionEvent != null
+                && collisionEvent.targetPolicy() != null
+                && "tethered".equals(collisionEvent.targetPolicy().source());
+        List<HitCandidate<F>> candidates = tetheredCollision ? phaseTargets(collisionEntity, phase, bots)
+                : eventTargetsKind(collisionEvent, AbilityContracts.TargetKind.BOT) ? bots.stream()
                 .filter(bot -> isEnemy(entity.ownerSlot(), bot, collisionBots)
                         && bot.entityHp() > 0 && !bot.ignoresHostileEffects())
                 .map(bot -> new HitCandidate<>(bot, movingCirclesDistance(
@@ -449,8 +479,6 @@ public final class AbilityEntitySystem {
         List<HitCandidate<F>> selected = phase.hit() != null
                 && phase.hit().mode() == AbilityContracts.HitMode.NEAREST
                 ? candidates.stream().limit(1).toList() : candidates;
-        AbilityContracts.PhaseEvent collisionEvent = phase.events().get(
-                AbilityContracts.PhaseEventType.COLLISION);
         EventScheduleResult collisionSchedule = eventSchedule(
                 entity, phase, AbilityContracts.PhaseEventType.COLLISION, stepMs);
         Map<Integer, ArenaEntity> collisionSources = new HashMap<>();
@@ -500,6 +528,27 @@ public final class AbilityEntitySystem {
             DispatchResult<F> ended = dispatchPhaseEvent(next, contract, phase,
                     AbilityContracts.PhaseEventType.LIFETIME_END, dispatched.bots(),
                     arena, combat, List.of(), Map.of(), stepMs);
+            AbilityContracts.AbilityPhase enteredPhase = ended.entity() == null
+                    ? null : AbilityContracts.phaseFor(ended.entity());
+            if (enteredPhase != null && !enteredPhase.id().equals(phase.id())) {
+                AbilityContracts.PhaseEvent enteredCollision = enteredPhase.events().get(
+                        AbilityContracts.PhaseEventType.COLLISION);
+                if (enteredCollision != null && enteredCollision.actions().contains(
+                        AbilityContracts.PhaseAction.APPLY_EFFECTS)) {
+                    List<HitCandidate<F>> enteredCandidates = phaseTargets(
+                            ended.entity(), enteredPhase, ended.bots());
+                    DispatchResult<F> activeDispatch = dispatchPhaseEvent(ended.entity(), contract,
+                            enteredPhase, AbilityContracts.PhaseEventType.COLLISION,
+                            ended.bots(), arena, combat,
+                            enteredCandidates.stream().map(candidate ->
+                                    candidate.bot().entitySlot()).toList(),
+                            distancesBySlot(enteredCandidates), stepMs);
+                    ArenaEntity activeEntity = activeDispatch.entity();
+                    return new TickResult(activeEntity == null ? null
+                            : markScheduledEvent(activeEntity,
+                                    AbilityContracts.PhaseEventType.COLLISION));
+                }
+            }
             return new TickResult(ended.entity() == next
                     && !phase.events().containsKey(AbilityContracts.PhaseEventType.LIFETIME_END)
                     ? null : ended.entity());
@@ -795,9 +844,27 @@ public final class AbilityEntitySystem {
 
     private static <F extends AbilityEntityBot> List<HitCandidate<F>> phaseTargets(
             ArenaEntity entity, AbilityContracts.AbilityPhase phase, List<F> bots) {
-        if (!eventTargetsKind(phase.events().get(AbilityContracts.PhaseEventType.COLLISION),
+        return phaseTargets(entity, phase, bots, AbilityContracts.PhaseEventType.COLLISION);
+    }
+
+    private static <F extends AbilityEntityBot> List<HitCandidate<F>> phaseTargets(
+            ArenaEntity entity, AbilityContracts.AbilityPhase phase, List<F> bots,
+            AbilityContracts.PhaseEventType eventType) {
+        AbilityContracts.PhaseEvent event = phase.events().get(eventType);
+        if (event == null) return List.of();
+        if (!eventTargetsKind(event,
                 AbilityContracts.TargetKind.BOT)) {
             return List.of();
+        }
+        if (event.targetPolicy() != null
+                && "tethered".equals(event.targetPolicy().source())) {
+            return bots.stream()
+                    .filter(bot -> entity.hitLedger().containsKey(bot.entitySlot())
+                            && isEnemy(entity.ownerSlot(), bot, bots)
+                            && bot.entityHp() > 0 && !bot.ignoresHostileEffects())
+                    .map(bot -> new HitCandidate<>(bot, distance(
+                            entity.x(), entity.y(), bot.entityX(), bot.entityY())))
+                    .toList();
         }
         Double radiusValue = phase.hitbox() == null ? null : phase.hitbox().radius();
         double radius = phaseRadius(entity.abilityId(), phase, radiusValue,
@@ -899,7 +966,11 @@ public final class AbilityEntitySystem {
                     applyEntityEffects(bots, target,
                             effectSources.getOrDefault(targetSlot, next),
                             contract.abilityId(), phase.effects(), effects, arena, combat,
-                            "source", distances.getOrDefault(targetSlot, Double.NaN),
+                            "source",
+                            event.targetPolicy() != null
+                                    && "tethered".equals(event.targetPolicy().source())
+                                    ? "owner" : "source",
+                            distances.getOrDefault(targetSlot, Double.NaN),
                             phase.effectOverrides(), phaseRange(phase), event.statusTypes());
                     next = recordTargetApplication(next, targetSlot, event.targetPolicy(), stepMs);
                 }
@@ -950,10 +1021,14 @@ public final class AbilityEntitySystem {
 
     private static ArenaEntity transitionToPhase(ArenaEntity entity,
                                                   AbilityContracts.AbilityPhase phase) {
+        boolean preservesTargetLedger = phase.events().values().stream()
+                .map(AbilityContracts.PhaseEvent::targetPolicy)
+                .anyMatch(policy -> policy != null && "tethered".equals(policy.source()));
         ArenaEntity transitioned = copyWithPhase(entity, entity.x(), entity.y(), 0, 0,
                 entity.traveled(), entity.timerMs(), true, entity.ageMs(), phase.id(), true,
                 entity.rotation());
-        return withEventScheduleState(withPhaseTimer(transitioned.withHitLedger(Map.of()), 0), Map.of());
+        return withEventScheduleState(withPhaseTimer(transitioned.withHitLedger(
+                preservesTargetLedger ? entity.hitLedger() : Map.of()), 0), Map.of());
     }
 
     private static ArenaEntity withEventScheduleState(
@@ -1040,7 +1115,7 @@ public final class AbilityEntitySystem {
             List<F> bots, F target, ArenaEntity source, int abilityId,
             List<AbilityContracts.Effect> declaredEffects,
             Set<EffectType> allowedEffects, ArenaBounds arena, Combat<F> combat,
-            String knockbackDirection, double collisionDistance,
+            String knockbackDirection, String pullDirection, double collisionDistance,
             Map<String, AbilityContracts.EffectOverride> overrides,
             Double rangeOverride, Set<String> statusTypes) {
         if (!isEnemy(source.ownerSlot(), target, bots)) return;
@@ -1095,8 +1170,15 @@ public final class AbilityEntitySystem {
                                     arena.height() - target.entitySize() / 2.0));
                 }
                 case PULL -> {
-                    double dx = source.x() - target.entityX();
-                    double dy = source.y() - target.entityY();
+                    AbilityEntityBot pullSource = "owner".equals(pullDirection)
+                            ? bots.stream()
+                                    .filter(bot -> bot.entitySlot() == source.ownerSlot())
+                                    .findFirst().orElse(null)
+                            : null;
+                    double sourceX = pullSource == null ? source.x() : pullSource.entityX();
+                    double sourceY = pullSource == null ? source.y() : pullSource.entityY();
+                    double dx = sourceX - target.entityX();
+                    double dy = sourceY - target.entityY();
                     double magnitude = Math.max(.001, Math.hypot(dx, dy));
                     double amount = resolveEffectAmount(abilityId, resolved, override,
                             distance, rangeOverride);

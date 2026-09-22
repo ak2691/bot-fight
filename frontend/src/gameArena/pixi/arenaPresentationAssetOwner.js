@@ -39,6 +39,8 @@ export const REQUIRED_ARENA_PRESENTATION_PATHS = Object.freeze([
     "meleeSlash",
     "heavySlash",
     "phaseStrike",
+    "frostRing",
+    "singularity",
 ]);
 
 export class ArenaAssetLoadError extends Error {

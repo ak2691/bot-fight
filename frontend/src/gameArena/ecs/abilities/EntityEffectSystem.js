@@ -16,6 +16,7 @@ export function applyEntityEffects(bots, targetIndex, source, abilityId, combat,
     statusTypes = null,
     world = null,
     knockbackDirection = "source",
+    pullDirection = "source",
     collisionDistance = undefined,
     effectOverrides = null,
     statOverrides = null,
@@ -63,7 +64,11 @@ export function applyEntityEffects(bots, targetIndex, source, abilityId, combat,
         } else if (resolvedEffect.type === EFFECT_TYPES.KNOCKBACK) {
             nextBots[targetIndex] = applyKnockback(nextBots[targetIndex], source, amountAtDistance(abilityId, distance, resolvedEffect, statOverrides), world, knockbackDirection);
         } else if (resolvedEffect.type === EFFECT_TYPES.PULL) {
-            nextBots[targetIndex] = applyPull(nextBots[targetIndex], source, amountAtDistance(abilityId, distance, resolvedEffect, statOverrides), world);
+            const pullSource = pullDirection === "owner"
+                ? world?.bots?.find((bot) => bot?.id === source?.ownerId
+                    || Number(bot?.slot) === Number(source?.ownerSlot)) ?? source
+                : source;
+            nextBots[targetIndex] = applyPull(nextBots[targetIndex], pullSource, amountAtDistance(abilityId, distance, resolvedEffect, statOverrides), world);
         }
     }
     return { bots: nextBots };

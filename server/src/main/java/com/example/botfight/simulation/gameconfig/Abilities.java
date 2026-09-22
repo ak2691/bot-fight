@@ -26,7 +26,7 @@ public final class Abilities {
             Map.entry(6, timing(9_600, 200, 100, 1_200)),
             Map.entry(7, timing(4_600, 300, 400, 0)),
             Map.entry(8, timing(10_000, 0, 500, 0)),
-            Map.entry(9, timing(6_700, 500, 300, 0)),
+            Map.entry(9, timing(6_700, 1_000, 300, 0)),
             Map.entry(10, timing(11_700, 800, 300, 0)),
             Map.entry(11, timing(10_000, 0, 300, 20_800)),
             Map.entry(12, timing(400, 0, 300, 0, 10, 3_000, ResourceModel.RELOAD_WHEN_EMPTY)),
@@ -45,7 +45,7 @@ public final class Abilities {
             Map.entry(25, timing(1_500, 0, 300, 0)),
             Map.entry(26, timing(8_700, 0, 300, 0)),
             Map.entry(27, timing(18_000, 0, 300, 1_300)),
-            Map.entry(28, timing(7_700, 300, 300, 1_100)),
+            Map.entry(28, timing(7_700, 300, 300, 600)),
             Map.entry(29, timing(10_000, 0, 300, 16_000)),
             Map.entry(30, timing(8_000, 200, 300, 0)),
             Map.entry(31, timing(9_000, 0, 300, 6_000)),
@@ -127,10 +127,16 @@ public final class Abilities {
         }
         AbilityContracts.PhaseMovement movement = movementPhase == null ? null : movementPhase.movement();
         boolean movingProjectile = entity != null
-                && entity.category() == AbilityContracts.Category.PROJECTILE;
-        Double movingRange = movingProjectile && timing.durationMs() > 0
+                && entity.category() == AbilityContracts.Category.PROJECTILE
+                && movementPhase != null
+                && behaviorPhase != null
+                && movementPhase.id().equals(behaviorPhase.id());
+        Integer movingPhaseDuration = movementPhase == null ? null : movementPhase.durationMs();
+        Double movingRange = movingProjectile
+                && (movingPhaseDuration == null ? timing.durationMs() : movingPhaseDuration) > 0
                 && movement != null && movement.speed() > 0
-                ? movement.speed() * timing.durationMs() / 100.0 : null;
+                ? movement.speed() * (movingPhaseDuration == null
+                        ? timing.durationMs() : movingPhaseDuration) / 100.0 : null;
         double range = movingRange != null ? movingRange : hitboxValue(hitbox, "range");
         double arc = hitbox == null || hitbox.arc() == null ? 0 : hitbox.arc();
         Map<String, Double> stats = new LinkedHashMap<>();

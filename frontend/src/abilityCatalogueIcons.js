@@ -27,7 +27,7 @@ export const ABILITY_CATALOGUE_ICONS = Object.freeze({
     null_zone: "/assets/ability-list/icons/null_zone.webp",
     phase_strike: "/assets/ability-list/icons/phase_strike.webp",
     frost_ring: "/assets/ability-list/icons/frost_ring.webp",
-    singularity: "/assets/ability-list/icons/singularity%20%282%29.webp",
+    singularity: "/assets/ability-list/icons/singularity.webp",
     tether_bolt: "/assets/ability-list/icons/tether_bolt.webp",
     static_snare: "/assets/ability-list/icons/static_snare.webp",
     disruptor_dart: "/assets/ability-list/icons/disruptor_dart.webp",

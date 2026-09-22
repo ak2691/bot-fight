@@ -578,9 +578,6 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
                 || shape.replayPhase !== "playback"
                 || previousShape?.replayPhase !== "playback"
             );
-            const durationMs = drag?.id === shape.id || shouldSnapReplayTransition
-                ? 0
-                : shapeInterpolationMs(shape);
             view.authoritativeShape = shape;
             view.shape = phaseShape;
             const nextLayer = pixiLayerForShape(phaseShape);
@@ -589,6 +586,9 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
                 view.layer = nextLayer;
             }
             const target = { x: Number(phaseShape.x), y: Number(phaseShape.y) };
+            const durationMs = drag?.id === shape.id || shouldSnapReplayTransition
+                ? 0
+                : shapeInterpolationMs(phaseShape, current, target);
             if (target.x !== view.motion.to.x || target.y !== view.motion.to.y) {
                 view.motion = { from: current, to: target, startedAt: now, durationMs };
             }
@@ -767,7 +767,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             view.caption.scale.set(captionScale);
             if (isBotShape(view.shape)) drawBot(view, position, optionsRef.current.selectedId === view.shape.id, now, arenaSprites, overlappingBotIds.has(view.shape.id), canRotateBot(view.shape), rotationHandleDistanceForShape(view.shape));
             else {
-                drawEntity(view, optionsRef.current.selectedId === view.shape.id, now, arenaSprites);
+                drawEntity(view, optionsRef.current.selectedId === view.shape.id, now, arenaSprites, botViews, position);
                 drawStatusIcons(view.graphics, view.shape, Number(view.shape.size ?? 0) / 2, 44);
             }
         }
@@ -1479,22 +1479,17 @@ function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
         });
     } else if (visual === 26) {
         const progress = visualProgress(remaining, duration);
-        const centerX = originX - position.x;
-        const centerY = originY - position.y;
-        const visualDiameter = Number(phaseVisual.visualSize ?? Number(phaseHitbox.radius ?? 120) * 2);
-        const ringRadius = visualDiameter / 2 * (0.34 + progress * 0.66);
-        graphics.circle(centerX, centerY, ringRadius)
-            .stroke({ color: 0x93c5fd, alpha: opacity, width: 5 });
-        graphics.circle(centerX, centerY, ringRadius * 0.72)
-            .stroke({ color: 0x67e8f9, alpha: opacity * 0.5, width: 2 });
-        for (let index = 0; index < 8; index += 1) {
-            const shardAngle = index * Math.PI / 4 + progress * Math.PI * 0.5;
-            const inner = ringRadius * 0.72;
-            const outer = ringRadius * (0.9 + (index % 2) * 0.08);
-            graphics.moveTo(centerX + Math.cos(shardAngle) * inner, centerY + Math.sin(shardAngle) * inner)
-                .lineTo(centerX + Math.cos(shardAngle) * outer, centerY + Math.sin(shardAngle) * outer)
-                .stroke({ color: 0xe0f2fe, alpha: opacity * 0.8, width: 3 });
-        }
+        const frostFrames = arenaSprites.abilities.frostRing;
+        if (!frostFrames?.length) return;
+        showCachedEffect(view, "frost-ring", spriteFrameAtProgress(frostFrames, progress), {
+            x: originX - position.x,
+            y: originY - position.y,
+            alpha: opacity,
+            tint: 0xffffff,
+            width: Number(phaseVisual.visualSize ?? Number(phaseHitbox.radius ?? 120) * 2),
+            height: Number(phaseVisual.visualSize ?? Number(phaseHitbox.radius ?? 120) * 2),
+            blendMode: "screen",
+        });
     } else if (visual === 16 || visual === 23) {
         const progress = visualProgress(remaining, duration);
         const radius = Number(phaseVisual.visualSize ?? 80) / 2 + progress * 16;
@@ -1548,10 +1543,6 @@ function drawStandaloneVisual(view, now, arenaSprites) {
 
     const presentationType = presentationTypeForShape(shape);
     const progress = visualAnimationProgress(view, now);
-    if (["singularityZone", "singularityExplosion"].includes(presentationType)) {
-        drawGeneratedSingularity(graphics, shape, now, progress);
-        return;
-    }
     if (["tetherBolt", "staticSnare", "staticSnareBurst"].includes(presentationType)) {
         drawGeneratedAbilityEntity(graphics, shape, now, progress);
         return;
@@ -1616,7 +1607,7 @@ function showMuzzleFlash(view, arenaSprites, position, originX, originY, rotatio
     });
 }
 
-function drawEntity(view, selected, now, arenaSprites) {
+function drawEntity(view, selected, now, arenaSprites, botViews = [], position = null) {
     const { shape, baseSprite, graphics, caption } = view;
     if (view.visualInstance?.lifecycle === VISUAL_LIFECYCLES.EVENT) {
         drawStandaloneVisual(view, now, arenaSprites);
@@ -1643,19 +1634,20 @@ function drawEntity(view, selected, now, arenaSprites) {
     const radius = size / 2;
     const presentationType = presentationTypeForShape(shape);
     graphics.clear();
-    if (["singularityZone", "singularityExplosion"].includes(shape.type)
-        || ["singularityZone", "singularityExplosion"].includes(presentationType)) {
-        baseSprite.visible = false;
-        caption.text = "";
-        caption.visible = false;
-        drawGeneratedSingularity(graphics, shape, now, visualAnimationProgress(view, now));
-        if (selected) graphics.circle(0, 0, radius + 6).stroke({ color: COLORS.white, alpha: 0.8, width: 2 });
-        if (Number(shape.hitFlashMs ?? 0) > 0) graphics.circle(0, 0, radius + 2).fill({ color: 0xef4444, alpha: 0.5 });
-        return;
-    }
     if (["tetherBolt", "staticSnare", "staticSnareBurst"].includes(shape.type)) {
         baseSprite.visible = false;
-        drawGeneratedAbilityEntity(graphics, shape, now, visualAnimationProgress(view, now));
+        const ownerView = shape.type === "tetherBolt"
+            ? botViews.find(({ view: candidate }) => candidate.shape.id === shape.ownerId
+                || Number(candidate.shape.slot) === Number(shape.ownerSlot))
+            : null;
+        drawGeneratedAbilityEntity(
+            graphics,
+            shape,
+            now,
+            visualAnimationProgress(view, now),
+            ownerView?.position ?? null,
+            position,
+        );
         caption.text = entityCaption(shape);
         caption.visible = Boolean(caption.text);
         caption.position.set(0, -radius - 10);
@@ -1838,45 +1830,49 @@ function drawClosingZone(graphics, shape) {
     graphics.circle(0, 0, safeRadius).stroke({ color: COLORS.closingZone, alpha: 0.86, width: 3 });
 }
 
-function drawGeneratedSingularity(graphics, shape, now, animationProgress = null) {
-    const radius = Math.max(12, visualSizeForShape(shape, Number(shape.size ?? 280)) / 2);
-    const explosion = presentationTypeForShape(shape) === "singularityExplosion";
-    const progress = explosion ? animationProgress ?? 0 : 0;
-    const pulse = 0.62 + Math.sin(now / 90) * 0.14;
-    if (explosion) {
-        const waveRadius = radius * (0.35 + progress * 0.9);
-        graphics.circle(0, 0, waveRadius).stroke({ color: 0xc4b5fd, alpha: 0.9 - progress * 0.45, width: 8 });
-        graphics.circle(0, 0, waveRadius * 0.5).fill({ color: 0x7c3aed, alpha: 0.24 * (1 - progress) });
-        return;
-    }
-    const armed = Boolean(shape.armed) || Number(shape.fuseMs ?? 0) <= 0;
-    graphics.circle(0, 0, radius).stroke({ color: 0xa78bfa, alpha: armed ? 0.84 : pulse, width: 3 });
-    graphics.circle(0, 0, radius * 0.72).stroke({ color: 0x67e8f9, alpha: armed ? 0.5 : 0.3, width: 2 });
-    graphics.circle(0, 0, radius * 0.14).fill({ color: 0x312e81, alpha: 0.92 });
-    for (let index = 0; index < 8; index += 1) {
-        const angle = now / 700 + index * Math.PI / 4;
-        const inner = radius * 0.2;
-        const outer = radius * (0.55 + (index % 2) * 0.12);
-        graphics.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner)
-            .lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer)
-            .stroke({ color: 0x67e8f9, alpha: armed ? 0.48 : 0.24, width: 2 });
-    }
-}
-
-function drawGeneratedAbilityEntity(graphics, shape, now, animationProgress = null) {
+function drawGeneratedAbilityEntity(graphics, shape, now, animationProgress = null, ownerPosition = null, entityPosition = null) {
     const type = presentationTypeForShape(shape);
     if (type === "tetherBolt") {
-        const speed = Math.max(0.001, Math.hypot(Number(shape.velocityX ?? 0), Number(shape.velocityY ?? 0)));
-        const ux = Number(shape.velocityX ?? 0) / speed;
-        const uy = Number(shape.velocityY ?? 0) / speed;
-        const length = Math.max(28, speed * 1.45);
-        graphics.moveTo(-ux * length * 0.55, -uy * length * 0.55)
-            .lineTo(ux * length * 0.55, uy * length * 0.55)
-            .stroke({ color: 0x67e8f9, alpha: 0.28, width: 10 });
-        graphics.moveTo(-ux * length * 0.5, -uy * length * 0.5)
-            .lineTo(ux * length * 0.5, uy * length * 0.5)
-            .stroke({ color: 0xe0f2fe, alpha: 0.95, width: 3 });
-        graphics.circle(ux * length * 0.54, uy * length * 0.54, 5).fill({ color: 0x22d3ee, alpha: 0.95 });
+        const fallbackAngle = compassDegreesToRadians(Number(shape.rotation ?? 0));
+        const fallbackDirection = { x: Math.cos(fallbackAngle), y: Math.sin(fallbackAngle) };
+        const currentX = Number(entityPosition?.x ?? shape.x);
+        const currentY = Number(entityPosition?.y ?? shape.y);
+        const ownerX = Number(ownerPosition?.x);
+        const ownerY = Number(ownerPosition?.y);
+        const deltaX = Number.isFinite(ownerX) ? currentX - ownerX : fallbackDirection.x;
+        const deltaY = Number.isFinite(ownerY) ? currentY - ownerY : fallbackDirection.y;
+        const distance = Math.hypot(deltaX, deltaY);
+        const ux = distance > 0.001 ? deltaX / distance : fallbackDirection.x;
+        const uy = distance > 0.001 ? deltaY / distance : fallbackDirection.y;
+        const startX = Number.isFinite(ownerX) ? ownerX - currentX : -ux * 34;
+        const startY = Number.isFinite(ownerY) ? ownerY - currentY : -uy * 34;
+        const tipX = 0;
+        const tipY = 0;
+        // Keep the arrowhead inside the distance between the bot and the tip. This
+        // makes the returning bolt shorten in place instead of growing past the
+        // bot and appearing to extend backwards.
+        const arrowLength = Math.min(distance, 52);
+        const wingBaseX = -ux * arrowLength;
+        const wingBaseY = -uy * arrowLength;
+        const neckX = -ux * Math.min(12, arrowLength * 0.45);
+        const neckY = -uy * Math.min(12, arrowLength * 0.45);
+        const normalX = -uy;
+        const normalY = ux;
+        const wingWidth = Math.min(15, Math.max(4, arrowLength * 0.34));
+        const glow = 0x57b8ff;
+        graphics.moveTo(startX, startY).lineTo(wingBaseX, wingBaseY)
+            .stroke({ color: glow, alpha: 0.28, width: 13 });
+        graphics.moveTo(startX, startY).lineTo(wingBaseX, wingBaseY)
+            .stroke({ color: 0xbfdbfe, alpha: 0.96, width: 4 });
+        graphics.poly([
+            tipX, tipY,
+            wingBaseX + normalX * wingWidth, wingBaseY + normalY * wingWidth,
+            neckX + normalX * 3, neckY + normalY * 3,
+            neckX - normalX * 3, neckY - normalY * 3,
+            wingBaseX - normalX * wingWidth, wingBaseY - normalY * wingWidth,
+        ]).fill({ color: 0xeff6ff, alpha: 0.98 })
+            .stroke({ color: glow, alpha: 0.9, width: 2 });
+        graphics.circle(startX, startY, 6).fill({ color: glow, alpha: 0.92 });
         return;
     }
     if (type === "staticSnare") {
@@ -1939,7 +1935,7 @@ function entitySpriteSize(shape, size) {
     if (presentationType === "grenade") return { width: size * 10, height: size * 10 };
     if (presentationType === "proximityMine") return { width: size * 4, height: size * 4 };
     if (presentationType === "fireball") return { width: size * 1.6, height: size * 1.6 };
-    if (["grenadeExplosion", "mineExplosion", "gravityExplosion", "orbitalExplosion"].includes(presentationType)) return { width: size, height: size };
+    if (["grenadeExplosion", "mineExplosion", "gravityExplosion", "orbitalExplosion", "singularityZone", "singularityExplosion"].includes(presentationType)) return { width: size, height: size };
     // Each Null Zone frame is roughly 1.25:1 and includes some visual padding.
     // Keep that aspect-ratio compensation, but enlarge the presentation by
     // about 25 units so its visible ring reaches the 300-unit collider.

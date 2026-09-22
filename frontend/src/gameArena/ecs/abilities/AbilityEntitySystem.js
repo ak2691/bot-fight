@@ -367,12 +367,15 @@ function tickCanonicalProjectile(entity, phase, world, combat) {
     const movement = phase.movement ?? {};
     const speed = resolvePhaseNumber(movement.speed, stats, phase, 0);
     const velocityMagnitude = Math.hypot(Number(entity.velocityX ?? 0), Number(entity.velocityY ?? 0));
-    const direction = velocityMagnitude > 0.001
+    const baseDirection = velocityMagnitude > 0.001
         ? {
             x: Number(entity.velocityX ?? 0) / velocityMagnitude,
             y: Number(entity.velocityY ?? 0) / velocityMagnitude,
         }
         : compassDirection(entity.rotation);
+    const direction = movement.direction === "backward"
+        ? { x: -baseDirection.x, y: -baseDirection.y }
+        : baseDirection;
     const start = { x: Number(entity.x), y: Number(entity.y) };
     const rawEnd = {
         x: start.x + direction.x * speed,
@@ -979,6 +982,20 @@ function canonicalCollisionTargets(entity, phase, world, start = null, end = nul
     // `execution` is reserved for embedded summon abilities.
     const targetEvent = phase.events?.[PHASE_EVENT_TYPES.COLLISION];
     if (!eventTargetsKind(targetEvent, TARGET_KINDS.BOT)) return [];
+    if (targetEvent?.targetPolicy?.source === "tethered") {
+        const tethered = new Set(entity.tetheredTargetIds ?? []);
+        return world.bots
+            .filter((bot) => tethered.has(String(bot.id)) || tethered.has(String(bot.slot)))
+            .filter((bot) => isEnemy(entity, bot, world.bots)
+                && Number(bot.hp ?? BASE_BOT_HP) > 0
+                && !ignoresHostileEffects(bot))
+            .map((bot) => ({
+                bot,
+                collisionDistance: Math.hypot(
+                    Number(entity.x) - Number(bot.x), Number(entity.y) - Number(bot.y),
+                ),
+            }));
+    }
     const skipOwner = Boolean(phase.skipOwner);
     const entityStart = start ?? { x: Number(entity.x), y: Number(entity.y) };
     const entityEnd = end ?? entityStart;

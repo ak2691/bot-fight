@@ -389,6 +389,15 @@ test("action target inspectors switch to coordinates and preserve target offsets
     assert.match(source, /x2="78"/);
     assert.match(css, /\.code-angle-help-dialog > header \.modal-close-button \{ color: #fff; font-size: 28px; \}/);
     assert.match(source, /Both diagrams show 0°/);
+    const phaseControls = source.slice(source.indexOf("function PhaseOrientationControls"), source.indexOf("function newTreeBranch"));
+    assert.match(phaseControls, /Explain Phase Strike landing rotation/);
+    assert.match(phaseControls, /function PhaseStrikeLandingModal/);
+    assert.match(phaseControls, /rotates by this value relative to the facing it had when the ability started/);
+    assert.doesNotMatch(phaseControls, /<small>0 deg = keep facing/);
+    assert.match(phaseControls, /function PhaseStrikeLandingDiagram/);
+    assert.match(phaseControls, /BEFORE HIT/);
+    assert.match(phaseControls, /AFTER HIT · 180°/);
+    assert.match(phaseControls, /lands behind · faces back/);
     const movementControls = source.slice(source.indexOf("function MovementConfigurationControls"), source.indexOf("function PhaseOrientationControls"));
     assert.doesNotMatch(movementControls, /targetOffsetX|targetOffsetY/);
 });

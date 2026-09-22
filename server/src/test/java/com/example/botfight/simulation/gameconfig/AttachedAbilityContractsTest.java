@@ -49,14 +49,14 @@ class AbilityContractsTest {
         assertThat(AbilityContracts.entityContractForAbility(14).phases().getFirst().effects())
                 .filteredOn(effect -> effect.type() == PULL)
                 .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(6));
-        assertThat(AbilityContracts.entityContractForAbility(28).phases().getFirst().effects())
+        assertThat(AbilityContracts.entityContractForAbility(28).phases().get(1).effects())
                 .filteredOn(effect -> effect.type() == PULL)
-                .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(100));
+                .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(150));
         assertThat(AbilityContracts.effectAmount(9, DAMAGE)).isEqualTo(20);
         assertThat(AbilityContracts.effectAmount(26, DAMAGE)).isEqualTo(15);
-        assertThat(AbilityContracts.effectDurationMs(9, "slow")).isEqualTo(1_000);
-        assertThat(AbilityContracts.effectAmount(30, DAMAGE)).isEqualTo(15);
-        assertThat(AbilityContracts.effectDurationMs(30, "slow")).isEqualTo(2_000);
+        assertThat(AbilityContracts.effectDurationMs(9, "slow")).isEqualTo(3_000);
+        assertThat(AbilityContracts.effectAmount(30, DAMAGE)).isEqualTo(20);
+        assertThat(AbilityContracts.effectDurationMs(30, "slow")).isEqualTo(1_500);
         assertThat(AbilityContracts.entityContractForAbility(4).phases().get(2).effects())
                 .filteredOn(effect -> effect.type() == DAMAGE)
                 .singleElement().satisfies(effect -> {
@@ -87,9 +87,10 @@ class AbilityContractsTest {
                 .map(AbilityContracts.Effect::type))
                 .contains(PULL, DAMAGE);
 
-        assertThat(AbilityContracts.entityContractForAbility(28).phases().getFirst().effects())
+        assertThat(AbilityContracts.entityContractForAbility(28).phases().stream()
+                .flatMap(phase -> phase.effects().stream()))
                 .extracting(AbilityContracts.Effect::type)
-                .containsExactly(DAMAGE, PULL, AbilityContracts.EffectType.STATUS);
+                .containsExactly(DAMAGE, AbilityContracts.EffectType.STATUS, PULL);
         assertThat(AbilityContracts.entityContractForAbility(29).phases().getFirst().effects())
                 .extracting(AbilityContracts.Effect::type)
                 .containsExactly(DAMAGE, AbilityContracts.EffectType.STATUS, AbilityContracts.EffectType.INTERRUPT);

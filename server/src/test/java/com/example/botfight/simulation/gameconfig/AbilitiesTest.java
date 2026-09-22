@@ -88,7 +88,7 @@ class AbilitiesTest {
 
     @Test
     void singularityUsesOneCenterToEdgeFalloffProfile() {
-        assertThat(Abilities.statusDurationMs(26, "slow", 0)).isEqualTo(1_500);
+        assertThat(Abilities.statusDurationMs(26, "slow", 0)).isEqualTo(2_000);
         assertThat(Abilities.stat(26, "knockback", 0)).isEqualTo(60);
         assertThat(Abilities.amountAtDistance(27, 0)).isEqualTo(35);
         assertThat(Abilities.stat(27, "pullPerTick", 0)).isEqualTo(10);
@@ -105,8 +105,9 @@ class AbilitiesTest {
         assertThat(Abilities.stat(6, "hitboxWidth", 0)).isEqualTo(80);
         assertThat(Abilities.stat(3, "hitboxWidth", 0)).isEqualTo(5);
         assertThat(Abilities.definition(9).damage()).isEqualTo(20);
+        assertThat(Abilities.windupMs(9)).isEqualTo(1_000);
         assertThat(Abilities.stat(9, "hitboxWidth", 0)).isEqualTo(5);
-        assertThat(Abilities.definition(11).damage()).isEqualTo(25);
+        assertThat(Abilities.definition(11).damage()).isEqualTo(30);
         assertThat(Abilities.definition(17).damage()).isEqualTo(5);
         assertThat(Abilities.definition(18).damage()).isEqualTo(20);
         assertThat(Abilities.stat(15, "hitboxWidth", 0)).isEqualTo(150);
@@ -119,15 +120,15 @@ class AbilitiesTest {
         assertThat(Abilities.definition(25).damage()).isEqualTo(15);
         assertThat(Abilities.definition(26).damage()).isEqualTo(15);
         assertThat(Abilities.definition(28).damage()).isEqualTo(10);
-        assertThat(Abilities.stat(28, "pullPerTick", 0)).isEqualTo(100);
-        assertThat(Abilities.definition(29).damage()).isEqualTo(15);
+        assertThat(Abilities.stat(28, "pullPerTick", 0)).isEqualTo(150);
+        assertThat(Abilities.definition(29).damage()).isEqualTo(25);
         assertThat(Abilities.stat(29, "hp", 0)).isEqualTo(20);
         assertThat(Abilities.cooldownMs(30)).isEqualTo(8_000);
         assertThat(Abilities.windupMs(30)).isEqualTo(200);
-        assertThat(Abilities.definition(30).damage()).isEqualTo(15);
+        assertThat(Abilities.definition(30).damage()).isEqualTo(20);
         assertThat(Abilities.stat(30, "interruptMs", 0)).isEqualTo(250);
         assertThat(Abilities.stat(30, "hitboxWidth", 0)).isEqualTo(8);
-        assertThat(Abilities.statusDurationMs(30, "slow", 0)).isEqualTo(2_000);
+        assertThat(Abilities.statusDurationMs(30, "slow", 0)).isEqualTo(1_500);
         assertThat(Abilities.definition(31).damage()).isEqualTo(3);
         assertThat(Abilities.stat(31, "knockback", 0)).isEqualTo(40);
         assertThat(Abilities.definition(32).damage()).isZero();
@@ -223,8 +224,7 @@ class AbilitiesTest {
                 .isEqualTo(Abilities.stat(5, "speed", 0) * Abilities.durationMs(5) / 100);
         assertThat(Abilities.range(18))
                 .isEqualTo(Abilities.stat(18, "speed", 0) * Abilities.durationMs(18) / 100);
-        assertThat(Abilities.range(28))
-                .isEqualTo(Abilities.stat(28, "speed", 0) * Abilities.durationMs(28) / 100);
+        assertThat(Abilities.range(28)).isEqualTo(400);
     }
 
     @Test

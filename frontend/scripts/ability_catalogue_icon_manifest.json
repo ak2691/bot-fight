@@ -206,24 +206,24 @@
     },
     "frost_ring": {
       "output": "frost_ring.webp",
-      "source": "frontend/src/assets/arena/abilities/zones/gravity-grenade.png",
-      "selection": "temporary catalogue placeholder until the Frost Ring sprite sheet exists",
+      "source": "frontend/src/assets/arena/abilities/frostring/IceShatter_96x96.png",
+      "grid": { "columns": 49, "rows": 1, "frame_index": 19 },
       "crop": "alpha",
       "fit": "contain",
       "padding": 34
     },
     "singularity": {
       "output": "singularity.webp",
-      "source": "frontend/src/assets/arena/abilities/orbital-strike/orbital-strike-marker.png",
-      "selection": "temporary catalogue placeholder until the Singularity sprite sheet exists",
+      "source": "frontend/src/assets/arena/abilities/singularity/atlas_11.webp",
+      "grid": { "columns": 2, "rows": 2, "frame_index": 0 },
       "crop": "alpha",
       "fit": "contain",
       "padding": 34
     },
     "tether_bolt": {
       "output": "tether_bolt.webp",
-      "source": "frontend/src/assets/arena/abilities/rays/concussive-shot.png",
-      "selection": "temporary catalogue placeholder until the Tether Bolt sprite sheet exists",
+      "source": "frontend/src/assets/arena/abilities/rays/tether-bolt-icon.webp",
+      "selection": "generated transparent blue tether arrow matching the anchored in-arena visual",
       "crop": "alpha",
       "fit": "contain",
       "padding": 38

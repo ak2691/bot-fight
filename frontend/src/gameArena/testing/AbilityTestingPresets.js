@@ -120,6 +120,8 @@ function opponentCode(abilityId) {
             return { loadout: loadout(12), code: castCode(12) };
         case 11:
             return { loadout: loadout(), code: code([root("mine-approach-if", [moveTowardTarget()])]) };
+        case 29:
+            return { loadout: loadout(), code: code([root("snare-approach-if", [moveTowardTarget()])]) };
         default:
             return { loadout: loadout(), code: passiveCode() };
     }
@@ -140,6 +142,9 @@ function positioningFor(abilityId) {
     }
     if (abilityId === 25) {
         return { player: { x: TEST_CENTER_X, y: TEST_CENTER_Y }, opponent: { x: TEST_CENTER_X, y: 708 }, playerRotation: 180, opponentRotation: 0 };
+    }
+    if (abilityId === 26) {
+        return { player: { x: TEST_CENTER_X, y: TEST_CENTER_Y }, opponent: { x: TEST_CENTER_X, y: TEST_CENTER_Y + 120 }, playerRotation: 180, opponentRotation: 0 };
     }
     if (abilityId === 15) {
         return { player: { x: TEST_CENTER_X, y: 510 }, opponent: { x: TEST_CENTER_X, y: 690 }, playerRotation: 180, opponentRotation: 0 };
