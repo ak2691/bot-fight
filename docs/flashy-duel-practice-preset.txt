@@ -1,6 +1,6 @@
 Flashy Duel practice-room preset reference
 
-Archived from frontend/src/gameArena/testing/FlashyDuelPreset.js on 2026-09-22.
+Archived from frontend/src/gameArena/testing/FlashyDuelPreset.js on 2026-09-23.
 This is intentionally not wired into the application right now.
 Restore the JavaScript source if the Practice Room showcase is requested again.
 
@@ -323,15 +323,20 @@ function buildOpponentCode() {
         root("flashy-opponent-movement", 6, [
             branch("opponent-movement-edge", [numberCondition("selectable.edgeDistance", "lte", 160)], [walk(-90)]),
             branch("opponent-movement-approach", [pairCondition("selectable.distance", "gt", 520)], [walk(0)], 2),
+            // Commit inward at mid-range so both bots cannot settle into mirrored orbits.
+            branch("opponent-movement-commit", [
+                pairCondition("selectable.distance", "gt", 175),
+                pairCondition("selectable.distance", "lte", 450),
+            ], [walk(0)], 3),
             branch("opponent-movement-kite-cooldowns", [
                 pairCondition("selectable.distance", "lte", 175),
                 abilityCooldownAbove(ABILITIES.STUN, 0.2),
                 abilityCooldownAbove(ABILITIES.FROST_RING, 0.2),
                 abilityCooldownAbove(ABILITIES.SILENCE_PULSE, 0.2),
-            ], [walk(-90)], 3),
-            branch("opponent-movement-pressure", [pairCondition("selectable.distance", "lte", 240)], [walk(0)], 4),
-            branch("opponent-movement-orbit", [pairCondition("selectable.distance", "lte", 450)], [walk(-90)], 5),
-            branch("opponent-movement-wait", [always()], [walk(0)], 6),
+            ], [walk(-90)], 4),
+            branch("opponent-movement-pressure", [pairCondition("selectable.distance", "lte", 240)], [walk(0)], 5),
+            branch("opponent-movement-orbit", [pairCondition("selectable.distance", "lte", 450)], [walk(-90)], 6),
+            branch("opponent-movement-wait", [always()], [walk(0)], 7),
         ]),
         root("flashy-opponent-face", 7, [
             branch("opponent-face-target", [always()], [face()]),
@@ -384,7 +389,5 @@ export function buildFlashyDuelPreset() {
 }
 
 export { ABILITIES as FLASHY_DUEL_ABILITY_IDS, PLAYER_ABILITIES as FLASHY_DUEL_PLAYER_ABILITIES, OPPONENT_ABILITIES as FLASHY_DUEL_OPPONENT_ABILITIES };
-
-
 ```
 

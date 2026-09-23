@@ -35,6 +35,16 @@ test("navbar uses a large clickable bot face while authentication keeps the word
     assert.doesNotMatch(authLayoutSource, /<BotLogo/);
 });
 
+test("authentication showcase uses the compressed looping landing video and first-frame poster", () => {
+    assert.match(authLayoutSource, /newlandingpagevid-compressed\.mp4/);
+    assert.match(authLayoutSource, /newlandingpagevid-poster\.webp/);
+    assert.match(authLayoutSource, /autoPlay/);
+    assert.match(authLayoutSource, /muted/);
+    assert.match(authLayoutSource, /loop/);
+    assert.match(authLayoutSource, /preload="auto"/);
+    assert.match(authLayoutSource, /poster=\{landingPosterUrl\}/);
+});
+
 test("profile page uses scoped charcoal surfaces without recoloring the shared navbar", () => {
     assert.match(profileSource, /className="profile-page min-h-screen bg-\[#181b1c\] font-interface text-\[#f2f4f5\]"/);
     assert.match(globalStyles, /\.profile-page \{[\s\S]*background: #181b1c;[\s\S]*color: #f2f4f5;/);

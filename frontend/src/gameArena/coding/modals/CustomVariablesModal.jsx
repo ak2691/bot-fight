@@ -36,7 +36,14 @@ function DeferredNumberInput({ value, onCommit, min, max, fallback = 0, ...props
 
 function DeferredTextInput({ value, onCommit, ...props }) {
     const [draft, setDraft] = useState(String(value ?? ""));
-    return <input {...props} value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={() => onCommit(draft)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } }} />;
+    const sanitize = (next) => String(next ?? "").replace(/[^A-Za-z0-9 _-]/g, "").replace(/\s+/g, " ").slice(0, 40);
+    const commit = () => {
+        const normalized = sanitize(draft).trim();
+        const next = /^[A-Za-z]/.test(normalized) ? normalized : String(value ?? "Variable");
+        setDraft(next);
+        onCommit(next);
+    };
+    return <input {...props} value={draft} onChange={(event) => setDraft(sanitize(event.target.value))} onBlur={commit} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } }} />;
 }
 
 export default function CustomVariablesModal({ configuration, currentValues, maxSlots = MAX_CUSTOM_VARIABLE_SLOTS, idPrefix = "custom", disabled, onChange, onClose }) {

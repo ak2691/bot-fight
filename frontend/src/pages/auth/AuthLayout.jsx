@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import FloatingLogicBackground from "../../components/FloatingLogicBackground";
-import landingVideoUrl from "../../assets/landingpage/videoforbotfight.mp4";
-import landingPosterUrl from "../../assets/landingpage/videoforbotfight-poster.webp";
+import landingVideoUrl from "../../assets/landingpage/newlandingpagevid-compressed.mp4";
+import landingPosterUrl from "../../assets/landingpage/newlandingpagevid-poster.webp";
 
 export default function AuthLayout({ title, subtitle, children, footer, showBrand = true, showPanel = true, showcase = false }) {
     return (
@@ -64,7 +64,7 @@ function AuthShowcase() {
                     muted
                     loop
                     playsInline
-                    preload="metadata"
+                    preload="auto"
                     poster={landingPosterUrl}
                     aria-label="Bot Fight arena gameplay preview"
                 >

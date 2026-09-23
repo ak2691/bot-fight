@@ -190,6 +190,7 @@ test("practice loadouts save on Enter and use the shared selector and close cont
     assert.match(loadoutModalSource, /aria-label="Close sandbox loadout editor" className="modal-close-button"/);
     assert.match(panelSource, /aria-label="Close bot code workspace"[\s\S]*className="modal-close-button"[\s\S]*<span aria-hidden="true">×<\/span>/);
     assert.match(customVariablesSource, /aria-label="Close custom variables" className="modal-close-button"/);
+    assert.match(customVariablesSource, /replace\(\/\[\^A-Za-z0-9 _-\]\/g, ""\)/);
     assert.match(puzzleWorkspaceSource, /aria-label="Close puzzle configuration"[\s\S]*className="modal-close-button"/);
     assert.match(catalogueSource, /className="modal-close-button"/);
     assert.match(submissionsSource, /className="modal-close-button" aria-label="Close submissions"/);
@@ -727,7 +728,7 @@ test("custom variable configuration only defines variables and starting values",
     assert.match(source, /event\.key === "Enter"[\s\S]*event\.currentTarget\.blur\(\)/);
     assert.doesNotMatch(source, /event\.key === "Enter"[^{]*\{[^}]*commit\(\)/);
     assert.match(source, /function DeferredTextInput/);
-    assert.match(source, /onBlur=\{\(\) => onCommit\(draft\)\}/);
+    assert.match(source, /onChange=\{\(event\) => setDraft\(sanitize\(event\.target\.value\)\)\} onBlur=\{commit\}/);
     assert.match(source, /aria-label="Variable name"[\s\S]*onCommit=\{\(name\) => update\(selectedIndex, \{ name \}\)\}/);
     assert.doesNotMatch(source, /aria-label="Variable name"[^>]*onChange=\{\(event\) => update/);
 });
