@@ -530,6 +530,81 @@ test("Static Snare takes damage from a colliding projectile without inheriting i
     assert.equal(next.entities.find((entity) => entity.abilityId === 29)?.hp, 5);
 });
 
+test("Grenade explosion damages Static Snare across the explosion radius", () => {
+    const snareOwner = { id: "snare-owner", slot: 1, teamNumber: 1, x: 100, y: 100, rotation: 0, hp: 100, maxHp: 100 };
+    const grenadeOwner = { id: "grenade-owner", slot: 2, teamNumber: 2, x: 900, y: 700, rotation: 0, hp: 100, maxHp: 100 };
+    const snare = entityFor(snareOwner, 29);
+    const grenadeExplosion = {
+        ...entityFor(grenadeOwner, 4),
+        x: 170,
+        y: 100,
+        velocityX: 0,
+        velocityY: 0,
+        phaseId: "active",
+        phaseTimerMs: 0,
+        phaseLocked: true,
+    };
+
+    const result = tickAbilityEntityWorld({
+        entities: [snare, grenadeExplosion],
+        bots: [snareOwner, grenadeOwner],
+        stepMs: 100,
+        width: 1000,
+        height: 800,
+    }, noDamageCombat);
+
+    assert.equal(result.entities.find((entity) => entity.abilityId === 29)?.phaseId, "destroyed");
+});
+
+test("Travelling Grenade collides with an HP-bearing Static Snare and explodes", () => {
+    const snareOwner = { id: "snare-owner", slot: 1, teamNumber: 1, x: 100, y: 100, rotation: 0, hp: 100, maxHp: 100 };
+    const grenadeOwner = { id: "grenade-owner", slot: 2, teamNumber: 2, x: 900, y: 700, rotation: 0, hp: 100, maxHp: 100 };
+    const snare = entityFor(snareOwner, 29);
+    const grenade = {
+        ...entityFor(grenadeOwner, 4),
+        x: 100,
+        y: 132,
+        velocityX: 0,
+        velocityY: -32,
+        rotation: 0,
+    };
+
+    const result = tickAbilityEntityWorld({
+        entities: [snare, grenade], bots: [snareOwner, grenadeOwner],
+        stepMs: 100, width: 1000, height: 800,
+    }, noDamageCombat);
+
+    assert.equal(result.entities.find((entity) => entity.abilityId === 4)?.phaseId, "active");
+});
+
+test("Grenade fuse explosion damages Static Snare on the transition tick", () => {
+    const snareOwner = { id: "snare-owner", slot: 1, teamNumber: 1, x: 100, y: 100, rotation: 0, hp: 100, maxHp: 100 };
+    const grenadeOwner = { id: "grenade-owner", slot: 2, teamNumber: 2, x: 900, y: 700, rotation: 0, hp: 100, maxHp: 100 };
+    const snare = entityFor(snareOwner, 29);
+    const armedGrenade = {
+        ...entityFor(grenadeOwner, 4),
+        x: 170,
+        y: 100,
+        velocityX: 0,
+        velocityY: 0,
+        phaseId: "armed",
+        phaseTimerMs: 900,
+        phaseLocked: true,
+    };
+
+    const exploded = tickAbilityEntityWorld({
+        entities: [snare, armedGrenade], bots: [snareOwner, grenadeOwner],
+        stepMs: 100, width: 1000, height: 800,
+    }, noDamageCombat);
+    assert.equal(exploded.entities.find((entity) => entity.abilityId === 4)?.phaseId, "active");
+    assert.equal(exploded.entities.find((entity) => entity.abilityId === 29)?.phaseId, "armed");
+
+    const resolved = tickAbilityEntityWorld({
+        ...exploded, stepMs: 100, width: 1000, height: 800,
+    }, noDamageCombat);
+    assert.equal(resolved.entities.find((entity) => entity.abilityId === 29)?.phaseId, "destroyed");
+});
+
 test("Static Snare gets its stronger radius and effects when any attack destroys it", () => {
     const owner = { id: "owner", slot: 1, x: 100, y: 100, size: 60, rotation: 90, hp: 100, triggeredAbility: 9 };
     const snare = entityFor(owner, 29);

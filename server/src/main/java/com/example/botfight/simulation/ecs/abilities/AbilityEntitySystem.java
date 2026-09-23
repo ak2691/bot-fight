@@ -376,7 +376,7 @@ public final class AbilityEntitySystem {
         }
         return switch (phase.type()) {
             case PROJECTILE, RAY, ARC, MELEE ->
-                    tickCanonicalProjectile(entity, contract, phase, bots, arena, stepMs, combat);
+                    tickCanonicalProjectile(entity, contract, phase, allEntities, bots, arena, stepMs, combat);
             case ZONE, SELF ->
                     tickCanonicalZone(entity, contract, phase, bots, arena, stepMs, combat, false);
             case SUMMON ->
@@ -414,7 +414,8 @@ public final class AbilityEntitySystem {
 
     private static <F extends AbilityEntityBot> TickResult tickCanonicalProjectile(
             ArenaEntity entity, AbilityContracts.AbilityContract contract,
-            AbilityContracts.AbilityPhase phase, List<F> bots, ArenaBounds arena,
+            AbilityContracts.AbilityPhase phase, List<ArenaEntity> allEntities,
+            List<F> bots, ArenaBounds arena,
             int stepMs, Combat<F> combat) {
         AbilityContracts.PhaseMovement movement = phase.movement();
         double speed = movement == null ? 0 : movement.speed();
@@ -479,6 +480,10 @@ public final class AbilityEntitySystem {
         List<HitCandidate<F>> selected = phase.hit() != null
                 && phase.hit().mode() == AbilityContracts.HitMode.NEAREST
                 ? candidates.stream().limit(1).toList() : candidates;
+        boolean hpEntityCollision = eventTargetsKind(collisionEvent,
+                AbilityContracts.TargetKind.HP_ENTITY)
+                && allEntities.stream().anyMatch(target -> !target.id().equals(entity.id())
+                        && target.hp() > 0 && overlaps(moved, target));
         EventScheduleResult collisionSchedule = eventSchedule(
                 entity, phase, AbilityContracts.PhaseEventType.COLLISION, stepMs);
         Map<Integer, ArenaEntity> collisionSources = new HashMap<>();
@@ -487,7 +492,7 @@ public final class AbilityEntitySystem {
         }
         DispatchResult<F> dispatched = new DispatchResult<>(moved, bots);
         for (int check = 0; check < collisionSchedule.checks() && dispatched.entity() != null; check++) {
-            boolean hasTargets = !selected.isEmpty();
+            boolean hasTargets = !selected.isEmpty() || hpEntityCollision;
             boolean emitsVisual = collisionEvent != null
                     && collisionEvent.actions().contains(AbilityContracts.PhaseAction.EMIT_VISUAL);
             if (!hasTargets && !emitsVisual) continue;

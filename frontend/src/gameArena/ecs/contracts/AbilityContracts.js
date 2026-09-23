@@ -579,7 +579,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 visual: visual("grenade", 12, "moving"),
                 durationMs: 1000,
                 events: {
-                    [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: BOT_TARGET_KINDS, actions: [PHASE_ACTIONS.TRANSITION], transition: { to: "active" } },
+                    [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: DAMAGE_TARGET_KINDS, actions: [PHASE_ACTIONS.TRANSITION], transition: { to: "active" } },
                     [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.TRANSITION], transition: { to: "armed" } },
                 },
             }),

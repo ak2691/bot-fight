@@ -981,7 +981,9 @@ function canonicalCollisionTargets(entity, phase, world, start = null, end = nul
     // Collision cadence belongs to the collision event's schedule.
     // `execution` is reserved for embedded summon abilities.
     const targetEvent = phase.events?.[PHASE_EVENT_TYPES.COLLISION];
-    if (!eventTargetsKind(targetEvent, TARGET_KINDS.BOT)) return [];
+    const targetsBots = eventTargetsKind(targetEvent, TARGET_KINDS.BOT);
+    const targetsHpEntities = eventTargetsKind(targetEvent, TARGET_KINDS.HP_ENTITY);
+    if (!targetsBots && !targetsHpEntities) return [];
     if (targetEvent?.targetPolicy?.source === "tethered") {
         const tethered = new Set(entity.tetheredTargetIds ?? []);
         return world.bots
@@ -1000,7 +1002,7 @@ function canonicalCollisionTargets(entity, phase, world, start = null, end = nul
     const entityStart = start ?? { x: Number(entity.x), y: Number(entity.y) };
     const entityEnd = end ?? entityStart;
     const radius = phaseRadius({}, phase, "radius", Number(entity.size ?? 0) / 2);
-    return world.bots
+    const botTargets = targetsBots ? world.bots
         .map((bot) => {
             if (!isEnemy(entity, bot, world.bots)
                 || skipOwner && Number(bot.slot) === Number(entity.ownerSlot)
@@ -1019,7 +1021,19 @@ function canonicalCollisionTargets(entity, phase, world, start = null, end = nul
                     : collision.distance ?? movingCirclesDistance(entityStart, entityEnd, botPath.start, botPath.end),
             };
         })
-        .filter(Boolean)
+        .filter(Boolean) : [];
+    const entityTargets = targetsHpEntities ? (world.entities ?? [])
+        .filter((target) => target?.id !== entity.id && target?.hp != null && Number(target.hp) > 0)
+        .map((target) => {
+            const targetPath = entityMovementSegment(target);
+            const collision = movingEntityCollision(entity, entityStart, entityEnd, target, targetPath.start, targetPath.end);
+            return collision?.hit ? {
+                bot: target,
+                collisionDistance: collision.distance ?? movingCirclesDistance(entityStart, entityEnd, targetPath.start, targetPath.end),
+            } : null;
+        })
+        .filter(Boolean) : [];
+    return [...botTargets, ...entityTargets]
         .sort((first, second) => first.collisionDistance - second.collisionDistance);
 }
 
