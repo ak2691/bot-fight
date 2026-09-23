@@ -11,7 +11,6 @@ import SandboxLoadoutModal from "./components/modals/SandboxLoadoutModal.jsx";
 import {
     createDefaultAbilityStrategyConfiguration,
     hasAbilityStrategyActions,
-    inspectAbilityStrategyConditions,
     normalizeAbilityStrategyConfiguration,
 } from "./botlogic/code/BotCode.js";
 import { buildDeterministicLogicAction, idleAction } from "./botlogic/planner/ArenaActionPlanner.js";
@@ -228,27 +227,6 @@ export default function Arena({
                     true,
                 )
                     : buildInitialArenaShapes(matchContext));
-    const loggedTrainingEntityIdsRef = useRef(null);
-    const loggedTrainingConditionStateRef = useRef(null);
-
-    useEffect(() => {
-        if (isMatchTesting || tutorialMode) return;
-        const entities = shapes.filter((shape) => !isSimulationBotShape(shape));
-        const entityIds = entities.map((entity) => String(entity.id)).sort().join("|");
-        if (loggedTrainingEntityIdsRef.current === entityIds) return;
-        loggedTrainingEntityIdsRef.current = entityIds;
-        console.log("[Training room entities]", {
-            count: entities.length,
-            entities: entities.map((entity) => ({
-                id: entity.id,
-                type: entity.type,
-                abilityId: entity.abilityId ?? null,
-                ownerId: entity.ownerId ?? null,
-                ownerSlot: entity.ownerSlot ?? null,
-                remainingMs: entity.remainingMs ?? null,
-            })),
-        });
-    }, [isMatchTesting, shapes, tutorialMode]);
     const [selectedId, setSelectedId] = useState(null);
     const [submitStatus, setSubmitStatus] = useState(null);
     const [isAutoPlaying, setIsAutoPlaying] = useState(false);
@@ -1042,21 +1020,6 @@ export default function Arena({
         autoIntervalRef.current = setInterval(() => {
             setShapes((prevShapes) => {
                 const stateSnapshot = buildStatePayload(prevShapes, selectedLoadout);
-                if (!isMatchTesting && !tutorialMode) {
-                    const conditionInspections = inspectAbilityStrategyConditions(testingConfigurationRef.current, stateSnapshot);
-                    const conditionState = JSON.stringify(conditionInspections);
-                    if (loggedTrainingConditionStateRef.current !== conditionState) {
-                        loggedTrainingConditionStateRef.current = conditionState;
-                        console.log("[Training room player conditions]", {
-                            payload: {
-                                abilities: stateSnapshot.playerModel?.abilities ?? [],
-                                abilityActiveMs: stateSnapshot.playerModel?.abilityActiveMs ?? {},
-                                abilityCooldowns: stateSnapshot.playerModel?.abilityCooldowns ?? {},
-                            },
-                            conditions: conditionInspections,
-                        });
-                    }
-                }
                 const botBefores = prevShapes
                     .filter(isSimulationBotShape)
                     .map(toSimulationBotShape);

@@ -1261,6 +1261,26 @@ test("Lock On prepares for two ticks before facing its target and respects its 1
     assert.equal(second.abilityCooldowns[20], 0);
 });
 
+test("Disruptive Beam uses its full 0.2 second preparation before activating", () => {
+    const beamBot = {
+        ...base,
+        abilities: [30],
+        abilityCooldowns: { 30: 0 },
+        abilityCharges: {},
+        abilityActiveMs: {},
+    };
+    const action = { dx: 0, dy: 0, dRot: 0, abilityAction: { action: 30 } };
+
+    const firstTick = applyBotAction(beamBot, action, 100, applyDamageToShape);
+    assert.equal(firstTick.triggeredAbility, null);
+    assert.equal(firstTick.preparingAbility, 30);
+    assert.equal(firstTick.preparingMs, 100);
+
+    const secondTick = applyBotAction(firstTick, action, 100, applyDamageToShape);
+    assert.equal(secondTick.triggeredAbility, 30);
+    assert.equal(secondTick.preparingAbility, null);
+});
+
 test("entity damage and hostile DOT use the same HP-loss stagger settlement", () => {
     const owner = { id: "owner", slot: 1, x: 100, y: 100, size: 60, hp: 100, maxHp: 100 };
     const target = { id: "target", slot: 2, x: 150, y: 100, size: 60, hp: 100, maxHp: 100 };

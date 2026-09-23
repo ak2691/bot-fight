@@ -27,6 +27,7 @@ import {
     newTreeBranch,
     sanitizeConfigurationConditions,
 } from "../../gameArena/coding/nodes/GraphNodes.jsx";
+import { normalizePuzzleCustomVariables } from "./puzzleLogicNormalization.js";
 
 const INITIAL_ZOOM = 0.85;
 const INITIAL_PAN = { x: 40, y: 36 };
@@ -115,7 +116,8 @@ export function flattenPuzzleConditions(configuration, kind) {
 export function normalizePuzzleLogic(configuration, options = {}) {
     if (!configuration) return configuration;
     const conditionNumbers = { win: 0, lose: 0, modify: 0, other: 0 };
-    const customVariables = customVariableDefinitions(configuration);
+    const normalizedCustomVariables = normalizePuzzleCustomVariables(configuration);
+    const customVariables = customVariableDefinitions({ customVariables: normalizedCustomVariables });
     const selectableTypes = options.selectableTypes ?? SELECTABLE_TYPES;
     const roots = normalizeRoots(configuration.roots ?? []).map((root) => {
         const normalizedKind = typeof root?.kind === "string" ? root.kind.trim().toLowerCase() : root?.kind;
@@ -128,7 +130,7 @@ export function normalizePuzzleLogic(configuration, options = {}) {
         };
     });
     return sanitizeConfigurationConditions(
-        { ...configuration, roots },
+        { ...configuration, customVariables: normalizedCustomVariables, roots },
         options.conditionTypes ?? CONDITION_TYPES,
         options.defaultCondition ?? CONDITION_TYPES[0],
         selectableTypes,

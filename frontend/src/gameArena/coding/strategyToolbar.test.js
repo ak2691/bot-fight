@@ -407,7 +407,6 @@ test("running previews read bot-code edits without restarting playback", () => {
 
     assert.match(source, /testingConfigurationRef\.current = testingConfiguration/);
     assert.match(source, /opponentTestingConfigurationRef\.current = opponentTestingConfiguration/);
-    assert.match(source, /inspectAbilityStrategyConditions\(testingConfigurationRef\.current, stateSnapshot\)/);
     assert.match(source, /bot\.id === "main"[\s\S]*\? testingConfigurationRef\.current[\s\S]*\? opponentTestingConfigurationRef\.current/);
 });
 
