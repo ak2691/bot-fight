@@ -575,6 +575,35 @@ test("Travelling Grenade collides with an HP-bearing Static Snare and explodes",
     }, noDamageCombat);
 
     assert.equal(result.entities.find((entity) => entity.abilityId === 4)?.phaseId, "active");
+
+    const resolved = tickAbilityEntityWorld({
+        ...result, stepMs: 100, width: 1000, height: 800,
+    }, noDamageCombat);
+    assert.equal(resolved.entities.find((entity) => entity.abilityId === 29)?.phaseId, "destroyed");
+});
+
+test("Grenade can collide with and destroy its owner's Static Snare", () => {
+    const owner = { id: "owner", slot: 1, teamNumber: 1, x: 900, y: 700, rotation: 0, hp: 100, maxHp: 100 };
+    const snare = { ...entityFor(owner, 29), x: 100, y: 100 };
+    const grenade = {
+        ...entityFor(owner, 4),
+        x: 100,
+        y: 132,
+        velocityX: 0,
+        velocityY: -32,
+        rotation: 0,
+    };
+
+    const collided = tickAbilityEntityWorld({
+        entities: [snare, grenade], bots: [owner],
+        stepMs: 100, width: 1000, height: 800,
+    }, noDamageCombat);
+    assert.equal(collided.entities.find((entity) => entity.abilityId === 4)?.phaseId, "active");
+
+    const resolved = tickAbilityEntityWorld({
+        ...collided, stepMs: 100, width: 1000, height: 800,
+    }, noDamageCombat);
+    assert.equal(resolved.entities.find((entity) => entity.abilityId === 29)?.phaseId, "destroyed");
 });
 
 test("Grenade fuse explosion damages Static Snare on the transition tick", () => {

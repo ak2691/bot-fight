@@ -74,7 +74,7 @@ public final class AbilityEntitySystem {
         Set<String> trapIds = new HashSet<>(traps.stream()
                 .map(entry -> entry.entity().id()).toList());
         List<F> botsAtTickStart = bots;
-        Set<String> removedByEntityCollision = entityCollisionRemovalIds(tickEntities);
+        Set<String> removedByEntityCollision = entityCollisionRemovalIds(tickEntities, bots);
         List<EntityEntry> movedTraps = traps.stream()
                 .filter(entry -> !removedByEntityCollision.contains(entry.entity().id()))
                 .map(entry -> {
@@ -184,7 +184,8 @@ public final class AbilityEntitySystem {
         return phase != null && phase.trigger() != null;
     }
 
-    private static Set<String> entityCollisionRemovalIds(List<ArenaEntity> entities) {
+    private static <F extends AbilityEntityBot> Set<String> entityCollisionRemovalIds(
+            List<ArenaEntity> entities, List<F> bots) {
         Set<String> removed = new HashSet<>();
         List<ArenaEntity> damageableTargets = entities.stream()
                 .filter(entity -> {
@@ -204,7 +205,8 @@ public final class AbilityEntitySystem {
                 boolean summonTarget = targetPhase != null
                         && targetPhase.type() == AbilityContracts.PhaseType.SUMMON;
                 return !source.id().equals(target.id())
-                        && source.ownerSlot() != target.ownerSlot()
+                        && (allowsFriendlyDamage(targetPhase)
+                            || entityOwnersAreHostile(source, target, bots))
                         && eventCanAffectHpEntity(collision, summonTarget)
                         && overlaps(source, target);
             });
@@ -483,7 +485,10 @@ public final class AbilityEntitySystem {
         boolean hpEntityCollision = eventTargetsKind(collisionEvent,
                 AbilityContracts.TargetKind.HP_ENTITY)
                 && allEntities.stream().anyMatch(target -> !target.id().equals(entity.id())
-                        && target.hp() > 0 && overlaps(moved, target));
+                        && target.hp() > 0
+                        && (allowsFriendlyDamage(AbilityContracts.phaseFor(target))
+                            || entityOwnersAreHostile(moved, target, bots))
+                        && overlaps(moved, target));
         EventScheduleResult collisionSchedule = eventSchedule(
                 entity, phase, AbilityContracts.PhaseEventType.COLLISION, stepMs);
         Map<Integer, ArenaEntity> collisionSources = new HashMap<>();
@@ -1280,6 +1285,22 @@ public final class AbilityEntitySystem {
         return owner == null
                 ? target.entitySlot() != ownerSlot
                 : owner.entityTeam() != target.entityTeam();
+    }
+
+    private static boolean allowsFriendlyDamage(AbilityContracts.AbilityPhase phase) {
+        return phase != null && phase.health() != null
+                && phase.health().allowFriendlyDamage();
+    }
+
+    private static <F extends AbilityEntityBot> boolean entityOwnersAreHostile(
+            ArenaEntity source, ArenaEntity target, List<F> bots) {
+        F sourceOwner = bots.stream()
+                .filter(bot -> bot.entitySlot() == source.ownerSlot()).findFirst().orElse(null);
+        F targetOwner = bots.stream()
+                .filter(bot -> bot.entitySlot() == target.ownerSlot()).findFirst().orElse(null);
+        return sourceOwner != null && targetOwner != null
+                ? sourceOwner.entityTeam() != targetOwner.entityTeam()
+                : source.ownerSlot() != target.ownerSlot();
     }
 
     private static boolean withinRadius(AbilityEntityBot bot, ArenaEntity source,

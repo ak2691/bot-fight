@@ -732,6 +732,7 @@ function applyIncomingEntityEffects(target, world, combat) {
     if (!target || target.hp == null) return target;
     const targetPhase = canonicalPhaseForEntity(target);
     const summonTarget = targetPhase?.type === "summon";
+    const allowFriendlyDamage = Boolean(targetPhase?.health?.allowFriendlyDamage);
     let next = target;
 
     for (const bot of world.bots ?? []) {
@@ -744,7 +745,7 @@ function applyIncomingEntityEffects(target, world, combat) {
         if (!abilityId || !phase || !event
             || !event.actions?.includes(PHASE_ACTIONS.APPLY_EFFECTS)
             || !eventCanAffectHpEntity(event, summonTarget)
-            || !isEnemy(target, bot, world.bots)
+            || !allowFriendlyDamage && !isEnemy(target, bot, world.bots)
             || !abilityHitsTarget(bot, next, abilityId)) continue;
         const distance = Math.hypot(Number(next.x) - Number(bot.x), Number(next.y) - Number(bot.y));
         const botDamage = typeof combat?.triggeredAbilityDamage === "function"
@@ -760,7 +761,8 @@ function applyIncomingEntityEffects(target, world, combat) {
     }
 
     for (const source of world.entities ?? []) {
-        if (!source || source.id === target.id || !entityOwnersAreHostile(source, target, world.bots)) continue;
+        if (!source || source.id === target.id
+            || !allowFriendlyDamage && !entityOwnersAreHostile(source, target, world.bots)) continue;
         const phase = canonicalPhaseForEntity(source);
         const event = phase?.events?.[PHASE_EVENT_TYPES.COLLISION];
         const collision = entityEffectCollision(source, target);
@@ -1023,7 +1025,8 @@ function canonicalCollisionTargets(entity, phase, world, start = null, end = nul
         })
         .filter(Boolean) : [];
     const entityTargets = targetsHpEntities ? (world.entities ?? [])
-        .filter((target) => target?.id !== entity.id && target?.hp != null && Number(target.hp) > 0)
+        .filter((target) => target?.id !== entity.id && target?.hp != null && Number(target.hp) > 0
+            && (targetAllowsFriendlyDamage(target) || entityOwnersAreHostile(entity, target, world.bots)))
         .map((target) => {
             const targetPath = entityMovementSegment(target);
             const collision = movingEntityCollision(entity, entityStart, entityEnd, target, targetPath.start, targetPath.end);
@@ -1252,7 +1255,9 @@ function entityCollisionRemovalIds(world) {
         if (!collisionEvent?.actions?.includes(PHASE_ACTIONS.APPLY_EFFECTS)
             || !collisionEvent.actions.includes(PHASE_ACTIONS.REMOVE)) continue;
         for (const target of targets) {
-            if (source.id === target.id || !entityOwnersAreHostile(source, target, world.bots)) continue;
+            if (source.id === target.id
+                || !targetAllowsFriendlyDamage(target)
+                    && !entityOwnersAreHostile(source, target, world.bots)) continue;
             if (damagingEntityCollision(source, target, world.bots)) {
                 removed.add(source.id);
                 break;
@@ -1265,7 +1270,7 @@ function entityCollisionRemovalIds(world) {
 function damagingEntityCollision(source, target, bots = []) {
     const phase = canonicalPhaseForEntity(source);
     const collisionEvent = phase?.events?.[PHASE_EVENT_TYPES.COLLISION];
-    if (!entityOwnersAreHostile(source, target, bots)
+    if (!targetAllowsFriendlyDamage(target) && !entityOwnersAreHostile(source, target, bots)
         || !eventCanAffectHpEntity(collisionEvent, canonicalPhaseForEntity(target)?.type === "summon")
         || !phase?.effects?.some((declared) =>
             (typeof declared === "string" ? declared : declared?.type) === EFFECT_TYPES.DAMAGE)
@@ -1281,6 +1286,10 @@ function damagingEntityCollision(source, target, bots = []) {
         targetPath.end,
     );
     return collision?.hit ? collision : null;
+}
+
+function targetAllowsFriendlyDamage(target) {
+    return Boolean(canonicalPhaseForEntity(target)?.health?.allowFriendlyDamage);
 }
 
 function entityOwnersAreHostile(source, target, bots = []) {

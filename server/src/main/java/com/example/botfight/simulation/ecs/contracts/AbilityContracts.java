@@ -171,9 +171,13 @@ public final class AbilityContracts {
     }
 
     /** Initial and maximum health for a phase that can receive incoming damage. */
-    public record Health(double hp, double maxHp) {
+    public record Health(double hp, double maxHp, boolean allowFriendlyDamage) {
+        public Health(double hp, double maxHp) {
+            this(hp, maxHp, false);
+        }
+
         public Health(double maxHp) {
-            this(maxHp, maxHp);
+            this(maxHp, maxHp, false);
         }
     }
 
@@ -1371,7 +1375,7 @@ public final class AbilityContracts {
                                                                 PhaseAction.TRANSITION),
                                                         "destroyed", "orbitalExplosion", 400, 240.0)),
                                 null, null, false, true, null, Map.of(), Map.of())
-                                .withHealth(new Health(20, 20)),
+                                .withHealth(new Health(20, 20, true)),
                         phase("triggered", -1, PhaseType.ZONE,
                                 new PhaseMovement(0), null,
                                 circle(75), effects(),

@@ -983,7 +983,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
             phase("armed", PHASE_TYPES.ZONE, {
                 movement: { speed: 0 },
                 hitbox: { shape: "circle", radius: 12 },
-                health: { hp: 20, maxHp: 20 },
+                health: { hp: 20, maxHp: 20, allowFriendlyDamage: true },
                 visual: visual("staticSnare", 24),
                 trigger: {
                     radius: 75,
