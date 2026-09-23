@@ -487,8 +487,8 @@ public final class AbilityEntitySystem {
                 && allEntities.stream().anyMatch(target -> !target.id().equals(entity.id())
                         && target.hp() > 0
                         && (allowsFriendlyDamage(AbilityContracts.phaseFor(target))
-                            || entityOwnersAreHostile(moved, target, bots))
-                        && overlaps(moved, target));
+                            || entityOwnersAreHostile(collisionEntity, target, collisionBots))
+                        && overlaps(collisionEntity, target));
         EventScheduleResult collisionSchedule = eventSchedule(
                 entity, phase, AbilityContracts.PhaseEventType.COLLISION, stepMs);
         Map<Integer, ArenaEntity> collisionSources = new HashMap<>();
