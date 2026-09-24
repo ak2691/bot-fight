@@ -369,7 +369,7 @@ class AbilityEntitySystemTest {
     }
 
     @Test
-    void tetherBoltExtendsFourTicksReturnsTwoTicksAndAppliesItsEffects() {
+    void tetherBoltExtendsFourTicksAndAppliesItsReturnPullOnce() {
         TestCombatant owner = new TestCombatant(1, 100, 100, 60, 100);
         ArenaEntity bolt = AbilityEntityFactory.create(
                 "tether-1", 28, 1, owner.x, owner.y, owner.size, 90, 1,
@@ -384,15 +384,15 @@ class AbilityEntitySystemTest {
             if (tick <= 3) assertThat(result.getFirst().phaseId()).isEqualTo("outbound");
             if (tick == 3) assertThat(result.getFirst().hitLedger()).containsKey(2);
             if (tick == 4) assertThat(result.getFirst().phaseId()).isEqualTo("return");
-            if (tick == 4) assertThat(target.x).isEqualTo(250);
-            if (tick == 5) assertThat(target.x).isEqualTo(100);
+            if (tick == 4) assertThat(target.x).isEqualTo(400);
+            if (tick == 5) assertThat(target.x).isEqualTo(250);
         }
 
         assertThat(result).isEmpty();
         assertThat(target.hp).isEqualTo(90);
         assertThat(target.slowedMs).isEqualTo(1_200);
         assertThat(target.stunMs).isZero();
-        assertThat(target.x).isEqualTo(100);
+        assertThat(target.x).isEqualTo(250);
     }
 
     @Test
