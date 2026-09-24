@@ -50,11 +50,9 @@ test("replay visual timers follow authoritative frame time without presentation 
 
 test("local replay preserves the organized ability timers used by Bot Room", () => {
     assert.deepEqual(replayBotAbilityState({
-        dashActiveMs: 200,
         abilityActiveMs: { 1: 300, 3: 850, 5: 500, 6: 400, 19: 100 },
     }), {
         abilityActiveMs: { 1: 300, 3: 850, 5: 500, 6: 400, 19: 100 },
-        dashActiveMs: 200,
     });
 });
 
@@ -75,6 +73,8 @@ test("replay reconstructs direct ability visuals with the shared Bot Room durati
     assert.equal(combatVisualDurationMs(16), 300);
     assert.deepEqual(replayAbilityVisual(frames[1].bots[0], frames, 1), {
         ability: 16,
+        visualType: "reactiveArmor",
+        visualSize: 80,
         ms: 300,
         x: 130,
         y: 240,
@@ -82,6 +82,8 @@ test("replay reconstructs direct ability visuals with the shared Bot Room durati
     });
     assert.deepEqual(replayAbilityVisual(frames[2].bots[0], frames, 2), {
         ability: 16,
+        visualType: "reactiveArmor",
+        visualSize: 80,
         ms: 200,
         x: 130,
         y: 240,
@@ -99,11 +101,34 @@ test("replay reconstructs the renamed Vampiric Beam visual from its authoritativ
 
     assert.deepEqual(replayAbilityVisual(frames[1].bots[0], frames, 1), {
         ability: 32,
+        visualType: "vampiricBeam",
+        visualSize: 10,
         ms: combatVisualDurationMs(32),
         x: 100,
         y: 200,
         rotation: 10,
     });
+});
+
+test("replay activation visual duration comes from the ability phase contract", () => {
+    const frames = [
+        { elapsedMs: 100, bots: [{ slot: 1, x: 100, y: 200, rotation: 10, abilityActiveMs: {} }] },
+        { elapsedMs: 200, bots: [{ slot: 1, x: 100, y: 200, rotation: 10, triggeredAbility: 34, abilityActiveMs: {} }] },
+        { elapsedMs: 300, bots: [{ slot: 1, x: 100, y: 200, rotation: 10, abilityActiveMs: {} }] },
+        { elapsedMs: 400, bots: [{ slot: 1, x: 100, y: 200, rotation: 10, abilityActiveMs: {} }] },
+    ];
+
+    assert.deepEqual(replayAbilityVisual(frames[1].bots[0], frames, 1), {
+        ability: 34,
+        visualType: "basicStrike",
+        visualSize: 80,
+        ms: 200,
+        x: 100,
+        y: 200,
+        rotation: 10,
+    });
+    assert.equal(replayAbilityVisual(frames[2].bots[0], frames, 2).ms, 100);
+    assert.equal(replayAbilityVisual(frames[3].bots[0], frames, 3), null);
 });
 
 test("replay keeps a lock-on target after its trigger frame", () => {

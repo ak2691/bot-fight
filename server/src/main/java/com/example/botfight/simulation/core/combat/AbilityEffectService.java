@@ -187,10 +187,14 @@ class AbilityEffectService {
         if (event != null && !event.actions().contains(AbilityContracts.PhaseAction.APPLY_EFFECTS)) {
             return List.of();
         }
+        if (!AbilityContracts.eventTargetsKind(event, AbilityContracts.TargetKind.BOT)) {
+            return List.of();
+        }
         AbilityContracts.PhaseEvent selectedEvent = event;
         List<AbilityContracts.Effect> declared = phase.effects();
         Set<AbilityContracts.EffectType> allowed = event == null ? Set.of() : event.effectTypes();
         return declared.stream()
+                .filter(AbilityContracts::effectTargetsBot)
                 .filter(effect -> eventAllowsEffect(effect, selectedEvent, allowed))
                 .toList();
     }
@@ -313,7 +317,8 @@ class AbilityEffectService {
         return new AbilityContracts.Effect(effect.type(), effect.subtype(), effect.amount(),
                 durationMs, effect.runtimeComputed(), effect.recipient(),
                 effect.requiresConfirmedDamage(), effect.mirrorsDamage(),
-                effect.distanceMode(), effect.falloff(), effect.intervalMs(), effect.movementLockMs());
+                effect.distanceMode(), effect.falloff(), effect.intervalMs(), effect.movementLockMs(),
+                effect.targetKinds());
     }
 
     private static AbilityContracts.Effect withEffectOverride(
@@ -332,7 +337,8 @@ class AbilityEffectService {
         return new AbilityContracts.Effect(effect.type(), effect.subtype(), amount,
                 durationMs, effect.runtimeComputed(), effect.recipient(),
                 effect.requiresConfirmedDamage(), effect.mirrorsDamage(),
-                effect.distanceMode(), falloff, effect.intervalMs(), effect.movementLockMs());
+                effect.distanceMode(), falloff, effect.intervalMs(), effect.movementLockMs(),
+                effect.targetKinds());
     }
 
     private static AbilityContracts.EffectOverride effectOverrideFor(

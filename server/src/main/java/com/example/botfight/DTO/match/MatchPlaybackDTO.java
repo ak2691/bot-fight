@@ -62,7 +62,29 @@ public record MatchPlaybackDTO(
             Double abilityTargetY,
             Double visualOriginX,
             Double visualOriginY,
-            Double visualOriginRotation) {
+            Double visualOriginRotation,
+            Double dashDirectionX,
+            Double dashDirectionY) {
+
+        public BotStateDTO(
+                UUID userId, String username, int slot, double x, double y, double rotation,
+                double hp, double maxHp, String combatLoadout, List<Integer> abilities,
+                List<StatusEffectState> statusEffects, Map<Integer, Integer> abilityCooldowns,
+                Map<Integer, Integer> abilityActiveMs, Map<Integer, Integer> abilityCharges,
+                Map<Integer, Integer> abilityRechargeMs, Integer triggeredAbility,
+                Integer preparingAbility, int preparingMs, int temporalRewindMs,
+                double temporalRewindX, double temporalRewindY, int temporalRewindPulseMs,
+                int closingZoneDamageCount, int teamNumber, Double abilityTargetX,
+                Double abilityTargetY, Double visualOriginX, Double visualOriginY,
+                Double visualOriginRotation) {
+            this(userId, username, slot, x, y, rotation, hp, maxHp, combatLoadout,
+                    abilities, statusEffects, abilityCooldowns, abilityActiveMs,
+                    abilityCharges, abilityRechargeMs, triggeredAbility, preparingAbility,
+                    preparingMs, temporalRewindMs, temporalRewindX, temporalRewindY,
+                    temporalRewindPulseMs, closingZoneDamageCount, teamNumber,
+                    abilityTargetX, abilityTargetY, visualOriginX, visualOriginY,
+                    visualOriginRotation, null, null);
+        }
 
         public BotStateDTO(
                 UUID userId,
@@ -148,7 +170,18 @@ public record MatchPlaybackDTO(
             String phaseId,
             Integer phaseTimerMs,
             String eventType,
+            String eventPhaseId,
             Integer eventSequence) {
+
+        public ArenaEntityDTO(String id, String type, Integer abilityId, double x, double y,
+                              int size, double rotation, int hp, Boolean armed,
+                              Integer timerMs, Double velocityX, Double velocityY,
+                              String phaseId, Integer phaseTimerMs, String eventType,
+                              Integer eventSequence) {
+            this(id, type, abilityId, x, y, size, rotation, hp, armed, timerMs,
+                    velocityX, velocityY, phaseId, phaseTimerMs, eventType, null,
+                    eventSequence);
+        }
 
         public ArenaEntityDTO(String id, String type, double x, double y, int size) {
             this(id, type, null, x, y, size, 0, 0, null, null, null, null,

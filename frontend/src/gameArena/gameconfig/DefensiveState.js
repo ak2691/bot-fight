@@ -18,7 +18,6 @@ export function ignoresHostileEffects(shape) {
 export function withoutBotStatuses(shape) {
     return {
         ...clearPresenceStatuses({ ...shape, statusEffects: [] }),
-        dashActiveMs: 0,
         dashRemaining: 0,
         dashTrailMs: 0,
         dashInitialDistance: 0,

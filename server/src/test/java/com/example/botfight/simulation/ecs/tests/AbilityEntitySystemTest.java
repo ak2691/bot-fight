@@ -65,6 +65,9 @@ class AbilityEntitySystemTest {
                 .isEqualTo(AbilityContracts.EventScheduleMode.REPEAT);
         assertThat(orbitalCollision.schedule().intervalMs()).isEqualTo(500);
         assertThat(orbitalPhase.execution()).isNull();
+        assertThat(AbilityContracts.get(21).phases().getFirst()
+                .events().get(AbilityContracts.PhaseEventType.ACTIVATION).targetKinds())
+                .containsExactly(AbilityContracts.TargetKind.BOT);
         assertThat(AbilityContracts.entityContractForAbility(5).phases().getFirst()
                 .events().get(AbilityContracts.PhaseEventType.COLLISION).targetKinds())
                 .containsExactly(AbilityContracts.TargetKind.BOT,
@@ -86,6 +89,43 @@ class AbilityEntitySystemTest {
 
         assertThat(event.statusTypes()).containsExactly("silence");
         assertThat(event.effectTypes()).containsExactly(AbilityContracts.EffectType.STATUS);
+    }
+
+    @Test
+    void eventAndEffectTargetKindsKeepBotsHpEntitiesAndSummonsDistinct() {
+        AbilityContracts.Effect damage = AbilityContracts.damage(20);
+        AbilityContracts.Effect slow = AbilityContracts.status("slow", 0, 1_000);
+        AbilityContracts.Effect summonSlow = AbilityContracts.targeted(slow,
+                AbilityContracts.TargetKind.BOT, AbilityContracts.TargetKind.SUMMON);
+        AbilityContracts.PhaseEvent botEvent = new AbilityContracts.PhaseEvent(
+                List.of(AbilityContracts.PhaseAction.APPLY_EFFECTS), java.util.Set.of(),
+                null, null, null, null, null, null,
+                List.of(AbilityContracts.TargetKind.BOT));
+        AbilityContracts.PhaseEvent hpEntityEvent = new AbilityContracts.PhaseEvent(
+                List.of(AbilityContracts.PhaseAction.APPLY_EFFECTS), java.util.Set.of(),
+                null, null, null, null, null, null,
+                List.of(AbilityContracts.TargetKind.HP_ENTITY));
+        AbilityContracts.PhaseEvent summonEvent = new AbilityContracts.PhaseEvent(
+                List.of(AbilityContracts.PhaseAction.APPLY_EFFECTS), java.util.Set.of(),
+                null, null, null, null, null, null,
+                List.of(AbilityContracts.TargetKind.SUMMON));
+
+        assertThat(AbilityContracts.eventTargetsEntity(botEvent, true)).isFalse();
+        assertThat(AbilityContracts.eventTargetsEntity(hpEntityEvent, false)).isTrue();
+        assertThat(AbilityContracts.eventTargetsEntity(hpEntityEvent, true)).isTrue();
+        assertThat(AbilityContracts.eventTargetsEntity(summonEvent, false)).isFalse();
+        assertThat(AbilityContracts.eventTargetsEntity(summonEvent, true)).isTrue();
+        assertThat(AbilityContracts.effectTargetsEntity(damage, false)).isTrue();
+        assertThat(AbilityContracts.effectTargetsEntity(damage, true)).isTrue();
+        assertThat(AbilityContracts.effectTargetsEntity(slow, true)).isFalse();
+        assertThat(AbilityContracts.effectTargetsEntity(summonSlow, false)).isFalse();
+        assertThat(AbilityContracts.effectTargetsEntity(summonSlow, true)).isTrue();
+        assertThat(AbilityContracts.isSummon(AbilityEntityFactory.create(
+                "coded-drone", 17, 1, 100, 100, 60, 0, 1,
+                Double.NaN, Double.NaN, 1000, 800))).isTrue();
+        assertThat(AbilityContracts.isSummon(AbilityEntityFactory.create(
+                "brainless-snare", 29, 1, 100, 100, 60, 0, 1,
+                Double.NaN, Double.NaN, 1000, 800))).isFalse();
     }
 
     @Test
@@ -437,6 +477,8 @@ class AbilityEntitySystemTest {
             assertThat(entity.type()).isEqualTo("staticSnare");
             assertThat(entity.phaseId()).isEqualTo("triggered");
             assertThat(entity.eventType()).isEqualTo("trigger");
+            assertThat(entity.eventPhaseId()).isEqualTo("armed");
+            assertThat(entity.eventSequence()).isEqualTo(1);
             assertThat(entity.size()).isEqualTo(24);
         });
     }
@@ -471,6 +513,8 @@ class AbilityEntitySystemTest {
             assertThat(entity.type()).isEqualTo("staticSnare");
             assertThat(entity.phaseId()).isEqualTo("destroyed");
             assertThat(entity.eventType()).isEqualTo("collision");
+            assertThat(entity.eventPhaseId()).isEqualTo("destroyed");
+            assertThat(entity.eventSequence()).isEqualTo(1);
             assertThat(entity.size()).isEqualTo(24);
         });
     }
@@ -529,6 +573,8 @@ class AbilityEntitySystemTest {
             assertThat(entity.type()).isEqualTo("staticSnare");
             assertThat(entity.phaseId()).isEqualTo("destroyed");
             assertThat(entity.eventType()).isEqualTo("collision");
+            assertThat(entity.eventPhaseId()).isEqualTo("destroyed");
+            assertThat(entity.eventSequence()).isEqualTo(1);
             assertThat(entity.size()).isEqualTo(24);
         });
     }
@@ -782,6 +828,8 @@ class AbilityEntitySystemTest {
         assertThat(droneCombat.damage).isEqualTo(5);
         assertThat(droneEntities).singleElement().satisfies(updatedDrone ->
                 assertThat(updatedDrone.eventType()).isEqualTo("collision"));
+        assertThat(droneEntities.getFirst().eventSequence()).isEqualTo(1);
+        assertThat(droneEntities.getFirst().eventPhaseId()).isEqualTo("active");
 
         RecordingCombat orbitalCombat = new RecordingCombat(false);
         ArenaEntity orbital = new ArenaEntity("orbital", "orbitalMarker", 1, 150, 100, 260, 0, 0, 0, 100, true);

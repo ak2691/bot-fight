@@ -26,8 +26,7 @@ class ArenaEntityCombatService {
                               List<ArenaEntity> entities) {
         int damage = 0;
         AbilityContracts.AbilityPhase targetPhase = AbilityContracts.phaseFor(entity);
-        boolean summonTarget = targetPhase != null
-                && targetPhase.type() == AbilityContracts.PhaseType.SUMMON;
+        boolean summonTarget = AbilityContracts.isSummon(entity);
         boolean allowFriendlyDamage = allowsFriendlyDamage(targetPhase);
         for (Bot bot : bots) {
             if (!allowFriendlyDamage && !ownersAreHostile(bot.slot, entity.ownerSlot(), bots)) continue;
@@ -38,13 +37,23 @@ class ArenaEntityCombatService {
             AbilityContracts.AbilityPhase phase = attachedPhase(payload);
             AbilityContracts.PhaseEvent event = phase == null ? null
                     : phase.events().get(AbilityContracts.PhaseEventType.COLLISION);
-            if (!eventCanAffectHpEntity(event, summonTarget)) continue;
+            if (!phaseHasEventEffect(phase, AbilityContracts.PhaseEventType.COLLISION,
+                    EffectType.DAMAGE)
+                    || !AbilityContracts.eventTargetsEntity(event, summonTarget)) continue;
+            AbilityContracts.Effect damageEffect = phase.effects().stream()
+                    .filter(effect -> effect.type() == EffectType.DAMAGE
+                            && AbilityContracts.effectTargetsEntity(effect, summonTarget))
+                    .findFirst().orElse(null);
+            if (damageEffect == null) continue;
             boolean rayHit = phase != null && phase.hitbox() != null
                     && "ray".equals(phase.hitbox().shape())
                     && hitDetectionService.rayHits(payload, bot, entity.x(), entity.y(), hitTargetSize(entity) / 2.0);
             boolean rangeHit = hitDetectionService.abilityRangeHits(
                     bot, entity.x(), entity.y(), hitTargetSize(entity), payload, range);
-            if (rayHit || rangeHit) damage += (int) Math.round(amountForEffect(payload, distance));
+            if (rayHit || rangeHit) {
+                damage += (int) Math.round(amountForEffect(payload.abilityId(), damageEffect,
+                        distance, phaseRange(phase)));
+            }
         }
         for (ArenaEntity effect : entities) {
             if (effect == null || effect.id().equals(entity.id())) continue;
@@ -52,11 +61,12 @@ class ArenaEntityCombatService {
             if (!allowFriendlyDamage
                     && !ownersAreHostile(effect.ownerSlot(), entity.ownerSlot(), bots)) continue;
             if (!phaseHasEventEffect(phase, AbilityContracts.PhaseEventType.COLLISION, EffectType.DAMAGE)
-                    || !eventCanAffectHpEntity(phase.events().get(
+                    || !AbilityContracts.eventTargetsEntity(phase.events().get(
                             AbilityContracts.PhaseEventType.COLLISION), summonTarget)
                     || !overlaps(effect, entity)) continue;
             AbilityContracts.Effect damageEffect = phase.effects().stream()
-                    .filter(item -> item.type() == EffectType.DAMAGE)
+                    .filter(item -> item.type() == EffectType.DAMAGE
+                            && AbilityContracts.effectTargetsEntity(item, summonTarget))
                     .findFirst().orElse(null);
             if (damageEffect == null) continue;
             damageEffect = withEffectOverride(damageEffect,
@@ -75,8 +85,7 @@ class ArenaEntityCombatService {
                                      List<ArenaEntity> entities, ArenaBounds arena) {
         if (target == null || target.hp() <= 0) return target;
         AbilityContracts.AbilityPhase targetPhase = AbilityContracts.phaseFor(target);
-        boolean summonTarget = targetPhase != null
-                && targetPhase.type() == AbilityContracts.PhaseType.SUMMON;
+        boolean summonTarget = AbilityContracts.isSummon(target);
         boolean allowFriendlyDamage = allowsFriendlyDamage(targetPhase);
         ArenaEntity next = target;
         for (Bot bot : bots) {
@@ -127,7 +136,7 @@ class ArenaEntityCombatService {
                 && (allowFriendlyDamage || (summonTarget
                     ? ownersAreHostile(sourceOwnerSlot, targetOwnerSlot, bots)
                     : sourceOwnerSlot != targetOwnerSlot))
-                && eventCanAffectHpEntity(event, summonTarget);
+                && AbilityContracts.eventTargetsEntity(event, summonTarget);
     }
 
     private static boolean allowsFriendlyDamage(AbilityContracts.AbilityPhase phase) {
@@ -143,12 +152,6 @@ class ArenaEntityCombatService {
             return sourceOwner.entityTeam() != targetOwner.entityTeam();
         }
         return sourceOwnerSlot != targetOwnerSlot;
-    }
-
-    private static boolean eventCanAffectHpEntity(AbilityContracts.PhaseEvent event,
-                                                   boolean summonTarget) {
-        return event != null && (eventTargetsKind(event, AbilityContracts.TargetKind.HP_ENTITY)
-                || summonTarget && eventTargetsKind(event, AbilityContracts.TargetKind.BOT));
     }
 
     private boolean attachedAbilityHitsEntity(AbilityExecutionPayload payload, Bot bot,
@@ -176,7 +179,7 @@ class ArenaEntityCombatService {
             if (declared.type() == EffectType.STATUS && !event.statusTypes().isEmpty()
                     && event.statusTypes().stream().noneMatch(statusType ->
                             statusType.equalsIgnoreCase(declared.subtype()))) continue;
-            if (!summonTarget && declared.type() != EffectType.DAMAGE) continue;
+            if (!AbilityContracts.effectTargetsEntity(declared, summonTarget)) continue;
             AbilityContracts.Effect resolved = withEffectOverride(declared,
                     effectOverrideFor(declared, phase.effectOverrides()));
             switch (resolved.type()) {
@@ -255,7 +258,7 @@ class ArenaEntityCombatService {
                 entity.tickStartHp(), entity.damageTakenThisTick(), entity.damageTakenLastTick(),
                 entity.hpNetChangeLastTick(), entity.rotation(), entity.hitLedger(), entity.phaseId(),
                 entity.phaseLocked(), entity.statusEffects(), entity.eventSequence(), entity.eventType(),
-                entity.eventScheduleState());
+                entity.eventScheduleState(), entity.eventPhaseId());
     }
 
     private static ArenaEntity moveEntity(ArenaEntity target, EffectSource source,
@@ -361,15 +364,6 @@ class ArenaEntityCombatService {
         return allowed.contains(effectType);
     }
 
-    private static boolean eventTargetsKind(AbilityContracts.PhaseEvent event,
-                                            AbilityContracts.TargetKind targetKind) {
-        Set<AbilityContracts.TargetKind> targetKinds = event == null
-                ? Set.of() : Set.copyOf(event.targetKinds());
-        return targetKinds.isEmpty()
-                ? targetKind == AbilityContracts.TargetKind.BOT
-                : targetKinds.contains(targetKind);
-    }
-
     private static double amountForEffect(AbilityExecutionPayload payload, double distance) {
         AbilityContracts.Effect effect = payload.phases().stream()
                 .flatMap(phase -> phase.effects().stream())
@@ -405,7 +399,8 @@ class ArenaEntityCombatService {
                 override.durationMs() == null ? effect.durationMs() : override.durationMs(),
                 effect.runtimeComputed(), effect.recipient(),
                 effect.requiresConfirmedDamage(), effect.mirrorsDamage(),
-                effect.distanceMode(), falloff, effect.intervalMs(), effect.movementLockMs());
+                effect.distanceMode(), falloff, effect.intervalMs(), effect.movementLockMs(),
+                effect.targetKinds());
     }
 
     private static Double phaseRange(AbilityContracts.AbilityPhase phase) {

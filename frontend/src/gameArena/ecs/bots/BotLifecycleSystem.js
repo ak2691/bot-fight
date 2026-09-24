@@ -9,7 +9,6 @@ const LIFECYCLE_COMPONENTS = Object.freeze([
 ]);
 
 const DEAD_COMPONENTS = Object.freeze({
-    dashActiveMs: 0,
     dashRemaining: 0,
     movementVelocityX: 0,
     movementVelocityY: 0,

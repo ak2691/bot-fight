@@ -4,10 +4,13 @@ import {
     attachedAbilityTargetsOwner,
     EFFECT_TYPES,
     eventAllowsEffect,
+    eventTargetsEntity,
     eventTargetsKind,
+    effectTargetsTarget,
     PHASE_ACTIONS,
     PHASE_EVENT_TYPES,
     TARGET_KINDS,
+    targetKindsForEntity,
     TELEPORT_DISTANCE_MODES,
     resolveEffectOverride,
 } from "../contracts/AbilityContracts.js";
@@ -68,7 +71,7 @@ export function resolveTriggeredAbilityEffects(attacker, defender, combat, {
         : isAttached ? PHASE_EVENT_TYPES.COLLISION : null;
     if (!eventType) return [nextAttacker, nextDefender];
     const event = phase?.events?.[eventType] ?? null;
-    const phaseEffects = directPhaseEffects(contract, phase, event)
+    const phaseEffects = directPhaseEffects(contract, phase, event, [TARGET_KINDS.BOT])
         .map((effect) => resolveEffectOverride(effect, phase?.effectOverrides));
     if (event && !event.actions?.includes(PHASE_ACTIONS.APPLY_EFFECTS)) {
         return [nextAttacker, nextDefender];
@@ -109,7 +112,11 @@ export function resolveTriggeredAbilityEffects(attacker, defender, combat, {
 }
 
 /** Resolves the effects owned by the direct ability phase in declaration order. */
-function directPhaseEffects(contract, phase, event) {
+function directPhaseEffects(contract, phase, event, targetKinds = [TARGET_KINDS.BOT]) {
+    const eventMatchesTarget = targetKinds.includes(TARGET_KINDS.BOT)
+        ? eventTargetsKind(event, TARGET_KINDS.BOT)
+        : eventTargetsEntity(event, targetKinds);
+    if (!eventMatchesTarget) return [];
     const declared = phase?.effects ?? [];
     const allowed = event?.effectTypes ?? event?.effects ?? null;
     const allowedTypes = Array.isArray(allowed)
@@ -119,6 +126,7 @@ function directPhaseEffects(contract, phase, event) {
         .flatMap((effect) => typeof effect === "string"
             ? declared.filter((candidate) => candidate.type === effect)
             : [effect])
+        .filter((effect) => effectTargetsTarget(effect, targetKinds))
         .filter((effect) => !allowedTypes || allowedTypes.has(effect.type))
         .filter((effect) => eventAllowsEffect(event, effect));
 }
@@ -133,8 +141,9 @@ export function triggeredAbilityDamage(attacker, target) {
     const eventType = attachedAbilityTargetsOwner(abilityId)
         ? PHASE_EVENT_TYPES.ACTIVATION : PHASE_EVENT_TYPES.COLLISION;
     const event = phase?.events?.[eventType] ?? null;
-    if (!eventTargetsKind(event, TARGET_KINDS.HP_ENTITY)) return 0;
-    const damageEffect = directPhaseEffects(contract, phase, event)
+    const targetKinds = targetKindsForEntity(target);
+    if (!eventTargetsEntity(event, targetKinds)) return 0;
+    const damageEffect = directPhaseEffects(contract, phase, event, targetKinds)
         .find((effect) => effect.type === EFFECT_TYPES.DAMAGE) ?? null;
     const resolvedDamageEffect = resolveEffectOverride(damageEffect, phase?.effectOverrides);
     return roundCombatValue(amountAtDistance(abilityId, distance, resolvedDamageEffect,

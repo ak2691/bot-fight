@@ -81,7 +81,9 @@ test("requested combat tuning is represented in the browser catalog", () => {
     assert.equal(ABILITY_STATS[3].hitboxLength, 700);
     assert.equal(ABILITY_STATS[4].hitboxWidth, undefined);
     assert.equal(ABILITY_STATS[17].hitboxWidth, 5);
+    assert.equal(ABILITY_STATS[17].shotVisualMs, 300);
     assert.equal(ABILITY_STATS[31].hitboxWidth, 5);
+    assert.equal(ABILITY_STATS[31].shotVisualMs, 300);
     assert.equal(ABILITY_STATS[6].damage, 10);
     assert.equal(ABILITY_STATS[6].windupMs, 200);
     assert.equal(ABILITY_STATS[6].activeMs, 100);
@@ -166,7 +168,7 @@ test("one normalized contract registry covers direct and spawned abilities", () 
         assert.ok(contract.activation);
         assert.ok(contract.phases.length > 0);
     }
-    assert.deepEqual(ENTITY_CONTRACTS[15].phases[0].events.collision.targetKinds, ["BOT"]);
+    assert.deepEqual(ENTITY_CONTRACTS[15].phases[0].events.collision.targetKinds, ["BOT", "SUMMON"]);
 });
 
 test("missing IDs stay missing instead of shifting later abilities", () => {

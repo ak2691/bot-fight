@@ -9,6 +9,8 @@ import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Entity;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.StrategyBlock;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
+import com.example.botfight.simulation.gameconfig.Abilities;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -101,6 +103,36 @@ class BotMovementServiceTest {
         assertThat(bot.y).isEqualTo(120);
         assertThat(bot.movementVelocityX).isZero();
         assertThat(bot.movementVelocityY).isZero();
+    }
+
+    @Test
+    void dashMatchesBrowserInitialStepForShortPhaseDistance() {
+        Bot bot = player(400, 400);
+        bot.size = 60;
+        bot.moveSpeed = 40;
+        DuelSimulationService.Arena arena = new DuelSimulationService.Arena(1000, 800, 1000);
+        service.applyTickMovement(bot, action(1, 0), arena, false, false, false);
+        AbilityContracts.AbilityContract base = AbilityContracts.get(19);
+        AbilityContracts.AbilityPhase phase = base.phases().getFirst();
+        AbilityContracts.AbilityPhase shortDash = new AbilityContracts.AbilityPhase(
+                phase.id(), phase.type(),
+                new AbilityContracts.PhaseMovement(75, 20.0, 300, null),
+                phase.hitbox(), phase.effects(), phase.events(), phase.durationMs(), phase.visual());
+        AbilityContracts.AbilityContract contract = new AbilityContracts.AbilityContract(
+                base.abilityId(), base.entityType(), base.runtimeType(), base.category(),
+                base.spawn(), base.selectableOwner(), base.lifetime(), base.initialState(),
+                base.activation(), List.of(shortDash), base.abilities());
+        AbilityExecutionPayload payload = new AbilityExecutionPayload(
+                19, 19, Abilities.definition(19), contract,
+                Double.NaN, Double.NaN, "absolute", "east", null,
+                Double.NaN, Double.NaN, Double.NaN);
+
+        service.startDash(bot, payload, arena);
+
+        assertThat(bot.x).isEqualTo(460);
+        assertThat(bot.dashRemaining).isZero();
+        assertThat(bot.dashStepDistance).isEqualTo(75);
+        assertThat(bot.velocityX).isEqualTo(400);
     }
 
     private static DuelSimulationService.Action action(double dx, double dy) {

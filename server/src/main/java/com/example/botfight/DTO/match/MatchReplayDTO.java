@@ -230,7 +230,27 @@ public record MatchReplayDTO(
             Double temporalRewindY,
             Integer temporalRewindPulseMs,
             Integer closingZoneDamageCount,
+            Double dashDirectionX,
+            Double dashDirectionY,
             int teamNumber) {
+
+        public ReplayBotDTO(
+                int slot, double x, double y, Double rotation, double hp,
+                List<StatusEffectState> statusEffects,
+                Map<Integer, Integer> abilityCooldowns, Map<Integer, Integer> abilityCharges,
+                Map<Integer, Integer> abilityRechargeMs, Map<Integer, Integer> abilityActiveMs,
+                Integer triggeredAbility, Integer preparingAbility, Integer preparingMs,
+                Double abilityTargetX, Double abilityTargetY, Double visualOriginX,
+                Double visualOriginY, Double visualOriginRotation, Double temporalRewindX,
+                Double temporalRewindY, Integer temporalRewindPulseMs,
+                Integer closingZoneDamageCount, int teamNumber) {
+            this(slot, x, y, rotation, hp, statusEffects, abilityCooldowns, abilityCharges,
+                    abilityRechargeMs, abilityActiveMs, triggeredAbility, preparingAbility,
+                    preparingMs, abilityTargetX, abilityTargetY, visualOriginX, visualOriginY,
+                    visualOriginRotation, temporalRewindX, temporalRewindY,
+                    temporalRewindPulseMs, closingZoneDamageCount, null, null, teamNumber);
+        }
+
         private ReplayBotDTO(
                 int slot,
                 double x,
@@ -289,7 +309,7 @@ public record MatchReplayDTO(
                     bot.slot(),
                     bot.x(),
                     bot.y(),
-                    nonZeroOrNull(bot.rotation()),
+                    finiteOrNull(bot.rotation()),
                     bot.hp(),
                     bot.statusEffects(),
                     positiveEntries(bot.abilityCooldowns()),
@@ -308,6 +328,8 @@ public record MatchReplayDTO(
                     temporalRewindPulseMs > 0 ? bot.temporalRewindY() : null,
                     positiveOrNull(temporalRewindPulseMs),
                     positiveOrNull(bot.closingZoneDamageCount()),
+                    finiteOrNull(bot.dashDirectionX()),
+                    finiteOrNull(bot.dashDirectionY()),
                     bot.teamNumber());
         }
     }
@@ -329,8 +351,20 @@ public record MatchReplayDTO(
             String phaseId,
             Integer phaseTimerMs,
             String eventType,
+            String eventPhaseId,
             Integer eventSequence,
             List<ArenaEntity.EntityStatus> statusEffects) {
+
+        public ReplayEntityDTO(String id, String type, Integer abilityId, double x, double y,
+                               int size, Double rotation, Integer hp, Boolean armed,
+                               Integer timerMs, Double velocityX, Double velocityY,
+                               String phaseId, Integer phaseTimerMs, String eventType,
+                               Integer eventSequence,
+                               List<ArenaEntity.EntityStatus> statusEffects) {
+            this(id, type, abilityId, x, y, size, rotation, hp, armed, timerMs,
+                    velocityX, velocityY, phaseId, phaseTimerMs, eventType, null,
+                    eventSequence, statusEffects);
+        }
 
         private static ReplayEntityDTO from(MatchPlaybackDTO.ArenaEntityDTO entity) {
             String type = entity.type();
@@ -351,6 +385,7 @@ public record MatchReplayDTO(
                     entity.phaseId(),
                     entity.phaseTimerMs(),
                     entity.eventType(),
+                    entity.eventPhaseId(),
                     positiveOrNull(entity.eventSequence()),
                     null);
         }

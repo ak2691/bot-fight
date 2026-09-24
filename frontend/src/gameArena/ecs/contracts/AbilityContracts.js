@@ -83,17 +83,45 @@ export const TARGET_POLICY_MODES = Object.freeze({
 export const TARGET_KINDS = Object.freeze({
     BOT: "BOT",
     HP_ENTITY: "HP_ENTITY",
+    SUMMON: "SUMMON",
     ENTITY: "ENTITY",
 });
 
 export const BOT_TARGET_KINDS = Object.freeze([TARGET_KINDS.BOT]);
 export const DAMAGE_TARGET_KINDS = Object.freeze([TARGET_KINDS.BOT, TARGET_KINDS.HP_ENTITY]);
+export const BOT_AND_SUMMON_TARGET_KINDS = Object.freeze([TARGET_KINDS.BOT, TARGET_KINDS.SUMMON]);
+
+const SUMMON_SUPPORTED_EFFECT_TYPES = new Set([
+    EFFECT_TYPES.DAMAGE,
+    EFFECT_TYPES.STATUS,
+    EFFECT_TYPES.INTERRUPT,
+    EFFECT_TYPES.KNOCKBACK,
+    EFFECT_TYPES.PULL,
+]);
+
+function defaultEffectTargetKinds(type) {
+    return type === EFFECT_TYPES.DAMAGE ? DAMAGE_TARGET_KINDS : BOT_TARGET_KINDS;
+}
+
+function normalizeEffect(effectValue) {
+    if (typeof effectValue === "string") return effect(effectValue);
+    if (!effectValue || typeof effectValue !== "object" || !effectValue.type) return effectValue;
+    return effect(effectValue.type, effectValue);
+}
 
 export const TELEPORT_DISTANCE_MODES = Object.freeze({
     CENTER_DISTANCE: "center_distance",
 });
 
-export const effect = (type, values = {}) => Object.freeze({ type, ...values });
+export const effect = (type, values = {}) => Object.freeze({
+    type,
+    ...values,
+    targetKinds: Object.freeze([...new Set(
+        (Array.isArray(values.targetKinds) && values.targetKinds.length > 0
+            ? values.targetKinds : defaultEffectTargetKinds(type))
+            .filter((kind) => Object.values(TARGET_KINDS).includes(kind)),
+    )]),
+});
 export const statusEffect = (subtype, values = {}) => effect(EFFECT_TYPES.STATUS, { subtype, ...values });
 
 /**
@@ -105,6 +133,41 @@ export function eventTargetsKind(event, targetKind) {
     return !Array.isArray(targetKinds) || targetKinds.length === 0
         ? targetKind === TARGET_KINDS.BOT
         : targetKinds.includes(targetKind);
+}
+
+/** Event target kinds are capabilities; summons also carry HP_ENTITY and ENTITY. */
+export function eventTargetsEntity(event, targetKinds) {
+    const declared = event?.targetKinds;
+    return Array.isArray(declared) && declared.length > 0
+        && declared.some((kind) => targetKinds.includes(kind));
+}
+
+/** Returns the stable contract capabilities of a non-bot arena entity. */
+export function targetKindsForEntity(entity) {
+    const targetKinds = [TARGET_KINDS.ENTITY];
+    if (entity?.hp != null) targetKinds.push(TARGET_KINDS.HP_ENTITY);
+    if (entityContract(entity)?.category === ENTITY_CATEGORIES.SUMMON) {
+        targetKinds.push(TARGET_KINDS.SUMMON);
+    }
+    return targetKinds;
+}
+
+/** Effect target kinds are intersected with the target's supported capabilities. */
+export function effectTargetsTarget(effectValue, targetKinds) {
+    if (!effectValue?.type || !Array.isArray(targetKinds)) return false;
+    const declared = Array.isArray(effectValue.targetKinds) && effectValue.targetKinds.length > 0
+        ? effectValue.targetKinds : defaultEffectTargetKinds(effectValue.type);
+    if (targetKinds.includes(TARGET_KINDS.BOT)
+        && declared.includes(TARGET_KINDS.BOT)) return true;
+    if (targetKinds.includes(TARGET_KINDS.SUMMON)
+        && declared.includes(TARGET_KINDS.SUMMON)
+        && SUMMON_SUPPORTED_EFFECT_TYPES.has(effectValue.type)) return true;
+    if (effectValue.type === EFFECT_TYPES.DAMAGE
+        && targetKinds.includes(TARGET_KINDS.HP_ENTITY)
+        && declared.includes(TARGET_KINDS.HP_ENTITY)) return true;
+    return effectValue.type === EFFECT_TYPES.DAMAGE
+        && targetKinds.includes(TARGET_KINDS.ENTITY)
+        && declared.includes(TARGET_KINDS.ENTITY);
 }
 
 /** Returns whether an event selected a concrete phase effect for execution. */
@@ -167,11 +230,25 @@ function normalizeEventSchedule(schedule, eventType) {
 function normalizeEvents(events) {
     return Object.freeze(Object.fromEntries(Object.entries(events).map(([eventType, event]) => {
         if (!event || typeof event !== "object") return [eventType, event];
+        const targetKinds = Array.isArray(event.targetKinds) && event.targetKinds.length > 0
+            ? event.targetKinds : BOT_TARGET_KINDS;
+        const hasEventVisual = event.visualType != null;
+        if (hasEventVisual
+            && (!Number.isInteger(event.visibleMs) || event.visibleMs <= 0)) {
+            throw new TypeError(
+                `Event ${eventType} visual ${String(event.visualType)} must declare a positive visibleMs.`,
+            );
+        }
+        const actions = Array.isArray(event.actions) ? [...event.actions] : [];
+        if (hasEventVisual && !actions.includes(PHASE_ACTIONS.EMIT_VISUAL)) {
+            const removeIndex = actions.indexOf(PHASE_ACTIONS.REMOVE);
+            actions.splice(removeIndex < 0 ? actions.length : removeIndex, 0, PHASE_ACTIONS.EMIT_VISUAL);
+        }
         return [eventType, Object.freeze({
             ...event,
             schedule: normalizeEventSchedule(event.schedule, eventType),
-            ...(Array.isArray(event.actions)
-                ? { actions: Object.freeze([...event.actions]) }
+            ...(Array.isArray(event.actions) || hasEventVisual
+                ? { actions: Object.freeze(actions) }
                 : {}),
             ...(Array.isArray(event.effectTypes)
                 ? { effectTypes: Object.freeze([...event.effectTypes]) }
@@ -180,9 +257,8 @@ function normalizeEvents(events) {
                 ? { statusTypes: Object.freeze([...new Set(event.statusTypes
                     .map((statusType) => String(statusType).toLowerCase()).filter(Boolean))]) }
                 : {}),
-            ...(Array.isArray(event.targetKinds)
-                ? { targetKinds: Object.freeze([...new Set(event.targetKinds.filter(Boolean))]) }
-                : {}),
+            targetKinds: Object.freeze([...new Set(targetKinds
+                .filter((kind) => Object.values(TARGET_KINDS).includes(kind)))]),
         })];
     })));
 }
@@ -203,7 +279,7 @@ export function abilityPhase(id, type, values = {}) {
         ...(values.events ? { events: normalizeEvents(values.events) } : {}),
         ...(values.execution ? { execution: Object.freeze({ ...values.execution }) } : {}),
         ...(values.visual ? { visual: Object.freeze({ ...values.visual }) } : {}),
-        effects: Object.freeze([...(values.effects ?? [])]),
+        effects: Object.freeze([...(values.effects ?? []).map(normalizeEffect)]),
         ...(values.effectOverrides ? { effectOverrides: Object.freeze({ ...values.effectOverrides }) } : {}),
     });
 }
@@ -330,7 +406,7 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
     6: attachedAbility({
         phase: phase({
             hitbox: { shape: "rectangle", length: 184, width: 80, includeTargetRadius: true },
-            effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 10 }), statusEffect("stun", { durationMs: 1200 })],
+            effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 10 }), statusEffect("stun", { durationMs: 1200, targetKinds: BOT_AND_SUMMON_TARGET_KINDS })],
             visual: { type: "stun", visualSize: 60, visibleMs: 100 },
             events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
                 schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
@@ -340,7 +416,7 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
         phase: phase({
             hitbox: { shape: "arc", range: 115, arc: 150, includeTargetRadius: true },
             effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 30 }), statusEffect("bleed", {
-                amount: 2, durationMs: 5000, intervalMs: 1000,
+                amount: 2, durationMs: 5000, intervalMs: 1000, targetKinds: BOT_AND_SUMMON_TARGET_KINDS,
             })],
             visual: { type: "heavySlash", visualSize: 220.8, visibleMs: 400 },
             events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
@@ -350,7 +426,7 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
     8: attachedAbility({
         phase: phase({
             hitbox: { shape: "circle", radius: 110, includeTargetRadius: true },
-            effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 20 }), effect(EFFECT_TYPES.KNOCKBACK, { amount: 250 })],
+            effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 20 }), effect(EFFECT_TYPES.KNOCKBACK, { amount: 250, targetKinds: BOT_AND_SUMMON_TARGET_KINDS })],
             visual: { type: "repulsorBurst", visualSize: 220, visibleMs: 500 },
             events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
                 schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
@@ -359,7 +435,7 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
     9: attachedAbility({
         phase: phase({
             hitbox: { shape: "ray", range: 500, width: 5 },
-            effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 20 }), statusEffect("slow", { durationMs: 3000 })],
+            effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 20 }), statusEffect("slow", { durationMs: 3000, targetKinds: BOT_AND_SUMMON_TARGET_KINDS })],
             visual: { type: "concussiveShot", visualSize: 76, visibleMs: 300 },
             events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
                 schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
@@ -389,6 +465,7 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
             hitbox: { shape: "ray", range: 900, width: 5 },
             effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 40 }), statusEffect("shock", {
                 amount: 3, durationMs: 3000, intervalMs: 1000, movementLockMs: 300,
+                targetKinds: BOT_AND_SUMMON_TARGET_KINDS,
             })],
             visual: { type: "railShot", visualSize: 100, visibleMs: 300 },
             events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
@@ -453,8 +530,8 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
             hitbox: { shape: "circle", radius: 120, includeTargetRadius: true },
             effects: [
                 effect(EFFECT_TYPES.DAMAGE, { amount: 15 }),
-                statusEffect("slow", { durationMs: 2000 }),
-                effect(EFFECT_TYPES.KNOCKBACK, { amount: 60 }),
+                statusEffect("slow", { durationMs: 2000, targetKinds: BOT_AND_SUMMON_TARGET_KINDS }),
+                effect(EFFECT_TYPES.KNOCKBACK, { amount: 60, targetKinds: BOT_AND_SUMMON_TARGET_KINDS }),
             ],
             visual: { type: "frostRing", visualSize: 320, visibleMs: 300 },
             events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
@@ -466,8 +543,8 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
             hitbox: { shape: "ray", range: 600, width: 8 },
             effects: [
                 effect(EFFECT_TYPES.DAMAGE, { amount: 20 }),
-                effect(EFFECT_TYPES.INTERRUPT, { durationMs: 250 }),
-                statusEffect("slow", { durationMs: 1500 }),
+                effect(EFFECT_TYPES.INTERRUPT, { durationMs: 250, targetKinds: BOT_AND_SUMMON_TARGET_KINDS }),
+                statusEffect("slow", { durationMs: 1500, targetKinds: BOT_AND_SUMMON_TARGET_KINDS }),
             ],
             visual: { type: "disruptorDart", visualSize: 8, visibleMs: 300 },
             events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
@@ -534,12 +611,11 @@ export const ATTACHED_ABILITY_CONTRACTS = Object.freeze(Object.fromEntries(
 
 const contextValue = (name, fallback = null) => Object.freeze({ context: name, fallback });
 const ownerStat = (name, fallback = 0) => Object.freeze({ ownerStat: name, fallback });
-const visual = (type, visualSize, state = null, visibleMs = null, lifecycle = null) => Object.freeze({
+const visual = (type, visualSize, state = null, visibleMs = null) => Object.freeze({
     type,
     ...(state == null ? {} : { state }),
     visualSize,
     ...(visibleMs == null ? {} : { visibleMs }),
-    ...(lifecycle == null ? {} : { lifecycle }),
 });
 
 const entity = (abilityId, definition) => {
@@ -603,7 +679,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 hitbox: { shape: "circle", radius: 70 },
                 effects: [effect(EFFECT_TYPES.DAMAGE, { falloff: { maxAmount: 40, minAmount: 25, falloffStart: 0, falloffEnd: 64 } })],
                 durationMs: 100,
-                visual: visual("grenadeExplosion", 140, null, 200, "event"),
+                visual: null,
                 events: {
                     [PHASE_EVENT_TYPES.COLLISION]: {
                         targetKinds: DAMAGE_TARGET_KINDS,
@@ -632,7 +708,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 hitbox: { shape: "rectangle", width: 30, length: 30 },
                 effects: [
                     effect(EFFECT_TYPES.DAMAGE, { amount: 15 }),
-                    statusEffect("burn", { amount: 2, durationMs: 5000, intervalMs: 1000 }),
+                    statusEffect("burn", { amount: 2, durationMs: 5000, intervalMs: 1000, targetKinds: BOT_AND_SUMMON_TARGET_KINDS }),
                 ],
                 visual: visual("fireball", 30),
                 events: {
@@ -681,7 +757,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 hitbox: { shape: "circle", radius: 87.5 },
                 effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 30 })],
                 durationMs: 100,
-                visual: visual("mineExplosion", 175, null, 300, "event"),
+                visual: null,
                 events: {
                     [PHASE_EVENT_TYPES.COLLISION]: {
                         targetKinds: DAMAGE_TARGET_KINDS,
@@ -705,11 +781,11 @@ export const ENTITY_CONTRACTS = Object.freeze({
             phase("travel", PHASE_TYPES.PROJECTILE, {
                 movement: { speed: 22 },
                 hitbox: { shape: "circle", radius: 120 },
-                effects: [effect(EFFECT_TYPES.PULL, { amount: 6 })],
+                effects: [effect(EFFECT_TYPES.PULL, { amount: 6, targetKinds: BOT_AND_SUMMON_TARGET_KINDS })],
                 visual: visual("gravityZone", 240),
                 durationMs: 1000,
                 events: {
-                    [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: BOT_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS] },
+                    [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: BOT_AND_SUMMON_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS] },
                     [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.TRANSITION], transition: { to: "fuse" } },
                 },
             }),
@@ -717,11 +793,11 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 transitionOnly: true,
                 movement: { speed: 0 },
                 hitbox: { shape: "circle", radius: 120 },
-                effects: [effect(EFFECT_TYPES.PULL, { amount: 6 })],
+                effects: [effect(EFFECT_TYPES.PULL, { amount: 6, targetKinds: BOT_AND_SUMMON_TARGET_KINDS })],
                 visual: visual("gravityZone", 240),
                 durationMs: 3000,
                 events: {
-                    [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: BOT_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS] },
+                    [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: BOT_AND_SUMMON_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS] },
                     [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.TRANSITION], transition: { to: "active" } },
                 },
             }),
@@ -731,7 +807,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 hitbox: { shape: "circle", radius: 120 },
                 effects: [effect(EFFECT_TYPES.DAMAGE, { falloff: { maxAmount: 35, minAmount: 20, falloffStart: 0, falloffEnd: 90 } })],
                 durationMs: 100,
-                visual: visual("gravityExplosion", 240, null, 300, "event"),
+                visual: null,
                 events: {
                     [PHASE_EVENT_TYPES.COLLISION]: {
                         targetKinds: DAMAGE_TARGET_KINDS,
@@ -756,12 +832,12 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 movement: { speed: 150 },
                 hitbox: { shape: "rectangle", width: 150, length: 190 },
                 effects: [
-                    statusEffect("silence", { durationMs: 2000 }),
-                    effect(EFFECT_TYPES.INTERRUPT, { durationMs: 100 }),
+                    statusEffect("silence", { durationMs: 2000, targetKinds: BOT_AND_SUMMON_TARGET_KINDS }),
+                    effect(EFFECT_TYPES.INTERRUPT, { durationMs: 100, targetKinds: BOT_AND_SUMMON_TARGET_KINDS }),
                 ],
                 visual: visual("silenceWave", 225),
                 events: {
-                    [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: BOT_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                    [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: BOT_AND_SUMMON_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS],
                         schedule: { mode: EVENT_SCHEDULE_MODES.CONTINUOUS }, targetPolicy: { mode: TARGET_POLICY_MODES.ONCE } },
                 },
             }),
@@ -792,9 +868,15 @@ export const ENTITY_CONTRACTS = Object.freeze({
                     phase("active", PHASE_TYPES.RAY, {
                         hitbox: { shape: "ray", range: 200, width: 5 },
                         effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 5 })],
-                        visual: visual("gun", 16, null, 300),
+                        visual: null,
                         events: {
-                            [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: BOT_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS] },
+                            [PHASE_EVENT_TYPES.COLLISION]: {
+                                targetKinds: BOT_TARGET_KINDS,
+                                actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                                visualType: "gun",
+                                visibleMs: 300,
+                                visualSize: 16,
+                            },
                         },
                     }),
                 ],
@@ -814,7 +896,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 hitbox: { shape: "rectangle", width: 80, length: 115 },
                 effects: [
                     effect(EFFECT_TYPES.DAMAGE, { amount: 20 }),
-                    effect(EFFECT_TYPES.KNOCKBACK, { amount: 200 }),
+                    effect(EFFECT_TYPES.KNOCKBACK, { amount: 200, targetKinds: BOT_AND_SUMMON_TARGET_KINDS }),
                 ],
                 visual: visual("windburstProjectile", 24),
                 events: {
@@ -860,7 +942,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 skipOwner: true,
                 events: {
                     [PHASE_EVENT_TYPES.COLLISION]: {
-                        targetKinds: BOT_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS, PHASE_ACTIONS.EMIT_VISUAL],
+                        targetKinds: BOT_AND_SUMMON_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS, PHASE_ACTIONS.EMIT_VISUAL],
                         visualType: "orbitalExplosion",
                         visibleMs: 400,
                         visualSize: 260,
@@ -880,9 +962,9 @@ export const ENTITY_CONTRACTS = Object.freeze({
         phases: Object.freeze([
             phase("active", PHASE_TYPES.ZONE, {
                 hitbox: { shape: "circle", radius: 150 },
-                effects: [statusEffect("silence", { whileInside: true })],
+                effects: [statusEffect("silence", { whileInside: true, targetKinds: BOT_AND_SUMMON_TARGET_KINDS })],
                 visual: visual("nullZone", 300),
-                events: { [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: BOT_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS] } },
+                events: { [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: BOT_AND_SUMMON_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS] } },
             }),
         ]),
     }),
@@ -897,11 +979,11 @@ export const ENTITY_CONTRACTS = Object.freeze({
             phase("fuse", PHASE_TYPES.ZONE, {
                 movement: { speed: 0 },
                 hitbox: { shape: "circle", radius: 140 },
-                effects: [effect(EFFECT_TYPES.PULL, { amount: 10 })],
+                effects: [effect(EFFECT_TYPES.PULL, { amount: 10, targetKinds: BOT_AND_SUMMON_TARGET_KINDS })],
                 visual: visual("singularityZone", 280),
                 durationMs: 1200,
                 events: {
-                    [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: BOT_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS] },
+                    [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: BOT_AND_SUMMON_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS] },
                     [PHASE_EVENT_TYPES.LIFETIME_END]: { actions: [PHASE_ACTIONS.TRANSITION], transition: { to: "active" } },
                 },
             }),
@@ -911,7 +993,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 hitbox: { shape: "circle", radius: 140 },
                 effects: [effect(EFFECT_TYPES.DAMAGE, { falloff: { maxAmount: 35, minAmount: 15, falloffStart: 0, falloffEnd: 140 } })],
                 durationMs: 100,
-                visual: visual("singularityExplosion", 280, null, 400, "event"),
+                visual: null,
                 events: {
                     [PHASE_EVENT_TYPES.COLLISION]: {
                         targetKinds: DAMAGE_TARGET_KINDS,
@@ -939,13 +1021,13 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 visual: visual("tetherBolt", 18),
                 effects: [
                     effect(EFFECT_TYPES.DAMAGE, { amount: 10 }),
-                    statusEffect("slow", { durationMs: 1200 }),
+                    statusEffect("slow", { durationMs: 1200, targetKinds: BOT_AND_SUMMON_TARGET_KINDS }),
                 ],
                 events: {
                     [PHASE_EVENT_TYPES.COLLISION]: {
                         targetKinds: DAMAGE_TARGET_KINDS,
                         actions: [PHASE_ACTIONS.APPLY_EFFECTS],
-                        targetPolicy: { mode: "once", bind: true },
+                        targetPolicy: { mode: "once" },
                     },
                     [PHASE_EVENT_TYPES.LIFETIME_END]: {
                         actions: [PHASE_ACTIONS.TRANSITION],
@@ -959,14 +1041,13 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 movement: { speed: 150, direction: "backward" },
                 hitbox: { shape: "rectangle", width: 18, length: 18 },
                 visual: visual("tetherBolt", 18),
-                effects: [effect(EFFECT_TYPES.PULL, { amount: 150 })],
+                effects: [effect(EFFECT_TYPES.PULL, { amount: 150, targetKinds: BOT_AND_SUMMON_TARGET_KINDS })],
                 events: {
                     [PHASE_EVENT_TYPES.COLLISION]: {
-                        targetKinds: BOT_TARGET_KINDS,
+                        targetKinds: BOT_AND_SUMMON_TARGET_KINDS,
                         actions: [PHASE_ACTIONS.APPLY_EFFECTS],
-                        targetPolicy: { mode: "everyTick", source: "tethered" },
+                        targetPolicy: { mode: "once" },
                         pullDirection: "owner",
-                        schedule: { mode: EVENT_SCHEDULE_MODES.REPEAT, intervalMs: 100, count: 2 },
                     },
                 },
                 durationMs: 200,
@@ -992,8 +1073,8 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 },
                 effects: [
                     effect(EFFECT_TYPES.DAMAGE, { amount: 25 }),
-                    statusEffect("slow", { durationMs: 2200 }),
-                    effect(EFFECT_TYPES.INTERRUPT, { durationMs: 150 }),
+                    statusEffect("slow", { durationMs: 2200, targetKinds: BOT_AND_SUMMON_TARGET_KINDS }),
+                    effect(EFFECT_TYPES.INTERRUPT, { durationMs: 150, targetKinds: BOT_AND_SUMMON_TARGET_KINDS }),
                 ],
                 skipOwner: true,
                 events: {
@@ -1024,12 +1105,12 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 hitbox: { shape: "circle", radius: 120 },
                 effects: [
                     effect(EFFECT_TYPES.DAMAGE, { amount: 40 }),
-                    statusEffect("slow", { durationMs: 3000 }),
-                    effect(EFFECT_TYPES.INTERRUPT, { durationMs: 150 }),
+                    statusEffect("slow", { durationMs: 3000, targetKinds: BOT_AND_SUMMON_TARGET_KINDS }),
+                    effect(EFFECT_TYPES.INTERRUPT, { durationMs: 150, targetKinds: BOT_AND_SUMMON_TARGET_KINDS }),
                 ],
                 skipOwner: true,
                 durationMs: 100,
-                visual: visual("orbitalExplosion", 240, null, 400, "event"),
+                visual: null,
                 events: {
                     [PHASE_EVENT_TYPES.COLLISION]: {
                         targetKinds: DAMAGE_TARGET_KINDS,
@@ -1073,9 +1154,15 @@ export const ENTITY_CONTRACTS = Object.freeze({
                             effect(EFFECT_TYPES.DAMAGE, { amount: 3 }),
                             effect(EFFECT_TYPES.KNOCKBACK, { amount: 40 }),
                         ],
-                        visual: visual("gun", 16, null, 300),
+                        visual: null,
                         events: {
-                            [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: BOT_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS] },
+                            [PHASE_EVENT_TYPES.COLLISION]: {
+                                targetKinds: BOT_TARGET_KINDS,
+                                actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                                visualType: "gun",
+                                visibleMs: 300,
+                                visualSize: 16,
+                            },
                         },
                     }),
                 ],

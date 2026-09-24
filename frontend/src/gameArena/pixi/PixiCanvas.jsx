@@ -563,8 +563,8 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
                 view.visualInstance = nextPhaseVisualInstance;
             }
             const current = sampleViewPosition(view, now);
-            const wasDashing = Number(previousShape?.dashActiveMs ?? 0) > 0;
-            const startsDashing = Number(shape.dashActiveMs ?? 0) > 0;
+            const wasDashing = Number(previousShape?.abilityActiveMs?.[19] ?? 0) > 0;
+            const startsDashing = Number(shape.abilityActiveMs?.[19] ?? 0) > 0;
             if (startsDashing && !wasDashing) {
                 view.dashSmokeOrigin = { ...current };
                 // The supplied smoke frames face north before rotation.
@@ -1551,7 +1551,9 @@ function drawStandaloneVisual(view, now, arenaSprites) {
         const shotPhase = entityAbilityPhaseForEntity(shape);
         const shotTransform = entityAbilitySpawnTransform(shape, entityAbilitySpawnForEntity(shape));
         if (!shotPhase) return;
-        const durationMs = Math.max(1, Number(shotPhase.visual?.visibleMs ?? shotPhase.durationMs ?? 300));
+        const eventVisual = visualForShape(shape);
+        const durationMs = Number(eventVisual?.visibleMs);
+        if (!Number.isFinite(durationMs) || durationMs <= 0) return;
         const alpha = 1 - clamp(visualAnimationElapsedMs(view, now) / durationMs, 0, 1);
         showAbilityRayEffect(
             view,
@@ -1564,7 +1566,7 @@ function drawStandaloneVisual(view, now, arenaSprites) {
             3,
             Number(shotPhase.hitbox?.range ?? 200),
             alpha,
-            Number(visualForShape(shape)?.visualSize ?? 16),
+            Number(eventVisual?.visualSize ?? 16),
             0x6ee7b7,
         );
         return;
@@ -1634,7 +1636,7 @@ function drawEntity(view, selected, now, arenaSprites, botViews = [], position =
     const radius = size / 2;
     const presentationType = presentationTypeForShape(shape);
     graphics.clear();
-    if (["tetherBolt", "staticSnare", "staticSnareBurst"].includes(shape.type)) {
+    if (presentationDefinitionForShape(shape).kind === "generated") {
         baseSprite.visible = false;
         const ownerView = shape.type === "tetherBolt"
             ? botViews.find(({ view: candidate }) => candidate.shape.id === shape.ownerId
@@ -1694,19 +1696,6 @@ function drawEntity(view, selected, now, arenaSprites, botViews = [], position =
         }
     } else if (presentationType === "gravityZone") {
         if (shape.armed) baseSprite.alpha = 0.72 + Math.sin(now / 100) * 0.12;
-    } else if (["hunterDrone", "repellerDrone"].includes(presentationType)) {
-        const shotPhase = entityAbilityPhaseForEntity(shape);
-        const shotTransform = entityAbilitySpawnTransform(shape, entityAbilitySpawnForEntity(shape));
-        const shotVisualMs = Number(shape.shotVisualMs ?? 0);
-        const shotDurationMs = Math.max(1, Number(
-            shotPhase?.visual?.visibleMs ?? shotPhase?.durationMs ?? 300,
-        ));
-        if (shotPhase && shotVisualMs > 0) {
-            const alpha = clamp(shotVisualMs / shotDurationMs, 0, 1);
-            showAbilityRayEffect(view, "drone-shot", arenaSprites, { x: shape.x, y: shape.y }, shotTransform.x, shotTransform.y, shotTransform.rotation, 3,
-                Number(shotPhase.hitbox?.range ?? 200), alpha,
-                Number(shotPhase.visual?.visualSize ?? 16), 0x6ee7b7);
-        }
     }
     if (selected) graphics.circle(0, 0, radius + 6).stroke({ color: COLORS.white, alpha: 0.8, width: 2 });
     if (Number(shape.hitFlashMs ?? 0) > 0) graphics.circle(0, 0, radius + 2).fill({ color: 0xef4444, alpha: 0.5 });

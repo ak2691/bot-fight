@@ -36,7 +36,6 @@ class BotStateServiceInterruptTest {
         bot.abilities = Set.of(19);
         bot.abilityActiveMs.put(19, 200);
         bot.abilityPendingCooldownMs.put(19, 1_800);
-        bot.dashActiveMs = 200;
         bot.dashRemaining = 75;
         bot.movementVelocityX = 8;
         bot.velocityX = 8;
@@ -46,7 +45,6 @@ class BotStateServiceInterruptTest {
         assertThat(bot.abilityActiveMs.get(19)).isZero();
         assertThat(bot.abilityCooldowns).containsEntry(19, 1_800);
         assertThat(bot.abilityPendingCooldownMs).doesNotContainKey(19);
-        assertThat(bot.dashActiveMs).isZero();
         assertThat(bot.dashRemaining).isZero();
         assertThat(bot.movementVelocityX).isZero();
         assertThat(bot.velocityX).isZero();

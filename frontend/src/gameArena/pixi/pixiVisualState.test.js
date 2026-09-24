@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { activeBotVisual, closingZoneDamageOccurred, ENTITY_PRESENTATION_DEFINITIONS, entityCaption, BOT_PRESENTATION_DEFINITIONS, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, grenadeVisualState, isBotShape, LOCK_ON_PRESENTATION, normalizeReplayObstacleShape, pixiLayerForShape, presentationDefinitionForShape, projectileTrailStyle, replayProjectileVelocity, shapeInterpolationMs, shapeWithoutVisualEvent, visualAnimationDescriptorForShape, visualForShape, visualInstanceForShape, visualInstanceIsActive, VISUAL_LIFECYCLES, VISUAL_SPAWN_MODES, visualSizeForShape } from "./pixiVisualState.js";
+import { activeBotVisual, closingZoneDamageOccurred, ENTITY_PRESENTATION_DEFINITIONS, entityCaption, BOT_PRESENTATION_DEFINITIONS, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, grenadeVisualState, isBotShape, LOCK_ON_PRESENTATION, normalizeReplayObstacleShape, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, replayProjectileVelocity, shapeInterpolationMs, shapeWithoutVisualEvent, visualAnimationDescriptorForShape, visualForShape, visualInstanceForShape, visualInstanceIsActive, VISUAL_LIFECYCLES, VISUAL_SPAWN_MODES, visualSizeForShape } from "./pixiVisualState.js";
+import { ABILITY_CONTRACTS, abilityPhase } from "../ecs/contracts/AbilityContracts.js";
 import { REQUIRED_ARENA_PRESENTATION_PATHS } from "./arenaPresentationAssetOwner.js";
 import { hitboxGeometriesForEntity, hitboxGeometryForBot, hitboxGeometryForEntity } from "../gameconfig/hitboxGeometry.js";
 
@@ -48,6 +49,162 @@ test("phase entities resolve phase visuals separately from event visuals", () =>
     });
 });
 
+test("drone shot visuals resolve from the embedded collision event contract", () => {
+    const shot = {
+        id: "drone-1",
+        type: "hunterDrone",
+        abilityId: 17,
+        phaseId: "active",
+        eventPhaseId: "active",
+        eventType: "collision",
+        eventSequence: 1,
+        x: 200,
+        y: 300,
+    };
+
+    assert.deepEqual(visualForShape(shot), {
+        type: "gun",
+        visualSize: 16,
+        visibleMs: 300,
+    });
+    const instance = visualInstanceForShape(shot, 1_000);
+    assert.equal(instance.type, "gun");
+    assert.equal(instance.followEntity, false);
+    assert.equal(instance.x, 200);
+    assert.equal(instance.y, 300);
+});
+
+test("replay resolves transitioned event visuals from the phase that declared them", () => {
+    const snareReplayShape = normalizeReplayObstacleShape({
+        type: "staticSnare",
+        abilityId: 29,
+        phaseId: "triggered",
+        eventPhaseId: "armed",
+        eventType: "trigger",
+        eventSequence: 1,
+        x: 300,
+        y: 240,
+        size: 24,
+    });
+
+    assert.deepEqual(visualForShape(snareReplayShape), {
+        type: "grenadeExplosion",
+        visualSize: 150,
+        visibleMs: 200,
+    });
+    assert.deepEqual(visualForShape({
+        ...snareReplayShape,
+        eventPhaseId: undefined,
+    }), {
+        type: "grenadeExplosion",
+        visualSize: 150,
+        visibleMs: 200,
+    });
+    assert.equal(visualAnimationDescriptorForShape(snareReplayShape).durationMs, 200);
+    assert.equal(presentationTypeForShape(snareReplayShape), "grenadeExplosion");
+    assert.equal(presentationDefinitionForShape(snareReplayShape).texturePath[0], "grenadeMineExplosion");
+    assert.equal(presentationDefinitionForShape({
+        type: "staticSnare", abilityId: 29, phaseId: "triggered",
+    }).fallback, "hidden");
+});
+
+test("event visual declarations emit and resolve from event metadata only", () => {
+    for (const contract of Object.values(ABILITY_CONTRACTS)) {
+        const phaseGroups = [
+            contract.phases ?? [],
+            ...(contract.abilities ?? []).map((ability) => ability.phases ?? []),
+        ];
+        for (const phases of phaseGroups) for (const phase of phases) {
+            for (const [eventType, handler] of Object.entries(phase.events ?? {})) {
+                const declaredVisualType = handler.visualType;
+                if (!declaredVisualType) continue;
+
+                assert.ok(Number.isInteger(handler.visibleMs) && handler.visibleMs > 0,
+                    `${contract.abilityId}:${phase.id}:${eventType} declares its event visual duration`);
+                assert.ok(handler.actions?.includes("emitVisual"),
+                    `${contract.abilityId}:${phase.id}:${eventType} emits its declared visual`);
+
+                const visual = visualForShape({
+                    id: `${contract.abilityId}:${phase.id}:${eventType}`,
+                    type: contract.runtimeType ?? contract.entityType,
+                    abilityId: contract.abilityId,
+                    phaseId: handler.transition?.to ?? phase.id,
+                    eventPhaseId: phase.id,
+                    eventType,
+                    eventSequence: 1,
+                });
+
+                assert.ok(declaredVisualType, `${contract.abilityId}:${phase.id}:${eventType} declares a visual`);
+                assert.equal(visual?.type, declaredVisualType, `${contract.abilityId}:${phase.id}:${eventType}`);
+                const instance = visualInstanceForShape({
+                    id: `${contract.abilityId}:${phase.id}:${eventType}`,
+                    type: contract.runtimeType ?? contract.entityType,
+                    abilityId: contract.abilityId,
+                    phaseId: handler.transition?.to ?? phase.id,
+                    eventPhaseId: phase.id,
+                    eventType,
+                    eventSequence: 1,
+                }, 1_000);
+                assert.equal(instance?.type, declaredVisualType,
+                    `${contract.abilityId}:${phase.id}:${eventType} creates its separate visual`);
+                assert.equal(instance?.followEntity, false,
+                    `${contract.abilityId}:${phase.id}:${eventType} does not follow its source`);
+            }
+        }
+    }
+});
+
+test("an event visual declaration must include its own duration", () => {
+    const phase = abilityPhase("active", "zone", {
+        events: {
+            collision: {
+                actions: ["applyEffects"],
+                visualType: "testExplosion",
+                visibleMs: 240,
+            },
+        },
+    });
+
+    assert.deepEqual(phase.events.collision.actions, ["applyEffects", "emitVisual"]);
+    assert.equal(phase.events.collision.visibleMs, 240);
+    assert.throws(() => abilityPhase("active", "zone", {
+        events: { collision: { actions: ["applyEffects"], visualType: "testExplosion" } },
+    }), /must declare a positive visibleMs/);
+    assert.throws(() => abilityPhase("active", "zone", {
+        events: { collision: { actions: ["applyEffects"], visualType: "testExplosion", visibleMs: 0 } },
+    }), /must declare a positive visibleMs/);
+});
+
+test("semantic event lookup matches camel-cased contract event keys", () => {
+    const contract = {
+        category: "zone",
+        phases: [{
+            id: "active",
+            events: {
+                lifetimeEnd: {
+                    actions: ["emitVisual"],
+                    visualType: "expiryPulse",
+                    visibleMs: 250,
+                    visualSize: 45,
+                },
+            },
+        }],
+    };
+
+    assert.deepEqual(visualForShape({
+        type: "testZone",
+        entityContractId: contract,
+        phaseId: "active",
+        eventPhaseId: "active",
+        eventType: "lifetimeend",
+        eventSequence: 1,
+    }), {
+        type: "expiryPulse",
+        visualSize: 45,
+        visibleMs: 250,
+    });
+});
+
 test("Temporal Rewind uses a looping phase animation instead of a one-frame snapshot", () => {
     const shape = { type: "temporalRewindZone", abilityId: 21, phaseId: "active", phaseTimerMs: 1_500 };
     assert.deepEqual(presentationDefinitionForShape(shape), {
@@ -74,7 +231,7 @@ test("entity renderers use the active phase or event visual size", () => {
         visualEventType: "staticSnareBurst",
         visualEventMs: 300,
         visualEventSize: 240,
-    }), 240);
+    }), 24);
     assert.equal(visualSizeForShape({ type: "unknown", size: 24 }, 12), 12);
 });
 
@@ -294,9 +451,9 @@ test("grenade presentation changes from moving to static to two-tick detonation"
 });
 
 test("Dash trails follow movement instead of bot facing", () => {
-    assert.equal(botMovementRotation({ rotation: 90, dashActiveMs: 100, dashDirectionX: -1, dashDirectionY: 0 }), Math.PI);
-    assert.equal(botMovementRotation({ rotation: 90, dashActiveMs: 100, velocityX: 1, velocityY: 0 }), 0);
-    assert.equal(botMovementRotation({ rotation: 135, dashActiveMs: 100, dashDirectionX: 0, dashDirectionY: 0 }), Math.PI / 4);
+    assert.equal(botMovementRotation({ rotation: 90, dashDirectionX: -1, dashDirectionY: 0 }), Math.PI);
+    assert.equal(botMovementRotation({ rotation: 90, velocityX: 1, velocityY: 0 }), 0);
+    assert.equal(botMovementRotation({ rotation: 135, dashDirectionX: 0, dashDirectionY: 0 }), Math.PI / 4);
 });
 
 test("Block is not an active bot presentation", () => {
@@ -318,6 +475,24 @@ test("replay projectiles recover motion from adjacent frames when velocity is ab
     assert.deepEqual(replayProjectileVelocity({ x: 130, y: 95, velocityX: 0, velocityY: 0 }, { x: 120, y: 100 }), { velocityX: 10, velocityY: -5 });
     assert.deepEqual(replayProjectileVelocity({ x: 130, y: 95, velocityX: 7, velocityY: 2 }, { x: 120, y: 100 }), { velocityX: 7, velocityY: 2 });
     assert.deepEqual(replayProjectileVelocity({ x: 130, y: 95, velocityX: 0, velocityY: 0 }, { x: 130, y: 95 }, { x: 140, y: 85 }), { velocityX: 10, velocityY: -10 });
+});
+
+test("replay does not infer a projectile trail for a stationary contract phase", () => {
+    const replayShape = normalizeReplayObstacleShape({
+        type: "gravityZone",
+        abilityId: 14,
+        phaseId: "fuse",
+        x: 120,
+        y: 100,
+        velocityX: null,
+        velocityY: null,
+    }, { x: 100, y: 100 }, { x: 140, y: 100 });
+
+    assert.deepEqual(
+        { velocityX: replayShape.velocityX, velocityY: replayShape.velocityY },
+        { velocityX: 0, velocityY: 0 },
+    );
+    assert.equal(projectileTrailStyle(replayShape), null);
 });
 
 test("replay obstacle normalization preserves the canonical building shape contract", () => {
@@ -418,13 +593,13 @@ test("visual animation descriptors keep event timers separate from phase clocks"
         abilityId: 22,
         phaseId: "active",
         phaseLocked: true,
-        visualEventType: "orbitalExplosion",
+        visualEventType: "untrustedPayloadVisual",
         visualEventMs: 300,
         visualEventSize: 260,
     });
-    assert.equal(orbitalPulse.eventActive, true);
-    assert.equal(orbitalPulse.durationMs, 400);
-    assert.equal(orbitalPulse.remainingMs, 300);
+    assert.equal(orbitalPulse.eventActive, false);
+    assert.equal(orbitalPulse.durationMs, 0);
+    assert.equal(orbitalPulse.remainingMs, null);
 });
 
 test("semantic replay events resolve repeating visuals from the frontend contract", () => {
@@ -455,7 +630,7 @@ test("live repeating event visuals stop when their presentation timer reaches ze
         phaseId: "active",
         eventType: "collision",
         eventSequence: 3,
-        visualEventType: "orbitalExplosion",
+        visualEventType: "untrustedPayloadVisual",
         visualEventMs: 100,
         visualEventSize: 260,
     };
@@ -477,9 +652,9 @@ test("event visuals become independent fixed-position instances", () => {
         eventType: "collision",
         eventSequence: 3,
         visualEvent: 3,
-        visualEventType: "orbitalExplosion",
+        visualEventType: "untrustedPayloadVisual",
         visualEventMs: 100,
-        visualEventSize: 260,
+        visualEventSize: 12,
     };
     const instance = visualInstanceForShape(spawned, 1000);
 
@@ -500,12 +675,12 @@ test("repeated event occurrences get separate visual instances while phase visua
     const first = visualInstanceForShape({
         id: "orbital-1", type: "orbitalMarker", abilityId: 22, phaseId: "active",
         x: 500, y: 300, eventType: "collision", eventSequence: 3,
-        visualEventType: "orbitalExplosion", visualEventMs: 400, visualEventSize: 260,
+        visualEventType: "untrustedPayloadVisual", visualEventMs: 400, visualEventSize: 12,
     }, 1000);
     const second = visualInstanceForShape({
         id: "orbital-1", type: "orbitalMarker", abilityId: 22, phaseId: "active",
         x: 540, y: 320, eventType: "collision", eventSequence: 4,
-        visualEventType: "orbitalExplosion", visualEventMs: 400, visualEventSize: 260,
+        visualEventType: "untrustedPayloadVisual", visualEventMs: 400, visualEventSize: 12,
     }, 1100);
     const phase = visualInstanceForShape({
         id: "grenade-1", type: "grenade", abilityId: 4, phaseId: "travel",

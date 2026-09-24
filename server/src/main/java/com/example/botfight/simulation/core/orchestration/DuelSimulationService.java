@@ -967,7 +967,6 @@ public class DuelSimulationService {
         public double spawnY;
         public int abilityEntitySerial = 1;
         public Map<String, StatusEffectState> statusEffects = new HashMap<>();
-        public int dashActiveMs;
         public double dashRemaining;
         public double dashStepDistance;
         public double dashDirectionX;

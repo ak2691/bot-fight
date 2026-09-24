@@ -202,12 +202,14 @@ public final class AbilityEntitySystem {
                     || !collision.actions().contains(AbilityContracts.PhaseAction.REMOVE)) continue;
             boolean hitDamageableTarget = damageableTargets.stream().anyMatch(target -> {
                 AbilityContracts.AbilityPhase targetPhase = AbilityContracts.phaseFor(target);
-                boolean summonTarget = targetPhase != null
-                        && targetPhase.type() == AbilityContracts.PhaseType.SUMMON;
+                boolean summonTarget = AbilityContracts.isSummon(target);
                 return !source.id().equals(target.id())
                         && (allowsFriendlyDamage(targetPhase)
                             || entityOwnersAreHostile(source, target, bots))
-                        && eventCanAffectHpEntity(collision, summonTarget)
+                        && AbilityContracts.eventTargetsEntity(collision, summonTarget)
+                        && phase.effects().stream().anyMatch(effect ->
+                                effect.type() == EffectType.DAMAGE
+                                        && AbilityContracts.effectTargetsEntity(effect, summonTarget))
                         && overlaps(source, target);
             });
             if (hitDamageableTarget) removed.add(source.id());
@@ -236,12 +238,6 @@ public final class AbilityEntitySystem {
         return targetKinds.isEmpty()
                 ? targetKind == AbilityContracts.TargetKind.BOT
                 : targetKinds.contains(targetKind);
-    }
-
-    private static boolean eventCanAffectHpEntity(AbilityContracts.PhaseEvent event,
-                                                   boolean summonTarget) {
-        return event != null && (eventTargetsKind(event, AbilityContracts.TargetKind.HP_ENTITY)
-                || summonTarget && eventTargetsKind(event, AbilityContracts.TargetKind.BOT));
     }
 
     private static ArenaEntity advanceTriggerEntity(
@@ -463,11 +459,7 @@ public final class AbilityEntitySystem {
         final List<F> collisionBots = bots;
         AbilityContracts.PhaseEvent collisionEvent = phase.events().get(
                 AbilityContracts.PhaseEventType.COLLISION);
-        boolean tetheredCollision = collisionEvent != null
-                && collisionEvent.targetPolicy() != null
-                && "tethered".equals(collisionEvent.targetPolicy().source());
-        List<HitCandidate<F>> candidates = tetheredCollision ? phaseTargets(collisionEntity, phase, bots)
-                : eventTargetsKind(collisionEvent, AbilityContracts.TargetKind.BOT) ? bots.stream()
+        List<HitCandidate<F>> candidates = eventTargetsKind(collisionEvent, AbilityContracts.TargetKind.BOT) ? bots.stream()
                 .filter(bot -> isEnemy(entity.ownerSlot(), bot, collisionBots)
                         && bot.entityHp() > 0 && !bot.ignoresHostileEffects())
                 .map(bot -> new HitCandidate<>(bot, movingCirclesDistance(
@@ -482,13 +474,16 @@ public final class AbilityEntitySystem {
         List<HitCandidate<F>> selected = phase.hit() != null
                 && phase.hit().mode() == AbilityContracts.HitMode.NEAREST
                 ? candidates.stream().limit(1).toList() : candidates;
-        boolean hpEntityCollision = eventTargetsKind(collisionEvent,
-                AbilityContracts.TargetKind.HP_ENTITY)
-                && allEntities.stream().anyMatch(target -> !target.id().equals(entity.id())
-                        && target.hp() > 0
-                        && (allowsFriendlyDamage(AbilityContracts.phaseFor(target))
-                            || entityOwnersAreHostile(collisionEntity, target, collisionBots))
-                        && overlaps(collisionEntity, target));
+        boolean hpEntityCollision = allEntities.stream().anyMatch(target -> {
+            AbilityContracts.AbilityPhase targetPhase = AbilityContracts.phaseFor(target);
+            boolean summonTarget = AbilityContracts.isSummon(target);
+            return !target.id().equals(entity.id())
+                    && target.hp() > 0
+                    && AbilityContracts.eventTargetsEntity(collisionEvent, summonTarget)
+                    && (allowsFriendlyDamage(targetPhase)
+                        || entityOwnersAreHostile(collisionEntity, target, collisionBots))
+                    && overlaps(collisionEntity, target);
+        });
         EventScheduleResult collisionSchedule = eventSchedule(
                 entity, phase, AbilityContracts.PhaseEventType.COLLISION, stepMs);
         Map<Integer, ArenaEntity> collisionSources = new HashMap<>();
@@ -752,10 +747,6 @@ public final class AbilityEntitySystem {
             if (next != null) {
                 int intervalMs = execution.intervalMs() == null ? 1_000 : execution.intervalMs();
                 next = withIntervalTimer(next, Math.max(1, intervalMs));
-                // Embedded ability executions are semantic events. The browser
-                // contract decides which presentation represents a collision.
-                next = next.withEvent(AbilityContracts.PhaseEventType.COLLISION.name()
-                        .toLowerCase(Locale.ROOT));
             }
         }
         return new TickResult(next);
@@ -866,16 +857,6 @@ public final class AbilityEntitySystem {
                 AbilityContracts.TargetKind.BOT)) {
             return List.of();
         }
-        if (event.targetPolicy() != null
-                && "tethered".equals(event.targetPolicy().source())) {
-            return bots.stream()
-                    .filter(bot -> entity.hitLedger().containsKey(bot.entitySlot())
-                            && isEnemy(entity.ownerSlot(), bot, bots)
-                            && bot.entityHp() > 0 && !bot.ignoresHostileEffects())
-                    .map(bot -> new HitCandidate<>(bot, distance(
-                            entity.x(), entity.y(), bot.entityX(), bot.entityY())))
-                    .toList();
-        }
         Double radiusValue = phase.hitbox() == null ? null : phase.hitbox().radius();
         double radius = phaseRadius(entity.abilityId(), phase, radiusValue,
                 entity.size() / 2.0);
@@ -977,9 +958,7 @@ public final class AbilityEntitySystem {
                             effectSources.getOrDefault(targetSlot, next),
                             contract.abilityId(), phase.effects(), effects, arena, combat,
                             "source",
-                            event.targetPolicy() != null
-                                    && "tethered".equals(event.targetPolicy().source())
-                                    ? "owner" : "source",
+                            event.pullDirection() == null ? "source" : event.pullDirection(),
                             distances.getOrDefault(targetSlot, Double.NaN),
                             phase.effectOverrides(), phaseRange(phase), event.statusTypes());
                     next = recordTargetApplication(next, targetSlot, event.targetPolicy(), stepMs);
@@ -992,7 +971,7 @@ public final class AbilityEntitySystem {
                 // The authoritative runtime records only that the allowlisted
                 // event occurred. Visual type, size, and duration are resolved
                 // by the browser contract from this semantic event.
-                next = next.withEvent(eventType.name().toLowerCase(Locale.ROOT));
+                next = next.withEvent(eventType.name().toLowerCase(Locale.ROOT), phase.id());
             } else if (action == AbilityContracts.PhaseAction.REMOVE) {
                 next = null;
             }
@@ -1031,14 +1010,11 @@ public final class AbilityEntitySystem {
 
     private static ArenaEntity transitionToPhase(ArenaEntity entity,
                                                   AbilityContracts.AbilityPhase phase) {
-        boolean preservesTargetLedger = phase.events().values().stream()
-                .map(AbilityContracts.PhaseEvent::targetPolicy)
-                .anyMatch(policy -> policy != null && "tethered".equals(policy.source()));
         ArenaEntity transitioned = copyWithPhase(entity, entity.x(), entity.y(), 0, 0,
                 entity.traveled(), entity.timerMs(), true, entity.ageMs(), phase.id(), true,
                 entity.rotation());
         return withEventScheduleState(withPhaseTimer(transitioned.withHitLedger(
-                preservesTargetLedger ? entity.hitLedger() : Map.of()), 0), Map.of());
+                Map.of()), 0), Map.of());
     }
 
     private static ArenaEntity withEventScheduleState(
@@ -1074,7 +1050,7 @@ public final class AbilityEntitySystem {
                 entity.damageTakenLastTick(), entity.hpNetChangeLastTick(), entity.rotation(),
                 entity.hitLedger(), entity.phaseId(), entity.phaseLocked(),
                 entity.statusEffects(), entity.eventSequence(), entity.eventType(),
-                entity.eventScheduleState());
+                entity.eventScheduleState(), entity.eventPhaseId());
     }
 
     private static ArenaEntity consumeEnteredPhaseTick(ArenaEntity entity, int stepMs) {
@@ -1095,7 +1071,7 @@ public final class AbilityEntitySystem {
                 entity.damageTakenLastTick(), entity.hpNetChangeLastTick(), entity.rotation(),
                 entity.hitLedger(), entity.phaseId(), entity.phaseLocked(),
                 entity.statusEffects(), entity.eventSequence(), entity.eventType(),
-                entity.eventScheduleState());
+                entity.eventScheduleState(), entity.eventPhaseId());
     }
 
     private static ArenaEntity copyWithPhase(ArenaEntity source, double x, double y,
@@ -1118,7 +1094,8 @@ public final class AbilityEntitySystem {
                 source.tickStartHp(), source.damageTakenThisTick(),
                 source.damageTakenLastTick(), source.hpNetChangeLastTick(), rotation,
                 source.hitLedger(), phaseId, phaseLocked, source.statusEffects(),
-                source.eventSequence(), source.eventType(), source.eventScheduleState());
+                source.eventSequence(), source.eventType(), source.eventScheduleState(),
+                source.eventPhaseId());
     }
 
     private static <F extends AbilityEntityBot> void applyEntityEffects(
@@ -1130,6 +1107,7 @@ public final class AbilityEntitySystem {
             Double rangeOverride, Set<String> statusTypes) {
         if (!isEnemy(source.ownerSlot(), target, bots)) return;
         for (AbilityContracts.Effect effect : declaredEffects) {
+            if (!AbilityContracts.effectTargetsBot(effect)) continue;
             if (!allowedEffects.isEmpty() && !allowedEffects.contains(effect.type())) continue;
             if (effect.type() == EffectType.STATUS && !statusTypes.isEmpty()
                     && statusTypes.stream().noneMatch(statusType ->
@@ -1210,7 +1188,7 @@ public final class AbilityEntitySystem {
         return new AbilityContracts.Effect(effect.type(), effect.subtype(), effect.amount(),
                 durationMs, effect.runtimeComputed(), effect.recipient(), effect.requiresConfirmedDamage(),
                 effect.mirrorsDamage(), effect.distanceMode(), effect.falloff(),
-                effect.intervalMs(), effect.movementLockMs());
+                effect.intervalMs(), effect.movementLockMs(), effect.targetKinds());
     }
 
     private static AbilityContracts.Effect withEffectOverride(
@@ -1226,7 +1204,8 @@ public final class AbilityEntitySystem {
                 override.durationMs() == null ? effect.durationMs() : override.durationMs(),
                 effect.runtimeComputed(), effect.recipient(),
                 effect.requiresConfirmedDamage(), effect.mirrorsDamage(),
-                effect.distanceMode(), falloff, effect.intervalMs(), effect.movementLockMs());
+                effect.distanceMode(), falloff, effect.intervalMs(), effect.movementLockMs(),
+                effect.targetKinds());
     }
 
     private static AbilityContracts.EffectOverride effectOverrideFor(

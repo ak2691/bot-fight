@@ -1,6 +1,8 @@
 import {
     EFFECT_TYPES,
+    effectTargetsTarget,
     resolveEffectOverride,
+    TARGET_KINDS,
 } from "../contracts/AbilityContracts.js";
 import { amountAtDistance, applyStatusEffect, durationAtDistance } from "./AbilityEffectSystem.js";
 import { clamp } from "../../gameconfig/geometry.js";
@@ -28,6 +30,7 @@ export function applyEntityEffects(bots, targetIndex, source, abilityId, combat,
     const allowed = effectTypes ? new Set(effectTypes) : null;
 
     for (const effect of effects ?? []) {
+        if (!effectTargetsTarget(effect, [TARGET_KINDS.BOT])) continue;
         if (allowed && !allowed.has(effect.type)) continue;
         if (effect.type === EFFECT_TYPES.STATUS
             && Array.isArray(statusTypes)

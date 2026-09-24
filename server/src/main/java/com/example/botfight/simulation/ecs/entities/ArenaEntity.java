@@ -37,7 +37,8 @@ public record ArenaEntity(
         List<EntityStatus> statusEffects,
         int eventSequence,
         String eventType,
-        Map<String, EventScheduleState> eventScheduleState) {
+        Map<String, EventScheduleState> eventScheduleState,
+        String eventPhaseId) {
 
     public ArenaEntity {
         hitLedger = hitLedger == null ? Map.of() : Map.copyOf(hitLedger);
@@ -45,6 +46,24 @@ public record ArenaEntity(
         eventScheduleState = eventScheduleState == null ? Map.of() : Map.copyOf(eventScheduleState);
         ageMs = Math.max(0, ageMs);
         eventSequence = Math.max(0, eventSequence);
+    }
+
+    /** Source-compatible full constructor without the event's source phase. */
+    public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
+                       double velocityX, double velocityY, double traveled, int timerMs,
+                       boolean armed, int hp, double damageMultiplier,
+                       Integer abilityId, int intervalTimerMs, int phaseTimerMs, int ageMs,
+                       double tickStartHp, double damageTakenThisTick,
+                       double damageTakenLastTick, double hpNetChangeLastTick,
+                       double rotation, Map<Integer, Integer> hitLedger,
+                       String phaseId, boolean phaseLocked, List<EntityStatus> statusEffects,
+                       int eventSequence, String eventType,
+                       Map<String, EventScheduleState> eventScheduleState) {
+        this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs,
+                armed, hp, damageMultiplier, abilityId, intervalTimerMs, phaseTimerMs,
+                ageMs, tickStartHp, damageTakenThisTick, damageTakenLastTick,
+                hpNetChangeLastTick, rotation, hitLedger, phaseId, phaseLocked,
+                statusEffects, eventSequence, eventType, eventScheduleState, null);
     }
 
     /** Source-compatible full constructor for entities without scheduler state. */
@@ -61,7 +80,7 @@ public record ArenaEntity(
                 armed, hp, damageMultiplier, abilityId, intervalTimerMs, phaseTimerMs,
                 ageMs, tickStartHp, damageTakenThisTick, damageTakenLastTick,
                 hpNetChangeLastTick, rotation, hitLedger, phaseId, phaseLocked,
-                statusEffects, eventSequence, eventType, Map.of());
+                statusEffects, eventSequence, eventType, Map.of(), null);
     }
 
     /** Compatibility constructor for the former collision-specific state. */
@@ -79,7 +98,7 @@ public record ArenaEntity(
                 armed, hp, damageMultiplier, abilityId, intervalTimerMs,
                 phaseTimerMs, ageMs, tickStartHp, damageTakenThisTick,
                 damageTakenLastTick, hpNetChangeLastTick, rotation, hitLedger, phaseId,
-                phaseLocked, statusEffects, eventSequence, eventType, Map.of());
+                phaseLocked, statusEffects, eventSequence, eventType, Map.of(), null);
     }
 
     /** Compatibility constructor for callers that do not carry entity statuses. */
@@ -183,44 +202,49 @@ public record ArenaEntity(
     }
 
     public ArenaEntity withHitLedger(Map<Integer, Integer> nextHitLedger) {
-        return copy(nextHitLedger, phaseId, phaseLocked, statusEffects, eventSequence, eventType,
+        return copy(nextHitLedger, phaseId, phaseLocked, statusEffects, eventSequence, eventType, eventPhaseId,
                 ageMs, hp, damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick,
                 x, y, velocityX, velocityY, rotation);
     }
 
     public ArenaEntity withAgeMs(int nextAgeMs) {
-        return copy(hitLedger, phaseId, phaseLocked, statusEffects, eventSequence, eventType,
+        return copy(hitLedger, phaseId, phaseLocked, statusEffects, eventSequence, eventType, eventPhaseId,
                 Math.max(0, nextAgeMs), hp, damageTakenThisTick, damageTakenLastTick,
                 hpNetChangeLastTick, x, y, velocityX, velocityY, rotation);
     }
 
     public ArenaEntity withPhase(String nextPhaseId, boolean nextPhaseLocked) {
         return copy(hitLedger, nextPhaseId, nextPhaseLocked, statusEffects, eventSequence,
-                eventType, ageMs, hp, damageTakenThisTick, damageTakenLastTick,
+                eventType, eventPhaseId, ageMs, hp, damageTakenThisTick, damageTakenLastTick,
                 hpNetChangeLastTick, x, y, velocityX, velocityY, rotation);
     }
 
     public ArenaEntity withHp(int nextHp) {
-        return copy(hitLedger, phaseId, phaseLocked, statusEffects, eventSequence, eventType,
+        return copy(hitLedger, phaseId, phaseLocked, statusEffects, eventSequence, eventType, eventPhaseId,
                 ageMs, Math.max(0, nextHp), damageTakenThisTick, damageTakenLastTick,
                 hpNetChangeLastTick, x, y, velocityX, velocityY, rotation);
     }
 
     public ArenaEntity withDamageTakenThisTick(double damage) {
-        return copy(hitLedger, phaseId, phaseLocked, statusEffects, eventSequence, eventType,
+        return copy(hitLedger, phaseId, phaseLocked, statusEffects, eventSequence, eventType, eventPhaseId,
                 ageMs, hp, damageTakenThisTick + Math.max(0, damage), damageTakenLastTick,
                 hpNetChangeLastTick, x, y, velocityX, velocityY, rotation);
     }
 
     public ArenaEntity beginTickMetrics() {
-        return copy(hitLedger, phaseId, phaseLocked, statusEffects, eventSequence, null,
+        return copy(hitLedger, phaseId, phaseLocked, statusEffects, eventSequence, null, null,
                 ageMs, hp, 0, damageTakenLastTick, hpNetChangeLastTick,
                 x, y, velocityX, velocityY, rotation).withTickStartHp(hp);
     }
 
     /** Records that an allowlisted simulation event occurred; it carries no visual metadata. */
     public ArenaEntity withEvent(String type) {
-        return copy(hitLedger, phaseId, phaseLocked, statusEffects, eventSequence + 1, type,
+        return withEvent(type, phaseId);
+    }
+
+    /** Records the phase whose contract declared the semantic event. */
+    public ArenaEntity withEvent(String type, String sourcePhaseId) {
+        return copy(hitLedger, phaseId, phaseLocked, statusEffects, eventSequence + 1, type, sourcePhaseId,
                 ageMs, hp, damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick,
                 x, y, velocityX, velocityY, rotation);
     }
@@ -228,19 +252,19 @@ public record ArenaEntity(
     /** Preserves semantic event metadata across component updates. */
     public ArenaEntity withEventState(String nextEventType, int nextEventSequence) {
         return copy(hitLedger, phaseId, phaseLocked, statusEffects, Math.max(0, nextEventSequence),
-                nextEventType, ageMs, hp, damageTakenThisTick, damageTakenLastTick,
+                nextEventType, nextEventType == null ? null : eventPhaseId, ageMs, hp, damageTakenThisTick, damageTakenLastTick,
                 hpNetChangeLastTick, x, y, velocityX, velocityY, rotation);
     }
 
     public ArenaEntity settleTickMetrics() {
         double netChange = Double.isFinite(tickStartHp) ? hp - tickStartHp : 0;
-        return copy(hitLedger, phaseId, phaseLocked, statusEffects, eventSequence, eventType,
+        return copy(hitLedger, phaseId, phaseLocked, statusEffects, eventSequence, eventType, eventPhaseId,
                 ageMs, hp, 0, damageTakenThisTick, netChange,
                 x, y, velocityX, velocityY, rotation).withTickStartHp(hp);
     }
 
     public ArenaEntity withStatusEffects(List<EntityStatus> nextStatusEffects) {
-        return copy(hitLedger, phaseId, phaseLocked, nextStatusEffects, eventSequence, eventType,
+        return copy(hitLedger, phaseId, phaseLocked, nextStatusEffects, eventSequence, eventType, eventPhaseId,
                 ageMs, hp, damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick,
                 x, y, velocityX, velocityY, rotation);
     }
@@ -252,19 +276,20 @@ public record ArenaEntity(
                 intervalTimerMs, phaseTimerMs, ageMs,
                 tickStartHp, damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick,
                 rotation, hitLedger, phaseId, phaseLocked, statusEffects, eventSequence,
-                eventType, nextEventScheduleState);
+                eventType, nextEventScheduleState, eventPhaseId);
     }
 
     public ArenaEntity withPosition(double nextX, double nextY,
                                     double nextVelocityX, double nextVelocityY) {
-        return copy(hitLedger, phaseId, phaseLocked, statusEffects, eventSequence, eventType,
+        return copy(hitLedger, phaseId, phaseLocked, statusEffects, eventSequence, eventType, eventPhaseId,
                 ageMs, hp, damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick,
                 nextX, nextY, nextVelocityX, nextVelocityY, rotation);
     }
 
     private ArenaEntity copy(Map<Integer, Integer> nextHitLedger, String nextPhaseId,
                              boolean nextPhaseLocked, List<EntityStatus> nextStatusEffects,
-                             int nextEventSequence, String nextEventType, int nextAgeMs,
+                             int nextEventSequence, String nextEventType, String nextEventPhaseId,
+                             int nextAgeMs,
                              int nextHp, double nextDamageTakenThisTick,
                              double nextDamageTakenLastTick, double nextHpNetChangeLastTick,
                              double nextX, double nextY, double nextVelocityX,
@@ -275,7 +300,7 @@ public record ArenaEntity(
                 tickStartHp, nextDamageTakenThisTick, nextDamageTakenLastTick,
                 nextHpNetChangeLastTick, nextRotation, nextHitLedger, nextPhaseId,
                 nextPhaseLocked, nextStatusEffects, nextEventSequence, nextEventType,
-                eventScheduleState);
+                eventScheduleState, nextEventPhaseId);
     }
 
     private ArenaEntity withTickStartHp(double nextTickStartHp) {
@@ -284,7 +309,7 @@ public record ArenaEntity(
                 intervalTimerMs, phaseTimerMs, ageMs, nextTickStartHp,
                 damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick,
                 rotation, hitLedger, phaseId, phaseLocked, statusEffects,
-                eventSequence, eventType, eventScheduleState);
+                eventSequence, eventType, eventScheduleState, eventPhaseId);
     }
 
     public record EntityStatus(String type, int remainingMs, int intervalMs,

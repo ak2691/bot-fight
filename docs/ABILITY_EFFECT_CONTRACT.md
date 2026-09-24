@@ -96,6 +96,44 @@ presentation-only; they do not create or extend a gameplay hit window.
 
 Apply effects in declared order. Add a new effect class only for reusable behavior that existing classes cannot express. Generic executors switch on effect class/subtype, not ability ID.
 
+### Event and effect targets
+
+An event's `targetKinds` controls which entities can reach that event. Each
+effect's own `targetKinds` then controls which of those reached targets can
+receive that particular effect. Both checks must pass before an effect runs.
+Target kinds describe capabilities: `BOT` means an actual bot, `HP_ENTITY`
+means a non-bot world entity with health, `SUMMON` means a coded summon with
+supported bot-like effects, and `ENTITY` is the broad non-bot entity scope.
+A summon carries both `HP_ENTITY` and `SUMMON`; ordinary health-bearing objects
+carry `HP_ENTITY` without `SUMMON`.
+
+When an effect omits `targetKinds`, damage defaults to `[BOT, HP_ENTITY]` and
+other effects default to `[BOT]`. This lets one collision damage bots, drones,
+and brainless health-bearing objects while keeping status or control effects
+bot-only unless the summon capability is named explicitly:
+
+```js
+effects: [
+    effect("damage", { amount: 20 }), // BOT and HP_ENTITY, including summons
+    statusEffect("slow", {
+        durationMs: 2_000,
+        targetKinds: ["BOT", "SUMMON"],
+    }),
+],
+events: {
+    collision: {
+        targetKinds: ["BOT", "HP_ENTITY"],
+        actions: ["applyEffects"],
+    },
+},
+```
+
+An event target list does not grant effect eligibility, and an effect target
+list does not expand the event's collision scope. Generic HP entities receive
+damage only; supported summon effects include status, interrupt, knockback,
+and pull when their `targetKinds` includes `SUMMON`. A summon is never treated
+as a bot by implication.
+
 ### Status-driven stat changes
 
 Status components are resolved according to how the affected stat is used,
@@ -368,7 +406,9 @@ visual; the renderer creates a fixed-position instance only when that phase's
 event emits it. Its `visibleMs` belongs to the visual instance, not to the
 entity or phase lifetime. This keeps a grenade's travel/armed visuals attached
 to the entity while its explosion can finish independently after the active
-gameplay phase ends.
+gameplay phase ends. Every event with a `visualType` must declare a positive
+`visibleMs`; the contract rejects missing or non-positive durations instead of
+supplying a renderer default.
 
 That presentation descriptor is a browser contract, not replay state. Replay
 payloads carry the authoritative phase and gameplay clocks (`phaseId`,

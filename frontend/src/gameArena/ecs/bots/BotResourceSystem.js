@@ -6,7 +6,8 @@ const RESOURCE_COMPONENTS = Object.freeze([
 ]);
 
 /** Advances bot-owned ability timing and resource components. */
-export function tickBotResources(shape, elapsedMs) {
+/** Advances timers, leaving a newly activated ability's active window untouched this step. */
+export function tickBotResources(shape, elapsedMs, justActivatedAbilityId = null) {
     const elapsed = Math.max(0, Number(elapsedMs) || 0);
     const alive = Number(shape?.hp ?? 0) > 0;
     const cooldownState = alive
@@ -15,6 +16,7 @@ export function tickBotResources(shape, elapsedMs) {
             shape?.abilityPendingCooldownMs,
             shape?.abilityActiveMs,
             elapsed,
+            justActivatedAbilityId,
         )
         : {
             cooldowns: { ...(shape?.abilityCooldowns ?? {}) },
@@ -25,7 +27,7 @@ export function tickBotResources(shape, elapsedMs) {
             .filter(({ advanceWhenDead }) => alive || advanceWhenDead)
             .map(({ field }) => [field, field === "abilityCooldowns"
                 ? cooldownState.cooldowns
-                : advanceTimerMap(shape?.[field], elapsed)]),
+                : advanceAbilityActiveTimers(shape?.[field], elapsed, justActivatedAbilityId)]),
     );
     const timedShape = {
         ...shape,
@@ -34,7 +36,8 @@ export function tickBotResources(shape, elapsedMs) {
     };
     if (!alive) return timedShape;
 
-    const resources = rechargeAbilityResources(timedShape, elapsed, shape?.abilityActiveMs);
+    const resources = rechargeAbilityResources(
+        timedShape, elapsed, shape?.abilityActiveMs, justActivatedAbilityId);
     return {
         ...timedShape,
         abilityCharges: resources.charges,
@@ -55,7 +58,8 @@ export function advanceCooldownMap(values, activeValues, elapsedMs) {
     return advanceCooldownState(values, {}, activeValues, elapsedMs).cooldowns;
 }
 
-export function advanceCooldownState(values, pendingValues, activeValues, elapsedMs) {
+export function advanceCooldownState(values, pendingValues, activeValues, elapsedMs,
+    justActivatedAbilityId = null) {
     const elapsed = Math.max(0, Number(elapsedMs) || 0);
     const cooldowns = { ...(values ?? {}) };
     const pendingCooldowns = { ...(pendingValues ?? {}) };
@@ -72,6 +76,18 @@ export function advanceCooldownState(values, pendingValues, activeValues, elapse
             Number(pendingCooldowns[id] ?? 0),
             activeRemaining > 0 ? visible : 0,
         );
+        if (justActivatedAbilityId != null && Number(id) === Number(justActivatedAbilityId)) {
+            // The action activates at this step's boundary, so this step cannot consume its timer.
+            if (activeRemaining > 0) {
+                cooldowns[id] = 0;
+                if (pending > 0) pendingCooldowns[id] = pending;
+                else delete pendingCooldowns[id];
+            } else {
+                cooldowns[id] = Math.max(visible, pending);
+                delete pendingCooldowns[id];
+            }
+            continue;
+        }
         if (activeRemaining > 0) {
             cooldowns[id] = 0;
             if (activeRemaining <= elapsed) {
@@ -89,4 +105,15 @@ export function advanceCooldownState(values, pendingValues, activeValues, elapse
         }
     }
     return { cooldowns, pendingCooldowns };
+}
+
+function advanceAbilityActiveTimers(values, elapsedMs, justActivatedAbilityId) {
+    const timers = advanceTimerMap(values, elapsedMs);
+    if (justActivatedAbilityId == null) return timers;
+    for (const [id, value] of Object.entries(values ?? {})) {
+        if (Number(id) === Number(justActivatedAbilityId)) {
+            timers[id] = Math.max(0, Number(value) || 0);
+        }
+    }
+    return timers;
 }

@@ -62,7 +62,9 @@ public class BotMovementService {
         bot.movementStartX = bot.x;
         bot.movementStartY = bot.y;
         double actionMagnitude = Math.hypot(action.dx(), action.dy());
-        boolean continuingDash = bot.dashActiveMs > 0 && bot.dashRemaining > 0;
+        boolean continuingDash = bot.abilityActiveMs.getOrDefault(19, 0) > 0
+                && bot.dashRemaining > 0;
+        if (!continuingDash && bot.dashRemaining > 0) bot.dashRemaining = 0;
         double rotationMultiplier = slowedWasActive
                 ? BotStateService.statusEffectValue(bot, "slow", "movement_modifier", "rotationMultiplier",
                         HitStagger.CONCUSSIVE_ROTATION_MULTIPLIER)
@@ -95,7 +97,7 @@ public class BotMovementService {
             bot.dashRemaining = Math.max(0, bot.dashRemaining - traveled);
             bot.movementVelocityX = bot.dashDirectionX * bot.moveSpeed * movementSpeedMultiplier;
             bot.movementVelocityY = bot.dashDirectionY * bot.moveSpeed * movementSpeedMultiplier;
-            if (traveled <= 0 || bot.dashRemaining <= 0) bot.dashActiveMs = 0;
+            if (traveled <= 0 || bot.dashRemaining <= 0) bot.dashRemaining = 0;
         }
         if (!rewoundThisTick && !continuingDash
                 && !BotStateService.statusActive(bot, "stun")
@@ -156,16 +158,19 @@ public class BotMovementService {
         Vector direction = dashDirection(payload.movementMode(), payload.movementDirection(),
                 movementDx, movementDy);
         double beforeX = bot.x, beforeY = bot.y;
-        double stepDistance = movement.speed();
         double dashDistance = movement.distance();
+        double stepDistance = Math.max(0, Math.min(movement.speed(), dashDistance));
         bot.movementStartX = bot.x;
         bot.movementStartY = bot.y;
+        double velocityX = bot.velocityX;
+        double velocityY = bot.velocityY;
         moveBot(bot, direction.dx(), direction.dy(), stepDistance, arena);
+        bot.velocityX = velocityX;
+        bot.velocityY = velocityY;
         bot.dashDirectionX = direction.dx();
         bot.dashDirectionY = direction.dy();
         bot.dashRemaining = Math.max(0, dashDistance - Math.hypot(bot.x - beforeX, bot.y - beforeY));
-        bot.dashStepDistance = stepDistance;
-        bot.dashActiveMs = payload.definition().activeMs();
+        bot.dashStepDistance = movement.speed();
     }
 
     void moveBot(Bot bot, double dx, double dy, double distance, Arena arena) {
@@ -217,7 +222,6 @@ public class BotMovementService {
     }
 
     private static void stopDash(Bot bot) {
-        bot.dashActiveMs = 0;
         bot.dashRemaining = 0;
     }
 

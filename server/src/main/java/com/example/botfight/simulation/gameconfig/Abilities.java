@@ -178,12 +178,13 @@ public final class Abilities {
                         .findFirst().orElse(null)
                 : repeatedEvent.schedule().intervalMs();
         if (intervalMs != null) stats.put("intervalMs", intervalMs.doubleValue());
-        AbilityContracts.Visual embeddedVisual = embeddedPhases.stream()
-                .map(AbilityContracts.AbilityPhase::visual)
-                .filter(value -> value != null && value.visibleMs() != null)
+        AbilityContracts.PhaseEvent embeddedVisualEvent = embeddedPhases.stream()
+                .map(phase -> phase.events().get(AbilityContracts.PhaseEventType.COLLISION))
+                .filter(event -> event != null && event.visualType() != null
+                        && event.visibleMs() != null)
                 .findFirst().orElse(null);
-        if (embeddedVisual != null) {
-            stats.put("shotVisualMs", embeddedVisual.visibleMs().doubleValue());
+        if (embeddedVisualEvent != null) {
+            stats.put("shotVisualMs", embeddedVisualEvent.visibleMs().doubleValue());
         }
         if (entity != null && !entity.phases().isEmpty()) {
             AbilityContracts.AbilityPhase firstPhase = entity.phases().getFirst();

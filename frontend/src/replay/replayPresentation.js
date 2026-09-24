@@ -1,6 +1,6 @@
 import { decodeBotLoadout, STANDARD_ABILITY_IDS } from "../gameArena/loadout/BotLoadout.js";
 import { BASE_BOT_HP } from "../gameArena/modelPayloads/arenaConstants.js";
-import { COMBAT_VISUAL_ABILITY_IDS, combatVisualDurationMs } from "../gameArena/gameconfig/visualState.js";
+import { attachedAbilityContract } from "../gameArena/ecs/contracts/AbilityContracts.js";
 
 export const REPLAY_PREPARATION_MS = 3_000;
 
@@ -157,10 +157,7 @@ export function replayRemainingMs(durationMs, activationElapsedMs, currentElapse
 /** Replay consumes the same organized ability timers emitted by simulation. */
 export function replayBotAbilityState(bot) {
     const abilityActiveMs = canonicalAbilityTimerMap(bot?.abilityActiveMs);
-    return {
-        abilityActiveMs,
-        dashActiveMs: Math.max(0, Number(bot?.dashActiveMs ?? abilityActiveMs[19] ?? 0)),
-    };
+    return { abilityActiveMs };
 }
 
 /** Recreates the Bot Room's transient direct-ability visual from its trigger. */
@@ -173,12 +170,14 @@ export function replayAbilityVisual(bot, frames = [], frameIndex = 0) {
     for (let index = currentIndex; index >= 0; index -= 1) {
         const candidate = replayBotAtFrame(frames[index], bot);
         const ability = Number(candidate?.triggeredAbility);
-        if (!COMBAT_VISUAL_ABILITY_IDS.includes(ability)) continue;
+        const visual = attachedAbilityContract(ability)?.phases?.[0]?.visual;
+        const durationMs = Number(visual?.visibleMs ?? visual?.durationMs ?? 0);
+        if (!visual?.type || !Number.isFinite(durationMs) || durationMs <= 0) continue;
 
         const activationElapsedMs = Number(frames[index]?.elapsedMs);
         if (!Number.isFinite(activationElapsedMs)) return null;
         const remainingMs = replayRemainingMs(
-            combatVisualDurationMs(ability),
+            durationMs,
             activationElapsedMs,
             currentElapsedMs,
         );
@@ -186,6 +185,8 @@ export function replayAbilityVisual(bot, frames = [], frameIndex = 0) {
 
         return {
             ability,
+            visualType: visual.type,
+            visualSize: visual.visualSize,
             ms: remainingMs,
             x: finiteValue(candidate?.visualOriginX, candidate?.x, bot?.x),
             y: finiteValue(candidate?.visualOriginY, candidate?.y, bot?.y),

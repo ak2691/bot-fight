@@ -42,9 +42,10 @@ public class ConditionEvaluationService {
         if (!Double.isFinite(left) || !Double.isFinite(right)) return false;
         if ("eq".equals(comparator)) return equivalentAngles(left, right);
         if ("neq".equals(comparator)) return !equivalentAngles(left, right);
-        return compareNumbers(left, comparator, right)
-                || compareNumbers(left - 360.0, comparator, right)
-                || compareNumbers(left + 360.0, comparator, right);
+        double positive = ((left % 360.0) + 360.0) % 360.0;
+        double negative = positive - 360.0;
+        return compareNumbers(positive, comparator, right)
+                || positive != negative && compareNumbers(negative, comparator, right);
     }
 
     private static boolean equivalentAngles(double left, double right) {

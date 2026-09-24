@@ -194,7 +194,6 @@ test("interrupting a dash clears its movement state", () => {
         abilities: [19],
         abilityCooldowns: { 19: 0 },
         abilityActiveMs: { 19: 200 },
-        dashActiveMs: 200,
         dashRemaining: 75,
         movementVelocityX: 8,
         movementVelocityY: 0,
@@ -202,7 +201,6 @@ test("interrupting a dash clears its movement state", () => {
         velocityY: 0,
     });
 
-    assert.equal(interrupted.dashActiveMs, 0);
     assert.equal(interrupted.dashRemaining, 0);
     assert.equal(interrupted.movementVelocityX, 0);
     assert.equal(interrupted.velocityX, 0);

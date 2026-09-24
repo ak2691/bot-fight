@@ -13,6 +13,8 @@ class ConditionEvaluationServiceTest {
         assertThat(service.compareAngles(350, "lt", 50)).isTrue();
         assertThat(service.compareAngles(-10, "lt", 50)).isTrue();
         assertThat(service.compareAngles(50, "eq", -310)).isTrue();
+        assertThat(service.compareAngles(270, "gt", 300)).isFalse();
+        assertThat(service.compareAngles(10, "gt", -100)).isTrue();
     }
 
     @Test

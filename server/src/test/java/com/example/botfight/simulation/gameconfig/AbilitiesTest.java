@@ -231,8 +231,10 @@ class AbilitiesTest {
     void dronesSeparateShortActionLocksFromEntityLifetimes() {
         assertThat(Abilities.definition(17).activeMs()).isEqualTo(300);
         assertThat(Abilities.durationMs(17)).isEqualTo(6_000);
+        assertThat(Abilities.stat(17, "shotVisualMs", 0)).isEqualTo(300);
         assertThat(Abilities.definition(31).activeMs()).isEqualTo(300);
         assertThat(Abilities.durationMs(31)).isEqualTo(6_000);
+        assertThat(Abilities.stat(31, "shotVisualMs", 0)).isEqualTo(300);
     }
 
     @Test

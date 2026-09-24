@@ -80,10 +80,14 @@ public class BotStateService {
     }
 
     public void beginTick(DuelSimulationService.Bot bot) {
+        beginTick(bot, null);
+    }
+
+    /** Advances one step without consuming a just-activated ability's active window. */
+    public void beginTick(DuelSimulationService.Bot bot, Integer justActivatedAbilityId) {
         bot.matchElapsedMs = Math.min(99_999_000L, bot.matchElapsedMs + STEP_MS);
         if (bot.hp <= 0) {
             bot.abilityActiveMs.replaceAll((id, value) -> Math.max(0, value - STEP_MS));
-            bot.dashActiveMs = 0;
             bot.dashRemaining = 0;
             bot.movementVelocityX = 0;
             bot.movementVelocityY = 0;
@@ -95,8 +99,8 @@ public class BotStateService {
         }
 
         var activeBeforeTimers = new HashMap<>(bot.abilityActiveMs);
-        tickAbilityTimers(bot, STEP_MS);
-        tickAbilityResources(bot, STEP_MS, activeBeforeTimers);
+        tickAbilityTimers(bot, STEP_MS, justActivatedAbilityId);
+        tickAbilityResources(bot, STEP_MS, activeBeforeTimers, justActivatedAbilityId);
         tickStatuses(bot);
         if (bot.hp <= 0) {
             clearBotEffects(bot);
@@ -325,7 +329,6 @@ public class BotStateService {
 
     public void clearBotEffects(DuelSimulationService.Bot bot) {
         bot.statusEffects.clear();
-        bot.dashActiveMs = 0;
         bot.dashRemaining = 0;
         bot.abilityActiveMs.clear();
         bot.abilityPendingCooldownMs.forEach((abilityId, pending) ->
@@ -454,7 +457,6 @@ public class BotStateService {
         boolean hasPhaseDash = contract != null && contract.phases().stream()
                 .anyMatch(phase -> phase.movement() != null && phase.movement().distance() != null);
         if (active && hasPhaseDash) {
-            bot.dashActiveMs = 0;
             bot.dashRemaining = 0;
             bot.movementVelocityX = 0;
             bot.movementVelocityY = 0;
@@ -507,7 +509,8 @@ public class BotStateService {
     }
 
     /** Advances active/recovery phases in order; cooldown modifiers are snapshotted at activation. */
-    private static void tickAbilityTimers(DuelSimulationService.Bot bot, int stepMs) {
+    private static void tickAbilityTimers(DuelSimulationService.Bot bot, int stepMs,
+                                          Integer justActivatedAbilityId) {
         Set<Integer> abilityIds = new HashSet<>(bot.abilityCooldowns.keySet());
         abilityIds.addAll(bot.abilityPendingCooldownMs.keySet());
         abilityIds.addAll(bot.abilityActiveMs.keySet());
@@ -515,6 +518,19 @@ public class BotStateService {
             int activeBefore = Math.max(0, bot.abilityActiveMs.getOrDefault(abilityId, 0));
             int visible = Math.max(0, bot.abilityCooldowns.getOrDefault(abilityId, 0));
             int pending = Math.max(0, bot.abilityPendingCooldownMs.getOrDefault(abilityId, 0));
+            if (java.util.Objects.equals(abilityId, justActivatedAbilityId)) {
+                // Activation is at this step's boundary; active time begins at its configured value.
+                if (activeBefore > 0) {
+                    pending = Math.max(pending, visible);
+                    bot.abilityCooldowns.put(abilityId, 0);
+                    if (pending > 0) bot.abilityPendingCooldownMs.put(abilityId, pending);
+                    else bot.abilityPendingCooldownMs.remove(abilityId);
+                } else {
+                    bot.abilityCooldowns.put(abilityId, Math.max(visible, pending));
+                    bot.abilityPendingCooldownMs.remove(abilityId);
+                }
+                continue;
+            }
             if (activeBefore > 0) {
                 // Migrate old/incoming state that still carries recovery in the
                 // visible map while the active phase is running.
@@ -535,11 +551,13 @@ public class BotStateService {
                 bot.abilityPendingCooldownMs.remove(abilityId);
             }
         }
-        bot.abilityActiveMs.replaceAll((id, value) -> Math.max(0, value - stepMs));
+        bot.abilityActiveMs.replaceAll((id, value) -> java.util.Objects.equals(id, justActivatedAbilityId)
+                ? Math.max(0, value) : Math.max(0, value - stepMs));
     }
 
     private static void tickAbilityResources(DuelSimulationService.Bot bot, int stepMs,
-                                             java.util.Map<Integer, Integer> activeBeforeTimers) {
+                                             java.util.Map<Integer, Integer> activeBeforeTimers,
+                                             Integer justActivatedAbilityId) {
         for (int abilityId : bot.abilities) {
             var definition = Abilities.definition(abilityId);
             if (definition.charges() <= 0) continue;
@@ -556,7 +574,8 @@ public class BotStateService {
                 continue;
             }
             int activeBefore = Math.max(0, activeBeforeTimers.getOrDefault(abilityId, 0));
-            int recoveryElapsed = Math.max(0, stepMs - Math.min(stepMs, activeBefore));
+            int recoveryElapsed = java.util.Objects.equals(abilityId, justActivatedAbilityId)
+                    ? 0 : Math.max(0, stepMs - Math.min(stepMs, activeBefore));
             bot.abilityCharges.put(abilityId, charges);
             if (charges >= maxCharges) {
                 bot.abilityRechargeMs.remove(abilityId);

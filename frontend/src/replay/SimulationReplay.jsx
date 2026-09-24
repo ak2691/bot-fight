@@ -505,7 +505,6 @@ function botReplayShape(bot, damageEvents, entranceProgress, frames, frameIndex 
         abilityActiveMs: abilityState.abilityActiveMs,
         abilityVisual,
         triggeredAbility: bot.triggeredAbility ?? null,
-        dashActiveMs: abilityState.dashActiveMs,
         abilityCooldowns: { ...(bot.abilityCooldowns ?? {}) },
         abilityCharges: { ...(bot.abilityCharges ?? {}) },
         abilityRechargeMs: { ...(bot.abilityRechargeMs ?? {}) },

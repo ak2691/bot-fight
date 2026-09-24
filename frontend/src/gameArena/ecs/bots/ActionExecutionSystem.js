@@ -32,7 +32,6 @@ export function applyBotAction(shape, action, elapsedMs, applyDamage) {
         next = interruptCurrentAbility(next);
         return {
             ...tickBotState(next, elapsedMs, applyDamage),
-            dashActiveMs: 0,
             dashRemaining: 0,
             movementVelocityX: 0,
             movementVelocityY: 0,
@@ -57,7 +56,8 @@ export function applyBotAction(shape, action, elapsedMs, applyDamage) {
         : null;
     const abilityResult = executeAbility(next, abilityPayload, elapsedMs, cooldownMultiplier, { slowedWasActive });
     next = abilityResult.bot;
-    const ticked = tickBotState(next, elapsedMs, applyDamage);
+    const ticked = tickBotState(next, elapsedMs, applyDamage,
+        abilityResult.triggeredPayload?.abilityId ?? null);
     const entitySerial = Math.max(1, Math.trunc(Number(next.abilityEntitySerial) || 1));
     const abilitySpawn = spawnForAbility(next, abilityResult.triggeredPayload, entitySerial);
     return {
@@ -82,19 +82,19 @@ function applyMovement(next, shape, action, movement) {
         movementStartY: Number(shape.y ?? next.y ?? 0),
     };
     if (statusIsActive(shape, "stun") || statusIsActive(shape, "movement-lock")) {
-        return { ...next, ...movementStart, dashActiveMs: 0, dashRemaining: 0, movementVelocityX: 0, movementVelocityY: 0, velocityX: 0, velocityY: 0 };
+        return { ...next, ...movementStart, dashRemaining: 0, movementVelocityX: 0, movementVelocityY: 0, velocityX: 0, velocityY: 0 };
     }
-    if (Number(shape.dashActiveMs ?? 0) > 0 && Number(shape.dashRemaining ?? 0) > 0) {
+    if (Number(shape.abilityActiveMs?.[19] ?? 0) > 0 && Number(shape.dashRemaining ?? 0) > 0) {
         const dashX = Number(shape.dashDirectionX ?? 0), dashY = Number(shape.dashDirectionY ?? 0);
         const step = Math.min(Number(shape.dashStepDistance ?? 75), Number(shape.dashRemaining ?? 0));
         const x = clamp(shape.x + dashX * step, shape.size / 2, ARENA_WIDTH_UNITS - shape.size / 2);
         const y = clamp(shape.y + dashY * step, shape.size / 2, ARENA_HEIGHT_UNITS - shape.size / 2);
         const traveled = Math.hypot(x - shape.x, y - shape.y);
         const dashRemaining = Math.max(0, Number(shape.dashRemaining ?? 0) - traveled);
-        return { ...next, ...movementStart, x, y, dashActiveMs: traveled > 0 && dashRemaining > 0 ? Math.max(elapsedMs, Number(shape.dashActiveMs ?? 0)) : 0, dashRemaining, movementVelocityX: dashX * maxMoveSpeed, movementVelocityY: dashY * maxMoveSpeed, velocityX: dashX * step / seconds, velocityY: dashY * step / seconds };
+        return { ...next, ...movementStart, x, y, dashRemaining, movementVelocityX: dashX * maxMoveSpeed, movementVelocityY: dashY * maxMoveSpeed, velocityX: dashX * step / seconds, velocityY: dashY * step / seconds };
     }
     const velocity = movementVelocity(dx, dy, magnitude, maxMoveSpeed);
-    return { ...next, ...movementStart, x: clamp(shape.x + velocity.dx, shape.size / 2, ARENA_WIDTH_UNITS - shape.size / 2), y: clamp(shape.y + velocity.dy, shape.size / 2, ARENA_HEIGHT_UNITS - shape.size / 2), movementVelocityX: velocity.dx, movementVelocityY: velocity.dy, velocityX: velocity.dx / seconds, velocityY: velocity.dy / seconds };
+    return { ...next, ...movementStart, x: clamp(shape.x + velocity.dx, shape.size / 2, ARENA_WIDTH_UNITS - shape.size / 2), y: clamp(shape.y + velocity.dy, shape.size / 2, ARENA_HEIGHT_UNITS - shape.size / 2), dashRemaining: 0, movementVelocityX: velocity.dx, movementVelocityY: velocity.dy, velocityX: velocity.dx / seconds, velocityY: velocity.dy / seconds };
 }
 
 function executeAbility(bot, payload, elapsedMs, cooldownMultiplier, { slowedWasActive = false } = {}) {
@@ -149,7 +149,7 @@ function executeAbility(bot, payload, elapsedMs, cooldownMultiplier, { slowedWas
         * cooldownMultiplier * cooldownStartMultiplier(next));
     const activated = setAbilityCooldownState({
         ...next,
-        abilityActiveMs: { ...(next.abilityActiveMs ?? {}), [payload.abilityId]: activeMs + elapsedMs },
+        abilityActiveMs: { ...(next.abilityActiveMs ?? {}), [payload.abilityId]: activeMs },
     }, payload.abilityId, configuredCooldownMs);
     const consumed = consumeAbilityCharges(activated, payload.abilityId, 1, {
         elapsedMs,
@@ -255,7 +255,6 @@ function applyMovementActivation(bot, payload, movement, elapsedMs) {
         // activeMs is ability-level timing and is intentionally invariant
         // across phases; movement-specific distance/speed/trail values live
         // on the phase above.
-        dashActiveMs: Number(payload.stats.activeMs ?? 200) + elapsedMs,
         dashRemaining: Math.max(0, distance - traveled),
         dashInitialDistance: distance,
         dashStepDistance: stepDistance,

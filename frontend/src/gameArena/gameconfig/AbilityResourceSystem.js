@@ -210,7 +210,6 @@ export function interruptAbility(shape, abilityId, { cooldownMultiplier = null }
     if (active && attachedAbilityContract(id)?.phases?.[0]?.movement?.distance != null) {
         next = {
             ...next,
-            dashActiveMs: 0,
             dashRemaining: 0,
             movementVelocityX: 0,
             movementVelocityY: 0,
@@ -247,7 +246,8 @@ export function abilityIgnoresGlobalLock(abilityId) {
 }
 
 /** Advances every equipped charge-bearing ability through the same resource state machine. */
-export function rechargeAbilityResources(shape, elapsedMs, activeValues = shape?.abilityActiveMs) {
+export function rechargeAbilityResources(shape, elapsedMs, activeValues = shape?.abilityActiveMs,
+    justActivatedAbilityId = null) {
     const elapsed = positiveNumber(elapsedMs);
     const charges = { ...(shape?.abilityCharges ?? {}) };
     const rechargeMs = { ...(shape?.abilityRechargeMs ?? {}) };
@@ -271,7 +271,10 @@ export function rechargeAbilityResources(shape, elapsedMs, activeValues = shape?
             continue;
         }
         const activeBefore = positiveNumber(activeValues?.[abilityId]);
-        const recoveryElapsed = Math.max(0, elapsed - Math.min(elapsed, activeBefore));
+        const recoveryElapsed = justActivatedAbilityId != null
+            && abilityId === Number(justActivatedAbilityId)
+            ? 0
+            : Math.max(0, elapsed - Math.min(elapsed, activeBefore));
         const resource = rechargeAbility({
             ...abilityResourceFor({
                 maxHp: shape?.maxHp ?? shape?.health?.max,

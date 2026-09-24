@@ -77,6 +77,7 @@ class MatchReplayDTOTest {
                 .containsExactlyInAnyOrderEntriesOf(Map.of(2, 1_000));
         assertThat(compact.frames().getFirst().bots().getFirst().abilityActiveMs())
                 .containsOnlyKeys(3);
+        assertThat(compact.frames().getFirst().bots().getFirst().rotation()).isEqualTo(0d);
         assertThat(json).contains("\"slot\":1", "\"abilityCooldowns\"", "\"abilityCharges\"", "\"abilityRechargeMs\"", "\"abilityActiveMs\"");
         assertThat(json).doesNotContain(
                 "userId",
@@ -121,7 +122,9 @@ class MatchReplayDTOTest {
                 340d,
                 125d,
                 235d,
-                35d);
+                35d,
+                -1d,
+                0d);
         MatchPlaybackDTO playback = new MatchPlaybackDTO(
                 UUID.randomUUID(),
                 "duel-v1",
@@ -142,6 +145,8 @@ class MatchReplayDTOTest {
         assertThat(frameBot.visualOriginX()).isEqualTo(125d);
         assertThat(frameBot.visualOriginY()).isEqualTo(235d);
         assertThat(frameBot.visualOriginRotation()).isEqualTo(35d);
+        assertThat(frameBot.dashDirectionX()).isEqualTo(-1d);
+        assertThat(frameBot.dashDirectionY()).isEqualTo(0d);
         assertThat(json).contains(
                 "\"preparingMs\":450",
                 "\"abilityTargetX\":720.0",
@@ -329,7 +334,7 @@ class MatchReplayDTOTest {
     void compactReplaySerializesSemanticEntityEventsWithoutPresentationFields() {
         MatchPlaybackDTO.ArenaEntityDTO orbital = new MatchPlaybackDTO.ArenaEntityDTO(
                 "orbital-1", "orbitalMarker", 22, 300, 240, 260, 0, 0, true,
-                1_000, null, null, "active", 600, "interval", 2);
+                1_000, null, null, "active", 600, "interval", "active", 2);
         MatchPlaybackDTO playback = new MatchPlaybackDTO(
                 UUID.randomUUID(), "duel-v1", "COMPLETED",
                 new MatchPlaybackDTO.ArenaStateDTO(1_000, 800, List.of(), List.of()),
@@ -342,8 +347,9 @@ class MatchReplayDTOTest {
 
         assertThat(entity.phaseTimerMs()).isEqualTo(600);
         assertThat(entity.eventType()).isEqualTo("interval");
+        assertThat(entity.eventPhaseId()).isEqualTo("active");
         assertThat(entity.eventSequence()).isEqualTo(2);
-        assertThat(json).contains("\"phaseTimerMs\":600", "\"eventType\":\"interval\"", "\"eventSequence\":2");
+        assertThat(json).contains("\"phaseTimerMs\":600", "\"eventType\":\"interval\"", "\"eventPhaseId\":\"active\"", "\"eventSequence\":2");
         assertThat(json).doesNotContain("visualEventType", "visualEventMs", "visualEventSize", "visibleMs", "shotVisualMs");
     }
 }

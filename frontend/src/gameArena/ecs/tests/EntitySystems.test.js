@@ -16,7 +16,7 @@ import { abilityHitsTarget } from "../abilities/AbilityHitDetectionSystem.js";
 import { buildDeterministicLogicAction } from "../../botlogic/planner/ArenaActionPlanner.js";
 import { buildStatePayload } from "../../modelPayloads/strategyStatePayload.js";
 import { abilityDefinition, ABILITY_STATS, shouldInterpolateAbilityVisual } from "../../loadout/BotLoadout.js";
-import { ATTACHED_ABILITY_CONTRACTS, EFFECT_TYPES, PHASE_ACTIONS, PHASE_EVENT_TYPES, TARGET_KINDS, eventAllowsEffect } from "../contracts/AbilityContracts.js";
+import { ATTACHED_ABILITY_CONTRACTS, EFFECT_TYPES, PHASE_ACTIONS, PHASE_EVENT_TYPES, TARGET_KINDS, effectTargetsTarget, eventAllowsEffect, eventTargetsEntity, targetKindsForEntity } from "../contracts/AbilityContracts.js";
 import { botStatusLabels, visualForShape } from "../../pixi/pixiVisualState.js";
 import { resetBotShape, toSimulationBotShape } from "../../modelPayloads/arenaShapes.js";
 import { compassDirection } from "../../botlogic/planner/arenaAngles.js";
@@ -60,6 +60,29 @@ test("phase contracts keep target policy on events and use generic event schedul
         .every((event) => event.schedule?.mode)), true);
 });
 
+test("event and effect target kinds keep bots, HP entities, and summons distinct", () => {
+    const hpEntity = { hp: 40 };
+    const summon = { ...entityFor({ id: "owner", slot: 1, x: 100, y: 100 }, 17), phaseType: "zone" };
+    const hpEntityKinds = targetKindsForEntity(hpEntity);
+    const summonKinds = targetKindsForEntity(summon);
+    const damage = { type: EFFECT_TYPES.DAMAGE };
+    const slow = { type: EFFECT_TYPES.STATUS, subtype: "slow" };
+    const summonSlow = { ...slow, targetKinds: [TARGET_KINDS.BOT, TARGET_KINDS.SUMMON] };
+
+    assert.deepEqual(hpEntityKinds, [TARGET_KINDS.ENTITY, TARGET_KINDS.HP_ENTITY]);
+    assert.deepEqual(summonKinds, [TARGET_KINDS.ENTITY, TARGET_KINDS.HP_ENTITY, TARGET_KINDS.SUMMON]);
+    assert.deepEqual(ENTITY_CONTRACTS[21].phases[0].events.activation.targetKinds,
+        [TARGET_KINDS.BOT]);
+    assert.equal(eventTargetsEntity({ targetKinds: [TARGET_KINDS.BOT] }, summonKinds), false);
+    assert.equal(eventTargetsEntity({ targetKinds: [TARGET_KINDS.HP_ENTITY] }, summonKinds), true);
+    assert.equal(eventTargetsEntity({ targetKinds: [TARGET_KINDS.SUMMON] }, hpEntityKinds), false);
+    assert.equal(effectTargetsTarget(damage, hpEntityKinds), true);
+    assert.equal(effectTargetsTarget(damage, summonKinds), true);
+    assert.equal(effectTargetsTarget(slow, summonKinds), false);
+    assert.equal(effectTargetsTarget(summonSlow, hpEntityKinds), false);
+    assert.equal(effectTargetsTarget(summonSlow, summonKinds), true);
+});
+
 test("apply-effects events can select individual status subtypes", () => {
     const event = {
         effectTypes: [EFFECT_TYPES.STATUS],
@@ -84,7 +107,10 @@ test("entity phases expose complete effect payloads for contract auditing", () =
     }
     assert.deepEqual(
         ENTITY_CONTRACTS[5].phases[0].effects.find(({ type }) => type === "status"),
-        { type: "status", subtype: "burn", amount: 2, durationMs: 5000, intervalMs: 1000 },
+        {
+            type: "status", subtype: "burn", amount: 2, durationMs: 5000,
+            intervalMs: 1000, targetKinds: [TARGET_KINDS.BOT, TARGET_KINDS.SUMMON],
+        },
     );
 });
 
@@ -372,6 +398,10 @@ test("hunter drone retains the replay-matched shot visual timer", () => {
     }, noDamageCombat);
 
     assert.equal(result.entities[0].shotVisualMs, 250);
+    assert.equal(result.entities[0].eventType, "collision");
+    assert.equal(result.entities[0].eventPhaseId, "active");
+    assert.equal(result.entities[0].eventSequence, 1);
+    assert.equal(visualForShape(result.entities[0]).type, "gun");
 });
 
 test("Tether Bolt extends four ticks, returns two ticks, and applies damage, pull, and slow", () => {
@@ -436,8 +466,11 @@ test("Static Snare uses its stronger phase when generic damage destroys it", () 
     assert.equal(result.entities[0].id, snare.id);
     assert.equal(result.entities[0].type, "staticSnare");
     assert.equal(result.entities[0].phaseId, "destroyed");
-    assert.equal(phaseVisualFor(result.entities[0]).type, "orbitalExplosion");
-    assert.equal(phaseVisualFor(result.entities[0]).visualSize, 240);
+    assert.equal(result.entities[0].eventType, "collision");
+    assert.equal(result.entities[0].eventPhaseId, "destroyed");
+    assert.equal(result.entities[0].eventSequence, 1);
+    assert.equal(visualForShape(result.entities[0]).type, "orbitalExplosion");
+    assert.equal(visualForShape(result.entities[0]).visualSize, 240);
     assert.equal(result.entities[0].size, 24);
 });
 
@@ -455,9 +488,12 @@ test("Static Snare triggers once without chaining to its owner", () => {
     assert.equal(result.entities[0].id, snare.id);
     assert.equal(result.entities[0].type, "staticSnare");
     assert.equal(result.entities[0].phaseId, "triggered");
-    assert.equal(result.entities[0].visualEventType, "grenadeExplosion");
-    assert.equal(result.entities[0].visualEventSize, 150);
+    assert.equal(result.entities[0].eventType, "trigger");
+    assert.equal(result.entities[0].eventPhaseId, "armed");
+    assert.equal(result.entities[0].eventSequence, 1);
     assert.equal(result.entities[0].visualEventMs, 200);
+    assert.equal(visualForShape(result.entities[0]).type, "grenadeExplosion");
+    assert.equal(visualForShape(result.entities[0]).visualSize, 150);
     assert.equal(result.entities[0].size, 24);
 });
 
@@ -654,8 +690,8 @@ test("Static Snare gets its stronger radius and effects when any attack destroys
     assert.equal(result.entities[0].id, snare.id);
     assert.equal(result.entities[0].type, "staticSnare");
     assert.equal(result.entities[0].phaseId, "destroyed");
-    assert.equal(phaseVisualFor(result.entities[0]).type, "orbitalExplosion");
-    assert.equal(phaseVisualFor(result.entities[0]).visualSize, 240);
+    assert.equal(visualForShape(result.entities[0]).type, "orbitalExplosion");
+    assert.equal(visualForShape(result.entities[0]).visualSize, 240);
     assert.equal(result.entities[0].size, 24);
 });
 
@@ -696,8 +732,8 @@ test("Static Snare uses its stronger phase when an opponent destroys it and skip
     assert.equal(result.entities[0].id, snare.id);
     assert.equal(result.entities[0].type, "staticSnare");
     assert.equal(result.entities[0].phaseId, "destroyed");
-    assert.equal(phaseVisualFor(result.entities[0]).type, "orbitalExplosion");
-    assert.equal(phaseVisualFor(result.entities[0]).visualSize, 240);
+    assert.equal(visualForShape(result.entities[0]).type, "orbitalExplosion");
+    assert.equal(visualForShape(result.entities[0]).visualSize, 240);
     assert.equal(result.entities[0].size, 24);
 });
 
@@ -727,7 +763,7 @@ test("drone body contact does not apply the mini ability effects", () => {
     assert.deepEqual(result.entities.map((entity) => entity.hp), [50, 50]);
 });
 
-test("summons accept bot-targeted presence effects and reset their execution timer", () => {
+test("summons accept explicitly summon-targeted presence effects and reset their execution timer", () => {
     const owner = { id: "owner", slot: 1, x: 100, y: 100, rotation: 90, hp: 100 };
     const enemy = { id: "enemy", slot: 2, x: 300, y: 300, size: 60, hp: 100 };
     const zone = entityFor(owner, 24, {
@@ -737,6 +773,8 @@ test("summons accept bot-targeted presence effects and reset their execution tim
         clamp: (value) => value,
     });
     const drone = entityFor(enemy, 17, { id: "drone" });
+    assert.deepEqual(ENTITY_CONTRACTS[24].phases[0].effects[0].targetKinds,
+        [TARGET_KINDS.BOT, TARGET_KINDS.SUMMON]);
     const result = tickAbilityEntityWorld({
         bots: [owner, enemy],
         entities: [zone, drone],
@@ -848,8 +886,8 @@ test("proximity mine triggers and damages within its increased radius", () => {
     assert.equal(result.entities[0].id, mine.id);
     assert.equal(result.entities[0].type, "proximityMine");
     assert.equal(result.entities[0].phaseId, "active");
-    assert.equal(phaseVisualFor(result.entities[0]).type, "mineExplosion");
-    assert.equal(phaseVisualFor(result.entities[0]).visualSize, 175);
+    assert.equal(visualForShape(result.entities[0]).type, "mineExplosion");
+    assert.equal(visualForShape(result.entities[0]).visualSize, 175);
     assert.equal(result.entities[0].size, 24);
     assert.equal(result.bots[0].hp, 70);
 });
@@ -1170,11 +1208,11 @@ test("Dash exposes recovery only after its active phase ends", () => {
     assert.equal(first.abilityCooldowns[19], 0);
     assert.equal(first.abilityPendingCooldownMs[19], 1800);
 
-    const blocked = applyBotAction({ ...first, dashActiveMs: 0, dashRemaining: 0 }, action, 100, applyDamageToShape);
+    const blocked = applyBotAction({ ...first, dashRemaining: 0 }, action, 100, applyDamageToShape);
     assert.equal(blocked.triggeredAbility, null);
     assert.equal(blocked.abilityCharges[19], undefined);
 
-    const activeBoundary = applyBotAction({ ...first, dashActiveMs: 0, dashRemaining: 0, abilityCooldowns: { 19: 0 }, abilityPendingCooldownMs: { 19: 100 }, abilityActiveMs: { 19: 100 } }, action, 100, applyDamageToShape);
+    const activeBoundary = applyBotAction({ ...first, dashRemaining: 0, abilityCooldowns: { 19: 0 }, abilityPendingCooldownMs: { 19: 100 }, abilityActiveMs: { 19: 100 } }, action, 100, applyDamageToShape);
     assert.equal(activeBoundary.triggeredAbility, null);
     assert.equal(activeBoundary.abilityActiveMs[19], 0);
     assert.equal(activeBoundary.abilityCooldowns[19], 100);
@@ -1182,14 +1220,14 @@ test("Dash exposes recovery only after its active phase ends", () => {
 
     const cooldownEnded = tickBotState(activeBoundary, 100, applyDamageToShape);
     assert.equal(cooldownEnded.abilityCooldowns[19], 0);
-    const boundary = applyBotAction({ ...cooldownEnded, dashActiveMs: 0, dashRemaining: 0 }, action, 100, applyDamageToShape);
+    const boundary = applyBotAction({ ...cooldownEnded, dashRemaining: 0 }, action, 100, applyDamageToShape);
     assert.equal(boundary.triggeredAbility, 19);
     assert.equal(boundary.abilityCooldowns[19], 0);
     assert.equal(boundary.abilityPendingCooldownMs[19], 1800);
     assert.equal(boundary.abilityCharges[19], undefined);
 });
 
-test("Dash clears its active movement marker when the dash segment finishes so later dashes can replay", () => {
+test("Dash stops when its ability active timer expires and allows later dashes", () => {
     const dashBase = {
         ...base,
         x: 200,
@@ -1208,7 +1246,7 @@ test("Dash clears its active movement marker when the dash segment finishes so l
     }, { dx: 0, dy: 0, dRot: 0 }, 100, applyDamageToShape);
 
     assert.equal(finished.dashRemaining, 0);
-    assert.equal(finished.dashActiveMs, 0);
+    assert.equal(finished.abilityActiveMs[19], 0);
 
     const second = applyBotAction({
         ...finished,
@@ -1217,7 +1255,7 @@ test("Dash clears its active movement marker when the dash segment finishes so l
         abilityActiveMs: {},
     }, action, 100, applyDamageToShape);
     assert.equal(second.triggeredAbility, 19);
-    assert.ok(second.dashActiveMs > 0);
+    assert.ok(second.abilityActiveMs[19] > 0);
 });
 
 test("entity-backed abilities resolve through normalized entity contracts", () => {
@@ -1515,9 +1553,7 @@ test("Singularity pulls during its fuse and applies one generic zone detonation"
     assert.equal(detonated.entities[0].id, singularity.id);
     assert.equal(detonated.entities[0].type, "singularityZone");
     assert.equal(detonated.entities[0].phaseId, "active");
-    assert.equal(phaseVisualFor(detonated.entities[0]).type, "singularityExplosion");
     assert.equal(visualForShape(detonated.entities[0]).type, "singularityExplosion");
-    assert.equal(detonated.entities[0].visualEventType, "singularityExplosion");
     const hpAfterDetonation = detonated.bots[0].hp;
     const after = tickAbilityEntityWorld({ ...world, entities: detonated.entities, bots: detonated.bots }, noDamageCombat);
     assert.equal(after.bots[0].hp, hpAfterDetonation);

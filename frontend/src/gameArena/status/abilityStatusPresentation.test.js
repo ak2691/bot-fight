@@ -183,7 +183,6 @@ test("preparation, active, cooldown, and ready states use remaining-time directi
 
     const dash = abilityStatusFor({
         abilityActiveMs: { 19: 200 },
-        dashActiveMs: 200,
     }, 19);
     assert.equal(dash.state, "active");
     assert.equal(dash.durationMs, 200);

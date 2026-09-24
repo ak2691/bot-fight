@@ -142,7 +142,9 @@ function phaseProjection(id) {
     const collisionIntervalMs = scheduledEvent?.schedule?.intervalMs
         ?? behaviorPhase.execution?.intervalMs;
     if (collisionIntervalMs != null) stats.intervalMs = Number(collisionIntervalMs);
-    if (embeddedPhase?.visual?.visibleMs != null) stats.shotVisualMs = Number(embeddedPhase.visual.visibleMs);
+    if (embeddedPhase?.events?.collision?.visibleMs != null) {
+        stats.shotVisualMs = Number(embeddedPhase.events.collision.visibleMs);
+    }
     const entityPhase = entity?.phases?.[0] ?? null;
     const entityVisualSize = Number(entityPhase?.visual?.visualSize);
     if (Number.isFinite(entityVisualSize) && entityVisualSize > 0) {

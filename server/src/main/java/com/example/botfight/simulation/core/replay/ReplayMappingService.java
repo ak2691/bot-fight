@@ -29,7 +29,7 @@ public class ReplayMappingService {
                 bot.temporalRewindPulseMs, bot.closingZoneDamageCount, bot.teamNumber,
                 triggeredTargetX(bot), triggeredTargetY(bot),
                 finiteOrNull(bot.visualOriginX), finiteOrNull(bot.visualOriginY),
-                finiteOrNull(bot.visualOriginRotation));
+                finiteOrNull(bot.visualOriginRotation), dashDirectionX(bot), dashDirectionY(bot));
     }
 
     public MatchPlaybackDTO.ArenaEntityDTO toArenaEntity(ArenaEntity entity) {
@@ -39,6 +39,7 @@ public class ReplayMappingService {
                 round(entity.x()), round(entity.y()), entity.size(), entity.rotation(), entity.hp(), entity.armed(),
                 entity.timerMs(), entity.velocityX(), entity.velocityY(),
                 phaseId, positiveOrNull(entity.phaseTimerMs()), entity.eventType(),
+                entity.eventPhaseId(),
                 positiveOrNull(entity.eventSequence()));
     }
 
@@ -82,7 +83,7 @@ public class ReplayMappingService {
                 bot.slot,
                 round(bot.x),
                 round(bot.y),
-                nonZeroOrNull(round(bot.rotation)),
+                finiteOrNull(round(bot.rotation)),
                 bot.hp,
                 copyStatusEffects(bot),
                 positiveEntries(bot.abilityCooldowns),
@@ -99,6 +100,8 @@ public class ReplayMappingService {
                 temporalRewindPulseMs > 0 ? round(bot.temporalRewindY) : null,
                 positiveOrNull(temporalRewindPulseMs),
                 positiveOrNull(bot.closingZoneDamageCount),
+                dashDirectionX(bot),
+                dashDirectionY(bot),
                 bot.teamNumber);
     }
 
@@ -122,6 +125,7 @@ public class ReplayMappingService {
                 phaseId,
                 positiveOrNull(entity.phaseTimerMs()),
                 entity.eventType(),
+                entity.eventPhaseId(),
                 positiveOrNull(entity.eventSequence()),
                 entity.statusEffects().isEmpty() ? null : entity.statusEffects());
     }
@@ -181,6 +185,18 @@ public class ReplayMappingService {
     private static Double triggeredTargetY(DuelSimulationService.Bot bot) {
         return bot.triggeredAbilityPayload == null
                 ? null : finiteOrNull(bot.triggeredAbilityPayload.targetY());
+    }
+
+    private static Double dashDirectionX(DuelSimulationService.Bot bot) {
+        return hasDashVisualState(bot) ? finiteOrNull(bot.dashDirectionX) : null;
+    }
+
+    private static Double dashDirectionY(DuelSimulationService.Bot bot) {
+        return hasDashVisualState(bot) ? finiteOrNull(bot.dashDirectionY) : null;
+    }
+
+    private static boolean hasDashVisualState(DuelSimulationService.Bot bot) {
+        return bot.dashRemaining > 0 || bot.abilityActiveMs.getOrDefault(19, 0) > 0;
     }
 
     private static Double finiteOrNull(double value) {

@@ -95,32 +95,20 @@ export function dispatchEntityEvent(entity, eventType, {
             // renderer resolves its asset, size, and animation duration from
             // the browser ability contract.
             const semanticEventType = String(eventType).toLowerCase();
-            const visual = phase.visual ?? null;
-            const eventVisual = handler.visual ?? null;
             const visibleMs = resolveNumber(
-                handler.visibleMs ?? eventVisual?.visibleMs ?? visual?.visibleMs,
+                handler.visibleMs,
                 nextEntity,
                 world,
                 0,
             );
-            const visualType = handler.visualType ?? eventVisual?.type ?? visual?.type ?? null;
-            const visualSize = resolveNumber(
-                handler.visualSize ?? eventVisual?.visualSize ?? visual?.visualSize,
-                nextEntity,
-                world,
-                Number(nextEntity.size ?? 0),
-            );
             nextEntity = withComponentState(nextEntity, {
                 eventSequence: Number(nextEntity.eventSequence ?? 0) + 1,
                 eventType: semanticEventType,
-                // These are frontend-only presentation state for the live
-                // practice arena; they never cross the authoritative replay
-                // boundary.
+                eventPhaseId: phase?.id ?? nextEntity.phaseId ?? null,
+                // The countdown is frontend-only presentation state. Pixi
+                // resolves the event's visual metadata from the ability contract.
                 visualEvent: Number(nextEntity.visualEvent ?? 0) + 1,
-                visualEventType: visualType,
                 visualEventMs: visibleMs,
-                visualEventSize: visualSize,
-                ...(visibleMs > 0 ? { visibleMs } : {}),
             });
             emittedVisuals.push({
                 eventType: semanticEventType,
@@ -164,9 +152,6 @@ export function transitionEntityPhase(entity, phaseId) {
     const contract = entityContract(entity.entityContractId ?? entity.abilityId ?? entity.type);
     const nextPhase = contract?.phases?.find((phase) => phase.id === phaseId);
     if (!nextPhase) return entity;
-    const preservesTargetLedger = Object.values(nextPhase.events ?? {}).some((event) =>
-        event?.targetPolicy?.source === "tethered");
-
     const changes = {
         phaseId,
         phaseTimerMs: 0,
@@ -176,7 +161,7 @@ export function transitionEntityPhase(entity, phaseId) {
         ...(Number(nextPhase.movement?.speed ?? 0) <= 0 ? { velocityX: 0, velocityY: 0 } : {}),
         // Persistence is phase-local. A target affected by a fuse phase can
         // be affected again by the damage phase of the same logical entity.
-        hitLedger: preservesTargetLedger ? (entity.hitLedger ?? {}) : {},
+        hitLedger: {},
         ...(nextPhase.type === "zone" || nextPhase.type === "self" ? { armed: true } : {}),
     };
     return withComponentState(entity, changes);
@@ -185,14 +170,8 @@ export function transitionEntityPhase(entity, phaseId) {
 function recordTargetApplication(entity, target, targetPolicy, world) {
     const mode = targetPolicy?.mode ?? TARGET_POLICY_MODES.EVERY_TICK;
     const key = targetKey(target);
-    const changes = targetPolicy?.bind
-        ? { tetheredTargetIds: [...new Set([...(entity.tetheredTargetIds ?? []), key])] }
-        : {};
-    if (mode === TARGET_POLICY_MODES.EVERY_TICK) return Object.keys(changes).length > 0
-        ? withComponentState(entity, changes)
-        : entity;
+    if (mode === TARGET_POLICY_MODES.EVERY_TICK) return entity;
     return withComponentState(entity, {
-        ...changes,
         hitLedger: {
             ...(entity.hitLedger ?? {}),
             // The entity clock is advanced at the start of a fixed tick. Store

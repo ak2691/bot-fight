@@ -177,6 +177,7 @@ public class ActionExecutionService {
         boolean hitStaggerWasActive = BotStateService.statusActive(bot, "hit-stagger");
         boolean stunnedWasActive = BotStateService.statusActive(bot, "stun");
         boolean silencedWasActive = BotStateService.statusActive(bot, "silence");
+        Integer justActivatedAbilityId = null;
 
         movementService.applyTickMovement(bot, action, arena, false,
                 slowedWasActive, hitStaggerWasActive);
@@ -198,15 +199,17 @@ public class ActionExecutionService {
             cancelPreparation(bot, payload);
         } else if (payload != null && !BotStateService.statusActive(bot, "silence")) {
             AbilityExecutionPayload activated = activateAbility(bot, payload, arena);
-            if (activated != null)
+            if (activated != null) {
                 setTriggeredPayload(bot, activated);
+                justActivatedAbilityId = activated.abilityId();
+            }
         } else if (payload != null
                 && bot.preparingAbility != null
                 && (BotStateService.statusActive(bot, "silence") || BotStateService.statusActive(bot, "stun"))) {
             cancelPreparation(bot, payload);
         }
 
-        botStateService.beginTick(bot);
+        botStateService.beginTick(bot, justActivatedAbilityId);
         if (bot.triggeredAbilityPayload != null) {
             spawnAbilityEntity(bot, bot.triggeredAbilityPayload, arena);
         }
@@ -295,7 +298,7 @@ public class ActionExecutionService {
         }
         int activeMs = activationActiveMs(payload);
         int cooldownMs = activationCooldownMs(bot, payload, 1.0 / bot.attackSpeedMultiplier);
-        bot.abilityActiveMs.put(payload.abilityId(), activeMs + STEP_MS);
+        bot.abilityActiveMs.put(payload.abilityId(), activeMs);
         botStateService.setAbilityCooldown(bot, payload.abilityId(), cooldownMs);
         AbilityExecutionPayload activated = payload.capture(bot);
         AbilityContracts.AbilityPhase phase = activated.phases().isEmpty()
@@ -314,7 +317,7 @@ public class ActionExecutionService {
         }
         if (actions.contains(AbilityContracts.PhaseAction.START_MOVEMENT)
                 && phase.movement() != null && phase.movement().distance() != null
-                && bot.dashActiveMs <= 0) {
+                && bot.dashRemaining <= 0) {
             movementService.startDash(bot, activated, arena);
         }
         return activated;
