@@ -156,10 +156,10 @@ export const TUTORIAL_CATEGORIES = Object.freeze([
                     "Create another root, check if Variable 1 is greater than or equal to 10, then use Dash. You just made your own variable, added 1 to it every tick, and used it in a conditional statement.",
                 ),
             ]),
-            lesson("some-theories", "Some Theories", [
-                "As the sole developer, I have not yet had the chance to dive deeply into what custom variables can do. My original intention was to let them store long statements in one variable, making it easier to reuse the same statements in multiple conditions.",
-                "To do this, you could create a root with a conditional node containing the conditions you want to save. Then set the variable to true when those conditions hold and false otherwise.",
-                "Custom variables are also a form of memory: they can remember your past actions. I have not yet come up with an impactful use case for memory in this game, so I implore you to be creative and help me fill this part in sometime. Or tell me that the feature is completely useless! That is fine too!",
+            lesson("some-theories", "Use cases", [
+                "You can store long statements in one variable, making it easier to reuse the same statements in multiple conditions.",
+                "To do this, you create a root with a conditional node containing the conditions you want to save. Then set the variable to true when those conditions hold and false otherwise.",
+                "Custom variables are also a form of memory: they can remember your past actions. The puzzle \"It's Rewind Time\" can be solved by keeping track of a custom variable. Check it out to see how it can be used.",
             ], null),
         ]),
     }),
