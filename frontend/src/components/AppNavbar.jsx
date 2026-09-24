@@ -174,7 +174,7 @@ function NotificationPanel({
 }) {
     const totalInvites = partyInvites.length + customLobbyInvites.length;
     return (
-        <section className="absolute right-0 top-12 z-30 max-h-[min(32rem,calc(100vh-6rem))] w-[min(22rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-xl border-2 border-slate-500/80 bg-[#091521f5] p-3 shadow-[0_18px_60px_rgba(0,0,0,.45)]" aria-label="Notifications">
+        <section className="absolute right-0 top-12 z-30 max-h-[min(32rem,calc(100vh-6rem))] w-[min(22rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-xl border-2 border-slate-500/80 bg-[#091521f5] p-3 shadow-[0_18px_60px_rgba(0,0,0,.45)] game-popover" aria-label="Notifications">
             <div className="flex items-center justify-between gap-3 px-2 pb-2">
                 <h2 className="font-mono text-[10px] font-bold tracking-[.2em] text-fuchsia-400">NOTIFICATIONS</h2>
                 <span className="text-xs text-slate-500">{totalInvites} pending</span>

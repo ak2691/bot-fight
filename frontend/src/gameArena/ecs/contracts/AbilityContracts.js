@@ -98,6 +98,11 @@ const SUMMON_SUPPORTED_EFFECT_TYPES = new Set([
     EFFECT_TYPES.KNOCKBACK,
     EFFECT_TYPES.PULL,
 ]);
+const HP_ENTITY_SUPPORTED_EFFECT_TYPES = new Set([
+    EFFECT_TYPES.DAMAGE,
+    EFFECT_TYPES.KNOCKBACK,
+    EFFECT_TYPES.PULL,
+]);
 
 function defaultEffectTargetKinds(type) {
     return type === EFFECT_TYPES.DAMAGE ? DAMAGE_TARGET_KINDS : BOT_TARGET_KINDS;
@@ -162,9 +167,9 @@ export function effectTargetsTarget(effectValue, targetKinds) {
     if (targetKinds.includes(TARGET_KINDS.SUMMON)
         && declared.includes(TARGET_KINDS.SUMMON)
         && SUMMON_SUPPORTED_EFFECT_TYPES.has(effectValue.type)) return true;
-    if (effectValue.type === EFFECT_TYPES.DAMAGE
-        && targetKinds.includes(TARGET_KINDS.HP_ENTITY)
-        && declared.includes(TARGET_KINDS.HP_ENTITY)) return true;
+    if (targetKinds.includes(TARGET_KINDS.HP_ENTITY)
+        && declared.includes(TARGET_KINDS.HP_ENTITY)
+        && HP_ENTITY_SUPPORTED_EFFECT_TYPES.has(effectValue.type)) return true;
     return effectValue.type === EFFECT_TYPES.DAMAGE
         && targetKinds.includes(TARGET_KINDS.ENTITY)
         && declared.includes(TARGET_KINDS.ENTITY);

@@ -1251,7 +1251,7 @@ export default function Arena({
     ]);
 
     return (
-        <div className={`arena-page-shell relative flex h-screen flex-col text-ink-hi font-ui overflow-hidden ${isMatchTesting ? "match-arena-shell" : "bg-arena-deep"}`}>
+        <div className={`arena-page-shell relative flex h-screen flex-col text-ink-hi font-ui overflow-hidden ${isMatchTesting ? "match-arena-shell" : "bg-arena-deep"} ${isPracticeRoom ? "practice-room-shell" : ""}`}>
             {submitStatus && (
                 <div role="status" aria-live="polite" className={`
                     fixed bottom-6 left-1/2 -translate-x-1/2 z-50

@@ -61,11 +61,11 @@ export default function ProfileSearchPage() {
     }, [loadResults, query]);
 
     return (
-        <main className="min-h-screen bg-[#171a1c] font-interface text-slate-100">
+        <main className="profile-search-page min-h-screen bg-[#171a1c] font-interface text-slate-100">
             <AppNavbar account currentPage="profile" />
 
             <section className="relative z-[1] mx-auto w-full max-w-[980px] px-5 py-10 sm:px-8 sm:py-12">
-                <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+                <div className="profile-search-hero flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
                     <div>
                         <p className="font-mono text-[11px] font-bold tracking-[.3em] text-cyan-400">PLAYER SEARCH</p>
                         <h1 className="mt-3 text-4xl font-bold tracking-tight text-white sm:text-5xl">Search results</h1>

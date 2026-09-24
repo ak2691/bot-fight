@@ -1,3 +1,4 @@
+import { useState } from "react";
 import AppNavbar from "../../components/AppNavbar";
 import ArenaDegreesCompass from "../../components/ArenaDegreesCompass";
 import {
@@ -77,23 +78,29 @@ function groupedVariables() {
 }
 
 export default function ConditionalCataloguePage() {
-    const groups = groupedVariables();
+    const [searchTerm, setSearchTerm] = useState("");
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const groups = groupedVariables().map(({ group, variables }) => ({
+        group,
+        variables: variables.filter((variable) => (
+            `${variable.label} ${variable.valueType} ${variable.unit ?? ""} ${describeVariable(variable)}`.toLowerCase().includes(normalizedSearch)
+        )),
+    })).filter(({ variables }) => variables.length);
+    const alwaysMatches = !normalizedSearch || "always boolean fallback action".includes(normalizedSearch);
+    const resultCount = groups.reduce((count, group) => count + group.variables.length, 0) + (alwaysMatches ? 1 : 0);
 
     return (
         <main className="conditional-catalogue min-h-screen bg-[#171a1c] font-interface text-slate-100">
             <AppNavbar account currentPage="conditionals" />
 
-            <header className="border-b border-slate-800/80 px-5 py-12 sm:px-8 sm:py-16">
-                <div className="mx-auto max-w-6xl">
-                    <p className="font-mono text-[10px] font-bold tracking-[.3em] text-blue-300">BOT BRAIN REFERENCE · 1V1</p>
-                    <h1 className="mt-3 font-display-action text-5xl uppercase tracking-wide text-white sm:text-7xl">Conditional List</h1>
-                    <p className="mt-4 max-w-2xl text-base leading-7 text-slate-400">
-                        Everything a bot can check while building 1v1 logic. Pick a value, compare it, and run the branch when the result is true.
-                    </p>
-                </div>
+            <header className="mx-auto max-w-[92rem] px-5 pt-8 sm:px-8 sm:pt-10">
+                <h1 className="font-display-action text-3xl uppercase tracking-wide text-white sm:text-4xl">Conditional Catalogue</h1>
+                <p className="mt-1.5 max-w-2xl text-sm leading-6 text-slate-400 sm:text-base">
+                    Browse game variables here
+                </p>
             </header>
 
-            <div className="mx-auto grid max-w-[92rem] gap-10 px-5 py-10 sm:px-8 sm:py-14 lg:grid-cols-[15rem_minmax(0,1fr)_minmax(18rem,22rem)]">
+            <div className="mx-auto grid max-w-[92rem] gap-10 px-5 pb-10 pt-6 sm:px-8 sm:pb-14 sm:pt-8 lg:grid-cols-[15rem_minmax(0,1fr)_minmax(18rem,22rem)]">
                 <aside className="self-start border border-blue-500/40 bg-[#081522]/85 p-5">
                     <p className="font-mono text-[10px] font-bold tracking-[.22em] text-blue-300">HOW CONDITIONS WORK</p>
                     <p className="mt-3 text-sm leading-6 text-slate-300">
@@ -121,8 +128,16 @@ export default function ConditionalCataloguePage() {
 
                 </aside>
 
-                <div className="min-w-0 space-y-12">
-                    <section aria-labelledby="conditional-basic">
+                <div className="conditional-catalogue__list min-w-0 space-y-8">
+                    <div className="catalogue-controls">
+                        <label className="catalogue-search">
+                            <span className="catalogue-search__label">FIND A CONDITION</span>
+                            <input type="search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search health, distance, cooldown…" />
+                        </label>
+                        <span className="catalogue-results" role="status">{resultCount} values available</span>
+                    </div>
+                    {resultCount === 0 && <p className="condition-empty">No conditions match that search. Try another game state or value name.</p>}
+                    {alwaysMatches && <section aria-labelledby="conditional-basic">
                         <div className="mb-3 flex items-end justify-between gap-4 border-b border-slate-700/70 pb-3">
                             <h2 id="conditional-basic" className="font-display-action text-3xl uppercase tracking-wider text-white">Basic</h2>
                             <span className="font-mono text-[9px] tracking-[.18em] text-slate-500">1 CONDITIONAL</span>
@@ -134,7 +149,7 @@ export default function ConditionalCataloguePage() {
                             </div>
                             <p className="text-sm leading-6 text-slate-400">Always true. Use it for a fallback action or a branch that should run every tick.</p>
                         </div>
-                    </section>
+                    </section>}
 
                     {groups.map(({ group, variables }) => (
                         <section key={group} aria-labelledby={`conditional-${group.replaceAll(" ", "-").toLowerCase()}`}>

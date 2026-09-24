@@ -194,9 +194,10 @@ export default function PuzzleListPage() {
             <AppNavbar account currentPage="puzzles" />
             <PuzzleDecorationLayer />
             <section className="relative z-[1] mx-auto w-full max-w-[1160px] px-5 pb-10 pt-7 sm:px-8 sm:pb-14 sm:pt-10">
-                <div className="flex flex-col gap-7 lg:flex-row lg:items-start lg:justify-between lg:gap-12">
+                <div className="puzzle-hero flex flex-col gap-7 lg:flex-row lg:items-start lg:justify-between lg:gap-12">
                     <div className="min-w-0 max-w-2xl flex-1">
                         <h1 className="font-display-action text-5xl uppercase tracking-wide text-[#f2f4f5] sm:text-7xl">Puzzles</h1>
+                        <p className="puzzle-hero-intro">Solve tactical challenges here</p>
 
                         <form onSubmit={submitSearch} className="mt-6 max-w-[680px]">
                             <label htmlFor="puzzle-search" className="font-mono text-[10px] font-bold tracking-[.2em] text-[#35c7e8]">SEARCH PUZZLES</label>
@@ -239,6 +240,7 @@ export default function PuzzleListPage() {
                 </div>
 
                 <div className="puzzle-list-frame mt-8">
+                    <div className="puzzle-list-title"><div><span>CHALLENGE ARCHIVE</span><h2>All puzzles</h2></div><span>{totalPuzzleCount ?? "—"} AVAILABLE</span></div>
                     <div className="puzzle-list-heading" aria-hidden="true">
                         <span>#</span>
                         <span>PUZZLE</span>

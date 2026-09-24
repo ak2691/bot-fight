@@ -107,9 +107,16 @@ supported bot-like effects, and `ENTITY` is the broad non-bot entity scope.
 A summon carries both `HP_ENTITY` and `SUMMON`; ordinary health-bearing objects
 carry `HP_ENTITY` without `SUMMON`.
 
+Friendly damage is controlled by the target's active phase `health` object via
+`allowFriendlyDamage`. If omitted or false, incoming damage/effects from the
+same team are ignored; if true, allies may affect that entity. This rule is
+the same for summons and ordinary HP entities. The entity's phase type controls
+its lifecycle/behavior, not whether it has a summon-specific friendly-fire
+exception.
+
 When an effect omits `targetKinds`, damage defaults to `[BOT, HP_ENTITY]` and
 other effects default to `[BOT]`. This lets one collision damage bots, drones,
-and brainless health-bearing objects while keeping status or control effects
+and brainless health-bearing objects while keeping statuses and interrupts
 bot-only unless the summon capability is named explicitly:
 
 ```js
@@ -129,10 +136,11 @@ events: {
 ```
 
 An event target list does not grant effect eligibility, and an effect target
-list does not expand the event's collision scope. Generic HP entities receive
-damage only; supported summon effects include status, interrupt, knockback,
-and pull when their `targetKinds` includes `SUMMON`. A summon is never treated
-as a bot by implication.
+list does not expand the event's collision scope. Generic HP entities support
+damage, knockback, and pull when the effect's `targetKinds` includes
+`HP_ENTITY`; they do not support statuses or interrupts. Supported summon
+effects also include status and interrupt when `targetKinds` includes `SUMMON`.
+A summon is never treated as a bot by implication.
 
 ### Status-driven stat changes
 

@@ -117,7 +117,7 @@ test("custom lobby creation lives in the queue instead of public profiles", () =
     assert.match(queueSource, /api\/custom-lobbies\/current/);
     assert.match(queueSource, /OPEN CUSTOM LOBBY/);
     assert.match(queueSource, /hasCustomLobby/);
-    assert.match(queueSource, /md:col-span-2 md:mx-auto/);
+    assert.match(queueSource, /queue-custom-card/);
     assert.match(queueSource, /QueuePlayerGroup count=\{4\} side="left"/);
     assert.match(queueSource, /Play privately with friends\./);
     assert.match(queueSource, /Up to 4 players\./);
@@ -136,24 +136,25 @@ test("custom lobby creation lives in the queue instead of public profiles", () =
 test("queue cards show labeled ELO and W-L-D summaries without adding filler content", () => {
     assert.match(queueSource, /max-w-5xl flex/);
     assert.doesNotMatch(queueSource, /lg:max-w-6xl|xl:max-w-7xl|2xl:max-w-\[1440px\]/);
-    assert.match(queueSource, /min-h-44/);
+    assert.match(queueSource, /queue-mode-card/);
+    assert.match(queueSource, /queue-mode-cta/);
     assert.doesNotMatch(queueSource, /lg:min-h-48|xl:min-h-52|xl:h-10 xl:w-10/);
     assert.match(queueSource, /ELO/);
-    assert.match(queueSource, /font-mono text-2xl font-bold leading-none tracking-normal text-white sm:text-3xl/);
-    assert.match(queueSource, /RECORD/);
     assert.match(queueSource, /formatQueueElo\(modeStats\)/);
+    assert.match(queueSource, /RECORD/);
     assert.match(queueSource, /formatQueueRecord\(modeStats\)/);
     assert.match(queueSource, /text-cyan-300">W-L-D<\/span>/);
     assert.doesNotMatch(queueSource, /modeStats\?\.wins \?\? 0\}W/);
     assert.match(queueSource, /formatQueueTime\(queueElapsed\)/);
-    assert.doesNotMatch(queueSource, /QUEUE STATUS|CANCEL QUEUE/);
+    assert.doesNotMatch(queueSource, /QUEUE STATUS/);
+    assert.match(queueSource, /<span>\{active \? "CANCEL QUEUE" : "FIND MATCH"\}<\/span>/);
     assert.match(queueSource, /A party of 2 cannot queue a 1v1\./);
     assert.doesNotMatch(queueSource, /W:\$\{modeStats/);
 });
 
 test("profile records keep the W-L-D labels below compact numeric values", () => {
     assert.match(profileSource, /\{stats\?\.wins \?\? 0\}-\{stats\?\.losses \?\? 0\}-\{stats\?\.draws \?\? 0\}/);
-    assert.match(profileSource, /text-center font-mono text-\[9px\].*W-L-D/);
+    assert.match(profileSource, /profile-record-key.*W-L-D/);
     assert.doesNotMatch(profileSource, /stats\?\.wins \?\? 0\}W/);
 });
 

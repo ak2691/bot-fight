@@ -106,9 +106,7 @@ class ArenaEntityCombatService {
                     phase, event, distance, summonTarget, arena);
         }
         for (ArenaEntity source : entities) {
-            if (source == null || source.id().equals(target.id())
-                    || !allowFriendlyDamage
-                        && !ownersAreHostile(source.ownerSlot(), target.ownerSlot(), bots)) continue;
+            if (source == null || source.id().equals(target.id())) continue;
             AbilityContracts.AbilityPhase phase = AbilityContracts.phaseFor(source);
             AbilityContracts.PhaseEvent event = phase == null ? null
                     : phase.events().get(AbilityContracts.PhaseEventType.COLLISION);
@@ -133,9 +131,8 @@ class ArenaEntityCombatService {
                                             boolean summonTarget, boolean allowFriendlyDamage,
                                             List<Bot> bots) {
         return eventHasApplyEffects(event)
-                && (allowFriendlyDamage || (summonTarget
-                    ? ownersAreHostile(sourceOwnerSlot, targetOwnerSlot, bots)
-                    : sourceOwnerSlot != targetOwnerSlot))
+                && (allowFriendlyDamage
+                    || ownersAreHostile(sourceOwnerSlot, targetOwnerSlot, bots))
                 && AbilityContracts.eventTargetsEntity(event, summonTarget);
     }
 

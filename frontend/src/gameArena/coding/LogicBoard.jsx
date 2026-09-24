@@ -40,6 +40,7 @@ import {
     offsetsForGraphPositions,
 } from "../botlogic/code/configuration/nodePositions.js";
 import { CODE_EDITOR_GRAPH_VERSION, sanitizeCodeEditorGraph } from "../botlogic/graph/CodeEditorGraph.js";
+import { isAddRootShortcutKeydown, readAddRootShortcut } from "./addRootShortcut.js";
 
 const LOGIC_CANVAS_WIDTH = 10000;
 const LOGIC_CANVAS_HEIGHT = 6000;
@@ -106,6 +107,8 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
     canRedo,
     onUndo,
     onRedo,
+    onAddRoot = null,
+    canAddRoot = false,
     isSearchOpen,
     isQuickSearchOpen = false,
     onSearchClose,
@@ -777,6 +780,27 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
     }, [disabled, selectedNodeIds, configuration, roots, graph, canRemove, puzzleMode]);
+    useEffect(() => {
+        if (!onAddRoot || !canAddRoot || disabled || selectedNodeIds.length
+            || isSearchOpen || isExternalConfigurationOpen || nodePicker || operandPicker
+            || actionOperandInspector || inspectedNode || attachingDetachedId || selectionBox) return undefined;
+        const onKeyDown = (event) => {
+            const workspace = viewportRef.current?.closest(".code-workspace");
+            if (!workspace) return;
+            const targetIsOutside = event.target !== document.body
+                && event.target !== document.documentElement
+                && !workspace.contains(event.target);
+            const anotherDialogIsOpen = [...document.querySelectorAll('[aria-modal="true"]')]
+                .some((dialog) => dialog !== workspace && !workspace.contains(dialog));
+            if (targetIsOutside || anotherDialogIsOpen
+                || !isAddRootShortcutKeydown(event, readAddRootShortcut())) return;
+            event.preventDefault();
+            onAddRoot();
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [onAddRoot, canAddRoot, disabled, selectedNodeIds, isSearchOpen, isExternalConfigurationOpen,
+        nodePicker, operandPicker, actionOperandInspector, inspectedNode, attachingDetachedId, selectionBox]);
     useEffect(() => {
         if (!attachingDetachedId) return undefined;
         const cancelAttach = (event) => {

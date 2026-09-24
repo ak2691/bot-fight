@@ -1212,9 +1212,9 @@ function advancePhaseEntity(entity, phases, stats, world) {
 
 function damageToEntity(entity, world, combat) {
     let damage = 0;
-    const teamProtectedSummon = canonicalPhaseForEntity(entity)?.type === "summon";
+    const allowFriendlyDamage = targetAllowsFriendlyDamage(entity);
     for (const bot of world.bots) {
-        if (teamProtectedSummon && !isEnemy(entity, bot, world.bots)) continue;
+        if (!allowFriendlyDamage && !isEnemy(entity, bot, world.bots)) continue;
         if (typeof combat.triggeredAbilityDamage === "function") damage += combat.triggeredAbilityDamage(bot, entity);
     }
     for (const effect of world.entities ?? []) {

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { AbilityModal } from "../catalogue/AbilityCataloguePage.jsx";
 import { getAbilityCatalogueIcon, getAbilityCatalogueIconLayout } from "../../abilityCatalogueIcons.js";
 import { ALL_ABILITY_DEFINITIONS } from "../../gameArena/loadout/BotLoadout.js";
@@ -61,7 +61,7 @@ function QueueGuaranteeDialog({ round, selectedAbility, onSelect, onClear, onClo
                 aria-modal="true"
                 aria-labelledby="queue-guarantee-dialog-title"
                 tabIndex={-1}
-                className="flex max-h-[min(860px,calc(100dvh-3rem))] w-full max-w-6xl flex-col overflow-hidden border border-green-400/45 bg-[#0b1116] shadow-[0_24px_90px_rgba(0,0,0,.65)]"
+                className="game-dialog flex max-h-[min(860px,calc(100dvh-3rem))] w-full max-w-6xl flex-col overflow-hidden border border-green-400/45 bg-[#0b1116] shadow-[0_24px_90px_rgba(0,0,0,.65)]"
             >
                 <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-700/80 bg-[#111a20] px-5 py-4 sm:px-7">
                     <div>
@@ -192,20 +192,21 @@ export default function QueueAbilityGuaranteePicker({ values = [], onChange, dis
 
     return (
         <>
-            <section aria-labelledby="queue-guarantees-title" className="mt-4">
-                <h2 id="queue-guarantees-title" className="font-mono text-[10px] font-bold tracking-[.2em] text-green-300">Guaranteed Offers</h2>
+            <section aria-labelledby="queue-guarantees-title" className="queue-guarantees mt-5 rounded-xl border px-4 py-4 sm:px-6 sm:py-5">
+                <h2 id="queue-guarantees-title" className="font-mono text-[11px] font-bold uppercase tracking-[.2em] text-green-300">Guaranteed Offers</h2>
+                <p className="mt-1 text-sm text-slate-400">Pick an ability to add to each round's draft offers.</p>
 
-                <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                <div className="queue-guarantee-flow mt-4">
                     {GUARANTEE_ROUNDS.map((round) => {
                         const ability = abilityForRound(values, round);
                         return (
+                            <Fragment key={round}>
                             <button
-                                key={round}
                                 type="button"
                                 disabled={disabled}
                                 onClick={() => openPicker(round)}
                                 aria-label={`Choose round ${round} guarantee`}
-                                className={`flex min-h-16 items-center gap-2 border px-2 py-2 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-200 sm:min-h-[4.5rem] ${ability
+                                className={`queue-guarantee-card flex min-h-16 w-full min-w-0 items-center gap-3 rounded-lg border px-3 py-2 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-200 sm:min-h-[4.5rem] ${ability
                                     ? "border-green-400/60 bg-green-950/20 hover:border-green-300"
                                     : "border-slate-700/80 bg-slate-950/30 hover:border-green-700/70"} ${disabled ? "cursor-not-allowed opacity-45" : ""}`}
                             >
@@ -217,6 +218,8 @@ export default function QueueAbilityGuaranteePicker({ values = [], onChange, dis
                                     </span>
                                 </span>
                             </button>
+                            {round < 3 && <span className="queue-guarantee-chevron" aria-hidden="true">›</span>}
+                            </Fragment>
                         );
                     })}
                 </div>

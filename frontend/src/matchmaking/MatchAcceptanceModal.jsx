@@ -36,6 +36,7 @@ export default function MatchAcceptanceModal({
     const acceptanceOpen = Number(authoritativeRemaining) > 0;
     const canAccept = acceptanceOpen && connected && acceptanceState === "READY";
     const announcementRemaining = acceptanceAnnouncementRemaining(remaining);
+    const urgency = remaining <= 5 ? "critical" : remaining <= 10 ? "warning" : "normal";
     const progress = acceptanceProgressFraction({
         nowMs: animationNowMs,
         deadlineMs,
@@ -58,7 +59,7 @@ export default function MatchAcceptanceModal({
             : accepting
                 ? "Accepting..."
                 : otherPlayerAccepted
-                    ? "Your opponent accepted. Accept to enter the match."
+                    ? "Your opponent is ready. Accept to enter the match."
                     : "Accept to enter the match.";
     const buttonLabel = waiting
         ? "WAITING FOR PLAYER"
@@ -111,14 +112,16 @@ export default function MatchAcceptanceModal({
                 aria-labelledby="match-acceptance-title"
                 aria-describedby="match-acceptance-status"
                 tabIndex={-1}
-                className="relative my-auto flex max-h-[94vh] w-full max-w-2xl flex-col overflow-y-auto rounded border border-slate-500/70 bg-[#081522] px-5 py-7 text-center sm:px-10 sm:py-10"
+                data-urgency={urgency}
+                className="game-dialog match-acceptance-dialog relative my-auto flex max-h-[94vh] w-full max-w-lg flex-col overflow-y-auto rounded-lg border px-5 py-7 text-center sm:px-9 sm:py-9"
             >
-                <h1 id="match-acceptance-title" className="font-display-action text-4xl tracking-wide text-white sm:text-6xl">
+                <p className="match-acceptance-eyebrow">MATCHMAKING · READY CHECK</p>
+                <h1 id="match-acceptance-title" className="mt-2 font-display-action text-4xl tracking-wide text-white sm:text-5xl">
                     {closing ? "Closing..." : "Match Found"}
                 </h1>
 
                 <div
-                    className="relative mx-auto mt-7 aspect-square w-[min(74vw,21rem)] shrink-0"
+                    className="match-acceptance-timer relative mx-auto mt-6 aspect-square w-[min(64vw,15rem)] shrink-0"
                     role="progressbar"
                     aria-label="Match acceptance time remaining"
                     aria-valuemin={0}
@@ -132,31 +135,31 @@ export default function MatchAcceptanceModal({
                             cy={RING_CENTER}
                             r={RING_RADIUS}
                             fill="none"
-                            stroke="rgb(30 64 175 / 0.45)"
-                            strokeWidth="7"
+                            stroke="#28434d"
+                            strokeWidth="4.5"
                         />
                         <circle
                             cx={RING_CENTER}
                             cy={RING_CENTER}
                             r={RING_RADIUS}
                             fill="none"
-                            stroke="rgb(56 189 248)"
-                            strokeWidth="7"
+                            className="match-acceptance-ring__remaining"
+                            strokeWidth="4.5"
                             strokeLinecap="round"
                             strokeDasharray={`${dashLength} ${RING_CIRCUMFERENCE}`}
                             strokeDashoffset="0"
                             transform={ringTransform}
                         />
                     </svg>
-                    <div className="absolute inset-0 grid place-items-center">
-                        <span className="font-display-action text-7xl font-bold leading-none text-white sm:text-8xl" aria-hidden="true">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <span className="match-acceptance-count font-display-action text-7xl font-bold leading-none sm:text-8xl" aria-hidden="true">
                             {closing ? "0" : remaining}
                         </span>
+                        <span className="match-acceptance-seconds" aria-hidden="true">SECONDS LEFT</span>
                     </div>
                 </div>
 
-                <p className="mt-5 font-display-action text-2xl text-white sm:text-3xl">Opponent Found</p>
-                <p id="match-acceptance-status" className="mt-2 text-base text-slate-300 sm:text-lg">{statusMessage}</p>
+                <p id="match-acceptance-status" className="mt-5 text-sm text-slate-200 sm:text-base">{statusMessage}</p>
                 <p className="sr-only" aria-live="polite" aria-atomic="true">
                     {closing
                         ? "Match acceptance is closing."
@@ -172,6 +175,11 @@ export default function MatchAcceptanceModal({
                 >
                     {buttonLabel}
                 </button>
+                {onClose && (
+                    <button type="button" onClick={onClose} className="match-acceptance-decline">
+                        {waiting ? "CANCEL MATCH" : "DECLINE MATCH"}
+                    </button>
+                )}
             </section>
         </div>
     );

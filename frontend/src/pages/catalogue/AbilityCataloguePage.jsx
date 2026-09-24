@@ -118,6 +118,7 @@ export function AbilityModal({
     const stats = statsForAbility(ability);
     const effects = playerFacingEffects(ability).join(" · ");
     const phaseProfile = phaseProfileDetails(ability);
+    const iconPath = getAbilityCatalogueIcon(ability.id);
     const statGroups = stats.reduce((groups, stat) => {
         const previous = groups.at(-1);
         if (stat.section && previous?.section === stat.section) {
@@ -144,6 +145,7 @@ export function AbilityModal({
             >
                 <div className="relative overflow-hidden border-b border-slate-700/70 px-6 py-7 sm:px-8">
                     <div className={`ability-modal-glow ability-modal-glow-${ability.round}`} aria-hidden="true" />
+                    {iconPath && <img src={iconPath} alt="" aria-hidden="true" className="ability-modal-art" />}
                     <div className="relative flex items-start justify-between gap-6">
                         <div>
                             <p className="font-mono text-[10px] font-bold tracking-[.28em] text-green-300">
@@ -279,6 +281,11 @@ export default function AbilityCataloguePage() {
     const [selectedAbility, setSelectedAbility] = useState(abilityFromRouteDefinition);
     const [selectedEffect, setSelectedEffect] = useState(null);
     const [showScrollTop, setShowScrollTop] = useState(false);
+    const [searchTerm, setSearchTerm] = useState("");
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const visibleAbilities = ALL_ABILITY_DEFINITIONS.filter((ability) => (
+        `${ability.label} ${ability.kind} ${abilityTypeLabels(ability).join(" ")}`.toLowerCase().includes(normalizedSearch)
+    ));
 
     useEffect(() => {
         setSelectedAbility(abilityFromRouteDefinition);
@@ -308,18 +315,19 @@ export default function AbilityCataloguePage() {
         <main className="ability-catalogue min-h-screen bg-[#171a1c] font-interface text-slate-100">
             <AppNavbar account currentPage="abilities" />
 
-            <header className="relative overflow-hidden border-b border-slate-800/80 px-5 py-14 sm:px-8 sm:py-20">
-                <div className="ability-hero-glow" aria-hidden="true" />
-                <div className="relative mx-auto max-w-7xl">
-                    <p className="font-mono text-[10px] font-bold tracking-[.32em] text-green-300">COMBAT DATABASE</p>
-                    <h1 className="mt-3 font-display-action text-5xl uppercase tracking-wide text-white sm:text-7xl">Ability List</h1>
-                    <p className="mt-4 max-w-2xl text-base leading-7 text-slate-400">
-                        Explore abilities here. Click one to inspect its details.
-                    </p>
-                </div>
+            <header className="mx-auto max-w-7xl px-5 pt-8 sm:px-8 sm:pt-10">
+                <h1 className="font-display-action text-3xl uppercase tracking-wide text-white sm:text-4xl">Ability Catalogue</h1>
+                <p className="mt-1.5 max-w-2xl text-sm leading-6 text-slate-400 sm:text-base">
+                    Explore all abilities in the game
+                </p>
             </header>
 
-            <nav aria-label="Jump to ability round" className="mx-auto flex max-w-7xl flex-wrap gap-2 px-5 pt-6 sm:px-8 sm:pt-8">
+            <div className="catalogue-controls mx-auto max-w-7xl px-5 pt-6 sm:px-8 sm:pt-8">
+                <label className="catalogue-search">
+                    <span className="catalogue-search__label">FIND AN ABILITY</span>
+                    <input type="search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search by name or type" />
+                </label>
+            {!normalizedSearch && <nav aria-label="Jump to ability round" className="flex flex-wrap gap-2">
                 {[1, 2, 3].map((round) => (
                     <a
                         key={round}
@@ -329,41 +337,15 @@ export default function AbilityCataloguePage() {
                         ROUND {round} ABILITIES
                     </a>
                 ))}
-            </nav>
+            </nav>}
+            </div>
 
-            <div className="mx-auto max-w-7xl space-y-12 px-5 py-12 sm:px-8 sm:py-16">
-                <section aria-labelledby="combat-effects-title" className="border border-slate-700/70 bg-slate-950/30 p-5 sm:p-6">
-                    <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-slate-700/60 pb-3">
-                        <div>
-                            <p className="font-mono text-[9px] font-bold tracking-[.28em] text-green-300">COMBAT EFFECTS</p>
-                            <h2 id="combat-effects-title" className="mt-1 font-display-action text-3xl uppercase tracking-wider text-white">Effect guide</h2>
-                        </div>
-                    </div>
-                    <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                        {EFFECT_GUIDE.map((effect) => {
-                            const isSelected = selectedEffect?.id === effect.id;
-                            return (
-                                <button
-                                    key={effect.id}
-                                    type="button"
-                                    onClick={() => setSelectedEffect(effect)}
-                                    className={`status-effect-card flex min-h-14 items-center justify-between gap-4 border px-4 py-2.5 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-200 ${isSelected ? "status-effect-card-selected" : ""}`}
-                                    aria-label={`View ${effect.label} details`}
-                                    aria-pressed={isSelected}
-                                >
-                                    <span className="min-w-0">
-                                        <span className="block truncate font-display-action text-lg uppercase tracking-wider text-slate-100">{effect.label}</span>
-                                        <span className="mt-0.5 block font-mono text-[8px] font-bold uppercase tracking-[.2em] text-green-300/70">{effect.category}</span>
-                                    </span>
-                                    <span className="status-effect-card__chevron shrink-0" aria-hidden="true" />
-                                </button>
-                            );
-                        })}
-                    </div>
-                </section>
-
+            <div className="mx-auto max-w-7xl space-y-12 px-5 pb-12 pt-8 sm:px-8 sm:pb-16 sm:pt-10">
+                {normalizedSearch && <p className="catalogue-results" role="status">{visibleAbilities.length} {visibleAbilities.length === 1 ? "ability" : "abilities"} found</p>}
+                {normalizedSearch && visibleAbilities.length === 0 && <p className="condition-empty">No abilities match that search. Try a name or ability type.</p>}
                 {ROUNDS.map((round) => {
-                    const roundAbilities = ALL_ABILITY_DEFINITIONS.filter((ability) => ability.round === round);
+                    const roundAbilities = visibleAbilities.filter((ability) => ability.round === round);
+                    if (!roundAbilities.length) return null;
                     const standard = round === 0;
                     return (
                         <section id={`round-${round}-abilities`} key={round} aria-labelledby={`round-${round}-title`}>
@@ -423,6 +405,35 @@ export default function AbilityCataloguePage() {
                         </section>
                     );
                 })}
+                <section aria-labelledby="combat-effects-title" className="border border-slate-700/70 bg-slate-950/30 p-5 sm:p-6">
+                    <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-slate-700/60 pb-3">
+                        <div>
+                            <p className="font-mono text-[9px] font-bold tracking-[.28em] text-green-300">COMBAT EFFECTS</p>
+                            <h2 id="combat-effects-title" className="mt-1 font-display-action text-3xl uppercase tracking-wider text-white">Effect guide</h2>
+                        </div>
+                    </div>
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                        {EFFECT_GUIDE.map((effect) => {
+                            const isSelected = selectedEffect?.id === effect.id;
+                            return (
+                                <button
+                                    key={effect.id}
+                                    type="button"
+                                    onClick={() => setSelectedEffect(effect)}
+                                    className={`status-effect-card flex min-h-14 items-center justify-between gap-4 border px-4 py-2.5 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-200 ${isSelected ? "status-effect-card-selected" : ""}`}
+                                    aria-label={`View ${effect.label} details`}
+                                    aria-pressed={isSelected}
+                                >
+                                    <span className="min-w-0">
+                                        <span className="block truncate font-display-action text-lg uppercase tracking-wider text-slate-100">{effect.label}</span>
+                                        <span className="mt-0.5 block font-mono text-[8px] font-bold uppercase tracking-[.2em] text-green-300/70">{effect.category}</span>
+                                    </span>
+                                    <span className="status-effect-card__chevron shrink-0" aria-hidden="true" />
+                                </button>
+                            );
+                        })}
+                    </div>
+                </section>
             </div>
 
             {selectedAbility && <AbilityModal ability={selectedAbility} onClose={closeAbility} onTestAbility={testAbility} />}

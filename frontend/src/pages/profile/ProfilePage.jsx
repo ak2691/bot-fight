@@ -15,12 +15,17 @@ import {
     PROFILE_RETRY_REFILL_INTERVAL_MS,
 } from "./profileRetryRateLimit.js";
 import { formatCompletionReason } from "./profileCompletionReason.js";
+import {
+    normalizeAddRootShortcut,
+    readAddRootShortcut,
+    saveAddRootShortcut,
+} from "../../gameArena/coding/addRootShortcut.js";
 
 const RECENT_MATCH_LIMIT = 5;
 
 const resultTone = {
     WIN: "border-emerald-400/60 bg-emerald-950/30 text-emerald-300",
-    LOSS: "border-rose-400/60 bg-rose-950/30 text-rose-300",
+    LOSS: "profile-result--loss",
     DRAW: "border-amber-400/60 bg-amber-950/30 text-amber-300",
 };
 
@@ -323,7 +328,8 @@ export default function ProfilePage() {
         return updatedProfile;
     }, [updateUsername]);
 
-    const saveAboutMe = useCallback(async (aboutMe) => {
+    // Retained for the dormant About Me editor; the profile no longer renders that surface.
+    const _saveAboutMe = useCallback(async (aboutMe) => {
         const updatedProfile = await updateAboutMe({ aboutMe });
         setProfile((current) => current ? { ...current, aboutMe: updatedProfile.aboutMe } : current);
         return updatedProfile;
@@ -393,7 +399,6 @@ export default function ProfilePage() {
                         onUsernameSaved={saveUsername}
                         onPasswordSaved={savePassword}
                         onLogout={handleLogout}
-                        onAboutMeSaved={saveAboutMe}
                         onOpenMatches={() => setIsMatchesModalOpen(true)}
                         onOpenMatchDetails={setSelectedMatch}
                         canBlock={!isOwner}
@@ -516,7 +521,6 @@ function ProfileContent({
     onUsernameSaved,
     onPasswordSaved,
     onLogout,
-    onAboutMeSaved,
     onOpenMatches,
     onOpenMatchDetails,
     canBlock,
@@ -526,16 +530,25 @@ function ProfileContent({
 }) {
     const initial = String(profile.username || "?").slice(0, 1).toUpperCase();
     return (
-        <div className="mt-9 grid gap-5 lg:grid-cols-[minmax(240px,.85fr)_minmax(0,1.6fr)] lg:items-start">
+        <div className="mt-9">
+            <header className="profile-hero">
+                <div className="profile-hero__identity">
+                    <div className="profile-hero__avatar" aria-hidden="true">{initial}</div>
+                    <div>
+                        <p className="profile-hero__eyebrow">PLAYER PROFILE</p>
+                        <h1>{profile.username}</h1>
+                    </div>
+                </div>
+                <div className="profile-hero__record" aria-label="Player activity">
+                    <div><strong>{isGuest || historyStatus === "loading" ? "—" : totalMatches}</strong><span>Matches</span></div>
+                    <div><strong>{isGuest ? "—" : (profile.puzzlesSolved ?? 0)}</strong><span>Puzzles solved</span></div>
+                </div>
+            </header>
+            <div className="profile-content-grid grid gap-5 lg:grid-cols-[minmax(240px,.85fr)_minmax(0,1.6fr)] lg:items-start">
             <section className="rounded-2xl border border-cyan-800/80 bg-[linear-gradient(145deg,rgba(12,28,42,.94),rgba(6,16,26,.97))] p-6 shadow-[0_18px_60px_rgba(0,0,0,.28)] sm:p-8">
-                <div className="flex items-center gap-5">
-                    <div className="grid h-20 w-20 flex-none place-items-center rounded-full border border-cyan-400/70 bg-cyan-950/40 text-3xl font-bold text-cyan-300 shadow-[inset_0_0_24px_rgba(34,211,238,.1)]">
-                        {initial}
-                    </div>
-                    <div className="min-w-0">
-                        <p className="font-mono text-[10px] tracking-[.2em] text-slate-500">USERNAME</p>
-                        <h2 className="mt-1 break-words text-2xl font-bold text-white">{profile.username}</h2>
-                    </div>
+                <div className="profile-section-heading">
+                    <p>ARENA RECORD</p>
+                    <h2>Competitive stats</h2>
                 </div>
 
                 <div className="mt-8 grid gap-3 sm:grid-cols-2">
@@ -571,38 +584,6 @@ function ProfileContent({
                     />
                 )}
 
-                {isOwner && !isGuest && <UsernameEditor username={profile.username} onSave={onUsernameSaved} onLogout={onLogout} />}
-
-                {isOwner && !isGuest && (
-                    <PasswordSettings
-                        hasPassword={hasPassword}
-                        googleLinked={googleLinked}
-                        onSave={onPasswordSaved}
-                    />
-                )}
-
-                {isOwner && !isGuest && (
-                    <div className="mt-7 border-t border-cyan-900/70 pt-5">
-                        <p className="font-mono text-[10px] font-bold tracking-[.18em] text-cyan-400">CONNECTED SIGN-IN</p>
-                        <h2 className="mt-2 text-lg font-bold text-white">Google account</h2>
-                        <p className="mt-1 text-sm leading-6 text-slate-400">
-                            {googleLinked ? "Linked for sign-in." : "Link Google to use either sign-in method."}
-                        </p>
-                        {googleStatus === "ready" && (
-                            googleLinked ? (
-                                <span className="mt-4 inline-flex rounded border border-emerald-400/40 bg-emerald-950/30 px-3 py-2 text-xs font-bold text-emerald-300">Linked</span>
-                            ) : (
-                                <button
-                                    type="button"
-                                    onClick={() => window.location.assign(apiUrl("/api/auth/google/link"))}
-                                    className="profile-toolbar-button mt-4 text-xs font-bold"
-                                >
-                                    Link Google account
-                                </button>
-                            )
-                        )}
-                    </div>
-                )}
             </section>
 
             <div className="min-w-0 space-y-5">
@@ -615,8 +596,40 @@ function ProfileContent({
                     onOpenMatches={onOpenMatches}
                     onOpenMatchDetails={onOpenMatchDetails}
                 />
-                <AboutMeCard aboutMe={profile.aboutMe} editable={isOwner && !isGuest} onSave={onAboutMeSaved} />
             </div>
+            </div>
+            {isOwner && !isGuest && <section className="profile-settings" aria-labelledby="profile-settings-title">
+                <div className="profile-section-heading"><p>PRIVATE CONTROLS</p><h2 id="profile-settings-title">Settings</h2></div>
+                <div className="profile-settings__grid">
+                    <div>
+                        <UsernameEditor username={profile.username} onSave={onUsernameSaved} onLogout={onLogout} />
+                        <PasswordSettings hasPassword={hasPassword} googleLinked={googleLinked} onSave={onPasswordSaved} />
+                    </div>
+                    <div className="profile-settings__side">
+                        <div className="profile-settings__sign-in">
+                            <p className="font-mono text-[10px] font-bold tracking-[.18em] text-cyan-400">CONNECTED SIGN-IN</p>
+                            <h3 className="mt-2 text-lg font-bold text-white">Google account</h3>
+                            <p className="mt-1 text-sm leading-6 text-slate-400">
+                                {googleLinked ? "Linked for sign-in." : "Link Google to use either sign-in method."}
+                            </p>
+                            {googleStatus === "ready" && (
+                                googleLinked ? (
+                                    <span className="mt-4 inline-flex rounded border border-emerald-400/40 bg-emerald-950/30 px-3 py-2 text-xs font-bold text-emerald-300">Linked</span>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => window.location.assign(apiUrl("/api/auth/google/link"))}
+                                        className="profile-toolbar-button mt-4 text-xs font-bold"
+                                    >
+                                        Link Google account
+                                    </button>
+                                )
+                            )}
+                        </div>
+                        <AddRootShortcutSettings />
+                    </div>
+                </div>
+            </section>}
         </div>
     );
 }
@@ -627,7 +640,7 @@ function QueueModeStatsCard({ label, stats }) {
             <h3 className="font-display-action text-2xl font-bold tracking-wide text-white">{label}</h3>
             <div className="mt-6">
                 <p className="font-mono text-[11px] font-bold tracking-[.18em] text-slate-400">ELO</p>
-                <p className="mt-1 whitespace-nowrap font-mono text-3xl font-bold tracking-normal text-white">
+                <p className="profile-elo-value mt-1 whitespace-nowrap font-mono text-3xl font-bold tracking-normal">
                     {stats?.elo ?? "N/A"}
                 </p>
             </div>
@@ -637,7 +650,7 @@ function QueueModeStatsCard({ label, stats }) {
                 <p className="mt-2 whitespace-nowrap text-center font-mono text-[11px] font-bold tracking-normal text-white sm:text-sm">
                     {stats?.wins ?? 0}-{stats?.losses ?? 0}-{stats?.draws ?? 0}
                 </p>
-                <p className="mt-1 text-center font-mono text-[9px] font-bold tracking-[.16em] text-cyan-300">W-L-D</p>
+                <p className="profile-record-key mt-1 text-center font-mono text-[10px] font-bold tracking-[.16em]">W-L-D</p>
             </div>
         </section>
     );
@@ -762,7 +775,7 @@ function MatchRow({
             onKeyDown={handleKeyDown}
         >
             {showMode && (
-                <span className="self-center w-full whitespace-nowrap rounded-md border border-slate-600/80 px-2 py-1 text-center font-mono text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                <span className="profile-match-mode self-center w-full whitespace-nowrap rounded-md border px-2 py-1 text-center font-mono text-[10px] font-bold uppercase tracking-wider">
                     {matchModeLabel(match.mode)}
                 </span>
             )}
@@ -771,7 +784,7 @@ function MatchRow({
                     {participantTeams.map((team, teamIndex) => (
                         <Fragment key={`team-${teamIndex}`}>
                             {teamIndex > 0 && !showTeamLabels && (
-                                <span className="px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500" aria-hidden="true">
+                                <span className="profile-versus px-1 text-[10px] font-bold uppercase tracking-[0.2em]" aria-hidden="true">
                                     vs
                                 </span>
                             )}
@@ -914,14 +927,14 @@ function MatchesModal({ matches, totalMatches, historyStatus, hasMore, onLoadMor
 
     return (
         <div
-            className="fixed inset-0 z-50 grid place-items-center bg-[#02070de8] p-4 backdrop-blur-sm"
+            className="profile-modal-overlay fixed inset-0 z-[110] grid place-items-center bg-[#02070de8] backdrop-blur-sm"
             onMouseDown={(event) => {
                 if (event.target === event.currentTarget) onClose();
             }}
         >
             <section
                 ref={dialogRef}
-                className="flex max-h-[min(86vh,54rem)] w-[min(48rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-cyan-400/50 bg-[#071521] shadow-[0_24px_90px_rgba(0,0,0,.6)]"
+                className="profile-dialog flex max-h-[min(calc(100dvh-6.5rem),54rem)] w-[min(48rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-cyan-400/50 bg-[#071521] shadow-[0_24px_90px_rgba(0,0,0,.6)]"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="match-history-modal-title"
@@ -988,14 +1001,14 @@ function MatchDetailsModal({ match, onClose }) {
 
     return (
         <div
-            className="fixed inset-0 z-[60] grid place-items-center bg-[#02070de8] p-4 backdrop-blur-sm"
+            className="profile-modal-overlay fixed inset-0 z-[120] grid place-items-center bg-[#02070de8] backdrop-blur-sm"
             onMouseDown={(event) => {
                 if (event.target === event.currentTarget) onClose();
             }}
         >
             <section
                 ref={dialogRef}
-                className="flex max-h-[min(86vh,48rem)] w-[min(42rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-cyan-400/50 bg-[#071521] shadow-[0_24px_90px_rgba(0,0,0,.6)]"
+                className="profile-dialog flex max-h-[min(calc(100dvh-6.5rem),48rem)] w-[min(42rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-cyan-400/50 bg-[#071521] shadow-[0_24px_90px_rgba(0,0,0,.6)]"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="match-details-modal-title"
@@ -1045,7 +1058,7 @@ function MatchDetailsModal({ match, onClose }) {
 
 function MatchDetail({ label, children }) {
     return (
-        <div className="min-w-0 rounded-lg border border-[#344047] bg-[#1B2227] px-4 py-3">
+        <div className="profile-dialog-detail min-w-0 rounded-lg border border-[#344047] bg-[#1B2227] px-4 py-3">
             <dt className="font-mono text-[10px] font-bold tracking-[.16em] text-slate-500">{label}</dt>
             <dd className="mt-2 min-w-0">{children}</dd>
         </div>
@@ -1090,14 +1103,14 @@ function SolvedPuzzlesModal({ puzzles, totalPuzzles, puzzlesStatus, hasMore, onL
 
     return (
         <div
-            className="fixed inset-0 z-50 grid place-items-center bg-[#02070de8] p-4 backdrop-blur-sm"
+            className="profile-modal-overlay fixed inset-0 z-[110] grid place-items-center bg-[#02070de8] backdrop-blur-sm"
             onMouseDown={(event) => {
                 if (event.target === event.currentTarget) onClose();
             }}
         >
             <section
                 ref={dialogRef}
-                className="flex max-h-[min(86vh,54rem)] w-[min(48rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-cyan-400/50 bg-[#071521] shadow-[0_24px_90px_rgba(0,0,0,.6)]"
+                className="profile-dialog flex max-h-[min(calc(100dvh-6.5rem),54rem)] w-[min(48rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-cyan-400/50 bg-[#071521] shadow-[0_24px_90px_rgba(0,0,0,.6)]"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="solved-puzzles-modal-title"
@@ -1163,6 +1176,62 @@ function SolvedPuzzlesModal({ puzzles, totalPuzzles, puzzlesStatus, hasMore, onL
                 </footer>
             </section>
         </div>
+    );
+}
+
+function AddRootShortcutSettings() {
+    const [draft, setDraft] = useState(() => readAddRootShortcut().toUpperCase());
+    const [error, setError] = useState(null);
+    const [notice, setNotice] = useState(null);
+
+    const handleSave = (event) => {
+        event.preventDefault();
+        const shortcut = normalizeAddRootShortcut(draft);
+        if (!shortcut) {
+            setError("Choose one letter or number (A–Z, 0–9).");
+            setNotice(null);
+            return;
+        }
+        if (!saveAddRootShortcut(shortcut)) {
+            setError("This browser could not save the shortcut.");
+            setNotice(null);
+            return;
+        }
+        setDraft(shortcut.toUpperCase());
+        setError(null);
+        setNotice("Shortcut saved on this browser.");
+    };
+
+    return (
+        <section className="profile-settings__shortcut" aria-labelledby="profile-add-root-shortcut-title">
+            <p className="font-mono text-[10px] font-bold tracking-[.18em] text-cyan-300">WORKSPACE SHORTCUT</p>
+            <h3 id="profile-add-root-shortcut-title" className="mt-2 text-lg font-bold text-white">Add root key</h3>
+            <p id="profile-add-root-shortcut-help" className="mt-1 text-sm leading-6 text-slate-300">
+                Press this key when no node is selected in the workspace. This setting is saved on this browser.
+            </p>
+            <form onSubmit={handleSave} className="mt-4 flex flex-wrap items-end gap-2">
+                <label htmlFor="profile-add-root-shortcut" className="flex flex-col gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-300">
+                    Key
+                    <input
+                        id="profile-add-root-shortcut"
+                        type="text"
+                        value={draft}
+                        onChange={(event) => { setDraft(event.target.value.toUpperCase()); setError(null); setNotice(null); }}
+                        onFocus={(event) => event.target.select()}
+                        maxLength={1}
+                        autoCapitalize="off"
+                        autoComplete="off"
+                        spellCheck={false}
+                        aria-invalid={Boolean(error)}
+                        aria-describedby={error ? "profile-add-root-shortcut-error" : "profile-add-root-shortcut-help"}
+                        className="h-10 w-16 rounded border border-[#5b7b85] bg-[#102027] px-2 text-center font-mono text-base font-bold text-white outline-none focus:border-cyan-300"
+                    />
+                </label>
+                <button type="submit" className="profile-toolbar-button profile-toolbar-button--primary h-10 text-xs font-bold">Save key</button>
+            </form>
+            {error && <p id="profile-add-root-shortcut-error" role="alert" className="mt-2 text-xs text-rose-300">{error}</p>}
+            {notice && <p role="status" className="mt-2 text-xs text-emerald-300">{notice}</p>}
+        </section>
     );
 }
 

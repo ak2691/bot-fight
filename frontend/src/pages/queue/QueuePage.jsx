@@ -55,7 +55,7 @@ function QueuePlayerIcon({ large = false, grouped = false }) {
 function QueuePlayerGroup({ count, side, large = false, grouped = large }) {
     if (grouped) {
         return (
-            <span className={`grid shrink-0 place-items-center rounded-full border border-cyan-300/35 bg-[#071a29] ${count > 1 ? "grid-cols-2" : ""} ${large ? "h-14 w-14 sm:h-16 sm:w-16" : "h-8 w-8"}`} aria-hidden="true">
+            <span className={`grid shrink-0 place-items-center rounded-lg border border-cyan-300/45 bg-[#102c38] ${count > 1 ? "grid-cols-2" : ""} ${large ? "h-14 w-14 sm:h-16 sm:w-16" : "h-8 w-8"}`} aria-hidden="true">
                 {Array.from({ length: count }, (_, index) => <QueuePlayerIcon key={`${side}-${index}`} large={large} grouped />)}
             </span>
         );
@@ -65,10 +65,6 @@ function QueuePlayerGroup({ count, side, large = false, grouped = large }) {
             {Array.from({ length: count }, (_, index) => <QueuePlayerIcon key={`${side}-${index}`} large={large} />)}
         </span>
     );
-}
-
-function QueueArrow() {
-    return <span className="flex h-10 w-7 shrink-0 items-center justify-center font-interface text-4xl font-light leading-none text-cyan-300" aria-hidden="true">›</span>;
 }
 
 export default function QueuePage() {
@@ -181,20 +177,12 @@ export default function QueuePage() {
     };
 
     return (
-        <main className="min-h-screen bg-[#171a1c] font-interface text-slate-100">
+        <main className="queue-page min-h-screen bg-[#171a1c] font-interface text-slate-100">
             <AppNavbar account />
-            <section className="mx-auto flex min-h-[calc(100vh-72px)] w-full max-w-5xl flex-col px-5 py-8 sm:px-8 sm:py-12">
-                <button
-                    type="button"
-                    onClick={() => navigate("/home")}
-                    className="mb-8 self-start font-mono text-[10px] font-bold tracking-[.18em] text-slate-500 hover:text-cyan-200"
-                >
-                    ← BACK TO HOME
-                </button>
-
+            <section className="mx-auto flex min-h-[calc(100vh-72px)] w-full max-w-5xl flex-col px-5 py-7 sm:px-8 sm:py-9">
                 <header className="max-w-2xl">
                     <p className="font-mono text-[10px] font-bold tracking-[.24em] text-cyan-400">MATCHMAKING</p>
-                    <h1 className="mt-3 font-display-action text-5xl uppercase tracking-wide text-white sm:text-7xl">Choose your queue</h1>
+                    <h1 className="mt-2 font-display-action text-5xl uppercase tracking-wide text-white sm:text-6xl">Choose your queue</h1>
                     {isGuest && (
                         <p className="mt-4 max-w-xl rounded-lg border border-amber-400/35 bg-amber-950/20 px-4 py-3 text-xs leading-5 text-amber-200" role="status">
                             Guest matches are against other guests only. No Elo or match history is saved.
@@ -209,82 +197,87 @@ export default function QueuePage() {
                     disabled={isQueueing}
                 />
 
-                <div className="mt-10 grid gap-4 md:grid-cols-2">
-                    {QUEUE_MODES.map((mode) => {
-                        const active = isQueueing && displayedMode === mode.id;
-                        const playersPerTeam = mode.id === MATCH_MODES.TWOS ? 2 : 1;
-                        const partySizeBlocked = isFullParty && mode.id === MATCH_MODES.ONES;
-                        const modeStats = mode.id === MATCH_MODES.TWOS
-                            ? profileStats?.twos
-                            : profileStats?.ones;
-                        return (
-                            <button
-                                type="button"
-                                key={mode.id}
-                                disabled={!mode.available || (!active && (isQueueing || (modeBlocked(mode) && !(partySizeBlocked && isPartyLeader))))}
-                                onClick={() => { if (active) cancelQueue(); else requestQueue(mode); }}
-                                aria-label={active ? `Cancel ${mode.label} queue` : `Queue ${mode.label}`}
-                                className={`relative flex min-h-44 w-full items-center rounded-2xl border p-4 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 sm:p-6 ${active
-                                        ? "border-cyan-400/80 bg-cyan-950/35 shadow-[0_0_36px_rgba(34,211,238,.08)]"
-                                        : "border-slate-600/80 bg-[#0d161d]"
-                                    } ${!mode.available ? "cursor-not-allowed opacity-65" : "hover:border-cyan-400/50"}`}
-                            >
-                                <span className="flex w-full min-w-0 items-center gap-4 sm:gap-6">
-                                    <QueuePlayerGroup count={playersPerTeam} side="left" large />
-                                    <span className="min-w-0 flex-1">
-                                        <span className="block whitespace-nowrap font-display-action text-2xl tracking-wide text-white sm:text-3xl">Queue {mode.label}</span>
-                                        <span className="mt-4 block">
-                                            <span className="block font-mono text-[10px] font-bold tracking-[.18em] text-slate-400">ELO</span>
-                                            <span className="mt-1 block font-mono text-2xl font-bold leading-none tracking-normal text-white sm:text-3xl">{formatQueueElo(modeStats)}</span>
-                                        </span>
-                                        <span className="mt-4 block border-t border-slate-700/70 pt-3">
-                                            <span className="block font-mono text-[10px] font-bold tracking-[.18em] text-slate-400">RECORD</span>
-                                            <span className="mt-2 block whitespace-nowrap font-mono text-sm font-bold tracking-normal text-white sm:text-base">
-                                                {formatQueueRecord(modeStats)}
-                                            </span>
-                                            <span className="mt-1 block font-mono text-[9px] font-bold tracking-[.16em] text-cyan-300">W-L-D</span>
+                <section aria-labelledby="ranked-matchmaking-title" className="mt-7">
+                    <h2 id="ranked-matchmaking-title" className="queue-section-title">Ranked Matchmaking</h2>
+                    <div className="mt-3 grid gap-4 md:grid-cols-2">
+                        {QUEUE_MODES.map((mode) => {
+                            const active = isQueueing && displayedMode === mode.id;
+                            const playersPerTeam = mode.id === MATCH_MODES.TWOS ? 2 : 1;
+                            const partySizeBlocked = isFullParty && mode.id === MATCH_MODES.ONES;
+                            const modeStats = mode.id === MATCH_MODES.TWOS
+                                ? profileStats?.twos
+                                : profileStats?.ones;
+                            const queueActionDisabled = !mode.available || (!active && (isQueueing || (modeBlocked(mode) && !(partySizeBlocked && isPartyLeader))));
+                            return (
+                                <article
+                                    key={mode.id}
+                                    aria-label={`Queue ${mode.label}`}
+                                    data-active={active ? "true" : undefined}
+                                    className="queue-mode-card flex w-full flex-col rounded-xl border p-4 text-left sm:p-5"
+                                >
+                                    <span className="flex w-full items-center gap-4">
+                                        <QueuePlayerGroup count={playersPerTeam} side="left" large />
+                                        <span className="min-w-0">
+                                            <span className="block font-display-action text-2xl tracking-wide text-white sm:text-3xl">Queue {mode.label}</span>
+                                            <span className="mt-1 block text-sm text-slate-300">{playersPerTeam === 1 ? "Solo" : "Team"} ranked matchmaking.</span>
                                         </span>
                                     </span>
-                                    {active
-                                        ? <span className="min-w-14 text-center font-mono text-sm font-bold tracking-widest text-cyan-300" aria-live="polite">
-                                            <span aria-hidden="true">{formatQueueTime(queueElapsed)}</span>
-                                            {connectionStatus !== "CONNECTED" && (
-                                                <span className="mt-1 block text-[9px] leading-3 text-amber-300">
-                                                    RECONNECTING{queueReconnectRemaining > 0 ? ` · ${queueReconnectRemaining}s` : ""}
-                                                </span>
-                                            )}
+                                    <span className="queue-mode-stats mt-4 w-full border-t border-slate-600/60 pt-3">
+                                        <span>
+                                            <span className="block font-mono text-[9px] font-bold tracking-[.2em] text-slate-400">ELO</span>
+                                            <span className="mt-1 block font-mono text-xl font-bold leading-none text-white">{formatQueueElo(modeStats)}</span>
                                         </span>
-                                        : <QueueArrow />}
-                                </span>
-                            </button>
-                        );
-                    })}
+                                        <span>
+                                            <span className="block font-mono text-[9px] font-bold tracking-[.2em] text-slate-400">RECORD</span>
+                                            <span className="mt-1 block whitespace-nowrap font-mono text-lg font-bold leading-none text-white">{formatQueueRecord(modeStats)}</span>
+                                            <span className="mt-1 block font-mono text-[8px] font-bold tracking-[.16em] text-cyan-300">W-L-D</span>
+                                        </span>
+                                    </span>
+                                    <button
+                                        type="button"
+                                        disabled={queueActionDisabled}
+                                        onClick={() => { if (active) cancelQueue(); else requestQueue(mode); }}
+                                        aria-label={active ? `Cancel ${mode.label} queue` : `Find ${mode.label} match`}
+                                        className="queue-mode-cta mt-4 flex w-full items-center justify-center gap-3 rounded-lg border px-4 py-3 font-mono text-[11px] font-bold tracking-[.14em] text-cyan-100 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 disabled:cursor-not-allowed disabled:opacity-55"
+                                    >
+                                        <span>{active ? "CANCEL QUEUE" : "FIND MATCH"}</span>
+                                        {active && <span aria-live="polite">{formatQueueTime(queueElapsed)}</span>}
+                                    </button>
+                                    {active && connectionStatus !== "CONNECTED" && (
+                                        <span className="mt-2 block text-[9px] font-bold tracking-wider text-amber-300">
+                                            RECONNECTING{queueReconnectRemaining > 0 ? ` · ${queueReconnectRemaining}s` : ""}
+                                        </span>
+                                    )}
+                                </article>
+                            );
+                        })}
+                    </div>
+                </section>
 
-                    {!isGuest && <button
+                {!isGuest && <section aria-labelledby="private-matches-title" className="mt-7">
+                    <h2 id="private-matches-title" className="queue-section-title">Private Matches</h2>
+                    <button
                         type="button"
                         onClick={() => navigate("/custom-lobby", hasCustomLobby ? undefined : { state: { create: true } })}
                         disabled={isQueueing || !customLobbyChecked}
                         aria-label={hasCustomLobby ? "Open custom lobby" : "Create custom lobby"}
-                        className="relative flex min-h-44 w-full items-center rounded-2xl border border-slate-600/80 bg-[#202427] p-4 text-left transition hover:border-slate-400/80 hover:bg-[#2a3034] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 disabled:cursor-not-allowed disabled:opacity-50 sm:p-6 md:col-span-2 md:mx-auto md:w-[calc(50%_-_0.5rem)]"
+                        className="queue-custom-card mt-3 flex w-full flex-wrap items-center gap-4 rounded-xl border p-4 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-nowrap sm:p-5"
                     >
-                        <span className="flex w-full min-w-0 items-center gap-4 sm:gap-6">
-                            <QueuePlayerGroup count={4} side="left" />
-                            <span className="min-w-0 flex-1">
-                                <span className="block font-display-action text-lg leading-tight tracking-wide text-white sm:whitespace-nowrap sm:text-2xl">
-                                    {!customLobbyChecked ? "CHECKING..." : hasCustomLobby ? "OPEN CUSTOM LOBBY" : "CREATE CUSTOM LOBBY"}
-                                </span>
-                                <span className="mt-2 block text-sm leading-5 text-slate-400 sm:text-base">
-                                    <span className="block">Play privately with friends.</span>
-                                    <span className="block">Up to 4 players.</span>
-                                </span>
+                        <QueuePlayerGroup count={4} side="left" large />
+                        <span className="min-w-0 flex-1">
+                            <span className="block font-display-action text-xl tracking-wide text-white sm:text-2xl">
+                                {!customLobbyChecked ? "CHECKING..." : hasCustomLobby ? "OPEN CUSTOM LOBBY" : "CREATE CUSTOM LOBBY"}
                             </span>
-                            <QueueArrow />
+                            <span className="mt-1 block text-sm text-slate-300">Play privately with friends. Up to 4 players.</span>
                         </span>
-                    </button>}
-                </div>
+                        <span className="queue-custom-cta flex w-full items-center justify-center gap-3 rounded-lg border px-4 py-3 font-mono text-[11px] font-bold tracking-[.12em] text-cyan-100 sm:w-auto sm:min-w-44">
+                            {hasCustomLobby ? "OPEN LOBBY" : "CREATE MATCH"}
+                        </span>
+                    </button>
+                </section>}
 
                 {(partyQueueBlocked || partyHasOfflineMember) && (
-                    <section className="mt-5 rounded-xl border border-slate-800 bg-[#07111b] p-5 sm:p-6">
+                    <section className="queue-notice mt-5 rounded-xl border border-slate-800 bg-[#07111b] p-5 sm:p-6">
                         {partyQueueBlocked && <p className="text-xs text-amber-300">Only the party leader can start the party queue.</p>}
                         {partyHasOfflineMember && (
                             <p className={`text-xs leading-5 text-amber-300 ${partyQueueBlocked ? "mt-3" : ""}`}>

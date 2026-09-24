@@ -881,7 +881,7 @@ public final class AbilityContracts {
         return effect != null && effect.targetKinds().contains(TargetKind.BOT);
     }
 
-    /** Generic HP entities receive damage; coded summons support the listed entity effects. */
+    /** Generic HP entities receive damage and displacement; coded summons support bot-like effects. */
     public static boolean effectTargetsEntity(Effect effect, boolean summonTarget) {
         if (effect == null) return false;
         if (summonTarget && effect.targetKinds().contains(TargetKind.SUMMON)
@@ -889,9 +889,13 @@ public final class AbilityContracts {
                     case DAMAGE, STATUS, INTERRUPT, KNOCKBACK, PULL -> true;
                     default -> false;
                 }) return true;
+        if (effect.targetKinds().contains(TargetKind.HP_ENTITY)
+                && switch (effect.type()) {
+                    case DAMAGE, KNOCKBACK, PULL -> true;
+                    default -> false;
+                }) return true;
         return effect.type() == EffectType.DAMAGE
-                && (effect.targetKinds().contains(TargetKind.HP_ENTITY)
-                    || effect.targetKinds().contains(TargetKind.ENTITY));
+                && effect.targetKinds().contains(TargetKind.ENTITY);
     }
     private static Set<EffectType> immutableEffects(Set<EffectType> effects) {
         if (effects == null || effects.isEmpty()) return Set.of();
@@ -1468,7 +1472,7 @@ public final class AbilityContracts {
                                 Map.of(PhaseEventType.COLLISION,
                                         botAndSummonEvent(new TargetPolicy(TargetPolicyMode.ONCE),
                                                 PhaseAction.APPLY_EFFECTS).withPullDirection("owner")),
-                                200, null, false, false, null, Map.of(), Map.of())));
+                                200, null, false, false, null, Map.of(), Map.of()))));
 
         contracts.put(29, contract(29, "static_snare", "staticSnare", Category.TRAP, SELF,
                 new Lifetime(TimerMode.AGE, 16_000, 0),

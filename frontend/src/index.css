@@ -3390,63 +3390,44 @@ button {
   text-transform: none;
 }
 
-/* The acceptance action uses the same green surface as action nodes while the
-   surrounding match window stays on the original compact modal design. */
 .match-acceptance-button {
   display: flex;
-  width: 50%;
-  min-height: 2.875rem;
+  width: min(100%, 18rem);
+  min-height: 3rem;
   align-items: center;
   justify-content: center;
-  gap: .45rem;
-  margin: clamp(1.75rem, 4vw, 2.75rem) auto 0;
-  border: 1px solid #72b65d;
+  margin: 1.5rem auto 0;
+  border: 1px solid #4ade80;
   border-radius: .5rem;
-  padding: .5rem .75rem;
-  background: linear-gradient(180deg, #4d8257 0%, #3f7049 52%, #31583a 100%);
-  box-shadow:
-    inset 0 0 .65rem rgba(210, 239, 201, .12),
-    0 0 .75rem rgba(114, 182, 93, .22),
-    0 0 0 1px rgba(210, 239, 201, .12);
-  color: #e4f5df;
+  padding: .75rem 1rem;
+  background: #4ade80;
+  box-shadow: 0 0 1.25rem rgba(74, 222, 128, .2);
+  color: #092919;
   font-family: "Cousine", "Courier New", Courier, monospace;
-  font-size: clamp(.58rem, 1.5vw, .95rem);
+  font-size: .82rem;
   font-weight: 700;
-  letter-spacing: .08em;
-  line-height: 1;
+  letter-spacing: .1em;
+  line-height: 1.2;
   text-transform: uppercase;
-  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease, transform 140ms ease;
-}
-
-.match-acceptance-button::before {
-  width: 0;
-  height: 0;
-  border-top: .4rem solid transparent;
-  border-bottom: .4rem solid transparent;
-  border-left: .575rem solid #d2efc9;
-  content: "";
-  filter: drop-shadow(0 0 3px rgba(210, 239, 201, .55));
+  transition: background 140ms ease, box-shadow 140ms ease;
 }
 
 .match-acceptance-button:hover:not(:disabled) {
-  border-color: #9fd092;
-  background: linear-gradient(180deg, #5c9768 0%, #4d8257 52%, #3f7049 100%);
-  box-shadow:
-    inset 0 0 .8rem rgba(228, 245, 223, .16),
-    0 0 1rem rgba(114, 182, 93, .35),
-    0 0 0 1px rgba(210, 239, 201, .2);
-  transform: translateY(-1px);
+  background: #6ee7a0;
+  box-shadow: 0 0 1.5rem rgba(74, 222, 128, .32);
 }
 
 .match-acceptance-button:focus-visible {
-  outline: 2px solid #9fd092;
+  outline: 2px solid #a7f3c2;
   outline-offset: 3px;
 }
 
 .match-acceptance-button:disabled {
-  cursor: wait;
-  filter: saturate(.65);
-  opacity: .62;
+  cursor: default;
+  background: #35654a;
+  border-color: #568569;
+  box-shadow: none;
+  color: #d0e7d6;
 }
 
 @media (prefers-reduced-motion: reduce) {

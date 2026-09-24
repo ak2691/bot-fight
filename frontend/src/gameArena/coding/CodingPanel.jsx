@@ -35,6 +35,7 @@ import {
     formatClock,
 } from "./nodes/GraphNodes.jsx";
 import { TreeLogicBoard } from "./LogicBoard.jsx";
+import { readAddRootShortcut } from "./addRootShortcut.js";
 
 const MIN_ZOOM = 0.45;
 const MAX_ZOOM = 1.35;
@@ -848,7 +849,7 @@ export default function CodingPanel({
                                         onClick={addRootNode}
                                         className="code-toolbar-button code-toolbar-button-primary"
                                     >
-                                        <span aria-hidden="true" className="code-toolbar-icon">＋</span> ADD ROOT ({totalRootNodes}/{MAX_ROOT_NODES})
+                                        <span aria-hidden="true" className="code-toolbar-icon">＋</span> ADD ROOT ({totalRootNodes}/{MAX_ROOT_NODES}) <kbd className="code-toolbar-shortcut">{readAddRootShortcut().toUpperCase()}</kbd>
                                     </button>
                                 </div>
                                 <div className="code-toolbar-actions">
@@ -937,6 +938,8 @@ export default function CodingPanel({
                                 canRedo={!isCodeEditingLocked && !isTesting && (editHistory[activeCode]?.redo?.length ?? 0) > 0}
                                 onUndo={() => travelHistory("undo")}
                                 onRedo={() => travelHistory("redo")}
+                                onAddRoot={addRootNode}
+                                canAddRoot={totalRootNodes < MAX_ROOT_NODES}
                                 isSearchOpen={isNodeSearchOpen}
                                 isQuickSearchOpen={isQuickSearchOpen}
                                 onSearchClose={() => { setIsNodeSearchOpen(false); setIsQuickSearchOpen(false); }}

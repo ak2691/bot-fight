@@ -913,7 +913,9 @@ export default function MatchmakingProvider({ children }) {
                 const pending = pendingAcceptanceRef.current;
                 if (pending
                     && isMatchAcceptanceTerminalEventForMatch(event, pending.matchId)) {
-                    clearPendingAcceptance(event.message ?? "The match acceptance window has closed.");
+                    clearPendingAcceptance(event.type === "MATCH_ACCEPTANCE_EXPIRED"
+                        ? null
+                        : event.message ?? "The match acceptance window has closed.");
                     return;
                 }
                 if (event.type === "MATCH_FOUND" && event.status === "MATCH_ACCEPT") {

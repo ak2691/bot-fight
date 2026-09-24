@@ -193,7 +193,7 @@ export default function PartyPopover({ onOpen = null }) {
                     id="party-popover"
                     role="dialog"
                     aria-label="Party"
-                    className="absolute right-0 top-[calc(100%+0.5rem)] z-30 max-h-[min(32rem,calc(100vh-6rem))] w-[min(20rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-xl border-2 border-slate-500/80 bg-[#091521f5] p-3 shadow-[0_18px_60px_rgba(0,0,0,.45)]"
+                    className="absolute right-0 top-[calc(100%+0.5rem)] z-30 max-h-[min(32rem,calc(100vh-6rem))] w-[min(20rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-xl border-2 border-slate-500/80 bg-[#091521f5] p-3 shadow-[0_18px_60px_rgba(0,0,0,.45)] game-popover"
                 >
                     <div className="flex items-center justify-between gap-3 px-1 pb-2">
                         <div>

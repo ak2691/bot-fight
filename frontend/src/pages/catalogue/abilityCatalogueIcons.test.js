@@ -71,7 +71,7 @@ test("catalogue cards keep text accessible and artwork decorative", () => {
     assert.doesNotMatch(source, /src="\/assets\/arena-toolbar\/info-circle-icon\.png"/);
 });
 
-test("catalogue uses compact text effect cards with detail modals and the requested intro", () => {
+test("catalogue uses compact text effect cards with detail modals and round navigation", () => {
     const source = readFileSync(CATALOGUE_PAGE_PATH, "utf8");
 
     assert.equal(EFFECT_GUIDE.length, 19);
@@ -84,7 +84,6 @@ test("catalogue uses compact text effect cards with detail modals and the reques
     assert.equal(EFFECT_GUIDE.find(({ id }) => id === "healing")?.category, "Combat");
     assert.match(EFFECT_GUIDE.find(({ id }) => id === "interrupt")?.description ?? "", /cooldown or reload/);
     assert.match(EFFECT_GUIDE.find(({ id }) => id === "silence")?.description ?? "", /without resetting its cooldown/);
-    assert.match(source, /Explore abilities here\. Click one to inspect its details\./);
     assert.match(source, /aria-labelledby="combat-effects-title"/);
     assert.match(source, /EFFECT_GUIDE\.map/);
     assert.match(source, /<EffectModal key=\{selectedEffect\.id\} effect=\{selectedEffect\}/);

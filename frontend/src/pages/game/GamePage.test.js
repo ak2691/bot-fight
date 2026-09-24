@@ -23,7 +23,7 @@ test("match acceptance is an identity-free dialog with the requested copy", () =
     assert.match(source, /aria-modal="true"/);
     assert.match(source, /aria-labelledby="match-acceptance-title"/);
     assert.match(source, /\{closing \? "Closing\.\.\." : "Match Found"\}/);
-    assert.match(source, />Opponent Found<\/p>/);
+    assert.doesNotMatch(source, />Opponent Found<\/p>/);
     assert.match(source, /Accept to enter the match/);
     assert.match(source, /<button[\s\S]*>\s*\{buttonLabel\}\s*<\/button>/);
     assert.doesNotMatch(source, /MatchPlayerIdentity|acceptedUserId|\bVS\b/);

@@ -76,7 +76,7 @@ export function applyBotAction(shape, action, elapsedMs, applyDamage) {
 }
 
 function applyMovement(next, shape, action, movement) {
-    const { dx, dy, magnitude, maxMoveSpeed, seconds, elapsedMs } = movement;
+    const { dx, dy, magnitude, maxMoveSpeed, seconds } = movement;
     const movementStart = {
         movementStartX: Number(shape.x ?? next.x ?? 0),
         movementStartY: Number(shape.y ?? next.y ?? 0),

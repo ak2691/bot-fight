@@ -10,7 +10,7 @@ const actions = [
     { id: "room", title: "Practice Room", tone: "blue", icon: "/assets/homepage/business-management-icon.svg" },
     {
         id: "abilities",
-        title: "Ability List",
+        title: "Ability Catalogue",
         tone: "teal",
         icons: [
             "/assets/ability-list/icons/temporal_rewind.webp",
@@ -18,7 +18,7 @@ const actions = [
             "/assets/ability-list/icons/shoot_fireball.webp",
         ],
     },
-    { id: "conditions", title: "Conditional List", tone: "blue", icon: "/assets/homepage/book-icon.svg" },
+    { id: "conditions", title: "Conditional Catalogue", tone: "blue", icon: "/assets/homepage/book-icon.svg" },
 ];
 
 function formatQueueTime(elapsedSeconds) {
@@ -98,7 +98,7 @@ export default function HomePage({ activeMatch = false, activeMatchId = null }) 
                             key={action.id}
                             type="button"
                             onClick={() => handleAction(action.id)}
-                            className={`home-action home-action-${action.tone} group flex min-h-[92px] items-center justify-center gap-5 rounded-xl p-4 text-left shadow-[0_18px_40px_rgba(0,0,0,.2)] disabled:cursor-wait disabled:opacity-70`}
+                            className={`home-action home-action-${action.tone} home-action-${action.id} group flex min-h-[92px] items-center justify-center gap-5 rounded-xl p-4 text-left shadow-[0_18px_40px_rgba(0,0,0,.2)] disabled:cursor-wait disabled:opacity-70`}
                         >
                             <HomeActionIcon action={action} />
                             <span>
