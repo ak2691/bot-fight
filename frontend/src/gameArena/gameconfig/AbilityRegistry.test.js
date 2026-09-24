@@ -102,7 +102,7 @@ test("requested combat tuning is represented in the browser catalog", () => {
     assert.equal(ABILITY_STATS[22].damage, 15);
     assert.equal(ABILITY_STATS[22].intervalMs, 500);
     assert.equal(ABILITY_STATS[27].pullPerTick, 10);
-    assert.equal(ABILITY_STATS[28].pullPerTick, 150);
+    assert.equal(ABILITY_STATS[28].pullPerTick, 300);
     assert.equal(ABILITY_STATS[24].activeMs, 300);
     assert.equal(ABILITY_STATS[24].windupMs, 1000);
     assert.equal(ABILITY_STATS[25].damage, 15);

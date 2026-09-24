@@ -51,7 +51,7 @@ class AbilityContractsTest {
                 .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(6));
         assertThat(AbilityContracts.entityContractForAbility(28).phases().get(1).effects())
                 .filteredOn(effect -> effect.type() == PULL)
-                .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(150));
+                .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(300));
         assertThat(AbilityContracts.effectAmount(9, DAMAGE)).isEqualTo(20);
         assertThat(AbilityContracts.effectAmount(26, DAMAGE)).isEqualTo(15);
         assertThat(AbilityContracts.effectDurationMs(9, "slow")).isEqualTo(3_000);

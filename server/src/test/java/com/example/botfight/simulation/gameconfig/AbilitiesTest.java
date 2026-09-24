@@ -120,7 +120,7 @@ class AbilitiesTest {
         assertThat(Abilities.definition(25).damage()).isEqualTo(15);
         assertThat(Abilities.definition(26).damage()).isEqualTo(15);
         assertThat(Abilities.definition(28).damage()).isEqualTo(10);
-        assertThat(Abilities.stat(28, "pullPerTick", 0)).isEqualTo(150);
+        assertThat(Abilities.stat(28, "pullPerTick", 0)).isEqualTo(300);
         assertThat(Abilities.definition(29).damage()).isEqualTo(25);
         assertThat(Abilities.stat(29, "hp", 0)).isEqualTo(20);
         assertThat(Abilities.cooldownMs(30)).isEqualTo(8_000);
