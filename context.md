@@ -31,6 +31,7 @@ timing, rounding, targeting, effects, loadout encoding, and replay shape.
 | Adding/changing abilities, effects, shields, arena entities | [`docs/context.md`](docs/context.md) first, then both runtime contexts | documentation and both gameplay runtime areas |
 | Review, regression audit, combat/visual checklist | [`docs/context.md`](docs/context.md) plus the affected runtime context | documentation and affected runtime areas |
 | Docker, ports, local service orchestration | this file, then relevant area context | repository root and component roots |
+| Ability authoring MCP, structured scaffolds, browser/server parity reports | [`tools/botfight-mcp/README.md`](tools/botfight-mcp/README.md) | `tools/botfight-mcp/`, browser and server ability catalogs/contracts |
 | Adding folders or maintaining context maps | [`docs/MAINTAINING_CONTEXT_FILES.md`](docs/MAINTAINING_CONTEXT_FILES.md) | closest existing context boundary |
 
 For a task spanning boundaries, read each relevant area context. For a local
@@ -45,6 +46,8 @@ to find the implementation and tests.
   duel simulator. There is no separate active Node simulation package.
 - `docs/`: durable gameplay contracts, implementation guides, and regression
   audit checklists. Use its context index instead of opening every document.
+- `tools/botfight-mcp/`: local stdio MCP for canonical ability specs, paired
+  authoring scaffolds, current catalog/contract inspection, and runtime parity.
 - `artifacts/`: ignored runtime/base-model assets mounted read-only by Docker.
   Inspect only for an artifact-specific request.
 - `.github/`: repository automation. `.vscode/`: local editor configuration.

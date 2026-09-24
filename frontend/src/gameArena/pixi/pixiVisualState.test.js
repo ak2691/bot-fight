@@ -205,7 +205,7 @@ test("semantic event lookup matches camel-cased contract event keys", () => {
     });
 });
 
-test("Temporal Rewind uses a looping phase animation instead of a one-frame snapshot", () => {
+test("Rewind uses a looping phase animation instead of a one-frame snapshot", () => {
     const shape = { type: "temporalRewindZone", abilityId: 21, phaseId: "active", phaseTimerMs: 1_500 };
     assert.deepEqual(presentationDefinitionForShape(shape), {
         kind: "entity",
@@ -220,11 +220,11 @@ test("Temporal Rewind uses a looping phase animation instead of a one-frame snap
 });
 
 test("entity renderers use the active phase or event visual size", () => {
-    assert.equal(visualSizeForShape({ type: "staticSnare", abilityId: 29, phaseId: "armed", size: 24 }), 24);
-    assert.equal(visualSizeForShape({ type: "staticSnare", abilityId: 29, phaseId: "triggered", size: 24 }), 0);
-    assert.equal(visualSizeForShape({ type: "staticSnare", abilityId: 29, phaseId: "destroyed", size: 24 }), 0);
+    assert.equal(visualSizeForShape({ type: "snareBomb", abilityId: 29, phaseId: "armed", size: 24 }), 24);
+    assert.equal(visualSizeForShape({ type: "snareBomb", abilityId: 29, phaseId: "triggered", size: 24 }), 0);
+    assert.equal(visualSizeForShape({ type: "snareBomb", abilityId: 29, phaseId: "destroyed", size: 24 }), 0);
     assert.equal(visualSizeForShape({
-        type: "staticSnare",
+        type: "snareBomb",
         abilityId: 29,
         phaseId: "armed",
         size: 24,
@@ -247,7 +247,7 @@ test("practice hitbox geometry mirrors projectile, explosion, and persistent abi
         { type: "proximityMine", abilityId: 11, phaseId: "active", phaseLocked: true, size: 175, radius: 87.5 },
         { type: "gravityZone", abilityId: 14, phaseId: "active", phaseLocked: true, size: 240, radius: 120 },
         { type: "singularityZone", abilityId: 27, phaseId: "active", phaseLocked: true, size: 280, radius: 140 },
-        { type: "staticSnare", abilityId: 29, phaseId: "destroyed", phaseLocked: true, size: 240, radius: 120, armed: true },
+        { type: "snareBomb", abilityId: 29, phaseId: "destroyed", phaseLocked: true, size: 240, radius: 120, armed: true },
         { type: "orbitalMarker", abilityId: 22, phaseId: "active", phaseLocked: true, size: 260, radius: 130 },
     ].forEach(({ type, abilityId, size, radius, phaseId, armed }) => {
         assert.deepEqual(hitboxGeometryForEntity({ type, abilityId, size, phaseId, armed, remainingMs: 100 }), {
@@ -718,6 +718,6 @@ test("bot and entity labels derive from calculated snapshot fields", () => {
     assert.equal(activeBotVisual({ abilityActiveMs: { 34: 200 } }), 34);
     assert.equal(entityCaption({ type: "proximityMine", armed: true }), "");
     assert.equal(entityCaption({ type: "repellerDrone", hp: 31 }), "31.0 HP");
-    assert.equal(entityCaption({ type: "staticSnare", hp: 20 }), "20.0 HP");
+    assert.equal(entityCaption({ type: "snareBomb", hp: 20 }), "20.0 HP");
     assert.equal(entityCaption({ type: "orbitalMarker", fuseMs: 900 }), "");
 });

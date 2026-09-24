@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "id": "fireball",
+  "abilityId": 5,
+  "name": "Fireball",
+  "label": "Fireball",
+  "category": "projectile",
+  "round": 1,
+  "summary": "Projectile that deals damage and applies a burn effect.",
+  "visualInterpolation": "linear",
+  "timing": {
+    "cooldownMs": 300,
+    "windupMs": 0,
+    "activeMs": 500,
+    "durationMs": 1000,
+    "maxCharges": 4,
+    "reloadMs": 5000,
+    "resourceModel": "RELOAD_WHEN_EMPTY"
+  },
+  "contract": {
+    "entityType": "fireball",
+    "runtimeType": "fireball",
+    "spawn": {
+      "offset": {
+        "x": 0,
+        "y": 47
+      },
+      "rotation": 0,
+      "rotationSpace": "owner"
+    },
+    "targeting": {
+      "owner": "owner"
+    },
+    "lifetime": {
+      "duration": 1000,
+      "timerMode": "AGE"
+    },
+    "state": {
+      "damageMultiplier": {
+        "context": "damageMultiplier",
+        "fallback": {
+          "ownerStat": "attackDamageMultiplier",
+          "fallback": 1
+        }
+      }
+    },
+    "activation": {},
+    "phases": [
+      {
+        "id": "active",
+        "type": "projectile",
+        "movement": {
+          "speed": 50
+        },
+        "hitbox": {
+          "shape": "rectangle",
+          "width": 30,
+          "length": 30
+        },
+        "effects": [
+          {
+            "type": "damage",
+            "amount": 15,
+            "targetKinds": [
+              "BOT",
+              "HP_ENTITY"
+            ]
+          },
+          {
+            "type": "status",
+            "subtype": "burn",
+            "amount": 2,
+            "durationMs": 5000,
+            "intervalMs": 1000,
+            "targetKinds": [
+              "BOT",
+              "SUMMON"
+            ]
+          }
+        ],
+        "visual": {
+          "type": "fireball",
+          "visualSize": 30
+        },
+        "events": {
+          "collision": {
+            "actions": [
+              "applyEffects",
+              "remove"
+            ],
+            "schedule": {
+              "mode": "continuous"
+            },
+            "targetKinds": [
+              "BOT",
+              "HP_ENTITY"
+            ]
+          }
+        }
+      }
+    ],
+    "abilities": []
+  },
+  "implementationNotes": {}
+}

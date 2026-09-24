@@ -259,8 +259,10 @@ function normalizeEvents(events) {
                 ? { effectTypes: Object.freeze([...event.effectTypes]) }
                 : {}),
             ...(Array.isArray(event.statusTypes)
-                ? { statusTypes: Object.freeze([...new Set(event.statusTypes
-                    .map((statusType) => String(statusType).toLowerCase()).filter(Boolean))]) }
+                ? {
+                    statusTypes: Object.freeze([...new Set(event.statusTypes
+                        .map((statusType) => String(statusType).toLowerCase()).filter(Boolean))])
+                }
                 : {}),
             targetKinds: Object.freeze([...new Set(targetKinds
                 .filter((kind) => Object.values(TARGET_KINDS).includes(kind)))]),
@@ -320,8 +322,8 @@ export function resolveEffectOverride(effectValue, overrides) {
         ...(hasFixedAmount && !overrideFalloff
             ? { falloff: null }
             : baseFalloff || overrideFalloff
-            ? { falloff: { ...(baseFalloff ?? {}), ...(overrideFalloff ?? {}) } }
-            : {}),
+                ? { falloff: { ...(baseFalloff ?? {}), ...(overrideFalloff ?? {}) } }
+                : {}),
     };
 }
 
@@ -390,8 +392,12 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
             hitbox: { shape: "arc", range: 92, arc: 120, includeTargetRadius: true },
             effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 20 })],
             visual: { type: "meleeSlash", visualSize: 207, visibleMs: 400 },
-            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
-                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
+            events: {
+                [PHASE_EVENT_TYPES.COLLISION]: {
+                    actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                    schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS
+                }
+            },
         }),
     }),
     3: attachedAbility({
@@ -404,8 +410,12 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
                 falloff: { maxAmount: 15, minAmount: 5, falloffStart: 100, falloffEnd: 700 },
             })],
             visual: { type: "gun", visualSize: 16, visibleMs: 500 },
-            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
-                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
+            events: {
+                [PHASE_EVENT_TYPES.COLLISION]: {
+                    actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                    schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS
+                }
+            },
         }),
     }),
     6: attachedAbility({
@@ -413,8 +423,12 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
             hitbox: { shape: "rectangle", length: 184, width: 80, includeTargetRadius: true },
             effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 10 }), statusEffect("stun", { durationMs: 1200, targetKinds: BOT_AND_SUMMON_TARGET_KINDS })],
             visual: { type: "stun", visualSize: 60, visibleMs: 100 },
-            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
-                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
+            events: {
+                [PHASE_EVENT_TYPES.COLLISION]: {
+                    actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                    schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS
+                }
+            },
         }),
     }),
     7: attachedAbility({
@@ -424,17 +438,25 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
                 amount: 2, durationMs: 5000, intervalMs: 1000, targetKinds: BOT_AND_SUMMON_TARGET_KINDS,
             })],
             visual: { type: "heavySlash", visualSize: 220.8, visibleMs: 400 },
-            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
-                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
+            events: {
+                [PHASE_EVENT_TYPES.COLLISION]: {
+                    actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                    schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS
+                }
+            },
         }),
     }),
     8: attachedAbility({
         phase: phase({
             hitbox: { shape: "circle", radius: 110, includeTargetRadius: true },
-            effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 20 }), effect(EFFECT_TYPES.KNOCKBACK, { amount: 250, targetKinds: BOT_AND_SUMMON_TARGET_KINDS })],
+            effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 20 }), effect(EFFECT_TYPES.KNOCKBACK, { amount: 300, targetKinds: BOT_AND_SUMMON_TARGET_KINDS })],
             visual: { type: "repulsorBurst", visualSize: 220, visibleMs: 500 },
-            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
-                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
+            events: {
+                [PHASE_EVENT_TYPES.COLLISION]: {
+                    actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                    schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS
+                }
+            },
         }),
     }),
     9: attachedAbility({
@@ -442,16 +464,24 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
             hitbox: { shape: "ray", range: 500, width: 5 },
             effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 20 }), statusEffect("slow", { durationMs: 3000, targetKinds: BOT_AND_SUMMON_TARGET_KINDS })],
             visual: { type: "concussiveShot", visualSize: 76, visibleMs: 300 },
-            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
-                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
+            events: {
+                [PHASE_EVENT_TYPES.COLLISION]: {
+                    actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                    schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS
+                }
+            },
         }),
     }),
     10: attachedAbility({
         phase: phase({
             effects: [effect(EFFECT_TYPES.HEALING, { amount: 25 })],
             visual: { type: "basicHeal", visualSize: 12, visibleMs: 300 },
-            events: { [PHASE_EVENT_TYPES.ACTIVATION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
-                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE } } },
+            events: {
+                [PHASE_EVENT_TYPES.ACTIVATION]: {
+                    actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                    schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }
+                }
+            },
         }),
     }),
     12: attachedAbility({
@@ -461,8 +491,12 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
                 falloff: { maxAmount: 8, minAmount: 4, falloffStart: 0, falloffEnd: 333.33 },
             })],
             visual: { type: "pistol", visualSize: 14, visibleMs: 300 },
-            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
-                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
+            events: {
+                [PHASE_EVENT_TYPES.COLLISION]: {
+                    actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                    schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS
+                }
+            },
         }),
     }),
     13: attachedAbility({
@@ -473,8 +507,12 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
                 targetKinds: BOT_AND_SUMMON_TARGET_KINDS,
             })],
             visual: { type: "railShot", visualSize: 100, visibleMs: 300 },
-            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
-                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
+            events: {
+                [PHASE_EVENT_TYPES.COLLISION]: {
+                    actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                    schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS
+                }
+            },
         }),
     }),
     16: attachedAbility({
@@ -484,16 +522,24 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
                 effect(EFFECT_TYPES.DAMAGE_REFLECTION, { amount: 0.5, multiplier: 0.5, durationMs: 4000 }),
             ],
             visual: { type: "reactiveArmor", visualSize: 80, visibleMs: 300 },
-            events: { [PHASE_EVENT_TYPES.ACTIVATION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
-                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE } } },
+            events: {
+                [PHASE_EVENT_TYPES.ACTIVATION]: {
+                    actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                    schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }
+                }
+            },
         }),
     }),
     19: attachedAbility({
         phase: phase({
             movement: { distance: 150, speed: 75, trailMs: 300, blockedByStatus: "slow" },
             visual: { type: "dash", visualSize: 114, visibleMs: 300 },
-            events: { [PHASE_EVENT_TYPES.ACTIVATION]: { actions: [PHASE_ACTIONS.START_MOVEMENT],
-                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE } } },
+            events: {
+                [PHASE_EVENT_TYPES.ACTIVATION]: {
+                    actions: [PHASE_ACTIONS.START_MOVEMENT],
+                    schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }
+                }
+            },
         }),
     }),
     20: attachedAbility({
@@ -501,16 +547,24 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
         phase: phase({
             orientation: { mode: "faceTarget", targetSource: "activationTarget" },
             visual: { type: "lockOn", visualSize: 48, visibleMs: 200 },
-            events: { [PHASE_EVENT_TYPES.ACTIVATION]: { actions: [PHASE_ACTIONS.START_ORIENTATION],
-                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE } } },
+            events: {
+                [PHASE_EVENT_TYPES.ACTIVATION]: {
+                    actions: [PHASE_ACTIONS.START_ORIENTATION],
+                    schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }
+                }
+            },
         }),
     }),
     23: attachedAbility({
         phase: phase({
             effects: [effect(EFFECT_TYPES.DAMAGE_IMMUNITY, { amount: 1, durationMs: 1500 })],
             visual: { type: "absoluteGuard", visualSize: 80, visibleMs: 300 },
-            events: { [PHASE_EVENT_TYPES.ACTIVATION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
-                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE } } },
+            events: {
+                [PHASE_EVENT_TYPES.ACTIVATION]: {
+                    actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                    schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }
+                }
+            },
         }),
     }),
     25: attachedAbility({
@@ -526,8 +580,12 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
                 effect(EFFECT_TYPES.DAMAGE, { amount: 15 }),
             ],
             visual: { type: "phaseStrike", visualSize: 100, visibleMs: 300 },
-            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
-                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
+            events: {
+                [PHASE_EVENT_TYPES.COLLISION]: {
+                    actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                    schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS
+                }
+            },
         }),
     }),
     26: attachedAbility({
@@ -539,8 +597,12 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
                 effect(EFFECT_TYPES.KNOCKBACK, { amount: 60, targetKinds: BOT_AND_SUMMON_TARGET_KINDS }),
             ],
             visual: { type: "frostRing", visualSize: 320, visibleMs: 300 },
-            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
-                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
+            events: {
+                [PHASE_EVENT_TYPES.COLLISION]: {
+                    actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                    schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS
+                }
+            },
         }),
     }),
     30: attachedAbility({
@@ -552,8 +614,12 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
                 statusEffect("slow", { durationMs: 1500, targetKinds: BOT_AND_SUMMON_TARGET_KINDS }),
             ],
             visual: { type: "disruptorDart", visualSize: 8, visibleMs: 300 },
-            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
-                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
+            events: {
+                [PHASE_EVENT_TYPES.COLLISION]: {
+                    actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                    schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS
+                }
+            },
         }),
     }),
     32: attachedAbility({
@@ -568,8 +634,12 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
                 }),
             ],
             visual: { type: "vampiricBeam", visualSize: 10, visibleMs: 300 },
-            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
-                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
+            events: {
+                [PHASE_EVENT_TYPES.COLLISION]: {
+                    actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                    schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS
+                }
+            },
         }),
     }),
     33: attachedAbility({
@@ -578,8 +648,12 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
                 buff: "overclock", amount: 0.5, multiplier: 0.5, durationMs: 4000,
             })],
             visual: { type: "overclock", visualSize: 80, visibleMs: 300 },
-            events: { [PHASE_EVENT_TYPES.ACTIVATION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
-                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE } } },
+            events: {
+                [PHASE_EVENT_TYPES.ACTIVATION]: {
+                    actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                    schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }
+                }
+            },
         }),
     }),
     34: attachedAbility({
@@ -587,8 +661,12 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
             hitbox: { shape: "arc", range: 80, arc: 30, includeTargetRadius: true },
             effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 8 })],
             visual: { type: "basicStrike", visualSize: 80, visibleMs: 200 },
-            events: { [PHASE_EVENT_TYPES.COLLISION]: { actions: [PHASE_ACTIONS.APPLY_EFFECTS],
-                schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS } },
+            events: {
+                [PHASE_EVENT_TYPES.COLLISION]: {
+                    actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                    schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS
+                }
+            },
         }),
     }),
 });
@@ -703,13 +781,13 @@ export const ENTITY_CONTRACTS = Object.freeze({
         runtimeType: "fireball",
         category: ENTITY_CATEGORIES.PROJECTILE,
         spawn: { offset: { x: 0, y: 47 }, rotation: 0, rotationSpace: "owner" },
-        lifetime: { duration: 1200 },
+        lifetime: { duration: 1000 },
         state: {
             damageMultiplier: contextValue("damageMultiplier", ownerStat("attackDamageMultiplier", 1)),
         },
         phases: Object.freeze([
             phase("active", PHASE_TYPES.PROJECTILE, {
-                movement: { speed: 36 },
+                movement: { speed: 50 },
                 hitbox: { shape: "rectangle", width: 30, length: 30 },
                 effects: [
                     effect(EFFECT_TYPES.DAMAGE, { amount: 15 }),
@@ -842,8 +920,10 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 ],
                 visual: visual("silenceWave", 225),
                 events: {
-                    [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: BOT_AND_SUMMON_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS],
-                        schedule: { mode: EVENT_SCHEDULE_MODES.CONTINUOUS }, targetPolicy: { mode: TARGET_POLICY_MODES.ONCE } },
+                    [PHASE_EVENT_TYPES.COLLISION]: {
+                        targetKinds: BOT_AND_SUMMON_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                        schedule: { mode: EVENT_SCHEDULE_MODES.CONTINUOUS }, targetPolicy: { mode: TARGET_POLICY_MODES.ONCE }
+                    },
                 },
             }),
         ]),
@@ -901,7 +981,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 hitbox: { shape: "rectangle", width: 80, length: 115 },
                 effects: [
                     effect(EFFECT_TYPES.DAMAGE, { amount: 20 }),
-                    effect(EFFECT_TYPES.KNOCKBACK, { amount: 200, targetKinds: BOT_AND_SUMMON_TARGET_KINDS }),
+                    effect(EFFECT_TYPES.KNOCKBACK, { amount: 250, targetKinds: BOT_AND_SUMMON_TARGET_KINDS }),
                 ],
                 visual: visual("windburstProjectile", 24),
                 events: {
@@ -1031,12 +1111,15 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 events: {
                     [PHASE_EVENT_TYPES.COLLISION]: {
                         targetKinds: DAMAGE_TARGET_KINDS,
-                        actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                        actions: [PHASE_ACTIONS.APPLY_EFFECTS, PHASE_ACTIONS.TRANSITION],
+                        transition: { to: "return" },
+                        recheckCollisionOnTransition: false,
                         targetPolicy: { mode: "once" },
                     },
                     [PHASE_EVENT_TYPES.LIFETIME_END]: {
                         actions: [PHASE_ACTIONS.TRANSITION],
                         transition: { to: "return" },
+                        recheckCollisionOnTransition: false,
                     },
                 },
                 durationMs: 400,
@@ -1046,7 +1129,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 movement: { speed: 150, direction: "backward" },
                 hitbox: { shape: "rectangle", width: 18, length: 18 },
                 visual: visual("tetherBolt", 18),
-                effects: [effect(EFFECT_TYPES.PULL, { amount: 300, targetKinds: BOT_AND_SUMMON_TARGET_KINDS })],
+                effects: [effect(EFFECT_TYPES.PULL, { amount: 250, targetKinds: BOT_AND_SUMMON_TARGET_KINDS })],
                 events: {
                     [PHASE_EVENT_TYPES.COLLISION]: {
                         targetKinds: BOT_AND_SUMMON_TARGET_KINDS,
@@ -1060,8 +1143,8 @@ export const ENTITY_CONTRACTS = Object.freeze({
         ]),
     }),
     29: entity(29, {
-        entityType: "static_snare",
-        runtimeType: "staticSnare",
+        entityType: "snare_bomb",
+        runtimeType: "snareBomb",
         category: ENTITY_CATEGORIES.TRAP,
         spawn: { offset: { x: 0, y: 0 }, rotation: 0, rotationSpace: "owner" },
         lifetime: { duration: 16000 },
@@ -1070,7 +1153,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 movement: { speed: 0 },
                 hitbox: { shape: "circle", radius: 12 },
                 health: { hp: 20, maxHp: 20, allowFriendlyDamage: true },
-                visual: visual("staticSnare", 24),
+                visual: visual("snareBomb", 24),
                 trigger: {
                     radius: 75,
                     botContact: true,
@@ -1177,16 +1260,18 @@ export const ENTITY_CONTRACTS = Object.freeze({
 });
 
 
-const ABILITY_CONTRACTS_BY_RUNTIME_TYPE = Object.freeze(Object.fromEntries(
-    Object.values({ ...ATTACHED_ABILITY_CONTRACTS, ...ENTITY_CONTRACTS })
+const ABILITY_CONTRACTS_BY_RUNTIME_TYPE = Object.freeze({
+    ...Object.fromEntries(Object.values({ ...ATTACHED_ABILITY_CONTRACTS, ...ENTITY_CONTRACTS })
         .filter((definition) => definition.runtimeType)
-        .map((definition) => [definition.runtimeType, definition]),
-));
-const ABILITY_CONTRACTS_BY_ENTITY_TYPE = Object.freeze(Object.fromEntries(
-    Object.values({ ...ATTACHED_ABILITY_CONTRACTS, ...ENTITY_CONTRACTS })
+        .map((definition) => [definition.runtimeType, definition])),
+    staticSnare: ENTITY_CONTRACTS[29],
+});
+const ABILITY_CONTRACTS_BY_ENTITY_TYPE = Object.freeze({
+    ...Object.fromEntries(Object.values({ ...ATTACHED_ABILITY_CONTRACTS, ...ENTITY_CONTRACTS })
         .filter((definition) => definition.entityType)
-        .map((definition) => [definition.entityType, definition]),
-));
+        .map((definition) => [definition.entityType, definition])),
+    static_snare: ENTITY_CONTRACTS[29],
+});
 
 /** The single normalized lookup used by contract consumers. */
 export const ABILITY_CONTRACTS = Object.freeze({

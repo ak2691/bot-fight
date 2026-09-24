@@ -7,8 +7,15 @@ import {
 import { MAX_ROOT_NAME_LENGTH } from "./constants.js";
 import { BOT_CODE_SELECTABLES } from "../contracts/BotLogicContracts.js";
 
-export function normalizeRoot(root, rootIndex, remaining, customVariables, operations) {
-    const priority = priorityForNode(root, rootIndex + 1);
+export function normalizeRoot(
+    root,
+    rootIndex,
+    remaining,
+    customVariables,
+    operations,
+    normalizedPriority = priorityForNode(root, rootIndex + 1),
+) {
+    const priority = normalizedPriority;
     // Root IDs identify the editor node, not its current execution priority.
     // Keeping an existing ID attached to the same array entry preserves graph
     // positions when a priority edit swaps priority values.

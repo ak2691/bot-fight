@@ -114,13 +114,14 @@ class AbilitiesTest {
         assertThat(Abilities.stat(15, "hitboxLength", 0)).isEqualTo(190);
         assertThat(Abilities.stat(18, "hitboxWidth", 0)).isEqualTo(80);
         assertThat(Abilities.stat(18, "hitboxLength", 0)).isEqualTo(115);
-        assertThat(Abilities.stat(18, "knockback", 0)).isEqualTo(200);
+        assertThat(Abilities.stat(8, "knockback", 0)).isEqualTo(300);
+        assertThat(Abilities.stat(18, "knockback", 0)).isEqualTo(250);
         assertThat(Abilities.cooldownMs(28)).isEqualTo(7_700);
         assertThat(Abilities.definition(24).windupMs()).isEqualTo(1_000);
         assertThat(Abilities.definition(25).damage()).isEqualTo(15);
         assertThat(Abilities.definition(26).damage()).isEqualTo(15);
         assertThat(Abilities.definition(28).damage()).isEqualTo(10);
-        assertThat(Abilities.stat(28, "pullPerTick", 0)).isEqualTo(300);
+        assertThat(Abilities.stat(28, "pullPerTick", 0)).isEqualTo(250);
         assertThat(Abilities.definition(29).damage()).isEqualTo(25);
         assertThat(Abilities.stat(29, "hp", 0)).isEqualTo(20);
         assertThat(Abilities.cooldownMs(30)).isEqualTo(8_000);

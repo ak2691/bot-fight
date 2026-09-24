@@ -1543,7 +1543,7 @@ function drawStandaloneVisual(view, now, arenaSprites) {
 
     const presentationType = presentationTypeForShape(shape);
     const progress = visualAnimationProgress(view, now);
-    if (["tetherBolt", "staticSnare", "staticSnareBurst"].includes(presentationType)) {
+    if (["tetherBolt", "snareBomb", "staticSnare", "staticSnareBurst"].includes(presentationType)) {
         drawGeneratedAbilityEntity(graphics, shape, now, progress);
         return;
     }
@@ -1864,7 +1864,7 @@ function drawGeneratedAbilityEntity(graphics, shape, now, animationProgress = nu
         graphics.circle(startX, startY, 6).fill({ color: glow, alpha: 0.92 });
         return;
     }
-    if (type === "staticSnare") {
+    if (type === "snareBomb" || type === "staticSnare") {
         const triggerRadius = Number(entityContract(29)?.phases
             ?.find((phase) => phase.id === "armed")?.trigger?.radius ?? 75);
         const pulse = 0.62 + Math.sin(now / 180) * 0.14;

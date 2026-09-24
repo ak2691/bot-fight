@@ -44,7 +44,7 @@ throw_grenade
 shoot_fireball
 stun
 heavy_slash
-repulsor_burst
+repelling_blast
 concussive_shot
 basic_heal
 proximity_mine
@@ -67,7 +67,7 @@ dash
 Round 3:
 
 ```text
-temporal_rewind
+rewind
 orbital_strike
 absolute_guard
 null_zone

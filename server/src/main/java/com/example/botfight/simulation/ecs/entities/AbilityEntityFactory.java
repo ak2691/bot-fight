@@ -78,7 +78,7 @@ public final class AbilityEntityFactory {
         double entityDamageMultiplier = contract.initialState().damageMultiplierFromOwner()
                 ? Math.max(0, damageMultiplier) : 1.0;
         String phaseId = firstPhase == null ? null : firstPhase.id();
-        // Static Snare starts in an event-controlled armed phase. Other
+        // Snare Bomb starts in an event-controlled armed phase. Other
         // entities are allowed to advance from their first phase by elapsed
         // time until a transition action locks them to a later phase.
         boolean phaseLocked = abilityId == 29;

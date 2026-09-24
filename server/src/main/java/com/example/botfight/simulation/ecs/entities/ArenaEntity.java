@@ -364,7 +364,7 @@ public record ArenaEntity(
             case "hunterDrone" -> 17;
             case "repellerDrone" -> 31;
             case "tetherBolt" -> 28;
-            case "staticSnare", "staticSnareBurst" -> 29;
+            case "snareBomb", "staticSnare", "staticSnareBurst" -> 29;
             case "orbitalMarker", "orbitalExplosion" -> 22;
             case "temporalRewindZone" -> 21;
             default -> null;
@@ -375,7 +375,7 @@ public record ArenaEntity(
         return switch (type) {
             case "hunterDrone" -> 50;
             case "repellerDrone" -> 50;
-            case "staticSnare" -> 20;
+            case "snareBomb", "staticSnare" -> 20;
             default -> 0;
         };
     }

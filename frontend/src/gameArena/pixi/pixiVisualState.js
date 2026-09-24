@@ -47,7 +47,7 @@ export const ENTITY_PRESENTATION_DEFINITIONS = Object.freeze({
         texturePath: ["silencePulse"], animation: "time", frameMs: 80, rotationOffset: -Math.PI / 2,
     },
     nullZone: { texturePath: ["nullZone"], animation: "time", frameMs: 100 },
-    // Temporal Rewind is a persistent phase visual. Its clock loops through
+    // Rewind is a persistent phase visual. Its clock loops through
     // the clock frames for the entity's whole gameplay lifetime; the delayed
     // restore effect is not also used as a visual progress timer.
     temporalRewindZone: { texturePath: ["temporalRewind"], animation: "time", frameMs: 100 },
@@ -332,7 +332,8 @@ export function presentationDefinitionForShape(shape) {
     }
     const presentationType = presentationTypeForShape(shape);
     if ((shape?.type === "tetherBolt" && phaseVisual?.type === "tetherBolt")
-        || (shape?.type === "staticSnare" && phaseVisual?.type === "staticSnare")
+        || (["snareBomb", "staticSnare"].includes(shape?.type)
+            && ["snareBomb", "staticSnare"].includes(phaseVisual?.type))
         || shape?.type === "staticSnareBurst") {
         return {
             kind: "generated",
@@ -584,7 +585,7 @@ export function lockOnTargetPoint(shape) {
 
 export function entityCaption(shape) {
     if (["hunterDrone", "repellerDrone"].includes(shape?.type)) return `${formatEntityHp(shape.hp ?? 50)} HP`;
-    if (shape?.type === "staticSnare") return `${formatEntityHp(shape.hp ?? 20)} HP`;
+    if (["snareBomb", "staticSnare"].includes(shape?.type)) return `${formatEntityHp(shape.hp ?? 20)} HP`;
     return "";
 }
 

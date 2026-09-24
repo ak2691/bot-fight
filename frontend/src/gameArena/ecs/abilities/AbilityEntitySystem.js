@@ -430,6 +430,7 @@ function tickCanonicalProjectile(entity, phase, world, combat) {
         bots = result.bots;
         const enteredPhase = next && canonicalPhaseForEntity(next);
         if (enteredPhase && enteredPhase.id !== phase.id
+            && collisionEvent?.recheckCollisionOnTransition !== false
             && enteredPhase.events?.collision?.actions?.includes(PHASE_ACTIONS.APPLY_EFFECTS)) {
             // The new phase owns the collision contract. Re-evaluate its
             // hitbox at the transition position instead of carrying the
@@ -465,6 +466,7 @@ function tickCanonicalProjectile(entity, phase, world, combat) {
         const ended = dispatchEntityEvent(next, "lifetimeEnd", { bots, world, combat, phase });
         const enteredPhase = ended.entity && canonicalPhaseForEntity(ended.entity);
         if (enteredPhase && enteredPhase.id !== phase.id
+            && phase.events?.[PHASE_EVENT_TYPES.LIFETIME_END]?.recheckCollisionOnTransition !== false
             && enteredPhase.events?.collision?.actions?.includes(PHASE_ACTIONS.APPLY_EFFECTS)) {
             // A phase reached through lifetime expiry still gets its own
             // once collision check. This is how a timed grenade fuse

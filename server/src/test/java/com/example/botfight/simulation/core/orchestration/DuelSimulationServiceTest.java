@@ -922,7 +922,7 @@ class DuelSimulationServiceTest {
     }
 
     @Test
-    void windBurstReplayFramesContainAuthoritativeTwoHundredUnitKnockback() {
+    void windBurstReplayFramesContainAuthoritativeTwoHundredFiftyUnitKnockback() {
         JsonNode windBurstBrain = customBrain("[18]", """
                 [{"priority":1,"conditions":[{"type":"always"}],"action":18}]
                 """);
@@ -932,9 +932,9 @@ class DuelSimulationServiceTest {
                 bot("wind-target", "Target", 2, 520, 500, "custom", customBrain("[]", "[]"))));
 
         assertThat(result.frames())
-                .anySatisfy(frame -> assertThat(frame.bots().get(1).x()).isEqualTo(720.0));
+                .anySatisfy(frame -> assertThat(frame.bots().get(1).x()).isEqualTo(770.0));
         assertThat(result.frames())
-                .filteredOn(frame -> frame.bots().get(1).x() == 720.0)
+                .filteredOn(frame -> frame.bots().get(1).x() == 770.0)
                 .allSatisfy(frame -> assertThat(frame.bots().get(1).hp()).isEqualTo(130));
     }
 

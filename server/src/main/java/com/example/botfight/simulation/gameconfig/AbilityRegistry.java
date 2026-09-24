@@ -29,7 +29,7 @@ public final class AbilityRegistry {
         register(names, 5, "fireball");
         register(names, 6, "stun");
         register(names, 7, "heavy_slash");
-        register(names, 8, "repulsor_burst");
+        register(names, 8, "repelling_blast");
         register(names, 9, "concussive_shot");
         register(names, 10, "basic_heal");
         register(names, 11, "proximity_mine");
@@ -42,7 +42,7 @@ public final class AbilityRegistry {
         register(names, 18, "wind_burst");
         register(names, 19, "dash");
         register(names, 20, "lock_on");
-        register(names, 21, "temporal_rewind");
+        register(names, 21, "rewind");
         register(names, 22, "orbital_strike");
         register(names, 23, "absolute_guard");
         register(names, 24, "null_zone");
@@ -50,7 +50,7 @@ public final class AbilityRegistry {
         register(names, 26, "frost_ring");
         register(names, 27, "singularity");
         register(names, 28, "tether_bolt");
-        register(names, 29, "static_snare");
+        register(names, 29, "snare_bomb");
         register(names, 30, "disruptor_dart");
         register(names, 31, "repeller_drone");
         register(names, 32, "vampiric_beam");

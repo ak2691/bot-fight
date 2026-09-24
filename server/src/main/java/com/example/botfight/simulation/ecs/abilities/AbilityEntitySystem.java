@@ -510,6 +510,7 @@ public final class AbilityEntitySystem {
         if (next == null) return new TickResult(null);
         AbilityContracts.AbilityPhase entered = AbilityContracts.phaseFor(next);
         if (entered != null && entered.type() == AbilityContracts.PhaseType.ZONE
+                && (collisionEvent == null || collisionEvent.recheckCollisionOnTransition())
                 && !entered.id().equals(phase.id())) {
             return tickCanonicalZone(next, contract, entered, dispatched.bots(),
                     arena, stepMs, combat, true);
@@ -535,7 +536,10 @@ public final class AbilityEntitySystem {
                     arena, combat, List.of(), Map.of(), stepMs);
             AbilityContracts.AbilityPhase enteredPhase = ended.entity() == null
                     ? null : AbilityContracts.phaseFor(ended.entity());
-            if (enteredPhase != null && !enteredPhase.id().equals(phase.id())) {
+            AbilityContracts.PhaseEvent lifetimeEndEvent = phase.events().get(
+                    AbilityContracts.PhaseEventType.LIFETIME_END);
+            if (enteredPhase != null && !enteredPhase.id().equals(phase.id())
+                    && (lifetimeEndEvent == null || lifetimeEndEvent.recheckCollisionOnTransition())) {
                 AbilityContracts.PhaseEvent enteredCollision = enteredPhase.events().get(
                         AbilityContracts.PhaseEventType.COLLISION);
                 if (enteredCollision != null && enteredCollision.actions().contains(

@@ -49,7 +49,7 @@ test("Dash time is Active rather than Duration", () => {
     assert.deepEqual(rows.map(({ label }) => label), ["Cooldown", "Active", "Range"]);
 });
 
-test("Static Snare exposes its trigger radius", () => {
+test("Snare Bomb exposes its trigger radius", () => {
     assert.deepEqual(abilityStatsForDisplay({ effects: [], stats: { radius: 75 } }), [
         { label: "Radius", value: "75 units" },
     ]);

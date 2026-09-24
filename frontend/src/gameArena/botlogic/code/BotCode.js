@@ -175,10 +175,10 @@ export function normalizeAbilityStrategyConfiguration(configuration) {
     return normalizeConfiguration(configuration, {
         normalizeCustomVariables: (source) => normalizeCustomVariableDefinitions(source, { normalizeConditions, normalizeBoolean, clamp }),
         customVariablesWithReferencedActions,
-        normalizeRoot: (root, rootIndex, remaining, customVariables) => normalizeCodeRoot(root, rootIndex, remaining, customVariables, {
+        normalizeRoot: (root, rootIndex, remaining, customVariables, priority) => normalizeCodeRoot(root, rootIndex, remaining, customVariables, {
             normalizeBlock,
             normalizeConditions,
-        }),
+        }, priority),
         normalizeBlock,
         normalizePriority,
         normalizeConditions,

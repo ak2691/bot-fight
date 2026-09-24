@@ -21,7 +21,7 @@ export const ABILITY_CATALOGUE_PHASES = Object.freeze({
         section("Impact phase", ["Radius", "70 units"], ["Min damage", "25"], ["Max damage", "40"], ["Falloff ends", "64 units"]),
     ]),
     5: Object.freeze([section("Active phase",
-        ["Damage", "15"], ["Hitbox width", "30 units"], ["Hitbox length", "30 units"], ["Speed", "36 units per tick"],
+        ["Damage", "15"], ["Hitbox width", "30 units"], ["Hitbox length", "30 units"], ["Speed", "50 units per tick"],
         ["Status effect", "Burn (5 sec)"], ["Status damage", "2"])]),
     6: Object.freeze([section("Active phase",
         ["Damage", "10"], ["Hitbox width", "80 units"], ["Hitbox length", "184 units"], ["Status effect", "Stun (1.2 sec)"])]),

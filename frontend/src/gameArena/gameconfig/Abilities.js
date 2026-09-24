@@ -12,7 +12,7 @@ const ABILITY_TIMING_BY_ID = Object.freeze({
     1: { cooldownMs: 600, activeMs: 400 },
     3: { maxCharges: 6, resourceModel: "reload", chargeType: "ammunition", reloadMs: 5000, cooldownMs: 1000, activeMs: 500 },
     4: { cooldownMs: 12000, activeMs: 1 },
-    5: { maxCharges: 4, resourceModel: "reload", chargeType: "ammunition", reloadMs: 5000, cooldownMs: 300, activeMs: 500, durationMs: 1200 },
+    5: { maxCharges: 4, resourceModel: "reload", chargeType: "ammunition", reloadMs: 5000, cooldownMs: 300, activeMs: 500, durationMs: 1000 },
     6: { cooldownMs: 9600, windupMs: 200, activeMs: 100, durationMs: 1200 },
     7: { cooldownMs: 4600, windupMs: 300, activeMs: 400 },
     8: { cooldownMs: 10000, activeMs: 500 },

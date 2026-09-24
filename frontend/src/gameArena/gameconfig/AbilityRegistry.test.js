@@ -31,7 +31,15 @@ test("ability identities are stable numeric keys independent of array position",
     assert.equal(abilityName(3), "gun");
     assert.equal(ABILITIES[32].name, "vampiric_beam");
     assert.equal(ABILITIES[32].label, "Vampiric Beam");
+    assert.equal(ABILITIES[8].name, "repelling_blast");
     assert.equal(ABILITIES[8].label, "Repelling Blast");
+    assert.equal(ABILITIES[21].name, "rewind");
+    assert.equal(ABILITIES[21].label, "Rewind");
+    assert.equal(ABILITIES[29].name, "snare_bomb");
+    assert.equal(ABILITIES[29].label, "Snare Bomb");
+    assert.equal(abilityIdFromLegacyName("repulsor_burst"), 8);
+    assert.equal(abilityIdFromLegacyName("temporal_rewind"), 21);
+    assert.equal(abilityIdFromLegacyName("static_snare"), 29);
     assert.equal(ABILITIES[30].label, "Disruptive Beam");
     assert.equal(abilityIdFromLegacyName("retired_beam"), null);
 });
@@ -95,14 +103,15 @@ test("requested combat tuning is represented in the browser catalog", () => {
     assert.equal(ABILITY_STATS[18].cooldownMs, 7000);
     assert.equal(ABILITY_STATS[18].windupMs, 300);
     assert.equal(ABILITY_STATS[18].damage, 20);
-    assert.equal(ABILITY_STATS[18].knockback, 200);
+    assert.equal(ABILITY_STATS[18].knockback, 250);
+    assert.equal(ABILITY_STATS[8].knockback, 300);
     assert.equal(ABILITY_STATS[22].windupMs, 500);
     assert.equal(ABILITY_STATS[22].activeMs, 0);
     assert.equal(ABILITY_STATS[22].durationMs, 1500);
     assert.equal(ABILITY_STATS[22].damage, 15);
     assert.equal(ABILITY_STATS[22].intervalMs, 500);
     assert.equal(ABILITY_STATS[27].pullPerTick, 10);
-    assert.equal(ABILITY_STATS[28].pullPerTick, 300);
+    assert.equal(ABILITY_STATS[28].pullPerTick, 250);
     assert.equal(ABILITY_STATS[24].activeMs, 300);
     assert.equal(ABILITY_STATS[24].windupMs, 1000);
     assert.equal(ABILITY_STATS[25].damage, 15);
@@ -117,6 +126,17 @@ test("requested combat tuning is represented in the browser catalog", () => {
     assert.equal(ABILITY_STATS[31].knockback, 40);
     assert.equal(ABILITY_STATS[32].cooldownMs, 10000);
     assert.equal(ABILITY_STATS[32].windupMs, 300);
+});
+
+test("Tether Bolt returns on outbound collision and pulls once during the return phase", () => {
+    const [outbound, returning] = ENTITY_CONTRACTS[28].phases;
+    assert.deepEqual(outbound.events.collision.actions, ["applyEffects", "transition"]);
+    assert.equal(outbound.events.collision.transition.to, "return");
+    assert.equal(outbound.events.collision.recheckCollisionOnTransition, false);
+    assert.equal(outbound.events.lifetimeEnd.transition.to, "return");
+    assert.equal(outbound.events.lifetimeEnd.recheckCollisionOnTransition, false);
+    assert.equal(returning.effects.find((effect) => effect.type === EFFECT_TYPES.PULL).amount, 250);
+    assert.deepEqual(returning.events.collision.targetPolicy, { mode: "once" });
 });
 
 test("status effect overrides address multiple status instances independently", () => {

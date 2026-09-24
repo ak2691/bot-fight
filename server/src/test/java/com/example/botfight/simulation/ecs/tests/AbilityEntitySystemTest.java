@@ -369,7 +369,7 @@ class AbilityEntitySystemTest {
     }
 
     @Test
-    void tetherBoltExtendsFourTicksAndPullsThreeHundredUnitsOnceOnReturn() {
+    void tetherBoltReturnsOnOutboundHitAndPullsTwoHundredFiftyUnitsOnceOnReturn() {
         TestCombatant owner = new TestCombatant(1, 100, 100, 60, 100);
         ArenaEntity bolt = AbilityEntityFactory.create(
                 "tether-1", 28, 1, owner.x, owner.y, owner.size, 90, 1,
@@ -377,26 +377,46 @@ class AbilityEntitySystemTest {
         TestCombatant target = new TestCombatant(2, 400, 100, 60, 100);
 
         List<ArenaEntity> result = List.of(bolt);
-        for (int tick = 1; tick <= 6; tick += 1) {
+        for (int tick = 1; tick <= 5; tick += 1) {
             result = AbilityEntitySystem.tick(
                     result, List.of(owner, target), new ArenaBounds(1000, 800), 100, damageCombat());
-            if (tick < 6) assertThat(result).hasSize(1);
-            if (tick <= 3) assertThat(result.getFirst().phaseId()).isEqualTo("outbound");
-            if (tick == 3) assertThat(result.getFirst().hitLedger()).containsKey(2);
-            if (tick == 4) assertThat(result.getFirst().phaseId()).isEqualTo("return");
-            if (tick == 4) assertThat(target.x).isEqualTo(400);
-            if (tick == 5) assertThat(target.x).isEqualTo(100);
+            if (tick < 5) assertThat(result).hasSize(1);
+            if (tick <= 2) assertThat(result.getFirst().phaseId()).isEqualTo("outbound");
+            if (tick == 3) {
+                assertThat(result.getFirst().phaseId()).isEqualTo("return");
+                assertThat(target.x).isEqualTo(400);
+            }
+            if (tick == 4) assertThat(target.x).isEqualTo(150);
         }
 
         assertThat(result).isEmpty();
         assertThat(target.hp).isEqualTo(90);
         assertThat(target.slowedMs).isEqualTo(1_200);
         assertThat(target.stunMs).isZero();
-        assertThat(target.x).isEqualTo(100);
+        assertThat(target.x).isEqualTo(150);
     }
 
     @Test
-    void staticSnareUsesItsStrongerPhaseWhenGenericDamageReachesZero() {
+    void tetherBoltReturnsAtOutboundLifetimeLimitWhenItMisses() {
+        TestCombatant owner = new TestCombatant(1, 100, 100, 60, 100);
+        ArenaEntity bolt = AbilityEntityFactory.create(
+                "tether-miss", 28, 1, owner.x, owner.y, owner.size, 90, 1,
+                Double.NaN, Double.NaN, 1000, 800);
+        List<ArenaEntity> result = List.of(bolt);
+
+        for (int tick = 1; tick <= 6; tick += 1) {
+            result = AbilityEntitySystem.tick(
+                    result, List.of(owner), new ArenaBounds(1000, 800), 100, noDamageCombat());
+            if (tick < 6) assertThat(result).hasSize(1);
+            if (tick < 4) assertThat(result.getFirst().phaseId()).isEqualTo("outbound");
+            if (tick == 4) assertThat(result.getFirst().phaseId()).isEqualTo("return");
+        }
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void snareBombUsesItsStrongerPhaseWhenGenericDamageReachesZero() {
         ArenaEntity snare = AbilityEntityFactory.create(
                 "snare-1", 29, 1, 100, 100, 60, 0, 1,
                 Double.NaN, Double.NaN, 1000, 800);
@@ -410,7 +430,7 @@ class AbilityEntitySystemTest {
         assertThat(AbilityEntitySystem.tick(
                 List.of(snare), List.of(new TestCombatant(2, 800, 700, 60, 100)),
                 new ArenaBounds(1000, 800), 100, destroyer)).singleElement().satisfies(entity -> {
-            assertThat(entity.type()).isEqualTo("staticSnare");
+            assertThat(entity.type()).isEqualTo("snareBomb");
             assertThat(entity.phaseId()).isEqualTo("destroyed");
             assertThat(entity.eventType()).isEqualTo("collision");
             assertThat(entity.size()).isEqualTo(24);
@@ -449,7 +469,7 @@ class AbilityEntitySystemTest {
                 List.of(snare, fireball), bots, new ArenaBounds(1000, 800), 100, combat);
 
         assertThat(firstTick).singleElement().satisfies(entity -> {
-            assertThat(entity.type()).isEqualTo("staticSnare");
+            assertThat(entity.type()).isEqualTo("snareBomb");
             assertThat(entity.hp()).isEqualTo(5);
         });
 
@@ -461,7 +481,7 @@ class AbilityEntitySystemTest {
     }
 
     @Test
-    void staticSnareTriggersSlowAndInterruptsWithoutChaining() {
+    void snareBombTriggersSlowAndInterruptsWithoutChaining() {
         ArenaEntity snare = AbilityEntityFactory.create(
                 "snare-1", 29, 1, 100, 100, 60, 0, 1,
                 Double.NaN, Double.NaN, 1000, 800);
@@ -474,7 +494,7 @@ class AbilityEntitySystemTest {
         assertThat(target.slowedMs).isEqualTo(2_200);
         assertThat(target.stunMs).isEqualTo(150);
         assertThat(result).singleElement().satisfies(entity -> {
-            assertThat(entity.type()).isEqualTo("staticSnare");
+            assertThat(entity.type()).isEqualTo("snareBomb");
             assertThat(entity.phaseId()).isEqualTo("triggered");
             assertThat(entity.eventType()).isEqualTo("trigger");
             assertThat(entity.eventPhaseId()).isEqualTo("armed");
@@ -484,7 +504,7 @@ class AbilityEntitySystemTest {
     }
 
     @Test
-    void staticSnareUsesItsStrongerPhaseWhenAnyAttackDestroysIt() {
+    void snareBombUsesItsStrongerPhaseWhenAnyAttackDestroysIt() {
         ArenaEntity snare = AbilityEntityFactory.create(
                 "snare-1", 29, 1, 100, 100, 60, 0, 1,
                 Double.NaN, Double.NaN, 1000, 800);
@@ -510,7 +530,7 @@ class AbilityEntitySystemTest {
         assertThat(target.slowedMs).isEqualTo(3_000);
         assertThat(target.stunMs).isEqualTo(150);
         assertThat(result).singleElement().satisfies(entity -> {
-            assertThat(entity.type()).isEqualTo("staticSnare");
+            assertThat(entity.type()).isEqualTo("snareBomb");
             assertThat(entity.phaseId()).isEqualTo("destroyed");
             assertThat(entity.eventType()).isEqualTo("collision");
             assertThat(entity.eventPhaseId()).isEqualTo("destroyed");
@@ -520,7 +540,7 @@ class AbilityEntitySystemTest {
     }
 
     @Test
-    void staticSnareWaitsForADeadlyAttackBeforeDetonating() {
+    void snareBombWaitsForADeadlyAttackBeforeDetonating() {
         ArenaEntity snare = AbilityEntityFactory.create(
                 "snare-1", 29, 1, 100, 100, 60, 0, 1,
                 Double.NaN, Double.NaN, 1000, 800);
@@ -539,13 +559,13 @@ class AbilityEntitySystemTest {
                 List.of(snare), List.of(attacker), new ArenaBounds(1000, 800), 100, nonlethalAttack);
 
         assertThat(result).singleElement().satisfies(entity -> {
-            assertThat(entity.type()).isEqualTo("staticSnare");
+            assertThat(entity.type()).isEqualTo("snareBomb");
             assertThat(entity.hp()).isEqualTo(15);
         });
     }
 
     @Test
-    void staticSnareUsesItsStrongerPhaseWhenAnOpponentDestroysIt() {
+    void snareBombUsesItsStrongerPhaseWhenAnOpponentDestroysIt() {
         ArenaEntity snare = AbilityEntityFactory.create(
                 "snare-1", 29, 1, 100, 100, 60, 0, 1,
                 Double.NaN, Double.NaN, 1000, 800);
@@ -570,7 +590,7 @@ class AbilityEntitySystemTest {
         assertThat(attacker.hp).isEqualTo(60);
         assertThat(attacker.slowedMs).isEqualTo(3_000);
         assertThat(result).singleElement().satisfies(entity -> {
-            assertThat(entity.type()).isEqualTo("staticSnare");
+            assertThat(entity.type()).isEqualTo("snareBomb");
             assertThat(entity.phaseId()).isEqualTo("destroyed");
             assertThat(entity.eventType()).isEqualTo("collision");
             assertThat(entity.eventPhaseId()).isEqualTo("destroyed");
@@ -619,7 +639,7 @@ class AbilityEntitySystemTest {
         assertThat(hit).isEmpty();
         assertThat(combat.damage).isEqualTo(20);
         assertThat(target.hp).isEqualTo(80);
-        assertThat(target.x).isEqualTo(410);
+        assertThat(target.x).isEqualTo(460);
     }
 
     @Test

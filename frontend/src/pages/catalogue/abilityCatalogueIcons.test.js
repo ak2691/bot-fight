@@ -18,6 +18,9 @@ const LEGACY_ICON_FILENAMES = Object.freeze({
     grenade: "throw_grenade",
     fireball: "shoot_fireball",
     pistol: "pistol_shot",
+    repelling_blast: "repulsor_burst",
+    rewind: "temporal_rewind",
+    snare_bomb: "static_snare",
 });
 
 test("every registered ability has one generated catalogue icon", () => {
@@ -109,7 +112,7 @@ test("new catalogue artwork uses shape-aware layouts", () => {
         tether_bolt: "wide",
         vampiric_beam: "wide",
         disruptor_dart: "wide",
-        static_snare: "square",
+        snare_bomb: "square",
         overclock: "square",
         singularity: "square",
         frost_ring: "square",

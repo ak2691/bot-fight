@@ -42,7 +42,7 @@ class AbilityContractsTest {
                 assertThat(contract.phases()).isNotEmpty());
         assertThat(AbilityContracts.get(8).phases().getFirst().effects())
                 .filteredOn(effect -> effect.type() == KNOCKBACK)
-                .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(250));
+                .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(300));
         assertThat(AbilityContracts.entityContractForAbility(27).phases().getFirst().effects())
                 .filteredOn(effect -> effect.type() == PULL)
                 .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(10));
@@ -51,7 +51,20 @@ class AbilityContractsTest {
                 .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(6));
         assertThat(AbilityContracts.entityContractForAbility(28).phases().get(1).effects())
                 .filteredOn(effect -> effect.type() == PULL)
-                .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(300));
+                .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(250));
+        AbilityContracts.AbilityPhase tetherOutbound = AbilityContracts.entityContractForAbility(28)
+                .phases().getFirst();
+        assertThat(tetherOutbound.events().get(AbilityContracts.PhaseEventType.COLLISION).actions())
+                .containsExactly(AbilityContracts.PhaseAction.APPLY_EFFECTS,
+                        AbilityContracts.PhaseAction.TRANSITION);
+        assertThat(tetherOutbound.events().get(AbilityContracts.PhaseEventType.COLLISION)
+                .transition().to()).isEqualTo("return");
+        assertThat(tetherOutbound.events().get(AbilityContracts.PhaseEventType.COLLISION)
+                .recheckCollisionOnTransition()).isFalse();
+        assertThat(tetherOutbound.events().get(AbilityContracts.PhaseEventType.LIFETIME_END)
+                .transition().to()).isEqualTo("return");
+        assertThat(tetherOutbound.events().get(AbilityContracts.PhaseEventType.LIFETIME_END)
+                .recheckCollisionOnTransition()).isFalse();
         assertThat(AbilityContracts.effectAmount(9, DAMAGE)).isEqualTo(20);
         assertThat(AbilityContracts.effectAmount(26, DAMAGE)).isEqualTo(15);
         assertThat(AbilityContracts.effectDurationMs(9, "slow")).isEqualTo(3_000);
@@ -109,7 +122,7 @@ class AbilityContractsTest {
                 .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(20));
         assertThat(AbilityContracts.entityContractForAbility(18).phases().getFirst().effects())
                 .filteredOn(effect -> effect.type() == KNOCKBACK)
-                .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(200));
+                .singleElement().satisfies(effect -> assertThat(effect.amount()).isEqualTo(250));
     }
 
     @Test

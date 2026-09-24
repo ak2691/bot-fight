@@ -1,0 +1,3 @@
+[mcp_servers.botfight_abilities]
+command = "node"
+args = ["tools/botfight-mcp/src/server.js"]

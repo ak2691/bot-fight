@@ -22,7 +22,7 @@ public final class Abilities {
             Map.entry(1, timing(600, 0, 400, 0)),
             Map.entry(3, timing(1_000, 0, 500, 0, 6, 5_000, ResourceModel.RELOAD_WHEN_EMPTY)),
             Map.entry(4, timing(12_000, 0, 1, 0)),
-            Map.entry(5, timing(300, 0, 500, 1_200, 4, 5_000, ResourceModel.RELOAD_WHEN_EMPTY)),
+            Map.entry(5, timing(300, 0, 500, 1_000, 4, 5_000, ResourceModel.RELOAD_WHEN_EMPTY)),
             Map.entry(6, timing(9_600, 200, 100, 1_200)),
             Map.entry(7, timing(4_600, 300, 400, 0)),
             Map.entry(8, timing(10_000, 0, 500, 0)),

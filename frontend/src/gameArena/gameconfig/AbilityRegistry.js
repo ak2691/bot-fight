@@ -6,7 +6,7 @@ export const ABILITIES = Object.freeze({
     5: Object.freeze({ id: 5, name: "fireball", label: "Fireball", type: "ability" }),
     6: Object.freeze({ id: 6, name: "stun", label: "Stun", type: "ability" }),
     7: Object.freeze({ id: 7, name: "heavy_slash", label: "Heavy Slash", type: "ability" }),
-    8: Object.freeze({ id: 8, name: "repulsor_burst", label: "Repelling Blast", type: "ability" }),
+    8: Object.freeze({ id: 8, name: "repelling_blast", label: "Repelling Blast", type: "ability" }),
     9: Object.freeze({ id: 9, name: "concussive_shot", label: "Concussive Shot", type: "ability" }),
     10: Object.freeze({ id: 10, name: "basic_heal", label: "Basic Heal", type: "ability" }),
     11: Object.freeze({ id: 11, name: "proximity_mine", label: "Proximity Mine", type: "ability" }),
@@ -19,7 +19,7 @@ export const ABILITIES = Object.freeze({
     18: Object.freeze({ id: 18, name: "wind_burst", label: "Wind Burst", type: "ability" }),
     19: Object.freeze({ id: 19, name: "dash", label: "Dash", type: "ability" }),
     20: Object.freeze({ id: 20, name: "lock_on", label: "Lock On", type: "ability" }),
-    21: Object.freeze({ id: 21, name: "temporal_rewind", label: "Temporal Rewind", type: "ability" }),
+    21: Object.freeze({ id: 21, name: "rewind", label: "Rewind", type: "ability" }),
     22: Object.freeze({ id: 22, name: "orbital_strike", label: "Orbital Strike", type: "ability" }),
     23: Object.freeze({ id: 23, name: "absolute_guard", label: "Absolute Guard", type: "ability" }),
     24: Object.freeze({ id: 24, name: "null_zone", label: "Null Zone", type: "ability" }),
@@ -27,7 +27,7 @@ export const ABILITIES = Object.freeze({
     26: Object.freeze({ id: 26, name: "frost_ring", label: "Frost Ring", type: "ability" }),
     27: Object.freeze({ id: 27, name: "singularity", label: "Singularity", type: "ability" }),
     28: Object.freeze({ id: 28, name: "tether_bolt", label: "Tether Bolt", type: "ability" }),
-    29: Object.freeze({ id: 29, name: "static_snare", label: "Snare Bomb", type: "ability" }),
+    29: Object.freeze({ id: 29, name: "snare_bomb", label: "Snare Bomb", type: "ability" }),
     30: Object.freeze({ id: 30, name: "disruptor_dart", label: "Disruptive Beam", type: "ability" }),
     31: Object.freeze({ id: 31, name: "repeller_drone", label: "Repeller Drone", type: "ability" }),
     32: Object.freeze({ id: 32, name: "vampiric_beam", label: "Vampiric Beam", type: "ability" }),
@@ -41,6 +41,9 @@ const LEGACY_ABILITY_NAME_ALIASES = Object.freeze({
     throw_grenade: 4,
     shoot_fireball: 5,
     pistol_shot: 12,
+    repulsor_burst: 8,
+    temporal_rewind: 21,
+    static_snare: 29,
 });
 
 const ABILITY_ID_BY_NAME = new Map([

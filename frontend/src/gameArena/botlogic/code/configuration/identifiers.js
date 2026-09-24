@@ -11,6 +11,25 @@ export function priorityForNode(node, fallback = 1) {
     return normalizePriority(node?.priority, fallback);
 }
 
+export function uniquePrioritiesForNodes(nodes) {
+    if (!Array.isArray(nodes)) return [];
+    const used = new Set();
+    return nodes.map((node, index) => {
+        let priority = priorityForNode(node, index + 1);
+        if (used.has(priority)) {
+            // Keep the first explicit priority and repair later duplicates with
+            // their positional default, then the first available positive value.
+            priority = index + 1;
+            if (used.has(priority)) {
+                priority = 1;
+                while (used.has(priority)) priority += 1;
+            }
+        }
+        used.add(priority);
+        return priority;
+    });
+}
+
 let fallbackNodeSequence = 0;
 
 /**

@@ -43,6 +43,9 @@ class AbilityRegistryTest {
         assertThat(AbilityRegistry.all().keySet()).doesNotContain(0);
         assertThat(AbilityRegistry.all().keySet()).doesNotContain(2);
         assertThat(AbilityRegistry.all().get(32)).isEqualTo("vampiric_beam");
+        assertThat(AbilityRegistry.all()).containsEntry(8, "repelling_blast");
+        assertThat(AbilityRegistry.all()).containsEntry(21, "rewind");
+        assertThat(AbilityRegistry.all()).containsEntry(29, "snare_bomb");
     }
 
     @Test void eventVisualsAreExplicitAndAlwaysEmitSeparatelyFromPhaseVisuals() {

@@ -3,13 +3,15 @@ import {
     normalizePriority,
     priorityForNode,
     rootIdForIndex,
+    uniquePrioritiesForNodes,
 } from "./identifiers.js";
 import { MAX_ROOT_NAME_LENGTH } from "./constants.js";
 
 export function normalizeRoots(roots) {
     if (!Array.isArray(roots)) return [];
+    const priorities = uniquePrioritiesForNodes(roots);
     return roots.map((root, rootIndex) => {
-        const priority = priorityForNode(root, rootIndex + 1);
+        const priority = priorities[rootIndex];
         // IDs identify the editor node, not its current execution priority. Keep
         // an existing ID attached to the same node so priority edits cannot make
         // saved graph positions follow a different root.

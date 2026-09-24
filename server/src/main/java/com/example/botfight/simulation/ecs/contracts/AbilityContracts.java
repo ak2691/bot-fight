@@ -312,7 +312,8 @@ public final class AbilityContracts {
                              String visualType,
                              Integer visibleMs, Double visualSize,
                              TargetPolicy targetPolicy, List<TargetKind> targetKinds,
-                             Set<String> statusTypes, String pullDirection) {
+                             Set<String> statusTypes, String pullDirection,
+                             boolean recheckCollisionOnTransition) {
         public PhaseEvent {
             List<PhaseAction> normalizedActions = actions == null
                     ? new ArrayList<>() : new ArrayList<>(actions);
@@ -343,7 +344,7 @@ public final class AbilityContracts {
                           String visualType, Integer visibleMs, Double visualSize,
                           TargetPolicy targetPolicy, List<TargetKind> targetKinds) {
             this(actions, effectTypes, transition, schedule, visualType, visibleMs,
-                    visualSize, targetPolicy, targetKinds, Set.of(), null);
+                    visualSize, targetPolicy, targetKinds, Set.of(), null, true);
         }
 
         public PhaseEvent(List<PhaseAction> actions, Set<EffectType> effectTypes,
@@ -352,7 +353,7 @@ public final class AbilityContracts {
                           TargetPolicy targetPolicy, List<TargetKind> targetKinds,
                           Set<String> statusTypes) {
             this(actions, effectTypes, transition, schedule, visualType, visibleMs,
-                    visualSize, targetPolicy, targetKinds, statusTypes, null);
+                    visualSize, targetPolicy, targetKinds, statusTypes, null, true);
         }
 
         public PhaseEvent(List<PhaseAction> actions) {
@@ -366,13 +367,19 @@ public final class AbilityContracts {
         public PhaseEvent withSchedule(EventSchedule nextSchedule) {
             return new PhaseEvent(actions, effectTypes, transition, nextSchedule,
                     visualType, visibleMs, visualSize, targetPolicy, targetKinds,
-                    statusTypes, pullDirection);
+                    statusTypes, pullDirection, recheckCollisionOnTransition);
         }
 
         public PhaseEvent withPullDirection(String nextPullDirection) {
             return new PhaseEvent(actions, effectTypes, transition, schedule,
                     visualType, visibleMs, visualSize, targetPolicy, targetKinds,
-                    statusTypes, nextPullDirection);
+                    statusTypes, nextPullDirection, recheckCollisionOnTransition);
+        }
+
+        public PhaseEvent withRecheckCollisionOnTransition(boolean shouldRecheck) {
+            return new PhaseEvent(actions, effectTypes, transition, schedule,
+                    visualType, visibleMs, visualSize, targetPolicy, targetKinds,
+                    statusTypes, pullDirection, shouldRecheck);
         }
     }
 
@@ -558,7 +565,7 @@ public final class AbilityContracts {
         contracts.put(8, attachedAbility(8, 
                 phase("active", PhaseType.BOT_ATTACHED,
                         circle(110, true),
-                        effects(damage(20), targeted(knockback(250),
+                        effects(damage(20), targeted(knockback(300),
                                 TargetKind.BOT, TargetKind.SUMMON)),
                         visual("repulsorBurst", 220, 500),
                         PhaseEventType.COLLISION)));
@@ -1246,10 +1253,10 @@ public final class AbilityContracts {
                                          new EventSchedule(EventScheduleMode.ONCE)))));
 
         contracts.put(5, contract(5, "fireball", "fireball", Category.PROJECTILE, FORWARD,
-                new Lifetime(TimerMode.AGE, 1_200, 0),
+                new Lifetime(TimerMode.AGE, 1_000, 0),
                 new InitialState(false, true), List.of(
                         phase("active", PhaseType.PROJECTILE,
-                                new PhaseMovement(36),
+                                new PhaseMovement(50),
                                 rectangle(30, 30),
                                 effects(
                                         damage(15),
@@ -1360,7 +1367,7 @@ public final class AbilityContracts {
                         phase("active", PhaseType.PROJECTILE,
                                 new PhaseMovement(44),
                                 rectangle(80, 115),
-                                effects(damage(20), targeted(knockback(200),
+                                effects(damage(20), targeted(knockback(250),
                                         TargetKind.BOT, TargetKind.SUMMON)),
                                 new Visual("windburstProjectile", 24),
                                 Map.of(PhaseEventType.COLLISION,
@@ -1453,13 +1460,15 @@ public final class AbilityContracts {
                                 visual("tetherBolt", 18, 600),
                                 Map.of(PhaseEventType.COLLISION,
                                         new PhaseEvent(
-                                                List.of(PhaseAction.APPLY_EFFECTS),
-                                                Set.of(), null, null,
+                                                List.of(PhaseAction.APPLY_EFFECTS, PhaseAction.TRANSITION),
+                                                Set.of(), new Transition("return"), null,
                                                 null, null, null,
                                                 new TargetPolicy(TargetPolicyMode.ONCE),
-                                                DAMAGE_TARGET_KINDS),
+                                                DAMAGE_TARGET_KINDS)
+                                                .withRecheckCollisionOnTransition(false),
                                         PhaseEventType.LIFETIME_END,
-                                        event(List.of(PhaseAction.TRANSITION), "return")),
+                                        event(List.of(PhaseAction.TRANSITION), "return")
+                                                .withRecheckCollisionOnTransition(false)),
                                 400, null, false, false,
                                 new Hit(HitMode.NEAREST, false, true, "source"),
                                 Map.of(), Map.of()) ,
@@ -1467,14 +1476,14 @@ public final class AbilityContracts {
                                 new PhaseMovement(150, "backward"),
                                 null,
                                 rectangle(18, 18),
-                                effects(targeted(pull(300), TargetKind.BOT, TargetKind.SUMMON)),
+                                effects(targeted(pull(250), TargetKind.BOT, TargetKind.SUMMON)),
                                 visual("tetherBolt", 18, 600),
                                 Map.of(PhaseEventType.COLLISION,
                                         botAndSummonEvent(new TargetPolicy(TargetPolicyMode.ONCE),
                                                 PhaseAction.APPLY_EFFECTS).withPullDirection("owner")),
                                 200, null, false, false, null, Map.of(), Map.of()))));
 
-        contracts.put(29, contract(29, "static_snare", "staticSnare", Category.TRAP, SELF,
+        contracts.put(29, contract(29, "snare_bomb", "snareBomb", Category.TRAP, SELF,
                 new Lifetime(TimerMode.AGE, 16_000, 0),
                 new InitialState(true, false), List.of(
                         phase("armed", PhaseType.ZONE,
@@ -1485,7 +1494,7 @@ public final class AbilityContracts {
                                         targeted(status("slow", 0, 2_200),
                                                 TargetKind.BOT, TargetKind.SUMMON),
                                         targeted(interrupt(150), TargetKind.BOT, TargetKind.SUMMON)),
-                                new Visual("staticSnare", 24),
+                                new Visual("snareBomb", 24),
                                  Map.of(PhaseEventType.TRIGGER,
                                                  new PhaseEvent(List.of(PhaseAction.APPLY_EFFECTS,
                                                                  PhaseAction.TRANSITION,
@@ -1594,6 +1603,8 @@ public final class AbilityContracts {
             if (contract.entityType() != null) byType.put(contract.entityType(), contract);
             if (contract.runtimeType() != null) byType.put(contract.runtimeType(), contract);
         }
+        byType.put("static_snare", ENTITY_BY_ABILITY.get(29));
+        byType.put("staticSnare", ENTITY_BY_ABILITY.get(29));
         return Collections.unmodifiableMap(byType);
     }
 
