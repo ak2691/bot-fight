@@ -1046,7 +1046,7 @@ export const ENTITY_CONTRACTS = Object.freeze({
                 movement: { speed: 150, direction: "backward" },
                 hitbox: { shape: "rectangle", width: 18, length: 18 },
                 visual: visual("tetherBolt", 18),
-                effects: [effect(EFFECT_TYPES.PULL, { amount: 150, targetKinds: BOT_AND_SUMMON_TARGET_KINDS })],
+                effects: [effect(EFFECT_TYPES.PULL, { amount: 300, targetKinds: BOT_AND_SUMMON_TARGET_KINDS })],
                 events: {
                     [PHASE_EVENT_TYPES.COLLISION]: {
                         targetKinds: BOT_AND_SUMMON_TARGET_KINDS,

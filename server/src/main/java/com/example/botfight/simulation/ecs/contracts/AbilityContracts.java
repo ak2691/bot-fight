@@ -1467,7 +1467,7 @@ public final class AbilityContracts {
                                 new PhaseMovement(150, "backward"),
                                 null,
                                 rectangle(18, 18),
-                                effects(targeted(pull(150), TargetKind.BOT, TargetKind.SUMMON)),
+                                effects(targeted(pull(300), TargetKind.BOT, TargetKind.SUMMON)),
                                 visual("tetherBolt", 18, 600),
                                 Map.of(PhaseEventType.COLLISION,
                                         botAndSummonEvent(new TargetPolicy(TargetPolicyMode.ONCE),

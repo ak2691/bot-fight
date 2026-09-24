@@ -404,7 +404,7 @@ test("hunter drone retains the replay-matched shot visual timer", () => {
     assert.equal(visualForShape(result.entities[0]).type, "gun");
 });
 
-test("Tether Bolt extends four ticks and applies its return pull once", () => {
+test("Tether Bolt extends four ticks and pulls 300 units once on return", () => {
     const owner = { id: "owner", slot: 1, x: 100, y: 100, size: 60, hp: 100, maxHp: 100, rotation: 90, attackDamageMultiplier: 1 };
     const bolt = entityFor(owner, 28);
     const target = { id: "target", slot: 2, x: 400, y: 100, size: 60, hp: 100, maxHp: 100 };
@@ -418,14 +418,14 @@ test("Tether Bolt extends four ticks and applies its return pull once", () => {
         if (tick < 6) assert.equal(world.entities.length, 1);
         if (tick <= 3) assert.equal(world.entities[0].phaseId, "outbound");
         if (tick === 4) assert.equal(world.bots[1].x, 400);
-        if (tick === 5) assert.equal(world.bots[1].x, 250);
+        if (tick === 5) assert.equal(world.bots[1].x, 100);
     }
 
     assert.equal(world.entities.length, 0);
     assert.equal(world.bots[1].hp, 90);
     assert.equal(statusRemainingMs(world.bots[1], "slow"), 1200);
     assert.equal(statusRemainingMs(world.bots[1], "stun"), 0);
-    assert.equal(world.bots[1].x, 250);
+    assert.equal(world.bots[1].x, 100);
 });
 
 test("generic segment hitboxes sweep across a bot's dash segment", () => {
