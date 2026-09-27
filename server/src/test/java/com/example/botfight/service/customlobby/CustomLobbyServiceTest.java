@@ -286,12 +286,8 @@ class CustomLobbyServiceTest {
         UUID matchId = UUID.randomUUID();
         MatchmakingEventDTO event = mock(MatchmakingEventDTO.class);
         when(event.matchId()).thenReturn(matchId);
-        MatchmakingEventDTO queueCancellationPayload = mock(MatchmakingEventDTO.class);
-        OutboundMatchmakingEvent queueCancellation =
-                new OutboundMatchmakingEvent(owner.getEmail(), queueCancellationPayload);
         MatchmakingService.ExternalMatchStartPreparation startPreparation =
-                new MatchmakingService.ExternalMatchStartPreparation(
-                        UUID.randomUUID(), List.of(queueCancellation));
+                new MatchmakingService.ExternalMatchStartPreparation(UUID.randomUUID(), List.of());
         when(matchmakingService.prepareExternalMatchStart(anyCollection()))
                 .thenReturn(startPreparation);
         when(matchService.startTeamMatch(any(), eq(MatchMode.CUSTOM),
@@ -302,9 +298,7 @@ class CustomLobbyServiceTest {
         CustomLobbyService.StartedMatch started = service.start(authentication, lobby.lobbyId());
 
         assertThat(started.matchId()).isEqualTo(matchId);
-        assertThat(started.events()).containsExactly(
-                queueCancellation,
-                new OutboundMatchmakingEvent(owner.getEmail(), event));
+        assertThat(started.events()).containsExactly(new OutboundMatchmakingEvent(owner.getEmail(), event));
         assertThat(started.lobby()).isNotNull();
         assertThat(started.lobby().lobbyId()).isEqualTo(lobby.lobbyId());
         assertThat(service.currentForPrincipal(owner.getEmail())).isNotNull();

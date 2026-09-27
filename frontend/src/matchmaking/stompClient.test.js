@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const source = readFileSync(new URL("./stompClient.js", import.meta.url), "utf8");
+const providerSource = readFileSync(new URL("./MatchmakingProvider.jsx", import.meta.url), "utf8");
 
 test("a connected socket resumes the match without waiting for delay calibration", () => {
     assert.match(source, /void sampleNetworkDelay\(\)\.catch\(\(\) => null\)/);
@@ -77,6 +78,11 @@ test("queue and active-match subscriptions have independent route lifecycles", (
     assert.match(source, /unsubscribeMatch\(\)/);
     assert.match(source, /deliverEvent\(JSON\.parse\(message\.body\), receivedAtMs, false\)/);
     assert.match(source, /deliverEvent\(JSON\.parse\(message\.body\), receivedAtMs, true\)/);
+});
+
+test("custom-lobby membership drops the ranked matchmaking subscription", () => {
+    assert.match(providerSource, /hasCustomLobby[\s\S]*?client\.unsubscribeMatchmaking\?\./);
+    assert.match(providerSource, /client\.subscribeMatchmaking\?\.[\s\S]*?\[\s*activeMatchStatus\.activeMatch,[\s\S]*?customLobbyEvent/);
 });
 
 test("reconnecting queue clients rebind instead of publishing another join", () => {

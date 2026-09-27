@@ -90,6 +90,21 @@ public class CustomLobbySocketController {
         Principal principal = event.getUser() == null ? headers.getUser() : event.getUser();
         if (sessionId == null || principal == null || principal.getName() == null) return;
 
+        if (principal instanceof Authentication authentication) {
+            AppUser user = currentUserService.requireCurrentUser(authentication);
+            if (customLobbyService.isRankedParticipant(user.getId())) {
+                customLobbyStatePublisher.send(
+                        List.of(new CustomLobbyService.LobbyRecipient(principal.getName(), user.getId())),
+                        new CustomLobbyStateEventDTO(
+                                "CUSTOM_LOBBY_STATE",
+                                null,
+                                null,
+                                null,
+                                "Leave ranked matchmaking or return to the active match before opening custom lobby state."));
+                return;
+            }
+        }
+
         customLobbyService.registerSocket(principal.getName(), sessionId);
         CustomLobbyDTO lobby = customLobbyService.currentForPrincipal(principal.getName());
         List<CustomLobbyService.LobbyRecipient> recipients = lobby == null

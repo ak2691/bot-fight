@@ -58,6 +58,7 @@ public class MatchmakingService {
     private final TokenBucketRateLimiter<UUID> matchmakingRateLimiter;
     private final EloRatingService eloRatingService;
     private final MatchAbilityGuaranteeService guaranteeService;
+    private final MatchParticipationCoordinator participationCoordinator;
     /** Registered FIFO order is the fairness source; entry keys make removal O(1). */
     private final LinkedHashMap<UUID, QueuedGroup> registeredQueueOrderById = new LinkedHashMap<>();
     /** Rotating registered 2v2 search order; queue FIFO remains in the map above. */
@@ -105,6 +106,23 @@ public class MatchmakingService {
             @Qualifier("matchmakingRateLimiter") TokenBucketRateLimiter<UUID> matchmakingRateLimiter,
             EloRatingService eloRatingService,
             MatchAbilityGuaranteeService guaranteeService) {
+        this(
+                matchService,
+                clock,
+                matchmakingRateLimiter,
+                eloRatingService,
+                guaranteeService,
+                new MatchParticipationCoordinator());
+    }
+
+    @Autowired
+    public MatchmakingService(
+            MatchService matchService,
+            Clock clock,
+            @Qualifier("matchmakingRateLimiter") TokenBucketRateLimiter<UUID> matchmakingRateLimiter,
+            EloRatingService eloRatingService,
+            MatchAbilityGuaranteeService guaranteeService,
+            MatchParticipationCoordinator participationCoordinator) {
         this.matchService = matchService;
         this.clock = clock;
         this.matchmakingRateLimiter = matchmakingRateLimiter;
@@ -112,6 +130,9 @@ public class MatchmakingService {
         this.guaranteeService = guaranteeService == null
                 ? new MatchAbilityGuaranteeService()
                 : guaranteeService;
+        this.participationCoordinator = participationCoordinator == null
+                ? new MatchParticipationCoordinator()
+                : participationCoordinator;
         registeredQueueByRating.put(MatchMode.ONES, new TreeMap<>());
         registeredQueueByRating.put(MatchMode.TWOS, new TreeMap<>());
         guestQueueOrderByMode.put(MatchMode.ONES, new LinkedHashMap<>());
@@ -308,23 +329,44 @@ public class MatchmakingService {
             // A stale disconnected entry must not remain eligible when another
             // player joins after its grace window has elapsed.
             expireDisconnectedGroups(Instant.now(clock));
-            if (pendingMatchForUser(userId) != null) {
+            MatchParticipationCoordinator.RankedAdmission participationAdmission = resolvedPool.ranked()
+                    ? participationCoordinator.reserveRankedAdmission(
+                            group.stream().map(MatchEntrant::userId).toList())
+                    : null;
+            if (resolvedPool.ranked() && participationAdmission == null) {
                 throw new AuthException(
-                        "A match is waiting for your acceptance. Return to it instead.");
+                        "Leave the custom lobby before joining ranked matchmaking.");
             }
-            for (MatchEntrant entrant : group) {
-                if (externalStartReservationsByUserId.containsKey(entrant.userId())) {
-                    throw new AuthException("A party member is already starting another match.");
-                }
-                if (pendingMatchForUser(entrant.userId()) != null) {
+
+            try {
+                if (pendingMatchForUser(userId) != null) {
                     throw new AuthException(
-                            "A party member is waiting for match acceptance. Return to it instead.");
+                            "A match is waiting for your acceptance. Return to it instead.");
                 }
-                if (matchService.activeMatchStatus(entrant.userId()).activeMatch()
-                        || matchService.isMatchStartReserved(entrant.userId())) {
-                    throw new AuthException(
-                            "A party member has an active match. Return to it instead.");
+                for (MatchEntrant entrant : group) {
+                    if (externalStartReservationsByUserId.containsKey(entrant.userId())) {
+                        throw new AuthException("A party member is already starting another match.");
+                    }
+                    if (pendingMatchForUser(entrant.userId()) != null) {
+                        throw new AuthException(
+                                "A party member is waiting for match acceptance. Return to it instead.");
+                    }
+                    if (matchService.activeMatchStatus(entrant.userId()).activeMatch()
+                            || matchService.isMatchStartReserved(entrant.userId())) {
+                        throw new AuthException(
+                                "A party member has an active match. Return to it instead.");
+                    }
                 }
+            } catch (RuntimeException | Error exception) {
+                participationCoordinator.releaseRankedAdmission(participationAdmission);
+                throw exception;
+            }
+
+            if (participationAdmission != null
+                    && !participationCoordinator.commitRankedAdmission(participationAdmission)) {
+                participationCoordinator.releaseRankedAdmission(participationAdmission);
+                throw new AuthException(
+                        "Leave the custom lobby before joining ranked matchmaking.");
             }
 
             joined = new QueuedGroup(
@@ -338,21 +380,26 @@ public class MatchmakingService {
                     resolvedPool,
                     nextQueueOrder++);
 
-            removeQueuedGroupsForMembers(group);
+            Set<UUID> displacedMembers = removeQueuedGroupsForMembers(group);
             if (resolvedMode == MatchMode.ONES) {
                 QueuedGroup opponent = findBestOneOpponent(joined, queuedAt);
                 if (opponent == null) {
                     addQueuedGroup(joined);
+                    releaseRankedParticipationIfIdle(displacedMembers);
                     return waitingEvents(joined);
                 }
                 removeQueuedGroup(opponent);
                 List<MatchEntrant> entrants = new ArrayList<>();
                 entrants.addAll(opponent.toMatchEntrants(1));
                 entrants.addAll(joined.toMatchEntrants(2));
-                return createPendingMatch(entrants, resolvedMode, resolvedPool);
+                List<OutboundMatchmakingEvent> pendingEvents = createPendingMatch(
+                        entrants, resolvedMode, resolvedPool);
+                releaseRankedParticipationIfIdle(displacedMembers);
+                return pendingEvents;
             }
 
             addQueuedGroup(joined);
+            releaseRankedParticipationIfIdle(displacedMembers);
             twosCandidates = twosCandidateSnapshot(resolvedPool, joined.queueEntryId());
         }
 
@@ -401,14 +448,12 @@ public class MatchmakingService {
         QueuedGroup queuedGroup = queuedGroupsByUserId.get(userId);
         if (queuedGroup != null) {
             removeQueuedGroup(queuedGroup);
+            releaseRankedParticipationIfIdle(
+                    queuedGroup.members().stream().map(MatchEntrant::userId).toList());
         }
     }
 
-    /**
-     * Removes queue and acceptance state that conflicts with an external
-     * roster start. A queue match already doing persistence owns its STARTING
-     * claim, so callers must reject the external start in that case.
-     */
+    /** Rejects an external match start when any roster member still has ranked state. */
     public synchronized List<OutboundMatchmakingEvent> cancelConflictingQueueState(
             Collection<UUID> userIds) {
         ExternalMatchStartPreparation preparation = prepareExternalMatchStart(userIds);
@@ -417,10 +462,11 @@ public class MatchmakingService {
     }
 
     /**
-     * Atomically cancels conflicting queue state and fences new queue joins
-     * while the external match lifecycle persists the roster outside this
-     * monitor. Call {@link #releaseExternalMatchStart(UUID)} in a finally
-     * block after the lifecycle start attempt completes.
+     * Fences new queue joins while an external match lifecycle persists its
+     * roster outside this monitor. Existing queue or acceptance state is
+     * rejected and preserved; it is never silently removed by a match start.
+     * Call {@link #releaseExternalMatchStart(UUID)} in a finally block after
+     * the lifecycle start attempt completes.
      */
     public synchronized ExternalMatchStartPreparation prepareExternalMatchStart(
             Collection<UUID> userIds) {
@@ -445,32 +491,17 @@ public class MatchmakingService {
             throw new AuthException("a queue match is already starting for one or more players");
         }
 
-        List<OutboundMatchmakingEvent> events = new ArrayList<>();
-        Set<QueuedGroup> queuedConflicts = roster.stream()
-                .map(queuedGroupsByUserId::get)
-                .filter(java.util.Objects::nonNull)
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        for (QueuedGroup queuedGroup : queuedConflicts) {
-            removeQueuedGroup(queuedGroup);
-            events.addAll(queuedGroup.members().stream()
-                    .map(member -> queueStatusEvent(
-                            member,
-                            queuedGroup.mode(),
-                            "MATCH_ERROR",
-                            "BUILDING",
-                            "The queue ended because a player started another match."))
-                    .toList());
-        }
-        for (PendingMatch pending : pendingConflicts) {
-            pendingMatchesById.remove(pending.matchId(), pending);
-            events.addAll(pendingEvents(
-                    pending,
-                    "MATCH_ACCEPTANCE_CANCELLED",
-                    "The match was cancelled because a player started another match."));
+        if (roster.stream().anyMatch(queuedGroupsByUserId::containsKey)
+                || !pendingConflicts.isEmpty()
+                || roster.stream().anyMatch(userId ->
+                        matchService.activeMatchStatus(userId).activeMatch()
+                                || matchService.isMatchStartReserved(userId))) {
+            throw new AuthException(
+                    "Leave ranked matchmaking or return to the active match before starting another match.");
         }
         UUID reservationId = UUID.randomUUID();
         roster.forEach(userId -> externalStartReservationsByUserId.put(userId, reservationId));
-        return new ExternalMatchStartPreparation(reservationId, events);
+        return new ExternalMatchStartPreparation(reservationId, List.of());
     }
 
     /** Releases an external-start admission fence after lifecycle success or failure. */
@@ -583,6 +614,8 @@ public class MatchmakingService {
             }
             if (!Instant.now(clock).isBefore(previous.acceptanceEndsAt())) {
                 pendingMatchesById.remove(previous.matchId(), previous);
+                releaseRankedParticipationIfIdle(
+                        previous.entrants().stream().map(MatchEntrant::userId).toList());
                 return pendingEvents(
                         previous,
                         "MATCH_ACCEPTANCE_EXPIRED",
@@ -614,6 +647,8 @@ public class MatchmakingService {
             synchronized (this) {
                 pendingMatchesById.remove(starting.matchId());
             }
+            releaseRankedParticipationIfIdle(
+                    starting.entrants().stream().map(MatchEntrant::userId).toList());
             return events;
         } catch (AuthException exception) {
             PendingMatch cancelled;
@@ -621,6 +656,8 @@ public class MatchmakingService {
                 cancelled = pendingMatchesById.get(starting.matchId());
                 pendingMatchesById.remove(starting.matchId());
             }
+            releaseRankedParticipationIfIdle(
+                    starting.entrants().stream().map(MatchEntrant::userId).toList());
             return pendingEvents(
                     cancelled == null ? starting : cancelled,
                     "MATCH_ACCEPTANCE_CANCELLED",
@@ -671,10 +708,13 @@ public class MatchmakingService {
         }
 
         pendingMatchesById.remove(pending.matchId());
-        return pendingEvents(
+        List<OutboundMatchmakingEvent> events = pendingEvents(
                 pending,
                 "MATCH_ACCEPTANCE_CANCELLED",
                 "The match was cancelled before both players accepted.");
+        releaseRankedParticipationIfIdle(
+                pending.entrants().stream().map(MatchEntrant::userId).toList());
+        return events;
     }
 
     public synchronized List<OutboundMatchmakingEvent> resolvePendingMatchTimeout(
@@ -688,10 +728,13 @@ public class MatchmakingService {
             return List.of();
         }
         pendingMatchesById.remove(pending.matchId());
-        return pendingEvents(
+        List<OutboundMatchmakingEvent> events = pendingEvents(
                 pending,
                 "MATCH_ACCEPTANCE_EXPIRED",
                 "The match was closed because both players did not accept in time.");
+        releaseRankedParticipationIfIdle(
+                pending.entrants().stream().map(MatchEntrant::userId).toList());
+        return events;
     }
 
     private List<OutboundMatchmakingEvent> createPendingMatch(
@@ -1194,7 +1237,7 @@ public class MatchmakingService {
         queuedGroup.members().forEach(member -> reconnectDeadlinesByUserId.remove(member.userId()));
     }
 
-    private void removeQueuedGroupsForMembers(List<MatchEntrant> members) {
+    private Set<UUID> removeQueuedGroupsForMembers(List<MatchEntrant> members) {
         Set<QueuedGroup> queuedGroups = new LinkedHashSet<>();
         for (MatchEntrant member : members) {
             QueuedGroup queuedGroup = queuedGroupsByUserId.get(member.userId());
@@ -1202,7 +1245,12 @@ public class MatchmakingService {
                 queuedGroups.add(queuedGroup);
             }
         }
+        Set<UUID> affectedUsers = queuedGroups.stream()
+                .flatMap(group -> group.members().stream())
+                .map(MatchEntrant::userId)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
         queuedGroups.forEach(this::removeQueuedGroup);
+        return affectedUsers;
     }
 
     private List<OutboundMatchmakingEvent> expireDisconnectedGroups(Instant now) {
@@ -1212,6 +1260,10 @@ public class MatchmakingService {
                 .filter(group -> group != null)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
         expiredGroups.forEach(this::removeQueuedGroup);
+        releaseRankedParticipationIfIdle(expiredGroups.stream()
+                .flatMap(group -> group.members().stream())
+                .map(MatchEntrant::userId)
+                .toList());
         return expiredGroups.stream()
                 .flatMap(group -> group.members().stream()
                         .map(player -> queueStatusEvent(
@@ -1222,6 +1274,25 @@ public class MatchmakingService {
                                 "The queue ended because the connection was not restored within "
                                         + QUEUE_RECONNECT_GRACE_SECONDS + " seconds.")))
                 .toList();
+    }
+
+    /** Must be called while holding this service monitor after queue state changes. */
+    private void releaseRankedParticipationIfIdle(Collection<UUID> userIds) {
+        if (userIds == null || userIds.isEmpty()) return;
+        for (UUID userId : userIds) {
+            if (userId == null
+                    || queuedGroupsByUserId.containsKey(userId)
+                    || pendingMatchForUser(userId) != null
+                    || externalStartReservationsByUserId.containsKey(userId)) {
+                continue;
+            }
+            var activeMatch = matchService.activeMatchStatus(userId);
+            if ((activeMatch != null && activeMatch.activeMatch())
+                    || matchService.isMatchStartReserved(userId)) {
+                continue;
+            }
+            participationCoordinator.releaseRankedParticipants(List.of(userId));
+        }
     }
 
     private boolean isMatchEligible(QueuedGroup group) {

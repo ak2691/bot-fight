@@ -38,6 +38,15 @@ test("stale party and lobby accepts remove their consumed invite cards", () => {
     assert.match(source, /if \(message === "Lobby no longer exists"\) \{[\s\S]*markInviteHandled\(inviteId\);[\s\S]*setPendingCustomLobbyInvites\(/);
 });
 
+test("custom-lobby invite accepts are disabled during ranked activity and server errors stay visible", () => {
+    const navbarSource = readFileSync(APP_NAVBAR_PATH, "utf8");
+    const providerSource = readFileSync(PROVIDER_PATH, "utf8");
+
+    assert.match(navbarSource, /isQueueing \|\| pendingAcceptance \|\| activeMatchStatus\?\.activeMatch/);
+    assert.match(navbarSource, /disabled=\{isPending \|\| customLobbyEntryBlocked\}/);
+    assert.match(providerSource, /if \(!response\.ok\) throw new Error\(body\.message \?\? "The custom lobby invite could not be accepted\."\);[\s\S]*setActionError\(message\)/);
+});
+
 test("invite, party, and lobby action messages use the 3.5-second timeout", () => {
     const providerSource = readFileSync(PROVIDER_PATH, "utf8");
     const partySource = readFileSync(PARTY_POPOVER_PATH, "utf8");

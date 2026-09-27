@@ -35,6 +35,7 @@ import com.example.botfight.service.match.timing.MatchTimingService;
 import com.example.botfight.service.block.BlockLookup;
 import com.example.botfight.service.limits.SlidingWindowRateLimiter;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
+import com.example.botfight.service.matchmaking.MatchParticipationCoordinator;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -145,6 +146,32 @@ public class MatchService {
             @Qualifier("matchCodeViewRateLimiter")
             SlidingWindowRateLimiter<UUID> matchCodeViewRateLimiter,
             ChatEvidenceRecorder chatEvidenceService) {
+        this(
+                matchSimulationService,
+                matchPersistenceService,
+                matchConnectionService,
+                clock,
+                replayDeliveryMode,
+                matchChatRateLimiter,
+                blockLookup,
+                matchCodeViewRateLimiter,
+                chatEvidenceService,
+                new MatchParticipationCoordinator());
+    }
+
+    @Autowired
+    public MatchService(
+            MatchSimulationService matchSimulationService,
+            MatchPersistenceService matchPersistenceService,
+            MatchConnectionService matchConnectionService,
+            Clock clock,
+            @Value("${botfight.replay.delivery-mode:full}") ReplayDeliveryMode replayDeliveryMode,
+            @Qualifier("matchChatRateLimiter") TokenBucketRateLimiter<String> matchChatRateLimiter,
+            BlockLookup blockLookup,
+            @Qualifier("matchCodeViewRateLimiter")
+            SlidingWindowRateLimiter<UUID> matchCodeViewRateLimiter,
+            ChatEvidenceRecorder chatEvidenceService,
+            MatchParticipationCoordinator participationCoordinator) {
         this.clock = clock;
         this.matchPersistenceService = matchPersistenceService;
         this.matchCodeViewRateLimiter = matchCodeViewRateLimiter;
@@ -182,7 +209,8 @@ public class MatchService {
                 matchEventFactory,
                 matchSubmissionService,
                 matchChatService,
-                clock);
+                clock,
+                participationCoordinator);
         this.matchPhaseService = new MatchPhaseService(runtimeState, clock);
         this.matchReconnectionService = new MatchReconnectionService(
                 runtimeState,

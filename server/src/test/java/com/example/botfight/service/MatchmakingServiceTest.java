@@ -349,7 +349,7 @@ class MatchmakingServiceTest {
     }
 
     @Test
-    void externalStartPreparationCancelsQueueStateAndFencesNewJoinsUntilReleased() {
+    void externalStartPreparationRejectsQueuedUsersAndFencesNewJoinsUntilReleased() {
         UUID userId = UUID.randomUUID();
         var waiting = service.joinQueue(
                 userId, "queued", "queued@example.com", "queued-socket");
@@ -357,13 +357,17 @@ class MatchmakingServiceTest {
                 .extracting(event -> event.event().type())
                 .isEqualTo("QUEUE_WAITING");
 
+        assertThatThrownBy(() -> service.prepareExternalMatchStart(List.of(userId)))
+                .isInstanceOf(AuthException.class)
+                .hasMessageContaining("Leave ranked matchmaking");
+        assertThat(service.hasTransientActivity(userId)).isTrue();
+
+        service.leaveQueue(userId);
         MatchmakingService.ExternalMatchStartPreparation preparation =
                 service.prepareExternalMatchStart(List.of(userId));
 
         assertThat(preparation.reservationId()).isNotNull();
-        assertThat(preparation.cancellationEvents()).singleElement()
-                .extracting(event -> event.event().type())
-                .isEqualTo("MATCH_ERROR");
+        assertThat(preparation.cancellationEvents()).isEmpty();
         assertThat(service.hasTransientActivity(userId)).isFalse();
         assertThatThrownBy(() -> service.joinQueue(
                 userId, "queued", "queued@example.com", "queued-socket"))

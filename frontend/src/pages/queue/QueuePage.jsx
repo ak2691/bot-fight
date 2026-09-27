@@ -80,6 +80,8 @@ export default function QueuePage() {
         queueElapsed,
         queueReconnectRemaining,
         connectionStatus,
+        pendingAcceptance,
+        activeMatchStatus,
         queueGuarantees,
         updateQueueGuarantee,
         startQueue,
@@ -158,6 +160,9 @@ export default function QueuePage() {
     const partyHasOfflineMember = Boolean(party && members.some((member) => member.online === false));
     const partyQueueBlocked = Boolean(party && !isPartyLeader);
     const hasCustomLobby = Boolean(customLobby?.lobbyId);
+    const rankedParticipationActive = Boolean(
+        isQueueing || pendingAcceptance || activeMatchStatus?.activeMatch,
+    );
 
     const modeBlocked = (mode) => (
         partyQueueBlocked
@@ -166,7 +171,7 @@ export default function QueuePage() {
     );
 
     const requestQueue = (mode) => {
-        if (!mode.available || isQueueing) return;
+        if (!mode.available || isQueueing || hasCustomLobby) return;
         if (isFullParty && mode.id === MATCH_MODES.ONES) {
             setPartyQueueNotice("A party of 2 cannot queue a 1v1.");
             return;
@@ -207,7 +212,9 @@ export default function QueuePage() {
                             const modeStats = mode.id === MATCH_MODES.TWOS
                                 ? profileStats?.twos
                                 : profileStats?.ones;
-                            const queueActionDisabled = !mode.available || (!active && (isQueueing || (modeBlocked(mode) && !(partySizeBlocked && isPartyLeader))));
+                            const queueActionDisabled = !mode.available
+                                || hasCustomLobby
+                                || (!active && (isQueueing || (modeBlocked(mode) && !(partySizeBlocked && isPartyLeader))));
                             return (
                                 <article
                                     key={mode.id}
@@ -259,7 +266,7 @@ export default function QueuePage() {
                     <button
                         type="button"
                         onClick={() => navigate("/custom-lobby", hasCustomLobby ? undefined : { state: { create: true } })}
-                        disabled={isQueueing || !customLobbyChecked}
+                        disabled={!hasCustomLobby && (rankedParticipationActive || !customLobbyChecked)}
                         aria-label={hasCustomLobby ? "Open custom lobby" : "Create custom lobby"}
                         className="queue-custom-card mt-3 flex w-full flex-wrap items-center gap-4 rounded-xl border p-4 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-nowrap sm:p-5"
                     >

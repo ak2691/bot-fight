@@ -16,6 +16,7 @@ import com.example.botfight.service.match.simulation.MatchSimulationService;
 import com.example.botfight.service.match.state.MatchRuntimeState;
 import com.example.botfight.service.match.submission.MatchSubmissionService;
 import com.example.botfight.service.match.timing.MatchTimingPolicy;
+import com.example.botfight.service.matchmaking.MatchParticipationCoordinator;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -39,6 +40,7 @@ public final class MatchLifecycleService {
     private final MatchSubmissionService submissionService;
     private final MatchChatService chatService;
     private final Clock clock;
+    private final MatchParticipationCoordinator participationCoordinator;
 
     public MatchLifecycleService(
             MatchRuntimeState state,
@@ -48,6 +50,26 @@ public final class MatchLifecycleService {
             MatchSubmissionService submissionService,
             MatchChatService chatService,
             Clock clock) {
+        this(
+                state,
+                persistenceService,
+                connectionService,
+                eventFactory,
+                submissionService,
+                chatService,
+                clock,
+                new MatchParticipationCoordinator());
+    }
+
+    public MatchLifecycleService(
+            MatchRuntimeState state,
+            MatchPersistenceService persistenceService,
+            MatchConnectionService connectionService,
+            MatchEventFactory eventFactory,
+            MatchSubmissionService submissionService,
+            MatchChatService chatService,
+            Clock clock,
+            MatchParticipationCoordinator participationCoordinator) {
         this.state = state;
         this.persistenceService = persistenceService;
         this.connectionService = connectionService;
@@ -55,6 +77,9 @@ public final class MatchLifecycleService {
         this.submissionService = submissionService;
         this.chatService = chatService;
         this.clock = clock;
+        this.participationCoordinator = participationCoordinator == null
+                ? new MatchParticipationCoordinator()
+                : participationCoordinator;
     }
 
     public List<OutboundMatchmakingEvent> startMatch(
@@ -402,6 +427,8 @@ public final class MatchLifecycleService {
         state.removeSession(session);
         state.roundHistoryByMatchId().remove(session.matchId());
         submissionService.removeAll(session.matchId());
+        participationCoordinator.releaseRankedParticipants(
+                session.players().stream().map(MatchPlayer::userId).toList());
     }
 
     private Instant loadoutSelectionDeadlineAt(Instant phaseStartedAt) {

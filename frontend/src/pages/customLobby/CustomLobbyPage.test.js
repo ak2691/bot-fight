@@ -69,3 +69,11 @@ test("custom lobby is protected from active matches and has its own route", () =
     assert.match(appSource, /<CustomLobbyPage \/>/);
     assert.match(appSource, /<ActiveMatchProtectedRoute>/);
 });
+
+test("custom lobby creation and invites are disabled while ranked matchmaking is active", () => {
+    assert.match(source, /isQueueing,[\s\S]*pendingAcceptance,[\s\S]*activeMatchStatus/);
+    assert.match(source, /rankedParticipationActive = Boolean\([\s\S]*?isQueueing \|\| pendingAcceptance \|\| activeMatchStatus\?\.activeMatch/);
+    assert.match(source, /disabled=\{action !== null \|\| rankedParticipationActive\}/);
+    assert.match(source, /disabled=\{!inviteUsername\.trim\(\) \|\| action !== null \|\| rankedParticipationActive\}/);
+    assert.match(source, /if \(rankedParticipationActive\) \{[\s\S]*RANKED_PARTICIPATION_BLOCK_MESSAGE/);
+});

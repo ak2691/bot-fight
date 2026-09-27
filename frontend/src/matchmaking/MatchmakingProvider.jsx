@@ -555,6 +555,37 @@ export default function MatchmakingProvider({ children }) {
     }, [clientIdentityKey, handleCustomLobbyEvent, hasSocialAccess]);
 
     useEffect(() => {
+        const client = customLobbyClientRef.current;
+        if (!client) return;
+        if (isQueueing || pendingAcceptance || activeMatchStatus.activeMatch) {
+            client.unsubscribeCustomLobby?.();
+        } else {
+            client.subscribeCustomLobby?.();
+        }
+    }, [activeMatchStatus.activeMatch, isQueueing, pendingAcceptance]);
+
+    useEffect(() => {
+        const client = matchmakingClientRef.current;
+        if (!client) return;
+
+        const hasCustomLobby = Boolean(customLobbyEvent?.lobby?.lobbyId);
+        const rankedActivityActive = isQueueing || pendingAcceptance != null;
+        if (hasCustomLobby && !rankedActivityActive && !activeMatchStatus.activeMatch) {
+            client.unsubscribeMatchmaking?.();
+        } else if (hasCustomLobby && activeMatchStatus.activeMatch) {
+            // Custom-match start and reconnect events still use the match client.
+            client.subscribeMatchmaking?.();
+        } else if (!hasCustomLobby && !rankedActivityActive && !activeMatchStatus.activeMatch) {
+            client.subscribeMatchmaking?.();
+        }
+    }, [
+        activeMatchStatus.activeMatch,
+        customLobbyEvent,
+        isQueueing,
+        pendingAcceptance,
+    ]);
+
+    useEffect(() => {
         queueTokenBucketRef.current = createQueueTokenBucket();
     }, [user?.id]);
 
@@ -588,6 +619,10 @@ export default function MatchmakingProvider({ children }) {
         setQueueGuarantees(normalizedGuarantees);
         if (party?.members?.some((member) => member.online === false)) {
             setQueueError("Every party member must be online before the queue can start.");
+            return;
+        }
+        if (customLobbyEvent?.lobby?.lobbyId) {
+            setQueueError("Leave the custom lobby before joining ranked matchmaking.");
             return;
         }
         const now = Date.now();
@@ -642,6 +677,7 @@ export default function MatchmakingProvider({ children }) {
             queueStartInFlightRef.current = false;
         }
     }, [
+        customLobbyEvent,
         markActiveMatch,
         navigate,
         party,
@@ -1024,6 +1060,7 @@ export default function MatchmakingProvider({ children }) {
 
     const value = useMemo(() => ({
         isQueueing,
+        pendingAcceptance,
         queueMode,
         queueElapsed,
         queueError,
@@ -1050,6 +1087,7 @@ export default function MatchmakingProvider({ children }) {
         clearActiveMatch,
         isQueueing,
         markActiveMatch,
+        pendingAcceptance,
         queueMode,
         queueElapsed,
         queueError,

@@ -18,10 +18,10 @@ import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
 import com.example.botfight.service.match.model.MatchEntrant;
 import com.example.botfight.service.match.timing.MatchTimingPolicy;
 import com.example.botfight.service.matchmaking.MatchmakingService;
+import com.example.botfight.service.matchmaking.MatchParticipationCoordinator;
 import com.example.botfight.service.invite.InviteTargetUnavailableException;
 import com.example.botfight.service.party.PartyService;
 import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
-import java.util.ArrayList;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -66,11 +66,39 @@ public class CustomLobbyService {
     private final PartyService partyService;
     private final MatchAbilityGuaranteeService guaranteeService;
     private final MatchmakingService matchmakingService;
+    private final MatchParticipationCoordinator participationCoordinator;
 
     private final Map<UUID, ActiveLobby> activeLobbiesById = new HashMap<>();
     private final Map<UUID, UUID> lobbyIdsByUserId = new HashMap<>();
     private final Map<UUID, String> socketSessionIdsByUserId = new HashMap<>();
     private final Map<UUID, LobbyInvite> invitesById = new HashMap<>();
+
+    public CustomLobbyService(
+            CurrentUserService currentUserService,
+            UserRepository userRepository,
+            MatchService matchService,
+            @Qualifier("customLobbyInviteRateLimiter") TokenBucketRateLimiter<UUID> inviteRateLimiter,
+            @Qualifier("customLobbyTeamRateLimiter") TokenBucketRateLimiter<UUID> teamRateLimiter,
+            Clock clock,
+            BlockLookup blockLookup,
+            SingleUserWebSocketSessionRegistry socketRegistry,
+            PartyService partyService,
+            MatchAbilityGuaranteeService guaranteeService,
+            MatchmakingService matchmakingService) {
+        this(
+                currentUserService,
+                userRepository,
+                matchService,
+                inviteRateLimiter,
+                teamRateLimiter,
+                clock,
+                blockLookup,
+                socketRegistry,
+                partyService,
+                guaranteeService,
+                matchmakingService,
+                new MatchParticipationCoordinator());
+    }
 
     @Autowired
     public CustomLobbyService(
@@ -84,7 +112,8 @@ public class CustomLobbyService {
             SingleUserWebSocketSessionRegistry socketRegistry,
             PartyService partyService,
             MatchAbilityGuaranteeService guaranteeService,
-            MatchmakingService matchmakingService) {
+            MatchmakingService matchmakingService,
+            MatchParticipationCoordinator participationCoordinator) {
         this.currentUserService = currentUserService;
         this.userRepository = userRepository;
         this.matchService = matchService;
@@ -98,6 +127,9 @@ public class CustomLobbyService {
                 ? new MatchAbilityGuaranteeService()
                 : guaranteeService;
         this.matchmakingService = matchmakingService;
+        this.participationCoordinator = participationCoordinator == null
+                ? new MatchParticipationCoordinator()
+                : participationCoordinator;
     }
 
     /** Compatibility constructor for fixtures that provide the guarantee service. */
@@ -178,6 +210,12 @@ public class CustomLobbyService {
                 .orElse(null);
     }
 
+    /** Used by the STOMP snapshot handler before exposing custom-lobby state. */
+    public boolean isRankedParticipant(UUID userId) {
+        return participationCoordinator.isRankedParticipant(userId)
+                || (matchmakingService != null && matchmakingService.hasTransientActivity(userId));
+    }
+
     public synchronized List<LobbyRecipient> recipientsForLobby(UUID lobbyId) {
         ActiveLobby lobby = lobbyId == null ? null : activeLobbiesById.get(lobbyId);
         return lobby == null ? List.of() : recipientsFor(lobby);
@@ -213,9 +251,17 @@ public class CustomLobbyService {
         rejectGuest(user);
         rejectActiveMatch(user.getId());
         ActiveLobby existing = activeLobbyForUser(user.getId());
-        if (existing != null) return toDTO(existing);
+        if (existing != null) {
+            if (!participationCoordinator.claimCustomLobby(user.getId(), existing.lobbyId)) {
+                throw rankedParticipationConflict();
+            }
+            return toDTO(existing);
+        }
 
         ActiveLobby lobby = new ActiveLobby(UUID.randomUUID(), user);
+        if (!participationCoordinator.claimCustomLobby(user.getId(), lobby.lobbyId)) {
+            throw rankedParticipationConflict();
+        }
         lobby.members.put(user.getId(), new LobbyMember(user, TEAM_NONE, 0L));
         activeLobbiesById.put(lobby.lobbyId, lobby);
         lobbyIdsByUserId.put(user.getId(), lobby.lobbyId);
@@ -252,6 +298,9 @@ public class CustomLobbyService {
             throw new AuthException("player could not be invited");
         }
         rejectActiveMatch(invitee.getId());
+        if (isRankedParticipant(invitee.getId())) {
+            throw new AuthException("that player is unavailable for a custom lobby invite");
+        }
         if (activeLobbyForUser(invitee.getId()) != null) {
             throw new AuthException("that player is already in a custom lobby");
         }
@@ -309,6 +358,9 @@ public class CustomLobbyService {
         prunePendingInvites(clock.instant());
         rejectGuest(invite.invitee);
         rejectActiveMatch(inviteeId);
+        if (isRankedParticipant(inviteeId)) {
+            throw rankedParticipationConflict();
+        }
         if (blockLookup.isBlocked(inviteeId, invite.inviter.getId())
                 || blockLookup.isBlocked(invite.inviter.getId(), inviteeId)) {
             throw new AuthException("the custom lobby invite is no longer available");
@@ -320,6 +372,9 @@ public class CustomLobbyService {
         requireLobbyAvailable(lobby);
         if (lobby.members.size() >= CURRENT_LOBBY_CAPACITY) {
             throw new AuthException("the custom lobby is already full");
+        }
+        if (!participationCoordinator.claimCustomLobby(inviteeId, lobby.lobbyId)) {
+            throw rankedParticipationConflict();
         }
 
         lobby.members.put(inviteeId, new LobbyMember(
@@ -428,57 +483,78 @@ public class CustomLobbyService {
     }
 
     /** Starts the authoritative match once every member has joined a team. */
-    public synchronized StartedMatch start(Authentication authentication, UUID lobbyId) {
-        AppUser owner = currentUserService.requireCurrentUser(authentication);
-        rejectGuest(owner);
-        ActiveLobby lobby = requireLobby(lobbyId);
-        requireOwner(lobby, owner.getId());
-        requireLobbyAvailable(lobby);
-        if (lobby.members.size() < 2) {
-            throw new AuthException("a custom match needs at least two players");
-        }
-        if (lobby.members.size() > CURRENT_LOBBY_CAPACITY) {
-            throw new AuthException("the custom lobby has too many players");
-        }
-        if (lobby.members.values().stream().anyMatch(member -> member.teamNumber == TEAM_NONE)) {
-            throw new AuthException("every player must choose a team before the match can start");
-        }
-        if (teamCount(lobby, BLUE_TEAM) == 0 || teamCount(lobby, RED_TEAM) == 0) {
-            throw new AuthException("both teams need at least one player");
-        }
-        if (lobby.members.values().stream().anyMatch(member -> !isMemberOnline(member))) {
-            throw new AuthException("every player must be online before the match can start");
-        }
-        lobby.members.values().forEach(member -> rejectActiveMatch(member.user.getId()));
+    public StartedMatch start(Authentication authentication, UUID lobbyId) {
+        ActiveLobby lobby;
+        UUID startReservationId = UUID.randomUUID();
+        int roundDurationSeconds;
+        List<LobbyStartMember> members;
+        MatchmakingService.ExternalMatchStartPreparation startPreparation;
+        synchronized (this) {
+            AppUser owner = currentUserService.requireCurrentUser(authentication);
+            rejectGuest(owner);
+            lobby = requireLobby(lobbyId);
+            requireOwner(lobby, owner.getId());
+            requireLobbyAvailable(lobby);
+            if (lobby.members.size() < 2) {
+                throw new AuthException("a custom match needs at least two players");
+            }
+            if (lobby.members.size() > CURRENT_LOBBY_CAPACITY) {
+                throw new AuthException("the custom lobby has too many players");
+            }
+            if (lobby.members.values().stream().anyMatch(member -> member.teamNumber == TEAM_NONE)) {
+                throw new AuthException("every player must choose a team before the match can start");
+            }
+            if (teamCount(lobby, BLUE_TEAM) == 0 || teamCount(lobby, RED_TEAM) == 0) {
+                throw new AuthException("both teams need at least one player");
+            }
+            if (lobby.members.values().stream().anyMatch(member -> !isMemberOnline(member))) {
+                throw new AuthException("every player must be online before the match can start");
+            }
+            lobby.members.values().forEach(member -> rejectActiveMatch(member.user.getId()));
 
-        List<MatchEntrant> entrants = lobby.members.values().stream()
-                .map(member -> new MatchEntrant(
-                        member.user.getId(),
-                        member.user.getUsername(),
-                        member.user.getEmail(),
-                        currentSocketForPrincipal(member.user.getEmail()),
-                        member.teamNumber)
-                        .withGuaranteedAbilities(guaranteeService.forUser(member.user.getId())))
-                .toList();
-        MatchmakingService.ExternalMatchStartPreparation startPreparation = matchmakingService == null
-                ? null
-                : matchmakingService.prepareExternalMatchStart(
-                        entrants.stream().map(MatchEntrant::userId).collect(Collectors.toSet()));
+            members = lobby.members.values().stream()
+                    .map(member -> new LobbyStartMember(member.user, member.teamNumber))
+                    .toList();
+            roundDurationSeconds = lobby.roundDurationSeconds;
+            startPreparation = matchmakingService == null
+                    ? null
+                    : matchmakingService.prepareExternalMatchStart(
+                            members.stream().map(member -> member.user().getId()).collect(Collectors.toSet()));
+            lobby.startReservationId = startReservationId;
+        }
+
         try {
-            List<OutboundMatchmakingEvent> events = new ArrayList<>(startPreparation == null
-                    ? List.of()
-                    : startPreparation.cancellationEvents());
-            events.addAll(matchService.startTeamMatch(
-                    entrants, MatchMode.CUSTOM, lobby.roundDurationSeconds));
+            List<MatchEntrant> entrants = members.stream()
+                    .map(member -> new MatchEntrant(
+                            member.user().getId(),
+                            member.user().getUsername(),
+                            member.user().getEmail(),
+                            currentSocketForPrincipal(member.user().getEmail()),
+                            member.teamNumber())
+                            .withGuaranteedAbilities(guaranteeService.forUser(member.user().getId())))
+                    .toList();
+            List<OutboundMatchmakingEvent> events = matchService.startTeamMatch(
+                    entrants, MatchMode.CUSTOM, roundDurationSeconds);
             UUID matchId = events.stream()
                     .map(OutboundMatchmakingEvent::event)
                     .map(event -> event.matchId())
                     .filter(java.util.Objects::nonNull)
                     .findFirst()
                     .orElseThrow(() -> new AuthException("the custom match could not be started"));
-            lobby.activeMatchId = matchId;
-            List<LobbyRecipient> lobbyRecipients = recipientsFor(lobby);
-            CustomLobbyDTO lobbySnapshot = toDTO(lobby);
+
+            List<LobbyRecipient> lobbyRecipients;
+            CustomLobbyDTO lobbySnapshot;
+            synchronized (this) {
+                if (activeLobbiesById.get(lobby.lobbyId) != lobby
+                        || !startReservationId.equals(lobby.startReservationId)) {
+                    throw new AuthException("the custom lobby changed while the match was starting");
+                }
+                lobby.activeMatchId = matchId;
+                lobby.startReservationId = null;
+                lobbyRecipients = recipientsFor(lobby);
+                lobbySnapshot = toDTO(lobby);
+            }
+
             List<PartyService.CustomMatchPartyChange> partyChanges = partyService == null
                     ? List.of()
                     : partyService.prepareForCustomMatch(
@@ -491,6 +567,12 @@ public class CustomLobbyService {
                     lobbyRecipients,
                     partyChanges);
         } finally {
+            synchronized (this) {
+                if (activeLobbiesById.get(lobby.lobbyId) == lobby
+                        && startReservationId.equals(lobby.startReservationId)) {
+                    lobby.startReservationId = null;
+                }
+            }
             if (matchmakingService != null && startPreparation != null) {
                 matchmakingService.releaseExternalMatchStart(startPreparation.reservationId());
             }
@@ -570,6 +652,7 @@ public class CustomLobbyService {
         }
         lobbyIdsByUserId.remove(userId, lobby.lobbyId);
         socketSessionIdsByUserId.remove(userId);
+        participationCoordinator.releaseCustomLobby(userId, lobby.lobbyId);
         List<LobbyRecipient> detached = List.of(new LobbyRecipient(
                 removed.user.getEmail(),
                 removed.user.getId()));
@@ -616,7 +699,7 @@ public class CustomLobbyService {
     }
 
     private void requireLobbyAvailable(ActiveLobby lobby) {
-        if (lobby != null && lobby.activeMatchId != null) {
+        if (lobby != null && (lobby.activeMatchId != null || lobby.startReservationId != null)) {
             throw new AuthException("the custom lobby is currently in a match");
         }
     }
@@ -630,6 +713,10 @@ public class CustomLobbyService {
         if (matchService.activeMatchStatus(userId).activeMatch()) {
             throw new AuthException("players must be outside an active match");
         }
+    }
+
+    private AuthException rankedParticipationConflict() {
+        return new AuthException("Leave ranked matchmaking or return to the active match before entering a custom lobby.");
     }
 
     private void rejectGuest(AppUser user) {
@@ -818,6 +905,7 @@ public class CustomLobbyService {
         private final Map<UUID, LobbyMember> members = new LinkedHashMap<>();
         private long nextMemberOrder = 1L;
         private UUID activeMatchId;
+        private UUID startReservationId;
         private int roundDurationSeconds = MatchTimingPolicy.DEFAULT_CUSTOM_ROUND_SECONDS;
 
         private ActiveLobby(UUID lobbyId, AppUser owner) {
@@ -836,6 +924,9 @@ public class CustomLobbyService {
             this.teamNumber = teamNumber;
             this.memberOrder = memberOrder;
         }
+    }
+
+    private record LobbyStartMember(AppUser user, int teamNumber) {
     }
 
     private static final class LobbyInvite {

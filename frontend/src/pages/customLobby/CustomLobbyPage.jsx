@@ -17,6 +17,7 @@ const MAX_TEAM_SIZE = 2;
 const STATUS_MESSAGE_DURATION_MS = 3500;
 const INVITE_RATE_LIMIT_MESSAGE = "Inviting too fast, please wait";
 const INVITE_FAILURE_MESSAGE = "Can not invite this player";
+const RANKED_PARTICIPATION_BLOCK_MESSAGE = "Leave ranked matchmaking or return to the active match before entering a custom lobby.";
 const MIN_ROUND_DURATION_SECONDS = 30;
 const MAX_ROUND_DURATION_SECONDS = 10 * 60;
 
@@ -139,6 +140,9 @@ export default function CustomLobbyPage() {
         customLobbyEvent,
         markActiveMatch,
         sendCustomLobbyChat,
+        isQueueing,
+        pendingAcceptance,
+        activeMatchStatus,
         queueGuarantees,
         updateQueueGuarantee,
         waitForQueueGuarantees,
@@ -157,6 +161,10 @@ export default function CustomLobbyPage() {
     const lobbyIdRef = useRef(null);
     const redirectingToMatchRef = useRef(false);
     const shouldCreate = location.state?.create === true;
+    const rankedParticipationActive = Boolean(
+        isQueueing || pendingAcceptance || activeMatchStatus?.activeMatch,
+    );
+    const rankedParticipationAtMountRef = useRef(rankedParticipationActive);
 
     const redirectToMatch = useCallback((matchId) => {
         if (!matchId || redirectingToMatchRef.current) return;
@@ -175,6 +183,13 @@ export default function CustomLobbyPage() {
         if (customLobbyEvent.type === "CUSTOM_LOBBY_MATCH_STARTED") return;
         if (customLobbyEvent.type !== "CUSTOM_LOBBY_STATE") return;
         if (!customLobbyEvent.lobby && !customLobbyEvent.message && lobbyIdRef.current) return;
+        if (!customLobbyEvent.lobby && customLobbyEvent.message) {
+            lobbyIdRef.current = null;
+            setLobby(null);
+            setLoadState("error");
+            setError(customLobbyEvent.message);
+            return;
+        }
         lobbyIdRef.current = customLobbyEvent.lobby?.lobbyId ?? null;
         setLobby(customLobbyEvent.lobby ?? null);
         setLoadState(customLobbyEvent.lobby ? "ready" : "empty");
@@ -239,6 +254,11 @@ export default function CustomLobbyPage() {
         const loadLobby = async () => {
             setLoadState("loading");
             setError(null);
+            if (shouldCreate && rankedParticipationAtMountRef.current) {
+                setLoadState("error");
+                setError(RANKED_PARTICIPATION_BLOCK_MESSAGE);
+                return;
+            }
             try {
                 const nextLobby = shouldCreate
                     ? await customLobbyRequest("/api/custom-lobbies", { method: "POST" })
@@ -329,6 +349,10 @@ export default function CustomLobbyPage() {
     };
 
     const createLobby = async () => {
+        if (rankedParticipationActive) {
+            setError(RANKED_PARTICIPATION_BLOCK_MESSAGE);
+            return undefined;
+        }
         const result = await performAction(
             "create",
             () => customLobbyRequest("/api/custom-lobbies", { method: "POST" }),
@@ -457,7 +481,7 @@ export default function CustomLobbyPage() {
                                     <div className="flex items-center gap-2">
                                         <label className="sr-only" htmlFor="custom-lobby-invite-username">Invite player</label>
                                         <input id="custom-lobby-invite-username" type="text" value={inviteUsername} onChange={(event) => setInviteUsername(event.target.value)} maxLength={20} placeholder="Username" className="h-10 min-w-0 flex-1 border border-slate-600 bg-[#202427] px-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-400" />
-                                        <button type="submit" disabled={!inviteUsername.trim() || action !== null} className="custom-lobby-invite-button h-10 shrink-0 border px-3 font-mono text-[9px] font-bold tracking-widest disabled:cursor-not-allowed">{action === "invite" ? "INVITING..." : "INVITE PLAYER"}</button>
+                                        <button type="submit" disabled={!inviteUsername.trim() || action !== null || rankedParticipationActive} className="custom-lobby-invite-button h-10 shrink-0 border px-3 font-mono text-[9px] font-bold tracking-widest disabled:cursor-not-allowed">{action === "invite" ? "INVITING..." : "INVITE PLAYER"}</button>
                                     </div>
                                     {inviteStatus && <p className={`mt-2 border-t border-slate-600/80 pt-2 text-[11px] leading-4 ${inviteStatus.kind === "error" ? "text-rose-200" : "text-emerald-200"}`} role={inviteStatus.kind === "error" ? "alert" : "status"}>{inviteStatus.message}</p>}
                                 </form>
@@ -500,12 +524,12 @@ export default function CustomLobbyPage() {
                     {loadState === "error" && (
                         <div className="mt-10 border border-rose-400/40 bg-rose-950/20 px-6 py-8" role="alert">
                             <p className="text-sm text-rose-200">{error}</p>
-                            <button type="button" onClick={createLobby} className="mt-5 h-11 border border-cyan-400/70 bg-cyan-950/40 px-5 font-mono text-[10px] font-bold tracking-widest text-cyan-100">CREATE CUSTOM LOBBY</button>
+                            <button type="button" onClick={createLobby} disabled={rankedParticipationActive} className="mt-5 h-11 border border-cyan-400/70 bg-cyan-950/40 px-5 font-mono text-[10px] font-bold tracking-widest text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50">CREATE CUSTOM LOBBY</button>
                         </div>
                     )}
                     {loadState === "empty" && (
                         <div className="mt-10 flex flex-1 items-center justify-center">
-                            <button type="button" onClick={createLobby} disabled={action !== null} className="h-12 border border-cyan-400/70 bg-cyan-950/50 px-6 font-mono text-xs font-bold tracking-widest text-cyan-100 hover:bg-cyan-900/50 disabled:cursor-wait disabled:opacity-50">{action === "create" ? "CREATING..." : "CREATE CUSTOM LOBBY"}</button>
+                            <button type="button" onClick={createLobby} disabled={action !== null || rankedParticipationActive} className="h-12 border border-cyan-400/70 bg-cyan-950/50 px-6 font-mono text-xs font-bold tracking-widest text-cyan-100 hover:bg-cyan-900/50 disabled:cursor-wait disabled:opacity-50">{action === "create" ? "CREATING..." : "CREATE CUSTOM LOBBY"}</button>
                         </div>
                     )}
                     {lobby && (

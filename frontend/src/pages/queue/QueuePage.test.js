@@ -17,6 +17,15 @@ test("queue errors use only the shared red popup instead of an inline queue card
     assert.match(providerSource, /bg-red-950/);
 });
 
+test("ranked queue controls are disabled for lobby members and custom-lobby entry is disabled during ranked activity", () => {
+    const queueSource = readFileSync(QUEUE_PAGE_PATH, "utf8");
+
+    assert.match(queueSource, /const hasCustomLobby = Boolean\(customLobby\?\.lobbyId\)/);
+    assert.match(queueSource, /const queueActionDisabled = !mode\.available[\s\S]*?\|\| hasCustomLobby/);
+    assert.match(queueSource, /rankedParticipationActive = Boolean\([\s\S]*?isQueueing \|\| pendingAcceptance \|\| activeMatchStatus\?\.activeMatch/);
+    assert.match(queueSource, /disabled=\{!hasCustomLobby && \(rankedParticipationActive \|\| !customLobbyChecked\)\}/);
+});
+
 test("route changes do not leave and rejoin an active queue", () => {
     const providerSource = readFileSync(MATCHMAKING_PROVIDER_PATH, "utf8");
     const queueEffect = providerSource.match(/useEffect\(\(\) => \{\s*if \(!hasGameAccess \|\| !queueConnectionEnabled\)[\s\S]*?\}, \[[\s\S]*?queueConnectionEnabled[\s\S]*?\]\);/);

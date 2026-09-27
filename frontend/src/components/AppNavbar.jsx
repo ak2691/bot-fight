@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/auth-context";
 import { useNotifications } from "../notifications/notification-context";
+import { useMatchmaking } from "../matchmaking/matchmaking-context";
 import BotLogo from "./BotLogo.jsx";
 import PartyPopover from "./PartyPopover.jsx";
 
@@ -10,6 +11,7 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
     const { pathname } = useLocation();
     const navbarRef = useRef(null);
     const { user, isAuthenticated, isGuest } = useAuth();
+    const { isQueueing, pendingAcceptance, activeMatchStatus } = useMatchmaking();
     const {
         pendingPartyInvites,
         pendingCustomLobbyInvites,
@@ -27,6 +29,9 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
     const isCharcoalPage = ["profile", "puzzles", "puzzle-builder", "puzzle-play", "abilities", "conditionals", "tutorial", "chat-reports"].includes(currentPage);
     const username = user?.username ?? "bot";
     const pendingNotificationCount = pendingPartyInvites.length + pendingCustomLobbyInvites.length;
+    const customLobbyEntryBlocked = Boolean(
+        isQueueing || pendingAcceptance || activeMatchStatus?.activeMatch,
+    );
 
     useEffect(() => {
         if (!notificationsOpen) return undefined;
@@ -110,6 +115,7 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
                                 customLobbyInvites={pendingCustomLobbyInvites}
                                 actionPendingInviteId={actionPendingInviteId}
                                 actionError={actionError}
+                                customLobbyEntryBlocked={customLobbyEntryBlocked}
                                 onAcceptParty={acceptPartyInvite}
                                 onAcceptCustomLobby={acceptCustomLobbyInvite}
                                 onDeclineParty={declinePartyInvite}
@@ -182,6 +188,7 @@ function NotificationPanel({
     customLobbyInvites,
     actionPendingInviteId,
     actionError,
+    customLobbyEntryBlocked,
     onAcceptParty,
     onAcceptCustomLobby,
     onDeclineParty,
@@ -227,7 +234,7 @@ function NotificationPanel({
                             </article>
                         );
                     })}
-                    {customLobbyInvites.map((invite) => {
+            {customLobbyInvites.map((invite) => {
                         const isPending = String(actionPendingInviteId) === String(invite.inviteId);
                         return (
                             <article key={`custom-lobby-${invite.inviteId}`} className="rounded-lg border border-fuchsia-800/80 bg-fuchsia-950/15 p-3">
@@ -237,7 +244,8 @@ function NotificationPanel({
                                 <div className="mt-3 flex gap-2">
                                     <button
                                         type="button"
-                                        disabled={isPending}
+                                        disabled={isPending || customLobbyEntryBlocked}
+                                        title={customLobbyEntryBlocked ? "Leave ranked matchmaking or return to your active match before joining a custom lobby." : undefined}
                                         onClick={() => void onAcceptCustomLobby(invite.inviteId)}
                                         className="min-h-9 flex-1 border border-emerald-400/50 bg-emerald-950/30 px-3 py-1.5 text-xs font-bold text-emerald-200 hover:border-emerald-300 disabled:cursor-wait disabled:opacity-50"
                                     >
@@ -252,6 +260,7 @@ function NotificationPanel({
                                         Decline
                                     </button>
                                 </div>
+                                {customLobbyEntryBlocked && <p className="mt-2 text-[11px] text-amber-200" role="status">Leave ranked matchmaking or return to your active match before joining a custom lobby.</p>}
                             </article>
                         );
                     })}
