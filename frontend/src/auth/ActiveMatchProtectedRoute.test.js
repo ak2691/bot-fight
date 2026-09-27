@@ -32,14 +32,15 @@ test("server failures use the server-down message", () => {
 
 test("queue alert notices dismiss without hiding full-page errors", () => {
     assert.match(providerSource, /QUEUE_ALERT_DISMISS_MS = 3_500/);
-    assert.match(providerSource, /if \(!queueError\) return undefined;/);
+    assert.match(providerSource, /if \(!queueError \|\| connectionStatus === "SESSION_LIMIT_REACHED"\) return undefined;/);
     assert.match(providerSource, /setQueueError\(\(current\) => current === queueError \? null : current\)/);
 });
 
-test("server-down screens ask users to refresh instead of offering a retry button", () => {
-    assert.match(routeSource, /Refresh to try again/);
+test("server failures enter the monitored server-recovery route", () => {
+    assert.match(routeSource, /Navigate to="\/error" replace/);
     assert.doesNotMatch(routeSource, /<button/);
-    assert.match(serverErrorPageSource, /Refresh to try again/);
+    assert.match(serverErrorPageSource, /We will send you back automatically when the server is healthy again/);
+    assert.match(serverErrorPageSource, /isAuthenticated \? "Return home" : "Return to login"/);
     assert.doesNotMatch(serverErrorPageSource, /Check again/);
     assert.doesNotMatch(serverErrorPageSource, /const retry =/);
 });

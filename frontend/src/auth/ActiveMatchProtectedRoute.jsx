@@ -1,5 +1,7 @@
 import { cloneElement, isValidElement } from "react";
+import { Navigate } from "react-router-dom";
 import ArenaLoadingScreen from "../components/ArenaLoadingScreen.jsx";
+import FatalRecoveryScreen from "../components/FatalRecoveryScreen.jsx";
 import { useMatchmaking } from "../matchmaking/matchmaking-context";
 import { SERVER_DOWN_MESSAGE } from "./serverError.js";
 
@@ -11,14 +13,8 @@ export default function ActiveMatchProtectedRoute({ children }) {
     }
 
     if (status.error) {
-        return (
-            <main className="min-h-screen flex flex-col items-center justify-center gap-4 bg-arena-deep px-5 text-ink-muted">
-                <p role="alert" className="text-center font-mono text-xs tracking-[0.15em]">{status.error}</p>
-                {status.error === SERVER_DOWN_MESSAGE && (
-                    <p className="text-center font-mono text-xs tracking-[0.15em]">Refresh to try again.</p>
-                )}
-            </main>
-        );
+        if (status.error === SERVER_DOWN_MESSAGE) return <Navigate to="/error" replace />;
+        return <FatalRecoveryScreen message={status.error} />;
     }
 
     return isValidElement(children)

@@ -29,10 +29,10 @@ import com.example.botfight.service.matchmaking.QueuePool;
 import com.example.botfight.service.party.PartyService;
 import com.example.botfight.service.party.PartyStatePublisher;
 import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
+import com.example.botfight.service.websocket.WebSocketSessionDisconnectedEvent;
 import java.security.Principal;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -60,7 +60,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Controller;
-import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 import org.springframework.web.socket.messaging.SessionSubscribeEvent;
 import org.springframework.web.socket.messaging.SessionUnsubscribeEvent;
 
@@ -592,6 +591,10 @@ public class MatchmakingSocketController {
             return;
         }
         String principalName = principal == null ? "" : principal.getName();
+        if (principal instanceof Authentication authentication) {
+            AppUser user = currentUserService.requireCurrentUser(authentication);
+            matchService.registerSocketSession(user.getId(), sessionId);
+        }
         matchSubscriptionsBySession
                 .computeIfAbsent(sessionId, ignored -> new ConcurrentHashMap<>())
                 .put(subscriptionId, principalName == null ? "" : principalName);
@@ -626,30 +629,25 @@ public class MatchmakingSocketController {
                 ? subscribedPrincipalName.get()
                 : principal.getName();
         if (principalName == null || principalName.isBlank()) {
-            log.warn("Ignoring match subscription removal without an authenticated principal. sessionId={}",
-                    sessionId);
             return;
         }
-        scheduleDisconnectDetection(principalName, sessionId);
     }
 
     @EventListener
-    public void handleDisconnect(SessionDisconnectEvent event) {
-        matchSubscriptionsBySession.remove(event.getSessionId());
-        Principal principal = event.getUser();
-        if (principal == null) {
-            log.warn("Ignoring WebSocket disconnect without an authenticated principal. sessionId={}",
-                    event.getSessionId());
-            return;
-        }
+    public void handleDisconnect(WebSocketSessionDisconnectedEvent event) {
+        if (event == null || event.principalName() == null || event.principalName().isBlank()) return;
+        String principalName = event.principalName();
+        String sessionId = event.sessionId();
+        matchSubscriptionsBySession.remove(sessionId);
+        matchService.unregisterSocketSession(principalName, sessionId);
         PartyService.LeaveResult partyChange = new PartyService.LeaveResult(
                 null,
                 null,
                 List.of());
         if (partyService != null) {
             partyChange = partyService.removeDisconnected(
-                    principal.getName(),
-                    event.getSessionId());
+                    principalName,
+                    sessionId);
             if (partyStatePublisher != null && !partyChange.recipients().isEmpty()) {
                 partyStatePublisher.send(
                         partyChange.recipients(),
@@ -663,10 +661,12 @@ public class MatchmakingSocketController {
                                 Instant.now()));
             }
         }
-        matchmakingService.markDisconnected(
-                principal.getName(),
-                event.getSessionId());
-        scheduleDisconnectDetection(principal.getName(), event.getSessionId());
+        if (event.finalSession()
+                && (singleUserWebSocketSessionRegistry == null
+                        || !singleUserWebSocketSessionRegistry.hasActiveSessionForPrincipal(principalName))) {
+            matchmakingService.markDisconnected(principalName, sessionId);
+            scheduleDisconnectDetection(principalName, sessionId);
+        }
     }
 
     private void scheduleDisconnectDetection(String principalName, String socketSessionId) {
@@ -677,6 +677,10 @@ public class MatchmakingSocketController {
                 Instant.now().plusSeconds(CONNECTION_LOSS_DETECTION_SECONDS),
                 "connection loss detection",
                 () -> {
+                    if (singleUserWebSocketSessionRegistry != null
+                            && singleUserWebSocketSessionRegistry.hasActiveSessionForPrincipal(principalName)) {
+                        return;
+                    }
                     if (hasMatchSubscription(socketSessionId)) {
                         log.info("Skipping connection-loss detection because the match subscription was restored. principal={}, sessionId={}",
                                 principalName,
@@ -907,13 +911,6 @@ public class MatchmakingSocketController {
                         }
                         return;
                     }
-                    Map<String, String> expectedChatSocketIds = new HashMap<>();
-                    events.stream()
-                            .filter(outbound -> matchId.equals(outbound.event().matchId()))
-                            .forEach(outbound -> expectedChatSocketIds.putIfAbsent(
-                                    outbound.principalName(),
-                                    singleUserWebSocketSessionRegistry.currentSessionIdForPrincipal(
-                                            outbound.principalName())));
                     scheduleSafely(
                             closeAt,
                             "match chat close",
@@ -934,16 +931,10 @@ public class MatchmakingSocketController {
                                         Instant.now());
                                 closure.recipientPrincipalNames().forEach(
                                         recipient -> {
-                                            String expectedSessionId = expectedChatSocketIds.get(recipient);
-                                            if (expectedSessionId == null || expectedSessionId.isBlank()) {
-                                                return;
-                                            }
                                             messagingTemplate.convertAndSendToUser(
                                                     recipient,
                                                     MatchmakingSocketDestinations.MATCH_CHAT,
-                                                    event,
-                                                    Map.of(SimpMessageHeaderAccessor.SESSION_ID_HEADER,
-                                                            expectedSessionId));
+                                                    event);
                                             // Match chat is a subscription-level concern. Keep
                                             // the authenticated transport alive for notifications;
                                             // the match route will remove its match subscriptions.

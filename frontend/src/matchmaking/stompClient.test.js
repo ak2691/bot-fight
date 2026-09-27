@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import {
+    AUTH_SESSION_INVALID,
+    AUTH_SESSION_TEMPORARY_FAILURE,
+    AUTH_SESSION_VALID,
+} from "../auth/authSession.js";
+import { createMatchmakingClient } from "./stompClient.js";
 
 const source = readFileSync(new URL("./stompClient.js", import.meta.url), "utf8");
 const providerSource = readFileSync(new URL("./MatchmakingProvider.jsx", import.meta.url), "utf8");
@@ -87,4 +93,265 @@ test("custom-lobby membership drops the ranked matchmaking subscription", () => 
 
 test("reconnecting queue clients rebind instead of publishing another join", () => {
     assert.match(source, /resumeQueue\(\) \{\s*publish\("\/app\/matchmaking\.resumeQueue"\)/);
+});
+
+function deferred() {
+    let resolve;
+    const promise = new Promise((resolvePromise) => { resolve = resolvePromise; });
+    return { promise, resolve };
+}
+
+function makeTransportFactory(transports) {
+    return (configuration) => {
+        const transport = {
+            configuration,
+            active: false,
+            connected: false,
+            reconnectDelay: configuration.reconnectDelay,
+            subscriptions: [],
+            deactivationCount: 0,
+            activate() { this.active = true; },
+            async deactivate() {
+                this.active = false;
+                this.connected = false;
+                this.deactivationCount += 1;
+            },
+            subscribe(destination, handler) {
+                const subscription = {
+                    destination,
+                    handler,
+                    unsubscribeCount: 0,
+                    unsubscribe() { this.unsubscribeCount += 1; },
+                };
+                this.subscriptions.push(subscription);
+                return subscription;
+            },
+            publish() {},
+        };
+        transports.push(transport);
+        return transport;
+    };
+}
+
+async function flushPromises() {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function makeClient({
+    transports,
+    authenticationProbe,
+    onAuthenticationLost = () => {},
+    onStatus,
+    csrfHeadersProvider = async () => ({ "X-XSRF-TOKEN": "test" }),
+    setTimeoutImpl,
+    clearTimeoutImpl,
+}) {
+    return createMatchmakingClient({
+        onAuthenticationLost,
+        onStatus,
+        autoReconnect: true,
+        transportFactory: makeTransportFactory(transports),
+        csrfHeadersProvider,
+        websocketUrlProvider: () => "ws://localhost/ws",
+        authenticationProbe,
+        ...(setTimeoutImpl ? { setTimeoutImpl } : {}),
+        ...(clearTimeoutImpl ? { clearTimeoutImpl } : {}),
+    });
+}
+
+test("transient WebSocket failures retain bounded exponential reconnect settings", async () => {
+    const transports = [];
+    const client = makeClient({
+        transports,
+        authenticationProbe: async () => AUTH_SESSION_TEMPORARY_FAILURE,
+    });
+
+    await client.connect();
+    const transport = transports[0];
+    assert.equal(transport.configuration.reconnectDelay, 2_000);
+    assert.equal(transport.configuration.maxReconnectDelay, 10_000);
+    assert.equal(transport.configuration.reconnectTimeMode, 1);
+
+    transport.onWebSocketClose({ code: 1006, reason: "backend unavailable" });
+    await flushPromises();
+
+    assert.equal(transport.active, true);
+    assert.equal(transport.reconnectDelay, 2_000);
+    assert.equal(transport.deactivationCount, 0);
+});
+
+test("transient CSRF bootstrap failures retry with bounded exponential delays", async () => {
+    const transports = [];
+    const scheduled = [];
+    let csrfAttemptCount = 0;
+    let probeCount = 0;
+    const client = makeClient({
+        transports,
+        csrfHeadersProvider: async () => {
+            csrfAttemptCount += 1;
+            if (csrfAttemptCount < 3) throw new Error("backend unavailable");
+            return { "X-XSRF-TOKEN": "test" };
+        },
+        authenticationProbe: async () => {
+            probeCount += 1;
+            return AUTH_SESSION_TEMPORARY_FAILURE;
+        },
+        setTimeoutImpl: (callback, delay) => {
+            scheduled.push({ callback, delay });
+            return scheduled.length;
+        },
+        clearTimeoutImpl: () => {},
+    });
+
+    await client.connect();
+    await flushPromises();
+    assert.deepEqual(scheduled.map(({ delay }) => delay), [2_000]);
+
+    scheduled[0].callback();
+    await flushPromises();
+    assert.deepEqual(scheduled.map(({ delay }) => delay), [2_000, 4_000]);
+
+    scheduled[1].callback();
+    await flushPromises();
+    assert.equal(csrfAttemptCount, 3);
+    assert.equal(probeCount, 2);
+    assert.equal(transports.length, 1);
+});
+
+test("confirmed session loss in a STOMP ERROR stops transport and notifies auth state", async () => {
+    const transports = [];
+    let authenticationLostCount = 0;
+    const client = makeClient({
+        transports,
+        authenticationProbe: async () => AUTH_SESSION_INVALID,
+        onAuthenticationLost: () => { authenticationLostCount += 1; },
+    });
+
+    await client.connect();
+    const transport = transports[0];
+    transport.connected = true;
+    transport.webSocket = { readyState: 1 };
+    client.subscribeMatchmaking();
+    const matchmakingSubscription = transport.subscriptions.find(
+        (subscription) => subscription.destination === "/user/queue/matchmaking",
+    );
+    matchmakingSubscription.handler({ body: JSON.stringify({ type: "QUEUED" }) });
+    transport.onStompError({ headers: { message: "session expired" } });
+    await flushPromises();
+
+    assert.equal(authenticationLostCount, 1);
+    assert.equal(transport.deactivationCount, 1);
+    assert.equal(transport.reconnectDelay, 0);
+    assert.ok(matchmakingSubscription.unsubscribeCount > 0);
+    assert.equal(client.isConnected(), false);
+    assert.equal(transports.length, 1);
+    client.setHandlers({ onEvent: () => assert.fail("stale event was replayed") });
+    await client.connect();
+    assert.equal(transports.length, 1);
+});
+
+test("duplicate auth probes are shared and stale probe results cannot stop a newer socket", async () => {
+    const transports = [];
+    const pendingProbe = deferred();
+    let probeCount = 0;
+    let authenticationLostCount = 0;
+    const client = makeClient({
+        transports,
+        authenticationProbe: () => {
+            probeCount += 1;
+            return pendingProbe.promise;
+        },
+        onAuthenticationLost: () => { authenticationLostCount += 1; },
+    });
+
+    await client.connect();
+    const oldTransport = transports[0];
+    oldTransport.onStompError({ headers: { message: "rejected" } });
+    oldTransport.onWebSocketError({});
+    await flushPromises();
+    assert.equal(probeCount, 1);
+
+    await client.disconnect();
+    await client.connect();
+    assert.equal(transports.length, 2);
+    pendingProbe.resolve(AUTH_SESSION_INVALID);
+    await flushPromises();
+
+    assert.equal(authenticationLostCount, 0);
+    assert.equal(transports[1].deactivationCount, 0);
+});
+
+test("a socket replaced by a newer connection stops without probing or reconnecting", async () => {
+    const transports = [];
+    let probeCount = 0;
+    const client = makeClient({
+        transports,
+        authenticationProbe: async () => {
+            probeCount += 1;
+            return AUTH_SESSION_VALID;
+        },
+    });
+
+    await client.connect();
+    transports[0].onWebSocketClose({
+        code: 1000,
+        reason: "Replaced by a newer connection",
+    });
+    await flushPromises();
+    await client.connect();
+
+    assert.equal(probeCount, 0);
+    assert.equal(transports[0].deactivationCount, 1);
+    assert.equal(transports.length, 1);
+});
+
+test("a capped tab stops reconnecting and reports a terminal session limit", async () => {
+    const transports = [];
+    const statuses = [];
+    let probeCount = 0;
+    const client = makeClient({
+        transports,
+        onStatus: (status) => statuses.push(status),
+        authenticationProbe: async () => {
+            probeCount += 1;
+            return AUTH_SESSION_VALID;
+        },
+    });
+
+    await client.connect();
+    const transport = transports[0];
+    transport.onWebSocketClose({
+        code: 1008,
+        reason: "Maximum active WebSocket sessions reached",
+    });
+    await flushPromises();
+    await client.connect();
+
+    assert.equal(statuses.at(-1), "SESSION_LIMIT_REACHED");
+    assert.equal(transport.deactivationCount, 1);
+    assert.equal(transport.reconnectDelay, 0);
+    assert.equal(probeCount, 0);
+    assert.equal(transports.length, 1);
+});
+
+test("an authentication probe survives a reconnect-attempt generation change on the same client", async () => {
+    const transports = [];
+    const pendingProbe = deferred();
+    let authenticationLostCount = 0;
+    const client = makeClient({
+        transports,
+        authenticationProbe: () => pendingProbe.promise,
+        onAuthenticationLost: () => { authenticationLostCount += 1; },
+    });
+
+    await client.connect();
+    const transport = transports[0];
+    transport.onStompError({ headers: { message: "session expired" } });
+    await flushPromises();
+    await transport.beforeConnect();
+    pendingProbe.resolve(AUTH_SESSION_INVALID);
+    await flushPromises();
+
+    assert.equal(authenticationLostCount, 1);
+    assert.equal(transport.deactivationCount, 1);
 });

@@ -110,7 +110,7 @@ class MatchmakingServiceTest {
         verify(matchService, never()).startMatch(any(), any());
 
         UUID pendingMatchId = found.getFirst().event().matchId();
-        var firstAccepted = service.acceptMatch(pendingMatchId, firstUserId, "socket-first");
+        var firstAccepted = service.acceptMatch(pendingMatchId, firstUserId, "socket-first-tab-two");
         assertThat(firstAccepted).hasSize(2).allSatisfy(event -> {
             assertThat(event.event().type()).isEqualTo("MATCH_ACCEPTED");
         });
@@ -137,7 +137,7 @@ class MatchmakingServiceTest {
         MatchmakingEventDTO started = startedEvent(firstUserId, secondUserId);
         when(matchService.startMatch(any(), any())).thenReturn(List.of(
                 new OutboundMatchmakingEvent("first@example.com", started)));
-        var startedEvents = service.acceptMatch(pendingMatchId, secondUserId, "socket-second");
+        var startedEvents = service.acceptMatch(pendingMatchId, secondUserId, "socket-second-tab-two");
         verify(matchService).startMatch(
                 firstCaptor.capture(),
                 secondCaptor.capture());
@@ -617,28 +617,24 @@ class MatchmakingServiceTest {
     }
 
     @Test
-    void staleSocketDisconnectDoesNotRemoveReplacementQueueSocket() {
+    void finalDisconnectFromAnotherTabRemovesTheUserQueueEntry() {
         UUID firstUserId = UUID.randomUUID();
         service.joinQueue(
                 firstUserId,
                 "alpha-secret",
                 "first@example.com",
-                "socket-old");
-        service.joinQueue(
-                firstUserId,
-                "first",
-                "first@example.com",
-                "socket-current");
+                "socket-queue-tab");
 
-        service.markDisconnected("first@example.com", "socket-old");
+        assertThat(service.markDisconnected("first@example.com", "socket-final-tab")).isTrue();
         var found = service.joinQueue(
                 UUID.randomUUID(),
                 "bravo-secret",
                 "second@example.com",
                 "socket-second");
 
-        assertThat(found).hasSize(2)
-                .allSatisfy(event -> assertThat(event.event().status()).isEqualTo("MATCH_ACCEPT"));
+        assertThat(found).singleElement()
+                .extracting(event -> event.event().type())
+                .isEqualTo("QUEUE_WAITING");
         verify(matchService, never()).startMatch(any(), any());
     }
 
@@ -886,7 +882,7 @@ class MatchmakingServiceTest {
         var found = service.joinQueue(secondUserId, "bravo-secret", "second@example.com", "socket-second");
 
         var cancelled = service.cancelPendingMatch(
-                found.getFirst().event().matchId(), firstUserId, "socket-first");
+                found.getFirst().event().matchId(), firstUserId, "socket-first-tab-two");
 
         assertThat(cancelled).hasSize(2).allSatisfy(event -> {
             assertThat(event.event().type()).isEqualTo("MATCH_ACCEPTANCE_CANCELLED");

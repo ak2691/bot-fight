@@ -11,6 +11,7 @@ import com.example.botfight.repository.UserRepository;
 import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.matchmaking.MatchmakingService;
 import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
+import com.example.botfight.service.websocket.WebSocketSessionDisconnectedEvent;
 import com.example.botfight.security.AuthenticatedUserDetails;
 import java.security.Principal;
 import java.time.Clock;
@@ -25,12 +26,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.event.EventListener;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.socket.messaging.SessionConnectEvent;
-import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,6 +52,7 @@ public class GuestLifecycleService {
     private final SingleUserWebSocketSessionRegistry socketRegistry;
     private final Clock clock;
     private final TaskScheduler scheduler;
+    private final TransactionTemplate cleanupTransactionTemplate;
     private final Map<UUID, Instant> disconnectedAtByGuestId = new ConcurrentHashMap<>();
 
     public GuestLifecycleService(
@@ -61,7 +63,8 @@ public class GuestLifecycleService {
             MatchService matchService,
             SingleUserWebSocketSessionRegistry socketRegistry,
             Clock clock,
-            @Qualifier("matchmakingLifecycleScheduler") TaskScheduler scheduler) {
+            @Qualifier("matchmakingLifecycleScheduler") TaskScheduler scheduler,
+            PlatformTransactionManager transactionManager) {
         this.userRepository = userRepository;
         this.matchRepository = matchRepository;
         this.matchParticipantRepository = matchParticipantRepository;
@@ -70,6 +73,7 @@ public class GuestLifecycleService {
         this.socketRegistry = socketRegistry;
         this.clock = clock;
         this.scheduler = scheduler;
+        this.cleanupTransactionTemplate = new TransactionTemplate(transactionManager);
     }
 
     @jakarta.annotation.PostConstruct
@@ -92,14 +96,20 @@ public class GuestLifecycleService {
     }
 
     @EventListener
-    public void handleSessionDisconnect(SessionDisconnectEvent event) {
-        UUID guestId = guestId(event == null ? null : event.getUser());
+    public void handleSessionDisconnect(WebSocketSessionDisconnectedEvent event) {
+        if (event == null || !event.finalSession()
+                || socketRegistry != null
+                    && socketRegistry.hasActiveSessionForPrincipal(event.principalName())) return;
+        UUID guestId = guestId(event.principal());
         if (guestId != null) disconnectedAtByGuestId.put(guestId, clock.instant());
     }
 
     /** Deletes disconnected guests after five minutes, while preserving active matches. */
-    @Transactional
     public synchronized int cleanupInactiveGuests() {
+        return cleanupTransactionTemplate.execute(status -> cleanupInactiveGuestsInTransaction());
+    }
+
+    private int cleanupInactiveGuestsInTransaction() {
         Instant now = clock.instant();
         List<AppUser> candidates = userRepository.findByGuestTrueOrderByIdAsc();
         if (candidates == null || candidates.isEmpty()) return 0;
@@ -163,6 +173,7 @@ public class GuestLifecycleService {
         List<MatchParticipant> ownedParticipants = matchParticipantRepository
                 .findByUserIdOrderByCreatedAtDesc(guest.getId());
         Set<Match> matches = new LinkedHashSet<>();
+        Set<MatchParticipant> participantsToDelete = new LinkedHashSet<>();
         for (MatchParticipant participant : ownedParticipants) {
             if (participant == null || participant.getMatch() == null) continue;
             Match match = participant.getMatch();
@@ -173,20 +184,27 @@ public class GuestLifecycleService {
             List<MatchParticipant> participants = matchParticipantRepository.findByMatchId(match.getId());
             if (participants == null || participants.isEmpty()
                     || participants.stream().anyMatch(other ->
-                            other.getUser() == null || !other.getUser().isGuest())) {
+                            other == null || other.getUser() == null || !other.getUser().isGuest())) {
                 // Never remove a guest from a match that may contain a real
                 // account. That protects registered-player history if an old
                 // deployment ever produced a mixed match.
                 return false;
             }
-            if (participants.stream().map(MatchParticipant::getUser)
+            if (participants.stream()
+                    .map(MatchParticipant::getUser)
                     .map(AppUser::getId)
-                    .anyMatch(this::hasActiveMatch)) {
+                    .anyMatch(userId -> hasTransientMatchmakingActivity(userId)
+                            || hasActiveMatch(userId))) {
                 return false;
             }
             matches.add(match);
+            participantsToDelete.addAll(participants);
         }
 
+        if (!participantsToDelete.isEmpty()) {
+            matchParticipantRepository.deleteAll(participantsToDelete);
+            matchParticipantRepository.flush();
+        }
         matches.forEach(matchRepository::delete);
         if (!matches.isEmpty()) matchRepository.flush();
         userRepository.delete(guest);

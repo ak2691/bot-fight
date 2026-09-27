@@ -69,6 +69,8 @@ class PartyServiceTest {
         when(matchService.activeMatchStatus(any())).thenReturn(ActiveMatchStatusDTO.none());
         when(socketRegistry.currentSessionIdForPrincipal(owner.getEmail())).thenReturn("owner-socket");
         when(socketRegistry.currentSessionIdForPrincipal(teammate.getEmail())).thenReturn("teammate-socket");
+        when(socketRegistry.hasActiveSessionForPrincipal(owner.getEmail())).thenReturn(true);
+        when(socketRegistry.hasActiveSessionForPrincipal(teammate.getEmail())).thenReturn(true);
     }
 
     @Test
@@ -256,6 +258,7 @@ class PartyServiceTest {
     @Test
     void aDisconnectMarksTheMemberOfflineWithoutRemovingThemFromTheParty() {
         var party = createPartyWithTeammate();
+        when(socketRegistry.hasActiveSessionForPrincipal(teammate.getEmail())).thenReturn(false);
         when(socketRegistry.currentSessionIdForPrincipal(teammate.getEmail())).thenReturn(null);
 
         PartyService.LeaveResult change = service.removeDisconnected(
@@ -273,6 +276,7 @@ class PartyServiceTest {
 
         when(socketRegistry.currentSessionIdForPrincipal(teammate.getEmail()))
                 .thenReturn("teammate-socket-new");
+        when(socketRegistry.hasActiveSessionForPrincipal(teammate.getEmail())).thenReturn(true);
         service.registerSocket(teammate.getEmail(), "teammate-socket-new");
 
         assertThat(service.currentForPrincipal(owner.getEmail()).members())
@@ -294,6 +298,32 @@ class PartyServiceTest {
                 .singleElement()
                 .extracting(PartyMemberDTO::online)
                 .isEqualTo(true);
+    }
+
+    @Test
+    void closingOnePartyTabLeavesTheMemberOnlineUntilTheFinalTabCloses() {
+        var party = createPartyWithTeammate();
+        service.registerSocket(teammate.getEmail(), "teammate-tab-two");
+
+        PartyService.LeaveResult firstClose = service.removeDisconnected(
+                teammate.getEmail(), "teammate-socket");
+
+        assertThat(firstClose.recipients()).isEmpty();
+        assertThat(service.currentForPrincipal(owner.getEmail()).members())
+                .filteredOn(member -> member.userId().equals(teammate.getId()))
+                .singleElement()
+                .extracting(PartyMemberDTO::online)
+                .isEqualTo(true);
+
+        when(socketRegistry.hasActiveSessionForPrincipal(teammate.getEmail())).thenReturn(false);
+        PartyService.LeaveResult finalClose = service.removeDisconnected(
+                teammate.getEmail(), "teammate-tab-two");
+        assertThat(finalClose.recipients()).hasSize(2);
+        assertThat(finalClose.party().members())
+                .filteredOn(member -> member.userId().equals(teammate.getId()))
+                .singleElement()
+                .extracting(PartyMemberDTO::online)
+                .isEqualTo(false);
     }
 
     @Test

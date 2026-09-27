@@ -134,7 +134,6 @@ public class MatchService {
                 ChatEvidenceRecorder.noOp());
     }
 
-    @Autowired
     public MatchService(
             MatchSimulationService matchSimulationService,
             MatchPersistenceService matchPersistenceService,
@@ -391,6 +390,35 @@ public class MatchService {
 
     public List<OutboundMatchmakingEvent> markDisconnected(String principalName) {
         return markDisconnected(principalName, null);
+    }
+
+    /** Adds an authenticated tab to the active match's user-level connection set. */
+    public void registerSocketSession(UUID userId, String socketSessionId) {
+        MatchSession session = userId == null ? null : activeSessionsByUserId.get(userId);
+        if (session == null || socketSessionId == null || socketSessionId.isBlank()) return;
+        withMatchLock(session.matchId(), () -> {
+            MatchSession current = activeSessionsByUserId.get(userId);
+            if (current != null && current.matchId().equals(session.matchId())) {
+                matchReconnectionService.registerSocketSession(userId, socketSessionId);
+            }
+            return null;
+        });
+    }
+
+    /** Removes exactly one closed tab, retaining match presence for other tabs. */
+    public void unregisterSocketSession(String principalName, String socketSessionId) {
+        MatchSession session = matchReconnectionService.findSessionForPrincipal(principalName);
+        if (session == null) return;
+        withMatchLock(session.matchId(), () -> {
+            MatchPlayer player = session.players().stream()
+                    .filter(candidate -> principalName.equals(candidate.principalName()))
+                    .findFirst()
+                    .orElse(null);
+            if (player != null) {
+                matchReconnectionService.unregisterSocketSession(player.userId(), socketSessionId);
+            }
+            return null;
+        });
     }
 
     public List<OutboundMatchmakingEvent> markDisconnected(

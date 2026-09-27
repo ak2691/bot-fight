@@ -99,7 +99,6 @@ public class MatchmakingService {
         this(matchService, clock, matchmakingRateLimiter, eloRatingService, new MatchAbilityGuaranteeService());
     }
 
-    @Autowired
     public MatchmakingService(
             MatchService matchService,
             Clock clock,
@@ -530,9 +529,6 @@ public class MatchmakingService {
         MatchEntrant disconnectedPlayer = group.members().stream()
                 .filter(player -> player.userId().equals(userId))
                 .filter(player -> player.principalName().equals(principalName))
-                .filter(player -> socketSessionId == null
-                        || player.socketSessionId() == null
-                        || player.socketSessionId().equals(socketSessionId))
                 .findFirst()
                 .orElse(null);
         if (disconnectedPlayer == null) return false;
@@ -601,9 +597,8 @@ public class MatchmakingService {
             }
 
             MatchEntrant acceptingPlayer = previous.entrantFor(userId);
-            if (acceptingPlayer == null
-                    || !socketMatches(acceptingPlayer.socketSessionId(), socketSessionId)) {
-                throw new AuthException("This match acceptance belongs to another connection.");
+            if (acceptingPlayer == null) {
+                throw new AuthException("This match acceptance is not available to this player.");
             }
 
             if (previous.starting()) {
@@ -700,8 +695,8 @@ public class MatchmakingService {
         }
 
         MatchEntrant cancellingPlayer = pending.entrantFor(userId);
-        if (cancellingPlayer == null || !socketMatches(cancellingPlayer.socketSessionId(), socketSessionId)) {
-            throw new AuthException("This match acceptance belongs to another connection.");
+        if (cancellingPlayer == null) {
+            throw new AuthException("This match acceptance is not available to this player.");
         }
         if (pending.starting()) {
             throw new AuthException("The match is already starting and cannot be cancelled.");
@@ -1521,12 +1516,6 @@ public class MatchmakingService {
                 .filter(candidate -> candidate.containsUser(userId))
                 .findFirst()
                 .orElse(null);
-    }
-
-    private static boolean socketMatches(String expectedSocketSessionId, String actualSocketSessionId) {
-        return expectedSocketSessionId == null
-                || actualSocketSessionId == null
-                || expectedSocketSessionId.equals(actualSocketSessionId);
     }
 
     private List<OutboundMatchmakingEvent> waitingEvents(QueuedGroup group) {

@@ -209,12 +209,12 @@ export default function MatchmakingProvider({ children }) {
     }, [isAuthenticated, user?.id]);
 
     useEffect(() => {
-        if (!queueError) return undefined;
+        if (!queueError || connectionStatus === "SESSION_LIMIT_REACHED") return undefined;
         const timeout = window.setTimeout(() => {
             setQueueError((current) => current === queueError ? null : current);
         }, QUEUE_ALERT_DISMISS_MS);
         return () => window.clearTimeout(timeout);
-    }, [queueError]);
+    }, [connectionStatus, queueError]);
 
     const requestActiveMatchStatus = useCallback((signal) => {
         const now = Date.now();
@@ -814,6 +814,19 @@ export default function MatchmakingProvider({ children }) {
             onStatus: (status) => {
                 if (disposed) return;
                 setConnectionStatus(status);
+                if (status === "SESSION_LIMIT_REACHED") {
+                    queueResumeInFlightRef.current = false;
+                    queueServerStateKnownRef.current = false;
+                    setQueueReconnectDeadline(null);
+                    const message = "This account already has five active browser sessions. Close another tab, then refresh this page.";
+                    if (acceptanceActiveRef.current) {
+                        acceptanceSubmitPendingRef.current = false;
+                        setAcceptanceError(message);
+                    } else {
+                        setQueueError(message);
+                    }
+                    return;
+                }
                 if (status === "ERROR" || status === "CLOSED") {
                     queueResumeInFlightRef.current = false;
                     queueServerStateKnownRef.current = false;

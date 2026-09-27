@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import ArenaLoadingScreen from "../components/ArenaLoadingScreen.jsx";
+import FatalRecoveryScreen from "../components/FatalRecoveryScreen.jsx";
 import { useMatchmaking } from "../matchmaking/matchmaking-context";
 import { SERVER_DOWN_MESSAGE } from "./serverError.js";
 
@@ -39,14 +40,8 @@ export default function MatchProtectedRoute({ children }) {
     }
 
     if (routeStatus.error) {
-        return (
-            <main className="min-h-screen flex flex-col items-center justify-center gap-4 bg-arena-deep px-5 text-ink-muted">
-                <p role="alert" className="text-center font-mono text-xs tracking-[0.15em]">{routeStatus.error}</p>
-                {routeStatus.error === SERVER_DOWN_MESSAGE && (
-                    <p className="text-center font-mono text-xs tracking-[0.15em]">Refresh to try again.</p>
-                )}
-            </main>
-        );
+        if (routeStatus.error === SERVER_DOWN_MESSAGE) return <Navigate to="/error" replace />;
+        return <FatalRecoveryScreen message={routeStatus.error} />;
     }
 
     if (routeStatus.activeMatch !== true) {

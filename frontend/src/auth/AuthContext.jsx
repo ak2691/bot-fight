@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AuthContext } from "./auth-context";
 import {
     GUEST_USER,
-    isAnonymousResponse,
-    isAuthenticatedResponse,
     isDefinitiveAuthFailure,
+    normalizeCurrentUserResponse,
 } from "./authState";
 import { ensureCsrfHeaders } from "../security/csrf";
 import { apiUrl } from "../config/api";
+import { subscribeToAuthenticationLoss } from "./authSession";
 
 async function authFetch(path, options = {}) {
     const method = options.method ?? "GET";
@@ -35,27 +35,24 @@ async function authFetch(path, options = {}) {
     return body;
 }
 
-function normalizeCurrentUserResponse(currentUser) {
-    if (isAuthenticatedResponse(currentUser)) return currentUser;
-    if (currentUser?.guest === true) return currentUser;
-    if (isAnonymousResponse(currentUser)) return GUEST_USER;
-    throw new Error("Invalid authentication response");
-}
-
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(GUEST_USER);
     const [isLoading, setIsLoading] = useState(true);
     const [authError, setAuthError] = useState(null);
+    const authRevisionRef = useRef(0);
 
     const refreshUser = useCallback(async () => {
+        const requestRevision = authRevisionRef.current;
         setIsLoading(true);
         setAuthError(null);
         try {
             const currentUser = await authFetch("/api/auth/me", { method: "GET" });
+            if (requestRevision !== authRevisionRef.current) return null;
             const nextUser = normalizeCurrentUserResponse(currentUser);
             setUser(nextUser);
             return nextUser;
         } catch (error) {
+            if (requestRevision !== authRevisionRef.current) return null;
             if (isDefinitiveAuthFailure(error)) {
                 setUser(GUEST_USER);
                 return GUEST_USER;
@@ -66,9 +63,16 @@ export function AuthProvider({ children }) {
             setAuthError(error);
             return null;
         } finally {
-            setIsLoading(false);
+            if (requestRevision === authRevisionRef.current) setIsLoading(false);
         }
     }, []);
+
+    useEffect(() => subscribeToAuthenticationLoss(() => {
+        authRevisionRef.current += 1;
+        setUser(GUEST_USER);
+        setAuthError(null);
+        setIsLoading(false);
+    }), []);
 
     useEffect(() => {
         refreshUser();
@@ -79,6 +83,7 @@ export function AuthProvider({ children }) {
             method: "POST",
             body: JSON.stringify({ email, password }),
         });
+        authRevisionRef.current += 1;
         setAuthError(null);
         setUser(loggedInUser);
         return loggedInUser;
@@ -89,6 +94,7 @@ export function AuthProvider({ children }) {
             method: "POST",
             body: JSON.stringify({}),
         });
+        authRevisionRef.current += 1;
         setAuthError(null);
         setUser(guestUser);
         return guestUser;
@@ -106,6 +112,7 @@ export function AuthProvider({ children }) {
             method: "POST",
             body: JSON.stringify({ email, code }),
         });
+        authRevisionRef.current += 1;
         setAuthError(null);
         setUser(verifiedUser);
         return verifiedUser;
@@ -146,6 +153,7 @@ export function AuthProvider({ children }) {
             method: "POST",
             body: JSON.stringify({ currentPassword, newPassword, confirmPassword }),
         });
+        authRevisionRef.current += 1;
         setAuthError(null);
         setUser(updatedUser);
         return updatedUser;
@@ -156,6 +164,7 @@ export function AuthProvider({ children }) {
             method: "POST",
             body: JSON.stringify({ email, password }),
         });
+        authRevisionRef.current += 1;
         setAuthError(null);
         setUser(linkedUser);
         return linkedUser;
@@ -166,6 +175,7 @@ export function AuthProvider({ children }) {
             method: "POST",
             body: JSON.stringify({ username }),
         });
+        authRevisionRef.current += 1;
         setAuthError(null);
         setUser(completedUser);
         return completedUser;
@@ -178,6 +188,7 @@ export function AuthProvider({ children }) {
         });
         try {
             const currentUser = await authFetch("/api/auth/me", { method: "GET" });
+            authRevisionRef.current += 1;
             setAuthError(null);
             setUser(normalizeCurrentUserResponse(currentUser));
         } catch (error) {
@@ -194,6 +205,7 @@ export function AuthProvider({ children }) {
 
     const logout = useCallback(async () => {
         const guest = await authFetch("/api/auth/logout", { method: "POST" });
+        authRevisionRef.current += 1;
         setAuthError(null);
         setUser(guest);
         return guest;

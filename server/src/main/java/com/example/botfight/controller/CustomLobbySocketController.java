@@ -12,6 +12,7 @@ import com.example.botfight.service.customlobby.CustomLobbyChatSubmission;
 import com.example.botfight.service.customlobby.CustomLobbyChatSubmissionStatus;
 import com.example.botfight.service.customlobby.CustomLobbyService;
 import com.example.botfight.service.customlobby.CustomLobbyStatePublisher;
+import com.example.botfight.service.websocket.WebSocketSessionDisconnectedEvent;
 import java.security.Principal;
 import java.util.List;
 import org.springframework.messaging.handler.annotation.MessageMapping;
@@ -20,7 +21,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.stereotype.Controller;
-import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 import org.springframework.web.socket.messaging.SessionSubscribeEvent;
 
 /** Binds the live custom-lobby snapshot to its own authenticated user queue. */
@@ -121,12 +121,11 @@ public class CustomLobbySocketController {
     }
 
     @EventListener
-    public void handleDisconnect(SessionDisconnectEvent event) {
-        Principal principal = event.getUser();
-        if (principal == null) return;
+    public void handleDisconnect(WebSocketSessionDisconnectedEvent event) {
+        if (event == null || event.principalName() == null) return;
         CustomLobbyService.LobbyChange change = customLobbyService.removeDisconnected(
-                principal.getName(),
-                event.getSessionId());
+                event.principalName(),
+                event.sessionId());
         if (change.recipients().isEmpty()) return;
         customLobbyStatePublisher.send(
                 change.recipients(),

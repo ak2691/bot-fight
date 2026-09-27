@@ -171,19 +171,9 @@ export function createArenaPresentationAssetOwner({
         return inFlight;
     }
 
-    function retry() {
-        if (status === ARENA_ASSET_STATUS.FAILED) {
-            status = ARENA_ASSET_STATUS.IDLE;
-            error = null;
-            notify();
-        }
-        return preload();
-    }
-
     return {
         getState: snapshot,
         preload,
-        retry,
         subscribe(listener) {
             listeners.add(listener);
             return () => listeners.delete(listener);

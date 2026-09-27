@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { preloadPixiRoutes } from "../../routeLoaders.js";
 
 const INITIAL_PIXI_PRELOAD_STATE = Object.freeze({
@@ -20,8 +20,6 @@ const INITIAL_ASSET_STATE = Object.freeze({
 export function useArenaPresentationAssets({ enabled = true } = {}) {
     const [state, setState] = useState(INITIAL_ASSET_STATE);
     const [pixiPreloadState, setPixiPreloadState] = useState(INITIAL_PIXI_PRELOAD_STATE);
-    const assetsApiRef = useRef(null);
-    const pixiApiRef = useRef(null);
 
     useEffect(() => {
         if (!enabled) return undefined;
@@ -39,8 +37,6 @@ export function useArenaPresentationAssets({ enabled = true } = {}) {
             ]);
             if (!active) return;
 
-            assetsApiRef.current = assetsApi;
-            pixiApiRef.current = pixiApi;
             unsubscribe = assetsApi.subscribeToArenaPresentationAssets(update);
             update(assetsApi.getArenaPresentationAssetsState());
             const assetsPromise = assetsApi.preloadArenaPresentationAssets();
@@ -68,28 +64,8 @@ export function useArenaPresentationAssets({ enabled = true } = {}) {
         return () => {
             active = false;
             unsubscribe();
-            assetsApiRef.current = null;
-            pixiApiRef.current = null;
         };
     }, [enabled]);
-
-    const retry = useCallback(() => {
-        const assetsApi = assetsApiRef.current;
-        const pixiApi = pixiApiRef.current;
-        if (!assetsApi || !pixiApi) return;
-
-        setPixiPreloadState(INITIAL_PIXI_PRELOAD_STATE);
-        const assetsPromise = assetsApi.retryArenaPresentationAssets();
-        setState(assetsApi.getArenaPresentationAssetsState());
-        void assetsPromise.then(() => {
-            setState(assetsApi.getArenaPresentationAssetsState());
-        }, () => {
-            setState(assetsApi.getArenaPresentationAssetsState());
-        });
-        void startPixiPreload(assetsPromise, true, setPixiPreloadState, pixiApi).catch((error) => {
-            setPixiPreloadState((current) => ({ ...current, backgroundError: error }));
-        });
-    }, []);
 
     const error = pixiPreloadState.rendererError;
     return {
@@ -97,7 +73,6 @@ export function useArenaPresentationAssets({ enabled = true } = {}) {
         ...pixiPreloadState,
         arenaAssetError: state.error,
         error,
-        retry,
     };
 }
 

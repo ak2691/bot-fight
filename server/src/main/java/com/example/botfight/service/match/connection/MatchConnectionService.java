@@ -15,7 +15,7 @@ public class MatchConnectionService {
     private static final int DISCONNECT_GRACE_SECONDS = 30;
 
     private final Clock clock;
-    private final Map<UUID, String> activeSocketSessionIdsByUserId = new HashMap<>();
+    private final Map<UUID, Set<String>> activeSocketSessionIdsByUserId = new HashMap<>();
     private final Map<UUID, String> pendingDisconnectSocketSessionIdsByUserId = new HashMap<>();
     private final Map<UUID, Instant> disconnectDeadlinesByUserId = new HashMap<>();
     private final Set<UUID> pausedDisconnectUserIds = new HashSet<>();
@@ -25,8 +25,9 @@ public class MatchConnectionService {
     }
 
     public synchronized void registerSocket(UUID userId, String socketSessionId) {
-        if (socketSessionId != null && !socketSessionId.isBlank()) {
-            activeSocketSessionIdsByUserId.put(userId, socketSessionId);
+        if (userId != null && socketSessionId != null && !socketSessionId.isBlank()) {
+            activeSocketSessionIdsByUserId.computeIfAbsent(userId, ignored -> new HashSet<>())
+                    .add(socketSessionId);
         }
     }
 
@@ -42,18 +43,19 @@ public class MatchConnectionService {
                 || pausedDisconnectUserIds.contains(userId)) {
             return false;
         }
-        String activeSocketSessionId = activeSocketSessionIdsByUserId.get(userId);
-        if (socketSessionId != null && !socketSessionId.equals(activeSocketSessionId)) {
-            return false;
-        }
-
-        if (socketSessionId == null) {
-            activeSocketSessionIdsByUserId.remove(userId);
-        } else {
-            activeSocketSessionIdsByUserId.remove(userId, socketSessionId);
-        }
+        Set<String> activeSocketSessionIds = activeSocketSessionIdsByUserId.get(userId);
+        removeSocketLocked(userId, socketSessionId);
+        if (activeSocketSessionIds != null && !activeSocketSessionIds.isEmpty()) return false;
         pendingDisconnectSocketSessionIdsByUserId.put(userId, socketSessionId);
         return true;
+    }
+
+    /** Removes a closed tab without starting a match disconnect while another tab remains. */
+    public synchronized boolean unregisterSocket(UUID userId, String socketSessionId) {
+        if (userId == null || socketSessionId == null || socketSessionId.isBlank()) return false;
+        removeSocketLocked(userId, socketSessionId);
+        Set<String> remaining = activeSocketSessionIdsByUserId.get(userId);
+        return remaining == null || remaining.isEmpty();
     }
 
     public synchronized boolean pauseDisconnectForReplay(UUID userId) {
@@ -88,16 +90,9 @@ public class MatchConnectionService {
         if (disconnectDeadlinesByUserId.containsKey(userId)) {
             return null;
         }
-        String activeSocketSessionId = activeSocketSessionIdsByUserId.get(userId);
-        if (socketSessionId != null && !socketSessionId.equals(activeSocketSessionId)) {
-            return null;
-        }
-
-        if (socketSessionId == null) {
-            activeSocketSessionIdsByUserId.remove(userId);
-        } else {
-            activeSocketSessionIdsByUserId.remove(userId, socketSessionId);
-        }
+        removeSocketLocked(userId, socketSessionId);
+        Set<String> activeSocketSessionIds = activeSocketSessionIdsByUserId.get(userId);
+        if (activeSocketSessionIds != null && !activeSocketSessionIds.isEmpty()) return null;
         pendingDisconnectSocketSessionIdsByUserId.remove(userId);
         pausedDisconnectUserIds.remove(userId);
         Instant deadline = Instant.now(clock).plusSeconds(DISCONNECT_GRACE_SECONDS);
@@ -118,5 +113,14 @@ public class MatchConnectionService {
         pendingDisconnectSocketSessionIdsByUserId.remove(userId);
         disconnectDeadlinesByUserId.remove(userId);
         pausedDisconnectUserIds.remove(userId);
+    }
+
+    private void removeSocketLocked(UUID userId, String socketSessionId) {
+        if (userId == null) return;
+        Set<String> active = activeSocketSessionIdsByUserId.get(userId);
+        if (active == null) return;
+        if (socketSessionId == null) active.clear();
+        else active.remove(socketSessionId);
+        if (active.isEmpty()) activeSocketSessionIdsByUserId.remove(userId);
     }
 }

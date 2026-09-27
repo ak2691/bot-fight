@@ -1,6 +1,7 @@
 package com.example.botfight.config;
 
 import static org.springframework.messaging.simp.SimpMessageType.DISCONNECT;
+import static org.springframework.messaging.simp.SimpMessageType.CONNECT;
 import static org.springframework.messaging.simp.SimpMessageType.MESSAGE;
 import static org.springframework.messaging.simp.SimpMessageType.SUBSCRIBE;
 import static org.springframework.messaging.simp.SimpMessageType.UNSUBSCRIBE;
@@ -20,6 +21,8 @@ public class WebSocketSecurityConfig {
     AuthorizationManager<Message<?>> messageAuthorizationManager(
             MessageMatcherDelegatingAuthorizationManager.Builder messages) {
         messages
+                .simpTypeMatchers(UNSUBSCRIBE, DISCONNECT).permitAll()
+                .simpTypeMatchers(CONNECT).authenticated()
                 .nullDestMatcher().authenticated()
                 .simpDestMatchers(
                         "/app/matchmaking.join",
@@ -42,7 +45,6 @@ public class WebSocketSecurityConfig {
                         "/user/queue/notifications",
                         "/user/queue/party",
                         "/user/queue/custom-lobby").hasAnyRole("USER", "ADMIN")
-                .simpTypeMatchers(UNSUBSCRIBE, DISCONNECT).authenticated()
                 .simpTypeMatchers(MESSAGE, SUBSCRIBE).denyAll()
                 .anyMessage().denyAll();
         return messages.build();

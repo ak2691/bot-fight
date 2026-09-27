@@ -16,6 +16,40 @@ import org.springframework.security.messaging.access.intercept.MessageMatcherDel
 class WebSocketSecurityConfigTest {
 
     @Test
+    void unauthenticatedConnectionsMayOnlySendCleanupFrames() {
+        MessageMatcherDelegatingAuthorizationManager.Builder messages =
+                MessageMatcherDelegatingAuthorizationManager.builder();
+        AuthorizationManager<Message<?>> manager =
+                new WebSocketSecurityConfig().messageAuthorizationManager(messages);
+        Supplier<Authentication> anonymous = () -> null;
+
+        Message<byte[]> unsubscribe = MessageBuilder.withPayload(new byte[0])
+                .setHeader(SimpMessageHeaderAccessor.MESSAGE_TYPE_HEADER, SimpMessageType.UNSUBSCRIBE)
+                .setHeader(SimpMessageHeaderAccessor.DESTINATION_HEADER, "/user/queue/matchmaking")
+                .build();
+        Message<byte[]> disconnect = MessageBuilder.withPayload(new byte[0])
+                .setHeader(SimpMessageHeaderAccessor.MESSAGE_TYPE_HEADER, SimpMessageType.DISCONNECT)
+                .build();
+        Message<byte[]> connect = MessageBuilder.withPayload(new byte[0])
+                .setHeader(SimpMessageHeaderAccessor.MESSAGE_TYPE_HEADER, SimpMessageType.CONNECT)
+                .build();
+        Message<byte[]> subscribe = MessageBuilder.withPayload(new byte[0])
+                .setHeader(SimpMessageHeaderAccessor.MESSAGE_TYPE_HEADER, SimpMessageType.SUBSCRIBE)
+                .setHeader(SimpMessageHeaderAccessor.DESTINATION_HEADER, "/user/queue/matchmaking")
+                .build();
+        Message<byte[]> message = MessageBuilder.withPayload(new byte[0])
+                .setHeader(SimpMessageHeaderAccessor.MESSAGE_TYPE_HEADER, SimpMessageType.MESSAGE)
+                .setHeader(SimpMessageHeaderAccessor.DESTINATION_HEADER, "/app/matchmaking.join")
+                .build();
+
+        assertThat(manager.authorize(anonymous, unsubscribe).isGranted()).isTrue();
+        assertThat(manager.authorize(anonymous, disconnect).isGranted()).isTrue();
+        assertThat(manager.authorize(anonymous, connect).isGranted()).isFalse();
+        assertThat(manager.authorize(anonymous, subscribe).isGranted()).isFalse();
+        assertThat(manager.authorize(anonymous, message).isGranted()).isFalse();
+    }
+
+    @Test
     void authenticatedUsersMayResumeMatchmakingState() {
         MessageMatcherDelegatingAuthorizationManager.Builder messages =
                 MessageMatcherDelegatingAuthorizationManager.builder();

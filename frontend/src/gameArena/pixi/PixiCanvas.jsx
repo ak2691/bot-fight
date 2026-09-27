@@ -12,7 +12,9 @@ import { toSimulationBotShape } from "../modelPayloads/arenaShapes.js";
 import { interpolatePosition } from "./snapshotInterpolation.js";
 import { activeBotVisual, closingZoneDamageOccurred, entityCaption, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, heavySlashRotation, isBotShape, LOCK_ON_PRESENTATION, lockOnTargetPoint, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, shapeInterpolationMs, shapeWithoutVisualEvent, visualAnimationDescriptorForShape, visualForShape, visualInstanceForShape, visualInstanceIsActive, VISUAL_LIFECYCLES, visualSizeForShape } from "./pixiVisualState.js";
 import { spriteFrame, spriteFrameAtProgress } from "./arenaSpriteAssets.js";
-import { loadArenaPresentationAssets, retryArenaPresentationAssets } from "./arenaPresentationAssets.js";
+import { loadArenaPresentationAssets } from "./arenaPresentationAssets.js";
+import FatalRecoveryScreen from "../../components/FatalRecoveryScreen.jsx";
+import { isUnsupportedWebGL } from "../../auth/fatalRecovery.js";
 import { textureMuzzleAnchor } from "./abilitySpriteAssets.js";
 import { visualRayLength } from "./rayPresentationGeometry.js";
 import { advanceParticle } from "./particleMotion.js";
@@ -138,7 +140,6 @@ export default function PixiCanvas({
     const optionsRef = useRef({});
     const [assetError, setAssetError] = useState(null);
     const [arenaReady, setArenaReady] = useState(false);
-    const [assetRetryToken, setAssetRetryToken] = useState(0);
     useEffect(() => {
         optionsRef.current = {
             shapes: presentationShapes,
@@ -201,14 +202,7 @@ export default function PixiCanvas({
             detachResizeObserver();
             if (app) releasePixiApplication(app);
         };
-    }, [assetRetryToken]);
-
-    const retryAssetLoad = () => {
-        setAssetError(null);
-        setArenaReady(false);
-        void retryArenaPresentationAssets().catch(() => { });
-        setAssetRetryToken((current) => current + 1);
-    };
+    }, []);
 
     const bots = presentationShapes.filter(isBotShape);
     const blueTeamBots = bots.filter((bot) => botColorRole(bot) === "blue");
@@ -253,15 +247,21 @@ export default function PixiCanvas({
             >
                 <div ref={hostRef} className="pixi-arena-host absolute inset-0" />
                 {assetError && (
-                    <div role="alert" className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-[#0d1117] px-6 text-center text-slate-300">
-                        <p className="font-mono text-[11px] font-bold tracking-[0.18em] text-red-300">ARENA ASSETS UNAVAILABLE</p>
-                        <p className="max-w-md text-xs leading-5 text-slate-400">
-                            {assetError.assetId ? `Failed asset: ${assetError.assetId}. ` : "The Pixi arena could not initialize. "}
-                            {assetError.message}
-                        </p>
-                        <button type="button" onClick={retryAssetLoad} className="border border-cyan-500/70 bg-cyan-950/30 px-4 py-2 font-mono text-[10px] font-bold tracking-widest text-cyan-200 hover:bg-cyan-900/50">
-                            RETRY ARENA ASSETS
-                        </button>
+                    <div className="absolute inset-0 z-10 bg-[#0d1117]">
+                        {isUnsupportedWebGL(assetError) ? (
+                            <FatalRecoveryScreen
+                                compact
+                                title="WebGL is unavailable"
+                                message="This browser or device does not support the WebGL graphics needed by the game. Try a browser or device with WebGL support."
+                                showRefresh={false}
+                            />
+                        ) : (
+                            <FatalRecoveryScreen
+                                compact
+                                title="Arena files could not be loaded"
+                                message="The current arena files could not be loaded. Refresh the page to load the current application version."
+                            />
+                        )}
                     </div>
                 )}
                 {showArenaHelp && !lockCamera && (

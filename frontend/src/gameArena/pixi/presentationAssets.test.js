@@ -149,6 +149,7 @@ test("Pixi modules stay out of login until the signed-in asset gate starts", () 
     const hookSource = readFileSync(PRESENTATION_ASSET_HOOK_PATH, "utf8");
     const providerSource = readFileSync(PRESENTATION_ASSET_PROVIDER_PATH, "utf8");
     const protectedRouteSource = readFileSync(PROTECTED_ROUTE_PATH, "utf8");
+    const fatalSource = readFileSync(new URL("../../components/FatalRecoveryScreen.jsx", import.meta.url), "utf8");
     assert.doesNotMatch(hookSource, /from ["']\.\/arenaPresentationAssets\.js["']/);
     assert.doesNotMatch(hookSource, /from ["']\.\/pixiApplication\.js["']/);
     assert.match(hookSource, /import\("\.\/arenaPresentationAssets\.js"\)/);
@@ -161,7 +162,9 @@ test("Pixi modules stay out of login until the signed-in asset gate starts", () 
     assert.match(protectedRouteSource, /isArenaPresentationGateReady/);
     assert.match(protectedRouteSource, /Initializing game renderer\.\.\./);
     assert.doesNotMatch(protectedRouteSource, /Preparing ability icons\.\.\./);
-    assert.match(protectedRouteSource, /onRetry=\{assets\.error \? assets\.retry : null\}/);
+    assert.match(protectedRouteSource, /isUnsupportedWebGL\(assets\.error\)/);
+    assert.doesNotMatch(protectedRouteSource, /assets\.retry|onRetry=/);
+    assert.match(fatalSource, /Refresh page/);
 });
 
 test("asset preload completion keeps the owner state instead of storing the texture catalogue", () => {

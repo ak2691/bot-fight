@@ -5,7 +5,7 @@ export function isAuthenticatedResponse(user) {
 }
 
 export function isAnonymousResponse(user) {
-    return user?.authenticated === false;
+    return user?.authenticated === false && user?.guest !== true;
 }
 
 export function isDefinitiveAuthFailure(error) {
@@ -16,4 +16,11 @@ export function authUnavailableMessage(error) {
     return Number(error?.status) === 429
         ? "Too many requests. Try again shortly."
         : "Unable to verify your session right now. Try again.";
+}
+
+export function normalizeCurrentUserResponse(currentUser) {
+    if (isAuthenticatedResponse(currentUser)) return currentUser;
+    if (currentUser?.guest === true) return currentUser;
+    if (isAnonymousResponse(currentUser)) return GUEST_USER;
+    throw new Error("Invalid authentication response");
 }

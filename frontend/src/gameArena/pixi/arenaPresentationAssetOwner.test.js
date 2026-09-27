@@ -93,7 +93,7 @@ test("completed preload reuses the catalogue without loading again", async () =>
     assert.equal(catalogueCalls, 1);
 });
 
-test("failed preload exposes the asset and retry safely starts a new attempt", async () => {
+test("failed preload stays failed until the page is refreshed", async () => {
     const loadCounts = new Map();
     const owner = ownerWithLoader(async (loadAsset) => {
         const bot = await loadAsset("bot.png", "bot.bot");
@@ -120,13 +120,10 @@ test("failed preload exposes the asset and retry safely starts a new attempt", a
     await assert.rejects(owner.preload());
     assert.equal(loadCounts.get("bot.png"), 1);
 
-    const recovered = await owner.retry();
-    assert.equal(recovered.abilities.bot.id, "bot.png-texture");
-    assert.equal(loadCounts.get("bot.png"), 2);
-    assert.equal(loadCounts.get("drone.png"), 1);
-    assert.equal(owner.getState().status, ARENA_ASSET_STATUS.READY);
-    assert.equal(owner.getState().loadedCount, 2);
-    assert.equal(owner.getState().totalCount, 2);
+    assert.equal(typeof owner.retry, "undefined");
+    await assert.rejects(owner.preload(), /Unable to load required arena asset/);
+    assert.equal(loadCounts.get("bot.png"), 1);
+    assert.equal(owner.getState().status, ARENA_ASSET_STATUS.FAILED);
 });
 
 test("home readiness stays gated until the shared catalogue is ready", () => {

@@ -69,7 +69,7 @@ public class PartyService {
     private final Map<UUID, Party> activePartiesById = new HashMap<>();
     private final Map<UUID, UUID> partyIdsByUserId = new HashMap<>();
     private final Map<UUID, List<PartyMember>> membersByPartyId = new HashMap<>();
-    private final Map<UUID, String> socketSessionIdsByUserId = new HashMap<>();
+    private final Map<UUID, Set<String>> socketSessionIdsByUserId = new HashMap<>();
     private final Map<UUID, PartyInvite> invitesById = new HashMap<>();
 
     @Autowired
@@ -182,8 +182,9 @@ public class PartyService {
                 .filter(member -> member.getUser() != null
                         && principalName.equals(member.getUser().getEmail()))
                 .findFirst()
-                .ifPresent(member -> socketSessionIdsByUserId.put(
-                        member.getUser().getId(), socketSessionId));
+                .ifPresent(member -> socketSessionIdsByUserId
+                        .computeIfAbsent(member.getUser().getId(), ignored -> new java.util.HashSet<>())
+                        .add(socketSessionId));
     }
 
     /** Returns the party visible to a principal after its party subscription. */
@@ -488,20 +489,18 @@ public class PartyService {
                 .orElse(null);
         if (userId == null) return new LeaveResult(null, null, List.of());
 
-        String registeredSocket = socketSessionIdsByUserId.get(userId);
-        if (registeredSocket != null && socketSessionId != null
-                && !registeredSocket.equals(socketSessionId)) {
+        Set<String> registeredSockets = socketSessionIdsByUserId.get(userId);
+        if (registeredSockets != null && socketSessionId != null) {
+            registeredSockets.remove(socketSessionId);
+            if (registeredSockets.isEmpty()) socketSessionIdsByUserId.remove(userId);
+        }
+        if (socketRegistry != null && socketRegistry.hasActiveSessionForPrincipal(principalName)) {
             return new LeaveResult(null, null, List.of());
         }
-        String currentSocket = currentSocketForPrincipal(principalName);
-        if (currentSocket != null && socketSessionId != null
-                && !currentSocket.equals(socketSessionId)) {
+        if (socketRegistry == null
+                && !socketSessionIdsByUserId.getOrDefault(userId, Set.of()).isEmpty()) {
             return new LeaveResult(null, null, List.of());
         }
-        if (registeredSocket == null && currentSocket == null) {
-            return new LeaveResult(null, null, List.of());
-        }
-        socketSessionIdsByUserId.remove(userId, registeredSocket);
         return new LeaveResult(toDTO(party), party.getId(), recipientsFor(party));
     }
 
@@ -606,9 +605,10 @@ public class PartyService {
             }
             socketSessionId = liveSocket;
         } else {
+            Set<String> registeredSockets = socketSessionIdsByUserId.getOrDefault(user.getId(), Set.of());
             socketSessionId = requester
                     ? requesterSocketSessionId
-                    : socketSessionIdsByUserId.get(user.getId());
+                    : registeredSockets.stream().findFirst().orElse(null);
         }
         if (socketSessionId == null || socketSessionId.isBlank()) {
             throw new AuthException("every party member must have an active socket connection");
@@ -616,13 +616,10 @@ public class PartyService {
         if (requester && (requesterPrincipalName == null || requesterPrincipalName.isBlank())) {
             throw new AuthException("the queue connection is not authenticated");
         }
-        if (socketRegistry != null && liveSocket != null
-                && requester && requesterSocketSessionId != null
-                && !liveSocket.equals(requesterSocketSessionId)) {
-            throw new AuthException("the queue request belongs to another connection");
-        }
         if (socketSessionId != null && !socketSessionId.isBlank()) {
-            socketSessionIdsByUserId.put(user.getId(), socketSessionId);
+            socketSessionIdsByUserId
+                    .computeIfAbsent(user.getId(), ignored -> new java.util.HashSet<>())
+                    .add(socketSessionId);
         }
         return new MatchEntrant(
                 user.getId(),
@@ -692,7 +689,9 @@ public class PartyService {
 
     private void bindCurrentSocket(AppUser user) {
         String socket = currentSocketForPrincipal(user == null ? null : user.getEmail());
-        if (socket != null) socketSessionIdsByUserId.put(user.getId(), socket);
+        if (socket != null) socketSessionIdsByUserId
+                .computeIfAbsent(user.getId(), ignored -> new java.util.HashSet<>())
+                .add(socket);
     }
 
     private String currentSocketForPrincipal(String principalName) {
@@ -880,17 +879,9 @@ public class PartyService {
             return false;
         }
         if (socketRegistry != null) {
-            String currentSocket = currentSocketForPrincipal(member.getUser().getEmail());
-            if (currentSocket == null || currentSocket.isBlank()) {
-                return false;
-            }
-            // The transport registry sees reconnects before the party
-            // subscription handler can refresh this cached party binding.
-            socketSessionIdsByUserId.put(member.getUser().getId(), currentSocket);
-            return true;
+            return socketRegistry.hasActiveSessionForPrincipal(member.getUser().getEmail());
         }
-        String registeredSocket = socketSessionIdsByUserId.get(member.getUser().getId());
-        return registeredSocket != null && !registeredSocket.isBlank();
+        return !socketSessionIdsByUserId.getOrDefault(member.getUser().getId(), Set.of()).isEmpty();
     }
 
     private boolean userIsGuest(UUID userId) {

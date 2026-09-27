@@ -1,6 +1,6 @@
 import { Assets } from "pixi.js";
 import { loadAbilitySpriteCatalogue } from "./abilitySpriteAssets.js";
-import { ARENA_ASSET_STATUS, createArenaPresentationAssetOwner } from "./arenaPresentationAssetOwner.js";
+import { createArenaPresentationAssetOwner } from "./arenaPresentationAssetOwner.js";
 
 const defaultOwner = createArenaPresentationAssetOwner({
     loadCatalogue: loadAbilitySpriteCatalogue,
@@ -14,14 +14,7 @@ export function preloadArenaPresentationAssets() {
 }
 
 export function loadArenaPresentationAssets() {
-    const state = defaultOwner.getState();
-    return state.status === ARENA_ASSET_STATUS.FAILED
-        ? defaultOwner.retry()
-        : defaultOwner.preload();
-}
-
-export function retryArenaPresentationAssets() {
-    return defaultOwner.retry();
+    return defaultOwner.preload();
 }
 
 export function getArenaPresentationAssetsState() {

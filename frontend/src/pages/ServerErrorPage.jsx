@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import AuthLayout from "./auth/AuthLayout";
 import { apiUrl } from "../config/api";
+import { useAuth } from "../auth/auth-context.js";
 import {
     defaultAuthRoute,
     isServerErrorStatus,
@@ -14,6 +15,7 @@ const SERVER_RETRY_INTERVAL_MS = 5_000;
 
 export default function ServerErrorPage() {
     const navigate = useNavigate();
+    const { isAuthenticated } = useAuth();
     const [status, setStatus] = useState(INITIAL_STATUS);
 
     const probeServer = useCallback(async (signal) => {
@@ -82,19 +84,14 @@ export default function ServerErrorPage() {
                 <p role="alert" className="text-sm text-red-300">
                     {status.message ?? SERVER_DOWN_MESSAGE}
                 </p>
-                {(status.message ?? SERVER_DOWN_MESSAGE) === SERVER_DOWN_MESSAGE && (
-                    <p className="text-sm leading-6 text-ink-muted">
-                        Refresh to try again.
-                    </p>
-                )}
                 <p className="text-sm leading-6 text-ink-muted">
                     We will send you back automatically when the server is healthy again.
                 </p>
                 <Link
-                    to="/login"
+                    to={isAuthenticated ? "/home" : "/login"}
                     className="block text-sm text-cyan-300 hover:text-cyan-100"
                 >
-                    Return to login
+                    {isAuthenticated ? "Return home" : "Return to login"}
                 </Link>
             </div>
         </AuthLayout>

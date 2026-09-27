@@ -56,6 +56,14 @@ public final class MatchReconnectionService {
         return activeSession == null ? null : activeSession.matchId();
     }
 
+    public void registerSocketSession(UUID userId, String socketSessionId) {
+        connectionService.registerSocket(userId, socketSessionId);
+    }
+
+    public boolean unregisterSocketSession(UUID userId, String socketSessionId) {
+        return connectionService.unregisterSocket(userId, socketSessionId);
+    }
+
     public ActiveMatchStatusDTO activeMatchStatus(UUID userId) {
         MatchSession session = state.activeSessionsByUserId().get(userId);
         if (session == null) return ActiveMatchStatusDTO.none();

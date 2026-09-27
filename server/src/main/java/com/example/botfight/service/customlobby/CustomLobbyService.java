@@ -27,9 +27,11 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -70,7 +72,7 @@ public class CustomLobbyService {
 
     private final Map<UUID, ActiveLobby> activeLobbiesById = new HashMap<>();
     private final Map<UUID, UUID> lobbyIdsByUserId = new HashMap<>();
-    private final Map<UUID, String> socketSessionIdsByUserId = new HashMap<>();
+    private final Map<UUID, Set<String>> socketSessionIdsByUserId = new HashMap<>();
     private final Map<UUID, LobbyInvite> invitesById = new HashMap<>();
 
     public CustomLobbyService(
@@ -194,8 +196,9 @@ public class CustomLobbyService {
                 .filter(member -> member.user.getEmail() != null
                         && principalName.equals(member.user.getEmail()))
                 .findFirst()
-                .ifPresent(member -> socketSessionIdsByUserId.put(
-                        member.user.getId(), socketSessionId));
+                .ifPresent(member -> socketSessionIdsByUserId
+                        .computeIfAbsent(member.user.getId(), ignored -> new HashSet<>())
+                        .add(socketSessionId));
     }
 
     public synchronized CustomLobbyDTO currentForPrincipal(String principalName) {
@@ -620,20 +623,18 @@ public class CustomLobbyService {
         if (member == null) return new LobbyChange(null, null, List.of(), List.of());
 
         UUID userId = member.user.getId();
-        String registeredSocket = socketSessionIdsByUserId.get(userId);
-        if (registeredSocket != null && socketSessionId != null
-                && !registeredSocket.equals(socketSessionId)) {
+        Set<String> registeredSockets = socketSessionIdsByUserId.get(userId);
+        if (registeredSockets != null && socketSessionId != null) {
+            registeredSockets.remove(socketSessionId);
+            if (registeredSockets.isEmpty()) socketSessionIdsByUserId.remove(userId);
+        }
+        if (socketRegistry != null && socketRegistry.hasActiveSessionForPrincipal(principalName)) {
             return new LobbyChange(null, null, List.of(), List.of());
         }
-        String currentSocket = currentSocketForPrincipal(principalName);
-        if (currentSocket != null && socketSessionId != null
-                && !currentSocket.equals(socketSessionId)) {
+        if (socketRegistry == null
+                && !socketSessionIdsByUserId.getOrDefault(userId, Set.of()).isEmpty()) {
             return new LobbyChange(null, null, List.of(), List.of());
         }
-        if (registeredSocket == null && currentSocket == null) {
-            return new LobbyChange(null, null, List.of(), List.of());
-        }
-        socketSessionIdsByUserId.remove(userId, registeredSocket);
         return stateChange(lobby);
     }
 
@@ -733,7 +734,9 @@ public class CustomLobbyService {
 
     private void bindCurrentSocket(AppUser user) {
         String socket = currentSocketForPrincipal(user == null ? null : user.getEmail());
-        if (socket != null) socketSessionIdsByUserId.put(user.getId(), socket);
+        if (socket != null) socketSessionIdsByUserId
+                .computeIfAbsent(user.getId(), ignored -> new HashSet<>())
+                .add(socket);
     }
 
     private String currentSocketForPrincipal(String principalName) {
@@ -744,11 +747,10 @@ public class CustomLobbyService {
 
     private boolean isMemberOnline(LobbyMember member) {
         if (member == null || member.user == null || member.user.getId() == null) return false;
-        String registeredSocket = socketSessionIdsByUserId.get(member.user.getId());
-        if (registeredSocket == null || registeredSocket.isBlank()) return false;
-        if (socketRegistry == null) return true;
-        String currentSocket = currentSocketForPrincipal(member.user.getEmail());
-        return registeredSocket.equals(currentSocket);
+        if (socketRegistry != null) {
+            return socketRegistry.hasActiveSessionForPrincipal(member.user.getEmail());
+        }
+        return !socketSessionIdsByUserId.getOrDefault(member.user.getId(), Set.of()).isEmpty();
     }
 
     private List<LobbyRecipient> recipientsFor(ActiveLobby lobby) {

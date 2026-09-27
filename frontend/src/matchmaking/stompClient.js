@@ -4,14 +4,19 @@ import {
     ReconnectionTimeMode,
     TickerStrategy,
 } from "@stomp/stompjs";
-import { API_BASE_URL, apiUrl, websocketUrl } from "../config/api";
-import { ensureCsrfHeaders } from "../security/csrf";
+import { API_BASE_URL, apiUrl, websocketUrl } from "../config/api.js";
+import {
+    AUTH_SESSION_INVALID,
+    dispatchAuthenticationLoss,
+    probeCurrentAuthentication,
+} from "../auth/authSession.js";
+import { ensureCsrfHeaders } from "../security/csrf.js";
 import {
     createNetworkDelaySynchronizer,
     estimatedOneWayNetworkDelayMs,
     monotonicEpochNowMs,
     requestBestNetworkDelaySample,
-} from "./networkDelayEstimator";
+} from "./networkDelayEstimator.js";
 
 const MATCHMAKING_DESTINATION = "/user/queue/matchmaking";
 const MATCH_DESTINATION = "/user/queue/match";
@@ -21,6 +26,8 @@ const PARTY_DESTINATION = "/user/queue/party";
 const CUSTOM_LOBBY_DESTINATION = "/user/queue/custom-lobby";
 const RECONNECT_DELAY_MS = 2_000;
 const MAX_RECONNECT_DELAY_MS = 10_000;
+const REPLACED_CONNECTION_REASON = "Replaced by a newer connection";
+const SESSION_LIMIT_CLOSE_REASON = "Maximum active WebSocket sessions reached";
 const HEARTBEAT_INTERVAL_MS = 10_000;
 const MAX_ACCEPTED_NETWORK_DELAY_MS = 1_500;
 const NETWORK_DELAY_RESAMPLE_INTERVAL_MS = 30_000;
@@ -59,6 +66,16 @@ export function createMatchmakingClient({
     autoReconnect = false,
     autoJoinOnConnect = false,
     allowNotificationSubscription = true,
+    transportFactory = (configuration) => new Client(configuration),
+    csrfHeadersProvider = ensureCsrfHeaders,
+    websocketUrlProvider = websocketUrl,
+    authenticationProbe = () => probeCurrentAuthentication({
+        fetchImpl: globalThis.fetch,
+        url: apiUrl("/api/auth/me"),
+    }),
+    onAuthenticationLost = dispatchAuthenticationLoss,
+    setTimeoutImpl = globalThis.setTimeout,
+    clearTimeoutImpl = globalThis.clearTimeout,
 }) {
     let eventHandler = onEvent;
     let chatEventHandler = onChatEvent;
@@ -69,11 +86,16 @@ export function createMatchmakingClient({
     let stompClient = null;
     let connectInFlight = false;
     let connectGeneration = 0;
+    let socketAttemptGeneration = 0;
     let currentStatus = "IDLE";
     let eventDelivery = Promise.resolve();
     let networkDelayIntervalId = null;
     let resumeOnConnect = false;
     let reconnectEnabled = autoReconnect;
+    let terminallyStopped = false;
+    let bootstrapRetryTimer = null;
+    let bootstrapRetryDelayMs = RECONNECT_DELAY_MS;
+    let authenticationProbeInFlight = null;
     // The match subscriptions share this transport, so transport connectivity
     // alone is not evidence that the user has a live match to resume.
     let activeMatchId = null;
@@ -234,6 +256,115 @@ export function createMatchmakingClient({
         customLobbySubscription = null;
     };
 
+    const clearPendingReconnectState = () => {
+        resumeOnConnect = false;
+        activeMatchId = null;
+        terminalMatchId = null;
+        pendingEvents.splice(0);
+        pendingChatEvents.splice(0);
+        pendingNotifications.splice(0);
+        pendingPartyEvents.splice(0);
+        pendingCustomLobbyEvents.splice(0);
+    };
+
+    const isCurrentProbeContext = (context) => (
+        context.generation === connectGeneration
+        && context.transport === stompClient
+    );
+
+    const stopTerminalTransport = (context, status, authenticationLost = false) => {
+        if (!isCurrentProbeContext(context)) return false;
+        terminallyStopped = true;
+        reconnectEnabled = false;
+        connectInFlight = false;
+        if (bootstrapRetryTimer != null) {
+            clearTimeoutImpl(bootstrapRetryTimer);
+            bootstrapRetryTimer = null;
+        }
+        if (context.transport) context.transport.reconnectDelay = 0;
+        if (stompClient === context.transport) stompClient = null;
+        connectGeneration += 1;
+        socketAttemptGeneration += 1;
+        stopPeriodicNetworkDelaySampling();
+        networkDelaySynchronizer.clear();
+        matchmakingSubscriptionRequested = false;
+        matchSubscriptionRequested = false;
+        partySubscriptionRequested = false;
+        customLobbySubscriptionRequested = false;
+        unsubscribe(matchmakingSubscription);
+        unsubscribe(matchSubscription);
+        unsubscribe(matchChatSubscription);
+        unsubscribe(notificationSubscription);
+        unsubscribe(partySubscription);
+        unsubscribe(customLobbySubscription);
+        clearTransportSubscriptions();
+        clearPendingReconnectState();
+        updateStatus(status);
+        if (context.transport) {
+            try {
+                Promise.resolve(context.transport.deactivate()).catch(() => {});
+            } catch {
+                // A closing transport may reject deactivation synchronously.
+            }
+        }
+        if (authenticationLost) {
+            try {
+                onAuthenticationLost?.();
+            } catch {
+                // Auth state listeners are isolated from transport cleanup.
+            }
+        }
+        return true;
+    };
+
+    const scheduleBootstrapRetry = (context) => {
+        if (!reconnectEnabled || terminallyStopped || bootstrapRetryTimer != null
+                || !isCurrentProbeContext(context)) return;
+        const delay = bootstrapRetryDelayMs;
+        bootstrapRetryDelayMs = Math.min(bootstrapRetryDelayMs * 2, MAX_RECONNECT_DELAY_MS);
+        bootstrapRetryTimer = setTimeoutImpl(() => {
+            bootstrapRetryTimer = null;
+            if (terminallyStopped
+                    || !reconnectEnabled
+                    || context.generation !== connectGeneration
+                    || stompClient !== null) return;
+            void client.connect();
+        }, delay);
+    };
+
+    const probeForAuthenticationLoss = (context, onTemporaryFailure = null) => {
+        const contextKey = `${context.generation}:${context.attemptGeneration}`;
+        let probe = authenticationProbeInFlight;
+        if (!probe) {
+            probe = { contexts: new Map() };
+            authenticationProbeInFlight = probe;
+            probe.promise = Promise.resolve()
+                .then(() => authenticationProbe())
+                .catch(() => null)
+                .then((result) => {
+                    const currentContexts = [...probe.contexts.values()]
+                        .filter((entry) => isCurrentProbeContext(entry.context));
+                    if (result === AUTH_SESSION_INVALID) {
+                        const current = currentContexts[0];
+                        if (current) stopTerminalTransport(
+                            current.context,
+                            "AUTHENTICATION_LOST",
+                            true,
+                        );
+                        return;
+                    }
+                    currentContexts.forEach((entry) => entry.onTemporaryFailure?.());
+                })
+                .finally(() => {
+                    if (authenticationProbeInFlight === probe) {
+                        authenticationProbeInFlight = null;
+                    }
+                });
+        }
+        probe.contexts.set(contextKey, { context, onTemporaryFailure });
+        return probe.promise;
+    };
+
     const subscribeRequestedDestinations = (transport) => {
         if (!transport?.connected) return;
 
@@ -292,6 +423,10 @@ export function createMatchmakingClient({
 
     const client = {
         async connect() {
+            if (terminallyStopped) {
+                statusHandler?.(currentStatus);
+                return;
+            }
             // STOMP marks a client active while it is connecting or waiting to
             // reconnect. A route handoff must not replace that transport just
             // because the handshake has not completed yet.
@@ -301,26 +436,30 @@ export function createMatchmakingClient({
             }
 
             const generation = ++connectGeneration;
+            const attemptGeneration = ++socketAttemptGeneration;
             connectInFlight = true;
             updateStatus("CONNECTING");
 
             let csrfHeaders;
             try {
-                csrfHeaders = await ensureCsrfHeaders("POST", API_BASE_URL);
+                csrfHeaders = await csrfHeadersProvider("POST", API_BASE_URL);
             } catch {
+                if (generation !== connectGeneration || terminallyStopped) return;
                 connectInFlight = false;
                 updateStatus("ERROR");
+                const context = { generation, transport: null, attemptGeneration };
+                probeForAuthenticationLoss(context, () => scheduleBootstrapRetry(context));
                 return;
             }
-            if (generation !== connectGeneration) {
+            if (generation !== connectGeneration || terminallyStopped) {
                 connectInFlight = false;
                 return;
             }
 
-            const transport = new Client({
-                brokerURL: websocketUrl(),
+            const transport = transportFactory({
+                brokerURL: websocketUrlProvider(),
                 connectHeaders: {
-                    host: new URL(websocketUrl()).host,
+                    host: new URL(websocketUrlProvider()).host,
                     ...csrfHeaders,
                 },
                 connectionTimeout: 10_000,
@@ -339,16 +478,19 @@ export function createMatchmakingClient({
             );
             transport.beforeConnect = async () => {
                 if (!isCurrentTransport()) return;
+                const attempt = ++socketAttemptGeneration;
                 try {
-                    const refreshedCsrfHeaders =
-                        await ensureCsrfHeaders("POST", API_BASE_URL);
+                    const refreshedCsrfHeaders = await csrfHeadersProvider("POST", API_BASE_URL);
                     if (!isCurrentTransport()) return;
                     transport.connectHeaders = {
-                        host: new URL(websocketUrl()).host,
+                        host: new URL(websocketUrlProvider()).host,
                         ...refreshedCsrfHeaders,
                     };
                 } catch {
                     updateStatus("ERROR");
+                    // STOMP owns the reconnect schedule once a transport exists.
+                    // Its subsequent ERROR/close callback probes the session.
+                    if (attempt !== socketAttemptGeneration) return;
                 }
             };
 
@@ -360,6 +502,11 @@ export function createMatchmakingClient({
             };
             transport.onConnect = async () => {
                 if (!isCurrentTransport() || !transport.connected) return;
+                bootstrapRetryDelayMs = RECONNECT_DELAY_MS;
+                if (bootstrapRetryTimer != null) {
+                    clearTimeoutImpl(bootstrapRetryTimer);
+                    bootstrapRetryTimer = null;
+                }
                 stopPeriodicNetworkDelaySampling();
                 networkDelaySynchronizer.clear();
                 void sampleNetworkDelay().catch(() => null);
@@ -377,16 +524,40 @@ export function createMatchmakingClient({
             transport.onStompError = () => {
                 if (!isCurrentTransport()) return;
                 updateStatus("ERROR");
+                probeForAuthenticationLoss({
+                    generation,
+                    transport,
+                    attemptGeneration: socketAttemptGeneration,
+                });
             };
             transport.onWebSocketError = () => {
                 if (!isCurrentTransport()) return;
                 updateStatus("ERROR");
+                probeForAuthenticationLoss({
+                    generation,
+                    transport,
+                    attemptGeneration: socketAttemptGeneration,
+                });
             };
-            transport.onWebSocketClose = () => {
+            transport.onWebSocketClose = (event) => {
                 if (!isCurrentTransport()) return;
                 stopPeriodicNetworkDelaySampling();
                 clearTransportSubscriptions();
                 updateStatus("CLOSED");
+                const context = {
+                    generation,
+                    transport,
+                    attemptGeneration: socketAttemptGeneration,
+                };
+                if (event?.code === 1000 && event?.reason === REPLACED_CONNECTION_REASON) {
+                    stopTerminalTransport(context, "CLOSED");
+                    return;
+                }
+                if (event?.code === 1008 && event?.reason === SESSION_LIMIT_CLOSE_REASON) {
+                    stopTerminalTransport(context, "SESSION_LIMIT_REACHED");
+                    return;
+                }
+                probeForAuthenticationLoss(context);
                 if (!reconnectEnabled && transport.active) {
                     void transport.deactivate();
                 }
@@ -457,6 +628,7 @@ export function createMatchmakingClient({
             pendingNotifications.splice(0);
         },
         resumeReconnect() {
+            if (terminallyStopped) return;
             reconnectEnabled = autoReconnect;
             if (stompClient) {
                 stompClient.reconnectDelay = reconnectEnabled ? RECONNECT_DELAY_MS : 0;
@@ -576,7 +748,12 @@ export function createMatchmakingClient({
         },
         disconnect() {
             connectGeneration += 1;
+            socketAttemptGeneration += 1;
             stopPeriodicNetworkDelaySampling();
+            if (bootstrapRetryTimer != null) {
+                clearTimeoutImpl(bootstrapRetryTimer);
+                bootstrapRetryTimer = null;
+            }
             networkDelaySynchronizer.clear();
             matchmakingSubscriptionRequested = false;
             matchSubscriptionRequested = false;

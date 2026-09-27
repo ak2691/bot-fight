@@ -5,6 +5,7 @@ import ActiveMatchProtectedRoute from './auth/ActiveMatchProtectedRoute'
 import MatchProtectedRoute from './auth/MatchProtectedRoute.jsx'
 import ProtectedRoute from './auth/ProtectedRoute'
 import AdminRoute from './auth/AdminRoute.jsx'
+import RouteErrorBoundary from './auth/RouteErrorBoundary.jsx'
 import HomePage from './pages/home/HomePage'
 import QueuePage from './pages/queue/QueuePage.jsx'
 import CustomLobbyPage from './pages/customLobby/CustomLobbyPage.jsx'
@@ -43,8 +44,9 @@ function App() {
         <NotificationsProvider>
           <MatchmakingProvider>
             <ArenaPresentationAssetsProvider>
-              <Suspense fallback={<ArenaLoadingScreen />}>
-                <Routes>
+              <RouteErrorBoundary>
+                <Suspense fallback={<ArenaLoadingScreen />}>
+                  <Routes>
             <Route path="/" element={<Navigate to="/login" replace />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
@@ -198,8 +200,9 @@ function App() {
                 </ProtectedRoute>
               )}
             />
-                </Routes>
-              </Suspense>
+                  </Routes>
+                </Suspense>
+              </RouteErrorBoundary>
             </ArenaPresentationAssetsProvider>
           </MatchmakingProvider>
         </NotificationsProvider>

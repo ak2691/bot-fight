@@ -377,6 +377,18 @@ export function useMatchLifecycle({ navigate }) {
     };
 
     const handleSocketStatus = (status) => {
+        if (status === "SESSION_LIMIT_REACHED") {
+            const message = "This account already has five active browser sessions. Close another tab, then refresh this page.";
+            if (queueStatusRef.current === "MATCH_ACCEPT") {
+                matchAcceptanceSubmitPendingRef.current = false;
+                setMatchAcceptanceError(message);
+            }
+            if (matchEventRef.current?.matchId) {
+                setDisconnectNotice({ endsAtMs: null, message, self: true });
+                setDisconnectRemaining(null);
+            }
+            return;
+        }
         if (status === "ERROR" || status === "CLOSED") {
             if (terminalMatchRef.current) return;
             matchAcceptanceSubmitPendingRef.current = false;

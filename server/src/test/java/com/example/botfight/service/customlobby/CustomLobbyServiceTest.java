@@ -75,6 +75,9 @@ class CustomLobbyServiceTest {
         when(socketRegistry.currentSessionIdForPrincipal(owner.getEmail())).thenReturn("owner-socket");
         when(socketRegistry.currentSessionIdForPrincipal(teammate.getEmail())).thenReturn("teammate-socket");
         when(socketRegistry.currentSessionIdForPrincipal(third.getEmail())).thenReturn("third-socket");
+        when(socketRegistry.hasActiveSessionForPrincipal(owner.getEmail())).thenReturn(true);
+        when(socketRegistry.hasActiveSessionForPrincipal(teammate.getEmail())).thenReturn(true);
+        when(socketRegistry.hasActiveSessionForPrincipal(third.getEmail())).thenReturn(true);
         when(partyService.prepareForCustomMatch(anyCollection())).thenReturn(List.of());
         when(matchmakingService.prepareExternalMatchStart(anyCollection()))
                 .thenAnswer(invocation -> new MatchmakingService.ExternalMatchStartPreparation(
@@ -96,6 +99,30 @@ class CustomLobbyServiceTest {
             assertThat(member.owner()).isTrue();
             assertThat(member.online()).isTrue();
         });
+    }
+
+    @Test
+    void closingOneLobbyTabKeepsTheMemberOnlineUntilTheFinalTabCloses() {
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
+        CustomLobbyDTO lobby = service.create(authentication);
+        service.registerSocket(owner.getEmail(), "owner-tab-two");
+
+        CustomLobbyService.LobbyChange firstClose = service.removeDisconnected(
+                owner.getEmail(), "owner-socket");
+
+        assertThat(firstClose.recipients()).isEmpty();
+        assertThat(service.currentForPrincipal(owner.getEmail()).members())
+                .singleElement()
+                .satisfies(member -> assertThat(member.online()).isTrue());
+
+        when(socketRegistry.hasActiveSessionForPrincipal(owner.getEmail())).thenReturn(false);
+        CustomLobbyService.LobbyChange finalClose = service.removeDisconnected(
+                owner.getEmail(), "owner-tab-two");
+        assertThat(finalClose.recipients()).hasSize(1);
+        assertThat(finalClose.lobby().members())
+                .singleElement()
+                .satisfies(member -> assertThat(member.online()).isFalse());
+        assertThat(lobby.lobbyId()).isEqualTo(finalClose.lobbyId());
     }
 
     @Test
