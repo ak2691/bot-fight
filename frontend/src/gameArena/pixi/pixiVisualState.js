@@ -6,6 +6,7 @@ import { AUTO_STEP_MS } from "../modelPayloads/arenaConstants.js";
 import { compassDegreesToRadians } from "../botlogic/planner/arenaAngles.js";
 import { statusIsActive } from "../ecs/contracts/StatusContracts.js";
 import { entityAbilityPhaseForEntity, entityContract, phaseForEntity } from "../ecs/contracts/AbilityContracts.js";
+import { BOT_ABILITY_VISUAL_PRIORITY } from "./botAbilityPresentationDefinitions.js";
 
 const ZONE_TYPES = new Set([CLOSING_ZONE_TYPE, "grenadeExplosion", "mineExplosion", "gravityZone", "gravityExplosion", "nullZone", "orbitalMarker", "orbitalExplosion", "silenceWave", "temporalRewindZone", "singularityZone", "singularityExplosion", "staticSnareBurst"]);
 const PROJECTILE_TYPES = new Set(["grenade", "fireball", "windburstProjectile"]);
@@ -571,7 +572,7 @@ export function activeBotVisual(shape) {
         return attachedAbilityContract(abilityVisual)?.phases?.[0]?.visual?.type
             ? abilityVisual : null;
     }
-    const active = [1, 3, 5, 6, 20, 7, 18, 12, 9, 13, 8, 10, 16, 23, 25, 26, 30, 32, 33, 34]
+    const active = BOT_ABILITY_VISUAL_PRIORITY
         .find((id) => Number(shape?.abilityActiveMs?.[id] ?? 0) > 0
             && Boolean(attachedAbilityContract(id)?.phases?.[0]?.visual?.type));
     return abilityVisual ?? active ?? null;

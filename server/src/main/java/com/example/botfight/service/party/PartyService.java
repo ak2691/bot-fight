@@ -17,6 +17,7 @@ import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.service.auth.UsernamePolicy;
 import com.example.botfight.service.block.BlockLookup;
+import com.example.botfight.service.limits.RateLimitExceededException;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.match.loadout.MatchAbilityGuaranteeService;
@@ -53,7 +54,8 @@ public class PartyService {
 
     public static final short CURRENT_PARTY_CAPACITY = 2;
     public static final Duration INVITE_VALIDITY = Duration.ofMinutes(10);
-    public static final Duration TERMINAL_RETENTION = Duration.ofDays(14);
+    public static final int MAX_PENDING_INVITES_PER_USER = 20;
+    public static final int MAX_PENDING_INVITES_PER_PARTY = 20;
 
     private final CurrentUserService currentUserService;
     private final UserRepository userRepository;
@@ -288,6 +290,7 @@ public class PartyService {
             Authentication authentication,
             UUID partyId,
             String requestedUsername) {
+        prunePendingInvites(clock.instant());
         AppUser inviter = currentUserService.requireCurrentUser(authentication);
         rejectGuest(inviter);
         inviteRateLimiter.requireAllowed(inviter.getId());
@@ -328,6 +331,12 @@ public class PartyService {
         }
         if (existing != null) invitesById.remove(existing.getId());
 
+        if (pendingInvitesForInviter(inviter.getId()) >= MAX_PENDING_INVITES_PER_USER
+                || pendingInvitesForInvitee(invitee.getId()) >= MAX_PENDING_INVITES_PER_USER
+                || pendingInvitesForParty(party.getId()) >= MAX_PENDING_INVITES_PER_PARTY) {
+            throw RateLimitExceededException.tooManyRequests(Duration.ofMinutes(1));
+        }
+
         PartyInvite invite = new PartyInvite();
         invite.setId(UUID.randomUUID());
         invite.setParty(party);
@@ -346,6 +355,7 @@ public class PartyService {
 
     @Transactional(readOnly = true)
     public synchronized List<PartyInviteDTO> incoming(Authentication authentication) {
+        prunePendingInvites(clock.instant());
         if (currentUserService.isGuest(authentication)) return List.of();
         UUID inviteeId = currentUserService.requireCurrentUserId(authentication);
         Instant now = clock.instant();
@@ -368,6 +378,7 @@ public class PartyService {
     public synchronized AcceptedInvite accept(Authentication authentication, UUID inviteId) {
         UUID inviteeId = currentUserService.requireCurrentUserId(authentication);
         PartyInvite invite = requirePendingInviteForAccept(inviteId, inviteeId);
+        prunePendingInvites(clock.instant());
         Party party = requirePartyForUpdate(invite.getParty().getId());
         AppUser invitee = invite.getInvitee();
         rejectGuest(invitee);
@@ -388,12 +399,14 @@ public class PartyService {
 
         invite.setStatus(PartyInviteStatus.ACCEPTED);
         invite.setRespondedAt(clock.instant());
+        PartyInviteDTO inviteDTO = toInviteDTO(invite);
+        invitesById.remove(invite.getId(), invite);
         PartyDTO partyDTO = toDTO(party);
         List<PartyRecipient> recipients = recipientsFor(party).stream()
                 .filter(recipient -> !inviteeId.equals(recipient.userId()))
                 .toList();
         return new AcceptedInvite(
-                toInviteDTO(invite),
+                inviteDTO,
                 partyDTO,
                 recipients,
                 recipientsFor(party),
@@ -405,11 +418,14 @@ public class PartyService {
     public synchronized DeclinedInvite decline(Authentication authentication, UUID inviteId) {
         UUID inviteeId = currentUserService.requireCurrentUserId(authentication);
         PartyInvite invite = requirePendingInviteForDecline(inviteId, inviteeId);
+        prunePendingInvites(clock.instant());
         invite.setStatus(PartyInviteStatus.DECLINED);
         invite.setRespondedAt(clock.instant());
+        PartyInviteDTO inviteDTO = toInviteDTO(invite);
+        invitesById.remove(invite.getId(), invite);
         AppUser inviter = invite.getInviter();
         return new DeclinedInvite(
-                toInviteDTO(invite),
+                inviteDTO,
                 inviter.getEmail(),
                 inviter.getId(),
                 invite.getInvitee().getUsername(),
@@ -565,19 +581,7 @@ public class PartyService {
 
     @Transactional
     public synchronized int cleanupExpiredInvites() {
-        Instant now = clock.instant();
-        List<UUID> expired = invitesById.values().stream()
-                .filter(invite -> invite.getStatus() == PartyInviteStatus.PENDING
-                        && (invite.getExpiresAt() == null
-                                || !now.isBefore(invite.getExpiresAt())))
-                .map(invite -> {
-                    invite.setStatus(PartyInviteStatus.EXPIRED);
-                    invite.setRespondedAt(now);
-                    return invite.getId();
-                })
-                .toList();
-        expired.forEach(invitesById::remove);
-        return expired.size();
+        return prunePendingInvites(clock.instant());
     }
 
     private MatchEntrant entrantForMember(
@@ -750,6 +754,36 @@ public class PartyService {
                 .filter(invite -> invite.getStatus() == PartyInviteStatus.PENDING)
                 .findFirst()
                 .orElse(null);
+    }
+
+    private long pendingInvitesForInviter(UUID inviterId) {
+        return invitesById.values().stream()
+                .filter(invite -> invite.getInviter() != null
+                        && inviterId.equals(invite.getInviter().getId()))
+                .count();
+    }
+
+    private long pendingInvitesForInvitee(UUID inviteeId) {
+        return invitesById.values().stream()
+                .filter(invite -> invite.getInvitee() != null
+                        && inviteeId.equals(invite.getInvitee().getId()))
+                .count();
+    }
+
+    private long pendingInvitesForParty(UUID partyId) {
+        return invitesById.values().stream()
+                .filter(invite -> invite.getParty() != null
+                        && partyId.equals(invite.getParty().getId()))
+                .count();
+    }
+
+    /** Removes transient terminal and expired invite rows; callers hold this service monitor. */
+    private int prunePendingInvites(Instant now) {
+        int previousSize = invitesById.size();
+        invitesById.values().removeIf(invite -> invite.getStatus() != PartyInviteStatus.PENDING
+                || invite.getExpiresAt() == null
+                || !now.isBefore(invite.getExpiresAt()));
+        return previousSize - invitesById.size();
     }
 
     private PartyInvite requirePendingInviteForAccept(UUID inviteId, UUID inviteeId) {

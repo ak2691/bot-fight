@@ -72,6 +72,8 @@ public class MatchmakingSocketController {
     private static final Duration MATCHMAKING_QUEUE_SWEEP_INTERVAL = Duration.ofSeconds(2);
     private static final long DEADLINE_CALLBACK_BUFFER_MILLIS = 250L;
     private static final long PHASE_TRANSITION_SCHEDULER_BUFFER_MILLIS = 0L;
+    private static final int MAX_SIMULATION_ATTEMPTS = 3;
+    private static final long SIMULATION_RETRY_DELAY_MILLIS = 100L;
     private final MatchmakingService matchmakingService;
     private final MatchService matchService;
     private final SimpMessagingTemplate messagingTemplate;
@@ -858,23 +860,25 @@ public class MatchmakingSocketController {
 
     private void scheduleBuildingTimeouts(List<OutboundMatchmakingEvent> events) {
         events.stream()
-                .map(OutboundMatchmakingEvent::event)
-                .filter(event -> event.matchId() != null
-                        && event.buildingEndsAt() != null
-                        && "PREP".equals(event.status()))
+                .filter(outbound -> outbound.event().matchId() != null
+                        && outbound.event().buildingEndsAt() != null
+                        && "PREP".equals(outbound.event().status()))
                 .collect(java.util.stream.Collectors.toMap(
-                        event -> event.matchId() + ":" + event.buildingEndsAt(),
-                        event -> event,
+                        outbound -> outbound.event().matchId() + ":" + outbound.event().buildingEndsAt(),
+                        outbound -> outbound,
                         (first, second) -> first))
-                .forEach((key, event) -> {
-                    synchronized (scheduledBuildingTimeouts) {
-                        if (!scheduledBuildingTimeouts.add(key)) return;
-                    }
+                .forEach((key, outbound) -> {
+                    MatchmakingEventDTO event = outbound.event();
                     Instant deadline = event.buildingEndsAt();
-                    scheduleSafely(
+                    scheduleInFlightTimeout(
+                            scheduledBuildingTimeouts,
+                            key,
                             deadline.plusMillis(DEADLINE_CALLBACK_BUFFER_MILLIS),
                             "building timeout",
-                            () -> publish(matchService.resolveBuildingTimeout(event.matchId(), deadline)));
+                            () -> {
+                                if (!matchService.isCurrentEvent(outbound)) return;
+                                publish(matchService.resolveBuildingTimeout(event.matchId(), deadline));
+                            });
                 });
     }
 
@@ -950,32 +954,33 @@ public class MatchmakingSocketController {
 
     private void scheduleLoadoutSelectionTimeouts(List<OutboundMatchmakingEvent> events) {
         events.stream()
-                .map(OutboundMatchmakingEvent::event)
-                .filter(event -> ("MATCH_STARTED".equals(event.type())
-                        || "MATCH_LOADOUT_SELECTION_READY".equals(event.type())
-                        || ("MATCH_ROUND_READY".equals(event.type())
-                                && event.loadoutSelectionEndsAt() != null))
-                        && "LOADOUT_SELECT".equals(event.status()))
-                .filter(event -> event.matchId() != null)
+                .filter(outbound -> ("MATCH_STARTED".equals(outbound.event().type())
+                        || "MATCH_LOADOUT_SELECTION_READY".equals(outbound.event().type())
+                        || ("MATCH_ROUND_READY".equals(outbound.event().type())
+                                && outbound.event().loadoutSelectionEndsAt() != null))
+                        && "LOADOUT_SELECT".equals(outbound.event().status()))
+                .filter(outbound -> outbound.event().matchId() != null)
                 .collect(java.util.stream.Collectors.toMap(
-                        MatchmakingEventDTO::matchId,
-                        event -> event,
+                        outbound -> outbound.event().matchId(),
+                        outbound -> outbound,
                         (first, second) -> first))
-                .forEach((matchId, event) -> {
+                .forEach((matchId, outbound) -> {
+                    MatchmakingEventDTO event = outbound.event();
                     String scheduleKey = matchId + ":" + event.loadoutSelectionEndsAt();
-                    synchronized (scheduledLoadoutSelectionTimeouts) {
-                        if (!scheduledLoadoutSelectionTimeouts.add(scheduleKey)) return;
-                    }
                     long delayMillis = event.loadoutSelectionEndsAt() == null
                             ? TimeUnit.SECONDS.toMillis(60)
                             : delayUntil(event.loadoutSelectionEndsAt());
-                    scheduleSafely(
+                    scheduleInFlightTimeout(
+                            scheduledLoadoutSelectionTimeouts,
+                            scheduleKey,
                             Instant.now().plusMillis(delayMillis),
                             "loadout selection timeout",
                             () -> {
-                            List<OutboundMatchmakingEvent> timeoutEvents = matchService.resolveLoadoutSelectionTimeout(matchId);
-                            publish(timeoutEvents);
-                        });
+                                if (!matchService.isCurrentEvent(outbound)) return;
+                                List<OutboundMatchmakingEvent> timeoutEvents =
+                                        matchService.resolveLoadoutSelectionTimeout(matchId);
+                                publish(timeoutEvents);
+                            });
                 });
     }
 
@@ -1052,6 +1057,35 @@ public class MatchmakingSocketController {
         }
     }
 
+    private void scheduleInFlightTimeout(
+            Set<String> inFlightKeys,
+            String key,
+            Instant runAt,
+            String taskName,
+            Runnable task) {
+        synchronized (inFlightKeys) {
+            if (!inFlightKeys.add(key)) return;
+        }
+        try {
+            scheduleSafely(runAt, taskName, () -> {
+                try {
+                    task.run();
+                } finally {
+                    removeInFlightKey(inFlightKeys, key);
+                }
+            });
+        } catch (RuntimeException exception) {
+            removeInFlightKey(inFlightKeys, key);
+            throw exception;
+        }
+    }
+
+    private void removeInFlightKey(Set<String> inFlightKeys, String key) {
+        synchronized (inFlightKeys) {
+            inFlightKeys.remove(key);
+        }
+    }
+
     private void releaseCompletedCustomLobby(UUID matchId) {
         if (customLobbyService == null || customLobbyStatePublisher == null || matchId == null) {
             return;
@@ -1072,33 +1106,93 @@ public class MatchmakingSocketController {
 
     private void scheduleAuthoritativeSimulations(List<OutboundMatchmakingEvent> events) {
         events.stream()
-                .map(OutboundMatchmakingEvent::event)
-                .filter(event -> "SIMULATION_LOADING".equals(event.type()))
-                .filter(event -> event.matchId() != null)
+                .filter(outbound -> "SIMULATION_LOADING".equals(outbound.event().type()))
+                .filter(outbound -> outbound.event().matchId() != null)
                 .collect(java.util.stream.Collectors.toMap(
-                        event -> event.matchId() + ":" + event.roundNumber(),
-                        event -> event,
+                        outbound -> outbound.event().matchId() + ":" + outbound.event().roundNumber(),
+                        outbound -> outbound,
                         (first, second) -> first))
-                .forEach((key, event) -> {
+                .forEach((key, outbound) -> {
                     synchronized (scheduledSimulations) {
                         if (!scheduledSimulations.add(key)) {
                             return;
                         }
                     }
-                    matchSimulationExecutor.execute(() -> {
-                        try {
-                                List<OutboundMatchmakingEvent> replayEvents = matchService.completeSimulation(event.matchId());
-                                publish(replayEvents);
-                                scheduleSelectionTimeouts(replayEvents);
-                        } catch (RuntimeException exception) {
-                            log.error(
-                                    "Matchmaking authoritative replay simulation failed matchId={} round={}",
-                                    event.matchId(),
-                                    event.roundNumber(),
-                                    exception);
-                        }
-                    });
+                    submitSimulationAttempt(outbound, key, 1);
                 });
+    }
+
+    private void submitSimulationAttempt(
+            OutboundMatchmakingEvent outbound,
+            String key,
+            int attempt) {
+        try {
+            matchSimulationExecutor.execute(() -> runSimulationAttempt(outbound, key, attempt));
+        } catch (RuntimeException exception) {
+            retryOrCancelSimulation(outbound, key, attempt, exception);
+        }
+    }
+
+    private void runSimulationAttempt(
+            OutboundMatchmakingEvent outbound,
+            String key,
+            int attempt) {
+        MatchmakingEventDTO event = outbound.event();
+        try {
+            if (!matchService.isCurrentEvent(outbound)) {
+                removeInFlightKey(scheduledSimulations, key);
+                return;
+            }
+            List<OutboundMatchmakingEvent> replayEvents = matchService.completeSimulation(event.matchId());
+            publish(replayEvents);
+            scheduleSelectionTimeouts(replayEvents);
+        } catch (RuntimeException exception) {
+            retryOrCancelSimulation(outbound, key, attempt, exception);
+            return;
+        }
+        removeInFlightKey(scheduledSimulations, key);
+    }
+
+    private void retryOrCancelSimulation(
+            OutboundMatchmakingEvent outbound,
+            String key,
+            int attempt,
+            RuntimeException failure) {
+        MatchmakingEventDTO event = outbound.event();
+        if (attempt < MAX_SIMULATION_ATTEMPTS) {
+            try {
+                scheduleSafely(
+                        Instant.now().plusMillis(SIMULATION_RETRY_DELAY_MILLIS),
+                        "authoritative simulation retry",
+                        () -> submitSimulationAttempt(outbound, key, attempt + 1));
+                log.warn(
+                        "Retrying authoritative replay simulation matchId={} round={} attempt={}",
+                        event.matchId(),
+                        event.roundNumber(),
+                        attempt + 1,
+                        failure);
+                return;
+            } catch (RuntimeException schedulingFailure) {
+                failure.addSuppressed(schedulingFailure);
+            }
+        }
+
+        log.error(
+                "Authoritative replay simulation exhausted retries; cancelling match without a result matchId={} round={}",
+                event.matchId(),
+                event.roundNumber(),
+                failure);
+        try {
+            publish(matchService.cancelFailedSimulation(event.matchId(), event.roundNumber()));
+        } catch (RuntimeException terminalFailure) {
+            log.error(
+                    "Unable to cancel match after authoritative simulation failure matchId={} round={}",
+                    event.matchId(),
+                    event.roundNumber(),
+                    terminalFailure);
+        } finally {
+            removeInFlightKey(scheduledSimulations, key);
+        }
     }
 
     private void scheduleMatchAcceptanceTimeouts(List<OutboundMatchmakingEvent> events) {

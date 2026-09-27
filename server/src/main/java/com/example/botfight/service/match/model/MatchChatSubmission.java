@@ -13,7 +13,13 @@ public record MatchChatSubmission(
         String message,
         Instant sentAt,
         List<String> recipientPrincipalNames,
-        String channel) {
+        String channel,
+        List<UUID> recipientUserIds) {
+
+    public MatchChatSubmission {
+        recipientPrincipalNames = recipientPrincipalNames == null ? List.of() : List.copyOf(recipientPrincipalNames);
+        recipientUserIds = recipientUserIds == null ? List.of() : List.copyOf(recipientUserIds);
+    }
 
     /** Backward-compatible constructor for callers that predate chat channels. */
     public MatchChatSubmission(
@@ -24,7 +30,19 @@ public record MatchChatSubmission(
             String message,
             Instant sentAt,
             List<String> recipientPrincipalNames) {
-        this(status, messageId, matchId, username, message, sentAt, recipientPrincipalNames, "ALL");
+        this(status, messageId, matchId, username, message, sentAt, recipientPrincipalNames, "ALL", List.of());
+    }
+
+    public MatchChatSubmission(
+            MatchChatSubmissionStatus status,
+            UUID messageId,
+            UUID matchId,
+            String username,
+            String message,
+            Instant sentAt,
+            List<String> recipientPrincipalNames,
+            String channel) {
+        this(status, messageId, matchId, username, message, sentAt, recipientPrincipalNames, channel, List.of());
     }
 
     public static MatchChatSubmission rateLimited(UUID matchId) {
@@ -40,7 +58,8 @@ public record MatchChatSubmission(
                 RateLimitExceededException.GENERIC_MESSAGE,
                 null,
                 List.of(),
-                channel);
+                channel,
+                List.of());
     }
 
     public static MatchChatSubmission rejected(UUID matchId, String message) {
@@ -56,6 +75,7 @@ public record MatchChatSubmission(
                 message,
                 null,
                 List.of(),
-                channel);
+                channel,
+                List.of());
     }
 }

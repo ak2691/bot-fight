@@ -24,7 +24,7 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
     const [notificationsOpen, setNotificationsOpen] = useState(false);
     const [navbarVisibility, setNavbarVisibility] = useState({ pathname: null, hidden: false });
     const isHidden = navbarVisibility.pathname === pathname && navbarVisibility.hidden;
-    const isCharcoalPage = ["profile", "puzzles", "puzzle-builder", "puzzle-play", "abilities", "conditionals", "tutorial"].includes(currentPage);
+    const isCharcoalPage = ["profile", "puzzles", "puzzle-builder", "puzzle-play", "abilities", "conditionals", "tutorial", "chat-reports"].includes(currentPage);
     const username = user?.username ?? "bot";
     const pendingNotificationCount = pendingPartyInvites.length + pendingCustomLobbyInvites.length;
 
@@ -130,6 +130,21 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
                                 <path d="M7.5 4.75h9a2.75 2.75 0 0 1 2.75 2.75v9a2.75 2.75 0 0 1-2.75 2.75h-9a2.75 2.75 0 0 1-2.75-2.75v-9a2.75 2.75 0 0 1 2.75-2.75Z" />
                                 <path d="M12 8v8M8 12h8" />
                                 <path d="M9.25 4.75v-1.5h5.5v1.5" />
+                            </svg>
+                        </button>
+                    )}
+                    {user?.admin === true && (
+                        <button
+                            type="button"
+                            onClick={() => navigate("/admin/chat-reports")}
+                            aria-current={currentPage === "chat-reports" ? "page" : undefined}
+                            aria-label="Open chat reports"
+                            title="Chat reports"
+                            className="app-navbar-control app-navbar-icon-control grid min-h-11 min-w-11 place-items-center text-amber-200"
+                        >
+                            <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="1.7" aria-hidden="true">
+                                <path d="M4 5.5h16v12H9l-5 3v-15Z" />
+                                <path d="M12 8v4m0 3h.01" />
                             </svg>
                         </button>
                     )}

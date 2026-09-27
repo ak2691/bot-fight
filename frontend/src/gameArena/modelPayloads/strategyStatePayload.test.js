@@ -1,9 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildStatePayload } from "./strategyStatePayload.js";
+import { buildStatePayload, createStatePayloadFactory } from "./strategyStatePayload.js";
 import { stateFromPayload } from "../botlogic/code/runtime/runtimeState.js";
 import { statusEffectFor, statusIsActive } from "../ecs/contracts/StatusContracts.js";
 import { SELECTABLE_IDENTITIES } from "./selectableIdentities.js";
+import { buildDeterministicLogicAction } from "../botlogic/planner/ArenaActionPlanner.js";
+import { applyBotAction } from "../ecs/bots/ActionExecutionSystem.js";
+import { applyDamageToShape } from "../gameconfig/BotCombatSystem.js";
+import { toSimulationBotShape } from "./arenaShapes.js";
 
 test("bot payloads group health, stats, transform, and active statuses", () => {
     const payload = buildStatePayload([
@@ -96,6 +100,81 @@ test("bot payloads group health, stats, transform, and active statuses", () => {
     assert.equal(mine.selectableIdentities.includes(SELECTABLE_IDENTITIES.HEALTH), false);
     assert.equal(mine.selectableIdentities.includes(SELECTABLE_IDENTITIES.FACING), false);
     assert.equal(mine.ageMs, 2400);
+});
+
+test("one immutable tick snapshot matches per-actor payloads, actions, and preview state", () => {
+    const bots = Array.from({ length: 8 }, (_, index) => ({
+        id: index === 0 ? "main" : `bot-${index + 1}`,
+        type: "circle",
+        slot: index + 1,
+        teamNumber: index < 4 ? 1 : 2,
+        ownerId: index === 0 ? "main" : `bot-${index + 1}`,
+        x: 90 + index * 95,
+        y: 100 + index * 82,
+        rotation: index * 21,
+        velocityX: index - 3,
+        velocityY: 2 - index,
+        movementVelocityX: .5,
+        movementVelocityY: -.5,
+        size: 60,
+        hp: 75 + index,
+        maxHp: 100,
+        abilities: [5, 13],
+        abilityCooldowns: { 5: 1_000 + index, 13: 500 },
+        abilityCharges: { 5: 1 },
+        statusEffects: [{
+            type: "slow",
+            remainingMs: 700 + index,
+            effects: [{ type: "movement_modifier", mode: "constant", movementMultiplier: .8 }],
+        }],
+    }));
+    const entities = Array.from({ length: 128 }, (_, index) => ({
+        id: `entity-${index}`,
+        type: index % 2 === 0 ? "proximityMine" : "fireball",
+        abilityId: index % 2 === 0 ? 5 : 13,
+        ownerId: bots[index % bots.length].id,
+        ownerSlot: bots[index % bots.length].slot,
+        x: 150 + index * 3,
+        y: 180 + index * 2,
+        size: 24,
+        rotation: index % 360,
+        velocityX: 1,
+        velocityY: 2,
+        ageMs: index * 7,
+        armed: index % 2 === 0,
+        fuseMs: 900,
+        abilityCooldowns: { 5: 900 },
+        statusEffects: [],
+    }));
+    const shapes = [...bots, ...entities];
+    const payloadFactory = createStatePayloadFactory(shapes);
+    const configuration = {
+        roots: [{ branches: [{
+            conditions: [{ type: "always" }],
+            actions: [{ action: "rotate_toward_enemy" }],
+        }] }],
+    };
+
+    for (const bot of bots) {
+        const selectedLoadout = "custom:5,13";
+        const optimizedPayload = payloadFactory.forActor(selectedLoadout, bot.id);
+        const referencePayload = buildStatePayload(shapes, selectedLoadout, bot.id);
+        assert.deepEqual(optimizedPayload, referencePayload, `payload for ${bot.id}`);
+        assert.equal(Object.isFrozen(optimizedPayload.objects), true);
+        assert.equal(Object.isFrozen(optimizedPayload.objects[0]), true);
+        assert.equal(Object.isFrozen(optimizedPayload.objects[0]?.health), true);
+
+        const optimizedAction = buildDeterministicLogicAction(configuration, optimizedPayload);
+        const referenceAction = buildDeterministicLogicAction(configuration, referencePayload);
+        assert.deepEqual(optimizedAction, referenceAction, `action for ${bot.id}`);
+
+        const inputShape = toSimulationBotShape(bot);
+        const optimizedState = applyBotAction({ ...inputShape }, optimizedAction, 100, applyDamageToShape);
+        const referenceState = applyBotAction({ ...inputShape }, referenceAction, 100, applyDamageToShape);
+        assert.deepEqual(optimizedState, referenceState, `preview state for ${bot.id}`);
+    }
+
+    assert.equal(Object.isFrozen(shapes[0]), false);
 });
 
 test("spawned oriented entities inherit facing and movement selectable identities", () => {

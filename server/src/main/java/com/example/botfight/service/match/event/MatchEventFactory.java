@@ -594,6 +594,14 @@ public final class MatchEventFactory {
             UUID userId,
             String username,
             String principalName) {
+        MatchmakingPlayerDTO viewer = new MatchmakingPlayerDTO(
+                userId,
+                username,
+                1,
+                false,
+                0,
+                "melee",
+                false);
         return new OutboundMatchmakingEvent(
                 principalName,
                 new MatchmakingEventDTO(
@@ -601,16 +609,9 @@ public final class MatchEventFactory {
                         null,
                         null,
                         "NO_ACTIVE_MATCH",
-                        new MatchmakingPlayerDTO(
-                                userId,
-                                username,
-                                1,
-                                false,
-                                0,
-                                "melee",
-                                false),
+                        viewer,
                         null,
-                        List.of(),
+                        List.of(viewer),
                         Instant.now(clock),
                         null,
                         null,

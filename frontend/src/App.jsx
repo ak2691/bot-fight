@@ -31,6 +31,7 @@ const TutorialPage = lazy(loadTutorial)
 const PuzzleListPage = lazy(loadPuzzles)
 const PuzzlePlayPage = lazy(loadPuzzlePlay)
 const PuzzleBuilderPage = lazy(loadPuzzleBuilder)
+const ChatReportsPage = lazy(() => import('./pages/admin/ChatReportsPage.jsx'))
 
 function App() {
 
@@ -149,6 +150,16 @@ function App() {
                 <ProtectedRoute>
                   <AdminRoute>
                     <PuzzleBuilderPage />
+                  </AdminRoute>
+                </ProtectedRoute>
+              )}
+            />
+            <Route
+              path="/admin/chat-reports"
+              element={(
+                <ProtectedRoute>
+                  <AdminRoute>
+                    <ChatReportsPage />
                   </AdminRoute>
                 </ProtectedRoute>
               )}

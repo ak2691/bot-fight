@@ -16,6 +16,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -42,6 +43,12 @@ public class MatchmakingService {
     private static final long RATING_RANGE_INTERVAL_SECONDS = 15;
     private static final int MAX_RATING_RANGE = 400;
     private static final int MAX_PARTY_RATING_SPREAD = 300;
+    private static final int MAX_TWOS_CANDIDATES = 32;
+    private static final int MAX_TWOS_NEIGHBORS_PER_ANCHOR = 3;
+    private static final int MAX_TWOS_SEARCH_ANCHORS = 8;
+    private static final int MAX_TWOS_ANCHOR_SCAN = 16;
+    private static final int MAX_TWOS_BUCKET_SCAN = 32;
+    private static final int MAX_TWOS_COMMIT_RETRIES = 2;
     private static final int QUEUE_RECONNECT_GRACE_SECONDS = 10;
     private static final Duration QUEUE_RECONNECT_GRACE =
             Duration.ofSeconds(QUEUE_RECONNECT_GRACE_SECONDS);
@@ -53,9 +60,15 @@ public class MatchmakingService {
     private final MatchAbilityGuaranteeService guaranteeService;
     /** Registered FIFO order is the fairness source; entry keys make removal O(1). */
     private final LinkedHashMap<UUID, QueuedGroup> registeredQueueOrderById = new LinkedHashMap<>();
+    /** Rotating registered 2v2 search order; queue FIFO remains in the map above. */
+    private final LinkedHashMap<UUID, QueuedGroup> registeredTwosSearchOrder = new LinkedHashMap<>();
     /** Registered rating indexes keep candidate lookup bounded to the relevant Elo window. */
     private final Map<MatchMode, NavigableMap<Double, LinkedHashSet<QueuedGroup>>> registeredQueueByRating =
             new EnumMap<>(MatchMode.class);
+    /** External starts hold these leases while lifecycle persistence runs outside this monitor. */
+    private final Map<UUID, UUID> externalStartReservationsByUserId = new HashMap<>();
+    /** Monotonic tie-breaker for players whose injected clocks report the same instant. */
+    private long nextQueueOrder;
     /**
      * Guests have no Elo and therefore use an independent FIFO queue per mode.
      * They never enter the registered queue's rating indexes.
@@ -105,14 +118,14 @@ public class MatchmakingService {
         guestQueueOrderByMode.put(MatchMode.TWOS, new LinkedHashMap<>());
     }
 
-    public synchronized List<OutboundMatchmakingEvent> joinQueue(
+    public List<OutboundMatchmakingEvent> joinQueue(
             UUID userId,
             String username,
             String principalName) {
         return joinQueue(userId, username, principalName, null);
     }
 
-    public synchronized List<OutboundMatchmakingEvent> joinQueue(
+    public List<OutboundMatchmakingEvent> joinQueue(
             UUID userId,
             String username,
             String principalName,
@@ -120,7 +133,7 @@ public class MatchmakingService {
         return joinQueue(userId, username, principalName, socketSessionId, MatchMode.ONES);
     }
 
-    public synchronized List<OutboundMatchmakingEvent> joinQueue(
+    public List<OutboundMatchmakingEvent> joinQueue(
             UUID userId,
             String username,
             String principalName,
@@ -136,7 +149,7 @@ public class MatchmakingService {
     }
 
     /** Joins a queue as one atomic party-sized group. */
-    public synchronized List<OutboundMatchmakingEvent> joinQueue(
+    public List<OutboundMatchmakingEvent> joinQueue(
             UUID userId,
             String username,
             String principalName,
@@ -154,7 +167,7 @@ public class MatchmakingService {
     }
 
     /** Joins a queue with an optional live party identity for queue-state fanout. */
-    public synchronized List<OutboundMatchmakingEvent> joinQueue(
+    public List<OutboundMatchmakingEvent> joinQueue(
             UUID userId,
             String username,
             String principalName,
@@ -174,7 +187,7 @@ public class MatchmakingService {
     }
 
     /** Joins a queue while carrying the authenticated player's queue-time guarantees. */
-    public synchronized List<OutboundMatchmakingEvent> joinQueue(
+    public List<OutboundMatchmakingEvent> joinQueue(
             UUID userId,
             String username,
             String principalName,
@@ -200,7 +213,7 @@ public class MatchmakingService {
      * server-derived {@link QueuePool}; a false value is treated as the guest
      * pool rather than as a client-selectable unranked mode.
      */
-    public synchronized List<OutboundMatchmakingEvent> joinQueue(
+    public List<OutboundMatchmakingEvent> joinQueue(
             UUID userId,
             String username,
             String principalName,
@@ -223,7 +236,7 @@ public class MatchmakingService {
     }
 
     /** Joins the server-selected pool. Registered and guest pools never cross-match. */
-    public synchronized List<OutboundMatchmakingEvent> joinQueue(
+    public List<OutboundMatchmakingEvent> joinQueue(
             UUID userId,
             String username,
             String principalName,
@@ -233,9 +246,6 @@ public class MatchmakingService {
             UUID partyId,
             List<Integer> guaranteedAbilityIds,
             QueuePool pool) {
-        // A stale disconnected entry must not remain eligible when another
-        // player joins after its grace window has elapsed.
-        expireDisconnectedGroups(Instant.now(clock));
         QueuePool resolvedPool = pool == null ? QueuePool.REGISTERED : pool;
         MatchMode resolvedMode = mode == null ? MatchMode.ONES : mode;
         if (resolvedMode != MatchMode.ONES && resolvedMode != MatchMode.TWOS) {
@@ -263,24 +273,19 @@ public class MatchmakingService {
         if (resolvedMode == MatchMode.ONES && group.size() != 1) {
             throw new AuthException("A party can only queue for 2v2.");
         }
-        if (pendingMatchForUser(userId) != null) {
-            throw new AuthException(
-                    "A match is waiting for your acceptance. Return to it instead.");
+        if (resolvedPool == QueuePool.GUEST && (partyId != null || group.size() != 1)) {
+            throw new AuthException("Guests cannot join parties.");
         }
+
+        // These checks and reads can consult shared runtime state or the
+        // database, so do them before entering the queue monitor.
         matchmakingRateLimiter.requireAllowed(userId);
         for (MatchEntrant entrant : group) {
-            if (matchService.activeMatchStatus(entrant.userId()).activeMatch()) {
+            if (matchService.activeMatchStatus(entrant.userId()).activeMatch()
+                    || matchService.isMatchStartReserved(entrant.userId())) {
                 throw new AuthException(
                         "A party member has an active match. Return to it instead.");
             }
-            if (pendingMatchForUser(entrant.userId()) != null) {
-                throw new AuthException(
-                        "A party member is waiting for match acceptance. Return to it instead.");
-            }
-        }
-
-        if (resolvedPool == QueuePool.GUEST && (partyId != null || group.size() != 1)) {
-            throw new AuthException("Guests cannot join parties.");
         }
 
         QueueGroupType groupType = partyId == null && group.size() == 1
@@ -296,50 +301,90 @@ public class MatchmakingService {
                     "Party members must be within " + MAX_PARTY_RATING_SPREAD
                             + " Elo of each other to queue for 2v2.");
         }
-        removeQueuedGroupsForMembers(group);
         Instant queuedAt = Instant.now(clock);
-        QueuedGroup joined = new QueuedGroup(
-                UUID.randomUUID(),
-                group,
-                resolvedMode,
-                groupType,
-                partyId,
-                ratings,
-                queuedAt,
-                resolvedPool);
-        if (resolvedMode == MatchMode.ONES) {
-            QueuedGroup opponent = findBestOneOpponent(joined, queuedAt);
-            if (opponent == null) {
-                addQueuedGroup(joined);
-                return waitingEvents(joined);
+        QueuedGroup joined;
+        List<QueuedGroup> twosCandidates = List.of();
+        synchronized (this) {
+            // A stale disconnected entry must not remain eligible when another
+            // player joins after its grace window has elapsed.
+            expireDisconnectedGroups(Instant.now(clock));
+            if (pendingMatchForUser(userId) != null) {
+                throw new AuthException(
+                        "A match is waiting for your acceptance. Return to it instead.");
             }
-            removeQueuedGroup(opponent);
-            List<MatchEntrant> entrants = new ArrayList<>();
-            entrants.addAll(opponent.toMatchEntrants(1));
-            entrants.addAll(joined.toMatchEntrants(2));
-            return createPendingMatch(entrants, resolvedMode, resolvedPool);
+            for (MatchEntrant entrant : group) {
+                if (externalStartReservationsByUserId.containsKey(entrant.userId())) {
+                    throw new AuthException("A party member is already starting another match.");
+                }
+                if (pendingMatchForUser(entrant.userId()) != null) {
+                    throw new AuthException(
+                            "A party member is waiting for match acceptance. Return to it instead.");
+                }
+                if (matchService.activeMatchStatus(entrant.userId()).activeMatch()
+                        || matchService.isMatchStartReserved(entrant.userId())) {
+                    throw new AuthException(
+                            "A party member has an active match. Return to it instead.");
+                }
+            }
+
+            joined = new QueuedGroup(
+                    UUID.randomUUID(),
+                    group,
+                    resolvedMode,
+                    groupType,
+                    partyId,
+                    ratings,
+                    queuedAt,
+                    resolvedPool,
+                    nextQueueOrder++);
+
+            removeQueuedGroupsForMembers(group);
+            if (resolvedMode == MatchMode.ONES) {
+                QueuedGroup opponent = findBestOneOpponent(joined, queuedAt);
+                if (opponent == null) {
+                    addQueuedGroup(joined);
+                    return waitingEvents(joined);
+                }
+                removeQueuedGroup(opponent);
+                List<MatchEntrant> entrants = new ArrayList<>();
+                entrants.addAll(opponent.toMatchEntrants(1));
+                entrants.addAll(joined.toMatchEntrants(2));
+                return createPendingMatch(entrants, resolvedMode, resolvedPool);
+            }
+
+            addQueuedGroup(joined);
+            twosCandidates = twosCandidateSnapshot(resolvedPool, joined.queueEntryId());
         }
 
-        addQueuedGroup(joined);
-        TwosSelection selection = findTwosSelection(resolvedPool);
-        if (selection == null) return waitingEvents(joined);
-        selection.groups().forEach(this::removeQueuedGroup);
-        List<MatchEntrant> entrants = selection.groups().stream()
-                .flatMap(groupEntry -> groupEntry.toMatchEntrants(
-                        selection.teamFor(groupEntry)).stream())
-                .toList();
-        return createPendingMatch(entrants, resolvedMode, resolvedPool);
+        TwosSelection selection = findTwosSelection(twosCandidates, resolvedPool, queuedAt);
+        if (selection != null) {
+            List<OutboundMatchmakingEvent> events = commitTwosSelection(selection, resolvedPool);
+            if (events != null) {
+                List<OutboundMatchmakingEvent> requesterState = currentQueueEventsForUser(userId);
+                if (!requesterState.isEmpty()
+                        && "QUEUE_WAITING".equals(requesterState.getFirst().event().type())) {
+                    List<OutboundMatchmakingEvent> combined = new ArrayList<>(events);
+                    combined.addAll(requesterState);
+                    return List.copyOf(combined);
+                }
+                return events;
+            }
+        }
+        return currentQueueEventsForUser(userId);
     }
 
     /**
      * Rechecks queued groups without requiring another player to join. The
      * caller publishes the returned events to the affected sockets.
      */
-    public synchronized List<OutboundMatchmakingEvent> sweepQueues() {
-        Instant now = Instant.now(clock);
-        List<OutboundMatchmakingEvent> events = new ArrayList<>(expireDisconnectedGroups(now));
-        events.addAll(matchWaitingOnes(QueuePool.REGISTERED));
-        events.addAll(matchWaitingOnes(QueuePool.GUEST));
+    public List<OutboundMatchmakingEvent> sweepQueues() {
+        List<OutboundMatchmakingEvent> events = new ArrayList<>();
+        synchronized (this) {
+            Instant now = Instant.now(clock);
+            events.addAll(expireDisconnectedGroups(now));
+            events.addAll(matchWaitingOnes(QueuePool.REGISTERED));
+            events.addAll(matchWaitingOnes(QueuePool.GUEST));
+        }
         events.addAll(matchWaitingTwos(QueuePool.REGISTERED));
         events.addAll(matchWaitingTwos(QueuePool.GUEST));
         return List.copyOf(events);
@@ -357,6 +402,82 @@ public class MatchmakingService {
         if (queuedGroup != null) {
             removeQueuedGroup(queuedGroup);
         }
+    }
+
+    /**
+     * Removes queue and acceptance state that conflicts with an external
+     * roster start. A queue match already doing persistence owns its STARTING
+     * claim, so callers must reject the external start in that case.
+     */
+    public synchronized List<OutboundMatchmakingEvent> cancelConflictingQueueState(
+            Collection<UUID> userIds) {
+        ExternalMatchStartPreparation preparation = prepareExternalMatchStart(userIds);
+        releaseExternalMatchStart(preparation.reservationId());
+        return preparation.cancellationEvents();
+    }
+
+    /**
+     * Atomically cancels conflicting queue state and fences new queue joins
+     * while the external match lifecycle persists the roster outside this
+     * monitor. Call {@link #releaseExternalMatchStart(UUID)} in a finally
+     * block after the lifecycle start attempt completes.
+     */
+    public synchronized ExternalMatchStartPreparation prepareExternalMatchStart(
+            Collection<UUID> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return new ExternalMatchStartPreparation(null, List.of());
+        }
+        Set<UUID> roster = userIds.stream()
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        if (roster.isEmpty() || roster.size() != userIds.size()) {
+            throw new AuthException("the match roster could not be reserved");
+        }
+        if (roster.stream().anyMatch(externalStartReservationsByUserId::containsKey)) {
+            throw new AuthException("a match is already starting for one or more players");
+        }
+
+        List<PendingMatch> pendingConflicts = pendingMatchesById.values().stream()
+                .filter(pending -> pending.entrants().stream()
+                        .anyMatch(entrant -> roster.contains(entrant.userId())))
+                .toList();
+        if (pendingConflicts.stream().anyMatch(PendingMatch::starting)) {
+            throw new AuthException("a queue match is already starting for one or more players");
+        }
+
+        List<OutboundMatchmakingEvent> events = new ArrayList<>();
+        Set<QueuedGroup> queuedConflicts = roster.stream()
+                .map(queuedGroupsByUserId::get)
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        for (QueuedGroup queuedGroup : queuedConflicts) {
+            removeQueuedGroup(queuedGroup);
+            events.addAll(queuedGroup.members().stream()
+                    .map(member -> queueStatusEvent(
+                            member,
+                            queuedGroup.mode(),
+                            "MATCH_ERROR",
+                            "BUILDING",
+                            "The queue ended because a player started another match."))
+                    .toList());
+        }
+        for (PendingMatch pending : pendingConflicts) {
+            pendingMatchesById.remove(pending.matchId(), pending);
+            events.addAll(pendingEvents(
+                    pending,
+                    "MATCH_ACCEPTANCE_CANCELLED",
+                    "The match was cancelled because a player started another match."));
+        }
+        UUID reservationId = UUID.randomUUID();
+        roster.forEach(userId -> externalStartReservationsByUserId.put(userId, reservationId));
+        return new ExternalMatchStartPreparation(reservationId, events);
+    }
+
+    /** Releases an external-start admission fence after lifecycle success or failure. */
+    public synchronized void releaseExternalMatchStart(UUID reservationId) {
+        if (reservationId == null) return;
+        externalStartReservationsByUserId.entrySet()
+                .removeIf(entry -> reservationId.equals(entry.getValue()));
     }
 
     /**
@@ -413,7 +534,7 @@ public class MatchmakingService {
         expireDisconnectedGroups(now);
         QueuedGroup group = queuedGroupsByUserId.get(userId);
         if (group == null) return List.of();
-        QueuedGroup rebound = group.withSocketSession(userId, socketSessionId);
+                QueuedGroup rebound = group.withSocketSession(userId, socketSessionId);
         reconnectDeadlinesByUserId.remove(userId);
         replaceQueuedGroup(group, rebound);
         return waitingEvents(rebound);
@@ -430,64 +551,106 @@ public class MatchmakingService {
         pendingMatchesById.put(updated.matchId(), updated);
         return pendingEvents(
                 updated,
-                "MATCH_FOUND",
-                "Match found. Accept within 20 seconds.");
+                updated.starting() ? "MATCH_ACCEPTED" : "MATCH_FOUND",
+                updated.starting()
+                        ? "All players accepted. The match is starting."
+                        : "Match found. Accept within 20 seconds.");
     }
 
-    public synchronized List<OutboundMatchmakingEvent> acceptMatch(
+    public List<OutboundMatchmakingEvent> acceptMatch(
             UUID pendingMatchId,
             UUID userId,
             String socketSessionId) {
-        PendingMatch pending = pendingMatchesById.get(pendingMatchId);
-        if (pending == null) {
-            throw new AuthException("The match acceptance window is no longer available.");
-        }
-
-        MatchEntrant acceptingPlayer = pending.entrantFor(userId);
-        if (acceptingPlayer == null || !socketMatches(acceptingPlayer.socketSessionId(), socketSessionId)) {
-            throw new AuthException("This match acceptance belongs to another connection.");
-        }
-
-        if (!Instant.now(clock).isBefore(pending.acceptanceEndsAt())) {
-            pendingMatchesById.remove(pending.matchId());
-            return pendingEvents(
-                    pending,
-                    "MATCH_ACCEPTANCE_EXPIRED",
-                    "The match acceptance window has closed.");
-        }
-
-        if (pending.acceptedUserIds().contains(userId)) {
-            return pendingEvents(
-                    pending,
-                    "MATCH_ACCEPTED",
-                    "You already accepted. Waiting for the other players.");
-        }
-
-        PendingMatch accepted = pending.withAcceptedUser(userId);
-        if (accepted.acceptedUserIds().size() == accepted.entrants().size()) {
-            List<OutboundMatchmakingEvent> events;
-            if (accepted.mode() == MatchMode.ONES) {
-                events = accepted.pool().ranked()
-                        ? matchService.startMatch(accepted.entrants().get(0), accepted.entrants().get(1))
-                        : matchService.startMatch(
-                                accepted.entrants().get(0),
-                                accepted.entrants().get(1),
-                                accepted.mode(),
-                                false);
-            } else {
-                events = accepted.pool().ranked()
-                        ? matchService.startTeamMatch(accepted.entrants(), accepted.mode())
-                        : matchService.startTeamMatch(accepted.entrants(), accepted.mode(), false);
+        PendingMatch previous;
+        PendingMatch starting;
+        synchronized (this) {
+            previous = pendingMatchesById.get(pendingMatchId);
+            if (previous == null) {
+                throw new AuthException("The match acceptance window is no longer available.");
             }
-            pendingMatchesById.remove(accepted.matchId());
-            return events;
+
+            MatchEntrant acceptingPlayer = previous.entrantFor(userId);
+            if (acceptingPlayer == null
+                    || !socketMatches(acceptingPlayer.socketSessionId(), socketSessionId)) {
+                throw new AuthException("This match acceptance belongs to another connection.");
+            }
+
+            if (previous.starting()) {
+                return pendingEvents(
+                        previous,
+                        "MATCH_ACCEPTED",
+                        "All players accepted. The match is starting.");
+            }
+            if (!Instant.now(clock).isBefore(previous.acceptanceEndsAt())) {
+                pendingMatchesById.remove(previous.matchId(), previous);
+                return pendingEvents(
+                        previous,
+                        "MATCH_ACCEPTANCE_EXPIRED",
+                        "The match acceptance window has closed.");
+            }
+
+            if (previous.acceptedUserIds().contains(userId)) {
+                return pendingEvents(
+                        previous,
+                        "MATCH_ACCEPTED",
+                        "You already accepted. Waiting for the other players.");
+            }
+
+            PendingMatch accepted = previous.withAcceptedUser(userId);
+            if (accepted.acceptedUserIds().size() != accepted.entrants().size()) {
+                pendingMatchesById.put(accepted.matchId(), accepted);
+                return pendingEvents(
+                        accepted,
+                        "MATCH_ACCEPTED",
+                        "A player accepted the match. Waiting for the other players.");
+            }
+
+            starting = accepted.withStarting(true);
+            pendingMatchesById.put(starting.matchId(), starting);
         }
 
-        pendingMatchesById.put(accepted.matchId(), accepted);
-        return pendingEvents(
-                accepted,
-                "MATCH_ACCEPTED",
-                "A player accepted the match. Waiting for the other players.");
+        try {
+            List<OutboundMatchmakingEvent> events = startQueueMatch(starting);
+            synchronized (this) {
+                pendingMatchesById.remove(starting.matchId());
+            }
+            return events;
+        } catch (AuthException exception) {
+            PendingMatch cancelled;
+            synchronized (this) {
+                cancelled = pendingMatchesById.get(starting.matchId());
+                pendingMatchesById.remove(starting.matchId());
+            }
+            return pendingEvents(
+                    cancelled == null ? starting : cancelled,
+                    "MATCH_ACCEPTANCE_CANCELLED",
+                    "The match was cancelled because one or more players entered another match.");
+        } catch (RuntimeException | Error exception) {
+            synchronized (this) {
+                PendingMatch current = pendingMatchesById.get(starting.matchId());
+                if (current != null && current.starting()) {
+                    pendingMatchesById.put(
+                            current.matchId(),
+                            current.withAcceptedUserIds(previous.acceptedUserIds()).withStarting(false));
+                }
+            }
+            throw exception;
+        }
+    }
+
+    private List<OutboundMatchmakingEvent> startQueueMatch(PendingMatch accepted) {
+        if (accepted.mode() == MatchMode.ONES) {
+            return accepted.pool().ranked()
+                    ? matchService.startMatch(accepted.entrants().get(0), accepted.entrants().get(1))
+                    : matchService.startMatch(
+                            accepted.entrants().get(0),
+                            accepted.entrants().get(1),
+                            accepted.mode(),
+                            false);
+        }
+        return accepted.pool().ranked()
+                ? matchService.startTeamMatch(accepted.entrants(), accepted.mode())
+                : matchService.startTeamMatch(accepted.entrants(), accepted.mode(), false);
     }
 
     public synchronized List<OutboundMatchmakingEvent> cancelPendingMatch(
@@ -503,6 +666,9 @@ public class MatchmakingService {
         if (cancellingPlayer == null || !socketMatches(cancellingPlayer.socketSessionId(), socketSessionId)) {
             throw new AuthException("This match acceptance belongs to another connection.");
         }
+        if (pending.starting()) {
+            throw new AuthException("The match is already starting and cannot be cancelled.");
+        }
 
         pendingMatchesById.remove(pending.matchId());
         return pendingEvents(
@@ -516,6 +682,7 @@ public class MatchmakingService {
             Instant expectedDeadline) {
         PendingMatch pending = pendingMatchesById.get(pendingMatchId);
         if (pending == null
+                || pending.starting()
                 || !pending.acceptanceEndsAt().equals(expectedDeadline)
                 || Instant.now(clock).isBefore(pending.acceptanceEndsAt())) {
             return List.of();
@@ -537,7 +704,8 @@ public class MatchmakingService {
                 Instant.now(clock).plusSeconds(MATCH_ACCEPTANCE_SECONDS + SUBMISSION_GRACE_SECONDS),
                 Set.of(),
                 mode,
-                pool);
+                pool,
+                false);
         pendingMatchesById.put(pending.matchId(), pending);
         return pendingEvents(
                 pending,
@@ -593,7 +761,8 @@ public class MatchmakingService {
                                     acceptedByMe,
                                     otherPlayerAccepted,
                                     null)
-                                    .withMode(pending.mode().name()));
+                                    .withMode(pending.mode().name())
+                                    .withViewerUserId(entrant.userId()));
                 })
                 .toList();
     }
@@ -663,14 +832,126 @@ public class MatchmakingService {
         return null;
     }
 
-    private TwosSelection findTwosSelection(QueuePool pool) {
-        Instant now = Instant.now(clock);
-        List<QueuedGroup> candidates = queuedGroups(pool, MatchMode.TWOS).stream()
-                .filter(this::isMatchEligible)
-                .toList();
+    /** Must be called under this monitor; the returned bounded snapshot is searched outside it. */
+    private List<QueuedGroup> twosCandidateSnapshot(QueuePool pool, UUID focusQueueEntryId) {
         if (pool == QueuePool.GUEST) {
-            return selectGuestGroups(candidates);
+            List<QueuedGroup> candidates = new ArrayList<>(4);
+            for (QueuedGroup group : guestQueueOrderByMode.get(MatchMode.TWOS).values()) {
+                if (isMatchEligible(group)) candidates.add(group);
+                if (candidates.size() == 4) break;
+            }
+            return List.copyOf(candidates);
         }
+
+        Instant now = Instant.now(clock);
+        List<UUID> scannedIds = new ArrayList<>(MAX_TWOS_ANCHOR_SCAN);
+        List<QueuedGroup> anchors = new ArrayList<>(MAX_TWOS_SEARCH_ANCHORS);
+        for (QueuedGroup group : registeredTwosSearchOrder.values()) {
+            scannedIds.add(group.queueEntryId());
+            if (isMatchEligible(group) && anchors.size() < MAX_TWOS_SEARCH_ANCHORS - 1) {
+                anchors.add(group);
+            }
+            if (scannedIds.size() == MAX_TWOS_ANCHOR_SCAN) break;
+        }
+        // Rotate only the search cursor. The authoritative FIFO and queuedAt
+        // values stay unchanged, so every bounded sweep eventually examines
+        // later rating regions without changing match fairness.
+        for (UUID queueEntryId : scannedIds) {
+            QueuedGroup group = registeredTwosSearchOrder.remove(queueEntryId);
+            if (group != null) registeredTwosSearchOrder.put(queueEntryId, group);
+        }
+
+        QueuedGroup focus = focusQueueEntryId == null
+                ? null
+                : registeredQueueOrderById.get(focusQueueEntryId);
+        if (focus != null && focus.mode() == MatchMode.TWOS && isMatchEligible(focus)) {
+            anchors.remove(focus);
+            anchors.add(focus);
+        }
+        if (focus == null && anchors.size() < MAX_TWOS_SEARCH_ANCHORS) {
+            for (QueuedGroup group : registeredTwosSearchOrder.values()) {
+                if (isMatchEligible(group) && !anchors.contains(group)) anchors.add(group);
+                if (anchors.size() == MAX_TWOS_SEARCH_ANCHORS) break;
+            }
+        }
+
+        LinkedHashSet<QueuedGroup> candidates = new LinkedHashSet<>();
+        NavigableMap<Double, LinkedHashSet<QueuedGroup>> ratingIndex =
+                registeredQueueByRating.get(MatchMode.TWOS);
+        for (QueuedGroup anchor : anchors) {
+            if (candidates.size() >= MAX_TWOS_CANDIDATES) break;
+            candidates.add(anchor);
+            addNearestTwosCandidates(anchor, candidates, ratingIndex, now);
+        }
+        return candidates.stream()
+                .sorted(Comparator.comparing(QueuedGroup::queuedAt)
+                        .thenComparingLong(QueuedGroup::queueOrder)
+                        .thenComparing(this::stableGroupKey))
+                .limit(MAX_TWOS_CANDIDATES)
+                .toList();
+    }
+
+    private void addNearestTwosCandidates(
+            QueuedGroup anchor,
+            LinkedHashSet<QueuedGroup> candidates,
+            NavigableMap<Double, LinkedHashSet<QueuedGroup>> ratingIndex,
+            Instant now) {
+        if (ratingIndex == null || ratingIndex.isEmpty()) return;
+        int added = addTwosCandidatesFromBucket(
+                anchor,
+                candidates,
+                ratingIndex.get(anchor.matchRating()),
+                MAX_TWOS_NEIGHBORS_PER_ANCHOR,
+                now);
+        Map.Entry<Double, LinkedHashSet<QueuedGroup>> lower = ratingIndex.lowerEntry(anchor.matchRating());
+        Map.Entry<Double, LinkedHashSet<QueuedGroup>> higher = ratingIndex.higherEntry(anchor.matchRating());
+        while (added < MAX_TWOS_NEIGHBORS_PER_ANCHOR && (lower != null || higher != null)) {
+            boolean takeLower = higher == null
+                    || (lower != null
+                            && anchor.matchRating() - lower.getKey()
+                                    <= higher.getKey() - anchor.matchRating());
+            Map.Entry<Double, LinkedHashSet<QueuedGroup>> next = takeLower ? lower : higher;
+            if (next == null) break;
+            added += addTwosCandidatesFromBucket(
+                    anchor,
+                    candidates,
+                    next.getValue(),
+                    MAX_TWOS_NEIGHBORS_PER_ANCHOR - added,
+                    now);
+            if (takeLower) lower = ratingIndex.lowerEntry(next.getKey());
+            else higher = ratingIndex.higherEntry(next.getKey());
+        }
+    }
+
+    /** Scans and rotates a small slice of a rating bucket so disconnected entries cannot pin it. */
+    private int addTwosCandidatesFromBucket(
+            QueuedGroup anchor,
+            LinkedHashSet<QueuedGroup> candidates,
+            LinkedHashSet<QueuedGroup> bucket,
+            int limit,
+            Instant now) {
+        if (bucket == null || bucket.isEmpty() || limit <= 0) return 0;
+        List<QueuedGroup> scanned = new ArrayList<>(Math.min(MAX_TWOS_BUCKET_SCAN, bucket.size()));
+        int added = 0;
+        for (QueuedGroup candidate : bucket) {
+            scanned.add(candidate);
+            if (!candidate.queueEntryId().equals(anchor.queueEntryId())
+                    && isMatchEligible(candidate)
+                    && candidates.add(candidate)) {
+                added++;
+            }
+            if (added == limit || scanned.size() == MAX_TWOS_BUCKET_SCAN) break;
+        }
+        for (QueuedGroup candidate : scanned) bucket.remove(candidate);
+        bucket.addAll(scanned);
+        return added;
+    }
+
+    private TwosSelection findTwosSelection(
+            List<QueuedGroup> candidates,
+            QueuePool pool,
+            Instant now) {
+        if (pool == QueuePool.GUEST) return selectGuestGroups(candidates);
         return selectGroups(candidates, 0, new ArrayList<>(), 0, now);
     }
 
@@ -702,16 +983,59 @@ public class MatchmakingService {
 
     private List<OutboundMatchmakingEvent> matchWaitingTwos(QueuePool pool) {
         List<OutboundMatchmakingEvent> events = new ArrayList<>();
+        int staleSnapshots = 0;
         while (true) {
-            TwosSelection selection = findTwosSelection(pool);
+            List<QueuedGroup> candidates;
+            synchronized (this) {
+                candidates = twosCandidateSnapshot(pool, null);
+            }
+            if (candidates.isEmpty()) break;
+            TwosSelection selection = findTwosSelection(candidates, pool, Instant.now(clock));
             if (selection == null) break;
+            List<OutboundMatchmakingEvent> committed = commitTwosSelection(selection, pool);
+            if (committed == null) {
+                if (++staleSnapshots >= MAX_TWOS_COMMIT_RETRIES) break;
+                continue;
+            }
+            staleSnapshots = 0;
+            events.addAll(committed);
+        }
+        return events;
+    }
+
+    private List<OutboundMatchmakingEvent> commitTwosSelection(
+            TwosSelection selection,
+            QueuePool pool) {
+        synchronized (this) {
+            boolean stillAvailable = selection.groups().stream().allMatch(group -> {
+                QueuedGroup current = group.pool() == QueuePool.GUEST
+                        ? guestQueueOrderByMode.get(MatchMode.TWOS).get(group.queueEntryId())
+                        : registeredQueueOrderById.get(group.queueEntryId());
+                return group.equals(current)
+                        && isMatchEligible(current)
+                        && current.members().stream().noneMatch(member ->
+                                externalStartReservationsByUserId.containsKey(member.userId())
+                                        || matchService.activeMatchStatus(member.userId()).activeMatch()
+                                        || matchService.isMatchStartReserved(member.userId()));
+            });
+            if (!stillAvailable) return null;
             selection.groups().forEach(this::removeQueuedGroup);
             List<MatchEntrant> entrants = selection.groups().stream()
                     .flatMap(group -> group.toMatchEntrants(selection.teamFor(group)).stream())
                     .toList();
-            events.addAll(createPendingMatch(entrants, MatchMode.TWOS, pool));
+            return createPendingMatch(entrants, MatchMode.TWOS, pool);
         }
-        return events;
+    }
+
+    private List<OutboundMatchmakingEvent> currentQueueEventsForUser(UUID userId) {
+        synchronized (this) {
+            PendingMatch pending = pendingMatchForUser(userId);
+            if (pending != null) {
+                return pendingEvents(pending, "MATCH_FOUND", "Match found. Accept within 20 seconds.");
+            }
+            QueuedGroup current = queuedGroupsByUserId.get(userId);
+            return current == null ? List.of() : waitingEvents(current);
+        }
     }
 
     private QueuedGroup findBestOneOpponent(QueuedGroup target, Instant now) {
@@ -791,6 +1115,9 @@ public class MatchmakingService {
             guestQueueOrderByMode.get(group.mode()).put(group.queueEntryId(), group);
         } else {
             registeredQueueOrderById.put(group.queueEntryId(), group);
+            if (group.mode() == MatchMode.TWOS) {
+                registeredTwosSearchOrder.put(group.queueEntryId(), group);
+            }
             registeredQueueByRating.get(group.mode())
                     .computeIfAbsent(group.matchRating(), ignored -> new LinkedHashSet<>())
                     .add(group);
@@ -812,6 +1139,9 @@ public class MatchmakingService {
             if (queuedGroup == null || !queuedGroup.equals(current)) return;
             // Replacing an existing key in a LinkedHashMap preserves its insertion position.
             registeredQueueOrderById.put(current.queueEntryId(), replacement);
+            if (current.mode() == MatchMode.TWOS) {
+                registeredTwosSearchOrder.put(current.queueEntryId(), replacement);
+            }
 
             NavigableMap<Double, LinkedHashSet<QueuedGroup>> index =
                     registeredQueueByRating.get(current.mode());
@@ -844,6 +1174,9 @@ public class MatchmakingService {
             queuedGroup = guestQueueOrderByMode.get(group.mode()).remove(group.queueEntryId());
         } else {
             queuedGroup = registeredQueueOrderById.remove(group.queueEntryId());
+            if (group.mode() == MatchMode.TWOS) {
+                registeredTwosSearchOrder.remove(group.queueEntryId());
+            }
         }
         if (queuedGroup == null) return;
         if (queuedGroup.pool() == QueuePool.REGISTERED) {
@@ -1054,10 +1387,53 @@ public class MatchmakingService {
         int ageComparison = oldestQueuedAt(candidate.groups())
                 .compareTo(oldestQueuedAt(current.groups()));
         if (ageComparison != 0) return ageComparison < 0;
+        int queueOrderComparison = compareSelectionKeys(candidate, current);
+        if (queueOrderComparison != 0) return queueOrderComparison < 0;
         int ratingComparison = Double.compare(
                 candidate.ratingDifference(), current.ratingDifference());
         if (ratingComparison != 0) return ratingComparison < 0;
         return false;
+    }
+
+    private int compareSelectionKeys(TwosSelection first, TwosSelection second) {
+        List<QueuedGroup> firstGroups = first.groups().stream()
+                .sorted(Comparator.comparingLong(QueuedGroup::queueOrder)
+                        .thenComparing(this::stableGroupKey))
+                .toList();
+        List<QueuedGroup> secondGroups = second.groups().stream()
+                .sorted(Comparator.comparingLong(QueuedGroup::queueOrder)
+                        .thenComparing(this::stableGroupKey))
+                .toList();
+        for (int index = 0; index < Math.min(firstGroups.size(), secondGroups.size()); index++) {
+            int comparison = Long.compare(
+                    firstGroups.get(index).queueOrder(), secondGroups.get(index).queueOrder());
+            if (comparison != 0) return comparison;
+        }
+        int groupCountComparison = Integer.compare(firstGroups.size(), secondGroups.size());
+        if (groupCountComparison != 0) return groupCountComparison;
+
+        List<UUID> firstUsers = first.groups().stream()
+                .flatMap(group -> group.members().stream())
+                .map(MatchEntrant::userId)
+                .sorted()
+                .toList();
+        List<UUID> secondUsers = second.groups().stream()
+                .flatMap(group -> group.members().stream())
+                .map(MatchEntrant::userId)
+                .sorted()
+                .toList();
+        for (int index = 0; index < Math.min(firstUsers.size(), secondUsers.size()); index++) {
+            int comparison = firstUsers.get(index).compareTo(secondUsers.get(index));
+            if (comparison != 0) return comparison;
+        }
+        return Integer.compare(firstUsers.size(), secondUsers.size());
+    }
+
+    private UUID stableGroupKey(QueuedGroup group) {
+        return group.members().stream()
+                .map(MatchEntrant::userId)
+                .min(Comparator.naturalOrder())
+                .orElse(group.queueEntryId());
     }
 
     private int ratingSpread(Map<UUID, Integer> ratings) {
@@ -1117,6 +1493,14 @@ public class MatchmakingService {
             String status,
             String message,
             Instant queueStartedAt) {
+        MatchmakingPlayerDTO participant = new MatchmakingPlayerDTO(
+                player.userId(),
+                player.username(),
+                1,
+                false,
+                0,
+                "melee",
+                false);
         return new OutboundMatchmakingEvent(
                 player.principalName(),
                 new MatchmakingEventDTO(
@@ -1124,16 +1508,9 @@ public class MatchmakingService {
                         null,
                         null,
                         status,
-                        new MatchmakingPlayerDTO(
-                                player.userId(),
-                                player.username(),
-                                1,
-                                false,
-                                0,
-                                "melee",
-                                false),
+                        participant,
                         null,
-                        List.of(),
+                        List.of(participant),
                         Instant.now(clock),
                         null,
                         null,
@@ -1165,7 +1542,8 @@ public class MatchmakingService {
             UUID partyId,
             Map<UUID, Integer> ratings,
             Instant queuedAt,
-            QueuePool pool) {
+            QueuePool pool,
+            long queueOrder) {
         private QueuedGroup {
             members = List.copyOf(members);
             ratings = Map.copyOf(ratings);
@@ -1191,7 +1569,8 @@ public class MatchmakingService {
                     partyId,
                     ratings,
                     queuedAt,
-                    pool);
+                    pool,
+                    queueOrder);
         }
 
         private double matchRating() {
@@ -1220,13 +1599,24 @@ public class MatchmakingService {
         }
     }
 
+    public record ExternalMatchStartPreparation(
+            UUID reservationId,
+            List<OutboundMatchmakingEvent> cancellationEvents) {
+        public ExternalMatchStartPreparation {
+            cancellationEvents = cancellationEvents == null
+                    ? List.of()
+                    : List.copyOf(cancellationEvents);
+        }
+    }
+
     private record PendingMatch(
             UUID matchId,
             List<MatchEntrant> entrants,
             Instant acceptanceEndsAt,
             Set<UUID> acceptedUserIds,
             MatchMode mode,
-            QueuePool pool) {
+            QueuePool pool,
+            boolean starting) {
 
         private boolean containsUser(UUID userId) {
             return entrants.stream().anyMatch(entrant -> entrant.userId().equals(userId));
@@ -1243,7 +1633,29 @@ public class MatchmakingService {
             java.util.Set<UUID> accepted = new java.util.HashSet<>(acceptedUserIds);
             accepted.add(userId);
             return new PendingMatch(
-                    matchId, entrants, acceptanceEndsAt, Set.copyOf(accepted), mode, pool);
+                    matchId, entrants, acceptanceEndsAt, Set.copyOf(accepted), mode, pool, starting);
+        }
+
+        private PendingMatch withAcceptedUserIds(Set<UUID> userIds) {
+            return new PendingMatch(
+                    matchId,
+                    entrants,
+                    acceptanceEndsAt,
+                    Set.copyOf(userIds),
+                    mode,
+                    pool,
+                    starting);
+        }
+
+        private PendingMatch withStarting(boolean value) {
+            return new PendingMatch(
+                    matchId,
+                    entrants,
+                    acceptanceEndsAt,
+                    acceptedUserIds,
+                    mode,
+                    pool,
+                    value);
         }
 
         private PendingMatch withSocketSession(UUID userId, String socketSessionId) {
@@ -1264,7 +1676,8 @@ public class MatchmakingService {
                     acceptanceEndsAt,
                     acceptedUserIds,
                     mode,
-                    pool);
+                    pool,
+                    starting);
         }
     }
 }

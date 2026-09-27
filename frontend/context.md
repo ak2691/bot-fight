@@ -16,6 +16,8 @@ to [`src/gameArena/context.md`](src/gameArena/context.md).
 - `src/security/csrf.js`: CSRF acquisition/header helpers for state changes.
 - `src/notifications/`: app-wide notification subscription, duel/party/custom-lobby invite
   actions, and block-aware notification state.
+- `src/chatModeration/`: report submission UI/API shared by match and custom-lobby
+  chat; admin review is under `src/pages/admin/`.
 - `src/index.css` and `src/App.css`: global/application styling.
 
 Route UI and navigation bugs here first. Authentication behavior usually spans
@@ -30,6 +32,7 @@ Route UI and navigation bugs here first. Authentication behavior usually spans
 | Puzzle list or admin puzzle authoring | `src/pages/puzzles/` and `src/puzzles/` | `src/auth/`, arena code/loadout contracts, and server puzzle areas |
 | Login/session/CSRF | `src/auth/`, `src/security/` | server auth/security areas |
 | Notifications, duel/party/custom-lobby invites, and blocks | `src/notifications/`, `src/components/AppNavbar.jsx`, `src/pages/profile/` | matchmaking queue/socket, server party/custom-lobby/invite/block/notification areas |
+| Chat reporting and admin moderation | `src/chatModeration/`, chat components under `src/matchmaking/` and `src/pages/customLobby/`, and `src/pages/admin/` | server chat moderation controller/service/domain/repository and [`../docs/CHAT_MODERATION.md`](../docs/CHAT_MODERATION.md) |
 | Matchmaking lifecycle/ability draft or match chat | `src/pages/`, `src/matchmaking/` | server matchmaking areas |
 | WebSocket framing/reconnect | `src/matchmaking/` | server WebSocket configuration and controller areas |
 | Logic evaluation/normalization | `src/gameArena/botlogic/code/` | nearby tests and arena payload/loadout contracts |

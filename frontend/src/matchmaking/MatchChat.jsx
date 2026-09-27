@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import ChatReportButton from "../chatModeration/ChatReportButton.jsx";
 
 const MAX_MESSAGE_LENGTH = 280;
 const ALL_CHAT = "ALL";
@@ -39,7 +40,12 @@ export default function MatchChat({ messages, minimized, onMinimizedChange, onSe
             </div>
             <div ref={messagesRef} className="match-chat__messages" aria-live="polite">
                 {visibleMessages.length === 0 && <p className="match-chat__empty">No messages in {activeChannel === TEAM_CHAT ? "Team Chat" : "All Chat"} yet.</p>}
-                {visibleMessages.map((message) => <p key={message.messageId ?? `${message.sentAt}-${message.username}-${message.message}`} className="match-chat__message"><strong>{message.username}:</strong> {message.message}</p>)}
+                {visibleMessages.map((message) => (
+                    <div key={message.messageId ?? `${message.sentAt}-${message.username}-${message.message}`} className="match-chat__message-row">
+                        <p className="match-chat__message"><strong>{message.username}:</strong> {message.message}</p>
+                        {message.username !== currentUsername && <ChatReportButton messageId={message.messageId} />}
+                    </div>
+                ))}
             </div>
             {(closedNotice || rateLimitNotice) && <p role="status" className="match-chat__notice">{closedNotice || rateLimitNotice}</p>}
             <form className="match-chat__form" onSubmit={submit}>

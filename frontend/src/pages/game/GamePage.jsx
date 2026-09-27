@@ -146,9 +146,9 @@ export default function GamePage() {
                     onChange={setLoadoutChoice}
                     onLockLoadout={lockLoadout}
                     submitting={loadoutSubmitPending}
-                    player={matchEvent?.player}
-                    opponent={matchEvent?.opponent}
-                    players={matchEvent?.players}
+                    player={matchContext?.player}
+                    opponent={matchContext?.opponent}
+                    players={matchContext?.players}
                     roundNumber={matchEvent?.roundNumber ?? 1}
                     abilityOffers={matchEvent?.abilityOffers ?? []}
                     guaranteedAbilityId={queueGuarantees?.[currentRound - 1] ?? null}

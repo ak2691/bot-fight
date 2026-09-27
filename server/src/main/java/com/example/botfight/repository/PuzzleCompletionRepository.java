@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -23,5 +24,6 @@ public interface PuzzleCompletionRepository extends JpaRepository<PuzzleCompleti
 
     List<PuzzleCompletion> findByUserIdAndPuzzleIdIn(UUID userId, Collection<UUID> puzzleIds);
 
+    @EntityGraph(attributePaths = "puzzle")
     Page<PuzzleCompletion> findByUserId(UUID userId, Pageable pageable);
 }

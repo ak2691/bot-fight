@@ -46,6 +46,7 @@ public class MatchPersistenceService {
 
     private static final String COMPLETION_REASON_SIMULATION = "SIMULATION";
     public static final String COMPLETION_REASON_SERVER_RESTART = "SERVER_RESTART";
+    public static final String COMPLETION_REASON_SIMULATION_FAILURE = "SIMULATION_FAILURE";
     private static final String TIMEOUT_CLIENT_BUILD_VERSION = "server-building-timeout-v1";
     private static final String BRAIN_SCHEMA_VERSION = "bot-logic-tree-v1";
     private final MatchRepository matchRepository;
@@ -380,6 +381,42 @@ public class MatchPersistenceService {
                 matchId,
                 playback.winnerUserId(),
                 "ERROR".equals(playback.result()));
+    }
+
+    /**
+     * Cancels an active match after bounded authoritative simulation retries
+     * fail. This is an infrastructure outcome, so it has no participant result
+     * and never changes ratings or matches-played totals.
+     */
+    @Transactional
+    public boolean cancelMatchAfterSimulationFailure(UUID matchId) {
+        if (matchId == null) return false;
+        Match match = runningMatch(matchId);
+        if (match == null) return false;
+
+        Instant cancelledAt = Instant.now(clock);
+        match.setStatus(MatchStatus.CANCELLED);
+        match.setCompletionReason(COMPLETION_REASON_SIMULATION_FAILURE);
+        match.setCompletedAt(cancelledAt);
+        match.setResultVisibleAt(cancelledAt);
+        match.setWinnerUser(null);
+
+        List<MatchParticipant> participants = matchParticipantRepository.findByMatchId(matchId);
+        if (participants != null) {
+            for (MatchParticipant participant : participants) {
+                participant.setResult(null);
+                UUID userId = participant.getUser() == null ? null : participant.getUser().getId();
+                if (userId != null) {
+                    databaseLookupCache.logDatabaseWrite(
+                            "profile-summary", userId, "match-simulation-failure");
+                    databaseLookupCache.invalidateAfterMatchWrite(
+                            userId, "match-simulation-failure");
+                }
+            }
+            matchParticipantRepository.saveAll(participants);
+        }
+        matchRepository.save(match);
+        return true;
     }
 
     @Transactional

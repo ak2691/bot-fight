@@ -551,6 +551,7 @@ export default function CustomLobbyPage() {
                                         <CustomLobbyChat
                                             messages={chatMessages}
                                             onSend={sendLobbyChat}
+                                            currentUsername={user?.username}
                                             notice={chatNotice}
                                             className="custom-lobby-chat--compact min-w-0"
                                         />

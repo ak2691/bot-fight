@@ -30,6 +30,7 @@ public class PuzzleAttemptService {
     private final ActionExecutionService actionExecutionService;
     private final CurrentUserService currentUserService;
     private final TokenBucketRateLimiter<UUID> puzzleAttemptRateLimiter;
+    private final PuzzleSimulationAdmissionControl simulationAdmissionControl;
 
     public PuzzleAttemptService(
             PuzzleService puzzleService,
@@ -37,13 +38,15 @@ public class PuzzleAttemptService {
             ConditionResolutionService conditionResolutionService,
             ActionExecutionService actionExecutionService,
             CurrentUserService currentUserService,
-            @Qualifier("puzzleAttemptRateLimiter") TokenBucketRateLimiter<UUID> puzzleAttemptRateLimiter) {
+            @Qualifier("puzzleAttemptRateLimiter") TokenBucketRateLimiter<UUID> puzzleAttemptRateLimiter,
+            PuzzleSimulationAdmissionControl simulationAdmissionControl) {
         this.puzzleService = puzzleService;
         this.duelSimulationService = duelSimulationService;
         this.conditionResolutionService = conditionResolutionService;
         this.actionExecutionService = actionExecutionService;
         this.currentUserService = currentUserService;
         this.puzzleAttemptRateLimiter = puzzleAttemptRateLimiter;
+        this.simulationAdmissionControl = simulationAdmissionControl;
     }
 
     public PuzzleAttemptResponseDTO attempt(long puzzleNumber, PuzzleAttemptRequestDTO request) {
@@ -54,10 +57,32 @@ public class PuzzleAttemptService {
             Authentication authentication,
             long puzzleNumber,
             PuzzleAttemptRequestDTO request) {
+        UUID userId = null;
         if (authentication != null) {
-            UUID userId = currentUserService.requireCurrentUserId(authentication);
-            puzzleAttemptRateLimiter.requireAllowed(userId);
+            userId = currentUserService.requireCurrentUserId(authentication);
         }
+        PuzzleOutcomeEvaluator outcome;
+        try (PuzzleSimulationAdmissionControl.Lease ignored = simulationAdmissionControl.acquire(userId)) {
+            if (authentication != null) {
+                puzzleAttemptRateLimiter.requireAllowed(userId);
+            }
+            outcome = runAuthoritativeSimulation(puzzleNumber, request);
+        }
+        String status = outcome.status();
+        if ("solved".equals(status) && authentication != null) {
+            puzzleService.recordSolved(puzzleNumber, authentication);
+        }
+        return new PuzzleAttemptResponseDTO(
+                status,
+                outcome.elapsedMs(),
+                "solved".equals(status)
+                        ? "Puzzle solved by authoritative simulation."
+                        : "Puzzle failed the authoritative conditions.");
+    }
+
+    private PuzzleOutcomeEvaluator runAuthoritativeSimulation(
+            long puzzleNumber,
+            PuzzleAttemptRequestDTO request) {
         PuzzleService.PuzzleAttemptDefinition definition = puzzleService.prepareAttempt(
                 puzzleNumber,
                 request == null ? null : request.getBrain());
@@ -91,16 +116,7 @@ public class PuzzleAttemptService {
                 simulationBots);
 
         duelSimulationService.simulateWithoutReplay(simulationRequest, outcome::afterTick);
-        String status = outcome.status();
-        if ("solved".equals(status) && authentication != null) {
-            puzzleService.recordSolved(puzzleNumber, authentication);
-        }
-        return new PuzzleAttemptResponseDTO(
-                status,
-                outcome.elapsedMs(),
-                "solved".equals(status)
-                        ? "Puzzle solved by authoritative simulation."
-                        : "Puzzle failed the authoritative conditions.");
+        return outcome;
     }
 
     private DuelBotRequest toBotRequest(

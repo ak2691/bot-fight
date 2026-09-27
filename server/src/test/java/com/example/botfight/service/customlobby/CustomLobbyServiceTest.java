@@ -3,9 +3,11 @@ package com.example.botfight.service.customlobby;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -23,11 +25,13 @@ import com.example.botfight.service.limits.RateLimitExceededException;
 import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
 import com.example.botfight.service.match.timing.MatchTimingPolicy;
+import com.example.botfight.service.matchmaking.MatchmakingService;
 import com.example.botfight.service.party.PartyService;
 import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
@@ -39,10 +43,11 @@ import org.springframework.security.core.Authentication;
 class CustomLobbyServiceTest {
 
     private final Instant now = Instant.parse("2026-08-28T12:00:00Z");
-    private final Clock clock = Clock.fixed(now, ZoneOffset.UTC);
+    private final MutableClock clock = new MutableClock(now);
     private final CurrentUserService currentUserService = mock(CurrentUserService.class);
     private final UserRepository userRepository = mock(UserRepository.class);
     private final MatchService matchService = mock(MatchService.class);
+    private final MatchmakingService matchmakingService = mock(MatchmakingService.class);
     private final SingleUserWebSocketSessionRegistry socketRegistry =
             mock(SingleUserWebSocketSessionRegistry.class);
     private final PartyService partyService = mock(PartyService.class);
@@ -54,12 +59,15 @@ class CustomLobbyServiceTest {
             currentUserService,
             userRepository,
             matchService,
-            new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(10)),
+            new TokenBucketRateLimiter<>(
+                    clock, CustomLobbyService.MAX_PENDING_INVITES_PER_LOBBY + 2, Duration.ofSeconds(10)),
             new TokenBucketRateLimiter<>(clock, 1, Duration.ofMillis(500)),
             clock,
             BlockLookup.none(),
             socketRegistry,
-            partyService);
+            partyService,
+            null,
+            matchmakingService);
 
     @BeforeEach
     void setUp() {
@@ -68,6 +76,9 @@ class CustomLobbyServiceTest {
         when(socketRegistry.currentSessionIdForPrincipal(teammate.getEmail())).thenReturn("teammate-socket");
         when(socketRegistry.currentSessionIdForPrincipal(third.getEmail())).thenReturn("third-socket");
         when(partyService.prepareForCustomMatch(anyCollection())).thenReturn(List.of());
+        when(matchmakingService.prepareExternalMatchStart(anyCollection()))
+                .thenAnswer(invocation -> new MatchmakingService.ExternalMatchStartPreparation(
+                        UUID.randomUUID(), List.of()));
     }
 
     @Test
@@ -102,6 +113,7 @@ class CustomLobbyServiceTest {
 
         assertThat(accepted.lobby().members()).extracting(member -> member.teamNumber())
                 .containsExactly(0, 0);
+        assertThat(service.cleanupExpiredInvites()).isZero();
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
         assertThatThrownBy(() -> service.start(authentication, lobby.lobbyId()))
                 .isInstanceOf(AuthException.class)
@@ -171,6 +183,83 @@ class CustomLobbyServiceTest {
 
         assertThat(service.decline(authentication, created.invite().inviteId()).invite().status())
                 .isEqualTo("DECLINED");
+        assertThat(service.cleanupExpiredInvites()).isZero();
+    }
+
+    @Test
+    void expiredIncomingReadPrunesCustomLobbyInviteState() {
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
+        CustomLobbyDTO lobby = service.create(authentication);
+        when(userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(teammate.getUsername()))
+                .thenReturn(Optional.of(teammate));
+        CustomLobbyService.CreatedInvite created = service.invite(
+                authentication, lobby.lobbyId(), teammate.getUsername());
+        clock.advance(CustomLobbyService.INVITE_VALIDITY);
+        when(currentUserService.requireCurrentUserId(authentication)).thenReturn(teammate.getId());
+
+        assertThat(service.incoming(authentication)).isEmpty();
+        assertThat(service.cleanupExpiredInvites()).isZero();
+        assertThatThrownBy(() -> service.decline(authentication, created.invite().inviteId()))
+                .isInstanceOf(AuthException.class)
+                .hasMessage("the custom lobby invite is no longer available");
+    }
+
+    @Test
+    void capsPendingCustomLobbyInvitesPerLobbyAndOwner() {
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
+        CustomLobbyDTO lobby = service.create(authentication);
+
+        for (int index = 0; index < CustomLobbyService.MAX_PENDING_INVITES_PER_LOBBY; index++) {
+            AppUser invitee = user("target" + index, "target" + index + "@example.test");
+            when(userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(invitee.getUsername()))
+                    .thenReturn(Optional.of(invitee));
+            service.invite(authentication, lobby.lobbyId(), invitee.getUsername());
+        }
+
+        AppUser finalInvitee = user("last-target", "last-target@example.test");
+        when(userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(finalInvitee.getUsername()))
+                .thenReturn(Optional.of(finalInvitee));
+        assertThatThrownBy(() -> service.invite(
+                authentication, lobby.lobbyId(), finalInvitee.getUsername()))
+                .isInstanceOf(RateLimitExceededException.class);
+    }
+
+    @Test
+    void capsPendingCustomLobbyInvitesPerInviteeAcrossLobbies() {
+        AppUser invitedPlayer = user("shared-target", "shared-target@example.test");
+        when(userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(invitedPlayer.getUsername()))
+                .thenReturn(Optional.of(invitedPlayer));
+
+        for (int index = 0; index < CustomLobbyService.MAX_PENDING_INVITES_PER_USER; index++) {
+            AppUser inviter = user("sender" + index, "sender" + index + "@example.test");
+            when(currentUserService.requireCurrentUser(authentication)).thenReturn(inviter);
+            CustomLobbyDTO lobby = service.create(authentication);
+            service.invite(authentication, lobby.lobbyId(), invitedPlayer.getUsername());
+        }
+
+        AppUser finalInviter = user("last-sender", "last-sender@example.test");
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(finalInviter);
+        CustomLobbyDTO finalLobby = service.create(authentication);
+        assertThatThrownBy(() -> service.invite(
+                authentication, finalLobby.lobbyId(), invitedPlayer.getUsername()))
+                .isInstanceOf(RateLimitExceededException.class);
+    }
+
+    @Test
+    void repeatedDeclinesDoNotAccumulateCustomLobbyInviteState() {
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
+        CustomLobbyDTO lobby = service.create(authentication);
+        when(userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(teammate.getUsername()))
+                .thenReturn(Optional.of(teammate));
+
+        for (int index = 0; index < CustomLobbyService.MAX_PENDING_INVITES_PER_USER; index++) {
+            CustomLobbyService.CreatedInvite invite = service.invite(
+                    authentication, lobby.lobbyId(), teammate.getUsername());
+            when(currentUserService.requireCurrentUserId(authentication)).thenReturn(teammate.getId());
+            assertThat(service.decline(authentication, invite.invite().inviteId()).invite().status())
+                    .isEqualTo("DECLINED");
+            assertThat(service.cleanupExpiredInvites()).isZero();
+        }
     }
 
     @Test
@@ -197,6 +286,14 @@ class CustomLobbyServiceTest {
         UUID matchId = UUID.randomUUID();
         MatchmakingEventDTO event = mock(MatchmakingEventDTO.class);
         when(event.matchId()).thenReturn(matchId);
+        MatchmakingEventDTO queueCancellationPayload = mock(MatchmakingEventDTO.class);
+        OutboundMatchmakingEvent queueCancellation =
+                new OutboundMatchmakingEvent(owner.getEmail(), queueCancellationPayload);
+        MatchmakingService.ExternalMatchStartPreparation startPreparation =
+                new MatchmakingService.ExternalMatchStartPreparation(
+                        UUID.randomUUID(), List.of(queueCancellation));
+        when(matchmakingService.prepareExternalMatchStart(anyCollection()))
+                .thenReturn(startPreparation);
         when(matchService.startTeamMatch(any(), eq(MatchMode.CUSTOM),
                 eq(MatchTimingPolicy.DEFAULT_CUSTOM_ROUND_SECONDS))).thenReturn(
                 List.of(new OutboundMatchmakingEvent(owner.getEmail(), event)));
@@ -205,9 +302,15 @@ class CustomLobbyServiceTest {
         CustomLobbyService.StartedMatch started = service.start(authentication, lobby.lobbyId());
 
         assertThat(started.matchId()).isEqualTo(matchId);
+        assertThat(started.events()).containsExactly(
+                queueCancellation,
+                new OutboundMatchmakingEvent(owner.getEmail(), event));
         assertThat(started.lobby()).isNotNull();
         assertThat(started.lobby().lobbyId()).isEqualTo(lobby.lobbyId());
         assertThat(service.currentForPrincipal(owner.getEmail())).isNotNull();
+        verify(matchmakingService).prepareExternalMatchStart(
+                eq(java.util.Set.of(owner.getId(), teammate.getId())));
+        verify(matchmakingService).releaseExternalMatchStart(startPreparation.reservationId());
         CustomLobbyService.LobbyChange finished = service.finishMatch(matchId);
         assertThat(finished.lobby()).isNotNull();
         assertThat(finished.lobby().members())
@@ -217,6 +320,63 @@ class CustomLobbyServiceTest {
         verify(matchService).startTeamMatch(any(), eq(MatchMode.CUSTOM),
                 eq(MatchTimingPolicy.DEFAULT_CUSTOM_ROUND_SECONDS));
         verify(partyService).prepareForCustomMatch(anyCollection());
+    }
+
+    @Test
+    void queueMatchStartingConflictPreventsCustomLobbyMatchStart() {
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
+        CustomLobbyDTO lobby = service.create(authentication);
+        when(userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(teammate.getUsername()))
+                .thenReturn(Optional.of(teammate));
+        CustomLobbyService.CreatedInvite created = service.invite(
+                authentication, lobby.lobbyId(), teammate.getUsername());
+        when(currentUserService.requireCurrentUserId(authentication)).thenReturn(teammate.getId());
+        service.accept(authentication, created.invite().inviteId());
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
+        service.setTeam(authentication, lobby.lobbyId(), CustomLobbyService.BLUE_TEAM);
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(teammate);
+        service.setTeam(authentication, lobby.lobbyId(), CustomLobbyService.RED_TEAM);
+
+        when(matchmakingService.prepareExternalMatchStart(anyCollection()))
+                .thenThrow(new AuthException("a queue match is already starting"));
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
+
+        assertThatThrownBy(() -> service.start(authentication, lobby.lobbyId()))
+                .isInstanceOf(AuthException.class)
+                .hasMessage("a queue match is already starting");
+
+        verify(matchService, never()).startTeamMatch(any(), eq(MatchMode.CUSTOM), anyInt());
+        assertThat(service.currentForPrincipal(owner.getEmail()).members()).hasSize(2);
+    }
+
+    @Test
+    void releasesExternalStartReservationWhenMatchCreationFails() {
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
+        CustomLobbyDTO lobby = service.create(authentication);
+        when(userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(teammate.getUsername()))
+                .thenReturn(Optional.of(teammate));
+        CustomLobbyService.CreatedInvite created = service.invite(
+                authentication, lobby.lobbyId(), teammate.getUsername());
+        when(currentUserService.requireCurrentUserId(authentication)).thenReturn(teammate.getId());
+        service.accept(authentication, created.invite().inviteId());
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
+        service.setTeam(authentication, lobby.lobbyId(), CustomLobbyService.BLUE_TEAM);
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(teammate);
+        service.setTeam(authentication, lobby.lobbyId(), CustomLobbyService.RED_TEAM);
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
+
+        MatchmakingService.ExternalMatchStartPreparation preparation =
+                new MatchmakingService.ExternalMatchStartPreparation(UUID.randomUUID(), List.of());
+        when(matchmakingService.prepareExternalMatchStart(anyCollection())).thenReturn(preparation);
+        when(matchService.startTeamMatch(any(), eq(MatchMode.CUSTOM), anyInt()))
+                .thenThrow(new AuthException("the custom match could not be started"));
+
+        assertThatThrownBy(() -> service.start(authentication, lobby.lobbyId()))
+                .isInstanceOf(AuthException.class)
+                .hasMessage("the custom match could not be started");
+
+        verify(matchmakingService).releaseExternalMatchStart(preparation.reservationId());
+        assertThat(service.currentForPrincipal(owner.getEmail()).members()).hasSize(2);
     }
 
     @Test
@@ -289,5 +449,32 @@ class CustomLobbyServiceTest {
         user.setUsername(username);
         user.setEmail(email);
         return user;
+    }
+
+    private static final class MutableClock extends Clock {
+        private Instant currentInstant;
+
+        private MutableClock(Instant initialInstant) {
+            currentInstant = initialInstant;
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return currentInstant;
+        }
+
+        private void advance(Duration duration) {
+            currentInstant = currentInstant.plus(duration);
+        }
     }
 }

@@ -3,35 +3,53 @@ package com.example.botfight.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.example.botfight.DTO.match.ActiveMatchStatusDTO;
+import com.example.botfight.DTO.match.MatchmakingEventDTO;
+import com.example.botfight.DTO.match.MatchmakingPlayerDTO;
+import com.example.botfight.domain.match.Match;
+import com.example.botfight.domain.match.MatchMode;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.limits.RateLimitExceededException;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;
+import com.example.botfight.service.match.chat.MatchChatService;
+import com.example.botfight.service.match.connection.MatchConnectionService;
+import com.example.botfight.service.match.event.MatchEventFactory;
+import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
+import com.example.botfight.service.match.lifecycle.MatchLifecycleService;
 import com.example.botfight.service.match.loadout.MatchAbilityGuaranteeService;
 import com.example.botfight.service.match.model.MatchEntrant;
-import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
+import com.example.botfight.service.match.persistence.MatchPersistenceService;
+import com.example.botfight.service.match.state.MatchRuntimeState;
+import com.example.botfight.service.match.submission.MatchSubmissionService;
 import com.example.botfight.service.matchmaking.MatchmakingService;
 import com.example.botfight.service.matchmaking.QueuePool;
 import com.example.botfight.service.rating.EloRatingService;
-import com.example.botfight.DTO.match.ActiveMatchStatusDTO;
-import com.example.botfight.DTO.match.MatchmakingEventDTO;
-import com.example.botfight.DTO.match.MatchmakingPlayerDTO;
-import com.example.botfight.domain.match.MatchMode;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -127,10 +145,315 @@ class MatchmakingServiceTest {
         assertThat(secondCaptor.getValue().userId()).isEqualTo(secondUserId);
         assertThat(startedEvents).singleElement().satisfies(event -> {
             assertThat(event.event().type()).isEqualTo("MATCH_STARTED");
-            assertThat(event.event().opponent().username()).isEqualTo("bravo-secret");
+            assertThat(event.event().eventSchemaVersion()).isEqualTo(2);
+            assertThat(event.event().viewerUserId()).isEqualTo(firstUserId);
+            assertThat(event.event().players()).filteredOn(player -> !player.userId().equals(firstUserId))
+                    .singleElement().extracting(MatchmakingPlayerDTO::username).isEqualTo("bravo-secret");
         });
         String startedJson = jsonMapper.writeValueAsString(started);
         assertThat(startedJson).contains("bravo-secret", secondUserId.toString());
+    }
+
+    @Test
+    void matchEventV2SerializesOneCanonicalRosterAndReducesFourPlayerPayloadSize() throws Exception {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        MatchmakingEventDTO twoPlayerEvent = startedEvent(firstUserId, secondUserId);
+        List<MatchmakingPlayerDTO> roster = List.of(
+                new MatchmakingPlayerDTO(firstUserId, "alpha-one", 1, 1, false, 0, "melee", true, true),
+                new MatchmakingPlayerDTO(secondUserId, "alpha-two", 2, 1, false, 0, "ranged", true, true),
+                new MatchmakingPlayerDTO(UUID.randomUUID(), "bravo-one", 3, 2, false, 0, "melee", true, true),
+                new MatchmakingPlayerDTO(UUID.randomUUID(), "bravo-two", 4, 2, false, 0, "ranged", true, true));
+        MatchmakingEventDTO event = twoPlayerEvent
+                .withReplayParticipants(roster.getFirst(), roster.get(2), roster)
+                .withViewerUserId(firstUserId);
+
+        String serialized = jsonMapper.writeValueAsString(event);
+        assertThat(event.eventSchemaVersion()).isEqualTo(2);
+        assertThat(event.viewerUserId()).isEqualTo(firstUserId);
+        assertThat(serialized)
+                .contains("\"eventSchemaVersion\":2", "\"viewerUserId\":\"" + firstUserId + "\"")
+                .doesNotContain("\"player\":", "\"opponent\":");
+
+        Map<String, Object> legacyPayload = new LinkedHashMap<>(jsonMapper.readValue(serialized, Map.class));
+        legacyPayload.remove("eventSchemaVersion");
+        legacyPayload.remove("viewerUserId");
+        legacyPayload.put("player", roster.getFirst());
+        legacyPayload.put("opponent", roster.get(2));
+        int legacyBytes = jsonMapper.writeValueAsBytes(legacyPayload).length;
+        int canonicalBytes = jsonMapper.writeValueAsBytes(event).length;
+        System.out.printf("AUD-13 four-player event payload: %d -> %d bytes%n", legacyBytes, canonicalBytes);
+        assertThat(canonicalBytes).isLessThan(legacyBytes);
+    }
+
+    @Test
+    void blockedMatchPersistenceDoesNotHoldTheQueueMonitor() throws Exception {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        UUID unrelatedUserId = UUID.randomUUID();
+        service.joinQueue(firstUserId, "first", "first@example.com", "socket-first");
+        var found = service.joinQueue(secondUserId, "second", "second@example.com", "socket-second");
+        service.acceptMatch(found.getFirst().event().matchId(), firstUserId, "socket-first");
+        service.joinQueue(unrelatedUserId, "waiting", "waiting@example.com", "socket-waiting");
+
+        CountDownLatch startEntered = new CountDownLatch(1);
+        CountDownLatch releaseStart = new CountDownLatch(1);
+        when(matchService.startMatch(any(), any())).thenAnswer(invocation -> {
+            startEntered.countDown();
+            if (!releaseStart.await(5, TimeUnit.SECONDS)) {
+                throw new AssertionError("timed out waiting to release match persistence");
+            }
+            return List.of();
+        });
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<List<OutboundMatchmakingEvent>> blockedAcceptance = executor.submit(() ->
+                    service.acceptMatch(
+                            found.getFirst().event().matchId(), secondUserId, "socket-second"));
+            assertThat(startEntered.await(2, TimeUnit.SECONDS)).isTrue();
+
+            Future<?> unrelatedLeave = executor.submit(() -> service.leaveQueue(unrelatedUserId));
+            unrelatedLeave.get(1, TimeUnit.SECONDS);
+            assertThat(service.hasTransientActivity(unrelatedUserId)).isFalse();
+
+            releaseStart.countDown();
+            assertThat(blockedAcceptance.get(2, TimeUnit.SECONDS)).isEmpty();
+        } finally {
+            releaseStart.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void blockedRatingReadDoesNotHoldTheQueueMonitor() throws Exception {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        CountDownLatch firstRatingReadEntered = new CountDownLatch(1);
+        CountDownLatch releaseFirstRatingRead = new CountDownLatch(1);
+        AtomicInteger ratingReadCount = new AtomicInteger();
+        EloRatingService ratingService = mock(EloRatingService.class);
+        when(ratingService.ratingsFor(any(), eq(MatchMode.ONES))).thenAnswer(invocation -> {
+            List<UUID> userIds = invocation.getArgument(0);
+            if (ratingReadCount.incrementAndGet() == 1) {
+                firstRatingReadEntered.countDown();
+                if (!releaseFirstRatingRead.await(5, TimeUnit.SECONDS)) {
+                    throw new AssertionError("timed out waiting to release the first rating read");
+                }
+            }
+            return userIds.stream().collect(java.util.stream.Collectors.toMap(
+                    userId -> userId,
+                    ignored -> EloRatingService.DEFAULT_RATING));
+        });
+        service = new MatchmakingService(
+                matchService,
+                clock,
+                new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3)),
+                ratingService);
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<List<OutboundMatchmakingEvent>> firstJoin = executor.submit(() ->
+                    service.joinQueue(firstUserId, "first", "first@example.com", "socket-first"));
+            assertThat(firstRatingReadEntered.await(2, TimeUnit.SECONDS)).isTrue();
+
+            var secondJoin = service.joinQueue(
+                    secondUserId, "second", "second@example.com", "socket-second");
+            assertThat(secondJoin).singleElement()
+                    .extracting(event -> event.event().type())
+                    .isEqualTo("QUEUE_WAITING");
+
+            releaseFirstRatingRead.countDown();
+            assertThat(firstJoin.get(2, TimeUnit.SECONDS)).hasSize(2)
+                    .allSatisfy(event -> assertThat(event.event().type()).isEqualTo("MATCH_FOUND"));
+        } finally {
+            releaseFirstRatingRead.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void finalQueueAcceptanceAndCustomStartCannotPersistOverlappingMatches() throws Exception {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        MatchRuntimeState runtimeState = new MatchRuntimeState();
+        MatchPersistenceService persistence = mock(MatchPersistenceService.class);
+        CountDownLatch persistenceEntered = new CountDownLatch(1);
+        CountDownLatch releasePersistence = new CountDownLatch(1);
+        AtomicInteger persistedMatches = new AtomicInteger();
+        when(persistence.createMatch(any(MatchMode.class), anyBoolean())).thenAnswer(invocation -> {
+            int call = persistedMatches.incrementAndGet();
+            Match match = new Match();
+            match.setId(UUID.randomUUID());
+            match.setSimulationSeed((long) call);
+            if (call == 1) {
+                persistenceEntered.countDown();
+                if (!releasePersistence.await(5, TimeUnit.SECONDS)) {
+                    throw new AssertionError("timed out waiting to release queue match persistence");
+                }
+            }
+            return match;
+        });
+        MatchLifecycleService lifecycle = new MatchLifecycleService(
+                runtimeState,
+                persistence,
+                mock(MatchConnectionService.class),
+                mock(MatchEventFactory.class),
+                mock(MatchSubmissionService.class),
+                mock(MatchChatService.class),
+                clock);
+        when(matchService.isMatchStartReserved(any(UUID.class))).thenAnswer(invocation ->
+                runtimeState.isMatchStartReserved(invocation.getArgument(0)));
+        when(matchService.startMatch(any(), any())).thenAnswer(invocation -> lifecycle.startMatch(
+                invocation.getArgument(0), invocation.getArgument(1)));
+
+        MatchmakingService queue = new MatchmakingService(
+                matchService,
+                clock,
+                new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3)));
+        queue.joinQueue(firstUserId, "first", "first@example.com", "socket-first");
+        var found = queue.joinQueue(secondUserId, "second", "second@example.com", "socket-second");
+        UUID pendingMatchId = found.getFirst().event().matchId();
+        queue.acceptMatch(pendingMatchId, firstUserId, "socket-first");
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<List<OutboundMatchmakingEvent>> queueStart = executor.submit(() ->
+                    queue.acceptMatch(pendingMatchId, secondUserId, "socket-second"));
+            assertThat(persistenceEntered.await(2, TimeUnit.SECONDS)).isTrue();
+
+            List<MatchEntrant> customRoster = List.of(
+                    new MatchEntrant(firstUserId, "first", "first@example.com", null, 1),
+                    new MatchEntrant(secondUserId, "second", "second@example.com", null, 2));
+            assertThatThrownBy(() -> lifecycle.startTeamMatch(customRoster, MatchMode.CUSTOM, false))
+                    .isInstanceOf(AuthException.class)
+                    .hasMessageContaining("already in a match or starting a match");
+            assertThatThrownBy(() -> queue.cancelConflictingQueueState(List.of(firstUserId, secondUserId)))
+                    .isInstanceOf(AuthException.class)
+                    .hasMessageContaining("already starting");
+            assertThat(persistedMatches).hasValue(1);
+
+            releasePersistence.countDown();
+            assertThat(queueStart.get(2, TimeUnit.SECONDS)).hasSize(2);
+        } finally {
+            releasePersistence.countDown();
+            executor.shutdownNow();
+        }
+
+        assertThat(persistedMatches).hasValue(1);
+        assertThat(runtimeState.activeSessionForUser(firstUserId))
+                .isSameAs(runtimeState.activeSessionForUser(secondUserId));
+        assertThat(runtimeState.isMatchStartReserved(firstUserId)).isFalse();
+        assertThat(runtimeState.isMatchStartReserved(secondUserId)).isFalse();
+        assertThat(queue.hasTransientActivity(firstUserId)).isFalse();
+    }
+
+    @Test
+    void externalStartPreparationCancelsQueueStateAndFencesNewJoinsUntilReleased() {
+        UUID userId = UUID.randomUUID();
+        var waiting = service.joinQueue(
+                userId, "queued", "queued@example.com", "queued-socket");
+        assertThat(waiting).singleElement()
+                .extracting(event -> event.event().type())
+                .isEqualTo("QUEUE_WAITING");
+
+        MatchmakingService.ExternalMatchStartPreparation preparation =
+                service.prepareExternalMatchStart(List.of(userId));
+
+        assertThat(preparation.reservationId()).isNotNull();
+        assertThat(preparation.cancellationEvents()).singleElement()
+                .extracting(event -> event.event().type())
+                .isEqualTo("MATCH_ERROR");
+        assertThat(service.hasTransientActivity(userId)).isFalse();
+        assertThatThrownBy(() -> service.joinQueue(
+                userId, "queued", "queued@example.com", "queued-socket"))
+                .isInstanceOf(AuthException.class)
+                .hasMessageContaining("already starting another match");
+
+        service.releaseExternalMatchStart(preparation.reservationId());
+        assertThat(service.joinQueue(
+                userId, "queued", "queued@example.com", "queued-socket"))
+                .singleElement()
+                .extracting(event -> event.event().type())
+                .isEqualTo("QUEUE_WAITING");
+    }
+
+    @Test
+    void boundedTwosSearchFindsAFeasibleClusterAfterManyIncompatibleParties() {
+        Map<UUID, Integer> ratingsByUserId = new HashMap<>();
+        EloRatingService ratingService = mock(EloRatingService.class);
+        when(ratingService.ratingsFor(any(), eq(MatchMode.TWOS))).thenAnswer(invocation -> {
+            List<UUID> userIds = invocation.getArgument(0);
+            return userIds.stream().collect(java.util.stream.Collectors.toMap(
+                    userId -> userId,
+                    userId -> ratingsByUserId.get(userId)));
+        });
+        service = new MatchmakingService(
+                matchService,
+                clock,
+                new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3)),
+                ratingService);
+
+        for (int index = 0; index < 36; index++) {
+            UUID ownerId = new UUID(1, index * 2L + 1);
+            UUID teammateId = new UUID(1, index * 2L + 2);
+            ratingsByUserId.put(ownerId, index * 1000);
+            ratingsByUserId.put(teammateId, index * 1000);
+            var waiting = service.joinQueue(
+                    ownerId,
+                    "owner-" + index,
+                    "owner-" + index + "@example.com",
+                    "owner-socket-" + index,
+                    MatchMode.TWOS,
+                    List.of(
+                            entrant(ownerId, "owner-" + index, "owner-" + index + "@example.com", "owner-socket-" + index),
+                            entrant(teammateId, "teammate-" + index, "teammate-" + index + "@example.com", "teammate-socket-" + index)),
+                    UUID.randomUUID());
+            assertThat(waiting).hasSize(2).allSatisfy(event ->
+                    assertThat(event.event().type()).isEqualTo("QUEUE_WAITING"));
+        }
+
+        UUID highOwnerOne = new UUID(2, 1);
+        UUID highTeammateOne = new UUID(2, 2);
+        UUID highOwnerTwo = new UUID(2, 3);
+        UUID highTeammateTwo = new UUID(2, 4);
+        for (UUID userId : List.of(highOwnerOne, highTeammateOne, highOwnerTwo, highTeammateTwo)) {
+            ratingsByUserId.put(userId, 100_000);
+        }
+        service.joinQueue(
+                highOwnerOne,
+                "high-owner-one",
+                "high-owner-one@example.com",
+                "high-owner-one-socket",
+                MatchMode.TWOS,
+                List.of(
+                        entrant(highOwnerOne, "high-owner-one", "high-owner-one@example.com", "high-owner-one-socket"),
+                        entrant(highTeammateOne, "high-teammate-one", "high-teammate-one@example.com", "high-teammate-one-socket")),
+                UUID.randomUUID());
+        var found = service.joinQueue(
+                highOwnerTwo,
+                "high-owner-two",
+                "high-owner-two@example.com",
+                "high-owner-two-socket",
+                MatchMode.TWOS,
+                List.of(
+                        entrant(highOwnerTwo, "high-owner-two", "high-owner-two@example.com", "high-owner-two-socket"),
+                        entrant(highTeammateTwo, "high-teammate-two", "high-teammate-two@example.com", "high-teammate-two-socket")),
+                UUID.randomUUID());
+
+        assertThat(found).hasSize(4).allSatisfy(event ->
+                assertThat(event.event().type()).isEqualTo("MATCH_FOUND"));
+        assertThat(found).extracting(OutboundMatchmakingEvent::principalName)
+                .containsExactlyInAnyOrder(
+                        "high-owner-one@example.com",
+                        "high-teammate-one@example.com",
+                        "high-owner-two@example.com",
+                        "high-teammate-two@example.com");
+    }
+
+    @Test
+    void twosSelectionTieBreaksDeterministicallyFromStableUserIds() {
+        assertThat(runEqualRatingTwosSelection()).isEqualTo(runEqualRatingTwosSelection());
     }
 
     @Test
@@ -719,6 +1042,47 @@ class MatchmakingServiceTest {
         verify(matchService).startTeamMatch(any(), eq(MatchMode.TWOS));
     }
 
+    private List<String> runEqualRatingTwosSelection() {
+        MatchService isolatedMatchService = mock(MatchService.class);
+        when(isolatedMatchService.activeMatchStatus(any())).thenReturn(ActiveMatchStatusDTO.none());
+        when(isolatedMatchService.isMatchStartReserved(any(UUID.class))).thenReturn(false);
+        when(isolatedMatchService.startTeamMatch(any(), eq(MatchMode.TWOS))).thenReturn(List.of());
+        MatchmakingService isolatedQueue = new MatchmakingService(
+                isolatedMatchService,
+                clock,
+                new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3)));
+
+        List<UUID> userIds = List.of(
+                UUID.fromString("00000000-0000-0000-0000-000000000001"),
+                UUID.fromString("00000000-0000-0000-0000-000000000002"),
+                UUID.fromString("00000000-0000-0000-0000-000000000003"),
+                UUID.fromString("00000000-0000-0000-0000-000000000004"));
+        List<String> sockets = List.of("socket-1", "socket-2", "socket-3", "socket-4");
+        List<OutboundMatchmakingEvent> found = List.of();
+        for (int index = 0; index < userIds.size(); index++) {
+            found = isolatedQueue.joinQueue(
+                    userIds.get(index),
+                    "player-" + index,
+                    "player-" + index + "@example.com",
+                    sockets.get(index),
+                    MatchMode.TWOS);
+        }
+        UUID pendingMatchId = found.getFirst().event().matchId();
+        for (int index = 0; index < userIds.size(); index++) {
+            isolatedQueue.acceptMatch(pendingMatchId, userIds.get(index), sockets.get(index));
+        }
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<MatchEntrant>> entrantsCaptor =
+                (ArgumentCaptor<List<MatchEntrant>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(List.class);
+        verify(isolatedMatchService, times(1)).startTeamMatch(
+                entrantsCaptor.capture(), eq(MatchMode.TWOS));
+        return entrantsCaptor.getValue().stream()
+                .map(entrant -> entrant.userId() + ":" + entrant.teamNumber())
+                .sorted()
+                .toList();
+    }
+
     private static MatchEntrant entrant(
             UUID userId,
             String username,
@@ -764,15 +1128,17 @@ class MatchmakingServiceTest {
             UUID secondUserId) {
         assertThat(events).allSatisfy(outbound -> {
             MatchmakingEventDTO event = outbound.event();
-            assertThat(event.opponent()).isNull();
-            assertThat(event.player()).isNull();
+            assertThat(event.eventSchemaVersion()).isEqualTo(2);
+            assertThat(event.viewerUserId()).isIn(firstUserId, secondUserId);
             assertThat(event.players()).isEmpty();
             assertThat(event.acceptedByMe()).isNotNull();
             assertThat(event.otherPlayerAccepted()).isNotNull();
             String serialized = jsonMapper.writeValueAsString(event);
             assertThat(serialized).doesNotContain("acceptedUserId");
             assertThat(serialized).doesNotContain(firstUsername, secondUsername);
-            assertThat(serialized).doesNotContain(firstUserId.toString(), secondUserId.toString());
+            UUID otherUserId = event.viewerUserId().equals(firstUserId) ? secondUserId : firstUserId;
+            assertThat(serialized).contains(event.viewerUserId().toString());
+            assertThat(serialized).doesNotContain(otherUserId.toString());
         });
     }
 

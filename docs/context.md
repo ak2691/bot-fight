@@ -26,6 +26,9 @@ tests remain authoritative when a document is stale.
   recurring failures involving transform ownership, timer-driven visuals,
   accumulated combat state, statuses, and browser/server parity. Use for any
   arena visual, ability, move, entity, replay field, or bot-state change.
+- [`LEGACY_PATH_DECISIONS.md`](LEGACY_PATH_DECISIONS.md): source-verified status
+  and production evidence required before removing legacy persistence or replay
+  paths.
 
 For a code review or audit, pair the checklist with the affected runtime map:
 
@@ -33,6 +36,11 @@ For a code review or audit, pair the checklist with the affected runtime map:
 - server authority/security/persistence: [`../server/context.md`](../server/context.md);
 - cross-boundary/API/logic: both runtime contexts plus root
   [`../context.md`](../context.md)'s end-to-end trace.
+
+## Security, privacy, and moderation
+
+- [`CHAT_MODERATION.md`](CHAT_MODERATION.md): server-verified chat evidence,
+  report authorization, retention periods, and the admin review contract.
 
 ## Documentation maintenance
 

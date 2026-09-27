@@ -86,7 +86,7 @@ test("Lock On uses the supplied white crosshair and hides the marker when its ac
     assert.equal(existsSync(CROSSHAIR_PATH), true);
     const source = readFileSync(PIXI_CANVAS_PATH, "utf8");
     assert.match(source, /lockOnCrosshair/);
-    assert.match(source, /Number\(shape\.abilityActiveMs\?\.\[20\] \?\? 0\) <= 0/);
+    assert.match(source, /botAbilityActiveMs\(shape, LOCK_ON_PRESENTATION_DEFINITION\) <= 0/);
     assert.match(source, /marker\.container\.visible = false/);
     assert.match(source, /crosshair\.tint = 0xffffff/);
     assert.doesNotMatch(source, /halo\.circle/);

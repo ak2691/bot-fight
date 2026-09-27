@@ -78,6 +78,45 @@ class MatchPersistenceServiceTest {
     }
 
     @Test
+    void cancelsSimulationFailureWithoutAssigningParticipantResultsOrChangingRatings() {
+        UUID matchId = UUID.randomUUID();
+        Match match = new Match();
+        match.setId(matchId);
+        match.setStatus(MatchStatus.RUNNING);
+        match.setSimulationSeed(987654321L);
+        match.setWinnerUser(new AppUser());
+        AppUser firstUser = new AppUser();
+        firstUser.setId(UUID.randomUUID());
+        AppUser secondUser = new AppUser();
+        secondUser.setId(UUID.randomUUID());
+        MatchParticipant first = participant(firstUser, 1100, null);
+        MatchParticipant second = participant(secondUser, 1200, null);
+        first.setResult(com.example.botfight.domain.match.MatchResult.WIN);
+        second.setResult(com.example.botfight.domain.match.MatchResult.LOSS);
+        when(matchRepository.findById(matchId)).thenReturn(java.util.Optional.of(match));
+        when(matchParticipantRepository.findByMatchId(matchId)).thenReturn(List.of(first, second));
+
+        assertThat(service.cancelMatchAfterSimulationFailure(matchId)).isTrue();
+
+        assertThat(match.getStatus()).isEqualTo(MatchStatus.CANCELLED);
+        assertThat(match.getCompletionReason())
+                .isEqualTo(MatchPersistenceService.COMPLETION_REASON_SIMULATION_FAILURE);
+        assertThat(match.getCompletedAt()).isEqualTo(RESTARTED_AT);
+        assertThat(match.getResultVisibleAt()).isEqualTo(RESTARTED_AT);
+        assertThat(match.getWinnerUser()).isNull();
+        assertThat(match.getSimulationSeed()).isEqualTo(987654321L);
+        assertThat(first.getResult()).isNull();
+        assertThat(second.getResult()).isNull();
+        assertThat(first.getRatingBefore()).isEqualTo(1100);
+        assertThat(first.getRatingAfter()).isNull();
+        assertThat(second.getRatingBefore()).isEqualTo(1200);
+        assertThat(second.getRatingAfter()).isNull();
+        verify(matchRepository).save(match);
+        verify(matchParticipantRepository).saveAll(List.of(first, second));
+        verifyNoInteractions(profileRepository, userRepository);
+    }
+
+    @Test
     void returnsOnlyTheCurrentPlayersPersistedRatingChange() {
         UUID matchId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -109,9 +148,13 @@ class MatchPersistenceServiceTest {
                         secondUserId, new MatchPersistenceService.RatingChange(1200, 1180)));
     }
 
-    private MatchParticipant participant(UUID userId, int before, int after) {
+    private MatchParticipant participant(UUID userId, int before, Integer after) {
         AppUser user = new AppUser();
         user.setId(userId);
+        return participant(user, before, after);
+    }
+
+    private MatchParticipant participant(AppUser user, int before, Integer after) {
         MatchParticipant participant = new MatchParticipant();
         participant.setUser(user);
         participant.setRatingBefore(before);

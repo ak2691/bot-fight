@@ -10,15 +10,18 @@ import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.service.auth.UsernamePolicy;
 import com.example.botfight.service.block.BlockLookup;
+import com.example.botfight.service.limits.RateLimitExceededException;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.match.loadout.MatchAbilityGuaranteeService;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
 import com.example.botfight.service.match.model.MatchEntrant;
 import com.example.botfight.service.match.timing.MatchTimingPolicy;
+import com.example.botfight.service.matchmaking.MatchmakingService;
 import com.example.botfight.service.invite.InviteTargetUnavailableException;
 import com.example.botfight.service.party.PartyService;
 import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
+import java.util.ArrayList;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -49,6 +52,8 @@ public class CustomLobbyService {
     public static final int RED_TEAM = 2;
     public static final int MAX_TEAM_SIZE = 2;
     public static final Duration INVITE_VALIDITY = Duration.ofMinutes(10);
+    public static final int MAX_PENDING_INVITES_PER_USER = 20;
+    public static final int MAX_PENDING_INVITES_PER_LOBBY = 20;
 
     private final CurrentUserService currentUserService;
     private final UserRepository userRepository;
@@ -60,6 +65,7 @@ public class CustomLobbyService {
     private final SingleUserWebSocketSessionRegistry socketRegistry;
     private final PartyService partyService;
     private final MatchAbilityGuaranteeService guaranteeService;
+    private final MatchmakingService matchmakingService;
 
     private final Map<UUID, ActiveLobby> activeLobbiesById = new HashMap<>();
     private final Map<UUID, UUID> lobbyIdsByUserId = new HashMap<>();
@@ -77,7 +83,8 @@ public class CustomLobbyService {
             BlockLookup blockLookup,
             SingleUserWebSocketSessionRegistry socketRegistry,
             PartyService partyService,
-            MatchAbilityGuaranteeService guaranteeService) {
+            MatchAbilityGuaranteeService guaranteeService,
+            MatchmakingService matchmakingService) {
         this.currentUserService = currentUserService;
         this.userRepository = userRepository;
         this.matchService = matchService;
@@ -90,6 +97,33 @@ public class CustomLobbyService {
         this.guaranteeService = guaranteeService == null
                 ? new MatchAbilityGuaranteeService()
                 : guaranteeService;
+        this.matchmakingService = matchmakingService;
+    }
+
+    /** Compatibility constructor for fixtures that provide the guarantee service. */
+    public CustomLobbyService(
+            CurrentUserService currentUserService,
+            UserRepository userRepository,
+            MatchService matchService,
+            TokenBucketRateLimiter<UUID> inviteRateLimiter,
+            TokenBucketRateLimiter<UUID> teamRateLimiter,
+            Clock clock,
+            BlockLookup blockLookup,
+            SingleUserWebSocketSessionRegistry socketRegistry,
+            PartyService partyService,
+            MatchAbilityGuaranteeService guaranteeService) {
+        this(
+                currentUserService,
+                userRepository,
+                matchService,
+                inviteRateLimiter,
+                teamRateLimiter,
+                clock,
+                blockLookup,
+                socketRegistry,
+                partyService,
+                guaranteeService,
+                null);
     }
 
     /** Compatibility constructor for focused service tests. */
@@ -113,7 +147,8 @@ public class CustomLobbyService {
                 blockLookup,
                 socketRegistry,
                 partyService,
-                new MatchAbilityGuaranteeService());
+                new MatchAbilityGuaranteeService(),
+                null);
     }
 
     /** Binds a lobby member to the authenticated socket that subscribed to the lobby channel. */
@@ -192,6 +227,7 @@ public class CustomLobbyService {
             Authentication authentication,
             UUID lobbyId,
             String requestedUsername) {
+        prunePendingInvites(clock.instant());
         AppUser inviter = currentUserService.requireCurrentUser(authentication);
         rejectGuest(inviter);
         inviteRateLimiter.requireAllowed(inviter.getId());
@@ -227,6 +263,12 @@ public class CustomLobbyService {
         }
         if (existing != null) invitesById.remove(existing.inviteId);
 
+        if (pendingInvitesForInviter(inviter.getId()) >= MAX_PENDING_INVITES_PER_USER
+                || pendingInvitesForInvitee(invitee.getId()) >= MAX_PENDING_INVITES_PER_USER
+                || pendingInvitesForLobby(lobby.lobbyId) >= MAX_PENDING_INVITES_PER_LOBBY) {
+            throw RateLimitExceededException.tooManyRequests(Duration.ofMinutes(1));
+        }
+
         LobbyInvite invite = new LobbyInvite(
                 UUID.randomUUID(),
                 lobby.lobbyId,
@@ -245,6 +287,7 @@ public class CustomLobbyService {
     }
 
     public synchronized List<CustomLobbyInviteDTO> incoming(Authentication authentication) {
+        prunePendingInvites(clock.instant());
         if (currentUserService.isGuest(authentication)) return List.of();
         UUID inviteeId = currentUserService.requireCurrentUserId(authentication);
         Instant now = clock.instant();
@@ -263,6 +306,7 @@ public class CustomLobbyService {
     public synchronized AcceptedInvite accept(Authentication authentication, UUID inviteId) {
         UUID inviteeId = currentUserService.requireCurrentUserId(authentication);
         LobbyInvite invite = requirePendingInviteForAccept(inviteId, inviteeId);
+        prunePendingInvites(clock.instant());
         rejectGuest(invite.invitee);
         rejectActiveMatch(inviteeId);
         if (blockLookup.isBlocked(inviteeId, invite.inviter.getId())
@@ -297,6 +341,7 @@ public class CustomLobbyService {
     public synchronized DeclinedInvite decline(Authentication authentication, UUID inviteId) {
         UUID inviteeId = currentUserService.requireCurrentUserId(authentication);
         LobbyInvite invite = requirePendingInviteForDecline(inviteId, inviteeId);
+        prunePendingInvites(clock.instant());
         invite.status = "DECLINED";
         invitesById.remove(invite.inviteId);
         return new DeclinedInvite(
@@ -415,28 +460,41 @@ public class CustomLobbyService {
                         member.teamNumber)
                         .withGuaranteedAbilities(guaranteeService.forUser(member.user.getId())))
                 .toList();
-        List<OutboundMatchmakingEvent> events = matchService.startTeamMatch(
-                entrants, MatchMode.CUSTOM, lobby.roundDurationSeconds);
-        UUID matchId = events.stream()
-                .map(OutboundMatchmakingEvent::event)
-                .map(event -> event.matchId())
-                .filter(java.util.Objects::nonNull)
-                .findFirst()
-                .orElseThrow(() -> new AuthException("the custom match could not be started"));
-        lobby.activeMatchId = matchId;
-        List<LobbyRecipient> lobbyRecipients = recipientsFor(lobby);
-        CustomLobbyDTO lobbySnapshot = toDTO(lobby);
-        List<PartyService.CustomMatchPartyChange> partyChanges = partyService == null
-                ? List.of()
-                : partyService.prepareForCustomMatch(
+        MatchmakingService.ExternalMatchStartPreparation startPreparation = matchmakingService == null
+                ? null
+                : matchmakingService.prepareExternalMatchStart(
                         entrants.stream().map(MatchEntrant::userId).collect(Collectors.toSet()));
-        return new StartedMatch(
-                matchId,
-                events,
-                lobby.lobbyId,
-                lobbySnapshot,
-                lobbyRecipients,
-                partyChanges);
+        try {
+            List<OutboundMatchmakingEvent> events = new ArrayList<>(startPreparation == null
+                    ? List.of()
+                    : startPreparation.cancellationEvents());
+            events.addAll(matchService.startTeamMatch(
+                    entrants, MatchMode.CUSTOM, lobby.roundDurationSeconds));
+            UUID matchId = events.stream()
+                    .map(OutboundMatchmakingEvent::event)
+                    .map(event -> event.matchId())
+                    .filter(java.util.Objects::nonNull)
+                    .findFirst()
+                    .orElseThrow(() -> new AuthException("the custom match could not be started"));
+            lobby.activeMatchId = matchId;
+            List<LobbyRecipient> lobbyRecipients = recipientsFor(lobby);
+            CustomLobbyDTO lobbySnapshot = toDTO(lobby);
+            List<PartyService.CustomMatchPartyChange> partyChanges = partyService == null
+                    ? List.of()
+                    : partyService.prepareForCustomMatch(
+                            entrants.stream().map(MatchEntrant::userId).collect(Collectors.toSet()));
+            return new StartedMatch(
+                    matchId,
+                    List.copyOf(events),
+                    lobby.lobbyId,
+                    lobbySnapshot,
+                    lobbyRecipients,
+                    partyChanges);
+        } finally {
+            if (matchmakingService != null && startPreparation != null) {
+                matchmakingService.releaseExternalMatchStart(startPreparation.reservationId());
+            }
+        }
     }
 
     /**
@@ -498,14 +556,7 @@ public class CustomLobbyService {
     }
 
     public synchronized int cleanupExpiredInvites() {
-        Instant now = clock.instant();
-        List<UUID> expired = invitesById.values().stream()
-                .filter(invite -> "PENDING".equals(invite.status)
-                        && (invite.expiresAt == null || !now.isBefore(invite.expiresAt)))
-                .map(invite -> invite.inviteId)
-                .toList();
-        expired.forEach(invitesById::remove);
-        return expired.size();
+        return prunePendingInvites(clock.instant());
     }
 
     private LobbyChange stateChange(ActiveLobby lobby) {
@@ -644,6 +695,35 @@ public class CustomLobbyService {
                 .filter(invite -> "PENDING".equals(invite.status))
                 .findFirst()
                 .orElse(null);
+    }
+
+    private long pendingInvitesForInviter(UUID inviterId) {
+        return invitesById.values().stream()
+                .filter(invite -> invite.inviter != null
+                        && inviterId.equals(invite.inviter.getId()))
+                .count();
+    }
+
+    private long pendingInvitesForInvitee(UUID inviteeId) {
+        return invitesById.values().stream()
+                .filter(invite -> invite.invitee != null
+                        && inviteeId.equals(invite.invitee.getId()))
+                .count();
+    }
+
+    private long pendingInvitesForLobby(UUID lobbyId) {
+        return invitesById.values().stream()
+                .filter(invite -> lobbyId.equals(invite.lobbyId))
+                .count();
+    }
+
+    /** Removes transient terminal and expired invite rows; callers hold this service monitor. */
+    private int prunePendingInvites(Instant now) {
+        int previousSize = invitesById.size();
+        invitesById.values().removeIf(invite -> !"PENDING".equals(invite.status)
+                || invite.expiresAt == null
+                || !now.isBefore(invite.expiresAt));
+        return previousSize - invitesById.size();
     }
 
     private LobbyInvite requirePendingInviteForAccept(UUID inviteId, UUID inviteeId) {

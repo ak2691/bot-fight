@@ -1,6 +1,8 @@
 package com.example.botfight.service.customlobby;
 
 import com.example.botfight.service.block.BlockLookup;
+import com.example.botfight.domain.chatmoderation.ChatContextType;
+import com.example.botfight.service.chatmoderation.ChatEvidenceRecorder;
 import com.example.botfight.service.limits.RateLimitExceededException;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import java.time.Clock;
@@ -21,17 +23,28 @@ public class CustomLobbyChatService {
     private final CustomLobbyService customLobbyService;
     private final TokenBucketRateLimiter<String> rateLimiter;
     private final BlockLookup blockLookup;
+    private final ChatEvidenceRecorder evidenceRecorder;
 
     @Autowired
     public CustomLobbyChatService(
             Clock clock,
             CustomLobbyService customLobbyService,
             @Qualifier("customLobbyChatRateLimiter") TokenBucketRateLimiter<String> rateLimiter,
-            BlockLookup blockLookup) {
+            BlockLookup blockLookup,
+            ChatEvidenceRecorder evidenceRecorder) {
         this.clock = clock;
         this.customLobbyService = customLobbyService;
         this.rateLimiter = rateLimiter;
         this.blockLookup = blockLookup;
+        this.evidenceRecorder = evidenceRecorder;
+    }
+
+    public CustomLobbyChatService(
+            Clock clock,
+            CustomLobbyService customLobbyService,
+            @Qualifier("customLobbyChatRateLimiter") TokenBucketRateLimiter<String> rateLimiter,
+            BlockLookup blockLookup) {
+        this(clock, customLobbyService, rateLimiter, blockLookup, ChatEvidenceRecorder.noOp());
     }
 
     public CustomLobbyChatSubmission submit(
@@ -61,17 +74,27 @@ public class CustomLobbyChatService {
         }
 
         Instant now = Instant.now(clock);
+        var deliveredRecipients = context.recipients().stream()
+                .filter(recipient -> !blockLookup.isBlocked(recipient.userId(), userId))
+                .toList();
+        UUID messageId = UUID.randomUUID();
+        evidenceRecorder.capture(
+                messageId,
+                ChatContextType.CUSTOM_LOBBY,
+                context.lobbyId(),
+                userId,
+                context.username(),
+                now,
+                message,
+                deliveredRecipients.stream().map(CustomLobbyService.LobbyRecipient::userId).toList());
         return new CustomLobbyChatSubmission(
                 CustomLobbyChatSubmissionStatus.ACCEPTED,
-                UUID.randomUUID(),
+                messageId,
                 context.lobbyId(),
                 context.username(),
                 message,
                 now,
-                context.recipients().stream()
-                        .filter(recipient -> !blockLookup.isBlocked(recipient.userId(), userId))
-                        .map(CustomLobbyService.LobbyRecipient::principalName)
-                        .toList());
+                deliveredRecipients.stream().map(CustomLobbyService.LobbyRecipient::principalName).toList());
     }
 
     private String rateLimitKey(UUID lobbyId, UUID userId) {

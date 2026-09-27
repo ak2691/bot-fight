@@ -25,7 +25,7 @@ export default function MatchView({
     chatRateLimitNotice,
     chatClosedNotice,
 }) {
-    const { isGuest } = useAuth();
+    const { isGuest, user } = useAuth();
     const chat = !isGuest && matchContext?.matchId ? (
         <MatchChat
             messages={chatMessages}
@@ -35,7 +35,7 @@ export default function MatchView({
             disabled={chatClosed || socketStatus !== "CONNECTED"}
             rateLimitNotice={chatRateLimitNotice}
             closedNotice={chatClosedNotice}
-            currentUsername={matchContext?.player?.username}
+            currentUsername={user?.username ?? matchContext?.player?.username}
         />
     ) : null;
 

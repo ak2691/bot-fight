@@ -18,6 +18,7 @@ import com.example.botfight.service.match.submission.MatchSubmissionService;
 import com.example.botfight.service.match.timing.MatchTimingPolicy;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -134,64 +135,95 @@ public final class MatchLifecycleService {
         }
         List<MatchEntrant> normalizedEntrants = normalizeEntrants(entrants);
         validateRoster(normalizedEntrants, resolvedMode);
-        Match match = persistenceService.createMatch(resolvedMode, ranked);
-        long seed = match.getSimulationSeed();
-        List<MatchEntrant> orderedEntrants = useLegacyCreateMatch
-                && normalizedEntrants.size() == 2
-                && (seed & 1L) == 0L
-                ? List.of(normalizedEntrants.get(1), normalizedEntrants.get(0))
-                : normalizedEntrants;
-        List<MatchPlayer> players = orderedEntrants.stream()
-                .map(entrant -> new MatchPlayer(
-                        entrant.userId(), entrant.username(), entrant.principalName(),
-                        orderedEntrants.indexOf(entrant) + 1,
-                        entrant.teamNumber(), false, null, 0, "custom:", false))
-                .toList();
-
-        MatchSession pendingSession = new MatchSession(
-                match.getId(),
-                seed,
-                players,
-                null,
-                null,
-                null,
-                null,
-                1,
-                WINS_REQUIRED,
-                List.of(),
-                Map.of(),
-                null,
-                null,
-                null,
-                null,
-                false,
-                resolvedMode,
-                roundDurationSeconds);
-        persistenceService.createParticipants(match, pendingSession);
-        MatchSession session = pendingSession;
-        for (MatchEntrant entrant : orderedEntrants) {
-            if (entrant.guaranteedAbilities() != null
-                    && !entrant.guaranteedAbilities().isEmpty()) {
-                session = session.withGuaranteedAbilities(
-                        entrant.userId(), entrant.guaranteedAbilities());
-            }
+        UUID reservationId = state.reserveMatchStart(
+                normalizedEntrants.stream().map(MatchEntrant::userId).toList());
+        if (reservationId == null) {
+            throw new AuthException("one or more players are already in a match or starting a match");
         }
-        session = session.withLoadoutSelection(
-                loadoutSelectionDeadlineAt(Instant.now(clock)));
-        state.putSession(session);
-        normalizedEntrants.forEach(entrant ->
-                connectionService.registerSocket(entrant.userId(), entrant.socketSessionId()));
+        MatchSession startedSession = null;
+        List<UUID> socketRegistrationAttempts = new ArrayList<>();
+        try {
+            Match match = persistenceService.createMatch(resolvedMode, ranked);
+            long seed = match.getSimulationSeed();
+            List<MatchEntrant> orderedEntrants = useLegacyCreateMatch
+                    && normalizedEntrants.size() == 2
+                    && (seed & 1L) == 0L
+                    ? List.of(normalizedEntrants.get(1), normalizedEntrants.get(0))
+                    : normalizedEntrants;
+            List<MatchPlayer> players = orderedEntrants.stream()
+                    .map(entrant -> new MatchPlayer(
+                            entrant.userId(), entrant.username(), entrant.principalName(),
+                            orderedEntrants.indexOf(entrant) + 1,
+                            entrant.teamNumber(), false, null, 0, "custom:", false))
+                    .toList();
 
-        MatchSession startedSession = session;
-        return startedSession.players().stream()
-                .map(matchPlayer -> eventFactory.forPlayer(
-                        startedSession,
-                        matchPlayer,
-                        "MATCH_STARTED",
-                        "LOADOUT_SELECT",
-                        null,
-                        "Match accepted. Choose your opening loadout."))
-                .toList();
+            MatchSession pendingSession = new MatchSession(
+                    match.getId(),
+                    seed,
+                    players,
+                    null,
+                    null,
+                    null,
+                    null,
+                    1,
+                    WINS_REQUIRED,
+                    List.of(),
+                    Map.of(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    false,
+                    resolvedMode,
+                    roundDurationSeconds);
+            persistenceService.createParticipants(match, pendingSession);
+            MatchSession session = pendingSession;
+            for (MatchEntrant entrant : orderedEntrants) {
+                if (entrant.guaranteedAbilities() != null
+                        && !entrant.guaranteedAbilities().isEmpty()) {
+                    session = session.withGuaranteedAbilities(
+                            entrant.userId(), entrant.guaranteedAbilities());
+                }
+            }
+            session = session.withLoadoutSelection(
+                    loadoutSelectionDeadlineAt(Instant.now(clock)));
+            MatchSession sessionToStart = session;
+            startedSession = sessionToStart;
+            List<OutboundMatchmakingEvent> startedEvents = sessionToStart.players().stream()
+                    .map(matchPlayer -> eventFactory.forPlayer(
+                            sessionToStart,
+                            matchPlayer,
+                            "MATCH_STARTED",
+                            "LOADOUT_SELECT",
+                            null,
+                            "Match accepted. Choose your opening loadout."))
+                    .toList();
+            for (MatchEntrant entrant : normalizedEntrants) {
+                socketRegistrationAttempts.add(entrant.userId());
+                connectionService.registerSocket(entrant.userId(), entrant.socketSessionId());
+            }
+            if (!state.publishReservedSession(reservationId, sessionToStart)) {
+                throw new AuthException("the match roster reservation was no longer available");
+            }
+            return startedEvents;
+        } catch (RuntimeException | Error exception) {
+            if (startedSession != null) {
+                try {
+                    state.removeSession(startedSession);
+                } catch (RuntimeException | Error cleanupFailure) {
+                    exception.addSuppressed(cleanupFailure);
+                }
+            }
+            for (UUID userId : socketRegistrationAttempts) {
+                try {
+                    connectionService.clear(userId);
+                } catch (RuntimeException | Error cleanupFailure) {
+                    exception.addSuppressed(cleanupFailure);
+                }
+            }
+            state.releaseMatchStart(reservationId);
+            throw exception;
+        }
     }
 
     private List<MatchEntrant> normalizeEntrants(List<MatchEntrant> entrants) {
@@ -365,9 +397,9 @@ public final class MatchLifecycleService {
         submissionService.persistCodeHistory(session);
         chatService.open(session);
         for (MatchPlayer player : session.players()) {
-            state.activeSessionsByUserId().remove(player.userId());
             connectionService.clear(player.userId());
         }
+        state.removeSession(session);
         state.roundHistoryByMatchId().remove(session.matchId());
         submissionService.removeAll(session.matchId());
     }

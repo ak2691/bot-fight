@@ -6,9 +6,12 @@ rated results.
 
 ## Ownership map
 
-- `Arena.jsx`: testing-room state, fixed-step arena loop, logic action
-  application, entity ticking, submission coordination, state snapshots, and
-  live-match code-view responders plus editable sandbox copies.
+- `Arena.jsx`: testing-room state, mode coordination, logic action application,
+  submission coordination, state snapshots, and live-match code-view responders
+  plus editable sandbox copies. The preview simulation loop is owned by
+  `hooks/`.
+- `hooks/`: browser preview simulation-loop and mode hooks. `useArenaAutoPlay.js`
+  owns fixed-step preview ticks and action/entity update coordination.
 - `coding/CodingPanel.jsx`: coding workspace composition root, toolbar,
   history, modal coordination, outer workspace layout, and read-only live
   participant snapshots.
@@ -21,7 +24,9 @@ rated results.
 - `coding/utils/`: coding-menu coordination and custom-variable search helpers.
 - `status/`: player-facing cooldown, charge, and ability-status presentation.
 - `pixi/PixiCanvas.jsx` + `pixi/PixiCanvas.css`: Pixi scene lifecycle, layers,
-  sprites, arena/bot/entity rendering, and presentation overlays.
+  sprites, arena/bot/entity rendering, and presentation overlays. Keyed
+  ability-renderer selection lives in `pixi/botAbilityPresentationDefinitions.js`;
+  its metadata is presentation-only.
 - `loadout/BotLoadout.js`: ability catalog metadata, round pools, loadout
   normalization/encoding, action mapping, and visual capabilities.
 - `botlogic/code/`: structured bot-code contract with `BotCode.js` as the public
@@ -67,8 +72,9 @@ rated results.
   `DuelSimulationService`.
 - Keep fixed-step timing, arena units, collision geometry, rounding, effect
   order, loadout encoding, and seeded choices aligned across runtimes.
-- Add presentation metadata to visual helpers/catalogs instead of branching on
-  ability names throughout `pixi/PixiCanvas.jsx`.
+- Keep ability-specific renderer selection in keyed presentation definitions;
+  their metadata may choose visual effects, assets, and timing but cannot affect
+  gameplay outcomes.
 
 ## Relevant documentation
 

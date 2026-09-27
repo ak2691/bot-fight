@@ -31,6 +31,6 @@ public class PartyInviteCleanupService {
                         // Cleanup is best-effort; request paths still enforce expiry.
                     }
                 },
-                Duration.ofHours(1));
+                Duration.ofMinutes(1));
     }
 }

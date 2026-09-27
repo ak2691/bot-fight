@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { combatVisualDurationMs } from "../gameArena/gameconfig/visualState.js";
-import { centeredTeamPosition, displayedRoundWins, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, localReplaySchedule, mergeReplayFrames, replayAbilitiesFor, replayAbilityTarget, replayAbilityVisual, replayClockSeconds, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayBotAbilityState, replayFrameIndexForElapsedMs, replayRayOrigin, replayRatingChange, replayRatingChanges, replayRemainingMs, replayRemainingSeconds, replayResultRevealReached, replayResultVisibility, replayShapeKey } from "./replayPresentation.js";
+import { centeredTeamPosition, displayedRoundWins, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, localReplaySchedule, mergeReplayFrames, replayAbilitiesFor, replayAbilityTarget, replayAbilityVisual, replayClockSeconds, replayDamageEvents, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayBotAbilityState, replayFrameIndexForElapsedMs, replayRayOrigin, replayRatingChange, replayRatingChanges, replayRemainingMs, replayRemainingSeconds, replayResultRevealReached, replayResultVisibility, replayShapeKey } from "./replayPresentation.js";
 
 test("replay schedule preserves the server deadlines when the ready event arrives late", () => {
     assert.deepEqual(localReplaySchedule(10_000, 30_000, 9_000), {
@@ -331,6 +331,35 @@ test("replay presentation interpolates positions but keeps authoritative rotatio
 test("replay damage matching remains slot-based after bot metadata hydration", () => {
     assert.equal(replayShapeKey({ slot: 1 }), replayShapeKey({ slot: 1, userId: "user-1" }));
     assert.equal(replayShapeKey({ id: "entity-1" }), replayShapeKey({ id: "entity-1", type: "fireball" }));
+});
+
+test("entity-heavy replay damage matching indexes each current shape once", () => {
+    let currentEntityIdReads = 0;
+    const bots = Array.from({ length: 8 }, (_, index) => ({ slot: index + 1, hp: 90 }));
+    const entities = Array.from({ length: 128 }, (_, index) => {
+        const shape = { hp: 10 - index / 100 };
+        Object.defineProperty(shape, "id", {
+            get() {
+                currentEntityIdReads += 1;
+                return `entity-${index}`;
+            },
+        });
+        return shape;
+    });
+    const priorShapes = () => ({
+        bots: bots.map((bot) => ({ ...bot, hp: 100 })),
+        entities: entities.map((entity, index) => ({ id: `entity-${index}`, hp: 20 })),
+    });
+
+    const damageEvents = replayDamageEvents(bots, entities, [
+        { elapsedMs: 100, ...priorShapes() },
+        { elapsedMs: 200, ...priorShapes() },
+    ]);
+
+    assert.equal(damageEvents.size, 136);
+    assert.equal(damageEvents.get("slot:1"), "200:slot:1");
+    assert.equal(damageEvents.get("id:entity-127"), "200:id:entity-127");
+    assert.equal(currentEntityIdReads, entities.length);
 });
 
 test("replay gun rays retain the activation position while the bot moves", () => {

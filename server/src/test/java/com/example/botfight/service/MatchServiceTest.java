@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import com.example.botfight.DTO.match.MatchPlaybackDTO;
 import com.example.botfight.DTO.match.MatchCodeViewResponseDTO;
 import com.example.botfight.DTO.match.MatchmakingEventDTO;
+import com.example.botfight.DTO.match.MatchmakingPlayerDTO;
 import com.example.botfight.DTO.match.MatchReplayDTO;
 import com.example.botfight.domain.auth.AppUser;
 import com.example.botfight.domain.match.Match;
@@ -46,6 +47,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -71,6 +73,23 @@ class MatchServiceTest {
     private Match savedMatch;
     private MatchService service;
     private MatchmakingService matchmakingService;
+
+    private MatchmakingPlayerDTO viewerParticipant(MatchmakingEventDTO event) {
+        if (event == null || event.viewerUserId() == null || event.players() == null) return null;
+        return event.players().stream()
+                .filter(participant -> Objects.equals(participant.userId(), event.viewerUserId()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private MatchmakingPlayerDTO opponentParticipant(MatchmakingEventDTO event) {
+        MatchmakingPlayerDTO viewer = viewerParticipant(event);
+        if (viewer == null || event.players() == null) return null;
+        return event.players().stream()
+                .filter(participant -> participant.teamNumber() != viewer.teamNumber())
+                .findFirst()
+                .orElse(null);
+    }
 
     private MatchService createService(ReplayDeliveryMode replayDeliveryMode) {
         return new MatchService(
@@ -171,12 +190,12 @@ class MatchServiceTest {
                 .isEqualTo(62);
 
         MatchmakingEventDTO firstStarted = started.stream()
-                .filter(event -> firstUserId.equals(event.event().player().userId()))
+                .filter(event -> firstUserId.equals(event.event().viewerUserId()))
                 .findFirst()
                 .orElseThrow()
                 .event();
         MatchmakingEventDTO secondStarted = started.stream()
-                .filter(event -> secondUserId.equals(event.event().player().userId()))
+                .filter(event -> secondUserId.equals(event.event().viewerUserId()))
                 .findFirst()
                 .orElseThrow()
                 .event();
@@ -449,8 +468,8 @@ class MatchServiceTest {
                 service.selectLoadout(firstUserId, "ranged");
 
         assertThat(duplicate).hasSize(1);
-        assertThat(duplicate.getFirst().event().player().loadoutSelected()).isTrue();
-        assertThat(duplicate.getFirst().event().player().selectedLoadout()).isEqualTo("melee");
+        assertThat(viewerParticipant(duplicate.getFirst().event()).loadoutSelected()).isTrue();
+        assertThat(viewerParticipant(duplicate.getFirst().event()).selectedLoadout()).isEqualTo("melee");
         assertThat(service.selectLoadout(secondUserId, "melee")).hasSize(2);
     }
 
@@ -482,6 +501,78 @@ class MatchServiceTest {
         assertThat(first.duplicate()).isFalse();
         assertThat(retry.accepted()).isTrue();
         assertThat(retry.duplicate()).isTrue();
+    }
+
+    @Test
+    void exhaustedSimulationFailureCancelsMatchWithoutAnOutcomeOrRatingChange() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        UUID firstSubmissionId = UUID.randomUUID();
+        UUID secondSubmissionId = UUID.randomUUID();
+        UUID matchId = service.startMatch(
+                        new MatchEntrant(firstUserId, "pilot-one", "pilot-one@example.com", null),
+                        new MatchEntrant(secondUserId, "pilot-two", "pilot-two@example.com", null))
+                .getFirst().event().matchId();
+        service.selectLoadout(firstUserId, "melee");
+        service.selectLoadout(secondUserId, "melee");
+        stubSubmission(firstUserId, firstSubmissionId);
+        stubSubmission(secondUserId, secondSubmissionId);
+        submitMatch(firstUserId, firstSubmissionId);
+        submitMatch(secondUserId, secondSubmissionId);
+
+        List<OutboundMatchmakingEvent> cancellationEvents = service.cancelFailedSimulation(matchId, 1);
+
+        assertThat(cancellationEvents).hasSize(2).allSatisfy(outbound -> {
+            assertThat(outbound.event().type()).isEqualTo("MATCH_RESULT_READY");
+            assertThat(outbound.event().status()).isEqualTo("CANCELLED");
+            assertThat(outbound.event().playback()).isNull();
+            assertThat(outbound.event().message()).contains("cancelled");
+            assertThat(service.isCurrentEvent(outbound)).isTrue();
+        });
+        assertThat(savedMatch.getStatus()).isEqualTo(MatchStatus.CANCELLED);
+        assertThat(savedMatch.getCompletionReason())
+                .isEqualTo(MatchPersistenceService.COMPLETION_REASON_SIMULATION_FAILURE);
+        assertThat(savedMatch.getWinnerUser()).isNull();
+        assertThat(participants).hasSize(2).allSatisfy(participant -> {
+            assertThat(participant.getResult()).isNull();
+            assertThat(participant.getRatingAfter()).isNull();
+        });
+        assertThat(service.activeMatchStatus(firstUserId).activeMatch()).isFalse();
+        assertThat(service.activeMatchStatus(secondUserId).activeMatch()).isFalse();
+    }
+
+    @Test
+    void simulationErrorRemainsRetryableUntilControllerCancelsIt() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        UUID firstSubmissionId = UUID.randomUUID();
+        UUID secondSubmissionId = UUID.randomUUID();
+        UUID matchId = service.startMatch(
+                        new MatchEntrant(firstUserId, "pilot-one", "pilot-one@example.com", null),
+                        new MatchEntrant(secondUserId, "pilot-two", "pilot-two@example.com", null))
+                .getFirst().event().matchId();
+        service.selectLoadout(firstUserId, "melee");
+        service.selectLoadout(secondUserId, "melee");
+        stubSubmission(firstUserId, firstSubmissionId);
+        stubSubmission(secondUserId, secondSubmissionId);
+        submitMatch(firstUserId, firstSubmissionId);
+        submitMatch(secondUserId, secondSubmissionId);
+        MatchReplayDTO failedReplay = mock(MatchReplayDTO.class);
+        when(failedReplay.result()).thenReturn("ERROR");
+        when(simulationService.buildDuelReplay(any(MatchSession.class), any()))
+                .thenReturn(failedReplay);
+
+        assertThatThrownBy(() -> service.completeSimulation(matchId))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("authoritative duel simulation failed");
+        assertThat(savedMatch.getStatus()).isEqualTo(MatchStatus.RUNNING);
+        assertThat(participants).allSatisfy(participant -> assertThat(participant.getResult()).isNull());
+        assertThat(service.activeMatchStatus(firstUserId).activeMatch()).isTrue();
+
+        assertThat(service.cancelFailedSimulation(matchId, 1)).hasSize(2);
+
+        assertThat(savedMatch.getStatus()).isEqualTo(MatchStatus.CANCELLED);
+        assertThat(participants).allSatisfy(participant -> assertThat(participant.getResult()).isNull());
     }
 
     @Test
@@ -557,8 +648,9 @@ class MatchServiceTest {
                     assertThat(outbound.event().playbackStartsAt()).isEqualTo(clock.instant().plusSeconds(3));
                     assertThat(outbound.event().resultRevealsAt()).isAfter(outbound.event().playbackStartsAt());
                     assertThat(outbound.event().roundReadyAt()).isAfter(outbound.event().resultRevealsAt());
-                    assertThat(outbound.event().player()).isNotNull();
-                    assertThat(outbound.event().opponent()).isNotNull();
+                    assertThat(viewerParticipant(outbound.event())).isNotNull();
+                    assertThat(opponentParticipant(outbound.event())).isNotNull();
+                    assertThat(outbound.event().eventSchemaVersion()).isEqualTo(2);
                     assertThat(outbound.event().players()).hasSize(2);
                     assertThat(outbound.event().playback().roundWinsBeforeResult())
                             .containsEntry(firstUserId, 0)
@@ -1139,7 +1231,7 @@ class MatchServiceTest {
             assertThat(outbound.event().type()).isEqualTo("MATCH_SURRENDER_UPDATED");
             assertThat(outbound.event().surrenderVoteRequired()).isEqualTo(2);
             assertThat(outbound.event().surrenderVoteCount())
-                    .isEqualTo(outbound.event().player().teamNumber() == 1 ? 1 : 0);
+                    .isEqualTo(viewerParticipant(outbound.event()).teamNumber() == 1 ? 1 : 0);
         });
         List<OutboundMatchmakingEvent> events = service.surrender(teammateUserId);
 
@@ -1217,7 +1309,7 @@ class MatchServiceTest {
             assertThat(outbound.event().surrenderVoteRequired()).isEqualTo(2);
         });
         assertThat(withdrawalEvents.stream()
-                .filter(outbound -> outbound.event().player().userId().equals(firstUserId))
+                .filter(outbound -> outbound.event().viewerUserId().equals(firstUserId))
                 .findFirst()
                 .orElseThrow()
                 .event()

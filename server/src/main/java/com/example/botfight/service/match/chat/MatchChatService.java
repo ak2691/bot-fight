@@ -5,6 +5,8 @@ import com.example.botfight.service.match.model.MatchChatSubmission;
 import com.example.botfight.service.match.model.MatchChatSubmissionStatus;
 import com.example.botfight.service.match.model.MatchPlayer;
 import com.example.botfight.service.match.model.MatchSession;
+import com.example.botfight.domain.chatmoderation.ChatContextType;
+import com.example.botfight.service.chatmoderation.ChatEvidenceRecorder;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.block.BlockLookup;
 import com.example.botfight.service.limits.RateLimitExceededException;
@@ -29,13 +31,14 @@ public final class MatchChatService {
     private final ConcurrentMap<UUID, MatchSession> activeSessionsByUserId;
     private final TokenBucketRateLimiter<String> rateLimiter;
     private final BlockLookup blockLookup;
+    private final ChatEvidenceRecorder evidenceRecorder;
     private final ConcurrentMap<UUID, MatchChatWindow> chatWindowsByMatchId = new ConcurrentHashMap<>();
 
     public MatchChatService(
             Clock clock,
             ConcurrentMap<UUID, MatchSession> activeSessionsByUserId,
             TokenBucketRateLimiter<String> rateLimiter) {
-        this(clock, activeSessionsByUserId, rateLimiter, BlockLookup.none());
+        this(clock, activeSessionsByUserId, rateLimiter, BlockLookup.none(), ChatEvidenceRecorder.noOp());
     }
 
     public MatchChatService(
@@ -43,10 +46,20 @@ public final class MatchChatService {
             ConcurrentMap<UUID, MatchSession> activeSessionsByUserId,
             TokenBucketRateLimiter<String> rateLimiter,
             BlockLookup blockLookup) {
+        this(clock, activeSessionsByUserId, rateLimiter, blockLookup, ChatEvidenceRecorder.noOp());
+    }
+
+    public MatchChatService(
+            Clock clock,
+            ConcurrentMap<UUID, MatchSession> activeSessionsByUserId,
+            TokenBucketRateLimiter<String> rateLimiter,
+            BlockLookup blockLookup,
+            ChatEvidenceRecorder evidenceRecorder) {
         this.clock = clock;
         this.activeSessionsByUserId = activeSessionsByUserId;
         this.rateLimiter = rateLimiter;
         this.blockLookup = blockLookup;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     public MatchChatSubmission submit(UUID userId, UUID matchId, String rawMessage) {
@@ -105,20 +118,31 @@ public final class MatchChatService {
         } catch (RateLimitExceededException exception) {
             return MatchChatSubmission.rateLimited(matchId, channel);
         }
+        List<MatchChatParticipant> deliveredRecipients = recipients.stream()
+                .filter(recipient -> !TEAM_CHANNEL.equals(channel)
+                        || recipient.teamNumber() == sender.teamNumber())
+                .filter(recipient -> !blockLookup.isBlocked(recipient.userId(), userId))
+                .toList();
+        UUID messageId = UUID.randomUUID();
+        evidenceRecorder.capture(
+                messageId,
+                ChatContextType.MATCH,
+                matchId,
+                userId,
+                sender.username(),
+                now,
+                message,
+                deliveredRecipients.stream().map(MatchChatParticipant::userId).toList());
         return new MatchChatSubmission(
                 MatchChatSubmissionStatus.ACCEPTED,
-                UUID.randomUUID(),
+                messageId,
                 matchId,
                 sender.username(),
                 message,
                 now,
-                recipients.stream()
-                        .filter(recipient -> !TEAM_CHANNEL.equals(channel)
-                                || recipient.teamNumber() == sender.teamNumber())
-                        .filter(recipient -> !blockLookup.isBlocked(recipient.userId(), userId))
-                        .map(MatchChatParticipant::principalName)
-                        .toList(),
-                channel);
+                deliveredRecipients.stream().map(MatchChatParticipant::principalName).toList(),
+                channel,
+                deliveredRecipients.stream().map(MatchChatParticipant::userId).toList());
     }
 
     public Instant closeAt(UUID matchId) {

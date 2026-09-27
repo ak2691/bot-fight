@@ -23,8 +23,20 @@ public interface UserRepository extends JpaRepository<AppUser, UUID> {
             String username,
             Pageable pageable);
 
-    Page<AppUser> findByGuestFalseAndEmailVerifiedTrueAndUsernameContainingIgnoreCaseOrderByUsernameAscIdAsc(
-            String username,
+    @Query(value = """
+            select u from AppUser u
+            where u.guest = false
+              and u.emailVerified = true
+              and lower(u.username) like lower(concat('%', :username, '%'))
+            """,
+            countQuery = """
+            select count(u) from AppUser u
+            where u.guest = false
+              and u.emailVerified = true
+              and lower(u.username) like lower(concat('%', :username, '%'))
+            """)
+    Page<AppUser> searchVerifiedNonGuestByUsernameSubstring(
+            @Param("username") String username,
             Pageable pageable);
 
     Optional<AppUser> findByNormalizedEmail(String normalizedEmail);

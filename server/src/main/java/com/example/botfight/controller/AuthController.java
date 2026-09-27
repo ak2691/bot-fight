@@ -1,6 +1,7 @@
 package com.example.botfight.controller;
 
 import com.example.botfight.DTO.auth.AuthRequestDTO;
+import com.example.botfight.DTO.auth.AuthRequestResponseDTO;
 import com.example.botfight.DTO.auth.AuthUserDTO;
 import com.example.botfight.DTO.auth.EmailVerificationRequestDTO;
 import com.example.botfight.DTO.auth.GoogleAuthStatusDTO;
@@ -12,7 +13,6 @@ import com.example.botfight.DTO.auth.PasswordResetRequestResponseDTO;
 import com.example.botfight.DTO.auth.PasswordResetStatusDTO;
 import com.example.botfight.DTO.auth.PasswordResetVerificationRequestDTO;
 import com.example.botfight.DTO.auth.PasswordResetVerificationResponseDTO;
-import com.example.botfight.DTO.auth.RegistrationResponseDTO;
 import com.example.botfight.DTO.auth.UsernameRequestDTO;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.auth.AuthService;
@@ -23,10 +23,15 @@ import com.example.botfight.security.AuthenticatedUserDetails;
 import java.io.IOException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import java.util.Locale;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.task.SyncTaskExecutor;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -44,6 +49,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private static final int MAX_RATE_LIMIT_EMAIL_KEY_LENGTH = 320;
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
     private final AuthService authService;
     private final GoogleAuthService googleAuthService;
@@ -51,6 +57,7 @@ public class AuthController {
     private final TokenBucketRateLimiter<String> authEmailRateLimiter;
     private final TokenBucketRateLimiter<String> authenticatedGetRateLimiter;
     private final PasswordResetService passwordResetService;
+    private final TaskExecutor authRequestExecutor;
 
     @Autowired
     public AuthController(
@@ -60,13 +67,33 @@ public class AuthController {
             @Qualifier("authEmailRateLimiter") TokenBucketRateLimiter<String> authEmailRateLimiter,
             @Qualifier("authenticatedGetRateLimiter")
             TokenBucketRateLimiter<String> authenticatedGetRateLimiter,
-            PasswordResetService passwordResetService) {
+            PasswordResetService passwordResetService,
+            @Qualifier("authRequestExecutor") TaskExecutor authRequestExecutor) {
         this.authService = authService;
         this.googleAuthService = googleAuthService;
         this.authIpRateLimiter = authIpRateLimiter;
         this.authEmailRateLimiter = authEmailRateLimiter;
         this.authenticatedGetRateLimiter = authenticatedGetRateLimiter;
         this.passwordResetService = passwordResetService;
+        this.authRequestExecutor = authRequestExecutor;
+    }
+
+    /** Compatibility constructor for focused controller tests that do not exercise password reset routes. */
+    public AuthController(
+            AuthService authService,
+            GoogleAuthService googleAuthService,
+            TokenBucketRateLimiter<String> authIpRateLimiter,
+            TokenBucketRateLimiter<String> authEmailRateLimiter,
+            TokenBucketRateLimiter<String> authenticatedGetRateLimiter,
+            PasswordResetService passwordResetService) {
+        this(
+                authService,
+                googleAuthService,
+                authIpRateLimiter,
+                authEmailRateLimiter,
+                authenticatedGetRateLimiter,
+                passwordResetService,
+                new SyncTaskExecutor());
     }
 
     /** Compatibility constructor for focused controller tests that do not exercise password reset routes. */
@@ -82,15 +109,25 @@ public class AuthController {
                 authIpRateLimiter,
                 authEmailRateLimiter,
                 authenticatedGetRateLimiter,
-                null);
+                null,
+                new SyncTaskExecutor());
     }
 
     @PostMapping("/register")
-    public ResponseEntity<RegistrationResponseDTO> register(
+    public ResponseEntity<AuthRequestResponseDTO> register(
             @RequestBody AuthRequestDTO request,
             HttpServletRequest httpRequest) {
         requireAuthLimits("register", email(request), httpRequest);
-        return ResponseEntity.status(HttpStatus.CREATED).body(authService.register(request, httpRequest));
+        authService.validateRegistration(request);
+
+        AuthRequestDTO queuedRequest = new AuthRequestDTO();
+        if (request != null) {
+            queuedRequest.setEmail(request.getEmail());
+            queuedRequest.setUsername(request.getUsername());
+            queuedRequest.setPassword(request.getPassword());
+        }
+        enqueueAccountStateDependentWork("registration", () -> authService.register(queuedRequest));
+        return ResponseEntity.accepted().body(AuthRequestResponseDTO.registration());
     }
 
     @PostMapping("/verify-email")
@@ -102,11 +139,13 @@ public class AuthController {
     }
 
     @PostMapping("/resend-verification")
-    public ResponseEntity<RegistrationResponseDTO> resendVerification(
+    public ResponseEntity<AuthRequestResponseDTO> resendVerification(
             @RequestBody EmailVerificationRequestDTO request,
             HttpServletRequest httpRequest) {
         requireAuthLimits("resend-verification", email(request), httpRequest);
-        return ResponseEntity.ok(authService.resendVerification(request == null ? null : request.getEmail()));
+        String requestedEmail = request == null ? null : request.getEmail();
+        enqueueAccountStateDependentWork("verification-resend", () -> authService.resendVerification(requestedEmail));
+        return ResponseEntity.ok(AuthRequestResponseDTO.verificationResend());
     }
 
     @PostMapping("/login")
@@ -128,7 +167,10 @@ public class AuthController {
             @RequestBody PasswordResetRequestDTO request,
             HttpServletRequest httpRequest) {
         requireAuthLimits("password-reset-request", email(request), httpRequest);
-        passwordResetService.requestPasswordReset(request == null ? null : request.getEmail());
+        String requestedEmail = request == null ? null : request.getEmail();
+        enqueueAccountStateDependentWork(
+                "password-reset-request",
+                () -> passwordResetService.requestPasswordReset(requestedEmail));
         return ResponseEntity.ok(PasswordResetRequestResponseDTO.generic());
     }
 
@@ -155,6 +197,7 @@ public class AuthController {
             HttpServletRequest httpRequest) {
         requireAuthLimits("password-reset-complete", null, httpRequest);
         passwordResetService.resetPassword(request, httpRequest);
+        invalidateSession(httpRequest);
         return ResponseEntity.ok(Map.of("message", "Password reset successfully"));
     }
 
@@ -164,7 +207,9 @@ public class AuthController {
             @RequestBody PasswordChangeRequestDTO request,
             HttpServletRequest httpRequest) {
         requireAuthLimits("change-password", authenticatedEmail(authentication), httpRequest);
-        return ResponseEntity.ok(authService.changePassword(authentication, request));
+        AuthUserDTO updatedUser = authService.changePassword(authentication, request);
+        rotateSessionId(httpRequest);
+        return ResponseEntity.ok(updatedUser);
     }
 
     @PostMapping("/google/link-existing")
@@ -250,6 +295,36 @@ public class AuthController {
         if (!normalizedEmail.isBlank()) {
             authEmailRateLimiter.requireAllowed("auth:" + action + ":email:" + normalizedEmail);
         }
+    }
+
+    private void enqueueAccountStateDependentWork(String flow, Runnable work) {
+        try {
+            authRequestExecutor.execute(() -> {
+                try {
+                    work.run();
+                } catch (RuntimeException exception) {
+                    // Public acknowledgements intentionally do not reveal delivery, lookup, or account state.
+                    log.warn("Background auth flow {} failed ({})", flow, exception.getClass().getSimpleName());
+                }
+            });
+        } catch (RuntimeException exception) {
+            // A saturated queue must not create an account-state-dependent response either.
+            log.warn("Background auth flow {} could not be queued ({})", flow, exception.getClass().getSimpleName());
+        }
+    }
+
+    private void rotateSessionId(HttpServletRequest request) {
+        if (request != null && request.getSession(false) != null) {
+            request.changeSessionId();
+        }
+    }
+
+    private void invalidateSession(HttpServletRequest request) {
+        HttpSession session = request == null ? null : request.getSession(false);
+        if (session != null) {
+            session.invalidate();
+        }
+        SecurityContextHolder.clearContext();
     }
 
     private void requireAuthenticatedGetAllowed(Authentication authentication, String category) {

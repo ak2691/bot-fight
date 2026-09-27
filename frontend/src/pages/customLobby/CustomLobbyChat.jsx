@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import ProfileLink from "../../components/ProfileLink.jsx";
+import ChatReportButton from "../../chatModeration/ChatReportButton.jsx";
 
 const MAX_MESSAGE_LENGTH = 280;
 
-export default function CustomLobbyChat({ messages, onSend, disabled = false, notice = null, className = "" }) {
+export default function CustomLobbyChat({ messages, onSend, disabled = false, notice = null, className = "", currentUsername = null }) {
     const [draft, setDraft] = useState("");
     const messagesRef = useRef(null);
 
@@ -27,9 +28,12 @@ export default function CustomLobbyChat({ messages, onSend, disabled = false, no
             <div ref={messagesRef} className="custom-lobby-chat__messages" aria-live="polite">
                 {messages.length === 0 && <p className="custom-lobby-chat__empty">No messages yet.</p>}
                 {messages.map((message) => (
-                    <p key={message.messageId ?? `${message.sentAt}-${message.username}-${message.message}`} className="custom-lobby-chat__message">
-                        <strong><ProfileLink username={message.username}>{message.username}</ProfileLink>:</strong> {message.message}
-                    </p>
+                    <div key={message.messageId ?? `${message.sentAt}-${message.username}-${message.message}`} className="custom-lobby-chat__message-row">
+                        <p className="custom-lobby-chat__message">
+                            <strong><ProfileLink username={message.username}>{message.username}</ProfileLink>:</strong> {message.message}
+                        </p>
+                        {message.username !== currentUsername && <ChatReportButton messageId={message.messageId} />}
+                    </div>
                 ))}
             </div>
             {notice && <p role="status" className="custom-lobby-chat__notice">{notice}</p>}

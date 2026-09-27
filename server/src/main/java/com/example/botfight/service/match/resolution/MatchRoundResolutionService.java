@@ -101,6 +101,9 @@ public final class MatchRoundResolutionService {
             long simulationStartedNanos = System.nanoTime();
             MatchReplayDTO calculatedPlayback = simulationService.buildDuelReplay(
                     simulationSession, submissionsByUserId);
+            if (calculatedPlayback == null || "ERROR".equals(calculatedPlayback.result())) {
+                throw new IllegalStateException("authoritative duel simulation failed");
+            }
             log.info(
                     "Authoritative duel simulation completed matchId={} round={} result={} elapsedMs={}",
                     matchId,
@@ -136,6 +139,59 @@ public final class MatchRoundResolutionService {
         } finally {
             state.simulationsInProgress().remove(simulationKey);
         }
+    }
+
+    /**
+     * Ends a match without a rated outcome after the controller exhausts its
+     * bounded retries for this authoritative round. The expected round and
+     * active phase make delayed failure callbacks harmless after a phase change.
+     */
+    public List<OutboundMatchmakingEvent> cancelFailedSimulation(UUID matchId, Integer expectedRoundNumber) {
+        if (matchId == null || expectedRoundNumber == null) return List.of();
+        return withLock(matchId, () -> cancelFailedSimulationLocked(matchId, expectedRoundNumber));
+    }
+
+    private List<OutboundMatchmakingEvent> cancelFailedSimulationLocked(
+            UUID matchId,
+            int expectedRoundNumber) {
+        MatchSession session = state.activeSessionForMatch(matchId);
+        SimulationKey key = new SimulationKey(matchId, expectedRoundNumber);
+        if (session == null
+                || session.roundNumber() != expectedRoundNumber
+                || session.isReplay()
+                || !session.players().stream().allMatch(MatchPlayer::finished)
+                || state.simulationsInProgress().contains(key)) {
+            return List.of();
+        }
+
+        submissionService.persistCodeHistory(session);
+        if (!persistenceService.cancelMatchAfterSimulationFailure(matchId)) {
+            return List.of();
+        }
+
+        String message = "The match was cancelled because the server could not complete its authoritative simulation.";
+        List<OutboundMatchmakingEvent> events = session.players().stream()
+                .map(player -> eventFactory.forPlayer(
+                        session,
+                        player,
+                        "MATCH_RESULT_READY",
+                        "CANCELLED",
+                        null,
+                        message))
+                .toList();
+
+        state.removeSession(session);
+        state.roundHistoryByMatchId().remove(matchId);
+        state.initialLoadoutSelectionStartedMatchIds().remove(matchId);
+        submissionService.removeAll(matchId);
+        state.simulationsInProgress().remove(key);
+        session.players().forEach(player -> connectionService.clear(player.userId()));
+        log.warn(
+                "Cancelled match after authoritative simulation retries failed matchId={} round={} seed={}",
+                matchId,
+                expectedRoundNumber,
+                session.simulationSeed());
+        return events;
     }
 
     private MatchSession claimSimulationLocked(UUID matchId) {

@@ -26,6 +26,7 @@ timing, rounding, targeting, effects, loadout encoding, and replay shape.
 | Logic blocks, conditions, actions, targeting, code normalization | [`frontend/context.md`](frontend/context.md); add [`server/context.md`](server/context.md) for submitted/rated behavior | `frontend/src/gameArena/logic/`, server validation and simulation areas |
 | Matchmaking UI or WebSocket protocol | [`frontend/context.md`](frontend/context.md) and [`server/context.md`](server/context.md) | frontend matchmaking/page areas and server controller/service areas |
 | REST endpoints, auth, CSRF, submissions | [`server/context.md`](server/context.md); add frontend context for callers | server controller, service, security, and DTO areas |
+| Chat reporting and moderation | [`server/context.md`](server/context.md), [`frontend/context.md`](frontend/context.md), and [`docs/CHAT_MODERATION.md`](docs/CHAT_MODERATION.md) | chat moderation services, chat UI, and admin report workflow |
 | Persistence, ownership, migrations | [`server/context.md`](server/context.md) | server domain, repository, and migration areas |
 | Rated fights, deterministic simulation, replay, combat parity | [`server/context.md`](server/context.md), [`frontend/src/gameArena/context.md`](frontend/src/gameArena/context.md), and [`docs/context.md`](docs/context.md) | server simulation and frontend arena/runtime areas |
 | Adding/changing abilities, effects, shields, arena entities | [`docs/context.md`](docs/context.md) first, then both runtime contexts | documentation and both gameplay runtime areas |

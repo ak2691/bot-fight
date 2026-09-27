@@ -20,10 +20,11 @@ public class BotFightSecurityProperties {
     private int maxWebSocketMessageBytes = 65_536;
     private int maxWebSocketSendBufferBytes = 4_194_304;
     private Duration googleUsernameSetupTimeout = Duration.ofMinutes(15);
-    private Duration sessionMaxAge = Duration.ZERO;
+    private Duration sessionMaxAge = Duration.ofDays(30);
 
     @PostConstruct
     void validate() {
+        validateSessionMaxAge();
         for (String origin : allowedOrigins) {
             URI uri;
             try {
@@ -118,9 +119,15 @@ public class BotFightSecurityProperties {
     }
 
     public void setSessionMaxAge(Duration sessionMaxAge) {
-        if (sessionMaxAge == null || sessionMaxAge.isNegative()) {
-            throw new IllegalArgumentException("Session max age must be zero or positive");
+        if (sessionMaxAge == null || sessionMaxAge.isZero() || sessionMaxAge.isNegative()) {
+            throw new IllegalArgumentException("Session max age must be positive");
         }
         this.sessionMaxAge = sessionMaxAge;
+    }
+
+    private void validateSessionMaxAge() {
+        if (sessionMaxAge == null || sessionMaxAge.isZero() || sessionMaxAge.isNegative()) {
+            throw new IllegalArgumentException("Session max age must be positive");
+        }
     }
 }

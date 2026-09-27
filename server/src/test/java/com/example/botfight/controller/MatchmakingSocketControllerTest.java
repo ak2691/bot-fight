@@ -1,11 +1,15 @@
 package com.example.botfight.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -31,9 +35,12 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.simp.SimpMessageType;
 import org.mockito.ArgumentCaptor;
@@ -42,6 +49,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.security.core.Authentication;
 import org.springframework.scheduling.TaskScheduler;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 import org.springframework.web.socket.messaging.SessionSubscribeEvent;
 import org.springframework.web.socket.messaging.SessionUnsubscribeEvent;
@@ -795,5 +803,271 @@ class MatchmakingSocketControllerTest {
         verify(messagingTemplate).convertAndSendToUser(
                 eq("pilot@example.com"), eq(MatchmakingSocketDestinations.MATCH), payloadCaptor.capture());
         assertThat(payloadCaptor.getValue().loadoutSelectionEndsAt()).isEqualTo(deadline);
+    }
+
+    @Test
+    void duplicateSimulationEventsShareOneInFlightTaskAndSuccessfulWorkReleasesItsKey() {
+        MatchmakingService matchmakingService = mock(MatchmakingService.class);
+        MatchService matchService = mock(MatchService.class);
+        when(matchService.isCurrentEvent(any())).thenReturn(true);
+        SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
+        CurrentUserService currentUserService = mock(CurrentUserService.class);
+        TaskScheduler scheduler = mock(TaskScheduler.class);
+        AsyncTaskExecutor executor = mock(AsyncTaskExecutor.class);
+        List<Runnable> simulationTasks = new java.util.ArrayList<>();
+        doAnswer(invocation -> {
+            simulationTasks.add(invocation.getArgument(0));
+            return null;
+        }).when(executor).execute(any(Runnable.class));
+
+        UUID matchId = UUID.randomUUID();
+        OutboundMatchmakingEvent loading = simulationLoadingEvent(matchId, 1);
+        when(matchService.completeSimulation(matchId)).thenReturn(List.of());
+        MatchmakingSocketController controller = controllerWithSimulationExecutor(
+                matchmakingService, matchService, messagingTemplate, currentUserService, scheduler, executor);
+
+        controller.handleMatchmakingEventsReady(new MatchmakingEventsReady(List.of(loading)));
+        controller.handleMatchmakingEventsReady(new MatchmakingEventsReady(List.of(loading)));
+
+        verify(executor, times(1)).execute(any(Runnable.class));
+        assertThat(inFlightKeys(controller, "scheduledSimulations")).hasSize(1);
+
+        simulationTasks.getFirst().run();
+
+        verify(matchService, times(1)).completeSimulation(matchId);
+        assertThat(inFlightKeys(controller, "scheduledSimulations")).isEmpty();
+    }
+
+    @Test
+    void transientSimulationFailureRetriesAndCleansUpTheKeyAfterSuccess() {
+        MatchmakingService matchmakingService = mock(MatchmakingService.class);
+        MatchService matchService = mock(MatchService.class);
+        when(matchService.isCurrentEvent(any())).thenReturn(true);
+        SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
+        CurrentUserService currentUserService = mock(CurrentUserService.class);
+        TaskScheduler scheduler = mock(TaskScheduler.class);
+        AsyncTaskExecutor executor = mock(AsyncTaskExecutor.class);
+        List<Runnable> simulationTasks = new java.util.ArrayList<>();
+        List<Runnable> retryTasks = new java.util.ArrayList<>();
+        doAnswer(invocation -> {
+            simulationTasks.add(invocation.getArgument(0));
+            return null;
+        }).when(executor).execute(any(Runnable.class));
+        doAnswer(invocation -> {
+            retryTasks.add(invocation.getArgument(0));
+            return mock(ScheduledFuture.class);
+        }).when(scheduler).schedule(any(Runnable.class), any(Instant.class));
+
+        UUID matchId = UUID.randomUUID();
+        OutboundMatchmakingEvent loading = simulationLoadingEvent(matchId, 1);
+        when(matchService.completeSimulation(matchId))
+                .thenThrow(new IllegalStateException("temporary database outage"))
+                .thenReturn(List.of());
+        MatchmakingSocketController controller = controllerWithSimulationExecutor(
+                matchmakingService, matchService, messagingTemplate, currentUserService, scheduler, executor);
+
+        controller.handleMatchmakingEventsReady(new MatchmakingEventsReady(List.of(loading)));
+        simulationTasks.getFirst().run();
+
+        assertThat(inFlightKeys(controller, "scheduledSimulations")).hasSize(1);
+        assertThat(retryTasks).hasSize(1);
+        controller.handleMatchmakingEventsReady(new MatchmakingEventsReady(List.of(loading)));
+        verify(executor, times(1)).execute(any(Runnable.class));
+
+        retryTasks.getFirst().run();
+        assertThat(simulationTasks).hasSize(2);
+        simulationTasks.getLast().run();
+
+        verify(matchService, times(2)).completeSimulation(matchId);
+        assertThat(inFlightKeys(controller, "scheduledSimulations")).isEmpty();
+        verify(matchService, never()).cancelFailedSimulation(any(), any());
+    }
+
+    @Test
+    void executorRejectionRetriesWithinTheBoundAndCancelsWithoutAResultAfterExhaustion() {
+        MatchmakingService matchmakingService = mock(MatchmakingService.class);
+        MatchService matchService = mock(MatchService.class);
+        when(matchService.isCurrentEvent(any())).thenReturn(true);
+        SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
+        CurrentUserService currentUserService = mock(CurrentUserService.class);
+        TaskScheduler scheduler = mock(TaskScheduler.class);
+        AsyncTaskExecutor executor = mock(AsyncTaskExecutor.class);
+        List<Runnable> retryTasks = new java.util.ArrayList<>();
+        doThrow(new RejectedExecutionException("executor queue is full"))
+                .when(executor).execute(any(Runnable.class));
+        doAnswer(invocation -> {
+            retryTasks.add(invocation.getArgument(0));
+            return mock(ScheduledFuture.class);
+        }).when(scheduler).schedule(any(Runnable.class), any(Instant.class));
+
+        UUID matchId = UUID.randomUUID();
+        OutboundMatchmakingEvent loading = simulationLoadingEvent(matchId, 1);
+        when(matchService.cancelFailedSimulation(matchId, 1)).thenReturn(List.of());
+        MatchmakingSocketController controller = controllerWithSimulationExecutor(
+                matchmakingService, matchService, messagingTemplate, currentUserService, scheduler, executor);
+
+        controller.handleMatchmakingEventsReady(new MatchmakingEventsReady(List.of(loading)));
+        assertThat(retryTasks).hasSize(1);
+        retryTasks.getFirst().run();
+        assertThat(retryTasks).hasSize(2);
+        retryTasks.getLast().run();
+
+        verify(executor, times(3)).execute(any(Runnable.class));
+        verify(matchService).cancelFailedSimulation(matchId, 1);
+        assertThat(inFlightKeys(controller, "scheduledSimulations")).isEmpty();
+    }
+
+    @Test
+    void staleBuildingAndLoadoutTimeoutCallbacksAreDroppedAndReleaseTheirKeys() {
+        assertStaleTimeoutDoesNotResolve(false);
+        assertStaleTimeoutDoesNotResolve(true);
+    }
+
+    @Test
+    void rejectedTimeoutSchedulingReleasesItsDedupeKey() {
+        MatchmakingService matchmakingService = mock(MatchmakingService.class);
+        MatchService matchService = mock(MatchService.class);
+        when(matchService.isCurrentEvent(any())).thenReturn(true);
+        SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
+        CurrentUserService currentUserService = mock(CurrentUserService.class);
+        TaskScheduler scheduler = mock(TaskScheduler.class);
+        doThrow(new RejectedExecutionException("scheduler is stopping"))
+                .when(scheduler).schedule(any(Runnable.class), any(Instant.class));
+        MatchmakingSocketController controller = new MatchmakingSocketController(
+                matchmakingService, matchService, messagingTemplate, currentUserService, scheduler);
+        OutboundMatchmakingEvent timeoutEvent = buildingTimeoutEvent(
+                UUID.randomUUID(), Instant.now().plusSeconds(30));
+
+        assertThatThrownBy(() -> controller.handleMatchmakingEventsReady(
+                new MatchmakingEventsReady(List.of(timeoutEvent))))
+                .isInstanceOf(RejectedExecutionException.class);
+
+        assertThat(inFlightKeys(controller, "scheduledBuildingTimeouts")).isEmpty();
+    }
+
+    @Test
+    void timeoutDeduplicationKeysReturnToZeroAcrossManyDeadlines() {
+        MatchmakingService matchmakingService = mock(MatchmakingService.class);
+        MatchService matchService = mock(MatchService.class);
+        when(matchService.isCurrentEvent(any())).thenReturn(true);
+        when(matchService.resolveBuildingTimeout(any(), any())).thenReturn(List.of());
+        when(matchService.resolveLoadoutSelectionTimeout(any())).thenReturn(List.of());
+        SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
+        CurrentUserService currentUserService = mock(CurrentUserService.class);
+        TaskScheduler scheduler = mock(TaskScheduler.class);
+        List<Runnable> scheduledTasks = new java.util.ArrayList<>();
+        doAnswer(invocation -> {
+            scheduledTasks.add(invocation.getArgument(0));
+            return mock(ScheduledFuture.class);
+        }).when(scheduler).schedule(any(Runnable.class), any(Instant.class));
+        MatchmakingSocketController controller = new MatchmakingSocketController(
+                matchmakingService, matchService, messagingTemplate, currentUserService, scheduler);
+        List<OutboundMatchmakingEvent> buildingEvents = new java.util.ArrayList<>();
+        List<OutboundMatchmakingEvent> loadoutEvents = new java.util.ArrayList<>();
+        Instant baseDeadline = Instant.now().plusSeconds(30);
+        for (int index = 0; index < 64; index++) {
+            UUID buildingMatchId = UUID.randomUUID();
+            buildingEvents.add(buildingTimeoutEvent(
+                    buildingMatchId, baseDeadline.plusSeconds(index)));
+            UUID loadoutMatchId = UUID.randomUUID();
+            loadoutEvents.add(loadoutTimeoutEvent(
+                    loadoutMatchId, baseDeadline.plusSeconds(index)));
+        }
+
+        controller.handleMatchmakingEventsReady(new MatchmakingEventsReady(buildingEvents));
+        controller.handleMatchmakingEventsReady(new MatchmakingEventsReady(loadoutEvents));
+
+        assertThat(scheduledTasks).hasSize(128);
+        scheduledTasks.forEach(Runnable::run);
+        assertThat(inFlightKeys(controller, "scheduledBuildingTimeouts")).isEmpty();
+        assertThat(inFlightKeys(controller, "scheduledLoadoutSelectionTimeouts")).isEmpty();
+    }
+
+    private void assertStaleTimeoutDoesNotResolve(boolean loadoutTimeout) {
+        MatchmakingService matchmakingService = mock(MatchmakingService.class);
+        MatchService matchService = mock(MatchService.class);
+        when(matchService.isCurrentEvent(any())).thenReturn(true, true, false);
+        SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
+        CurrentUserService currentUserService = mock(CurrentUserService.class);
+        TaskScheduler scheduler = mock(TaskScheduler.class);
+        List<Runnable> scheduledTasks = new java.util.ArrayList<>();
+        doAnswer(invocation -> {
+            scheduledTasks.add(invocation.getArgument(0));
+            return mock(ScheduledFuture.class);
+        }).when(scheduler).schedule(any(Runnable.class), any(Instant.class));
+        MatchmakingSocketController controller = new MatchmakingSocketController(
+                matchmakingService, matchService, messagingTemplate, currentUserService, scheduler);
+        UUID matchId = UUID.randomUUID();
+        OutboundMatchmakingEvent timeoutEvent = loadoutTimeout
+                ? loadoutTimeoutEvent(matchId, Instant.now().plusSeconds(30))
+                : buildingTimeoutEvent(matchId, Instant.now().plusSeconds(30));
+
+        controller.handleMatchmakingEventsReady(new MatchmakingEventsReady(List.of(timeoutEvent)));
+        assertThat(scheduledTasks).hasSize(1);
+        scheduledTasks.getFirst().run();
+
+        if (loadoutTimeout) {
+            verify(matchService, never()).resolveLoadoutSelectionTimeout(matchId);
+            assertThat(inFlightKeys(controller, "scheduledLoadoutSelectionTimeouts")).isEmpty();
+        } else {
+            verify(matchService, never()).resolveBuildingTimeout(any(), any());
+            assertThat(inFlightKeys(controller, "scheduledBuildingTimeouts")).isEmpty();
+        }
+    }
+
+    private static MatchmakingSocketController controllerWithSimulationExecutor(
+            MatchmakingService matchmakingService,
+            MatchService matchService,
+            SimpMessagingTemplate messagingTemplate,
+            CurrentUserService currentUserService,
+            TaskScheduler scheduler,
+            AsyncTaskExecutor simulationExecutor) {
+        return new MatchmakingSocketController(
+                matchmakingService,
+                matchService,
+                messagingTemplate,
+                currentUserService,
+                null,
+                null,
+                scheduler,
+                simulationExecutor,
+                new SingleUserWebSocketSessionRegistry(),
+                null,
+                null);
+    }
+
+    private static OutboundMatchmakingEvent simulationLoadingEvent(UUID matchId, int roundNumber) {
+        MatchmakingEventDTO event = mock(MatchmakingEventDTO.class);
+        when(event.type()).thenReturn("SIMULATION_LOADING");
+        when(event.status()).thenReturn("SIMULATION_LOADING");
+        when(event.matchId()).thenReturn(matchId);
+        when(event.roundNumber()).thenReturn(roundNumber);
+        when(event.withServerNow(any(Instant.class))).thenReturn(event);
+        return new OutboundMatchmakingEvent("pilot@example.com", event);
+    }
+
+    private static OutboundMatchmakingEvent buildingTimeoutEvent(UUID matchId, Instant deadline) {
+        MatchmakingEventDTO event = mock(MatchmakingEventDTO.class);
+        when(event.type()).thenReturn("BOT_BUILDING_SESSION_READY");
+        when(event.status()).thenReturn("PREP");
+        when(event.matchId()).thenReturn(matchId);
+        when(event.buildingEndsAt()).thenReturn(deadline);
+        when(event.withServerNow(any(Instant.class))).thenReturn(event);
+        return new OutboundMatchmakingEvent("pilot@example.com", event);
+    }
+
+    private static OutboundMatchmakingEvent loadoutTimeoutEvent(UUID matchId, Instant deadline) {
+        MatchmakingEventDTO event = mock(MatchmakingEventDTO.class);
+        when(event.type()).thenReturn("MATCH_LOADOUT_SELECTION_READY");
+        when(event.status()).thenReturn("LOADOUT_SELECT");
+        when(event.matchId()).thenReturn(matchId);
+        when(event.loadoutSelectionEndsAt()).thenReturn(deadline);
+        when(event.withServerNow(any(Instant.class))).thenReturn(event);
+        return new OutboundMatchmakingEvent("pilot@example.com", event);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Set<String> inFlightKeys(MatchmakingSocketController controller, String fieldName) {
+        return (Set<String>) ReflectionTestUtils.getField(controller, fieldName);
     }
 }

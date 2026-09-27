@@ -10,26 +10,13 @@ import ArenaConfigModal from "./components/modals/ArenaConfigModal.jsx";
 import SandboxLoadoutModal from "./components/modals/SandboxLoadoutModal.jsx";
 import {
     createDefaultAbilityStrategyConfiguration,
-    hasAbilityStrategyActions,
     normalizeAbilityStrategyConfiguration,
 } from "./botlogic/code/BotCode.js";
-import { buildDeterministicLogicAction, idleAction } from "./botlogic/planner/ArenaActionPlanner.js";
 import {
     buildBotSubmissionPayload,
     submitBotPayload
 } from "./botlogic/submission/SubmissionClient.js";
-import { isAbilityEntity, tickAbilityEntityWorld } from "./ecs/abilities/AbilityEntitySystem.js";
-import { overlapsEntity } from "./gameconfig/hitboxGeometry.js";
-import { applyBotAction } from "./ecs/bots/ActionExecutionSystem.js";
-import {
-    applyDamageFromShapes,
-    applyDamageToShape,
-    resolveTriggeredAbilityCombatForRoster,
-    settlePendingHealing,
-} from "./gameconfig/BotCombatSystem.js";
-import { triggeredAbilityDamage } from "./ecs/abilities/AbilityEffectSystem.js";
-import { abilityHitsTarget } from "./ecs/abilities/AbilityHitDetectionSystem.js";
-import { isClosingZone, tickClosingZoneWorld } from "./ecs/entities/ClosingZoneSystem.js";
+import { isClosingZone } from "./ecs/entities/ClosingZoneSystem.js";
 import {
     DEFAULT_BOT_CONFIGURATION_ID,
 } from "./gameconfig/CombatLoadouts.js";
@@ -41,21 +28,14 @@ import {
     puzzleBotKey,
 } from "../pages/puzzles/puzzleRoster.js";
 
+import { BASE_BOT_HP } from "./modelPayloads/arenaConstants.js";
 import {
-    AUTO_STEP_MS,
-    ARENA_HEIGHT_UNITS,
-    ARENA_WIDTH_UNITS,
-    BASE_BOT_HP,
-} from "./modelPayloads/arenaConstants.js";
-import {
-    buildAutoPlayStartShapes,
     buildInitialArenaShapes,
     buildOpponentShape,
     cloneShape,
     mergeBotShapeUpdates,
     resetBotShape,
     resetBotShapeToStartingConfiguration,
-    toCanonicalBotShape,
     toSimulationBotShape,
 } from "./modelPayloads/arenaShapes.js";
 import {
@@ -73,7 +53,8 @@ import {
     puzzleSetupBots,
     puzzleSetupForArena,
 } from "./setup/ArenaSetup.js";
-import { buildStatePayload } from "./modelPayloads/strategyStatePayload.js";
+import { isSimulationBotShape } from "./modelPayloads/arenaPreviewSimulation.js";
+import { useArenaAutoPlay } from "./hooks/useArenaAutoPlay.js";
 import {
     loadStoredStrategyConfiguration,
     matchStrategyConfigurationKey,
@@ -93,26 +74,6 @@ import {
 } from "../tutorial/TutorialPresets.js";
 import TutorialGuide from "../tutorial/TutorialGuide.jsx";
 
-function finalizeTickMeasurements(shape, before) {
-    if (!shape) return shape;
-    return {
-        ...shape,
-        damageTakenLastTick: Number(shape.damageTakenThisTick ?? 0),
-        damageTakenThisTick: 0,
-        hpNetChangeLastTick: Number(shape.hp ?? 0) - Number(before?.hp ?? shape.hp ?? 0),
-    };
-}
-
-function isSimulationBotShape(shape) {
-    return shape?.id === "main"
-        || shape?.id === "opponent-model"
-        || shape?.type === "circle"
-        || shape?.type === "bot"
-        || shape?.type === "botModel"
-        || shape?.type === "opponentModel"
-        || (shape?.slot != null && shape?.userId != null && shape?.abilityId == null);
-}
-
 function secondsRemaining(targetTime) {
     if (!targetTime) return null;
     const targetMs = typeof targetTime === "number"
@@ -124,10 +85,6 @@ function secondsRemaining(targetTime) {
 
 const AUTO_FINISH_SAFETY_BUFFER_MS = 500;
 const PUZZLE_SUBMIT_STATUS_DURATION_MS = 3_500;
-
-function applyActionToShape(shape, action, elapsedMs) {
-    return applyBotAction(shape, action, elapsedMs, applyDamageToShape);
-}
 
 export default function Arena({
     matchContext = null,
@@ -229,7 +186,6 @@ export default function Arena({
                     : buildInitialArenaShapes(matchContext));
     const [selectedId, setSelectedId] = useState(null);
     const [submitStatus, setSubmitStatus] = useState(null);
-    const [isAutoPlaying, setIsAutoPlaying] = useState(false);
     const [tutorialLessonMinimized, setTutorialLessonMinimized] = useState(true);
     const [isPuzzleAttemptSubmitting, setIsPuzzleAttemptSubmitting] = useState(false);
     const [measurementEnabled, setMeasurementEnabled] = useState(false);
@@ -262,6 +218,26 @@ export default function Arena({
         testingConfigurationRef.current = testingConfiguration;
         opponentTestingConfigurationRef.current = opponentTestingConfiguration;
     }, [opponentTestingConfiguration, testingConfiguration]);
+    const {
+        isAutoPlaying,
+        runAutoPlay,
+        stopAutoPlay,
+    } = useArenaAutoPlay({
+        isPracticeRoom,
+        isPuzzleMode,
+        isMatchTesting,
+        tutorialMode,
+        tutorialStep: initialTutorialStep,
+        matchContext,
+        selectedLoadout,
+        opponentLoadout,
+        testingConfigurationRef,
+        opponentTestingConfigurationRef,
+        setShapes,
+        setSelectedId,
+        setIsEditingArena,
+        onPuzzleOutcome,
+    });
     const [sandboxCodeCopies, setSandboxCodeCopies] = useState({});
     const [practiceBotConfigurations, setPracticeBotConfigurations] = useState({});
 
@@ -290,7 +266,6 @@ export default function Arena({
     const [isPuzzleConfigOpen, setIsPuzzleConfigOpen] = useState(false);
     const tutorialStep = initialTutorialStep;
 
-    const autoIntervalRef = useRef(null);
     const handleFinishMatchRef = useRef(null);
     const autoFinishDeadlineRef = useRef(null);
     const finishInFlightRef = useRef(false);
@@ -507,24 +482,13 @@ export default function Arena({
         });
     }, [initialPuzzle, isAutoPlaying, isPuzzleBuilder, onPuzzleDraftChange, opponentLoadout, opponentTestingConfiguration, puzzleSetupRoster, puzzleSetupRosterKey, selectedLoadout, testingConfiguration]);
 
-    useEffect(() => () => {
-        if (autoIntervalRef.current) {
-            clearInterval(autoIntervalRef.current);
-            autoIntervalRef.current = null;
-        }
-    }, []);
-
     useEffect(() => {
         if (!tutorialMode) return;
-        if (autoIntervalRef.current) {
-            clearInterval(autoIntervalRef.current);
-            autoIntervalRef.current = null;
-        }
+        stopAutoPlay();
         const scenario = getTutorialScenario(tutorialStep);
         const lessonShapes = buildTutorialArenaShapes(tutorialStep);
         // Initialize the selected preset when a tutorial practice room opens.
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        setIsAutoPlaying(false);
         setIsEditingArena(true);
         setSelectedId(null);
         setSelectedLoadout(scenario.playerLoadout);
@@ -532,17 +496,13 @@ export default function Arena({
         setTestingConfiguration(sanitizeStrategyConfigurationForLoadout(loadTutorialStrategyConfiguration(tutorialStep, scenario.emptyCode), scenario.playerLoadout));
         setOpponentTestingConfiguration(sanitizeStrategyConfigurationForLoadout(scenario.opponentCode, scenario.opponentLoadout));
         setShapes(lessonShapes);
-    }, [tutorialMode, tutorialStep]);
+    }, [stopAutoPlay, tutorialMode, tutorialStep]);
 
     useEffect(() => {
         if (!isAbilityTesting || !catalogueAbilityTestingPreset) return;
-        if (autoIntervalRef.current) {
-            clearInterval(autoIntervalRef.current);
-            autoIntervalRef.current = null;
-        }
+        stopAutoPlay();
         // This effect resets the external ability-testing arena when the preset changes.
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        setIsAutoPlaying(false);
         setIsEditingArena(true);
         setSelectedId(null);
         setSelectedLoadout(catalogueAbilityTestingPreset.playerLoadout);
@@ -552,7 +512,7 @@ export default function Arena({
         // Keep Practice Config as the reset baseline for this catalogue preset.
         setPracticeConfig(buildAbilityTestingPracticeConfig(catalogueAbilityTestingPreset));
         setShapes(buildAbilityTestingArenaShapes(catalogueAbilityTestingPreset));
-    }, [catalogueAbilityTestingPreset, isAbilityTesting]);
+    }, [catalogueAbilityTestingPreset, isAbilityTesting, stopAutoPlay]);
 
     useEffect(() => {
         // Live matches already spawn the complete authoritative roster in
@@ -1000,106 +960,6 @@ export default function Arena({
             });
     };
 
-    const runAutoPlay = () => {
-        if (isAutoPlaying) return;
-        if (isPuzzleMode) onPuzzleOutcome?.(null);
-        setIsEditingArena(false);
-        setIsAutoPlaying(true);
-        setSelectedId(null);
-        if (tutorialMode) {
-            const freshShapes = buildTutorialArenaShapes(tutorialStep);
-            setShapes(freshShapes);
-        } else if (isPuzzleMode || isPracticeRoom) {
-            // Puzzle and practice playback start from the current arena state.
-            // Reset Stats is the explicit action that reinitializes positions
-            // and combat state; pressing Play must not silently do that again.
-        } else {
-            setShapes((prevShapes) => buildAutoPlayStartShapes(prevShapes, matchContext, isMatchTesting));
-        }
-
-        autoIntervalRef.current = setInterval(() => {
-            setShapes((prevShapes) => {
-                const stateSnapshot = buildStatePayload(prevShapes, selectedLoadout);
-                const botBefores = prevShapes
-                    .filter(isSimulationBotShape)
-                    .map(toSimulationBotShape);
-                const mainBefore = botBefores.find((bot) => bot.id === "main") ?? null;
-                const botsAfterActions = botBefores.map((bot) => {
-                    const configuration = bot.id === "main"
-                        ? testingConfigurationRef.current
-                        : bot.id === "opponent-model"
-                            ? opponentTestingConfigurationRef.current
-                            : bot.strategyConfiguration;
-                    const botLoadout = bot.id === "main"
-                        ? selectedLoadout
-                        : bot.id === "opponent-model"
-                            ? opponentLoadout
-                            : bot.combatLoadout;
-                    const action = configuration
-                        && (bot.id === "main" || hasAbilityStrategyActions(configuration))
-                        ? buildDeterministicLogicAction(
-                            configuration,
-                            bot.id === "main" ? stateSnapshot : buildStatePayload(prevShapes, botLoadout, bot.id),
-                        )
-                        : idleAction();
-                    return {
-                        ...applyActionToShape({ ...bot, lastPredictedAction: action }, action, AUTO_STEP_MS),
-                        customVariables: action.customVariables,
-                    };
-                });
-                const spawnedEntities = botsAfterActions.map((bot) => bot.abilitySpawn).filter(Boolean);
-                let abilityEntities = [...prevShapes.filter(isAbilityEntity)];
-                const previousClosingZone = prevShapes.find(isClosingZone) ?? null;
-                abilityEntities.push(...spawnedEntities.filter(isAbilityEntity));
-                let activeBots = botsAfterActions.map((bot) => ({ ...bot, abilitySpawn: null }));
-                activeBots = resolveTriggeredAbilityCombatForRoster(activeBots);
-                const entityUpdate = tickAbilityEntityWorld({
-                    entities: abilityEntities,
-                    bots: activeBots,
-                    stepMs: AUTO_STEP_MS,
-                    width: ARENA_WIDTH_UNITS,
-                    height: ARENA_HEIGHT_UNITS,
-                }, {
-                    applyDamageToShape,
-                    applyDamageFromShapes,
-                    abilityHitsTarget,
-                    triggeredAbilityDamage,
-                    overlapsShape: overlapsEntity,
-                });
-                activeBots = entityUpdate.bots;
-                const closingZoneUpdate = tickClosingZoneWorld({
-                    zone: previousClosingZone,
-                    bots: activeBots,
-                    elapsedMs: Number(activeBots.find((bot) => bot.id === "main")?.matchElapsedMs
-                        ?? mainBefore?.matchElapsedMs ?? AUTO_STEP_MS),
-                    stepMs: AUTO_STEP_MS,
-                    width: ARENA_WIDTH_UNITS,
-                    height: ARENA_HEIGHT_UNITS,
-                }, { applyDamageToShape });
-                const settledBots = closingZoneUpdate.bots
-                    .map(settlePendingHealing)
-                    .map((bot) => finalizeTickMeasurements(
-                        bot,
-                        botBefores.find((before) => before.id === bot.id),
-                    ));
-                abilityEntities = entityUpdate.entities;
-                return [
-                    ...settledBots.map(toCanonicalBotShape),
-                    ...abilityEntities,
-                    ...(closingZoneUpdate.zone ? [closingZoneUpdate.zone] : []),
-                ];
-            });
-        }, AUTO_STEP_MS);
-    };
-
-    const stopAutoPlay = () => {
-        if (autoIntervalRef.current) {
-            clearInterval(autoIntervalRef.current);
-            autoIntervalRef.current = null;
-        }
-        setIsAutoPlaying(false);
-    };
-
     const resetArenaStats = () => {
         setSelectedId(null);
         if (isPracticeRoom) {
@@ -1177,7 +1037,6 @@ export default function Arena({
             });
 
             const result = await submitBotPayload(payload);
-            console.info("[arena-bot] Submitted bot code contract:", payload);
             setSubmitStatus({
                 ok: result.accepted !== false,
                 message: result.message ?? "Bot code submitted",

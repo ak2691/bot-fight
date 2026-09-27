@@ -45,8 +45,34 @@ public class AuthService {
         this.emailVerificationService = emailVerificationService;
     }
 
+    @Transactional(readOnly = true)
+    public void validateRegistration(AuthRequestDTO request) {
+        RegistrationDetails details = validateRegistrationFields(request);
+        validateUsernameAvailable(details.username());
+    }
+
     @Transactional
-    public RegistrationResponseDTO register(AuthRequestDTO request, HttpServletRequest httpRequest) {
+    public RegistrationResponseDTO register(AuthRequestDTO request) {
+        RegistrationDetails details = validateRegistrationFields(request);
+        validateUsernameAvailable(details.username());
+
+        if (userRepository.existsByNormalizedEmail(details.normalizedEmail())) {
+            throw new AuthException("email is already registered");
+        }
+
+        AppUser user = new AppUser();
+        user.setEmail(details.email());
+        user.setNormalizedEmail(details.normalizedEmail());
+        user.setUsername(details.username());
+        user.setPasswordHash(passwordEncoder.encode(details.password()));
+        user.setEmailVerified(false);
+        AppUser savedUser = userRepository.save(user);
+
+        emailVerificationService.sendVerificationCode(savedUser, false);
+        return new RegistrationResponseDTO(savedUser.getEmail());
+    }
+
+    private RegistrationDetails validateRegistrationFields(AuthRequestDTO request) {
         String email = clean(request == null ? null : request.getEmail());
         String normalizedEmail = normalizeEmail(email);
         String username = UsernamePolicy.clean(request == null ? null : request.getUsername());
@@ -55,24 +81,16 @@ public class AuthService {
         validateEmail(email);
         UsernamePolicy.validate(username);
         PasswordPolicy.validateForRegistration(password);
-        if (userRepository.existsByNormalizedEmail(normalizedEmail)) {
-            throw new AuthException("email is already registered");
-        }
+        return new RegistrationDetails(email, normalizedEmail, username, password);
+    }
+
+    private void validateUsernameAvailable(String username) {
         if (userRepository.existsByUsernameIgnoreCase(username)) {
             throw new AuthException("username is already taken");
         }
-
-        AppUser user = new AppUser();
-        user.setEmail(email);
-        user.setNormalizedEmail(normalizedEmail);
-        user.setUsername(username);
-        user.setPasswordHash(passwordEncoder.encode(password));
-        user.setEmailVerified(false);
-        AppUser savedUser = userRepository.save(user);
-
-        emailVerificationService.sendVerificationCode(savedUser, false);
-        return new RegistrationResponseDTO(savedUser.getEmail());
     }
+
+    private record RegistrationDetails(String email, String normalizedEmail, String username, String password) {}
 
     @Transactional
     public RegistrationResponseDTO resendVerification(String email) {

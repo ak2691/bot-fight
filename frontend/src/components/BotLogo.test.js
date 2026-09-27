@@ -177,3 +177,10 @@ test("profile match history aligns modes and exposes accessible match details", 
     assert.match(profileSource, /min-w-0 max-w-full truncate/);
     assert.match(profileSource, /<ProfileLink key=\{`\$\{teamIndex\}-\$\{username\}`\}/);
 });
+
+test("guest match-history messaging applies only to the guest's own profile", () => {
+    assert.match(profileSource, /const isGuestProfile = isGuest && isOwner;/);
+    assert.match(profileSource, /isGuestProfile=\{isGuestProfile\}/);
+    assert.match(profileSource, /if \(isGuestProfile\)/);
+    assert.match(profileSource, /\{isGuestProfile \? "N\/A" : \(profile\.puzzlesSolved \?\? 0\)\}/);
+});

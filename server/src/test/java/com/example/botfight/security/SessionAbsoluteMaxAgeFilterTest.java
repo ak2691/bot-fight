@@ -1,5 +1,6 @@
 package com.example.botfight.security;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
@@ -40,20 +41,33 @@ class SessionAbsoluteMaxAgeFilterTest {
     }
 
     @Test
-    void disabledMaxAgeLeavesSessionAlone() throws Exception {
+    void youngerActiveSessionRemainsValid() throws Exception {
         HttpServletRequest request = mock(HttpServletRequest.class);
         HttpServletResponse response = mock(HttpServletResponse.class);
         HttpSession session = mock(HttpSession.class);
         FilterChain chain = mock(FilterChain.class);
         when(request.getSession(false)).thenReturn(session);
+        when(session.getCreationTime()).thenReturn(CREATED_AT.toEpochMilli());
 
         SessionAbsoluteMaxAgeFilter filter = new SessionAbsoluteMaxAgeFilter(
-                Clock.fixed(CREATED_AT.plus(Duration.ofDays(30)), ZoneOffset.UTC),
-                Duration.ZERO);
+                Clock.fixed(CREATED_AT.plus(Duration.ofDays(29)), ZoneOffset.UTC),
+                Duration.ofDays(30));
 
         filter.doFilter(request, response, chain);
 
         verify(session, never()).invalidate();
         verify(chain).doFilter(request, response);
+    }
+
+    @Test
+    void rejectsDisabledOrNegativeAbsoluteAge() {
+        Clock clock = Clock.fixed(CREATED_AT, ZoneOffset.UTC);
+
+        assertThatThrownBy(() -> new SessionAbsoluteMaxAgeFilter(clock, Duration.ZERO))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Session max age must be positive");
+        assertThatThrownBy(() -> new SessionAbsoluteMaxAgeFilter(clock, Duration.ofSeconds(-1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Session max age must be positive");
     }
 }

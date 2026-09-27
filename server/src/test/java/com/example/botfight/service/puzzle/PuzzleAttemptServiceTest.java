@@ -6,6 +6,7 @@ import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.simulation.core.combat.ActionExecutionService;
 import com.example.botfight.simulation.core.logic.ConditionResolutionService;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doThrow;
@@ -42,11 +43,46 @@ class PuzzleAttemptServiceTest {
                 conditionResolutionService,
                 actionExecutionService,
                 currentUserService,
-                rateLimiter);
+                rateLimiter,
+                new PuzzleSimulationAdmissionControl(1));
 
         assertThatThrownBy(() -> service.attempt(authentication, 7L, null))
                 .isInstanceOf(RateLimitExceededException.class)
                 .hasMessage(RateLimitExceededException.GENERIC_MESSAGE);
+
+        verify(puzzleService, never()).prepareAttempt(any(Long.class), any());
+        verify(duelSimulationService, never()).simulateWithoutReplay(any(), any());
+    }
+
+    @Test
+    void admissionOverloadIsRetryableAndStopsBeforePuzzlePreparation() {
+        PuzzleService puzzleService = mock(PuzzleService.class);
+        DuelSimulationService duelSimulationService = mock(DuelSimulationService.class);
+        ConditionResolutionService conditionResolutionService = mock(ConditionResolutionService.class);
+        ActionExecutionService actionExecutionService = mock(ActionExecutionService.class);
+        CurrentUserService currentUserService = mock(CurrentUserService.class);
+        TokenBucketRateLimiter<UUID> rateLimiter = mock(TokenBucketRateLimiter.class);
+        Authentication authentication = mock(Authentication.class);
+        UUID userId = UUID.randomUUID();
+        PuzzleSimulationAdmissionControl admissionControl = new PuzzleSimulationAdmissionControl(1);
+
+        when(currentUserService.requireCurrentUserId(authentication)).thenReturn(userId);
+        PuzzleAttemptService service = new PuzzleAttemptService(
+                puzzleService,
+                duelSimulationService,
+                conditionResolutionService,
+                actionExecutionService,
+                currentUserService,
+                rateLimiter,
+                admissionControl);
+
+        try (PuzzleSimulationAdmissionControl.Lease ignored = admissionControl.acquire(null)) {
+            assertThatThrownBy(() -> service.attempt(authentication, 7L, null))
+                    .isInstanceOf(RateLimitExceededException.class)
+                    .satisfies(exception -> assertThat(
+                            ((RateLimitExceededException) exception).getRetryAfter())
+                            .isEqualTo(Duration.ofSeconds(1)));
+        }
 
         verify(puzzleService, never()).prepareAttempt(any(Long.class), any());
         verify(duelSimulationService, never()).simulateWithoutReplay(any(), any());

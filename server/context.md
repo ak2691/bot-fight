@@ -11,14 +11,20 @@ All Java paths below are under
 `src/main/java/com/example/botfight/`.
 
 - `controller/`: REST and STOMP boundaries for auth, submissions, time, and
-  matchmaking messages, notifications, duel/party invites, and custom lobbies.
+  matchmaking messages, notifications, duel/party invites, custom lobbies, and
+  chat reports/admin moderation.
 - `DTO/`: request/response and replay boundary shapes, grouped by boundary area
   under `auth/`, `profile/`, `block/`, `submission/`, `puzzle/`, `party/`,
-  `customlobby/`, `match/`, and `notification/`.
+  `customlobby/`, `match/`, `notification/`, and `chatmoderation/`.
 - `service/`: business services grouped by responsibility: `auth/`,
   `submission/`, `limits/`, `matchmaking/`, `match/`, `profile/`, `rating/`,
-  `puzzle/`, `invite/`, `party/`, `customlobby/`, `block/`, `notification/`, `websocket/`, and `system/`. Party membership and custom-lobby rosters are transient socket-bound runtime state; they are not persisted match roster sources. Puzzle authoring/listing owns admin
-  validation, puzzle persistence, and the public published-list contract.
+  `puzzle/`, `invite/`, `party/`, `customlobby/`, `block/`, `notification/`,
+  `chatmoderation/`, `websocket/`, and `system/`. Party membership and
+  custom-lobby rosters are transient socket-bound runtime state; they are not
+  persisted match roster sources. Chat report authorization, evidence
+  retention, and moderator actions belong to `chatmoderation/`. Puzzle
+  authoring/listing owns admin validation, puzzle persistence, and the public
+  published-list contract.
   Shared bounded database read-model caching and write invalidation lives in
   `cache/`; cache DTO/read-model snapshots rather than managed JPA entities.
   Within `match/`, keep `connection/`,
@@ -29,7 +35,7 @@ All Java paths below are under
   deadlines, simulation, and result persistence in `match/`.
 - `domain/`: JPA entities and persisted status/result enums, grouped by owning
   area under `auth/`, `profile/`, `rating/`, `block/`, `puzzle/`, `party/`,
-  `match/`, and `submission/`.
+  `match/`, `submission/`, and `chatmoderation/`.
 - `repository/`: JPA queries. Ownership-sensitive access must include or verify
   the authenticated user and return generic not-found behavior for private data.
 - `security/` and `config/`: session identity, Spring Security/CSRF, time, and
@@ -62,6 +68,7 @@ All Java paths below are under
 | --- | --- | --- |
 | Auth/session/CSRF | `controller/`, `service/`, `config/`, `security/` | auth tests and frontend auth/security areas |
 | Duel invites, blocks, and notifications | invite/block/notification controllers and services, `domain/`, `repository/` | frontend notification/profile/matchmaking/chat areas |
+| Chat reporting and moderation | chat report controllers, `service/chatmoderation/`, `domain/chatmoderation/`, and chat report repositories | match/custom-lobby chat send paths, frontend chat/admin UI, and [`../docs/CHAT_MODERATION.md`](../docs/CHAT_MODERATION.md) |
 | Party membership and party invites | party controller/service areas, `domain/`, `repository/` | matchmaking queue page, notification transport, and live socket registry |
 | Custom lobby creation, invites, teams, and party detachment | custom-lobby controllers/service and matchmaking lifecycle | DTOs, WebSocket security, party service, and frontend custom-lobby/notification areas |
 | Matchmaking queue | matchmaking controller and queue service areas | matchmaking DTOs and frontend client area |

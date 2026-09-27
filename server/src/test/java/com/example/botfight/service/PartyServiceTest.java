@@ -19,6 +19,7 @@ import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.service.block.BlockLookup;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
+import com.example.botfight.service.limits.RateLimitExceededException;
 import com.example.botfight.service.match.MatchService;
 import com.example.botfight.service.match.model.MatchEntrant;
 import com.example.botfight.service.party.PartyService;
@@ -26,6 +27,7 @@ import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
@@ -38,7 +40,7 @@ import org.springframework.security.core.Authentication;
 class PartyServiceTest {
 
     private final Instant now = Instant.parse("2026-08-27T12:00:00Z");
-    private final Clock clock = Clock.fixed(now, ZoneOffset.UTC);
+    private final MutableClock clock = new MutableClock(now);
     private final CurrentUserService currentUserService = mock(CurrentUserService.class);
     private final UserRepository userRepository = mock(UserRepository.class);
     private final PartyRepository partyRepository = mock(PartyRepository.class);
@@ -56,7 +58,8 @@ class PartyServiceTest {
             partyMemberRepository,
             partyInviteRepository,
             matchService,
-            new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(10)),
+            new TokenBucketRateLimiter<>(
+                    clock, PartyService.MAX_PENDING_INVITES_PER_PARTY + 2, Duration.ofSeconds(10)),
             clock,
             BlockLookup.none(),
             socketRegistry);
@@ -117,6 +120,90 @@ class PartyServiceTest {
                 assertThat(recipient.userId()).isEqualTo(owner.getId()));
         assertThat(accepted.partyRecipients()).extracting(PartyService.PartyRecipient::userId)
                 .containsExactlyInAnyOrder(owner.getId(), teammate.getId());
+        assertThat(service.cleanupExpiredInvites()).isZero();
+    }
+
+    @Test
+    void declinedPartyInviteIsRemovedImmediatelyAndExpiredReadPrunesPendingState() {
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
+        var party = service.create(authentication);
+        when(userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(teammate.getUsername()))
+                .thenReturn(Optional.of(teammate));
+        var declined = service.invite(authentication, party.partyId(), teammate.getUsername());
+
+        when(currentUserService.requireCurrentUserId(authentication)).thenReturn(teammate.getId());
+        assertThat(service.decline(authentication, declined.invite().inviteId()).invite().status())
+                .isEqualTo("DECLINED");
+        assertThat(service.cleanupExpiredInvites()).isZero();
+
+        AppUser third = user("third", "third@example.test");
+        when(userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(third.getUsername()))
+                .thenReturn(Optional.of(third));
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
+        var expiring = service.invite(authentication, party.partyId(), third.getUsername());
+        clock.advance(PartyService.INVITE_VALIDITY);
+        when(currentUserService.requireCurrentUserId(authentication)).thenReturn(third.getId());
+
+        assertThat(service.incoming(authentication)).isEmpty();
+        assertThat(service.cleanupExpiredInvites()).isZero();
+        assertThatThrownBy(() -> service.decline(authentication, expiring.invite().inviteId()))
+                .isInstanceOf(AuthException.class)
+                .hasMessage("the party invite is no longer available");
+    }
+
+    @Test
+    void capsPendingPartyInvitesPerPartyAndInviter() {
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
+        var party = service.create(authentication);
+        for (int index = 0; index < PartyService.MAX_PENDING_INVITES_PER_PARTY; index++) {
+            AppUser invitee = user("target" + index, "target" + index + "@example.test");
+            when(userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(invitee.getUsername()))
+                    .thenReturn(Optional.of(invitee));
+            service.invite(authentication, party.partyId(), invitee.getUsername());
+        }
+
+        AppUser finalInvitee = user("last-target", "last-target@example.test");
+        when(userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(finalInvitee.getUsername()))
+                .thenReturn(Optional.of(finalInvitee));
+        assertThatThrownBy(() -> service.invite(authentication, party.partyId(), finalInvitee.getUsername()))
+                .isInstanceOf(RateLimitExceededException.class);
+    }
+
+    @Test
+    void capsPendingPartyInvitesPerInviteeAcrossParties() {
+        AppUser invitedPlayer = user("shared-target", "shared-target@example.test");
+        when(userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(invitedPlayer.getUsername()))
+                .thenReturn(Optional.of(invitedPlayer));
+
+        for (int index = 0; index < PartyService.MAX_PENDING_INVITES_PER_USER; index++) {
+            AppUser inviter = user("sender" + index, "sender" + index + "@example.test");
+            when(currentUserService.requireCurrentUser(authentication)).thenReturn(inviter);
+            var party = service.create(authentication);
+            service.invite(authentication, party.partyId(), invitedPlayer.getUsername());
+        }
+
+        AppUser finalInviter = user("last-sender", "last-sender@example.test");
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(finalInviter);
+        var finalParty = service.create(authentication);
+        assertThatThrownBy(() -> service.invite(
+                authentication, finalParty.partyId(), invitedPlayer.getUsername()))
+                .isInstanceOf(RateLimitExceededException.class);
+    }
+
+    @Test
+    void repeatedDeclinesDoNotAccumulatePartyInviteState() {
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
+        var party = service.create(authentication);
+        when(userRepository.findByUsernameIgnoreCaseAndEmailVerifiedTrue(teammate.getUsername()))
+                .thenReturn(Optional.of(teammate));
+
+        for (int index = 0; index < PartyService.MAX_PENDING_INVITES_PER_USER; index++) {
+            var invite = service.invite(authentication, party.partyId(), teammate.getUsername());
+            when(currentUserService.requireCurrentUserId(authentication)).thenReturn(teammate.getId());
+            assertThat(service.decline(authentication, invite.invite().inviteId()).invite().status())
+                    .isEqualTo("DECLINED");
+            assertThat(service.cleanupExpiredInvites()).isZero();
+        }
     }
 
     @Test
@@ -340,5 +427,32 @@ class PartyServiceTest {
         user.setUsername(username);
         user.setEmail(email);
         return user;
+    }
+
+    private static final class MutableClock extends Clock {
+        private Instant currentInstant;
+
+        private MutableClock(Instant initialInstant) {
+            currentInstant = initialInstant;
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return currentInstant;
+        }
+
+        private void advance(Duration duration) {
+            currentInstant = currentInstant.plus(duration);
+        }
     }
 }

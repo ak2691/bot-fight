@@ -462,6 +462,17 @@ html,
 .match-chat__empty { color: #8b9293; font-size: 11px; }
 .match-chat__message { margin: 0 0 9px; overflow-wrap: anywhere; color: #cbc4b6; font-size: 12px; line-height: 1.45; }
 .match-chat__message strong { color: #ffffff; }
+.match-chat__message-row, .custom-lobby-chat__message-row { display: flex; align-items: flex-start; gap: 8px; }
+.match-chat__message-row .match-chat__message, .custom-lobby-chat__message-row .custom-lobby-chat__message { min-width: 0; flex: 1; }
+.chat-report { position: relative; flex: 0 0 auto; }
+.chat-report__toggle { cursor: pointer; color: #8ea1ad; font: 700 9px/1.4 ui-monospace, monospace; text-transform: uppercase; }
+.chat-report__toggle:hover, .chat-report__toggle:focus-visible { color: #fde68a; }
+.chat-report__form { position: absolute; z-index: 20; top: 1.25rem; right: 0; display: grid; width: min(17rem, calc(100vw - 2rem)); gap: 8px; padding: 12px; border: 1px solid #475569; background: #091521; box-shadow: 0 12px 35px #0009; color: #cbd5e1; font-size: 11px; }
+.chat-report__label { display: grid; gap: 4px; }
+.chat-report__label select, .chat-report__label textarea { width: 100%; border: 1px solid #475569; background: #202427; padding: 6px 8px; color: #f8fafc; font: inherit; }
+.chat-report__form button { justify-self: start; border: 1px solid #fbbf24aa; padding: 6px 10px; color: #fde68a; font-size: 10px; font-weight: 700; }
+.chat-report__form button:disabled { cursor: not-allowed; opacity: .5; }
+.chat-report__status { margin: 0; color: #cbd5e1; font-size: 10px; }
 .match-chat__notice { margin: 0 10px 8px; border: 1px solid rgba(251, 146, 60, .42); border-radius: 5px; background: rgba(124, 45, 18, .28); padding: 7px 9px; color: #fdba74; font-size: 10px; }
 .match-chat__form { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 7px; padding: 10px; border-top: 1px solid rgba(104, 115, 125, .35); }
 .match-chat__form input { min-width: 0; border: 1px solid #41484d; border-radius: 6px; background: #171a1c; padding: 9px 10px; color: #ffffff; font: inherit; font-size: 11px; outline: none; }

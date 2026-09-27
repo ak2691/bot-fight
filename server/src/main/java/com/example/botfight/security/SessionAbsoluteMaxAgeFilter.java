@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Objects;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -14,7 +15,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * Optionally expires every HTTP session after an absolute age, even when it is
+ * Expires every HTTP session after a positive absolute age, even when it is
  * being kept active by requests. The normal servlet session timeout remains
  * the inactivity limit.
  */
@@ -24,7 +25,10 @@ public class SessionAbsoluteMaxAgeFilter extends OncePerRequestFilter {
     private final Duration maxAge;
 
     public SessionAbsoluteMaxAgeFilter(Clock clock, Duration maxAge) {
-        this.clock = clock;
+        this.clock = Objects.requireNonNull(clock, "clock");
+        if (maxAge == null || maxAge.isZero() || maxAge.isNegative()) {
+            throw new IllegalArgumentException("Session max age must be positive");
+        }
         this.maxAge = maxAge;
     }
 
@@ -34,7 +38,7 @@ public class SessionAbsoluteMaxAgeFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
         HttpSession session = request.getSession(false);
-        if (session != null && !maxAge.isZero() && !maxAge.isNegative() && isExpired(session)) {
+        if (session != null && isExpired(session)) {
             session.invalidate();
             SecurityContextHolder.clearContext();
         }

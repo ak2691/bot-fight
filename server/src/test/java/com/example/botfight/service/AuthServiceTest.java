@@ -7,7 +7,10 @@ import com.example.botfight.service.auth.EmailVerificationService;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.example.botfight.DTO.auth.AuthRequestDTO;
@@ -37,7 +40,6 @@ class AuthServiceTest {
 
     @Test
     void registersUserWithNormalizedEmailAndHashedPassword() throws Exception {
-        HttpServletRequest request = requestWithSession();
         when(userRepository.existsByNormalizedEmail("pilot@example.com")).thenReturn(false);
         when(userRepository.existsByUsernameIgnoreCase("pilot")).thenReturn(false);
         when(userRepository.save(any(AppUser.class))).thenAnswer(invocation -> {
@@ -46,7 +48,7 @@ class AuthServiceTest {
             return user;
         });
 
-        var response = service.register(authRequest("Pilot@Example.com", "pilot", "password123"), request);
+        var response = service.register(authRequest("Pilot@Example.com", "pilot", "password123"));
 
         assertThat(response.isVerificationRequired()).isTrue();
         assertThat(response.getEmail()).isEqualTo("Pilot@Example.com");
@@ -59,8 +61,33 @@ class AuthServiceTest {
     }
 
     @Test
+    void duplicateEmailRegistrationDoesNotSaveAnAccountOrSendAnotherVerificationEmail() {
+        when(userRepository.existsByUsernameIgnoreCase("pilot")).thenReturn(false);
+        when(userRepository.existsByNormalizedEmail("pilot@example.com")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.register(authRequest("pilot@example.com", "pilot", "password123")))
+                .isInstanceOf(AuthException.class)
+                .hasMessage("email is already registered");
+
+        verify(userRepository, never()).save(any(AppUser.class));
+        verifyNoInteractions(emailVerificationService);
+    }
+
+    @Test
+    void usernameConflictIsValidatedBeforeAnyEmailAccountLookup() {
+        when(userRepository.existsByUsernameIgnoreCase("taken-pilot")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.validateRegistration(
+                authRequest("pilot@example.com", "taken-pilot", "password123")))
+                .isInstanceOf(AuthException.class)
+                .hasMessage("username is already taken");
+
+        verify(userRepository, never()).existsByNormalizedEmail(anyString());
+    }
+
+    @Test
     void rejectsInvalidRegistrationEmail() {
-        assertThatThrownBy(() -> service.register(authRequest("not-email", "pilot", "password123"), requestWithSession()))
+        assertThatThrownBy(() -> service.register(authRequest("not-email", "pilot", "password123")))
                 .isInstanceOf(AuthException.class)
                 .hasMessage("email must be a valid email address");
     }
@@ -68,8 +95,7 @@ class AuthServiceTest {
     @Test
     void rejectsUnsafeRegistrationUsername() {
         assertThatThrownBy(() -> service.register(
-                authRequest("pilot@example.com", "<script>", "password123"),
-                requestWithSession()))
+                authRequest("pilot@example.com", "<script>", "password123")))
                 .isInstanceOf(AuthException.class)
                 .hasMessage("username may only contain letters, numbers, underscores, and hyphens");
     }
@@ -77,8 +103,7 @@ class AuthServiceTest {
     @Test
     void rejectsShortRegistrationPassword() {
         assertThatThrownBy(() -> service.register(
-                authRequest("pilot@example.com", "pilot", "short"),
-                requestWithSession()))
+                authRequest("pilot@example.com", "pilot", "short")))
                 .isInstanceOf(AuthException.class)
                 .hasMessage("password must be between 8 and 128 characters");
     }
@@ -86,8 +111,7 @@ class AuthServiceTest {
     @Test
     void rejectsRegistrationPasswordWithSpaces() {
         assertThatThrownBy(() -> service.register(
-                authRequest("pilot@example.com", "pilot", "password 123"),
-                requestWithSession()))
+                authRequest("pilot@example.com", "pilot", "password 123")))
                 .isInstanceOf(AuthException.class)
                 .hasMessage("password cannot contain spaces");
     }
@@ -95,8 +119,7 @@ class AuthServiceTest {
     @Test
     void rejectsRegistrationUsernameLongerThanTwentyCharacters() {
         assertThatThrownBy(() -> service.register(
-                authRequest("pilot@example.com", "this_username_is_way_too_long", "password123"),
-                requestWithSession()))
+                authRequest("pilot@example.com", "this_username_is_way_too_long", "password123")))
                 .isInstanceOf(AuthException.class)
                 .hasMessage("username must be between 3 and 20 characters");
     }

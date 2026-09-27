@@ -528,6 +528,7 @@ function ProfileContent({
     blockError,
     onToggleBlock,
 }) {
+    const isGuestProfile = isGuest && isOwner;
     const initial = String(profile.username || "?").slice(0, 1).toUpperCase();
     return (
         <div className="mt-9">
@@ -540,8 +541,8 @@ function ProfileContent({
                     </div>
                 </div>
                 <div className="profile-hero__record" aria-label="Player activity">
-                    <div><strong>{isGuest || historyStatus === "loading" ? "—" : totalMatches}</strong><span>Matches</span></div>
-                    <div><strong>{isGuest ? "—" : (profile.puzzlesSolved ?? 0)}</strong><span>Puzzles solved</span></div>
+                    <div><strong>{isGuestProfile || historyStatus === "loading" ? "—" : totalMatches}</strong><span>Matches</span></div>
+                    <div><strong>{isGuestProfile ? "—" : (profile.puzzlesSolved ?? 0)}</strong><span>Puzzles solved</span></div>
                 </div>
             </header>
             <div className="profile-content-grid grid gap-5 lg:grid-cols-[minmax(240px,.85fr)_minmax(0,1.6fr)] lg:items-start">
@@ -559,12 +560,12 @@ function ProfileContent({
                 <dl className="mt-7 border-t border-slate-700/70 pt-4">
                     <Stat
                         label="PUZZLES SOLVED"
-                        value={isGuest ? "N/A" : (profile.puzzlesSolved ?? 0)}
+                        value={isGuestProfile ? "N/A" : (profile.puzzlesSolved ?? 0)}
                         tone="text-cyan-300"
                         labelClassName="font-mono text-sm font-bold tracking-[.14em] text-slate-400"
                         valueClassName="font-interface-numeric text-2xl font-bold"
                         showColon={false}
-                        onClick={isGuest ? undefined : onOpenPuzzles}
+                        onClick={isGuestProfile ? undefined : onOpenPuzzles}
                     />
                 </dl>
 
@@ -591,7 +592,7 @@ function ProfileContent({
                     matches={matches}
                     totalMatches={totalMatches}
                     historyStatus={historyStatus}
-                    isGuest={isGuest}
+                    isGuestProfile={isGuestProfile}
                     isOwner={isOwner}
                     onOpenMatches={onOpenMatches}
                     onOpenMatchDetails={onOpenMatchDetails}
@@ -676,10 +677,10 @@ function UserBlockButton({ username, state, error, onToggle }) {
     );
 }
 
-function RecentMatchesCard({ matches, totalMatches, historyStatus, isGuest, isOwner, onOpenMatches, onOpenMatchDetails }) {
+function RecentMatchesCard({ matches, totalMatches, historyStatus, isGuestProfile, isOwner, onOpenMatches, onOpenMatchDetails }) {
     const previewMatches = matches.slice(0, RECENT_MATCH_LIMIT);
     const isInitialError = historyStatus === "error" && matches.length === 0;
-    if (isGuest) {
+    if (isGuestProfile) {
         return (
             <section className="overflow-hidden rounded-2xl border border-cyan-900/80 bg-[#091521ed] p-6 shadow-[0_18px_60px_rgba(0,0,0,.24)] sm:p-8">
                 <h2 className="text-2xl font-bold text-white">Match history</h2>

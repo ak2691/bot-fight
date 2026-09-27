@@ -420,7 +420,7 @@ public class ProfileService {
                     Sort.by(Sort.Direction.ASC, "username", "id"));
             Page<AppUser> profiles = searchQuery.isBlank()
                     ? Page.empty(pageRequest)
-                    : userRepository.findByGuestFalseAndEmailVerifiedTrueAndUsernameContainingIgnoreCaseOrderByUsernameAscIdAsc(
+                    : userRepository.searchVerifiedNonGuestByUsernameSubstring(
                             searchQuery,
                             pageRequest);
             List<ProfileSearchPageDTO.ProfileSearchResultDTO> results = profiles.getContent().stream()

@@ -10,7 +10,7 @@ import { botColorRole, normalizeReplayObstacleShape } from "../gameArena/pixi/pi
 import { compassDegreesToRadians } from "../gameArena/botlogic/planner/arenaAngles.js";
 import MatchToolIcon from "../gameArena/coding/controls/MatchToolIcon.jsx";
 import BotLogo from "../components/BotLogo.jsx";
-import { centeredTeamPosition, displayedRoundWins, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, replayAbilitiesFor, replayAbilityTarget, replayAbilityVisual, replayBotAbilityState, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayFrameIndexForElapsedMs, replayRayOrigin, replayRatingChanges, replayRemainingSeconds, replayResultVisibility, replayShapeKey } from "./replayPresentation.js";
+import { centeredTeamPosition, displayedRoundWins, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, replayAbilitiesFor, replayAbilityTarget, replayAbilityVisual, replayBotAbilityState, replayDamageEvents, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayFrameIndexForElapsedMs, replayRayOrigin, replayRatingChanges, replayRemainingSeconds, replayResultVisibility, replayShapeKey } from "./replayPresentation.js";
 
 const EMPTY_LIST = Object.freeze([]);
 const NOOP = () => { };
@@ -421,16 +421,7 @@ function replayMatchResultTitle({
 }
 
 function replayArenaShapes(bots, entities, recentFrames = [], entranceProgress = 1, frames = [], frameIndex = 0, initialHandoff = false, viewerUserId = null) {
-    const damageEvents = new Map();
-    for (const frame of recentFrames) {
-        for (const previous of [...(frame.bots ?? []), ...(frame.entities ?? [])]) {
-            const previousKey = replayShapeKey(previous);
-            const current = previousKey == null ? null : [...bots, ...entities].find((candidate) => replayShapeKey(candidate) === previousKey);
-            if (current && Number(current.hp ?? 0) < Number(previous.hp ?? 0)) {
-                damageEvents.set(previousKey, `${Number(frame.elapsedMs ?? 0)}:${previousKey}`);
-            }
-        }
-    }
+    const damageEvents = replayDamageEvents(bots, entities, recentFrames);
     // Replay transforms are already interpolated against the authoritative
     // timeline before reaching Pixi. A second renderer-side interpolation
     // would introduce a one-step lag, especially at batch boundaries.

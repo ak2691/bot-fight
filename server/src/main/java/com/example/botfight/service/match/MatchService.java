@@ -12,6 +12,7 @@ import com.example.botfight.service.match.connection.MatchConnectionService;
 import com.example.botfight.service.match.connection.MatchReconnectionService;
 import com.example.botfight.service.match.coordination.MatchLockService;
 import com.example.botfight.service.match.chat.MatchChatService;
+import com.example.botfight.service.chatmoderation.ChatEvidenceRecorder;
 import com.example.botfight.service.match.event.MatchEventFactory;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
 import com.example.botfight.service.match.loadout.MatchLoadoutService;
@@ -110,7 +111,6 @@ public class MatchService {
                 new SlidingWindowRateLimiter<>(clock, 1, Duration.ofSeconds(1)));
     }
 
-    @Autowired
     public MatchService(
             MatchSimulationService matchSimulationService,
             MatchPersistenceService matchPersistenceService,
@@ -121,6 +121,30 @@ public class MatchService {
             BlockLookup blockLookup,
             @Qualifier("matchCodeViewRateLimiter")
             SlidingWindowRateLimiter<UUID> matchCodeViewRateLimiter) {
+        this(
+                matchSimulationService,
+                matchPersistenceService,
+                matchConnectionService,
+                clock,
+                replayDeliveryMode,
+                matchChatRateLimiter,
+                blockLookup,
+                matchCodeViewRateLimiter,
+                ChatEvidenceRecorder.noOp());
+    }
+
+    @Autowired
+    public MatchService(
+            MatchSimulationService matchSimulationService,
+            MatchPersistenceService matchPersistenceService,
+            MatchConnectionService matchConnectionService,
+            Clock clock,
+            @Value("${botfight.replay.delivery-mode:full}") ReplayDeliveryMode replayDeliveryMode,
+            @Qualifier("matchChatRateLimiter") TokenBucketRateLimiter<String> matchChatRateLimiter,
+            BlockLookup blockLookup,
+            @Qualifier("matchCodeViewRateLimiter")
+            SlidingWindowRateLimiter<UUID> matchCodeViewRateLimiter,
+            ChatEvidenceRecorder chatEvidenceService) {
         this.clock = clock;
         this.matchPersistenceService = matchPersistenceService;
         this.matchCodeViewRateLimiter = matchCodeViewRateLimiter;
@@ -129,7 +153,8 @@ public class MatchService {
                 clock,
                 activeSessionsByUserId,
                 matchChatRateLimiter,
-                blockLookup);
+                blockLookup,
+                chatEvidenceService);
         this.matchLoadoutService = new MatchLoadoutService(jsonMapper);
         this.matchReplayService = new MatchReplayService(replayDeliveryMode);
         this.matchEventFactory = new MatchEventFactory(
@@ -198,6 +223,11 @@ public class MatchService {
 
     public ActiveMatchStatusDTO activeMatchStatus(UUID userId) {
         return matchReconnectionService.activeMatchStatus(userId);
+    }
+
+    /** Reports an in-flight roster claim so matchmaking cannot enqueue a player mid-start. */
+    public boolean isMatchStartReserved(UUID userId) {
+        return runtimeState.isMatchStartReserved(userId);
     }
 
     public void expireCompletedMatch(UUID matchId) {
@@ -570,6 +600,11 @@ public class MatchService {
     @Transactional
     public List<OutboundMatchmakingEvent> completeSimulation(UUID matchId) {
         return matchRoundResolutionService.completeSimulation(matchId);
+    }
+
+    @Transactional
+    public List<OutboundMatchmakingEvent> cancelFailedSimulation(UUID matchId, Integer roundNumber) {
+        return matchRoundResolutionService.cancelFailedSimulation(matchId, roundNumber);
     }
 
     /**

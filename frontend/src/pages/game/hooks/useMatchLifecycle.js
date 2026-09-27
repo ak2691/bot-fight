@@ -34,6 +34,7 @@ import {
     MATCH_ACCEPTANCE_SUBMISSION_GRACE_MS,
 } from "../../../matchmaking/matchAcceptance.js";
 import { localReplaySchedule, mergeReplayFrames } from "../../../replay/replayPresentation.js";
+import { matchEventOpponent, matchEventParticipants, matchEventViewer } from "../matchEventParticipants.js";
 import { useMatchmaking } from "../../../matchmaking/matchmaking-context";
 import useMatchmakingSocket from "./useMatchmakingSocket.js";
 import { useAuth } from "../../../auth/auth-context";
@@ -55,7 +56,7 @@ function loadoutDraftStorageKey(matchId, roundNumber) {
 }
 
 function readLoadoutDraft(event) {
-    if (!event?.matchId || event.status !== "LOADOUT_SELECT" || event.player?.loadoutSelected) return null;
+    if (!event?.matchId || event.status !== "LOADOUT_SELECT" || matchEventViewer(event)?.loadoutSelected) return null;
     const storage = browserSessionStorage();
     if (!storage) return null;
     try {
@@ -71,7 +72,7 @@ function readLoadoutDraft(event) {
 }
 
 function writeLoadoutDraft(event, loadout) {
-    if (!event?.matchId || event.status !== "LOADOUT_SELECT" || event.player?.loadoutSelected) return;
+    if (!event?.matchId || event.status !== "LOADOUT_SELECT" || matchEventViewer(event)?.loadoutSelected) return;
     const storage = browserSessionStorage();
     if (!storage) return;
     try {
@@ -106,13 +107,11 @@ function participantTeamNumber(participant) {
 }
 
 function eventParticipants(event) {
-    return Array.isArray(event?.players) && event.players.length > 0
-        ? event.players
-        : [event?.player, event?.opponent].filter(Boolean);
+    return matchEventParticipants(event);
 }
 
 function winnerIsOnOpposingTeam(event) {
-    const player = event?.player;
+    const player = matchEventViewer(event);
     const winner = eventParticipants(event)
         .find((participant) => String(participant?.userId) === String(event?.playback?.winnerUserId));
     return Boolean(player && winner
@@ -450,6 +449,8 @@ export function useMatchLifecycle({ navigate }) {
             eventReceivedAtMs,
             matchEventRef.current,
         );
+        const viewer = matchEventViewer(event);
+        const opponent = matchEventOpponent(event);
         const isPlayerReconnectedEvent = event.type === "PLAYER_RECONNECTED";
         const canCompleteTerminalReplay = event.type === "MATCH_REPLAY_BATCH"
             && playbackRef.current?.terminalBatch !== true;
@@ -507,13 +508,13 @@ export function useMatchLifecycle({ navigate }) {
             eventServerNowMs,
             resetAtMs: disconnectNoticeResetAtRef.current,
         })) {
-            const self = Boolean(event.player?.userId)
-                && String(event.disconnectedUserId) === String(event.player.userId);
+            const self = Boolean(viewer?.userId)
+                && String(event.disconnectedUserId) === String(viewer.userId);
             setDisconnectNotice({
                 endsAtMs: event.disconnectEndsAtMs,
                 message: self
                     ? `Connection lost. Reconnect within ${disconnectSeconds} seconds or the match will be forfeited.`
-                    : `${event.opponent?.username ?? "Your opponent"} disconnected. They have ${disconnectSeconds} seconds to return.`,
+                    : `${opponent?.username ?? "Your opponent"} disconnected. They have ${disconnectSeconds} seconds to return.`,
                 self,
             });
             setDisconnectRemaining(disconnectSeconds);
@@ -592,7 +593,7 @@ export function useMatchLifecycle({ navigate }) {
                 ? secondsRemaining(loadoutSelectionDeadlineRef.current)
                 : 0);
             setLoadoutChoice(
-                readLoadoutDraft(event) ?? decodeBotLoadout(event.player?.selectedLoadout),
+                readLoadoutDraft(event) ?? decodeBotLoadout(viewer?.selectedLoadout),
             );
             playbackRef.current = null;
             setPlayback(null);
@@ -623,17 +624,17 @@ export function useMatchLifecycle({ navigate }) {
             updateQueueStatus("LOADOUT_SELECT");
             setRemaining(secondsRemaining(loadoutSelectionDeadlineRef.current));
             setLoadoutChoice(
-                readLoadoutDraft(event) ?? decodeBotLoadout(event.player?.selectedLoadout),
+                readLoadoutDraft(event) ?? decodeBotLoadout(viewer?.selectedLoadout),
             );
         }
         if (event.type === "MATCH_LOADOUT_SELECTED") {
             setCurrentMatchEvent(event);
             updateQueueStatus("LOADOUT_SELECT");
-            if (event.player?.loadoutSelected) {
+            if (viewer?.loadoutSelected) {
                 clearLoadoutDraft(event);
                 loadoutSubmitPendingRef.current = false;
                 setLoadoutSubmitPending(false);
-                setLoadoutChoice(decodeBotLoadout(event.player.selectedLoadout));
+                setLoadoutChoice(decodeBotLoadout(viewer.selectedLoadout));
             }
         }
         if (event.type === "MATCH_SURRENDER_UPDATED") {
@@ -651,7 +652,7 @@ export function useMatchLifecycle({ navigate }) {
             enterBuildingRoomAtDeadline();
             setRemaining(0);
             clearLoadoutDraft(event);
-            setLoadoutChoice(decodeBotLoadout(event.player?.selectedLoadout));
+            setLoadoutChoice(decodeBotLoadout(viewer?.selectedLoadout));
             placementSubmitPendingRef.current = false;
             setPlacementSubmitPending(false);
         }
@@ -677,7 +678,7 @@ export function useMatchLifecycle({ navigate }) {
             setCodeViewPending(null);
             setCodeViewError(null);
             setLoadoutChoice(readLoadoutDraft(event) ?? loadoutForFreshRound(
-                decodeBotLoadout(event.player?.selectedLoadout),
+                decodeBotLoadout(viewer?.selectedLoadout),
                 event.roundNumber,
             ));
             placementSubmittedRef.current = false;
@@ -688,7 +689,7 @@ export function useMatchLifecycle({ navigate }) {
         if (event.type === "PLAYER_FINISHED") {
             setCurrentMatchEvent(event);
             updateQueueStatus(event.status);
-            if (event.player?.finished) {
+            if (viewer?.finished) {
                 setHasFinished(true);
                 setFinishPending(false);
             }
@@ -816,8 +817,8 @@ export function useMatchLifecycle({ navigate }) {
                 if (incomingBatchIsStale) return currentPlayback;
                 const nextPlayback = {
                     ...currentPlayback,
-                    player: event.playback?.terminalBatch ? event.player ?? currentPlayback.player : currentPlayback.player,
-                    opponent: event.playback?.terminalBatch ? event.opponent ?? currentPlayback.opponent : currentPlayback.opponent,
+                    player: event.playback?.terminalBatch ? viewer ?? currentPlayback.player : currentPlayback.player,
+                    opponent: event.playback?.terminalBatch ? opponent ?? currentPlayback.opponent : currentPlayback.opponent,
                     players: event.playback?.terminalBatch && event.players?.length
                         ? event.players
                         : currentPlayback.players,
@@ -847,7 +848,7 @@ export function useMatchLifecycle({ navigate }) {
             setSurrenderPending(false);
             if (event.playback?.result === "RESIGNATION_WIN"
                 && event.playback?.winnerUserId
-                && event.player?.userId
+                && viewer?.userId
                 && winnerIsOnOpposingTeam(event)) {
                 setHasSurrendered(true);
             }
@@ -878,8 +879,8 @@ export function useMatchLifecycle({ navigate }) {
                     replayCursorElapsedMs: event.playback?.replayCursorElapsedMs
                         ?? currentPlayback?.replayCursorElapsedMs,
                     terminalBatch: currentPlayback?.terminalBatch === true,
-                    player: event.player ?? currentPlayback?.player,
-                    opponent: event.opponent ?? currentPlayback?.opponent,
+                    player: viewer ?? currentPlayback?.player,
+                    opponent: opponent ?? currentPlayback?.opponent,
                     players: event.players ?? currentPlayback?.players,
                     roundNumber: event.roundNumber ?? currentPlayback?.roundNumber,
                     winsRequired: event.winsRequired ?? currentPlayback?.winsRequired,
@@ -966,11 +967,12 @@ export function useMatchLifecycle({ navigate }) {
         const matchId = event?.matchId;
         const roundNumber = event?.roundNumber;
         if (!matchId || !targetUserId || socketStatus !== "CONNECTED") return;
-        if (String(targetUserId) === String(event?.player?.userId)) return;
+        const viewer = matchEventViewer(event);
+        if (String(targetUserId) === String(viewer?.userId)) return;
         const target = eventParticipants(event)
             .find((participant) => String(participant?.userId) === String(targetUserId));
         if (!target
-            || participantTeamNumber(target) !== participantTeamNumber(event?.player)) return;
+            || participantTeamNumber(target) !== participantTeamNumber(viewer)) return;
         if (codeViewPending
             && Date.now() - Number(codeViewPending.requestedAt) < 1_000) return;
         setCodeViewPending({ targetUserId, requestedAt: Date.now() });
@@ -979,7 +981,7 @@ export function useMatchLifecycle({ navigate }) {
     }, [codeViewPending, socketStatus]);
 
     const lockLoadout = () => {
-        if (loadoutSubmitPending || matchEvent?.player?.loadoutSelected || socketStatus !== "CONNECTED") return;
+        if (loadoutSubmitPending || matchEventViewer(matchEvent)?.loadoutSelected || socketStatus !== "CONNECTED") return;
         loadoutSubmitPendingRef.current = true;
         setLoadoutSubmitPending(true);
         clientRef.current?.selectLoadout(
@@ -1013,7 +1015,9 @@ export function useMatchLifecycle({ navigate }) {
         clientRef.current?.sendChat(matchEventRef.current.matchId, message, channel);
     };
 
-    const opponent = matchEvent?.opponent ?? null;
+    const viewer = matchEventViewer(matchEvent);
+    const opponent = matchEventOpponent(matchEvent);
+    const participants = matchEventParticipants(matchEvent);
     const handleChatMinimizedChange = (next) => {
         setChatMinimized(next);
         if (!next) setChatMessages((current) => current.map((message) => ({ ...message, unread: false })));
@@ -1022,9 +1026,9 @@ export function useMatchLifecycle({ navigate }) {
     const matchContext = useMemo(() => ({
         matchId: matchEvent?.matchId,
         simulationSeed: matchEvent?.simulationSeed,
-        player: matchEvent?.player,
+        player: viewer,
         opponent,
-        players: matchEvent?.players ?? [],
+        players: participants,
         buildingEndsAt: matchEvent?.buildingEndsAt,
         buildingEndsAtAuthoritativeMs: matchEvent?.buildingEndsAtAuthoritativeMs,
         buildingEndsAtMs: matchEvent?.buildingEndsAtMs,
@@ -1047,7 +1051,7 @@ export function useMatchLifecycle({ navigate }) {
         surrenderVoteCount: matchEvent?.surrenderVoteCount ?? 0,
         surrenderVoteRequired: matchEvent?.surrenderVoteRequired ?? 0,
         loadout: loadoutChoice,
-        opponentLoadout: decodeBotLoadout(matchEvent?.opponent?.selectedLoadout),
+        opponentLoadout: decodeBotLoadout(opponent?.selectedLoadout),
         codeSnapshots,
         codeViewPending,
         codeViewError,
@@ -1056,9 +1060,9 @@ export function useMatchLifecycle({ navigate }) {
     }), [
         matchEvent?.matchId,
         matchEvent?.simulationSeed,
-        matchEvent?.player,
+        viewer,
         opponent,
-        matchEvent?.players,
+        participants,
         matchEvent?.buildingEndsAt,
         matchEvent?.buildingEndsAtAuthoritativeMs,
         matchEvent?.buildingEndsAtMs,
@@ -1080,7 +1084,7 @@ export function useMatchLifecycle({ navigate }) {
         matchEvent?.surrenderRequestedByMe,
         matchEvent?.surrenderVoteCount,
         matchEvent?.surrenderVoteRequired,
-        matchEvent?.opponent?.selectedLoadout,
+        opponent?.selectedLoadout,
         loadoutChoice,
         codeSnapshots,
         codeViewPending,
@@ -1140,15 +1144,13 @@ export function useMatchLifecycle({ navigate }) {
 function buildPreparationPlayback(event) {
     const playback = event.playback;
     if (!playback?.initialState?.bots?.length) return null;
-    const participants = Array.isArray(event.players) && event.players.length > 0
-        ? event.players
-        : [event.player, event.opponent].filter(Boolean);
+    const participants = matchEventParticipants(event);
     return {
         ...playback,
         matchId: event.matchId,
         rulesetVersion: event.rulesetVersion,
-        player: event.player ?? playback.player,
-        opponent: event.opponent ?? playback.opponent,
+        player: matchEventViewer(event) ?? playback.player,
+        opponent: matchEventOpponent(event) ?? playback.opponent,
         players: participants,
         roundNumber: event.roundNumber,
         winsRequired: event.winsRequired,
@@ -1162,9 +1164,7 @@ function buildPreparationPlayback(event) {
 }
 
 function arenaPreloadShapes(event) {
-    const participants = (Array.isArray(event?.players) && event.players.length > 0
-        ? event.players
-        : [event?.player, event?.opponent].filter(Boolean))
+    const participants = matchEventParticipants(event)
         .filter((participant) => participant?.userId != null)
         .map((participant) => ({
             ...participant,

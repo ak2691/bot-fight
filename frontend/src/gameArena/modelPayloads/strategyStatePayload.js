@@ -25,6 +25,99 @@ export function buildStatePayload(currentShapes, selectedLoadout, actorId = "mai
     };
 }
 
+/**
+ * Builds one immutable, per-tick payload snapshot and derives actor views from
+ * it. Shared bot/entity facts are normalized once before any bot chooses an
+ * action, so every actor observes the same start-of-tick state.
+ */
+export function createStatePayloadFactory(currentShapes) {
+    const botShapes = currentShapes.filter(isBotShape);
+    const botShapeSet = new Set(botShapes);
+    const actorById = new Map();
+    for (const shape of currentShapes) {
+        if (!actorById.has(shape.id)) actorById.set(shape.id, shape);
+    }
+
+    const sharedObjectsByShape = new Map();
+    const ownerBotsByShape = new Map();
+    for (const shape of currentShapes) {
+        if (shape.visibility === "renderer-only") continue;
+        sharedObjectsByShape.set(
+            shape,
+            freezePayload(objectPayload(shape, null, null, botShapes)),
+        );
+        if (!botShapeSet.has(shape)) {
+            ownerBotsByShape.set(shape, ownerBotForEntity(shape, botShapes));
+        }
+    }
+
+    const rolesByActor = new Map();
+    for (const actor of botShapes) {
+        rolesByActor.set(actor, new Map(botShapes.map((bot) => [
+            bot,
+            roleForBot(bot, actor, botShapes),
+        ])));
+    }
+
+    const closingZoneShape = currentShapes.find(isClosingZone);
+    const closingZone = freezePayload(closingZoneShape ? closingZonePayload(closingZoneShape) : null);
+
+    return Object.freeze({
+        forActor(selectedLoadout, actorId = "main") {
+            const actor = actorById.get(actorId);
+            const actorRoles = rolesByActor.get(actor);
+            const actorTeamNumber = teamNumberFor(actor);
+            const objects = [];
+
+            for (const shape of currentShapes) {
+                if (shape.id === actorId || shape.visibility === "renderer-only") continue;
+                const shared = sharedObjectsByShape.get(shape);
+                if (botShapeSet.has(shape)) {
+                    const role = actorRoles?.get(shape) ?? roleForBot(shape, actor, botShapes);
+                    objects.push(Object.freeze({
+                        ...shared,
+                        role: role.role,
+                        botIndex: role.botIndex,
+                        owner: role.role === "teammate" ? "my" : "opponent",
+                    }));
+                    continue;
+                }
+
+                const ownerBot = ownerBotsByShape.get(shape);
+                const ownerRole = ownerBot
+                    ? teamNumberFor(ownerBot) === actorTeamNumber ? "my" : "opponent"
+                    : shape.ownerId === actorId ? "my" : "opponent";
+                let ownerSelector;
+                if (!ownerBot) {
+                    ownerSelector = shape.ownerId === actorId ? "my_bot" : null;
+                } else if (ownerBot.id === actorId) {
+                    ownerSelector = "my_bot";
+                } else {
+                    const role = actorRoles?.get(ownerBot) ?? roleForBot(ownerBot, actor, botShapes);
+                    ownerSelector = role.role === "teammate"
+                        ? `teammate_${role.botIndex}`
+                        : `opponent_${role.botIndex}`;
+                }
+                objects.push(Object.freeze({ ...shared, owner: ownerRole, ownerSelector }));
+            }
+
+            const playerModel = botPayload(
+                actor,
+                selectedLoadout,
+                "model",
+                actor?.ownerId ?? actorId,
+                { role: "self", botIndex: 0 },
+            );
+            return Object.freeze({
+                selectedLoadout,
+                closingZone,
+                playerModel: freezePayload(playerModel),
+                objects: Object.freeze(objects),
+            });
+        },
+    });
+}
+
 function closingZonePayload(shape) {
     return {
         x: Number(shape.x ?? 0),
@@ -92,7 +185,7 @@ function objectPayload(shape, actorId, actorShape, botShapes) {
         owner: ownerRoleForEntity(shape, actorId, actorShape, botShapes),
         ownerSelector: ownerSelectableForEntity(shape, actorId, actorShape, botShapes),
         abilityId: shape.abilityId,
-        selectableIdentities,
+        selectableIdentities: [...selectableIdentities],
         armed: Boolean(shape.armed),
         fuseMs: Math.round(shape.fuseMs ?? 0),
         type: shape.type,
@@ -122,6 +215,15 @@ function objectPayload(shape, actorId, actorShape, botShapes) {
         preparingMs: Math.round(shape.preparingMs ?? 0),
         slot: shape.slot,
     };
+}
+
+function freezePayload(value, seen = new WeakSet()) {
+    if (value == null || typeof value !== "object" || seen.has(value) || Object.isFrozen(value)) {
+        return value;
+    }
+    seen.add(value);
+    for (const child of Object.values(value)) freezePayload(child, seen);
+    return Object.freeze(value);
 }
 
 function isBotShape(shape) {

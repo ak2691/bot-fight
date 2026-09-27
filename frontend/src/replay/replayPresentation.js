@@ -288,10 +288,34 @@ export function mergeReplayFrames(currentFrames = [], incomingFrames = []) {
 
 /** Compact authoritative bots are identified by their stable match slot. */
 export function replayShapeKey(shape) {
-    if (shape?.slot != null) return `slot:${shape.slot}`;
-    if (shape?.userId != null) return `user:${shape.userId}`;
-    if (shape?.id != null) return `id:${shape.id}`;
+    const slot = shape?.slot;
+    if (slot != null) return `slot:${slot}`;
+    const userId = shape?.userId;
+    if (userId != null) return `user:${userId}`;
+    const id = shape?.id;
+    if (id != null) return `id:${id}`;
     return null;
+}
+
+/** Matches recent replay damage against the current shapes in one indexed pass. */
+export function replayDamageEvents(bots, entities, recentFrames = []) {
+    const currentShapesByKey = new Map();
+    for (const shape of [...bots, ...entities]) {
+        const key = replayShapeKey(shape);
+        if (key != null && !currentShapesByKey.has(key)) currentShapesByKey.set(key, shape);
+    }
+
+    const damageEvents = new Map();
+    for (const frame of recentFrames) {
+        for (const previous of [...(frame.bots ?? []), ...(frame.entities ?? [])]) {
+            const previousKey = replayShapeKey(previous);
+            const current = previousKey == null ? null : currentShapesByKey.get(previousKey);
+            if (current && Number(current.hp ?? 0) < Number(previous.hp ?? 0)) {
+                damageEvents.set(previousKey, `${Number(frame.elapsedMs ?? 0)}:${previousKey}`);
+            }
+        }
+    }
+    return damageEvents;
 }
 
 /** Keeps a replayed gun ray at the position and facing where that shot began. */

@@ -90,10 +90,22 @@ test("the official replay result clears the cached active-match state", () => {
 test("code view requests are client-filtered to teammates and expose team forfeit state", () => {
     const source = readFileSync(SOURCE_PATH, "utf8");
 
-    assert.match(source, /participantTeamNumber\(target\) !== participantTeamNumber\(event\?\.player\)/);
+    assert.match(source, /participantTeamNumber\(target\) !== participantTeamNumber\(viewer\)/);
     assert.match(source, /surrenderVoteCount: matchEvent\?\.surrenderVoteCount/);
     assert.match(source, /surrenderVoteRequired: matchEvent\?\.surrenderVoteRequired/);
     assert.match(source, /winnerIsOnOpposingTeam\(event\)/);
+});
+
+test("match socket consumers derive viewer and opponent from canonical participants", () => {
+    const source = readFileSync(SOURCE_PATH, "utf8");
+    const gamePage = readFileSync(fileURLToPath(new URL("../GamePage.jsx", import.meta.url)), "utf8");
+
+    assert.match(source, /matchEventViewer\(event\)/);
+    assert.match(source, /matchEventOpponent\(event\)/);
+    assert.doesNotMatch(source, /event\??\.(?:player|opponent)\b/);
+    assert.doesNotMatch(source, /matchEvent\??\.(?:player|opponent)\b/);
+    assert.match(gamePage, /player=\{matchContext\?\.player\}/);
+    assert.match(gamePage, /opponent=\{matchContext\?\.opponent\}/);
 });
 
 test("reconnect notifications clear the banner across replay phase boundaries", () => {

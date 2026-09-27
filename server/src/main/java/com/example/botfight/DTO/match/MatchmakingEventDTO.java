@@ -3,7 +3,9 @@ package com.example.botfight.DTO.match;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import tools.jackson.databind.JsonNode;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -12,7 +14,9 @@ public record MatchmakingEventDTO(
         UUID matchId,
         Long simulationSeed,
         String status,
+        @JsonIgnore
         MatchmakingPlayerDTO player,
+        @JsonIgnore
         MatchmakingPlayerDTO opponent,
         List<MatchmakingPlayerDTO> players,
         Instant serverNow,
@@ -51,7 +55,161 @@ public record MatchmakingEventDTO(
         String codeViewTargetUsername,
         JsonNode codeViewBrain,
         String codeViewSelectedLoadout,
-        Instant queueStartedAt) {
+        Instant queueStartedAt,
+        UUID viewerUserId) {
+
+    /** Version of the canonical participant payload consumed by WebSocket clients. */
+    @JsonProperty("eventSchemaVersion")
+    public int eventSchemaVersion() {
+        return 2;
+    }
+
+    /**
+     * Compatibility constructor for existing server-side event builders. The legacy
+     * player/opponent projections are ignored by JSON serialization; clients use
+     * players plus viewerUserId.
+     */
+    public MatchmakingEventDTO(
+            String type,
+            UUID matchId,
+            Long simulationSeed,
+            String status,
+            MatchmakingPlayerDTO player,
+            MatchmakingPlayerDTO opponent,
+            List<MatchmakingPlayerDTO> players,
+            Instant serverNow,
+            Instant loadoutSelectionEndsAt,
+            Instant entityPlacementEndsAt,
+            Instant countdownEndsAt,
+            Instant buildingEndsAt,
+            Instant playbackStartsAt,
+            Instant resultRevealsAt,
+            String rulesetVersion,
+            MatchReplayDTO playback,
+            Integer roundNumber,
+            Integer winsRequired,
+            String message,
+            UUID entityPlacementUserId,
+            List<MatchPlaybackDTO.ArenaEntityDTO> entityPlacements,
+            List<MatchPlaybackDTO.ArenaEntityDTO> arenaEntities,
+            List<RoundBrainDTO> roundBrains,
+            Boolean previousRoundWon,
+            List<Integer> abilityOffers,
+            Integer roundBlockLimit,
+            UUID disconnectedUserId,
+            Instant disconnectEndsAt,
+            Long simulationPreparingDurationMs,
+            Instant roundReadyAt,
+            Instant matchChatEndsAt,
+            Instant matchAcceptanceEndsAt,
+            Boolean acceptedByMe,
+            Boolean otherPlayerAccepted,
+            String mode,
+            Boolean surrenderRequestedByMe,
+            Integer surrenderVoteCount,
+            Integer surrenderVoteRequired,
+            UUID codeViewRequestId,
+            UUID codeViewTargetUserId,
+            String codeViewTargetUsername,
+            JsonNode codeViewBrain,
+            String codeViewSelectedLoadout,
+            Instant queueStartedAt) {
+        this(
+                type,
+                matchId,
+                simulationSeed,
+                status,
+                player,
+                opponent,
+                players,
+                serverNow,
+                loadoutSelectionEndsAt,
+                entityPlacementEndsAt,
+                countdownEndsAt,
+                buildingEndsAt,
+                playbackStartsAt,
+                resultRevealsAt,
+                rulesetVersion,
+                playback,
+                roundNumber,
+                winsRequired,
+                message,
+                entityPlacementUserId,
+                entityPlacements,
+                arenaEntities,
+                roundBrains,
+                previousRoundWon,
+                abilityOffers,
+                roundBlockLimit,
+                disconnectedUserId,
+                disconnectEndsAt,
+                simulationPreparingDurationMs,
+                roundReadyAt,
+                matchChatEndsAt,
+                matchAcceptanceEndsAt,
+                acceptedByMe,
+                otherPlayerAccepted,
+                mode,
+                surrenderRequestedByMe,
+                surrenderVoteCount,
+                surrenderVoteRequired,
+                codeViewRequestId,
+                codeViewTargetUserId,
+                codeViewTargetUsername,
+                codeViewBrain,
+                codeViewSelectedLoadout,
+                queueStartedAt,
+                player == null ? null : player.userId());
+    }
+
+    public MatchmakingEventDTO withViewerUserId(UUID nextViewerUserId) {
+        return new MatchmakingEventDTO(
+                type,
+                matchId,
+                simulationSeed,
+                status,
+                player,
+                opponent,
+                players,
+                serverNow,
+                loadoutSelectionEndsAt,
+                entityPlacementEndsAt,
+                countdownEndsAt,
+                buildingEndsAt,
+                playbackStartsAt,
+                resultRevealsAt,
+                rulesetVersion,
+                playback,
+                roundNumber,
+                winsRequired,
+                message,
+                entityPlacementUserId,
+                entityPlacements,
+                arenaEntities,
+                roundBrains,
+                previousRoundWon,
+                abilityOffers,
+                roundBlockLimit,
+                disconnectedUserId,
+                disconnectEndsAt,
+                simulationPreparingDurationMs,
+                roundReadyAt,
+                matchChatEndsAt,
+                matchAcceptanceEndsAt,
+                acceptedByMe,
+                otherPlayerAccepted,
+                mode,
+                surrenderRequestedByMe,
+                surrenderVoteCount,
+                surrenderVoteRequired,
+                codeViewRequestId,
+                codeViewTargetUserId,
+                codeViewTargetUsername,
+                codeViewBrain,
+                codeViewSelectedLoadout,
+                queueStartedAt,
+                nextViewerUserId);
+    }
 
     /** Backward-compatible constructor for the pre-vote 1v1/match contract. */
     public MatchmakingEventDTO(

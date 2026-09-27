@@ -6,6 +6,7 @@ import { buildInitialArenaShapes } from "../modelPayloads/arenaShapes.js";
 
 const PANEL_PATH = fileURLToPath(new URL("./CodingPanel.jsx", import.meta.url));
 const ARENA_PATH = fileURLToPath(new URL("../Arena.jsx", import.meta.url));
+const AUTO_PLAY_HOOK_PATH = fileURLToPath(new URL("../hooks/useArenaAutoPlay.js", import.meta.url));
 const ARENA_CONFIG_MODAL_PATH = fileURLToPath(new URL("../components/modals/ArenaConfigModal.jsx", import.meta.url));
 const SANDBOX_LOADOUT_MODAL_PATH = fileURLToPath(new URL("../components/modals/SandboxLoadoutModal.jsx", import.meta.url));
 const PUZZLE_PLAY_PATH = fileURLToPath(new URL("../../pages/puzzles/PuzzlePlayPage.jsx", import.meta.url));
@@ -64,7 +65,8 @@ test("play stays in the bot-code panel above the code workspace button", () => {
 
 test("puzzle play is a local preview and puzzle submission is a separate action", () => {
     const arenaSource = readFileSync(ARENA_PATH, "utf8");
-    const runAutoPlay = arenaSource.match(/const runAutoPlay = \(\) => \{[\s\S]*?setIsEditingArena\(false\);/);
+    const autoPlaySource = readFileSync(AUTO_PLAY_HOOK_PATH, "utf8");
+    const runAutoPlay = autoPlaySource.match(/const runAutoPlay = useCallback\(\(\) => \{[\s\S]*?setIsEditingArena\(false\);/);
 
     assert.ok(runAutoPlay);
     assert.doesNotMatch(runAutoPlay[0], /submitPuzzleAttempt\(\)/);
@@ -74,10 +76,11 @@ test("puzzle play is a local preview and puzzle submission is a separate action"
 
 test("puzzle play preserves the editable setup until Reset Stats is chosen", () => {
     const arenaSource = readFileSync(ARENA_PATH, "utf8");
+    const autoPlaySource = readFileSync(AUTO_PLAY_HOOK_PATH, "utf8");
     const panelSource = readFileSync(PANEL_PATH, "utf8");
     const configModalSource = readFileSync(ARENA_CONFIG_MODAL_PATH, "utf8");
 
-    assert.match(arenaSource, /else if \(isPuzzleMode \|\| isPracticeRoom\) \{[\s\S]*current arena state[\s\S]*?Reset Stats/);
+    assert.match(autoPlaySource, /else if \(!isPuzzleMode && !isPracticeRoom\)[\s\S]*?Puzzle and practice previews keep the current setup[\s\S]*?Reset Stats/);
     assert.match(arenaSource, /else if \(isPuzzleMode\) \{\s*setShapes\(buildPracticeArenaShapes\([\s\S]*?initialPuzzle/);
     assert.match(arenaSource, /onOpenPuzzleConfig=.*setIsPuzzleConfigOpen\(true\)/);
     assert.match(arenaSource, /const savePuzzleConfig = \(nextConfig\) => \{[\s\S]*setPuzzleConfig\(normalized\)[\s\S]*puzzleSetupForArena\(normalized, initialPuzzle\)/);
@@ -405,10 +408,14 @@ test("action target inspectors switch to coordinates and preserve target offsets
 
 test("running previews read bot-code edits without restarting playback", () => {
     const source = readFileSync(ARENA_PATH, "utf8");
+    const autoPlaySource = readFileSync(AUTO_PLAY_HOOK_PATH, "utf8");
+    const simulationSource = readFileSync(fileURLToPath(new URL("../modelPayloads/arenaPreviewSimulation.js", import.meta.url)), "utf8");
 
     assert.match(source, /testingConfigurationRef\.current = testingConfiguration/);
     assert.match(source, /opponentTestingConfigurationRef\.current = opponentTestingConfiguration/);
-    assert.match(source, /bot\.id === "main"[\s\S]*\? testingConfigurationRef\.current[\s\S]*\? opponentTestingConfigurationRef\.current/);
+    assert.match(autoPlaySource, /testingConfiguration: testingConfigurationRef\.current/);
+    assert.match(autoPlaySource, /opponentTestingConfiguration: opponentTestingConfigurationRef\.current/);
+    assert.match(simulationSource, /bot\.id === "main"[\s\S]*\? testingConfiguration[\s\S]*bot\.id === "opponent-model"[\s\S]*\? opponentTestingConfiguration/);
 });
 
 test("action node picker provides an auto-focused search", () => {
@@ -859,4 +866,13 @@ test("offline arenas keep camera controls without the bottom interaction banner"
     assert.match(arenaSource, /showArenaHelp=\{showArenaHelp\}/);
     assert.match(pixiSource, /showArenaHelp = true/);
     assert.match(pixiSource, /\{showArenaHelp && !lockCamera && \(/);
+});
+
+test("practice autoplay pauses in hidden tabs and submissions do not log brain payloads", () => {
+    const arenaSource = readFileSync(ARENA_PATH, "utf8");
+    const autoPlaySource = readFileSync(AUTO_PLAY_HOOK_PATH, "utf8");
+
+    assert.match(autoPlaySource, /if \(!isPracticeRoom\) return undefined;[\s\S]*?document\.addEventListener\("visibilitychange", pausePracticePreviewWhenHidden\)/);
+    assert.match(autoPlaySource, /if \(!document\.hidden \|\| !autoIntervalRef\.current\) return;\s*stopAutoPlay\(\);\s*setIsEditingArena\(true\)/);
+    assert.doesNotMatch(arenaSource, /console\.(?:info|log)\([^)]*payload/);
 });
