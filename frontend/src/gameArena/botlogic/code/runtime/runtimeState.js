@@ -39,6 +39,7 @@ function botState(source = {}) {
         statusEffects,
         damageTakenLastTick: source.damageTakenLastTick ?? health.damageTakenLastTick ?? 0,
         hpNetChangeLastTick: source.hpNetChangeLastTick ?? health.netChangeLastTick ?? 0,
+        customVariables: { ...(source.customVariables ?? {}) },
         abilities: abilityIdsFromBoundary(source.abilities),
         abilityCooldowns: abilityMapFromBoundary(source.abilityCooldowns),
         abilityPendingCooldownMs: abilityMapFromBoundary(source.abilityPendingCooldownMs),

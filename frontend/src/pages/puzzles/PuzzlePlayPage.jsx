@@ -110,11 +110,6 @@ function PuzzlePlayInfoModal({ puzzle, outcome, onOpenConfiguration }) {
             >
                 {description && <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-300">{description}</p>}
 
-                <section aria-label="How puzzle submissions work" className="mt-4 rounded-lg border border-cyan-900/60 bg-slate-950/45 p-3">
-                    <h2 className="font-mono text-[9px] font-bold tracking-[.14em] text-cyan-200">HOW SUBMISSIONS WORK</h2>
-                    <p className="mt-1.5 text-xs leading-5 text-slate-300">Test your code in the browser first. When ready, click Submit Puzzle; the server runs your code in an authoritative simulation and checks whether you solved the puzzle.</p>
-                </section>
-
                 <div className="mt-5 grid grid-cols-2 gap-4 border-y border-white/10 py-3 font-mono text-[9px]">
                     <div>
                         <span className="block font-bold tracking-[.14em] text-cyan-300">TIME LIMIT</span>

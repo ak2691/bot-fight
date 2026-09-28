@@ -177,6 +177,51 @@ test("one immutable tick snapshot matches per-actor payloads, actions, and previ
     assert.equal(Object.isFrozen(shapes[0]), false);
 });
 
+test("bot logic initializes custom variables from an immutable tick snapshot", () => {
+    const shapes = [
+        {
+            id: "main",
+            type: "circle",
+            slot: 1,
+            x: 300,
+            y: 300,
+            size: 60,
+            hp: 150,
+            maxHp: 150,
+            moveSpeed: 15,
+            rotation: 0,
+            abilities: [],
+            customVariables: {},
+        },
+        {
+            id: "opponent-model",
+            type: "opponentModel",
+            slot: 2,
+            x: 900,
+            y: 900,
+            size: 60,
+            hp: 150,
+            maxHp: 150,
+            moveSpeed: 15,
+            rotation: 180,
+            abilities: [],
+            customVariables: {},
+        },
+    ];
+    const payload = createStatePayloadFactory(shapes).forActor([]);
+    const variableId = "custom.puzzle-counter";
+    const configuration = {
+        version: "bot-logic-tree-v2",
+        customVariables: [{ id: variableId, name: "Puzzle Counter", valueType: "number", initialValue: 4 }],
+        roots: [],
+    };
+
+    assert.equal(Object.isFrozen(payload.playerModel.customVariables), true);
+    const action = buildDeterministicLogicAction(configuration, payload);
+    assert.equal(action.customVariables[variableId], 4);
+    assert.deepEqual(payload.playerModel.customVariables, {});
+});
+
 test("spawned oriented entities inherit facing and movement selectable identities", () => {
     const payload = buildStatePayload([
         { id: "main", type: "circle", slot: 1, x: 400, y: 400, size: 60, hp: 100 },

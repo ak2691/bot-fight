@@ -16,9 +16,8 @@ test("puzzle coordinate payloads are explicit and legacy logic defaults to v1", 
     assert.match(coordinateMigrationSource, /NOT \(logic_configuration \? 'version'\)/);
 });
 
-test("puzzle page explains browser testing and authoritative server submission", () => {
-    assert.match(puzzlePlaySource, /HOW SUBMISSIONS WORK/);
-    assert.match(puzzlePlaySource, /Test your code in the browser first/);
-    assert.match(puzzlePlaySource, /click Submit Puzzle/);
-    assert.match(puzzlePlaySource, /authoritative simulation and checks whether you solved the puzzle/);
+test("puzzle information popup omits redundant submission instructions", () => {
+    assert.doesNotMatch(puzzlePlaySource, /HOW SUBMISSIONS WORK/);
+    assert.doesNotMatch(puzzlePlaySource, /Test your code in the browser first/);
+    assert.doesNotMatch(puzzlePlaySource, /authoritative simulation and checks whether you solved the puzzle/);
 });
