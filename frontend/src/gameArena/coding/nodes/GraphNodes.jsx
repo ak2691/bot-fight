@@ -76,6 +76,7 @@ function DeferredNumberInput({ value, onCommit, min = CUSTOM_NUMBER_MIN, max = C
     const [draft, setDraft] = useState(String(value ?? fallback));
     const inputRef = useRef(null);
     const externalValueRef = useRef(String(value ?? fallback));
+    const allowsNegative = Number(min) < 0;
     useEffect(() => {
         const nextValue = String(value ?? fallback);
         if (nextValue === externalValueRef.current) return;
@@ -89,7 +90,7 @@ function DeferredNumberInput({ value, onCommit, min = CUSTOM_NUMBER_MIN, max = C
         setDraft(String(normalized));
         onCommit(normalized);
     };
-    return <input {...props} ref={inputRef} type="text" inputMode={digitsOnly || integerOnly || step >= 1 ? "numeric" : "decimal"} pattern={digitsOnly ? "[0-9]*" : undefined} value={draft} onChange={(event) => setDraft(digitsOnly ? event.target.value.replace(/[^0-9]/g, "") : event.target.value)} onClick={(event) => event.currentTarget.select()} onBlur={commit} onKeyDown={(event) => {
+    return <input {...props} ref={inputRef} type="text" inputMode={allowsNegative ? "text" : digitsOnly || integerOnly || step >= 1 ? "numeric" : "decimal"} pattern={digitsOnly ? "[0-9]*" : allowsNegative ? "-?[0-9]*[.]?[0-9]*" : undefined} value={draft} onChange={(event) => setDraft(digitsOnly ? event.target.value.replace(/[^0-9]/g, "") : event.target.value)} onClick={(event) => event.currentTarget.select()} onBlur={commit} onKeyDown={(event) => {
         if ((digitsOnly && event.key.length === 1 && !/[0-9]/.test(event.key)) || (integerOnly && [".", ",", "e", "E"].includes(event.key))) {
             event.preventDefault();
             return;
@@ -927,11 +928,9 @@ function ActionTargetControls({ entry, definition, selectableTypes, disabled, on
     if (mode === "coordinates") {
         return <div>
             {modeControl}
-            {legacy && <p className="code-inspector-note">Top-left origin · X positive right · Y positive down · 0 to 1200.</p>}
-            {!legacy && <p className="code-inspector-note">Centered coordinates · X positive right · Y positive up · −600 to +600.</p>}
             <div className="grid grid-cols-2 gap-2">
-                <label className="code-inspector-field"><span>X COORDINATE · RIGHT+</span><DeferredNumberInput disabled={disabled} min={limits.minimum} max={limits.maximum} value={entry.targetX ?? center} fallback={center} aria-label={`Target X coordinate${legacy ? ", top-left origin with positive values to the right" : ", centered with positive values to the right"}`} onCommit={(targetX) => onChange({ ...entry, targetX })} /></label>
-                <label className="code-inspector-field"><span>Y COORDINATE{legacy ? " · DOWN+" : " · UP+"}</span><DeferredNumberInput disabled={disabled} min={limits.minimum} max={limits.maximum} value={entry.targetY ?? center} fallback={center} aria-label={`Target Y coordinate${legacy ? ", top-left origin with positive values downward" : ", centered with positive values upward"}`} onCommit={(targetY) => onChange({ ...entry, targetY })} /></label>
+                <label className="code-inspector-field"><span>X</span><DeferredNumberInput disabled={disabled} min={limits.minimum} max={limits.maximum} value={entry.targetX ?? center} fallback={center} aria-label={`Target X coordinate${legacy ? ", top-left origin with positive values to the right" : ", centered with positive values to the right"}`} onCommit={(targetX) => onChange({ ...entry, targetX })} /></label>
+                <label className="code-inspector-field"><span>Y</span><DeferredNumberInput disabled={disabled} min={limits.minimum} max={limits.maximum} value={entry.targetY ?? center} fallback={center} aria-label={`Target Y coordinate${legacy ? ", top-left origin with positive values downward" : ", centered with positive values upward"}`} onCommit={(targetY) => onChange({ ...entry, targetY })} /></label>
             </div>
         </div>;
     }
@@ -939,9 +938,8 @@ function ActionTargetControls({ entry, definition, selectableTypes, disabled, on
         {modeControl}
         <label className="code-inspector-field"><span>TARGET</span><OrderedSelectablePicker disabled={disabled} value={entry.selectable ?? BOT_CODE_SELECTABLES.OPPONENT} selectableTypes={selectableTypes} onChange={(selectable) => onChange({ ...entry, selectable, ...(definition?.movementConfig ? {} : { targetMode: "target" }) })} /></label>
         {!definition?.movementConfig && <div className="grid grid-cols-2 gap-2">
-            <p className="code-inspector-note col-span-2">{legacy ? "Offsets · X positive right · Y positive down · each axis ±1200." : "Offsets · X positive right · Y positive up · each axis ±600."}</p>
-            <label className="code-inspector-field"><span>OFFSET X · RIGHT+</span><DeferredNumberInput disabled={disabled} min={-limits.offsetMagnitude} max={limits.offsetMagnitude} value={entry.targetOffsetX ?? 0} fallback={0} aria-label={`Target X offset${legacy ? ", positive values to the right" : ", centered with positive values to the right"}`} onCommit={(targetOffsetX) => onChange({ ...entry, targetOffsetX })} /></label>
-            <label className="code-inspector-field"><span>OFFSET Y{legacy ? " · DOWN+" : " · UP+"}</span><DeferredNumberInput disabled={disabled} min={-limits.offsetMagnitude} max={limits.offsetMagnitude} value={entry.targetOffsetY ?? 0} fallback={0} aria-label={`Target Y offset${legacy ? ", positive values downward" : ", centered with positive values upward"}`} onCommit={(targetOffsetY) => onChange({ ...entry, targetOffsetY })} /></label>
+            <label className="code-inspector-field"><span>X OFFSET</span><DeferredNumberInput disabled={disabled} min={-limits.offsetMagnitude} max={limits.offsetMagnitude} value={entry.targetOffsetX ?? 0} fallback={0} aria-label={`Target X offset${legacy ? ", positive values to the right" : ", centered with positive values to the right"}`} onCommit={(targetOffsetX) => onChange({ ...entry, targetOffsetX })} /></label>
+            <label className="code-inspector-field"><span>Y OFFSET</span><DeferredNumberInput disabled={disabled} min={-limits.offsetMagnitude} max={limits.offsetMagnitude} value={entry.targetOffsetY ?? 0} fallback={0} aria-label={`Target Y offset${legacy ? ", positive values downward" : ", centered with positive values upward"}`} onCommit={(targetOffsetY) => onChange({ ...entry, targetOffsetY })} /></label>
         </div>}
     </div>;
 }
@@ -981,11 +979,9 @@ function ConditionTargetControls({ condition, definition, selectableTypes, defau
     if (mode === TARGET_MODES.COORDINATES) {
         return <div>
             {modeControl}
-            {legacy && <p className="code-inspector-note">Top-left origin · X positive right · Y positive down · 0 to 1200.</p>}
-            {!legacy && <p className="code-inspector-note">Centered coordinates · X positive right · Y positive up · −600 to +600.</p>}
             <div className="grid grid-cols-2 gap-2">
-                <label className="code-inspector-field"><span>X COORDINATE · RIGHT+</span><DeferredNumberInput disabled={disabled} min={limits.minimum} max={limits.maximum} value={condition.targetX ?? center} fallback={center} aria-label={`Target X coordinate${legacy ? ", top-left origin with positive values to the right" : ", centered with positive values to the right"}`} onCommit={(targetX) => onChange({ targetX })} /></label>
-                <label className="code-inspector-field"><span>Y COORDINATE{legacy ? " · DOWN+" : " · UP+"}</span><DeferredNumberInput disabled={disabled} min={limits.minimum} max={limits.maximum} value={condition.targetY ?? center} fallback={center} aria-label={`Target Y coordinate${legacy ? ", top-left origin with positive values downward" : ", centered with positive values upward"}`} onCommit={(targetY) => onChange({ targetY })} /></label>
+                <label className="code-inspector-field"><span>X</span><DeferredNumberInput disabled={disabled} min={limits.minimum} max={limits.maximum} value={condition.targetX ?? center} fallback={center} aria-label={`Target X coordinate${legacy ? ", top-left origin with positive values to the right" : ", centered with positive values to the right"}`} onCommit={(targetX) => onChange({ targetX })} /></label>
+                <label className="code-inspector-field"><span>Y</span><DeferredNumberInput disabled={disabled} min={limits.minimum} max={limits.maximum} value={condition.targetY ?? center} fallback={center} aria-label={`Target Y coordinate${legacy ? ", top-left origin with positive values downward" : ", centered with positive values upward"}`} onCommit={(targetY) => onChange({ targetY })} /></label>
             </div>
         </div>;
     }

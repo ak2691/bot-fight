@@ -387,8 +387,14 @@ test("action target inspectors switch to coordinates and preserve target offsets
     assert.match(source, /entry\?\.movementMode === "coordinates" \? "coordinates" : "target"/);
     assert.match(source, /function ActionTargetControls/);
     assert.match(source, /<option value="coordinates">\{definition\?\.angleTarget \? "Absolute coordinates" : "Relative to coordinates"\}<\/option>/);
-    assert.match(source, /X COORDINATE/);
-    assert.match(source, /Y COORDINATE/);
+    assert.match(source, /<span>X<\/span><DeferredNumberInput/);
+    assert.match(source, /<span>Y<\/span><DeferredNumberInput/);
+    assert.match(source, /<span>X OFFSET<\/span><DeferredNumberInput/);
+    assert.match(source, /<span>Y OFFSET<\/span><DeferredNumberInput/);
+    assert.doesNotMatch(source, /Top-left origin · X positive right/);
+    assert.doesNotMatch(source, /Centered coordinates · X positive right/);
+    assert.doesNotMatch(source, /X COORDINATE · RIGHT\+/);
+    assert.doesNotMatch(source, /Y COORDINATE/);
     assert.match(source, /targetOffsetX/);
     assert.match(source, /targetOffsetY/);
     assert.match(source, /formatCoordinateTargetLabel/);
@@ -567,7 +573,9 @@ test("raw number inputs accept digits only and retain the original caret present
     const css = readFileSync(CSS_PATH, "utf8");
     const numberInput = readFileSync(NODES_PATH, "utf8");
 
-    assert.match(numberInput, /pattern=\{digitsOnly \? "\[0-9\]\*" : undefined\}/);
+    assert.match(numberInput, /const allowsNegative = Number\(min\) < 0;/);
+    assert.match(numberInput, /inputMode=\{allowsNegative \? "text"/);
+    assert.match(numberInput, /pattern=\{digitsOnly \? "\[0-9\]\*" : allowsNegative \? "-\?\[0-9\]\*\[\.\]\?\[0-9\]\*" : undefined\}/);
     assert.match(numberInput, /digitsOnly \? event\.target\.value\.replace\(\/\[\^0-9\]\/g, ""\)/);
     assert.match(numberInput, /digitsOnly && event\.key\.length === 1 && !\/\[0-9\]\/\.test\(event\.key\)/);
     assert.match(source, /<DeferredNumberInput digitsOnly=\{integerNumber && !signedNumber\} integerOnly=\{integerNumber\} data-node-drag-ignore="true" aria-label=\{`Input \$\{operand\} number`\}/);

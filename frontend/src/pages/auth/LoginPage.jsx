@@ -3,6 +3,7 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/auth-context";
 import { apiUrl } from "../../config/api";
 import { passwordError, userFacingAuthError, usernameError } from "../../auth/validation";
+import { isServerUnavailable, LOGIN_SERVER_DOWN_MESSAGE } from "../../auth/serverError.js";
 import AuthLayout from "./AuthLayout";
 import { useDialogFocus } from "../../components/useDialogFocus.js";
 import googleIconUrl from "../../assets/googleicon.png";
@@ -10,7 +11,7 @@ import googleIconUrl from "../../assets/googleicon.png";
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 export default function LoginPage() {
-    const { isAuthenticated, isLoading, login, playAsGuest, linkGoogleAccount, completeGoogleUsername } = useAuth();
+    const { authError, isAuthenticated, isLoading, login, playAsGuest, linkGoogleAccount, completeGoogleUsername } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [isPasswordVisible, setIsPasswordVisible] = useState(false);
@@ -18,6 +19,7 @@ export default function LoginPage() {
     const [formError, setFormError] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isGuestSubmitting, setIsGuestSubmitting] = useState(false);
+    const [requestServerError, setRequestServerError] = useState(false);
     const navigate = useNavigate();
     const location = useLocation();
     const googleStatus = new URLSearchParams(location.search).get("google");
@@ -44,6 +46,7 @@ export default function LoginPage() {
         event.preventDefault();
         setFieldErrors({});
         setFormError(null);
+        setRequestServerError(false);
         const nextErrors = {};
 
         if (!EMAIL_PATTERN.test(email.trim())) {
@@ -67,7 +70,9 @@ export default function LoginPage() {
             }
             navigate(location.state?.from?.pathname ?? "/home", { replace: true });
         } catch (err) {
-            setFormError(userFacingAuthError(err, "Login could not be completed. Check your details and try again."));
+            const serverUnavailable = isServerUnavailable(err);
+            setRequestServerError(serverUnavailable);
+            setFormError(serverUnavailable ? null : userFacingAuthError(err, "Login could not be completed. Check your details and try again."));
         } finally {
             setIsSubmitting(false);
         }
@@ -76,6 +81,7 @@ export default function LoginPage() {
     const handleUsernameSubmit = async (event) => {
         event.preventDefault();
         setUsernameErrorMessage(null);
+        setRequestServerError(false);
         const validationError = usernameError(googleUsername);
         if (validationError) {
             setUsernameErrorMessage(validationError);
@@ -87,7 +93,9 @@ export default function LoginPage() {
             await completeGoogleUsername({ username: googleUsername.trim() });
             navigate("/home", { replace: true });
         } catch (err) {
-            setUsernameErrorMessage(userFacingAuthError(err, "That username could not be saved. Choose another and try again."));
+            const serverUnavailable = isServerUnavailable(err);
+            setRequestServerError(serverUnavailable);
+            setUsernameErrorMessage(serverUnavailable ? LOGIN_SERVER_DOWN_MESSAGE : userFacingAuthError(err, "That username could not be saved. Choose another and try again."));
         } finally {
             setIsUsernameSubmitting(false);
         }
@@ -95,12 +103,15 @@ export default function LoginPage() {
 
     const handlePlayAsGuest = async () => {
         setFormError(null);
+        setRequestServerError(false);
         setIsGuestSubmitting(true);
         try {
             await playAsGuest();
             navigate("/home", { replace: true });
         } catch (err) {
-            setFormError(userFacingAuthError(err, "Guest mode could not be started. Try again."));
+            const serverUnavailable = isServerUnavailable(err);
+            setRequestServerError(serverUnavailable);
+            setFormError(serverUnavailable ? null : userFacingAuthError(err, "Guest mode could not be started. Try again."));
         } finally {
             setIsGuestSubmitting(false);
         }
@@ -125,6 +136,11 @@ export default function LoginPage() {
             showcase
             footer={<Link className="auth-switch-link flex min-h-12 w-full items-center justify-center rounded-lg border border-cyan-500/40 bg-cyan-950/30 px-3 py-3 text-center text-base font-semibold hover:border-cyan-300 hover:bg-cyan-900/40" to="/register">No account yet? Sign up!</Link>}
         >
+                    {(isServerUnavailable(authError) || requestServerError) && (
+                        <p className="mb-4 rounded border border-amber-500/60 bg-amber-950/40 px-3 py-3 text-sm font-semibold text-amber-100" role="alert">
+                            {LOGIN_SERVER_DOWN_MESSAGE}
+                        </p>
+                    )}
                     {googleLinkRequired && (
                         <div className="mb-4 rounded border border-cyan-700/70 bg-cyan-950/30 px-3 py-3 text-sm text-cyan-100">
                             This Google account matches an existing Bot Fight account. Enter that account's email and password to link Google and sign in.
