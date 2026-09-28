@@ -140,7 +140,11 @@ export default function TutorialGuide({ lessonId, minimized: minimizedProp = nul
                     onScroll={(event) => { descriptionScrollTopRef.current = event.currentTarget.scrollTop; }}
                     className="tutorial-guide-content p-3.5"
                 >
-                    {currentParagraph != null && <LessonDescription description={[currentParagraph]} compact />}
+                    {currentParagraph != null && <LessonDescription
+                        description={[currentParagraph]}
+                        visuals={lesson.visuals?.[visiblePageIndex] ? { 0: lesson.visuals[visiblePageIndex] } : null}
+                        compact
+                    />}
                 </div>
             </aside>
             <div className="tutorial-guide-navigation" role="group" aria-label={`Navigate ${lesson.title} pages`}>

@@ -17,9 +17,11 @@ import {
     normalizeConditions,
     normalizeRoots,
 } from "../../gameArena/botlogic/code/BotCode.js";
+import { BOT_LOGIC_TREE_V1 } from "../../gameArena/botlogic/code/configuration/constants.js";
 import { createEditorNodeId, normalizePriority } from "../../gameArena/botlogic/code/configuration/identifiers.js";
 import { DEFAULT_BOT_CONFIGURATION_ID } from "../../gameArena/gameconfig/CombatLoadouts.js";
 import { TreeLogicBoard } from "../../gameArena/coding/LogicBoard.jsx";
+import AddIcon from "../../gameArena/coding/controls/AddIcon.jsx";
 import CustomVariablesModal from "../../gameArena/coding/modals/CustomVariablesModal.jsx";
 import {
     addGraphAction,
@@ -130,7 +132,15 @@ export function normalizePuzzleLogic(configuration, options = {}) {
         };
     });
     return sanitizeConfigurationConditions(
-        { ...configuration, customVariables: normalizedCustomVariables, roots },
+        {
+            ...configuration,
+            // Existing puzzles without a discriminator were authored with the
+            // historical top-left/Y-down contract. New puzzles are created
+            // with an explicit v2 above.
+            version: configuration.version ?? BOT_LOGIC_TREE_V1,
+            customVariables: normalizedCustomVariables,
+            roots,
+        },
         options.conditionTypes ?? CONDITION_TYPES,
         options.defaultCondition ?? CONDITION_TYPES[0],
         selectableTypes,
@@ -313,16 +323,16 @@ export default function PuzzleLogicWorkspace({
                     </div>
                     <div className="code-toolbar-controls min-w-0 flex-1 py-0.5">
                         <div className="code-toolbar-tools">
-                            <button type="button" disabled={readOnly || currentConfiguration.roots.length >= MAX_ROOT_NODES} onClick={() => addRoot("win")} className="code-toolbar-button code-toolbar-button-primary"><span aria-hidden="true" className="code-toolbar-icon">＋</span> WIN CONDITION</button>
-                            <button type="button" disabled={readOnly || currentConfiguration.roots.length >= MAX_ROOT_NODES} onClick={() => addRoot("lose")} className="code-toolbar-button code-toolbar-button-primary"><span aria-hidden="true" className="code-toolbar-icon">＋</span> LOSE CONDITION</button>
-                            <button type="button" disabled={readOnly || customVariableCount >= maxCustomVariables} onClick={() => setIsCustomVariablesOpen(true)} className="code-toolbar-button"><span aria-hidden="true" className="code-toolbar-icon">＋</span> CUSTOM VARIABLE</button>
-                            <button type="button" disabled={readOnly || !customVariableCount || currentConfiguration.roots.length >= MAX_ROOT_NODES || actionCount >= MAX_LOGIC_BLOCKS} onClick={() => addRoot("modify")} className="code-toolbar-button"><span aria-hidden="true" className="code-toolbar-icon">＋</span> MODIFY CUSTOM VARIABLE</button>
+                            <button type="button" disabled={readOnly || currentConfiguration.roots.length >= MAX_ROOT_NODES} onClick={() => addRoot("win")} className="code-toolbar-button code-toolbar-button-primary"><AddIcon className="code-toolbar-icon" /> WIN CONDITION</button>
+                            <button type="button" disabled={readOnly || currentConfiguration.roots.length >= MAX_ROOT_NODES} onClick={() => addRoot("lose")} className="code-toolbar-button code-toolbar-button-primary"><AddIcon className="code-toolbar-icon" /> LOSE CONDITION</button>
+                            <button type="button" disabled={readOnly || customVariableCount >= maxCustomVariables} onClick={() => setIsCustomVariablesOpen(true)} className="code-toolbar-button"><AddIcon className="code-toolbar-icon" /> CUSTOM VARIABLE</button>
+                            <button type="button" disabled={readOnly || !customVariableCount || currentConfiguration.roots.length >= MAX_ROOT_NODES || actionCount >= MAX_LOGIC_BLOCKS} onClick={() => addRoot("modify")} className="code-toolbar-button"><AddIcon className="code-toolbar-icon" /> MODIFY CUSTOM VARIABLE</button>
                         </div>
                         <div className="code-toolbar-actions">
                             <div className="code-toolbar-zoom">
                                 <button type="button" aria-label="Zoom out" onClick={() => changeZoom(-0.1)} className="code-toolbar-zoom-button">−</button>
                                 <span className="code-toolbar-zoom-value">{Math.round(zoom * 100)}%</span>
-                                <button type="button" aria-label="Zoom in" onClick={() => changeZoom(0.1)} className="code-toolbar-zoom-button">+</button>
+                                <button type="button" aria-label="Zoom in" onClick={() => changeZoom(0.1)} className="code-toolbar-zoom-button"><AddIcon size="large" /></button>
                             </div>
                             <button type="button" aria-label="Close puzzle configuration" title="Close" onClick={onClose} className="modal-close-button"><span aria-hidden="true">×</span></button>
                         </div>

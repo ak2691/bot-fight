@@ -1215,6 +1215,49 @@ class DuelSimulationServiceTest {
     }
 
     @Test
+    void centeredV2CoordinateTargetsAndEntityConditionsMatchEquivalentV1Brains() throws Exception {
+        JsonNode v1Target = jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","roots":[{"branches":[{"conditions":[{"type":"always"}],
+                  "actions":[{"action":"rotate_toward_enemy","targetMode":"coordinates","targetX":600,"targetY":150}]}]}]}
+                """);
+        JsonNode v2Target = jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v2","roots":[{"branches":[{"conditions":[{"type":"always"}],
+                  "actions":[{"action":"rotate_toward_enemy","targetMode":"coordinates","targetX":0,"targetY":450}]}]}]}
+                """);
+        MatchPlaybackDTO v1Result = service.simulate(request(arena(100),
+                botWithRotation("v1-coordinate", "V1", 1, 600, 600, "custom", v1Target, 180),
+                bot("v1-target", "Target", 2, 900, 900, idleBrain)));
+        MatchPlaybackDTO v2Result = service.simulate(request(arena(100),
+                botWithRotation("v2-coordinate", "V2", 1, 600, 600, "custom", v2Target, 180),
+                bot("v2-target", "Target", 2, 900, 900, idleBrain)));
+
+        assertThat(v2Result.frames().getFirst().bots().getFirst().rotation())
+                .isEqualTo(v1Result.frames().getFirst().bots().getFirst().rotation())
+                .isNotEqualTo(180.0);
+
+        JsonNode v1Coordinates = jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","roots":[{"branches":[{"conditions":[
+                  {"type":"expression","left":"selectable.x","leftSelectable":"my_bot","comparator":"eq","right":{"type":"number","value":600}},
+                  {"type":"expression","left":"selectable.y","leftSelectable":"my_bot","comparator":"eq","right":{"type":"number","value":600}}],
+                  "actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":90}]}]}]}
+                """);
+        JsonNode v2Coordinates = jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v2","roots":[{"branches":[{"conditions":[
+                  {"type":"expression","left":"selectable.x","leftSelectable":"my_bot","comparator":"eq","right":{"type":"number","value":0}},
+                  {"type":"expression","left":"selectable.y","leftSelectable":"my_bot","comparator":"eq","right":{"type":"number","value":0}}],
+                  "actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":90}]}]}]}
+                """);
+        MatchPlaybackDTO v1Conditional = service.simulate(request(arena(100),
+                bot("v1-coordinate-condition", "V1", 1, 600, 600, "custom", v1Coordinates),
+                bot("v1-condition-target", "Target", 2, 900, 900, idleBrain)));
+        MatchPlaybackDTO v2Conditional = service.simulate(request(arena(100),
+                bot("v2-coordinate-condition", "V2", 1, 600, 600, "custom", v2Coordinates),
+                bot("v2-condition-target", "Target", 2, 900, 900, idleBrain)));
+        assertThat(v1Conditional.frames().getFirst().bots().getFirst().x()).isEqualTo(615.0);
+        assertThat(v2Conditional.frames().getFirst().bots().getFirst().x()).isEqualTo(615.0);
+    }
+
+    @Test
     void globalAbilityLockBlocksDifferentAbilitiesDuringActivePhase() {
         JsonNode idle = customBrain("[]", "[]");
         JsonNode fireballFirst = independentRootBrain("[5,9]", """

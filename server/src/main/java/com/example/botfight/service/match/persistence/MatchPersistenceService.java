@@ -48,7 +48,7 @@ public class MatchPersistenceService {
     public static final String COMPLETION_REASON_SERVER_RESTART = "SERVER_RESTART";
     public static final String COMPLETION_REASON_SIMULATION_FAILURE = "SIMULATION_FAILURE";
     private static final String TIMEOUT_CLIENT_BUILD_VERSION = "server-building-timeout-v1";
-    private static final String BRAIN_SCHEMA_VERSION = "bot-logic-tree-v1";
+    private static final String BRAIN_SCHEMA_VERSION = "bot-logic-tree-v2";
     private final MatchRepository matchRepository;
     private final MatchParticipantRepository matchParticipantRepository;
     private final ProfileRepository profileRepository;
@@ -253,7 +253,8 @@ public class MatchPersistenceService {
         fallback.setRequestFingerprint(sha256Hex(fallbackKey + ":" + brainPayload));
         fallback.setSelectedLoadout(player.selectedLoadout());
         fallback.setClientBuildVersion(TIMEOUT_CLIENT_BUILD_VERSION);
-        fallback.setBrainSchemaVersion(BRAIN_SCHEMA_VERSION);
+        fallback.setBrainSchemaVersion(previous == null || previous.getBrainSchemaVersion() == null
+                ? BRAIN_SCHEMA_VERSION : previous.getBrainSchemaVersion());
         fallback.setBrainPayload(brainPayload);
         fallback.setStatus(BotSubmissionStatus.VALIDATED);
         return fallback;

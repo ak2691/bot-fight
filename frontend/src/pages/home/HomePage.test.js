@@ -23,6 +23,14 @@ const authLayoutSource = readFileSync(
     fileURLToPath(new URL("../auth/AuthLayout.jsx", import.meta.url)),
     "utf8",
 );
+const codingPanelSource = readFileSync(
+    fileURLToPath(new URL("../../gameArena/coding/CodingPanel.jsx", import.meta.url)),
+    "utf8",
+);
+const puzzleLogicWorkspaceSource = readFileSync(
+    fileURLToPath(new URL("../puzzles/PuzzleLogicWorkspace.jsx", import.meta.url)),
+    "utf8",
+);
 
 test("the home match action returns to an active match instead of queueing", () => {
     assert.match(source, /function HomePage\(\{ activeMatch = false, activeMatchId = null \}\)/);
@@ -64,6 +72,20 @@ test("home nodes use the tutorial-style root, conditional, and action visuals", 
     assert.doesNotMatch(floatingSource, /GraphConditionNode|GraphActionNode|selectable\.relativeBearing/);
 });
 
+test("the original floating trees retain their compact hard-coded wire layouts", () => {
+    assert.match(floatingSource, /branching:\s*\{\s*paths:\s*\[/);
+    assert.match(floatingSource, /single:\s*\{\s*paths:\s*\[/);
+    assert.match(floatingSource, /layout\.paths\.map/);
+    assert.match(floatingSource, /className="home-floating-nodes" aria-hidden="true"/);
+    assert.doesNotMatch(floatingSource, /graphEdgePath|bot-design\.png|data-ability-scene/);
+    assert.match(stylesSource, /\.home-floating-nodes\s*\{[\s\S]*pointer-events: none/);
+});
+
+test("floating background respects reduced motion and narrow screens", () => {
+    assert.match(stylesSource, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.home-floating-tree \{ animation: none; \}/);
+    assert.match(stylesSource, /@media \(max-width: 800px\)\s*\{\s*\.home-floating-nodes \{ display: none; \}/);
+});
+
 test("home trees show the requested action labels and catalogue icons", () => {
     for (const label of ["Heavy Slash", "Dash In", "Walk Away", "Face Target", "Fireball", "Stun", "Dash Away", "Slash"]) {
         assert.match(floatingSource, new RegExp(`label: "${label}"`));
@@ -102,6 +124,12 @@ test("home tree floating avoids transformed outline resampling", () => {
     );
     assert.match(animationBlock, /from \{ top: -4px; \}[\s\S]*?to \{ top: 8px; \}/);
     assert.doesNotMatch(animationBlock, /transform:/);
+});
+
+test("v1 puzzle compatibility remains silent in the editor", () => {
+    assert.doesNotMatch(codingPanelSource, /LEGACY BRAIN/);
+    assert.doesNotMatch(puzzleLogicWorkspaceSource, /LEGACY PUZZLE LOGIC/);
+    assert.match(puzzleLogicWorkspaceSource, /version: configuration\.version \?\? BOT_LOGIC_TREE_V1/);
 });
 
 test("admin puzzle starting stats give your bot the cyan panel treatment", () => {

@@ -92,6 +92,43 @@ class PuzzleOutcomeEvaluatorTest {
         assertThat(evaluator.status()).isEqualTo("solved");
     }
 
+    @Test
+    void puzzleCoordinateRulesUseTheirVersionAndVersionlessLegacyRulesRemainV1() throws Exception {
+        assertPuzzleCoordinateRule("bot-logic-tree-v1", 150, "solved");
+        assertPuzzleCoordinateRule("bot-logic-tree-v2", 450, "solved");
+        assertPuzzleCoordinateRule(null, 150, "solved");
+    }
+
+    private void assertPuzzleCoordinateRule(String version, int expectedY, String expectedStatus) throws Exception {
+        String versionField = version == null ? "" : "\"version\":\"" + version + "\",";
+        PuzzleOutcomeEvaluator evaluator = new PuzzleOutcomeEvaluator(
+                conditionResolutionService,
+                newActionExecutionService(),
+                jsonMapper.createArrayNode(),
+                jsonMapper.createArrayNode(),
+                jsonMapper.readTree("""
+                        {
+                          %s
+                          "customVariables": [],
+                          "roots": [{"kind":"win","branches":[{"conditions":[
+                            {"type":"expression","left":"selectable.y","leftSelectable":"my_bot","comparator":"eq","right":{"type":"number","value":%d}}
+                          ],"actions":[],"children":[]}]}]
+                        }
+                        """.formatted(versionField, expectedY)),
+                90_000);
+        DuelSimulationService.Bot player = bot(1, 150);
+        player.y = 150;
+
+        boolean stopped = evaluator.afterTick(
+                100,
+                List.of(player, bot(2, 150)),
+                List.of(),
+                new DuelSimulationService.Arena(1200, 1200, 90_000));
+
+        assertThat(stopped).isTrue();
+        assertThat(evaluator.status()).isEqualTo(expectedStatus);
+    }
+
     private DuelSimulationService.Bot bot(int slot, double hp) {
         DuelSimulationService.Bot bot = new DuelSimulationService.Bot();
         bot.slot = slot;

@@ -21,6 +21,7 @@ import com.example.botfight.simulation.ecs.abilities.AbilityEntitySystem;
 import com.example.botfight.simulation.ecs.entities.ArenaBounds;
 import com.example.botfight.simulation.ecs.entities.ArenaEntity;
 import com.example.botfight.simulation.geometry.ArenaUnits;
+import com.example.botfight.simulation.geometry.ArenaCoordinates;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -394,7 +395,10 @@ public class DuelSimulationService {
 
     private Bot prepareStrategy(Bot bot) {
         JsonNode roots = bot.brain != null ? bot.brain.get("roots") : null;
-        bot.normalizedStrategy = normalizeTreeRoots(roots);
+        bot.brainSchemaVersion = bot.brain != null
+                && BotLogicContracts.BRAIN_SCHEMA_V2.equals(textValue(field(bot.brain, "version"), ""))
+                ? BotLogicContracts.BRAIN_SCHEMA_V2 : BotLogicContracts.BRAIN_SCHEMA_V1;
+        bot.normalizedStrategy = normalizeTreeRoots(roots, bot.brainSchemaVersion);
         return bot;
     }
 
@@ -459,7 +463,7 @@ public class DuelSimulationService {
         return selected;
     }
 
-    private static List<TreeRoot> normalizeTreeRoots(JsonNode roots) {
+    private static List<TreeRoot> normalizeTreeRoots(JsonNode roots, String coordinateVersion) {
         if (roots == null || !roots.isArray()) return List.of();
         List<TreeRoot> normalized = new ArrayList<>();
         int[] remainingActions = { MAX_LOGIC_BLOCKS };
@@ -470,19 +474,20 @@ public class DuelSimulationService {
             normalized.add(new TreeRoot(
                     index,
                     clamp(numberValue(field(root, "priority"), index + 1), 1, MAX_ROOTS),
-                    normalizeTreeBranches(field(root, "branches"), remainingActions, remainingConditions)));
+                    normalizeTreeBranches(field(root, "branches"), remainingActions, remainingConditions, coordinateVersion)));
         }
         normalized.sort(Comparator.comparingDouble(TreeRoot::priority));
         return List.copyOf(normalized);
     }
 
-    private static List<TreeBranch> normalizeTreeBranches(JsonNode branches, int[] remainingActions, int[] remainingConditions) {
+    private static List<TreeBranch> normalizeTreeBranches(JsonNode branches, int[] remainingActions, int[] remainingConditions,
+            String coordinateVersion) {
         if (branches == null || !branches.isArray() || remainingConditions[0] <= 0) return List.of();
         List<TreeBranch> normalized = new ArrayList<>();
         for (int index = 0; index < branches.size() && remainingConditions[0] > 0; index += 1) {
             JsonNode branch = branches.get(index);
             List<StrategyBlock> blocks = new ArrayList<>();
-            for (StrategyBlock block : normalizeTreeActions(branch, index)) {
+            for (StrategyBlock block : normalizeTreeActions(branch, index, coordinateVersion)) {
                 if (BotLogicContracts.ACTION_NONE.equals(block.action())) continue;
                 int cost = strategyBlockActionCost(block);
                 if (cost > remainingActions[0]) break;
@@ -490,7 +495,7 @@ public class DuelSimulationService {
                 remainingActions[0] -= cost;
             }
             if (blocks.isEmpty()) {
-                blocks = List.of(new StrategyBlock(index, BotLogicContracts.ACTION_NONE, BotLogicContracts.SELECTABLE_OPPONENT, 0, 0, "target", ARENA_WIDTH_UNITS / 2.0, ARENA_HEIGHT_UNITS / 2.0, null, null, null, null, 1, ConditionResolutionService.normalizeConditions(field(branch, "conditions"))));
+                blocks = List.of(new StrategyBlock(index, BotLogicContracts.ACTION_NONE, BotLogicContracts.SELECTABLE_OPPONENT, 0, 0, "target", ARENA_WIDTH_UNITS / 2.0, ARENA_HEIGHT_UNITS / 2.0, null, null, null, null, 1, ConditionResolutionService.normalizeConditions(field(branch, "conditions"), coordinateVersion)));
             }
             String branchType = index == 0 ? "if" : "else".equals(textValue(field(branch, "branchType"), "if")) ? "else" : "if";
             if ("else".equals(branchType)) {
@@ -505,13 +510,13 @@ public class DuelSimulationService {
                     branchType,
                     clamp(numberValue(field(branch, "priority"), index + 1), 1, MAX_LOGIC_BLOCKS),
                     blocks,
-                    normalizeTreeBranches(field(branch, "children"), remainingActions, remainingConditions)));
+                    normalizeTreeBranches(field(branch, "children"), remainingActions, remainingConditions, coordinateVersion)));
         }
         normalized.sort(Comparator.comparingDouble(TreeBranch::priority));
         return List.copyOf(normalized);
     }
 
-    private static List<StrategyBlock> normalizeTreeActions(JsonNode branch, int index) {
+    private static List<StrategyBlock> normalizeTreeActions(JsonNode branch, int index, String coordinateVersion) {
         JsonNode actions = field(branch, "actions");
         List<StrategyBlock> blocks = new ArrayList<>();
         Set<String> heads = new HashSet<>();
@@ -521,25 +526,37 @@ public class DuelSimulationService {
                 String head = actionHead(action);
                 String headKey = BotLogicContracts.ACTION_VARIABLE.equals(action) ? head + ":" + blocks.size() : head;
                 if (!heads.add(headKey)) continue;
+                double offsetX = offsetCoordinate(field(actionNode, "targetOffsetX"), coordinateVersion);
+                double offsetY = offsetCoordinate(field(actionNode, "targetOffsetY"), coordinateVersion);
+                double targetX = absoluteCoordinate(field(actionNode, "targetX"), coordinateVersion, true);
+                double targetY = absoluteCoordinate(field(actionNode, "targetY"), coordinateVersion, false);
+                if (isCenteredCoordinates(coordinateVersion)) {
+                    ArenaCoordinates.Offset offset = ArenaCoordinates.offsetToInternal(offsetX, offsetY);
+                    ArenaCoordinates.Point target = ArenaCoordinates.toInternal(targetX, targetY);
+                    offsetX = offset.x();
+                    offsetY = offset.y();
+                    targetX = target.x();
+                    targetY = target.y();
+                }
                 blocks.add(new StrategyBlock(index, action,
                 normalizeSelectable(textValue(field(actionNode, "selectable"), BotLogicContracts.SELECTABLE_OPPONENT), BotLogicContracts.SELECTABLE_OPPONENT),
                         BotLogicContracts.ACTION_VARIABLE.equals(action)
                                 ? clamp(variableValue(firstNonNull(field(actionNode, "value"), field(actionNode, "operand"))), -CUSTOM_NUMBER_LIMIT, CUSTOM_NUMBER_LIMIT)
-                                : clamp(numberValue(field(actionNode, "targetOffsetX"), 0), -ARENA_WIDTH_UNITS, ARENA_WIDTH_UNITS),
-                        clamp(numberValue(field(actionNode, "targetOffsetY"), 0), -ARENA_HEIGHT_UNITS, ARENA_HEIGHT_UNITS),
+                                : offsetX,
+                        offsetY,
                         normalizeActionTargetMode(action, actionNode),
-                        clamp(numberValue(field(actionNode, "targetX"), ARENA_WIDTH_UNITS / 2.0), 0, ARENA_WIDTH_UNITS),
-                        clamp(numberValue(field(actionNode, "targetY"), ARENA_HEIGHT_UNITS / 2.0), 0, ARENA_HEIGHT_UNITS),
+                        targetX,
+                        targetY,
                         textValue(field(actionNode, "movementMode"), null),
                         BotLogicContracts.ACTION_VARIABLE.equals(action) ? textValue(field(actionNode, "operation"), "set") : movementDirectionValue(field(actionNode, "movementDirection"), null),
                         BotLogicContracts.ACTION_VARIABLE.equals(action) ? textValue(field(actionNode, "variableId"), "") : movementDirectionValue(field(actionNode, "phaseFacingMode"), null),
                         BotLogicContracts.ACTION_VARIABLE.equals(action) ? firstNonNull(field(actionNode, "operand"), field(actionNode, "terms")) : null,
                         actionPriority(branch),
-                        ConditionResolutionService.normalizeConditions(field(branch, "conditions")),
+                        ConditionResolutionService.normalizeConditions(field(branch, "conditions"), coordinateVersion),
                         clamp(numberValue(field(actionNode, "targetAngle"), 0), BotLogicContracts.ANGLE_MIN, BotLogicContracts.ANGLE_MAX)));
             }
         }
-        if (blocks.isEmpty()) blocks.add(normalizeStrategyBlock(branch, index));
+        if (blocks.isEmpty()) blocks.add(normalizeStrategyBlock(branch, index, coordinateVersion));
         if (blocks.stream().anyMatch(block -> !BotLogicContracts.ACTION_NONE.equals(block.action()))) {
             blocks.removeIf(block -> BotLogicContracts.ACTION_NONE.equals(block.action()));
         }
@@ -578,19 +595,31 @@ public class DuelSimulationService {
         return ability != null && actionExecutionService.selectedAbilityExecutable(player, ability);
     }
 
-    private static StrategyBlock normalizeStrategyBlock(JsonNode block, int index) {
+    private static StrategyBlock normalizeStrategyBlock(JsonNode block, int index, String coordinateVersion) {
         Object action = actionValue(field(block, "action"));
+        double offsetX = offsetCoordinate(field(block, "targetOffsetX"), coordinateVersion);
+        double offsetY = offsetCoordinate(field(block, "targetOffsetY"), coordinateVersion);
+        double targetX = absoluteCoordinate(field(block, "targetX"), coordinateVersion, true);
+        double targetY = absoluteCoordinate(field(block, "targetY"), coordinateVersion, false);
+        if (isCenteredCoordinates(coordinateVersion)) {
+            ArenaCoordinates.Offset offset = ArenaCoordinates.offsetToInternal(offsetX, offsetY);
+            ArenaCoordinates.Point target = ArenaCoordinates.toInternal(targetX, targetY);
+            offsetX = offset.x();
+            offsetY = offset.y();
+            targetX = target.x();
+            targetY = target.y();
+        }
         return new StrategyBlock(
                 index,
                 action,
                 normalizeSelectable(textValue(field(block, "selectable"), BotLogicContracts.SELECTABLE_OPPONENT), BotLogicContracts.SELECTABLE_OPPONENT),
                 BotLogicContracts.ACTION_VARIABLE.equals(action)
                         ? clamp(variableValue(firstNonNull(field(block, "value"), field(block, "operand"))), -CUSTOM_NUMBER_LIMIT, CUSTOM_NUMBER_LIMIT)
-                        : clamp(numberValue(field(block, "targetOffsetX"), 0), -ARENA_WIDTH_UNITS, ARENA_WIDTH_UNITS),
-                clamp(numberValue(field(block, "targetOffsetY"), 0), -ARENA_HEIGHT_UNITS, ARENA_HEIGHT_UNITS),
+                        : offsetX,
+                offsetY,
                 normalizeActionTargetMode(action, block),
-                clamp(numberValue(field(block, "targetX"), ARENA_WIDTH_UNITS / 2.0), 0, ARENA_WIDTH_UNITS),
-                clamp(numberValue(field(block, "targetY"), ARENA_HEIGHT_UNITS / 2.0), 0, ARENA_HEIGHT_UNITS),
+                targetX,
+                targetY,
                 textValue(field(block, "movementMode"), null),
                 movementDirectionValue(field(block, "movementDirection"), null),
                 BotLogicContracts.ACTION_VARIABLE.equals(action)
@@ -598,7 +627,7 @@ public class DuelSimulationService {
                         : movementDirectionValue(field(block, "phaseFacingMode"), null),
                 BotLogicContracts.ACTION_VARIABLE.equals(action) ? firstNonNull(field(block, "operand"), field(block, "terms")) : null,
                 actionPriority(block),
-                ConditionResolutionService.normalizeConditions(field(block, "conditions")),
+                ConditionResolutionService.normalizeConditions(field(block, "conditions"), coordinateVersion),
                 clamp(numberValue(field(block, "targetAngle"), 0), BotLogicContracts.ANGLE_MIN, BotLogicContracts.ANGLE_MAX));
     }
 
@@ -610,6 +639,26 @@ public class DuelSimulationService {
         if (contract.angleTarget() && "angle".equals(requested)) return "angle";
         if ("coordinates".equals(requested)) return "coordinates";
         return "target";
+    }
+
+    private static boolean isCenteredCoordinates(String coordinateVersion) {
+        return BotLogicContracts.BRAIN_SCHEMA_V2.equals(coordinateVersion);
+    }
+
+    private static double absoluteCoordinate(JsonNode node, String coordinateVersion, boolean xAxis) {
+        boolean centered = isCenteredCoordinates(coordinateVersion);
+        double fallback = centered ? 0.0 : (xAxis ? ARENA_WIDTH_UNITS : ARENA_HEIGHT_UNITS) / 2.0;
+        if (node == null || !node.isNumber() || !Double.isFinite(node.asDouble())) return fallback;
+        double minimum = centered ? -ARENA_WIDTH_UNITS / 2.0 : 0.0;
+        double maximum = centered ? ARENA_WIDTH_UNITS / 2.0 : (xAxis ? ARENA_WIDTH_UNITS : ARENA_HEIGHT_UNITS);
+        return BotLogicContracts.truncateToNumberPrecision(Math.max(minimum, Math.min(maximum, node.asDouble())));
+    }
+
+    private static double offsetCoordinate(JsonNode node, String coordinateVersion) {
+        if (node == null || !node.isNumber() || !Double.isFinite(node.asDouble())) return 0.0;
+        double limit = isCenteredCoordinates(coordinateVersion)
+                ? ARENA_WIDTH_UNITS / 2.0 : ARENA_WIDTH_UNITS;
+        return BotLogicContracts.truncateToNumberPrecision(Math.max(-limit, Math.min(limit, node.asDouble())));
     }
 
     private List<ArenaEntity> tickAbilityEntities(
@@ -955,6 +1004,8 @@ public class DuelSimulationService {
         public int size;
         public String combatLoadout;
         public JsonNode brain;
+        /** Coordinate semantics are owned by this bot's submitted brain. */
+        public String brainSchemaVersion = BotLogicContracts.BRAIN_SCHEMA_V1;
         private List<TreeRoot> normalizedStrategy = List.of();
         public Set<Integer> abilities = Set.of();
         public double hp;

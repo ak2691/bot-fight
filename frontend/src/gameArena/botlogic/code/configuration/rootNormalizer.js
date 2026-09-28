@@ -4,7 +4,7 @@ import {
     priorityForNode,
     rootIdForIndex,
 } from "./identifiers.js";
-import { MAX_ROOT_NAME_LENGTH } from "./constants.js";
+import { BOT_LOGIC_TREE_VERSION, MAX_ROOT_NAME_LENGTH } from "./constants.js";
 import { BOT_CODE_SELECTABLES } from "../contracts/BotLogicContracts.js";
 
 export function normalizeRoot(
@@ -14,6 +14,7 @@ export function normalizeRoot(
     customVariables,
     operations,
     normalizedPriority = priorityForNode(root, rootIndex + 1),
+    coordinateVersion = BOT_LOGIC_TREE_VERSION,
 ) {
     const priority = normalizedPriority;
     // Root IDs identify the editor node, not its current execution priority.
@@ -24,7 +25,7 @@ export function normalizeRoot(
         id: rootId,
         name: normalizeRootName(root?.name),
         priority,
-        branches: normalizeBranches(root?.branches, remaining, customVariables, operations, rootId, 1),
+        branches: normalizeBranches(root?.branches, remaining, customVariables, operations, rootId, 1, coordinateVersion),
     };
 }
 
@@ -33,12 +34,12 @@ function normalizeRootName(value) {
     return name || "Root";
 }
 
-function normalizeBranches(branches, remaining, customVariables, operations, rootId, depth) {
+function normalizeBranches(branches, remaining, customVariables, operations, rootId, depth, coordinateVersion) {
     if (!Array.isArray(branches) || remaining.conditions <= 0) return [];
     const normalized = [];
     for (let index = 0; index < branches.length && remaining.conditions > 0; index += 1) {
         const branch = branches[index];
-        const normalizedBlock = operations.normalizeBlock(branch, index, customVariables);
+        const normalizedBlock = operations.normalizeBlock(branch, index, customVariables, coordinateVersion);
         const priority = priorityForNode(branch, index + 1);
         const actions = [];
         for (const entry of normalizedBlock.actions) {
@@ -51,9 +52,9 @@ function normalizeBranches(branches, remaining, customVariables, operations, roo
         if (!actions.length) actions.push({ action: "none", selectable: BOT_CODE_SELECTABLES.OPPONENT });
         const conditions = branch?.branchType === "else"
             ? []
-            : operations.normalizeConditions(branch?.conditions, customVariables).slice(0, remaining.conditions);
+            : operations.normalizeConditions(branch?.conditions, customVariables, undefined, coordinateVersion).slice(0, remaining.conditions);
         remaining.conditions -= conditions.length;
-        const children = normalizeBranches(branch?.children, remaining, customVariables, operations, rootId, depth + 1);
+        const children = normalizeBranches(branch?.children, remaining, customVariables, operations, rootId, depth + 1, coordinateVersion);
         normalized.push({
             ...normalizedBlock,
             id: conditionalIdFor(rootId, depth, index + 1, index + 1),

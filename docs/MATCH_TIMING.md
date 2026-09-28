@@ -78,9 +78,9 @@ but it cannot introduce a wall-clock offset error.
   wire compatibility; its meaning is the active selection phase's deadline.
 - During building-room preparation the client displays "Both players have
   selected, preparing building room." Building then displays the server-owned
-  round duration: 300 seconds (5 minutes) for 1v1, 360 seconds (6 minutes) for
+  round duration: 180 seconds (3 minutes) for 1v1, 300 seconds (5 minutes) for
   2v2, or the custom lobby's configured duration. Custom durations are bounded
-  to 30 seconds through 600 seconds (10 minutes), with 300 seconds as the
+  to 30 seconds through 600 seconds (10 minutes), with a separate 300-second
   default.
   `buildingEndsAt` is two seconds later than the visible deadline so an in-flight
   final submission can still be accepted before the server creates its fallback.

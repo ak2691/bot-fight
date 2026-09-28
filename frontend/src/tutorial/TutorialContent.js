@@ -5,8 +5,8 @@ export const TUTORIAL_INTRODUCTION = Object.freeze([
     "This game is a test of how well you can design a bot. Think of it as creating your own enemy AI, like the ones you see in RPGs. But don't worry, you don't actually have to type anything.",
     "Well, anyway, you get the gist. Let's start with the building blocks.",
     "The code is built through a prioritized behavior tree. A behavior tree is a path that your bot reads and processes for instructions on what to do. There are three types of nodes in this behavior tree: Root Node, Conditional Node, and Action Node.",
-    "A root node is the beginning of a tree; it defines a tree and tells the bot to start here. Each root node has its own priority. Priority 1 is processed first. This matters because bots can only have one ability active at a time. When there is a conflict, the highest-priority root's actions are executed over the lower-priority roots.",
-    "The next node is the conditional node. These are the conditions checked before anything branching from the node is executed. A conditional node contains statements that compare game variables to a value. If a statement is true, the bot continues down that path to look for more nodes to process.",
+    "A root node is the beginning of a tree; it defines a tree and tells the bot to start here. Each root has a priority, with 1 first. Conditions are checked every 100 ms tick, and selected actions take effect on the following tick. The bot can select at most one movement, one rotation, and one ability per tick. Lower-priority roots can fill another action category or provide a fallback when a higher-priority action cannot execute.",
+    "The next node is the conditional node. Conditions decide which actions can be selected. AND requires every condition in a group; OR requires at least one. IF checks first, ELSE-IF checks only when earlier branches are false, and ELSE is the fallback. A true branch continues down its path.",
     "Game variables are variables related to the game state itself. They can include positions, distances, angles, ability cooldowns, HP, and more. You have access to every bot's game-state variables, including your own and your opponent's. You do not have access to the opponent's code, however.",
     "Conditional nodes also have priorities. If Conditional 1 is true and Conditional 2 is true, only conditional 1's path is evaluated and the other conditional nodes in the same depth are ignored. This works like if/else-if statements in programming. To explain what a depth is, it is the level of the tree a condition belongs to. Conditions on the same depth are checked by priority, and the highest-priority conditional that is true is the path the bot will continue down. ",
     "The last node is the action node. These are the actions executed when their corresponding conditional node is true. There are three types of bot actions: Rotation, Movement, and Ability. You cannot have more than one of each type executing at the same time, so a bot can execute at most one rotation, one movement, and one ability at a time.",
@@ -28,10 +28,11 @@ export const TUTORIAL_INTRODUCTION_VISUALS = Object.freeze({
 
 export const TUTORIAL_ENDING = Object.freeze([
     "That was the tutorial! There are still many things to learn, such as what each ability does and what tactics you can come up with. The practice room is a great way to learn about each ability. You can edit the abilities you have with the Edit Loadout button, set up positions, rotations, starting HP, and more. You can also click the ability icons in the stats panel, where the ability timers are shown, to view information about each ability.",
-    "Now, how does an actual match play out? A match is best of three rounds. When you start a match, you get 1 minute to select abilities from a randomly chosen pool for that round. After both players have chosen, you get 5 minutes to program your bot in a 1v1 match or 6 minutes in a 2v2 match.",
+    "Now, how does an actual match play out? A match is best of three rounds. When you start a match, you get 1 minute to select abilities from a randomly chosen pool for that round. After both players have chosen, you get 3 minutes to program your bot in a 1v1 match or 5 minutes in a 2v2 match.",
     "First round: Select 3 abilities from 6 options.\nSecond round: Select 2 abilities from 4 options.\nThird round: Select 1 ability from 3 options.",
     "You can also select a guaranteed offer for each round before a match.",
-    "Want to learn more before you fight? The Ability Catalogue explains what every ability and status effect does. The Conditional Catalogue covers the rest of the conditionals and game-state variables you can use to program your bot.",
+    "Before your first real match, test with the drafted loadout: only drafted or equipped abilities can execute, detached branches do not run, and actions targeting an ability entity are unavailable until that entity exists. In 2v2, check that each selected teammate or opponent is the one you intend. A timeout is a draw; a win requires defeating the opponent through HP damage.",
+    "Want more practice before you fight? Try the puzzles, then use the Ability Catalogue for ability and status effect details and the Conditional Catalogue for game-state variables.",
 ]);
 
 const instructionSteps = (...items) => Object.freeze({
@@ -39,11 +40,12 @@ const instructionSteps = (...items) => Object.freeze({
     items: Object.freeze(items),
 });
 
-const lesson = (id, title, description, scenarioId = id) => Object.freeze({
+const lesson = (id, title, description, scenarioId = id, visuals = null) => Object.freeze({
     id,
     title,
     description: Object.freeze(description),
     ...(scenarioId ? { scenarioId } : {}),
+    ...(visuals ? { visuals: Object.freeze(visuals) } : {}),
 });
 
 export const TUTORIAL_CATEGORIES = Object.freeze([
@@ -62,6 +64,10 @@ export const TUTORIAL_CATEGORIES = Object.freeze([
                     "Click Play to see your code work",
                 ),
             ]),
+            lesson("arena-coordinates", "Measurements", [
+                "The arena is 1200 × 1200 units, centered at (0, 0): X increases right and Y increases up. Bots are 60 units wide. Normal walking is 15 units per 100 ms tick (150 per second), and rotation can turn up to 12° per tick.",
+                "Select Measure in the arena toolbar. Place two points to measure distance.",
+            ], "arena-basics"),
             lesson("retreat", "Retreat", [
                 "Sometimes, the bot gets hit. But that is okay! It is a sturdy bot with 150 HP. One hit is perfectly fine. Even two, or three, or four, okay, maybe not that many.",
                 instructionSteps(
@@ -69,7 +75,7 @@ export const TUTORIAL_CATEGORIES = Object.freeze([
                     "Click the pencil icon and change the variable to Entity HP. Now it should be in the conditional node. Then click Entity HP to open its configuration menu. Change Opponent 1 to My Bot so this variable is now referencing My Bot.",
                     "Set the statement to Entity HP < 100.",
                     "Add an action node under this condition and select Movement: Walk.",
-                    "Click the action node to see its settings. Read through them, and click the i (info icon) to understand how relative direction works.",
+                    "Click the action node to see its settings. Relative movement uses 0° toward the selected target, 90° to its right, 180° away, and 270° to its left. Negative equivalents work too.",
                     "Set your bot to walk away from Opponent 1 when its HP falls below 100.",
                 ),
             ]),
@@ -78,7 +84,7 @@ export const TUTORIAL_CATEGORIES = Object.freeze([
                 "Set up the code on your own. Always use Basic Strike.",
             ]),
             lesson("dash-basics", "Dash", [
-                "Dash is another one of the three base abilities you have. Your base movement speed is 12 units per tick, and each tick is 100 milliseconds. Dash covers 200 units in two ticks. Pretty good!",
+                "Dash is another one of the three base abilities you have. Normal walking is 15 units per tick, and each tick is 100 milliseconds. Dash covers 200 units in two ticks. Pretty good!",
                 "Try it out and experiment. Look through all the configuration settings and think about what you can do with dashing. No, seriously, get comfortable with this.",
             ]),
             lesson("aiming-basics", "Aiming", [
@@ -105,7 +111,7 @@ export const TUTORIAL_CATEGORIES = Object.freeze([
             ]),
             lesson("dont-miss", "Don't Miss", [
                 "Fireball is a projectile, so aim matters. Your bot starts about 300 units away from Opponent 1. Keep your bot pointed close to the target before you shoot.",
-                "Create a root and add a conditional node by clicking + Conditional. Set up this statement: If Relative Bearing Of Target From Entity (Shortest) is less than or equal to 10 degrees, then use Fireball. At this distance, that keeps the Fireball path within the opponent's hitbox.",
+                "Relative Bearing … Shortest is the absolute aim error between the facing entity and its target: near zero means it is aimed at the target. The clockwise and counterclockwise bearing variables preserve which way the turn goes. Create a condition that fires when the shortest bearing is at most 10°; at this distance, that keeps the Fireball path within the opponent's hitbox.",
                 "Add a new root, add a conditional node by clicking + Conditional, set it to ALWAYS, and add the Rotation: Face Target action to start aiming.",
             ]),
             lesson("dodging", "Dodging", [
@@ -172,6 +178,11 @@ export const TUTORIAL_LESSONS = Object.freeze(TUTORIAL_CATEGORIES.flatMap((categ
 export function getTutorialLesson(lessonId) {
     if (!lessonId) return null;
     return TUTORIAL_LESSONS.find((currentLesson) => currentLesson.id === lessonId) ?? null;
+}
+
+export function getTutorialLessonForScenario(scenarioId) {
+    if (!scenarioId) return null;
+    return TUTORIAL_LESSONS.find((currentLesson) => currentLesson.scenarioId === scenarioId) ?? null;
 }
 
 export function practiceLessonsForTutorial() {

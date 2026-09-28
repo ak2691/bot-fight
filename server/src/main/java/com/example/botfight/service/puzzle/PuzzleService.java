@@ -27,6 +27,7 @@ import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import com.example.botfight.simulation.gameconfig.CompactAbilityCode;
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import com.example.botfight.simulation.geometry.ArenaUnits;
+import com.example.botfight.simulation.geometry.ArenaCoordinates;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -76,7 +77,9 @@ public class PuzzleService {
     private static final double BOT_SIZE = 60;
     private static final double BOT_RADIUS = BOT_SIZE / 2;
     private static final double BASE_BOT_HP = 150;
-    private static final String PUZZLE_LOGIC_VERSION = "bot-logic-tree-v1";
+    private static final String PUZZLE_LOGIC_V1 = BotLogicContracts.BRAIN_SCHEMA_V1;
+    private static final String PUZZLE_LOGIC_V2 = BotLogicContracts.BRAIN_SCHEMA_V2;
+    public static final String PUZZLE_COORDINATE_SYSTEM_VERSION = "centered-y-up-v1";
     private static final String PUZZLE_VARIABLE_PREFIX = "custom.puzzle.";
 
     private final PuzzleRepository puzzleRepository;
@@ -396,8 +399,9 @@ public class PuzzleService {
         request.setTeamNumber(bot.teamNumber());
         request.setSlot(bot.slot());
         request.setLoadout(bot.loadout());
-        request.setStartX(bot.startX());
-        request.setStartY(bot.startY());
+        ArenaCoordinates.Point publicStart = ArenaCoordinates.toPublic(bot.startX(), bot.startY());
+        request.setStartX(publicStart.x());
+        request.setStartY(publicStart.y());
         request.setRotation(bot.rotation());
         request.setStartHp(bot.startHp());
         request.setBrain(brain == null ? null : brain.deepCopy());
@@ -406,6 +410,9 @@ public class PuzzleService {
 
     private ValidatedPuzzle validate(PuzzleSaveRequestDTO request) {
         List<String> errors = new ArrayList<>();
+        if (request == null || !PUZZLE_COORDINATE_SYSTEM_VERSION.equals(request.getCoordinateSystemVersion())) {
+            errors.add("coordinateSystemVersion must be " + PUZZLE_COORDINATE_SYSTEM_VERSION);
+        }
         String name = request == null || request.getName() == null ? "" : request.getName().trim();
         if (name.isBlank()) errors.add("name is required");
         if (name.length() > MAX_NAME_LENGTH) errors.add("name cannot exceed " + MAX_NAME_LENGTH + " characters");
@@ -442,12 +449,14 @@ public class PuzzleService {
         int boundedPlayerTeamSize = boundedTeamSize(playerTeamSize);
         int boundedOpponentTeamSize = boundedTeamSize(opponentTeamSize);
 
+        JsonNode logicConfiguration = request == null ? null : request.getLogicConfiguration();
+        String coordinateVersion = logicConfiguration == null || !logicConfiguration.isObject()
+                ? PUZZLE_LOGIC_V1 : logicConfiguration.path("version").asText(PUZZLE_LOGIC_V1);
         JsonNode winConditions = arrayOrEmpty(request == null ? null : request.getWinConditions(), "winConditions", errors);
         JsonNode loseConditions = arrayOrEmpty(request == null ? null : request.getLoseConditions(), "loseConditions", errors);
         if (winConditions.isArray() && winConditions.isEmpty()) errors.add("winConditions must contain at least one condition");
-        validateConditionArray(winConditions, "winConditions", errors);
-        validateConditionArray(loseConditions, "loseConditions", errors);
-        JsonNode logicConfiguration = request == null ? null : request.getLogicConfiguration();
+        validateConditionArray(winConditions, "winConditions", errors, coordinateVersion);
+        validateConditionArray(loseConditions, "loseConditions", errors, coordinateVersion);
         if (logicConfiguration == null || logicConfiguration.isNull()) {
             errors.add("logicConfiguration must be an object");
         } else {
@@ -591,8 +600,9 @@ public class PuzzleService {
             errors.add("logicConfiguration must be an object");
             return;
         }
-        if (!PUZZLE_LOGIC_VERSION.equals(configuration.path("version").asText(""))) {
-            errors.add("logicConfiguration.version must be " + PUZZLE_LOGIC_VERSION);
+        String logicVersion = configuration.path("version").asText("");
+        if (!PUZZLE_LOGIC_V1.equals(logicVersion) && !PUZZLE_LOGIC_V2.equals(logicVersion)) {
+            errors.add("logicConfiguration.version must be " + PUZZLE_LOGIC_V1 + " or " + PUZZLE_LOGIC_V2);
         }
         try {
             if (jsonMapper.writeValueAsString(configuration).getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_PUZZLE_LOGIC_JSON_BYTES) {
@@ -695,21 +705,23 @@ public class PuzzleService {
         if (loadout.isBlank() || loadout.length() > 40) errors.add(path + ".loadout must be between 1 and 40 characters");
         if (!validLoadoutEncoding(loadout)) errors.add(path + ".loadout is not a supported loadout encoding");
 
-        double defaultX = ARENA_WIDTH / 2;
-        double defaultY = role == PuzzleBotRole.PLAYER
-                ? ARENA_HEIGHT - ArenaUnits.SPAWN_EDGE_MARGIN
-                : ArenaUnits.SPAWN_EDGE_MARGIN;
+        double defaultX = 0;
+        double defaultY = role == PuzzleBotRole.PLAYER ? -450 : 450;
         double defaultRotation = role == PuzzleBotRole.PLAYER ? 0 : 180;
         double defaultHp = BASE_BOT_HP;
         double startX = valueOrDefault(request == null ? null : request.getStartX(), defaultX);
         double startY = valueOrDefault(request == null ? null : request.getStartY(), defaultY);
         double rotation = valueOrDefault(request == null ? null : request.getRotation(), defaultRotation);
         double startHp = valueOrDefault(request == null ? null : request.getStartHp(), defaultHp);
-        if (!Double.isFinite(startX) || startX < BOT_RADIUS || startX > ARENA_WIDTH - BOT_RADIUS) {
-            errors.add(path + ".startX must be from " + (int) BOT_RADIUS + " to " + (int) (ARENA_WIDTH - BOT_RADIUS));
+        if (!ArenaCoordinates.isPublicBotCenterCoordinate(startX)) {
+            errors.add(path + ".startX must be a finite coordinate from "
+                    + (int) ArenaCoordinates.PUBLIC_BOT_CENTER_MIN + " to "
+                    + (int) ArenaCoordinates.PUBLIC_BOT_CENTER_MAX);
         }
-        if (!Double.isFinite(startY) || startY < BOT_RADIUS || startY > ARENA_HEIGHT - BOT_RADIUS) {
-            errors.add(path + ".startY must be from " + (int) BOT_RADIUS + " to " + (int) (ARENA_HEIGHT - BOT_RADIUS));
+        if (!ArenaCoordinates.isPublicBotCenterCoordinate(startY)) {
+            errors.add(path + ".startY must be a finite coordinate from "
+                    + (int) ArenaCoordinates.PUBLIC_BOT_CENTER_MIN + " to "
+                    + (int) ArenaCoordinates.PUBLIC_BOT_CENTER_MAX);
         }
         if (!Double.isFinite(rotation) || rotation < -360 || rotation > 360) errors.add(path + ".rotation must be from -360 to 360");
         if (!Double.isFinite(startHp) || startHp < 1 || startHp > BASE_BOT_HP) errors.add(path + ".startHp must be from 1 to " + (int) BASE_BOT_HP);
@@ -731,7 +743,8 @@ public class PuzzleService {
             if (variables > maxCustomVariables) errors.add(path + ".brain uses " + variables + " custom variables; puzzle allows " + maxCustomVariables);
             if (role == PuzzleBotRole.PLAYER) rejectPuzzleVariableNamespace(brain, path, errors);
         }
-        return new ValidatedBot(0, 0, role, loadout, startX, startY, rotation, startHp, brain);
+        ArenaCoordinates.Point internalStart = ArenaCoordinates.toInternal(startX, startY);
+        return new ValidatedBot(0, 0, role, loadout, internalStart.x(), internalStart.y(), rotation, startHp, brain);
     }
 
     private void rejectPuzzleVariableNamespace(JsonNode brain, String path, List<String> errors) {
@@ -844,6 +857,7 @@ public class PuzzleService {
 
     private PuzzleAdminResponseDTO toAdminResponse(Puzzle puzzle) {
         PuzzleAdminResponseDTO response = new PuzzleAdminResponseDTO();
+        response.setCoordinateSystemVersion(PUZZLE_COORDINATE_SYSTEM_VERSION);
         response.setId(puzzle.getId());
         response.setPuzzleNumber(puzzle.getPuzzleNumber());
         response.setName(puzzle.getName());
@@ -900,6 +914,7 @@ public class PuzzleService {
 
     private PuzzlePlayResponseDTO toPlayResponse(CachedPuzzle puzzle, boolean solved) {
         PuzzlePlayResponseDTO response = new PuzzlePlayResponseDTO();
+        response.setCoordinateSystemVersion(PUZZLE_COORDINATE_SYSTEM_VERSION);
         response.setPuzzleNumber(puzzle.puzzleNumber());
         response.setSolved(solved);
         response.setName(puzzle.name());
@@ -926,8 +941,9 @@ public class PuzzleService {
         response.setTeamNumber(bot.teamNumber());
         response.setSlot(bot.slot());
         response.setLoadout(bot.loadout());
-        response.setStartX(bot.startX());
-        response.setStartY(bot.startY());
+        ArenaCoordinates.Point publicStart = ArenaCoordinates.toPublic(bot.startX(), bot.startY());
+        response.setStartX(publicStart.x());
+        response.setStartY(publicStart.y());
         response.setRotation(bot.rotation());
         response.setStartHp(bot.startHp());
         response.setBrain(bot.brain() == null ? null : bot.brain().deepCopy());
@@ -941,8 +957,9 @@ public class PuzzleService {
         response.setTeamNumber(bot.getTeamNumber());
         response.setSlot(bot.getSlot());
         response.setLoadout(bot.getLoadout());
-        response.setStartX(bot.getStartX());
-        response.setStartY(bot.getStartY());
+        ArenaCoordinates.Point publicStart = ArenaCoordinates.toPublic(bot.getStartX(), bot.getStartY());
+        response.setStartX(publicStart.x());
+        response.setStartY(publicStart.y());
         response.setRotation(bot.getRotation());
         response.setStartHp(bot.getStartHp());
         response.setBrain(readJson(bot.getBrainPayload(), jsonMapper.createObjectNode()));
@@ -981,7 +998,7 @@ public class PuzzleService {
         return value;
     }
 
-    private void validateConditionArray(JsonNode value, String field, List<String> errors) {
+    private void validateConditionArray(JsonNode value, String field, List<String> errors, String coordinateVersion) {
         if (value == null || !value.isArray()) return;
         if (value.size() > MAX_CONDITION_COUNT) errors.add(field + " cannot contain more than " + MAX_CONDITION_COUNT + " conditions");
         try {
@@ -994,15 +1011,15 @@ public class PuzzleService {
         for (int index = 0; index < value.size(); index += 1) {
             JsonNode condition = value.get(index);
             if (condition == null || !condition.isObject()) errors.add(field + "[" + index + "] must be an object");
-            else validateCondition(condition, field + "[" + index + "]", errors);
+            else validateCondition(condition, field + "[" + index + "]", errors, coordinateVersion);
         }
     }
 
-    private void validateCondition(JsonNode condition, String path, List<String> errors) {
-        validateBotCondition(condition, path, errors);
+    private void validateCondition(JsonNode condition, String path, List<String> errors, String coordinateVersion) {
+        validateBotCondition(condition, path, errors, coordinateVersion);
     }
 
-    private void validateBotCondition(JsonNode condition, String path, List<String> errors) {
+    private void validateBotCondition(JsonNode condition, String path, List<String> errors, String coordinateVersion) {
         JsonNode typeNode = condition.get("type");
         if (typeNode == null || !typeNode.isTextual()
                 || !Set.of(BotLogicContracts.CONDITION_ALWAYS, BotLogicContracts.CONDITION_EXPRESSION).contains(typeNode.asText())) {
@@ -1033,7 +1050,7 @@ public class PuzzleService {
             errors.add(path + ".comparator is not supported for this variable");
         }
 
-        String targetMode = validateConditionTarget(condition, path, leftContract, errors);
+        String targetMode = validateConditionTarget(condition, path, leftContract, errors, coordinateVersion);
         validateConditionSelectable(condition.get("selectable"), path + ".selectable", null, null, errors);
         validateConditionSelectable(condition.get("selectable1"), path + ".selectable1", null, null, errors);
         validateConditionSelectable(condition.get("selectable2"), path + ".selectable2", null, null, errors);
@@ -1101,7 +1118,8 @@ public class PuzzleService {
             JsonNode condition,
             String path,
             BotLogicContracts.VariableContract variableContract,
-            List<String> errors) {
+            List<String> errors,
+            String coordinateVersion) {
         boolean hasTargetFields = condition.has("targetMode") || condition.has("targetX")
                 || condition.has("targetY") || condition.has("targetAngle");
         if (variableContract == null || variableContract.targetModes().isEmpty()) {
@@ -1125,8 +1143,10 @@ public class PuzzleService {
             return BotLogicContracts.TARGET_MODE_TARGET;
         }
         if (BotLogicContracts.TARGET_MODE_COORDINATES.equals(mode)) {
-            validateConditionCoordinate(condition.get("targetX"), path + ".targetX", ARENA_WIDTH, errors);
-            validateConditionCoordinate(condition.get("targetY"), path + ".targetY", ARENA_HEIGHT, errors);
+            double minimum = PUZZLE_LOGIC_V2.equals(coordinateVersion) ? -ARENA_WIDTH / 2 : 0;
+            double maximum = PUZZLE_LOGIC_V2.equals(coordinateVersion) ? ARENA_WIDTH / 2 : ARENA_WIDTH;
+            validateConditionCoordinate(condition.get("targetX"), path + ".targetX", minimum, maximum, errors);
+            validateConditionCoordinate(condition.get("targetY"), path + ".targetY", minimum, maximum, errors);
         } else if (BotLogicContracts.TARGET_MODE_ANGLE.equals(mode)) {
             JsonNode angle = condition.get("targetAngle");
             if (angle == null || !angle.isNumber() || !Double.isFinite(angle.asDouble())
@@ -1137,10 +1157,10 @@ public class PuzzleService {
         return mode;
     }
 
-    private void validateConditionCoordinate(JsonNode value, String path, double maximum, List<String> errors) {
+    private void validateConditionCoordinate(JsonNode value, String path, double minimum, double maximum, List<String> errors) {
         if (value == null || !value.isNumber() || !Double.isFinite(value.asDouble())
-                || value.asDouble() < 0 || value.asDouble() > maximum) {
-            errors.add(path + " must be a number from 0 to " + (int) maximum);
+                || value.asDouble() < minimum || value.asDouble() > maximum) {
+            errors.add(path + " must be a finite coordinate from " + (int) minimum + " to " + (int) maximum);
         }
     }
 

@@ -14,6 +14,9 @@ import java.util.Set;
  * exposed to the submitted logic tree.
  */
 public final class BotLogicContracts {
+    public static final String BRAIN_SCHEMA_V1 = "bot-logic-tree-v1";
+    public static final String BRAIN_SCHEMA_V2 = "bot-logic-tree-v2";
+    public static final String CURRENT_BRAIN_SCHEMA = BRAIN_SCHEMA_V2;
     public static final String ACTION_NONE = "none";
     public static final String ACTION_VARIABLE = "variable";
     public static final String ACTION_MOVE_WALK = "move_walk";

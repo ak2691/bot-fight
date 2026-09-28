@@ -20,12 +20,12 @@ import {
 import { DEFAULT_BOT_CONFIGURATION_ID } from "../../gameArena/gameconfig/CombatLoadouts.js";
 import {
     BASE_BOT_HP,
-    BOT_CENTER_MAX_X,
-    BOT_CENTER_MAX_Y,
-    BOT_CENTER_MIN_X,
-    BOT_CENTER_MIN_Y,
-    PRACTICE_OPPONENT_START,
-    PRACTICE_PLAYER_START,
+    PUBLIC_BOT_CENTER_MAX_X,
+    PUBLIC_BOT_CENTER_MAX_Y,
+    PUBLIC_BOT_CENTER_MIN_X,
+    PUBLIC_BOT_CENTER_MIN_Y,
+    PRACTICE_OPPONENT_PUBLIC_START,
+    PRACTICE_PLAYER_PUBLIC_START,
 } from "../../gameArena/modelPayloads/arenaConstants.js";
 import { selectableAbilityIdsForLoadouts, selectableTypesForLoadouts } from "../../gameArena/coding/nodes/GraphNodes.jsx";
 import { fetchAdminPuzzle, savePuzzle, updatePuzzle } from "../../puzzles/puzzleApi.js";
@@ -54,7 +54,7 @@ const MAX_CUSTOM_VARIABLES = 100;
 
 function defaultPuzzleStart(teamNumber) {
     const isPlayer = Number(teamNumber) === PUZZLE_PLAYER_TEAM;
-    const fallback = isPlayer ? PRACTICE_PLAYER_START : PRACTICE_OPPONENT_START;
+    const fallback = isPlayer ? PRACTICE_PLAYER_PUBLIC_START : PRACTICE_OPPONENT_PUBLIC_START;
     return {
         // New team members begin on the same center line as their team lead.
         // The author can position them independently in the starting-stats
@@ -353,8 +353,8 @@ function normalizeStartingBot(bot, fallback = {}) {
     if (!bot) return bot;
     return {
         ...bot,
-        startX: boundedDecimal(bot.startX, roundToDecimal(fallback.startX, BOT_CENTER_MIN_X), BOT_CENTER_MIN_X, BOT_CENTER_MAX_X),
-        startY: boundedDecimal(bot.startY, roundToDecimal(fallback.startY, BOT_CENTER_MIN_Y), BOT_CENTER_MIN_Y, BOT_CENTER_MAX_Y),
+        startX: boundedDecimal(bot.startX, roundToDecimal(fallback.startX, PUBLIC_BOT_CENTER_MIN_X), PUBLIC_BOT_CENTER_MIN_X, PUBLIC_BOT_CENTER_MAX_X),
+        startY: boundedDecimal(bot.startY, roundToDecimal(fallback.startY, PUBLIC_BOT_CENTER_MIN_Y), PUBLIC_BOT_CENTER_MIN_Y, PUBLIC_BOT_CENTER_MAX_Y),
         rotation: boundedDecimal(bot.rotation, roundToDecimal(fallback.rotation, 0), -360, 360),
         startHp: boundedDecimal(bot.startHp, roundToDecimal(fallback.startHp, BASE_BOT_HP), 1, BASE_BOT_HP),
     };
@@ -502,7 +502,7 @@ function PuzzleStartingStatsEditor({ draft, setDraft, onSave }) {
 
     return (
         <section className="rounded-xl border border-slate-600/70 bg-slate-950/55 p-4">
-            <div className="mb-2 flex items-center justify-between"><h2 className="font-mono text-[10px] font-bold tracking-[.16em] text-cyan-200">STARTING STATS</h2></div>
+            <div className="mb-2 flex items-center justify-between gap-2"><h2 className="font-mono text-[10px] font-bold tracking-[.16em] text-cyan-200">STARTING STATS</h2><span className="font-mono text-[8px] text-slate-500">CENTERED · Y-UP</span></div>
             <div className="code-bot-selector-stack w-full max-w-none">
                 <div className={`code-bot-selector ${tone === "red" ? "is-red" : "is-blue"}`} role="group" aria-label="Select puzzle starting stats">
                     <button type="button" aria-label="Show previous player starting stats" title="Previous player" onClick={() => cycle(-1)} disabled={bots.length < 2} className="code-bot-selector__arrow">‹</button>
@@ -517,8 +517,8 @@ function PuzzleStartingStatsEditor({ draft, setDraft, onSave }) {
                 <p className={tone === "red" ? "text-red-200" : "text-cyan-200"}>{puzzleBotDisplayName(selectedBot)}</p>
                 <div className="mt-2 space-y-2">
                     <div className="grid grid-cols-2 gap-1.5">
-                        <label className="text-[8px] text-slate-500"><span className="block">X</span><EditableNumberInput value={selectedBot.startX} min={BOT_CENTER_MIN_X} max={BOT_CENTER_MAX_X} fallback={fallbackStart.startX} emptyValue={fallbackStart.startX} decimalPlaces={1} ariaLabel={`${puzzleBotDisplayName(selectedBot)} starting X position`} onCommit={(value) => updateSelectedBot("startX", value)} className={`mt-1 h-8 w-full border bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none ${tone === "red" ? "border-red-900/80 focus:border-red-400" : "border-cyan-900/80 focus:border-cyan-400"}`} /></label>
-                        <label className="text-[8px] text-slate-500"><span className="block">Y</span><EditableNumberInput value={selectedBot.startY} min={BOT_CENTER_MIN_Y} max={BOT_CENTER_MAX_Y} fallback={fallbackStart.startY} emptyValue={fallbackStart.startY} decimalPlaces={1} ariaLabel={`${puzzleBotDisplayName(selectedBot)} starting Y position`} onCommit={(value) => updateSelectedBot("startY", value)} className={`mt-1 h-8 w-full border bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none ${tone === "red" ? "border-red-900/80 focus:border-red-400" : "border-cyan-900/80 focus:border-cyan-400"}`} /></label>
+                        <label className="text-[8px] text-slate-500"><span className="block">X · RIGHT+ · −570 to +570</span><EditableNumberInput value={selectedBot.startX} min={PUBLIC_BOT_CENTER_MIN_X} max={PUBLIC_BOT_CENTER_MAX_X} fallback={fallbackStart.startX} emptyValue={fallbackStart.startX} decimalPlaces={1} ariaLabel={`${puzzleBotDisplayName(selectedBot)} starting X coordinate, centered with positive values to the right`} onCommit={(value) => updateSelectedBot("startX", value)} className={`mt-1 h-8 w-full border bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none ${tone === "red" ? "border-red-900/80 focus:border-red-400" : "border-cyan-900/80 focus:border-cyan-400"}`} /></label>
+                        <label className="text-[8px] text-slate-500"><span className="block">Y · UP+ · −570 to +570</span><EditableNumberInput value={selectedBot.startY} min={PUBLIC_BOT_CENTER_MIN_Y} max={PUBLIC_BOT_CENTER_MAX_Y} fallback={fallbackStart.startY} emptyValue={fallbackStart.startY} decimalPlaces={1} ariaLabel={`${puzzleBotDisplayName(selectedBot)} starting Y coordinate, centered with positive values upward`} onCommit={(value) => updateSelectedBot("startY", value)} className={`mt-1 h-8 w-full border bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none ${tone === "red" ? "border-red-900/80 focus:border-red-400" : "border-cyan-900/80 focus:border-cyan-400"}`} /></label>
                     </div>
                     <label className="block text-[8px] text-slate-500"><span className="block">ROTATION</span><EditableNumberInput value={selectedBot.rotation} min={-360} max={360} fallback={fallbackStart.rotation} emptyValue={fallbackStart.rotation} decimalPlaces={1} ariaLabel={`${puzzleBotDisplayName(selectedBot)} starting rotation`} onCommit={(value) => updateSelectedBot("rotation", value)} className={`mt-1 h-8 w-full border bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none ${tone === "red" ? "border-red-900/80 focus:border-red-400" : "border-cyan-900/80 focus:border-cyan-400"}`} /></label>
                     <label className="block text-[8px] text-slate-500"><span className="block">HP</span><EditableNumberInput value={selectedBot.startHp} min={1} max={BASE_BOT_HP} fallback={BASE_BOT_HP} emptyValue={BASE_BOT_HP} decimalPlaces={1} ariaLabel={`${puzzleBotDisplayName(selectedBot)} starting HP`} onCommit={(value) => updateSelectedBot("startHp", value)} className={`mt-1 h-8 w-full border bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none ${tone === "red" ? "border-red-900/80 focus:border-red-400" : "border-cyan-900/80 focus:border-cyan-400"}`} /></label>
@@ -720,6 +720,7 @@ export default function PuzzleBuilderPage() {
                 selectableAbilityIds: conditionTargetAbilityIds,
             }));
             const payload = {
+                coordinateSystemVersion: "centered-y-up-v1",
                 name: draft.name.trim(),
                 description: draft.description.trim(),
                 published: draft.published,

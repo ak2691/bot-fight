@@ -23,7 +23,6 @@ import tools.jackson.databind.json.JsonMapper;
 public class BotSubmissionValidationService {
 
     private static final String VALIDATOR_VERSION = "bot-brain-submission-v1";
-    private static final String BRAIN_SCHEMA_VERSION = "bot-logic-tree-v1";
     private static final int MAX_PHASE_LENGTH = 30;
     private static final int MAX_CLIENT_BUILD_VERSION_LENGTH = 100;
     private static final int MAX_SELECTED_LOADOUT_LENGTH = 40;
@@ -114,11 +113,15 @@ public class BotSubmissionValidationService {
             return;
         }
 
+        String brainVersion = brain.path("version").asText("");
         if (!brain.hasNonNull("version") || !brain.get("version").isTextual()) {
             errors.add("brain.version must be a string");
-        } else if (!BRAIN_SCHEMA_VERSION.equals(brain.get("version").asText())) {
-            errors.add("brain.version must be " + BRAIN_SCHEMA_VERSION);
+        } else if (!BotLogicContracts.BRAIN_SCHEMA_V1.equals(brainVersion)
+                && !BotLogicContracts.BRAIN_SCHEMA_V2.equals(brainVersion)) {
+            errors.add("brain.version must be " + BotLogicContracts.BRAIN_SCHEMA_V1
+                    + " or " + BotLogicContracts.BRAIN_SCHEMA_V2);
         }
+        CoordinateBounds coordinateBounds = coordinateBoundsFor(brainVersion);
         validateLoadout(errors, brain.get("loadout"));
         validateCustomVariables(errors, brain, loadoutSpec);
         validateNodePositions(errors, brain.get("nodePositions"));
@@ -134,7 +137,7 @@ public class BotSubmissionValidationService {
             errors.add("brain.roots must be an array");
             return;
         }
-        validateLogicRoots(errors, roots, loadoutSpec, customVariableTypes, requireExecutableActions);
+        validateLogicRoots(errors, roots, loadoutSpec, customVariableTypes, requireExecutableActions, coordinateBounds);
     }
 
     private void validateNodePositions(List<String> errors, JsonNode positions) {
@@ -436,7 +439,7 @@ public class BotSubmissionValidationService {
     }
 
     private void validateLogicRoots(List<String> errors, JsonNode roots, GameConfig loadoutSpec,
-            Map<String, String> customVariableTypes, boolean requireExecutableActions) {
+            Map<String, String> customVariableTypes, boolean requireExecutableActions, CoordinateBounds coordinateBounds) {
         if (!roots.isArray()) {
             errors.add("brain.roots must be an array");
             return;
@@ -462,7 +465,7 @@ public class BotSubmissionValidationService {
                 continue;
             }
             validateTreeBranches(errors, branches, path + ".branches", loadoutSpec, customVariableTypes,
-                    branchCount, conditionCount, requireExecutableActions);
+                    branchCount, conditionCount, requireExecutableActions, coordinateBounds);
         }
         if (branchCount[0] > MAX_LOGIC_BLOCKS) errors.add("brain tree actions exceed the action node limit");
         if (conditionCount[0] > MAX_TOTAL_CONDITIONS) errors.add("brain tree exceeds the total condition limit");
@@ -470,7 +473,7 @@ public class BotSubmissionValidationService {
 
     private void validateTreeBranches(List<String> errors, JsonNode branches, String path,
             GameConfig loadoutSpec, Map<String, String> customVariableTypes, int[] branchCount,
-            int[] conditionCount, boolean requireExecutableActions) {
+            int[] conditionCount, boolean requireExecutableActions, CoordinateBounds coordinateBounds) {
         for (int index = 0; index < branches.size(); index++) {
             JsonNode branch = branches.get(index);
             String branchPath = path + "[" + index + "]";
@@ -478,7 +481,7 @@ public class BotSubmissionValidationService {
             conditionCount[0] += conditionCount(branch);
             validateTreePriority(errors, branch, branchPath, MAX_LOGIC_BLOCKS);
             validateLogicBlock(errors, branch, branchPath, loadoutSpec, customVariableTypes,
-                    requireExecutableActions);
+                    requireExecutableActions, coordinateBounds);
             String type = branch != null && branch.hasNonNull("branchType") ? branch.get("branchType").asText() : "if";
             if (index == 0 && !"if".equals(type)) errors.add(branchPath + ".branchType must be if for the first sibling");
             if (index > 0 && !"if".equals(type) && !"else".equals(type)) errors.add(branchPath + ".branchType must be if or else");
@@ -487,7 +490,7 @@ public class BotSubmissionValidationService {
             if (children != null) {
                 if (!children.isArray()) errors.add(branchPath + ".children must be an array");
                 else validateTreeBranches(errors, children, branchPath + ".children", loadoutSpec,
-                        customVariableTypes, branchCount, conditionCount, requireExecutableActions);
+                        customVariableTypes, branchCount, conditionCount, requireExecutableActions, coordinateBounds);
             }
         }
     }
@@ -514,13 +517,13 @@ public class BotSubmissionValidationService {
     }
 
     private void validateLogicBlock(List<String> errors, JsonNode block, String path, GameConfig loadoutSpec,
-            Map<String, String> customVariableTypes, boolean requireExecutableActions) {
+            Map<String, String> customVariableTypes, boolean requireExecutableActions, CoordinateBounds coordinateBounds) {
         if (!block.isObject()) {
             errors.add(path + " must be an object");
             return;
         }
         validateSelectable(errors, block.get("selectable"), path + ".selectable");
-        if (requireExecutableActions) validateLogicBlockActions(errors, block, path, loadoutSpec);
+        if (requireExecutableActions) validateLogicBlockActions(errors, block, path, loadoutSpec, coordinateBounds);
         JsonNode conditions = block.get("conditions");
         if (conditions == null || !conditions.isArray()) {
             errors.add(path + ".conditions must be an array");
@@ -528,13 +531,13 @@ public class BotSubmissionValidationService {
             errors.add(path + ".conditions exceeds the condition limit");
         } else {
             for (int index = 0; index < conditions.size(); index++) {
-                validateConditionAllowed(errors, conditions.get(index), path + ".conditions[" + index + "]", loadoutSpec, customVariableTypes);
+                validateConditionAllowed(errors, conditions.get(index), path + ".conditions[" + index + "]", loadoutSpec, customVariableTypes, coordinateBounds);
             }
         }
     }
 
     private void validateLogicBlockActions(List<String> errors, JsonNode block, String path,
-            GameConfig loadoutSpec) {
+            GameConfig loadoutSpec, CoordinateBounds coordinateBounds) {
         JsonNode actions = block.get("actions");
         if (actions != null && actions.isArray() && !actions.isEmpty()) {
             Set<String> heads = new HashSet<>();
@@ -549,10 +552,10 @@ public class BotSubmissionValidationService {
                 JsonNode actionNode = entry.get("action");
                 String action = actionNode.isTextual() ? actionNode.asText() : null;
                 validateActionAllowed(errors, actionNode, actionPath, loadoutSpec);
-                validateActionConfiguration(errors, entry, actionNode, actionPath);
+                validateActionConfiguration(errors, entry, actionNode, actionPath, coordinateBounds);
                 validateSelectable(errors, entry.get("selectable"), actionPath + ".selectable");
-                if (entry.has("targetOffsetX")) validateSignedCoordinate(errors, entry.get("targetOffsetX"), actionPath + ".targetOffsetX", ArenaUnits.WIDTH);
-                if (entry.has("targetOffsetY")) validateSignedCoordinate(errors, entry.get("targetOffsetY"), actionPath + ".targetOffsetY", ArenaUnits.HEIGHT);
+                if (entry.has("targetOffsetX")) validateSignedCoordinate(errors, entry.get("targetOffsetX"), actionPath + ".targetOffsetX", coordinateBounds.offsetMagnitude());
+                if (entry.has("targetOffsetY")) validateSignedCoordinate(errors, entry.get("targetOffsetY"), actionPath + ".targetOffsetY", coordinateBounds.offsetMagnitude());
                 if (actionNode.isIntegralNumber() && BotLogicContracts.actionContract(actionNode.intValue()) != null
                         && BotLogicContracts.actionContract(actionNode.intValue()).locationTarget()) {
                     JsonNode targetModeNode = entry.get("targetMode");
@@ -562,8 +565,8 @@ public class BotSubmissionValidationService {
                     if (!"target".equals(targetMode) && !"coordinates".equals(targetMode)) {
                         errors.add(actionPath + ".targetMode must be target or coordinates");
                     } else if ("coordinates".equals(targetMode)) {
-                        validateCoordinate(errors, entry.get("targetX"), actionPath + ".targetX", ArenaUnits.WIDTH);
-                        validateCoordinate(errors, entry.get("targetY"), actionPath + ".targetY", ArenaUnits.HEIGHT);
+                        validateCoordinate(errors, entry.get("targetX"), actionPath + ".targetX", coordinateBounds);
+                        validateCoordinate(errors, entry.get("targetY"), actionPath + ".targetY", coordinateBounds);
                     }
                 }
                 String head = validationActionHead(action);
@@ -575,9 +578,9 @@ public class BotSubmissionValidationService {
             errors.add(path + ".action must be a movement action string or numeric ability ID");
         } else {
             validateActionAllowed(errors, block.get("action"), path, loadoutSpec);
-            validateActionConfiguration(errors, block, block.get("action"), path);
-            if (block.has("targetOffsetX")) validateSignedCoordinate(errors, block.get("targetOffsetX"), path + ".targetOffsetX", ArenaUnits.WIDTH);
-            if (block.has("targetOffsetY")) validateSignedCoordinate(errors, block.get("targetOffsetY"), path + ".targetOffsetY", ArenaUnits.HEIGHT);
+            validateActionConfiguration(errors, block, block.get("action"), path, coordinateBounds);
+            if (block.has("targetOffsetX")) validateSignedCoordinate(errors, block.get("targetOffsetX"), path + ".targetOffsetX", coordinateBounds.offsetMagnitude());
+            if (block.has("targetOffsetY")) validateSignedCoordinate(errors, block.get("targetOffsetY"), path + ".targetOffsetY", coordinateBounds.offsetMagnitude());
         }
     }
 
@@ -620,7 +623,8 @@ public class BotSubmissionValidationService {
         }
     }
 
-    private void validateConditionAllowed(List<String> errors, JsonNode condition, String path, GameConfig loadoutSpec, Map<String, String> customVariableTypes) {
+    private void validateConditionAllowed(List<String> errors, JsonNode condition, String path, GameConfig loadoutSpec,
+            Map<String, String> customVariableTypes, CoordinateBounds coordinateBounds) {
         if (condition == null || !condition.isObject()) {
             errors.add(path + " must be an object");
             return;
@@ -637,7 +641,7 @@ public class BotSubmissionValidationService {
         validateSelectable(errors, condition.get("leftSelectable"), path + ".leftSelectable");
         validateSelectable(errors, condition.get("rightSelectable"), path + ".rightSelectable");
         if (BotLogicContracts.CONDITION_EXPRESSION.equals(type)) {
-            validateExpressionCondition(errors, condition, path, loadoutSpec, customVariableTypes);
+            validateExpressionCondition(errors, condition, path, loadoutSpec, customVariableTypes, coordinateBounds);
             return;
         }
         if (!BotLogicContracts.CONDITION_ALWAYS.equals(type)) {
@@ -656,20 +660,35 @@ public class BotSubmissionValidationService {
         return BotLogicContracts.isAllowedSelectable(selectable);
     }
 
-    private void validateCoordinate(List<String> errors, JsonNode value, String path, int maximum) {
-        if (value == null || !value.isNumber() || !Double.isFinite(value.asDouble()) || value.asDouble() < 0 || value.asDouble() > maximum) {
-            errors.add(path + " must be a number from 0 to " + maximum);
+    private void validateCoordinate(List<String> errors, JsonNode value, String path, CoordinateBounds bounds) {
+        if (value == null || !value.isNumber() || !Double.isFinite(value.asDouble())
+                || value.asDouble() < bounds.minimum() || value.asDouble() > bounds.maximum()) {
+            errors.add(path + " must be a finite number from " + formatCoordinateBound(bounds.minimum())
+                    + " to " + formatCoordinateBound(bounds.maximum()));
         }
     }
 
-    private void validateSignedCoordinate(List<String> errors, JsonNode value, String path, int magnitude) {
+    private CoordinateBounds coordinateBoundsFor(String brainVersion) {
+        if (BotLogicContracts.BRAIN_SCHEMA_V1.equals(brainVersion)) {
+            return new CoordinateBounds(0, ArenaUnits.WIDTH, ArenaUnits.WIDTH);
+        }
+        return new CoordinateBounds(-ArenaUnits.WIDTH / 2.0, ArenaUnits.WIDTH / 2.0, ArenaUnits.WIDTH / 2.0);
+    }
+
+    private String formatCoordinateBound(double value) {
+        return value == Math.rint(value) ? Long.toString((long) value) : Double.toString(value);
+    }
+
+    private void validateSignedCoordinate(List<String> errors, JsonNode value, String path, double magnitude) {
         if (value == null || !value.isNumber() || !Double.isFinite(value.asDouble())
                 || value.asDouble() < -magnitude || value.asDouble() > magnitude) {
-            errors.add(path + " must be a number from " + (-magnitude) + " to " + magnitude);
+            errors.add(path + " must be a finite number from " + formatCoordinateBound(-magnitude)
+                    + " to " + formatCoordinateBound(magnitude));
         }
     }
 
-    private void validateExpressionCondition(List<String> errors, JsonNode condition, String path, GameConfig loadoutSpec, Map<String, String> customVariableTypes) {
+    private void validateExpressionCondition(List<String> errors, JsonNode condition, String path, GameConfig loadoutSpec,
+            Map<String, String> customVariableTypes, CoordinateBounds coordinateBounds) {
         JsonNode leftNode = condition.get("left");
         if (leftNode == null || !leftNode.isTextual()) {
             errors.add(path + ".left must be a variable id");
@@ -692,7 +711,7 @@ public class BotSubmissionValidationService {
         if ("boolean".equals(valueType) && !BotLogicContracts.booleanComparators().contains(comparator)) {
             errors.add(path + ".comparator is not allowed for boolean variables");
         }
-        String targetMode = validateConditionTarget(errors, condition, path, variableContract);
+        String targetMode = validateConditionTarget(errors, condition, path, variableContract, coordinateBounds);
         if (variableContract != null && variableContract.isPairVariable()) {
             String selectedSelectable1 = condition.has("selectable1")
                     ? condition.path("selectable1").asText(BotLogicContracts.SELECTABLE_MY)
@@ -783,7 +802,8 @@ public class BotSubmissionValidationService {
             List<String> errors,
             JsonNode condition,
             String path,
-            BotLogicContracts.VariableContract variableContract) {
+            BotLogicContracts.VariableContract variableContract,
+            CoordinateBounds coordinateBounds) {
         boolean hasTargetFields = condition.has("targetMode") || condition.has("targetX")
                 || condition.has("targetY") || condition.has("targetAngle");
         if (variableContract == null || variableContract.targetModes().isEmpty()) {
@@ -807,8 +827,8 @@ public class BotSubmissionValidationService {
             return BotLogicContracts.TARGET_MODE_TARGET;
         }
         if (BotLogicContracts.TARGET_MODE_COORDINATES.equals(mode)) {
-            validateCoordinate(errors, condition.get("targetX"), path + ".targetX", ArenaUnits.WIDTH);
-            validateCoordinate(errors, condition.get("targetY"), path + ".targetY", ArenaUnits.HEIGHT);
+            validateCoordinate(errors, condition.get("targetX"), path + ".targetX", coordinateBounds);
+            validateCoordinate(errors, condition.get("targetY"), path + ".targetY", coordinateBounds);
         } else if (BotLogicContracts.TARGET_MODE_ANGLE.equals(mode)) {
             JsonNode angle = condition.get("targetAngle");
             if (angle == null || !angle.isNumber() || !Double.isFinite(angle.asDouble())
@@ -882,7 +902,8 @@ public class BotSubmissionValidationService {
         }
     }
 
-    private void validateActionConfiguration(List<String> errors, JsonNode entry, JsonNode action, String path) {
+    private void validateActionConfiguration(List<String> errors, JsonNode entry, JsonNode action, String path,
+            CoordinateBounds coordinateBounds) {
         Object actionValue = action.isTextual() ? action.asText()
                 : action.isIntegralNumber() && action.canConvertToInt() ? action.intValue() : null;
         BotLogicContracts.ActionContract actionContract = BotLogicContracts.actionContract(actionValue);
@@ -906,8 +927,8 @@ public class BotSubmissionValidationService {
                     : BotLogicContracts.isRelativeDirection(direction);
             if (!allowedDirection) errors.add(path + ".movementDirection is not allowed for its movement mode");
             if ("coordinates".equals(mode)) {
-                validateCoordinate(errors, entry.get("targetX"), path + ".targetX", ArenaUnits.WIDTH);
-                validateCoordinate(errors, entry.get("targetY"), path + ".targetY", ArenaUnits.HEIGHT);
+                validateCoordinate(errors, entry.get("targetX"), path + ".targetX", coordinateBounds);
+                validateCoordinate(errors, entry.get("targetY"), path + ".targetY", coordinateBounds);
             }
         }
         if (actionContract != null && actionContract.coordinateTarget() && !actionContract.movementConfig()) {
@@ -917,8 +938,8 @@ public class BotSubmissionValidationService {
             if (!validMode) {
                 errors.add(path + ".targetMode is not allowed");
             } else if ("coordinates".equals(mode)) {
-                validateCoordinate(errors, entry.get("targetX"), path + ".targetX", ArenaUnits.WIDTH);
-                validateCoordinate(errors, entry.get("targetY"), path + ".targetY", ArenaUnits.HEIGHT);
+                validateCoordinate(errors, entry.get("targetX"), path + ".targetX", coordinateBounds);
+                validateCoordinate(errors, entry.get("targetY"), path + ".targetY", coordinateBounds);
             } else if ("angle".equals(mode)) {
                 JsonNode angle = entry.get("targetAngle");
                 if (angle == null || !angle.isNumber() || !Double.isFinite(angle.asDouble())
@@ -1017,4 +1038,6 @@ public class BotSubmissionValidationService {
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
     }
+
+    private record CoordinateBounds(double minimum, double maximum, double offsetMagnitude) {}
 }

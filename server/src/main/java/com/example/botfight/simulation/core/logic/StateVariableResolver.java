@@ -19,6 +19,7 @@ import com.example.botfight.simulation.core.combat.ActionExecutionService;
 import com.example.botfight.simulation.core.state.BotStateService;
 import com.example.botfight.simulation.ecs.entities.ClosingZoneSystem;
 import com.example.botfight.simulation.gameconfig.ClosingZoneConfig;
+import com.example.botfight.simulation.geometry.ArenaCoordinates;
 import java.util.Map;
 import java.util.function.Function;
 
@@ -39,9 +40,9 @@ final class StateVariableResolver {
             Map.entry(VariableSource.SELECTABLE_HP_NET_CHANGE_LAST_TICK,
                     context -> number(selectableHpNetChange(context.selectableId(), context.selectable()))),
             Map.entry(VariableSource.SELECTABLE_X,
-                    context -> number(context.selectable() == null ? 0.0 : context.selectable().x())),
+                    context -> number(coordinate(context, true))),
             Map.entry(VariableSource.SELECTABLE_Y,
-                    context -> number(context.selectable() == null ? 0.0 : context.selectable().y())),
+                    context -> number(coordinate(context, false))),
             Map.entry(VariableSource.SELECTABLE_HP, context -> number(selectableHp(context.selectableId(), context.selectable()))),
             Map.entry(VariableSource.SELECTABLE_ABSOLUTE_BEARING,
                     context -> number(signedBearing(context.selectable(), context.target()))),
@@ -98,7 +99,7 @@ final class StateVariableResolver {
 
     static StateValue resolve(String variable, String selectableId, Condition condition,
                               Bot player, Bot opponent, java.util.List<Entity> entities, Arena arena,
-                              ActionExecutionService actionExecutionService) {
+                              ActionExecutionService actionExecutionService, String coordinateVersion) {
         VariableContract contract = BotLogicContracts.variableContract(variable);
         if (contract == null || contract.source() == null) return null;
         if (contract.requiresHealthSelectable()
@@ -117,7 +118,7 @@ final class StateVariableResolver {
                 && !BotLogicContracts.selectableMatchesIdentities(selectable2Id, contract.pairSelectableIdentities(1))) return null;
         ResolutionContext context = new ResolutionContext(
                 contract, selectableId, selectable2Id, condition, targetMode, player, opponent, selectable, selectable2, target, entities, arena,
-                actionExecutionService);
+                actionExecutionService, coordinateVersion);
         Function<ResolutionContext, StateValue> resolver = RESOLVERS.get(contract.source());
         return resolver == null ? null : resolver.apply(context);
     }
@@ -126,6 +127,16 @@ final class StateVariableResolver {
         Integer ability = context.condition().ability();
         return ability != null && context.bot() != null
                 && context.actionExecutionService().selectedAbilityReady(context.bot(), ability);
+    }
+
+    private static double coordinate(ResolutionContext context, boolean xAxis) {
+        if (context.selectable() == null) return 0.0;
+        if (!BotLogicContracts.BRAIN_SCHEMA_V2.equals(context.coordinateVersion())) {
+            return xAxis ? context.selectable().x() : context.selectable().y();
+        }
+        ArenaCoordinates.Point point = ArenaCoordinates.toPublic(
+                context.selectable().x(), context.selectable().y());
+        return xAxis ? point.x() : point.y();
     }
 
     private static int selectedAbilityCooldownMs(ResolutionContext context) {
@@ -306,7 +317,8 @@ final class StateVariableResolver {
             Entity target,
             java.util.List<Entity> entities,
             Arena arena,
-            ActionExecutionService actionExecutionService) {
+            ActionExecutionService actionExecutionService,
+            String coordinateVersion) {
         Bot bot() { return selectable instanceof Bot bot ? bot : null; }
 
     }

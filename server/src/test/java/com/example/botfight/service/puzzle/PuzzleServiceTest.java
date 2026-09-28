@@ -21,6 +21,7 @@ import com.example.botfight.repository.PuzzleRepository;
 import com.example.botfight.service.auth.CurrentUserService;
 import com.example.botfight.service.cache.DatabaseLookupCache;
 import com.example.botfight.service.cache.DatabaseLookupCache.CachedPuzzle;
+import com.example.botfight.service.cache.DatabaseLookupCache.CachedPuzzleBot;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.submission.BotSubmissionValidationService;
 import com.example.botfight.simulation.geometry.ArenaUnits;
@@ -120,7 +121,11 @@ class PuzzleServiceTest {
                 jsonMapper.createObjectNode(),
                 jsonMapper.createArrayNode(),
                 jsonMapper.createArrayNode(),
-                List.of());
+                List.of(
+                        new CachedPuzzleBot(UUID.randomUUID(), PuzzleBotRole.PLAYER, 1, 1, "custom:",
+                                600, 1050, 0, 150, jsonMapper.createObjectNode()),
+                        new CachedPuzzleBot(UUID.randomUUID(), PuzzleBotRole.OPPONENT, 2, 1, "custom:",
+                                600, 150, 180, 150, jsonMapper.createObjectNode())));
 
         when(currentUserService.requireCurrentUserId(authentication)).thenReturn(userId);
         when(databaseLookupCache.publishedPuzzle(eq(7L), any())).thenReturn(cachedPuzzle);
@@ -130,10 +135,17 @@ class PuzzleServiceTest {
         var response = service.getPublished(7L, authentication);
 
         assertThat(response.isSolved()).isTrue();
+        assertThat(response.getCoordinateSystemVersion()).isEqualTo("centered-y-up-v1");
+        assertThat(response.getBots()).hasSize(2);
+        assertThat(response.getBots().get(0).getStartX()).isEqualTo(0.0);
+        assertThat(response.getBots().get(0).getStartY()).isEqualTo(-450.0);
+        assertThat(response.getBots().get(1).getStartX()).isEqualTo(0.0);
+        assertThat(response.getBots().get(1).getStartY()).isEqualTo(450.0);
     }
 
     private PuzzleSaveRequestDTO validUpdateRequest() throws Exception {
         PuzzleSaveRequestDTO request = new PuzzleSaveRequestDTO();
+        request.setCoordinateSystemVersion("centered-y-up-v1");
         request.setName("After");
         request.setDescription("New description");
         request.setPublished(false);
@@ -162,8 +174,8 @@ class PuzzleServiceTest {
                 """));
         request.setWinConditions(jsonMapper.readTree("[{\"type\":\"always\"}]"));
         request.setLoseConditions(jsonMapper.createArrayNode());
-        request.setPlayerBot(botRequest(1170, 1050, 90, 140));
-        request.setOpponentBot(botRequest(30, 150, -90, 120));
+        request.setPlayerBot(botRequest(570, -450, 90, 140));
+        request.setOpponentBot(botRequest(-570, 450, -90, 120));
         return request;
     }
 

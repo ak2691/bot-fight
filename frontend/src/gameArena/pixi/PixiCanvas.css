@@ -111,7 +111,7 @@
         grid-column: 3;
     }
 
-    .pixi-combat-layout--fixed.pixi-combat-layout--split .pixi-arena-surface {
+    .pixi-combat-layout--fixed.pixi-combat-layout--split .pixi-arena-column {
         grid-column: 1 / -1;
         grid-row: 2;
     }

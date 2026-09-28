@@ -8,6 +8,7 @@ import { ABILITIES } from "../gameconfig/AbilityRegistry.js";
 import { CLOSING_ZONE_TYPE } from "../gameconfig/ArenaHazardConfig.js";
 import { abilityActiveOpacity, basicHealParticleSpec, combatVisualRemainingMs, healthBarPercent, abilityVisualOpacity, BASIC_HEAL_PARTICLE_COUNT, REPULSOR_BURST_VISUAL_MS, repulsorBurstDiameter, repulsorBurstFrameIndex, repulsorBurstProgress, sweepAngle, visualProgress } from "../gameconfig/visualState.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, BOT_SIZE } from "../modelPayloads/arenaConstants.js";
+import { internalPointToPublic } from "../modelPayloads/arenaCoordinates.js";
 import { toSimulationBotShape } from "../modelPayloads/arenaShapes.js";
 import { interpolatePosition } from "./snapshotInterpolation.js";
 import { activeBotVisual, closingZoneDamageOccurred, entityCaption, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, heavySlashRotation, isBotShape, LOCK_ON_PRESENTATION, lockOnTargetPoint, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, shapeInterpolationMs, shapeWithoutVisualEvent, visualAnimationDescriptorForShape, visualForShape, visualInstanceForShape, visualInstanceIsActive, VISUAL_LIFECYCLES, visualSizeForShape } from "./pixiVisualState.js";
@@ -113,6 +114,7 @@ export default function PixiCanvas({
     selectedId,
     onSelectShape,
     onUpdateShape,
+    onShapeDragEnd = () => { },
     onDeselectAll,
     editable = true,
     placementSide = null,
@@ -140,12 +142,14 @@ export default function PixiCanvas({
     const optionsRef = useRef({});
     const [assetError, setAssetError] = useState(null);
     const [arenaReady, setArenaReady] = useState(false);
+    const [measurementCursor, setMeasurementCursor] = useState(null);
     useEffect(() => {
         optionsRef.current = {
             shapes: presentationShapes,
             selectedId,
             onSelectShape,
             onUpdateShape,
+            onShapeDragEnd,
             onDeselectAll,
             editable,
             placementSide,
@@ -154,13 +158,14 @@ export default function PixiCanvas({
             measurementEnabled,
             measurementPoints,
             onMeasurementPointsChange,
+            onMeasurementCursorChange: setMeasurementCursor,
             hitboxesEnabled,
             allowBotRotation,
             allowLockedBotEditing,
         };
         runtimeRef.current?.setPlaying(isPlaying);
         runtimeRef.current?.syncShapes(presentationShapes);
-    }, [allowBotRotation, allowLockedBotEditing, editable, hitboxesEnabled, isPlaying, lockCamera, measurementEnabled, measurementPoints, onDeselectAll, onMeasurementPointsChange, onSelectShape, onUpdateShape, placementSide, selectedId, presentationShapes]);
+    }, [allowBotRotation, allowLockedBotEditing, editable, hitboxesEnabled, isPlaying, lockCamera, measurementEnabled, measurementPoints, onDeselectAll, onMeasurementPointsChange, onSelectShape, onShapeDragEnd, onUpdateShape, placementSide, selectedId, presentationShapes]);
 
     useEffect(() => {
         let disposed = false;
@@ -227,7 +232,10 @@ export default function PixiCanvas({
         : abilityLayout === "right"
             ? "max-w-[1120px] grid-cols-1 lg:grid-cols-[minmax(0,880px)_220px]"
             : "max-w-[1360px] grid-cols-1 lg:grid-cols-[220px_minmax(0,860px)_220px]";
-
+    const arenaWidth = arenaSize ?? (fillAvailable ? "min(100%, 860px, calc(100svh - 90px))" : "min(100%, 860px, calc(100svh - 140px))");
+    const measurementDistance = measurementEnabled && measurementPoints.length === 2
+        ? Math.hypot(measurementPoints[1].x - measurementPoints[0].x, measurementPoints[1].y - measurementPoints[0].y)
+        : null;
     return (
         <div className={`relative mx-auto grid w-full items-center justify-center gap-3 ${layoutClass}`}>
             {!arenaReady && !assetError && <ArenaLoadingScreen overlay label="Loading arena..." />}
@@ -237,15 +245,33 @@ export default function PixiCanvas({
                 </div>
             )}
             <div
-                className={`pixi-arena-surface relative justify-self-center overflow-hidden rounded-xl border border-border-mid bg-[#0d1117] ${fixedLayout ? "order-2" : "order-1 lg:order-2"}`}
-                style={{
-                    width: arenaSize ?? (fillAvailable ? "min(100%, 860px, calc(100svh - 90px))" : "min(100%, 860px, calc(100svh - 140px))"),
-                    minWidth: fixedLayout ? "400px" : undefined,
-                    aspectRatio: `${ARENA_WIDTH_UNITS} / ${ARENA_HEIGHT_UNITS}`,
-                }}
-                onContextMenu={(event) => event.preventDefault()}
+                className={`pixi-arena-column relative justify-self-center ${fixedLayout ? "order-2" : "order-1 lg:order-2"}`}
+                style={{ width: arenaWidth, minWidth: fixedLayout ? "400px" : undefined }}
             >
+                <div
+                    className="pixi-arena-surface relative w-full overflow-hidden rounded-xl border border-border-mid bg-[#0d1117]"
+                    style={{ aspectRatio: `${ARENA_WIDTH_UNITS} / ${ARENA_HEIGHT_UNITS}` }}
+                    onContextMenu={(event) => event.preventDefault()}
+                >
                 <div ref={hostRef} className="pixi-arena-host absolute inset-0" />
+                {measurementEnabled && (
+                    <output
+                        className="pointer-events-none absolute bottom-3 left-3 z-20 font-mono text-[10px] font-semibold tabular-nums text-cyan-100"
+                        style={{ textShadow: "0 1px 3px rgba(0,0,0,.95)" }}
+                        aria-label="Cursor coordinates"
+                    >
+                        coords: {measurementCursor ? `(${measurementCursor.x}, ${measurementCursor.y})` : "—"}
+                    </output>
+                )}
+                {measurementEnabled && (
+                    <output
+                        className="pointer-events-none absolute bottom-3 right-3 z-20 font-mono text-[10px] font-semibold tabular-nums text-yellow-100"
+                        style={{ textShadow: "0 1px 3px rgba(0,0,0,.95)" }}
+                        aria-label="Distance between selected points"
+                    >
+                        {measurementDistance == null ? "Select two points" : `Distance: ${measurementDistance.toFixed(1)} units`}
+                    </output>
+                )}
                 {assetError && (
                     <div className="absolute inset-0 z-10 bg-[#0d1117]">
                         {isUnsupportedWebGL(assetError) ? (
@@ -269,6 +295,7 @@ export default function PixiCanvas({
                         WHEEL OR PINCH TO ZOOM · DRAG EMPTY SPACE TO PAN{allowBotRotation ? " · SELECT BOT + DRAG ROTATE HANDLE" : ""}
                     </div>
                 )}
+                </div>
             </div>
             <div className={`pixi-opponent-status order-3 min-w-0 space-y-3 ${fixedLayout ? "pixi-side-status" : ""}`}>
                 {abilityLayout === "right"
@@ -326,6 +353,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     let pan = null;
     let measurementSignature = null;
     let measurementHoverPoint = null;
+    let measurementCursorSignature = null;
     const touchPoints = new Map();
     let touchInput = touchInputAvailable();
     let pinch = null;
@@ -792,7 +820,13 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         drawLockOnMarkers(layers.lockOn, lockOnMarkers, botViews, arenaSprites);
         drawPlacementOverlay(overlay, optionsRef.current.placementSide);
         const points = optionsRef.current.measurementPoints ?? [];
-        if (!optionsRef.current.measurementEnabled) measurementHoverPoint = null;
+        if (!optionsRef.current.measurementEnabled) {
+            measurementHoverPoint = null;
+            if (measurementCursorSignature !== null) {
+                measurementCursorSignature = null;
+                optionsRef.current.onMeasurementCursorChange?.(null);
+            }
+        }
         const hoverPoint = measurementHoverPoint;
         const nextMeasurementSignature = JSON.stringify({ points, hoverPoint });
         if (nextMeasurementSignature !== measurementSignature) {
@@ -858,6 +892,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
                 y: clamp(point.y - drag.offsetY, radius, ARENA_HEIGHT_UNITS - radius),
             };
             view.motion = { from: position, to: position, startedAt: presentationClock.current(), durationMs: 0 };
+            drag.lastPosition = position;
             optionsRef.current.onUpdateShape?.(drag.id, position);
         } else if (pan) {
             const scale = camera.scale.x || 1;
@@ -865,10 +900,17 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             updateCamera();
         } else if (optionsRef.current.measurementEnabled) {
             const point = camera.toLocal(event.global);
-            measurementHoverPoint = {
+            const hoverPoint = {
                 x: Math.round(clamp(point.x, 0, ARENA_WIDTH_UNITS)),
                 y: Math.round(clamp(point.y, 0, ARENA_HEIGHT_UNITS)),
             };
+            measurementHoverPoint = hoverPoint;
+            const publicHoverPoint = internalPointToPublic(hoverPoint);
+            const nextCursorSignature = `${publicHoverPoint.x},${publicHoverPoint.y}`;
+            if (nextCursorSignature !== measurementCursorSignature) {
+                measurementCursorSignature = nextCursorSignature;
+                optionsRef.current.onMeasurementCursorChange?.(publicHoverPoint);
+            }
         }
     };
     const endPointer = () => {
@@ -885,6 +927,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
                 view.container.cursor = "grab";
                 view.rotationHandle.cursor = canRotateBot(view.shape) ? "grab" : "default";
             }
+            if (drag.lastPosition) optionsRef.current.onShapeDragEnd?.(drag.id, drag.lastPosition);
         }
         rotationDrag = null;
         drag = null;
@@ -963,6 +1006,8 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     const preventContextMenu = (event) => event.preventDefault();
     const clearMeasurementHover = () => {
         measurementHoverPoint = null;
+        measurementCursorSignature = null;
+        optionsRef.current.onMeasurementCursorChange?.(null);
     };
     app.canvas.addEventListener("wheel", handleWheel, { passive: false });
     app.canvas.addEventListener("pointerdown", handleTouchPointerDown, { passive: false });
@@ -2004,28 +2049,13 @@ function drawMeasurements(layer, points, hoverPoint = null) {
     graphics.eventMode = "none";
     if (points.length === 2) graphics.moveTo(points[0].x, points[0].y).lineTo(points[1].x, points[1].y).stroke({ color: 0x67e8f9, width: 3 });
     points.forEach((point) => graphics.circle(point.x, point.y, 7).fill(0x22d3ee).stroke({ color: COLORS.white, width: 2 }));
-    if (points.length || hoverPoint) layer.addChild(graphics);
-    if (points.length === 2) {
-        const distance = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
-        const label = new Text({ text: `${distance.toFixed(1)} units`, style: { fill: COLORS.white, fontFamily: "monospace", fontSize: 12, fontWeight: "bold" } });
-        label.anchor.set(0.5);
-        label.eventMode = "none";
-        label.position.set((points[0].x + points[1].x) / 2, (points[0].y + points[1].y) / 2 - 12);
-        layer.addChild(label);
-    }
     if (hoverPoint) {
         graphics.moveTo(hoverPoint.x - 5, hoverPoint.y).lineTo(hoverPoint.x + 5, hoverPoint.y)
             .moveTo(hoverPoint.x, hoverPoint.y - 5).lineTo(hoverPoint.x, hoverPoint.y + 5)
             .stroke({ color: 0xf8fafc, alpha: 0.8, width: 1 });
-        const coordinateLabel = new Text({
-            text: `x: ${hoverPoint.x}, y: ${hoverPoint.y}`,
-            style: { fill: COLORS.white, fontFamily: "monospace", fontSize: 12, fontWeight: "bold" },
-        });
-        coordinateLabel.anchor.set(hoverPoint.x > ARENA_WIDTH_UNITS - 150 ? 1 : 0, hoverPoint.y < 30 ? 0 : 1);
-        coordinateLabel.eventMode = "none";
-        coordinateLabel.position.set(hoverPoint.x + (hoverPoint.x > ARENA_WIDTH_UNITS - 150 ? -8 : 8), hoverPoint.y + (hoverPoint.y < 30 ? 8 : -8));
-        layer.addChild(coordinateLabel);
     }
+
+    if (points.length || hoverPoint) layer.addChild(graphics);
 }
 
 function explosionColor(type) {

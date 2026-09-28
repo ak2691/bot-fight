@@ -275,7 +275,7 @@ class MatchServiceTest {
         assertThat(buildingEvents).allSatisfy(event ->
                 assertThat(service.isCurrentEvent(event)).isTrue());
         assertThat(Duration.between(clock.instant(), buildingEvents.get(0).event().buildingEndsAt()))
-                .isEqualTo(Duration.ofSeconds(302));
+                .isEqualTo(Duration.ofSeconds(182));
     }
 
     @Test

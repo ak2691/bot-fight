@@ -517,7 +517,7 @@ class BotSubmissionValidationServiceTest {
         var result = service.validate(payload);
 
         assertThat(result.isAccepted()).isFalse();
-        assertThat(result.getErrors()).contains("brain.version must be bot-logic-tree-v1");
+        assertThat(result.getErrors()).contains("brain.version must be bot-logic-tree-v1 or bot-logic-tree-v2");
     }
 
     @Test
@@ -943,7 +943,55 @@ class BotSubmissionValidationServiceTest {
                     "targetMode":"coordinates","targetX":1201,"targetY":200,"comparator":"lt","right":{"type":"number","value":300}}],
                   "actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"children":[]}]}]}
                 """));
-        assertThat(service.validate(payload).getErrors()).anyMatch(error -> error.contains("targetX must be a number from 0 to 1200"));
+        assertThat(service.validate(payload).getErrors()).anyMatch(error -> error.contains("targetX must be a finite number from 0 to 1200"));
+    }
+
+    @Test
+    void validatesVersionedCoordinateAndOffsetBoundsIncludingNonFiniteValues() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v2","roots":[{"branches":[{"branchType":"if",
+                  "conditions":[{"type":"expression","left":"selectable.distance","selectable1":"my_bot",
+                    "targetMode":"coordinates","targetX":-600,"targetY":600,"comparator":"lt","right":{"type":"number","value":300}}],
+                  "actions":[{"action":"rotate_toward_enemy","targetMode":"coordinates","targetX":0,"targetY":450,
+                    "targetOffsetX":600,"targetOffsetY":-600}],"children":[]}]}]}
+                """));
+        assertThat(service.validate(payload).getErrors()).isEmpty();
+
+        payload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v2","roots":[{"branches":[{"branchType":"if",
+                  "conditions":[{"type":"expression","left":"selectable.distance","selectable1":"my_bot",
+                    "targetMode":"coordinates","targetX":601,"targetY":0,"comparator":"lt","right":{"type":"number","value":300}}],
+                  "actions":[{"action":"rotate_toward_enemy","targetMode":"coordinates","targetX":0,"targetY":0,
+                    "targetOffsetX":601}],"children":[]}]}]}
+                """));
+        assertThat(service.validate(payload).getErrors())
+                .anyMatch(error -> error.contains("targetX must be a finite number from -600 to 600"))
+                .anyMatch(error -> error.contains("targetOffsetX must be a finite number from -600 to 600"));
+
+        payload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","roots":[{"branches":[{"conditions":[{"type":"always"}],
+                  "actions":[{"action":"rotate_toward_enemy","selectable":"opponent","targetOffsetX":1200,"targetOffsetY":-1200}]}]}]}
+                """));
+        assertThat(service.validate(payload).getErrors()).isEmpty();
+        payload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","roots":[{"branches":[{"conditions":[{"type":"always"}],
+                  "actions":[{"action":"rotate_toward_enemy","selectable":"opponent","targetOffsetX":1201}]}]}]}
+                """));
+        assertThat(service.validate(payload).getErrors())
+                .anyMatch(error -> error.contains("targetOffsetX must be a finite number from -1200 to 1200"));
+
+        tools.jackson.databind.node.ObjectNode brain = jsonMapper.createObjectNode().put("version", "bot-logic-tree-v2");
+        tools.jackson.databind.node.ObjectNode branch = brain.putArray("roots").addObject().putArray("branches").addObject();
+        tools.jackson.databind.node.ObjectNode condition = branch.putArray("conditions").addObject();
+        condition.put("type", "expression").put("left", "selectable.distance").put("targetMode", "coordinates")
+                .put("targetX", Double.NaN).put("targetY", 0).put("comparator", "lt");
+        condition.putObject("right").put("type", "number").put("value", 100);
+        branch.putArray("actions").addObject().put("action", "move_walk").put("movementMode", "target").put("movementDirection", 0);
+        branch.putArray("children");
+        payload.setBrain(brain);
+        assertThat(service.validate(payload).getErrors())
+                .anyMatch(error -> error.contains("targetX must be a finite number from -600 to 600"));
     }
 
     @Test

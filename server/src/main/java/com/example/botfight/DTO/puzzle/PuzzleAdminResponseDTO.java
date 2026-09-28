@@ -18,6 +18,7 @@ public class PuzzleAdminResponseDTO {
     private int maxCustomVariables;
     private int playerTeamSize;
     private int opponentTeamSize;
+    private String coordinateSystemVersion;
     private JsonNode logicConfiguration;
     private JsonNode winConditions;
     private JsonNode loseConditions;
@@ -61,6 +62,9 @@ public class PuzzleAdminResponseDTO {
 
     public int getOpponentTeamSize() { return opponentTeamSize; }
     public void setOpponentTeamSize(int opponentTeamSize) { this.opponentTeamSize = opponentTeamSize; }
+
+    public String getCoordinateSystemVersion() { return coordinateSystemVersion; }
+    public void setCoordinateSystemVersion(String coordinateSystemVersion) { this.coordinateSystemVersion = coordinateSystemVersion; }
 
     public JsonNode getLogicConfiguration() { return logicConfiguration; }
     public void setLogicConfiguration(JsonNode logicConfiguration) { this.logicConfiguration = logicConfiguration; }

@@ -9,13 +9,14 @@ import {
 } from "./loadout/BotLoadout.js";
 import {
     BASE_BOT_HP,
-    BOT_CENTER_MAX_X,
-    BOT_CENTER_MAX_Y,
-    BOT_CENTER_MIN_X,
-    BOT_CENTER_MIN_Y,
-    PRACTICE_OPPONENT_START,
-    PRACTICE_PLAYER_START,
+    PUBLIC_BOT_CENTER_MAX_X,
+    PUBLIC_BOT_CENTER_MAX_Y,
+    PUBLIC_BOT_CENTER_MIN_X,
+    PUBLIC_BOT_CENTER_MIN_Y,
+    PRACTICE_OPPONENT_PUBLIC_START,
+    PRACTICE_PLAYER_PUBLIC_START,
 } from "./modelPayloads/arenaConstants.js";
+import { internalPointToPublic } from "./modelPayloads/arenaCoordinates.js";
 import {
     PUZZLE_OPPONENT_TEAM,
     PUZZLE_PLAYER_TEAM,
@@ -25,12 +26,12 @@ import {
 } from "../pages/puzzles/puzzleRoster.js";
 
 export const PRACTICE_ROOM_STORAGE_KEY = "arena-practice-room-v1";
-export const PRACTICE_ROOM_STORAGE_VERSION = 2;
+export const PRACTICE_ROOM_STORAGE_VERSION = 3;
 const MAX_PRACTICE_ROOM_BYTES = 750_000;
 
 function defaultPracticeBot(teamNumber, slot) {
     const isPlayer = Number(teamNumber) === PUZZLE_PLAYER_TEAM;
-    const start = isPlayer ? PRACTICE_PLAYER_START : PRACTICE_OPPONENT_START;
+    const start = isPlayer ? PRACTICE_PLAYER_PUBLIC_START : PRACTICE_OPPONENT_PUBLIC_START;
     return {
         role: puzzleBotRole(teamNumber),
         teamNumber,
@@ -91,20 +92,26 @@ function normalizedPracticeBot(bot, fallback) {
         teamNumber,
         slot,
         loadout: normalizePracticeLoadout(bot?.loadout ?? fallback?.loadout),
-        startX: boundedNumber(bot?.startX, fallback?.startX, BOT_CENTER_MIN_X, BOT_CENTER_MAX_X),
-        startY: boundedNumber(bot?.startY, fallback?.startY, BOT_CENTER_MIN_Y, BOT_CENTER_MAX_Y),
+        startX: boundedNumber(bot?.startX, fallback?.startX, PUBLIC_BOT_CENTER_MIN_X, PUBLIC_BOT_CENTER_MAX_X),
+        startY: boundedNumber(bot?.startY, fallback?.startY, PUBLIC_BOT_CENTER_MIN_Y, PUBLIC_BOT_CENTER_MAX_Y),
         rotation: boundedNumber(bot?.rotation, fallback?.rotation, -360, 360),
         startHp: boundedNumber(bot?.startHp, fallback?.startHp ?? BASE_BOT_HP, 1, BASE_BOT_HP),
     };
 }
 
-export function normalizePracticeConfig(source) {
+export function normalizePracticeConfig(source, { coordinatesAreInternal = false } = {}) {
     const value = source && typeof source === "object" ? source : {};
     const legacyBots = [
         value.playerBot ? { ...value.playerBot, role: "PLAYER", teamNumber: PUZZLE_PLAYER_TEAM, slot: 1 } : null,
         value.opponentBot ? { ...value.opponentBot, role: "OPPONENT", teamNumber: PUZZLE_OPPONENT_TEAM, slot: 1 } : null,
     ].filter(Boolean);
-    const sourceBots = Array.isArray(value.bots) ? value.bots : legacyBots;
+    const rawSourceBots = Array.isArray(value.bots) ? value.bots : legacyBots;
+    const sourceBots = coordinatesAreInternal
+        ? rawSourceBots.map((bot) => {
+            const point = internalPointToPublic({ x: bot?.startX, y: bot?.startY });
+            return { ...bot, startX: point.x, startY: point.y };
+        })
+        : rawSourceBots;
     const playerCount = sourceBots.filter((bot) => teamNumberForPracticeBot(bot) === PUZZLE_PLAYER_TEAM).length;
     const opponentCount = sourceBots.filter((bot) => teamNumberForPracticeBot(bot) === PUZZLE_OPPONENT_TEAM).length;
     const playerTeamSize = normalizePuzzleTeamSize(value.playerTeamSize, playerCount || 1);
@@ -153,7 +160,9 @@ export function readPracticeRoomDraft(storage = browserStorage()) {
         if (!parsed || typeof parsed !== "object") return null;
         return {
             version: PRACTICE_ROOM_STORAGE_VERSION,
-            config: normalizePracticeConfig(parsed.config),
+            config: normalizePracticeConfig(parsed.config, {
+                coordinatesAreInternal: Number(parsed.version ?? 1) < PRACTICE_ROOM_STORAGE_VERSION,
+            }),
             player: storedBotState(parsed.player),
             opponent: storedBotState(parsed.opponent),
         };

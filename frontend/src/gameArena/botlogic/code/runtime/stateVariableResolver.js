@@ -1,5 +1,6 @@
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../../modelPayloads/arenaConstants.js";
-import { truncateToNumberPrecision } from "../configuration/constants.js";
+import { internalPointToPublic, publicPointToInternal } from "../../../modelPayloads/arenaCoordinates.js";
+import { BOT_LOGIC_TREE_V1, BOT_LOGIC_TREE_VERSION, coordinateLimitsFor, truncateToNumberPrecision } from "../configuration/constants.js";
 import {
     abilityActiveMs,
     abilityCharges,
@@ -35,7 +36,7 @@ export function resolveStateVariable(state, condition, variableId, selectableId,
     const selectable = operations.resolveSelectable(state, normalizedSelectableId);
     const selectable2 = normalizedSelectable2Id ? operations.resolveSelectable(state, normalizedSelectable2Id) : null;
     const target = targetMode === TARGET_MODES.COORDINATES
-        ? coordinateTarget(condition)
+        ? coordinateTarget(condition, state.coordinateVersion)
         : targetMode === TARGET_MODES.TARGET ? selectable2 : null;
     if (!selectableMatchesIdentities(normalizedSelectableId, selectableIdentitiesForVariable(definition, pair ? 0 : null))) return null;
     if (pair && targetMode === TARGET_MODES.TARGET
@@ -62,8 +63,8 @@ const RUNTIME_RESOLVERS = Object.freeze({
     [STATE_VARIABLE_SOURCES.SELECTABLE_DISTANCE]: ({ selectable, target }) => distanceBetween(selectable, target),
     [STATE_VARIABLE_SOURCES.SELECTABLE_DAMAGE_TAKEN_LAST_TICK]: ({ selectable, normalizedSelectableId }) => selectableDamageTaken(normalizedSelectableId, selectable),
     [STATE_VARIABLE_SOURCES.SELECTABLE_HP_NET_CHANGE_LAST_TICK]: ({ selectable, normalizedSelectableId }) => selectableHpNetChange(normalizedSelectableId, selectable),
-    [STATE_VARIABLE_SOURCES.SELECTABLE_X]: ({ selectable }) => Number(selectable?.x ?? 0),
-    [STATE_VARIABLE_SOURCES.SELECTABLE_Y]: ({ selectable }) => Number(selectable?.y ?? 0),
+    [STATE_VARIABLE_SOURCES.SELECTABLE_X]: ({ state, selectable }) => coordinateValue(selectable, state.coordinateVersion).x,
+    [STATE_VARIABLE_SOURCES.SELECTABLE_Y]: ({ state, selectable }) => coordinateValue(selectable, state.coordinateVersion).y,
     [STATE_VARIABLE_SOURCES.SELECTABLE_HP]: ({ selectable, normalizedSelectableId }) => selectableHasUsableHealth(normalizedSelectableId, selectable)
         ? Math.max(0, Number(selectable?.hp ?? 0)) : 0,
     [STATE_VARIABLE_SOURCES.SELECTABLE_ALIVE]: ({ selectable, normalizedSelectableId }) => selectableHasUsableHealth(normalizedSelectableId, selectable)
@@ -150,13 +151,21 @@ function normalizeTargetMode(condition, definition) {
         : modes.includes(TARGET_MODES.TARGET) ? TARGET_MODES.TARGET : modes[0];
 }
 
-function coordinateTarget(condition) {
-    const x = Number(condition?.targetX ?? ARENA_WIDTH_UNITS / 2);
-    const y = Number(condition?.targetY ?? ARENA_HEIGHT_UNITS / 2);
-    return {
-        x: Number.isFinite(x) ? Math.max(0, Math.min(ARENA_WIDTH_UNITS, x)) : ARENA_WIDTH_UNITS / 2,
-        y: Number.isFinite(y) ? Math.max(0, Math.min(ARENA_HEIGHT_UNITS, y)) : ARENA_HEIGHT_UNITS / 2,
+function coordinateTarget(condition, coordinateVersion = BOT_LOGIC_TREE_VERSION) {
+    const limits = coordinateLimitsFor(coordinateVersion);
+    const center = coordinateVersion === BOT_LOGIC_TREE_V1 ? ARENA_WIDTH_UNITS / 2 : 0;
+    const x = Number(condition?.targetX ?? center);
+    const y = Number(condition?.targetY ?? center);
+    const bounded = {
+        x: Number.isFinite(x) ? Math.max(limits.minimum, Math.min(limits.maximum, x)) : center,
+        y: Number.isFinite(y) ? Math.max(limits.minimum, Math.min(limits.maximum, y)) : center,
     };
+    return coordinateVersion === BOT_LOGIC_TREE_V1 ? bounded : publicPointToInternal(bounded);
+}
+
+function coordinateValue(selectable, coordinateVersion) {
+    const point = { x: Number(selectable?.x ?? 0), y: Number(selectable?.y ?? 0) };
+    return coordinateVersion === BOT_LOGIC_TREE_V1 ? point : internalPointToPublic(point);
 }
 
 function selectedAbilityId(context) {

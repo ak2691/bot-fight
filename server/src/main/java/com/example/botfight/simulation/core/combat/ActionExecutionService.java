@@ -155,8 +155,20 @@ public class ActionExecutionService {
             Arena arena,
             ConditionResolutionService conditionResolutionService,
             StrategyBlock block) {
+        applyCustomVariableAction(bot, opponent, entities, arena, conditionResolutionService, block,
+                bot == null ? BotLogicContracts.BRAIN_SCHEMA_V1 : bot.brainSchemaVersion);
+    }
+
+    public void applyCustomVariableAction(
+            Bot bot,
+            Bot opponent,
+            List<Entity> entities,
+            Arena arena,
+            ConditionResolutionService conditionResolutionService,
+            StrategyBlock block,
+            String coordinateVersion) {
         customVariableActionService.apply(bot, opponent, entities, arena,
-                conditionResolutionService, block);
+                conditionResolutionService, block, coordinateVersion);
     }
 
     public Vector movementVector(StrategyBlock block, Bot player, Entity target) {

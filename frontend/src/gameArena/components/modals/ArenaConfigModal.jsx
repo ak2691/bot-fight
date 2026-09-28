@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useDialogFocus } from "../../../components/useDialogFocus.js";
-import { BASE_BOT_HP, BOT_CENTER_MAX_X, BOT_CENTER_MAX_Y, BOT_CENTER_MIN_X, BOT_CENTER_MIN_Y } from "../../modelPayloads/arenaConstants.js";
+import { BASE_BOT_HP, PUBLIC_BOT_CENTER_MAX_X, PUBLIC_BOT_CENTER_MAX_Y, PUBLIC_BOT_CENTER_MIN_X, PUBLIC_BOT_CENTER_MIN_Y } from "../../modelPayloads/arenaConstants.js";
 import { normalizePracticeConfig } from "../../practiceRoomStorage.js";
 import { PUZZLE_OPPONENT_TEAM, PUZZLE_PLAYER_TEAM } from "../../../pages/puzzles/puzzleRoster.js";
 
@@ -112,7 +112,7 @@ export default function ArenaConfigModal({ draft, defaults = null, onClose, onSa
                         </label>
                     </div>
                     <section className={`rounded border p-3 ${tone === "red" ? "border-red-900/60 bg-red-950/20" : "border-cyan-400/65 bg-cyan-950/30"}`}>
-                        <div className="mb-2 flex items-center justify-between"><h3 className="font-mono text-[10px] font-bold tracking-[.16em] text-cyan-200">STARTING STATS</h3></div>
+                        <div className="mb-2 flex items-center justify-between gap-2"><h3 className="font-mono text-[10px] font-bold tracking-[.16em] text-cyan-200">STARTING STATS</h3><span className="font-mono text-[8px] text-slate-500">CENTERED · Y-UP</span></div>
                         <div className="code-bot-selector-stack w-full max-w-none">
                             <div className={`code-bot-selector ${tone === "red" ? "is-red" : "is-blue"}`} role="group" aria-label="Select starting stats">
                                 <button type="button" aria-label="Show previous bot" title="Previous bot" onClick={() => cycle(-1)} disabled={bots.length < 2} className="code-bot-selector__arrow">‹</button>
@@ -124,8 +124,8 @@ export default function ArenaConfigModal({ draft, defaults = null, onClose, onSa
                             </div>
                         </div>
                         <div className="mt-3 grid grid-cols-2 gap-2">
-                            <label className="font-mono text-[8px] text-slate-500">X<DeferredNumberInput min={BOT_CENTER_MIN_X} max={BOT_CENTER_MAX_X} step="1" value={selectedBot?.startX ?? BOT_CENTER_MIN_X} onCommit={(value) => updateBot("startX", value)} aria-label={`${arenaBotDisplayName(selectedBot)} starting X position`} className={inputClass} /></label>
-                            <label className="font-mono text-[8px] text-slate-500">Y<DeferredNumberInput min={BOT_CENTER_MIN_Y} max={BOT_CENTER_MAX_Y} step="1" value={selectedBot?.startY ?? BOT_CENTER_MIN_Y} onCommit={(value) => updateBot("startY", value)} aria-label={`${arenaBotDisplayName(selectedBot)} starting Y position`} className={inputClass} /></label>
+                            <label className="font-mono text-[8px] text-slate-500">X · RIGHT+ (−570 to +570)<DeferredNumberInput min={PUBLIC_BOT_CENTER_MIN_X} max={PUBLIC_BOT_CENTER_MAX_X} step="1" value={selectedBot?.startX ?? 0} onCommit={(value) => updateBot("startX", value)} aria-label={`${arenaBotDisplayName(selectedBot)} starting X coordinate, centered with positive values to the right`} className={inputClass} /></label>
+                            <label className="font-mono text-[8px] text-slate-500">Y · UP+ (−570 to +570)<DeferredNumberInput min={PUBLIC_BOT_CENTER_MIN_Y} max={PUBLIC_BOT_CENTER_MAX_Y} step="1" value={selectedBot?.startY ?? 0} onCommit={(value) => updateBot("startY", value)} aria-label={`${arenaBotDisplayName(selectedBot)} starting Y coordinate, centered with positive values upward`} className={inputClass} /></label>
                             <label className="font-mono text-[8px] text-slate-500">ROTATION<DeferredNumberInput min="-360" max="360" step="1" value={selectedBot?.rotation ?? 0} onCommit={(value) => updateBot("rotation", value)} aria-label={`${arenaBotDisplayName(selectedBot)} starting rotation`} className={inputClass} /></label>
                             <label className="font-mono text-[8px] text-slate-500">HP<DeferredNumberInput min="1" max={BASE_BOT_HP} step="1" value={selectedBot?.startHp ?? BASE_BOT_HP} onCommit={(value) => updateBot("startHp", value)} aria-label={`${arenaBotDisplayName(selectedBot)} starting HP`} className={inputClass} /></label>
                         </div>

@@ -1,9 +1,11 @@
 import { ALL_ABILITY_DEFINITIONS, decodeBotLoadout, encodeBotLoadout, normalizedBotLoadout } from "../loadout/BotLoadout.js";
 import { abilityIdFromBoundary } from "../gameconfig/AbilityCompatibility.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, BASE_BOT_HP } from "../modelPayloads/arenaConstants.js";
+import { internalPointToPublic } from "../modelPayloads/arenaCoordinates.js";
 import { MAIN_SHAPE, buildOpponentShape, resetBotShapeToStartingConfiguration } from "../modelPayloads/arenaShapes.js";
 import { normalizePracticeConfig } from "../practiceRoomStorage.js";
 import { BOT_CODE_SELECTABLES } from "../botlogic/code/BotCode.js";
+import { BOT_LOGIC_TREE_VERSION } from "../botlogic/code/configuration/constants.js";
 
 const MOVEMENT_TEST_ABILITIES = new Set([21]);
 const TEST_CENTER_X = ARENA_WIDTH_UNITS / 2;
@@ -50,7 +52,7 @@ function root(branchId, actions, conditions = [always()]) {
 
 function code(roots) {
     return {
-        version: "bot-logic-tree-v1",
+        version: BOT_LOGIC_TREE_VERSION,
         roots: roots.map((entry, index) => {
             const normalized = { ...(entry ?? {}) };
             return {
@@ -196,6 +198,8 @@ export function findAbilityTestingPreset(id) {
 
 export function buildAbilityTestingPracticeConfig(preset) {
     if (!preset?.id) return normalizePracticeConfig(null);
+    const playerStart = internalPointToPublic(preset.playerPosition ?? DEFAULT_PLAYER_POSITION);
+    const opponentStart = internalPointToPublic(preset.opponentPosition ?? DEFAULT_OPPONENT_POSITION);
     return normalizePracticeConfig({
         playerTeamSize: 1,
         opponentTeamSize: 1,
@@ -206,8 +210,8 @@ export function buildAbilityTestingPracticeConfig(preset) {
                 teamNumber: 1,
                 slot: 1,
                 loadout: preset.playerLoadout,
-                startX: preset.playerPosition?.x ?? DEFAULT_PLAYER_POSITION.x,
-                startY: preset.playerPosition?.y ?? DEFAULT_PLAYER_POSITION.y,
+                startX: playerStart.x,
+                startY: playerStart.y,
                 rotation: preset.playerRotation ?? 180,
                 startHp: BASE_BOT_HP,
             },
@@ -216,8 +220,8 @@ export function buildAbilityTestingPracticeConfig(preset) {
                 teamNumber: 2,
                 slot: 1,
                 loadout: preset.opponentLoadout,
-                startX: preset.opponentPosition?.x ?? DEFAULT_OPPONENT_POSITION.x,
-                startY: preset.opponentPosition?.y ?? DEFAULT_OPPONENT_POSITION.y,
+                startX: opponentStart.x,
+                startY: opponentStart.y,
                 rotation: preset.opponentRotation ?? 0,
                 startHp: BASE_BOT_HP,
             },

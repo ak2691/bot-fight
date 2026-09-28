@@ -31,16 +31,17 @@ import {
     countLogicConditions,
     clamp,
     conditionGraphNodeId,
-    graphEdgePath,
     newTreeBranch,
     nextBranchPriority,
 } from "./nodes/GraphNodes.jsx";
+import { graphEdgePath } from "./graphEdgeGeometry.js";
 import {
     nodePositionsForGraph,
     offsetsForGraphPositions,
 } from "../botlogic/code/configuration/nodePositions.js";
 import { CODE_EDITOR_GRAPH_VERSION, sanitizeCodeEditorGraph } from "../botlogic/graph/CodeEditorGraph.js";
 import { isAddRootShortcutKeydown, readAddRootShortcut } from "./addRootShortcut.js";
+import { coordinateVersionFor } from "../botlogic/code/configuration/constants.js";
 
 const LOGIC_CANVAS_WIDTH = 10000;
 const LOGIC_CANVAS_HEIGHT = 6000;
@@ -139,13 +140,14 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         onCloseExternalConfigurationRef.current = onCloseExternalConfiguration;
     }, [onCloseExternalConfiguration, onSearchClose]);
     const roots = useMemo(() => normalizeRoots(configuration.roots ?? []), [configuration.roots]);
+    const coordinateVersion = coordinateVersionFor(configuration);
     const editorGraph = useMemo(() => sanitizeCodeEditorGraph(configuration.editorGraph), [configuration.editorGraph]);
     const detachedBranches = editorGraph.detachedBranches;
     const graphActionCount = countActions(configuration);
     const graphConditionCount = countLogicConditions(configuration);
-    const graph = useMemo(() => buildLogicGraph(roots, stateVariables, selectedLoadout, selectableTypes), [roots, selectedLoadout, stateVariables, selectableTypes]);
+    const graph = useMemo(() => buildLogicGraph(roots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion), [coordinateVersion, roots, selectedLoadout, stateVariables, selectableTypes]);
     const detachedGraphs = useMemo(() => detachedBranches.map((entry) => {
-        const detachedGraph = buildLogicGraph([{ id: `detached-${entry.id}`, branches: [entry.branch] }], stateVariables, selectedLoadout, selectableTypes);
+        const detachedGraph = buildLogicGraph([{ id: `detached-${entry.id}`, branches: [entry.branch] }], stateVariables, selectedLoadout, selectableTypes, coordinateVersion);
         const rootCondition = detachedGraph.conditions[0];
         if (!rootCondition) return null;
         const translate = (node) => ({
@@ -175,7 +177,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
             };
         });
         return { entry, conditions, actions, edges };
-    }).filter(Boolean), [detachedBranches, selectedLoadout, stateVariables, selectableTypes]);
+    }).filter(Boolean), [coordinateVersion, detachedBranches, selectedLoadout, stateVariables, selectableTypes]);
     const detachedNodes = useMemo(() => detachedGraphs.flatMap((item) => item.conditions), [detachedGraphs]);
     const canvasWidth = LOGIC_CANVAS_WIDTH;
     const canvasHeight = LOGIC_CANVAS_HEIGHT;
@@ -298,7 +300,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         if (Array.isArray(clean.roots)) clean.roots = normalizeRoots(clean.roots);
         if (clean.editorGraph?.version === CODE_EDITOR_GRAPH_VERSION) clean.editorGraph = sanitizeCodeEditorGraph(clean.editorGraph);
         if (Array.isArray(clean.roots)) {
-            const nextGraph = buildLogicGraph(clean.roots, stateVariables, selectedLoadout, selectableTypes);
+            const nextGraph = buildLogicGraph(clean.roots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion);
             const nextGraphNodes = graphNodesForGraph(nextGraph);
             const currentPositions = nodePositionsForGraph(graphNodes, nodeOffsetsRef.current);
             const savedOffsets = offsetsForGraphPositions(nextGraphNodes, clean.nodePositions ?? currentPositions);
@@ -341,7 +343,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
     useImperativeHandle(ref, () => ({
         placeRootAtCenter(nextRoots, rootIndex) {
             const rect = viewportRef.current?.getBoundingClientRect();
-            const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes);
+            const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion);
             const rootNode = nextGraph.roots.find((node) => node.rootIndex === rootIndex);
             if (!rect || !rootNode) return null;
 
@@ -369,7 +371,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
                 ...nextGraph.targets,
             ], nextOffsets);
         },
-    }), [canvasHeight, canvasWidth, pan.x, pan.y, selectedLoadout, stateVariables, selectableTypes, updateNodeOffsets, zoom]);
+    }), [canvasHeight, canvasWidth, coordinateVersion, pan.x, pan.y, selectedLoadout, stateVariables, selectableTypes, updateNodeOffsets, zoom]);
     const beginPan = (event) => {
         if (event.pointerType === "touch" || event.button !== 2) return;
         event.preventDefault();
@@ -723,7 +725,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         const nextRoots = attachingToRoot
             ? normalizeRoots(roots.map((root, index) => index === targetNode.rootIndex ? { ...root, branches: [...(root.branches ?? []), branch] } : root))
             : normalizeRoots(updateTreeBranch(roots, targetNode.rootIndex, targetNode.path, (current) => ({ ...current, children: [...(current.children ?? []), branch] })));
-        const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes);
+        const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion);
         const positionOverrides = Object.fromEntries([...nextGraph.conditions, ...nextGraph.actions].flatMap((node) => {
             const position = detached.nodePositions?.[detachedNodePositionKey(node)];
             return position ? [[node.id, position]] : [];
@@ -915,7 +917,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         const nextBranch = addGraphAction(branch, selectedLoadout, actionId, configuration.customVariables ?? []);
         if (nextBranch === branch) return;
         const nextRoots = normalizeRoots(updateTreeBranch(roots, rootIndex, path, () => nextBranch));
-        const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes);
+        const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion);
         const nextAction = nextGraph.actions.find((candidate) => candidate.rootIndex === rootIndex
             && sameGraphPath(candidate.path, path)
             && candidate.actionIndex === existingActionCount);
@@ -985,7 +987,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         const branch = newTreeBranch("if", defaultVariable, nextBranchPriority(rootNode.branches));
         const branchIndex = rootNode.branches?.length ?? 0;
         const nextRoots = normalizeRoots(roots.map((root, index) => index === node.rootIndex ? { ...root, branches: [...(root.branches ?? []), branch] } : root));
-        const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes);
+        const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion);
         const nextBranch = treeBranchAt(nextRoots[node.rootIndex]?.branches, [branchIndex]);
         const nextCondition = nextGraph.conditions.find((candidate) => candidate.rootIndex === node.rootIndex && candidate.branchId === nextBranch?.id);
         const previousCondition = graph.conditions.find((candidate) => candidate.rootIndex === node.rootIndex
@@ -1055,14 +1057,14 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
                 {graph.conditions.map((node) => {
                     const branch = treeBranchAt(roots[node.rootIndex]?.branches, node.path);
                     if (!branch) return null;
-                    return <GraphConditionNode key={node.id} {...{ node, branch, disabled, canRemove, stateVariables, defaultVariable, nodeOffsets, beginNodeDrag, tutorialFocus, puzzleMode }} puzzleLabel={roots[node.rootIndex]?.name ?? "Puzzle Condition"} selected={selectedNodeIds.includes(node.id)} onSnip={() => snipBranch(node, branch)} onSelect={(event) => { if (attachingDetachedId) { event.stopPropagation(); attachDetachedBranch(node); } else selectGraphNode(event, node.id); }} onPriorityChange={(priority) => { const reordered = setLogicBranchPriority(roots, node.rootIndex, node.path, priority); if (reordered !== roots) commitConfiguration({ ...configuration, roots: reordered }); }} onPickVariable={(rowIndex, operand) => openOperandPicker(node.rootIndex, node.path, rowIndex, operand)} onInspectVariable={(rowIndex, operand) => { setInspectedNode({ kind: "condition-variable", id: node.id, rowIndex, operand }); }} onRemoveCondition={(rowIndex) => { const currentConditions = Array.isArray(branch.conditions) ? branch.conditions : []; if (currentConditions.length <= 1) { setInspectedNode(null); setSelectedNodeIds((current) => current.filter((id) => id !== node.id)); removeBranch(node.rootIndex, node.path); return; } setInspectedNode((current) => current?.kind === "condition-variable" && current.id === node.id ? null : current); updateBranch(node.rootIndex, node.path, (current) => ({ ...current, conditions: (current.conditions ?? []).filter((_, index) => index !== rowIndex) })); }} inspectedVariable={inspectedNode?.kind === "condition-variable" && inspectedNode.id === node.id ? inspectedNode : null} canAddAction={graphActionCount < maxLogicBlocks} canAddCondition={graphConditionCount < maxTotalConditions}
+                    return <GraphConditionNode key={node.id} {...{ node, branch, disabled, canRemove, stateVariables, defaultVariable, nodeOffsets, beginNodeDrag, tutorialFocus, puzzleMode }} coordinateVersion={coordinateVersion} puzzleLabel={roots[node.rootIndex]?.name ?? "Puzzle Condition"} selected={selectedNodeIds.includes(node.id)} onSnip={() => snipBranch(node, branch)} onSelect={(event) => { if (attachingDetachedId) { event.stopPropagation(); attachDetachedBranch(node); } else selectGraphNode(event, node.id); }} onPriorityChange={(priority) => { const reordered = setLogicBranchPriority(roots, node.rootIndex, node.path, priority); if (reordered !== roots) commitConfiguration({ ...configuration, roots: reordered }); }} onPickVariable={(rowIndex, operand) => openOperandPicker(node.rootIndex, node.path, rowIndex, operand)} onInspectVariable={(rowIndex, operand) => { setInspectedNode({ kind: "condition-variable", id: node.id, rowIndex, operand }); }} onRemoveCondition={(rowIndex) => { const currentConditions = Array.isArray(branch.conditions) ? branch.conditions : []; if (currentConditions.length <= 1) { setInspectedNode(null); setSelectedNodeIds((current) => current.filter((id) => id !== node.id)); removeBranch(node.rootIndex, node.path); return; } setInspectedNode((current) => current?.kind === "condition-variable" && current.id === node.id ? null : current); updateBranch(node.rootIndex, node.path, (current) => ({ ...current, conditions: (current.conditions ?? []).filter((_, index) => index !== rowIndex) })); }} inspectedVariable={inspectedNode?.kind === "condition-variable" && inspectedNode.id === node.id ? inspectedNode : null} canAddAction={graphActionCount < maxLogicBlocks} canAddCondition={graphConditionCount < maxTotalConditions}
                         onChange={(updates) => updateBranch(node.rootIndex, node.path, (current) => ({ ...current, ...updates }))}
                         onRemove={() => removeBranch(node.rootIndex, node.path)}
                         onAddChildConditional={() => {
                             const child = newTreeBranch("if", defaultVariable, nextBranchPriority(branch.children));
                             const childIndex = branch.children?.length ?? 0;
                             const nextRoots = normalizeRoots(updateTreeBranch(roots, node.rootIndex, node.path, (current) => ({ ...current, children: [...(current.children ?? []), child] })));
-                            const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes);
+                            const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion);
                             const nextChild = nextGraph.conditions.find((candidate) => candidate.rootIndex === node.rootIndex
                                 && sameGraphPath(candidate.path, [...node.path, childIndex]));
                             const previousChild = graph.conditions.find((candidate) => candidate.rootIndex === node.rootIndex
@@ -1078,7 +1080,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
                     const detached = detachedBranches.find((entry) => entry.id === node.detachedId);
                     const branch = detached ? treeBranchAt([detached.branch], node.path) : null;
                     if (!branch) return null;
-                    return <GraphConditionNode key={node.id} node={node} branch={branch} disabled={disabled} canRemove={false} canAddAction={false} canAddCondition={false} stateVariables={stateVariables} defaultVariable={defaultVariable} selectableTypes={selectableTypes} nodeOffsets={nodeOffsets} beginNodeDrag={node.detachedRoot ? (event) => beginDetachedDrag(event, node) : () => {}} selected={selectedNodeIds.includes(node.id)} detached showWireTool={node.detachedRoot} attaching={attachingDetachedId === node.detachedId} onBeginAttach={() => { setAttachingDetachedId(node.detachedId); const offset = nodeOffsets[node.id] ?? { x: 0, y: 0 }; setAttachCursor({ x: node.x + offset.x + node.width / 2, y: node.y + offset.y - 80 }); }} onSelect={(event) => selectGraphNode(event, node.id)} onPriorityChange={() => {}} onPickVariable={() => {}} onInspectVariable={() => {}} onRemoveCondition={(rowIndex) => updateDetachedBranchAtPath(node.detachedId, node.path, (current) => ({ ...current, conditions: (current.conditions ?? []).filter((_, index) => index !== rowIndex) }))} inspectedVariable={null} onChange={(updates) => updateDetachedBranchAtPath(node.detachedId, node.path, (current) => ({ ...current, ...updates }))} onRemove={() => {}} onAddChildConditional={() => {}} onAddAction={() => {}} />;
+                    return <GraphConditionNode key={node.id} node={node} branch={branch} disabled={disabled} canRemove={false} canAddAction={false} canAddCondition={false} stateVariables={stateVariables} defaultVariable={defaultVariable} coordinateVersion={coordinateVersion} selectableTypes={selectableTypes} nodeOffsets={nodeOffsets} beginNodeDrag={node.detachedRoot ? (event) => beginDetachedDrag(event, node) : () => {}} selected={selectedNodeIds.includes(node.id)} detached showWireTool={node.detachedRoot} attaching={attachingDetachedId === node.detachedId} onBeginAttach={() => { setAttachingDetachedId(node.detachedId); const offset = nodeOffsets[node.id] ?? { x: 0, y: 0 }; setAttachCursor({ x: node.x + offset.x + node.width / 2, y: node.y + offset.y - 80 }); }} onSelect={(event) => selectGraphNode(event, node.id)} onPriorityChange={() => {}} onPickVariable={() => {}} onInspectVariable={() => {}} onRemoveCondition={(rowIndex) => updateDetachedBranchAtPath(node.detachedId, node.path, (current) => ({ ...current, conditions: (current.conditions ?? []).filter((_, index) => index !== rowIndex) }))} inspectedVariable={null} onChange={(updates) => updateDetachedBranchAtPath(node.detachedId, node.path, (current) => ({ ...current, ...updates }))} onRemove={() => {}} onAddChildConditional={() => {}} onAddAction={() => {}} />;
                 })}
                 {detachedGraphs.flatMap((item) => item.actions).map((node) => {
                     const detached = detachedBranches.find((entry) => entry.id === node.detachedId);
@@ -1086,19 +1088,19 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
                     const actions = graphBranchActions(branch);
                     const entry = actions[node.actionIndex];
                     if (!branch || !entry) return null;
-                    return <GraphActionNode key={node.id} node={node} entry={entry} actions={actions} branch={branch} disabled={disabled} selectedLoadout={selectedLoadout} selectableTypes={selectableTypes} stateVariables={stateVariables} nodeOffsets={nodeOffsets} beginNodeDrag={() => {}} canRemove={false} puzzleMode selectedNode={selectedNodeIds.includes(node.id)} onInspect={(event) => selectGraphNode(event, node.id)} onEditAction={() => {}} customVariables={configuration.customVariables ?? []} onChange={(nextEntry) => updateDetachedBranchAtPath(node.detachedId, node.path, (current) => setGraphActions(current, graphBranchActions(current).map((item, index) => index === node.actionIndex ? nextEntry : item)))} onRemove={() => {}} />;
+                    return <GraphActionNode key={node.id} node={node} entry={entry} actions={actions} branch={branch} disabled={disabled} selectedLoadout={selectedLoadout} selectableTypes={selectableTypes} stateVariables={stateVariables} nodeOffsets={nodeOffsets} beginNodeDrag={() => {}} canRemove={false} puzzleMode coordinateVersion={coordinateVersion} selectedNode={selectedNodeIds.includes(node.id)} onInspect={(event) => selectGraphNode(event, node.id)} onEditAction={() => {}} customVariables={configuration.customVariables ?? []} onChange={(nextEntry) => updateDetachedBranchAtPath(node.detachedId, node.path, (current) => setGraphActions(current, graphBranchActions(current).map((item, index) => index === node.actionIndex ? nextEntry : item)))} onRemove={() => {}} />;
                 })}
                 {graph.actions.map((node) => {
                     const branch = treeBranchAt(roots[node.rootIndex]?.branches, node.path);
                     const actions = graphBranchActions(branch);
                     const entry = actions[node.actionIndex];
                     if (!branch || !entry) return null;
-                    return <GraphActionNode key={node.id} {...{ node, entry, actions, branch, disabled, selectedLoadout, selectableTypes, stateVariables, nodeOffsets, beginNodeDrag, canRemove, puzzleMode }} selectedNode={selectedNodeIds.includes(node.id)} onInspect={(event) => selectGraphNode(event, node.id, { kind: "action", id: node.id })} onEditAction={(event) => { event.stopPropagation(); openNodePicker({ type: "action", rootIndex: node.rootIndex, path: node.path, actionIndex: node.actionIndex }); }} customVariables={configuration.customVariables ?? []}
+                    return <GraphActionNode key={node.id} {...{ node, entry, actions, branch, disabled, selectedLoadout, selectableTypes, stateVariables, nodeOffsets, beginNodeDrag, canRemove, puzzleMode }} coordinateVersion={coordinateVersion} selectedNode={selectedNodeIds.includes(node.id)} onInspect={(event) => selectGraphNode(event, node.id, { kind: "action", id: node.id })} onEditAction={(event) => { event.stopPropagation(); openNodePicker({ type: "action", rootIndex: node.rootIndex, path: node.path, actionIndex: node.actionIndex }); }} customVariables={configuration.customVariables ?? []}
                         onChange={(nextEntry) => updateBranch(node.rootIndex, node.path, (current) => setGraphActions(current, actions.map((item, index) => index === node.actionIndex ? nextEntry : item)))}
                         onRemove={() => removeGraphAction(node.rootIndex, node.path, node.actionIndex)} />;
                 })}
             </div>
-            {!isSearchOpen && !isExternalConfigurationOpen && inspectedNode && <LogicNodeInspector inspectedNode={inspectedNode} graph={graph} roots={roots} stateVariables={stateVariables} selectableTypes={selectableTypes} selectableAbilityIds={selectableAbilityIds} selectedLoadout={selectedLoadout} customVariables={configuration.customVariables ?? []} disabled={disabled} canRemove={canRemove} canAddAction={graphActionCount < maxLogicBlocks} puzzleMode={puzzleMode} onClose={() => setInspectedNode(null)} updateBranch={updateBranch} onPickActionOperand={openActionOperandPicker} onInspectActionOperand={inspectActionOperand} onDismissOperandPicker={() => setOperandPicker(null)} onRemoveAction={removeGraphAction} />}
+            {!isSearchOpen && !isExternalConfigurationOpen && inspectedNode && <LogicNodeInspector inspectedNode={inspectedNode} graph={graph} roots={roots} stateVariables={stateVariables} selectableTypes={selectableTypes} selectableAbilityIds={selectableAbilityIds} selectedLoadout={selectedLoadout} customVariables={configuration.customVariables ?? []} disabled={disabled} canRemove={canRemove} canAddAction={graphActionCount < maxLogicBlocks} puzzleMode={puzzleMode} coordinateVersion={coordinateVersion} onClose={() => setInspectedNode(null)} updateBranch={updateBranch} onPickActionOperand={openActionOperandPicker} onInspectActionOperand={inspectActionOperand} onDismissOperandPicker={() => setOperandPicker(null)} onRemoveAction={removeGraphAction} />}
             {!isSearchOpen && !isExternalConfigurationOpen && actionOperandInspector && actionOperandDefinition && <ActionVariableInspector definition={actionOperandDefinition} operand={actionOperand} selectableTypes={selectableTypes} disabled={disabled} onChange={(operand) => updateActionOperand(actionOperandInspector.rootIndex, actionOperandInspector.path, actionOperandInspector.actionIndex, actionOperandInspector.termIndex, operand)} onClose={() => setActionOperandInspector(null)} />}
         </div>
     );

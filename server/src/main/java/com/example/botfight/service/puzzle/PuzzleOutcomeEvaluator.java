@@ -16,13 +16,15 @@ import tools.jackson.databind.JsonNode;
 /** Evaluates a saved puzzle's conditions against authoritative duel ticks. */
 final class PuzzleOutcomeEvaluator {
     private static final String PUZZLE_VARIABLE_PREFIX = "custom.puzzle.";
-    private static final String PUZZLE_LOGIC_VERSION = "bot-logic-tree-v1";
+    private static final String PUZZLE_LOGIC_V1 = BotLogicContracts.BRAIN_SCHEMA_V1;
+    private static final String PUZZLE_LOGIC_V2 = BotLogicContracts.BRAIN_SCHEMA_V2;
 
     private final ConditionResolutionService conditionResolutionService;
     private final ActionExecutionService actionExecutionService;
     private final JsonNode winConditions;
     private final JsonNode loseConditions;
     private final JsonNode logicConfiguration;
+    private final String logicCoordinateVersion;
     private final List<Condition> normalizedWinConditions;
     private final List<Condition> normalizedLoseConditions;
     private final int timeLimitMs;
@@ -65,13 +67,14 @@ final class PuzzleOutcomeEvaluator {
         this.winConditions = winConditions;
         this.loseConditions = loseConditions;
         this.logicConfiguration = logicConfiguration;
+        String configuredVersion = logicConfiguration == null ? "" : logicConfiguration.path("version").asText("");
+        this.logicCoordinateVersion = PUZZLE_LOGIC_V2.equals(configuredVersion) ? PUZZLE_LOGIC_V2 : PUZZLE_LOGIC_V1;
         this.normalizedWinConditions = ConditionResolutionService.normalizeConditions(winConditions);
         this.normalizedLoseConditions = ConditionResolutionService.normalizeConditions(loseConditions);
         this.timeLimitMs = Math.max(0, timeLimitMs);
         this.initialElapsedMs = Math.max(0, initialElapsedMs);
         this.usesPuzzleLogic = logicConfiguration != null
                 && logicConfiguration.isObject()
-                && PUZZLE_LOGIC_VERSION.equals(logicConfiguration.path("version").asText(""))
                 && logicConfiguration.path("roots").isArray();
     }
 
@@ -180,11 +183,12 @@ final class PuzzleOutcomeEvaluator {
         JsonNode conditions = branch == null ? null : branch.get("conditions");
         if (conditions == null || !conditions.isArray() || conditions.isEmpty()) return false;
         return conditionResolutionService.evaluateConditions(
-                ConditionResolutionService.normalizeConditions(conditions),
+                ConditionResolutionService.normalizeConditions(conditions, logicCoordinateVersion),
                 player,
                 opponent,
                 entities,
-                arena);
+                arena,
+                logicCoordinateVersion);
     }
 
     private void initializePuzzleVariables(Bot player) {
@@ -259,14 +263,15 @@ final class PuzzleOutcomeEvaluator {
                 variableId,
                 terms,
                 1,
-                ConditionResolutionService.normalizeConditions(branch.path("conditions")));
+                ConditionResolutionService.normalizeConditions(branch.path("conditions"), logicCoordinateVersion));
         actionExecutionService.applyCustomVariableAction(
                 player,
                 opponent,
                 entities,
                 arena,
                 conditionResolutionService,
-                block);
+                block,
+                logicCoordinateVersion);
     }
 
     private boolean matches(
@@ -277,6 +282,7 @@ final class PuzzleOutcomeEvaluator {
             List<DuelSimulationService.Entity> entities,
             Arena arena) {
         if (source == null || !source.isArray() || source.isEmpty()) return false;
-        return conditionResolutionService.evaluateConditions(normalized, player, opponent, entities, arena);
+        return conditionResolutionService.evaluateConditions(normalized, player, opponent, entities, arena,
+                PUZZLE_LOGIC_V1);
     }
 }

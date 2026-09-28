@@ -1,18 +1,18 @@
 export function selectStrategyBlock(configuration, payload, runtime) {
     const normalized = runtime.normalizeConfiguration(configuration);
-    const state = runtime.stateFromPayload(payload);
+    const state = runtime.stateFromPayload(payload, normalized.version);
     return runtime.selectPriorityCandidates(normalized, state).find((entry) => runtime.isTrainableBlock(entry.block))?.block ?? null;
 }
 
 export function selectStrategyActionPlan(configuration, payload, runtime) {
     const normalized = runtime.normalizeConfiguration(configuration);
-    const state = runtime.stateFromPayload(payload);
+    const state = runtime.stateFromPayload(payload, normalized.version);
     runtime.prepareCustomVariables(state, normalized.customVariables);
     const selected = runtime.selectPriorityCandidates(normalized, state);
     const primary = selected
         .flatMap(({ block }) => runtime.normalizedBlockActions(block).map((entry) => ({ ...block, ...entry })))
         .find((block) => block.action !== BOT_CODE_ACTIONS.VARIABLE && runtime.isTrainableBlock(block) && runtime.actionExecutableNow(block, state)) ?? null;
-    const plan = { primary };
+    const plan = { primary, coordinateVersion: normalized.version };
     for (const { block: selectedBlock } of selected) {
         for (const block of runtime.normalizedBlockActions(selectedBlock).map((entry) => ({ ...selectedBlock, ...entry }))) {
             if (!runtime.actionExecutableNow(block, state)) continue;

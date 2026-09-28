@@ -71,7 +71,25 @@ test("practice room storage bounds the shared practice roster config and keeps c
     assert.equal(saved.config.opponentTeamSize, 1);
     assert.equal(saved.config.initialElapsedMs, 60_000);
     assert.equal(saved.config.bots.length, 3);
-    assert.equal(saved.config.bots[0].startX, 30);
+    assert.equal(saved.config.bots[0].startX, -5);
     assert.equal(saved.config.bots[0].startHp, 150);
     assert.equal(saved.config.bots[0].brain, undefined);
+});
+
+test("legacy practice starts migrate from internal coordinates into centered public coordinates", () => {
+    const storage = createStorage();
+    storage.setItem(PRACTICE_ROOM_STORAGE_KEY, JSON.stringify({
+        version: 2,
+        config: { bots: [
+            { role: "PLAYER", teamNumber: 1, slot: 1, startX: 600, startY: 1050 },
+            { role: "OPPONENT", teamNumber: 2, slot: 1, startX: 600, startY: 150 },
+        ] },
+    }));
+
+    const migrated = readPracticeRoomDraft(storage);
+    assert.deepEqual(migrated.config.bots.map(({ startX, startY }) => [startX, startY]), [[0, -450], [0, 450]]);
+    savePracticeRoomDraft({ config: migrated.config }, storage);
+    const persisted = JSON.parse(storage.getItem(PRACTICE_ROOM_STORAGE_KEY));
+    assert.equal(persisted.version, 3);
+    assert.deepEqual(persisted.config.bots.map(({ startX, startY }) => [startX, startY]), [[0, -450], [0, 450]]);
 });

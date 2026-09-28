@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, BASE_BOT_HP } from "../modelPayloads/arenaConstants.js";
 import { toSimulationBotShape } from "../modelPayloads/arenaShapes.js";
+import { internalPointToPublic } from "../modelPayloads/arenaCoordinates.js";
 import {
     buildAbilityTestingArenaShapes,
     buildAbilityTestingPracticeConfig,
@@ -11,9 +12,11 @@ import {
 test("ability testing presets preserve their starting transforms in practice reset config", () => {
     const preset = findAbilityTestingPreset(24);
     const config = buildAbilityTestingPracticeConfig(preset);
+    const playerStart = internalPointToPublic(preset.playerPosition);
+    const opponentStart = internalPointToPublic(preset.opponentPosition);
     const expected = [
-        ["PLAYER", preset.playerPosition.x, preset.playerPosition.y, preset.playerRotation],
-        ["OPPONENT", preset.opponentPosition.x, preset.opponentPosition.y, preset.opponentRotation],
+        ["PLAYER", playerStart.x, playerStart.y, preset.playerRotation],
+        ["OPPONENT", opponentStart.x, opponentStart.y, preset.opponentRotation],
     ];
 
     assert.deepEqual(config.bots.map((bot) => [bot.role, bot.startX, bot.startY, bot.rotation]), expected);
@@ -48,6 +51,12 @@ test("ability testing presets use the current 1200 unit arena coordinates", () =
         && preset.opponentPosition.y >= 0
         && preset.opponentPosition.y <= ARENA_HEIGHT_UNITS
     )));
+});
+
+test("new ability testing presets use the centered-coordinate brain version", () => {
+    const presets = [findAbilityTestingPreset(3), findAbilityTestingPreset(15), findAbilityTestingPreset(24), findAbilityTestingPreset(29)];
+    assert.ok(presets.every((preset) => preset.playerCode.version === "bot-logic-tree-v2"));
+    assert.ok(presets.every((preset) => preset.opponentCode.version === "bot-logic-tree-v2"));
 });
 
 test("ability showcase positions Frost Ring inside its radial hitbox and moves Snare Bomb's opponent in", () => {

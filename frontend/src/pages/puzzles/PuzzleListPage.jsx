@@ -198,6 +198,12 @@ export default function PuzzleListPage() {
                     <div className="min-w-0 max-w-2xl flex-1">
                         <h1 className="font-display-action text-5xl uppercase tracking-wide text-[#f2f4f5] sm:text-7xl">Puzzles</h1>
                         <p className="puzzle-hero-intro">Solve tactical challenges here</p>
+                        <aside className="mt-4 max-w-xl rounded-lg border border-cyan-300/20 bg-slate-950/25 px-4 py-3" aria-label="How puzzle submissions work">
+                            <p className="font-mono text-[10px] font-bold tracking-[.16em] text-cyan-200">HOW SUBMISSION WORKS</p>
+                            <p className="mt-1.5 text-sm leading-5 text-slate-300">
+                                Test your strategy in the browser, then click <strong className="text-white">Submit Puzzle</strong>. The server simulates your submitted logic and checks whether it solves the puzzle.
+                            </p>
+                        </aside>
 
                         <form onSubmit={submitSearch} className="mt-6 max-w-[680px]">
                             <label htmlFor="puzzle-search" className="font-mono text-[10px] font-bold tracking-[.2em] text-[#35c7e8]">SEARCH PUZZLES</label>

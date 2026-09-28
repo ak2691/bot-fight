@@ -29,6 +29,7 @@ import {
 } from "../pages/puzzles/puzzleRoster.js";
 
 import { BASE_BOT_HP } from "./modelPayloads/arenaConstants.js";
+import { internalPointToPublic } from "./modelPayloads/arenaCoordinates.js";
 import {
     buildInitialArenaShapes,
     buildOpponentShape,
@@ -72,6 +73,7 @@ import {
     getTutorialScenario,
     TUTORIAL_STEP_COUNT,
 } from "../tutorial/TutorialPresets.js";
+import { getTutorialLesson, getTutorialLessonForScenario } from "../tutorial/TutorialContent.js";
 import TutorialGuide from "../tutorial/TutorialGuide.jsx";
 
 function secondsRemaining(targetTime) {
@@ -128,6 +130,9 @@ export default function Arena({
         ? requestedTutorialScenarioId
         : Math.max(0, Math.min(TUTORIAL_STEP_COUNT - 1, restoredTutorialStep));
     const initialTutorialScenario = getTutorialScenario(initialTutorialStep);
+    const tutorialLessonId = getTutorialLesson(requestedTutorialScenarioId)?.id
+        ?? getTutorialLessonForScenario(initialTutorialScenario.id)?.id
+        ?? initialTutorialScenario.id;
     const catalogueAbilityId = isPracticeRoom
         ? new URLSearchParams(location.search).get("ability")
         : null;
@@ -770,6 +775,43 @@ export default function Arena({
         )));
     }, [allowLockedBotEditing]);
 
+    const handleShapeDragEnd = useCallback((id, internalPosition) => {
+        if (!arenaEditingEnabled || isAutoPlaying || (!isPuzzleBuilder && !isPracticeRoom)) return;
+        const shape = shapes.find((candidate) => candidate.id === id);
+        const key = shape ? puzzleBotShapeKey(shape) : null;
+        if (!shape || !key) return;
+        const publicPosition = internalPointToPublic(internalPosition);
+        setShapes((previous) => previous.map((candidate) => candidate.id === id
+            ? mergeBotShapeUpdates(candidate, {
+                x: internalPosition.x,
+                y: internalPosition.y,
+                startX: internalPosition.x,
+                startY: internalPosition.y,
+                ...(isPuzzleBuilder ? { spawnX: internalPosition.x, spawnY: internalPosition.y } : {}),
+            })
+            : candidate));
+        if (isPuzzleBuilder) {
+            onPuzzleDraftChange?.({
+                bots: puzzleSetupRoster.map((bot) => puzzleBotKey(bot) === key
+                    ? { ...bot, startX: publicPosition.x, startY: publicPosition.y }
+                    : bot),
+            });
+            return;
+        }
+        const nextConfig = normalizePracticeConfig({
+            ...practiceConfig,
+            bots: practiceConfig.bots.map((bot) => puzzleBotKey(bot) === key
+                ? { ...bot, startX: publicPosition.x, startY: publicPosition.y }
+                : bot),
+        });
+        setPracticeConfig(nextConfig);
+        savePracticeRoomDraft({
+            config: nextConfig,
+            player: { loadout: selectedLoadout, code: testingConfiguration },
+            opponent: { loadout: opponentLoadout, code: opponentTestingConfiguration },
+        });
+    }, [arenaEditingEnabled, isAutoPlaying, isPracticeRoom, isPuzzleBuilder, onPuzzleDraftChange, opponentLoadout, opponentTestingConfiguration, practiceConfig, puzzleSetupRoster, selectedLoadout, shapes, testingConfiguration]);
+
     const playerSetup = puzzleBotForSetup(initialPuzzle, PUZZLE_PLAYER_TEAM);
     const opponentSetup = puzzleBotForSetup(initialPuzzle, PUZZLE_OPPONENT_TEAM);
     const playerStartX = playerSetup?.startX;
@@ -1138,7 +1180,7 @@ export default function Arena({
                                     {tutorialMode && (
                                         <div className="arena-stage-info__tutorial">
                                             <TutorialGuide
-                                                lessonId={tutorialScenario.id}
+                                                lessonId={tutorialLessonId}
                                                 variant="arena"
                                                 minimized={tutorialLessonMinimized}
                                                 onMinimizedChange={setTutorialLessonMinimized}
@@ -1153,6 +1195,7 @@ export default function Arena({
                                     selectedId={selectedId}
                                     onSelectShape={arenaEditingEnabled ? setSelectedId : () => { }}
                                     onUpdateShape={arenaEditingEnabled ? handleUpdateShape : () => { }}
+                                    onShapeDragEnd={arenaEditingEnabled ? handleShapeDragEnd : () => { }}
                                     onDeselectAll={arenaEditingEnabled ? () => setSelectedId(null) : () => { }}
                                     editable={arenaEditingEnabled}
                                     fillAvailable
@@ -1195,6 +1238,7 @@ export default function Arena({
                         onSandboxParticipantChange={updateSandboxParticipantConfiguration}
                         testingRemaining={testingRemaining}
                         isAutoPlaying={isAutoPlaying}
+                        measurementEnabled={measurementEnabled}
                         onMeasurementToggle={() => setMeasurementEnabled((current) => {
                             if (current) setMeasurementPoints([]);
                             return !current;
@@ -1222,7 +1266,7 @@ export default function Arena({
                         isPuzzleSubmitting={isPuzzleAttemptSubmitting}
                         logicLimits={usesPuzzleSetup ? logicLimits : null}
                         tutorialGuideProps={tutorialMode ? {
-                            lessonId: tutorialScenario.id,
+                            lessonId: tutorialLessonId,
                         } : null}
                         onWorkspaceOpen={tutorialMode ? () => setTutorialLessonMinimized(true) : null}
                     />

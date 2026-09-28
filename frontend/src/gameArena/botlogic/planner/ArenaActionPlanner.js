@@ -4,29 +4,36 @@ import { BOT_CODE_SELECTABLES, resolveAbilityStrategySelectable, selectAbilitySt
 import { stateFromPayload } from "../code/runtime/runtimeState.js";
 import { compassDirection, relativeMovementVector, vectorToCompassDegrees } from "./arenaAngles.js";
 import { abilityExecutionPayload } from "../../gameconfig/AbilityExecutionPayload.js";
+import { publicOffsetToInternal, publicPointToInternal } from "../../modelPayloads/arenaCoordinates.js";
+import { BOT_LOGIC_TREE_V1, BOT_LOGIC_TREE_VERSION } from "../code/configuration/constants.js";
 
 /** Builds the action-component payload consumed by ActionExecutionSystem. */
 export function buildDeterministicLogicAction(configuration, stateSnapshot) {
     const plan = selectAbilityStrategyActionPlan(configuration, stateSnapshot);
-    const state = stateFromPayload(stateSnapshot);
+    const coordinateVersion = plan.coordinateVersion ?? configuration?.version ?? BOT_LOGIC_TREE_VERSION;
+    const state = stateFromPayload(stateSnapshot, coordinateVersion);
     const movementBlock = plan.movement ?? null;
     const abilityBlock = plan.ability ?? null;
     const resolvedAbilityPayload = abilityExecutionPayload(abilityBlock?.action);
     const abilityBlockWithTarget = resolvedAbilityPayload ? abilityBlock : null;
     const facingBlock = plan.rotation ?? null;
     const movementTarget = movementBlock?.movementMode === "coordinates"
-        ? { x: Number(movementBlock.targetX ?? 500), y: Number(movementBlock.targetY ?? 400) }
+        ? internalCoordinateTarget(movementBlock, coordinateVersion)
         : resolveSelectable(state, movementBlock?.selectable);
     const facingTarget = facingBlock?.targetMode === "coordinates"
-        ? { x: Number(facingBlock.targetX ?? 500), y: Number(facingBlock.targetY ?? 400) }
+        ? internalCoordinateTarget(facingBlock, coordinateVersion)
         : facingBlock?.targetMode === "angle"
             ? null
             : facingBlock
-                ? offsetTarget(resolveSelectable(state, facingBlock.selectable ?? movementBlock?.selectable), facingBlock)
+                ? offsetTarget(resolveSelectable(state, facingBlock.selectable ?? movementBlock?.selectable), facingBlock, coordinateVersion)
                 : resolveSelectable(state, movementBlock?.selectable);
     const specialTarget = abilityBlockWithTarget?.targetMode === "target"
         || resolvedAbilityPayload?.activation?.targetMode === "target"
-        ? offsetTarget(resolveSelectable(state, abilityBlockWithTarget.selectable), abilityBlockWithTarget)
+        ? offsetTarget(resolveSelectable(state, abilityBlockWithTarget.selectable), abilityBlockWithTarget, coordinateVersion)
+        : null;
+    const configuredAbilityCoordinate = abilityBlockWithTarget?.targetMode === "coordinates"
+        || abilityBlockWithTarget?.movementMode === "coordinates"
+        ? internalCoordinateTarget(abilityBlockWithTarget, coordinateVersion)
         : null;
     const movement = movementVector(movementBlock, state.player, movementTarget);
     return {
@@ -38,8 +45,8 @@ export function buildDeterministicLogicAction(configuration, stateSnapshot) {
         abilityAction: abilityBlock ? {
             action: abilityBlock.action,
             abilityPayload: resolvedAbilityPayload,
-            targetX: specialTarget?.x ?? abilityBlock.targetX,
-            targetY: specialTarget?.y ?? abilityBlock.targetY,
+            targetX: specialTarget?.x ?? configuredAbilityCoordinate?.x ?? abilityBlock.targetX,
+            targetY: specialTarget?.y ?? configuredAbilityCoordinate?.y ?? abilityBlock.targetY,
             ...(abilityBlock.movementMode ? { movementMode: abilityBlock.movementMode } : {}),
             ...(abilityBlock.movementDirection != null ? { movementDirection: abilityBlock.movementDirection } : {}),
             ...(abilityBlock.phaseFacingMode != null ? { phaseFacingMode: abilityBlock.phaseFacingMode } : {}),
@@ -52,9 +59,18 @@ export function idleAction() {
     return { dx: 0, dy: 0, dRot: 0, abilityAction: null, customVariables: {} };
 }
 
-function offsetTarget(target, block) {
+function offsetTarget(target, block, coordinateVersion) {
     if (block?.movementMode) return target;
-    return target ? { ...target, x: Number(target.x) + Number(block?.targetOffsetX ?? 0), y: Number(target.y) + Number(block?.targetOffsetY ?? 0) } : null;
+    if (!target) return null;
+    const offset = coordinateVersion === BOT_LOGIC_TREE_V1
+        ? { x: Number(block?.targetOffsetX ?? 0), y: Number(block?.targetOffsetY ?? 0) }
+        : publicOffsetToInternal({ x: block?.targetOffsetX ?? 0, y: block?.targetOffsetY ?? 0 });
+    return { ...target, x: Number(target.x) + offset.x, y: Number(target.y) + offset.y };
+}
+
+function internalCoordinateTarget(block, coordinateVersion) {
+    const point = { x: Number(block?.targetX ?? (coordinateVersion === BOT_LOGIC_TREE_V1 ? 600 : 0)), y: Number(block?.targetY ?? (coordinateVersion === BOT_LOGIC_TREE_V1 ? 600 : 0)) };
+    return coordinateVersion === BOT_LOGIC_TREE_V1 ? point : publicPointToInternal(point);
 }
 
 function resolveSelectable(state, selectable = BOT_CODE_SELECTABLES.OPPONENT) {

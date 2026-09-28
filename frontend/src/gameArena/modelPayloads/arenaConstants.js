@@ -2,6 +2,8 @@
 // used by the responsive viewport that renders this coordinate space.
 export const ARENA_WIDTH_UNITS = 1200;
 export const ARENA_HEIGHT_UNITS = 1200;
+export const ARENA_CENTER_X_UNITS = ARENA_WIDTH_UNITS / 2;
+export const ARENA_CENTER_Y_UNITS = ARENA_HEIGHT_UNITS / 2;
 // Keep the same 150-unit inset from the top/bottom arena edges at the larger
 // world size: team one starts at 150 and team two starts at 1050.
 export const SPAWN_EDGE_MARGIN_UNITS = 150;
@@ -11,6 +13,12 @@ export const BOT_CENTER_MIN_X = BOT_RADIUS;
 export const BOT_CENTER_MAX_X = ARENA_WIDTH_UNITS - BOT_RADIUS;
 export const BOT_CENTER_MIN_Y = BOT_RADIUS;
 export const BOT_CENTER_MAX_Y = ARENA_HEIGHT_UNITS - BOT_RADIUS;
+export const PUBLIC_BOT_CENTER_MIN_X = BOT_CENTER_MIN_X - ARENA_CENTER_X_UNITS;
+export const PUBLIC_BOT_CENTER_MAX_X = BOT_CENTER_MAX_X - ARENA_CENTER_X_UNITS;
+export const PUBLIC_BOT_CENTER_MIN_Y = ARENA_CENTER_Y_UNITS - BOT_CENTER_MAX_Y;
+export const PUBLIC_BOT_CENTER_MAX_Y = ARENA_CENTER_Y_UNITS - BOT_CENTER_MIN_Y;
+export const PUBLIC_BOT_CENTER_MIN = PUBLIC_BOT_CENTER_MIN_X;
+export const PUBLIC_BOT_CENTER_MAX = PUBLIC_BOT_CENTER_MAX_X;
 export const DISPLAY_ARENA_MAX_SIZE = 1000;
 export const AUTO_STEP_MS = 100;
 export const ROTATION_STEP_DEG = 12;
@@ -29,6 +37,8 @@ export const PRACTICE_OPPONENT_START = Object.freeze({
     y: DUEL_SLOT_ONE_Y,
     rotation: 180,
 });
+export const PRACTICE_PLAYER_PUBLIC_START = Object.freeze({ x: 0, y: -450, rotation: 0 });
+export const PRACTICE_OPPONENT_PUBLIC_START = Object.freeze({ x: 0, y: 450, rotation: 180 });
 // Replay compatibility for authoritative frames created before arena objects
 // were removed from the live frontend flow.
 export const DEFENSE_WALL_TYPE = "defenseWall";

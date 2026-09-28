@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import AddIcon from "./controls/AddIcon.jsx";
 import { createPortal } from "react-dom";
 import {
     CONDITION_TYPES,
@@ -36,6 +37,7 @@ import {
 } from "./nodes/GraphNodes.jsx";
 import { TreeLogicBoard } from "./LogicBoard.jsx";
 import { readAddRootShortcut } from "./addRootShortcut.js";
+import { BOT_LOGIC_TREE_VERSION, coordinateVersionFor } from "../botlogic/code/configuration/constants.js";
 
 const MIN_ZOOM = 0.45;
 const MAX_ZOOM = 1.35;
@@ -148,6 +150,7 @@ export default function CodingPanel({
     onSandboxParticipantChange = null,
     testingRemaining = null,
     isAutoPlaying = false,
+    measurementEnabled = false,
     onMeasurementToggle,
     hitboxesEnabled = false,
     onHitboxesToggle = null,
@@ -296,7 +299,7 @@ export default function CodingPanel({
             ? activeCodeSnapshot?.configuration
             : viewingLiveOpponentSandbox
                 ? activeCodeSnapshot?.configuration
-                    ?? { version: "bot-logic-tree-v1", roots: [], customVariables: [] }
+                    ?? { version: BOT_LOGIC_TREE_VERSION, roots: [], customVariables: [] }
             : viewingOpponent ? opponentConfiguration : configuration;
     const activeLoadoutSource = viewingOfflineParticipant
         ? activeOfflineParticipant.selectedLoadout ?? activeOfflineParticipant.loadout
@@ -309,7 +312,7 @@ export default function CodingPanel({
             : viewingOpponent ? opponentLoadout : selectedLoadout;
     const normalizedActiveConfiguration = activeConfigurationSource && typeof activeConfigurationSource === "object"
         ? activeConfigurationSource
-        : { version: "bot-logic-tree-v1", roots: [], customVariables: [] };
+        : { version: BOT_LOGIC_TREE_VERSION, roots: [], customVariables: [] };
     const activeConfiguration = normalizedActiveConfiguration;
     const detachedBranchCount = activeConfiguration?.editorGraph?.detachedBranches?.length ?? 0;
     const activeLoadout = activeLoadoutSource;
@@ -432,7 +435,7 @@ export default function CodingPanel({
     };
     const updateRoots = (roots, nodePositions = activeConfiguration.nodePositions) => updateActiveConfiguration({
         ...activeConfiguration,
-        version: "bot-logic-tree-v1",
+        version: coordinateVersionFor(activeConfiguration),
         roots: normalizeRoots(roots),
         customVariables: activeConfiguration?.customVariables ?? [],
         ...(nodePositions ? { nodePositions } : {}),
@@ -689,8 +692,15 @@ export default function CodingPanel({
                             </ControlButton>
                         )}
                         {onPuzzleSubmit && detachedBranchCount > 0 && <p className="code-detached-submit-note">{detachedBranchCount} detached {detachedBranchCount === 1 ? "branch is" : "branches are"} saved here but will not run.</p>}
-                        <ControlButton icon="measure" onClick={onMeasurementToggle} disabled={!onMeasurementToggle} tone="neutral">
-                            MEASURE
+                        <ControlButton
+                            icon="measure"
+                            label={`Measurement mode ${measurementEnabled ? "on" : "off"}`}
+                            onClick={onMeasurementToggle}
+                            disabled={!onMeasurementToggle}
+                            tone={measurementEnabled ? "blue" : "neutral"}
+                            pressed={measurementEnabled}
+                        >
+                            {`MEASURE ${measurementEnabled ? "ON" : "OFF"}`}
                         </ControlButton>
                         {onHitboxesToggle && (
                             <ControlButton icon="target" onClick={onHitboxesToggle} tone="neutral">
@@ -849,7 +859,7 @@ export default function CodingPanel({
                                         onClick={addRootNode}
                                         className="code-toolbar-button code-toolbar-button-primary"
                                     >
-                                        <span aria-hidden="true" className="code-toolbar-icon">＋</span> ADD ROOT ({totalRootNodes}/{MAX_ROOT_NODES}) <kbd className="code-toolbar-shortcut">{readAddRootShortcut().toUpperCase()}</kbd>
+                                        <AddIcon className="code-toolbar-icon" /> ADD ROOT ({totalRootNodes}/{MAX_ROOT_NODES}) <kbd className="code-toolbar-shortcut">{readAddRootShortcut().toUpperCase()}</kbd>
                                     </button>
                                 </div>
                                 <div className="code-toolbar-actions">
@@ -871,7 +881,7 @@ export default function CodingPanel({
                                             onClick={() => changeZoom(0.1)}
                                             className="code-toolbar-zoom-button"
                                         >
-                                            +
+                                            <AddIcon size="large" />
                                         </button>
                                     </div>
                                     <button

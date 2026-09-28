@@ -24,6 +24,8 @@ import {
 } from "./runtime/customVariables.js";
 import {
     BOT_LOGIC_TREE_VERSION,
+    BOT_LOGIC_TREE_V1,
+    coordinateLimitsFor,
     MAX_LOGIC_BLOCKS,
     MAX_ROOT_NODES,
     MAX_TOTAL_CONDITIONS,
@@ -175,10 +177,10 @@ export function normalizeAbilityStrategyConfiguration(configuration) {
     return normalizeConfiguration(configuration, {
         normalizeCustomVariables: (source) => normalizeCustomVariableDefinitions(source, { normalizeConditions, normalizeBoolean, clamp }),
         customVariablesWithReferencedActions,
-        normalizeRoot: (root, rootIndex, remaining, customVariables, priority) => normalizeCodeRoot(root, rootIndex, remaining, customVariables, {
+        normalizeRoot: (root, rootIndex, remaining, customVariables, priority, coordinateVersion) => normalizeCodeRoot(root, rootIndex, remaining, customVariables, {
             normalizeBlock,
             normalizeConditions,
-        }, priority),
+        }, priority, coordinateVersion),
         normalizeBlock,
         normalizePriority,
         normalizeConditions,
@@ -205,7 +207,7 @@ export function selectAbilityStrategyActionPlan(configuration, payload) {
 
 export function inspectAbilityStrategyConditions(configuration, payload) {
     const normalized = normalizeAbilityStrategyConfiguration(configuration);
-    const state = stateFromPayload(payload);
+    const state = stateFromPayload(payload, normalized.version);
     prepareCustomVariableState(state, normalized.customVariables, { evaluateConditions: evaluateConditionList });
     const inspections = [];
     const visitBranches = (branches, rootName, path = []) => {
@@ -369,7 +371,7 @@ function collectRepeatedAngleGroups(conditions, state) {
         const left = resolveStateVariable(state, condition, leftDefinition.id, condition.leftSelectable ?? condition.selectable);
         const numericLeft = Number(left);
         if (!Number.isFinite(numericLeft)) continue;
-        const key = angleConditionGroupKey(condition);
+        const key = angleConditionGroupKey(condition, state.coordinateVersion);
         const group = groups.get(key) ?? { key, values: angleRepresentations(numericLeft), count: 0 };
         group.count += 1;
         groups.set(key, group);
@@ -381,7 +383,7 @@ function evaluateAllAndAngleGroups(conditions, state, groups) {
     const groupedConditions = new Map(groups.map((group) => [group.key, []]));
     for (const condition of conditions) {
         if (condition?.type !== BOT_CODE_CONDITIONS.EXPRESSION) continue;
-        const group = groupedConditions.get(angleConditionGroupKey(condition));
+        const group = groupedConditions.get(angleConditionGroupKey(condition, state.coordinateVersion));
         if (group) group.push(condition);
     }
     for (const group of groups) {
@@ -393,7 +395,7 @@ function evaluateAllAndAngleGroups(conditions, state, groups) {
     }
     return conditions.every((condition) => {
         if (condition?.type === BOT_CODE_CONDITIONS.EXPRESSION
-            && groupedConditions.has(angleConditionGroupKey(condition))) return true;
+            && groupedConditions.has(angleConditionGroupKey(condition, state.coordinateVersion))) return true;
         return evaluateConditionNode(condition, state, evaluateExpressionCondition);
     });
 }
@@ -416,11 +418,11 @@ function evaluateAngleVariants(conditions, state, groups, groupIndex, angleOverr
     return false;
 }
 
-export function normalizeConditions(conditions, customVariables = [], selectableTypes = SELECTABLE_TYPES) {
+export function normalizeConditions(conditions, customVariables = [], selectableTypes = SELECTABLE_TYPES, coordinateVersion = BOT_LOGIC_TREE_VERSION) {
     const source = Array.isArray(conditions) ? conditions : [{ type: CONDITION_TYPES[0].id }];
     return source.slice(0, MAX_CONDITIONS_PER_BRANCH).map((condition, index) => {
         if (condition?.type === BOT_CODE_CONDITIONS.EXPRESSION || condition?.left) {
-            return withConditionJoin(normalizeExpressionCondition(condition, customVariables, selectableTypes), condition, index);
+            return withConditionJoin(normalizeExpressionCondition(condition, customVariables, selectableTypes, coordinateVersion), condition, index);
         }
         const definition = CONDITION_BY_ID.get(condition?.type);
         if (!definition) {
@@ -450,7 +452,7 @@ function withConditionJoin(normalized, source, index) {
         : normalized;
 }
 
-function normalizeExpressionCondition(condition, customVariables = [], selectableTypes = SELECTABLE_TYPES) {
+function normalizeExpressionCondition(condition, customVariables = [], selectableTypes = SELECTABLE_TYPES, coordinateVersion = BOT_LOGIC_TREE_VERSION) {
     const leftId = condition?.left;
     const customVariable = customVariables.find((variable) => variable?.id === leftId);
     const customLeft = String(leftId ?? "").startsWith(CUSTOM_VARIABLE_CONTRACT.PREFIX)
@@ -469,7 +471,7 @@ function normalizeExpressionCondition(condition, customVariables = [], selectabl
         ? normalizeSelectablePair(condition, leftDefinition, selectableTypes)
         : null;
     const normalizedTarget = normalizedSelectablePair
-        ? normalizePairTarget(condition, leftDefinition)
+        ? normalizePairTarget(condition, leftDefinition, coordinateVersion)
         : null;
     return {
         type: "expression",
@@ -535,12 +537,12 @@ function falseCondition() {
     };
 }
 
-function normalizeBlock(block, blockIndex, customVariables = []) {
-    const actions = normalizedBlockActions(block);
+function normalizeBlock(block, blockIndex, customVariables = [], coordinateVersion = BOT_LOGIC_TREE_VERSION) {
+    const actions = normalizedBlockActions(block, coordinateVersion);
     const primaryAction = actions[0] ?? { action: BOT_CODE_ACTIONS.NONE, selectable: BOT_CODE_SELECTABLES.OPPONENT };
     return {
         id: String(block?.id || `logic-${blockIndex + 1}`),
-        conditions: normalizeConditions(block?.conditions, customVariables),
+        conditions: normalizeConditions(block?.conditions, customVariables, SELECTABLE_TYPES, coordinateVersion),
         priority: normalizePriority(block?.priority),
         action: primaryAction.action,
         selectable: primaryAction.selectable,
@@ -548,7 +550,7 @@ function normalizeBlock(block, blockIndex, customVariables = []) {
     };
 }
 
-function normalizedBlockActions(block) {
+function normalizedBlockActions(block, coordinateVersion = BOT_LOGIC_TREE_VERSION) {
     const source = Array.isArray(block?.actions) && block.actions.length
         ? block.actions
         : [{ action: block?.action ?? BOT_CODE_ACTIONS.NONE, selectable: block?.selectable, targetOffsetX: block?.targetOffsetX, targetOffsetY: block?.targetOffsetY }];
@@ -587,13 +589,13 @@ function normalizedBlockActions(block) {
                 } : {}),
                 ...(action.orientationConfig ? { phaseFacingMode: boundedNumber(normalizedEntry?.phaseFacingMode, MOVEMENT_DIRECTION_MIN, MOVEMENT_DIRECTION_MAX, 0) } : {}),
                 ...(actionSupportsTarget(action) && !action.movementConfig ? {
-                    targetOffsetX: boundedNumber(normalizedEntry?.targetOffsetX, -ARENA_WIDTH_UNITS, ARENA_WIDTH_UNITS, 0),
-                    targetOffsetY: boundedNumber(normalizedEntry?.targetOffsetY, -ARENA_HEIGHT_UNITS, ARENA_HEIGHT_UNITS, 0),
+                    targetOffsetX: boundedNumber(normalizedEntry?.targetOffsetX, -coordinateLimitsFor(coordinateVersion).offsetMagnitude, coordinateLimitsFor(coordinateVersion).offsetMagnitude, 0),
+                    targetOffsetY: boundedNumber(normalizedEntry?.targetOffsetY, -coordinateLimitsFor(coordinateVersion).offsetMagnitude, coordinateLimitsFor(coordinateVersion).offsetMagnitude, 0),
                 } : {}),
                 ...(action.coordinateTarget ? {
                     targetMode,
-                    targetX: boundedNumber(normalizedEntry?.targetX, 0, ARENA_WIDTH_UNITS, ARENA_WIDTH_UNITS / 2),
-                    targetY: boundedNumber(normalizedEntry?.targetY, 0, ARENA_HEIGHT_UNITS, ARENA_HEIGHT_UNITS / 2),
+                    targetX: boundedNumber(normalizedEntry?.targetX, coordinateLimitsFor(coordinateVersion).minimum, coordinateLimitsFor(coordinateVersion).maximum, coordinateVersion === BOT_LOGIC_TREE_V1 ? ARENA_WIDTH_UNITS / 2 : 0),
+                    targetY: boundedNumber(normalizedEntry?.targetY, coordinateLimitsFor(coordinateVersion).minimum, coordinateLimitsFor(coordinateVersion).maximum, coordinateVersion === BOT_LOGIC_TREE_V1 ? ARENA_HEIGHT_UNITS / 2 : 0),
                 } : {}),
                 ...(action.angleTarget ? {
                     targetAngle: boundedNumber(normalizedEntry?.targetAngle, -360, 360, 0),
@@ -798,7 +800,7 @@ function normalizeSelectablePair(condition, definition, selectableTypes = SELECT
     return [first, second];
 }
 
-function normalizePairTarget(condition, definition) {
+function normalizePairTarget(condition, definition, coordinateVersion = BOT_LOGIC_TREE_VERSION) {
     const modes = definition?.targetModes;
     if (!Array.isArray(modes) || modes.length === 0) return null;
     const inferredMode = condition?.targetMode
@@ -808,10 +810,12 @@ function normalizePairTarget(condition, definition) {
     const targetMode = modes.includes(inferredMode)
         ? inferredMode
         : modes.includes(TARGET_MODES.TARGET) ? TARGET_MODES.TARGET : modes[0];
+    const limits = coordinateLimitsFor(coordinateVersion);
+    const center = coordinateVersion === BOT_LOGIC_TREE_V1 ? ARENA_WIDTH_UNITS / 2 : 0;
     return {
         targetMode,
-        targetX: boundedNumber(condition?.targetX, 0, ARENA_WIDTH_UNITS, ARENA_WIDTH_UNITS / 2),
-        targetY: boundedNumber(condition?.targetY, 0, ARENA_HEIGHT_UNITS, ARENA_HEIGHT_UNITS / 2),
+        targetX: boundedNumber(condition?.targetX, limits.minimum, limits.maximum, center),
+        targetY: boundedNumber(condition?.targetY, limits.minimum, limits.maximum, center),
         ...(modes.includes(TARGET_MODES.ANGLE)
             ? { targetAngle: boundedNumber(condition?.targetAngle, -360, 360, 0) }
             : {}),
@@ -839,11 +843,11 @@ function conditionLeftDefinition(condition, state) {
         ?? (customDefinition ? variableDefinition(customDefinition.id, customDefinition.name, customDefinition.valueType, { min: CUSTOM_NUMBER_MIN, max: CUSTOM_NUMBER_MAX, step: NUMBER_STEP }) : null);
 }
 
-function angleConditionGroupKey(condition) {
+function angleConditionGroupKey(condition, coordinateVersion = BOT_LOGIC_TREE_VERSION) {
     const definition = STATE_VARIABLE_BY_ID.get(condition?.left);
     if (definition?.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR) {
         const [first, second] = normalizedSelectablePair(condition, definition);
-        const target = normalizePairTarget(condition, definition);
+        const target = normalizePairTarget(condition, definition, coordinateVersion);
         const targetKey = target?.targetMode === TARGET_MODES.COORDINATES
             ? `${TARGET_MODES.COORDINATES}|${target.targetX}|${target.targetY}`
             : target?.targetMode === TARGET_MODES.ANGLE
@@ -864,7 +868,7 @@ function evaluateExpressionCondition(condition, state, angleOverrides = null) {
     const leftDefinition = conditionLeftDefinition(condition, state);
     if (!leftDefinition) return false;
     if (leftDefinition.selectableCapability && !selectableSupportsCapability(condition.leftSelectable ?? condition.selectable, leftDefinition.selectableCapability)) return false;
-    const angleKey = leftDefinition.circularAngle ? angleConditionGroupKey(condition) : null;
+    const angleKey = leftDefinition.circularAngle ? angleConditionGroupKey(condition, state.coordinateVersion) : null;
     const hasAngleOverride = Boolean(angleOverrides?.has(angleKey));
     const left = hasAngleOverride
         ? angleOverrides.get(angleKey)

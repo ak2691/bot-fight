@@ -28,7 +28,7 @@ function TutorialLessonCard({ lesson, lessonIndex, navigate }) {
 
             {isExpanded && (
                 <div id={descriptionId} className="tutorial-level-description mt-5 max-w-5xl">
-                    <LessonDescription description={lesson.description} />
+                    <LessonDescription description={lesson.description} visuals={lesson.visuals} />
                     {lesson.scenarioId && (
                         <div className="mt-5 flex justify-end border-t border-slate-800/80 pt-4">
                             <button
@@ -129,6 +129,9 @@ export default function TutorialPage() {
                         </button>
                         <button type="button" onClick={() => openCatalogue("/conditionals")} className="tutorial-try-button">
                             View Conditional Catalogue
+                        </button>
+                        <button type="button" onClick={() => openCatalogue("/puzzles")} className="tutorial-try-button">
+                            Puzzles
                         </button>
                     </nav>
                 </section>

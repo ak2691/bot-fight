@@ -7,7 +7,10 @@ import {
     BASE_BOT_HP,
     PRACTICE_OPPONENT_START,
     PRACTICE_PLAYER_START,
+    PRACTICE_OPPONENT_PUBLIC_START,
+    PRACTICE_PLAYER_PUBLIC_START,
 } from "../modelPayloads/arenaConstants.js";
+import { publicPointToInternal } from "../modelPayloads/arenaCoordinates.js";
 import {
     buildInitialArenaShapes,
     buildOpponentShape,
@@ -30,8 +33,8 @@ export function defaultPuzzleBotStart(teamNumber) {
     return {
         // Team members intentionally overlap their team's lead until the
         // author positions them. Their simulation slot still remains unique.
-        startX: ARENA_WIDTH_UNITS / 2,
-        startY: isPlayer ? PRACTICE_PLAYER_START.y : PRACTICE_OPPONENT_START.y,
+        startX: isPlayer ? PRACTICE_PLAYER_PUBLIC_START.x : PRACTICE_OPPONENT_PUBLIC_START.x,
+        startY: isPlayer ? PRACTICE_PLAYER_PUBLIC_START.y : PRACTICE_OPPONENT_PUBLIC_START.y,
         rotation: isPlayer ? PRACTICE_PLAYER_START.rotation : PRACTICE_OPPONENT_START.rotation,
     };
 }
@@ -142,9 +145,14 @@ export function buildPracticeArenaShapes(playerLoadout, opponentLoadout, puzzleS
             const fallback = defaultPuzzleBotStart(bot.teamNumber, bot.slot, Number(bot.teamNumber) === PUZZLE_PLAYER_TEAM
                 ? normalizePuzzleTeamSize(puzzleSetup.playerTeamSize)
                 : normalizePuzzleTeamSize(puzzleSetup.opponentTeamSize));
+            const publicStart = {
+                x: Number.isFinite(Number(bot.startX)) ? Number(bot.startX) : fallback.startX,
+                y: Number.isFinite(Number(bot.startY)) ? Number(bot.startY) : fallback.startY,
+            };
+            const internalStart = publicPointToInternal(publicStart);
             const startConfiguration = {
-                startX: Number.isFinite(Number(bot.startX)) ? Number(bot.startX) : fallback.startX,
-                startY: Number.isFinite(Number(bot.startY)) ? Number(bot.startY) : fallback.startY,
+                startX: internalStart.x,
+                startY: internalStart.y,
                 rotation: Number.isFinite(Number(bot.rotation)) ? Number(bot.rotation) : fallback.rotation,
                 startHp: Number.isFinite(Number(bot.startHp)) ? Number(bot.startHp) : BASE_BOT_HP,
             };
@@ -182,9 +190,16 @@ export function buildPracticeArenaShapes(playerLoadout, opponentLoadout, puzzleS
         const loadout = shape.id === "main" ? playerLoadout : opponentLoadout;
         const start = shape.id === "main" ? playerStart : opponentStart;
         const fallback = shape.id === "main" ? PRACTICE_PLAYER_START : PRACTICE_OPPONENT_START;
+        const publicStart = {
+            x: Number.isFinite(Number(start?.startX ?? start?.x)) ? Number(start.startX ?? start.x) : PRACTICE_PLAYER_PUBLIC_START.x,
+            y: Number.isFinite(Number(start?.startY ?? start?.y))
+                ? Number(start.startY ?? start.y)
+                : shape.id === "main" ? PRACTICE_PLAYER_PUBLIC_START.y : PRACTICE_OPPONENT_PUBLIC_START.y,
+        };
+        const internalStart = publicPointToInternal(publicStart);
         const startConfiguration = {
-            startX: Number.isFinite(Number(start?.startX ?? start?.x)) ? Number(start.startX ?? start.x) : fallback.x,
-            startY: Number.isFinite(Number(start?.startY ?? start?.y)) ? Number(start.startY ?? start.y) : fallback.y,
+            startX: internalStart.x,
+            startY: internalStart.y,
             rotation: Number.isFinite(Number(start?.rotation)) ? Number(start.rotation) : fallback.rotation,
             startHp: Number.isFinite(Number(start?.startHp)) ? Number(start.startHp) : BASE_BOT_HP,
         };

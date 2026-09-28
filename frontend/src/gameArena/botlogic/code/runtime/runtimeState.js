@@ -1,4 +1,5 @@
 import { BASE_BOT_HP } from "../../../modelPayloads/arenaConstants.js";
+import { BOT_LOGIC_TREE_VERSION } from "../configuration/constants.js";
 import { normalizeStatusEffect } from "../../../ecs/contracts/StatusContracts.js";
 
 const ENTITY_SIZE = 60;
@@ -49,7 +50,7 @@ function botState(source = {}) {
     };
 }
 
-export function stateFromPayload(payload) {
+export function stateFromPayload(payload, coordinateVersion = BOT_LOGIC_TREE_VERSION) {
     const objects = Array.isArray(payload?.objects) ? payload.objects : [];
     const player = botState(payload?.playerModel);
     const botObjects = objects.filter(isBotModel);
@@ -73,6 +74,7 @@ export function stateFromPayload(payload) {
     const opponent = normalizedOpponents[0] ?? null;
     return {
         player,
+        coordinateVersion,
         opponent,
         teammates: normalizedTeammates,
         opponents: normalizedOpponents,

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { buildInitialArenaShapes } from "../modelPayloads/arenaShapes.js";
+import { graphEdgePath } from "./graphEdgeGeometry.js";
 
 const PANEL_PATH = fileURLToPath(new URL("./CodingPanel.jsx", import.meta.url));
 const ARENA_PATH = fileURLToPath(new URL("../Arena.jsx", import.meta.url));
@@ -16,6 +17,8 @@ const NODES_PATH = fileURLToPath(new URL("./nodes/GraphNodes.jsx", import.meta.u
 const CUSTOM_VARIABLES_MODAL_PATH = fileURLToPath(new URL("./modals/CustomVariablesModal.jsx", import.meta.url));
 const SEARCH_PATH = fileURLToPath(new URL("./modals/SearchRootNodesModal.jsx", import.meta.url));
 const ICON_PATH = fileURLToPath(new URL("./controls/MatchToolIcon.jsx", import.meta.url));
+const ADD_ICON_PATH = fileURLToPath(new URL("./controls/AddIcon.jsx", import.meta.url));
+const TUTORIAL_GUIDE_PATH = fileURLToPath(new URL("../../tutorial/TutorialGuide.jsx", import.meta.url));
 const CSS_PATH = fileURLToPath(new URL("../../index.css", import.meta.url));
 const MENU_EVENTS_PATH = fileURLToPath(new URL("./utils/codeMenuEvents.js", import.meta.url));
 const PIXI_CANVAS_PATH = fileURLToPath(new URL("../pixi/PixiCanvas.jsx", import.meta.url));
@@ -39,7 +42,10 @@ test("match and building toolbars expose only their supported controls", () => {
     assert.match(source, /onPuzzleSubmit = null/);
     assert.match(source, /onClick=\{onPuzzleSubmit\}/);
     assert.match(source, /isPuzzleSubmitting \? "SUBMITTING" : "SUBMIT PUZZLE"/);
-    assert.match(source, />\s*MEASURE\s*</);
+    assert.match(source, /Measurement mode \$\{measurementEnabled \? "on" : "off"\}/);
+    assert.match(source, /tone=\{measurementEnabled \? "blue" : "neutral"\}/);
+    assert.match(source, /pressed=\{measurementEnabled\}/);
+    assert.match(source, /MEASURE \$\{measurementEnabled \? "ON" : "OFF"\}/);
     assert.match(source, />\s*RESET STATS\s*</);
     assert.match(source, />\s*PRACTICE CONFIG\s*</);
     assert.match(source, />\s*EDIT LOADOUT\s*</);
@@ -160,7 +166,9 @@ test("toolbar buttons share the blueprint surface, show labels, and retain the e
     const source = readCodingSource();
 
     assert.match(source, /className=\{`arena-toolbar-button \$\{tones\[tone\]/);
+    assert.match(source, /aria-pressed=\{typeof pressed === "boolean" \? pressed : undefined\}/);
     assert.match(readFileSync(CSS_PATH, "utf8"), /\.arena-toolbar-button \{/);
+    assert.match(readFileSync(CSS_PATH, "utf8"), /\.arena-toolbar-button\[aria-pressed="true"\]/);
     assert.match(source, /\{icon && <ToolIcon name=\{icon\} \/>}<span>\{children\}<\/span>/);
     assert.match(source, /onClick=\{onAutoPlayToggle\}/);
     assert.match(source, /onClick=\{onResetArenaStats\}/);
@@ -423,7 +431,7 @@ test("action node picker provides an auto-focused search", () => {
 
     assert.match(source, /function NodeKindPicker/);
     assert.match(source, /placeholder="Search actions…"/);
-    assert.match(source, />＋<\/span> ADD ROOT/);
+    assert.match(source, /<AddIcon className="code-toolbar-icon" \/> ADD ROOT/);
     assert.match(source, /<input ref=\{searchInputRef\} autoFocus value=\{query\}/);
     assert.match(source, /filteredActions\.map/);
     assert.match(source, /className="code-node-search-label"/);
@@ -439,6 +447,56 @@ test("inserted nodes use explicit placements without auto-adjusting existing nod
     assert.match(source, /Object\.entries\(positionOverrides\)\.forEach/);
     assert.match(source, /positionInsertedGraphNode\(condition, previousAction, nextAction, nodeOffsetsRef\.current, CONDITION_TO_CHILD_GAP\)/);
     assert.doesNotMatch(source, /actionNodePrefix/);
+});
+
+test("shared graph-edge geometry preserves its cubic path and offsets both endpoints", () => {
+    const edge = { fromId: "root", toId: "condition", x1: 20, y1: 30, x2: 80, y2: 60 };
+    assert.equal(graphEdgePath(edge), "M 20 30 C 20 100, 80 -10, 80 60");
+    assert.equal(graphEdgePath(edge, {
+        root: { x: 5, y: -3 },
+        condition: { x: -7, y: 11 },
+    }), "M 25 27 C 25 97, 73 1, 73 71");
+});
+
+test("lesson label stays in one desktop row in both arena and coding workspace placements", () => {
+    const tutorialSource = readFileSync(TUTORIAL_GUIDE_PATH, "utf8");
+    const cssSource = readFileSync(CSS_PATH, "utf8");
+
+    assert.match(tutorialSource, /tutorial-guide-button__label[^>]*>VIEW LESSON/);
+    assert.match(tutorialSource, /aria-label=\{`Open \$\{lesson\.title\} lesson`\}/);
+    assert.match(cssSource, /\.tutorial-guide-button\.info-popup-minimized\s*\{[\s\S]*?width: max-content;[\s\S]*?flex: 0 0 auto;[\s\S]*?flex-wrap: nowrap;[\s\S]*?white-space: nowrap;/);
+    assert.match(cssSource, /\.tutorial-guide-button__label\s*\{[\s\S]*?flex: none;[\s\S]*?white-space: nowrap;/);
+    assert.match(cssSource, /\.arena-stage-info__tutorial > \.tutorial-guide-button\.info-popup-minimized/);
+    assert.match(cssSource, /\.tutorial-workspace-lesson-host \.tutorial-guide-button\.info-popup-minimized/);
+    assert.match(cssSource, /\.tutorial-workspace-lesson-host \.tutorial-guide-button__label[\s\S]*?display: none;/);
+});
+
+test("add controls use the reusable SVG while variable addition keeps its mathematical plus", () => {
+    const addIconSource = readFileSync(ADD_ICON_PATH, "utf8");
+    const panelSource = readFileSync(PANEL_PATH, "utf8");
+    const nodesSource = readFileSync(NODES_PATH, "utf8");
+    const modalSource = readFileSync(CUSTOM_VARIABLES_MODAL_PATH, "utf8");
+    const puzzleSource = readFileSync(PUZZLE_LOGIC_WORKSPACE_PATH, "utf8");
+    const buttonSources = [panelSource, nodesSource, modalSource, puzzleSource].join("\n");
+
+    assert.match(addIconSource, /viewBox="0 0 16 16"/);
+    assert.match(addIconSource, /aria-hidden="true"/);
+    assert.match(addIconSource, /<path d="M8 3v10M3 8h10" \/>/);
+    assert.match(panelSource, /<AddIcon className="code-toolbar-icon" \/> ADD ROOT/);
+    assert.match(panelSource, /aria-label="Zoom in"[\s\S]*?<AddIcon size="large" \/>/);
+    assert.match(nodesSource, /Add AND condition/);
+    assert.match(nodesSource, /Add OR condition/);
+    assert.match(nodesSource, /Add IF child conditional/);
+    assert.match(nodesSource, /aria-label="Add action"/);
+    assert.match(nodesSource, /aria-label="Add operand"/);
+    assert.match(modalSource, /<AddIcon \/> ADD VARIABLE/);
+    assert.match(puzzleSource, /<AddIcon className="code-toolbar-icon" \/> WIN CONDITION/);
+    assert.match(puzzleSource, /<AddIcon className="code-toolbar-icon" \/> LOSE CONDITION/);
+    assert.match(puzzleSource, /<AddIcon className="code-toolbar-icon" \/> MODIFY CUSTOM VARIABLE/);
+    assert.match(puzzleSource, /aria-label="Zoom in"[^>]*>[\s\S]*?<AddIcon size="large" \/>/);
+    assert.doesNotMatch(buttonSources, />\s*[＋+]\s*(?:ADD ROOT|WIN CONDITION|LOSE CONDITION|CUSTOM VARIABLE|MODIFY CUSTOM VARIABLE|CONDITIONAL|AND|OR|IF|ACTION|OPERAND|ADD VARIABLE)/);
+    assert.match(nodesSource, /<option value=\{CUSTOM_VARIABLE_OPERATIONS\.ADD\}>\+<\/option>/);
+    assert.match(nodesSource, /CUSTOM_VARIABLE_OPERATIONS\.ADD \? "\+"/);
 });
 
 test("variable and action searches share a wheel-contained picker design", () => {

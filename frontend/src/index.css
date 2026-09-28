@@ -1010,6 +1010,14 @@ html,
   text-align: left;
 }
 
+.tutorial-level-title {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: .75rem;
+}
+
 .tutorial-level-toggle:focus-visible {
   outline: 2px solid #a5f3fc;
   outline-offset: 4px;
@@ -1840,6 +1848,24 @@ button {
   font-size: 19px;
 }
 
+.coding-add-icon {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.coding-add-icon--large { width: 18px; height: 18px; }
+.code-toolbar-icon.coding-add-icon { width: 14px; height: 14px; font-size: initial; }
+.code-toolbar-button-primary .code-toolbar-icon.coding-add-icon { width: 16px; height: 16px; }
+.code-toolbar-zoom-button > .coding-add-icon { color: currentColor; }
+
 .code-tab-group {
   display: flex;
   flex: 0 1 320px;
@@ -2210,6 +2236,15 @@ button {
   color: #d1d5db;
 }
 
+.code-root-action--conditional,
+.code-compact-footer > button:not(.code-condition-node-remove),
+.code-custom-variable-add-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .35rem;
+}
+
 .code-root-action--remove {
   border-color: #fca5a5;
   color: #b91c1c;
@@ -2556,6 +2591,8 @@ button {
   background: rgba(8, 47, 73, .34);
   padding: 0 10px;
 }
+
+.code-compact-footer > button:not(.code-condition-node-remove) > .coding-add-icon { width: 12px; height: 12px; }
 
 .code-compact-footer > button:not(.code-condition-node-remove):hover:not(:disabled) { border-color: #7dd3fc; background: rgba(8, 47, 73, .68); color: #fff; }
 .code-compact-footer > button.code-conditional-add-button { border-color: rgba(125, 211, 252, .62); background: #081933; color: #bfdbfe; }
@@ -3510,6 +3547,12 @@ button {
   opacity: .34;
 }
 
+.arena-toolbar-button[aria-pressed="true"] {
+  background-color: #12313a;
+  box-shadow: inset 0 0 0 1px rgba(103, 232, 249, .22), 0 0 16px rgba(34, 211, 238, .14);
+  color: #a5f3fc;
+}
+
 .arena-toolbar-button--blue,
 .arena-toolbar-button--primary {
   --arena-toolbar-border: rgba(34, 211, 238, .78);
@@ -3797,11 +3840,23 @@ button {
 }
 
 .tutorial-guide-button.info-popup-minimized {
+  width: max-content;
+  max-width: calc(100vw - 2rem);
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
   border-radius: .5rem;
   border-width: 2px;
   border-color: rgba(103, 232, 249, .9);
   background: rgb(8, 31, 45);
   box-shadow: 0 0 0 1px rgba(34, 211, 238, .2), 0 8px 24px rgba(0, 0, 0, .55), 0 0 18px rgba(34, 211, 238, .2);
+}
+
+.tutorial-guide-button__label {
+  flex: none;
+  white-space: nowrap;
 }
 
 .tutorial-guide-button__icon {

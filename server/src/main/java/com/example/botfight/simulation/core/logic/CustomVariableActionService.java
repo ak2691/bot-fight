@@ -21,7 +21,8 @@ public final class CustomVariableActionService {
     public CustomVariableActionService() {}
 
     public void apply(Bot bot, Bot opponent, List<Entity> entities, Arena arena,
-               ConditionResolutionService conditionResolutionService, StrategyBlock block) {
+               ConditionResolutionService conditionResolutionService, StrategyBlock block,
+               String coordinateVersion) {
         String id = block.phaseFacingMode();
         String type = bot.customVariableTypes.get(id);
         if (type == null) return;
@@ -31,7 +32,7 @@ public final class CustomVariableActionService {
                 StateValue resolved = conditionResolutionService.resolveStateVariable(
                         textValue(field(operand, "value"), ""), textValue(field(operand, "selectable"), "opponent"),
                         new Condition(BotLogicContracts.CONDITION_EXPRESSION, 0, BotLogicContracts.SELECTABLE_OPPONENT, null, null, "", null, "", "eq", Operand.bool(false), "and"),
-                        bot, opponent, entities, arena);
+                        bot, opponent, entities, arena, coordinateVersion);
                 bot.customVariables.put(id, resolved != null && resolved.booleanValue());
             } else if (operand != null && operand.isObject() && "boolean".equals(textValue(field(operand, "type"), ""))) {
                 bot.customVariables.put(id, field(operand, "value") != null && field(operand, "value").asBoolean(false));
@@ -43,7 +44,7 @@ public final class CustomVariableActionService {
         double current = ((Number) bot.customVariables.getOrDefault(id, 0.0)).doubleValue();
         JsonNode terms = block.variableTerms();
         if (terms == null || !terms.isArray() || terms.isEmpty()) {
-            double amount = resolveAmount(terms, block.targetOffsetX(), block, bot, opponent, entities, arena, conditionResolutionService);
+            double amount = resolveAmount(terms, block.targetOffsetX(), block, bot, opponent, entities, arena, conditionResolutionService, coordinateVersion);
             double next = applyOperation(current, amount, block.movementDirection());
             bot.customVariables.put(id, clampNumber(next));
             return;
@@ -54,7 +55,7 @@ public final class CustomVariableActionService {
         for (int index = 0; index < Math.min(terms.size(), MAX_VARIABLE_ACTION_TERMS); index++) {
             JsonNode term = terms.get(index);
             JsonNode operand = field(term, "operand");
-            double amount = resolveAmount(operand, 0, context, bot, opponent, entities, arena, conditionResolutionService);
+            double amount = resolveAmount(operand, 0, context, bot, opponent, entities, arena, conditionResolutionService, coordinateVersion);
             String operation = normalizeOperation(textValue(field(term, "operator"), BotLogicContracts.CUSTOM_VARIABLE_OPERATION_ADD), index);
             if (BotLogicContracts.CUSTOM_VARIABLE_OPERATION_MODULO.equals(operation)) {
                 next = modulo(next, amount);
@@ -66,19 +67,19 @@ public final class CustomVariableActionService {
     }
 
     private static double resolveAmount(JsonNode operand, double fallback, StrategyBlock block, Bot bot, Bot opponent,
-            List<Entity> entities, Arena arena, ConditionResolutionService service) {
+            List<Entity> entities, Arena arena, ConditionResolutionService service, String coordinateVersion) {
         return resolveAmount(operand, fallback,
                 new Condition(BotLogicContracts.CONDITION_EXPRESSION, 0, BotLogicContracts.SELECTABLE_OPPONENT, null, null, "", null, "", "eq", Operand.number(0), "and"),
-                bot, opponent, entities, arena, service);
+                bot, opponent, entities, arena, service, coordinateVersion);
     }
 
     private static double resolveAmount(JsonNode operand, double fallback, Condition context, Bot bot, Bot opponent,
-            List<Entity> entities, Arena arena, ConditionResolutionService service) {
+            List<Entity> entities, Arena arena, ConditionResolutionService service, String coordinateVersion) {
         if (operand == null || !operand.isObject()) return fallback;
         if ("variable".equals(textValue(field(operand, "type"), "number"))) {
             return java.util.Optional.ofNullable(service.resolveStateVariable(
                     textValue(field(operand, "value"), ""), textValue(field(operand, "selectable"), "opponent"), context,
-                    bot, opponent, entities, arena)).map(DuelSimulationService.StateValue::numberValue).orElse(0.0);
+                    bot, opponent, entities, arena, coordinateVersion)).map(DuelSimulationService.StateValue::numberValue).orElse(0.0);
         }
         return numberValue(field(operand, "value"), fallback);
     }

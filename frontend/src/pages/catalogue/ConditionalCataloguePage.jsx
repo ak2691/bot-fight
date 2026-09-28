@@ -10,19 +10,19 @@ const GROUP_ORDER = ["General", "Entity", "Health & Combat", "Position & Movemen
 
 const DESCRIPTIONS = Object.freeze({
     "match.elapsedSeconds": "Seconds elapsed since the 1v1 began.",
-    "selectable.distance": "Straight-line distance from one entity to either another entity or an absolute arena coordinate. It defaults to My Bot and Opponent.",
+    "selectable.distance": "Straight-line, center-to-center distance from one entity to another entity or an absolute arena coordinate. It defaults to My Bot and Opponent.",
     "selectable.hp": "Current HP of the selected entity. Entities without health report 0.",
     "selectable.damageTakenLastTick": "Damage received by the selected entity during the last tick. Entities that cannot be hit report 0.",
     "selectable.hpNetChangeLastTick": "The selected entity's total HP change last tick, including damage and healing. Entities without health report 0.",
-    "selectable.x": "The selected entity's horizontal arena position.",
-    "selectable.y": "The selected entity's vertical arena position.",
+    "selectable.x": "The selected entity's horizontal position. New v2 brains read centered coordinates (0 at arena center, positive right); legacy v1 brains retain top-left-origin values.",
+    "selectable.y": "The selected entity's vertical position. New v2 brains read centered, upward-positive coordinates; legacy v1 brains retain top-left-origin, downward-positive values.",
     "selectable.alive": "True when the selected entity exists and has HP remaining.",
     "selectable.absoluteBearing": "The absolute arena bearing of the Target from the Facing Entity, represented as a signed degree measurement. The first selection must have the facing identity.",
     "selectable.movementDirection": "The selected entity's direction of travel, or 0 when it has no movement direction.",
     "selectable.speed": "The selected entity's movement speed in arena units per tick.",
-    "selectable.relativeBearing": "Smallest angle between the Facing Entity's facing direction and a target entity, absolute coordinate, or absolute angle. The first selection must have the facing identity.",
-    "selectable.relativeBearingClockwise": "Clockwise turn needed for the Facing Entity to face a target entity, absolute coordinate, or absolute angle. The first selection must have the facing identity.",
-    "selectable.relativeBearingCounterclockwise": "Counterclockwise turn needed for the Facing Entity to face a target entity, absolute coordinate, or absolute angle. The first selection must have the facing identity.",
+    "selectable.relativeBearing": "Shortest absolute aim error between the Facing Entity's facing direction and a target entity, absolute coordinate, or absolute angle. Near zero means it is aimed at the target. The first selection must have the facing identity.",
+    "selectable.relativeBearingClockwise": "Clockwise turn needed for the Facing Entity to face a target entity, absolute coordinate, or absolute angle; this preserves turn direction. The first selection must have the facing identity.",
+    "selectable.relativeBearingCounterclockwise": "Counterclockwise turn needed for the Facing Entity to face a target entity, absolute coordinate, or absolute angle; this preserves turn direction. The first selection must have the facing identity.",
     "selectable.facing": "The selected entity's facing direction. Only entities with the facing identity are available.",
     "selectable.count": "Number of matching ability entities of the selected type.",
     "selectable.age": "Age or active timer of the selected ability entity, in seconds.",
@@ -104,7 +104,7 @@ export default function ConditionalCataloguePage() {
                 <aside className="self-start border border-blue-500/40 bg-[#081522]/85 p-5">
                     <p className="font-mono text-[10px] font-bold tracking-[.22em] text-blue-300">HOW CONDITIONS WORK</p>
                     <p className="mt-3 text-sm leading-6 text-slate-300">
-                        Numbers use comparisons such as <span className="font-mono text-blue-200">&lt;</span>, <span className="font-mono text-blue-200">=</span>, or <span className="font-mono text-blue-200">&gt;</span>. Booleans check true or false. Direction values use signed degrees.
+                        New v2 brains use centered, Y-up coordinates from -600 to 600; bot-center positions stop at ±570. Legacy v1 brains keep top-left, Y-down coordinates. Distances remain straight-line center-to-center, and the compass remains 0° up with positive angles clockwise. Numbers use comparisons such as <span className="font-mono text-blue-200">&lt;</span>, <span className="font-mono text-blue-200">=</span>, or <span className="font-mono text-blue-200">&gt;</span>. Booleans check true or false. Direction values use signed degrees.
                     </p>
                     <div className="my-5 h-px bg-slate-700/70" />
                     <p className="font-mono text-[10px] font-bold tracking-[.22em] text-blue-300">CUSTOM VARIABLES</p>

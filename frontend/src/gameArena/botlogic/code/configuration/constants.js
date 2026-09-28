@@ -1,4 +1,19 @@
-export const BOT_LOGIC_TREE_VERSION = "bot-logic-tree-v1";
+export const BOT_LOGIC_TREE_V1 = "bot-logic-tree-v1";
+export const BOT_LOGIC_TREE_VERSION = "bot-logic-tree-v2";
+
+export function coordinateVersionFor(configuration) {
+    const version = configuration?.version;
+    if (version === BOT_LOGIC_TREE_V1 || version === BOT_LOGIC_TREE_VERSION) return version;
+    // A missing version can come from an older saved brain. New brains are
+    // created explicitly with v2 by configurationFactories.js.
+    return version == null ? BOT_LOGIC_TREE_V1 : String(version);
+}
+
+export function coordinateLimitsFor(version) {
+    return version === BOT_LOGIC_TREE_V1
+        ? { minimum: 0, maximum: 1200, offsetMagnitude: 1200 }
+        : { minimum: -600, maximum: 600, offsetMagnitude: 600 };
+}
 export const MAX_LOGIC_BLOCKS = 100;
 export const MAX_ROOT_NODES = 100;
 export const MAX_ROOT_NAME_LENGTH = 25;

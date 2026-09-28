@@ -4,6 +4,7 @@ import java.util.List;
 import tools.jackson.databind.JsonNode;
 
 public class PuzzleSaveRequestDTO {
+    private String coordinateSystemVersion;
     private String name;
     private String description;
     private Boolean published;
@@ -21,6 +22,9 @@ public class PuzzleSaveRequestDTO {
     private PuzzleBotRequestDTO playerBot;
     private PuzzleBotRequestDTO opponentBot;
     private List<PuzzleBotRequestDTO> bots;
+
+    public String getCoordinateSystemVersion() { return coordinateSystemVersion; }
+    public void setCoordinateSystemVersion(String coordinateSystemVersion) { this.coordinateSystemVersion = coordinateSystemVersion; }
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }

@@ -8,7 +8,11 @@ import { buildStatePayload } from "../gameArena/modelPayloads/strategyStatePaylo
 import { stateFromPayload } from "../gameArena/botlogic/code/runtime/runtimeState.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../gameArena/modelPayloads/arenaConstants.js";
 import { BOT_CODE_ACTIONS } from "../gameArena/botlogic/code/contracts/BotLogicContracts.js";
-import { TUTORIAL_CATEGORIES, TUTORIAL_ENDING, TUTORIAL_INTRODUCTION, TUTORIAL_INTRODUCTION_VISUALS, TUTORIAL_LESSONS, getTutorialLesson } from "./TutorialContent.js";
+import { TUTORIAL_CATEGORIES, TUTORIAL_ENDING, TUTORIAL_INTRODUCTION, TUTORIAL_INTRODUCTION_VISUALS, TUTORIAL_LESSONS, getTutorialLesson, getTutorialLessonForScenario } from "./TutorialContent.js";
+
+const tutorialCopy = (lessonId) => getTutorialLesson(lessonId).description
+    .flatMap((paragraph) => paragraph?.type === "steps" ? paragraph.items : [paragraph])
+    .join(" ");
 
 const emptyPayload = {
     playerModel: {
@@ -46,6 +50,8 @@ test("tutorial presets use the current tree and selectable payload shapes", () =
     const strikeAction = solution.roots[2].branches[0].actions[0];
 
     assert.deepEqual(Object.keys(empty).sort(), ["customVariables", "roots", "version"]);
+    assert.equal(empty.version, "bot-logic-tree-v2");
+    assert.equal(solution.version, "bot-logic-tree-v2");
     assert.deepEqual(
         { selectable1: closeCondition.selectable1, selectable2: closeCondition.selectable2 },
         { selectable1: "my_bot", selectable2: "opponent_1" },
@@ -171,33 +177,81 @@ test("tutorial solutions use the relaxed bearing and context-aware dashes", () =
 
 test("new tutorial catalogue has four categories and keeps Some Theories descriptive-only", () => {
     assert.deepEqual(TUTORIAL_CATEGORIES.map((category) => category.id), ["basics", "timing", "arena-edges", "custom-variables"]);
-    assert.equal(TUTORIAL_LESSONS.length, 13);
-    assert.deepEqual(TUTORIAL_CATEGORIES[0].lessons.map((lesson) => lesson.id), ["first-steps", "retreat", "basic-strike", "dash-basics", "aiming-basics", "lock-on-basics"]);
+    assert.equal(TUTORIAL_LESSONS.length, 14);
+    assert.deepEqual(TUTORIAL_CATEGORIES[0].lessons.map((lesson) => lesson.id), ["first-steps", "arena-coordinates", "retreat", "basic-strike", "dash-basics", "aiming-basics", "lock-on-basics"]);
     assert.equal(getTutorialLesson("some-theories").scenarioId, undefined);
     const firstSteps = getTutorialLesson("first-steps").description.at(-1);
     assert.equal(firstSteps.type, "steps");
     assert.equal(firstSteps.items.at(-1), "Click Play to see your code work");
-    assert.equal(TUTORIAL_LESSONS.filter((lesson) => lesson.scenarioId).length, 12);
+    assert.equal(TUTORIAL_LESSONS.filter((lesson) => lesson.scenarioId).length, 13);
+    const coordinates = getTutorialLesson("arena-coordinates");
+    assert.equal(coordinates.scenarioId, "arena-basics");
+    assert.equal(coordinates.description.length, 2);
+    const coordinateCopy = coordinates.description.join(" ");
+    assert.match(coordinateCopy, /1200 × 1200/);
+    assert.match(coordinateCopy, /centered at \(0, 0\)/);
+    assert.match(coordinateCopy, /Edges are ±600, while bot centers stop at ±570/);
+    assert.match(coordinateCopy, /center-to-center/);
+    assert.doesNotMatch(coordinateCopy, /Compass angles remain/);
+    assert.doesNotMatch(coordinateCopy, /compass direction|north|east|south|west/i);
+    assert.match(coordinateCopy, /15 units per 100 ms tick \(150 per second\)/);
+    assert.match(coordinateCopy, /12° per tick/);
+    assert.doesNotMatch(coordinateCopy, /1\.7 bot widths|100-unit move/);
+    assert.match(coordinateCopy, /Minor grid spacing is 50 and major spacing is 300/);
+    assert.match(coordinateCopy, /select Measure in the arena toolbar/);
+    assert.match(coordinateCopy, /cursor’s centered coordinates stay in the bottom-left readout/);
+    assert.match(coordinateCopy, /Place two points to see only their straight-line/);
+    const movementCopy = tutorialCopy("retreat");
+    assert.match(movementCopy, /0° toward the selected target, 90° to its right, 180° away, and 270° to its left/);
+    assert.match(movementCopy, /Negative equivalents work too/);
+    const bearingCopy = tutorialCopy("dont-miss");
+    assert.match(bearingCopy, /Relative Bearing … Shortest is the absolute aim error/);
+    assert.match(bearingCopy, /near zero means it is aimed at the target/);
+    assert.match(bearingCopy, /clockwise and counterclockwise bearing variables preserve which way the turn goes/);
 });
 
 test("tutorial introduction maps node visuals and avoids em dashes", () => {
     assert.deepEqual(Object.values(TUTORIAL_INTRODUCTION_VISUALS), ["root-priorities", "conditional-examples", "action-examples", "configuration-examples", "custom-variable-examples"]);
     assert.equal(TUTORIAL_INTRODUCTION.some((paragraph) => paragraph.includes(String.fromCharCode(0x2014))), false);
     assert.equal(TUTORIAL_ENDING.some((paragraph) => paragraph.includes(String.fromCharCode(0x2014))), false);
+    assert.match(TUTORIAL_ENDING.join(" "), /A timeout is a draw/);
+    assert.match(TUTORIAL_INTRODUCTION.join(" "), /100 ms tick/);
+    assert.match(TUTORIAL_INTRODUCTION.join(" "), /Lower-priority roots can fill another action category/);
+    assert.match(TUTORIAL_INTRODUCTION.join(" "), /AND requires every condition.*OR requires at least one/);
+    assert.match(TUTORIAL_INTRODUCTION.join(" "), /IF checks first, ELSE-IF checks only when earlier branches are false, and ELSE is the fallback/);
 });
 
 test("tutorial ending points players to both gameplay catalogues", () => {
     const endingCopy = TUTORIAL_ENDING.join(" ");
     const pageSource = readFileSync(fileURLToPath(new URL("./TutorialPage.jsx", import.meta.url)), "utf8");
+    const cardSource = pageSource.slice(pageSource.indexOf("function TutorialLessonCard"), pageSource.indexOf("export default function TutorialPage"));
+    const expandedDescriptionIndex = cardSource.indexOf("{isExpanded &&");
 
     assert.match(endingCopy, /Ability Catalogue/);
     assert.match(endingCopy, /status effect/);
     assert.match(endingCopy, /Conditional Catalogue/);
+    assert.match(endingCopy, /Try the puzzles/);
+    assert.doesNotMatch(endingCopy, /Tactical Challenges/);
+    assert.match(endingCopy, /3 minutes.*1v1.*5 minutes.*2v2/);
     assert.match(pageSource, /openCatalogue\("\/ability-catalogue"\)/);
     assert.match(pageSource, /openCatalogue\("\/conditionals"\)/);
+    assert.match(pageSource, /openCatalogue\("\/puzzles"\)/);
+    assert.match(pageSource, />\s*Puzzles\s*</);
+    assert.doesNotMatch(cardSource, /View Lesson/);
+    assert.ok(cardSource.indexOf("Try it out") > expandedDescriptionIndex);
+    assert.match(cardSource, /lesson\.scenarioId && \(/);
     assert.match(pageSource, /window\.scrollTo\(\{ top: 0, left: 0, behavior: "auto" \}\)/);
     assert.match(pageSource, />\s*View Ability Catalogue\s*</);
     assert.match(pageSource, />\s*View Conditional Catalogue\s*</);
+});
+
+test("arena-coordinate lesson keeps its practice-room lesson popup and uses the lesson ID", () => {
+    const arenaSource = readFileSync(fileURLToPath(new URL("../gameArena/Arena.jsx", import.meta.url)), "utf8");
+
+    assert.equal(getTutorialLessonForScenario("arena-basics")?.id, "arena-coordinates");
+    assert.match(arenaSource, /getTutorialLesson\(requestedTutorialScenarioId\)[\s\S]*getTutorialLessonForScenario\(initialTutorialScenario\.id\)/);
+    assert.equal((arenaSource.match(/lessonId=\{tutorialLessonId\}/g) ?? []).length, 1);
+    assert.match(arenaSource, /lessonId: tutorialLessonId/);
 });
 
 test("new tutorial lessons resolve focused practice presets", () => {
