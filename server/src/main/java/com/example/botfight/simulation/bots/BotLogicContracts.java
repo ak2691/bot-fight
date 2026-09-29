@@ -2,6 +2,7 @@ package com.example.botfight.simulation.bots;
 
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts.AbilityContract;
+import com.example.botfight.simulation.geometry.ArenaUnits;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -110,6 +111,19 @@ public final class BotLogicContracts {
                                  boolean locationTarget, boolean orientationConfig,
                                  boolean angleTarget, String targetMode) {}
 
+    /** Inclusive bounds for literal comparison operands of a numeric state variable. */
+    public record NumericRange(double minimum, double maximum) {
+        public NumericRange {
+            if (!Double.isFinite(minimum) || !Double.isFinite(maximum) || minimum > maximum) {
+                throw new IllegalArgumentException("numeric range must have finite ordered bounds");
+            }
+        }
+
+        public boolean contains(double value) {
+            return Double.isFinite(value) && value >= minimum && value <= maximum;
+        }
+    }
+
     public record SelectableContract(String id, AbilityContracts.SelectableOwner owner,
                                  String entityType, String runtimeType, int abilityId,
                                  Set<SelectableIdentity> selectableIdentities) {
@@ -121,9 +135,15 @@ public final class BotLogicContracts {
     }
 
     public record VariableContract(String id, ValueType valueType, boolean supportsSelectable,
-                                   VariableScope scope, VariableSource source, Set<String> tags) {
+                                   VariableScope scope, VariableSource source, Set<String> tags,
+                                   NumericRange numericRange, NumericRange legacyNumericRange) {
         public VariableContract {
             tags = tags == null ? Set.of() : Set.copyOf(tags);
+        }
+
+        public NumericRange numericRangeFor(String brainSchemaVersion) {
+            return BRAIN_SCHEMA_V1.equals(brainSchemaVersion) && legacyNumericRange != null
+                    ? legacyNumericRange : numericRange;
         }
 
         public boolean requiresAbility() {
@@ -585,38 +605,66 @@ public final class BotLogicContracts {
 
     private static Map<String, VariableContract> variables() {
         Map<String, VariableContract> variables = new LinkedHashMap<>();
-        addNumbers(variables, VariableSource.MATCH_ELAPSED_SECONDS, VariableScope.NONE, "match.elapsedSeconds");
-        addNumbers(variables, VariableSource.SELECTABLE_DISTANCE, VariableScope.SELECTABLE, "selectable.distance");
-        addNumbers(variables, VariableSource.SELECTABLE_DAMAGE_TAKEN_LAST_TICK, VariableScope.SELECTABLE, "selectable.damageTakenLastTick");
+        addNumbers(variables, VariableSource.MATCH_ELAPSED_SECONDS, VariableScope.NONE,
+                0, CUSTOM_NUMBER_LIMIT, "match.elapsedSeconds");
+        addNumbers(variables, VariableSource.SELECTABLE_DISTANCE, VariableScope.SELECTABLE,
+                0, Math.hypot(ArenaUnits.WIDTH, ArenaUnits.HEIGHT), "selectable.distance");
+        addNumbers(variables, VariableSource.SELECTABLE_DAMAGE_TAKEN_LAST_TICK, VariableScope.SELECTABLE,
+                0, 300, "selectable.damageTakenLastTick");
         addNumbers(variables, VariableSource.SELECTABLE_HP_NET_CHANGE_LAST_TICK, VariableScope.SELECTABLE,
-                Set.of(VARIABLE_TAG_ALLOW_NEGATIVE_INTEGER), "selectable.hpNetChangeLastTick");
-        addNumbers(variables, VariableSource.SELECTABLE_X, VariableScope.SELECTABLE, "selectable.x");
-        addNumbers(variables, VariableSource.SELECTABLE_Y, VariableScope.SELECTABLE, "selectable.y");
-        addNumbers(variables, VariableSource.SELECTABLE_HP, VariableScope.SELECTABLE, "selectable.hp");
-        addNumbers(variables, VariableSource.SELECTABLE_ABSOLUTE_BEARING, VariableScope.SELECTABLE, "selectable.absoluteBearing");
-        addNumbers(variables, VariableSource.SELECTABLE_MOVEMENT_DIRECTION, VariableScope.SELECTABLE, "selectable.movementDirection");
-        addNumbers(variables, VariableSource.SELECTABLE_SPEED, VariableScope.SELECTABLE, "selectable.speed");
-        addNumbers(variables, VariableSource.SELECTABLE_RELATIVE_BEARING, VariableScope.SELECTABLE, "selectable.relativeBearing");
-        addNumbers(variables, VariableSource.SELECTABLE_RELATIVE_BEARING_CLOCKWISE, VariableScope.SELECTABLE, "selectable.relativeBearingClockwise");
-        addNumbers(variables, VariableSource.SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE, VariableScope.SELECTABLE, "selectable.relativeBearingCounterclockwise");
-        addNumbers(variables, VariableSource.SELECTABLE_FACING, VariableScope.SELECTABLE, "selectable.facing");
-        addNumbers(variables, VariableSource.SELECTABLE_COUNT, VariableScope.SELECTABLE, "selectable.count");
-        addNumbers(variables, VariableSource.SELECTABLE_AGE, VariableScope.SELECTABLE, "selectable.age");
-        addNumbers(variables, VariableSource.SELECTABLE_EDGE_DISTANCE, VariableScope.SELECTABLE, "selectable.edgeDistance");
+                Set.of(VARIABLE_TAG_ALLOW_NEGATIVE_INTEGER), new NumericRange(-300, 300), null,
+                "selectable.hpNetChangeLastTick");
+        NumericRange centeredXRange = new NumericRange(-ArenaUnits.WIDTH / 2.0, ArenaUnits.WIDTH / 2.0);
+        NumericRange centeredYRange = new NumericRange(-ArenaUnits.HEIGHT / 2.0, ArenaUnits.HEIGHT / 2.0);
+        NumericRange legacyXRange = new NumericRange(0, ArenaUnits.WIDTH);
+        NumericRange legacyYRange = new NumericRange(0, ArenaUnits.HEIGHT);
+        Set<String> signedIntegerTag = Set.of(VARIABLE_TAG_ALLOW_NEGATIVE_INTEGER);
+        addNumbers(variables, VariableSource.SELECTABLE_X, VariableScope.SELECTABLE, signedIntegerTag,
+                centeredXRange, legacyXRange, "selectable.x");
+        addNumbers(variables, VariableSource.SELECTABLE_Y, VariableScope.SELECTABLE, signedIntegerTag,
+                centeredYRange, legacyYRange, "selectable.y");
+        addNumbers(variables, VariableSource.SELECTABLE_HP, VariableScope.SELECTABLE,
+                0, 300, "selectable.hp");
+        addNumbers(variables, VariableSource.SELECTABLE_ABSOLUTE_BEARING, VariableScope.SELECTABLE,
+                -ANGLE_MAX, ANGLE_MAX, "selectable.absoluteBearing");
+        addNumbers(variables, VariableSource.SELECTABLE_MOVEMENT_DIRECTION, VariableScope.SELECTABLE,
+                -ANGLE_MAX, ANGLE_MAX, "selectable.movementDirection");
+        addNumbers(variables, VariableSource.SELECTABLE_SPEED, VariableScope.SELECTABLE,
+                0, 100, "selectable.speed");
+        addNumbers(variables, VariableSource.SELECTABLE_RELATIVE_BEARING, VariableScope.SELECTABLE,
+                0, 180, "selectable.relativeBearing");
+        addNumbers(variables, VariableSource.SELECTABLE_RELATIVE_BEARING_CLOCKWISE, VariableScope.SELECTABLE,
+                0, 360, "selectable.relativeBearingClockwise");
+        addNumbers(variables, VariableSource.SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE, VariableScope.SELECTABLE,
+                0, 360, "selectable.relativeBearingCounterclockwise");
+        addNumbers(variables, VariableSource.SELECTABLE_FACING, VariableScope.SELECTABLE,
+                -ANGLE_MAX, ANGLE_MAX, "selectable.facing");
+        addNumbers(variables, VariableSource.SELECTABLE_COUNT, VariableScope.SELECTABLE,
+                0, 100, "selectable.count");
+        addNumbers(variables, VariableSource.SELECTABLE_AGE, VariableScope.SELECTABLE,
+                0, 120, "selectable.age");
+        addNumbers(variables, VariableSource.SELECTABLE_EDGE_DISTANCE, VariableScope.SELECTABLE,
+                0, 500, "selectable.edgeDistance");
         addNumbers(variables, VariableSource.SELECTABLE_DANGER_ZONE_EDGE_DISTANCE, VariableScope.SELECTABLE,
-                Set.of(VARIABLE_TAG_ALLOW_NEGATIVE_INTEGER), SELECTABLE_DANGER_ZONE_EDGE_DISTANCE);
+                Set.of(VARIABLE_TAG_ALLOW_NEGATIVE_INTEGER), new NumericRange(-ArenaUnits.WIDTH, ArenaUnits.WIDTH), null,
+                SELECTABLE_DANGER_ZONE_EDGE_DISTANCE);
         addBooleans(variables, VariableSource.SELECTABLE_EXISTS, VariableScope.SELECTABLE, "selectable.exists");
         addBooleans(variables, VariableSource.SELECTABLE_ALIVE, VariableScope.SELECTABLE, "selectable.alive");
         addBooleans(variables, VariableSource.SELECTED_ABILITY_READY, VariableScope.SELECTABLE, "bot.selectedAbilityReady");
         addBooleans(variables, VariableSource.SELECTED_ABILITY_ACTIVE, VariableScope.SELECTABLE, "bot.selectedAbilityActive");
         addBooleans(variables, VariableSource.SELECTED_ABILITY_ON_COOLDOWN, VariableScope.SELECTABLE, "bot.selectedAbilityOnCooldown");
-        addNumbers(variables, VariableSource.SELECTED_ABILITY_ACTIVE_MS, VariableScope.SELECTABLE, "bot.selectedAbilityActiveMs");
-        addNumbers(variables, VariableSource.SELECTED_ABILITY_COOLDOWN_MS, VariableScope.SELECTABLE, "bot.selectedAbilityCooldownMs");
-        addNumbers(variables, VariableSource.SELECTED_ABILITY_CHARGES, VariableScope.SELECTABLE, "bot.selectedAbilityCharges");
+        addNumbers(variables, VariableSource.SELECTED_ABILITY_ACTIVE_MS, VariableScope.SELECTABLE,
+                0, 60, "bot.selectedAbilityActiveMs");
+        addNumbers(variables, VariableSource.SELECTED_ABILITY_COOLDOWN_MS, VariableScope.SELECTABLE,
+                0, 60, "bot.selectedAbilityCooldownMs");
+        addNumbers(variables, VariableSource.SELECTED_ABILITY_CHARGES, VariableScope.SELECTABLE,
+                0, 100, "bot.selectedAbilityCharges");
         addBooleans(variables, VariableSource.SELECTED_ABILITY_PREPARING, VariableScope.SELECTABLE, "bot.selectedAbilityPreparing");
-        addNumbers(variables, VariableSource.SELECTED_ABILITY_PREPARATION_MS, VariableScope.SELECTABLE, "bot.selectedAbilityPreparationMs");
+        addNumbers(variables, VariableSource.SELECTED_ABILITY_PREPARATION_MS, VariableScope.SELECTABLE,
+                0, 10, "bot.selectedAbilityPreparationMs");
         addBooleans(variables, VariableSource.SELECTED_STATUS_EFFECT_ACTIVE, VariableScope.SELECTABLE, "bot.selectedStatusEffectActive");
-        addNumbers(variables, VariableSource.SELECTED_STATUS_EFFECT_DURATION_MS, VariableScope.SELECTABLE, "bot.selectedStatusEffectDurationMs");
+        addNumbers(variables, VariableSource.SELECTED_STATUS_EFFECT_DURATION_MS, VariableScope.SELECTABLE,
+                0, 60, "bot.selectedStatusEffectDurationMs");
         return Collections.unmodifiableMap(variables);
     }
 
@@ -647,19 +695,20 @@ public final class BotLogicContracts {
     }
 
     private static void addNumbers(Map<String, VariableContract> variables, VariableSource source,
-                                   VariableScope scope, String... ids) {
-        addNumbers(variables, source, scope, Set.of(), ids);
+                                   VariableScope scope, double minimum, double maximum, String... ids) {
+        addNumbers(variables, source, scope, Set.of(), new NumericRange(minimum, maximum), null, ids);
     }
 
     private static void addNumbers(Map<String, VariableContract> variables, VariableSource source,
-                                   VariableScope scope, Set<String> tags, String... ids) {
+                                   VariableScope scope, Set<String> tags, NumericRange numericRange,
+                                   NumericRange legacyNumericRange, String... ids) {
         for (String id : ids) variables.put(id, new VariableContract(id, ValueType.NUMBER,
-                scope == VariableScope.SELECTABLE, scope, source, tags));
+                scope == VariableScope.SELECTABLE, scope, source, tags, numericRange, legacyNumericRange));
     }
 
     private static void addBooleans(Map<String, VariableContract> variables, VariableSource source,
                                     VariableScope scope, String... ids) {
         for (String id : ids) variables.put(id, new VariableContract(id, ValueType.BOOLEAN,
-                scope == VariableScope.SELECTABLE, scope, source, Set.of()));
+                scope == VariableScope.SELECTABLE, scope, source, Set.of(), null, null));
     }
 }

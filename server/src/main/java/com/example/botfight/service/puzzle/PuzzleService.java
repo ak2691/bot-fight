@@ -1108,6 +1108,14 @@ public class PuzzleService {
             if (value == null || !value.isNumber() || !Double.isFinite(value.asDouble())
                     || Math.abs(value.asDouble()) > MAX_CONDITION_NUMBER) {
                 errors.add(path + ".right.value must be a finite number");
+            } else if (leftContract != null) {
+                BotLogicContracts.NumericRange range = leftContract.numericRangeFor(coordinateVersion);
+                boolean positiveRelativeBearingOutOfRange = leftContract.boundedRelativeBearing()
+                        && range != null && value.asDouble() > range.maximum();
+                if (range != null && !range.contains(value.asDouble()) && !positiveRelativeBearingOutOfRange) {
+                    errors.add(path + ".right.value must be between "
+                            + formatNumericBound(range.minimum()) + " and " + formatNumericBound(range.maximum()));
+                }
             }
             return;
         }
@@ -1162,6 +1170,10 @@ public class PuzzleService {
                 || value.asDouble() < minimum || value.asDouble() > maximum) {
             errors.add(path + " must be a finite coordinate from " + (int) minimum + " to " + (int) maximum);
         }
+    }
+
+    private String formatNumericBound(double value) {
+        return value == Math.rint(value) ? Long.toString((long) value) : Double.toString(value);
     }
 
     private void validateConditionId(JsonNode condition, String path, List<String> errors) {

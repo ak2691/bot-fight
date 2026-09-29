@@ -137,7 +137,8 @@ public class BotSubmissionValidationService {
             errors.add("brain.roots must be an array");
             return;
         }
-        validateLogicRoots(errors, roots, loadoutSpec, customVariableTypes, requireExecutableActions, coordinateBounds);
+        validateLogicRoots(errors, roots, loadoutSpec, customVariableTypes, requireExecutableActions,
+                coordinateBounds, brainVersion);
     }
 
     private void validateNodePositions(List<String> errors, JsonNode positions) {
@@ -439,7 +440,8 @@ public class BotSubmissionValidationService {
     }
 
     private void validateLogicRoots(List<String> errors, JsonNode roots, GameConfig loadoutSpec,
-            Map<String, String> customVariableTypes, boolean requireExecutableActions, CoordinateBounds coordinateBounds) {
+            Map<String, String> customVariableTypes, boolean requireExecutableActions,
+            CoordinateBounds coordinateBounds, String brainVersion) {
         if (!roots.isArray()) {
             errors.add("brain.roots must be an array");
             return;
@@ -465,7 +467,7 @@ public class BotSubmissionValidationService {
                 continue;
             }
             validateTreeBranches(errors, branches, path + ".branches", loadoutSpec, customVariableTypes,
-                    branchCount, conditionCount, requireExecutableActions, coordinateBounds);
+                    branchCount, conditionCount, requireExecutableActions, coordinateBounds, brainVersion);
         }
         if (branchCount[0] > MAX_LOGIC_BLOCKS) errors.add("brain tree actions exceed the action node limit");
         if (conditionCount[0] > MAX_TOTAL_CONDITIONS) errors.add("brain tree exceeds the total condition limit");
@@ -473,7 +475,8 @@ public class BotSubmissionValidationService {
 
     private void validateTreeBranches(List<String> errors, JsonNode branches, String path,
             GameConfig loadoutSpec, Map<String, String> customVariableTypes, int[] branchCount,
-            int[] conditionCount, boolean requireExecutableActions, CoordinateBounds coordinateBounds) {
+            int[] conditionCount, boolean requireExecutableActions, CoordinateBounds coordinateBounds,
+            String brainVersion) {
         for (int index = 0; index < branches.size(); index++) {
             JsonNode branch = branches.get(index);
             String branchPath = path + "[" + index + "]";
@@ -481,7 +484,7 @@ public class BotSubmissionValidationService {
             conditionCount[0] += conditionCount(branch);
             validateTreePriority(errors, branch, branchPath, MAX_LOGIC_BLOCKS);
             validateLogicBlock(errors, branch, branchPath, loadoutSpec, customVariableTypes,
-                    requireExecutableActions, coordinateBounds);
+                    requireExecutableActions, coordinateBounds, brainVersion);
             String type = branch != null && branch.hasNonNull("branchType") ? branch.get("branchType").asText() : "if";
             if (index == 0 && !"if".equals(type)) errors.add(branchPath + ".branchType must be if for the first sibling");
             if (index > 0 && !"if".equals(type) && !"else".equals(type)) errors.add(branchPath + ".branchType must be if or else");
@@ -490,7 +493,8 @@ public class BotSubmissionValidationService {
             if (children != null) {
                 if (!children.isArray()) errors.add(branchPath + ".children must be an array");
                 else validateTreeBranches(errors, children, branchPath + ".children", loadoutSpec,
-                        customVariableTypes, branchCount, conditionCount, requireExecutableActions, coordinateBounds);
+                        customVariableTypes, branchCount, conditionCount, requireExecutableActions,
+                        coordinateBounds, brainVersion);
             }
         }
     }
@@ -517,7 +521,8 @@ public class BotSubmissionValidationService {
     }
 
     private void validateLogicBlock(List<String> errors, JsonNode block, String path, GameConfig loadoutSpec,
-            Map<String, String> customVariableTypes, boolean requireExecutableActions, CoordinateBounds coordinateBounds) {
+            Map<String, String> customVariableTypes, boolean requireExecutableActions,
+            CoordinateBounds coordinateBounds, String brainVersion) {
         if (!block.isObject()) {
             errors.add(path + " must be an object");
             return;
@@ -531,7 +536,8 @@ public class BotSubmissionValidationService {
             errors.add(path + ".conditions exceeds the condition limit");
         } else {
             for (int index = 0; index < conditions.size(); index++) {
-                validateConditionAllowed(errors, conditions.get(index), path + ".conditions[" + index + "]", loadoutSpec, customVariableTypes, coordinateBounds);
+                validateConditionAllowed(errors, conditions.get(index), path + ".conditions[" + index + "]",
+                        loadoutSpec, customVariableTypes, coordinateBounds, brainVersion);
             }
         }
     }
@@ -624,7 +630,7 @@ public class BotSubmissionValidationService {
     }
 
     private void validateConditionAllowed(List<String> errors, JsonNode condition, String path, GameConfig loadoutSpec,
-            Map<String, String> customVariableTypes, CoordinateBounds coordinateBounds) {
+            Map<String, String> customVariableTypes, CoordinateBounds coordinateBounds, String brainVersion) {
         if (condition == null || !condition.isObject()) {
             errors.add(path + " must be an object");
             return;
@@ -641,7 +647,8 @@ public class BotSubmissionValidationService {
         validateSelectable(errors, condition.get("leftSelectable"), path + ".leftSelectable");
         validateSelectable(errors, condition.get("rightSelectable"), path + ".rightSelectable");
         if (BotLogicContracts.CONDITION_EXPRESSION.equals(type)) {
-            validateExpressionCondition(errors, condition, path, loadoutSpec, customVariableTypes, coordinateBounds);
+            validateExpressionCondition(errors, condition, path, loadoutSpec, customVariableTypes,
+                    coordinateBounds, brainVersion);
             return;
         }
         if (!BotLogicContracts.CONDITION_ALWAYS.equals(type)) {
@@ -688,7 +695,7 @@ public class BotSubmissionValidationService {
     }
 
     private void validateExpressionCondition(List<String> errors, JsonNode condition, String path, GameConfig loadoutSpec,
-            Map<String, String> customVariableTypes, CoordinateBounds coordinateBounds) {
+            Map<String, String> customVariableTypes, CoordinateBounds coordinateBounds, String brainVersion) {
         JsonNode leftNode = condition.get("left");
         if (leftNode == null || !leftNode.isTextual()) {
             errors.add(path + ".left must be a variable id");
@@ -761,25 +768,9 @@ public class BotSubmissionValidationService {
             if ("number".equals(rightType)) {
                 if (rightValue == null || !rightValue.isNumber()) {
                     errors.add(path + ".right.value must be a number");
-                } else if (variableContract != null && variableContract.boundedRelativeBearing()) {
-                    if (!Double.isFinite(rightValue.asDouble())) {
-                        errors.add(path + ".right.value must be a finite relative bearing");
-                    }
-                } else if (variableContract != null && variableContract.angle()
-                        && (!Double.isFinite(rightValue.asDouble())
-                        || rightValue.asDouble() < BotLogicContracts.ANGLE_MIN
-                        || rightValue.asDouble() > BotLogicContracts.ANGLE_MAX)) {
-                    errors.add(path + ".right.value must be an angle from -360 to 360 degrees");
-                } else if (!Double.isFinite(rightValue.asDouble()) || rightValue.asDouble() < -CUSTOM_NUMBER_LIMIT || rightValue.asDouble() > CUSTOM_NUMBER_LIMIT) {
-                    errors.add(path + ".right.value must be between -99999 and 99999");
-                } else if (variableContract != null && variableContract.nonNegativeTime() && rightValue.asDouble() < 0) {
-                    errors.add(path + ".right.value cannot be negative for time variables");
-                } else if (variableContract != null && variableContract.durationSeconds()
-                        && (rightValue.asDouble() < 0 || rightValue.asDouble() > 60)) {
-                    errors.add(path + ".right.value must be between 0 and 60 seconds for status-effect duration variables");
-                } else if (variableContract != null && !variableContract.angle()
-                        && !variableContract.allowsNegativeInteger() && rightValue.asDouble() < 0) {
-                    errors.add(path + ".right.value cannot be negative for this number variable");
+                } else {
+                    validateNumericOperand(errors, rightValue, path + ".right.value", variableContract,
+                            brainVersion);
                 }
             } else if ("variable".equals(rightType)) {
                 if (rightValue == null || !rightValue.isTextual() || !"number".equals(variableValueType(rightValue.asText())) && !"number".equals(customVariableTypes.get(rightValue.asText()))) {
@@ -795,6 +786,38 @@ public class BotSubmissionValidationService {
             } else if (rightValue == null || !rightValue.isBoolean()) {
                 errors.add(path + ".right.value must be a boolean");
             }
+        }
+    }
+
+    private void validateNumericOperand(List<String> errors, JsonNode value, String path,
+            BotLogicContracts.VariableContract variableContract, String brainVersion) {
+        double number = value.asDouble();
+        if (!Double.isFinite(number)) {
+            errors.add(path + " must be a finite number");
+            return;
+        }
+        BotLogicContracts.NumericRange range = variableContract == null
+                ? new BotLogicContracts.NumericRange(-CUSTOM_NUMBER_LIMIT, CUSTOM_NUMBER_LIMIT)
+                : variableContract.numericRangeFor(brainVersion);
+        if (range == null || range.contains(number)) return;
+        // Relative-bearing values keep their existing positive over-range
+        // normalization path; negative comparisons still violate their declared minimum.
+        if (variableContract != null && variableContract.boundedRelativeBearing()
+                && number > range.maximum()) return;
+        if (variableContract != null && variableContract.nonNegativeTime() && number < 0) {
+            errors.add(path + " cannot be negative for time variables");
+        } else if (variableContract != null && variableContract.durationSeconds()) {
+            errors.add(path + " must be between 0 and 60 seconds for status-effect duration variables");
+        } else if (variableContract != null && variableContract.angle()
+                && !variableContract.boundedRelativeBearing()
+                && range.minimum() == BotLogicContracts.ANGLE_MIN
+                && range.maximum() == BotLogicContracts.ANGLE_MAX) {
+            errors.add(path + " must be an angle from -360 to 360 degrees");
+        } else if (number < range.minimum() && range.minimum() >= 0) {
+            errors.add(path + " cannot be negative for this number variable");
+        } else {
+            errors.add(path + " must be between " + formatCoordinateBound(range.minimum())
+                    + " and " + formatCoordinateBound(range.maximum()));
         }
     }
 

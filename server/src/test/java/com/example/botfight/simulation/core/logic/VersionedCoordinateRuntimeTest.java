@@ -8,6 +8,7 @@ import com.example.botfight.simulation.core.combat.ActionExecutionService;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Arena;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
+import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Condition;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.StrategyBlock;
 import com.example.botfight.simulation.core.state.BotStateService;
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
@@ -68,6 +69,42 @@ class VersionedCoordinateRuntimeTest {
     }
 
     @Test
+    void negativeCenteredCoordinateOperandsSurviveJsonNormalizationAndEvaluation() throws Exception {
+        JsonNode authoredConditions = jsonMapper.readTree("""
+                [
+                  {"type":"expression","left":"selectable.x","leftSelectable":"my_bot","comparator":"lt",
+                    "right":{"type":"number","value":-100}},
+                  {"type":"expression","left":"selectable.y","leftSelectable":"my_bot","comparator":"gte",
+                    "right":{"type":"number","value":-450}}
+                ]
+                """);
+        JsonNode jsonRoundTrip = jsonMapper.readTree(jsonMapper.writeValueAsString(authoredConditions));
+        List<Condition> normalized = ConditionResolutionService.normalizeConditions(jsonRoundTrip, V2);
+        Bot centered = bot(V2, 400, 1050, 0);
+
+        assertThat(normalized.get(0).right().numberValue()).isEqualTo(-100);
+        assertThat(normalized.get(1).right().numberValue()).isEqualTo(-450);
+        assertThat(conditions.evaluateConditions(normalized, centered, null, List.of(), arena(), V2)).isTrue();
+        assertThat(conditions.evaluateConditions(normalized, centered, null, List.of(), arena(), V1)).isFalse();
+    }
+
+    @Test
+    void coordinateConditionDefaultsRemainAtTheArenaCenterForBothVersions() throws Exception {
+        JsonNode missingCoordinates = jsonMapper.readTree("""
+                [{"type":"expression","left":"selectable.distance","selectable1":"my_bot",
+                  "targetMode":"coordinates","comparator":"lt","right":{"type":"number","value":100}}]
+                """);
+
+        Condition v1 = ConditionResolutionService.normalizeConditions(missingCoordinates, V1).getFirst();
+        Condition v2 = ConditionResolutionService.normalizeConditions(missingCoordinates, V2).getFirst();
+
+        assertThat(v1.targetX()).isEqualTo(600);
+        assertThat(v1.targetY()).isEqualTo(600);
+        assertThat(v2.targetX()).isEqualTo(600);
+        assertThat(v2.targetY()).isEqualTo(600);
+    }
+
+    @Test
     void customVariableActionOperandsReadCoordinatesWithTheirBrainVersion() throws Exception {
         JsonNode xTerms = jsonMapper.readTree("""
                 [{"operator":"set","operand":{"type":"variable","value":"selectable.x","selectable":"my_bot"}}]
@@ -80,6 +117,28 @@ class VersionedCoordinateRuntimeTest {
         assertThat(readCoordinate(V1, yTerms, "custom.y")).isEqualTo(150);
         assertThat(readCoordinate(V2, xTerms, "custom.x")).isEqualTo(0);
         assertThat(readCoordinate(V2, yTerms, "custom.y")).isEqualTo(450);
+
+        Bot centered = bot(V2, 400, 1050, 0);
+        centered.customVariableTypes.put("custom.x", "number");
+        centered.customVariableTypes.put("custom.y", "number");
+        centered.customVariables.put("custom.x", 0.0);
+        centered.customVariables.put("custom.y", 0.0);
+        actions.applyCustomVariableAction(centered, null, List.of(), arena(), conditions,
+                new StrategyBlock(0, "variable", "my_bot", 0, 0, null, 0, 0, null, null,
+                        "custom.x", xTerms, 1, List.of(), Double.NaN), V2);
+        actions.applyCustomVariableAction(centered, null, List.of(), arena(), conditions,
+                new StrategyBlock(0, "variable", "my_bot", 0, 0, null, 0, 0, null, null,
+                        "custom.y", yTerms, 1, List.of(), Double.NaN), V2);
+
+        List<Condition> customCoordinateChecks = ConditionResolutionService.normalizeConditions(jsonMapper.readTree("""
+                [
+                  {"type":"expression","left":"custom.x","comparator":"lt","right":{"type":"number","value":-100}},
+                  {"type":"expression","left":"custom.y","comparator":"gte","right":{"type":"number","value":-450}}
+                ]
+                """), V2);
+        assertThat(centered.customVariables.get("custom.x")).isEqualTo(-200.0);
+        assertThat(centered.customVariables.get("custom.y")).isEqualTo(-450.0);
+        assertThat(conditions.evaluateConditions(customCoordinateChecks, centered, null, List.of(), arena(), V2)).isTrue();
     }
 
     private double readCoordinate(String version, JsonNode terms, String variableId) {

@@ -896,7 +896,7 @@ class BotSubmissionValidationServiceTest {
     }
 
     @Test
-    void acceptsFiniteOutOfRangeRelativeBearingValuesForAuthoritativeClamping() throws Exception {
+    void preservesPositiveRelativeBearingClampingButRejectsNegativeValues() throws Exception {
         BotSubmissionPayloadDTO payload = validPayload();
         payload.setBrain(jsonMapper.readTree("""
                 {"version":"bot-logic-tree-v1","roots":[{"branches":[{"branchType":"if",
@@ -908,7 +908,10 @@ class BotSubmissionValidationServiceTest {
                   "actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"children":[]}]}]}
                 """));
 
-        assertThat(service.validate(payload).getErrors()).isEmpty();
+        assertThat(service.validate(payload).getErrors())
+                .anyMatch(error -> error.contains("conditions[0].right.value cannot be negative"))
+                .noneMatch(error -> error.contains("conditions[1].right.value"))
+                .noneMatch(error -> error.contains("conditions[2].right.value"));
     }
 
     @Test
@@ -1015,6 +1018,123 @@ class BotSubmissionValidationServiceTest {
 
         assertThat(service.validate(payload).getErrors()).contains(
                 "brain.roots[0].branches[0].conditions[0].right.value cannot be negative for this number variable");
+    }
+
+    @Test
+    void acceptsNegativeCenteredCoordinateOperandsAcrossPuzzleAndMatchValidation() throws Exception {
+        String conditions = """
+                [
+                  {"type":"expression","left":"selectable.x","leftSelectable":"my_bot","comparator":"lt",
+                    "right":{"type":"number","value":-100}},
+                  {"type":"expression","left":"selectable.y","leftSelectable":"my_bot","comparator":"gte",
+                    "right":{"type":"number","value":-450}}
+                ]
+                """;
+        BotSubmissionPayloadDTO payload = validPayload();
+        JsonNode brain = jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v2","roots":[{"branches":[{"conditions":%s,
+                  "actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":90}],"children":[]}]}]}
+                """.formatted(conditions));
+        payload.setBrain(jsonMapper.readTree(jsonMapper.writeValueAsString(brain)));
+
+        assertThat(payload.getBrain().at("/roots/0/branches/0/conditions/0/right/value").doubleValue())
+                .isEqualTo(-100);
+        assertThat(payload.getBrain().at("/roots/0/branches/0/conditions/1/right/value").doubleValue())
+                .isEqualTo(-450);
+        assertThat(service.validate(payload).getErrors()).isEmpty();
+        assertThat(service.validateForSimulation(payload.getBrain())).isEmpty();
+
+        payload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v2","roots":[{"branches":[{"conditions":[
+                  {"type":"expression","left":"selectable.x","leftSelectable":"my_bot","comparator":"lt",
+                    "right":{"type":"number","value":-601}},
+                  {"type":"expression","left":"selectable.y","leftSelectable":"my_bot","comparator":"gte",
+                    "right":{"type":"number","value":601}}],
+                  "actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":90}],"children":[]}]}]}
+                """));
+        assertThat(service.validate(payload).getErrors())
+                .anyMatch(error -> error.contains("conditions[0].right.value must be between -600 and 600"))
+                .anyMatch(error -> error.contains("conditions[1].right.value must be between -600 and 600"));
+
+        JsonNode puzzleRules = jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v2","customVariables":[],"roots":[
+                  {"kind":"win","branches":[{"conditions":%s,"actions":[],"children":[]}]}
+                ]}
+                """.formatted(conditions));
+        assertThat(service.validateConditionRulesForSimulation(puzzleRules)).isEmpty();
+
+        payload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","roots":[{"branches":[{"conditions":[
+                  {"type":"expression","left":"selectable.x","leftSelectable":"my_bot","comparator":"eq",
+                    "right":{"type":"number","value":1200}},
+                  {"type":"expression","left":"selectable.y","leftSelectable":"my_bot","comparator":"eq",
+                    "right":{"type":"number","value":0}}],
+                  "actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":90}],"children":[]}]}]}
+                """));
+        assertThat(service.validate(payload).getErrors()).isEmpty();
+
+        payload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","roots":[{"branches":[{"conditions":[
+                  {"type":"expression","left":"selectable.x","leftSelectable":"my_bot","comparator":"eq",
+                    "right":{"type":"number","value":1201}}],
+                  "actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":90}],"children":[]}]}]}
+                """));
+        assertThat(service.validate(payload).getErrors())
+                .anyMatch(error -> error.contains("conditions[0].right.value must be between 0 and 1200"));
+
+        payload.setBrain(brain);
+        tools.jackson.databind.node.ObjectNode legacyBrain = (tools.jackson.databind.node.ObjectNode) brain.deepCopy();
+        legacyBrain.put("version", "bot-logic-tree-v1");
+        payload.setBrain(legacyBrain);
+        assertThat(service.validate(payload).getErrors())
+                .anyMatch(error -> error.contains("conditions[0].right.value cannot be negative"))
+                .anyMatch(error -> error.contains("conditions[1].right.value cannot be negative"));
+    }
+
+    @Test
+    void rejectsNegativeComparisonsForNonnegativeStateVariables() throws Exception {
+        for (String variable : List.of(
+                "selectable.hp",
+                "match.elapsedSeconds",
+                "selectable.distance",
+                "selectable.count",
+                "bot.selectedAbilityCooldownMs")) {
+            BotSubmissionPayloadDTO payload = validPayload();
+            String abilityField = variable.startsWith("bot.") ? "\"ability\":1," : "";
+            payload.setBrain(jsonMapper.readTree("""
+                    {"version":"bot-logic-tree-v2","roots":[{"branches":[{"conditions":[
+                      {"type":"expression","left":"%s",%s"leftSelectable":"my_bot","comparator":"lt",
+                        "right":{"type":"number","value":-1}}],
+                      "actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"children":[]}]}]}
+                    """.formatted(variable, abilityField)));
+
+            assertThat(service.validate(payload).getErrors())
+                    .as("negative operand for %s", variable)
+                    .anyMatch(error -> error.contains("conditions[0].right.value cannot be negative"));
+        }
+    }
+
+    @Test
+    void validatesNegativeCoordinatesReadThroughCustomVariableActions() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v2","customVariables":[
+                  {"id":"custom.x","name":"X Coordinate","valueType":"number","initialValue":0},
+                  {"id":"custom.y","name":"Y Coordinate","valueType":"number","initialValue":0}],
+                  "roots":[{"branches":[
+                    {"conditions":[{"type":"always"}],"actions":[{"action":"variable","variableId":"custom.x","terms":[
+                      {"operator":"set","operand":{"type":"variable","value":"selectable.x","selectable":"my_bot"}}]}],"children":[]},
+                    {"conditions":[{"type":"always"}],"actions":[{"action":"variable","variableId":"custom.y","terms":[
+                      {"operator":"set","operand":{"type":"variable","value":"selectable.y","selectable":"my_bot"}}]}],"children":[]},
+                    {"conditions":[
+                      {"type":"expression","left":"custom.x","comparator":"lt","right":{"type":"number","value":-100}},
+                      {"type":"expression","left":"custom.y","comparator":"gte","right":{"type":"number","value":-450}}],
+                      "actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":90}],"children":[]}
+                  ]}]}
+                """));
+
+        assertThat(service.validate(payload).getErrors()).isEmpty();
+        assertThat(service.validateForSimulation(payload.getBrain())).isEmpty();
     }
 
     @Test

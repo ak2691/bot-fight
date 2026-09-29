@@ -5,6 +5,7 @@ import {
     BOT_CODE_SELECTABLES,
     CUSTOM_VARIABLE_OPERATIONS,
     STATE_VARIABLES,
+    normalizeConditions,
     selectAbilityStrategyActionPlan,
 } from "../BotCode.js";
 import { buildDeterministicLogicAction } from "../../planner/ArenaActionPlanner.js";
@@ -106,6 +107,29 @@ test("Entity X and Y conditions and custom-variable operands use each brain vers
     assert.equal(selectAbilityStrategyActionPlan(readCoordinate(V2, "selectable.x"), battlePayload()).customVariables["custom.coordinate"], 0);
     assert.equal(selectAbilityStrategyActionPlan(readCoordinate(V1, "selectable.y"), battlePayload()).customVariables["custom.coordinate"], 600);
     assert.equal(selectAbilityStrategyActionPlan(readCoordinate(V2, "selectable.y"), battlePayload()).customVariables["custom.coordinate"], 0);
+});
+
+test("negative v2 coordinate comparisons survive frontend normalization and evaluation", () => {
+    const conditions = [
+        {
+            type: "expression", left: "selectable.x", leftSelectable: BOT_CODE_SELECTABLES.MY,
+            comparator: "lt", right: { type: "number", value: -100 },
+        },
+        {
+            type: "expression", left: "selectable.y", leftSelectable: BOT_CODE_SELECTABLES.MY,
+            comparator: "gte", right: { type: "number", value: -450 },
+        },
+    ];
+    const normalized = normalizeConditions(conditions, [], undefined, V2);
+    assert.deepEqual(normalized.map((condition) => condition.right.value), [-100, -450]);
+
+    const strategy = configuration(V2, {
+        action: BOT_CODE_ACTIONS.MOVE_WALK,
+        movementMode: "absolute",
+        movementDirection: 90,
+    }, conditions);
+    const result = selectAbilityStrategyActionPlan(strategy, battlePayload({ x: 400, y: 1050 }));
+    assert.ok(result.movement);
 });
 
 test("public target offsets invert Y while retaining v1 behavior", () => {

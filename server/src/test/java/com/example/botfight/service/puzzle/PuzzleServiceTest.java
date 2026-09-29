@@ -1,6 +1,7 @@
 package com.example.botfight.service.puzzle;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -24,6 +25,7 @@ import com.example.botfight.service.cache.DatabaseLookupCache.CachedPuzzle;
 import com.example.botfight.service.cache.DatabaseLookupCache.CachedPuzzleBot;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.submission.BotSubmissionValidationService;
+import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import com.example.botfight.simulation.geometry.ArenaUnits;
 import java.util.List;
 import java.util.Optional;
@@ -99,6 +101,66 @@ class PuzzleServiceTest {
         verify(puzzleRepository).saveAndFlush(puzzle);
         verify(botValidationService).validateConditionRulesForSimulation(request.getLogicConfiguration());
         verify(databaseLookupCache).invalidatePuzzleCatalog("puzzle-updated");
+    }
+
+    @Test
+    void updateAcceptsNegativeCenteredCoordinatesInPuzzleConditions() throws Exception {
+        UUID puzzleId = UUID.randomUUID();
+        AppUser admin = new AppUser();
+        admin.setId(UUID.randomUUID());
+        admin.setRole(UserRole.ADMIN);
+        Puzzle puzzle = new Puzzle();
+        puzzle.setId(puzzleId);
+        puzzle.setPuzzleNumber(7L);
+        puzzle.setName("Before");
+        puzzle.setDescription("Old description");
+        puzzle.setStatus(PuzzleStatus.DRAFT);
+        puzzle.addBot(bot(UUID.randomUUID(), PuzzleBotRole.PLAYER, "custom:"));
+        puzzle.addBot(bot(UUID.randomUUID(), PuzzleBotRole.OPPONENT, "custom:"));
+
+        when(currentUserService.requireCurrentUser(authentication)).thenReturn(admin);
+        when(puzzleRepository.findByPuzzleNumber(7L)).thenReturn(Optional.of(puzzle));
+        when(puzzleRepository.saveAndFlush(puzzle)).thenReturn(puzzle);
+
+        BotSubmissionValidationService validationService = new BotSubmissionValidationService(
+                jsonMapper, new GameConfigCatalog());
+        PuzzleService validatingService = new PuzzleService(
+                puzzleRepository,
+                puzzleCompletionRepository,
+                currentUserService,
+                validationService,
+                jsonMapper,
+                rateLimiter,
+                mock(TokenBucketRateLimiter.class),
+                databaseLookupCache);
+        PuzzleSaveRequestDTO request = validUpdateRequest();
+        request.setLogicConfiguration(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v2","customVariables":[],"roots":[
+                  {"id":"win","kind":"win","branches":[{"conditions":[
+                    {"type":"expression","left":"selectable.x","leftSelectable":"my_bot","comparator":"lt",
+                      "right":{"type":"number","value":-100}},
+                    {"type":"expression","left":"selectable.y","leftSelectable":"my_bot","comparator":"gte",
+                      "right":{"type":"number","value":-450}}],"actions":[],"children":[]}]}
+                ]}
+                """));
+        request.getPlayerBot().setBrain(jsonMapper.readTree("{\"version\":\"bot-logic-tree-v2\",\"roots\":[]}"));
+        request.getOpponentBot().setBrain(jsonMapper.readTree("{\"version\":\"bot-logic-tree-v2\",\"roots\":[]}"));
+
+        var response = validatingService.update(7L, request, authentication);
+
+        assertThat(response.getLogicConfiguration().at("/roots/0/branches/0/conditions/0/right/value").doubleValue())
+                .isEqualTo(-100);
+        assertThat(response.getLogicConfiguration().at("/roots/0/branches/0/conditions/1/right/value").doubleValue())
+                .isEqualTo(-450);
+        assertThat(puzzle.getLogicConfiguration()).contains("-100", "-450");
+
+        request.setWinConditions(jsonMapper.readTree("""
+                [{"type":"expression","left":"selectable.hp","leftSelectable":"my_bot","comparator":"lt",
+                  "right":{"type":"number","value":-1}}]
+                """));
+        assertThatThrownBy(() -> validatingService.update(7L, request, authentication))
+                .isInstanceOf(PuzzleValidationException.class)
+                .hasMessageContaining("winConditions[0].right.value must be between 0 and 300");
     }
 
     @Test

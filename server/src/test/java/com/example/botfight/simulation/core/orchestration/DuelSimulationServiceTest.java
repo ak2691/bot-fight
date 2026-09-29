@@ -1258,6 +1258,37 @@ class DuelSimulationServiceTest {
     }
 
     @Test
+    void negativeCenteredCoordinateConditionsDriveTheAuthoritativeSimulation() throws Exception {
+        JsonNode authoredCenteredBrain = jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v2","roots":[{"branches":[{"conditions":[
+                  {"type":"expression","left":"selectable.x","leftSelectable":"my_bot","comparator":"lt",
+                    "right":{"type":"number","value":-100}},
+                  {"type":"expression","left":"selectable.y","leftSelectable":"my_bot","comparator":"gte",
+                    "right":{"type":"number","value":-450}}],
+                  "actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":90}],"children":[]}]}]}
+                """);
+        JsonNode centeredBrain = jsonMapper.readTree(jsonMapper.writeValueAsString(authoredCenteredBrain));
+        MatchPlaybackDTO centeredResult = service.simulate(request(arena(100),
+                bot("v2-negative-coordinate", "V2", 1, 450, 1050, "custom", centeredBrain),
+                bot("v2-negative-target", "Target", 2, 900, 900, "custom", idleBrain)));
+
+        JsonNode legacyBrain = jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","roots":[{"branches":[{"conditions":[
+                  {"type":"expression","left":"selectable.x","leftSelectable":"my_bot","comparator":"lt",
+                    "right":{"type":"number","value":500}},
+                  {"type":"expression","left":"selectable.y","leftSelectable":"my_bot","comparator":"gte",
+                    "right":{"type":"number","value":1000}}],
+                  "actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":90}],"children":[]}]}]}
+                """);
+        MatchPlaybackDTO legacyResult = service.simulate(request(arena(100),
+                bot("v1-coordinate", "V1", 1, 450, 1050, "custom", legacyBrain),
+                bot("v1-target", "Target", 2, 900, 900, "custom", idleBrain)));
+
+        assertThat(centeredResult.frames().getFirst().bots().getFirst().x()).isEqualTo(465.0);
+        assertThat(legacyResult.frames().getFirst().bots().getFirst().x()).isEqualTo(465.0);
+    }
+
+    @Test
     void globalAbilityLockBlocksDifferentAbilitiesDuringActivePhase() {
         JsonNode idle = customBrain("[]", "[]");
         JsonNode fireballFirst = independentRootBrain("[5,9]", """

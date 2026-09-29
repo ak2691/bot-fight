@@ -94,6 +94,18 @@ class BotLogicContractsTest {
                 .isEqualTo(BotLogicContracts.VariableScope.SELECTABLE);
         assertThat(BotLogicContracts.variableContract("selectable.dangerZoneEdgeDistance").allowsNegativeInteger()).isTrue();
         assertThat(BotLogicContracts.variableContract("selectable.hpNetChangeLastTick").allowsNegativeInteger()).isTrue();
+        assertThat(BotLogicContracts.variableContract("selectable.x").numericRangeFor(BotLogicContracts.BRAIN_SCHEMA_V2))
+                .isEqualTo(new BotLogicContracts.NumericRange(-600, 600));
+        assertThat(BotLogicContracts.variableContract("selectable.y").numericRangeFor(BotLogicContracts.BRAIN_SCHEMA_V2))
+                .isEqualTo(new BotLogicContracts.NumericRange(-600, 600));
+        assertThat(BotLogicContracts.variableContract("selectable.x").numericRangeFor(BotLogicContracts.BRAIN_SCHEMA_V1))
+                .isEqualTo(new BotLogicContracts.NumericRange(0, 1200));
+        assertThat(BotLogicContracts.variableContract("selectable.y").numericRangeFor(BotLogicContracts.BRAIN_SCHEMA_V1))
+                .isEqualTo(new BotLogicContracts.NumericRange(0, 1200));
+        assertThat(BotLogicContracts.variableContract("selectable.hp").numericRangeFor(BotLogicContracts.BRAIN_SCHEMA_V2))
+                .isEqualTo(new BotLogicContracts.NumericRange(0, 300));
+        assertThat(BotLogicContracts.variableContract("selectable.relativeBearing").numericRangeFor(BotLogicContracts.BRAIN_SCHEMA_V2))
+                .isEqualTo(new BotLogicContracts.NumericRange(0, 180));
         assertThat(BotLogicContracts.variableContract("selectable.hp").selectableIdentities())
                 .isEmpty();
         assertThat(BotLogicContracts.defaultSelectable1ForVariable(
