@@ -945,3 +945,11 @@ test("practice autoplay pauses in hidden tabs and submissions do not log brain p
     assert.match(autoPlaySource, /if \(!document\.hidden \|\| !autoIntervalRef\.current\) return;\s*stopAutoPlay\(\);\s*setIsEditingArena\(true\)/);
     assert.doesNotMatch(arenaSource, /console\.(?:info|log)\([^)]*payload/);
 });
+
+test("editable code upgrades legacy coordinates before rendering movement controls", () => {
+    const source = readCodingSource();
+
+    assert.match(source, /activeCodeReadOnly\s*\?\s*normalizedActiveConfiguration\s*:\s*upgradeStoredStrategyCoordinates\(normalizedActiveConfiguration\)/);
+    assert.match(source, /validateAbilityStrategyConfiguration\(activeConfiguration\)/);
+    assert.match(source, /version: BOT_LOGIC_TREE_VERSION/);
+});

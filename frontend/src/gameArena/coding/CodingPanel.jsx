@@ -42,10 +42,12 @@ import {
 } from "./nodes/GraphNodes.jsx";
 import { TreeLogicBoard } from "./LogicBoard.jsx";
 import { readAddRootShortcut } from "./addRootShortcut.js";
-import { BOT_LOGIC_TREE_VERSION, coordinateVersionFor } from "../botlogic/code/configuration/constants.js";
+import { BOT_LOGIC_TREE_VERSION } from "../botlogic/code/configuration/constants.js";
+import { upgradeStoredStrategyCoordinates } from "../persistence/arenaStrategyStorage.js";
 
 const MIN_ZOOM = 0.45;
 const MAX_ZOOM = 1.35;
+const EMPTY_CONFIGURATION = Object.freeze({ version: BOT_LOGIC_TREE_VERSION, roots: [], customVariables: [] });
 
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -367,7 +369,7 @@ export default function CodingPanel({
             ? activeCodeSnapshot?.configuration
             : viewingLiveOpponentSandbox
                 ? activeCodeSnapshot?.configuration
-                    ?? { version: BOT_LOGIC_TREE_VERSION, roots: [], customVariables: [] }
+                    ?? EMPTY_CONFIGURATION
             : viewingOpponent ? opponentConfiguration : configuration;
     const activeLoadoutSource = viewingOfflineParticipant
         ? activeOfflineParticipant.selectedLoadout ?? activeOfflineParticipant.loadout
@@ -380,11 +382,16 @@ export default function CodingPanel({
             : viewingOpponent ? opponentLoadout : selectedLoadout;
     const normalizedActiveConfiguration = activeConfigurationSource && typeof activeConfigurationSource === "object"
         ? activeConfigurationSource
-        : { version: BOT_LOGIC_TREE_VERSION, roots: [], customVariables: [] };
-    const activeConfiguration = normalizedActiveConfiguration;
+        : EMPTY_CONFIGURATION;
+    const activeConfiguration = useMemo(
+        () => activeCodeReadOnly
+            ? normalizedActiveConfiguration
+            : upgradeStoredStrategyCoordinates(normalizedActiveConfiguration),
+        [activeCodeReadOnly, normalizedActiveConfiguration],
+    );
     const detachedBranchCount = activeConfiguration?.editorGraph?.detachedBranches?.length ?? 0;
     const activeLoadout = activeLoadoutSource;
-    const validation = validateAbilityStrategyConfiguration(normalizedActiveConfiguration);
+    const validation = validateAbilityStrategyConfiguration(activeConfiguration);
     const isBotCodeLocked = isMatchTesting && (
         isFinishingMatch
         || finishStatus === "SUBMITTING"
@@ -503,7 +510,7 @@ export default function CodingPanel({
     };
     const updateRoots = (roots, nodePositions = activeConfiguration.nodePositions) => updateActiveConfiguration({
         ...activeConfiguration,
-        version: coordinateVersionFor(activeConfiguration),
+        version: BOT_LOGIC_TREE_VERSION,
         roots: normalizeRoots(roots),
         customVariables: activeConfiguration?.customVariables ?? [],
         ...(nodePositions ? { nodePositions } : {}),
