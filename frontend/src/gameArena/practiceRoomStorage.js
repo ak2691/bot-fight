@@ -1,5 +1,6 @@
 import { CODE_EDITOR_GRAPH_VERSION, sanitizeCodeEditorGraph } from "./botlogic/graph/CodeEditorGraph.js";
 import { normalizeAbilityStrategyConfiguration } from "./botlogic/code/BotCode.js";
+import { upgradeStoredStrategyCoordinates } from "./persistence/arenaStrategyStorage.js";
 import {
     DEFAULT_BOT_LOADOUT,
     decodeBotLoadout,
@@ -142,9 +143,10 @@ export function normalizePracticeConfig(source, { coordinatesAreInternal = false
 
 function normalizeStoredConfiguration(value) {
     if (!value || typeof value !== "object") return null;
-    const normalized = normalizeAbilityStrategyConfiguration(value);
+    const upgraded = upgradeStoredStrategyCoordinates(value);
+    const normalized = normalizeAbilityStrategyConfiguration(upgraded);
     return value.editorGraph?.version === CODE_EDITOR_GRAPH_VERSION
-        ? { ...normalized, editorGraph: sanitizeCodeEditorGraph(value.editorGraph) }
+        ? { ...normalized, editorGraph: sanitizeCodeEditorGraph(upgraded.editorGraph) }
         : normalized;
 }
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createDefaultAbilityStrategyConfiguration } from "./botlogic/code/BotCode.js";
+import { upgradeStoredStrategyCoordinates } from "./persistence/arenaStrategyStorage.js";
 import {
     PRACTICE_ROOM_STORAGE_KEY,
     readPracticeRoomDraft,
@@ -104,4 +105,28 @@ test("legacy practice starts migrate from internal coordinates into centered pub
     const persisted = JSON.parse(storage.getItem(PRACTICE_ROOM_STORAGE_KEY));
     assert.equal(persisted.version, 3);
     assert.deepEqual(persisted.config.bots.map(({ startX, startY }) => [startX, startY]), [[0, -450], [0, 450]]);
+});
+
+test("legacy saved Walk coordinates migrate to centered inputs with a zero origin", () => {
+    const upgraded = upgradeStoredStrategyCoordinates({
+        roots: [{ branches: [{
+            conditions: [{ type: "always" }],
+            actions: [
+                { action: "move_walk", movementMode: "coordinates", targetX: 600, targetY: 600 },
+                { action: "rotate_toward_enemy", targetMode: "coordinates", targetX: 150, targetY: 1050 },
+            ],
+        }] }],
+        customVariables: [],
+        editorGraph: {
+            version: "code-editor-graph-v1",
+            targets: [{ id: "target-1", kind: "target", targetKind: "coordinates", targetX: 1200, targetY: 0 }],
+        },
+    });
+
+    assert.equal(upgraded.version, "bot-logic-tree-v2");
+    assert.deepEqual(upgraded.roots[0].branches[0].actions.map(({ targetX, targetY }) => [targetX, targetY]), [
+        [0, 0],
+        [-450, -450],
+    ]);
+    assert.deepEqual([upgraded.editorGraph.targets[0].targetX, upgraded.editorGraph.targets[0].targetY], [600, 600]);
 });
