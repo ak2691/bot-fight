@@ -29,6 +29,8 @@ export default function MatchToolIcon({ name, className = "h-5 w-5" }) {
         load: <><path d="M12 3v12m-4-8 4-4 4 4"/><path d="M5 14v6h14v-6"/></>,
         reset: <><path d="M4 11a8 8 0 1 1 2 6"/><path d="M4 5v6h6"/></>,
         check: <><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 6-7"/></>,
+        previous: <path d="M19 12H5m7 7-7-7 7-7"/>,
+        next: <path d="M5 12h14m-7-7 7 7-7 7"/>,
         stop: <><circle cx="12" cy="12" r="9"/><path d="M9 9h6v6H9z"/></>,
         finish: <><path d="M5 21V4"/><path d="M5 5h12l-2 4 2 4H5"/></>,
         flag: <><path d="M5 22V3"/><path d="M5 4h13l-3 4 3 4H5"/></>,

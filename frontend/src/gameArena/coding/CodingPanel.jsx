@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import AddIcon from "./controls/AddIcon.jsx";
 import { createPortal } from "react-dom";
 import {
@@ -20,6 +21,10 @@ import { statusEffectDefinitionsForAbilities } from "../loadout/BotLoadout.js";
 import { priorityForNode } from "../botlogic/code/configuration/identifiers.js";
 import CustomVariablesModal from "./modals/CustomVariablesModal.jsx";
 import TutorialGuide from "../../tutorial/TutorialGuide.jsx";
+import {
+    captureTutorialNavigationScrollPosition,
+    tutorialLessonNavigationForArena,
+} from "../../tutorial/tutorialLessonNavigation.js";
 import { botColorRole } from "../pixi/pixiVisualState.js";
 import { useDialogFocus } from "../../components/useDialogFocus.js";
 import {
@@ -44,6 +49,62 @@ const MAX_ZOOM = 1.35;
 
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
+}
+
+function TutorialLessonNavigationControls({ navigation }) {
+    const navigate = useNavigate();
+    const location = useLocation();
+    if (!navigation) return null;
+
+    const navigateToLesson = (target) => {
+        if (!target) return;
+        const contentShell = typeof document === "undefined" ? null : document.querySelector(".arena-content-shell");
+        const toolbarPanel = typeof document === "undefined" ? null : document.querySelector(".arena-toolbar-panel");
+        const tutorialNavigationScrollPosition = captureTutorialNavigationScrollPosition({
+            windowTarget: typeof window === "undefined" ? null : window,
+            contentShell,
+            toolbarPanel,
+        });
+        const currentState = location.state && typeof location.state === "object" ? location.state : {};
+        navigate(target.path, {
+            replace: true,
+            state: { ...currentState, tutorialNavigationScrollPosition },
+        });
+    };
+
+    return (
+        <section className="rounded-xl border border-slate-600/70 bg-slate-900/55 p-4 shadow-[0_10px_30px_rgba(0,0,0,.2)]" aria-labelledby="tutorial-lesson-navigation-title">
+            <div className="mb-3 border-b border-slate-700/80 pb-3">
+                <p className="font-mono text-[9px] font-bold tracking-[.16em] text-cyan-300">TUTORIAL LESSON</p>
+                <h2 id="tutorial-lesson-navigation-title" className="mt-1 break-words font-display-action text-lg uppercase tracking-wide text-white">
+                    {navigation.lesson.title}
+                </h2>
+            </div>
+            <div className="flex w-full gap-2" role="group" aria-label="Tutorial lesson navigation">
+                <ControlButton
+                    icon="previous"
+                    label="Previous Lesson"
+                    onClick={() => navigateToLesson(navigation.previous)}
+                    disabled={!navigation.previous}
+                    tone="blue"
+                    className="tutorial-lesson-navigation-button min-w-0 flex-1"
+                >
+                    PREVIOUS LESSON
+                </ControlButton>
+                {navigation.next && (
+                    <ControlButton
+                        icon="next"
+                        label="Next Lesson"
+                        onClick={() => navigateToLesson(navigation.next)}
+                        tone="blue"
+                        className="tutorial-lesson-navigation-button min-w-0 flex-1"
+                    >
+                        NEXT LESSON
+                    </ControlButton>
+                )}
+            </div>
+        </section>
+    );
 }
 
 function participantTeamNumber(participant) {
@@ -161,6 +222,7 @@ export default function CodingPanel({
     canFinishMatch = false,
     onAutoPlayToggle,
     onResetArenaStats,
+    onSaveGameState = null,
     customVariableValues = {},
     opponentCustomVariableValues = {},
     onSurrenderMatch,
@@ -178,6 +240,12 @@ export default function CodingPanel({
     tutorialGuideProps = null,
     onWorkspaceOpen = null,
 }) {
+    const tutorialLessonNavigation = tutorialLessonNavigationForArena({
+        tutorialMode: Boolean(tutorialGuideProps),
+        lessonId: tutorialGuideProps?.lessonId,
+        isMatchTesting,
+        isReplay: Boolean(matchContext?.replay),
+    });
     const [isLogicOpen, setIsLogicOpen] = useState(false);
     const [isCustomVariablesOpen, setIsCustomVariablesOpen] = useState(false);
     const [isNodeSearchOpen, setIsNodeSearchOpen] = useState(false);
@@ -715,6 +783,16 @@ export default function CodingPanel({
                         >
                             RESET STATS
                         </ControlButton>
+                        {onSaveGameState && (
+                            <ControlButton
+                                icon="save"
+                                onClick={onSaveGameState}
+                                disabled={isAutoPlaying}
+                                tone="neutral"
+                            >
+                                SAVE GAME STATE
+                            </ControlButton>
+                        )}
                         {isMatchTesting && (
                             <>
                             <ControlButton
@@ -766,6 +844,7 @@ export default function CodingPanel({
                     </div>
                     {finishError && <p className="mt-2 rounded border border-red-800/70 bg-red-950/40 px-2 py-2 font-mono text-[9px] leading-relaxed text-red-200">{finishError}</p>}
                 </section>
+                {tutorialLessonNavigation && <TutorialLessonNavigationControls navigation={tutorialLessonNavigation} />}
                 {onPuzzleSubmit && (
                     <section className="rounded-lg border border-cyan-900/60 bg-slate-950/45 p-3 text-[9px] leading-4 text-slate-400">
                         <p>When you submit a puzzle, the server will return whether or not you succeeded based on a hidden simulation.</p>

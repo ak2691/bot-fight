@@ -9,6 +9,11 @@ import { stateFromPayload } from "../gameArena/botlogic/code/runtime/runtimeStat
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../gameArena/modelPayloads/arenaConstants.js";
 import { BOT_CODE_ACTIONS } from "../gameArena/botlogic/code/contracts/BotLogicContracts.js";
 import { TUTORIAL_CATEGORIES, TUTORIAL_ENDING, TUTORIAL_INTRODUCTION, TUTORIAL_INTRODUCTION_VISUALS, TUTORIAL_LESSONS, getTutorialLesson, getTutorialLessonForScenario } from "./TutorialContent.js";
+import {
+    captureTutorialNavigationScrollPosition,
+    restoreTutorialNavigationScrollPosition,
+    tutorialLessonNavigationForArena,
+} from "./tutorialLessonNavigation.js";
 
 const tutorialCopy = (lessonId) => getTutorialLesson(lessonId).description
     .flatMap((paragraph) => paragraph?.type === "steps" ? paragraph.items : [paragraph])
@@ -245,6 +250,85 @@ test("tutorial ending points players to both gameplay catalogues", () => {
     assert.match(pageSource, />\s*View Conditional Catalogue\s*</);
 });
 
+test("tutorial lesson navigation is immediately available in canonical catalogue order", () => {
+    const navigation = tutorialLessonNavigationForArena({ tutorialMode: true, lessonId: "arena-coordinates" });
+
+    assert.deepEqual(navigation, {
+        lesson: getTutorialLesson("arena-coordinates"),
+        previous: { lesson: getTutorialLesson("first-steps"), path: "/tutorial?lesson=first-steps" },
+        next: { lesson: getTutorialLesson("retreat"), path: "/tutorial?lesson=retreat" },
+    });
+});
+
+test("tutorial lesson navigation captures and restores arena scroll positions", () => {
+    const windowTarget = {
+        scrollX: 7,
+        scrollY: 245,
+        scrollTo(x, y) {
+            this.scrollX = x;
+            this.scrollY = y;
+        },
+    };
+    const contentShell = { scrollLeft: 3, scrollTop: 510 };
+    const toolbarPanel = { scrollTop: 180 };
+    const position = captureTutorialNavigationScrollPosition({ windowTarget, contentShell, toolbarPanel });
+
+    windowTarget.scrollX = 0;
+    windowTarget.scrollY = 0;
+    contentShell.scrollLeft = 0;
+    contentShell.scrollTop = 0;
+    toolbarPanel.scrollTop = 0;
+    restoreTutorialNavigationScrollPosition(position, { windowTarget, contentShell, toolbarPanel });
+
+    assert.deepEqual(position, { windowX: 7, windowY: 245, contentX: 3, contentY: 510, toolbarY: 180 });
+    assert.equal(windowTarget.scrollX, 7);
+    assert.equal(windowTarget.scrollY, 245);
+    assert.deepEqual(contentShell, { scrollLeft: 3, scrollTop: 510 });
+    assert.deepEqual(toolbarPanel, { scrollTop: 180 });
+});
+
+test("tutorial navigation keeps first and final lesson boundaries", () => {
+    const firstLesson = tutorialLessonNavigationForArena({ tutorialMode: true, lessonId: "first-steps" });
+    const finalLesson = tutorialLessonNavigationForArena({ tutorialMode: true, lessonId: "custom-variable-basics" });
+
+    assert.equal(firstLesson.previous, null);
+    assert.equal(firstLesson.next.path, "/tutorial?lesson=arena-coordinates");
+    assert.equal(finalLesson.previous.path, "/tutorial?lesson=keep-running");
+    assert.equal(finalLesson.next, null);
+    assert.equal(tutorialLessonNavigationForArena({ tutorialMode: true, lessonId: "some-theories" }), null);
+});
+
+test("tutorial navigation stays absent outside tutorial practice", () => {
+    const base = { tutorialMode: true, lessonId: "arena-coordinates" };
+    for (const outsideContext of [
+        { tutorialMode: false },
+        { isMatchTesting: true },
+        { isReplay: true },
+        { isPuzzleMode: true },
+        { isPuzzleBuilder: true },
+    ]) {
+        assert.equal(tutorialLessonNavigationForArena({ ...base, ...outsideContext }), null);
+    }
+});
+
+test("tutorial lesson navigation shows the current title in a separate box below Match Tools", () => {
+    const panelSource = readFileSync(fileURLToPath(new URL("../gameArena/coding/CodingPanel.jsx", import.meta.url)), "utf8");
+    const arenaSource = readFileSync(fileURLToPath(new URL("../gameArena/Arena.jsx", import.meta.url)), "utf8");
+    const navigationComponent = panelSource.slice(panelSource.indexOf("function TutorialLessonNavigationControls"), panelSource.indexOf("function participantTeamNumber"));
+    const matchToolsHeadingIndex = panelSource.indexOf("<PanelHeading>MATCH TOOLS</PanelHeading>");
+    const matchToolsFinishErrorIndex = panelSource.indexOf("{finishError &&", matchToolsHeadingIndex);
+    const matchToolsSectionEndIndex = panelSource.indexOf("</section>", matchToolsFinishErrorIndex);
+    const navigationRenderIndex = panelSource.indexOf("{tutorialLessonNavigation && <TutorialLessonNavigationControls navigation={tutorialLessonNavigation} />}");
+
+    assert.match(navigationComponent, /<section[\s\S]*aria-labelledby="tutorial-lesson-navigation-title"[\s\S]*\{navigation\.lesson\.title\}[\s\S]*role="group" aria-label="Tutorial lesson navigation"[\s\S]*label="Previous Lesson"[\s\S]*disabled=\{!navigation\.previous\}[\s\S]*PREVIOUS LESSON[\s\S]*label="Next Lesson"[\s\S]*NEXT LESSON/);
+    assert.ok(matchToolsHeadingIndex >= 0);
+    assert.ok(navigationRenderIndex > matchToolsSectionEndIndex);
+    assert.match(navigationComponent, /navigate\(target\.path,[\s\S]*replace: true,[\s\S]*tutorialNavigationScrollPosition/);
+    assert.match(panelSource, /tutorialLessonNavigationForArena\(\{\s*tutorialMode: Boolean\(tutorialGuideProps\),[\s\S]*?lessonId: tutorialGuideProps\?\.lessonId/);
+    assert.match(arenaSource, /tutorialGuideProps=\{tutorialMode \? \{\s*lessonId: tutorialLessonId/);
+    assert.match(arenaSource, /restoreTutorialNavigationScrollPosition\(position,[\s\S]*\.arena-content-shell[\s\S]*\.arena-toolbar-panel/);
+});
+
 test("arena-coordinate lesson keeps its practice-room lesson popup and uses the lesson ID", () => {
     const arenaSource = readFileSync(fileURLToPath(new URL("../gameArena/Arena.jsx", import.meta.url)), "utf8");
 
@@ -273,14 +357,21 @@ test("new tutorial lessons resolve focused practice presets", () => {
     assert.equal(dontMissBranch.actions[0].action, TUTORIAL_ACTIONS.FIREBALL);
     assert.equal(dontMiss.solution.roots[1].branches[0].conditions[0].type, "always");
     assert.equal(dontMiss.solution.roots[1].branches[0].actions[0].action, BOT_CODE_ACTIONS.ROTATE_TOWARD_TARGET);
+    assert.equal(dontMiss.opponentLoadout, "sandbox:");
+    assert.deepEqual(dontMiss.opponentCode.customVariables, []);
+    assert.deepEqual(dontMiss.opponentCode.roots, []);
     assert.equal(Math.hypot(
         dontMissPlayer.transform.position.x - dontMissOpponent.transform.position.x,
         dontMissPlayer.transform.position.y - dontMissOpponent.transform.position.y,
     ), 300);
+    assert.deepEqual(dontMissOpponent.transform.position, { x: 600, y: 450 });
     assert.equal(dontMissPlayer.transform.rotation, 180);
     const [aimingPlayer, aimingOpponent] = buildTutorialArenaShapes("aiming-basics");
-    assert.equal(aiming.playerLoadout, "sandbox:5");
+    assert.equal(aiming.playerLoadout, "sandbox:");
     assert.equal(aiming.opponentLoadout, "sandbox:");
+    assert.equal(aiming.solution.roots[0].branches[0].actions[0].action, BOT_CODE_ACTIONS.ROTATE_TOWARD_TARGET);
+    assert.equal(aiming.solution.roots.flatMap((rootNode) => rootNode.branches).flatMap((branchNode) => branchNode.actions).some((action) => action.action === TUTORIAL_ACTIONS.FIREBALL), false);
+    assert.doesNotMatch(tutorialCopy("aiming-basics"), /Fireball/i);
     assert.equal(Math.hypot(
         aimingPlayer.transform.position.x - aimingOpponent.transform.position.x,
         aimingPlayer.transform.position.y - aimingOpponent.transform.position.y,

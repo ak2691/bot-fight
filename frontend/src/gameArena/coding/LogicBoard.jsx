@@ -145,9 +145,9 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
     const detachedBranches = editorGraph.detachedBranches;
     const graphActionCount = countActions(configuration);
     const graphConditionCount = countLogicConditions(configuration);
-    const graph = useMemo(() => buildLogicGraph(roots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion), [coordinateVersion, roots, selectedLoadout, stateVariables, selectableTypes]);
+    const graph = useMemo(() => buildLogicGraph(roots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion, configuration.customVariables), [configuration.customVariables, coordinateVersion, roots, selectedLoadout, stateVariables, selectableTypes]);
     const detachedGraphs = useMemo(() => detachedBranches.map((entry) => {
-        const detachedGraph = buildLogicGraph([{ id: `detached-${entry.id}`, branches: [entry.branch] }], stateVariables, selectedLoadout, selectableTypes, coordinateVersion);
+        const detachedGraph = buildLogicGraph([{ id: `detached-${entry.id}`, branches: [entry.branch] }], stateVariables, selectedLoadout, selectableTypes, coordinateVersion, configuration.customVariables);
         const rootCondition = detachedGraph.conditions[0];
         if (!rootCondition) return null;
         const translate = (node) => ({
@@ -177,7 +177,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
             };
         });
         return { entry, conditions, actions, edges };
-    }).filter(Boolean), [coordinateVersion, detachedBranches, selectedLoadout, stateVariables, selectableTypes]);
+    }).filter(Boolean), [configuration.customVariables, coordinateVersion, detachedBranches, selectedLoadout, stateVariables, selectableTypes]);
     const detachedNodes = useMemo(() => detachedGraphs.flatMap((item) => item.conditions), [detachedGraphs]);
     const canvasWidth = LOGIC_CANVAS_WIDTH;
     const canvasHeight = LOGIC_CANVAS_HEIGHT;
@@ -300,7 +300,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         if (Array.isArray(clean.roots)) clean.roots = normalizeRoots(clean.roots);
         if (clean.editorGraph?.version === CODE_EDITOR_GRAPH_VERSION) clean.editorGraph = sanitizeCodeEditorGraph(clean.editorGraph);
         if (Array.isArray(clean.roots)) {
-            const nextGraph = buildLogicGraph(clean.roots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion);
+            const nextGraph = buildLogicGraph(clean.roots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion, configuration.customVariables);
             const nextGraphNodes = graphNodesForGraph(nextGraph);
             const currentPositions = nodePositionsForGraph(graphNodes, nodeOffsetsRef.current);
             const savedOffsets = offsetsForGraphPositions(nextGraphNodes, clean.nodePositions ?? currentPositions);
@@ -343,7 +343,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
     useImperativeHandle(ref, () => ({
         placeRootAtCenter(nextRoots, rootIndex) {
             const rect = viewportRef.current?.getBoundingClientRect();
-            const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion);
+            const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion, configuration.customVariables);
             const rootNode = nextGraph.roots.find((node) => node.rootIndex === rootIndex);
             if (!rect || !rootNode) return null;
 
@@ -371,7 +371,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
                 ...nextGraph.targets,
             ], nextOffsets);
         },
-    }), [canvasHeight, canvasWidth, coordinateVersion, pan.x, pan.y, selectedLoadout, stateVariables, selectableTypes, updateNodeOffsets, zoom]);
+    }), [canvasHeight, canvasWidth, configuration.customVariables, coordinateVersion, pan.x, pan.y, selectedLoadout, stateVariables, selectableTypes, updateNodeOffsets, zoom]);
     const beginPan = (event) => {
         if (event.pointerType === "touch" || event.button !== 2) return;
         event.preventDefault();
@@ -725,7 +725,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         const nextRoots = attachingToRoot
             ? normalizeRoots(roots.map((root, index) => index === targetNode.rootIndex ? { ...root, branches: [...(root.branches ?? []), branch] } : root))
             : normalizeRoots(updateTreeBranch(roots, targetNode.rootIndex, targetNode.path, (current) => ({ ...current, children: [...(current.children ?? []), branch] })));
-        const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion);
+        const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion, configuration.customVariables);
         const positionOverrides = Object.fromEntries([...nextGraph.conditions, ...nextGraph.actions].flatMap((node) => {
             const position = detached.nodePositions?.[detachedNodePositionKey(node)];
             return position ? [[node.id, position]] : [];
@@ -917,7 +917,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         const nextBranch = addGraphAction(branch, selectedLoadout, actionId, configuration.customVariables ?? []);
         if (nextBranch === branch) return;
         const nextRoots = normalizeRoots(updateTreeBranch(roots, rootIndex, path, () => nextBranch));
-        const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion);
+        const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion, configuration.customVariables);
         const nextAction = nextGraph.actions.find((candidate) => candidate.rootIndex === rootIndex
             && sameGraphPath(candidate.path, path)
             && candidate.actionIndex === existingActionCount);
@@ -987,7 +987,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         const branch = newTreeBranch("if", defaultVariable, nextBranchPriority(rootNode.branches));
         const branchIndex = rootNode.branches?.length ?? 0;
         const nextRoots = normalizeRoots(roots.map((root, index) => index === node.rootIndex ? { ...root, branches: [...(root.branches ?? []), branch] } : root));
-        const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion);
+        const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion, configuration.customVariables);
         const nextBranch = treeBranchAt(nextRoots[node.rootIndex]?.branches, [branchIndex]);
         const nextCondition = nextGraph.conditions.find((candidate) => candidate.rootIndex === node.rootIndex && candidate.branchId === nextBranch?.id);
         const previousCondition = graph.conditions.find((candidate) => candidate.rootIndex === node.rootIndex
@@ -1064,7 +1064,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
                             const child = newTreeBranch("if", defaultVariable, nextBranchPriority(branch.children));
                             const childIndex = branch.children?.length ?? 0;
                             const nextRoots = normalizeRoots(updateTreeBranch(roots, node.rootIndex, node.path, (current) => ({ ...current, children: [...(current.children ?? []), child] })));
-                            const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion);
+                            const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion, configuration.customVariables);
                             const nextChild = nextGraph.conditions.find((candidate) => candidate.rootIndex === node.rootIndex
                                 && sameGraphPath(candidate.path, [...node.path, childIndex]));
                             const previousChild = graph.conditions.find((candidate) => candidate.rootIndex === node.rootIndex

@@ -2421,6 +2421,7 @@ button {
 }
 .code-config-token--friendly { border-color: #38bdf8; background: #075985; color: #f0f9ff; }
 .code-config-token--enemy { border-color: #fb7185; background: #9f1239; color: #fff1f2; }
+.code-config-token--unavailable { border-color: #f59e0b; background: rgba(120, 53, 15, .92); color: #fef3c7; }
 .code-config-token--coordinate { border-color: #94a3b8; background: #334155; }
 .code-config-token--order { border-color: #a78bfa; background: #312e81; color: #ede9fe; }
 .code-config-token--angle { border-color: #fbbf24; background: #78350f; color: #fef3c7; }
@@ -2830,6 +2831,9 @@ button {
 .code-movement-angle-input > input { width: 100%; height: 34px; min-width: 0; margin-top: 0; border: 0; border-radius: 0; background: transparent; padding: 0 9px; outline: 0; }
 .code-movement-angle-input > span { flex: none; padding: 0 9px 0 4px; color: #94a3b8; font: 700 10px/1 "Cousine", monospace; }
 .code-inspector-note { margin-bottom: 15px; color: #94a3b8; font: 9px/1.55 "Cousine", monospace; }
+.code-selectable-picker-unavailable { display: flex; flex-direction: column; gap: 4px; border: 1px solid rgba(245, 158, 11, .48); border-radius: 4px; background: rgba(120, 53, 15, .16); padding: 8px; }
+.code-selectable-picker-unavailable strong { color: #fbbf24; font: 700 9px/1.3 "Cousine", monospace; }
+.code-selectable-picker-unavailable small { color: #cbd5e1; font: 9px/1.45 "Cousine", monospace; }
 .code-inspector-footer { border-top: 1px solid rgba(71, 85, 105, .8); padding: 12px 16px; }
 .code-inspector-footer button { width: 100%; min-height: 36px; border: 1px solid rgba(248, 113, 113, .45); border-radius: 4px; color: #fca5a5; font: 700 9px/1 "Cousine", monospace; }
 
@@ -3528,6 +3532,14 @@ button {
   min-height: 2.75rem;
   max-width: 100%;
   padding: .65rem .85rem;
+}
+
+.arena-toolbar-button.tutorial-lesson-navigation-button {
+  min-height: 2.75rem;
+  gap: .35rem;
+  padding: .5rem .4rem;
+  font-size: .6rem;
+  letter-spacing: .04em;
 }
 
 .arena-toolbar-button:hover:not(:disabled) {
@@ -5171,3 +5183,82 @@ button {
   .code-angle-help-grid { grid-template-columns: 1fr; }
   .code-angle-help-relative-example { align-items: flex-start; flex-direction: column; }
 }
+
+/* Variable-operation symbols use the same font characters in the inspector and graph nodes. */
+.code-variable-operator-picker { position: relative; width: 100%; min-width: 0; }
+.code-variable-action-operator-button {
+  display: flex;
+  width: 100%;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(71, 85, 105, .92);
+  border-radius: 4px;
+  background: rgba(8, 17, 29, .94);
+  padding: 0 8px;
+  color: #fef08a;
+  cursor: pointer;
+}
+.code-variable-action-operator-button:hover:not(:disabled) { background: rgba(8, 17, 29, .94); }
+.code-variable-action-operator-button:focus-visible {
+  border-color: #67e8f9;
+  outline: 2px solid rgba(34, 211, 238, .72);
+  outline-offset: 1px;
+}
+.code-variable-action-operator-button:disabled { cursor: not-allowed; opacity: .55; }
+.code-variable-operator-glyph {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  font: 700 14px/1 "DM Sans", system-ui, sans-serif;
+  pointer-events: none;
+}
+.code-variable-operator-glyph--set,
+.code-variable-operator-glyph--add,
+.code-variable-operator-glyph--subtract,
+.code-variable-operator-glyph--modulo { color: #fef08a; }
+.code-variable-operator-caret { position: absolute; right: 7px; color: #9ca3af; font: 700 9px/1 "DM Sans", system-ui, sans-serif; }
+.code-variable-operator-menu {
+  position: fixed;
+  z-index: 10000;
+  display: grid;
+  min-width: 44px;
+  gap: 2px;
+  border: 1px solid rgba(103, 232, 249, .45);
+  border-radius: 4px;
+  background: #101820;
+  padding: 4px;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, .5);
+}
+.code-variable-operator-menu[hidden] { display: none; }
+.code-variable-operator-menu-item {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  padding: 0 7px;
+  color: #e2e8f0;
+  font: 600 11px/1 "DM Sans", system-ui, sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+.code-variable-operator-menu-item:hover:not(:disabled),
+.code-variable-operator-menu-item:focus-visible { border-color: rgba(103, 232, 249, .55); background: rgba(14, 116, 144, .24); outline: none; }
+.code-variable-operator-menu-item:disabled { color: #64748b; cursor: not-allowed; }
+.code-variable-expression-operator {
+  display: inline-flex;
+  width: 13px;
+  height: 16px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  color: #fef08a;
+}
+.code-variable-expression-operator .code-variable-operator-glyph,
+.code-variable-expression-operator .coding-add-icon.code-variable-operator-glyph { width: 13px; height: 13px; font-size: 13px; }

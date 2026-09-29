@@ -76,6 +76,18 @@ test("practice room storage bounds the shared practice roster config and keeps c
     assert.equal(saved.config.bots[0].brain, undefined);
 });
 
+test("practice starting positions and rotations keep one decimal while HP stays integral", () => {
+    const storage = createStorage();
+    savePracticeRoomDraft({
+        config: { bots: [
+            { role: "PLAYER", teamNumber: 1, slot: 1, startX: 12.36, startY: -45.24, rotation: 12.36, startHp: 70.8 },
+        ] },
+    }, storage);
+
+    const [player] = readPracticeRoomDraft(storage).config.bots;
+    assert.deepEqual([player.startX, player.startY, player.rotation, player.startHp], [12.4, -45.2, 12.4, 71]);
+});
+
 test("legacy practice starts migrate from internal coordinates into centered public coordinates", () => {
     const storage = createStorage();
     storage.setItem(PRACTICE_ROOM_STORAGE_KEY, JSON.stringify({

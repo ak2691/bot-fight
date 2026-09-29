@@ -86,8 +86,9 @@ test("puzzle play preserves the editable setup until Reset Stats is chosen", () 
     const panelSource = readFileSync(PANEL_PATH, "utf8");
     const configModalSource = readFileSync(ARENA_CONFIG_MODAL_PATH, "utf8");
 
-    assert.match(autoPlaySource, /else if \(!isPuzzleMode && !isPracticeRoom\)[\s\S]*?Puzzle and practice previews keep the current setup[\s\S]*?Reset Stats/);
-    assert.match(arenaSource, /else if \(isPuzzleMode\) \{\s*setShapes\(buildPracticeArenaShapes\([\s\S]*?initialPuzzle/);
+    assert.doesNotMatch(autoPlaySource, /buildTutorialArenaShapes|buildAutoPlayStartShapes/);
+    assert.match(autoPlaySource, /setShapes\(\(previousShapes\) => advanceArenaPreviewTick/);
+    assert.match(arenaSource, /if \(isPuzzleMode\) \{\s*setShapes\(buildPracticeArenaShapes\([\s\S]*?puzzleArenaSetup/);
     assert.match(arenaSource, /onOpenPuzzleConfig=.*setIsPuzzleConfigOpen\(true\)/);
     assert.match(arenaSource, /const savePuzzleConfig = \(nextConfig\) => \{[\s\S]*setPuzzleConfig\(normalized\)[\s\S]*puzzleSetupForArena\(normalized, initialPuzzle\)/);
     assert.match(arenaSource, /restoreLabel="RESTORE PUZZLE DEFAULTS"/);
@@ -115,7 +116,8 @@ test("puzzle builder play resumes its preview and keeps builder code out of stor
     assert.match(arenaSource, /if \(previousPuzzleSetupKeyRef\.current === puzzleSetupKey\) return;/);
     assert.match(arenaSource, /if \(isPuzzleMode\) \{[\s\S]*savePuzzleBotCodeDraft\(puzzleNumber, sanitized\);[\s\S]*\} else if \(!isPuzzleBuilder\) \{[\s\S]*saveStoredStrategyConfiguration\(strategyStorageKey, sanitized\);/);
     assert.match(arenaSource, /if \(!isPuzzleBuilder\) saveStoredStrategyConfiguration\(opponentStrategyStorageKey, sanitized\);/);
-    assert.match(arenaSource, /if \(!isPuzzleBuilder\) return resetBotShape\(shape\);\s*const configuration/);
+    assert.match(arenaSource, /if \(previousPuzzleSetupKeyRef\.current === puzzleSetupKey\) return;[\s\S]*setPreviewBaseline\(createPreviewBaseline\(freshBotShapes/);
+    assert.match(arenaSource, /setShapes\(restorePreviewBaseline\(previewBaseline\)\)/);
     assert.match(builderSource, /playerBot: requestBot\(draft\.playerBot, \{ useDefaultBrain: true \}\)/);
 });
 
@@ -350,7 +352,6 @@ test("compact conditions own their comparator and actions summarize inspector ta
     assert.match(source, /deg from/);
     assert.match(source, /" deg from "/);
     assert.match(source, /targetAngle \?\? 0\)} deg\)/);
-    assert.match(source, /`\$\{formatOrdinal\(ordinal\)\} \$\{order\[0\]\.toUpperCase\(\)\}/);
     assert.doesNotMatch(source, /code-action-sentence[\s\S]*<OrderedSelectablePicker value=\{entry\.selectable/);
     assert.doesNotMatch(source, /application\/x-bot-operator|GraphVariableNode|GraphTargetNode/);
 });
@@ -477,7 +478,7 @@ test("lesson label stays in one desktop row in both arena and coding workspace p
     assert.match(cssSource, /\.tutorial-workspace-lesson-host \.tutorial-guide-button__label[\s\S]*?display: none;/);
 });
 
-test("add controls use the reusable SVG while variable addition keeps its mathematical plus", () => {
+test("add controls and variable addition share the reusable SVG plus design", () => {
     const addIconSource = readFileSync(ADD_ICON_PATH, "utf8");
     const panelSource = readFileSync(PANEL_PATH, "utf8");
     const nodesSource = readFileSync(NODES_PATH, "utf8");
@@ -495,14 +496,14 @@ test("add controls use the reusable SVG while variable addition keeps its mathem
     assert.match(nodesSource, /Add IF child conditional/);
     assert.match(nodesSource, /aria-label="Add action"/);
     assert.match(nodesSource, /aria-label="Add operand"/);
+    assert.match(nodesSource, /VariableOperatorGlyph operation=\{operation\}/);
     assert.match(modalSource, /<AddIcon \/> ADD VARIABLE/);
     assert.match(puzzleSource, /<AddIcon className="code-toolbar-icon" \/> WIN CONDITION/);
     assert.match(puzzleSource, /<AddIcon className="code-toolbar-icon" \/> LOSE CONDITION/);
     assert.match(puzzleSource, /<AddIcon className="code-toolbar-icon" \/> MODIFY CUSTOM VARIABLE/);
     assert.match(puzzleSource, /aria-label="Zoom in"[^>]*>[\s\S]*?<AddIcon size="large" \/>/);
     assert.doesNotMatch(buttonSources, />\s*[＋+]\s*(?:ADD ROOT|WIN CONDITION|LOSE CONDITION|CUSTOM VARIABLE|MODIFY CUSTOM VARIABLE|CONDITIONAL|AND|OR|IF|ACTION|OPERAND|ADD VARIABLE)/);
-    assert.match(nodesSource, /<option value=\{CUSTOM_VARIABLE_OPERATIONS\.ADD\}>\+<\/option>/);
-    assert.match(nodesSource, /CUSTOM_VARIABLE_OPERATIONS\.ADD \? "\+"/);
+    assert.match(nodesSource, /VariableOperatorPicker/);
 });
 
 test("variable and action searches share a wheel-contained picker design", () => {
@@ -786,7 +787,9 @@ test("live match arena does not append the legacy opponent model to the authorit
 test("modulo is exposed only as a custom-variable operation", () => {
     const source = readCodingSource();
 
-    assert.match(source, /<option value=\{CUSTOM_VARIABLE_OPERATIONS\.MODULO\}>%<\/option>/);
+    assert.match(source, /VariableOperatorPicker/);
+    assert.match(source, /CUSTOM_VARIABLE_OPERATIONS\.MODULO/);
+    assert.match(source, /VariableOperatorGlyph operation=\{operation\}/);
     assert.doesNotMatch(source, /condition\.modulo|comparator === "modulo"|Modulo divisor/);
 });
 
@@ -831,8 +834,8 @@ test("modify custom variables use conditional-style operands and layered inspect
     assert.match(source, /code-variable-action-expression/);
     assert.match(css, /\.code-inspector--secondary/);
     assert.match(css, /\.code-variable-action-row \{[\s\S]*grid-template-columns: 64px minmax\(0, 1fr\) 30px;/);
-    assert.match(css, /\.code-inspector-body select\.code-variable-action-operator \{[\s\S]*width: 100%;[\s\S]*min-width: 0;[\s\S]*height: 42px;[\s\S]*border-color: rgba\(71, 85, 105, \.92\);[\s\S]*background: rgba\(8, 17, 29, \.94\);[\s\S]*color: #e2e8f0;/);
-    assert.match(css, /\.code-inspector-body select\.code-variable-action-operator:focus \{[\s\S]*border-color: #67e8f9;[\s\S]*outline: 2px solid rgba\(34, 211, 238, \.72\);/);
+    assert.match(css, /\.code-variable-action-operator-button \{[\s\S]*width: 100%;[\s\S]*height: 42px;[\s\S]*border: 1px solid rgba\(71, 85, 105, \.92\);[\s\S]*background: rgba\(8, 17, 29, \.94\);/);
+    assert.match(css, /\.code-variable-action-operator-button:focus-visible \{[\s\S]*border-color: #67e8f9;[\s\S]*outline: 2px solid rgba\(34, 211, 238, \.72\);/);
     assert.match(css, /\.code-inspector-body \.code-condition-input > input/);
     assert.match(css, /\.code-inspector-body \.code-condition-input > input,[\s\S]*font: 700 9px\/1 "Cousine", "Courier New", monospace;[\s\S]*text-align: left;/);
     assert.match(css, /\.code-variable-action-input-value[\s\S]*text-overflow: ellipsis/);

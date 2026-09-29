@@ -58,7 +58,7 @@ export const TUTORIAL_CATEGORIES = Object.freeze([
                 "Wake your bot up! It needs to move. Start by clicking Open Bot Code. You can open the lesson up inside the workspace.",
 
                 instructionSteps(
-                    "Add a root node.",
+                    "Add a root node. You can press r or click the + ADD ROOT button.",
                     "Add a conditional node by clicking + Conditional. Click the pencil icon to change the variable and select ALWAYS. ALWAYS will always be true.",
                     "Add an action node below the conditional node and select Movement: Walk.",
                     "Click Play to see your code work",
@@ -66,7 +66,7 @@ export const TUTORIAL_CATEGORIES = Object.freeze([
             ]),
             lesson("arena-coordinates", "Measurements", [
                 "The arena is 1200 × 1200 units, centered at (0, 0): X increases right and Y increases up. Bots are 60 units wide. Normal walking is 15 units per 100 ms tick (150 per second), and rotation can turn up to 12° per tick.",
-                "Select Measure in the arena toolbar. Place two points to measure distance.",
+                "Select Measure in Match Tools. Place two points to measure distance.",
             ], "arena-basics"),
             lesson("retreat", "Retreat", [
                 "Sometimes, the bot gets hit. But that is okay! It is a sturdy bot with 150 HP. One hit is perfectly fine. Even two, or three, or four, okay, maybe not that many.",
@@ -89,7 +89,7 @@ export const TUTORIAL_CATEGORIES = Object.freeze([
             ]),
             lesson("aiming-basics", "Aiming", [
                 "Use Rotate: Face Target to aim your bot. A bot can track any target you give it, whether that target is another bot, a coordinate in the arena, or an offset from that target.",
-                "Experiment with the targeting configurations. The opponent bot will move left and right, and you have the Fireball ability to test your aim.",
+
             ]),
             lesson("lock-on-basics", "Lock On", [
                 "Lock On is the last of the three base abilities. It rotates your bot immediately onto a target. Try it out! It is basically a single-tick aimbot.",
@@ -110,8 +110,8 @@ export const TUTORIAL_CATEGORIES = Object.freeze([
                 "Create a root and add a conditional node by clicking + Conditional. Set up this statement: If Distance Between Entities is greater than 432, then walk toward Opponent 1. Else if Distance Between Entities is less than or equal to 432, then use Fireball.",
             ]),
             lesson("dont-miss", "Don't Miss", [
-                "Fireball is a projectile, so aim matters. Your bot starts about 300 units away from Opponent 1. Keep your bot pointed close to the target before you shoot.",
-                "Relative Bearing … Shortest is the absolute aim error between the facing entity and its target: near zero means it is aimed at the target. The clockwise and counterclockwise bearing variables preserve which way the turn goes. Create a condition that fires when the shortest bearing is at most 10°; at this distance, that keeps the Fireball path within the opponent's hitbox.",
+                "Fireball is a projectile, so aim matters. Your bot starts about 300 units away from a stationary Opponent 1. Keep adjusting your aim before you shoot.",
+                "Relative Bearing … Shortest is the shortest angle difference between the facing entity and its target: near zero means it is aimed at the target. This helps ensure you only use fireball when you are aimed at the target.",
                 "Add a new root, add a conditional node by clicking + Conditional, set it to ALWAYS, and add the Rotation: Face Target action to start aiming.",
             ]),
             lesson("dodging", "Dodging", [
@@ -124,10 +124,9 @@ export const TUTORIAL_CATEGORIES = Object.freeze([
             lesson("bot-ability-variables", "Bot Ability Variables", [
                 "Bot Ability variables tell you valuable information about an ability's usage.",
                 "Ability Ready means the ability is not on cooldown, preparing, or active. If no other ability is being used in any way, that means the ability can be used at any time.",
-                "Preparation Time Left and Preparing tell you how much time remains in an ability's preparation and whether it is currently being prepared. Preparation is the charge-up or wind-up of an ability. It cannot be canceled unless it is interrupted, and it is a visible commitment to using the ability. No other abilities can be used while an ability is preparing or active.",
+                "Preparation Time Left and Preparing tell you how much time remains in an ability's preparation and whether it is currently being prepared. No other abilities can be used while an ability is preparing or active.",
                 "Cooldown Time and On Cooldown tell you how much time remains before the cooldown is over and whether the ability is currently on cooldown.",
-                "One important timing detail: actions execute one tick after conditions are processed. For example, if the condition Cooldown Time is 0.1 seconds is true, the associated action executes one tick later, when the cooldown timer reaches 0 seconds.",
-                "Now experiment with this information. You have Slash, a decent melee attack. Your opponent has Heavy Slash and uses it constantly, without a care in the world. Your bot has 1 HP, so use your timing conditions to attack when Heavy Slash is not ready and dash away whenever you need to.",
+                "Your opponent has Heavy Slash and uses it constantly, without a care in the world. Your bot has 1 HP, so use bot ability variables to carefully attack.",
             ]),
         ]),
     }),
@@ -143,7 +142,7 @@ export const TUTORIAL_CATEGORIES = Object.freeze([
         ]),
         lessons: Object.freeze([
             lesson("keep-running", "Keep Running", [
-                "Here is an opponent bot that only chases you. Experiment with the edge variables and see how you can keep running without stopping at the edges.",
+                "Here is an opponent bot that only chases you. Experiment with the edge variables and see how you can keep retreating without stopping at the edges.",
             ]),
         ]),
     }),

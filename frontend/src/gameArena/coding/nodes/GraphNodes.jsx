@@ -57,6 +57,20 @@ import ArenaDegreesCompass from "../../../components/ArenaDegreesCompass.jsx";
 import { useExclusiveSearchMenu } from "../utils/codeMenuEvents.js";
 import RootNodePriorityInput from "../controls/RootNodePriorityInput.jsx";
 import MatchToolIcon from "../controls/MatchToolIcon.jsx";
+import { VariableOperatorGlyph, VariableOperatorPicker } from "../controls/VariableOperatorGlyph.jsx";
+import { variableOperatorPresentation } from "../controls/variableOperatorPresentation.js";
+import {
+    ACTION_NODE_HORIZONTAL_SPACE,
+    actionSelectablePickerModel,
+    encodeSelectableReplacement,
+    measureActionNodeWidth,
+    measureAngleTokenWidth,
+    measureCoordinateTokenWidth,
+    measureSelectableTokenWidth,
+    measureVariableActionExpressionWidth,
+    resolveSelectableTarget,
+    UNAVAILABLE_TARGET_LABEL,
+} from "./actionNodePresentation.js";
 
 function clampNumber(value, min, max, fallback, step = NUMBER_STEP, roundDown = false, integerOnly = false) {
     void roundDown;
@@ -72,7 +86,7 @@ function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
 }
 
-function DeferredNumberInput({ value, onCommit, min = CUSTOM_NUMBER_MIN, max = CUSTOM_NUMBER_MAX, fallback = 0, step = NUMBER_STEP, roundDown = false, integerOnly = false, digitsOnly = false, ...props }) {
+function DeferredNumberInput({ value, onCommit, min = CUSTOM_NUMBER_MIN, max = CUSTOM_NUMBER_MAX, fallback = 0, step = NUMBER_STEP, roundDown = false, integerOnly = false, digitsOnly = false, className = "", ...props }) {
     const [draft, setDraft] = useState(String(value ?? fallback));
     const inputRef = useRef(null);
     const externalValueRef = useRef(String(value ?? fallback));
@@ -96,7 +110,7 @@ function DeferredNumberInput({ value, onCommit, min = CUSTOM_NUMBER_MIN, max = C
             return;
         }
         if (event.key === "Enter") { event.preventDefault(); commit(); event.currentTarget.blur(); }
-    }} />;
+    }} className={className} />;
 }
 
 const GRAPH_NODE_WIDTH = 380;
@@ -146,41 +160,103 @@ function conditionNodeWidth(branch, stateVariables) {
     }), GRAPH_NODE_WIDTH), GRAPH_NODE_WIDTH, 1200);
 }
 
-function actionNodeWidth(entry, selectedLoadout, selectableTypes, coordinateVersion) {
+function actionNodeWidth(entry, selectedLoadout, selectableTypes, coordinateVersion, stateVariables, customVariables) {
     const actionTypes = actionTypesForLoadout(ACTION_TYPES, selectedLoadout);
     const selected = actionTypes.find((action) => action.id === entry.action) ?? actionTypes[0];
-    const describedTarget = formatActionTargetLabel(entry, selected, selectableTypes, coordinateVersion);
-    const actionLabel = formatActionNodeLabel(selected?.label ?? "Action");
-    if (!describedTarget) return Math.max(200, Math.ceil(actionLabel.length * 6.6 + 110));
-    return Math.max(200, Math.ceil(Math.max(actionLabel.length, `Target: ${describedTarget}`.length) * 6.6 + 110));
+    const targetMode = actionTargetMode(entry, selected);
+    const targetPresentation = targetMode === "target"
+        ? resolveSelectableTarget(entry.selectable ?? BOT_CODE_SELECTABLES.OPPONENT, selectableTypes)
+        : null;
+    const abilityId = ACTION_TO_ABILITY[entry.action];
+    const movementDirection = selected?.movementConfig
+        ? targetMode === "absolute" ? absoluteMovementAngle(entry.movementDirection) : relativeMovementAngle(entry.movementDirection)
+        : 0;
+    return measureActionNodeWidth({
+        actionLabel: formatActionNodeLabel(selected?.label ?? "Action"),
+        hasAbilityIcon: Boolean(abilityId && getAbilityCatalogueIcon(abilityId)),
+        targetMode,
+        movement: Boolean(selected?.movementConfig),
+        movementDirection,
+        targetAngle: entry.targetAngle ?? 0,
+        targetX: entry.targetX ?? coordinateCenter(coordinateVersion),
+        targetY: entry.targetY ?? coordinateCenter(coordinateVersion),
+        targetPresentation,
+        variableExpressionWidth: selected?.variableAction
+            ? variableActionExpressionWidth(entry, customVariables, stateVariables, selectableTypes, coordinateVersion)
+            : 0,
+    });
 }
 
-function actionNodeHeight(entry, selectedLoadout, stateVariables) {
+function variableConfigurationSignatureWidth(definition, condition, selectableTypes, coordinateVersion) {
+    if (!definition) return 0;
+    const parts = [];
+    if (definition.supportsAbility && condition.ability != null && getAbilityCatalogueIcon(condition.ability)) parts.push(16);
+    if (definition.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR) {
+        const defaults = defaultSelectablePairForVariable(definition, selectableTypes);
+        parts.push(measureSelectableTokenWidth(resolveSelectableTarget(condition.selectable1 ?? defaults[0], selectableTypes)));
+        parts.push(10);
+        const mode = conditionTargetMode(condition, definition);
+        if (mode === TARGET_MODES.COORDINATES) {
+            parts.push(measureCoordinateTokenWidth(condition.targetX ?? coordinateCenter(coordinateVersion), condition.targetY ?? coordinateCenter(coordinateVersion)));
+        } else if (mode === TARGET_MODES.ANGLE) {
+            parts.push(measureAngleTokenWidth(condition.targetAngle ?? 0));
+        } else {
+            parts.push(measureSelectableTokenWidth(resolveSelectableTarget(condition.selectable2 ?? condition.selectable ?? defaults[1], selectableTypes)));
+        }
+    } else if (definition.supportsSelectable) {
+        const selectable = condition.rightSelectable ?? defaultSelectableForVariable(definition, selectableTypes);
+        parts.push(measureSelectableTokenWidth(resolveSelectableTarget(selectable, selectableTypes)));
+    }
+    return parts.reduce((sum, width) => sum + width, 0) + Math.max(0, parts.length - 1) * 4;
+}
+
+function variableActionExpressionWidth(entry, customVariables, stateVariables, selectableTypes, coordinateVersion) {
+    const target = customVariables.find((variable) => variable.id === entry.variableId);
+    if (!target) return 0;
+    const terms = target.valueType === "boolean"
+        ? [{ operator: CUSTOM_VARIABLE_OPERATIONS.SET, operand: entry.operand ?? { type: "boolean", value: entry.value ?? false } }]
+        : variableActionTerms(entry);
+    return measureVariableActionExpressionWidth(terms.map((term, index) => {
+        const operand = term.operand ?? { type: target.valueType, value: target.valueType === "boolean" ? false : 0 };
+        const definition = operand.type === "variable" ? stateVariables.find((variable) => variable.id === operand.value) : null;
+        const operator = variableOperatorPresentation(term?.operator ?? (index === 0
+            ? CUSTOM_VARIABLE_OPERATIONS.SET
+            : CUSTOM_VARIABLE_OPERATIONS.ADD)).compactSymbol;
+        return {
+            operator,
+            operatorWidth: 13,
+            label: definition?.label ?? String(operand.value ?? 0).toUpperCase(),
+            signatureWidth: definition
+                ? variableConfigurationSignatureWidth(definition, { ...operand, rightSelectable: operand.selectable }, selectableTypes, coordinateVersion)
+                : 0,
+        };
+    }));
+}
+
+function actionNodeHeight(entry, selectedLoadout, stateVariables, actionWidth, selectableTypes, customVariables, coordinateVersion) {
     const selected = actionTypesForLoadout(ACTION_TYPES, selectedLoadout).find((action) => action.id === entry.action);
     if (!selected?.variableAction) return 62;
-    const expressionLength = variableActionTerms(entry).reduce((length, term) => {
-        const definition = term.operand?.type === "variable" ? stateVariables.find((variable) => variable.id === term.operand.value) : null;
-        return length + String(definition?.label ?? term.operand?.value ?? 0).length + 3;
-    }, 0);
-    const actionLabelLength = Math.max(18, formatActionNodeLabel(selected.label).length + 6);
-    return 62 + Math.max(1, Math.ceil(expressionLength / actionLabelLength)) * 24;
+    const expressionWidth = variableActionExpressionWidth(entry, customVariables, stateVariables, selectableTypes, coordinateVersion);
+    if (!expressionWidth) return 62;
+    const expressionLines = Math.max(1, Math.ceil(expressionWidth / Math.max(1, actionWidth - ACTION_NODE_HORIZONTAL_SPACE)));
+    return 62 + expressionLines * 24;
 }
 
-function buildLogicGraph(roots, stateVariables = VISIBLE_STATE_VARIABLES, selectedLoadout = null, selectableTypes = SELECTABLE_TYPES, coordinateVersion = BOT_LOGIC_TREE_VERSION) {
+function buildLogicGraph(roots, stateVariables = VISIBLE_STATE_VARIABLES, selectedLoadout = null, selectableTypes = SELECTABLE_TYPES, coordinateVersion = BOT_LOGIC_TREE_VERSION, customVariables = []) {
     const graph = { roots: [], conditions: [], actions: [], variables: [], targets: [], edges: [], width: 0, height: 0 };
     let forestX = 80;
     const measureBranch = (branch) => {
         const actions = graphBranchActions(branch);
         const childWidth = (branch.children ?? []).reduce((sum, child) => sum + measureBranch(child), 0);
         const nodeWidth = conditionNodeWidth(branch, stateVariables);
-        const actionWidth = actions.reduce((sum, entry) => sum + actionNodeWidth(entry, selectedLoadout, selectableTypes, coordinateVersion) + GRAPH_NODE_GAP, 0);
+        const actionWidth = actions.reduce((sum, entry) => sum + actionNodeWidth(entry, selectedLoadout, selectableTypes, coordinateVersion, stateVariables, customVariables) + GRAPH_NODE_GAP, 0);
         return Math.max(nodeWidth + GRAPH_NODE_GAP, actionWidth + childWidth);
     };
     const measureLevel = (branches) => Math.max(GRAPH_NODE_WIDTH + GRAPH_NODE_GAP, (branches ?? []).reduce((sum, branch) => sum + measureBranch(branch), 0));
     const addBranch = (branch, rootIndex, rootId, path, left, y, parent) => {
         const width = measureBranch(branch);
         const actions = graphBranchActions(branch);
-        const descendantsWidth = actions.reduce((sum, entry) => sum + actionNodeWidth(entry, selectedLoadout, selectableTypes, coordinateVersion) + GRAPH_NODE_GAP, 0)
+        const descendantsWidth = actions.reduce((sum, entry) => sum + actionNodeWidth(entry, selectedLoadout, selectableTypes, coordinateVersion, stateVariables, customVariables) + GRAPH_NODE_GAP, 0)
             + (branch.children ?? []).reduce((sum, child) => sum + measureBranch(child), 0);
         const conditionHeight = 94 + Math.max(1, Array.isArray(branch.conditions) ? branch.conditions.length : 1) * 52;
         const nodeWidth = conditionNodeWidth(branch, stateVariables);
@@ -192,8 +268,8 @@ function buildLogicGraph(roots, stateVariables = VISIBLE_STATE_VARIABLES, select
         let childX = left + Math.max(0, (width - descendantsWidth) / 2);
         const childY = y + conditionHeight + 70;
         actions.forEach((entry, actionIndex) => {
-            const actionWidth = actionNodeWidth(entry, selectedLoadout, selectableTypes, coordinateVersion);
-            const action = { id: actionGraphNodeId(branch.id, actionIndex, rootId), rootId, branchId: branch.id, rootIndex, path, actionIndex, x: childX + GRAPH_NODE_GAP / 2, y: childY, width: actionWidth, height: actionNodeHeight(entry, selectedLoadout, stateVariables) };
+            const actionWidth = actionNodeWidth(entry, selectedLoadout, selectableTypes, coordinateVersion, stateVariables, customVariables);
+            const action = { id: actionGraphNodeId(branch.id, actionIndex, rootId), rootId, branchId: branch.id, rootIndex, path, actionIndex, x: childX + GRAPH_NODE_GAP / 2, y: childY, width: actionWidth, height: actionNodeHeight(entry, selectedLoadout, stateVariables, actionWidth, selectableTypes, customVariables, coordinateVersion) };
             graph.actions.push(action);
             graph.edges.push({ id: `${condition.id}->${action.id}`, fromId: condition.id, toId: action.id, x1: condition.x + condition.width / 2, y1: condition.y + condition.height, x2: action.x + action.width / 2, y2: action.y });
             childX += actionWidth + GRAPH_NODE_GAP;
@@ -443,28 +519,22 @@ function VariableOperandPicker({ operand, stateVariables, numericOnly = false, v
 }
 
 function SelectableToken({ value, selectableTypes = SELECTABLE_TYPES }) {
-    const [baseValue, encodedOrder, encodedOrdinal] = canonicalBotSelectableId(value).split(":");
-    const definition = selectableTypes.find((selectable) => selectable.id === baseValue);
-    const ordinal = Math.max(1, Math.min(100, Number(encodedOrdinal) || 1));
-    const order = ["closest", "farthest", "oldest", "newest"].includes(encodedOrder) ? encodedOrder : null;
-    let label = definition?.label ?? baseValue;
-    let side = "neutral";
-    if (definition?.kind === "entity") {
-        const ownerLabel = definition.role === "self" ? "ME" : definition.role === "teammate" ? `T${definition.botIndex ?? ""}` : definition.role === "opponent" ? `O${definition.botIndex ?? 1}` : "";
-        const ownerSide = definition.role === "opponent" ? "enemy" : definition.role === "self" || definition.role === "teammate" ? "friendly" : "neutral";
-        const entityOrder = order ?? "closest";
-        return <span className="code-config-entity-signature" title={formatSelectableLabel(value, selectableTypes)}><AbilityToken abilityId={definition.abilityId} label={definition.label.replace(/\s+by\s+.+$/, "")} />{ownerLabel && <span className={`code-config-token code-config-token--${ownerSide}`}>{ownerLabel}</span>}<span className="code-config-token code-config-token--order">{entityOrder[0].toUpperCase()}{ordinal}</span></span>;
-    } else if (definition?.role === "self" || baseValue === BOT_CODE_SELECTABLES.MY) {
-        label = "ME";
-        side = "friendly";
-    } else if (definition?.role === "teammate") {
-        label = `T${definition.botIndex ?? ""}`;
-        side = "friendly";
-    } else if (definition?.role === "opponent" || baseValue === BOT_CODE_SELECTABLES.OPPONENT) {
-        label = `O${definition?.botIndex ?? 1}`;
-        side = "enemy";
+    const presentation = resolveSelectableTarget(value, selectableTypes);
+    if (!presentation.available) {
+        return <span className="code-config-token code-config-token--unavailable" title={presentation.tooltip} aria-label={presentation.description}>{UNAVAILABLE_TARGET_LABEL}</span>;
     }
-    return <span className={`code-config-token code-config-token--${side}`} title={formatSelectableLabel(value, selectableTypes)}>{order && <span className="code-config-token-order">{order[0].toUpperCase()}{ordinal}</span>}{label}</span>;
+    if (presentation.kind === "entity") {
+        return <span className="code-config-entity-signature" title={presentation.tooltip} aria-label={presentation.description}>
+            <AbilityToken abilityId={presentation.definition.abilityId} label={presentation.abilityLabel} />
+            {presentation.ownerLabel && <span className={`code-config-token code-config-token--${presentation.ownerTone}`}>{presentation.ownerLabel}</span>}
+            <span className="code-config-token code-config-token--order"><span aria-hidden="true">{presentation.orderBadge[0]}</span>{presentation.ordinal}</span>
+        </span>;
+    }
+    const side = presentation.ownerTone;
+    return <span className={`code-config-token code-config-token--${side}`} title={presentation.tooltip} aria-label={presentation.description}>
+        {presentation.orderBadge && <span className="code-config-token-order"><span aria-hidden="true">{presentation.orderBadge[0]}</span>{presentation.ordinal}</span>}
+        {presentation.compactLabel}
+    </span>;
 }
 
 function coordinateCenter(version) {
@@ -700,8 +770,10 @@ function VariableActionExpression({ entry, customVariables, stateVariables, sele
         {terms.map((term, index) => {
             const operand = term.operand ?? { type: target.valueType, value: target.valueType === "boolean" ? false : 0 };
             const definition = operand.type === "variable" ? stateVariables.find((variable) => variable.id === operand.value) : null;
-            const operator = term.operator === CUSTOM_VARIABLE_OPERATIONS.SUBTRACT ? "−" : term.operator === CUSTOM_VARIABLE_OPERATIONS.ADD ? "+" : term.operator === CUSTOM_VARIABLE_OPERATIONS.MODULO ? "%" : "=";
-            return <span className="code-variable-expression-term" key={`expression-${index}`}><span className="code-variable-expression-operator">{operator}</span>{definition ? <span className="code-variable-expression-variable"><span>{definition.label}</span><VariableConfigurationSignature definition={definition} condition={{ ...operand, rightSelectable: operand.selectable }} operand={2} selectableTypes={selectableTypes} /></span> : <span className="code-config-token code-config-token--coordinate">{String(operand.value ?? 0).toUpperCase()}</span>}</span>;
+            const operation = term?.operator ?? (index === 0 ? CUSTOM_VARIABLE_OPERATIONS.SET : CUSTOM_VARIABLE_OPERATIONS.ADD);
+            const operator = variableOperatorPresentation(operation);
+            const rawValue = String(operand.value ?? 0).toUpperCase();
+            return <span className="code-variable-expression-term" key={`expression-${index}`}><span className="code-variable-expression-operator" role="img" aria-label={operator.label}><VariableOperatorGlyph operation={operation} /></span>{definition ? <span className="code-variable-expression-variable"><span>{definition.label}</span><VariableConfigurationSignature definition={definition} condition={{ ...operand, rightSelectable: operand.selectable }} operand={2} selectableTypes={selectableTypes} /></span> : <span className="code-config-token code-config-token--coordinate">{rawValue}</span>}</span>;
         })}
     </span>;
 }
@@ -845,7 +917,7 @@ function TutorialLogicInspector({ kind, condition = { type: "always" }, action =
         priority: 1,
         branches: [branch],
     };
-    const graph = buildLogicGraph([root], stateVariables, selectedLoadout, selectableTypes);
+    const graph = buildLogicGraph([root], stateVariables, selectedLoadout, selectableTypes, BOT_LOGIC_TREE_VERSION, customVariables);
     const node = kind === "condition" ? graph.conditions[0] : graph.actions[0];
     if (!node) return null;
     const inspectedNode = kind === "condition"
@@ -1063,7 +1135,10 @@ function VariableActionControls({ entry, variables, stateVariables, selectableTy
                 const operandDefinition = operand.type === "variable" ? stateVariables.find((variable) => variable.id === operand.value) : null;
                 const operation = term?.operator ?? (termIndex === 0 ? CUSTOM_VARIABLE_OPERATIONS.SET : CUSTOM_VARIABLE_OPERATIONS.ADD);
                 const updateTerm = (updates) => updateTerms(terms.map((current, index) => index === termIndex ? { ...current, ...updates } : current));
-                return <div className="code-variable-action-row" key={`variable-term-${termIndex}`}><select disabled={disabled} aria-label={`Variable action operator ${termIndex + 1}`} value={operation} onChange={(event) => updateTerm({ operator: event.target.value })} className="code-operator-socket code-variable-action-operator">{termIndex === 0 && <option value={CUSTOM_VARIABLE_OPERATIONS.SET}>=</option>}<option value={CUSTOM_VARIABLE_OPERATIONS.ADD}>+</option><option value={CUSTOM_VARIABLE_OPERATIONS.SUBTRACT}>−</option><option value={CUSTOM_VARIABLE_OPERATIONS.MODULO}>%</option></select><div className={`code-condition-input code-variable-action-input ${operandDefinition ? "is-variable" : "is-raw"}`} data-node-drag-ignore="true" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>{operandDefinition ? <button type="button" className="code-condition-input-value code-variable-action-input-value" onClick={() => onInspectOperand?.(termIndex)} disabled={disabled}><span className="code-condition-input-copy"><span className="code-variable-action-input-label">{operandDefinition.label}</span><VariableConfigurationSignature definition={operandDefinition} condition={{ ...operand, rightSelectable: operand.selectable }} operand={2} selectableTypes={selectableTypes} /></span></button> : <DeferredNumberInput disabled={disabled} min={CUSTOM_NUMBER_MIN} max={CUSTOM_NUMBER_MAX} value={operand.value ?? 0} onCommit={(value) => updateTerm({ operand: { type: "number", value } })} />}<button type="button" className="code-condition-input-toggle" disabled={disabled} onClick={() => onPickOperand?.(termIndex)} aria-label={`Edit variable operand ${termIndex + 1}`} title="Edit input"><span aria-hidden="true">✎</span></button></div>{allowRemoveAction && <button type="button" className="code-condition-row-remove" disabled={disabled} onClick={() => removeTerm(termIndex)} aria-label={`Remove variable operand ${termIndex + 1}`}>×</button>}</div>;
+                const operatorOptions = termIndex === 0
+                    ? undefined
+                    : [CUSTOM_VARIABLE_OPERATIONS.ADD, CUSTOM_VARIABLE_OPERATIONS.SUBTRACT, CUSTOM_VARIABLE_OPERATIONS.MODULO];
+                return <div className="code-variable-action-row" key={`variable-term-${termIndex}`}><VariableOperatorPicker operations={operatorOptions} disabled={disabled} ariaLabel={`Variable action operator ${termIndex + 1}`} value={operation} onChange={(nextOperation) => updateTerm({ operator: nextOperation })} /><div className={`code-condition-input code-variable-action-input ${operandDefinition ? "is-variable" : "is-raw"}`} data-node-drag-ignore="true" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>{operandDefinition ? <button type="button" className="code-condition-input-value code-variable-action-input-value" onClick={() => onInspectOperand?.(termIndex)} disabled={disabled}><span className="code-condition-input-copy"><span className="code-variable-action-input-label">{operandDefinition.label}</span><VariableConfigurationSignature definition={operandDefinition} condition={{ ...operand, rightSelectable: operand.selectable }} operand={2} selectableTypes={selectableTypes} /></span></button> : <DeferredNumberInput disabled={disabled} min={CUSTOM_NUMBER_MIN} max={CUSTOM_NUMBER_MAX} value={operand.value ?? 0} onCommit={(value) => updateTerm({ operand: { type: "number", value } })} />}<button type="button" className="code-condition-input-toggle" disabled={disabled} onClick={() => onPickOperand?.(termIndex)} aria-label={`Edit variable operand ${termIndex + 1}`} title="Edit input"><span aria-hidden="true">✎</span></button></div>{allowRemoveAction && <button type="button" className="code-condition-row-remove" disabled={disabled} onClick={() => removeTerm(termIndex)} aria-label={`Remove variable operand ${termIndex + 1}`}>×</button>}</div>;
             })}
             <button type="button" aria-label="Add operand" disabled={disabled || !canAddAction || terms.length >= MAX_VARIABLE_ACTION_TERMS} onClick={addTerm} className="text-emerald-300"><AddIcon /> OPERAND</button>
         </div>}
@@ -1079,7 +1154,7 @@ function BooleanVariableActionRow({ entry, stateVariables, disabled, allowRemove
         delete next.terms;
         onChange(next);
     };
-    return <div className="code-variable-action-row"><select disabled={disabled} aria-label="Variable action operator" value={CUSTOM_VARIABLE_OPERATIONS.SET} className="code-operator-socket code-variable-action-operator"><option value={CUSTOM_VARIABLE_OPERATIONS.SET}>=</option></select><div className={`code-condition-input code-variable-action-input ${operandDefinition ? "is-variable" : "is-raw"}`} data-node-drag-ignore="true" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>{operandDefinition ? <button type="button" className="code-condition-input-value code-variable-action-input-value" onClick={onInspectOperand} disabled={disabled}><span className="code-condition-input-copy"><span className="code-variable-action-input-label">{operandDefinition.label}</span><VariableConfigurationSignature definition={operandDefinition} condition={{ ...operand, rightSelectable: operand.selectable }} operand={2} /></span></button> : <select data-node-drag-ignore="true" aria-label="Boolean value" disabled={disabled} value={String(operand.value ?? false)} onChange={(event) => updateOperand({ type: "boolean", value: event.target.value === "true" })} className="code-operator-socket code-condition-boolean-input"><option value="false">FALSE</option><option value="true">TRUE</option></select>}<button type="button" className="code-condition-input-toggle" disabled={disabled} onClick={onPickOperand} aria-label="Edit boolean operand" title="Edit input"><span aria-hidden="true">✎</span></button></div>{allowRemoveAction && <button type="button" className="code-condition-row-remove" disabled={disabled} onClick={onRemoveAction} aria-label="Remove variable action">×</button>}</div>;
+    return <div className="code-variable-action-row"><VariableOperatorPicker operations={[CUSTOM_VARIABLE_OPERATIONS.SET]} disabled={disabled} ariaLabel="Variable action operator" value={CUSTOM_VARIABLE_OPERATIONS.SET} onChange={(operation) => onChange({ ...entry, operation })} /><div className={`code-condition-input code-variable-action-input ${operandDefinition ? "is-variable" : "is-raw"}`} data-node-drag-ignore="true" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>{operandDefinition ? <button type="button" className="code-condition-input-value code-variable-action-input-value" onClick={onInspectOperand} disabled={disabled}><span className="code-condition-input-copy"><span className="code-variable-action-input-label">{operandDefinition.label}</span><VariableConfigurationSignature definition={operandDefinition} condition={{ ...operand, rightSelectable: operand.selectable }} operand={2} /></span></button> : <select data-node-drag-ignore="true" aria-label="Boolean value" disabled={disabled} value={String(operand.value ?? false)} onChange={(event) => updateOperand({ type: "boolean", value: event.target.value === "true" })} className="code-operator-socket code-condition-boolean-input"><option value="false">FALSE</option><option value="true">TRUE</option></select>}<button type="button" className="code-condition-input-toggle" disabled={disabled} onClick={onPickOperand} aria-label="Edit boolean operand" title="Edit input"><span aria-hidden="true">✎</span></button></div>{allowRemoveAction && <button type="button" className="code-condition-row-remove" disabled={disabled} onClick={onRemoveAction} aria-label="Remove variable action">×</button>}</div>;
 }
 
 function MovementConfigurationControls({ entry, disabled, onChange }) {
@@ -1536,12 +1611,33 @@ function selectableOrderLabel(order) {
 
 function OrderedSelectablePicker({ value = BOT_CODE_SELECTABLES.OPPONENT, selectableTypes = SELECTABLE_TYPES, disabled = false, allowOrdering = true, onChange }) {
     const availableSelectableTypes = Array.isArray(selectableTypes) ? selectableTypes : SELECTABLE_TYPES;
-    const [baseValue, encodedOrder, encodedOrdinal] = canonicalBotSelectableId(value).split(":");
-    const base = availableSelectableTypes.some((selectable) => selectable.id === baseValue) ? baseValue : availableSelectableTypes[0]?.id ?? BOT_CODE_SELECTABLES.OPPONENT;
-    const order = SELECTABLE_ORDERS.includes(encodedOrder) ? encodedOrder : SELECTABLE_ORDERS[0];
-    const ordinal = Math.max(1, Math.min(100, Number(encodedOrdinal) || 1));
+    const pickerModel = actionSelectablePickerModel(value, availableSelectableTypes);
+    const targetPresentation = pickerModel.target;
+    if (!targetPresentation.available) {
+        const options = pickerModel.replacementOptions;
+        return <div className="code-selectable-picker is-unavailable">
+            <div className="code-selectable-picker-unavailable" role="status" aria-live="polite">
+                <strong>{pickerModel.statusLabel}</strong>
+                <small>{pickerModel.statusMessage}</small>
+            </div>
+            <div className="code-selectable-picker-control">
+                <span>REPLACEMENT TARGET</span>
+                <select className="code-selectable-picker-entity" disabled={disabled || options.length === 0} aria-label="Replacement target" value={pickerModel.selectValue} onChange={(event) => {
+                    const replacement = encodeSelectableReplacement(event.target.value, availableSelectableTypes);
+                    if (replacement != null) onChange(replacement);
+                }}>
+                    <option value="" disabled>{pickerModel.replacementPlaceholder}</option>
+                    {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+            </div>
+        </div>;
+    }
+    const baseValue = targetPresentation.baseId;
+    const base = baseValue;
+    const order = targetPresentation.order ?? SELECTABLE_ORDERS[0];
+    const ordinal = targetPresentation.ordinal;
     const entityGroups = entitySelectableGroups(availableSelectableTypes);
-    const selectedSelectable = availableSelectableTypes.find((selectable) => selectable.id === base);
+    const selectedSelectable = targetPresentation.definition;
     const selectedEntityGroup = selectedSelectable?.kind === "entity"
         ? entityGroups.find((group) => group.entityType === selectedSelectable.entityType)
         : null;
@@ -1600,19 +1696,7 @@ function OrderedSelectablePicker({ value = BOT_CODE_SELECTABLES.OPPONENT, select
 }
 
 function formatSelectableLabel(value, selectableTypes = SELECTABLE_TYPES) {
-    const [baseValue, encodedOrder, encodedOrdinal] = canonicalBotSelectableId(value).split(":");
-    const definition = selectableTypes.find((selectable) => selectable.id === baseValue) ?? selectableTypes[0];
-    const label = definition?.label?.replace(/^Closest /, "") ?? baseValue;
-    if (definition?.kind === "bot") return label;
-    const order = ["closest", "farthest", "oldest", "newest"].includes(encodedOrder) ? encodedOrder : "closest";
-    const ordinal = Math.max(1, Math.min(100, Number(encodedOrdinal) || 1));
-    return `${formatOrdinal(ordinal)} ${order[0].toUpperCase()}${order.slice(1)} ${label}`;
-}
-
-function formatOrdinal(value) {
-    const remainder100 = value % 100;
-    if (remainder100 >= 11 && remainder100 <= 13) return `${value}th`;
-    return `${value}${({ 1: "st", 2: "nd", 3: "rd" })[value % 10] ?? "th"}`;
+    return resolveSelectableTarget(value, selectableTypes).description;
 }
 
 function formatMovementTargetLabel(direction, targetLabel) {
@@ -1713,6 +1797,8 @@ export {
     NodeKindPicker,
     VariableOperandPicker,
     variableActionTerms,
+    VariableActionControls,
+    VariableActionExpression,
     ConditionalOperandBox,
     ActionVariableInspector,
     GraphRootNode,

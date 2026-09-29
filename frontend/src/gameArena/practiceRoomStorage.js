@@ -77,6 +77,10 @@ function boundedNumber(value, fallback, min, max) {
     return Number.isFinite(numeric) ? Math.max(min, Math.min(max, numeric)) : safeFallback;
 }
 
+function oneDecimal(value, fallback, min, max) {
+    return Math.round(boundedNumber(value, fallback, min, max) * 10) / 10;
+}
+
 function teamNumberForPracticeBot(bot) {
     return Number(bot?.teamNumber) === PUZZLE_OPPONENT_TEAM
         || String(bot?.role ?? "").trim().toUpperCase() === "OPPONENT"
@@ -92,10 +96,10 @@ function normalizedPracticeBot(bot, fallback) {
         teamNumber,
         slot,
         loadout: normalizePracticeLoadout(bot?.loadout ?? fallback?.loadout),
-        startX: boundedNumber(bot?.startX, fallback?.startX, PUBLIC_BOT_CENTER_MIN_X, PUBLIC_BOT_CENTER_MAX_X),
-        startY: boundedNumber(bot?.startY, fallback?.startY, PUBLIC_BOT_CENTER_MIN_Y, PUBLIC_BOT_CENTER_MAX_Y),
-        rotation: boundedNumber(bot?.rotation, fallback?.rotation, -360, 360),
-        startHp: boundedNumber(bot?.startHp, fallback?.startHp ?? BASE_BOT_HP, 1, BASE_BOT_HP),
+        startX: oneDecimal(bot?.startX, fallback?.startX, PUBLIC_BOT_CENTER_MIN_X, PUBLIC_BOT_CENTER_MAX_X),
+        startY: oneDecimal(bot?.startY, fallback?.startY, PUBLIC_BOT_CENTER_MIN_Y, PUBLIC_BOT_CENTER_MAX_Y),
+        rotation: oneDecimal(bot?.rotation, fallback?.rotation, -360, 360),
+        startHp: Math.round(boundedNumber(bot?.startHp, fallback?.startHp ?? BASE_BOT_HP, 1, BASE_BOT_HP)),
     };
 }
 

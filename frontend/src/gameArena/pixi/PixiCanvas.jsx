@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Circle, Container, Graphics, Rectangle, Sprite, Text } from "pixi.js";
 import ArenaLoadingScreen from "../../components/ArenaLoadingScreen.jsx";
 import AbilityStatusPanel from "../status/AbilityStatusPanel.jsx";
@@ -20,6 +20,7 @@ import { textureMuzzleAnchor } from "./abilitySpriteAssets.js";
 import { visualRayLength } from "./rayPresentationGeometry.js";
 import { advanceParticle } from "./particleMotion.js";
 import { createPresentationClock } from "./presentationClock.js";
+import { clearPresentationArtifacts, initialPresentationViewState } from "./presentationReset.js";
 import { BOT_ABILITY_PRESENTATION_DEFINITIONS, botAbilityActiveMs, botAbilityPresentationForId, botAbilityPresentationForRole } from "./botAbilityPresentationDefinitions.js";
 import { compassDegreesToRadians, vectorToCompassDegrees } from "../botlogic/planner/arenaAngles.js";
 import { entityAbilitySpawnTransform, hitboxGeometriesForEntity, hitboxGeometryForBot } from "../gameconfig/hitboxGeometry.js";
@@ -126,6 +127,7 @@ export default function PixiCanvas({
     abilityInfoEnabled = false,
     arenaSize = null,
     fixedLayout = false,
+    presentationResetVersion = 0,
     lockCamera = false,
     showArenaHelp = true,
     isPlaying = true,
@@ -139,11 +141,14 @@ export default function PixiCanvas({
     const presentationShapes = shapes.map(toSimulationBotShape);
     const hostRef = useRef(null);
     const runtimeRef = useRef(null);
+    const previousPresentationResetVersionRef = useRef(presentationResetVersion);
     const optionsRef = useRef({});
     const [assetError, setAssetError] = useState(null);
     const [arenaReady, setArenaReady] = useState(false);
     const [measurementCursor, setMeasurementCursor] = useState(null);
-    useEffect(() => {
+    useLayoutEffect(() => {
+        const resetPresentation = previousPresentationResetVersionRef.current !== presentationResetVersion;
+        previousPresentationResetVersionRef.current = presentationResetVersion;
         optionsRef.current = {
             shapes: presentationShapes,
             selectedId,
@@ -164,8 +169,9 @@ export default function PixiCanvas({
             allowLockedBotEditing,
         };
         runtimeRef.current?.setPlaying(isPlaying);
-        runtimeRef.current?.syncShapes(presentationShapes);
-    }, [allowBotRotation, allowLockedBotEditing, editable, hitboxesEnabled, isPlaying, lockCamera, measurementEnabled, measurementPoints, onDeselectAll, onMeasurementPointsChange, onSelectShape, onShapeDragEnd, onUpdateShape, placementSide, selectedId, presentationShapes]);
+        if (resetPresentation) runtimeRef.current?.resetPresentation(presentationShapes);
+        else runtimeRef.current?.syncShapes(presentationShapes);
+    }, [allowBotRotation, allowLockedBotEditing, editable, hitboxesEnabled, isPlaying, lockCamera, measurementEnabled, measurementPoints, onDeselectAll, onMeasurementPointsChange, onSelectShape, onShapeDragEnd, onUpdateShape, placementSide, presentationResetVersion, selectedId, presentationShapes]);
 
     useEffect(() => {
         let disposed = false;
@@ -448,6 +454,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     }
 
     function createView(shape, now = presentationClock.current(), visualInstance = null) {
+        const initialState = initialPresentationViewState(shape, now);
         const visualAnimation = visualInstance
             ? {
                 key: visualInstance.key,
@@ -482,8 +489,8 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             graphics,
             rotationHandle,
             caption,
-            shape,
-            authoritativeShape: shape,
+            shape: initialState.shape,
+            authoritativeShape: initialState.authoritativeShape,
             visualInstance,
             blockHeldStartedAt: null,
             dashSmokeOrigin: null,
@@ -494,7 +501,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             visualAnimationDurationMs: visualAnimation.durationMs,
             visualAnimationKey: visualAnimation.key,
             layer: pixiLayerForShape(shape),
-            motion: { from: { x: shape.x, y: shape.y }, to: { x: shape.x, y: shape.y }, startedAt: now, durationMs: 0 },
+            motion: initialState.motion,
         };
         layers[view.layer].addChild(container);
         if (!visualInstance) {
@@ -512,6 +519,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     function destroyVisualView(id) {
         const view = visualViews.get(id);
         if (!view) return;
+        view.container.parent?.removeChild?.(view.container);
         view.container.destroy({ children: true });
         visualViews.delete(id);
     }
@@ -540,7 +548,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         }
     }
 
-    function syncShapes(nextShapes) {
+    function syncShapes(nextShapes, { snapPositions = false, suppressTransientPresentation = false } = {}) {
         const now = presentationClock.current();
         pruneExpiredVisualViews(now);
         const nextIds = new Set(nextShapes.map((shape) => shape.id));
@@ -570,13 +578,15 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
                 && (!Number.isFinite(previousEventSequence)
                     || nextEventSequence !== previousEventSequence);
             if (replayReset) removeVisualViewsForSource(shape.id);
-            if ((view == null || eventSequenceChanged || replayReset) && nextEventSequence > 0) {
+            if (!suppressTransientPresentation
+                && (view == null || eventSequenceChanged || replayReset)
+                && nextEventSequence > 0) {
                 spawnStandaloneVisual(shape, now);
             }
             if (!view) {
                 view = createView(phaseShape, now, nextPhaseVisualInstance);
                 views.set(shape.id, view);
-                if (["mineExplosion", "orbitalExplosion"].includes(phaseShape.type)) {
+                if (!suppressTransientPresentation && ["mineExplosion", "orbitalExplosion"].includes(phaseShape.type)) {
                     spawnBurst(phaseShape.x, phaseShape.y, explosionColor(phaseShape.type), phaseShape.type === "orbitalExplosion" ? 30 : 18);
                 }
             }
@@ -598,7 +608,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             const current = sampleViewPosition(view, now);
             const wasDashing = botAbilityActiveMs(previousShape, DASH_PRESENTATION) > 0;
             const startsDashing = botAbilityActiveMs(shape, DASH_PRESENTATION) > 0;
-            if (startsDashing && !wasDashing) {
+            if (!suppressTransientPresentation && startsDashing && !wasDashing) {
                 view.dashSmokeOrigin = { ...current };
                 // The supplied smoke frames face north before rotation.
                 view.dashSmokeRotation = botMovementRotation(shape) + Math.PI / 2;
@@ -619,11 +629,12 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
                 view.layer = nextLayer;
             }
             const target = { x: Number(phaseShape.x), y: Number(phaseShape.y) };
-            const durationMs = drag?.id === shape.id || shouldSnapReplayTransition
+            const durationMs = snapPositions || drag?.id === shape.id || shouldSnapReplayTransition
                 ? 0
                 : shapeInterpolationMs(phaseShape, current, target);
-            if (target.x !== view.motion.to.x || target.y !== view.motion.to.y) {
-                view.motion = { from: current, to: target, startedAt: now, durationMs };
+            if (snapPositions || target.x !== view.motion.to.x || target.y !== view.motion.to.y) {
+                const origin = snapPositions ? target : current;
+                view.motion = { from: origin, to: target, startedAt: now, durationMs };
             }
             view.container.eventMode = isBotShape(phaseShape) ? "static" : "none";
             view.container.cursor = canEditBot(phaseShape) ? "grab" : "default";
@@ -638,10 +649,10 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             const hasLocalHpDamage = hitParticleEvent == null
                 && shape.hp != null && previousShape?.hp != null
                 && Number(shape.hp) < Number(previousShape.hp);
-            if (hasHitParticleEvent || hasLegacyHitFlash || hasLocalHpDamage) {
+            if (!suppressTransientPresentation && (hasHitParticleEvent || hasLegacyHitFlash || hasLocalHpDamage)) {
                 spawnBurst(current.x, current.y, 0xfca5a5, 12);
             }
-            if (isBotShape(shape) && closingZoneDamageOccurred(shape, previousShape)) {
+            if (!suppressTransientPresentation && isBotShape(shape) && closingZoneDamageOccurred(shape, previousShape)) {
                 spawnBurst(current.x, current.y, 0xc084fc, 6);
             }
             const previousAbility = activeBotVisual(previousShape);
@@ -655,7 +666,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
                 view.repulsorBurstStartedAt = null;
             }
             const startEffect = nextAbilityPresentation?.onVisualStart;
-            if (isBotShape(phaseShape) && previousAbility !== nextAbility && startEffect) {
+            if (!suppressTransientPresentation && isBotShape(phaseShape) && previousAbility !== nextAbility && startEffect) {
                 if (startEffect.type === "burst") {
                     spawnBurst(phaseShape.x, phaseShape.y, startEffect.color, startEffect.count);
                 } else if (startEffect.type === "repairPulse") {
@@ -663,6 +674,21 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
                 }
             }
         }
+    }
+
+    function resetPresentation(nextShapes) {
+        clearPresentationArtifacts({ views, visualViews, lockOnMarkers, particles });
+        drag = null;
+        rotationDrag = null;
+        pan = null;
+        pinch = null;
+        touchPoints.clear();
+        measurementSignature = null;
+        measurementHoverPoint = null;
+        measurementCursorSignature = null;
+        optionsRef.current.onMeasurementCursorChange?.(null);
+        syncShapes(nextShapes, { snapPositions: true, suppressTransientPresentation: true });
+        render(presentationClock.current());
     }
 
     function canEditBot(shape) {
@@ -1020,6 +1046,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
 
     return {
         syncShapes,
+        resetPresentation,
         setPlaying(isPlaying) {
             presentationClock.setPaused(!isPlaying);
         },

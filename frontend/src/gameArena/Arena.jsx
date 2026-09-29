@@ -27,16 +27,15 @@ import {
     PUZZLE_PLAYER_TEAM,
     puzzleBotKey,
 } from "../pages/puzzles/puzzleRoster.js";
+import { restoreTutorialNavigationScrollPosition } from "../tutorial/tutorialLessonNavigation.js";
 
 import { BASE_BOT_HP } from "./modelPayloads/arenaConstants.js";
 import { internalPointToPublic } from "./modelPayloads/arenaCoordinates.js";
 import {
     buildInitialArenaShapes,
     buildOpponentShape,
-    cloneShape,
     mergeBotShapeUpdates,
     resetBotShape,
-    resetBotShapeToStartingConfiguration,
     toSimulationBotShape,
 } from "./modelPayloads/arenaShapes.js";
 import {
@@ -55,6 +54,7 @@ import {
     puzzleSetupForArena,
 } from "./setup/ArenaSetup.js";
 import { isSimulationBotShape } from "./modelPayloads/arenaPreviewSimulation.js";
+import { createPreviewBaseline, restorePreviewBaseline } from "./modelPayloads/previewBaseline.js";
 import { useArenaAutoPlay } from "./hooks/useArenaAutoPlay.js";
 import {
     loadStoredStrategyConfiguration,
@@ -74,6 +74,7 @@ import {
     TUTORIAL_STEP_COUNT,
 } from "../tutorial/TutorialPresets.js";
 import { getTutorialLesson, getTutorialLessonForScenario } from "../tutorial/TutorialContent.js";
+import { completeTutorialGoal } from "../tutorial/tutorialCompletion.js";
 import TutorialGuide from "../tutorial/TutorialGuide.jsx";
 
 function secondsRemaining(targetTime) {
@@ -87,6 +88,35 @@ function secondsRemaining(targetTime) {
 
 const AUTO_FINISH_SAFETY_BUFFER_MS = 500;
 const PUZZLE_SUBMIT_STATUS_DURATION_MS = 3_500;
+
+function oneDecimal(value) {
+    return Math.round(Number(value) * 10) / 10;
+}
+
+function practiceConfigWithLiveBotState(config, shapes) {
+    const liveByRosterKey = new Map((Array.isArray(shapes) ? shapes : [])
+        .filter(isSimulationBotShape)
+        .map((shape) => {
+            const bot = toSimulationBotShape(shape);
+            return [puzzleBotKey(bot.teamNumber, bot.puzzleSlot ?? bot.slot), bot];
+        }));
+    const normalized = normalizePracticeConfig(config);
+    return normalizePracticeConfig({
+        ...normalized,
+        bots: normalized.bots.map((setup) => {
+            const bot = liveByRosterKey.get(puzzleBotKey(setup));
+            if (!bot) return setup;
+            const publicPosition = internalPointToPublic({ x: bot.x, y: bot.y });
+            return {
+                ...setup,
+                startX: oneDecimal(publicPosition.x),
+                startY: oneDecimal(publicPosition.y),
+                rotation: oneDecimal(bot.rotation),
+                startHp: Math.round(bot.hp),
+            };
+        }),
+    });
+}
 
 export default function Arena({
     matchContext = null,
@@ -116,6 +146,16 @@ export default function Arena({
     useLayoutEffect(() => {
         if (typeof window !== "undefined") window.scrollTo(0, 0);
     }, [location.pathname]);
+
+    useLayoutEffect(() => {
+        const position = location.state?.tutorialNavigationScrollPosition;
+        if (!tutorialMode || !position) return;
+        restoreTutorialNavigationScrollPosition(position, {
+            windowTarget: typeof window === "undefined" ? null : window,
+            contentShell: typeof document === "undefined" ? null : document.querySelector(".arena-content-shell"),
+            toolbarPanel: typeof document === "undefined" ? null : document.querySelector(".arena-toolbar-panel"),
+        });
+    }, [location.state, tutorialMode]);
 
     const isPuzzleBuilder = Boolean(puzzleBuilder);
     const isPuzzleMode = Boolean(puzzleMode);
@@ -189,6 +229,9 @@ export default function Arena({
                     true,
                 )
                     : buildInitialArenaShapes(matchContext));
+    const [previewBaseline, setPreviewBaseline] = useState(() => createPreviewBaseline(shapes));
+    const [tutorialShapesScenarioId, setTutorialShapesScenarioId] = useState(() => tutorialMode ? initialTutorialScenario.id : null);
+    const [presentationResetVersion, setPresentationResetVersion] = useState(0);
     const [selectedId, setSelectedId] = useState(null);
     const [submitStatus, setSubmitStatus] = useState(null);
     const [tutorialLessonMinimized, setTutorialLessonMinimized] = useState(true);
@@ -231,9 +274,6 @@ export default function Arena({
         isPracticeRoom,
         isPuzzleMode,
         isMatchTesting,
-        tutorialMode,
-        tutorialStep: initialTutorialStep,
-        matchContext,
         selectedLoadout,
         opponentLoadout,
         testingConfigurationRef,
@@ -501,7 +541,21 @@ export default function Arena({
         setTestingConfiguration(sanitizeStrategyConfigurationForLoadout(loadTutorialStrategyConfiguration(tutorialStep, scenario.emptyCode), scenario.playerLoadout));
         setOpponentTestingConfiguration(sanitizeStrategyConfigurationForLoadout(scenario.opponentCode, scenario.opponentLoadout));
         setShapes(lessonShapes);
+        setPreviewBaseline(createPreviewBaseline(lessonShapes));
+        setTutorialShapesScenarioId(scenario.id);
+        setPresentationResetVersion((version) => version + 1);
     }, [stopAutoPlay, tutorialMode, tutorialStep]);
+
+    useEffect(() => {
+        if (!tutorialMode || tutorialShapesScenarioId !== tutorialScenario.id) return;
+        if (!completeTutorialGoal(tutorialScenario, shapes, tutorialStep)) return;
+        const title = getTutorialLesson(tutorialLessonId)?.title ?? tutorialScenario.id;
+        const message = `Lesson complete: ${title}.`;
+        window.setTimeout(() => setSubmitStatus({ ok: true, message }), 0);
+        window.setTimeout(() => {
+            setSubmitStatus((current) => current?.message === message ? null : current);
+        }, 3_500);
+    }, [shapes, tutorialLessonId, tutorialMode, tutorialScenario, tutorialShapesScenarioId, tutorialStep]);
 
     useEffect(() => {
         if (!isAbilityTesting || !catalogueAbilityTestingPreset) return;
@@ -516,7 +570,10 @@ export default function Arena({
         setOpponentTestingConfiguration(sanitizeStrategyConfigurationForLoadout(catalogueAbilityTestingPreset.opponentCode, catalogueAbilityTestingPreset.opponentLoadout));
         // Keep Practice Config as the reset baseline for this catalogue preset.
         setPracticeConfig(buildAbilityTestingPracticeConfig(catalogueAbilityTestingPreset));
-        setShapes(buildAbilityTestingArenaShapes(catalogueAbilityTestingPreset));
+        const presetShapes = buildAbilityTestingArenaShapes(catalogueAbilityTestingPreset);
+        setShapes(presetShapes);
+        setPreviewBaseline(createPreviewBaseline(presetShapes));
+        setPresentationResetVersion((version) => version + 1);
     }, [catalogueAbilityTestingPreset, isAbilityTesting, stopAutoPlay]);
 
     useEffect(() => {
@@ -715,12 +772,17 @@ export default function Arena({
             });
         }
 
-        setShapes((current) => current.map((shape) => {
+        const updatedShapes = shapes.map((shape) => {
             const update = updates.find((entry) => entry.shapeId === shape.id);
             return update
                 ? resetBotShape({ ...shape, combatLoadout: update.encoded, strategyConfiguration: update.nextConfiguration })
                 : shape;
-        }));
+        });
+        setShapes(updatedShapes);
+        if (isPracticeRoom) {
+            setPreviewBaseline(createPreviewBaseline(updatedShapes));
+            setPresentationResetVersion((version) => version + 1);
+        }
         closeSandboxLoadout();
     };
 
@@ -729,7 +791,7 @@ export default function Arena({
         const normalized = normalizePracticeConfig(nextConfig);
         setPracticeConfig(normalized);
         setSelectedId(null);
-        setShapes(buildPracticeArenaShapes(
+        const configuredShapes = buildPracticeArenaShapes(
             selectedLoadout,
             opponentLoadout,
             practiceSetupForArena(
@@ -741,7 +803,10 @@ export default function Arena({
                 practiceBotConfigurations,
             ),
             true,
-        ));
+        );
+        setShapes(configuredShapes);
+        setPreviewBaseline(createPreviewBaseline(configuredShapes, { initialElapsedMs: normalized.initialElapsedMs }));
+        setPresentationResetVersion((version) => version + 1);
         savePracticeRoomDraft({
             config: normalized,
             player: { loadout: selectedLoadout, code: testingConfiguration },
@@ -757,14 +822,36 @@ export default function Arena({
         const normalized = normalizePracticeConfig(nextConfig);
         setPuzzleConfig(normalized);
         setSelectedId(null);
-        setShapes(buildPracticeArenaShapes(
+        const configuredShapes = buildPracticeArenaShapes(
             selectedLoadout,
             opponentLoadout,
             puzzleSetupForArena(normalized, initialPuzzle),
-        ));
+        );
+        setShapes(configuredShapes);
+        setPresentationResetVersion((version) => version + 1);
         setIsPuzzleConfigOpen(false);
         setSubmitStatus({ ok: true, message: "Puzzle test configuration saved." });
         setTimeout(() => setSubmitStatus(null), 2500);
+    };
+
+    const saveGameState = () => {
+        const savePracticeBaseline = isPracticeRoom && !isAbilityTesting;
+        const saveMatchBaseline = isMatchTesting && finishStatus === "BUILDING";
+        if (isAutoPlaying || (!savePracticeBaseline && !saveMatchBaseline)) return;
+
+        const baseline = createPreviewBaseline(shapes);
+        setPreviewBaseline(baseline);
+        if (savePracticeBaseline) {
+            const nextConfig = practiceConfigWithLiveBotState(practiceConfig, shapes);
+            setPracticeConfig(nextConfig);
+            savePracticeRoomDraft({
+                config: nextConfig,
+                player: { loadout: selectedLoadout, code: testingConfiguration },
+                opponent: { loadout: opponentLoadout, code: opponentTestingConfiguration },
+            });
+        }
+        setSubmitStatus({ ok: true, message: "Game state saved as the reset baseline." });
+        window.setTimeout(() => setSubmitStatus(null), 2500);
     };
 
     const handleUpdateShape = useCallback((id, updates) => {
@@ -779,38 +866,28 @@ export default function Arena({
         if (!arenaEditingEnabled || isAutoPlaying || (!isPuzzleBuilder && !isPracticeRoom)) return;
         const shape = shapes.find((candidate) => candidate.id === id);
         const key = shape ? puzzleBotShapeKey(shape) : null;
-        if (!shape || !key) return;
-        const publicPosition = internalPointToPublic(internalPosition);
+        if (!shape || (isPuzzleBuilder && !key)) return;
         setShapes((previous) => previous.map((candidate) => candidate.id === id
             ? mergeBotShapeUpdates(candidate, {
                 x: internalPosition.x,
                 y: internalPosition.y,
-                startX: internalPosition.x,
-                startY: internalPosition.y,
-                ...(isPuzzleBuilder ? { spawnX: internalPosition.x, spawnY: internalPosition.y } : {}),
+                ...(isPuzzleBuilder ? {
+                    startX: internalPosition.x,
+                    startY: internalPosition.y,
+                    spawnX: internalPosition.x,
+                    spawnY: internalPosition.y,
+                } : {}),
             })
             : candidate));
         if (isPuzzleBuilder) {
+            const publicPosition = internalPointToPublic(internalPosition);
             onPuzzleDraftChange?.({
                 bots: puzzleSetupRoster.map((bot) => puzzleBotKey(bot) === key
                     ? { ...bot, startX: publicPosition.x, startY: publicPosition.y }
                     : bot),
             });
-            return;
         }
-        const nextConfig = normalizePracticeConfig({
-            ...practiceConfig,
-            bots: practiceConfig.bots.map((bot) => puzzleBotKey(bot) === key
-                ? { ...bot, startX: publicPosition.x, startY: publicPosition.y }
-                : bot),
-        });
-        setPracticeConfig(nextConfig);
-        savePracticeRoomDraft({
-            config: nextConfig,
-            player: { loadout: selectedLoadout, code: testingConfiguration },
-            opponent: { loadout: opponentLoadout, code: opponentTestingConfiguration },
-        });
-    }, [arenaEditingEnabled, isAutoPlaying, isPracticeRoom, isPuzzleBuilder, onPuzzleDraftChange, opponentLoadout, opponentTestingConfiguration, practiceConfig, puzzleSetupRoster, selectedLoadout, shapes, testingConfiguration]);
+    }, [arenaEditingEnabled, isAutoPlaying, isPracticeRoom, isPuzzleBuilder, onPuzzleDraftChange, puzzleSetupRoster, shapes]);
 
     const playerSetup = puzzleBotForSetup(initialPuzzle, PUZZLE_PLAYER_TEAM);
     const opponentSetup = puzzleBotForSetup(initialPuzzle, PUZZLE_OPPONENT_TEAM);
@@ -841,6 +918,10 @@ export default function Arena({
         previousPuzzleSetupKeyRef.current = puzzleSetupKey;
         const freshBotShapes = buildPracticeArenaShapes(selectedLoadout, opponentLoadout, initialPuzzle, isPuzzleBuilder)
             .filter(isSimulationBotShape);
+        // Puzzle-builder configuration changes are explicit baseline changes;
+        // playback start, pause, and resume never flow through this branch.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setPreviewBaseline(createPreviewBaseline(freshBotShapes, { initialElapsedMs: initialPuzzleElapsedMs }));
         const freshShapesByKey = new Map(freshBotShapes
             .map((shape) => [puzzleBotShapeKey(shape), shape])
             .filter(([key]) => key));
@@ -856,7 +937,6 @@ export default function Arena({
             "opponent-model": { startX: opponentStartX, startY: opponentStartY, rotation: opponentRotation, startHp: opponentStartHp },
         };
         // Synchronize the editable puzzle canvas with its external initial-puzzle inputs.
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setShapes((previous) => {
             let changed = false;
             const existingKeys = new Set();
@@ -1004,38 +1084,15 @@ export default function Arena({
 
     const resetArenaStats = () => {
         setSelectedId(null);
-        if (isPracticeRoom) {
-            setShapes(buildPracticeArenaShapes(
-                selectedLoadout,
-                opponentLoadout,
-                practiceArenaSetup,
-                true,
-            ));
-        } else if (isPuzzleMode) {
+        setPresentationResetVersion((version) => version + 1);
+        if (isPuzzleMode) {
             setShapes(buildPracticeArenaShapes(
                 selectedLoadout,
                 opponentLoadout,
                 puzzleArenaSetup,
             ));
         } else {
-            setShapes((prevShapes) => prevShapes
-                .filter((shape) => shape.type !== "grenade" && shape.type !== "grenadeExplosion")
-                .filter((shape) => shape.type !== "fireball")
-                .filter((shape) => !["proximityMine", "mineExplosion", "orbitalMarker", "orbitalExplosion", "windburstProjectile"].includes(shape.type))
-                .map((shape) => {
-                    if (!isSimulationBotShape(shape)) return cloneShape(shape);
-                    if (!isPuzzleBuilder) return resetBotShape(shape);
-                    const configuration = puzzleBotForSetup(
-                        initialPuzzle,
-                        shape.teamNumber,
-                        shape.puzzleSlot ?? shape.slot,
-                    ) ?? (shape.id === "main"
-                        ? initialPuzzle?.playerBot
-                        : shape.id === "opponent-model" ? initialPuzzle?.opponentBot : null);
-                    return configuration
-                        ? resetBotShapeToStartingConfiguration(shape, configuration)
-                        : resetBotShape(shape);
-                }));
+            setShapes(restorePreviewBaseline(previewBaseline));
         }
         setSubmitStatus({ ok: true, message: "Bot stats, cooldowns, and status effects reset." });
         setTimeout(() => setSubmitStatus(null), 2500);
@@ -1200,6 +1257,7 @@ export default function Arena({
                                     editable={arenaEditingEnabled}
                                     fillAvailable
                                     fixedLayout={usesArenaResponsiveLimits}
+                                    presentationResetVersion={presentationResetVersion}
                                     abilityLayout="split"
                                     showArenaHelp={showArenaHelp}
                                     showEmptyAbilitySlot={!isMatchTesting}
@@ -1252,6 +1310,7 @@ export default function Arena({
                         canFinishMatch={Boolean(onFinishMatch)}
                         onAutoPlayToggle={handleAutoPlayToggle}
                         onResetArenaStats={resetArenaStats}
+                        onSaveGameState={!tutorialMode && ((isPracticeRoom && !isAbilityTesting) || (isMatchTesting && finishStatus === "BUILDING")) ? saveGameState : null}
                         customVariableValues={shapes.find((shape) => shape.id === "main")?.customVariables ?? {}}
                         opponentCustomVariableValues={shapes.find((shape) => shape.id === "opponent-model")?.customVariables ?? {}}
                         onFinishMatch={handleFinishMatch}
