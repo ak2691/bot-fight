@@ -16,6 +16,7 @@ import {
     buildOpponentShape,
     mergeBotShapeUpdates,
     resetBotShapeToStartingConfiguration,
+    toSimulationBotShape,
 } from "../modelPayloads/arenaShapes.js";
 import { normalizePracticeConfig } from "../practiceRoomStorage.js";
 import {
@@ -76,6 +77,79 @@ export function puzzleBotShapeKey(shape) {
     if (shape?.id === "main") return puzzleBotKey(PUZZLE_PLAYER_TEAM, 1);
     if (shape?.id === "opponent-model") return puzzleBotKey(PUZZLE_OPPONENT_TEAM, 1);
     return null;
+}
+
+/** Build puzzle sync data exclusively from already-converted simulation shapes. */
+export function puzzleBuilderSimulationLookups(freshBotShapes) {
+    const setupByKey = {};
+    const setupById = {};
+    (Array.isArray(freshBotShapes) ? freshBotShapes : []).forEach((shape) => {
+        const key = puzzleBotShapeKey(shape);
+        if (!key) return;
+        const simulation = toSimulationBotShape(shape);
+        const setup = {
+            x: Number(simulation.x),
+            y: Number(simulation.y),
+            startX: Number(simulation.startX ?? simulation.x),
+            startY: Number(simulation.startY ?? simulation.y),
+            rotation: Number(simulation.rotation),
+            startHp: Number(simulation.startHp ?? simulation.hp ?? BASE_BOT_HP),
+        };
+        setupByKey[key] = setup;
+        if (shape.id === "main" || shape.id === "opponent-model") setupById[shape.id] = setup;
+    });
+    return { setupByKey, setupById };
+}
+
+/** Apply the normalized internal starting state for one puzzle simulation bot. */
+export function synchronizePuzzleBuilderBotShape(shape, lookups, initialElapsedMs) {
+    const key = puzzleBotShapeKey(shape);
+    const setup = lookups?.setupByKey?.[key] ?? lookups?.setupById?.[shape?.id];
+    if (!setup) return { shape, changed: false };
+
+    const x = Number(setup.x);
+    const y = Number(setup.y);
+    const startX = Number(setup.startX);
+    const startY = Number(setup.startY);
+    const rotation = Number(setup.rotation);
+    const startHp = Number.isFinite(Number(setup.startHp))
+        ? Math.max(1, Math.min(BASE_BOT_HP, Number(setup.startHp)))
+        : Number(toSimulationBotShape(shape).startHp ?? BASE_BOT_HP);
+    if (![x, y, startX, startY, rotation, startHp].every(Number.isFinite)) {
+        return { shape, changed: false };
+    }
+
+    const current = toSimulationBotShape(shape);
+    const elapsedChanged = Number(current.matchElapsedMs ?? 0) !== initialElapsedMs;
+    const changed = current.x !== x
+        || current.y !== y
+        || current.startX !== startX
+        || current.startY !== startY
+        || current.rotation !== rotation
+        || current.startRotation !== rotation
+        || current.hp !== startHp
+        || current.startHp !== startHp
+        || current.spawnX !== startX
+        || current.spawnY !== startY
+        || elapsedChanged;
+    if (!changed) return { shape, changed: false };
+
+    return {
+        shape: mergeBotShapeUpdates(shape, {
+            x,
+            y,
+            rotation,
+            hp: startHp,
+            startX,
+            startY,
+            startRotation: rotation,
+            startHp,
+            matchElapsedMs: initialElapsedMs,
+            spawnX: startX,
+            spawnY: startY,
+        }),
+        changed: true,
+    };
 }
 
 export function puzzleCodeParticipantName(bot) {

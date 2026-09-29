@@ -47,11 +47,13 @@ import {
     buildInitialClosingZone,
     buildPracticeArenaShapes,
     practiceSetupForArena,
+    puzzleBuilderSimulationLookups,
     puzzleBotForSetup,
     puzzleBotShapeKey,
     puzzleCodeParticipantName,
     puzzleSetupBots,
     puzzleSetupForArena,
+    synchronizePuzzleBuilderBotShape,
 } from "./setup/ArenaSetup.js";
 import { isSimulationBotShape } from "./modelPayloads/arenaPreviewSimulation.js";
 import { createPreviewBaseline, restorePreviewBaseline } from "./modelPayloads/previewBaseline.js";
@@ -889,16 +891,6 @@ export default function Arena({
         }
     }, [arenaEditingEnabled, isAutoPlaying, isPracticeRoom, isPuzzleBuilder, onPuzzleDraftChange, puzzleSetupRoster, shapes]);
 
-    const playerSetup = puzzleBotForSetup(initialPuzzle, PUZZLE_PLAYER_TEAM);
-    const opponentSetup = puzzleBotForSetup(initialPuzzle, PUZZLE_OPPONENT_TEAM);
-    const playerStartX = playerSetup?.startX;
-    const playerStartY = playerSetup?.startY;
-    const playerRotation = playerSetup?.rotation;
-    const opponentStartX = opponentSetup?.startX;
-    const opponentStartY = opponentSetup?.startY;
-    const opponentRotation = opponentSetup?.rotation;
-    const playerStartHp = playerSetup?.startHp;
-    const opponentStartHp = opponentSetup?.startHp;
     const puzzleSetupKey = JSON.stringify([
         initialPuzzleElapsedMs,
         ...puzzleSetupRoster.map((bot) => [
@@ -926,16 +918,7 @@ export default function Arena({
             .map((shape) => [puzzleBotShapeKey(shape), shape])
             .filter(([key]) => key));
         const activeKeys = new Set(freshShapesByKey.keys());
-        const setupByKey = Object.fromEntries(puzzleSetupRoster.map((bot) => [puzzleBotKey(bot), {
-            startX: bot.startX,
-            startY: bot.startY,
-            rotation: bot.rotation,
-            startHp: bot.startHp,
-        }]));
-        const setupById = {
-            main: { startX: playerStartX, startY: playerStartY, rotation: playerRotation, startHp: playerStartHp },
-            "opponent-model": { startX: opponentStartX, startY: opponentStartY, rotation: opponentRotation, startHp: opponentStartHp },
-        };
+        const setupLookups = puzzleBuilderSimulationLookups(freshBotShapes);
         // Synchronize the editable puzzle canvas with its external initial-puzzle inputs.
         setShapes((previous) => {
             let changed = false;
@@ -951,31 +934,10 @@ export default function Arena({
                 .map((shape) => {
                     const key = puzzleBotShapeKey(shape);
                     if (key) existingKeys.add(key);
-                    const setup = setupByKey[key] ?? setupById[shape.id];
-                    if (!setup) return shape;
-                    const x = Number(setup.startX);
-                    const y = Number(setup.startY);
-                    const rotation = Number(setup.rotation);
-                    const current = toSimulationBotShape(shape);
-                    const startHp = Number.isFinite(Number(setup.startHp))
-                        ? Math.max(1, Math.min(BASE_BOT_HP, Number(setup.startHp)))
-                        : Number(current.maxHp ?? BASE_BOT_HP);
-                    if (![x, y, rotation, startHp].every(Number.isFinite)) return shape;
-                    const elapsedChanged = Number(current.matchElapsedMs ?? 0) !== initialPuzzleElapsedMs;
-                    if (current.x === x && current.y === y && current.rotation === rotation && current.hp === startHp && !elapsedChanged) return shape;
+                    const synchronized = synchronizePuzzleBuilderBotShape(shape, setupLookups, initialPuzzleElapsedMs);
+                    if (!synchronized.changed) return shape;
                     changed = true;
-                    return mergeBotShapeUpdates(shape, {
-                        x,
-                        y,
-                        rotation,
-                        hp: startHp,
-                        startX: x,
-                        startY: y,
-                        startRotation: rotation,
-                        startHp,
-                        matchElapsedMs: initialPuzzleElapsedMs,
-                        ...(isPuzzleBuilder ? { spawnX: x, spawnY: y } : {}),
-                    });
+                    return synchronized.shape;
                 });
             freshShapesByKey.forEach((shape, key) => {
                 if (existingKeys.has(key)) return;
@@ -992,7 +954,7 @@ export default function Arena({
             if (!changed && !zoneChanged) return previous;
             return nextZone ? [...next, nextZone] : next;
         });
-    }, [initialPuzzle, initialPuzzleElapsedMs, isAutoPlaying, isPuzzleBuilder, opponentLoadout, opponentRotation, opponentStartHp, opponentStartX, opponentStartY, playerRotation, playerStartHp, playerStartX, playerStartY, puzzleSetupKey, puzzleSetupRoster, selectedLoadout]);
+    }, [initialPuzzle, initialPuzzleElapsedMs, isAutoPlaying, isPuzzleBuilder, opponentLoadout, puzzleSetupKey, puzzleSetupRoster, selectedLoadout]);
 
     useEffect(() => {
         if ((!isPuzzleBuilder && !isPracticeRoom) || isAutoPlaying) return;
