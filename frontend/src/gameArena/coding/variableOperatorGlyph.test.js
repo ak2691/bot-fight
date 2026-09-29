@@ -184,3 +184,10 @@ test("compact entity action graph measurement and variable-expression layout rem
     assert.match(css, /\.code-variable-action-expression \{[\s\S]*flex-wrap: wrap;/);
     assert.match(graphSource, /const expressionLines = Math\.max\(1, Math\.ceil\(expressionWidth/);
 });
+
+test("compact selectable order badges do not space their letter and ordinal apart", () => {
+    const css = readFileSync(CSS_PATH, "utf8");
+
+    assert.match(css, /\.code-config-token--order \{ gap: 0;[\s\S]*letter-spacing: 0;/);
+    assert.match(css, /\.code-config-token-order \{ display: inline-flex; gap: 0;[\s\S]*letter-spacing: 0;/);
+});

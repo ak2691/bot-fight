@@ -112,7 +112,7 @@ export default function ArenaConfigModal({ draft, defaults = null, onClose, onSa
                         </label>
                     </div>
                     <section className={`rounded border p-3 ${tone === "red" ? "border-red-900/60 bg-red-950/20" : "border-cyan-400/65 bg-cyan-950/30"}`}>
-                        <div className="mb-2 flex items-center justify-between gap-2"><h3 className="font-mono text-[10px] font-bold tracking-[.16em] text-cyan-200">STARTING STATS</h3><span className="font-mono text-[8px] text-slate-500">CENTERED · Y-UP</span></div>
+                        <div className="mb-2 flex items-center justify-between gap-2"><h3 className="font-mono text-[10px] font-bold tracking-[.16em] text-cyan-200">STARTING STATS</h3></div>
                         <div className="code-bot-selector-stack w-full max-w-none">
                             <div className={`code-bot-selector ${tone === "red" ? "is-red" : "is-blue"}`} role="group" aria-label="Select starting stats">
                                 <button type="button" aria-label="Show previous bot" title="Previous bot" onClick={() => cycle(-1)} disabled={bots.length < 2} className="code-bot-selector__arrow">‹</button>
@@ -124,8 +124,8 @@ export default function ArenaConfigModal({ draft, defaults = null, onClose, onSa
                             </div>
                         </div>
                         <div className="mt-3 grid grid-cols-2 gap-2">
-                            <label className="font-mono text-[8px] text-slate-500">X · RIGHT+ (−570 to +570)<DeferredNumberInput min={PUBLIC_BOT_CENTER_MIN_X} max={PUBLIC_BOT_CENTER_MAX_X} step="0.1" value={selectedBot?.startX ?? 0} onCommit={(value) => updateBot("startX", value)} aria-label={`${arenaBotDisplayName(selectedBot)} starting X coordinate, centered with positive values to the right`} className={inputClass} /></label>
-                            <label className="font-mono text-[8px] text-slate-500">Y · UP+ (−570 to +570)<DeferredNumberInput min={PUBLIC_BOT_CENTER_MIN_Y} max={PUBLIC_BOT_CENTER_MAX_Y} step="0.1" value={selectedBot?.startY ?? 0} onCommit={(value) => updateBot("startY", value)} aria-label={`${arenaBotDisplayName(selectedBot)} starting Y coordinate, centered with positive values upward`} className={inputClass} /></label>
+                            <label className="font-mono text-[8px] text-slate-500">X<DeferredNumberInput min={PUBLIC_BOT_CENTER_MIN_X} max={PUBLIC_BOT_CENTER_MAX_X} step="0.1" value={selectedBot?.startX ?? 0} onCommit={(value) => updateBot("startX", value)} aria-label={`${arenaBotDisplayName(selectedBot)} starting X coordinate`} className={inputClass} /></label>
+                            <label className="font-mono text-[8px] text-slate-500">Y<DeferredNumberInput min={PUBLIC_BOT_CENTER_MIN_Y} max={PUBLIC_BOT_CENTER_MAX_Y} step="0.1" value={selectedBot?.startY ?? 0} onCommit={(value) => updateBot("startY", value)} aria-label={`${arenaBotDisplayName(selectedBot)} starting Y coordinate`} className={inputClass} /></label>
                             <label className="font-mono text-[8px] text-slate-500">ROTATION<DeferredNumberInput min="-360" max="360" step="0.1" value={selectedBot?.rotation ?? 0} onCommit={(value) => updateBot("rotation", value)} aria-label={`${arenaBotDisplayName(selectedBot)} starting rotation`} className={inputClass} /></label>
                             <label className="font-mono text-[8px] text-slate-500">HP<DeferredNumberInput min="1" max={BASE_BOT_HP} step="1" value={selectedBot?.startHp ?? BASE_BOT_HP} onCommit={(value) => updateBot("startHp", value)} aria-label={`${arenaBotDisplayName(selectedBot)} starting HP`} className={inputClass} /></label>
                         </div>

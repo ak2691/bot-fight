@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDialogFocus } from "../../components/useDialogFocus.js";
 import {
@@ -30,6 +30,7 @@ import {
     sanitizeConfigurationConditions,
 } from "../../gameArena/coding/nodes/GraphNodes.jsx";
 import { normalizePuzzleCustomVariables } from "./puzzleLogicNormalization.js";
+import { upgradeStoredStrategyCoordinates } from "../../gameArena/persistence/arenaStrategyStorage.js";
 
 const INITIAL_ZOOM = 0.85;
 const INITIAL_PAN = { x: 40, y: 36 };
@@ -223,7 +224,10 @@ export default function PuzzleLogicWorkspace({
     const [zoom, setZoom] = useState(INITIAL_ZOOM);
     const [pan, setPan] = useState(INITIAL_PAN);
     const [history, setHistory] = useState({ undo: [], redo: [] });
-    const currentConfiguration = configuration ?? createDefaultPuzzleLogic();
+    const currentConfiguration = useMemo(() => {
+        const source = configuration ?? createDefaultPuzzleLogic();
+        return readOnly ? source : upgradeStoredStrategyCoordinates(source);
+    }, [configuration, readOnly]);
     const defaultVariable = stateVariables.find((variable) => variable.id === "selectable.distance")
         ?? stateVariables[0]
         ?? VISIBLE_STATE_VARIABLES.find((variable) => variable.id === "selectable.distance")

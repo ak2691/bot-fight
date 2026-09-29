@@ -4,6 +4,7 @@ import {
     BOT_CODE_ACTIONS,
     BOT_CODE_SELECTABLES,
     CUSTOM_VARIABLE_OPERATIONS,
+    STATE_VARIABLES,
     selectAbilityStrategyActionPlan,
 } from "../BotCode.js";
 import { buildDeterministicLogicAction } from "../../planner/ArenaActionPlanner.js";
@@ -11,6 +12,14 @@ import { coordinateLimitsFor } from "../configuration/constants.js";
 
 const V1 = "bot-logic-tree-v1";
 const V2 = "bot-logic-tree-v2";
+
+test("position variables expose the full signed public coordinate range", () => {
+    for (const id of ["selectable.x", "selectable.y"]) {
+        const variable = STATE_VARIABLES.find((candidate) => candidate.id === id);
+        assert.equal(variable.min, -600);
+        assert.equal(variable.max, 600);
+    }
+});
 
 function battlePayload(player = { x: 600, y: 600, rotation: 0 }) {
     return {

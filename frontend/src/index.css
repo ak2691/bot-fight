@@ -2423,10 +2423,10 @@ button {
 .code-config-token--enemy { border-color: #fb7185; background: #9f1239; color: #fff1f2; }
 .code-config-token--unavailable { border-color: #f59e0b; background: rgba(120, 53, 15, .92); color: #fef3c7; }
 .code-config-token--coordinate { border-color: #94a3b8; background: #334155; }
-.code-config-token--order { border-color: #a78bfa; background: #312e81; color: #ede9fe; }
+.code-config-token--order { gap: 0; border-color: #a78bfa; background: #312e81; color: #ede9fe; letter-spacing: 0; }
 .code-config-token--angle { border-color: #fbbf24; background: #78350f; color: #fef3c7; }
 .code-config-token--angle.is-absolute { border-color: #c4b5fd; background: #4c1d95; color: #f5f3ff; }
-.code-config-token-order { color: rgba(255, 255, 255, .72); font-size: 7px; }
+.code-config-token-order { display: inline-flex; gap: 0; color: rgba(255, 255, 255, .72); font-size: 7px; letter-spacing: 0; }
 .code-config-relation,
 .code-config-caption { color: #94a3b8; font: 700 8px/1 "Cousine", monospace; }
 .code-config-ability {

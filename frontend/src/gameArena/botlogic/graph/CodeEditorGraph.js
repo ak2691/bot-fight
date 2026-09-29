@@ -87,8 +87,8 @@ export function sanitizeCodeEditorGraph(graph) {
             target: canonicalBotSelectableId(node.target ?? BOT_CODE_SELECTABLES.OPPONENT),
             targetOffsetX: Number(node.targetOffsetX ?? 0),
             targetOffsetY: Number(node.targetOffsetY ?? 0),
-            targetX: Number(node.targetX ?? 500),
-            targetY: Number(node.targetY ?? 400),
+            targetX: Number(node.targetX ?? 0),
+            targetY: Number(node.targetY ?? 0),
         }))
         : [];
     const nodeIds = new Set([...variables, ...targets].map((node) => node.id));
