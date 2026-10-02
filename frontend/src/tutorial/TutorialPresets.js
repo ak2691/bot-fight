@@ -349,10 +349,12 @@ function vulnerabilityOneSolution() {
             ], [move(90)], 2),
             branch("lesson-10-safe-approach", [
                 selectedAbilityState("bot.selectedAbilityReady", true, TUTORIAL_ACTIONS.DASH, BOT_CODE_SELECTABLES.MY),
-                { ...coolingDown(TUTORIAL_ACTIONS.RAIL_SHOT), join: "or" },
-                coolingDown(TUTORIAL_ACTIONS.HEAVY_SLASH),
             ], [move(30)], 3),
-            branch("lesson-10-orbit-until-safe", [always()], [move(90)], 4),
+            branch("lesson-10-safe-approach-rail-cooldown", [
+                coolingDown(TUTORIAL_ACTIONS.RAIL_SHOT),
+                coolingDown(TUTORIAL_ACTIONS.HEAVY_SLASH),
+            ], [move(30)], 4),
+            branch("lesson-10-orbit-until-safe", [always()], [move(90)], 5),
         ]),
         root(3, [branch("lesson-10-face", [always()], [face()])]),
         root(4, [branch("lesson-10-slash", [
@@ -379,10 +381,12 @@ function vulnerabilityTwoSolution() {
             branch("lesson-11-close-when-safe", [
                 selectedAbilityState("bot.selectedAbilityReady", true, TUTORIAL_ACTIONS.DASH, BOT_CODE_SELECTABLES.MY),
                 comparePair("selectable.distance", "gt", 80),
-                { ...selectedAbilityTime("bot.selectedAbilityCooldownMs", "gt", 0.8, TUTORIAL_ACTIONS.STUN), join: "or" },
+            ], [move(0)], 3),
+            branch("lesson-11-close-when-stun-cooling", [
+                selectedAbilityTime("bot.selectedAbilityCooldownMs", "gt", 0.8, TUTORIAL_ACTIONS.STUN),
                 coolingDown(TUTORIAL_ACTIONS.HEAVY_SLASH),
                 comparePair("selectable.distance", "gt", 80),
-            ], [move(0)], 3),
+            ], [move(0)], 4),
         ]),
         root(2, [branch("lesson-11-retreat-inside-range", [comparePair("selectable.distance", "lte", 120)], [move(180)])]),
         root(3, [branch("lesson-11-face", [always()], [face()])]),

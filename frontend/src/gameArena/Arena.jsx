@@ -6,7 +6,7 @@ import PixiCanvas from "./pixi/PixiCanvas.jsx";
 import CodingPanel from "./coding/CodingPanel.jsx";
 import { SELECTABLE_BOT_ABILITIES, encodeSandboxLoadout, normalizedSandboxLoadout } from "./loadout/BotLoadout.js";
 import { loadoutDraftForEntry, loadoutDraftsForRoster } from "./loadout/sandboxLoadout.js";
-import ArenaConfigModal from "./components/modals/ArenaConfigModal.jsx";
+import ArenaSetup from "./components/ArenaSetup.jsx";
 import SandboxLoadoutModal from "./components/modals/SandboxLoadoutModal.jsx";
 import {
     createDefaultAbilityStrategyConfiguration,
@@ -138,6 +138,7 @@ export default function Arena({
     builderControls = null,
     puzzleControls = null,
     onOpenPuzzleSubmissions = null,
+    puzzleLastResult = null,
     onPuzzleOutcome = null,
     onPuzzleAttempt = null,
     logicLimits = null,
@@ -1197,7 +1198,7 @@ export default function Arena({
                                 <div className="arena-stage-info">
                                     {arenaInfo}
                                     {tutorialMode && (
-                                        <div className="arena-stage-info__tutorial">
+                                        <div className="tg-arena-host">
                                             <TutorialGuide
                                                 lessonId={tutorialLessonId}
                                                 variant="arena"
@@ -1281,6 +1282,7 @@ export default function Arena({
                         onOpenPracticeConfig={!isMatchTesting && !tutorialMode && !isPuzzleMode && isPracticeRoom ? () => setIsPracticeConfigOpen(true) : null}
                         onOpenPuzzleConfig={!isMatchTesting && !tutorialMode && isPuzzleMode ? () => setIsPuzzleConfigOpen(true) : null}
                         onOpenPuzzleSubmissions={isPuzzleMode ? onOpenPuzzleSubmissions : null}
+                        puzzleLastResult={isPuzzleMode ? puzzleLastResult : null}
                         builderControls={builderControls}
                         puzzleControls={puzzleControls}
                         onPuzzleSubmit={isPuzzleMode && onPuzzleAttempt ? submitPuzzleAttempt : null}
@@ -1311,27 +1313,24 @@ export default function Arena({
                 />
             )}
             {isPracticeConfigOpen && (
-                <ArenaConfigModal
+                <ArenaSetup
                     draft={practiceConfig}
                     onClose={() => setIsPracticeConfigOpen(false)}
-                    onSave={savePracticeConfig}
-                    eyebrow="PRACTICE CONFIG"
-                    title="Practice arena setup"
+                    onApply={savePracticeConfig}
+                    title="Arena setup"
+                    subtitle="Practice room"
                     titleId="practice-config-title"
-                    saveLabel="SAVE PRACTICE CONFIG"
                 />
             )}
             {isPuzzleConfigOpen && (
-                <ArenaConfigModal
+                <ArenaSetup
                     draft={puzzleConfig}
                     defaults={puzzleDefaultConfig}
                     onClose={() => setIsPuzzleConfigOpen(false)}
-                    onSave={savePuzzleConfig}
-                    eyebrow="PUZZLE CONFIG"
-                    title="Puzzle test setup"
+                    onApply={savePuzzleConfig}
+                    title="Arena setup"
+                    subtitle="Puzzle test"
                     titleId="puzzle-config-title"
-                    saveLabel="SAVE PUZZLE CONFIG"
-                    restoreLabel="RESTORE PUZZLE DEFAULTS"
                     showTeamSizeControls={false}
                 />
             )}

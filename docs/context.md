@@ -37,6 +37,15 @@ For a code review or audit, pair the checklist with the affected runtime map:
 - cross-boundary/API/logic: both runtime contexts plus root
   [`../context.md`](../context.md)'s end-to-end trace.
 
+## Design proposals (not implemented)
+
+- [`TIMED_ROUNDS_MATCH_FORMAT.md`](TIMED_ROUNDS_MATCH_FORMAT.md): chess-clock
+  match format with per-round ability picks, frozen-state fight segments,
+  HP-check ending, brain-schedule simulation, and shelved live-input ideas.
+- [`TIMED_ROUNDS_IMPLEMENTATION_PLAN.md`](TIMED_ROUNDS_IMPLEMENTATION_PLAN.md):
+  work packages, weapon/ability numbers, placeholder visuals, phase and clock
+  rules, and the Sonnet prompts for implementing that format.
+
 ## Security, privacy, and moderation
 
 - [`CHAT_MODERATION.md`](CHAT_MODERATION.md): server-verified chat evidence,

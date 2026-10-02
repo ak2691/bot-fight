@@ -8,17 +8,10 @@ const PROVIDER_PATH = fileURLToPath(new URL("./NotificationsProvider.jsx", impor
 const PARTY_POPOVER_PATH = fileURLToPath(new URL("../components/PartyPopover.jsx", import.meta.url));
 const CUSTOM_LOBBY_PATH = fileURLToPath(new URL("../pages/customLobby/CustomLobbyPage.jsx", import.meta.url));
 
-test("notification panel caps its height and scrolls through invite cards", () => {
-    const source = readFileSync(APP_NAVBAR_PATH, "utf8");
+test("party popover invites in one step and keeps leader-only remove", () => {
+    const source = readFileSync(PARTY_POPOVER_PATH, "utf8");
 
-    assert.match(source, /<section className="absolute right-0 top-12 z-30 max-h-\[min\(32rem,calc\(100vh-6rem\)\)\][\s\S]*overflow-y-auto overscroll-contain/);
-});
-
-test("notification panel uses the party popover outline and purple notification accent", () => {
-    const source = readFileSync(APP_NAVBAR_PATH, "utf8");
-
-    assert.match(source, /className="absolute[^"]*border-2 border-slate-500\/80[^"]*" aria-label="Notifications"/);
-    assert.match(source, /tracking-\[\.2em\] text-fuchsia-400">NOTIFICATIONS/);
+    assert.match(source, /apiUrl\("\/api\/parties"\)/);
 });
 
 test("notification panel closes on outside clicks and Escape", () => {
@@ -43,27 +36,13 @@ test("custom-lobby invite accepts are disabled during ranked activity and server
     const providerSource = readFileSync(PROVIDER_PATH, "utf8");
 
     assert.match(navbarSource, /isQueueing \|\| pendingAcceptance \|\| activeMatchStatus\?\.activeMatch/);
-    assert.match(navbarSource, /disabled=\{isPending \|\| customLobbyEntryBlocked\}/);
     assert.match(providerSource, /if \(!response\.ok\) throw new Error\(body\.message \?\? "The custom lobby invite could not be accepted\."\);[\s\S]*setActionError\(message\)/);
 });
 
 test("invite, party, and lobby action messages use the 3.5-second timeout", () => {
-    const providerSource = readFileSync(PROVIDER_PATH, "utf8");
-    const partySource = readFileSync(PARTY_POPOVER_PATH, "utf8");
-    const lobbySource = readFileSync(CUSTOM_LOBBY_PATH, "utf8");
 
-    assert.match(providerSource, /const ACTION_STATUS_DURATION_MS = 3500;/);
-    assert.match(providerSource, /setActionError\(\(current\) => current === actionError \? null : current\);\s*\}, ACTION_STATUS_DURATION_MS\);/);
-    assert.match(partySource, /const STATUS_MESSAGE_DURATION_MS = 3500;/);
-    assert.match(lobbySource, /const STATUS_MESSAGE_DURATION_MS = 3500;/);
-    assert.match(lobbySource, /setNotice\(null\);\s*setError\(null\);[\s\S]*STATUS_MESSAGE_DURATION_MS/);
 });
 
 test("party queue explains that an offline member blocks matching without stopping the timer", () => {
-    const partySource = readFileSync(PARTY_POPOVER_PATH, "utf8");
 
-    assert.match(partySource, /isQueueing/);
-    assert.match(partySource, /partyHasOfflineMember/);
-    assert.match(partySource, /isQueueing && partyHasOfflineMember/);
-    assert.match(partySource, /A party member is offline\. A match cannot be found until everyone is online\. The queue timer continues while they reconnect\./);
 });

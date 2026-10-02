@@ -32,13 +32,19 @@ function payload(overrides = {}) {
     };
 }
 
-test("OR separates groups of AND conditions", () => {
+test("conditions are AND-only and legacy OR joins are ignored", () => {
     const condition = (value, join = undefined) => ({ type: "expression", value, ...(join ? { join } : {}) });
     const evaluate = (values) => evaluateConditionNodes(values, null, (entry) => entry.value);
 
-    assert.equal(evaluate([condition(true), condition(true), condition(false, "or"), condition(false)]), true);
-    assert.equal(evaluate([condition(false), condition(true), condition(true, "or"), condition(true)]), true);
-    assert.equal(evaluate([condition(true), condition(false), condition(true, "or"), condition(false)]), false);
+    assert.equal(evaluate([]), true);
+    assert.equal(evaluate([condition(true), condition(true)]), true);
+    assert.equal(evaluate([condition(true), condition(false)]), false);
+    assert.equal(evaluate([condition(false), condition(true, "or")]), false);
+    const normalized = normalizeConditions([
+        { type: "always" },
+        { type: "always", join: "or" },
+    ]);
+    assert.equal(normalized.some((entry) => "join" in entry), false);
 });
 
 const SELECTABLE_IDENTITY_MATRIX = Object.freeze({
@@ -53,8 +59,6 @@ const SELECTABLE_IDENTITY_MATRIX = Object.freeze({
     "selectable.movementDirection": [[]],
     "selectable.speed": [[]],
     "selectable.relativeBearing": [[SELECTABLE_IDENTITIES.FACING], []],
-    "selectable.relativeBearingClockwise": [[SELECTABLE_IDENTITIES.FACING], []],
-    "selectable.relativeBearingCounterclockwise": [[SELECTABLE_IDENTITIES.FACING], []],
     "selectable.facing": [[SELECTABLE_IDENTITIES.FACING]],
     "selectable.count": [[SELECTABLE_IDENTITIES.ABILITY_ENTITY]],
     "selectable.age": [[SELECTABLE_IDENTITIES.ABILITY_ENTITY]],
@@ -142,7 +146,7 @@ test("condition normalization emits canonical server variable ids", () => {
     }])[0];
     const displayName = normalizeConditions([{
         type: "expression",
-        left: "Time Since Start",
+        left: "Match Time",
         comparator: "lt",
         right: { type: "number", value: 5 },
     }])[0];
@@ -242,7 +246,7 @@ test("bearing conditionals use the configured Entity and Target pair", () => {
     assert.deepEqual(selectableIdentitiesForVariable(absoluteBearing, 0), [SELECTABLE_IDENTITIES.FACING]);
     assert.deepEqual(selectableIdentitiesForVariable(absoluteBearing, 1), []);
     assert.deepEqual(
-        VISIBLE_STATE_VARIABLES.filter((variable) => variable.label.startsWith("Absolute Bearing")).map((variable) => variable.id),
+        VISIBLE_STATE_VARIABLES.filter((variable) => variable.label === "Direction To").map((variable) => variable.id),
         ["selectable.absoluteBearing"],
     );
     const normalizedBearing = normalizeAbilityStrategyConfiguration({
@@ -329,7 +333,7 @@ test("bearing conditionals use the configured Entity and Target pair", () => {
 
 test("bot ability conditionals select the configured bot and declare a loadout dependency", () => {
     const ability = STATE_VARIABLES.find((variable) => variable.id === "bot.selectedAbilityActive");
-    assert.equal(ability.label, "Bot Ability Active");
+    assert.equal(ability.label, "Ability Active");
     assert.equal(ability.selectableType, undefined);
     assert.deepEqual(ability.selectableIdentities, [SELECTABLE_IDENTITIES.BOT]);
     assert.equal(ability.selectableDependency, SELECTABLE_DEPENDENCIES.ABILITY_LOADOUT);
@@ -694,7 +698,7 @@ test("facing identity allows oriented ability entities", () => {
 
 test("selectable speed uses a direction-independent per-tick movement magnitude", () => {
     const speed = STATE_VARIABLES.find((variable) => variable.id === "selectable.speed");
-    assert.equal(speed.label, "Entity Speed");
+    assert.equal(speed.label, "Speed");
     assert.deepEqual(speed.selectableIdentities ?? [], []);
 
     const configuration = {
@@ -841,7 +845,7 @@ test("conditional ability choices expose active state and remaining active time"
     assert.equal(active.valueType, "boolean");
     assert.equal(onCooldown.valueType, "boolean");
     assert.equal(activeTime.valueType, "number");
-    assert.equal(activeTime.label, "Bot Ability Active Time");
+    assert.equal(activeTime.label, "Active Time");
     assert.equal(activeTime.unit, "seconds");
     assert.equal(activeTime.suffix, undefined);
     assert.equal(activeTime.min, 0);
@@ -1036,7 +1040,7 @@ test("ability conditionals resolve several selected abilities and numeric prepar
     assert.equal(preparing.movement?.id, "root-1-1-1");
 });
 
-test("condition inspection identifies the ability represented by Bot Ability Active", () => {
+test("condition inspection identifies the ability represented by Ability Active", () => {
     const active = STATE_VARIABLES.find((variable) => variable.id === "bot.selectedAbilityActive");
     const inspection = inspectAbilityStrategyConditions({
         roots: [{ branches: [{ conditions: [{
@@ -1082,8 +1086,6 @@ test("angle condition inputs use bounds matching their runtime ranges", () => {
             "selectable.absoluteBearing": [-360, 360],
             "selectable.movementDirection": [-360, 360],
             "selectable.relativeBearing": [0, 180],
-            "selectable.relativeBearingClockwise": [0, 360],
-            "selectable.relativeBearingCounterclockwise": [0, 360],
             "selectable.facing": [-360, 360],
         },
     );
@@ -1092,14 +1094,14 @@ test("angle condition inputs use bounds matching their runtime ranges", () => {
         roots: [{ branches: [{ conditions: [
             { type: "expression", left: "selectable.facing", comparator: "gt", right: { type: "number", value: 999 } },
             { type: "expression", left: "selectable.relativeBearing", comparator: "gt", right: { type: "number", value: 1000 } },
-            { type: "expression", left: "selectable.relativeBearingClockwise", comparator: "gt", right: { type: "number", value: -100 } },
-            { type: "expression", left: "selectable.relativeBearingCounterclockwise", comparator: "gt", right: { type: "number", value: 1000 } },
+            { type: "expression", left: "selectable.relativeBearing", comparator: "gt", right: { type: "number", value: -100 } },
         ], actions: [] }] }],
     });
     assert.equal(normalized.roots[0].branches[0].conditions[0].right.value, 360);
     assert.equal(normalized.roots[0].branches[0].conditions[1].right.value, 180);
     assert.equal(normalized.roots[0].branches[0].conditions[2].right.value, 0);
-    assert.equal(normalized.roots[0].branches[0].conditions[3].right.value, 360);
+    // The clockwise / counterclockwise bearings were removed; they no longer exist as variables.
+    assert.equal(STATE_VARIABLES.some((variable) => /relativeBearing(?:Counter)?[Cc]lockwise/.test(variable.id)), false);
 });
 
 test("conditional measurement units stay in catalogue metadata except for inline degrees", () => {
@@ -1107,7 +1109,7 @@ test("conditional measurement units stay in catalogue metadata except for inline
     const distance = STATE_VARIABLES.find((variable) => variable.id === "selectable.distance");
     const charges = STATE_VARIABLES.find((variable) => variable.id === "bot.selectedAbilityCharges");
 
-    assert.equal(age.label, "Ability Entity Age");
+    assert.equal(age.label, "Age");
     assert.equal(age.unit, "seconds");
     assert.equal(age.suffix, undefined);
     assert.equal(distance.unit, "arena units");
@@ -1665,4 +1667,68 @@ test("retired custom-variable conditions do not reduce root condition capacity",
     });
     assert.equal(normalized.roots[0].branches.length, 300);
     assert.equal(normalized.customVariables[0].conditions, undefined);
+});
+
+test("a compared-to pair variable keeps its own entity and target configuration", () => {
+    const pairCondition = (extra = {}) => ({
+        type: "expression",
+        left: "selectable.distance",
+        selectable1: "my_bot",
+        selectable2: "opponent_1",
+        targetMode: "target",
+        comparator: "lt",
+        right: { type: "variable", value: "selectable.distance" },
+        ...extra,
+    });
+
+    const independent = normalizeConditions([pairCondition({ rightSelectable1: "my_bot", rightTargetMode: "coordinates", rightTargetX: 100, rightTargetY: 0 })])[0];
+    assert.equal(independent.targetMode, "target");
+    assert.equal(independent.selectable2, "opponent_1");
+    assert.equal(independent.rightTargetMode, "coordinates");
+    assert.equal(independent.rightTargetX, 100);
+
+    // Changing only the left side never moves the right side once it has its own fields.
+    const leftPoint = normalizeConditions([pairCondition({ targetMode: "coordinates", targetX: 5, targetY: 5, rightSelectable1: "my_bot", rightSelectable2: "opponent_1", rightTargetMode: "target" })])[0];
+    assert.equal(leftPoint.targetMode, "coordinates");
+    assert.equal(leftPoint.rightTargetMode, "target");
+
+    // Older brains without right* fields keep their shared configuration.
+    const legacy = normalizeConditions([pairCondition({ targetMode: "coordinates", targetX: 5, targetY: 5 })])[0];
+    assert.equal(legacy.rightTargetMode, "coordinates");
+    assert.equal(legacy.rightTargetX, 5);
+
+    // A non-pair right side carries no right pair fields.
+    const plain = normalizeConditions([pairCondition({ right: { type: "number", value: 50 }, rightTargetMode: "coordinates" })])[0];
+    assert.equal("rightTargetMode" in plain, false);
+
+    const inspection = inspectAbilityStrategyConditions({
+        roots: [{ branches: [{ conditions: [independent], actions: [] }] }],
+    }, payload())[0];
+    assert.notEqual(inspection.value, inspection.comparedTo);
+});
+
+test("condition variable labels are short and ids are unchanged", () => {
+    const labels = Object.fromEntries(STATE_VARIABLES.map((variable) => [variable.id, variable.label]));
+    assert.deepEqual({
+        "match.elapsedSeconds": labels["match.elapsedSeconds"],
+        "selectable.hp": labels["selectable.hp"],
+        "selectable.distance": labels["selectable.distance"],
+        "selectable.absoluteBearing": labels["selectable.absoluteBearing"],
+        "selectable.relativeBearing": labels["selectable.relativeBearing"],
+        "selectable.dangerZoneEdgeDistance": labels["selectable.dangerZoneEdgeDistance"],
+        "bot.selectedAbilityCooldownMs": labels["bot.selectedAbilityCooldownMs"],
+        "bot.selectedAbilityPreparationMs": labels["bot.selectedAbilityPreparationMs"],
+        "bot.selectedStatusEffectDurationMs": labels["bot.selectedStatusEffectDurationMs"],
+    }, {
+        "match.elapsedSeconds": "Match Time",
+        "selectable.hp": "HP",
+        "selectable.distance": "Distance",
+        "selectable.absoluteBearing": "Direction To",
+        "selectable.relativeBearing": "Angle To",
+        "selectable.dangerZoneEdgeDistance": "Zone Distance",
+        "bot.selectedAbilityCooldownMs": "Cooldown Left",
+        "bot.selectedAbilityPreparationMs": "Prep Time",
+        "bot.selectedStatusEffectDurationMs": "Status Time",
+    });
+    assert.equal(new Set(STATE_VARIABLES.map((variable) => variable.label)).size, STATE_VARIABLES.length);
 });

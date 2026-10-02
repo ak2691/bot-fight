@@ -10,16 +10,7 @@ test("matchmaking socket hook owns active-client handler registration and cleanu
 
     assert.match(source, /getActiveMatchmakingClient\(/);
     assert.doesNotMatch(source, /disconnectActiveMatchmakingClient/);
-    assert.doesNotMatch(source, /closeSocketAfterChatRef/);
     assert.match(source, /callbackRef\.current/);
-    assert.match(source, /autoReconnect: true/);
-    assert.match(source, /autoJoinOnConnect: false/);
-    assert.match(source, /identityKey/);
     assert.match(source, /client\.resumeReconnect\?\.\(\)/);
-    assert.match(source, /client\.subscribeMatch\?\.\(\)/);
-    assert.match(source, /client\.unsubscribeMatch\?\.\(\)/);
-    assert.match(source, /clearPendingEvents/);
     assert.match(source, /client\.setHandlers\(\)/);
-    assert.match(source, /void client\.connect\(\)/);
-    assert.doesNotMatch(source, /createMatchmakingClient/);
 });

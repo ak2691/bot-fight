@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Ability authoring and browser/server parity MCP for Machiner.",
+  "description": "Ability authoring and browser/server parity MCP for Botfight.",
   "scripts": {
     "start": "node src/server.js",
     "check": "node --check src/server.js && node --check src/parity.js && node --check src/spec.js && node --check src/generators.js && node --check src/guide.js && node --check src/runtime.js && node --check src/browser-snapshot.js && node --test test/*.test.js"

@@ -92,3 +92,8 @@ export function phaseDisplayRows(abilityId) {
     return (ABILITY_CATALOGUE_PHASES[abilityId] ?? []).flatMap(({ section: sectionName, rows }) =>
         rows.map((entry) => ({ ...entry, section: sectionName })));
 }
+
+/** Authored phases as { section, rows }, in play order. */
+export function phaseSections(abilityId) {
+    return ABILITY_CATALOGUE_PHASES[abilityId] ?? [];
+}

@@ -11,6 +11,14 @@ import { useMatchLifecycle } from "./hooks/useMatchLifecycle.js";
 
 const MATCH_SURFACE_CLASS = "min-h-screen bg-arena-deep text-ink-hi font-ui";
 
+function matchModeContextLabel(mode) {
+    const normalized = String(mode ?? "").toUpperCase();
+    if (normalized === "ONES") return "Ranked 1v1";
+    if (normalized === "TWOS") return "Ranked 2v2";
+    if (normalized === "CUSTOM") return "Custom match";
+    return null;
+}
+
 export default function GamePage() {
     const navigate = useNavigate();
     const { queueGuarantees } = useMatchmaking();
@@ -55,6 +63,13 @@ export default function GamePage() {
         preloadShapes,
     } = lifecycle;
     const returnToLobby = () => navigate("/custom-lobby");
+    const matchModeLabel = matchModeContextLabel(matchEvent?.mode ?? matchContext?.mode);
+    const opponentNames = (matchContext?.players ?? [])
+        .filter((participant) => participant && Number(participant.teamNumber) > 0 && Number(participant.teamNumber) !== Number(matchContext?.player?.teamNumber))
+        .map((participant) => participant.username)
+        .filter(Boolean);
+    const opponentName = opponentNames.length === 1 ? opponentNames[0] : matchContext?.opponent?.username ?? null;
+    const headerContext = [matchModeLabel, opponentName && opponentNames.length <= 1 ? `vs ${opponentName}` : null].filter(Boolean).join(" · ") || null;
 
     const matchViewProps = {
         matchContext,
@@ -93,6 +108,7 @@ export default function GamePage() {
                     onExit={exitToHome}
                     disconnectNotice={disconnectNotice}
                     disconnectRemaining={disconnectRemaining}
+                    context={headerContext}
                 />
                 <MatchAcceptanceModal
                     remaining={remaining}
@@ -101,6 +117,7 @@ export default function GamePage() {
                     visibleStartMs={matchAcceptanceStartDeadlineMs}
                     acceptanceState={matchAcceptanceState}
                     otherPlayerAccepted={matchEvent?.otherPlayerAccepted === true}
+                    mode={matchEvent?.mode ?? null}
                     connectionStatus={socketStatus}
                     error={matchAcceptanceError}
                     onAccept={acceptMatch}
@@ -118,6 +135,7 @@ export default function GamePage() {
                     onExit={exitToHome}
                     disconnectNotice={disconnectNotice}
                     disconnectRemaining={disconnectRemaining}
+                    context={headerContext}
                 />
                 <SimulationReplay
                     key={replayArena.key}
@@ -126,6 +144,9 @@ export default function GamePage() {
                     isCustomMatch={matchEvent?.mode === "CUSTOM"}
                     isFinalMatchResult={matchEvent?.type === "MATCH_RESULT_READY"}
                     onReturnToLobby={returnToLobby}
+                    mode={matchEvent?.mode ?? null}
+                    onHome={exitToHome}
+                    onQueueAgain={() => navigate("/home", { state: { queueMode: matchEvent?.mode ?? null } })}
                 />
                 <MatchView {...matchViewProps} chatOnly />
             </main>
@@ -140,6 +161,7 @@ export default function GamePage() {
                     onExit={exitToHome}
                     disconnectNotice={disconnectNotice}
                     disconnectRemaining={disconnectRemaining}
+                    context={headerContext}
                 />
                 <AbilitySelectionPanel
                     loadout={loadoutChoice}

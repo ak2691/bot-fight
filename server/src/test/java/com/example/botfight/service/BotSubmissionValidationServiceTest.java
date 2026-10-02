@@ -385,6 +385,75 @@ class BotSubmissionValidationServiceTest {
     }
 
     @Test
+    void rejectsOrConditionJoins() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {
+                  "version":"bot-logic-tree-v1",
+                  "roots":[{"branches":[
+                    {
+                      "id":"node-1",
+                      "priority":1,
+                      "action":"move_walk","movementMode":"target","movementDirection":0,
+                      "conditions":[
+                        {"type":"expression","left":"selectable.hp","leftSelectable":"my_bot","comparator":"lt","right":{"type":"number","value":30}},
+                        {"type":"expression","join":"or","left":"selectable.x","leftSelectable":"my_bot","comparator":"gte","right":{"type":"number","value":300}}
+                      ]
+                    }
+                  ]}]
+                }
+                """));
+
+        var rejected = service.validate(payload);
+
+        assertThat(rejected.isAccepted()).isFalse();
+        assertThat(rejected.getErrors()).anyMatch((error) -> error.endsWith(".join is not supported; all conditions must be true (AND)"));
+    }
+
+    @Test
+    void validatesComparedToPairVariableConfiguration() throws Exception {
+        String template = """
+                {
+                  "version":"bot-logic-tree-v1",
+                  "roots":[{"branches":[
+                    {
+                      "id":"node-1",
+                      "priority":1,
+                      "action":"move_walk","movementMode":"target","movementDirection":0,
+                      "conditions":[
+                        {
+                          "type":"expression",
+                          "left":"selectable.distance",
+                          "selectable1":"my_bot","selectable2":"opponent","targetMode":"target",
+                          "comparator":"lt",
+                          "right":{"type":"variable","value":"selectable.distance"},
+                          %s
+                        }
+                      ]
+                    }
+                  ]}]
+                }
+                """;
+        BotSubmissionPayloadDTO accepted = validPayload();
+        accepted.setBrain(jsonMapper.readTree(template.formatted(
+                "\"rightSelectable1\":\"my_bot\",\"rightTargetMode\":\"coordinates\",\"rightTargetX\":100,\"rightTargetY\":100")));
+        assertThat(service.validate(accepted).isAccepted()).isTrue();
+
+        BotSubmissionPayloadDTO badMode = validPayload();
+        badMode.setBrain(jsonMapper.readTree(template.formatted("\"rightTargetMode\":\"sideways\"")));
+        var rejected = service.validate(badMode);
+        assertThat(rejected.isAccepted()).isFalse();
+        assertThat(rejected.getErrors()).anyMatch((error) -> error.contains(".rightPair.targetMode"));
+
+        BotSubmissionPayloadDTO notPair = validPayload();
+        notPair.setBrain(jsonMapper.readTree(template.formatted("\"rightTargetMode\":\"target\"")
+                .replace("\"right\":{\"type\":\"variable\",\"value\":\"selectable.distance\"}", "\"right\":{\"type\":\"number\",\"value\":50}")));
+        var rejectedNotPair = service.validate(notPair);
+        assertThat(rejectedNotPair.isAccepted()).isFalse();
+        assertThat(rejectedNotPair.getErrors()).anyMatch((error) -> error.endsWith(".rightTargetMode is not supported for this variable"));
+    }
+
+    @Test
     void acceptsExpressionConditionsWithVariableComparisons() throws Exception {
         BotSubmissionPayloadDTO payload = validPayload();
         payload.setBrain(jsonMapper.readTree("""
@@ -410,7 +479,6 @@ class BotSubmissionValidationServiceTest {
                         },
                         {
                           "type":"expression",
-                          "join":"or",
                           "left":"bot.selectedAbilityReady","leftSelectable":"my_bot",
                           "ability":20,
                           "comparator":"eq",
@@ -902,16 +970,33 @@ class BotSubmissionValidationServiceTest {
                 {"version":"bot-logic-tree-v1","roots":[{"branches":[{"branchType":"if",
                   "conditions":[
                     {"type":"expression","left":"selectable.relativeBearing","comparator":"lt","right":{"type":"number","value":-100}},
-                    {"type":"expression","left":"selectable.relativeBearingClockwise","comparator":"lt","right":{"type":"number","value":1000}},
-                    {"type":"expression","left":"selectable.relativeBearingCounterclockwise","comparator":"lt","right":{"type":"number","value":1000000}}
+                    {"type":"expression","left":"selectable.relativeBearing","comparator":"lt","right":{"type":"number","value":1000}}
                   ],
                   "actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"children":[]}]}]}
                 """));
 
         assertThat(service.validate(payload).getErrors())
                 .anyMatch(error -> error.contains("conditions[0].right.value cannot be negative"))
-                .noneMatch(error -> error.contains("conditions[1].right.value"))
-                .noneMatch(error -> error.contains("conditions[2].right.value"));
+                .noneMatch(error -> error.contains("conditions[1].right.value"));
+    }
+
+    @Test
+    void rejectsRemovedClockwiseAndCounterclockwiseBearings() throws Exception {
+        for (String variable : new String[] {"selectable.relativeBearingClockwise", "selectable.relativeBearingCounterclockwise"}) {
+            BotSubmissionPayloadDTO payload = validPayload();
+            payload.setBrain(jsonMapper.readTree("""
+                    {"version":"bot-logic-tree-v1","roots":[{"branches":[{"branchType":"if",
+                      "conditions":[
+                        {"type":"expression","left":"%s","comparator":"lt","right":{"type":"number","value":90}}
+                      ],
+                      "actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"children":[]}]}]}
+                    """.formatted(variable)));
+
+            var result = service.validate(payload);
+
+            assertThat(result.isAccepted()).isFalse();
+            assertThat(result.getErrors()).anyMatch(error -> error.endsWith(".left is not an allowed variable"));
+        }
     }
 
     @Test

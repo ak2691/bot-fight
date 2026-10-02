@@ -4,6 +4,8 @@ import { apiUrl } from "../config/api";
 import { useMatchmaking } from "../matchmaking/matchmaking-context";
 import { ensureCsrfHeaders } from "../security/csrf";
 import ProfileLink from "./ProfileLink.jsx";
+import PlayerAvatar from "./PlayerAvatar.jsx";
+import { Icon } from "./SocialBits.jsx";
 
 const FALLBACK_PARTY_CAPACITY = 2;
 const MAX_RENDERED_PARTY_SLOTS = 20;
@@ -70,42 +72,44 @@ export default function PartyPopover({ onOpen = null }) {
         }
     };
 
-    const createParty = async () => {
-        if (party || partyAction) return;
-        setPartyAction("create");
-        setPartyError(null);
-        setPartyMessage(null);
-        try {
-            const response = await fetch(apiUrl("/api/parties"), {
-                method: "POST",
-                credentials: "include",
-                headers: await ensureCsrfHeaders("POST"),
-            });
-            await readPartyResponse(response, "The party could not be created.");
-        } catch (error) {
-            setPartyError(error.message ?? "The party could not be created.");
-        } finally {
-            setPartyAction(null);
-        }
+    const sendPartyInvite = async (partyId, username) => {
+        const response = await fetch(apiUrl(`/api/parties/${encodeURIComponent(partyId)}/invites`), {
+            method: "POST",
+            credentials: "include",
+            headers: {
+                "Content-Type": "application/json",
+                ...(await ensureCsrfHeaders("POST")),
+            },
+            body: JSON.stringify({ username }),
+        });
+        return readPartyResponse(response, "The party invite could not be sent.");
     };
 
+    // With no party yet, Invite creates the party first and then invites in one step.
     const inviteToParty = async (event) => {
         event.preventDefault();
-        if (!party?.partyId || !partyUsername.trim() || partyAction) return;
+        const username = partyUsername.trim();
+        if (!username || partyAction) return;
+        if (party && !party.partyId) return;
         setPartyAction("invite");
         setPartyError(null);
         setPartyMessage(null);
+        let partyId = party?.partyId ?? null;
         try {
-            const response = await fetch(apiUrl(`/api/parties/${encodeURIComponent(party.partyId)}/invites`), {
-                method: "POST",
-                credentials: "include",
-                headers: {
-                    "Content-Type": "application/json",
-                    ...(await ensureCsrfHeaders("POST")),
-                },
-                body: JSON.stringify({ username: partyUsername.trim() }),
-            });
-            const body = await readPartyResponse(response, "The party invite could not be sent.");
+            if (!partyId) {
+                const response = await fetch(apiUrl("/api/parties"), {
+                    method: "POST",
+                    credentials: "include",
+                    headers: await ensureCsrfHeaders("POST"),
+                });
+                const created = await readPartyResponse(response, "The party could not be created.");
+                partyId = created?.partyId ?? null;
+                if (!partyId) {
+                    setPartyError(INVITE_FAILURE_MESSAGE);
+                    return;
+                }
+            }
+            const body = await sendPartyInvite(partyId, username);
             setPartyUsername("");
             setPartyMessage(`Invite sent to ${body?.inviteeUsername ?? "your teammate"}.`);
         } catch (error) {
@@ -168,6 +172,9 @@ export default function PartyPopover({ onOpen = null }) {
     const isFull = members.length >= capacity;
     const partyHasOfflineMember = Boolean(party && members.some((member) => member.online === false));
     const partySizeLabel = party ? `${members.length}/${capacity}` : "No party";
+    const canInvite = !party || (isLeader && !isFull);
+    const ownName = user?.username ?? "You";
+    const orderedMembers = [...members].sort((a, b) => Number(a.slot) - Number(b.slot));
 
     return (
         <div ref={popoverRef} className="relative">
@@ -193,54 +200,69 @@ export default function PartyPopover({ onOpen = null }) {
                     id="party-popover"
                     role="dialog"
                     aria-label="Party"
-                    className="absolute right-0 top-[calc(100%+0.5rem)] z-30 max-h-[min(32rem,calc(100vh-6rem))] w-[min(20rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-xl border-2 border-slate-500/80 bg-[#091521f5] p-3 shadow-[0_18px_60px_rgba(0,0,0,.45)] game-popover"
+                    className="absolute right-0 top-[calc(100%+0.5rem)] z-30 max-h-[min(32rem,calc(100vh-6rem))] w-[min(20rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-xl border border-[#262c33] bg-[#0f1418] shadow-[0_18px_60px_rgba(0,0,0,.45)] game-popover"
                 >
-                    <div className="flex items-center justify-between gap-3 px-1 pb-2">
-                        <div>
-                            <h2 className="font-mono text-[10px] font-bold tracking-[.2em] text-cyan-400">PARTY</h2>
-                            {!party && <p className="mt-1 text-xs text-slate-500">Queue with a teammate</p>}
-                        </div>
-                        <span className="font-mono text-[10px] font-bold tracking-widest text-slate-500">{partySizeLabel}</span>
+                    <div className="flex items-center justify-between gap-3 border-b border-[#262c33] px-3.5 py-3">
+                        <h2 className="flex items-center gap-2 font-display text-[15px] font-bold text-[#e6edf3]">
+                            <Icon name="users" className="h-4 w-4 text-cyan-300" />
+                            Party
+                        </h2>
+                        {party && isFull
+                            ? <span className="text-[11px] font-semibold text-emerald-400">{members.length}/{capacity} · Ready for 2v2</span>
+                            : <span className="text-[11px] text-[#8b98a5]">{party ? `${members.length}/${capacity} · Invite a teammate` : "Queue 2v2 together"}</span>}
                     </div>
 
-                    {party ? (
-                        <>
-                            <div className="space-y-2" aria-label="Party slots">
-                                {Array.from({ length: capacity }, (_, index) => {
-                                    const member = members.find((candidate) => Number(candidate.slot) === index + 1);
-                                    const canKick = isLeader && member && String(member.userId) !== String(user?.id);
-                                    const memberOnline = member?.online !== false;
-                                    return (
-                                        <div key={index + 1} className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/35 px-2.5">
-                                            {member ? (
-                                                <div className="flex min-w-0 flex-1 items-center gap-2">
-                                                    <span
-                                                        className={`h-2 w-2 shrink-0 rounded-full ${memberOnline ? "bg-emerald-400" : "bg-slate-500"}`}
-                                                        title={memberOnline ? "Online" : "Offline"}
-                                                        aria-label={memberOnline ? "Online" : "Offline"}
-                                                    />
-                                                    <ProfileLink username={member.username} className="min-w-0 truncate text-xs font-bold text-white">{member.username}</ProfileLink>
-                                                    {member.leader && <span className="shrink-0 font-mono text-[8px] font-bold tracking-widest text-cyan-300">LEADER</span>}
+                    {partyLoading && !party ? (
+                        <p className="px-3.5 py-4 text-xs text-[#8b98a5]">Connecting to party...</p>
+                    ) : (
+                        <div className="px-3.5 py-3">
+                            {party ? (
+                                <ul className="space-y-1.5" aria-label="Party slots">
+                                    {orderedMembers.map((member) => {
+                                        const isSelf = String(member.userId) === String(user?.id);
+                                        const canKick = isLeader && !isSelf;
+                                        const memberOnline = member.online !== false;
+                                        return (
+                                            <li key={member.userId} className="flex min-h-11 items-center gap-2.5 rounded-lg border border-[#262c33] bg-[#12181d] px-2.5">
+                                                <PlayerAvatar name={member.username} size={32} />
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <ProfileLink username={member.username} className="min-w-0 truncate text-[13px] font-semibold text-[#e6edf3]">{member.username}</ProfileLink>
+                                                        {member.leader && <span className="shrink-0 text-[10px] font-bold text-amber-300">LEADER</span>}
+                                                    </div>
+                                                    <p className="flex items-center gap-1.5 text-[11px] text-[#8b98a5]">
+                                                        <span
+                                                            className={`h-1.5 w-1.5 shrink-0 rounded-full ${memberOnline ? "bg-emerald-400" : "bg-slate-500"}`}
+                                                            aria-label={memberOnline ? "Online" : "Offline"}
+                                                        />
+                                                        {memberOnline ? "Online" : "Offline"}{isSelf ? " · you" : ""}
+                                                    </p>
                                                 </div>
-                                            ) : (
-                                                <span className="flex-1 text-xs text-slate-600">EMPTY</span>
-                                            )}
-                                            {canKick && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => void kickPartyMember(member)}
-                                                    disabled={partyAction !== null}
-                                                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[0_2px_0_3px] border border-[#c44747] bg-[#a93636] p-0 font-mono text-base font-bold leading-none text-white hover:border-[#e89090] hover:bg-[#c44747] disabled:cursor-not-allowed disabled:opacity-40"
-                                                    aria-label={`Kick ${member.username}`}
-                                                    title={`Kick ${member.username}`}
-                                                >
-                                                    ×
-                                                </button>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                                                {canKick && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => void kickPartyMember(member)}
+                                                        disabled={partyAction !== null}
+                                                        className="min-h-8 shrink-0 rounded-md border border-[#262c33] px-2.5 text-[11px] font-semibold text-[#c9d3dc] hover:border-rose-400/60 hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-40"
+                                                        aria-label={`Kick ${member.username}`}
+                                                        title={`Kick ${member.username}`}
+                                                    >
+                                                        Remove
+                                                    </button>
+                                                )}
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            ) : (
+                                <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2" aria-hidden="true">
+                                        <PlayerAvatar name={ownName} size={36} />
+                                        <span className="grid h-9 w-9 place-items-center rounded-full border border-dashed border-[#3a444d] text-[#8b98a5]"><Icon name="plus" /></span>
+                                    </div>
+                                    <p className="text-xs leading-4 text-[#8b98a5]">Invite a teammate to play 2v2s together.</p>
+                                </div>
+                            )}
 
                             {isQueueing && partyHasOfflineMember && (
                                 <p
@@ -251,57 +273,45 @@ export default function PartyPopover({ onOpen = null }) {
                                 </p>
                             )}
 
-                            {isLeader && !isFull && (
+                            {canInvite && (
                                 <form className="mt-3 flex gap-2" onSubmit={inviteToParty}>
                                     <label className="sr-only" htmlFor="navbar-party-username">Teammate username</label>
                                     <input
                                         id="navbar-party-username"
                                         value={partyUsername}
                                         onChange={(event) => setPartyUsername(event.target.value)}
-                                        placeholder="Invite username"
+                                        placeholder="Username or friend"
                                         maxLength={20}
-                                        className="min-h-9 min-w-0 flex-1 rounded border border-slate-700 bg-slate-950/60 px-2.5 text-xs text-white outline-none placeholder:text-slate-600 focus:border-cyan-400"
+                                        autoComplete="off"
+                                        className="min-h-9 min-w-0 flex-1 rounded-md border border-[#262c33] bg-[#0b0f12] px-2.5 text-xs text-[#e6edf3] outline-none placeholder:text-[#5d6975] focus:border-cyan-400"
                                     />
                                     <button
                                         type="submit"
                                         disabled={!partyUsername.trim() || partyAction !== null}
-                                        className="min-h-9 rounded border border-slate-600 px-2.5 font-mono text-[9px] font-bold tracking-widest text-slate-200 hover:border-cyan-400 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="min-h-9 rounded-lg border-b-[3px] border-[#1d6f8a] bg-[#2a9cc4] px-3.5 font-display text-xs font-bold text-white hover:bg-[#35aed8] disabled:cursor-not-allowed disabled:opacity-50"
                                     >
-                                        {partyAction === "invite" ? "..." : "INVITE"}
+                                        {partyAction === "invite" ? "..." : "Invite"}
                                     </button>
                                 </form>
                             )}
 
-                            <div className={`mt-3 flex border-t border-slate-800/80 pt-3 ${isFull ? "items-center justify-between gap-3" : "justify-end"}`}>
-                                {isFull && <p className="text-[11px] leading-4 text-slate-500">Ready for 2v2 queue.</p>}
-                                <button
-                                    type="button"
-                                    onClick={() => void leaveParty()}
-                                    disabled={partyAction !== null}
-                                    className="shrink-0 font-mono text-[9px] font-bold tracking-widest text-rose-300 hover:text-rose-200 disabled:opacity-50"
-                                >
-                                    {partyAction === "leave" ? "LEAVING..." : "LEAVE"}
-                                </button>
-                            </div>
-                        </>
-                    ) : partyLoading ? (
-                        <p className="px-1 py-4 text-xs text-slate-500">Connecting to party...</p>
-                    ) : (
-                        <div className="px-1 py-2">
-                            <p className="text-xs leading-5 text-slate-400">Create a party with a teammate to queue 2v2s together.</p>
-                            <button
-                                type="button"
-                                onClick={() => void createParty()}
-                                disabled={partyAction !== null}
-                                className="mt-3 min-h-9 w-full rounded border border-cyan-400/60 bg-cyan-950/40 px-3 font-mono text-[10px] font-bold tracking-widest text-cyan-100 hover:bg-cyan-900/50 disabled:cursor-wait disabled:opacity-50"
-                            >
-                                {partyAction === "create" ? "CREATING..." : "CREATE PARTY"}
-                            </button>
+                            {party && (
+                                <div className="mt-3 border-t border-[#262c33] pt-2.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => void leaveParty()}
+                                        disabled={partyAction !== null}
+                                        className="text-[11px] font-semibold text-rose-400 hover:text-rose-300 disabled:opacity-50"
+                                    >
+                                        {partyAction === "leave" ? "Leaving..." : "Leave party"}
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     )}
 
                     {(partyMessage || partyError || partyLoadError) && (
-                        <p className={`mt-3 border-t border-slate-800/80 pt-3 text-[11px] leading-4 ${partyError || partyLoadError ? "text-rose-300" : "text-emerald-300"}`} role={partyError || partyLoadError ? "alert" : "status"}>
+                        <p className={`border-t border-[#262c33] px-3.5 py-2.5 text-[11px] leading-4 ${partyError || partyLoadError ? "text-rose-300" : "text-emerald-300"}`} role={partyError || partyLoadError ? "alert" : "status"}>
                             {partyError ?? partyLoadError ?? partyMessage}
                         </p>
                     )}

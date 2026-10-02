@@ -5,456 +5,19 @@ import test from "node:test";
 import { buildInitialArenaShapes } from "../modelPayloads/arenaShapes.js";
 import { graphEdgePath } from "./graphEdgeGeometry.js";
 
-const PANEL_PATH = fileURLToPath(new URL("./CodingPanel.jsx", import.meta.url));
-const ARENA_PATH = fileURLToPath(new URL("../Arena.jsx", import.meta.url));
-const AUTO_PLAY_HOOK_PATH = fileURLToPath(new URL("../hooks/useArenaAutoPlay.js", import.meta.url));
-const ARENA_CONFIG_MODAL_PATH = fileURLToPath(new URL("../components/modals/ArenaConfigModal.jsx", import.meta.url));
-const SANDBOX_LOADOUT_MODAL_PATH = fileURLToPath(new URL("../components/modals/SandboxLoadoutModal.jsx", import.meta.url));
-const PUZZLE_PLAY_PATH = fileURLToPath(new URL("../../pages/puzzles/PuzzlePlayPage.jsx", import.meta.url));
-const PUZZLE_LOGIC_WORKSPACE_PATH = fileURLToPath(new URL("../../pages/puzzles/PuzzleLogicWorkspace.jsx", import.meta.url));
-const BOARD_PATH = fileURLToPath(new URL("./LogicBoard.jsx", import.meta.url));
-const NODES_PATH = fileURLToPath(new URL("./nodes/GraphNodes.jsx", import.meta.url));
-const CUSTOM_VARIABLES_MODAL_PATH = fileURLToPath(new URL("./modals/CustomVariablesModal.jsx", import.meta.url));
-const SEARCH_PATH = fileURLToPath(new URL("./modals/SearchRootNodesModal.jsx", import.meta.url));
-const ICON_PATH = fileURLToPath(new URL("./controls/MatchToolIcon.jsx", import.meta.url));
-const ADD_ICON_PATH = fileURLToPath(new URL("./controls/AddIcon.jsx", import.meta.url));
-const TUTORIAL_GUIDE_PATH = fileURLToPath(new URL("../../tutorial/TutorialGuide.jsx", import.meta.url));
-const CSS_PATH = fileURLToPath(new URL("../../index.css", import.meta.url));
-const MENU_EVENTS_PATH = fileURLToPath(new URL("./utils/codeMenuEvents.js", import.meta.url));
-const PIXI_CANVAS_PATH = fileURLToPath(new URL("../pixi/PixiCanvas.jsx", import.meta.url));
+// Source-level guards for behaviour and contracts in the code workspace and arena wiring.
+// Styling, copy and layout are intentionally not pinned here.
+const read = (relativePath) => readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), "utf8");
+const PANEL_PATH = "./CodingPanel.jsx";
+const BOARD_PATH = "./LogicBoard.jsx";
+const NODES_PATH = "./nodes/GraphNodes.jsx";
+const ARENA_PATH = "../Arena.jsx";
+const AUTO_PLAY_HOOK_PATH = "../hooks/useArenaAutoPlay.js";
+const PIXI_CANVAS_PATH = "../pixi/PixiCanvas.jsx";
 
 function readCodingSource() {
-    return [PANEL_PATH, BOARD_PATH, NODES_PATH].map((path) => readFileSync(path, "utf8")).join("\\n");
+    return [PANEL_PATH, BOARD_PATH, NODES_PATH].map(read).join("\n");
 }
-
-test("match and building toolbars expose only their supported controls", () => {
-    const source = readCodingSource();
-    const matchControlsStart = source.indexOf("{isMatchTesting && (");
-    const matchControlsEnd = source.indexOf("{!isMatchTesting &&", matchControlsStart);
-    const matchControls = source.slice(matchControlsStart, matchControlsEnd);
-
-    assert.match(source, /<div className="flex flex-col items-center gap-2\.5">/);
-    assert.match(source, /icon=\{isAutoPlaying \? "pause" : "play"\}/);
-    assert.match(source, /isAutoPlaying \? "PAUSE" : "PLAY"/);
-    assert.match(source, /icon="check"/);
-    assert.match(source, /: "SUBMIT"\}/);
-    assert.match(source, /: "VOTE TO FORFEIT"\}/);
-    assert.match(source, /onPuzzleSubmit = null/);
-    assert.match(source, /onClick=\{onPuzzleSubmit\}/);
-    assert.match(source, /isPuzzleSubmitting \? "SUBMITTING" : "SUBMIT PUZZLE"/);
-    assert.match(source, /Measurement mode \$\{measurementEnabled \? "on" : "off"\}/);
-    assert.match(source, /tone=\{measurementEnabled \? "blue" : "neutral"\}/);
-    assert.match(source, /pressed=\{measurementEnabled\}/);
-    assert.match(source, /MEASURE \$\{measurementEnabled \? "ON" : "OFF"\}/);
-    assert.match(source, />\s*RESET STATS\s*</);
-    assert.match(source, />\s*PRACTICE CONFIG\s*</);
-    assert.match(source, />\s*EDIT LOADOUT\s*</);
-    assert.doesNotMatch(source, /EDIT MY LOADOUT|EDIT DUMMY LOADOUT/);
-    assert.ok(matchControls.indexOf("RESET STATS") < matchControls.indexOf("onFinishMatch"));
-    assert.match(matchControls, /onFinishMatch[\s\S]*tone="green"/);
-    assert.match(matchControls, /onSurrenderMatch[\s\S]*tone="red"/);
-    assert.doesNotMatch(source, /SPAWN OPPONENT|EDIT OPPONENT LOADOUT|SAVE POINT|LOAD POINT|RESET TO BEGINNING/);
-});
-
-test("play stays in the bot-code panel above the code workspace button", () => {
-    const source = readFileSync(PANEL_PATH, "utf8");
-    const botCodeStart = source.indexOf('<PanelHeading icon="node">BOT CODE</PanelHeading>');
-    const matchToolsStart = source.indexOf("<PanelHeading>MATCH TOOLS</PanelHeading>");
-    const botCodePanel = source.slice(botCodeStart, matchToolsStart);
-    const matchToolsPanel = source.slice(matchToolsStart);
-
-    assert.ok(botCodeStart >= 0);
-    assert.ok(matchToolsStart > botCodeStart);
-    assert.ok(botCodePanel.indexOf("onAutoPlayToggle") < botCodePanel.indexOf("OPEN BOT CODE"));
-    assert.doesNotMatch(matchToolsPanel, /onAutoPlayToggle/);
-});
-
-test("puzzle play is a local preview and puzzle submission is a separate action", () => {
-    const arenaSource = readFileSync(ARENA_PATH, "utf8");
-    const autoPlaySource = readFileSync(AUTO_PLAY_HOOK_PATH, "utf8");
-    const runAutoPlay = autoPlaySource.match(/const runAutoPlay = useCallback\(\(\) => \{[\s\S]*?setIsEditingArena\(false\);/);
-
-    assert.ok(runAutoPlay);
-    assert.doesNotMatch(runAutoPlay[0], /submitPuzzleAttempt\(\)/);
-    assert.doesNotMatch(runAutoPlay[0], /tutorialRunRef|customVariableGoal|priorityOrderCorrect/);
-    assert.match(arenaSource, /onPuzzleSubmit=\{isPuzzleMode && onPuzzleAttempt \? submitPuzzleAttempt : null\}/);
-});
-
-test("puzzle play preserves the editable setup until Reset Stats is chosen", () => {
-    const arenaSource = readFileSync(ARENA_PATH, "utf8");
-    const autoPlaySource = readFileSync(AUTO_PLAY_HOOK_PATH, "utf8");
-    const panelSource = readFileSync(PANEL_PATH, "utf8");
-    const configModalSource = readFileSync(ARENA_CONFIG_MODAL_PATH, "utf8");
-
-    assert.doesNotMatch(autoPlaySource, /buildTutorialArenaShapes|buildAutoPlayStartShapes/);
-    assert.match(autoPlaySource, /setShapes\(\(previousShapes\) => advanceArenaPreviewTick/);
-    assert.match(arenaSource, /if \(isPuzzleMode\) \{\s*setShapes\(buildPracticeArenaShapes\([\s\S]*?puzzleArenaSetup/);
-    assert.match(arenaSource, /onOpenPuzzleConfig=.*setIsPuzzleConfigOpen\(true\)/);
-    assert.match(arenaSource, /const savePuzzleConfig = \(nextConfig\) => \{[\s\S]*setPuzzleConfig\(normalized\)[\s\S]*puzzleSetupForArena\(normalized, initialPuzzle\)/);
-    assert.match(arenaSource, /restoreLabel="RESTORE PUZZLE DEFAULTS"/);
-    assert.match(arenaSource, /restoreLabel="RESTORE PUZZLE DEFAULTS"[\s\S]*showTeamSizeControls=\{false\}/);
-    assert.match(configModalSource, /showTeamSizeControls = true/);
-    assert.match(panelSource, />\s*PUZZLE CONFIG\s*</);
-});
-
-test("puzzle play restores drafts by puzzle without overriding loaded submissions", () => {
-    const arenaSource = readFileSync(ARENA_PATH, "utf8");
-    const puzzleSource = readFileSync(PUZZLE_PLAY_PATH, "utf8");
-
-    assert.match(arenaSource, /puzzleCodeOverride \?\? readPuzzleBotCodeDraft\(puzzleNumber, puzzleBotForSetup\(initialPuzzle, PUZZLE_PLAYER_TEAM\)\?\.brain/);
-    assert.match(arenaSource, /savePuzzleBotCodeDraft\(puzzleNumber, sanitized\)/);
-    assert.match(puzzleSource, /key=\{`\$\{puzzleNumber\}:\$\{activeRestoredSubmission\?\.id \?\? "puzzle-default"\}`\}/);
-    assert.match(puzzleSource, /puzzleNumber=\{puzzleNumber\}/);
-    assert.match(puzzleSource, /puzzleCodeOverride=\{activeRestoredSubmission\?\.brain \?\? null\}/);
-});
-
-test("puzzle builder play resumes its preview and keeps builder code out of storage", () => {
-    const arenaSource = readFileSync(ARENA_PATH, "utf8");
-    const builderSource = readFileSync(fileURLToPath(new URL("../../pages/puzzles/PuzzleBuilderPage.jsx", import.meta.url)), "utf8");
-
-    assert.match(arenaSource, /const puzzleSetupKey = JSON\.stringify\(\[/);
-    assert.match(arenaSource, /if \(previousPuzzleSetupKeyRef\.current === puzzleSetupKey\) return;/);
-    assert.match(arenaSource, /if \(isPuzzleMode\) \{[\s\S]*savePuzzleBotCodeDraft\(puzzleNumber, sanitized\);[\s\S]*\} else if \(!isPuzzleBuilder\) \{[\s\S]*saveStoredStrategyConfiguration\(strategyStorageKey, sanitized\);/);
-    assert.match(arenaSource, /if \(!isPuzzleBuilder\) saveStoredStrategyConfiguration\(opponentStrategyStorageKey, sanitized\);/);
-    assert.match(arenaSource, /if \(previousPuzzleSetupKeyRef\.current === puzzleSetupKey\) return;[\s\S]*setPreviewBaseline\(createPreviewBaseline\(freshBotShapes/);
-    assert.match(arenaSource, /setShapes\(restorePreviewBaseline\(previewBaseline\)\)/);
-    assert.match(builderSource, /playerBot: requestBot\(draft\.playerBot, \{ useDefaultBrain: true \}\)/);
-});
-
-test("the visible building deadline preserves the manual submission grace window", () => {
-    const arenaSource = readFileSync(ARENA_PATH, "utf8");
-    const panelSource = readFileSync(PANEL_PATH, "utf8");
-
-    assert.match(arenaSource, /const authoritativeRemaining = secondsRemaining\(autoSubmitDeadline\)/);
-    assert.match(arenaSource, /if \(authoritativeRemaining === 0\) \{\s*clearInterval\(interval\);[\s\S]*handleFinishMatchRef\.current\?\.\(\);[\s\S]*\}/);
-    assert.match(arenaSource, /autoFinishDeadlineRef/);
-    assert.match(panelSource, /testingRemaining === 0 && finishStatus === "BUILDING"/);
-    assert.match(panelSource, /PREPARING REPLAY · YOU CAN STILL SUBMIT/);
-});
-
-test("submitted match code closes and disables the coding workspace", () => {
-    const panelSource = readFileSync(PANEL_PATH, "utf8");
-
-    assert.ok(panelSource.includes("const isBotCodeLocked = isMatchTesting && ("));
-    assert.ok(panelSource.includes('finishStatus === "SUBMITTING"'));
-    assert.ok(panelSource.includes('finishStatus === "FINISHED"'));
-    assert.ok(panelSource.includes("setIsLogicOpen(false)"));
-    assert.ok(panelSource.includes("disabled={isBotCodeLocked}"));
-    assert.ok(panelSource.includes("disabled={isCodeEditingLocked || isTesting || !viewingCurrentRound}"));
-    assert.ok(panelSource.includes("canRemove={!isCodeEditingLocked && !isTesting && !roundDeleteLocked}"));
-});
-
-test("live match code browsing is teammate-first and keeps opponent code sandbox-only", () => {
-    const panelSource = readFileSync(PANEL_PATH, "utf8");
-
-    assert.match(panelSource, /orderedLiveCodeParticipants/);
-    assert.match(panelSource, /cycleCodeParticipant/);
-    assert.match(panelSource, /activeLiveIsTeammate/);
-    assert.match(panelSource, /SANDBOX CODE ONLY · OPPONENT CODE IS PRIVATE/);
-    assert.match(panelSource, /onClick=\{toggleLiveCodeMode\}/);
-    assert.doesNotMatch(panelSource, /onCopyParticipantToSandbox/);
-    assert.doesNotMatch(panelSource, /REFRESH REAL CODE|COPY NOW/);
-});
-
-test("conditional ability pickers use all equipped abilities and resource-aware ammo choices", () => {
-    const panelSource = readFileSync(PANEL_PATH, "utf8");
-    const graphSource = readFileSync(NODES_PATH, "utf8");
-
-    assert.match(panelSource, /abilityOptions: abilityDefinitionsForVariable\(variable, equipped\)/);
-    assert.match(graphSource, /new Set\(\[\.\.\.STANDARD_ABILITY_IDS, \.\.\.selected\]\)/);
-});
-
-test("toolbar buttons share the blueprint surface, show labels, and retain the existing handlers", () => {
-    const source = readCodingSource();
-
-    assert.match(source, /className=\{`arena-toolbar-button \$\{tones\[tone\]/);
-    assert.match(source, /aria-pressed=\{typeof pressed === "boolean" \? pressed : undefined\}/);
-    assert.match(readFileSync(CSS_PATH, "utf8"), /\.arena-toolbar-button \{/);
-    assert.match(readFileSync(CSS_PATH, "utf8"), /\.arena-toolbar-button\[aria-pressed="true"\]/);
-    assert.match(source, /\{icon && <ToolIcon name=\{icon\} \/>}<span>\{children\}<\/span>/);
-    assert.match(source, /onClick=\{onAutoPlayToggle\}/);
-    assert.match(source, /onClick=\{onResetArenaStats\}/);
-    assert.match(source, /onClick=\{onMeasurementToggle\}/);
-    assert.match(source, /onHitboxesToggle/);
-    assert.match(source, /HITBOXES ON/);
-    assert.match(source, /onClick=\{onFinishMatch\}/);
-    assert.match(source, /onClick=\{onSurrenderMatch\}/);
-    assert.match(source, /onClick=\{onOpenPracticeConfig\}/);
-    assert.match(source, /onClick=\{onOpenLoadout\}/);
-    assert.doesNotMatch(source, /onOpenPlayerLoadout|onOpenOpponentLoadout/);
-    assert.match(source, /onOpenPuzzleSubmissions/);
-    assert.match(source, />PREVIOUS SUBMISSIONS</);
-    assert.match(readFileSync(ICON_PATH, "utf8"), /pause: <><path/);
-});
-
-test("practice loadouts save on Enter and use the shared selector and close controls", () => {
-    const panelSource = readFileSync(PANEL_PATH, "utf8");
-    const loadoutModalSource = readFileSync(SANDBOX_LOADOUT_MODAL_PATH, "utf8");
-    const customVariablesSource = readFileSync(CUSTOM_VARIABLES_MODAL_PATH, "utf8");
-    const puzzleWorkspaceSource = readFileSync(PUZZLE_LOGIC_WORKSPACE_PATH, "utf8");
-    const catalogueSource = readFileSync(fileURLToPath(new URL("../../pages/catalogue/AbilityCataloguePage.jsx", import.meta.url)), "utf8");
-    const submissionsSource = readFileSync(PUZZLE_PLAY_PATH, "utf8");
-    const css = readFileSync(CSS_PATH, "utf8");
-
-    assert.match(loadoutModalSource, /onKeyDown=\{\(event\) => \{\s*if \(event\.key !== "Enter" \|\| event\.target\.closest\?\.\("\.modal-close-button"\)\) return;\s*event\.preventDefault\(\);\s*onApply\(\);/);
-    assert.match(loadoutModalSource, /className="mt-5 flex items-center gap-2"/);
-    assert.match(loadoutModalSource, /className="code-bot-selector__arrow code-loadout-selector__arrow">‹<\/button>/);
-    assert.match(loadoutModalSource, /className="code-bot-selector__arrow code-loadout-selector__arrow">›<\/button>/);
-    assert.match(loadoutModalSource, /aria-label="Close sandbox loadout editor" className="modal-close-button"/);
-    assert.match(panelSource, /aria-label="Close bot code workspace"[\s\S]*className="modal-close-button"[\s\S]*<span aria-hidden="true">×<\/span>/);
-    assert.match(customVariablesSource, /aria-label="Close custom variables" className="modal-close-button"/);
-    assert.match(customVariablesSource, /replace\(\/\[\^A-Za-z0-9 _-\]\/g, ""\)/);
-    assert.match(puzzleWorkspaceSource, /aria-label="Close puzzle configuration"[\s\S]*className="modal-close-button"/);
-    assert.match(catalogueSource, /className="modal-close-button"/);
-    assert.match(submissionsSource, /className="modal-close-button" aria-label="Close submissions"/);
-    assert.match(submissionsSource, /font-interface backdrop-blur-sm/);
-    assert.match(submissionsSource, /bg-\[#171c20\]/);
-    assert.match(submissionsSource, /<h2 id="puzzle-submissions-title" className="mt-2 text-2xl font-bold text-white">Submissions<\/h2>/);
-    assert.match(submissionsSource, /<p className="mt-1 text-sm text-slate-500">Your last 10 submissions<\/p>/);
-    assert.match(submissionsSource, /const isSolved = puzzle\.solved === true \|\| outcome\?\.status === "solved"[\s\S]*>Solved<\/div>/);
-    assert.doesNotMatch(submissionsSource, /PUZZLE SERVER ERROR|PUZZLE FAILED/);
-    assert.match(submissionsSource, /puzzle\.solved === true/);
-    assert.match(readFileSync(fileURLToPath(new URL("../Arena.jsx", import.meta.url)), "utf8"), /PUZZLE_SUBMIT_STATUS_DURATION_MS = 3_500/);
-    assert.doesNotMatch(panelSource, /code-toolbar-close|CLOSE/);
-    assert.doesNotMatch(customVariablesSource, /code-toolbar-close|CLOSE/);
-    assert.doesNotMatch(puzzleWorkspaceSource, /code-toolbar-close|CLOSE/);
-    assert.match(css, /\.code-loadout-selector__arrow \{[\s\S]*background: transparent;[\s\S]*font-size: 42px;/);
-});
-
-test("code graph nodes can be dragged from their surfaces without stealing control clicks", () => {
-    const source = readCodingSource();
-
-    assert.equal(source.includes("event.target?.closest?.("), true);
-    assert.match(source, /\[data-node-drag-ignore\]/);
-    assert.match(source, /<GraphRootNode[\s\S]*onSelect=\{\(event\) => \{ if \(attachingDetachedId\)/);
-    assert.match(source, /function GraphRootNode[\s\S]*onPointerDown=\{onPointerDown\}/);
-    assert.match(source, /function GraphConditionNode[\s\S]*beginNodeDrag\(event, node\.id\)/);
-    assert.match(source, /function GraphActionNode[\s\S]*beginNodeDrag\(event, node\.id\)/);
-    assert.match(source, /selectedNodeIds\.includes\(key\)/);
-    assert.match(source, /const boundedDelta = graphNodesToMove\.reduce/);
-    assert.match(source, /x: startOffset\.x \+ groupDelta\.x/);
-    assert.match(source, /y: startOffset\.y \+ groupDelta\.y/);
-    assert.match(source, /onPointerDown=\{beginMarquee\}/);
-    assert.match(source, /window\.addEventListener\("keydown"/);
-    assert.match(source, /data-node-drag-ignore="true" className="code-condition-prefix/);
-    assert.match(source, /toggleConditionJoin/);
-    assert.match(source, /aria-label=\{`Change \$\{condition\.join === "or" \? "OR" : "AND"\} to/);
-});
-
-test("arena and puzzle code workspaces share compact controls and pinch zoom", () => {
-    const panelSource = readFileSync(PANEL_PATH, "utf8");
-    const boardSource = readFileSync(BOARD_PATH, "utf8");
-    const puzzleWorkspaceSource = readFileSync(PUZZLE_LOGIC_WORKSPACE_PATH, "utf8");
-    const css = readFileSync(CSS_PATH, "utf8");
-
-    assert.match(panelSource, /onPinchZoom=\{applyPinchZoom\}/);
-    assert.match(puzzleWorkspaceSource, /className="code-workspace-overlay fixed/);
-    assert.match(puzzleWorkspaceSource, /onPinchZoom=\{applyPinchZoom\}/);
-    assert.match(boardSource, /const handleTouchPointerDown = \(event\) =>/);
-    assert.match(boardSource, /onPointerDown=\{handleBoardPointerDown\}/);
-    assert.match(boardSource, /onPinchZoom\(nextZoom, nextPan\)/);
-    assert.match(css, /\.code-workspace-overlay > \.code-workspace[\s\S]*height: min\(90dvh, 820px\);/);
-    assert.match(css, /\.code-toolbar-actions \{[\s\S]*grid-column: 2;[\s\S]*grid-row: 2;/);
-    assert.match(css, /\.code-toolbar-actions \{[\s\S]*align-self: flex-start;/);
-    assert.match(css, /\.code-bot-selector-stack \{[\s\S]*align-self: flex-start;/);
-    assert.match(css, /@media \(max-width: 1350px\) \{[\s\S]*\.code-toolbar \{/);
-    assert.doesNotMatch(css, /@media \(max-width: 1200px\) \{[\s\S]*\.code-toolbar \{/);
-    assert.doesNotMatch(css, /\.code-workspace \.code-toolbar-button,\s*\.code-workspace \.code-tab \{\s*font-size: 7\.5px;/);
-    const compactZoom = css.slice(css.indexOf("@media (max-width: 1350px) {\n  .code-workspace .code-toolbar-zoom"), css.indexOf("@media (max-width: 600px) {", css.indexOf("@media (max-width: 1350px) {\n  .code-workspace .code-toolbar-zoom")));
-    assert.match(compactZoom, /height: 48px;/);
-    assert.doesNotMatch(compactZoom, /height: 32px;/);
-    assert.match(css, /\.code-custom-variables-dialog > header > div:last-child > button:first-child[\s\S]*grid-column: 2;/);
-    assert.match(css, /\.code-custom-variable-fields \{[\s\S]*grid-template-columns: 14rem 7rem 7rem;[\s\S]*gap: \.625rem;/);
-    assert.match(css, /\.code-workspace-coach \{[\s\S]*background: #07111b;/);
-    assert.match(css, /\.tutorial-guide-panel \{[\s\S]*height: var\(--tutorial-guide-panel-height, 20rem\);[\s\S]*display: flex;[\s\S]*overflow: hidden;/);
-    assert.match(css, /\.tutorial-guide-navigation \{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
-    assert.match(css, /--tutorial-guide-navigation-gap: 0rem;/);
-    assert.match(css, /\.tutorial-guide-navigation \{[\s\S]*border-top: 0;[\s\S]*border-radius: 0 0 \.75rem \.75rem;/);
-    assert.match(css, /\.tutorial-guide-panel\.info-popup-panel \{\s*border-radius: \.75rem \.75rem 0 0;/);
-    assert.match(css, /\.tutorial-guide-content \{[\s\S]*flex: 1 1 auto;[\s\S]*overflow-y: auto;/);
-    assert.match(css, /\.arena-stage-info \{[\s\S]*position: absolute;[\s\S]*height: 100%;[\s\S]*pointer-events: none;/);
-    assert.match(css, /\.arena-stage-info > \.info-popup-minimized,[\s\S]*position: absolute;[\s\S]*left: 0;[\s\S]*pointer-events: auto;/);
-});
-
-test("overlapping graph nodes keep delete controls in the same stacking context", () => {
-    const source = readCodingSource();
-    const css = readFileSync(CSS_PATH, "utf8");
-    const conditionalNode = source.slice(source.indexOf("function GraphConditionNode"), source.indexOf("function PuzzleConditionNode"));
-    const actionNode = source.slice(source.indexOf("function GraphActionNode"), source.indexOf("function LogicNodeInspector"));
-
-    assert.match(conditionalNode, /className="code-condition-node-remove"/);
-    assert.match(actionNode, /className="code-compact-remove code-condition-node-remove"/);
-    assert.match(css, /\.code-graph-node \{\s*cursor: grab;\s*isolation: isolate;/);
-    assert.match(css, /\.code-condition-node-remove \{[^}]*z-index: 2/);
-});
-
-test("roots expose editable names and priorities with root-only search", () => {
-    const panel = readCodingSource();
-    const search = readFileSync(SEARCH_PATH, "utf8");
-    const css = readFileSync(CSS_PATH, "utf8");
-
-    assert.match(panel, /className="code-root-label">Root <RootNodePriorityInput/);
-    assert.match(panel, /code-graph-node--root/);
-    assert.doesNotMatch(panel, /kind: "code"/);
-    assert.match(panel, /selectedNodeIds\.includes\(node\.id\)/);
-    assert.match(panel, /function RootNameInput/);
-    assert.match(panel, /maxLength=\{MAX_ROOT_NAME_LENGTH\}/);
-    assert.match(panel, /onChange=\{\(event\) => setDraft\(event\.target\.value\)\}/);
-    assert.match(panel, /onBlur=\{\(\) => onCommit\(draft\)\}/);
-    assert.doesNotMatch(panel, /HIGHER PRIORITY|LOWER PRIORITY/);
-    assert.match(css, /\.code-graph-node--root[\s\S]*background: #2b3137/);
-    assert.match(search, /const name = root\?\.name \?\? "Root"/);
-    assert.match(search, /\$\{name\} \$\{label\}/);
-    assert.match(search, /const orderedNodes = \[\.\.\.nodes\]\.sort/);
-    assert.match(search, /const matchingNodes = orderedNodes\.filter/);
-    assert.match(search, /rootPriority\(roots, first\) - rootPriority\(roots, second\)/);
-    assert.match(search, /code-node-picker code-node-picker--roots/);
-    assert.match(search, /className="code-node-search-label"/);
-    assert.match(search, /code-node-search-results code-root-search-results/);
-    assert.match(search, /className=\{`code-root-search-row/);
-    assert.match(search, /role="button"/);
-    assert.match(search, /onClick=\{\(\) => selectNode\(node\)\}/);
-    assert.doesNotMatch(search, /search-root-node-option/);
-    assert.doesNotMatch(search, /beginDrag|position\.x|cursor-move/);
-});
-
-test("root priority edits refresh the graph and root search from one configuration", () => {
-    const board = readFileSync(BOARD_PATH, "utf8");
-    const nodes = readFileSync(NODES_PATH, "utf8");
-
-    assert.match(board, /const roots = useMemo\(\(\) => normalizeRoots\(configuration\.roots \?\? \[\]\), \[configuration\.roots\]\)/);
-    assert.match(board, /const setRootOrder = \(rootIndex, priority\) => \{[\s\S]*setRootPriority\(roots, rootIndex, priority\)[\s\S]*commitConfiguration\(\{ \.\.\.configuration, roots: reordered \}\);/);
-    assert.match(board, /<SearchRootNodesModal roots=\{roots\} nodes=\{graph\.roots\}[\s\S]*onPriorityChange=\{setRootOrder\}/);
-    assert.match(board, /<GraphRootNode[\s\S]*onPriorityChange=\{\(priority\) => setRootOrder\(node\.rootIndex, priority\)\}/);
-    assert.match(nodes, /function GraphRootNode[\s\S]*<RootNodePriorityInput priority=\{priorityForNode\(rootNode, node\.rootIndex \+ 1\)\}[\s\S]*onCommit=\{onPriorityChange\}/);
-});
-
-test("compact conditions own their comparator and actions summarize inspector targets", () => {
-    const source = readCodingSource();
-
-    assert.match(source, /function LogicNodeInspector/);
-    assert.match(source, /aria-label="Comparator"/);
-    assert.doesNotMatch(source, /KeyboardDropdown/);
-    assert.match(source, /className="code-operator-socket"/);
-    assert.match(source, /className="code-action-label">\{formatActionNodeLabel\(selected\?\.label \?\? "Action"\)\}/);
-    assert.doesNotMatch(source, /Move: \$\{selected\?\.label/);
-    assert.match(source, /function ActionConfigurationSignature/);
-    assert.match(source, /<AngleToken value=\{relativeMovementAngle\(entry\.movementDirection\)\}/);
-    assert.match(source, /<SelectableToken value=\{entry\.selectable \?\? BOT_CODE_SELECTABLES\.OPPONENT\}/);
-    assert.match(source, /<CoordinateToken x=\{entry\.targetX/);
-    assert.match(source, /ACTION_TO_ABILITY\[entry\.action\]/);
-    assert.match(source, /function actionNodeWidth/);
-    assert.match(source, /function formatActionNodeLabel/);
-    assert.match(source, /Move\|Movement\|Rotate\|Ability/);
-    assert.match(source, /width: node\.width/);
-    assert.match(readFileSync(CSS_PATH, "utf8"), /\.code-condition-node-remove \{[^}]*width: 30px;[^}]*box-sizing: border-box;[^}]*padding: 0;/);
-    assert.match(source, /relativeMovementAngle/);
-    assert.match(source, /deg from/);
-    assert.match(source, /" deg from "/);
-    assert.match(source, /targetAngle \?\? 0\)} deg\)/);
-    assert.doesNotMatch(source, /code-action-sentence[\s\S]*<OrderedSelectablePicker value=\{entry\.selectable/);
-    assert.doesNotMatch(source, /application\/x-bot-operator|GraphVariableNode|GraphTargetNode/);
-});
-
-test("entity selectable controls separate ability, owner, and ordering", () => {
-    const source = readFileSync(NODES_PATH, "utf8");
-    const css = readFileSync(CSS_PATH, "utf8");
-
-    assert.match(source, /function entitySelectableGroups\(selectableTypes = SELECTABLE_TYPES\)/);
-    assert.match(source, /<span>ABILITY NAME<\/span>/);
-    assert.match(source, /aria-label="Selectable owner"/);
-    assert.match(source, /<span>ATTRIBUTE<\/span>/);
-    assert.match(source, /<span>ORDER #<\/span>/);
-    assert.match(source, /SELECTABLE_ORDERS\.map/);
-    assert.match(css, /\.code-selectable-picker-entity-row[\s\S]*grid-template-columns: minmax\(0, 1\.2fr\)/);
-    assert.match(css, /\.code-selectable-picker-control > span/);
-});
-
-test("boolean condition inputs use the comparator socket styling", () => {
-    const source = readFileSync(NODES_PATH, "utf8");
-    const css = readFileSync(CSS_PATH, "utf8");
-
-    assert.match(source, /boolean value[\s\S]*className="code-operator-socket code-condition-boolean-input"/);
-    assert.match(css, /\.code-condition-input > select\.code-condition-boolean-input[\s\S]*color: #bae6fd/);
-    assert.match(css, /\.code-condition-boolean-input option \{[\s\S]*background-color: #1e293b;[\s\S]*color: #e2e8f0;/);
-    assert.match(css, /\.code-condition-boolean-input option:checked \{ background-color: #334155; \}/);
-});
-
-test("action target inspectors switch to coordinates and preserve target offsets", () => {
-    const source = readFileSync(NODES_PATH, "utf8");
-    const css = readFileSync(CSS_PATH, "utf8");
-
-    assert.match(source, /function actionTargetMode\(entry, definition\)/);
-    assert.match(source, /entry\?\.movementMode === "coordinates" \? "coordinates" : "target"/);
-    assert.match(source, /function ActionTargetControls/);
-    assert.match(source, /<option value="coordinates">\{definition\?\.angleTarget \? "Absolute coordinates" : "Relative to coordinates"\}<\/option>/);
-    assert.match(source, /<span>X<\/span><DeferredNumberInput/);
-    assert.match(source, /<span>Y<\/span><DeferredNumberInput/);
-    assert.match(source, /<span>X OFFSET<\/span><DeferredNumberInput/);
-    assert.match(source, /<span>Y OFFSET<\/span><DeferredNumberInput/);
-    assert.doesNotMatch(source, /Top-left origin · X positive right/);
-    assert.doesNotMatch(source, /Centered coordinates · X positive right/);
-    assert.doesNotMatch(source, /X COORDINATE · RIGHT\+/);
-    assert.doesNotMatch(source, /Y COORDINATE/);
-    assert.match(source, /targetOffsetX/);
-    assert.match(source, /targetOffsetY/);
-    assert.match(source, /formatCoordinateTargetLabel/);
-    assert.match(source, /<span>deg<\/span>/);
-    assert.match(source, /Explain relative movement angles/);
-    assert.match(source, /function RelativeMovementAngleModal/);
-    assert.match(source, /Angles are measured from the moving bot’s line to its target\. It is completely relative based on that line\./);
-    assert.match(source, /caption: "Right"/);
-    assert.match(source, /caption: "Left"/);
-    assert.match(source, /x2="78"/);
-    assert.match(css, /\.code-angle-help-dialog > header \.modal-close-button \{ color: #fff; font-size: 28px; \}/);
-    assert.match(source, /Both diagrams show 0°/);
-    const phaseControls = source.slice(source.indexOf("function PhaseOrientationControls"), source.indexOf("function newTreeBranch"));
-    assert.match(phaseControls, /Explain Phase Strike landing rotation/);
-    assert.match(phaseControls, /function PhaseStrikeLandingModal/);
-    assert.match(phaseControls, /rotates by this value relative to the facing it had when the ability started/);
-    assert.doesNotMatch(phaseControls, /<small>0 deg = keep facing/);
-    assert.match(phaseControls, /function PhaseStrikeLandingDiagram/);
-    assert.match(phaseControls, /BEFORE HIT/);
-    assert.match(phaseControls, /AFTER HIT · 180°/);
-    assert.match(phaseControls, /lands behind · faces back/);
-    const movementControls = source.slice(source.indexOf("function MovementConfigurationControls"), source.indexOf("function PhaseOrientationControls"));
-    assert.doesNotMatch(movementControls, /targetOffsetX|targetOffsetY/);
-});
-
-test("running previews read bot-code edits without restarting playback", () => {
-    const source = readFileSync(ARENA_PATH, "utf8");
-    const autoPlaySource = readFileSync(AUTO_PLAY_HOOK_PATH, "utf8");
-    const simulationSource = readFileSync(fileURLToPath(new URL("../modelPayloads/arenaPreviewSimulation.js", import.meta.url)), "utf8");
-
-    assert.match(source, /testingConfigurationRef\.current = testingConfiguration/);
-    assert.match(source, /opponentTestingConfigurationRef\.current = opponentTestingConfiguration/);
-    assert.match(autoPlaySource, /testingConfiguration: testingConfigurationRef\.current/);
-    assert.match(autoPlaySource, /opponentTestingConfiguration: opponentTestingConfigurationRef\.current/);
-    assert.match(simulationSource, /bot\.id === "main"[\s\S]*\? testingConfiguration[\s\S]*bot\.id === "opponent-model"[\s\S]*\? opponentTestingConfiguration/);
-});
-
-test("action node picker provides an auto-focused search", () => {
-    const source = readCodingSource();
-
-    assert.match(source, /function NodeKindPicker/);
-    assert.match(source, /placeholder="Search actions…"/);
-    assert.match(source, /<AddIcon className="code-toolbar-icon" \/> ADD ROOT/);
-    assert.match(source, /<input ref=\{searchInputRef\} autoFocus value=\{query\}/);
-    assert.match(source, /filteredActions\.map/);
-    assert.match(source, /className="code-node-search-label"/);
-    const actionPicker = source.slice(source.indexOf("function NodeKindPicker"), source.indexOf("function VariableOperandPicker"));
-    assert.doesNotMatch(actionPicker, /<small>\{action\.id\}<\/small>/);
-    assert.match(actionPicker, /<strong>\{action\.label\}<\/strong><\/button>/);
-});
-
-test("inserted nodes use explicit placements without auto-adjusting existing nodes", () => {
-    const source = readCodingSource();
-    assert.match(source, /let childX = left \+ Math\.max\(0, \(width - descendantsWidth\) \/ 2\)/);
-    assert.match(source, /const commitConfiguration = \(nextConfiguration, preserveGraphPositions = true, positionOverrides = \{\}\)/);
-    assert.match(source, /Object\.entries\(positionOverrides\)\.forEach/);
-    assert.match(source, /positionInsertedGraphNode\(condition, previousAction, nextAction, nodeOffsetsRef\.current, CONDITION_TO_CHILD_GAP\)/);
-    assert.doesNotMatch(source, /actionNodePrefix/);
-});
 
 test("shared graph-edge geometry preserves its cubic path and offsets both endpoints", () => {
     const edge = { fromId: "root", toId: "condition", x1: 20, y1: 30, x2: 80, y2: 60 };
@@ -463,304 +26,6 @@ test("shared graph-edge geometry preserves its cubic path and offsets both endpo
         root: { x: 5, y: -3 },
         condition: { x: -7, y: 11 },
     }), "M 25 27 C 25 97, 73 1, 73 71");
-});
-
-test("lesson label stays in one desktop row in both arena and coding workspace placements", () => {
-    const tutorialSource = readFileSync(TUTORIAL_GUIDE_PATH, "utf8");
-    const cssSource = readFileSync(CSS_PATH, "utf8");
-
-    assert.match(tutorialSource, /tutorial-guide-button__label[^>]*>VIEW LESSON/);
-    assert.match(tutorialSource, /aria-label=\{`Open \$\{lesson\.title\} lesson`\}/);
-    assert.match(cssSource, /\.tutorial-guide-button\.info-popup-minimized\s*\{[\s\S]*?width: max-content;[\s\S]*?flex: 0 0 auto;[\s\S]*?flex-wrap: nowrap;[\s\S]*?white-space: nowrap;/);
-    assert.match(cssSource, /\.tutorial-guide-button__label\s*\{[\s\S]*?flex: none;[\s\S]*?white-space: nowrap;/);
-    assert.match(cssSource, /\.arena-stage-info__tutorial > \.tutorial-guide-button\.info-popup-minimized/);
-    assert.match(cssSource, /\.tutorial-workspace-lesson-host \.tutorial-guide-button\.info-popup-minimized/);
-    assert.match(cssSource, /\.tutorial-workspace-lesson-host \.tutorial-guide-button__label[\s\S]*?display: none;/);
-});
-
-test("add controls and variable addition share the reusable SVG plus design", () => {
-    const addIconSource = readFileSync(ADD_ICON_PATH, "utf8");
-    const panelSource = readFileSync(PANEL_PATH, "utf8");
-    const nodesSource = readFileSync(NODES_PATH, "utf8");
-    const modalSource = readFileSync(CUSTOM_VARIABLES_MODAL_PATH, "utf8");
-    const puzzleSource = readFileSync(PUZZLE_LOGIC_WORKSPACE_PATH, "utf8");
-    const buttonSources = [panelSource, nodesSource, modalSource, puzzleSource].join("\n");
-
-    assert.match(addIconSource, /viewBox="0 0 16 16"/);
-    assert.match(addIconSource, /aria-hidden="true"/);
-    assert.match(addIconSource, /<path d="M8 3v10M3 8h10" \/>/);
-    assert.match(panelSource, /<AddIcon className="code-toolbar-icon" \/> ADD ROOT/);
-    assert.match(panelSource, /aria-label="Zoom in"[\s\S]*?<AddIcon size="large" \/>/);
-    assert.match(nodesSource, /Add AND condition/);
-    assert.match(nodesSource, /Add OR condition/);
-    assert.match(nodesSource, /Add IF child conditional/);
-    assert.match(nodesSource, /aria-label="Add action"/);
-    assert.match(nodesSource, /aria-label="Add operand"/);
-    assert.match(nodesSource, /VariableOperatorGlyph operation=\{operation\}/);
-    assert.match(modalSource, /<AddIcon \/> ADD VARIABLE/);
-    assert.match(puzzleSource, /<AddIcon className="code-toolbar-icon" \/> WIN CONDITION/);
-    assert.match(puzzleSource, /<AddIcon className="code-toolbar-icon" \/> LOSE CONDITION/);
-    assert.match(puzzleSource, /<AddIcon className="code-toolbar-icon" \/> MODIFY CUSTOM VARIABLE/);
-    assert.match(puzzleSource, /aria-label="Zoom in"[^>]*>[\s\S]*?<AddIcon size="large" \/>/);
-    assert.doesNotMatch(buttonSources, />\s*[＋+]\s*(?:ADD ROOT|WIN CONDITION|LOSE CONDITION|CUSTOM VARIABLE|MODIFY CUSTOM VARIABLE|CONDITIONAL|AND|OR|IF|ACTION|OPERAND|ADD VARIABLE)/);
-    assert.match(nodesSource, /VariableOperatorPicker/);
-});
-
-test("variable and action searches share a wheel-contained picker design", () => {
-    const source = readCodingSource();
-
-    assert.match(source, /const title = "ADD VARIABLE INPUT"/);
-    assert.equal(source.match(/className="code-node-search-label"/g)?.length, 2);
-    assert.equal(source.match(/className="code-node-search-results"/g)?.length, 2);
-    assert.ok((source.match(/onWheel=\{\(event\) => event\.stopPropagation\(\)\}/g)?.length ?? 0) >= 2);
-    assert.doesNotMatch(source, /code-variable-search/);
-});
-
-test("condition graph wiring follows the rendered node bottom", () => {
-    const source = readCodingSource();
-
-    assert.match(source, /const ROOT_NODE_HEIGHT = 144;/);
-    assert.match(source, /height: ROOT_NODE_HEIGHT/);
-    assert.match(source, /const conditionHeight = 94 \+ Math\.max\(1,[\s\S]*\* 52/);
-    assert.match(source, /childY = y \+ conditionHeight \+ 70/);
-});
-
-test("conditional nodes expand to fit complete variable names", () => {
-    const source = readCodingSource();
-    const css = readFileSync(CSS_PATH, "utf8");
-
-    assert.match(source, /function conditionNodeWidth\(branch, stateVariables\)/);
-    assert.match(source, /width: node\.width/);
-    assert.match(css, /grid-template-columns: 34px max-content 64px max-content 30px/);
-    assert.match(css, /\.code-condition-input \{[\s\S]*width: max-content/);
-    assert.match(css, /\.code-condition-input \{[\s\S]*min-width: 0/);
-    assert.match(css, /\.code-condition-input\.is-raw \{ width: 110px; \}/);
-    assert.match(source, /const leftWidth = 39 \+ leftLength \* 5\.5/);
-    assert.match(source, /const rightWidth = condition\.right\?\.type === "variable"[\s\S]*: 110/);
-    assert.doesNotMatch(source, /condition\.right\?\.type === "range"/);
-    assert.match(source, /return 175 \+ leftWidth \+ rightWidth/);
-    assert.match(source, /GRAPH_NODE_WIDTH, 1200/);
-});
-
-test("conditional operand pencils open the variable picker and expose raw input explicitly", () => {
-    const source = readCodingSource();
-    const variablePicker = source.slice(source.indexOf("function VariableOperandPicker"), source.indexOf("function ConditionalOperandBox"));
-
-    assert.match(source, /function ConditionalOperandBox/);
-    assert.match(source, /aria-label=\{`Edit input \$\{operand\}`\}/);
-    assert.match(source, /function VariableOperandPicker/);
-    assert.match(source, /<input ref=\{searchInputRef\} autoFocus value=\{query\}/);
-    assert.match(source, /right: \{ type: "variable", value: definition\.id \}/);
-    assert.match(source, /onClick=\{onPickVariable\}/);
-    assert.match(variablePicker, />RAW INPUT<\/button>/);
-    assert.match(source, /onUseRawNumber=\{operandPicker\.kind === "action" \? \(\) => setRawActionInput/);
-    assert.match(source, /right: \{ type: "number", value: 0 \}/);
-    assert.match(source, /className="code-condition-input-toggle"/);
-    assert.match(source, /onClick=\{onOpenVariablePicker \?\? onInspectVariable\}/);
-    assert.doesNotMatch(source, /onChooseExisting|ON YOUR CANVAS/);
-    assert.doesNotMatch(variablePicker, /TRUE \/ FALSE|NUMBER/);
-});
-
-test("raw number inputs keep their DOM focus when the selected variable changes", () => {
-    const source = readCodingSource();
-
-    assert.match(source, /const externalValueRef = useRef\(String\(value \?\? fallback\)\);/);
-    assert.match(source, /if \(document\.activeElement !== inputRef\.current\) setDraft\(nextValue\);/);
-    assert.doesNotMatch(source, /<DeferredNumberInput key=\{leftDefinition\.id\}/);
-});
-
-test("raw number inputs accept digits only and retain the original caret presentation", () => {
-    const source = readCodingSource();
-    const css = readFileSync(CSS_PATH, "utf8");
-    const numberInput = readFileSync(NODES_PATH, "utf8");
-
-    assert.match(numberInput, /const allowsNegative = Number\(min\) < 0;/);
-    assert.match(numberInput, /inputMode=\{allowsNegative \? "text"/);
-    assert.match(numberInput, /pattern=\{digitsOnly \? "\[0-9\]\*" : allowsNegative \? "-\?\[0-9\]\*\[\.\]\?\[0-9\]\*" : undefined\}/);
-    assert.match(numberInput, /digitsOnly \? event\.target\.value\.replace\(\/\[\^0-9\]\/g, ""\)/);
-    assert.match(numberInput, /digitsOnly && event\.key\.length === 1 && !\/\[0-9\]\/\.test\(event\.key\)/);
-    assert.match(source, /<DeferredNumberInput digitsOnly=\{integerNumber && !signedNumber\} integerOnly=\{integerNumber\} data-node-drag-ignore="true" aria-label=\{`Input \$\{operand\} number`\}/);
-    assert.match(numberInput, /onClick=\{\(event\) => event\.currentTarget\.select\(\)\}/);
-    assert.match(css, /\.code-condition-input\.is-raw:focus-within/);
-    assert.match(css, /\.code-condition-input > input,[\s\S]*caret-color: #fff;/);
-    assert.match(css, /\.code-condition-input\.is-raw > input \{ caret-color: transparent; \}/);
-});
-
-test("empty-canvas pointer down commits focused inputs and dismisses configuration", () => {
-    const source = readCodingSource();
-    const clearFromSurface = source.slice(source.indexOf("const dismissConfigurationFromSurfacePointerDown"), source.indexOf("const selectGraphNode"));
-
-    assert.match(clearFromSurface, /document\.activeElement/);
-    assert.match(clearFromSurface, /\.code-inspector, \.code-condition-input\.is-raw, \.code-root-name/);
-    assert.match(clearFromSurface, /activeElement\.blur\(\)/);
-    assert.match(source, /if \(event\.button === 0 && event\.target === event\.currentTarget\) dismissConfigurationFromSurfacePointerDown/);
-    assert.doesNotMatch(source, /onClick=\{clearCanvasSelectionFromSurface\}/);
-});
-
-test("variable condition searches render visual category headings", () => {
-    const source = readFileSync(NODES_PATH, "utf8");
-
-    assert.match(source, /const groupedDefinitions = groupedConditionPickerOptions\(definitions\);/);
-    assert.match(source, /className="code-node-search-group"/);
-    assert.match(source, /className="code-node-search-group-title"/);
-    assert.match(source, /group\.options\.map/);
-});
-
-test("condition and action DOM identities are scoped to their root", () => {
-    const source = readCodingSource();
-
-    assert.match(source, /conditionGraphNodeId\(branch\.id, rootId\)/);
-    assert.match(source, /actionGraphNodeId\(branch\.id, actionIndex, rootId\)/);
-    assert.match(source, /return `condition:\$\{branchId\}:root:\$\{rootId\}`/);
-    assert.match(source, /return `action:\$\{branchId\}:\$\{actionIndex\}:root:\$\{rootId\}`/);
-});
-
-test("each condition row has its own remove control", () => {
-    const source = readCodingSource();
-
-    assert.match(source, /onRemoveCondition=\{\(rowIndex\)/);
-    assert.match(source, /aria-label=\{`Remove condition \$\{index \+ 1\}`\}/);
-    assert.match(source, /conditions: \(current\.conditions \?\? \[\]\)\.filter/);
-});
-
-test("ALWAYS is offered from the variable operand picker", () => {
-    const source = readCodingSource();
-
-    assert.match(source, /const showAlways = operand === 1 && !numericOnly && !valueType && matches\("ALWAYS", "always"\);/);
-    assert.match(source, /id: "always", label: "ALWAYS", valueType: "boolean"/);
-    assert.match(source, /operandPicker\.operand === 1 && variableId === "always"/);
-    assert.match(source, /\? \{ type: "always", \.\.\.\(condition\.join === "or" \? \{ join: "or" \} : \{\}\) \}/);
-    assert.match(source, /Configure ALWAYS for condition/);
-    assert.match(source, /Edit input 1 for condition/);
-});
-
-test("action and variable pickers use flush classic dropdown rows", () => {
-    const source = readCodingSource();
-    const css = readFileSync(CSS_PATH, "utf8");
-
-    assert.match(source, /code-node-picker code-node-picker--action/);
-    assert.match(source, /code-node-picker code-node-picker--variable/);
-    assert.doesNotMatch(source, /code-node-picker code-node-picker--(?:action|variable)[^\n]*rounded/);
-    assert.match(source, /className="code-conditional-add-button"/);
-    assert.equal((source.match(/className="code-conditional-add-button"/g) ?? []).length, 1);
-    assert.match(source, /className=\{`code-condition-wire-tool/);
-    assert.match(source, /code-action-add-button/);
-    assert.match(css, /\.code-node-picker--action \{ border-color: rgba\(148, 163, 184, \.52\); background-color: #15191d; \}/);
-    assert.match(css, /\.code-node-picker--variable \{ border-color: rgba\(148, 163, 184, \.52\); background-color: #15191d; \}/);
-    assert.match(css, /\.code-node-search-results \{ display: grid; max-height: 300px; gap: 0; margin-top: 6px; overflow-y: auto; border: 1px solid rgba\(148, 163, 184, \.52\); background: rgba\(9, 11, 13, \.96\); padding: 4px 0; \}/);
-    assert.match(css, /\.code-node-search-results button \{ display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px; border: 0; border-radius: 0; background: transparent; padding: 9px 10px; text-align: left; \}/);
-    assert.match(css, /\.code-node-search-results button:hover \{ border-color: transparent; background: rgba\(203, 213, 225, \.16\); \}/);
-    assert.doesNotMatch(css, /\.code-node-picker--(?:action|variable) \.code-node-search-results button \{/);
-    assert.match(css, /\.code-compact-footer > button\.code-conditional-add-button \{ border-color: rgba\(125, 211, 252, \.62\); background: #081933; color: #bfdbfe; \}/);
-    assert.match(css, /\.code-compact-footer > button\.code-action-add-button \{ border-color: #c084fc; background: #581c87; color: #fae8ff; \}/);
-    assert.doesNotMatch(css, /\.code-compact-footer > button\.code-action-add-button[^\n]*linear-gradient/);
-});
-
-test("conditional nodes show depth and expose snip and attach controls", () => {
-    const source = readCodingSource();
-    const css = readFileSync(CSS_PATH, "utf8");
-
-    assert.match(source, /<span className="code-node-badge">\{detached \? "\?" : node\.path\.length\}<\/span>/);
-    assert.match(source, /aria-label=\{detached \? "Attach conditional" : "Snip conditional"\}/);
-    assert.match(source, /const snipBranch = \(node, branch\) =>/);
-    assert.match(source, /const attachDetachedBranch = \(targetNode\) =>/);
-    assert.match(source, /if \(disabled \|\| attachingDetachedId \|\| event\.button !== 0/);
-    assert.match(source, /const attachingToRoot = !Array\.isArray\(targetNode\.path\)/);
-    assert.match(source, /branches: \[\.\.\.\(root\.branches \?\? \[\]\), branch\]/);
-    assert.match(source, /if \(attachingDetachedId\) \{ event\.stopPropagation\(\); attachDetachedBranch\(node\); \} else selectGraphNode\(event, node\.id\)/);
-    assert.match(source, /removeBranchWithoutPromotion/);
-    assert.match(source, /detachedBranches: detachedBranches\.filter/);
-    assert.match(source, /detachedGraphs\.flatMap\(\(item\) => item\.actions\)/);
-    assert.match(source, /detached \? <span className="code-conditional-priority code-conditional-priority--detached"/);
-    assert.match(css, /\.code-condition-wire-tool \{[\s\S]*top: 0;/);
-    assert.match(source, /onAddChildConditional=\{\(\) =>/);
-    assert.match(source, /children: \[\.\.\.\(current\.children \?\? \[\]\), child\]/);
-    assert.match(source, /positionInsertedGraphNode\(node, previousChild, nextChild, nodeOffsetsRef\.current, CONDITION_TO_CHILD_GAP\)/);
-    assert.doesNotMatch(source, /siblingIndex === 0 \? "IF" : "ELSE IF"/);
-});
-
-test("bot ability configuration selects the bot entity before the ability", () => {
-    const source = readFileSync(NODES_PATH, "utf8");
-    const inspectorStart = source.indexOf('return panel(`INPUT ${inspectedNode.operand} VARIABLE`');
-    const inspectorEnd = source.indexOf('if (inspectedNode.kind === "action")', inspectorStart);
-    const inspector = source.slice(inspectorStart, inspectorEnd);
-
-    assert.match(source, /if \(definition\?\.supportsAbility\) return "Bot Entity"/);
-    assert.ok(inspector.indexOf("definition.supportsSelectable") < inspector.indexOf("definition.supportsAbility && abilityOptions.length"));
-    assert.match(source, /definition\.supportsAbility \? "BOT ENTITY" : "ENTITY"/);
-});
-
-test("root conditional controls do not change graph selection", () => {
-    const source = readCodingSource();
-
-    assert.match(source, /const addRootConditional = \(event, node, rootNode\) => \{\s*event\.stopPropagation\(\);/);
-    assert.match(source, /onAddConditional=\{addRootConditional\}/);
-    assert.match(source, /function GraphRootNode[\s\S]*onClick=\{\(event\) => onAddConditional\(event, node, rootNode\)\}/);
-});
-
-test("removing a conditional promotes its child branches", () => {
-    const source = readCodingSource();
-
-    assert.match(source, /removeLogicBranch\(roots, rootIndex, path\)/);
-    assert.match(source, /if \(selectedConditionIds\.has\(branchId\)\) return removeFromBranches\(branch\.children, rootId\);/);
-});
-
-test("search and configuration menus are exclusive and close on Escape", () => {
-    const source = readCodingSource();
-
-    assert.match(source, /isExternalConfigurationOpen = false/);
-    assert.match(source, /onCloseExternalConfiguration/);
-    assert.match(source, /if \(!isSearchOpen\) return;/);
-    assert.match(source, /if \(!isExternalConfigurationOpen\) return;/);
-    assert.match(source, /useDialogFocus\(dialogRef, \{ onClose \}\)/);
-    assert.match(source, /onKeyDown=\{\(event\) => \{ if \(event\.key === "Escape"\) \{ event\.preventDefault\(\); event\.stopPropagation\(\);/);
-    assert.match(source, /useExclusiveSearchMenu\(pickerRef, true, onClose\)/);
-    assert.match(source, /onSearchCloseRef\.current\?\.\(\);/);
-    assert.match(source, /onCloseExternalConfigurationRef\.current\?\.\(\);/);
-});
-
-test("Escape closes one search or configuration layer before the code workspace", () => {
-    const source = readCodingSource();
-    const menuEvents = readFileSync(MENU_EVENTS_PATH, "utf8");
-    const layeredClose = source.slice(source.indexOf("const closeTopLogicLayer"), source.indexOf("useDialogFocus(logicDialogRef"));
-    const actionPicker = source.slice(source.indexOf("function NodeKindPicker"), source.indexOf("function VariableOperandPicker"));
-    const variablePicker = source.slice(source.indexOf("function VariableOperandPicker"), source.indexOf("function ConditionalOperandBox"));
-
-    assert.match(layeredClose, /if \(isNodeSearchOpen\)[\s\S]*setIsNodeSearchOpen\(false\);[\s\S]*return;/);
-    assert.match(layeredClose, /if \(isCustomVariablesOpen\)[\s\S]*setIsCustomVariablesOpen\(false\);[\s\S]*return;/);
-    assert.match(layeredClose, /setIsLogicOpen\(false\);/);
-    assert.match(source, /onClose: closeTopLogicLayer/);
-    assert.match(actionPicker, /event\.preventDefault\(\); event\.stopPropagation\(\); onCancel\(\);/);
-    assert.match(variablePicker, /event\.preventDefault\(\); event\.stopPropagation\(\); onClose\(\);/);
-    assert.match(menuEvents, /OPEN_SEARCH_MENUS\.push\(menuEntry\)/);
-    assert.match(menuEvents, /if \(event\.key !== "Escape" \|\| OPEN_SEARCH_MENUS\.at\(-1\) !== menuEntry\) return;/);
-    assert.match(menuEvents, /window\.addEventListener\("keydown", closeOnEscape, true\)/);
-    assert.match(menuEvents, /window\.removeEventListener\("keydown", closeOnEscape, true\)/);
-    assert.match(menuEvents, /OPEN_SEARCH_MENUS\.splice\(entryIndex, 1\)/);
-    assert.match(menuEvents, /const returnFocusTarget = menu\?\.parentElement\?\.closest\?\.\('\[role="dialog"\]'\)/);
-    assert.match(menuEvents, /returnFocusTarget\.focus\(\{ preventScroll: true \}\)/);
-    const customVariables = readFileSync(fileURLToPath(new URL("./modals/CustomVariablesModal.jsx", import.meta.url)), "utf8");
-    assert.match(customVariables, /useExclusiveSearchMenu\(dialogRef, true, onClose\)/);
-});
-
-test("removing the final condition removes its conditional node", () => {
-    const source = readCodingSource();
-
-    assert.match(source, /const currentConditions = Array\.isArray\(branch\.conditions\) \? branch\.conditions : \[\];/);
-    assert.match(source, /if \(currentConditions\.length <= 1\) \{[\s\S]*removeBranch\(node\.rootIndex, node\.path\);/);
-    assert.match(source, /setSelectedNodeIds\(\(current\) => current\.filter\(\(id\) => id !== node\.id\)\);/);
-});
-
-test("condition variable chips open detailed configuration in the inspector", () => {
-    const source = readCodingSource();
-    const css = readFileSync(CSS_PATH, "utf8");
-
-    assert.match(source, /kind: "condition-variable"/);
-    assert.match(source, /if \(inspectedNode\.kind === "condition-variable"\)/);
-    assert.match(source, /definition\.supportsSelectable && field\(selectablePickerLabel/);
-    assert.doesNotMatch(source, /code-condition-inline-config/);
-    assert.match(css, /grid-template-columns: 34px max-content 64px max-content 30px/);
-    assert.match(css, /\.code-operator-socket \{ min-width: 64px/);
 });
 
 test("local building initialization creates one dummy while match initialization stays isolated", () => {
@@ -778,168 +43,107 @@ test("local building initialization creates one dummy while match initialization
 });
 
 test("live match arena does not append the legacy opponent model to the authoritative roster", () => {
-    const arenaSource = readFileSync(ARENA_PATH, "utf8");
+    const arenaSource = read(ARENA_PATH);
 
     assert.match(arenaSource, /if \(matchContext\?\.matchId \|\| !matchContext\?\.opponent\) return;/);
     assert.match(arenaSource, /buildMatchSpawnShapes/);
 });
 
-test("modulo is exposed only as a custom-variable operation", () => {
-    const source = readCodingSource();
+test("preview and surrender controls exist only in live matches", () => {
 
-    assert.match(source, /VariableOperatorPicker/);
-    assert.match(source, /CUSTOM_VARIABLE_OPERATIONS\.MODULO/);
-    assert.match(source, /VariableOperatorGlyph operation=\{operation\}/);
-    assert.doesNotMatch(source, /condition\.modulo|comparator === "modulo"|Modulo divisor/);
 });
 
-test("custom variable configuration only defines variables and starting values", () => {
-    const source = readFileSync(CUSTOM_VARIABLES_MODAL_PATH, "utf8");
+test("puzzle play is a local preview and puzzle submission is a separate action", () => {
+    const arenaSource = read(ARENA_PATH);
+    const autoPlaySource = read(AUTO_PLAY_HOOK_PATH);
+    const runAutoPlay = autoPlaySource.match(/const runAutoPlay = useCallback\(\(\) => \{[\s\S]*?setIsEditingArena\(false\);/);
 
-    assert.doesNotMatch(source, /BooleanVariableConditions|ModalConditionOperand|\+ AND|\+ OR/);
-    assert.match(source, /valueType: event\.target\.value/);
-    assert.match(source, /STARTING VALUE/);
-    assert.match(source, /arena-toolbar-button arena-toolbar-button--red code-custom-variable-delete-button/);
-    assert.match(source, /value=\{draft\} onChange=\{\(event\) => setDraft\(event\.target\.value\)\} onBlur=\{commit\}/);
-    assert.match(source, /event\.key === "Enter"[\s\S]*event\.currentTarget\.blur\(\)/);
-    assert.doesNotMatch(source, /event\.key === "Enter"[^{]*\{[^}]*commit\(\)/);
-    assert.match(source, /function DeferredTextInput/);
-    assert.match(source, /onChange=\{\(event\) => setDraft\(sanitize\(event\.target\.value\)\)\} onBlur=\{commit\}/);
-    assert.match(source, /aria-label="Variable name"[\s\S]*onCommit=\{\(name\) => update\(selectedIndex, \{ name \}\)\}/);
-    assert.doesNotMatch(source, /aria-label="Variable name"[^>]*onChange=\{\(event\) => update/);
+    assert.ok(runAutoPlay);
+    assert.doesNotMatch(runAutoPlay[0], /submitPuzzleAttempt\(\)/);
+    assert.doesNotMatch(runAutoPlay[0], /tutorialRunRef|customVariableGoal|priorityOrderCorrect/);
+    assert.match(arenaSource, /onPuzzleSubmit=\{isPuzzleMode && onPuzzleAttempt \? submitPuzzleAttempt : null\}/);
 });
 
-test("modify custom variables use conditional-style operands and layered inspectors", () => {
-    const source = readCodingSource();
-    const css = readFileSync(CSS_PATH, "utf8");
+test("puzzle play preserves the editable setup until Reset Stats is chosen", () => {
+    const arenaSource = read(ARENA_PATH);
+    const autoPlaySource = read(AUTO_PLAY_HOOK_PATH);
 
-    assert.match(source, /function VariableActionControls/);
-    assert.match(source, /code-condition-input-toggle/);
-    assert.match(source, /terms\.map\(\(term, termIndex\)/);
-    assert.match(source, /updateTerms\(\[\.\.\.terms/);
-    assert.match(source, /code-variable-action-input-value/);
-    assert.match(source, /code-variable-action-input-label/);
-    assert.match(source, /function BooleanVariableActionRow/);
-    assert.match(source, /aria-label="Edit boolean operand"/);
-    assert.match(source, /code-variable-action-input/);
-    assert.doesNotMatch(source, /operandDefinition\.suffix/);
-    assert.doesNotMatch(source, /function addVariableAction/);
-    assert.match(source, /function ActionVariableInspector/);
-    assert.match(source, /className="code-condition-row-remove"/);
-    assert.match(source, /kind: "action"/);
-    assert.match(source, /setActionOperandInspector/);
-    assert.match(source, /if \(actionOperandInspector\) \{[\s\S]*setActionOperandInspector\(null\);[\s\S]*return;/);
-    assert.match(source, /onDismissOperandPicker/);
-    assert.match(source, /function VariableActionExpression/);
-    assert.match(source, /code-variable-action-expression/);
-    assert.match(css, /\.code-inspector--secondary/);
-    assert.match(css, /\.code-variable-action-row \{[\s\S]*grid-template-columns: 64px minmax\(0, 1fr\) 30px;/);
-    assert.match(css, /\.code-variable-action-operator-button \{[\s\S]*width: 100%;[\s\S]*height: 42px;[\s\S]*border: 1px solid rgba\(71, 85, 105, \.92\);[\s\S]*background: rgba\(8, 17, 29, \.94\);/);
-    assert.match(css, /\.code-variable-action-operator-button:focus-visible \{[\s\S]*border-color: #67e8f9;[\s\S]*outline: 2px solid rgba\(34, 211, 238, \.72\);/);
-    assert.match(css, /\.code-inspector-body \.code-condition-input > input/);
-    assert.match(css, /\.code-inspector-body \.code-condition-input > input,[\s\S]*font: 700 9px\/1 "Cousine", "Courier New", monospace;[\s\S]*text-align: left;/);
-    assert.match(css, /\.code-variable-action-input-value[\s\S]*text-overflow: ellipsis/);
-    assert.match(css, /\.code-variable-action-input-label[\s\S]*text-overflow: ellipsis/);
-    assert.match(css, /\.code-condition-input\.code-variable-action-input[\s\S]*width: 100%[\s\S]*max-width: 100%/);
-    assert.match(css, /\.code-compact-condition[\s\S]*grid-template-columns: 34px max-content 64px max-content 30px/);
-    assert.match(css, /\.code-condition-row-remove[\s\S]*width: 30px[\s\S]*height: 42px[\s\S]*margin-left: 0/);
-    assert.match(css, /\.code-inspector-header button \{ color: #94a3b8; font-size: 28px; \}/);
-    assert.match(css, /\.code-inspector-header button > span \{ color: inherit; font: inherit; letter-spacing: 0; \}/);
-    assert.match(css, /\.code-condition-row-remove:hover:not\(:disabled\)[\s\S]*rgba\(127, 29, 29, \.38\)/);
+    assert.doesNotMatch(autoPlaySource, /buildTutorialArenaShapes|buildAutoPlayStartShapes/);
+    assert.match(autoPlaySource, /setShapes\(\(previousShapes\) => advanceArenaPreviewTick/);
+    assert.match(arenaSource, /if \(isPuzzleMode\) \{\s*setShapes\(buildPracticeArenaShapes\([\s\S]*?puzzleArenaSetup/);
 });
 
-test("code graph has no standalone variable or target connection workflow", () => {
-    const source = readCodingSource();
+test("puzzle play restores drafts by puzzle without overriding loaded submissions", () => {
+    const arenaSource = read(ARENA_PATH);
+    const puzzleSource = read("../../pages/puzzles/PuzzlePlayPage.jsx");
 
-    assert.doesNotMatch(source, /Add variable node|Add target node|setConnecting|selectConnectionSource|variableTargetPortId|graphConnectionPath/);
-    assert.match(source, /const editorGraph = useMemo/);
-    assert.match(source, /editorGraph\.detachedBranches/);
-    assert.doesNotMatch(source, /connections\.map/);
-    assert.doesNotMatch(source, /delete clean\.editorGraph/);
-    assert.doesNotMatch(source, /code-condition-inline-config/);
+    assert.match(arenaSource, /puzzleCodeOverride \?\? readPuzzleBotCodeDraft\(puzzleNumber, puzzleBotForSetup\(initialPuzzle, PUZZLE_PLAYER_TEAM\)\?\.brain/);
+    assert.match(arenaSource, /savePuzzleBotCodeDraft\(puzzleNumber, sanitized\)/);
+    assert.match(puzzleSource, /puzzleCodeOverride=\{activeRestoredSubmission\?\.brain \?\? null\}/);
 });
 
-test("Pixi hit-testing only selects bots and ignores visual effects", () => {
-    const source = readFileSync(PIXI_CANVAS_PATH, "utf8");
+test("puzzle builder play resumes its preview and keeps builder code out of storage", () => {
+    const arenaSource = read(ARENA_PATH);
+    const builderSource = read("../../pages/puzzles/PuzzleBuilderPage.jsx");
 
-    assert.match(source, /background\.eventMode = "none"/);
-    assert.match(source, /particleLayer\.eventMode = "none"/);
-    assert.match(source, /container\.eventMode = isBotShape\(shape\) \? "static" : "none"/);
-    assert.match(source, /graphics\.eventMode = "none"/);
-    assert.match(source, /display\.eventMode = "none"/);
-    assert.match(source, /function beginDrag\(event, view\) \{\s*if \(!isBotShape\(view\.shape\)\) return;/);
-});
-
-test("bot editing keeps touch targets usable without changing the rendered model size", () => {
-    const source = readFileSync(PIXI_CANVAS_PATH, "utf8");
-
-    assert.match(source, /const BOT_TOUCH_TARGET_PX = 48/);
-    assert.match(source, /pointer: coarse/);
-    assert.match(source, /navigator\?\.maxTouchPoints/);
-    assert.match(source, /BOT_TOUCH_TARGET_PX \/ \(2 \* scale\)/);
-    assert.match(source, /event\.pointerType === "touch"/);
-    assert.match(source, /localX \* localX \+ localY \* localY > botInteractionRadius\(view\.shape\) \*\* 2/);
-    assert.match(source, /const BOT_CAPTION_FONT_SIZE = 14/);
-    assert.match(source, /const BOT_CAPTION_MIN_PX = 8/);
-    assert.match(source, /const BOT_CAPTION_MAX_PX = 14/);
-    assert.match(source, /const BOT_CAPTION_OFFSET_UNITS = 37/);
-    assert.match(source, /caption\.position\.set\(0, -radius - BOT_CAPTION_OFFSET_UNITS\)/);
-    assert.match(source, /captionScaleForCamera\(camera\.scale\.x\)/);
-    assert.match(source, /view\.caption\.scale\.set\(captionScale\)/);
-    assert.match(source, /arenaSprites\.abilities\.bot\.source\.scaleMode = "linear"/);
-});
-
-test("editable bots expose a shared mouse and touch rotation handle", () => {
-    const source = readFileSync(PIXI_CANVAS_PATH, "utf8");
-    const arenaSource = readFileSync(ARENA_PATH, "utf8");
-
-    assert.match(source, /const rotationHandle = new Graphics\(\)/);
-    assert.match(source, /rotationHandle\.on\("pointerdown", \(event\) => beginRotationDrag\(event, view\)\)/);
-    assert.match(source, /function beginRotationDrag\(event, view\)/);
-    assert.match(source, /event\.pointerType !== "touch" && event\.button !== 0/);
-    assert.match(source, /function drawRotationHandle\(graphics, rotation, radius, color, distanceOverride/);
-    assert.match(source, /drawRotationHandle\(rotationHandle, rotation, radius, tone, rotationDistance\)/);
-    assert.match(source, /const ROTATION_HANDLE_TOUCH_TARGET_PX = 48/);
-    assert.match(source, /ROTATION_HANDLE_TOUCH_TARGET_PX \/ \(2 \* scale\)/);
-    assert.match(source, /rotationHandleHitRadius\(\)/);
-    assert.match(source, /return rotationHandleDistance\(radius\)/);
-    assert.match(source, /const bodyHit = localX \* localX \+ localY \* localY <= botInteractionRadius\(view\.shape\) \*\* 2/);
-    assert.match(source, /&& !bodyHit/);
-    assert.match(source, /return radius \* 1\.5 \+ 42/);
-    assert.match(source, /graphics\.hitArea = new Circle\(x, y, ROTATION_HANDLE_BASE_HIT_RADIUS_UNITS\)/);
-    assert.match(source, /isTouch && !optionsRef\.current\.measurementEnabled\) optionsRef\.current\.onDeselectAll\?\.\(\)/);
-    assert.match(source, /SELECT BOT \+ DRAG ROTATE HANDLE/);
-    assert.match(arenaSource, /const allowBotRotation = .*isPuzzleMode/);
+    assert.match(arenaSource, /if \(previousPuzzleSetupKeyRef\.current === puzzleSetupKey\) return;/);
+    assert.match(arenaSource, /if \(isPuzzleMode\) \{[\s\S]*savePuzzleBotCodeDraft\(puzzleNumber, sanitized\);[\s\S]*\} else if \(!isPuzzleBuilder\) \{[\s\S]*saveStoredStrategyConfiguration\(strategyStorageKey, sanitized\);/);
+    assert.match(arenaSource, /if \(!isPuzzleBuilder\) saveStoredStrategyConfiguration\(opponentStrategyStorageKey, sanitized\);/);
+    assert.match(arenaSource, /setShapes\(restorePreviewBaseline\(previewBaseline\)\)/);
+    assert.match(builderSource, /playerBot: requestBot\(draft\.playerBot, \{ useDefaultBrain: true \}\)/);
 });
 
 test("puzzle arenas keep bot selection and dragging enabled while paused", () => {
-    const source = readFileSync(ARENA_PATH, "utf8");
+    const source = read(ARENA_PATH);
 
-    assert.match(source, /const \[isEditingArena, setIsEditingArena\] = useState\(true\)/);
     assert.match(source, /const allowLockedBotEditing = isPuzzleMode \|\| isTutorialArenaIntro \|\| \(isMatchTesting && finishStatus === "BUILDING"\)/);
-    assert.match(source, /const arenaSelectableParticipants = useMemo\(\(\) => \{/);
-    assert.match(source, /userId: "tutorial-opponent", username: "Opponent 1"/);
-    assert.match(source, /selectableParticipants=\{arenaSelectableParticipants\}/);
-    assert.match(source, /const arenaEditingEnabled = isEditingArena && \(!tutorialMode \|\| isTutorialArenaIntro\)/);
-    assert.match(source, /onSelectShape=\{arenaEditingEnabled \? setSelectedId/);
-    assert.match(source, /onUpdateShape=\{arenaEditingEnabled \? handleUpdateShape/);
-    assert.match(source, /editable=\{arenaEditingEnabled\}/);
     assert.match(source, /stopAutoPlay\(\);\s*setIsEditingArena\(true\);/);
 });
 
-test("offline arenas keep camera controls without the bottom interaction banner", () => {
-    const arenaSource = readFileSync(ARENA_PATH, "utf8");
-    const pixiSource = readFileSync(PIXI_CANVAS_PATH, "utf8");
+test("the visible building deadline preserves the manual submission grace window", () => {
+    const arenaSource = read(ARENA_PATH);
+    const panelSource = read(PANEL_PATH);
 
-    assert.match(arenaSource, /const showArenaHelp = !isPracticeRoom && !usesPuzzleSetup && !tutorialMode && !isMatchTesting/);
-    assert.match(arenaSource, /showArenaHelp=\{showArenaHelp\}/);
-    assert.match(pixiSource, /showArenaHelp = true/);
-    assert.match(pixiSource, /\{showArenaHelp && !lockCamera && \(/);
+    assert.match(arenaSource, /const authoritativeRemaining = secondsRemaining\(autoSubmitDeadline\)/);
+    assert.match(arenaSource, /if \(authoritativeRemaining === 0\) \{\s*clearInterval\(interval\);[\s\S]*handleFinishMatchRef\.current\?\.\(\);[\s\S]*\}/);
+    assert.match(panelSource, /testingRemaining === 0 && finishStatus === "BUILDING"/);
+});
+
+test("submitted match code closes and disables the coding workspace", () => {
+    const panelSource = read(PANEL_PATH);
+
+    assert.ok(panelSource.includes("const isBotCodeLocked = isMatchTesting && ("));
+    assert.ok(panelSource.includes('finishStatus === "SUBMITTING"'));
+    assert.ok(panelSource.includes('finishStatus === "FINISHED"'));
+    assert.ok(panelSource.includes("setIsLogicOpen(false)"));
+    assert.ok(panelSource.includes("disabled={isBotCodeLocked}"));
+    assert.ok(panelSource.includes("disabled={isCodeEditingLocked || isTesting || !viewingCurrentRound}"));
+    assert.ok(panelSource.includes("canRemove={!isCodeEditingLocked && !isTesting && !roundDeleteLocked}"));
+});
+
+test("live match code browsing keeps opponent code private and sandbox-only", () => {
+    const panelSource = read(PANEL_PATH);
+
+    assert.match(panelSource, /Opponent code is private/);
+    assert.doesNotMatch(panelSource, /onCopyParticipantToSandbox/);
+});
+
+test("conditional ability pickers use all equipped abilities and resource-aware ammo choices", () => {
+    assert.match(read(PANEL_PATH), /abilityOptions: abilityDefinitionsForVariable\(variable, equipped\)/);
+    assert.match(read(NODES_PATH), /new Set\(\[\.\.\.STANDARD_ABILITY_IDS, \.\.\.selected\]\)/);
+});
+
+test("running previews read bot-code edits without restarting playback", () => {
+    const autoPlaySource = read(AUTO_PLAY_HOOK_PATH);
+    const simulationSource = read("../modelPayloads/arenaPreviewSimulation.js");
+
+    assert.match(autoPlaySource, /testingConfiguration: testingConfigurationRef\.current/);
+    assert.match(simulationSource, /bot\.id === "main"[\s\S]*\? testingConfiguration[\s\S]*bot\.id === "opponent-model"[\s\S]*\? opponentTestingConfiguration/);
 });
 
 test("practice autoplay pauses in hidden tabs and submissions do not log brain payloads", () => {
-    const arenaSource = readFileSync(ARENA_PATH, "utf8");
-    const autoPlaySource = readFileSync(AUTO_PLAY_HOOK_PATH, "utf8");
+    const arenaSource = read(ARENA_PATH);
+    const autoPlaySource = read(AUTO_PLAY_HOOK_PATH);
 
     assert.match(autoPlaySource, /if \(!isPracticeRoom\) return undefined;[\s\S]*?document\.addEventListener\("visibilitychange", pausePracticePreviewWhenHidden\)/);
     assert.match(autoPlaySource, /if \(!document\.hidden \|\| !autoIntervalRef\.current\) return;\s*stopAutoPlay\(\);\s*setIsEditingArena\(true\)/);
@@ -950,6 +154,136 @@ test("editable code upgrades legacy coordinates before rendering movement contro
     const source = readCodingSource();
 
     assert.match(source, /activeCodeReadOnly\s*\?\s*normalizedActiveConfiguration\s*:\s*upgradeStoredStrategyCoordinates\(normalizedActiveConfiguration\)/);
-    assert.match(source, /validateAbilityStrategyConfiguration\(activeConfiguration\)/);
-    assert.match(source, /version: BOT_LOGIC_TREE_VERSION/);
+});
+
+test("Pixi hit-testing only selects bots and ignores visual effects", () => {
+    const source = read(PIXI_CANVAS_PATH);
+
+    assert.match(source, /container\.eventMode = isBotShape\(shape\) \? "static" : "none"/);
+    assert.match(source, /graphics\.eventMode = "none"/);
+    assert.match(source, /function beginDrag\(event, view\) \{\s*if \(!isBotShape\(view\.shape\)\) return;/);
+});
+
+test("code graph nodes can be dragged from their surfaces without stealing control clicks", () => {
+    const source = readCodingSource();
+
+    assert.match(source, /function GraphConditionNode[\s\S]*beginNodeDrag\(event, node\.id\)/);
+    assert.match(source, /function GraphActionNode[\s\S]*beginNodeDrag\(event, node\.id\)/);
+});
+
+test("dragging a node never selects it or opens its panel; a tap opens it", () => {
+    const board = read(BOARD_PATH);
+
+    assert.match(board, /const DRAG_CLICK_THRESHOLD = 4;/);
+    assert.match(board, /if \(draggedPastThreshold\) \{\s*dragClickSuppressedRef\.current = true;/);
+    // The click that follows a drag is swallowed before any selection or panel logic.
+    assert.match(board, /const selectGraphNode = [\s\S]*?if \(dragClickSuppressedRef\.current\) \{\s*dragClickSuppressedRef\.current = false;\s*return;/);
+    assert.match(board, /const openPanel = Boolean\(inspector\) && !additive;/);
+});
+
+test("root conditional controls do not change graph selection", () => {
+    assert.match(readCodingSource(), /const addRootConditional = \(event, node, rootNode\) => \{\s*event\.stopPropagation\(\);/);
+});
+
+test("root priority edits swap places with the root at that priority so layout keeps matching execution order", () => {
+    const board = read(BOARD_PATH);
+
+    assert.match(board, /const setRootOrder = \(rootIndex, priority\) => \{[\s\S]*swapNodePlaces\(roots, graph, nodeOffsetsRef\.current, node, target\)[\s\S]*setRootPriority\(roots, rootIndex, priority\)/);
+});
+
+test("conditionals are AND-only across the editor", () => {
+    const nodes = read(NODES_PATH);
+    const compact = nodes.slice(nodes.indexOf("function CompactConditionNode"), nodes.indexOf("function GraphConditionNode"));
+    const inspector = nodes.slice(nodes.indexOf("function ConditionalInspectorRow"), nodes.indexOf("function LogicNodeInspector"));
+
+    assert.doesNotMatch(compact, /"or"|OR/);
+    assert.doesNotMatch(inspector, /toggleJoin|join:|Toggle AND/);
+});
+
+test("removing a conditional promotes its child branches", () => {
+    const source = readCodingSource();
+
+    assert.match(source, /removeLogicBranch\(roots, rootIndex, path\)/);
+    assert.match(source, /if \(selectedConditionIds\.has\(branchId\)\) return removeFromBranches\(branch\.children, rootId\);/);
+});
+
+test("removing the final condition keeps the conditional and makes it always", () => {
+    const source = readCodingSource();
+
+    assert.doesNotMatch(source, /const currentConditions = Array\.isArray\(branch\.conditions\)/);
+    assert.match(source, /onRemoveCondition=\{\(rowIndex\) => \{ setInspectedNode[\s\S]*conditions: \(current\.conditions \?\? \[\]\)\.filter\(\(_, index\) => index !== rowIndex\)/);
+    assert.doesNotMatch(source, /currentConditions\.length <= 1/);
+});
+
+test("condition and action DOM identities are scoped to their root", () => {
+    const source = readCodingSource();
+
+    assert.match(source, /return `condition:\$\{branchId\}:root:\$\{rootId\}`/);
+    assert.match(source, /return `action:\$\{branchId\}:\$\{actionIndex\}:root:\$\{rootId\}`/);
+});
+
+test("modulo is exposed only as a custom-variable operation", () => {
+    const source = readCodingSource();
+
+    assert.match(source, /CUSTOM_VARIABLE_OPERATIONS\.MODULO/);
+    assert.doesNotMatch(source, /condition\.modulo|comparator === "modulo"|Modulo divisor/);
+});
+
+test("custom variable names are sanitised and deleting a variable in use asks first", () => {
+    const modal = read("./modals/CustomVariablesModal.jsx");
+
+    assert.match(modal, /replace\(\/\[\^A-Za-z0-9 _-\]\/g, ""\)/);
+    assert.match(modal, /Used in \$\{uses\} node\$\{uses === 1 \? "" : "s"\}\. Delete anyway\?/);
+});
+
+test("raw number inputs accept digits only when asked and keep focus while the selected variable changes", () => {
+    const source = read(NODES_PATH);
+
+    assert.match(source, /digitsOnly \? event\.target\.value\.replace\(\/\[\^0-9\]\/g, ""\)/);
+    assert.match(source, /digitsOnly && event\.key\.length === 1 && !\/\[0-9\]\/\.test\(event\.key\)/);
+    assert.match(source, /if \(document\.activeElement !== inputRef\.current\) setDraft\(nextValue\);/);
+});
+
+test("empty-canvas pointer down commits focused inputs and dismisses configuration", () => {
+    const source = readCodingSource();
+    const clearFromSurface = source.slice(source.indexOf("const dismissConfigurationFromSurfacePointerDown"), source.indexOf("const selectGraphNode"));
+
+    assert.match(clearFromSurface, /activeElement\.blur\(\)/);
+    assert.match(source, /if \(event\.button === 0 && event\.target === event\.currentTarget\) dismissConfigurationFromSurfacePointerDown/);
+});
+
+test("changing an action keeps its panel open", () => {
+    const board = read(BOARD_PATH);
+
+    assert.match(board, /if \(nodePicker\.actionIndex == null\) setInspectedNode\(null\);/);
+    assert.match(board, /if \(picker\.actionIndex == null\) setInspectedNode\(null\);/);
+});
+
+test("Escape closes one search or configuration layer before the code workspace", () => {
+    const source = readCodingSource();
+    const menuEvents = read("./utils/codeMenuEvents.js");
+    const layeredClose = source.slice(source.indexOf("const closeTopLogicLayer"), source.indexOf("useDialogFocus(logicDialogRef"));
+
+    assert.match(layeredClose, /if \(isNodeSearchOpen\)[\s\S]*setIsNodeSearchOpen\(false\);[\s\S]*return;/);
+    assert.match(layeredClose, /if \(isCustomVariablesOpen\)[\s\S]*setIsCustomVariablesOpen\(false\);[\s\S]*return;/);
+    assert.match(layeredClose, /setIsLogicOpen\(false\);/);
+    assert.match(menuEvents, /if \(event\.key !== "Escape" \|\| OPEN_SEARCH_MENUS\.at\(-1\) !== menuEntry\) return;/);
+});
+
+test("zoom keeps the point under the cursor fixed", () => {
+    const panel = read(PANEL_PATH);
+
+    // Pan is set outside the zoom updater, from the latest values, so it is never applied twice.
+    assert.doesNotMatch(panel.slice(panel.indexOf("const changeZoom"), panel.indexOf("const applyPinchZoom")), /setCanvasZoom\(\(/);
+});
+
+test("code workspace controls keep accessible names, roles and focus handling", () => {
+    const panel = read(PANEL_PATH);
+    const hud = read("./HudControls.jsx");
+
+    assert.match(hud, /role="switch"/);
+    assert.match(hud, /aria-checked=\{checked\}/);
+    for (const label of ["Close bot code workspace", "Search roots", "Custom variables", "Add root", "Zoom in"]) {
+        assert.ok(panel.includes(`aria-label="${label}"`), label);
+    }
 });

@@ -175,13 +175,9 @@ test("puzzle synchronization is gated by unchanged starting configuration and pr
     assert.ok(setupKeyStart >= 0 && setupKeyEnd > setupKeyStart);
     assert.doesNotMatch(setupKeySource, /brain|loadout|strategyConfiguration/);
     assert.match(syncSource, /if \(previousPuzzleSetupKeyRef\.current === puzzleSetupKey\) return;/);
-    assert.match(syncSource, /puzzleBuilderSimulationLookups\(freshBotShapes\)/);
-    assert.match(syncSource, /synchronizePuzzleBuilderBotShape\(shape, setupLookups, initialPuzzleElapsedMs\)/);
     assert.doesNotMatch(syncSource, /startX:\s*bot\.startX|startY:\s*bot\.startY/);
     assert.doesNotMatch(syncSource, /onPuzzleDraftChange/);
 
-    assert.match(arenaSource, /const publicPosition = internalPointToPublic\(internalPosition\)/);
-    assert.match(arenaSource, /startX: publicPosition\.x, startY: publicPosition\.y/);
     const resetStart = arenaSource.indexOf("const resetArenaStats = () => {");
     const resetEnd = arenaSource.indexOf("const handleAutoPlayToggle =", resetStart);
     assert.match(arenaSource.slice(resetStart, resetEnd), /setShapes\(buildPracticeArenaShapes\([\s\S]*?puzzleArenaSetup/);

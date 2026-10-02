@@ -641,11 +641,18 @@ public class BotSubmissionValidationService {
             return;
         }
         String type = typeNode.asText();
+        // Conditions are AND-only. Express OR as a sibling ELSE IF with the same actions.
+        JsonNode join = condition.get("join");
+        if (join != null && !join.isNull() && !(join.isTextual() && "and".equals(join.asText()))) {
+            errors.add(path + ".join is not supported; all conditions must be true (AND)");
+        }
         validateSelectable(errors, condition.get("selectable"), path + ".selectable");
         validateSelectable(errors, condition.get("selectable1"), path + ".selectable1");
         validateSelectable(errors, condition.get("selectable2"), path + ".selectable2");
         validateSelectable(errors, condition.get("leftSelectable"), path + ".leftSelectable");
         validateSelectable(errors, condition.get("rightSelectable"), path + ".rightSelectable");
+        validateSelectable(errors, condition.get("rightSelectable1"), path + ".rightSelectable1");
+        validateSelectable(errors, condition.get("rightSelectable2"), path + ".rightSelectable2");
         if (BotLogicContracts.CONDITION_EXPRESSION.equals(type)) {
             validateExpressionCondition(errors, condition, path, loadoutSpec, customVariableTypes,
                     coordinateBounds, brainVersion);
@@ -764,6 +771,7 @@ public class BotSubmissionValidationService {
                     rightContract,
                     condition.has("rightSelectable") || condition.has("selectable"));
         }
+        validateRightPairConfiguration(errors, condition, path, rightContract, coordinateBounds);
         if ("number".equals(valueType)) {
             if ("number".equals(rightType)) {
                 if (rightValue == null || !rightValue.isNumber()) {
@@ -860,6 +868,44 @@ public class BotSubmissionValidationService {
             }
         }
         return mode;
+    }
+
+    private static final String[][] RIGHT_PAIR_FIELDS = {
+            {"selectable1", "rightSelectable1"}, {"selectable2", "rightSelectable2"},
+            {"targetMode", "rightTargetMode"}, {"targetX", "rightTargetX"},
+            {"targetY", "rightTargetY"}, {"targetAngle", "rightTargetAngle"}};
+
+    /**
+     * A compared-to pair variable (distance, bearings) has its own entity/target in the right*
+     * fields. They are validated with the same rules as the left side; other right sides must not
+     * carry them.
+     */
+    private void validateRightPairConfiguration(List<String> errors, JsonNode condition, String path,
+            BotLogicContracts.VariableContract rightContract, CoordinateBounds coordinateBounds) {
+        if (rightContract == null || !rightContract.isPairVariable()) {
+            for (String[] pair : RIGHT_PAIR_FIELDS) {
+                if (condition.has(pair[1])) errors.add(path + "." + pair[1] + " is not supported for this variable");
+            }
+            return;
+        }
+        tools.jackson.databind.node.ObjectNode view = tools.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+        for (String[] pair : RIGHT_PAIR_FIELDS) {
+            JsonNode value = condition.has(pair[1]) ? condition.get(pair[1]) : condition.get(pair[0]);
+            if (value != null) view.set(pair[0], value);
+        }
+        String mode = validateConditionTarget(errors, view, path + ".rightPair", rightContract, coordinateBounds);
+        String first = view.has("selectable1")
+                ? view.path("selectable1").asText(BotLogicContracts.SELECTABLE_MY)
+                : BotLogicContracts.defaultSelectable1ForVariable(rightContract);
+        validateConditionSelectable(errors, path + ".rightSelectable1", first, rightContract.pairSelectableIdentities(0), rightContract,
+                condition.has("rightSelectable1"));
+        if (BotLogicContracts.TARGET_MODE_TARGET.equals(mode)) {
+            String second = view.has("selectable2")
+                    ? view.path("selectable2").asText(BotLogicContracts.SELECTABLE_OPPONENT)
+                    : BotLogicContracts.defaultSelectable2ForVariable(rightContract);
+            validateConditionSelectable(errors, path + ".rightSelectable2", second, rightContract.pairSelectableIdentities(1), rightContract,
+                    condition.has("rightSelectable2"));
+        }
     }
 
     private static String selectedConditionSelectable(JsonNode condition, String field,

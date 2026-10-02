@@ -26,6 +26,11 @@ export default function MatchView({
     chatClosedNotice,
 }) {
     const { isGuest, user } = useAuth();
+    const teamByUsername = Object.fromEntries(
+        (matchContext?.players ?? [])
+            .filter((participant) => participant?.username)
+            .map((participant) => [participant.username, Number(participant.teamNumber)]),
+    );
     const chat = !isGuest && matchContext?.matchId ? (
         <MatchChat
             messages={chatMessages}
@@ -36,6 +41,7 @@ export default function MatchView({
             rateLimitNotice={chatRateLimitNotice}
             closedNotice={chatClosedNotice}
             currentUsername={user?.username ?? matchContext?.player?.username}
+            teamByUsername={teamByUsername}
         />
     ) : null;
 

@@ -629,7 +629,7 @@ class DuelSimulationServiceTest {
     }
 
     @Test
-    void conditionJoinsCanUseOrAndCoordinates() {
+    void multipleConditionsAreAndedAndCanUseCoordinates() {
         MatchPlaybackDTO result = service.simulate(request(
                 arena(100),
                 bot("bot-1", "One", 1, 100, 400, brain("""
@@ -640,12 +640,11 @@ class DuelSimulationServiceTest {
                               {
                                 "type":"expression",
                                 "left":"selectable.x","leftSelectable":"my_bot",
-                                "comparator":"gt",
+                                "comparator":"lt",
                                 "right":{"type":"number","value":500}
                               },
                               {
                                 "type":"expression",
-                                "join":"or",
                                 "left":"selectable.y","leftSelectable":"opponent",
                                 "comparator":"eq",
                                 "right":{"type":"number","value":400}
@@ -658,6 +657,42 @@ class DuelSimulationServiceTest {
                 bot("bot-2", "Two", 2, 700, 400, idleBrain)));
 
         assertThat(result.frames().getFirst().bots().getFirst().x()).isGreaterThan(100);
+    }
+
+    @Test
+    void comparedToPairVariableUsesItsOwnTarget() {
+        String brainTemplate = """
+                [
+                  {
+                    "priority":1,
+                    "conditions":[
+                      {
+                        "type":"expression",
+                        "left":"selectable.distance",
+                        "selectable1":"my_bot","selectable2":"opponent","targetMode":"target",
+                        "comparator":"gt",
+                        "right":{"type":"variable","value":"selectable.distance"}%s
+                      }
+                    ],
+                    "action":"move_walk","movementMode":"target","movementDirection":0
+                  }
+                ]
+                """;
+        String brainJson = brainTemplate.formatted(
+                ",\"rightSelectable1\":\"my_bot\",\"rightTargetMode\":\"coordinates\",\"rightTargetX\":200,\"rightTargetY\":400");
+        // Distance to the opponent (600) exceeds distance to the point (100), so the bot moves.
+        MatchPlaybackDTO separate = service.simulate(request(
+                arena(100),
+                bot("bot-1", "One", 1, 100, 400, brain(brainJson)),
+                bot("bot-2", "Two", 2, 700, 400, idleBrain)));
+        assertThat(separate.frames().getFirst().bots().getFirst().x()).isGreaterThan(100);
+
+        // Without right* fields the compared side shares the left target, so 600 > 600 is false.
+        MatchPlaybackDTO shared = service.simulate(request(
+                arena(100),
+                bot("bot-1", "One", 1, 100, 400, brain(brainTemplate.formatted(""))),
+                bot("bot-2", "Two", 2, 700, 400, idleBrain)));
+        assertThat(shared.frames().getFirst().bots().getFirst().x()).isEqualTo(100);
     }
 
     @Test
@@ -1084,14 +1119,12 @@ class DuelSimulationServiceTest {
         List<Condition> conditions = ConditionResolutionService.normalizeConditions(jsonMapper.readTree("""
                 [
                   {"type":"expression","left":"selectable.relativeBearing","comparator":"eq","right":{"type":"number","value":1000}},
-                  {"type":"expression","left":"selectable.relativeBearingClockwise","comparator":"eq","right":{"type":"number","value":-100}},
-                  {"type":"expression","left":"selectable.relativeBearingCounterclockwise","comparator":"eq","right":{"type":"number","value":1000}}
+                  {"type":"expression","left":"selectable.relativeBearing","comparator":"eq","right":{"type":"number","value":-100}}
                 ]
                 """));
 
         assertThat(conditions.get(0).right().numberValue()).isEqualTo(180.0);
         assertThat(conditions.get(1).right().numberValue()).isEqualTo(0.0);
-        assertThat(conditions.get(2).right().numberValue()).isEqualTo(360.0);
     }
 
     @Test

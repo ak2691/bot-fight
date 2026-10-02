@@ -92,56 +92,46 @@ class TargetingServiceTest {
         Arena arena = new Arena(1000, 1000, 1000);
 
         Condition distance = new Condition("expression", 0, "opponent_grenade", "my_bot", null,
-                "selectable.distance", null, "", "eq", Operand.number(0), "and");
+                "selectable.distance", null, "", "eq", Operand.number(0));
         assertThat(resolver.resolveStateVariable("selectable.distance", "my_bot", distance,
                 player, opponent, entities, arena).numberValue()).isEqualTo(50.0);
 
         opponent.rotation = 270;
         Condition bearing = new Condition("expression", 0, "my_bot", "opponent", null,
-                "selectable.absoluteBearing", null, "", "eq", Operand.number(0), "and");
+                "selectable.absoluteBearing", null, "", "eq", Operand.number(0));
         assertThat(resolver.resolveStateVariable("selectable.absoluteBearing", "opponent", bearing,
                 player, opponent, entities, arena).numberValue()).isEqualTo(-45.0);
 
         Condition invalidBearing = new Condition("expression", 0, "opponent_grenade", "opponent", null,
-                "selectable.absoluteBearing", null, "", "eq", Operand.number(0), "and");
+                "selectable.absoluteBearing", null, "", "eq", Operand.number(0));
         assertThat(resolver.resolveStateVariable("selectable.absoluteBearing", "opponent_grenade", invalidBearing,
                 player, opponent, entities, arena)).isNull();
 
         Condition relative = new Condition("expression", 0, "my_bot", "opponent", null,
-                "selectable.relativeBearing", null, "", "eq", Operand.number(0), "and");
+                "selectable.relativeBearing", null, "", "eq", Operand.number(0));
         assertThat(resolver.resolveStateVariable("selectable.relativeBearing", "opponent", relative,
                 player, opponent, entities, arena).numberValue()).isEqualTo(45.0);
 
         Condition coordinateDistance = new Condition("expression", 0, "opponent_grenade", "my_bot", null,
-                "selectable.distance", null, "", "eq", Operand.number(0), "and",
+                "selectable.distance", null, "", "eq", Operand.number(0),
                 "coordinates", 150, 100, 0);
         assertThat(resolver.resolveStateVariable("selectable.distance", "my_bot", coordinateDistance,
                 player, opponent, entities, arena).numberValue()).isEqualTo(50.0);
 
         Condition coordinateBearing = new Condition("expression", 0, "opponent", "my_bot", null,
-                "selectable.relativeBearing", null, "", "eq", Operand.number(0), "and",
+                "selectable.relativeBearing", null, "", "eq", Operand.number(0),
                 "coordinates", 100, 0, 0);
         assertThat(resolver.resolveStateVariable("selectable.relativeBearing", "my_bot", coordinateBearing,
                 player, opponent, entities, arena).numberValue()).isEqualTo(0.0);
 
         Condition angleBearing = new Condition("expression", 0, "opponent", "my_bot", null,
-                "selectable.relativeBearing", null, "", "eq", Operand.number(0), "and",
+                "selectable.relativeBearing", null, "", "eq", Operand.number(0),
                 "angle", 500, 500, 90);
         assertThat(resolver.resolveStateVariable("selectable.relativeBearing", "my_bot", angleBearing,
                 player, opponent, entities, arena).numberValue()).isEqualTo(90.0);
-        Condition clockwiseAngleBearing = new Condition("expression", 0, "opponent", "my_bot", null,
-                "selectable.relativeBearingClockwise", null, "", "eq", Operand.number(0), "and",
-                "angle", 500, 500, 90);
-        assertThat(resolver.resolveStateVariable("selectable.relativeBearingClockwise", "my_bot", clockwiseAngleBearing,
-                player, opponent, entities, arena).numberValue()).isEqualTo(90.0);
-        Condition counterclockwiseAngleBearing = new Condition("expression", 0, "opponent", "my_bot", null,
-                "selectable.relativeBearingCounterclockwise", null, "", "eq", Operand.number(0), "and",
-                "angle", 500, 500, 90);
-        assertThat(resolver.resolveStateVariable("selectable.relativeBearingCounterclockwise", "my_bot", counterclockwiseAngleBearing,
-                player, opponent, entities, arena).numberValue()).isEqualTo(270.0);
 
         Condition hp = new Condition("expression", 0, "opponent_grenade", "opponent_grenade", null,
-                "selectable.hp", null, "", "eq", Operand.number(0), "and");
+                "selectable.hp", null, "", "eq", Operand.number(0));
         assertThat(resolver.resolveStateVariable("selectable.hp", "opponent_grenade", hp,
                 player, opponent, entities, arena).numberValue()).isEqualTo(0.0);
     }

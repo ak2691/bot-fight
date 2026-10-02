@@ -6,60 +6,11 @@ import { apiUrl } from "../../config/api.js";
 import { fetchPuzzles, MAX_PUZZLE_SEARCH_QUERY_LENGTH } from "../../puzzles/puzzleApi.js";
 
 const PAGE_SIZE = 20;
-
-const DECORATIVE_PUZZLE_PIECES = [
-    { id: "left-top", top: "9%", left: "1%", size: 86, rotation: -24, opacity: 0.10 },
-    { id: "right-top", top: "11%", right: "1%", size: 74, rotation: 18, opacity: 0.08 },
-    { id: "left-middle", top: "34%", left: "-1%", size: 102, rotation: 12, opacity: 0.12 },
-    { id: "right-middle", top: "39%", right: "-2%", size: 92, rotation: -31, opacity: 0.09 },
-    { id: "left-lower", bottom: "18%", left: "3%", size: 68, rotation: 29, opacity: 0.07 },
-    { id: "right-lower", bottom: "16%", right: "3%", size: 88, rotation: -17, opacity: 0.11 },
-    { id: "left-upper-middle", top: "21%", left: "7%", size: 58, rotation: 34, opacity: 0.07 },
-    { id: "right-upper-middle", top: "26%", right: "7%", size: 106, rotation: -8, opacity: 0.10 },
-    { id: "left-lower-middle", top: "61%", left: "5%", size: 76, rotation: -35, opacity: 0.08 },
-    { id: "right-lower-middle", top: "65%", right: "5%", size: 64, rotation: 22, opacity: 0.07 },
-    { id: "left-bottom", bottom: "3%", left: "10%", size: 84, rotation: 25, opacity: 0.10 },
-    { id: "right-bottom", bottom: "4%", right: "10%", size: 70, rotation: -37, opacity: 0.08 },
-    { id: "top-center-left", top: "8%", left: "32%", size: 54, rotation: 8, opacity: 0.06 },
-    { id: "top-center-right", top: "8%", right: "32%", size: 62, rotation: -19, opacity: 0.07 },
-    { id: "bottom-center-left", bottom: "2%", left: "27%", size: 58, rotation: 36, opacity: 0.08 },
-    { id: "bottom-center-right", bottom: "1%", right: "27%", size: 96, rotation: -30, opacity: 0.11 },
-    { id: "left-center", top: "49%", left: "15%", size: 46, rotation: 15, opacity: 0.06 },
-    { id: "right-center", top: "52%", right: "15%", size: 52, rotation: -4, opacity: 0.09 },
+const PUZZLE_FILTERS = [
+    { id: "all", label: "All" },
+    { id: "unsolved", label: "Unsolved" },
+    { id: "solved", label: "Solved" },
 ];
-
-function PuzzleDecorationPiece({ piece }) {
-    const position = Object.fromEntries(
-        ["top", "right", "bottom", "left"]
-            .filter((edge) => piece[edge] !== undefined)
-            .map((edge) => [edge, piece[edge]])
-    );
-
-    return (
-        <svg
-            className="puzzle-page-decoration-piece"
-            viewBox="0 0 100 100"
-            aria-hidden="true"
-            style={{
-                ...position,
-                width: `${piece.size}px`,
-                height: `${piece.size}px`,
-                opacity: piece.opacity,
-                transform: `rotate(${piece.rotation}deg)`,
-            }}
-        >
-            <path d="M18 8h22c0 12 18 12 18 0h24v24c-12 0-12 18 0 18v24H58c0-12-18-12-18 0H18V50c12 0 12-18 0-18V8Z" />
-        </svg>
-    );
-}
-
-function PuzzleDecorationLayer() {
-    return (
-        <div className="puzzle-page-decorations" aria-hidden="true">
-            {DECORATIVE_PUZZLE_PIECES.map((piece) => <PuzzleDecorationPiece key={piece.id} piece={piece} />)}
-        </div>
-    );
-}
 
 export default function PuzzleListPage() {
     const navigate = useNavigate();
@@ -75,6 +26,8 @@ export default function PuzzleListPage() {
     const [completedPuzzleCount, setCompletedPuzzleCount] = useState(null);
     const [query, setQuery] = useState("");
     const [activeQuery, setActiveQuery] = useState("");
+    const [filter, setFilter] = useState("all");
+    const [helpOpen, setHelpOpen] = useState(false);
     const loadMoreSentinelRef = useRef(null);
     const requestIdRef = useRef(0);
     const pageRef = useRef(0);
@@ -189,133 +142,148 @@ export default function PuzzleListPage() {
     const completedForProgress = Math.min(totalForProgress, Math.max(0, Number(completedPuzzleCount ?? 0)));
     const completionPercent = totalForProgress > 0 ? Math.round((completedForProgress / totalForProgress) * 100) : 0;
 
+    const visiblePuzzles = puzzles.filter((puzzle) => (
+        filter === "solved" ? puzzle.solved : filter === "unsolved" ? !puzzle.solved : true
+    ));
+
     return (
-        <main className="puzzle-page relative min-h-screen overflow-hidden bg-[#181b1c] font-interface text-[#f2f4f5]">
+        <main className="puzzle-page relative min-h-screen bg-[#181b1c] font-interface text-[#f2f4f5]">
             <AppNavbar account currentPage="puzzles" />
-            <PuzzleDecorationLayer />
-            <section className="relative z-[1] mx-auto w-full max-w-[1160px] px-5 pb-10 pt-7 sm:px-8 sm:pb-14 sm:pt-10">
-                <div className="puzzle-hero flex flex-col gap-7 lg:flex-row lg:items-start lg:justify-between lg:gap-12">
-                    <div className="min-w-0 max-w-2xl flex-1">
-                        <h1 className="font-display-action text-5xl uppercase tracking-wide text-[#f2f4f5] sm:text-7xl">Puzzles</h1>
-                        <p className="puzzle-hero-intro">Solve tactical challenges here</p>
-                        <aside className="mt-4 max-w-xl rounded-lg border border-cyan-300/20 bg-slate-950/25 px-4 py-3" aria-label="How puzzle submissions work">
-                            <p className="font-mono text-[10px] font-bold tracking-[.16em] text-cyan-200">HOW SUBMISSION WORKS</p>
-                            <p className="mt-1.5 text-sm leading-5 text-slate-300">
-                                Test your strategy in the browser, then click <strong className="text-white">Submit Puzzle</strong>. The server simulates your submitted logic and checks whether it solves the puzzle.
-                            </p>
-                        </aside>
-
-                        <form onSubmit={submitSearch} className="mt-6 max-w-[680px]">
-                            <label htmlFor="puzzle-search" className="font-mono text-[10px] font-bold tracking-[.2em] text-[#35c7e8]">SEARCH PUZZLES</label>
-                            <div className="relative mt-2">
-                                <span className="puzzle-search-icon" aria-hidden="true">
-                                    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
-                                        <circle cx="10.8" cy="10.8" r="6.3" />
-                                        <path d="m16 16 4.2 4.2" />
-                                    </svg>
-                                </span>
-                                <input
-                                    id="puzzle-search"
-                                    type="text"
-                                    value={query}
-                                    onChange={(event) => setQuery(event.target.value)}
-                                    placeholder="Search by name or puzzle number"
-                                    maxLength={MAX_PUZZLE_SEARCH_QUERY_LENGTH}
-                                    autoComplete="off"
-                                    className="puzzle-search-input min-h-11 w-full pl-10 pr-11 text-base text-[#f2f4f5] outline-none"
-                                />
-                                {query && (
-                                    <button
-                                        type="button"
-                                        aria-label="Clear puzzle search"
-                                        onClick={() => { setQuery(""); setActiveQuery(""); }}
-                                        className="puzzle-search-clear"
-                                    >
-                                        ×
-                                    </button>
-                                )}
-                            </div>
-                        </form>
+            <section className="relative z-[1] mx-auto w-full max-w-[860px] px-4 pb-10 pt-6 sm:px-8 sm:pt-9">
+                <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                        <h1 className="font-display text-3xl font-bold text-white sm:text-4xl">Puzzles</h1>
+                        <div className="relative mt-1 flex items-center gap-1.5 text-sm text-slate-400">
+                            <span>Solve tactical challenges with your bot&apos;s logic</span>
+                            <button
+                                type="button"
+                                onClick={() => setHelpOpen((open) => !open)}
+                                aria-expanded={helpOpen}
+                                aria-label="How puzzle submissions work"
+                                title="How submission works"
+                                className="grid h-5 w-5 place-items-center rounded-full border border-slate-600 text-[11px] font-bold text-slate-300 hover:border-cyan-400 hover:text-cyan-200"
+                            >
+                                i
+                            </button>
+                            {helpOpen && (
+                                <div role="note" className="absolute left-0 top-7 z-20 w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-[#262c33] bg-[#0f1418] p-3 text-xs leading-5 text-slate-300 shadow-xl">
+                                    Test your strategy in the browser, then click <strong className="text-white">Submit Puzzle</strong>. The server simulates your submitted logic and checks whether it solves the puzzle.
+                                </div>
+                            )}
+                        </div>
                     </div>
-
-                    <PuzzleProgressStat
-                        completed={completedPuzzleCount}
-                        total={totalPuzzleCount}
-                        percent={completionPercent}
-                    />
+                    <PuzzleProgressStat completed={completedPuzzleCount} total={totalPuzzleCount} percent={completionPercent} />
                 </div>
 
-                <div className="puzzle-list-frame mt-8">
-                    <div className="puzzle-list-title"><div><span>CHALLENGE ARCHIVE</span><h2>All puzzles</h2></div><span>{totalPuzzleCount ?? "—"} AVAILABLE</span></div>
-                    <div className="puzzle-list-heading" aria-hidden="true">
-                        <span>#</span>
-                        <span>PUZZLE</span>
-                        <span>STATUS</span>
-                        {isAdmin && <span />}
+                <form onSubmit={submitSearch} className="mt-5 flex flex-wrap items-center gap-2">
+                    <label htmlFor="puzzle-search" className="sr-only">Search puzzles</label>
+                    <div className="relative min-w-0 flex-1 basis-56">
+                        <span className="puzzle-search-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+                                <circle cx="10.8" cy="10.8" r="6.3" />
+                                <path d="m16 16 4.2 4.2" />
+                            </svg>
+                        </span>
+                        <input
+                            id="puzzle-search"
+                            type="text"
+                            value={query}
+                            onChange={(event) => setQuery(event.target.value)}
+                            placeholder="Search by name or number"
+                            maxLength={MAX_PUZZLE_SEARCH_QUERY_LENGTH}
+                            autoComplete="off"
+                            className="puzzle-search-input min-h-10 w-full pl-10 pr-11 text-sm text-[#f2f4f5] outline-none"
+                        />
+                        {query && (
+                            <button
+                                type="button"
+                                aria-label="Clear puzzle search"
+                                onClick={() => { setQuery(""); setActiveQuery(""); }}
+                                className="puzzle-search-clear"
+                            >
+                                ×
+                            </button>
+                        )}
                     </div>
-                    {isLoading && <PuzzleListMessage>LOADING PUZZLES...</PuzzleListMessage>}
+                    <div className="flex gap-1.5" role="group" aria-label="Filter puzzles">
+                        {PUZZLE_FILTERS.map((option) => (
+                            <button
+                                key={option.id}
+                                type="button"
+                                onClick={() => setFilter(option.id)}
+                                aria-pressed={filter === option.id}
+                                className={`h-8 rounded-full border px-3 text-xs font-semibold transition ${filter === option.id ? "border-cyan-400/70 bg-cyan-400/15 text-cyan-100" : "border-[#2d353c] text-slate-300 hover:border-slate-500"}`}
+                            >
+                                {option.label}
+                            </button>
+                        ))}
+                    </div>
+                </form>
+
+                <div className="puzzle-list-frame mt-4 overflow-hidden rounded-xl border border-[#262c33] bg-[#0f1418]">
+                    <div className="flex items-center gap-3 border-b border-[#262c33] px-4 py-2 text-[11px] text-slate-500" aria-hidden="true">
+                        <span className="w-6" />
+                        <span className="w-8 shrink-0">#</span>
+                        <span className="flex-1">Title</span>
+                        {isAdmin && <span className="w-8" />}
+                    </div>
+                    {isLoading && <PuzzleListMessage>Loading puzzles...</PuzzleListMessage>}
                     {!isLoading && error && (
                         <div className="puzzle-list-message border-rose-400/30 text-rose-300">
-                            <p className="font-mono text-xs text-rose-300">{error}</p>
-                            <button type="button" onClick={() => loadPage(0, false, activeQuery)} className="puzzle-inline-action mt-5">RETRY</button>
+                            <p className="text-xs text-rose-300">{error}</p>
+                            <button type="button" onClick={() => loadPage(0, false, activeQuery)} className="puzzle-inline-action mt-5">Retry</button>
                         </div>
                     )}
-                    {!isLoading && !error && !puzzles.length && (
+                    {!isLoading && !error && !visiblePuzzles.length && (
                         <PuzzleListMessage>
-                            {activeQuery ? `NO PUZZLES MATCHING "${activeQuery}".` : "NO PUZZLES PUBLISHED YET."}
+                            {activeQuery ? `No puzzles matching "${activeQuery}".` : filter !== "all" ? `No ${filter} puzzles loaded.` : "No puzzles published yet."}
                         </PuzzleListMessage>
                     )}
-                    {!isLoading && !error && puzzles.map((puzzle) => {
-                        return (
-                            <div
-                                key={`${puzzle.number}-${puzzle.name}`}
-                                className="puzzle-list-row group"
+                    {!isLoading && !error && visiblePuzzles.map((puzzle) => (
+                        <div
+                            key={`${puzzle.number}-${puzzle.name}`}
+                            className="puzzle-list-row group relative flex min-h-[42px] items-center before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-transparent hover:before:bg-cyan-400"
+                        >
+                            <button
+                                type="button"
+                                onClick={() => navigate(`/puzzles/${encodeURIComponent(puzzle.number)}`)}
+                                className="puzzle-list-open-button flex min-h-[42px] min-w-0 flex-1 items-center gap-3 px-4 text-left"
+                                aria-label={`Open puzzle ${puzzle.number}: ${puzzle.name}`}
                             >
-                                <button
-                                    type="button"
-                                    onClick={() => navigate(`/puzzles/${encodeURIComponent(puzzle.number)}`)}
-                                    className="puzzle-list-open-button"
-                                    aria-label={`Open puzzle ${puzzle.number}: ${puzzle.name}`}
-                                >
-                                    <span className="puzzle-row-number">{puzzle.number}</span>
-                                    <span className="min-w-0 truncate">
-                                        <span className="block truncate text-[.95rem] font-semibold leading-5 tracking-[-.01em] text-[#f2f4f5] sm:text-base" title={puzzle.name}>
-                                            {puzzle.name}
-                                        </span>
-                                    </span>
-
-                                    <span className={`puzzle-row-status ${puzzle.solved ? "puzzle-row-status--complete" : ""}`}>
-                                        <span className="puzzle-status-dot" aria-hidden="true" />
-                                        {puzzle.solved ? "Completed" : "Not completed"}
-                                    </span>
-                                </button>
-                                {isAdmin && <button
-                                    type="button"
-                                    onClick={() => navigate(`/admin/puzzles/${encodeURIComponent(puzzle.number)}/edit`)}
-                                    className="puzzle-edit-button"
-                                    aria-label={`Edit puzzle ${puzzle.number}: ${puzzle.name}`}
-                                    title="Edit puzzle"
-                                >
-                                    <svg viewBox="0 0 24 24" className="h-[18px] w-[18px] fill-none stroke-current" strokeWidth="1.7" aria-hidden="true">
-                                        <path d="m14.2 5.1 4.7 4.7" />
-                                        <path d="m4.7 19.3.9-4.2L15.9 4.8a2.2 2.2 0 0 1 3.1 3.1L8.7 18.2l-4 1.1Z" />
-                                        <path d="M13.8 6.9 17 10.1" />
-                                    </svg>
-                                </button>}
-                            </div>
-                        );
-                    })}
+                                <span className="grid w-6 shrink-0 place-items-center" title={puzzle.solved ? "Solved" : undefined}>
+                                    {puzzle.solved && (
+                                        <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-emerald-400" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="Solved"><circle cx="12" cy="12" r="9" /><path d="m8 12.3 2.6 2.6L16 9.5" /></svg>
+                                    )}
+                                </span>
+                                <span className="puzzle-row-number w-8 shrink-0 font-display text-sm text-slate-500">{puzzle.number}</span>
+                                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[#f2f4f5]" title={puzzle.name}>{puzzle.name}</span>
+                            </button>
+                            {isAdmin && <button
+                                type="button"
+                                onClick={() => navigate(`/admin/puzzles/${encodeURIComponent(puzzle.number)}/edit`)}
+                                className="puzzle-edit-button mr-2"
+                                aria-label={`Edit puzzle ${puzzle.number}: ${puzzle.name}`}
+                                title="Edit puzzle"
+                            >
+                                <svg viewBox="0 0 24 24" className="h-[18px] w-[18px] fill-none stroke-current" strokeWidth="1.7" aria-hidden="true">
+                                    <path d="m14.2 5.1 4.7 4.7" />
+                                    <path d="m4.7 19.3.9-4.2L15.9 4.8a2.2 2.2 0 0 1 3.1 3.1L8.7 18.2l-4 1.1Z" />
+                                    <path d="M13.8 6.9 17 10.1" />
+                                </svg>
+                            </button>}
+                        </div>
+                    ))}
                 </div>
 
                 {!isLoading && !error && hasNext && (
-                    <div ref={loadMoreSentinelRef} className="mx-auto mt-7 flex min-h-11 items-center justify-center font-mono text-[10px] font-bold tracking-widest text-[#9aa8b2]" aria-live="polite">
-                        {isLoadingMore ? "LOADING NEXT 20..." : "SCROLL TO LOAD MORE"}
+                    <div ref={loadMoreSentinelRef} className="mx-auto mt-6 flex min-h-11 items-center justify-center text-xs font-semibold text-[#9aa8b2]" aria-live="polite">
+                        {isLoadingMore ? "Loading next 20..." : "Scroll to load more"}
                     </div>
                 )}
                 {!isLoading && !error && loadMoreError && (
                     <div className="mx-auto mt-3 flex max-w-xl flex-wrap items-center justify-center gap-3 rounded-lg border border-rose-400/25 bg-[#151a1d] px-4 py-3 text-center">
-                        <span className="font-mono text-[10px] text-rose-300">{loadMoreError}</span>
-                        <button type="button" onClick={loadNextPage} className="puzzle-inline-action">RETRY</button>
+                        <span className="text-xs text-rose-300">{loadMoreError}</span>
+                        <button type="button" onClick={loadNextPage} className="puzzle-inline-action">Retry</button>
                     </div>
                 )}
             </section>
@@ -332,21 +300,19 @@ function PuzzleProgressStat({ completed, total, percent }) {
     const hasCompletion = completed !== null && Number.isFinite(Number(completed));
     const displayedCompleted = hasCompletion ? Number(completed) : "—";
     const displayedTotal = hasProgress ? Number(total) : "—";
-    const displayedPercent = hasProgress && hasCompletion ? `${percent}%` : "—";
+    const radius = 20;
+    const circumference = 2 * Math.PI * radius;
 
     return (
-        <aside className="puzzle-progress-stat" aria-label={`${displayedCompleted} of ${displayedTotal} puzzles completed`}>
-            <div className="puzzle-progress-label">PUZZLES COMPLETED</div>
-            <div className="mt-2 flex items-baseline gap-2">
-                <strong className="puzzle-progress-value">{displayedCompleted}</strong>
-                <span className="puzzle-progress-total">/ {displayedTotal}</span>
+        <aside className="flex shrink-0 items-center gap-2.5" aria-label={`${displayedCompleted} of ${displayedTotal} puzzles solved`}>
+            <div className="relative h-12 w-12">
+                <svg viewBox="0 0 48 48" className="h-12 w-12 -rotate-90" aria-hidden="true">
+                    <circle cx="24" cy="24" r={radius} fill="none" stroke="#262c33" strokeWidth="4" />
+                    <circle cx="24" cy="24" r={radius} fill="none" stroke="#34d399" strokeWidth="4" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - percent / 100)} />
+                </svg>
+                <span className="absolute inset-0 grid place-items-center font-display text-[11px] font-bold text-white">{displayedCompleted}/{displayedTotal}</span>
             </div>
-            <div className="puzzle-progress-track" aria-hidden="true">
-                <span style={{ width: `${percent}%` }} />
-            </div>
-            <div className="mt-2 flex items-center justify-between gap-3 font-mono text-[10px] font-bold tracking-[.12em] text-[#9aa8b2]">
-                <span>{displayedPercent} COMPLETE</span>
-            </div>
+            <span className="text-xs text-slate-400">solved</span>
         </aside>
     );
 }

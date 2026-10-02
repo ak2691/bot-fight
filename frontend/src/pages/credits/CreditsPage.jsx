@@ -1,28 +1,48 @@
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../../auth/auth-context";
 import AppNavbar from "../../components/AppNavbar";
 import { CREDIT_CREATORS } from "./credits";
+import "./credits.css";
 
 export default function CreditsPage() {
+    const navigate = useNavigate();
+    const location = useLocation();
+    const { isAuthenticated, isGuest } = useAuth();
+    // Signed-in users (including guests) get the full navbar; signed-out visitors get the wordmark and a Log in button.
+    const signedIn = isAuthenticated || isGuest;
+    const fallbackPath = signedIn ? "/home" : "/login";
+
+    const goBack = (event) => {
+        // location.key is "default" when this page was opened directly, so there is nothing to go back to.
+        if (location.key === "default") return;
+        event.preventDefault();
+        navigate(-1);
+    };
+
     return (
         <main className="credits-page min-h-screen font-interface text-slate-100">
-            <AppNavbar />
+            {signedIn ? (
+                <AppNavbar account currentPage="credits" />
+            ) : (
+                <AppNavbar onHome={() => navigate("/login")}>
+                    <Link to="/login" className="app-navbar-control nb-login">Log in</Link>
+                </AppNavbar>
+            )}
 
-            <section className="relative z-[1] mx-auto flex min-h-[calc(100vh-72px)] w-full max-w-[720px] flex-col justify-center px-5 py-12 sm:px-8">
-                <div className="credits-card rounded-2xl border p-6 shadow-[0_18px_60px_rgba(0,0,0,.24)] sm:p-9">
-                    <p className="font-mono text-[11px] font-bold tracking-[.3em] text-cyan-400">PROJECT ACKNOWLEDGEMENTS</p>
-                    <h1 className="mt-3 text-4xl font-bold tracking-tight text-white sm:text-5xl">Credits</h1>
-                    <p className="mt-4 max-w-xl text-sm leading-6 text-slate-400 sm:text-base">
-                        The following creators are credited for assets used by this project.
-                    </p>
+            <section className="credits-content">
+                <h1 className="credits-title">Credits</h1>
+                <p className="credits-subtitle">Thanks to these creators, whose assets are used in Bot Fight.</p>
 
-                    <ul className="mt-8 divide-y divide-slate-700/70 border-y border-slate-700/70">
-                        {CREDIT_CREATORS.map((creator) => (
-                            <li key={creator} className="py-4 text-base font-semibold text-slate-200 sm:text-lg">
-                                {creator} on itch.io
-                            </li>
-                        ))}
-                    </ul>
+                <ul className="credits-grid">
+                    {CREDIT_CREATORS.map((creator) => (
+                        <li key={creator} className="credits-item">
+                            <span className="credits-item__name">{creator}</span>
+                            <span className="credits-tag">itch.io</span>
+                        </li>
+                    ))}
+                </ul>
 
-                </div>
+                <Link to={fallbackPath} onClick={goBack} className="credits-back">← Back</Link>
             </section>
         </main>
     );

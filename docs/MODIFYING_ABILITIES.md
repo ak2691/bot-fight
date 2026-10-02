@@ -6,7 +6,7 @@ gameplay behavior.
 For a concise, copy-paste prompt describing a new ability, see
 [Requesting a New Ability](REQUESTING_NEW_ABILITIES.md).
 
-Machiner has two gameplay runtimes:
+Botfight has two gameplay runtimes:
 
 - The browser arena is the practice-room preview.
 - The Spring server is authoritative for rated matches.

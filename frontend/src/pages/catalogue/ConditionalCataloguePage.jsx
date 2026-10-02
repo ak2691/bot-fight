@@ -5,6 +5,7 @@ import {
     VISIBLE_STATE_VARIABLES,
     VARIABLE_SELECTABLE_TYPES,
 } from "../../gameArena/botlogic/code/BotCode";
+import { useSectionSpy } from "./useSectionSpy.js";
 
 const GROUP_ORDER = ["General", "Entity", "Health & Combat", "Position & Movement", "Abilities & Status", "Movement", "Rotation", "Ability Entity"];
 
@@ -17,12 +18,10 @@ const DESCRIPTIONS = Object.freeze({
     "selectable.x": "The selected entity's horizontal position.",
     "selectable.y": "The selected entity's vertical position.",
     "selectable.alive": "True when the selected entity exists and has HP remaining.",
-    "selectable.absoluteBearing": "The absolute arena bearing of the Target from the Facing Entity, represented as a signed degree measurement. The first selection must have the facing identity.",
+    "selectable.absoluteBearing": "The arena heading from the Facing Entity toward the Target, as a signed degree measurement. The first selection must have the facing identity.",
     "selectable.movementDirection": "The selected entity's direction of travel, or 0 when it has no movement direction.",
     "selectable.speed": "The selected entity's movement speed in arena units per tick.",
-    "selectable.relativeBearing": "Shortest absolute aim error between the Facing Entity's facing direction and a target entity, absolute coordinate, or absolute angle. Near zero means it is aimed at the target. The first selection must have the facing identity.",
-    "selectable.relativeBearingClockwise": "Clockwise turn needed for the Facing Entity to face a target entity, absolute coordinate, or absolute angle; this preserves turn direction. The first selection must have the facing identity.",
-    "selectable.relativeBearingCounterclockwise": "Counterclockwise turn needed for the Facing Entity to face a target entity, absolute coordinate, or absolute angle; this preserves turn direction. The first selection must have the facing identity.",
+    "selectable.relativeBearing": "How far off the first entity's facing direction is from a target entity, absolute coordinate, or absolute angle, from 0 to 180 degrees. Near zero means it is aimed at the target. The first selection must have the facing identity.",
     "selectable.facing": "The selected entity's facing direction. Only entities with the facing identity are available.",
     "selectable.count": "Number of matching ability entities of the selected type.",
     "selectable.age": "Age or active timer of the selected ability entity, in seconds.",
@@ -77,9 +76,37 @@ function groupedVariables() {
     })).filter(({ variables }) => variables.length);
 }
 
+function groupSectionId(group) {
+    return `conditional-${group.replaceAll(" ", "-").replaceAll("&", "and").toLowerCase()}`;
+}
+
+function TypeTag({ valueType }) {
+    const isBoolean = valueType === "boolean";
+    return (
+        <span className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${isBoolean ? "border-violet-400/40 bg-violet-500/10 text-violet-300" : "border-cyan-400/40 bg-cyan-500/10 text-cyan-300"}`}>
+            {isBoolean ? "True/false" : "Number"}
+        </span>
+    );
+}
+
+function ReferenceCard({ title, defaultOpen, children }) {
+    return (
+        <details open={defaultOpen} className="group rounded-xl border border-[#262c33] bg-[#0f1418]">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-slate-100 [&::-webkit-details-marker]:hidden">
+                {title}
+                <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 fill-none stroke-slate-400 transition group-open:rotate-180" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+            </summary>
+            <div className="space-y-3 border-t border-[#262c33] px-4 py-3 text-xs leading-5 text-slate-400">{children}</div>
+        </details>
+    );
+}
+
 export default function ConditionalCataloguePage() {
     const [searchTerm, setSearchTerm] = useState("");
     const normalizedSearch = searchTerm.trim().toLowerCase();
+    const referenceOpenByDefault = typeof window === "undefined" || !window.matchMedia
+        ? true
+        : window.matchMedia("(min-width: 1024px)").matches;
     const groups = groupedVariables().map(({ group, variables }) => ({
         group,
         variables: variables.filter((variable) => (
@@ -88,91 +115,78 @@ export default function ConditionalCataloguePage() {
     })).filter(({ variables }) => variables.length);
     const alwaysMatches = !normalizedSearch || "always boolean fallback action".includes(normalizedSearch);
     const resultCount = groups.reduce((count, group) => count + group.variables.length, 0) + (alwaysMatches ? 1 : 0);
+    const totalCount = VISIBLE_STATE_VARIABLES.length + 1;
+    const categories = [
+        ...(alwaysMatches ? [{ id: "conditional-basic", label: "Basic" }] : []),
+        ...groups.map(({ group }) => ({ id: groupSectionId(group), label: group })),
+    ];
+    const { activeId, scrollToSection } = useSectionSpy(categories.map((category) => category.id));
 
     return (
         <main className="conditional-catalogue min-h-screen bg-[#171a1c] font-interface text-slate-100">
             <AppNavbar account currentPage="conditionals" />
 
-            <header className="mx-auto max-w-[92rem] px-5 pt-8 sm:px-8 sm:pt-10">
-                <h1 className="font-display-action text-3xl uppercase tracking-wide text-white sm:text-4xl">Conditional Catalogue</h1>
-                <p className="mt-1.5 max-w-2xl text-sm leading-6 text-slate-400 sm:text-base">
-                    Browse game variables here
-                </p>
+            <header className="mx-auto flex max-w-[80rem] flex-wrap items-baseline gap-x-3 gap-y-1 px-5 pt-8 sm:px-8 sm:pt-10">
+                <h1 className="font-display text-3xl font-bold text-white sm:text-4xl">Conditionals</h1>
+                <span className="text-xs text-slate-500">{totalCount} values you can check</span>
             </header>
 
-            <div className="mx-auto grid max-w-[92rem] gap-10 px-5 pb-10 pt-6 sm:px-8 sm:pb-14 sm:pt-8 lg:grid-cols-[15rem_minmax(0,1fr)_minmax(18rem,22rem)]">
-                <aside className="self-start border border-blue-500/40 bg-[#081522]/85 p-5">
-                    <p className="font-mono text-[10px] font-bold tracking-[.22em] text-blue-300">HOW CONDITIONS WORK</p>
-                    <p className="mt-3 text-sm leading-6 text-slate-300">
-                        New v2 brains use centered, Y-up coordinates from -600 to 600; bot-center positions stop at ±570. Legacy v1 brains keep top-left, Y-down coordinates. Distances remain straight-line center-to-center, and the compass remains 0° up with positive angles clockwise. Numbers use comparisons such as <span className="font-mono text-blue-200">&lt;</span>, <span className="font-mono text-blue-200">=</span>, or <span className="font-mono text-blue-200">&gt;</span>. Booleans check true or false. Direction values use signed degrees.
-                    </p>
-                    <div className="my-5 h-px bg-slate-700/70" />
-                    <p className="font-mono text-[10px] font-bold tracking-[.22em] text-blue-300">CUSTOM VARIABLES</p>
-                    <p className="mt-3 text-sm leading-6 text-slate-400">
-                        Create a number or boolean variable in the bot code workspace and give it an initial value. It will appear in the standard variable list, so you can compare it just like the built-in values listed here.
-                    </p>
-                    <p className="mt-3 text-sm leading-6 text-slate-400">
-                        Use <strong className="text-slate-200">Variable: Modify Custom Variable</strong> in an action node to set a value or, for numbers, add to or subtract from it. Stored values persist between ticks during the fight.
-                    </p>
-                    <div className="my-5 h-px bg-slate-700/70" />
-                    <p className="font-mono text-[10px] font-bold tracking-[.22em] text-blue-300">ENTITY INPUTS</p>
-                    <p className="mt-3 text-sm leading-6 text-slate-400">
-                        Entity selectors use the identities attached to each entity. <strong className="text-slate-200">Entity</strong> is a general label for all entities that can exist in the arena. The options provided can be limited by the variable.
-                    </p>
-                    <p className="mt-3 text-sm leading-6 text-slate-400">
-                        Entities created by abilities can be ordered by closest, farthest, oldest, or newest, then selected by position: first, second, and so on.
-                    </p>
-                    <p className="mt-3 text-sm leading-6 text-slate-400">
-                        Edge-distance measurements use the entity's center, not its hitbox edge. Arena-edge distance is the nearest distance from that center to an arena boundary. Danger-zone distance is signed relative to the zone boundary, so it is negative when the entity's center is inside the danger zone.
-                    </p>
+            <div className="mx-auto grid max-w-[80rem] gap-6 px-5 pb-10 pt-5 sm:px-8 sm:pb-14 lg:grid-cols-[10rem_minmax(0,1fr)_minmax(16rem,19rem)] lg:gap-6">
+                <nav aria-label="Categories" className="min-w-0 lg:sticky lg:top-4 lg:self-start">
+                    <p className="mb-2 hidden text-[11px] text-slate-500 lg:block">Categories</p>
+                    <div className="flex gap-1.5 overflow-x-auto pb-1 lg:flex-col lg:gap-0.5 lg:overflow-visible lg:pb-0">
+                        {categories.map((category) => (
+                            <button
+                                key={category.id}
+                                type="button"
+                                onClick={() => scrollToSection(category.id)}
+                                aria-current={activeId === category.id ? "true" : undefined}
+                                className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold transition lg:rounded-md lg:border-0 lg:px-2.5 lg:py-1.5 lg:text-left ${activeId === category.id ? "border-cyan-400/70 bg-cyan-400/15 text-cyan-100 lg:bg-[#1b3a45]" : "border-[#2d353c] text-slate-400 hover:text-slate-200"}`}
+                            >
+                                {category.label}
+                            </button>
+                        ))}
+                    </div>
+                </nav>
 
-                </aside>
-
-                <div className="conditional-catalogue__list min-w-0 space-y-8">
+                <div className="conditional-catalogue__list min-w-0 space-y-6">
                     <div className="catalogue-controls">
                         <label className="catalogue-search">
-                            <span className="catalogue-search__label">FIND A CONDITION</span>
+                            <span className="sr-only">Find a condition</span>
                             <input type="search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search health, distance, cooldown…" />
                         </label>
-                        <span className="catalogue-results" role="status">{resultCount} values available</span>
+                        {normalizedSearch && <span className="catalogue-results" role="status">{resultCount} {resultCount === 1 ? "value" : "values"} found</span>}
                     </div>
                     {resultCount === 0 && <p className="condition-empty">No conditions match that search. Try another game state or value name.</p>}
                     {alwaysMatches && <section aria-labelledby="conditional-basic">
-                        <div className="mb-3 flex items-end justify-between gap-4 border-b border-slate-700/70 pb-3">
-                            <h2 id="conditional-basic" className="font-display-action text-3xl uppercase tracking-wider text-white">Basic</h2>
-                            <span className="font-mono text-[9px] tracking-[.18em] text-slate-500">1 CONDITIONAL</span>
-                        </div>
-                        <div className="conditional-row grid gap-2 border-b border-slate-800/80 px-1 py-4 sm:grid-cols-[minmax(12rem,.8fr)_minmax(0,1.2fr)] sm:gap-7">
-                            <div>
-                                <h3 className="text-sm font-semibold text-slate-100">Always</h3>
-                                <p className="mt-1 font-mono text-[9px] tracking-wider text-slate-600">BOOLEAN · NO ENTITY INPUT</p>
+                        <h2 id="conditional-basic" className="mb-2 font-display text-xl font-bold text-white">Basic</h2>
+                        <div className="overflow-hidden rounded-xl border border-[#262c33] bg-[#0f1418]">
+                            <div className="conditional-row px-4 py-3">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <h3 className="text-sm font-semibold text-slate-100">Always</h3>
+                                    <TypeTag valueType="boolean" />
+                                </div>
+                                <p className="mt-1 text-xs leading-5 text-slate-400">Always true. Use it for a fallback action or a branch that should run every tick.</p>
                             </div>
-                            <p className="text-sm leading-6 text-slate-400">Always true. Use it for a fallback action or a branch that should run every tick.</p>
                         </div>
                     </section>}
 
                     {groups.map(({ group, variables }) => (
-                        <section key={group} aria-labelledby={`conditional-${group.replaceAll(" ", "-").toLowerCase()}`}>
-                            <div className="mb-1 flex items-end justify-between gap-4 border-b border-slate-700/70 pb-3">
-                                <h2 id={`conditional-${group.replaceAll(" ", "-").toLowerCase()}`} className="font-display-action text-3xl uppercase tracking-wider text-white">{group}</h2>
-                                <span className="font-mono text-[9px] tracking-[.18em] text-slate-500">{variables.length} {variables.length === 1 ? "CONDITIONAL" : "CONDITIONALS"}</span>
-                            </div>
-                            <div>
+                        <section key={group} aria-labelledby={groupSectionId(group)}>
+                            <h2 id={groupSectionId(group)} className="mb-2 font-display text-xl font-bold text-white">{group}</h2>
+                            <div className="overflow-hidden rounded-xl border border-[#262c33] bg-[#0f1418]">
                                 {variables.map((variable) => {
                                     const selectable = selectableRule(variable);
+                                    const extras = [selectable ? `Input: ${selectable}` : null, variable.supportsAbility ? "Ability picker" : null].filter(Boolean);
                                     return (
-                                        <article key={variable.id} className="conditional-row grid gap-2 border-b border-slate-800/80 px-1 py-4 sm:grid-cols-[minmax(12rem,.8fr)_minmax(0,1.2fr)] sm:gap-7">
-                                            <div className="min-w-0">
+                                        <article key={variable.id} className="conditional-row border-b border-[#1c2228] px-4 py-3 last:border-b-0">
+                                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                                                 <h3 className="text-sm font-semibold text-slate-100">{variable.label}</h3>
-                                                <p className="mt-1 flex flex-wrap gap-x-2 font-mono text-[9px] uppercase tracking-wider text-slate-600">
-                                                    <span>{variable.valueType}</span>
-                                                    {variable.unit && <><span>·</span><span>{variable.unit}</span></>}
-                                                    <span>·</span>
-                                                    <span className={selectable ? "text-blue-300/80" : ""}>{selectable ?? "No entity input"}</span>
-                                                    {variable.supportsAbility && <><span>·</span><span className="text-blue-300/80">Ability picker</span></>}
-                                                </p>
+                                                <TypeTag valueType={variable.valueType} />
+                                                {variable.unit && <span className="text-[11px] text-slate-500">{variable.unit}</span>}
                                             </div>
-                                            <p className="text-sm leading-6 text-slate-400">{describeVariable(variable)}</p>
+                                            <p className="mt-1 text-xs leading-5 text-slate-400">{describeVariable(variable)}</p>
+                                            {extras.length > 0 && <p className="mt-0.5 text-[11px] text-slate-600">{extras.join(" · ")}</p>}
                                         </article>
                                     );
                                 })}
@@ -181,7 +195,33 @@ export default function ConditionalCataloguePage() {
                     ))}
                 </div>
 
-                <ArenaDegreesCompass />
+                <aside className="min-w-0 space-y-3 lg:self-start">
+                    <ReferenceCard title="Angle reference" defaultOpen={referenceOpenByDefault}>
+                        <ArenaDegreesCompass className="px-4 py-2" />
+                    </ReferenceCard>
+                    <ReferenceCard title="How conditions work" defaultOpen={referenceOpenByDefault}>
+                        <p>
+                            New v2 brains use centered, Y-up coordinates from -600 to 600; bot-center positions stop at ±570. Legacy v1 brains keep top-left, Y-down coordinates. Distances remain straight-line center-to-center, and the compass remains 0° up with positive angles clockwise. Numbers use comparisons such as <span className="font-mono text-blue-200">&lt;</span>, <span className="font-mono text-blue-200">=</span>, or <span className="font-mono text-blue-200">&gt;</span>. Booleans check true or false. Direction values use signed degrees.
+                        </p>
+                        <p>
+                            Entity selectors use the identities attached to each entity. <strong className="text-slate-200">Entity</strong> is a general label for all entities that can exist in the arena. The options provided can be limited by the variable.
+                        </p>
+                        <p>
+                            Entities created by abilities can be ordered by closest, farthest, oldest, or newest, then selected by position: first, second, and so on.
+                        </p>
+                        <p>
+                            Edge-distance measurements use the entity&apos;s center, not its hitbox edge. Arena-edge distance is the nearest distance from that center to an arena boundary. Danger-zone distance is signed relative to the zone boundary, so it is negative when the entity&apos;s center is inside the danger zone.
+                        </p>
+                    </ReferenceCard>
+                    <ReferenceCard title="Custom variables" defaultOpen={referenceOpenByDefault}>
+                        <p>
+                            Create a number or boolean variable in the bot code workspace and give it an initial value. It will appear in the standard variable list, so you can compare it just like the built-in values listed here.
+                        </p>
+                        <p>
+                            Use <strong className="text-slate-200">Variable: Modify Custom Variable</strong> in an action node to set a value or, for numbers, add to or subtract from it. Stored values persist between ticks during the fight.
+                        </p>
+                    </ReferenceCard>
+                </aside>
             </div>
         </main>
     );

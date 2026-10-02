@@ -1,0 +1,227 @@
+/* Tutorial lesson guide. Arena card = game surface; workspace dock = tool surface. */
+
+.tg-arena-host {
+  position: absolute;
+  inset: 0;
+  z-index: 22;
+  pointer-events: none;
+}
+
+.tg-arena-host > * { pointer-events: auto; }
+
+/* ---------- Arena card ---------- */
+.tg-card {
+  position: absolute;
+  top: .5rem;
+  left: .5rem;
+  z-index: 30;
+  display: flex;
+  width: min(20rem, calc(100vw - 2rem));
+  max-height: calc(100svh - 7rem);
+  flex-direction: column;
+  gap: .75rem;
+  overflow: hidden;
+  border: 1px solid #262c33;
+  border-radius: .75rem;
+  padding: .875rem;
+  background: #0f1418;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .5);
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+}
+
+.tg-card__handle { display: none; }
+
+.tg-card__header { display: flex; align-items: flex-start; gap: .5rem; }
+
+.tg-eyebrow { margin: 0; color: #5fd4f0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+
+.tg-title { margin: .125rem 0 0; color: #e6edf3; font: 700 1.25rem/1.2 "Chakra Petch", system-ui, sans-serif; }
+
+.tg-card__count { padding-top: .125rem; color: #8b98a5; font: 600 11px "Chakra Petch", system-ui, sans-serif; }
+
+.tg-minimize {
+  display: grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: none;
+  place-items: center;
+  border: 1px solid #262c33;
+  border-radius: .375rem;
+  background: transparent;
+  color: #c9d3dc;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tg-minimize:hover { border-color: #5fd4f0; color: #fff; }
+
+.tg-dots { display: flex; gap: .25rem; }
+.tg-dots span { height: 4px; min-width: 0; flex: 1; border-radius: 2px; background: #262c33; }
+.tg-dots span.is-on { background: #3aa6c9; }
+
+.tg-card__body { min-height: 0; overflow-y: auto; color: #e6edf3; font-size: .875rem; line-height: 1.5; }
+
+.tg-task { border: 1px solid rgba(251, 191, 36, .35); border-radius: .5rem; padding: .625rem .75rem; background: rgba(251, 191, 36, .06); }
+.tg-task__label { margin: 0 0 .25rem; color: #fbbf24; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.tg-task__text { margin: 0; color: #e6edf3; font-weight: 600; }
+
+/* Shared nav buttons */
+.tg-nav { display: flex; gap: .5rem; }
+
+.tg-btn {
+  min-height: 2.5rem;
+  border: 0;
+  border-bottom: 3px solid rgba(0, 0, 0, .35);
+  border-radius: .5rem;
+  color: #fff;
+  font: 700 .875rem "Chakra Petch", system-ui, sans-serif;
+  cursor: pointer;
+  transition: filter 120ms ease;
+}
+
+.tg-btn:hover:not(:disabled) { filter: brightness(1.12); }
+.tg-btn:disabled { cursor: not-allowed; opacity: .4; }
+.tg-btn:focus-visible { outline: 2px solid #9ce5ed; outline-offset: 2px; }
+.tg-btn--back { display: grid; width: 3rem; flex: none; place-items: center; background: #2a343b; border-bottom-color: #1a2126; }
+.tg-btn--next { flex: 1; background: #2a9cc4; border-bottom-color: #1d6f8a; }
+
+/* Minimized pill: fixed max width so it never grows into the arena. */
+.tg-pill {
+  position: absolute;
+  top: .5rem;
+  left: .5rem;
+  z-index: 30;
+  display: inline-flex;
+  width: max-content;
+  max-width: min(260px, calc(100vw - 2rem));
+  min-height: 2.25rem;
+  align-items: center;
+  gap: .5rem;
+  overflow: hidden;
+  border: 1px solid #262c33;
+  border-radius: 999px;
+  padding: 0 .875rem;
+  background: #0f1418;
+  color: #e6edf3;
+  font: 600 .8125rem "IBM Plex Sans", system-ui, sans-serif;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .4);
+  cursor: pointer;
+}
+
+.tg-pill:hover { border-color: #3aa6c9; }
+.tg-pill__name { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-pill__count { flex: none; color: #8b98a5; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tg-pill__icon { width: 1rem; height: 1rem; flex: none; color: #5fd4f0; }
+.tg-dock .tg-pill { position: static; }
+
+/* ---------- Workspace dock ---------- */
+.tg-workspace-host {
+  position: absolute;
+  top: var(--tutorial-workspace-toolbar-height, 84px);
+  right: 1rem;
+  z-index: 30;
+  width: 320px;
+  pointer-events: none;
+  font-family: "IBM Plex Sans", system-ui, sans-serif !important;
+}
+
+.tg-dock { display: flex; justify-content: flex-end; pointer-events: auto; transition: transform 160ms ease; }
+
+/* Step aside (never cover) the right-hand config panel when it opens. */
+.tg-dock--inspector-open { transform: translateX(calc(-1 * (min(440px, 42vw) + 1rem))); }
+
+.tg-workspace-host .tg-btn { min-height: 2rem; font-size: .8125rem; }
+.tg-workspace-host .tg-btn--back { width: 2.25rem; }
+
+/* ---------- Tutorial page bits ---------- */
+.tutorial-node-visual--graph { padding: 0; }
+.tutorial-graph-frame { position: relative; overflow: hidden; border-radius: .5rem; background: #171b20; }
+.tutorial-graph-canvas { position: relative; pointer-events: none; user-select: none; }
+.tutorial-node-visual__caption { margin: 0; padding: .5rem .75rem; color: #8b98a5; font-size: 12px; line-height: 1.4; }
+
+/* ---------- Stacked layouts and phones (same breakpoint as the arena strip layout) ---------- */
+.tg-fab { display: none; }
+
+@media (max-width: 1180px) {
+  .tg-pill,
+  .tg-dock { display: none; }
+
+  .tg-stacked { position: static; pointer-events: none; }
+  .tg-stacked > * { pointer-events: auto; }
+
+  .tg-fab {
+    position: fixed;
+    right: 1rem;
+    bottom: calc(1rem + env(safe-area-inset-bottom));
+    z-index: 110;
+    display: grid;
+    width: 3.25rem;
+    height: 3.25rem;
+    place-items: center;
+    border: 0;
+    border-bottom: 3px solid #1d6f8a;
+    border-radius: 50%;
+    background: #2a9cc4;
+    color: #fff;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .5);
+    cursor: pointer;
+  }
+
+  .tg-stacked--workspace .tg-fab { bottom: calc(4.5rem + env(safe-area-inset-bottom)); }
+  .tg-fab__icon { width: 1.4rem; height: 1.4rem; }
+  .tg-fab__badge { position: absolute; top: -.375rem; right: -.375rem; border-radius: 999px; padding: 1px 6px; background: #fbbf24; color: #1a1408; font: 700 11px "Chakra Petch", system-ui, sans-serif; }
+
+  .tg-card--sheet {
+    position: fixed;
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 120;
+    width: 100%;
+    max-height: 60svh;
+    border-width: 1px 0 0;
+    border-radius: 1rem 1rem 0 0;
+    padding: .25rem .875rem calc(.875rem + env(safe-area-inset-bottom));
+  }
+
+  .tg-card--sheet .tg-card__handle { display: grid; width: 100%; height: 1.5rem; place-items: center; border: 0; background: transparent; cursor: grab; touch-action: none; }
+  .tg-card--sheet .tg-card__handle span { width: 2.25rem; height: 4px; border-radius: 2px; background: #3a444d; }
+  .tg-card--sheet .tg-title { overflow: hidden; font-size: 1.05rem; text-overflow: ellipsis; white-space: nowrap; }
+  .tg-card--sheet.is-peek { gap: 0; }
+  .tg-card--sheet .tg-btn { min-height: 2.75rem; }
+  .tg-card--sheet .tg-minimize { width: 2.5rem; height: 2.5rem; font-size: 1.4rem; }
+}
+
+/* Phones: the arena shows a fixed bottom action bar (Play etc., ~4.75rem incl. safe area).
+   Lift the lesson button and sheet above it so neither covers the Play button. */
+@media (max-width: 639px) {
+  .tg-stacked:not(.tg-stacked--workspace) .tg-fab {
+    bottom: calc(4.75rem + env(safe-area-inset-bottom));
+  }
+
+  .tg-stacked:not(.tg-stacked--workspace) .tg-card--sheet {
+    bottom: calc(4.25rem + env(safe-area-inset-bottom));
+    max-height: min(60svh, calc(100svh - 10rem));
+    padding-bottom: .875rem;
+    border-width: 1px;
+    border-radius: 1rem;
+    right: .5rem;
+    left: .5rem;
+    width: auto;
+  }
+}
+
+/* Workspace dock: the same one-step-at-a-time card as the arena, docked top-right. */
+.tg-dock .tg-card { position: static; width: 100%; max-height: min(24rem, calc(100vh - var(--tutorial-workspace-toolbar-height, 84px) - 1.5rem)); }
+
+/* The code workspace forces a mono font on everything inside it; restore the exact
+   fonts the arena guide uses (IBM Plex Sans body, Chakra Petch title/count/buttons). */
+.tg-workspace-host .tg-card,
+.tg-workspace-host .tg-card *,
+.tg-workspace-host .tg-pill,
+.tg-workspace-host .tg-pill * { font-family: "IBM Plex Sans", system-ui, sans-serif !important; }
+.tg-workspace-host .tg-title,
+.tg-workspace-host .tg-card__count,
+.tg-workspace-host .tg-btn { font-family: "Chakra Petch", system-ui, sans-serif !important; }

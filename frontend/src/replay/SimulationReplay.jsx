@@ -10,6 +10,8 @@ import { botColorRole, normalizeReplayObstacleShape } from "../gameArena/pixi/pi
 import { compassDegreesToRadians } from "../gameArena/botlogic/planner/arenaAngles.js";
 import MatchToolIcon from "../gameArena/coding/controls/MatchToolIcon.jsx";
 import BotLogo from "../components/BotLogo.jsx";
+import { matchModeLabel } from "../matchmaking/matchModes.js";
+import { eloChangeTone, eloChangeValue } from "../pages/profile/profileMatchFormat.js";
 import { centeredTeamPosition, displayedRoundWins, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, replayAbilitiesFor, replayAbilityTarget, replayAbilityVisual, replayBotAbilityState, replayDamageEvents, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayFrameIndexForElapsedMs, replayRayOrigin, replayRatingChanges, replayRemainingSeconds, replayResultVisibility, replayShapeKey } from "./replayPresentation.js";
 
 const EMPTY_LIST = Object.freeze([]);
@@ -48,6 +50,9 @@ export default function SimulationReplay({
     isCustomMatch = false,
     isFinalMatchResult = false,
     onReturnToLobby = null,
+    mode = null,
+    onHome = null,
+    onQueueAgain = null,
 }) {
     useLayoutEffect(() => {
         if (typeof window !== "undefined") window.scrollTo(0, 0);
@@ -230,9 +235,15 @@ export default function SimulationReplay({
             isFinalMatchResult={isFinalMatchResult}
             onReturnToLobby={onReturnToLobby}
             ratingChanges={ratingChanges}
+            mode={mode}
+            finalElapsedMs={finalElapsedMs}
+            onHome={onHome}
+            onQueueAgain={onQueueAgain}
         />
     </section>;
 }
+
+const WIN_RESULTS = ["BOT_WIN", "WIN", "RESIGNATION_WIN", "DISCONNECTION_WIN"];
 
 function ReplaySidebar({
     playback,
@@ -253,6 +264,10 @@ function ReplaySidebar({
     isFinalMatchResult,
     onReturnToLobby,
     ratingChanges,
+    mode = null,
+    finalElapsedMs = 0,
+    onHome = null,
+    onQueueAgain = null,
 }) {
     const roundWinsBeforeResult = playback.roundWinsBeforeResult;
     const revealCurrentRoundPoint = roundResultRevealed || matchResultRevealed;
@@ -266,15 +281,6 @@ function ReplaySidebar({
         winnerTeamLabel,
         winnerColorRole,
     });
-    const matchResultTitle = replayMatchResultTitle({
-        matchResultRevealed,
-        result: playback.result,
-        winnerTeamLabel,
-        winnerTeamNumber,
-        winnerColorRole,
-        blueTeamWins,
-        redTeamWins,
-    });
     const statusMessage = countdownRemainingMs > 0
         ? "Bots entering the arena."
         : matchResultRevealed ? "Official match result confirmed."
@@ -283,7 +289,7 @@ function ReplaySidebar({
                 : "Watching the submitted bots fight.";
 
     return (
-        <aside className="arena-toolbar-panel arena-right-toolbar testing-mono h-full min-h-0 w-[23rem] flex-shrink-0 overflow-y-auto border-l border-slate-700/70 bg-[linear-gradient(180deg,rgba(12,22,31,.98),rgba(8,16,24,.98))] p-4 shadow-[-12px_0_30px_rgba(0,0,0,.28)]">
+        <aside className="arena-toolbar-panel arena-right-toolbar h-full min-h-0 w-[23rem] flex-shrink-0 overflow-y-auto border-l border-slate-700/70 bg-[linear-gradient(180deg,rgba(12,22,31,.98),rgba(8,16,24,.98))] p-4 shadow-[-12px_0_30px_rgba(0,0,0,.28)]">
             <div className="space-y-4">
                 {onCancel && (
                     <button
@@ -294,68 +300,245 @@ function ReplaySidebar({
                         {cancelLabel}
                     </button>
                 )}
-                <section className="rounded-xl border border-slate-600/70 bg-slate-900/55 p-4 text-[10px] shadow-[0_10px_30px_rgba(0,0,0,.2)]">
-                    <ReplayPanelHeading icon="status">MATCH STATUS</ReplayPanelHeading>
-                    <div className="flex items-center justify-between text-ink-muted">
-                        <span>ROUND</span>
-                        <strong className="font-interface-numeric text-ink-white">{playback.roundNumber ?? 1}/3</strong>
-                    </div>
-                    <div className="mt-2 flex items-center justify-between text-ink-muted">
-                        <span>TIME REMAINING</span>
-                        <strong className="font-interface-numeric text-amber-200">{formatReplayClock(replaySeconds)}</strong>
-                    </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                        <ReplayScoreBox label="BLUE TEAM" value={blueTeamWins} tone="blue" />
-                        <ReplayScoreBox label="RED TEAM" value={redTeamWins} tone="red" opponent />
-                    </div>
-                </section>
-
-                <section className="rounded-xl border border-slate-600/70 bg-slate-900/55 p-4 shadow-[0_10px_30px_rgba(0,0,0,.2)]">
-                    <ReplayPanelHeading icon="bot">ROUND REPLAY</ReplayPanelHeading>
-                    <p className="mt-2 break-words text-base font-bold text-ink-white" aria-live="polite">
-                        {countdownRemainingMs > 0 ? "Preparing replay..." : roundResultTitle}
-                    </p>
-                    <p className="mt-2 text-xs leading-5 text-ink-muted">{statusMessage}</p>
-                </section>
-                {matchResultRevealed && (
-                    <section className="rounded-xl border border-slate-600/70 bg-slate-900/55 p-4 shadow-[0_10px_30px_rgba(0,0,0,.2)]" aria-label="MATCH RESULT">
-                        <ReplayPanelHeading icon="status">MATCH RESULT</ReplayPanelHeading>
-                        <p className="mt-2 break-words text-base font-bold text-ink-white" aria-live="polite">
-                            {matchResultTitle}
-                        </p>
-                        {ratingChanges.length > 0 && (
-                            <div className="mt-4 border-t border-slate-700/70 pt-3" aria-label="ELO changes">
-                                <span className="text-[10px] font-bold tracking-[.18em] text-ink-muted">ELO CHANGES</span>
-                                <div className="mt-2 space-y-2">
-                                    {ratingChanges.map((change, index) => (
-                                        <div
-                                            key={`${change.username}-${index}`}
-                                            className="flex items-center justify-between gap-3 text-sm"
-                                        >
-                                            <span className="min-w-0 truncate font-semibold text-ink-white">
-                                                {change.username}
-                                            </span>
-                                            <span className="shrink-0 font-interface-numeric font-bold tracking-[.04em] text-ink-white">
-                                                {change.label}
-                                            </span>
-                                        </div>
-                                    ))}
-                                </div>
+                {matchResultRevealed ? (
+                    <MatchFinishedCard
+                        playback={playback}
+                        player={player}
+                        participants={roundParticipants}
+                        mode={mode}
+                        isCustomMatch={isCustomMatch}
+                        blueTeamWins={blueTeamWins}
+                        redTeamWins={redTeamWins}
+                        winnerTeamNumber={winnerTeamNumber}
+                        finalElapsedMs={finalElapsedMs}
+                        ratingChanges={ratingChanges}
+                        onHome={onHome}
+                        onQueueAgain={onQueueAgain}
+                        onReturnToLobby={isCustomMatch && isFinalMatchResult ? onReturnToLobby : null}
+                        isFinalMatchResult={isFinalMatchResult}
+                    />
+                ) : (
+                    <>
+                        <section className="rounded-xl border border-slate-600/70 bg-slate-900/55 p-4 text-[10px] shadow-[0_10px_30px_rgba(0,0,0,.2)]">
+                            <ReplayPanelHeading icon="status">MATCH STATUS</ReplayPanelHeading>
+                            <div className="flex items-center justify-between text-ink-muted">
+                                <span>ROUND</span>
+                                <strong className="font-interface-numeric text-ink-white">{playback.roundNumber ?? 1}/3</strong>
                             </div>
-                        )}
-                    </section>
-                )}
-                {isCustomMatch && isFinalMatchResult && matchResultRevealed && onReturnToLobby && (
-                    <button
-                        type="button"
-                        onClick={onReturnToLobby}
-                        className="gray-button-surface w-full border border-cyan-400/70 px-3 py-3 font-mono text-[10px] font-bold tracking-[.18em] text-cyan-100 hover:bg-cyan-950/40"
-                    >
-                        RETURN TO LOBBY
-                    </button>
+                            <div className="mt-2 flex items-center justify-between text-ink-muted">
+                                <span>TIME REMAINING</span>
+                                <strong className="font-interface-numeric text-amber-200">{formatReplayClock(replaySeconds)}</strong>
+                            </div>
+                            <div className="mt-3 grid grid-cols-2 gap-2">
+                                <ReplayScoreBox label="BLUE TEAM" value={blueTeamWins} tone="blue" />
+                                <ReplayScoreBox label="RED TEAM" value={redTeamWins} tone="red" opponent />
+                            </div>
+                        </section>
+
+                        <section className="rounded-xl border border-slate-600/70 bg-slate-900/55 p-4 shadow-[0_10px_30px_rgba(0,0,0,.2)]">
+                            <ReplayPanelHeading icon="bot">ROUND REPLAY</ReplayPanelHeading>
+                            <p className="mt-2 break-words text-base font-bold text-ink-white" aria-live="polite">
+                                {countdownRemainingMs > 0 ? "Preparing replay..." : roundResultTitle}
+                            </p>
+                            <p className="mt-2 text-xs leading-5 text-ink-muted">{statusMessage}</p>
+                        </section>
+                    </>
                 )}
             </div>
         </aside>
+    );
+}
+
+function howEnded(result, viewerWon) {
+    if (result === "DRAW") return "timeout";
+    if (result === "RESIGNATION_WIN") return viewerWon ? "forfeit" : "forfeit";
+    if (result === "DISCONNECTION_WIN") return "disconnect";
+    return "knockout";
+}
+
+function MatchFinishedCard({
+    playback,
+    player,
+    participants,
+    mode,
+    isCustomMatch,
+    blueTeamWins,
+    redTeamWins,
+    winnerTeamNumber,
+    finalElapsedMs,
+    ratingChanges,
+    onHome,
+    onQueueAgain,
+    onReturnToLobby,
+    isFinalMatchResult,
+}) {
+    const result = playback.result;
+    const cancelled = result === "MATCH_CANCELLED";
+    const failed = !cancelled && result !== "DRAW" && !WIN_RESULTS.includes(result);
+    const viewerTeam = participantTeamNumber(player);
+    const draw = result === "DRAW";
+    const viewerWon = WIN_RESULTS.includes(result) && Number(winnerTeamNumber) === viewerTeam;
+    const outcome = cancelled ? "cancelled" : failed ? "failed" : draw ? "draw" : viewerWon ? "victory" : "defeat";
+    const tone = {
+        victory: { title: "VICTORY", text: "text-emerald-300", box: "border-emerald-500/40 bg-emerald-950/40" },
+        defeat: { title: "DEFEAT", text: "text-rose-300", box: "border-rose-500/40 bg-rose-950/30" },
+        draw: { title: "DRAW", text: "text-slate-200", box: "border-slate-500/40 bg-slate-800/40" },
+        cancelled: { title: "MATCH CANCELED", text: "text-slate-200", box: "border-slate-500/40 bg-slate-800/40" },
+        failed: { title: "SIMULATION FAILED", text: "text-amber-300", box: "border-amber-500/40 bg-amber-950/30" },
+    }[outcome];
+    const modeName = isCustomMatch || String(mode ?? "").toUpperCase() === "CUSTOM"
+        ? "Custom match"
+        : `Ranked ${matchModeLabel(mode)}`;
+    const forfeitText = result === "RESIGNATION_WIN"
+        ? viewerWon ? "opponent forfeited" : "you forfeited"
+        : result === "DISCONNECTION_WIN"
+            ? viewerWon ? "opponent disconnected" : "you disconnected"
+            : draw ? "timeout draw" : "knockout";
+    const subtitle = cancelled || failed ? modeName : `${modeName}, ${forfeitText}`;
+    const teamNames = (teamNumber) => participants
+        .filter((participant) => participantTeamNumber(participant) === teamNumber)
+        .map((participant) => participant.username)
+        .filter(Boolean);
+    const blueNames = teamNames(1);
+    const redNames = teamNames(2);
+    const teamRows = [
+        { key: "blue", label: "BLUE", names: blueNames, fallback: "Blue Team", score: blueTeamWins, isViewer: viewerTeam === 1, band: "bg-[#0c2a3a]", tag: "text-sky-300", pill: "bg-sky-400/15 text-sky-200" },
+        { key: "red", label: "RED", names: redNames, fallback: "Red Team", score: redTeamWins, isViewer: viewerTeam === 2, band: "bg-[#3a1418]", tag: "text-rose-300", pill: "bg-rose-400/15 text-rose-200" },
+    ];
+
+    // Per-round history is not part of the playback payload, so earlier rounds are inferred
+    // from the final score and only shown when that inference is unambiguous.
+    const viewerWins = viewerTeam === 2 ? redTeamWins : blueTeamWins;
+    const opponentWins = viewerTeam === 2 ? blueTeamWins : redTeamWins;
+    const roundsPlayed = Math.max(1, Number(playback.roundNumber ?? 1));
+    const lastRoundViewerWin = viewerWon ? 1 : 0;
+    const lastRoundOpponentWin = WIN_RESULTS.includes(result) && !viewerWon ? 1 : 0;
+    const earlierCount = roundsPlayed - 1;
+    const earlierViewerWins = Math.max(0, viewerWins - lastRoundViewerWin);
+    const earlierOpponentWins = Math.max(0, opponentWins - lastRoundOpponentWin);
+    const earlierDraws = Math.max(0, earlierCount - earlierViewerWins - earlierOpponentWins);
+    const rounds = [];
+    const mixedEarlier = [earlierViewerWins, earlierOpponentWins, earlierDraws].filter((count) => count > 0).length > 1;
+    if (earlierCount > 0 && !mixedEarlier) {
+        for (let index = 0; index < earlierCount; index += 1) {
+            rounds.push({
+                key: `round-${index + 1}`,
+                label: `R${index + 1}`,
+                outcome: earlierViewerWins > 0 ? "won" : earlierOpponentWins > 0 ? "lost" : "draw",
+                how: null,
+            });
+        }
+    } else if (earlierCount > 0) {
+        rounds.push({
+            key: "earlier",
+            label: earlierCount === 2 ? "R1–R2" : "R1",
+            outcome: "mixed",
+            how: [earlierViewerWins ? `${earlierViewerWins} won` : null, earlierOpponentWins ? `${earlierOpponentWins} lost` : null, earlierDraws ? `${earlierDraws} drawn` : null].filter(Boolean).join(", "),
+        });
+    }
+    if (!cancelled && !failed) {
+        const clock = result === "BOT_WIN" || result === "WIN"
+            ? ` at ${formatReplayClock(Math.max(0, Math.ceil(finalElapsedMs / 1000)))}`
+            : "";
+        rounds.push({
+            key: `round-${roundsPlayed}`,
+            label: `R${roundsPlayed}`,
+            outcome: draw ? "draw" : viewerWon ? "won" : "lost",
+            how: `${howEnded(result, viewerWon) === "knockout" ? "KO" : howEnded(result, viewerWon)}${clock}`,
+        });
+    }
+    const barClass = { won: "bg-emerald-400", lost: "bg-rose-400", draw: "bg-slate-400", mixed: "bg-amber-300" };
+    const outcomeWord = { won: "Won", lost: "Lost", draw: "Draw", mixed: "Mixed" };
+
+    return (
+        <div className="space-y-3 font-interface" aria-label="MATCH RESULT">
+            <section className={`rounded-xl border px-3 py-4 text-center ${tone.box}`}>
+                <h2 className={`font-display text-3xl font-bold ${tone.text}`} aria-live="polite">{tone.title}</h2>
+                <p className="mt-1 text-[11px] text-slate-400">{subtitle}</p>
+                {!cancelled && !failed && (
+                    <div className="mt-3 space-y-2 text-left">
+                        {teamRows.map((row) => {
+                            const names = row.names.length ? row.names : [row.fallback];
+                            const viewerIndex = row.isViewer ? Math.max(0, names.indexOf(player?.username)) : -1;
+                            return (
+                                <div key={row.key} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 ${row.band}`}>
+                                    <span className={`w-10 shrink-0 font-['Chakra_Petch'] text-xs font-bold tracking-wider ${row.tag}`}>{row.label}</span>
+                                    <div className="min-w-0 flex-1 space-y-0.5">
+                                        {names.map((name, nameIndex) => (
+                                            <p key={`${row.key}-${name}`} className="min-w-0 font-['Chakra_Petch'] text-[13px] font-semibold text-white [overflow-wrap:anywhere] sm:text-sm">
+                                                {name}
+                                                {nameIndex === viewerIndex && <span className={`ml-2 inline-block rounded px-1.5 py-0.5 align-middle text-[11px] font-semibold ${row.pill}`}>You</span>}
+                                            </p>
+                                        ))}
+                                    </div>
+                                    <p className="shrink-0 font-display text-xl font-bold text-white">{row.score}</p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </section>
+
+            <RatingCard playback={playback} player={player} mode={mode} isCustomMatch={isCustomMatch} ratingChanges={ratingChanges} cancelled={cancelled || failed} isFinalMatchResult={isFinalMatchResult} />
+
+            {rounds.length > 1 && (
+                <ul className="space-y-1.5 rounded-xl border border-[#262c33] bg-[#0f1418] p-2" aria-label="Rounds">
+                    {rounds.map((round) => (
+                        <li key={round.key} className="flex items-center gap-2 rounded-md bg-[#12181d] px-2.5 py-2 text-xs text-slate-200">
+                            <span className="w-8 shrink-0 font-display font-bold text-slate-400">{round.label}</span>
+                            <span className={`h-4 w-[3px] shrink-0 rounded-full ${barClass[round.outcome]}`} aria-hidden="true" />
+                            <span className="min-w-0 flex-1 truncate">{outcomeWord[round.outcome]}{round.how ? `, ${round.how}` : ""}</span>
+                        </li>
+                    ))}
+                </ul>
+            )}
+
+            <div className="space-y-2">
+                {onReturnToLobby ? (
+                    <button type="button" onClick={onReturnToLobby} className="flex min-h-12 w-full items-center justify-center rounded-xl border-b-[3px] border-[#1f6b3f] bg-[#2fa866] font-display text-base font-bold text-white hover:bg-[#38bd74]">
+                        RETURN TO LOBBY
+                    </button>
+                ) : !isCustomMatch && onQueueAgain && (
+                    <button type="button" onClick={onQueueAgain} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border-b-[3px] border-[#1f6b3f] bg-[#2fa866] font-display text-base font-bold text-white hover:bg-[#38bd74]">
+                        QUEUE AGAIN
+                    </button>
+                )}
+                {onHome && (
+                    <button type="button" onClick={onHome} className="flex min-h-11 w-full items-center justify-center rounded-lg border border-[#262c33] bg-[#12181d] text-sm font-semibold text-slate-200 hover:border-slate-500">
+                        Home
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// Rating changes ride on the final MATCH_RESULT_READY event, so there is nothing to wait for once it
+// has arrived: no rating in it means the match was not rated (guests, custom, cancelled).
+function RatingCard({ playback, player, mode, isCustomMatch, ratingChanges, cancelled, isFinalMatchResult }) {
+    const ranked = !isCustomMatch && ["ONES", "TWOS"].includes(String(mode ?? "").toUpperCase());
+    const change = ratingChanges.find((entry) => entry.username === player?.username) ?? null;
+
+    const modeText = String(mode ?? "").toUpperCase() === "TWOS" ? "2v2 ELO" : "1v1 ELO";
+    if (!change) {
+        const pending = ranked && !cancelled && !isFinalMatchResult && playback.result !== "MATCH_CANCELLED";
+        return (
+            <section className="rounded-xl border border-[#262c33] bg-[#0f1418] px-3 py-3 text-xs text-slate-400" aria-label="ELO">
+                {pending ? "Rating updating…" : "Not rated"}
+            </section>
+        );
+    }
+    const delta = eloChangeValue({ ratingBefore: change.before, ratingAfter: change.after });
+    const toneName = eloChangeTone({ ratingBefore: change.before, ratingAfter: change.after });
+    const deltaColor = toneName === "up" ? "text-emerald-400" : toneName === "down" ? "text-rose-400" : "text-slate-300";
+    return (
+        <section className="flex items-center justify-between gap-3 rounded-xl border border-[#262c33] bg-[#0f1418] px-3 py-3" aria-label="ELO changes">
+            <div>
+                <p className="text-[10px] text-slate-500">{modeText}</p>
+                <p className="font-display text-lg font-bold text-white">{change.before} <span className="text-slate-500">&rarr;</span> <span className="text-cyan-300">{change.after}</span></p>
+            </div>
+            <p className={`font-display text-3xl font-bold ${deltaColor}`}>{delta > 0 ? "+" : delta < 0 ? "−" : ""}{Math.abs(delta)}</p>
+        </section>
     );
 }
 
@@ -370,7 +553,7 @@ function ReplayScoreBox({ label, value, tone, opponent = false }) {
 }
 
 function ReplayPanelHeading({ icon, children }) {
-    return <span className="font-display-action mb-3 flex items-center gap-2 text-base tracking-[.09em] text-sky-300">
+    return <span className="font-display mb-3 flex items-center gap-2 text-base tracking-[.09em] text-sky-300">
         {icon === "bot" ? <BotLogo className="h-5 w-5 object-contain" /> : <MatchToolIcon name={icon} />}{children}
     </span>;
 }
@@ -392,31 +575,6 @@ function replayRoundResultTitle({ roundResultRevealed, hasReachedReplayEnd, resu
     return <>
         <span className={winnerColorRole === "red" ? "text-[#ff7166]" : "text-[#57b8ff]"}>{winnerTeamLabel}</span>
         {suffix}
-    </>;
-}
-
-function replayMatchResultTitle({
-    matchResultRevealed,
-    result,
-    winnerTeamLabel,
-    winnerTeamNumber,
-    winnerColorRole,
-    blueTeamWins,
-    redTeamWins,
-}) {
-    if (!matchResultRevealed) return null;
-    if (result === "DRAW") return `Match drawn ${blueTeamWins}-${redTeamWins}.`;
-    if (result === "MATCH_CANCELLED") return "Match canceled.";
-    if (!["BOT_WIN", "WIN", "RESIGNATION_WIN", "DISCONNECTION_WIN"].includes(result)) return "Simulation failed.";
-
-    const winnerScore = winnerTeamNumber === 2 ? redTeamWins : blueTeamWins;
-    const loserScore = winnerTeamNumber === 2 ? blueTeamWins : redTeamWins;
-    const outcome = result === "RESIGNATION_WIN" ? "wins the match by forfeit"
-        : result === "DISCONNECTION_WIN" ? "wins the match by disconnect"
-            : "wins the match";
-    return <>
-        <span className={winnerColorRole === "red" ? "text-[#ff7166]" : "text-[#57b8ff]"}>{winnerTeamLabel}</span>
-        {` ${outcome} ${winnerScore}-${loserScore}.`}
     </>;
 }
 

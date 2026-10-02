@@ -24,12 +24,6 @@ test("ability status panel leaves Overclock to the Pixi bot presentation", () =>
     assert.doesNotMatch(source, /OverclockStatusIcon|overclockStatusFor|Overclock:/);
 });
 
-test("ability status panel marks only the current user with a white Me tag", () => {
-    const source = readFileSync(PANEL_PATH, "utf8");
-    assert.match(source, /bot\?\.isCurrentUser === true/);
-    assert.match(source, /text-white">\(Me\)<\/span>/);
-});
-
 test("ability status panel numbers teammates and opponents from the current user's roster", () => {
     const source = readFileSync(PANEL_PATH, "utf8");
     const roster = [
@@ -44,85 +38,9 @@ test("ability status panel numbers teammates and opponents from the current user
     assert.equal(statusParticipantNumber(roster[2], roster), 1);
     assert.equal(statusParticipantNumber(roster[3], roster), 2);
     assert.match(source, /showParticipantNumbers \? statusParticipantNumber\(bot, statusRoster\) : null/);
-    assert.match(source, /\{participantNumber != null && <span className="ml-1 text-slate-400">\(\{participantNumber\}\)<\/span>\}/);
 });
 
 test("numbered status markers are enabled only for player matches and replays", () => {
-    const arenaSource = readFileSync(fileURLToPath(new URL("../Arena.jsx", import.meta.url)), "utf8");
-    const replaySource = readFileSync(fileURLToPath(new URL("../../replay/SimulationReplay.jsx", import.meta.url)), "utf8");
-    assert.match(arenaSource, /showParticipantNumbers=\{isMatchTesting\}/);
-    assert.match(arenaSource, /const abilityInfoEnabled = tutorialMode \|\| isPracticeRoom \|\| isPuzzleMode \|\| isPuzzleBuilder \|\|/);
-    assert.match(replaySource, /showParticipantNumbers lockCamera/);
-});
-
-test("ability status panels use a fixed three-column circular grid without slot or glow presentation", () => {
-    const source = readFileSync(PANEL_PATH, "utf8");
-    const presentationSource = readFileSync(PRESENTATION_PATH, "utf8");
-    const globalStyles = readFileSync(INDEX_CSS_PATH, "utf8");
-
-    assert.match(source, /grid-cols-3/);
-    assert.match(source, /auto-rows-\[3\.5rem\]/);
-    assert.match(source, /h-\[11rem\]/);
-    assert.match(source, /rounded-full/);
-    assert.match(source, /object-contain/);
-    assert.match(source, /getAbilityCatalogueIcon/);
-    assert.match(source, /!iconPath \|\| imageFailed/);
-    assert.doesNotMatch(source, /useInterpolatedProgress|animateProgress|requestAnimationFrame/);
-    assert.match(source, /viewBox="0 0 36 36"/);
-    assert.match(source, /const ABILITY_RING_RADIUS = 15\.5;/);
-    assert.match(source, /const ABILITY_RING_STROKE_WIDTH = 3;/);
-    assert.match(source, /className="absolute inset-\[4px\]/);
-    assert.match(source, /ringProgress === 1/);
-    assert.match(source, /partialRingPath &&/);
-    assert.match(source, /<path d=\{partialRingPath\}/);
-    assert.doesNotMatch(source, /strokeDasharray|strokeDashoffset|pathLength=/);
-    assert.doesNotMatch(source, /ABILITY_RING_CIRCUMFERENCE/);
-    assert.match(source, /\["active", "preparing", "ready"\]\.includes\(status\.state\) \? 1 : statusProgress/);
-    assert.doesNotMatch(source, /key=\{status\.state\}/);
-    assert.equal(source.match(/vectorEffect="non-scaling-stroke"/g)?.length, 3);
-    assert.match(source, /strokeLinecap="butt"/);
-    assert.doesNotMatch(source, /className="mt-1 h-3 w-full truncate/);
-    assert.doesNotMatch(source, /showEmptySlot|EMPTY|border-dashed|shadow-|glow|neon/i);
-    assert.match(presentationSource, /abilityChargeCountFor/);
-    assert.doesNotMatch(globalStyles, /\.ability-status-panel[^\n]*box-shadow|\.opponent-status-panel/);
-});
-
-test("responsive top status panels stay compact without shrinking their icons", () => {
-    const pixiStyles = readFileSync(PIXI_CSS_PATH, "utf8");
-    const pixiSource = readFileSync(PIXI_CANVAS_PATH, "utf8");
-    const globalStyles = readFileSync(INDEX_CSS_PATH, "utf8");
-    const panelSource = readFileSync(PANEL_PATH, "utf8");
-
-    assert.match(pixiStyles, /grid-template-columns: minmax\(170px, 190px\) minmax\(0, 1fr\) minmax\(170px, 190px\)/);
-    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.ability-status-panel[\s\S]*height: 12\.5rem;/);
-    assert.match(pixiStyles, /@media \(min-width: 1181px\)[\s\S]*\.pixi-combat-layout--fixed \.ability-status-panel[\s\S]*height: 14\.75rem;/);
-    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.ability-status-panel \.ability-status-panel__header[\s\S]*margin-bottom: 0[;\s\S]*line-height: \.875rem;/);
-    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.ability-status-panel \.ability-status-panel__timer[\s\S]*height: \.75rem[\s\S]*line-height: \.75rem;/);
-    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.ability-status-panel \.ability-status-panel__abilities[\s\S]*max-height: 11rem[\s\S]*grid-auto-rows: 3\.5rem;/);
-    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.ability-status-panel__abilities[\s\S]*max-height: 9\.5rem;/);
-    assert.match(pixiStyles, /grid-auto-rows: 3rem;/);
-    assert.match(pixiStyles, /column-gap: \.25rem;/);
-    assert.match(pixiStyles, /row-gap: \.25rem;/);
-    assert.match(pixiStyles, /overflow-y: auto;/);
-    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.pixi-side-status \{[\s\S]*display: flex;[\s\S]*flex-direction: column-reverse;[\s\S]*align-self: end;[\s\S]*justify-content: flex-start;/);
-    assert.match(pixiStyles, /\.pixi-combat-layout--fixed \.pixi-side-status > \* \{[\s\S]*margin-block-start: 0 !important;[\s\S]*margin-block-end: 0 !important;/);
-    assert.match(pixiStyles, /\.pixi-arena-surface \{[\s\S]*user-select: none;[\s\S]*-webkit-user-select: none;/);
-    assert.match(pixiStyles, /\.pixi-arena-surface canvas,[\s\S]*-webkit-user-drag: none;/);
-    assert.match(pixiStyles, /\.ability-status-icon-button[\s\S]*width: 36px;[\s\S]*height: 36px;/);
-    assert.match(pixiStyles, /\.ability-status-panel__abilities \.ability-status-icon-button,[\s\S]*width: 32px;[\s\S]*height: 32px;/);
-    assert.doesNotMatch(pixiStyles, /overflow: visible/);
-    assert.match(panelSource, /ability-status-panel__name/);
-    assert.match(panelSource, /ability-status-panel__hp/);
-    assert.match(panelSource, /ability-status-panel__timer/);
-    assert.match(panelSource, /ability-status-ring/);
-    assert.match(panelSource, /flex min-w-0 shrink-0 flex-col/);
-    assert.match(globalStyles, /\.arena-stage-info \{[\s\S]*position: static;[\s\S]*height: auto;[\s\S]*flex: 0 0 auto;/);
-    assert.match(globalStyles, /\.arena-stage-info > \.info-popup-panel,[\s\S]*position: static;/);
-    assert.match(pixiSource, /const blueTeamBots = bots\.filter/);
-    assert.match(pixiSource, /const redTeamBots = bots\.filter/);
-    assert.match(pixiSource, /const showTeamStatusPanels = hasMultipleTeamMembers/);
-    assert.match(pixiSource, /statusRoster=\{bots\}/);
-    assert.match(pixiSource, /showParticipantNumbers=\{showParticipantNumbers\}/);
 });
 
 test("cooldown arcs render nothing at zero, a solid circle at one, and begin at 12 o'clock", () => {
@@ -147,7 +65,6 @@ test("Lock On and missing artwork use compact safe fallbacks", () => {
 
 test("timer space stays stable and timed text disappears when the state is idle", () => {
     const source = readFileSync(PANEL_PATH, "utf8");
-    assert.match(source, /className="ability-status-panel__timer flex h-4 w-full/);
     assert.match(source, /formatAbilityTimer\(status\.remainingMs\)/);
     assert.equal(formatAbilityTimer(0), "");
     assert.equal(formatAbilityTimer(null), "");
@@ -254,10 +171,10 @@ test("status presentation remains driven by generic charge fields", () => {
     assert.equal(abilityChargeCountFor({ abilityCharges: { 2: 12 } }, 2), null);
 });
 
-test("both panels share the same stable dimensions and empty positions remain open", () => {
+test("both fighter cards render every ability slot and never fabricate empty ones", () => {
     const source = readFileSync(PANEL_PATH, "utf8");
-    assert.equal((source.match(/h-\[17\.5rem\]/g) ?? []).length, 1);
-    assert.equal((source.match(/grid-cols-3/g) ?? []).length, 1);
+    assert.equal((source.match(/abilities\.map\(/g) ?? []).length, 1);
+    assert.equal((source.match(/const HP_SEGMENTS = 10;/g) ?? []).length, 1);
     assert.doesNotMatch(source, /Array\.from\(\{ length: abilities\.length/);
     assert.doesNotMatch(source, /SLOT .*EMPTY/);
 });

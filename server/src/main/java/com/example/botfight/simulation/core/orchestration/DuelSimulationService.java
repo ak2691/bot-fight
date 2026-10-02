@@ -961,9 +961,18 @@ public class DuelSimulationService {
         }
     }
 
-    public record Condition(String type, double value, String selectable, String leftSelectable, String rightSelectable, String left, Integer ability, String statusEffect, String comparator, Operand right, String join, String targetMode, double targetX, double targetY, double targetAngle) {
-        public Condition(String type, double value, String selectable, String leftSelectable, String rightSelectable, String left, Integer ability, String statusEffect, String comparator, Operand right, String join) {
-            this(type, value, selectable, leftSelectable, rightSelectable, left, ability, statusEffect, comparator, right, join,
+    /**
+     * {@code rightView} carries the entity/target configuration of a compared-to pair variable
+     * (distance, bearings) as its own condition, so the two sides never share one target. It is
+     * null when the right side is not a pair variable.
+     */
+    public record Condition(String type, double value, String selectable, String leftSelectable, String rightSelectable, String left, Integer ability, String statusEffect, String comparator, Operand right, String targetMode, double targetX, double targetY, double targetAngle, Condition rightView) {
+        public Condition(String type, double value, String selectable, String leftSelectable, String rightSelectable, String left, Integer ability, String statusEffect, String comparator, Operand right, String targetMode, double targetX, double targetY, double targetAngle) {
+            this(type, value, selectable, leftSelectable, rightSelectable, left, ability, statusEffect, comparator, right,
+                    targetMode, targetX, targetY, targetAngle, null);
+        }
+        public Condition(String type, double value, String selectable, String leftSelectable, String rightSelectable, String left, Integer ability, String statusEffect, String comparator, Operand right) {
+            this(type, value, selectable, leftSelectable, rightSelectable, left, ability, statusEffect, comparator, right,
                     null, ArenaUnits.WIDTH / 2.0, ArenaUnits.HEIGHT / 2.0, 0.0);
         }
     }

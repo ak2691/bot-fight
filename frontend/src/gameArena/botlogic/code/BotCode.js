@@ -7,7 +7,7 @@ import { matchingStrategySelectables, resolveAbilityStrategySelectable } from ".
 import { normalizeRoots } from "./configuration/rootOperations.js";
 import { hasStrategyActions, selectStrategyActionPlan, selectStrategyBlock } from "./runtime/actionSelector.js";
 import { validateConfiguration } from "./configuration/validation.js";
-import { compareAngleValues, compareValues, evaluateConditionNode, evaluateConditionNodes } from "./runtime/conditionEvaluator.js";
+import { compareAngleValues, compareValues, evaluateConditionNode, evaluateConditionNodes, rightOperandView, rightPairFieldValues } from "./runtime/conditionEvaluator.js";
 import { normalizeConfiguration } from "./configuration/normalization.js";
 import { stateFromPayload } from "./runtime/runtimeState.js";
 import { selectPriorityCandidates as selectCandidates } from "./runtime/treeSelection.js";
@@ -49,7 +49,6 @@ import {
     BOT_CODE_COMPARATORS,
     BOT_CODE_CONDITIONS,
     BOT_CODE_SELECTABLES,
-    CONDITION_JOINS,
     CUSTOM_VARIABLE_CONTRACT,
     CUSTOM_VARIABLE_OPERATIONS,
     COMPARATOR_BY_ID,
@@ -111,7 +110,6 @@ export {
 } from "./contracts/BotLogicContracts.js";
 const CONDITION_BY_ID = new Map(CONDITION_DEFINITIONS.map((condition) => [condition.id, condition]));
 const OPPONENT_SELECTABLE_ID = BOT_CODE_SELECTABLES.OPPONENT;
-const MAX_ENUMERATED_ANGLE_GROUPS = 8;
 
 export function createLogicBlock(conditionType = BOT_CODE_CONDITIONS.ALWAYS, action = BOT_CODE_ACTIONS.MOVE_WALK) {
     const definition = CONDITION_BY_ID.get(conditionType) ?? CONDITION_TYPES[0];
@@ -213,7 +211,7 @@ export function inspectAbilityStrategyConditions(configuration, payload) {
     const visitBranches = (branches, rootName, path = []) => {
         (branches ?? []).forEach((branch, branchIndex) => {
             const branchPath = [...path, branchIndex + 1];
-            (branch.conditions ?? []).forEach((condition, conditionIndex) => {
+            (branch.conditions ?? []).forEach((condition) => {
                 const definition = conditionLeftDefinition(condition, state);
                 const selectablePair = definition?.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR
                     ? normalizedSelectablePair(condition, definition)
@@ -226,7 +224,7 @@ export function inspectAbilityStrategyConditions(configuration, payload) {
                     ? resolveStateVariable(state, condition, definition.id, selectableId)
                     : null;
                 const rightValue = condition.right?.type === "variable"
-                    ? resolveStateVariable(state, condition, condition.right.value, condition.rightSelectable ?? condition.selectable)
+                    ? resolveStateVariable(state, rightOperandView(condition), condition.right.value, condition.rightSelectable ?? condition.selectable)
                     : condition.right?.value;
                 const selectedStatusEffect = definition?.supportsStatusEffect
                     ? condition.statusEffect ?? null
@@ -256,7 +254,6 @@ export function inspectAbilityStrategyConditions(configuration, payload) {
                     comparator: condition.comparator ?? null,
                     comparedTo: condition.type === BOT_CODE_CONDITIONS.ALWAYS ? null : rightValue,
                     result: evaluateCondition(condition, state),
-                    join: conditionIndex > 0 ? condition.join ?? "and" : null,
                 });
             });
             visitBranches(branch.children, rootName, branchPath);
@@ -353,13 +350,7 @@ export function customVariableDefinitions(configuration) {
 function evaluateConditionList(conditions, state) {
     const angleGroups = collectRepeatedAngleGroups(conditions, state);
     if (!angleGroups.length) return evaluateConditionNodes(conditions, state, evaluateExpressionCondition);
-    if (conditions.every((condition, index) => index === 0 || condition.join !== CONDITION_JOINS.OR)) {
-        return evaluateAllAndAngleGroups(conditions, state, angleGroups);
-    }
-    if (angleGroups.length > MAX_ENUMERATED_ANGLE_GROUPS) {
-        return evaluateConditionNodes(conditions, state, evaluateExpressionCondition);
-    }
-    return evaluateAngleVariants(conditions, state, angleGroups, 0, new Map());
+    return evaluateAllAndAngleGroups(conditions, state, angleGroups);
 }
 
 function collectRepeatedAngleGroups(conditions, state) {
@@ -400,35 +391,17 @@ function evaluateAllAndAngleGroups(conditions, state, groups) {
     });
 }
 
-function evaluateAngleVariants(conditions, state, groups, groupIndex, angleOverrides) {
-    if (groupIndex >= groups.length) {
-        return evaluateConditionNodes(
-            conditions,
-            state,
-            (condition, currentState) => evaluateExpressionCondition(condition, currentState, angleOverrides),
-        );
-    }
-    const group = groups[groupIndex];
-    for (const value of group.values) {
-        angleOverrides.set(group.key, value);
-        const matches = evaluateAngleVariants(conditions, state, groups, groupIndex + 1, angleOverrides);
-        angleOverrides.delete(group.key);
-        if (matches) return true;
-    }
-    return false;
-}
-
 export function normalizeConditions(conditions, customVariables = [], selectableTypes = SELECTABLE_TYPES, coordinateVersion = BOT_LOGIC_TREE_VERSION) {
     const source = Array.isArray(conditions) ? conditions : [{ type: CONDITION_TYPES[0].id }];
-    return source.slice(0, MAX_CONDITIONS_PER_BRANCH).map((condition, index) => {
+    return source.slice(0, MAX_CONDITIONS_PER_BRANCH).map((condition) => {
         if (condition?.type === BOT_CODE_CONDITIONS.EXPRESSION || condition?.left) {
-            return withConditionJoin(normalizeExpressionCondition(condition, customVariables, selectableTypes, coordinateVersion), condition, index);
+            return normalizeExpressionCondition(condition, customVariables, selectableTypes, coordinateVersion);
         }
         const definition = CONDITION_BY_ID.get(condition?.type);
         if (!definition) {
-            return withConditionJoin(falseCondition(), condition, index);
+            return falseCondition();
         }
-        return withConditionJoin({
+        return {
             type: definition.id,
             ...(definition.requiresValue ? {
                 value: clamp(Number(condition?.value) || definition.defaultValue, definition.min, definition.max),
@@ -442,14 +415,8 @@ export function normalizeConditions(conditions, customVariables = [], selectable
                     definition.selectableOrderable !== false,
                 ),
             } : {}),
-        }, condition, index);
+        };
     });
-}
-
-function withConditionJoin(normalized, source, index) {
-    return index > 0 && source?.join === CONDITION_JOINS.OR
-        ? { ...normalized, join: CONDITION_JOINS.OR }
-        : normalized;
 }
 
 function normalizeExpressionCondition(condition, customVariables = [], selectableTypes = SELECTABLE_TYPES, coordinateVersion = BOT_LOGIC_TREE_VERSION) {
@@ -473,6 +440,10 @@ function normalizeExpressionCondition(condition, customVariables = [], selectabl
     const normalizedTarget = normalizedSelectablePair
         ? normalizePairTarget(condition, leftDefinition, coordinateVersion)
         : null;
+    // The compared-to pair variable keeps its own entity/target configuration.
+    const rightView = rightDefinition?.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR ? rightOperandView(condition) : null;
+    const normalizedRightPair = rightView ? normalizeSelectablePair(rightView, rightDefinition, selectableTypes) : null;
+    const normalizedRightTarget = rightView ? normalizePairTarget(rightView, rightDefinition, coordinateVersion) : null;
     return {
         type: "expression",
         left: leftDefinition.id,
@@ -492,6 +463,11 @@ function normalizeExpressionCondition(condition, customVariables = [], selectabl
                 ),
             } : {}),
         ...(normalizedTarget ?? {}),
+        ...(rightView ? rightPairFieldValues({
+            selectable1: normalizedRightPair[0],
+            selectable2: normalizedRightPair[1],
+            ...(normalizedRightTarget ?? {}),
+        }) : {}),
         ...(right?.type === "variable" && STATE_VARIABLE_BY_ID.get(right.value)?.supportsSelectable ? {
             rightSelectable: normalizeSelectable(
                 condition?.rightSelectable ?? condition?.selectable,
@@ -874,7 +850,7 @@ function evaluateExpressionCondition(condition, state, angleOverrides = null) {
         ? angleOverrides.get(angleKey)
         : resolveStateVariable(state, condition, leftDefinition.id, condition.leftSelectable ?? condition.selectable);
     const right = condition.right?.type === "variable"
-        ? resolveStateVariable(state, condition, condition.right.value, condition.rightSelectable ?? condition.selectable)
+        ? resolveStateVariable(state, rightOperandView(condition), condition.right.value, condition.rightSelectable ?? condition.selectable)
         : condition.right?.value;
     const rightDefinition = condition.right?.type === "variable"
         ? STATE_VARIABLE_BY_ID.get(condition.right.value)

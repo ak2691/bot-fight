@@ -7,12 +7,12 @@ import ProtectedRoute from './auth/ProtectedRoute'
 import AdminRoute from './auth/AdminRoute.jsx'
 import RouteErrorBoundary from './auth/RouteErrorBoundary.jsx'
 import HomePage from './pages/home/HomePage'
-import QueuePage from './pages/queue/QueuePage.jsx'
 import CustomLobbyPage from './pages/customLobby/CustomLobbyPage.jsx'
 import Arena from './gameArena/Arena'
 import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
 import ServerErrorPage from './pages/ServerErrorPage.jsx'
+import NotFoundPage from './pages/NotFoundPage.jsx'
 import CreditsPage from './pages/credits/CreditsPage'
 import VerifyEmailPage from './pages/auth/VerifyEmailPage'
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage'
@@ -92,16 +92,7 @@ function App() {
                 </ProtectedRoute>
               )}
             />
-            <Route
-              path="/queue"
-              element={(
-                <ProtectedRoute allowGuest>
-                  <ActiveMatchProtectedRoute>
-                    <QueuePage />
-                  </ActiveMatchProtectedRoute>
-                </ProtectedRoute>
-              )}
-            />
+            <Route path="/queue" element={<Navigate to="/home" replace />} />
             <Route
               path="/custom-lobby"
               element={(
@@ -200,6 +191,7 @@ function App() {
                 </ProtectedRoute>
               )}
             />
+            <Route path="*" element={<NotFoundPage />} />
                   </Routes>
                 </Suspense>
               </RouteErrorBoundary>

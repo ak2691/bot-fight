@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDialogFocus } from "../../components/useDialogFocus.js";
 import {
@@ -22,9 +22,9 @@ import { createEditorNodeId, normalizePriority } from "../../gameArena/botlogic/
 import { DEFAULT_BOT_CONFIGURATION_ID } from "../../gameArena/gameconfig/CombatLoadouts.js";
 import { TreeLogicBoard } from "../../gameArena/coding/LogicBoard.jsx";
 import AddIcon from "../../gameArena/coding/controls/AddIcon.jsx";
+import { BudgetMeter, ToolbarBracesIcon, ToolbarCloseIcon } from "../../gameArena/coding/controls/WorkspaceToolbarBits.jsx";
 import CustomVariablesModal from "../../gameArena/coding/modals/CustomVariablesModal.jsx";
 import {
-    addGraphAction,
     countLogicConditions,
     newTreeBranch,
     sanitizeConfigurationConditions,
@@ -164,8 +164,11 @@ function normalizePuzzleBranches(branches, kind, conditionNumbers, customVariabl
         return {
             ...normalizedBranch,
             conditions: Array.isArray(normalizedConditions)
-                ? normalizedConditions.map((condition) => ({
+                ? normalizedConditions.map((condition, index) => ({
                     ...condition,
+                    // Puzzle outcome conditions are a separate system and still support OR;
+                    // bot conditionals are AND-only, so normalizeConditions drops the join.
+                    ...(index > 0 && kind !== "modify" && branch.conditions[index]?.join === "or" ? { join: "or" } : {}),
                     id: `puzzle-condition-${conditionKind}-${++conditionNumbers[conditionKind]}`,
                 }))
                 : normalizedConditions,
@@ -186,23 +189,8 @@ function createRuleRoot(stateVariables, kind, priority) {
         ?? VISIBLE_STATE_VARIABLES.find((variable) => variable.id === "selectable.distance")
         ?? STATE_VARIABLES[0];
     const branch = newTreeBranch("if", defaultVariable, 1);
-    const label = kind === "win" ? "Win Condition" : "Lose Condition";
+    const label = kind === "win" ? "Win rule" : "Lose rule";
     return puzzleRoot(label, kind, branch, priority);
-}
-
-function createModifyRoot(configuration, stateVariables, priority) {
-    const defaultVariable = stateVariables.find((variable) => variable.id === "selectable.distance")
-        ?? stateVariables[0]
-        ?? VISIBLE_STATE_VARIABLES.find((variable) => variable.id === "selectable.distance")
-        ?? STATE_VARIABLES[0];
-    const branch = newTreeBranch("if", defaultVariable, 1);
-    const withAction = addGraphAction(
-        branch,
-        DEFAULT_BOT_CONFIGURATION_ID,
-        "variable",
-        configuration.customVariables ?? [],
-    );
-    return puzzleRoot("Modify Custom Variable", "modify", withAction, priority);
 }
 
 function clampZoom(value) {
@@ -284,63 +272,75 @@ export default function PuzzleLogicWorkspace({
     const addRoot = useCallback((kind) => {
         if (readOnly || currentConfiguration.roots.length >= MAX_ROOT_NODES) return;
         const priority = currentConfiguration.roots.length + 1;
-        const root = kind === "modify"
-            ? createModifyRoot(currentConfiguration, stateVariables, priority)
-            : createRuleRoot(stateVariables, kind, priority);
+        const root = createRuleRoot(stateVariables, kind, priority);
         commitConfiguration({
             ...currentConfiguration,
             roots: [...currentConfiguration.roots, root],
         });
     }, [commitConfiguration, currentConfiguration, readOnly, stateVariables]);
 
+    // Latest zoom / pan in refs so rapid wheel events zoom about the cursor without stale values.
+    const zoomRef = useRef(zoom);
+    const panRef = useRef(pan);
+    useEffect(() => { zoomRef.current = zoom; panRef.current = pan; });
     const changeZoom = useCallback((delta, origin = null) => {
-        const nextZoom = clampZoom(zoom + delta);
-        if (origin && nextZoom !== zoom) {
-            const scale = nextZoom / zoom;
-            setPan((current) => ({
-                x: origin.x - (origin.x - current.x) * scale,
-                y: origin.y - (origin.y - current.y) * scale,
-            }));
+        const currentZoom = zoomRef.current;
+        const nextZoom = clampZoom(currentZoom + delta);
+        if (nextZoom === currentZoom) return;
+        let anchor = origin;
+        if (!anchor) {
+            const rect = dialogRef.current?.querySelector(".code-board")?.getBoundingClientRect();
+            if (rect) anchor = { x: rect.width / 2, y: rect.height / 2 };
         }
+        if (anchor) {
+            const scale = nextZoom / currentZoom;
+            const nextPan = {
+                x: anchor.x - (anchor.x - panRef.current.x) * scale,
+                y: anchor.y - (anchor.y - panRef.current.y) * scale,
+            };
+            panRef.current = nextPan;
+            setPan(nextPan);
+        }
+        zoomRef.current = nextZoom;
         setZoom(nextZoom);
-    }, [zoom]);
+    }, []);
     const applyPinchZoom = useCallback((nextZoom, nextPan) => {
+        zoomRef.current = nextZoom;
+        panRef.current = nextPan;
         setZoom(nextZoom);
         setPan(nextPan);
     }, []);
 
     const customVariableCount = currentConfiguration.customVariables?.length ?? 0;
     const conditionCount = countLogicConditions(currentConfiguration);
-    const actionCount = (currentConfiguration.roots ?? []).reduce((total, root) => {
-        let count = 0;
-        walkBranches(root.branches, (branch) => { count += Array.isArray(branch.actions) ? branch.actions.length : 0; });
-        return total + count;
-    }, 0);
 
     return typeof document === "undefined" ? null : createPortal(
         <div className="code-workspace-overlay fixed inset-0 z-[100] flex items-center justify-center overflow-hidden bg-black/75 px-4 py-5" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-            <section ref={dialogRef} className="code-workspace testing-mono relative flex h-[min(92vh,900px)] w-[min(96vw,1500px)] flex-col overflow-hidden rounded-sm border border-border-mid bg-[#111519] shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="puzzle-logic-workspace-title" tabIndex={-1}>
-                <header className="code-toolbar flex min-h-[84px] flex-shrink-0 items-center gap-4 border-b border-white/10 bg-[#12161a] px-5 py-3 shadow-[0_8px_24px_rgba(0,0,0,.18)]">
-                    <div className="code-toolbar-title flex-none">
-                        <div id="puzzle-logic-workspace-title" className="font-mono text-[11px] font-bold tracking-widest text-cyan">CONFIG{readOnly && <span className="ml-2 text-[9px] text-ink-muted">VIEW ONLY</span>}</div>
-                        <div className="mt-1 truncate font-mono text-[8px] tracking-wide text-ink-muted">{customVariableCount}/{maxCustomVariables} V · {actionCount}/{MAX_LOGIC_BLOCKS} A · {conditionCount}/{MAX_TOTAL_CONDITIONS} C</div>
+            <section ref={dialogRef} className="code-workspace relative flex h-[min(92vh,900px)] w-[min(96vw,1500px)] flex-col overflow-hidden rounded-sm border border-border-mid bg-[#111519] shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="puzzle-logic-workspace-title" tabIndex={-1}>
+                <header className="code-tb">
+                    <h2 id="puzzle-logic-workspace-title" className="code-tb-title font-display">
+                        Win and lose rules{readOnly && <span className="ml-2 text-[11px] font-normal text-slate-500">View only</span>}
+                    </h2>
+                    <div className="code-tb-meters" role="group" aria-label="Rules budget">
+                        <BudgetMeter label="Conditions" value={conditionCount} max={MAX_TOTAL_CONDITIONS} />
                     </div>
-                    <div className="code-toolbar-controls min-w-0 flex-1 py-0.5">
-                        <div className="code-toolbar-tools">
-                            <button type="button" disabled={readOnly || currentConfiguration.roots.length >= MAX_ROOT_NODES} onClick={() => addRoot("win")} className="code-toolbar-button code-toolbar-button-primary"><AddIcon className="code-toolbar-icon" /> WIN CONDITION</button>
-                            <button type="button" disabled={readOnly || currentConfiguration.roots.length >= MAX_ROOT_NODES} onClick={() => addRoot("lose")} className="code-toolbar-button code-toolbar-button-primary"><AddIcon className="code-toolbar-icon" /> LOSE CONDITION</button>
-                            <button type="button" disabled={readOnly || customVariableCount >= maxCustomVariables} onClick={() => setIsCustomVariablesOpen(true)} className="code-toolbar-button"><AddIcon className="code-toolbar-icon" /> CUSTOM VARIABLE</button>
-                            <button type="button" disabled={readOnly || !customVariableCount || currentConfiguration.roots.length >= MAX_ROOT_NODES || actionCount >= MAX_LOGIC_BLOCKS} onClick={() => addRoot("modify")} className="code-toolbar-button"><AddIcon className="code-toolbar-icon" /> MODIFY CUSTOM VARIABLE</button>
-                        </div>
-                        <div className="code-toolbar-actions">
-                            <div className="code-toolbar-zoom">
-                                <button type="button" aria-label="Zoom out" onClick={() => changeZoom(-0.1)} className="code-toolbar-zoom-button">−</button>
-                                <span className="code-toolbar-zoom-value">{Math.round(zoom * 100)}%</span>
-                                <button type="button" aria-label="Zoom in" onClick={() => changeZoom(0.1)} className="code-toolbar-zoom-button"><AddIcon size="large" /></button>
-                            </div>
-                            <button type="button" aria-label="Close puzzle configuration" title="Close" onClick={onClose} className="modal-close-button"><span aria-hidden="true">×</span></button>
-                        </div>
+                    <div className="code-tb-chips" role="group" aria-label="Rules budget">
+                        <BudgetMeter label="C" title="Conditions" value={conditionCount} max={MAX_TOTAL_CONDITIONS} compact />
                     </div>
+                    <span className="code-tb-spacer" />
+                    <button type="button" disabled={readOnly || currentConfiguration.roots.length >= MAX_ROOT_NODES} onClick={() => addRoot("win")} className="code-tb-btn code-tb-btn--win" aria-label="Add win rule" title="Add win rule">
+                        <AddIcon className="code-toolbar-icon" /> <span className="code-tb-label">Win rule</span>
+                    </button>
+                    <button type="button" disabled={readOnly || currentConfiguration.roots.length >= MAX_ROOT_NODES} onClick={() => addRoot("lose")} className="code-tb-btn code-tb-btn--lose" aria-label="Add lose rule" title="Add lose rule">
+                        <AddIcon className="code-toolbar-icon" /> <span className="code-tb-label">Lose rule</span>
+                    </button>
+                    <button type="button" disabled={readOnly || customVariableCount >= maxCustomVariables} onClick={() => setIsCustomVariablesOpen(true)} className="code-tb-btn" aria-label="Custom variables" title="Custom variables">
+                        <ToolbarBracesIcon />
+                        <span className="code-tb-label">Variables</span>
+                    </button>
+                    <button type="button" aria-label="Close puzzle configuration" title="Close" onClick={onClose} className="code-tb-close">
+                        <ToolbarCloseIcon />
+                    </button>
                 </header>
                 <TreeLogicBoard
                     configuration={currentConfiguration}
@@ -368,6 +368,11 @@ export default function PuzzleLogicWorkspace({
                     maxLogicBlocks={MAX_LOGIC_BLOCKS}
                     maxTotalConditions={MAX_TOTAL_CONDITIONS}
                 />
+                <div className="code-zoom-cluster" role="group" aria-label="Zoom">
+                    <button type="button" aria-label="Zoom out" title="Zoom out" onClick={() => changeZoom(-0.1)}>&minus;</button>
+                    <span className="code-zoom-value">{Math.round(zoom * 100)}%</span>
+                    <button type="button" aria-label="Zoom in" title="Zoom in" onClick={() => changeZoom(0.1)}>+</button>
+                </div>
                 {!readOnly && isCustomVariablesOpen && <CustomVariablesModal configuration={currentConfiguration} currentValues={{}} maxSlots={maxCustomVariables} idPrefix="custom.puzzle" disabled={false} onChange={commitConfiguration} onClose={() => setIsCustomVariablesOpen(false)} />}
             </section>
         </div>,

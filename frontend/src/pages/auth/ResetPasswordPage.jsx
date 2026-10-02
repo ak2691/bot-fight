@@ -2,8 +2,8 @@ import { forwardRef, useEffect, useRef, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/auth-context";
 import { newPasswordError, userFacingAuthError } from "../../auth/validation";
-import { useDialogFocus } from "../../components/useDialogFocus.js";
 import AuthLayout from "./AuthLayout";
+import { AuthBanner } from "./AuthFields.jsx";
 
 export default function ResetPasswordPage() {
     const { isAuthenticated, isLoading, passwordResetStatus, resetPassword } = useAuth();
@@ -42,12 +42,8 @@ export default function ResetPasswordPage() {
 
     if (status !== "ready") {
         return (
-            <AuthLayout showBrand={false} showPanel={false}>
-                <div className="fixed inset-0 z-50 grid place-items-center p-4">
-                    <div className="w-full max-w-sm rounded-2xl border border-cyan-400/50 bg-[#081824] p-6 text-center shadow-[0_24px_90px_rgba(0,0,0,.6)]">
-                        <p className="text-sm text-slate-300" role="status">Checking your reset session...</p>
-                    </div>
-                </div>
+            <AuthLayout title="Reset your password">
+                <AuthBanner tone="info" role="status">Checking your reset session...</AuthBanner>
             </AuthLayout>
         );
     }
@@ -56,7 +52,6 @@ export default function ResetPasswordPage() {
 }
 
 function PasswordResetModal({ onReset, onComplete }) {
-    const dialogRef = useRef(null);
     const passwordRef = useRef(null);
     const confirmRef = useRef(null);
     const [password, setPassword] = useState("");
@@ -67,7 +62,9 @@ function PasswordResetModal({ onReset, onComplete }) {
     const [formError, setFormError] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    useDialogFocus(dialogRef, { initialFocusRef: passwordRef, lockScroll: true });
+    useEffect(() => {
+        passwordRef.current?.focus();
+    }, []);
 
     const handleSubmit = async (event) => {
         event.preventDefault();
@@ -96,43 +93,37 @@ function PasswordResetModal({ onReset, onComplete }) {
     };
 
     return (
-        <AuthLayout showBrand={false} showPanel={false}>
-            <div ref={dialogRef} className="fixed inset-0 z-50 flex min-h-screen items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="password-reset-title" tabIndex={-1}>
-                <div className="w-full max-w-sm rounded-2xl border border-cyan-400/50 bg-[#081824] p-5 shadow-[0_24px_90px_rgba(0,0,0,.6)] sm:p-6">
-                    <h1 id="password-reset-title" className="text-center text-2xl font-bold text-white">Reset your password</h1>
-                    <p className="mt-2 text-center text-sm text-slate-400">Choose a new password for your Bot Fight account.</p>
-                    <form onSubmit={handleSubmit} className="mt-5 flex flex-col gap-4">
-                        <PasswordInput
-                            ref={passwordRef}
-                            id="reset-password"
-                            label="New password"
-                            value={password}
-                            onChange={setPassword}
-                            visible={isPasswordVisible}
-                            onToggle={() => setIsPasswordVisible((visible) => !visible)}
-                            error={fieldErrors.password}
-                            autoComplete="new-password"
-                        />
-                        <PasswordInput
-                            ref={confirmRef}
-                            id="reset-password-confirm"
-                            label="Confirm password"
-                            value={confirmPassword}
-                            onChange={setConfirmPassword}
-                            visible={isConfirmVisible}
-                            onToggle={() => setIsConfirmVisible((visible) => !visible)}
-                            error={fieldErrors.confirmPassword}
-                            autoComplete="new-password"
-                        />
-                        <p className="text-xs text-slate-500">Use 8–128 characters without spaces.</p>
-                        {formError && <p className="form-error text-sm text-red-300" role="alert">{formError}</p>}
-                        <button type="submit" disabled={isSubmitting} className="arena-toolbar-button arena-toolbar-button--neutral w-full disabled:opacity-60">
-                            {isSubmitting ? "SAVING..." : "SAVE PASSWORD"}
-                        </button>
-                        <Link to="/login" className="text-center text-sm text-slate-400 hover:text-cyan-200">Cancel</Link>
-                    </form>
-                </div>
-            </div>
+        <AuthLayout title="Reset your password" subtitle="Choose a new password for your Bot Fight account.">
+            <form onSubmit={handleSubmit} className="auth-form">
+                {formError && <AuthBanner tone="error">{formError}</AuthBanner>}
+                <PasswordInput
+                    ref={passwordRef}
+                    id="reset-password"
+                    label="New password"
+                    value={password}
+                    onChange={setPassword}
+                    visible={isPasswordVisible}
+                    onToggle={() => setIsPasswordVisible((visible) => !visible)}
+                    error={fieldErrors.password}
+                    autoComplete="new-password"
+                />
+                <PasswordInput
+                    ref={confirmRef}
+                    id="reset-password-confirm"
+                    label="Confirm password"
+                    value={confirmPassword}
+                    onChange={setConfirmPassword}
+                    visible={isConfirmVisible}
+                    onToggle={() => setIsConfirmVisible((visible) => !visible)}
+                    error={fieldErrors.confirmPassword}
+                    autoComplete="new-password"
+                />
+                <p className="auth-field__helper">Use 8–128 characters without spaces.</p>
+                <button type="submit" disabled={isSubmitting} className="auth-primary-button">
+                    {isSubmitting ? "Saving..." : "Save password"}
+                </button>
+                <Link to="/login" className="auth-link text-center">Cancel</Link>
+            </form>
         </AuthLayout>
     );
 }
@@ -149,9 +140,9 @@ const PasswordInput = forwardRef((props, ref) => {
         autoComplete,
     } = props;
     return (
-        <label htmlFor={id} className="block text-left">
-            <span className="text-[11px] uppercase tracking-widest text-ink-muted">{label}</span>
-            <div className="relative mt-1">
+        <div className="auth-field">
+            <label htmlFor={id} className="auth-field__label">{label}</label>
+            <div className="auth-input-wrap">
                 <input
                     ref={ref}
                     id={id}
@@ -159,7 +150,7 @@ const PasswordInput = forwardRef((props, ref) => {
                     type={visible ? "text" : "password"}
                     value={value}
                     onChange={(event) => onChange(event.target.value)}
-                    className="w-full rounded border border-border-lo bg-zinc-950 px-3 py-3 pr-12 text-sm text-ink-white outline-none placeholder:text-slate-400 focus:border-cyan-500"
+                    className="auth-input auth-input--password"
                     autoComplete={autoComplete}
                     required
                     aria-invalid={Boolean(error)}
@@ -170,9 +161,9 @@ const PasswordInput = forwardRef((props, ref) => {
                     onClick={onToggle}
                     aria-label={visible ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
                     aria-pressed={visible}
-                    className="auth-password-toggle absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r border-0 bg-transparent p-0 text-slate-400 hover:border-transparent hover:bg-transparent hover:text-cyan-200"
+                    className="auth-password-toggle"
                 >
-                    <svg aria-hidden="true" className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         {visible ? (
                             <>
                                 <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
@@ -188,7 +179,7 @@ const PasswordInput = forwardRef((props, ref) => {
                     </svg>
                 </button>
             </div>
-            {error && <span id={`${id}-error`} className="form-error mt-1 block text-sm text-red-300">{error}</span>}
-        </label>
+            {error && <span id={`${id}-error`} className="form-error auth-field__error">{error}</span>}
+        </div>
     );
 });

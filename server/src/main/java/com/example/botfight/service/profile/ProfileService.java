@@ -283,6 +283,21 @@ public class ProfileService {
                 queueStats);
     }
 
+    private ProfileSearchPageDTO.ProfileSearchResultDTO searchResult(AppUser profile) {
+        CachedUser user = new CachedUser(profile.getId(), profile.getUsername(), profile.getCreatedAt(), profile.isGuest());
+        CachedMatchStats matchStats = databaseLookupCache.profileMatchStats(
+                user.id(),
+                () -> loadMatchStats(user.id()));
+        CachedRatings ratings = databaseLookupCache.profileRatings(
+                user.id(),
+                () -> loadRatings(user));
+        return new ProfileSearchPageDTO.ProfileSearchResultDTO(
+                profile.getUsername(),
+                ratings.ones(),
+                matchStats.onesWins() + matchStats.onesLosses() + matchStats.onesDraws(),
+                profile.getCreatedAt());
+    }
+
     private CachedRatings loadRatings(CachedUser user) {
         if (user.guest()) {
             return new CachedRatings(null, null);
@@ -424,7 +439,7 @@ public class ProfileService {
                             searchQuery,
                             pageRequest);
             List<ProfileSearchPageDTO.ProfileSearchResultDTO> results = profiles.getContent().stream()
-                    .map(profile -> new ProfileSearchPageDTO.ProfileSearchResultDTO(profile.getUsername()))
+                    .map(this::searchResult)
                     .toList();
             return new ProfileSearchPageDTO(
                     results,

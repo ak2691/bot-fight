@@ -1,4 +1,4 @@
-# Machiner agent guide
+# Botfight agent guide
 
 ## Required context routing
 
@@ -22,7 +22,7 @@ Confirm current symbols and contracts in code before changing behavior.
 
 ## Always-on product constraints
 
-- Machiner is a competitive deterministic-logic fighting game. A normalized,
+- Botfight is a competitive deterministic-logic fighting game. A normalized,
   allowlisted logic-block configuration is the submitted brain; never execute
   arbitrary user code or expression text.
 - Rated outcomes come from authoritative deterministic server simulation.

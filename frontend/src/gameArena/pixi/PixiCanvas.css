@@ -19,22 +19,167 @@
     -webkit-user-drag: none;
 }
 
-.ability-status-icon-button {
+/* ---- Fighter cards (game HUD) ---- */
+.hud-fighter {
+    --team: #4aa3f0;
+    --team-face: #4a90c9;
+    display: flex;
+    min-width: 0;
+    width: 156px;
+    flex-direction: column;
+    gap: 7px;
+    border: 1.5px solid color-mix(in srgb, var(--team) 42%, #1b232b);
+    border-radius: 10px;
+    padding: 9px;
+    background-color: color-mix(in srgb, var(--team) 9%, #0d1117);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+}
+
+.hud-fighter.is-red {
+    --team: #f0625a;
+    --team-face: #cf5a50;
+}
+
+/* Desktop header is one line: face, name, and a YOU tag for your own bot (the card colour already shows the team). */
+.hud-fighter__id {
+    display: flex;
+    min-width: 0;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.hud-face {
+    width: 24px;
+    height: 24px;
+    flex: none;
+    fill: var(--team-face);
+}
+
+.hud-face__eye {
+    fill: #0b1520;
+}
+
+.hud-fighter__names {
+    display: contents;
+}
+
+.hud-fighter__names .hud-fighter__tag { display: none; }
+
+/* Desktop: the name shares the header line and ellipsizes (the full name stays in the tooltip). Strips below wrap it instead. */
+.hud-fighter__name {
+    min-width: 0;
+    flex: 1 1 0;
+    order: 1;
+    overflow: hidden;
+    color: #f1f5f9;
+    font-family: "Chakra Petch", sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.hud-fighter__you {
+    order: 2;
+    flex: none;
+    border-radius: 4px;
+    padding: 1px 5px;
+    background-color: color-mix(in srgb, var(--team) 24%, transparent);
+    color: #f1f5f9;
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.4;
+    text-transform: uppercase;
+}
+
+.hud-fighter__tag {
+    color: var(--team);
+    font-family: "Chakra Petch", sans-serif;
+    font-size: .75rem;
+    font-weight: 600;
+    letter-spacing: .06em;
+}
+
+.hud-hp {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.hud-hp__row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    color: #8b98a5;
+    font-family: "Chakra Petch", sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.hud-hp__row strong {
+    color: #f1f5f9;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+
+.hud-hp__bar {
+    display: flex;
+    gap: 2px;
+}
+
+.hud-hp__bar span {
+    height: 5px;
+    flex: 1 1 0;
+    border-radius: 2px;
+    background-color: #263039;
+}
+
+.hud-hp__bar.is-high span.is-filled { background-color: #22c55e; }
+.hud-hp__bar.is-mid span.is-filled { background-color: #f5b301; }
+.hud-hp__bar.is-low span.is-filled { background-color: #ef4444; }
+
+/* Up to 9 abilities: 3 base tiles first (secondary), then up to 6 loadout tiles.
+   Desktop cards use 3 columns: base in row 1, loadout in rows 2-3. */
+.hud-fighter__abilities {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.hud-abilities {
     display: grid;
-    width: 36px;
-    height: 36px;
-    place-items: center;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+}
+
+/* Desktop only: the standard (base) abilities read as secondary so drafted abilities stand out. */
+.hud-abilities--base .hud-ability { opacity: .8; }
+.hud-abilities--base .hud-ability__face { border-color: #3b4652; }
+
+/* Desktop: tiles fill the card width. The strip layouts below restore fixed --tile sizes. */
+.hud-abilities { --tile: 2.75rem; }
+
+.hud-ability-slot {
+    min-width: 0;
+}
+
+.ability-status-icon-button {
+    display: block;
+    width: 100%;
     border: 0;
-    border-radius: 999px;
+    border-radius: 7px;
     padding: 0;
     background: transparent;
     color: inherit;
-    transition: background-color 140ms ease, transform 140ms ease;
+    cursor: pointer;
 }
 
-.ability-status-icon-button:hover {
-    background: rgba(103, 232, 249, .08);
-    transform: translateY(-1px);
+.ability-status-icon-button:hover .hud-ability__face {
+    filter: brightness(1.2);
 }
 
 .ability-status-icon-button:focus-visible {
@@ -42,86 +187,128 @@
     outline-offset: 2px;
 }
 
+.hud-ability {
+    --hud-ability-ring: #64748b;
+    position: relative;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+}
+
+.hud-ability__face {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    border: 1.5px solid var(--hud-ability-ring);
+    border-radius: 7px;
+    background-color: #141b23;
+}
+
+.hud-ability[data-ability-state="idle"] .hud-ability__face {
+    border-color: #3b4652;
+}
+
+.hud-ability__icon {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    padding: 4px;
+    object-fit: contain;
+}
+
+.hud-ability__text {
+    color: #e2e8f0;
+    font-family: "Chakra Petch", sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.hud-ability__cooldown {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    background-color: rgba(6, 10, 14, .72);
+}
+
+.hud-ability__timer {
+    position: relative;
+    color: #ffffff;
+    font-family: "Chakra Petch", sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, .9);
+}
+
+.hud-ability__charges {
+    position: absolute;
+    right: -4px;
+    bottom: -4px;
+    min-width: 14px;
+    border: 1.5px solid #0d1117;
+    border-radius: 999px;
+    padding: 0 3px;
+    background-color: #f5c518;
+    color: #1a1400;
+    font-family: "Chakra Petch", sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 11px;
+    text-align: center;
+}
+
+/* ---- Combat layout ---- */
+/* Desktop side columns are exactly one fighter card wide (156px). */
 .pixi-combat-layout--fixed.pixi-combat-layout--split {
-    min-width: 804px;
-    grid-template-columns: minmax(190px, 220px) minmax(400px, 860px) minmax(190px, 220px);
+    min-width: 736px;
+    grid-template-columns: 156px minmax(400px, 860px) 156px;
 }
 
 .pixi-combat-layout--fixed.pixi-combat-layout--right {
-    min-width: 602px;
-    grid-template-columns: minmax(400px, 880px) minmax(190px, 220px);
+    min-width: 568px;
+    grid-template-columns: minmax(400px, 880px) 156px;
 }
 
-@media (max-width: 1400px) {
-    .pixi-combat-layout--fixed.pixi-combat-layout--split {
-        min-width: 764px;
-        grid-template-columns: minmax(170px, 190px) minmax(400px, 860px) minmax(170px, 190px);
-    }
-
-    .pixi-combat-layout--fixed.pixi-combat-layout--right {
-        min-width: 582px;
-        grid-template-columns: minmax(400px, 880px) minmax(170px, 190px);
-    }
+.pixi-combat-layout--fixed .pixi-side-status {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
-@media (min-width: 1181px) {
-    .pixi-combat-layout--fixed .ability-status-panel {
-        height: 14.75rem;
-        min-height: 14.75rem;
-    }
-
-    .pixi-combat-layout--fixed .ability-status-panel .ability-status-panel__header {
-        margin-bottom: 0;
-        line-height: .875rem;
-    }
-
-    .pixi-combat-layout--fixed .ability-status-panel .ability-status-panel__timer {
-        height: .75rem;
-        line-height: .75rem;
-    }
-
-    .pixi-combat-layout--fixed .ability-status-panel .ability-status-panel__abilities {
-        height: 11rem;
-        max-height: 11rem;
-        grid-auto-rows: 3.5rem;
-        row-gap: .25rem;
-    }
+.pixi-combat-layout--fixed .pixi-side-status > * {
+    margin-block-start: 0 !important;
+    margin-block-end: 0 !important;
 }
 
+/* Below 1181px (when the panel drops under the arena) each bot is one strip, player above the arena and opponent below.
+   Tablets show one row of tiles; phones show the 3-column grid. */
 @media (max-width: 1180px) {
     .pixi-combat-layout--fixed.pixi-combat-layout--split {
-        min-width: 400px !important;
-        max-width: 860px;
-        grid-template-columns: minmax(170px, 190px) minmax(0, 1fr) minmax(170px, 190px) !important;
-        justify-content: center;
-        align-items: start;
+        min-width: 0 !important;
+        max-width: 100%;
+        grid-template-columns: minmax(0, 1fr) !important;
+        row-gap: .5rem;
     }
 
     .pixi-combat-layout--fixed.pixi-combat-layout--split .pixi-player-status,
-    .pixi-combat-layout--fixed.pixi-combat-layout--split .pixi-opponent-status {
-        grid-row: 1;
-        min-width: 0;
-    }
-
-    .pixi-combat-layout--fixed.pixi-combat-layout--split .pixi-player-status {
-        grid-column: 1;
-    }
-
-    .pixi-combat-layout--fixed.pixi-combat-layout--split .pixi-opponent-status {
-        grid-column: 3;
-    }
-
+    .pixi-combat-layout--fixed.pixi-combat-layout--split .pixi-opponent-status,
     .pixi-combat-layout--fixed.pixi-combat-layout--split .pixi-arena-column {
-        grid-column: 1 / -1;
-        grid-row: 2;
+        grid-column: 1;
+        min-width: 0 !important;
     }
+
+    .pixi-combat-layout--fixed.pixi-combat-layout--split .pixi-player-status { grid-row: 1; }
+    .pixi-combat-layout--fixed.pixi-combat-layout--split .pixi-arena-column { grid-row: 2; }
+    .pixi-combat-layout--fixed.pixi-combat-layout--split .pixi-opponent-status { grid-row: 3; }
 
     .pixi-combat-layout--fixed .pixi-side-status {
-        display: flex;
-        flex-direction: column-reverse;
-        gap: .75rem;
-        align-self: end;
-        justify-content: flex-start;
+        flex-direction: column;
+        gap: .375rem;
+        align-self: stretch;
     }
 
     .pixi-combat-layout--fixed .pixi-side-status > * {
@@ -129,47 +316,126 @@
         margin-block-end: 0 !important;
     }
 
-    .pixi-combat-layout--fixed .ability-status-panel {
-        height: 12.5rem;
-        min-height: 12.5rem;
-        padding: .375rem;
-    }
-
-    .pixi-combat-layout--fixed .ability-status-panel__header {
-        gap: .125rem;
-        margin-bottom: .125rem;
-        font-size: 9px;
-        line-height: .75rem;
-    }
-
-    .pixi-combat-layout--fixed .ability-status-panel__hp {
-        font-size: 9px;
-        line-height: .75rem;
-    }
-
-    .pixi-combat-layout--fixed .ability-status-panel__timer {
-        height: .75rem;
-        font-size: 8px;
-        line-height: .75rem;
-    }
-
-    .pixi-combat-layout--fixed .ability-status-panel__icon {
-        margin-top: 0;
-    }
-
-    .pixi-combat-layout--fixed .ability-status-panel__abilities .ability-status-icon-button,
-    .pixi-combat-layout--fixed .ability-status-panel__abilities .ability-status-ring {
-        width: 32px;
-        height: 32px;
-    }
-
-    .pixi-combat-layout--fixed .ability-status-panel__abilities {
-        height: 9.5rem;
-        max-height: 9.5rem;
-        grid-auto-rows: 3rem;
-        column-gap: .25rem;
+    .hud-fighter {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        grid-template-areas: "face tags abil" "face name abil" "face hp abil";
+        align-items: center;
+        column-gap: .75rem;
         row-gap: .25rem;
-        overflow-y: auto;
-        padding-right: 0;
+        width: auto;
+        border-width: 2px;
+        border-radius: 12px;
+        padding: .5rem .75rem;
     }
+
+    .hud-fighter__id { display: contents; }
+    .hud-face { grid-area: face; width: 2.5rem; height: 2.5rem; }
+
+    .hud-fighter__names {
+        display: flex;
+        grid-area: tags;
+        align-items: center;
+        gap: .5rem;
+    }
+
+    .hud-fighter__names .hud-fighter__tag { display: inline; }
+
+    /* Strips wrap the username instead of truncating it. */
+    .hud-fighter__name {
+        grid-area: name;
+        flex: none;
+        order: 0;
+        overflow: initial;
+        text-overflow: clip;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .hud-fighter__you {
+        order: 0;
+        padding: 1px .375rem;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: none;
+    }
+
+    .hud-hp { grid-area: hp; gap: .25rem; }
+    .hud-hp__row { color: #cbd5e1; font-size: .75rem; }
+    .hud-hp__row strong { font-size: .875rem; }
+    .hud-hp__bar { gap: 3px; }
+    .hud-hp__bar span { height: .5rem; }
+
+    .hud-fighter__abilities {
+        grid-area: abil;
+        flex-direction: row;
+        align-items: center;
+        gap: .75rem;
+    }
+
+    .hud-abilities {
+        display: flex;
+        gap: .25rem;
+    }
+
+    .hud-abilities { --tile: 1.75rem; }
+
+    .hud-ability {
+        width: var(--tile);
+        height: var(--tile);
+        aspect-ratio: auto;
+    }
+
+    .hud-abilities--base .hud-ability { opacity: 1; }
+    .hud-abilities--base .hud-ability__face { border-color: var(--hud-ability-ring); }
+    .hud-ability__face { border-width: 2px; border-radius: 10px; }
+    .ability-status-icon-button { width: auto; border-radius: 10px; }
+    .hud-ability__icon { padding: 3px; }
+    .hud-ability__text { font-size: .6875rem; }
+    .hud-ability__timer { font-size: .5625rem; letter-spacing: -.02em; }
+
+    .hud-ability__charges {
+        right: -5px;
+        bottom: -5px;
+        min-width: 1rem;
+        border-width: 2px;
+        padding: 0 .25rem;
+        font-size: .625rem;
+        line-height: .75rem;
+    }
+
+    /* Visual tiles are small; extend the touch target beyond them. */
+    .ability-status-icon-button { position: relative; }
+
+    .ability-status-icon-button::before {
+        position: absolute;
+        inset: -.5rem -.1875rem;
+        content: "";
+    }
+}
+
+@media (max-width: 639px) {
+    .hud-fighter { column-gap: .5rem; padding: .375rem .5rem; }
+    .hud-face { width: 2rem; height: 2rem; }
+    .hud-fighter__name { font-size: .8125rem; }
+    .hud-fighter__tag { font-size: .6875rem; }
+
+    .hud-fighter__abilities {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: .25rem;
+    }
+
+    .hud-abilities {
+        display: grid;
+        grid-template-columns: repeat(3, var(--tile));
+        gap: .25rem;
+    }
+
+    .hud-abilities { --tile: 1.5rem; }
+    .hud-ability__icon { padding: 2px; }
+    .hud-ability__text { font-size: .5625rem; }
+    .hud-ability__timer { font-size: .5rem; }
+    .hud-ability__face { border-width: 1.5px; border-radius: 7px; }
+    .ability-status-icon-button::before { inset: -.375rem -.25rem; }
 }

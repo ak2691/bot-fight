@@ -24,7 +24,6 @@ import tools.jackson.databind.JsonNode;
 @Service
 public class ConditionResolutionService {
     private static final int MAX_TOTAL_CONDITIONS = 300;
-    private static final int MAX_ENUMERATED_ANGLE_GROUPS = 8;
 
     private final ConditionEvaluationService comparisonService;
     private final ActionExecutionService actionExecutionService;
@@ -103,13 +102,42 @@ public class ConditionResolutionService {
                     textValue(field(condition, "statusEffect"), ""),
                     textValue(field(condition, "comparator"), "lt"),
                     normalizeOperand(rightNode, leftContract),
-                    index > 0 && BotLogicContracts.JOIN_OR.equals(textValue(field(condition, "join"), "and")) ? BotLogicContracts.JOIN_OR : "and",
                     targetMode,
                     targetX,
                     targetY,
-                    targetAngle));
+                    targetAngle,
+                    normalizeRightView(condition, rightVariable, rightContract, coordinateVersion)));
         }
         return normalized;
+    }
+
+    /**
+     * A compared-to pair variable keeps its own entity/target in the right* fields. Brains without
+     * them fall back to the left configuration, which preserves their earlier behavior.
+     */
+    private static Condition normalizeRightView(JsonNode condition, String rightVariable,
+                                                BotLogicContracts.VariableContract rightContract, String coordinateVersion) {
+        if (rightContract == null || !rightContract.isPairVariable()) return null;
+        tools.jackson.databind.node.ObjectNode view = tools.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+        view.put("type", BotLogicContracts.CONDITION_EXPRESSION);
+        view.put("left", rightVariable);
+        view.put("comparator", "eq");
+        view.putObject("right").put("type", "number").put("value", 0);
+        String[][] fields = {
+                {"selectable1", "rightSelectable1"}, {"selectable2", "rightSelectable2"},
+                {"targetMode", "rightTargetMode"}, {"targetX", "rightTargetX"},
+                {"targetY", "rightTargetY"}, {"targetAngle", "rightTargetAngle"}};
+        for (String[] pair : fields) {
+            JsonNode value = field(condition, pair[1]);
+            if (value == null) value = field(condition, pair[0]);
+            if (value != null) view.set(pair[0], value);
+        }
+        if (field(condition, "rightSelectable2") == null && view.get("selectable2") == null && field(condition, "selectable") != null) {
+            view.set("selectable", field(condition, "selectable"));
+        }
+        java.util.List<Condition> normalizedView = normalizeConditions(
+                tools.jackson.databind.node.JsonNodeFactory.instance.arrayNode().add(view), coordinateVersion);
+        return normalizedView.isEmpty() ? null : normalizedView.get(0);
     }
 
     public boolean evaluateConditions(
@@ -131,14 +159,7 @@ public class ConditionResolutionService {
             String coordinateVersion) {
         List<AngleGroup> angleGroups = collectRepeatedAngleGroups(conditions, player, opponent, entities, arena, coordinateVersion);
         if (angleGroups.isEmpty()) return evaluateConditionsDirect(conditions, player, opponent, entities, arena, Map.of(), coordinateVersion);
-        if (allConditionsUseAnd(conditions)) {
-            return evaluateAllAndAngleGroups(conditions, player, opponent, entities, arena, angleGroups, coordinateVersion);
-        }
-        if (angleGroups.size() > MAX_ENUMERATED_ANGLE_GROUPS) {
-            return evaluateConditionsDirect(conditions, player, opponent, entities, arena, Map.of(), coordinateVersion);
-        }
-        return evaluateAngleVariants(
-                conditions, player, opponent, entities, arena, angleGroups, 0, new HashMap<>(), coordinateVersion);
+        return evaluateAllAndAngleGroups(conditions, player, opponent, entities, arena, angleGroups, coordinateVersion);
     }
 
     private boolean evaluateConditionsDirect(
@@ -149,14 +170,10 @@ public class ConditionResolutionService {
             Arena arena,
             Map<String, Double> angleOverrides,
             String coordinateVersion) {
-        List<Boolean> matches = new ArrayList<>();
-        List<String> joins = new ArrayList<>();
-        for (int index = 0; index < conditions.size(); index += 1) {
-            Condition condition = conditions.get(index);
-            matches.add(evaluateCondition(condition, player, opponent, entities, arena, angleOverrides, coordinateVersion));
-            joins.add(condition.join());
+        for (Condition condition : conditions) {
+            if (!evaluateCondition(condition, player, opponent, entities, arena, angleOverrides, coordinateVersion)) return false;
         }
-        return comparisonService.evaluateJoined(matches, joins);
+        return true;
     }
 
     private boolean evaluateAllAndAngleGroups(
@@ -200,13 +217,6 @@ public class ConditionResolutionService {
         return true;
     }
 
-    private static boolean allConditionsUseAnd(List<Condition> conditions) {
-        for (int index = 1; index < conditions.size(); index += 1) {
-            if (BotLogicContracts.JOIN_OR.equals(conditions.get(index).join())) return false;
-        }
-        return true;
-    }
-
     private List<AngleGroup> collectRepeatedAngleGroups(
             List<Condition> conditions,
             Bot player,
@@ -235,30 +245,6 @@ public class ConditionResolutionService {
             }
         }
         return groups;
-    }
-
-    private boolean evaluateAngleVariants(
-            List<Condition> conditions,
-            Bot player,
-            Bot opponent,
-            List<Entity> entities,
-            Arena arena,
-            List<AngleGroup> groups,
-            int groupIndex,
-            Map<String, Double> angleOverrides,
-            String coordinateVersion) {
-        if (groupIndex >= groups.size()) {
-            return evaluateConditionsDirect(conditions, player, opponent, entities, arena, angleOverrides, coordinateVersion);
-        }
-        AngleGroup group = groups.get(groupIndex);
-        for (double value : group.values()) {
-            angleOverrides.put(group.key(), value);
-            boolean matches = evaluateAngleVariants(
-                    conditions, player, opponent, entities, arena, groups, groupIndex + 1, angleOverrides, coordinateVersion);
-            angleOverrides.remove(group.key());
-            if (matches) return true;
-        }
-        return false;
     }
 
     private boolean evaluateCondition(
@@ -295,9 +281,13 @@ public class ConditionResolutionService {
         if (left == null) return false;
         if (leftContract != null && leftContract.requiresHealthSelectable()
                 && !BotLogicContracts.selectableSupportsCapability(condition.leftSelectable(), BotLogicContracts.SELECTABLE_CAPABILITY_HEALTH)) return false;
+        Condition rightView = condition.rightView();
         StateValue right = "variable".equals(condition.right().type())
-                ? resolveStateVariable(condition.right().valueText(), condition.rightSelectable(), condition,
-                        player, opponent, entities, arena, coordinateVersion)
+                ? (rightView != null
+                        ? resolveStateVariable(condition.right().valueText(), rightView.leftSelectable(), rightView,
+                                player, opponent, entities, arena, coordinateVersion)
+                        : resolveStateVariable(condition.right().valueText(), condition.rightSelectable(), condition,
+                                player, opponent, entities, arena, coordinateVersion))
                 : condition.right().toStateValue(left.type());
         if (right == null || left.type() != right.type()) return false;
         BotLogicContracts.VariableContract rightContract = "variable".equals(condition.right().type())

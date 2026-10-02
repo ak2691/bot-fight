@@ -21,6 +21,8 @@ import { statusEffectDefinitionsForAbilities } from "../loadout/BotLoadout.js";
 import { priorityForNode } from "../botlogic/code/configuration/identifiers.js";
 import CustomVariablesModal from "./modals/CustomVariablesModal.jsx";
 import TutorialGuide from "../../tutorial/TutorialGuide.jsx";
+import Toast, { ToastStack } from "../../components/Toast.jsx";
+import { BudgetMeter, ToolbarBracesIcon, ToolbarCloseIcon } from "./controls/WorkspaceToolbarBits.jsx";
 import {
     captureTutorialNavigationScrollPosition,
     tutorialLessonNavigationForArena,
@@ -29,10 +31,7 @@ import { botColorRole } from "../pixi/pixiVisualState.js";
 import { useDialogFocus } from "../../components/useDialogFocus.js";
 import {
     sanitizeConfigurationConditions,
-    ScoreBox,
-    PanelHeading,
     ToolIcon,
-    ControlButton,
     countActions,
     countLogicConditions,
     abilityIdsForConfiguration,
@@ -41,11 +40,12 @@ import {
     formatClock,
 } from "./nodes/GraphNodes.jsx";
 import { TreeLogicBoard } from "./LogicBoard.jsx";
+import { HudBudget, HudButton, HudScoreboard, HudSwitchRow } from "./HudControls.jsx";
 import { readAddRootShortcut } from "./addRootShortcut.js";
 import { BOT_LOGIC_TREE_VERSION } from "../botlogic/code/configuration/constants.js";
 import { upgradeStoredStrategyCoordinates } from "../persistence/arenaStrategyStorage.js";
 
-const MIN_ZOOM = 0.45;
+const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 1.35;
 const EMPTY_CONFIGURATION = Object.freeze({ version: BOT_LOGIC_TREE_VERSION, roots: [], customVariables: [] });
 
@@ -78,31 +78,31 @@ function TutorialLessonNavigationControls({ navigation }) {
         <section className="rounded-xl border border-slate-600/70 bg-slate-900/55 p-4 shadow-[0_10px_30px_rgba(0,0,0,.2)]" aria-labelledby="tutorial-lesson-navigation-title">
             <div className="mb-3 border-b border-slate-700/80 pb-3">
                 <p className="font-mono text-[9px] font-bold tracking-[.16em] text-cyan-300">TUTORIAL LESSON</p>
-                <h2 id="tutorial-lesson-navigation-title" className="mt-1 break-words font-display-action text-lg uppercase tracking-wide text-white">
+                <h2 id="tutorial-lesson-navigation-title" className="mt-1 break-words font-display text-lg uppercase tracking-wide text-white">
                     {navigation.lesson.title}
                 </h2>
             </div>
             <div className="flex w-full gap-2" role="group" aria-label="Tutorial lesson navigation">
-                <ControlButton
+                <HudButton
                     icon="previous"
-                    label="Previous Lesson"
+                    label="Previous lesson"
                     onClick={() => navigateToLesson(navigation.previous)}
                     disabled={!navigation.previous}
-                    tone="blue"
-                    className="tutorial-lesson-navigation-button min-w-0 flex-1"
+                    variant="half"
+                    className="min-w-0"
                 >
-                    PREVIOUS LESSON
-                </ControlButton>
+                    Previous lesson
+                </HudButton>
                 {navigation.next && (
-                    <ControlButton
+                    <HudButton
                         icon="next"
-                        label="Next Lesson"
+                        label="Next lesson"
                         onClick={() => navigateToLesson(navigation.next)}
-                        tone="blue"
-                        className="tutorial-lesson-navigation-button min-w-0 flex-1"
+                        variant="half"
+                        className="min-w-0"
                     >
-                        NEXT LESSON
-                    </ControlButton>
+                        Next lesson
+                    </HudButton>
                 )}
             </div>
         </section>
@@ -192,6 +192,14 @@ function roundWinsForTeam(participants, teamNumber) {
         .reduce((highest, participant) => Math.max(highest, Math.max(0, Number(participant?.roundWins) || 0)), 0);
 }
 
+// Small labelled count with a 3px progress bar; amber near the limit, red at it.
+
+function ToolbarSearchIcon() {
+    return <svg className="code-tb-icon" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M10.5 10.5 14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>;
+}
+
+
+
 export default function CodingPanel({
     configuration,
     onChange,
@@ -233,6 +241,7 @@ export default function CodingPanel({
     onOpenPracticeConfig = null,
     onOpenPuzzleConfig = null,
     onOpenPuzzleSubmissions = null,
+    puzzleLastResult = null,
     builderControls = null,
     puzzleControls = null,
     onPuzzleSubmit = null,
@@ -253,17 +262,22 @@ export default function CodingPanel({
     const [isNodeSearchOpen, setIsNodeSearchOpen] = useState(false);
     const [isQuickSearchOpen, setIsQuickSearchOpen] = useState(false);
     const [activeCode, setActiveCode] = useState("player");
+    const [confirmingSurrender, setConfirmingSurrender] = useState(false);
+    const [isToolsSheetOpen, setIsToolsSheetOpen] = useState(false);
+    const toolsSheetRef = useRef(null);
+    useDialogFocus(toolsSheetRef, { onClose: () => setIsToolsSheetOpen(false), enabled: isToolsSheetOpen });
     const [canvasZoom, setCanvasZoom] = useState(0.85);
     const [canvasPan, setCanvasPan] = useState({ x: 40, y: 36 });
     const logicBoardRef = useRef(null);
     const logicDialogRef = useRef(null);
     const workspaceToolbarRef = useRef(null);
-    const [workspaceToolbarHeight, setWorkspaceToolbarHeight] = useState(84);
+    const zoomToFitRef = useRef(null);
+    const [workspaceToolbarHeight, setWorkspaceToolbarHeight] = useState(56);
     useLayoutEffect(() => {
         if (!isLogicOpen || !workspaceToolbarRef.current) return undefined;
         const toolbar = workspaceToolbarRef.current;
         const updateToolbarHeight = () => {
-            setWorkspaceToolbarHeight(Math.max(84, Math.ceil(toolbar.getBoundingClientRect().height)));
+            setWorkspaceToolbarHeight(Math.max(56, Math.ceil(toolbar.getBoundingClientRect().height)));
         };
         updateToolbarHeight();
         if (typeof ResizeObserver === "undefined") return undefined;
@@ -389,7 +403,6 @@ export default function CodingPanel({
             : upgradeStoredStrategyCoordinates(normalizedActiveConfiguration),
         [activeCodeReadOnly, normalizedActiveConfiguration],
     );
-    const detachedBranchCount = activeConfiguration?.editorGraph?.detachedBranches?.length ?? 0;
     const activeLoadout = activeLoadoutSource;
     const validation = validateAbilityStrategyConfiguration(activeConfiguration);
     const isBotCodeLocked = isMatchTesting && (
@@ -600,19 +613,37 @@ export default function CodingPanel({
         const nodePositions = logicBoardRef.current?.placeRootAtCenter(nextRoots, nextRoots.length - 1);
         updateRoots(nextRoots, nodePositions ?? activeConfiguration.nodePositions);
     };
+    // Zoom keeps the point under the cursor fixed. Latest zoom / pan live in refs
+    // (updated synchronously) so rapid wheel events and StrictMode double renders
+    // never apply the pan correction twice or from a stale value.
+    const zoomRef = useRef(canvasZoom);
+    const panRef = useRef(canvasPan);
+    useEffect(() => { zoomRef.current = canvasZoom; panRef.current = canvasPan; });
     const changeZoom = (delta, origin = null) => {
-        setCanvasZoom((currentZoom) => {
-            const nextZoom = clamp(Number((currentZoom + delta).toFixed(2)), MIN_ZOOM, MAX_ZOOM);
-            if (origin && nextZoom !== currentZoom) {
-                setCanvasPan((currentPan) => ({
-                    x: origin.x - ((origin.x - currentPan.x) / currentZoom) * nextZoom,
-                    y: origin.y - ((origin.y - currentPan.y) / currentZoom) * nextZoom,
-                }));
-            }
-            return nextZoom;
-        });
+        const currentZoom = zoomRef.current;
+        const nextZoom = clamp(Number((currentZoom + delta).toFixed(2)), MIN_ZOOM, MAX_ZOOM);
+        if (nextZoom === currentZoom) return;
+        // Toolbar buttons have no cursor point, so zoom about the centre of the board.
+        let anchor = origin;
+        if (!anchor) {
+            const rect = logicDialogRef.current?.querySelector(".code-board")?.getBoundingClientRect();
+            if (rect) anchor = { x: rect.width / 2, y: rect.height / 2 };
+        }
+        if (anchor) {
+            const currentPan = panRef.current;
+            const nextPan = {
+                x: anchor.x - ((anchor.x - currentPan.x) / currentZoom) * nextZoom,
+                y: anchor.y - ((anchor.y - currentPan.y) / currentZoom) * nextZoom,
+            };
+            panRef.current = nextPan;
+            setCanvasPan(nextPan);
+        }
+        zoomRef.current = nextZoom;
+        setCanvasZoom(nextZoom);
     };
     const applyPinchZoom = (nextZoom, nextPan) => {
+        zoomRef.current = nextZoom;
+        panRef.current = nextPan;
         setCanvasZoom(nextZoom);
         setCanvasPan(nextPan);
     };
@@ -636,13 +667,15 @@ export default function CodingPanel({
     const isViewingOwnCode = Boolean(activeSelectorParticipant
         && participantId(activeSelectorParticipant)
             === participantId(isMatchTesting ? matchContext?.player : offlineCodeRoster[0]));
-    const activeSelectorMode = !isMatchTesting
-        ? "SANDBOX CODE"
+    // "Sandbox" | "Real code" | "Read-only snapshot" | "Opponent code is private"; a teammate gets a toggle instead.
+    const showLiveModeToggle = isMatchTesting && !isViewingOwnCode && Boolean(activeLiveParticipant && activeLiveIsTeammate);
+    const selectorModeText = !isMatchTesting
+        ? "Sandbox"
         : isViewingOwnCode
-            ? "REAL CODE"
-            : activeLiveIsTeammate
-                ? viewingLiveSandbox ? "SANDBOX CODE" : "REAL CODE"
-                : "SANDBOX CODE ONLY";
+            ? "Real code"
+            : showLiveModeToggle
+                ? (activeCodeReadOnly ? "Read-only snapshot" : null)
+                : "Opponent code is private";
     const selectCodeParticipant = (index) => {
         const participant = codeSelectorRoster[index];
         if (!participant) return;
@@ -678,313 +711,316 @@ export default function CodingPanel({
             setActiveCode(`sandbox:${key}`);
         }
     };
-    return (
-        <aside className={`arena-toolbar-panel ${usesArenaResponsiveLimits ? "arena-right-toolbar" : ""} testing-mono h-full min-h-0 w-[23rem] flex-shrink-0 overflow-y-auto border-l border-slate-700/70 bg-[linear-gradient(180deg,rgba(12,22,31,.98),rgba(8,16,24,.98))] p-4 shadow-[-12px_0_30px_rgba(0,0,0,.28)]`}>
-            <div className="space-y-4">
-                {builderControls}
-                {puzzleControls}
-                {isMatchTesting && (
-                    <section className="rounded-xl border border-slate-600/70 bg-slate-900/55 p-4 text-[10px] shadow-[0_10px_30px_rgba(0,0,0,.2)]">
-                        <PanelHeading icon="status">MATCH STATUS</PanelHeading>
-                        <div className="flex items-center justify-between text-ink-muted">
-                            <span>ROUND</span>
-                            <strong className="font-interface-numeric text-ink-white">{matchContext?.roundNumber ?? 1}/{totalRounds}</strong>
-                        </div>
-                        <div className="mt-2 flex items-center justify-between text-ink-muted">
-                            <span>TIME</span>
-                            <strong className="font-interface-numeric text-amber-200">{formatClock(testingRemaining)}</strong>
-                        </div>
-                        <div className="mt-3 grid grid-cols-2 gap-2">
-                            <ScoreBox label="BLUE TEAM" value={blueTeamRoundWins} tone="blue" />
-                            <ScoreBox label="RED TEAM" value={redTeamRoundWins} tone="red" />
-                        </div>
-                        {Number(matchContext?.surrenderVoteRequired) > 0
-                            && Number(matchContext?.surrenderVoteCount) > 0 && (
-                            <div className="mt-3 rounded border border-red-900/50 bg-red-950/20 px-2 py-2 text-red-200">
-                                {teamLabel(participantTeamNumber(matchContext?.player))} FORFEIT VOTES: {matchContext.surrenderVoteCount}/{matchContext.surrenderVoteRequired}
-                            </div>
-                        )}
-                        {matchContext?.opponent?.finished && finishStatus !== "FINISHED" && (
-                            <div className="mt-3 rounded border border-green-800/50 bg-green-950/30 px-2 py-2 text-green-300">
-                                OPPONENT FINISHED
-                            </div>
-                        )}
-                        {testingRemaining === 0 && finishStatus === "BUILDING" && (
-                            <div role="status" aria-live="polite" className="mt-3 flex items-center gap-2 rounded border border-cyan-900/60 bg-cyan-950/15 px-2 py-2 text-cyan-200/80">
-                                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-300/80" aria-hidden="true" />
-                                PREPARING REPLAY · YOU CAN STILL SUBMIT
-                            </div>
-                        )}
-                    </section>
-                )}
-
-                <section className="rounded-xl border border-slate-600/70 bg-slate-900/55 p-4 shadow-[0_10px_30px_rgba(0,0,0,.2)]">
-                    <div className="flex items-center justify-between text-[10px]">
-                        <PanelHeading icon="node">BOT CODE</PanelHeading>
-                        <strong className="font-interface-numeric text-ink-muted">{countActions(activeConfiguration)}/{maxActionNodes} A · {countLogicConditions(activeConfiguration)}/{maxConditionNodes} C</strong>
-                    </div>
-                    <ControlButton
-                        icon={isAutoPlaying ? "pause" : "play"}
-                        onClick={onAutoPlayToggle}
-                        disabled={isBaseTesting || isTesting}
-                        tone="neutral"
-                        className="mt-4"
-                    >
-                        {isAutoPlaying ? "PAUSE" : "PLAY"}
-                    </ControlButton>
-                    <button
-                        type="button"
-                        disabled={isBotCodeLocked}
-                        onClick={() => openLogicWorkspace(false)}
-                        className={`arena-toolbar-button ${isBotCodeLocked ? "arena-toolbar-button--neutral" : "arena-toolbar-button--primary"} mt-2`}
-                    >
-                        <ToolIcon name="node" /> {isBotCodeLocked ? "BOT CODE SUBMITTED" : "OPEN BOT CODE"}
-                    </button>
-                    {onOpenPuzzleSubmissions && (
-                        <button type="button" onClick={onOpenPuzzleSubmissions} className="arena-toolbar-submission-link mt-3" aria-haspopup="dialog">
-                            <span className="flex items-center gap-3"><ToolIcon name="reset" /> <span>PREVIOUS SUBMISSIONS</span></span>
-                            <span aria-hidden="true" className="text-2xl font-normal leading-none text-slate-300">›</span>
-                        </button>
-                    )}
-                    {validation.errors.map((error) => <p key={error} className="mt-2 text-[10px] text-red-300">{error}</p>)}
-                    {validation.warnings?.map((warning) => <p key={warning} className="mt-2 text-[10px] text-amber-300">WARNING: {warning}</p>)}
-                </section>
-
-                <section className="rounded-xl border border-slate-600/70 bg-slate-900/55 p-4 shadow-[0_10px_30px_rgba(0,0,0,.2)]">
-                    <div className="mb-4 flex items-center justify-between border-b border-slate-700/80 pb-3 text-[10px]">
-                        <PanelHeading>MATCH TOOLS</PanelHeading>
-                        <span className="font-display-action tracking-[.08em] text-ink-muted">BOT LOADOUT</span>
-                    </div>
-                    <div className="flex flex-col items-center gap-2.5">
-                        {onPuzzleSubmit && (
-                            <ControlButton
-                                icon="check"
-                                onClick={onPuzzleSubmit}
-                                disabled={isPuzzleSubmitting || isBaseTesting || isTesting}
-                                tone="neutral"
-                            >
-                                {isPuzzleSubmitting ? "SUBMITTING" : "SUBMIT PUZZLE"}
-                            </ControlButton>
-                        )}
-                        {onPuzzleSubmit && detachedBranchCount > 0 && <p className="code-detached-submit-note">{detachedBranchCount} detached {detachedBranchCount === 1 ? "branch is" : "branches are"} saved here but will not run.</p>}
-                        <ControlButton
-                            icon="measure"
-                            label={`Measurement mode ${measurementEnabled ? "on" : "off"}`}
-                            onClick={onMeasurementToggle}
-                            disabled={!onMeasurementToggle}
-                            tone={measurementEnabled ? "blue" : "neutral"}
-                            pressed={measurementEnabled}
-                        >
-                            {`MEASURE ${measurementEnabled ? "ON" : "OFF"}`}
-                        </ControlButton>
-                        {onHitboxesToggle && (
-                            <ControlButton icon="target" onClick={onHitboxesToggle} tone="neutral">
-                                {hitboxesEnabled ? "HITBOXES OFF" : "HITBOXES ON"}
-                            </ControlButton>
-                        )}
-                        <ControlButton
-                            icon="stats"
-                            onClick={onResetArenaStats}
-                            disabled={!onResetArenaStats || isBaseTesting || isTesting}
-                            tone="neutral"
-                        >
-                            RESET STATS
-                        </ControlButton>
-                        {onSaveGameState && (
-                            <ControlButton
-                                icon="save"
-                                onClick={onSaveGameState}
-                                disabled={isAutoPlaying}
-                                tone="neutral"
-                            >
-                                SAVE GAME STATE
-                            </ControlButton>
-                        )}
-                        {isMatchTesting && (
-                            <>
-                            <ControlButton
-                                icon="check"
-                                onClick={onFinishMatch}
-                                disabled={!canFinishMatch || finishStatus === "FINISHED" || finishStatus === "SURRENDERED" || finishStatus === "SUBMITTING" || finishStatus === "SURRENDERING" || isFinishingMatch || isTesting}
-                                tone="green"
-                            >
-                                {finishStatus === "FINISHED"
-                                    ? "FINISHED"
-                                    : finishStatus === "SURRENDERED"
-                                        ? "RESIGNED"
-                                        : finishStatus === "SURRENDER_VOTED"
-                                            ? "SUBMIT / WITHDRAW VOTE"
-                                        : finishStatus === "SUBMITTING"
-                                            ? "SUBMITTING"
-                                            : isFinishingMatch
-                                                ? "SUBMITTING"
-                                                : "SUBMIT"}
-                            </ControlButton>
-                            {detachedBranchCount > 0 && <p className="code-detached-submit-note">{detachedBranchCount} detached {detachedBranchCount === 1 ? "branch is" : "branches are"} saved here but will not run.</p>}
-                            <ControlButton
-                                icon="flag"
-                                onClick={onSurrenderMatch}
-                                disabled={!onSurrenderMatch || finishStatus === "SURRENDERED" || finishStatus === "FINISHED" || finishStatus === "SUBMITTING" || finishStatus === "SURRENDERING" || isFinishingMatch || isTesting}
-                                tone="red"
-                            >
-                                {finishStatus === "SURRENDERING"
-                                    ? "SURRENDERING"
-                                    : finishStatus === "SURRENDER_VOTED" ? "WITHDRAW FORFEIT" : "VOTE TO FORFEIT"}
-                            </ControlButton>
-                            </>
-                        )}
-                        {!isMatchTesting && onOpenPracticeConfig && (
-                            <ControlButton icon="tools" onClick={onOpenPracticeConfig} disabled={isTesting || isAutoPlaying} tone="neutral">
-                                PRACTICE CONFIG
-                            </ControlButton>
-                        )}
-                        {!isMatchTesting && onOpenPuzzleConfig && (
-                            <ControlButton icon="tools" onClick={onOpenPuzzleConfig} disabled={isTesting || isAutoPlaying} tone="neutral">
-                                PUZZLE CONFIG
-                            </ControlButton>
-                        )}
-                        {!isMatchTesting && onOpenLoadout && (
-                            <ControlButton icon="edit" onClick={onOpenLoadout} disabled={isTesting || isAutoPlaying} tone="neutral">
-                                EDIT LOADOUT
-                            </ControlButton>
-                        )}
-                    </div>
-                    {finishError && <p className="mt-2 rounded border border-red-800/70 bg-red-950/40 px-2 py-2 font-mono text-[9px] leading-relaxed text-red-200">{finishError}</p>}
-                </section>
-                {tutorialLessonNavigation && <TutorialLessonNavigationControls navigation={tutorialLessonNavigation} />}
-                {onPuzzleSubmit && (
-                    <section className="rounded-lg border border-cyan-900/60 bg-slate-950/45 p-3 text-[9px] leading-4 text-slate-400">
-                        <p>When you submit a puzzle, the server will return whether or not you succeeded based on a hidden simulation.</p>
-                        <p className="mt-2">Pressing play shows you what happens visually with your current code</p>
-                    </section>
+    const finishBusy = finishStatus === "SUBMITTING" || finishStatus === "SURRENDERING" || isFinishingMatch;
+    const matchClosed = finishStatus === "SURRENDERED" || finishStatus === "FINISHED";
+    const surrenderVoted = finishStatus === "SURRENDER_VOTED";
+    const lockLabel = finishStatus === "FINISHED"
+        ? "LOCKED IN"
+        : finishStatus === "SURRENDERED"
+            ? "RESIGNED"
+            : surrenderVoted
+                ? "LOCK IN / WITHDRAW VOTE"
+                : finishBusy
+                    ? "LOCKING IN"
+                    : "LOCK IN";
+    const surrenderLabel = finishStatus === "SURRENDERING"
+        ? "Surrendering"
+        : surrenderVoted ? "Withdraw vote" : "Surrender vote";
+    const surrenderDisabled = !onSurrenderMatch || matchClosed || finishBusy || isTesting;
+    const isPuzzleRoom = Boolean(onPuzzleSubmit);
+    const primaryAction = isMatchTesting ? (
+        <HudButton
+            variant="primary"
+            icon="check"
+            className="hud-btn--lg"
+            onClick={onFinishMatch}
+            disabled={!canFinishMatch || matchClosed || finishBusy || isTesting}
+        >
+            {lockLabel}
+        </HudButton>
+    ) : isPuzzleRoom ? (
+        <HudButton
+            variant="primary"
+            icon="check"
+            className="hud-btn--lg"
+            onClick={onPuzzleSubmit}
+            disabled={isPuzzleSubmitting || isBaseTesting || isTesting}
+        >
+            {isPuzzleSubmitting ? "Submitting" : "Submit"}
+        </HudButton>
+    ) : (
+        <HudButton
+            variant="play"
+            icon={isAutoPlaying ? "pause" : "play"}
+            className="hud-btn--lg"
+            onClick={onAutoPlayToggle}
+            disabled={isBaseTesting || isTesting}
+        >
+            {isAutoPlaying ? "PAUSE" : "PLAY"}
+        </HudButton>
+    );
+    const editCodeDisabled = isBotCodeLocked;
+    const previewLabel = isAutoPlaying ? "Pause" : "Preview";
+    const surrenderControl = isMatchTesting && (
+        confirmingSurrender && !surrenderVoted ? (
+            <div className="hud-confirm" role="group" aria-label="Confirm surrender vote">
+                <span>Vote to surrender this match?</span>
+                <button type="button" className="hud-link hud-link--danger" onClick={() => { setConfirmingSurrender(false); onSurrenderMatch?.(); }}>Yes, vote</button>
+                <button type="button" className="hud-link" onClick={() => setConfirmingSurrender(false)}>Cancel</button>
+            </div>
+        ) : (
+            <button
+                type="button"
+                className="hud-link hud-link--danger hud-surrender"
+                disabled={surrenderDisabled}
+                onClick={() => (surrenderVoted ? onSurrenderMatch?.() : setConfirmingSurrender(true))}
+            >
+                <ToolIcon name="flag" className="h-4 w-4" /> {surrenderLabel}
+            </button>
+        )
+    );
+    const brainExtras = (
+        <>
+            {onOpenPuzzleSubmissions && (
+                <button type="button" onClick={onOpenPuzzleSubmissions} className="puzzle-submissions-row" aria-haspopup="dialog">
+                    <span className="flex items-center gap-2"><ToolIcon name="reset" className="h-4 w-4" /> <span>Submissions</span></span>
+                    <span className={`puzzle-submissions-row__last puzzle-submissions-row__last--${puzzleLastResult ?? "none"}`}>
+                        {puzzleLastResult ? `Last: ${puzzleLastResult}` : "None yet"} <span aria-hidden="true">&rsaquo;</span>
+                    </span>
+                </button>
+            )}
+        </>
+    );
+    const budget = (
+        <HudBudget
+            actions={countActions(activeConfiguration)}
+            maxActions={maxActionNodes}
+            conditions={countLogicConditions(activeConfiguration)}
+            maxConditions={maxConditionNodes}
+        />
+    );
+    const toolsBody = (
+        <>
+            <div className="hud-switches">
+                <HudSwitchRow icon="measure" label="Measure" checked={measurementEnabled} onChange={onMeasurementToggle} disabled={!onMeasurementToggle} />
+                {onHitboxesToggle && (
+                    <HudSwitchRow icon="target" label="Hitboxes" checked={hitboxesEnabled} onChange={onHitboxesToggle} />
                 )}
             </div>
+            <div className="hud-grid">
+                <HudButton icon="stats" onClick={onResetArenaStats} disabled={!onResetArenaStats || isBaseTesting || isTesting}>Reset stats</HudButton>
+                {onSaveGameState && (
+                    <HudButton icon="save" onClick={onSaveGameState} disabled={isAutoPlaying}>Save state</HudButton>
+                )}
+                {!isMatchTesting && onOpenPracticeConfig && (
+                    <HudButton icon="tools" label="Practice setup" onClick={onOpenPracticeConfig} disabled={isTesting || isAutoPlaying}>Setup</HudButton>
+                )}
+                {!isMatchTesting && onOpenPuzzleConfig && (
+                    <HudButton icon="tools" label="Puzzle setup" onClick={onOpenPuzzleConfig} disabled={isTesting || isAutoPlaying}>Setup</HudButton>
+                )}
+                {!isMatchTesting && onOpenLoadout && (
+                    <HudButton icon="edit" onClick={onOpenLoadout} disabled={isTesting || isAutoPlaying}>Loadout</HudButton>
+                )}
+            </div>
+            {surrenderControl}
+        </>
+    );
+    return (
+        <aside className={`arena-toolbar-panel hud-panel ${usesArenaResponsiveLimits ? "arena-right-toolbar" : ""} h-full min-h-0 w-[23rem] flex-shrink-0 overflow-y-auto border-l border-slate-700/70 p-4`}>
+            <div className="hud-stack">
+                {isMatchTesting && (
+                    <HudScoreboard
+                        blueScore={blueTeamRoundWins}
+                        redScore={redTeamRoundWins}
+                        roundLabel={`${matchContext?.roundNumber ?? 1}/${totalRounds}`}
+                        clock={formatClock(testingRemaining)}
+                    />
+                )}
+                {typeof builderControls === "function"
+                    ? builderControls({
+                        openOpponentCode: () => { setActiveCode("opponent"); openLogicWorkspace(false); },
+                        startTest: onAutoPlayToggle,
+                    })
+                    : builderControls}
+                {puzzleControls}
+                {isMatchTesting && Number(matchContext?.surrenderVoteRequired) > 0
+                    && Number(matchContext?.surrenderVoteCount) > 0 && (
+                    <div className="hud-notice hud-notice--red">
+                        {teamLabel(participantTeamNumber(matchContext?.player))} forfeit votes: {matchContext.surrenderVoteCount}/{matchContext.surrenderVoteRequired}
+                    </div>
+                )}
+                {isMatchTesting && matchContext?.opponent?.finished && finishStatus !== "FINISHED" && (
+                    <div className="hud-notice hud-notice--green">Opponent locked in</div>
+                )}
+                {isMatchTesting && testingRemaining === 0 && finishStatus === "BUILDING" && (
+                    <div role="status" aria-live="polite" className="hud-notice hud-notice--cyan">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-300/80" aria-hidden="true" />
+                        Preparing replay · you can still lock in
+                    </div>
+                )}
+
+                <section className="hud-card hud-card--brain" aria-labelledby="hud-brain-title">
+                    <h2 id="hud-brain-title" className="hud-card__title"><ToolIcon name="node" className="h-4 w-4" /> Your bot's brain</h2>
+                    {budget}
+                    {primaryAction}
+                    <div className="hud-row">
+                        {isPuzzleRoom && (
+                            <HudButton variant="play" icon={isAutoPlaying ? "pause" : "play"} className="hud-btn--half" onClick={onAutoPlayToggle} disabled={isBaseTesting || isTesting}>
+                                {isAutoPlaying ? "Pause" : "Play"}
+                            </HudButton>
+                        )}
+                        <HudButton icon="node" onClick={() => openLogicWorkspace(false)} disabled={editCodeDisabled}>
+                            {isBotCodeLocked ? "Code locked" : "Edit code"}
+                        </HudButton>
+                        {isMatchTesting && (
+                            <HudButton icon={isAutoPlaying ? "pause" : "play"} onClick={onAutoPlayToggle} disabled={isBaseTesting || isTesting}>
+                                {previewLabel}
+                            </HudButton>
+                        )}
+                    </div>
+                    {brainExtras}
+                </section>
+                <section className="hud-card hud-card--tools" aria-labelledby="hud-tools-title">
+                    <h2 id="hud-tools-title" className="hud-card__title">Tools</h2>
+                    {toolsBody}
+                </section>
+                {validation.errors.map((error) => <p key={error} className="hud-message hud-message--error">{error}</p>)}
+                {validation.warnings?.map((warning) => <p key={warning} className="hud-message hud-message--warn">Warning: {warning}</p>)}
+                {finishError && <p className="hud-message hud-message--error">{finishError}</p>}
+                {tutorialLessonNavigation && <TutorialLessonNavigationControls navigation={tutorialLessonNavigation} />}
+            </div>
+
+            <div className="hud-actionbar" role="toolbar" aria-label="Bot actions">
+                {primaryAction}
+                {isPuzzleRoom && (
+                    <HudButton variant="icon" icon={isAutoPlaying ? "pause" : "play"} label={isAutoPlaying ? "Pause" : "Play"} onClick={onAutoPlayToggle} disabled={isBaseTesting || isTesting} />
+                )}
+                {!isPuzzleRoom && <HudButton variant="icon" icon="node" label={isBotCodeLocked ? "Code locked" : "Edit code"} onClick={() => openLogicWorkspace(false)} disabled={editCodeDisabled} />}
+                {isMatchTesting && (
+                    <HudButton variant="icon" icon={isAutoPlaying ? "pause" : "play"} label={previewLabel} onClick={onAutoPlayToggle} disabled={isBaseTesting || isTesting} />
+                )}
+                <HudButton variant="icon" label="More tools" onClick={() => setIsToolsSheetOpen(true)}>⋯</HudButton>
+            </div>
+            {isToolsSheetOpen && (
+                <>
+                    <div className="hud-sheet-backdrop" onClick={() => setIsToolsSheetOpen(false)} />
+                    <div ref={toolsSheetRef} className="hud-sheet" role="dialog" aria-modal="true" aria-labelledby="hud-sheet-title" tabIndex={-1}>
+                        <div className="hud-sheet__header">
+                            <h2 id="hud-sheet-title" className="hud-card__title">Tools</h2>
+                            <button type="button" className="hud-btn hud-btn--icon" aria-label="Close tools" onClick={() => setIsToolsSheetOpen(false)}>✕</button>
+                        </div>
+                        <div className="hud-sheet__body">
+                            <div className="hud-card hud-card--brain">
+                                <h3 className="hud-card__title"><ToolIcon name="node" className="h-4 w-4" /> Your bot's brain</h3>
+                                {budget}
+                                {isPuzzleRoom && (
+                                    <HudButton icon="node" className="hud-btn--wide" onClick={() => { setIsToolsSheetOpen(false); openLogicWorkspace(false); }} disabled={editCodeDisabled}>
+                                        {isBotCodeLocked ? "Code locked" : "Edit code"}
+                                    </HudButton>
+                                )}
+                                {brainExtras}
+                            </div>
+                            {toolsBody}
+                        </div>
+                    </div>
+                </>
+            )}
 
             {isLogicOpen && !isBotCodeLocked && typeof document !== "undefined" && createPortal(
                 <div className="code-workspace-overlay fixed inset-0 z-40 flex items-center justify-center overflow-hidden bg-black/70 px-4 py-5">
-                    <section ref={logicDialogRef} style={{ "--tutorial-workspace-toolbar-height": `${workspaceToolbarHeight}px` }} className="code-workspace testing-mono relative flex h-[min(90vh,820px)] w-[min(94vw,1440px)] flex-col overflow-hidden rounded-sm border border-border-mid bg-[#111519] shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="code-workspace-title" tabIndex={-1}>
+                    <section ref={logicDialogRef} style={{ "--tutorial-workspace-toolbar-height": `${workspaceToolbarHeight}px` }} className="code-workspace relative flex h-[min(90vh,820px)] w-[min(94vw,1440px)] flex-col overflow-hidden rounded-sm border border-border-mid bg-[#111519] shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="code-workspace-title" tabIndex={-1}>
                         <div className="code-workspace-top-layer">
-                        <header ref={workspaceToolbarRef} className="code-toolbar flex min-h-[84px] flex-shrink-0 items-center gap-4 border-b border-white/10 bg-[#12161a] px-5 py-3 shadow-[0_8px_24px_rgba(0,0,0,.18)]">
-                            <div className="code-toolbar-title flex-none">
-                                <div id="code-workspace-title" className="font-mono text-[11px] font-bold tracking-widest text-cyan">BOT CODE WORKSPACE</div>
-                                <div className="mt-1 truncate font-mono text-[8px] tracking-wide text-ink-muted">
-                                    {activeCodeReadOnly
-                                        ? "REAL CODE SNAPSHOT"
-                                        : viewingLiveSandbox
-                                            ? "SANDBOX COPY"
-                                            : viewingOpponent ? "SANDBOX CODE"
-                                                : isMatchTesting ? "REAL CODE" : "SANDBOX CODE"}
-                                    {activeParticipant?.username ? ` · ${activeParticipant.username}` : ""}
-                                    {` - ${totalActiveBlocks}/${maxActionNodes} A - ${totalActiveConditions}/${maxConditionNodes} C`}
-                                </div>
-                            </div>
-                            <div className="code-toolbar-controls min-w-0 flex-1 py-0.5">
-                                {codeSelectorRoster.length > 0 ? (
-                                    <div className="code-bot-selector-stack">
-                                        <div className={`code-bot-selector ${activeSelectorRole === "red" ? "is-red" : "is-blue"}`} role="group" aria-label="Select bot code workspace">
-                                            <button
-                                                type="button"
-                                                aria-label="Show previous bot"
-                                                title="Previous bot"
-                                                onClick={() => cycleCodeParticipant(-1)}
-                                                disabled={codeSelectorRoster.length < 2}
-                                                className="code-bot-selector__arrow"
-                                            >
-                                                ‹
-                                            </button>
-                                            <div className="code-bot-selector__current" aria-live="polite">
-                                                <span className="code-bot-selector__name">{activeSelectorLabel}</span>
-                                                <span className="code-bot-selector__meta">{teamLabel(participantTeamNumber(activeSelectorParticipant))} · {activeSelectorMode} · {Math.max(1, activeSelectorIndex + 1)}/{codeSelectorRoster.length}</span>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                aria-label="Show next bot"
-                                                title="Next bot"
-                                                onClick={() => cycleCodeParticipant(1)}
-                                                disabled={codeSelectorRoster.length < 2}
-                                                className="code-bot-selector__arrow"
-                                            >
-                                                ›
-                                            </button>
-                                        </div>
-                                        {!isMatchTesting ? (
-                                            <div className="code-bot-view-mode">SANDBOX CODE</div>
-                                        ) : isViewingOwnCode ? (
-                                            <div className="code-bot-view-mode">REAL CODE</div>
-                                        ) : activeLiveParticipant && activeLiveIsTeammate ? (
-                                            <button
-                                                type="button"
-                                                onClick={toggleLiveCodeMode}
-                                                disabled={isBotCodeLocked}
-                                                className={`code-bot-view-toggle ${viewingLiveSandbox ? "is-sandbox" : "is-real"}`}
-                                            >
-                                                {viewingLiveSandbox ? "VIEW REAL CODE" : "VIEW SANDBOX CODE"}
-                                            </button>
-                                        ) : activeLiveParticipant ? (
-                                            <div className="code-bot-view-mode">SANDBOX CODE ONLY · OPPONENT CODE IS PRIVATE</div>
-                                        ) : null}
-                                    </div>
-                                ) : null}
-                                {viewingLiveReal && !activeCodeSnapshot && (
-                                    <div className="mt-2 rounded border border-cyan-900/70 bg-cyan-950/20 px-2 py-1.5 font-mono text-[8px] tracking-wide text-cyan-200">
-                                        REQUESTING A READ-ONLY SNAPSHOT FROM {activeLiveParticipant?.username ?? "PLAYER"}...
-                                    </div>
-                                )}
-                                {codeViewError && (
-                                    <div role="status" aria-live="polite" className="mt-2 rounded border border-red-900/70 bg-red-950/30 px-2 py-1.5 font-mono text-[8px] tracking-wide text-red-200">
-                                        {codeViewError}
-                                    </div>
-                                )}
-                                <div className="code-toolbar-tools">
-                                    <button type="button" onClick={() => { setIsQuickSearchOpen(false); setIsNodeSearchOpen(true); }} className="code-toolbar-button"><span aria-hidden="true" className="code-toolbar-icon">⌕</span> SEARCH ROOTS <kbd className="code-toolbar-shortcut">/</kbd></button>
-                                    <button type="button" onClick={() => setIsCustomVariablesOpen(true)} className="code-toolbar-button"><span aria-hidden="true" className="code-toolbar-icon">{'{ }'}</span> CUSTOM VARIABLES</button>
-                                    <button
-                                        type="button"
-                                        disabled={isCodeEditingLocked || isTesting || !viewingCurrentRound
-                                            || totalRootNodes >= MAX_ROOT_NODES}
-                                        onClick={addRootNode}
-                                        className="code-toolbar-button code-toolbar-button-primary"
-                                    >
-                                        <AddIcon className="code-toolbar-icon" /> ADD ROOT ({totalRootNodes}/{MAX_ROOT_NODES}) <kbd className="code-toolbar-shortcut">{readAddRootShortcut().toUpperCase()}</kbd>
-                                    </button>
-                                </div>
-                                <div className="code-toolbar-actions">
-                                    <div className="code-toolbar-zoom">
-                                        <button
-                                            type="button"
-                                            aria-label="Zoom out"
-                                            onClick={() => changeZoom(-0.1)}
-                                            className="code-toolbar-zoom-button"
-                                        >
-                                            −
-                                        </button>
-                                        <span className="code-toolbar-zoom-value">
-                                            {Math.round(canvasZoom * 100)}%
+                        <header ref={workspaceToolbarRef} className="code-tb">
+                            <h2 id="code-workspace-title" className="sr-only">Bot code workspace</h2>
+                            {codeSelectorRoster.length > 0 && (
+                                <div className={`code-tb-bot ${activeSelectorRole === "red" ? "is-red" : "is-blue"}`} role="group" aria-label="Select bot code workspace">
+                                    <button type="button" aria-label="Show previous bot" title="Previous bot" onClick={() => cycleCodeParticipant(-1)} disabled={codeSelectorRoster.length < 2} className="code-tb-arrow">‹</button>
+                                    <span className="code-tb-dot" aria-hidden="true" />
+                                    <div className={`code-tb-bot-text ${showLiveModeToggle ? "has-toggle" : ""}`} aria-live="polite">
+                                        <span className="code-tb-bot-line">
+                                            <span className="code-tb-bot-name">{activeSelectorLabel}</span>
+                                            {showLiveModeToggle && (
+                                                <span className="code-tb-toggle-wide">
+                                                    <span className="code-tb-segmented" role="group" aria-label="Code view">
+                                                    <button type="button" disabled={isBotCodeLocked} aria-pressed={viewingLiveSandbox} className={viewingLiveSandbox ? "is-active" : ""} onClick={() => { if (!viewingLiveSandbox) toggleLiveCodeMode(); }}>Sandbox</button>
+                                                    <button type="button" disabled={isBotCodeLocked} aria-pressed={!viewingLiveSandbox} className={!viewingLiveSandbox ? "is-active" : ""} onClick={() => { if (viewingLiveSandbox) toggleLiveCodeMode(); }}>Real</button>
+                                                </span>
+                                                </span>
+                                            )}
                                         </span>
-                                        <button
-                                            type="button"
-                                            aria-label="Zoom in"
-                                            onClick={() => changeZoom(0.1)}
-                                            className="code-toolbar-zoom-button"
-                                        >
-                                            <AddIcon size="large" />
-                                        </button>
+                                        {showLiveModeToggle && (
+                                            <span className="code-tb-toggle-phone">
+                                                <span className="code-tb-segmented" role="group" aria-label="Code view">
+                                                    <button type="button" disabled={isBotCodeLocked} aria-pressed={viewingLiveSandbox} className={viewingLiveSandbox ? "is-active" : ""} onClick={() => { if (!viewingLiveSandbox) toggleLiveCodeMode(); }}>Sandbox</button>
+                                                    <button type="button" disabled={isBotCodeLocked} aria-pressed={!viewingLiveSandbox} className={!viewingLiveSandbox ? "is-active" : ""} onClick={() => { if (viewingLiveSandbox) toggleLiveCodeMode(); }}>Real</button>
+                                                </span>
+                                            </span>
+                                        )}
+                                        <span className="code-tb-bot-meta">{[teamLabel(participantTeamNumber(activeSelectorParticipant)), selectorModeText, `${Math.max(1, activeSelectorIndex + 1)} of ${codeSelectorRoster.length}`].filter(Boolean).join(" · ")}</span>
                                     </div>
-                                    <button
-                                        type="button"
-                                        aria-label="Close bot code workspace"
-                                        title="Close"
-                                        onClick={() => { setIsNodeSearchOpen(false); setIsQuickSearchOpen(false); setIsCustomVariablesOpen(false); setIsLogicOpen(false); }}
-                                        className="modal-close-button"
-                                    >
-                                        <span aria-hidden="true">×</span>
-                                    </button>
+                                    <button type="button" aria-label="Show next bot" title="Next bot" onClick={() => cycleCodeParticipant(1)} disabled={codeSelectorRoster.length < 2} className="code-tb-arrow">›</button>
                                 </div>
+                            )}
+                            <span className="code-tb-divider" aria-hidden="true" />
+                            <div className="code-tb-meters" role="group" aria-label="Code budget">
+                                <BudgetMeter label="Roots" value={totalRootNodes} max={MAX_ROOT_NODES} />
+                                <BudgetMeter label="Actions" value={totalActiveBlocks} max={maxActionNodes} />
+                                <BudgetMeter label="Conditions" value={totalActiveConditions} max={maxConditionNodes} />
                             </div>
+                            <div className="code-tb-chips" role="group" aria-label="Code budget">
+                                <BudgetMeter label="R" title="Roots" value={totalRootNodes} max={MAX_ROOT_NODES} compact />
+                                <BudgetMeter label="A" title="Actions" value={totalActiveBlocks} max={maxActionNodes} compact />
+                                <BudgetMeter label="C" title="Conditions" value={totalActiveConditions} max={maxConditionNodes} compact />
+                            </div>
+                            <span className="code-tb-break" aria-hidden="true" />
+                            <span className="code-tb-spacer" />
+                            <button type="button" onClick={() => { setIsQuickSearchOpen(false); setIsNodeSearchOpen(true); }} className="code-tb-search" aria-label="Search roots" title="Search roots">
+                                <ToolbarSearchIcon />
+                                <span className="code-tb-search-text">Search roots</span>
+                                <kbd className="code-tb-kbd">/</kbd>
+                            </button>
+                            <button type="button" onClick={() => setIsCustomVariablesOpen(true)} className="code-tb-btn" aria-label="Custom variables" title="Custom variables">
+                                <ToolbarBracesIcon />
+                                <span className="code-tb-label">Variables</span>
+                            </button>
+                            <button
+                                type="button"
+                                disabled={isCodeEditingLocked || isTesting || !viewingCurrentRound
+                                    || totalRootNodes >= MAX_ROOT_NODES}
+                                onClick={addRootNode}
+                                className="code-tb-btn is-primary"
+                                aria-label="Add root"
+                                title="Add root"
+                            >
+                                <AddIcon className="code-toolbar-icon" /> <span className="code-tb-label">Add root</span> <kbd className="code-tb-kbd">{readAddRootShortcut().toUpperCase()}</kbd>
+                            </button>
+                            <button
+                                type="button"
+                                aria-label="Close bot code workspace"
+                                title="Close"
+                                onClick={() => { setIsNodeSearchOpen(false); setIsQuickSearchOpen(false); setIsCustomVariablesOpen(false); setIsLogicOpen(false); }}
+                                className="code-tb-close"
+                            >
+                                <ToolbarCloseIcon />
+                            </button>
                         </header>
+                        {((viewingLiveReal && !activeCodeSnapshot) || codeViewError) && (
+                            <ToastStack>
+                                {viewingLiveReal && !activeCodeSnapshot && (
+                                    <Toast tone="info">Requesting a read-only snapshot from {activeLiveParticipant?.username ?? "player"}...</Toast>
+                                )}
+                                {codeViewError && <Toast tone="error">{codeViewError}</Toast>}
+                            </ToastStack>
+                        )}
+                        </div>
+                        <div className="code-zoom-cluster" role="group" aria-label="Zoom">
+                            <button type="button" aria-label="Zoom out" title="Zoom out" onClick={() => changeZoom(-0.1)}>−</button>
+                            <span className="code-zoom-value">{Math.round(canvasZoom * 100)}%</span>
+                            <button type="button" aria-label="Zoom in" title="Zoom in" onClick={() => changeZoom(0.1)}>+</button>
+                            <button type="button" aria-label="Zoom to fit the tree" title="Zoom to fit" onClick={() => zoomToFitRef.current?.()}>⤢</button>
                         </div>
                         {tutorialGuideProps && (
-                            <div className="tutorial-workspace-lesson-host">
+                            <div className="tg-workspace-host">
                                 <TutorialGuide {...tutorialGuideProps} variant="workspace" />
                             </div>
                         )}
@@ -1029,6 +1065,7 @@ export default function CodingPanel({
                                 pan={canvasPan}
                                 onPanChange={setCanvasPan}
                                 onZoomChange={changeZoom}
+                                zoomToFitRef={zoomToFitRef}
                                 onPinchZoom={applyPinchZoom}
                                 canUndo={!isCodeEditingLocked && !isTesting && (editHistory[activeCode]?.undo?.length ?? 0) > 0}
                                 canRedo={!isCodeEditingLocked && !isTesting && (editHistory[activeCode]?.redo?.length ?? 0) > 0}

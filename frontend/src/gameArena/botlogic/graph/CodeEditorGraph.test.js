@@ -29,7 +29,7 @@ function configuration(condition, action = { action: "move_walk", movementMode: 
 test("editor graph starts empty instead of spawning nodes from the payload", () => {
     const source = configuration({ type: "expression", left: "selectable.hp", leftSelectable: "my_bot", comparator: "lt", right: { type: "variable", value: "selectable.hp" }, rightSelectable: "opponent" });
     const graph = graphFromCodeConfiguration(source);
-    assert.deepEqual(graph, { version: CODE_EDITOR_GRAPH_VERSION, variables: [], targets: [], connections: [], detachedBranches: [] });
+    assert.deepEqual(graph, { version: CODE_EDITOR_GRAPH_VERSION, variables: [], targets: [], connections: [] });
     assert.deepEqual(editorGraphForConfiguration(source), graph);
 
     const compiled = compileCodeEditorGraph(source, graph);
@@ -88,35 +88,13 @@ test("action targets compile from a target node without changing normalized acti
     assert.equal(normalizeAbilityStrategyConfiguration(compiled).roots[0].branches[0].actions[0].selectable, "opponent_1");
 });
 
-test("detached branches remain editor-only and are stripped from normalized brains", () => {
+test("legacy detached branches are dropped when sanitizing", () => {
     const source = configuration({ type: "expression", left: "selectable.hp", leftSelectable: "my_bot", comparator: "lt", right: { type: "number", value: 30 } });
     const detached = source.roots[0].branches[0];
-    const graph = sanitizeCodeEditorGraph({
-        ...createCodeEditorGraph(),
-        detachedBranches: [{ id: detached.id, branch: detached, position: { x: 340, y: 220 } }],
-    });
-    assert.equal(graph.detachedBranches[0].branch.id, "branch");
-    assert.deepEqual(graph.detachedBranches[0].position, { x: 340, y: 220 });
-    assert.equal(normalizeAbilityStrategyConfiguration({ ...source, editorGraph: graph }).editorGraph, undefined);
-});
-
-test("loadout sanitization preserves detached editor branches and sanitizes their actions", () => {
-    const source = configuration({ type: "expression", left: "selectable.hp", leftSelectable: "my_bot", comparator: "lt", right: { type: "number", value: 30 } });
-    const detached = {
-        ...source.roots[0].branches[0],
-        actions: [{ action: "not-a-real-action", selectable: "opponent" }],
-    };
-    const sanitized = sanitizeStrategyConfigurationForLoadout({
-        ...source,
-        editorGraph: {
-            ...createCodeEditorGraph(),
-            detachedBranches: [{ id: detached.id, branch: detached, position: { x: 340, y: 220 } }],
-        },
-    }, DEFAULT_BOT_CONFIGURATION_ID);
-
-    assert.equal(sanitized.editorGraph.detachedBranches.length, 1);
-    assert.equal(sanitized.editorGraph.detachedBranches[0].branch.id, detached.id);
-    assert.equal(sanitized.editorGraph.detachedBranches[0].branch.actions[0].action, "none");
+    const legacy = { ...createCodeEditorGraph(), detachedBranches: [{ id: detached.id, branch: detached, position: { x: 340, y: 220 } }] };
+    assert.equal("detachedBranches" in sanitizeCodeEditorGraph(legacy), false);
+    const sanitized = sanitizeStrategyConfigurationForLoadout({ ...source, editorGraph: legacy }, DEFAULT_BOT_CONFIGURATION_ID);
+    assert.equal("detachedBranches" in sanitized.editorGraph, false);
     assert.equal(sanitized.roots[0].branches.length, 1);
 });
 

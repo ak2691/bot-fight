@@ -20,12 +20,6 @@ test("credits creator names remain exact, unique, and ordered", () => {
     assert.equal(new Set(CREDIT_CREATORS).size, expectedCreators.length);
 });
 
-test("credits page labels every creator as on itch.io", () => {
-    const pageSource = readFileSync(new URL("./CreditsPage.jsx", import.meta.url), "utf8");
-
-    assert.match(pageSource, /\{creator\} on itch\.io/);
-});
-
 test("credits route is wired to the page and home navigation", () => {
     const appSource = readFileSync(new URL("../../App.jsx", import.meta.url), "utf8");
     const authLayoutSource = readFileSync(new URL("../auth/AuthLayout.jsx", import.meta.url), "utf8");

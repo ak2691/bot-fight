@@ -9,6 +9,11 @@ public record ProfileSearchPageDTO(
         boolean hasMore,
         long totalProfiles) {
 
-    public record ProfileSearchResultDTO(String username) {
+    /** elo is the 1v1 rating (default 1000); onesMatches counts 1v1 results only; joinedAt lets joinedAt let the result row show a summary line. */
+    public record ProfileSearchResultDTO(
+            String username,
+            Integer elo,
+            long onesMatches,
+            java.time.Instant joinedAt) {
     }
 }

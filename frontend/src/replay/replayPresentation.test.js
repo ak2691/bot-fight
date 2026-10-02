@@ -462,3 +462,4 @@ test("forfeit team formation keeps match-spawn spacing while centering the winne
     assert.deepEqual(centeredTeamPosition(0, 2), { x: 1_000 / 3, y: 500, rotation: 0 });
     assert.deepEqual(centeredTeamPosition(1, 2), { x: 2_000 / 3, y: 500, rotation: 0 });
 });
+

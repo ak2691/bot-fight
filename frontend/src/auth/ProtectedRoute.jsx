@@ -20,6 +20,7 @@ export default function ProtectedRoute({ children, allowGuest = false }) {
     if (authError && !isAuthenticated && !(allowGuest && isGuest)) {
         return (
             <FatalRecoveryScreen
+                kind="connection"
                 title="Unable to verify your session"
                 message={`${authUnavailableMessage(authError)} Refresh the page to check again.`}
             />
@@ -35,6 +36,7 @@ export default function ProtectedRoute({ children, allowGuest = false }) {
             const unsupported = isUnsupportedWebGL(assets.error);
             return (
                 <FatalRecoveryScreen
+                    kind="renderer"
                     title={unsupported ? "WebGL is unavailable" : "The game renderer could not load"}
                     message={unsupported
                         ? "This browser or device does not support the WebGL graphics needed by the game. Try a browser or device with WebGL support."
@@ -46,6 +48,8 @@ export default function ProtectedRoute({ children, allowGuest = false }) {
         return (
             <ArenaLoadingScreen
                 label={getPresentationLoadingLabel(assets)}
+                progress={getPresentationLoadingProgress(assets)}
+                detail={getPresentationLoadingDetail(assets)}
             />
         );
     }
@@ -54,7 +58,19 @@ export default function ProtectedRoute({ children, allowGuest = false }) {
 }
 
 function getPresentationLoadingLabel(assets) {
-    if (assets.error) return "Unable to initialize game renderer.";
-    if (!assets.rendererReady) return "Initializing game renderer...";
-    return "Loading...";
+    if (assets.error) return "Unable to initialize the game renderer";
+    if (!assets.rendererReady) return "Starting the game renderer";
+    return "Loading the arena";
+}
+
+// Only a real progress report drives the bar; otherwise it stays indeterminate.
+function getPresentationLoadingProgress(assets) {
+    const total = Number(assets.totalCount);
+    const loaded = Number(assets.loadedCount);
+    return total > 0 && Number.isFinite(loaded) ? Math.min(1, loaded / total) : null;
+}
+
+function getPresentationLoadingDetail(assets) {
+    const progress = getPresentationLoadingProgress(assets);
+    return progress == null ? null : `Ability art ${Math.round(progress * 100)}%`;
 }

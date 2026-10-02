@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import AuthLayout from "./auth/AuthLayout";
+import { useNavigate } from "react-router-dom";
+import ErrorPanel from "../components/ErrorPanel.jsx";
 import { apiUrl } from "../config/api";
 import { useAuth } from "../auth/auth-context.js";
 import {
@@ -70,30 +70,31 @@ export default function ServerErrorPage() {
 
     if (status.checking) {
         return (
-            <AuthLayout title="Checking server status" subtitle="Verifying that the service is still unavailable.">
-                <p role="status" className="text-center text-sm text-ink-muted">
-                    One moment...
-                </p>
-            </AuthLayout>
+            <ErrorPanel
+                kind="connection"
+                tone="neutral"
+                title="Checking server status"
+                message="Verifying that the service is still unavailable."
+                secondaryLabel={isAuthenticated ? "Go home" : "Back to login"}
+                secondaryTo={isAuthenticated ? "/home" : "/login"}
+            />
         );
     }
 
     return (
-        <AuthLayout title="Server unavailable" subtitle="The service encountered an unexpected error.">
-            <div className="space-y-4 text-center">
-                <p role="alert" className="text-sm text-red-300">
-                    {status.message ?? SERVER_DOWN_MESSAGE}
-                </p>
-                <p className="text-sm leading-6 text-ink-muted">
-                    We will send you back automatically when the server is healthy again.
-                </p>
-                <Link
-                    to={isAuthenticated ? "/home" : "/login"}
-                    className="block text-sm text-cyan-300 hover:text-cyan-100"
-                >
-                    {isAuthenticated ? "Return home" : "Return to login"}
-                </Link>
-            </div>
-        </AuthLayout>
+        <ErrorPanel
+            kind="connection"
+            title="Can't reach the server"
+            message={status.message ?? SERVER_DOWN_MESSAGE}
+            primaryLabel="Try again"
+            onPrimary={() => window.location.reload()}
+            secondaryLabel={isAuthenticated ? "Go home" : "Back to login"}
+            secondaryTo={isAuthenticated ? "/home" : "/login"}
+            errorRef={status.status != null ? `HTTP ${status.status}` : null}
+        >
+            <p className="max-w-[340px] text-xs leading-5 text-slate-500">
+                We will send you back automatically when the server is healthy again.
+            </p>
+        </ErrorPanel>
     );
 }

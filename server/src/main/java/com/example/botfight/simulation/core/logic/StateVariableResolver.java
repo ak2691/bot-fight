@@ -51,11 +51,7 @@ final class StateVariableResolver {
             Map.entry(VariableSource.SELECTABLE_SPEED,
                     context -> number(movementSpeed(context.selectable()))),
             Map.entry(VariableSource.SELECTABLE_RELATIVE_BEARING,
-                    context -> number(relativeBearing(context, false))),
-            Map.entry(VariableSource.SELECTABLE_RELATIVE_BEARING_CLOCKWISE,
-                    context -> number(relativeBearing(context, true))),
-            Map.entry(VariableSource.SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE,
-                    context -> number(relativeBearing(context, false))),
+                    context -> number(relativeBearing(context))),
             Map.entry(VariableSource.SELECTABLE_FACING,
                     context -> number(entityRotation(context.selectable()))),
             Map.entry(VariableSource.SELECTABLE_COUNT,
@@ -216,16 +212,10 @@ final class StateVariableResolver {
         return bearing > 180 ? bearing - 360 : bearing;
     }
 
-    private static double relativeBearing(ResolutionContext context, boolean clockwise) {
+    private static double relativeBearing(ResolutionContext context) {
         if (context.selectable() == null) return 0.0;
         Double bearing = targetBearing(context);
         if (bearing == null) return 0.0;
-        if (clockwise) {
-            return TargetingService.clockwiseAngleDelta(entityRotation(context.selectable()), bearing);
-        }
-        if (VariableSource.SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE.equals(context.contract().source())) {
-            return TargetingService.clockwiseAngleDelta(bearing, entityRotation(context.selectable()));
-        }
         return Math.abs(shortestDelta(entityRotation(context.selectable()), bearing));
     }
 

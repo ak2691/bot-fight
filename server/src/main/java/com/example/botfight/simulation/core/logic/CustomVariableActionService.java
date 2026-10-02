@@ -31,7 +31,7 @@ public final class CustomVariableActionService {
             if (operand != null && operand.isObject() && "variable".equals(textValue(field(operand, "type"), ""))) {
                 StateValue resolved = conditionResolutionService.resolveStateVariable(
                         textValue(field(operand, "value"), ""), textValue(field(operand, "selectable"), "opponent"),
-                        new Condition(BotLogicContracts.CONDITION_EXPRESSION, 0, BotLogicContracts.SELECTABLE_OPPONENT, null, null, "", null, "", "eq", Operand.bool(false), "and"),
+                        new Condition(BotLogicContracts.CONDITION_EXPRESSION, 0, BotLogicContracts.SELECTABLE_OPPONENT, null, null, "", null, "", "eq", Operand.bool(false)),
                         bot, opponent, entities, arena, coordinateVersion);
                 bot.customVariables.put(id, resolved != null && resolved.booleanValue());
             } else if (operand != null && operand.isObject() && "boolean".equals(textValue(field(operand, "type"), ""))) {
@@ -51,7 +51,7 @@ public final class CustomVariableActionService {
         }
         double next = BotLogicContracts.CUSTOM_VARIABLE_OPERATION_SET.equals(textValue(field(terms.get(0), "operator"), BotLogicContracts.CUSTOM_VARIABLE_OPERATION_ADD)) ? 0 : current;
         Condition context = new Condition(BotLogicContracts.CONDITION_EXPRESSION, 0, BotLogicContracts.SELECTABLE_OPPONENT, null, null, "", null, "", "eq",
-                Operand.number(0), "and");
+                Operand.number(0));
         for (int index = 0; index < Math.min(terms.size(), MAX_VARIABLE_ACTION_TERMS); index++) {
             JsonNode term = terms.get(index);
             JsonNode operand = field(term, "operand");
@@ -69,7 +69,7 @@ public final class CustomVariableActionService {
     private static double resolveAmount(JsonNode operand, double fallback, StrategyBlock block, Bot bot, Bot opponent,
             List<Entity> entities, Arena arena, ConditionResolutionService service, String coordinateVersion) {
         return resolveAmount(operand, fallback,
-                new Condition(BotLogicContracts.CONDITION_EXPRESSION, 0, BotLogicContracts.SELECTABLE_OPPONENT, null, null, "", null, "", "eq", Operand.number(0), "and"),
+                new Condition(BotLogicContracts.CONDITION_EXPRESSION, 0, BotLogicContracts.SELECTABLE_OPPONENT, null, null, "", null, "", "eq", Operand.number(0)),
                 bot, opponent, entities, arena, service, coordinateVersion);
     }
 

@@ -283,6 +283,7 @@ export default function PixiCanvas({
                         {isUnsupportedWebGL(assetError) ? (
                             <FatalRecoveryScreen
                                 compact
+                                kind="renderer"
                                 title="WebGL is unavailable"
                                 message="This browser or device does not support the WebGL graphics needed by the game. Try a browser or device with WebGL support."
                                 showRefresh={false}
@@ -290,6 +291,7 @@ export default function PixiCanvas({
                         ) : (
                             <FatalRecoveryScreen
                                 compact
+                                kind="renderer"
                                 title="Arena files could not be loaded"
                                 message="The current arena files could not be loaded. Refresh the page to load the current application version."
                             />

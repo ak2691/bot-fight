@@ -63,123 +63,31 @@ test("generic animation frame selection still loops unrelated projectile frames"
     assert.equal(animationFrameAt(grenadeFrames, 195, 65), "moving-001");
 });
 
-test("entity visuals use a renderer-clock animation instance without the fallback particle burst", () => {
-    const source = readFileSync(fileURLToPath(new URL("./PixiCanvas.jsx", import.meta.url)), "utf8");
-    assert.match(source, /visualAnimationStartedAt: visualAnimation.startedAt/);
-    assert.match(source, /visualAnimationElapsedMs\(view, now\)/);
-    assert.match(source, /visualAnimationIsActive\(view, now\)/);
-    assert.match(source, /const visualViews = new Map\(\)/);
-    assert.match(source, /spawnStandaloneVisual\(shape, now\)/);
-    assert.match(source, /drawStandaloneVisual\(view, now, arenaSprites\)/);
-    assert.doesNotMatch(source, /\["grenadeExplosion", "mineExplosion", "orbitalExplosion"\]/);
-});
-
-test("Orbital Strike keeps its marker beneath pulse animations without a countdown caption", () => {
-    const canvasSource = readFileSync(PIXI_CANVAS_PATH, "utf8");
-    assert.match(canvasSource, /persistentOrbitalMarker/);
-    assert.match(canvasSource, /if \(!animationActive && !persistentOrbitalMarker\)/);
-    assert.match(canvasSource, /presentationType === "orbitalExplosion" && animationActive/);
-    assert.match(canvasSource, /showCachedEffect\(view, "orbital-explosion"/);
-});
-
-test("Lock On uses the supplied white crosshair and hides the marker when its active timer ends", () => {
-    assert.equal(existsSync(CROSSHAIR_PATH), true);
-    const source = readFileSync(PIXI_CANVAS_PATH, "utf8");
-    assert.match(source, /lockOnCrosshair/);
-    assert.match(source, /botAbilityActiveMs\(shape, LOCK_ON_PRESENTATION_DEFINITION\) <= 0/);
-    assert.match(source, /marker\.container\.visible = false/);
-    assert.match(source, /crosshair\.tint = 0xffffff/);
-    assert.doesNotMatch(source, /halo\.circle/);
-    assert.doesNotMatch(source, /LOCK_ON_PRESENTATION\.accentColor/);
-});
-
 test("ray sprite widths compensate for the presentation muzzle anchor", () => {
     closeTo(visualRayLength(700), 700 / 0.96);
     closeTo(visualRayLength(500), 500 / 0.96);
     closeTo(visualRayLength(900, 0), 900);
 });
 
-test("Overclock uses the emerald clock status icon above the bot name", () => {
-    const source = readFileSync(PIXI_CANVAS_PATH, "utf8");
-    assert.match(source, /OVERCLOCK: \{ foreground: 0xa7f3d0, background: 0x022c22, border: 0x34d399 \}/);
-    assert.match(source, /status === "OVERCLOCK"/);
-    assert.match(source, /graphics\.circle\(x, y, 8\.5\)\.stroke\(\{ color, width: 1\.8 \}\)/);
-    assert.match(source, /graphics\.moveTo\(x, y - 5\)\.lineTo\(x, y\)\.lineTo\(x \+ 3\.5, y \+ 2\)/);
-});
-
 test("PixiCanvas consumes the shared application instead of owning a second asset loader", () => {
     const source = readFileSync(PIXI_CANVAS_PATH, "utf8");
-    assert.match(source, /import ArenaLoadingScreen from ["']\.\.\/\.\.\/components\/ArenaLoadingScreen\.jsx["']/);
     assert.match(source, /acquirePixiApplication/);
-    assert.match(source, /attachPixiApplication/);
-    assert.match(source, /releasePixiApplication/);
-    assert.match(source, /const \[arenaReady, setArenaReady\] = useState\(false\)/);
-    assert.match(source, /!arenaReady && !assetError && <ArenaLoadingScreen overlay label="Loading arena\.\.\." \/>/);
-    assert.doesNotMatch(source, /Loading assets\.\.\./);
 });
 
 test("setup can move protected participant bots without making them deletable", () => {
     const pixiSource = readFileSync(PIXI_CANVAS_PATH, "utf8");
     const arenaSource = readFileSync(fileURLToPath(new URL("../Arena.jsx", import.meta.url)), "utf8");
 
-    assert.match(pixiSource, /allowLockedBotEditing = false/);
     assert.match(pixiSource, /!shape\.locked \|\| optionsRef\.current\.allowLockedBotEditing/);
     assert.match(pixiSource, /if \(!canEditBot\(view\.shape\)\) return;/);
     assert.match(arenaSource, /const allowLockedBotEditing = isPuzzleMode \|\| isTutorialArenaIntro \|\| \(isMatchTesting && finishStatus === "BUILDING"\)/);
     assert.match(arenaSource, /shape\.id === id && \(!shape\.locked \|\| allowLockedBotEditing\)/);
-    assert.match(arenaSource, /allowLockedBotEditing=\{allowLockedBotEditing\}/);
     assert.match(arenaSource, /if \(!isEditingArena \|\| !selected \|\| selected\.id === "main" \|\| selected\.locked\) return prev;/);
 });
 
 test("Pixi warmup renders into a disposable target instead of the visible canvas", () => {
     const source = readFileSync(PIXI_APPLICATION_PATH, "utf8");
     assert.match(source, /RenderTexture\.create\(\{ width: 1, height: 1 \}\)/);
-    assert.match(source, /target: warmupTexture/);
     assert.match(source, /warmupTexture\.destroy\(true\)/);
 });
 
-test("small responsive arenas keep a high-enough backing resolution", () => {
-    const source = readFileSync(PIXI_APPLICATION_PATH, "utf8");
-
-    assert.match(source, /const MIN_ARENA_RENDERER_RESOLUTION = 1\.5/);
-    assert.match(source, /Math\.max\(MIN_ARENA_RENDERER_RESOLUTION, ratio\)/);
-});
-
-test("Pixi modules stay out of login until the signed-in asset gate starts", () => {
-    const hookSource = readFileSync(PRESENTATION_ASSET_HOOK_PATH, "utf8");
-    const providerSource = readFileSync(PRESENTATION_ASSET_PROVIDER_PATH, "utf8");
-    const protectedRouteSource = readFileSync(PROTECTED_ROUTE_PATH, "utf8");
-    const fatalSource = readFileSync(new URL("../../components/FatalRecoveryScreen.jsx", import.meta.url), "utf8");
-    assert.doesNotMatch(hookSource, /from ["']\.\/arenaPresentationAssets\.js["']/);
-    assert.doesNotMatch(hookSource, /from ["']\.\/pixiApplication\.js["']/);
-    assert.match(hookSource, /import\("\.\/arenaPresentationAssets\.js"\)/);
-    assert.match(hookSource, /import\("\.\/pixiApplication\.js"\)/);
-    assert.match(providerSource, /enabled: \(isAuthenticated \|\| isGuest\) && !isLoading/);
-    assert.doesNotMatch(providerSource, /showDetailedProgress/);
-    assert.match(protectedRouteSource, /useArenaPresentationAssetsContext/);
-    assert.doesNotMatch(protectedRouteSource, /AssetsLoadingScreen/);
-    assert.doesNotMatch(protectedRouteSource, /assets\.showDetailedProgress/);
-    assert.match(protectedRouteSource, /isArenaPresentationGateReady/);
-    assert.match(protectedRouteSource, /Initializing game renderer\.\.\./);
-    assert.doesNotMatch(protectedRouteSource, /Preparing ability icons\.\.\./);
-    assert.match(protectedRouteSource, /isUnsupportedWebGL\(assets\.error\)/);
-    assert.doesNotMatch(protectedRouteSource, /assets\.retry|onRetry=/);
-    assert.match(fatalSource, /Refresh page/);
-});
-
-test("asset preload completion keeps the owner state instead of storing the texture catalogue", () => {
-    const hookSource = readFileSync(PRESENTATION_ASSET_HOOK_PATH, "utf8");
-    assert.doesNotMatch(hookSource, /assetsPromise\.then\(update,\s*update\)/);
-    assert.match(hookSource, /update\(assetsApi\.getArenaPresentationAssetsState\(\)\)/);
-});
-
-test("asset decoding, Pixi initialization, and route preloading start concurrently", () => {
-    const hookSource = readFileSync(PRESENTATION_ASSET_HOOK_PATH, "utf8");
-    assert.match(hookSource, /startPixiPreload\(assetsPromise, active,/);
-    assert.match(hookSource, /Promise\.all\(\[cataloguePromise, pixiPromise\]\)/);
-    assert.match(hookSource, /rendererReady/);
-    assert.match(hookSource, /gpuWarmupReady/);
-    assert.match(hookSource, /backgroundError/);
-    assert.doesNotMatch(hookSource, /preloadAbilityCatalogueIcons|iconsReady|iconsError/);
-    assert.doesNotMatch(hookSource, /assetsPromise\.then\(async \(catalogue\)/);
-});

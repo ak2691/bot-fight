@@ -5,11 +5,22 @@ import {
     defaultSelectableForVariable,
     MAX_LOGIC_BLOCKS,
     MAX_TOTAL_CONDITIONS,
+    MAX_CONDITIONS_PER_BRANCH,
     normalizeRoots,
     removeLogicBranch,
-    setLogicBranchPriority,
     setLogicRootPriority as setRootPriority,
 } from "../botlogic/code/BotCode.js";
+import {
+    applyPositionOrder,
+    groupKeyForNode,
+    mismatchedGroups,
+    nudgeNode,
+    positionRanks,
+    priorityRanks,
+    siblingGroups,
+    sortTreeByPriority,
+    swapNodePlaces,
+} from "./siblingOrder.js";
 import SearchRootNodesModal from "./modals/SearchRootNodesModal.jsx";
 import {
     buildLogicGraph,
@@ -48,7 +59,7 @@ const LOGIC_CANVAS_HEIGHT = 6000;
 const ROOT_TO_CONDITION_GAP = 106;
 const CONDITION_TO_CHILD_GAP = 70;
 const GRAPH_SIBLING_GAP = 72;
-const LOGIC_MIN_ZOOM = 0.45;
+const LOGIC_MIN_ZOOM = 0.25;
 const LOGIC_MAX_ZOOM = 1.35;
 
 function graphNodesForGraph(graph) {
@@ -67,9 +78,8 @@ function sameGraphPath(first, second) {
         && first.every((value, index) => value === second[index]);
 }
 
-function detachedNodePositionKey(node) {
-    return node.actionIndex == null ? `condition:${node.branchId}` : `action:${node.branchId}:${node.actionIndex}`;
-}
+// Pointer travel (px) beyond which a node press counts as a drag, not a tap.
+const DRAG_CLICK_THRESHOLD = 4;
 
 function absoluteGraphNodePosition(node, offsets) {
     const offset = offsets[node.id] ?? { x: 0, y: 0 };
@@ -103,6 +113,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
     pan,
     onPanChange,
     onZoomChange,
+    zoomToFitRef = null,
     onPinchZoom = null,
     canUndo,
     canRedo,
@@ -129,9 +140,13 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
     const [operandPicker, setOperandPicker] = useState(null);
     const [actionOperandInspector, setActionOperandInspector] = useState(null);
     const [selectionBox, setSelectionBox] = useState(null);
-    const [attachingDetachedId, setAttachingDetachedId] = useState(null);
-    const [attachCursor, setAttachCursor] = useState(null);
+    // Sibling groups being dragged: their badges show the order implied by the
+    // current left-to-right positions until the drop commits it.
+    const [dragGroupKeys, setDragGroupKeys] = useState(null);
     const removeSelectedNodesRef = useRef(() => {});
+    // Set when a pointer drag moved a node past the threshold so the click that
+    // follows the drag does not select the node or open its panel.
+    const dragClickSuppressedRef = useRef(false);
     const touchGestureRef = useRef(null);
     const onSearchCloseRef = useRef(onSearchClose);
     const onCloseExternalConfigurationRef = useRef(onCloseExternalConfiguration);
@@ -141,48 +156,23 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
     }, [onCloseExternalConfiguration, onSearchClose]);
     const roots = useMemo(() => normalizeRoots(configuration.roots ?? []), [configuration.roots]);
     const coordinateVersion = coordinateVersionFor(configuration);
-    const editorGraph = useMemo(() => sanitizeCodeEditorGraph(configuration.editorGraph), [configuration.editorGraph]);
-    const detachedBranches = editorGraph.detachedBranches;
     const graphActionCount = countActions(configuration);
     const graphConditionCount = countLogicConditions(configuration);
     const graph = useMemo(() => buildLogicGraph(roots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion, configuration.customVariables), [configuration.customVariables, coordinateVersion, roots, selectedLoadout, stateVariables, selectableTypes]);
-    const detachedGraphs = useMemo(() => detachedBranches.map((entry) => {
-        const detachedGraph = buildLogicGraph([{ id: `detached-${entry.id}`, branches: [entry.branch] }], stateVariables, selectedLoadout, selectableTypes, coordinateVersion, configuration.customVariables);
-        const rootCondition = detachedGraph.conditions[0];
-        if (!rootCondition) return null;
-        const translate = (node) => ({
-            ...node,
-            id: `detached:${entry.id}:${node.id}`,
-            originalId: node.id,
-            detachedId: entry.id,
-            detachedRoot: node === rootCondition,
-            x: entry.nodePositions?.[detachedNodePositionKey(node)]?.x ?? entry.position.x + node.x - rootCondition.x,
-            y: entry.nodePositions?.[detachedNodePositionKey(node)]?.y ?? entry.position.y + node.y - rootCondition.y,
-        });
-        const conditions = detachedGraph.conditions.map(translate);
-        const actions = detachedGraph.actions.map(translate);
-        const byOriginalId = new Map([...conditions, ...actions].map((node) => [node.originalId, node]));
-        const edges = detachedGraph.edges.filter((edge) => byOriginalId.has(edge.fromId) && byOriginalId.has(edge.toId)).map((edge) => {
-            const from = byOriginalId.get(edge.fromId);
-            const to = byOriginalId.get(edge.toId);
-            return {
-                ...edge,
-                id: `detached:${entry.id}:${edge.id}`,
-                fromId: from.id,
-                toId: to.id,
-                x1: from.x + from.width / 2,
-                y1: from.y + from.height,
-                x2: to.x + to.width / 2,
-                y2: to.y,
-            };
-        });
-        return { entry, conditions, actions, edges };
-    }).filter(Boolean), [configuration.customVariables, coordinateVersion, detachedBranches, selectedLoadout, stateVariables, selectableTypes]);
-    const detachedNodes = useMemo(() => detachedGraphs.flatMap((item) => item.conditions), [detachedGraphs]);
     const canvasWidth = LOGIC_CANVAS_WIDTH;
     const canvasHeight = LOGIC_CANVAS_HEIGHT;
     const graphNodes = useMemo(() => [...graph.roots, ...graph.conditions, ...graph.actions, ...graph.variables, ...graph.targets], [graph]);
     const graphNodeById = new Map(graphNodes.map((node) => [node.id, node]));
+    const storedRanks = useMemo(() => priorityRanks(graph, roots), [graph, roots]);
+    const liveRanks = useMemo(() => dragGroupKeys ? positionRanks(graph, nodeOffsets, roots, dragGroupKeys) : null, [dragGroupKeys, graph, nodeOffsets, roots]);
+    const orderMismatches = useMemo(() => dragGroupKeys ? new Set() : mismatchedGroups(graph, nodeOffsets, roots), [dragGroupKeys, graph, nodeOffsets, roots]);
+    const siblingCounts = useMemo(() => new Map([...siblingGroups(graph)].map(([key, group]) => [key, group.nodes.length])), [graph]);
+    const orderProps = (node) => ({
+        rank: liveRanks?.get(node.id) ?? storedRanks.get(node.id),
+        siblingCount: siblingCounts.get(groupKeyForNode(node)) ?? 1,
+        orderMismatch: orderMismatches.has(groupKeyForNode(node)),
+        onNudge: disabled ? null : (delta) => nudgeOrder(node, delta),
+    });
     const updateNodeOffsets = useCallback((updater) => {
         const current = nodeOffsetsRef.current;
         const next = typeof updater === "function" ? updater(current) : updater;
@@ -240,7 +230,8 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         if (!nodePicker) return;
         onSearchCloseRef.current?.();
         onCloseExternalConfigurationRef.current?.();
-        setInspectedNode(null);
+        // Changing an action keeps its panel open; adding a node closes it.
+        if (nodePicker.actionIndex == null) setInspectedNode(null);
         setOperandPicker(null);
     }, [nodePicker]);
     const closeExternalMenus = () => {
@@ -256,7 +247,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
     };
     const openNodePicker = (picker) => {
         closeExternalMenus();
-        setInspectedNode(null);
+        if (picker.actionIndex == null) setInspectedNode(null);
         setOperandPicker(null);
         setActionOperandInspector(null);
         setNodePicker(picker);
@@ -281,19 +272,39 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         setNodePicker(null);
         if (!preserveSelection) setSelectedNodeIds([]);
     };
+    // A tap selects the node and opens its panel (action nodes); a drag never does.
     const selectGraphNode = (event, nodeId, inspector = null) => {
         event.stopPropagation();
+        if (dragClickSuppressedRef.current) {
+            dragClickSuppressedRef.current = false;
+            return;
+        }
         closeExternalMenus();
         const additive = event.ctrlKey || event.metaKey;
+        const openPanel = Boolean(inspector) && !additive;
         setSelectedNodeIds((current) => {
             if (!additive) return current.includes(nodeId) ? current : [nodeId];
             return current.includes(nodeId) ? current : [...current, nodeId];
         });
-        if (inspector) openConfiguration(inspector);
+        if (openPanel) openConfiguration(inspector);
         else if (!additive) setInspectedNode(null);
         setOperandPicker(null);
         setActionOperandInspector(null);
         setNodePicker(null);
+    };
+    // Clicking a condition strip of an already selected node opens that condition's own panel.
+    const openConditionRow = (event, node, rowIndex) => {
+        event.stopPropagation();
+        if (dragClickSuppressedRef.current) {
+            dragClickSuppressedRef.current = false;
+            return;
+        }
+        closeExternalMenus();
+        setSelectedNodeIds([node.id]);
+        setOperandPicker(null);
+        setActionOperandInspector(null);
+        setNodePicker(null);
+        setInspectedNode({ kind: "condition-row", id: node.id, rowIndex });
     };
     const commitConfiguration = (nextConfiguration, preserveGraphPositions = true, positionOverrides = {}) => {
         const clean = { ...nextConfiguration };
@@ -331,7 +342,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         }
         onChange(clean);
     };
-    const clampPan = (nextPan, nextZoom = zoom) => {
+const clampPan = (nextPan, nextZoom = zoom) => {
         const rect = viewportRef.current?.getBoundingClientRect();
         if (!rect) return nextPan;
         const margin = 80;
@@ -339,6 +350,53 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
             x: clamp(nextPan.x, rect.width - canvasWidth * nextZoom - margin, margin),
             y: clamp(nextPan.y, rect.height - canvasHeight * nextZoom - margin, margin),
         };
+    };
+    // Frames a set of nodes in the viewport (used by Zoom to fit and Tidy).
+    const fitNodesInView = (nodes, offsets) => {
+        const rect = viewportRef.current?.getBoundingClientRect();
+        if (!rect || !nodes.length) return;
+        const bounds = nodes.reduce((box, node) => {
+            const offset = offsets[node.id] ?? { x: 0, y: 0 };
+            const left = node.x + offset.x;
+            const top = node.y + offset.y;
+            return {
+                minX: Math.min(box.minX, left),
+                minY: Math.min(box.minY, top),
+                maxX: Math.max(box.maxX, left + node.width),
+                maxY: Math.max(box.maxY, top + (node.height ?? 0)),
+            };
+        }, { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
+        const padding = 60;
+        const width = bounds.maxX - bounds.minX + padding * 2;
+        const height = bounds.maxY - bounds.minY + padding * 2;
+        const nextZoom = clamp(Math.min(rect.width / width, rect.height / height), LOGIC_MIN_ZOOM, 1);
+        // Center what fits; when even the minimum zoom is too small, start at the top-left.
+        const axis = (size, min, max, viewport) => size * nextZoom <= viewport
+            ? viewport / 2 - ((min + max) / 2) * nextZoom
+            : padding - min * nextZoom;
+        const nextPan = clampPan({
+            x: axis(width, bounds.minX, bounds.maxX, rect.width),
+            y: axis(height, bounds.minY, bounds.maxY, rect.height),
+        }, nextZoom);
+        if (onPinchZoom) onPinchZoom(nextZoom, nextPan);
+        else onPanChange(nextPan);
+    };
+    const zoomToFit = () => fitNodesInView(graphNodes, nodeOffsetsRef.current);
+    // Lets the workspace toolbar's zoom cluster trigger the same fit.
+    useEffect(() => {
+        if (!zoomToFitRef) return undefined;
+        zoomToFitRef.current = zoomToFit;
+        return () => { zoomToFitRef.current = null; };
+    });
+    // Optional helper: sorts every sibling list by execution order and lays the
+    // tree out again. Behavior does not change; only positions do.
+    const tidyLayout = () => {
+        if (disabled) return;
+        const sortedRoots = normalizeRoots(sortTreeByPriority(roots));
+        const nextGraph = buildLogicGraph(sortedRoots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion, configuration.customVariables);
+        const nextNodes = graphNodesForGraph(nextGraph);
+        commitConfiguration({ ...configuration, roots: sortedRoots, nodePositions: nodePositionsForGraph(nextNodes, {}) }, false);
+        fitNodesInView(nextNodes, {});
     };
     useImperativeHandle(ref, () => ({
         placeRootAtCenter(nextRoots, rootIndex) {
@@ -510,7 +568,22 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         }
         updateBranch(rootIndex, path, (current) => setGraphActions(current, graphBranchActions(current).filter((_, index) => index !== actionIndex)));
     };
+    const commitReorder = (result) => {
+        if (!result) return;
+        updateNodeOffsets(result.offsets);
+        commitConfiguration({ ...configuration, roots: result.roots, nodePositions: nodePositionsForGraph(graphNodes, result.offsets) });
+    };
+    const nudgeOrder = (node, delta) => commitReorder(nudgeNode(roots, graph, nodeOffsetsRef.current, node, delta));
+    // Typed priorities (root search list) swap places too, so the layout keeps
+    // matching execution order.
     const setRootOrder = (rootIndex, priority) => {
+        const node = graph.roots.find((candidate) => candidate.rootIndex === rootIndex);
+        const target = graph.roots.find((candidate) => Number(roots[candidate.rootIndex]?.priority) === Number(priority));
+        const swapped = node && target ? swapNodePlaces(roots, graph, nodeOffsetsRef.current, node, target) : null;
+        if (swapped) {
+            commitReorder(swapped);
+            return;
+        }
         const reordered = setRootPriority(roots, rootIndex, priority);
         if (reordered !== roots) commitConfiguration({ ...configuration, roots: reordered });
     };
@@ -519,17 +592,23 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         nodePositions: nodePositionsForGraph(graphNodes, nodeOffsetsRef.current),
     });
     const beginNodeDrag = (event, key) => {
-        if (disabled || attachingDetachedId || event.button !== 0 || event.target?.closest?.("button,input,select,textarea,label,a,[role=\"button\"],[data-node-drag-ignore]")) return;
+        if (disabled || event.button !== 0 || event.target?.closest?.("button,input,select,textarea,label,a,[role=\"button\"],[data-node-drag-ignore]")) return;
         if (event.pointerType === "touch") event.preventDefault();
         event.stopPropagation();
+        dragClickSuppressedRef.current = false;
         const dragNodeIds = selectedNodeIds.includes(key) ? selectedNodeIds : [key];
         const startOffsets = Object.fromEntries(dragNodeIds.map((nodeId) => [nodeId, nodeOffsetsRef.current[nodeId] ?? { x: 0, y: 0 }]));
         const start = { x: event.clientX, y: event.clientY };
         const graphNodesToMove = dragNodeIds.map((nodeId) => graphNodeById.get(nodeId)).filter(Boolean);
         if (!graphNodesToMove.length) return;
+        const orderedNodeIds = new Set([...graph.roots, ...graph.conditions].map((node) => node.id));
+        const orderGroupKeys = new Set(graphNodesToMove.filter((node) => orderedNodeIds.has(node.id)).map(groupKeyForNode));
+        if (orderGroupKeys.size) setDragGroupKeys(orderGroupKeys);
         let moved = false;
+        let draggedPastThreshold = false;
         const move = (next) => {
             if (event.pointerType === "touch") next.preventDefault();
+            if (Math.abs(next.clientX - start.x) > DRAG_CLICK_THRESHOLD || Math.abs(next.clientY - start.y) > DRAG_CLICK_THRESHOLD) draggedPastThreshold = true;
             return updateNodeOffsets((current) => {
                 const updated = { ...current };
                 const delta = { x: (next.clientX - start.x) / zoom, y: (next.clientY - start.y) / zoom };
@@ -558,9 +637,22 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
             });
         };
         const end = () => {
-            if (moved) {
+            if (draggedPastThreshold) {
+                dragClickSuppressedRef.current = true;
+                // The click fires right after pointerup; drop the flag if none arrives.
+                window.setTimeout(() => { dragClickSuppressedRef.current = false; }, 0);
+            }
+            if (moved && orderGroupKeys.size) {
+                // Unreal-style: siblings run left to right, so the drop decides order.
+                commitConfiguration({
+                    ...configuration,
+                    roots: applyPositionOrder(roots, graph, nodeOffsetsRef.current, orderGroupKeys),
+                    nodePositions: nodePositionsForGraph(graphNodes, nodeOffsetsRef.current),
+                });
+            } else if (moved) {
                 persistNodePositions();
             }
+            setDragGroupKeys(null);
             window.removeEventListener("pointermove", move);
             window.removeEventListener("pointerup", end);
             window.removeEventListener("pointercancel", end);
@@ -581,11 +673,6 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         if (disabled || event.pointerType === "touch" || event.button !== 0 || event.target !== event.currentTarget) return;
         event.preventDefault();
         event.stopPropagation();
-        if (attachingDetachedId) {
-            setAttachingDetachedId(null);
-            setAttachCursor(null);
-            return;
-        }
         const start = canvasPoint(event);
         const additive = event.ctrlKey || event.metaKey;
         dismissConfigurationFromSurfacePointerDown(additive);
@@ -631,109 +718,6 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
     };
     const updateBranch = (rootIndex, path, updater) => commitConfiguration({ ...configuration, roots: updateTreeBranch(roots, rootIndex, path, updater) });
     const removeBranch = (rootIndex, path) => commitConfiguration({ ...configuration, roots: removeLogicBranch(roots, rootIndex, path) }, true);
-    const commitEditorGraph = (nextEditorGraph, nextRoots = roots, positionOverrides = {}) => commitConfiguration({
-        ...configuration,
-        roots: nextRoots,
-        editorGraph: sanitizeCodeEditorGraph(nextEditorGraph),
-    }, true, positionOverrides);
-    const removeBranchWithoutPromotion = (rootIndex, path) => {
-        const removeAt = (branches, remainingPath) => {
-            const [head, ...tail] = remainingPath;
-            if (!tail.length) return normalizeSiblingTypes((branches ?? []).filter((_, index) => index !== head));
-            return (branches ?? []).map((branch, index) => index === head ? { ...branch, children: removeAt(branch.children, tail) } : branch);
-        };
-        return normalizeRoots(roots.map((root, index) => index === rootIndex ? { ...root, branches: removeAt(root.branches, path) } : root));
-    };
-    const snipBranch = (node, branch) => {
-        if (disabled || !branch || detachedBranches.some((entry) => entry.id === branch.id)) return;
-        const offset = nodeOffsetsRef.current[node.id] ?? { x: 0, y: 0 };
-        const detachedBranch = { ...branch, branchType: "if", priority: 1 };
-        const subtreeNodes = [...graph.conditions, ...graph.actions].filter((candidate) => candidate.rootIndex === node.rootIndex
-            && sameGraphPath(candidate.path.slice(0, node.path.length), node.path));
-        const nextEditorGraph = {
-            ...editorGraph,
-            detachedBranches: [...detachedBranches, {
-                id: branch.id,
-                branch: detachedBranch,
-                position: { x: node.x + offset.x, y: node.y + offset.y },
-                nodePositions: Object.fromEntries(subtreeNodes.map((candidate) => {
-                    const position = absoluteGraphNodePosition(candidate, nodeOffsetsRef.current);
-                    return [detachedNodePositionKey(candidate), { x: position.x, y: position.y }];
-                })),
-            }],
-        };
-        setInspectedNode(null);
-        setSelectedNodeIds([]);
-        commitEditorGraph(nextEditorGraph, removeBranchWithoutPromotion(node.rootIndex, node.path));
-    };
-    const updateDetachedBranch = (detachedId, updater) => commitEditorGraph({
-        ...editorGraph,
-        detachedBranches: detachedBranches.map((entry) => entry.id === detachedId ? { ...entry, branch: updater(entry.branch) } : entry),
-    });
-    const updateDetachedBranchAtPath = (detachedId, path, updater) => updateDetachedBranch(detachedId, (detachedRoot) => {
-        if (path.length <= 1) return updater(detachedRoot);
-        return updateTreeBranch([{ branches: [detachedRoot] }], 0, path, updater)[0].branches[0];
-    });
-    const beginDetachedDrag = (event, node) => {
-        if (disabled || event.button !== 0 || event.target?.closest?.("button,input,select,textarea,label,a,[role=\"button\"],[data-node-drag-ignore]")) return;
-        event.stopPropagation();
-        const start = { x: event.clientX, y: event.clientY };
-        const group = detachedGraphs.find((item) => item.entry.id === node.detachedId);
-        const groupNodes = group ? [...group.conditions, ...group.actions] : [node];
-        const startOffsets = Object.fromEntries(groupNodes.map((item) => [item.id, nodeOffsetsRef.current[item.id] ?? { x: 0, y: 0 }]));
-        const startOffset = startOffsets[node.id];
-        let latest = startOffset;
-        const move = (next) => {
-            const delta = { x: (next.clientX - start.x) / zoom, y: (next.clientY - start.y) / zoom };
-            latest = { x: startOffset.x + delta.x, y: startOffset.y + delta.y };
-            updateNodeOffsets((current) => ({ ...current, ...Object.fromEntries(groupNodes.map((item) => [item.id, { x: startOffsets[item.id].x + delta.x, y: startOffsets[item.id].y + delta.y }])) }));
-        };
-        const end = () => {
-            const entry = detachedBranches.find((candidate) => candidate.id === node.detachedId);
-            if (entry) commitEditorGraph({
-                ...editorGraph,
-                detachedBranches: detachedBranches.map((candidate) => candidate.id === node.detachedId ? {
-                    ...candidate,
-                    position: { x: node.x + latest.x, y: node.y + latest.y },
-                    nodePositions: Object.fromEntries(groupNodes.map((item) => [detachedNodePositionKey(item), { x: item.x + (startOffsets[item.id]?.x ?? 0) + latest.x - startOffset.x, y: item.y + (startOffsets[item.id]?.y ?? 0) + latest.y - startOffset.y }])),
-                } : candidate),
-            });
-            updateNodeOffsets((current) => { const next = { ...current }; groupNodes.forEach((item) => delete next[item.id]); return next; });
-            window.removeEventListener("pointermove", move);
-            window.removeEventListener("pointerup", end);
-            window.removeEventListener("pointercancel", end);
-        };
-        window.addEventListener("pointermove", move);
-        window.addEventListener("pointerup", end);
-        window.addEventListener("pointercancel", end);
-    };
-    const attachDetachedBranch = (targetNode) => {
-        const detached = detachedBranches.find((entry) => entry.id === attachingDetachedId);
-        if (!detached || targetNode.detachedId) return;
-        const targetRoot = roots[targetNode.rootIndex];
-        const attachingToRoot = !Array.isArray(targetNode.path);
-        const target = attachingToRoot ? targetRoot : treeBranchAt(targetRoot?.branches, targetNode.path);
-        if (!target) return;
-        const detachedConfiguration = { roots: [{ branches: [detached.branch] }] };
-        if (graphActionCount + countActions(detachedConfiguration) > maxLogicBlocks
-            || graphConditionCount + countLogicConditions(detachedConfiguration) > maxTotalConditions) {
-            window.alert("This branch cannot be attached because it would exceed the code limits.");
-            return;
-        }
-        const targetBranches = attachingToRoot ? targetRoot.branches : target.children;
-        const branch = { ...detached.branch, branchType: "if", priority: nextBranchPriority(targetBranches) };
-        const nextRoots = attachingToRoot
-            ? normalizeRoots(roots.map((root, index) => index === targetNode.rootIndex ? { ...root, branches: [...(root.branches ?? []), branch] } : root))
-            : normalizeRoots(updateTreeBranch(roots, targetNode.rootIndex, targetNode.path, (current) => ({ ...current, children: [...(current.children ?? []), branch] })));
-        const nextGraph = buildLogicGraph(nextRoots, stateVariables, selectedLoadout, selectableTypes, coordinateVersion, configuration.customVariables);
-        const positionOverrides = Object.fromEntries([...nextGraph.conditions, ...nextGraph.actions].flatMap((node) => {
-            const position = detached.nodePositions?.[detachedNodePositionKey(node)];
-            return position ? [[node.id, position]] : [];
-        }));
-        commitEditorGraph({ ...editorGraph, detachedBranches: detachedBranches.filter((entry) => entry.id !== detached.id) }, nextRoots, positionOverrides);
-        setAttachingDetachedId(null);
-        setAttachCursor(null);
-    };
     const removeSelectedNodes = () => {
         if (disabled || !canRemove || !selectedNodeIds.length) return;
         const selected = new Set(selectedNodeIds);
@@ -785,7 +769,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
     useEffect(() => {
         if (!onAddRoot || !canAddRoot || disabled || selectedNodeIds.length
             || isSearchOpen || isExternalConfigurationOpen || nodePicker || operandPicker
-            || actionOperandInspector || inspectedNode || attachingDetachedId || selectionBox) return undefined;
+            || actionOperandInspector || inspectedNode || selectionBox) return undefined;
         const onKeyDown = (event) => {
             const workspace = viewportRef.current?.closest(".code-workspace");
             if (!workspace) return;
@@ -802,38 +786,16 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
     }, [onAddRoot, canAddRoot, disabled, selectedNodeIds, isSearchOpen, isExternalConfigurationOpen,
-        nodePicker, operandPicker, actionOperandInspector, inspectedNode, attachingDetachedId, selectionBox]);
-    useEffect(() => {
-        if (!attachingDetachedId) return undefined;
-        const cancelAttach = (event) => {
-            if (event.key !== "Escape") return;
-            event.preventDefault();
-            setAttachingDetachedId(null);
-            setAttachCursor(null);
-        };
-        window.addEventListener("keydown", cancelAttach);
-        return () => window.removeEventListener("keydown", cancelAttach);
-    }, [attachingDetachedId]);
+        nodePicker, operandPicker, actionOperandInspector, inspectedNode, selectionBox]);
     const openOperandPicker = (rootIndex, path, rowIndex, operand) => {
         if (disabled) return;
         closeExternalMenus();
-        setInspectedNode(null);
+        // The conditional inspector stays open beneath the picker; only the legacy
+        // single-variable inspector is dismissed.
+        setInspectedNode((current) => current?.kind === "conditional" || current?.kind === "condition-row" ? current : null);
         setNodePicker(null);
         setActionOperandInspector(null);
         setOperandPicker({ kind: "condition", rootIndex, path, rowIndex, operand });
-    };
-    const setRawConditionInput = (rootIndex, path, rowIndex) => {
-        setInspectedNode(null);
-        setOperandPicker(null);
-        updateBranch(rootIndex, path, (current) => ({
-            ...current,
-            conditions: (current.conditions ?? []).map((condition, index) => {
-                if (index !== rowIndex) return condition;
-                const next = { ...condition, right: { type: "number", value: 0 } };
-                delete next.rightSelectable;
-                return next;
-            }),
-        }));
     };
     const openActionOperandPicker = (rootIndex, path, actionIndex, termIndex) => {
         if (disabled) return;
@@ -882,10 +844,10 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
             updateBranch(operandPicker.rootIndex, operandPicker.path, (branch) => ({
                 ...branch,
                 conditions: (branch.conditions ?? []).map((condition, index) => index === operandPicker.rowIndex
-                    ? { type: "always", ...(condition.join === "or" ? { join: "or" } : {}) }
+                    ? { type: "always" }
                     : condition),
             }));
-            setInspectedNode(null);
+            setInspectedNode((current) => current?.kind === "conditional" || current?.kind === "condition-row" ? current : null);
             setOperandPicker(null);
             return;
         }
@@ -904,7 +866,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
                 const keepRight = definition.valueType === "number" && ["number", "variable"].includes(condition.right?.type)
                     ? condition.right
                     : definition.valueType === "boolean" && condition.right?.type === "boolean" ? condition.right : replacement.right;
-                return { ...replacement, ...(condition.join === "or" ? { join: "or" } : {}), right: keepRight };
+                return { ...replacement, right: keepRight };
             }),
         }));
         setOperandPicker(null);
@@ -1002,7 +964,6 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
             ref={viewportRef}
             className="code-board relative min-h-0 flex-1 select-none overflow-hidden bg-zinc-900"
             onPointerDown={handleBoardPointerDown}
-            onPointerMove={(event) => { if (attachingDetachedId) setAttachCursor(canvasPoint(event)); }}
             onContextMenu={(event) => event.preventDefault()}
             onWheel={(event) => {
                 event.preventDefault();
@@ -1012,19 +973,21 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
         >
             {!roots.length && <div className="absolute inset-0 flex items-center justify-center font-mono text-[11px] tracking-widest text-ink-muted">ADD A ROOT TO START</div>}
             <div className="code-history-rail absolute inset-y-0 left-0 z-20 flex w-14 flex-col items-center justify-between gap-2 border-r border-white/10 bg-[#14181c]/95 px-2 py-4 shadow-[8px_0_20px_rgba(0,0,0,.12)]">
-                <div />
+                <div className="flex flex-col gap-2">
+                    {!zoomToFitRef && <button type="button" aria-label="Zoom to fit the tree" title="Zoom to fit" onClick={zoomToFit} className="code-history-button">⤢</button>}
+                    <button type="button" aria-label="Tidy layout in execution order" title="Tidy: lay the tree out in execution order (behavior does not change)" disabled={disabled} onClick={tidyLayout} className="code-history-button">⇲</button>
+                </div>
                 <div className="flex flex-col gap-2">
                 <button type="button" aria-label="Undo code edit" title="Undo" disabled={!canUndo} onClick={onUndo} className="code-history-button">↶</button>
                 <button type="button" aria-label="Redo code edit" title="Redo" disabled={!canRedo} onClick={onRedo} className="code-history-button">↷</button>
                 </div>
             </div>
             {isSearchOpen && <SearchRootNodesModal roots={roots} nodes={graph.roots} disabled={disabled} canRemove={canRemove} quick={isQuickSearchOpen} onSelect={centerOnRoot} onPriorityChange={setRootOrder} onRemove={removeRootNode} onDeleteAll={() => { if (window.confirm("Delete all roots?")) commitConfiguration({ ...configuration, roots: [] }); }} onClose={onSearchClose} />}
-            {!isSearchOpen && !isExternalConfigurationOpen && nodePicker && <NodeKindPicker type={nodePicker.type} stateVariables={stateVariables} selectableTypes={selectableTypes} selectedLoadout={selectedLoadout} title={nodePicker.actionIndex == null ? "ADD ACTION NODE" : "CHANGE ACTION"} onCancel={() => setNodePicker(null)} onChooseAction={(actionId) => nodePicker.actionIndex == null ? addAction(nodePicker.rootIndex, nodePicker.path, actionId) : replaceAction(nodePicker.rootIndex, nodePicker.path, nodePicker.actionIndex, actionId)} />}
-            {!isSearchOpen && !isExternalConfigurationOpen && !nodePicker && operandPicker && <VariableOperandPicker operand={operandPicker.kind === "action" ? 2 : operandPicker.operand} numericOnly={operandPicker.kind === "action" && pickerActionValueType === "number"} valueType={operandPicker.kind === "action" ? pickerActionValueType : null} stateVariables={stateVariables} onChoose={chooseOperandVariable} onUseRawNumber={operandPicker.kind === "action" ? () => setRawActionInput(operandPicker.rootIndex, operandPicker.path, operandPicker.actionIndex, operandPicker.termIndex, pickerActionValueType) : operandPicker.operand === 2 ? () => setRawConditionInput(operandPicker.rootIndex, operandPicker.path, operandPicker.rowIndex) : null} onClose={() => setOperandPicker(null)} />}
+            {!isSearchOpen && !isExternalConfigurationOpen && nodePicker && <NodeKindPicker type={nodePicker.type} stateVariables={stateVariables} selectableTypes={selectableTypes} selectedLoadout={selectedLoadout} title={nodePicker.actionIndex == null ? "Add action" : "Change action"} onCancel={() => setNodePicker(null)} onChooseAction={(actionId) => nodePicker.actionIndex == null ? addAction(nodePicker.rootIndex, nodePicker.path, actionId) : replaceAction(nodePicker.rootIndex, nodePicker.path, nodePicker.actionIndex, actionId)} />}
+            {!isSearchOpen && !isExternalConfigurationOpen && !nodePicker && operandPicker && <VariableOperandPicker operand={operandPicker.kind === "action" ? 2 : operandPicker.operand} numericOnly={operandPicker.kind === "action" && pickerActionValueType === "number"} valueType={operandPicker.kind === "action" ? pickerActionValueType : null} stateVariables={stateVariables} onChoose={chooseOperandVariable} onUseRawNumber={operandPicker.kind === "action" ? () => setRawActionInput(operandPicker.rootIndex, operandPicker.path, operandPicker.actionIndex, operandPicker.termIndex, pickerActionValueType) : null} onClose={() => setOperandPicker(null)} />}
             <div onPointerDown={beginMarquee} className="code-graph-surface absolute left-0 top-0 bg-[#171b20] bg-[radial-gradient(circle,rgba(100,116,139,.24)_1px,transparent_1px)] bg-[size:20px_20px]" style={{ width: canvasWidth, height: canvasHeight, transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}>
                 <svg className="pointer-events-none absolute inset-0 overflow-hidden" width={canvasWidth} height={canvasHeight}>
-                    {[...graph.edges, ...detachedGraphs.flatMap((item) => item.edges)].map((edge) => <path key={edge.id} d={graphEdgePath(edge, nodeOffsets)} fill="none" stroke={edge.id.startsWith("detached:") ? "rgba(251,191,36,.72)" : "rgba(165,180,252,.72)"} strokeWidth="2" strokeDasharray={edge.id.startsWith("detached:") ? "6 4" : undefined} />)}
-                    {attachingDetachedId && attachCursor && (() => { const source = detachedNodes.find((node) => node.detachedId === attachingDetachedId); if (!source) return null; const offset = nodeOffsets[source.id] ?? { x: 0, y: 0 }; const x1 = source.x + offset.x + source.width / 2; const y1 = source.y + offset.y; return <path d={`M ${x1} ${y1} C ${x1} ${y1 - 70}, ${attachCursor.x} ${attachCursor.y - 70}, ${attachCursor.x} ${attachCursor.y}`} fill="none" stroke="#fbbf24" strokeWidth="3" strokeDasharray="7 5" />; })()}
+                    {graph.edges.map((edge) => <path key={edge.id} d={graphEdgePath(edge, nodeOffsets)} fill="none" stroke="rgba(165,180,252,.72)" strokeWidth="2" />)}
                 </svg>
                 {selectionBox && <div className="code-selection-marquee" style={{
                     left: Math.min(selectionBox.start.x, selectionBox.current.x),
@@ -1046,9 +1009,9 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
                         maxTotalConditions={maxTotalConditions}
                         selected={selectedNodeIds.includes(node.id)}
                         tutorialFocus={tutorialFocus}
-                        onSelect={(event) => { if (attachingDetachedId) { event.stopPropagation(); attachDetachedBranch(node); } else selectGraphNode(event, node.id); }}
+                        onSelect={(event) => selectGraphNode(event, node.id)}
                         onPointerDown={(event) => beginNodeDrag(event, node.id)}
-                        onPriorityChange={(priority) => setRootOrder(node.rootIndex, priority)}
+                        {...orderProps(node)}
                         onNameChange={(name) => updateRoot(node.rootIndex, { name })}
                         onAddConditional={addRootConditional}
                         onRemove={() => removeRootNode(node.rootIndex)}
@@ -1057,7 +1020,7 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
                 {graph.conditions.map((node) => {
                     const branch = treeBranchAt(roots[node.rootIndex]?.branches, node.path);
                     if (!branch) return null;
-                    return <GraphConditionNode key={node.id} {...{ node, branch, disabled, canRemove, stateVariables, defaultVariable, nodeOffsets, beginNodeDrag, tutorialFocus, puzzleMode }} coordinateVersion={coordinateVersion} puzzleLabel={roots[node.rootIndex]?.name ?? "Puzzle Condition"} selected={selectedNodeIds.includes(node.id)} onSnip={() => snipBranch(node, branch)} onSelect={(event) => { if (attachingDetachedId) { event.stopPropagation(); attachDetachedBranch(node); } else selectGraphNode(event, node.id); }} onPriorityChange={(priority) => { const reordered = setLogicBranchPriority(roots, node.rootIndex, node.path, priority); if (reordered !== roots) commitConfiguration({ ...configuration, roots: reordered }); }} onPickVariable={(rowIndex, operand) => openOperandPicker(node.rootIndex, node.path, rowIndex, operand)} onInspectVariable={(rowIndex, operand) => { setInspectedNode({ kind: "condition-variable", id: node.id, rowIndex, operand }); }} onRemoveCondition={(rowIndex) => { const currentConditions = Array.isArray(branch.conditions) ? branch.conditions : []; if (currentConditions.length <= 1) { setInspectedNode(null); setSelectedNodeIds((current) => current.filter((id) => id !== node.id)); removeBranch(node.rootIndex, node.path); return; } setInspectedNode((current) => current?.kind === "condition-variable" && current.id === node.id ? null : current); updateBranch(node.rootIndex, node.path, (current) => ({ ...current, conditions: (current.conditions ?? []).filter((_, index) => index !== rowIndex) })); }} inspectedVariable={inspectedNode?.kind === "condition-variable" && inspectedNode.id === node.id ? inspectedNode : null} canAddAction={graphActionCount < maxLogicBlocks} canAddCondition={graphConditionCount < maxTotalConditions}
+                    return <GraphConditionNode key={node.id} {...{ node, branch, disabled, canRemove, stateVariables, defaultVariable, nodeOffsets, beginNodeDrag, tutorialFocus, puzzleMode }} coordinateVersion={coordinateVersion} puzzleLabel={roots[node.rootIndex]?.name ?? "Puzzle Condition"} selected={selectedNodeIds.includes(node.id)} onSelect={(event) => selectGraphNode(event, node.id)} onEditCondition={(event, rowIndex) => openConditionRow(event, node, rowIndex)} activeConditionIndex={inspectedNode?.kind === "condition-row" && inspectedNode.id === node.id ? inspectedNode.rowIndex : null} {...orderProps(node)} onPickVariable={(rowIndex, operand) => openOperandPicker(node.rootIndex, node.path, rowIndex, operand)} onInspectVariable={(rowIndex, operand) => { setInspectedNode({ kind: "condition-variable", id: node.id, rowIndex, operand }); }} onRemoveCondition={(rowIndex) => { setInspectedNode((current) => (current?.kind === "condition-variable" || current?.kind === "condition-row") && current.id === node.id ? null : current); updateBranch(node.rootIndex, node.path, (current) => ({ ...current, conditions: (current.conditions ?? []).filter((_, index) => index !== rowIndex) })); }} inspectedVariable={inspectedNode?.kind === "condition-variable" && inspectedNode.id === node.id ? inspectedNode : null} canAddAction={graphActionCount < maxLogicBlocks} canAddCondition={graphConditionCount < maxTotalConditions}
                         onChange={(updates) => updateBranch(node.rootIndex, node.path, (current) => ({ ...current, ...updates }))}
                         onRemove={() => removeBranch(node.rootIndex, node.path)}
                         onAddChildConditional={() => {
@@ -1076,31 +1039,17 @@ export const TreeLogicBoard = forwardRef(function TreeLogicBoard({
                         }}
                         onAddAction={() => openNodePicker({ type: "action", rootIndex: node.rootIndex, path: node.path })} />;
                 })}
-                {detachedNodes.map((node) => {
-                    const detached = detachedBranches.find((entry) => entry.id === node.detachedId);
-                    const branch = detached ? treeBranchAt([detached.branch], node.path) : null;
-                    if (!branch) return null;
-                    return <GraphConditionNode key={node.id} node={node} branch={branch} disabled={disabled} canRemove={false} canAddAction={false} canAddCondition={false} stateVariables={stateVariables} defaultVariable={defaultVariable} coordinateVersion={coordinateVersion} selectableTypes={selectableTypes} nodeOffsets={nodeOffsets} beginNodeDrag={node.detachedRoot ? (event) => beginDetachedDrag(event, node) : () => {}} selected={selectedNodeIds.includes(node.id)} detached showWireTool={node.detachedRoot} attaching={attachingDetachedId === node.detachedId} onBeginAttach={() => { setAttachingDetachedId(node.detachedId); const offset = nodeOffsets[node.id] ?? { x: 0, y: 0 }; setAttachCursor({ x: node.x + offset.x + node.width / 2, y: node.y + offset.y - 80 }); }} onSelect={(event) => selectGraphNode(event, node.id)} onPriorityChange={() => {}} onPickVariable={() => {}} onInspectVariable={() => {}} onRemoveCondition={(rowIndex) => updateDetachedBranchAtPath(node.detachedId, node.path, (current) => ({ ...current, conditions: (current.conditions ?? []).filter((_, index) => index !== rowIndex) }))} inspectedVariable={null} onChange={(updates) => updateDetachedBranchAtPath(node.detachedId, node.path, (current) => ({ ...current, ...updates }))} onRemove={() => {}} onAddChildConditional={() => {}} onAddAction={() => {}} />;
-                })}
-                {detachedGraphs.flatMap((item) => item.actions).map((node) => {
-                    const detached = detachedBranches.find((entry) => entry.id === node.detachedId);
-                    const branch = detached ? treeBranchAt([detached.branch], node.path) : null;
-                    const actions = graphBranchActions(branch);
-                    const entry = actions[node.actionIndex];
-                    if (!branch || !entry) return null;
-                    return <GraphActionNode key={node.id} node={node} entry={entry} actions={actions} branch={branch} disabled={disabled} selectedLoadout={selectedLoadout} selectableTypes={selectableTypes} stateVariables={stateVariables} nodeOffsets={nodeOffsets} beginNodeDrag={() => {}} canRemove={false} puzzleMode coordinateVersion={coordinateVersion} selectedNode={selectedNodeIds.includes(node.id)} onInspect={(event) => selectGraphNode(event, node.id)} onEditAction={() => {}} customVariables={configuration.customVariables ?? []} onChange={(nextEntry) => updateDetachedBranchAtPath(node.detachedId, node.path, (current) => setGraphActions(current, graphBranchActions(current).map((item, index) => index === node.actionIndex ? nextEntry : item)))} onRemove={() => {}} />;
-                })}
                 {graph.actions.map((node) => {
                     const branch = treeBranchAt(roots[node.rootIndex]?.branches, node.path);
                     const actions = graphBranchActions(branch);
                     const entry = actions[node.actionIndex];
                     if (!branch || !entry) return null;
-                    return <GraphActionNode key={node.id} {...{ node, entry, actions, branch, disabled, selectedLoadout, selectableTypes, stateVariables, nodeOffsets, beginNodeDrag, canRemove, puzzleMode }} coordinateVersion={coordinateVersion} selectedNode={selectedNodeIds.includes(node.id)} onInspect={(event) => selectGraphNode(event, node.id, { kind: "action", id: node.id })} onEditAction={(event) => { event.stopPropagation(); openNodePicker({ type: "action", rootIndex: node.rootIndex, path: node.path, actionIndex: node.actionIndex }); }} customVariables={configuration.customVariables ?? []}
+                    return <GraphActionNode key={node.id} {...{ node, entry, actions, branch, disabled, selectedLoadout, selectableTypes, stateVariables, nodeOffsets, beginNodeDrag, canRemove, puzzleMode }} coordinateVersion={coordinateVersion} selectedNode={selectedNodeIds.includes(node.id)} onInspect={(event) => selectGraphNode(event, node.id, { kind: "action", id: node.id })} customVariables={configuration.customVariables ?? []}
                         onChange={(nextEntry) => updateBranch(node.rootIndex, node.path, (current) => setGraphActions(current, actions.map((item, index) => index === node.actionIndex ? nextEntry : item)))}
                         onRemove={() => removeGraphAction(node.rootIndex, node.path, node.actionIndex)} />;
                 })}
             </div>
-            {!isSearchOpen && !isExternalConfigurationOpen && inspectedNode && <LogicNodeInspector inspectedNode={inspectedNode} graph={graph} roots={roots} stateVariables={stateVariables} selectableTypes={selectableTypes} selectableAbilityIds={selectableAbilityIds} selectedLoadout={selectedLoadout} customVariables={configuration.customVariables ?? []} disabled={disabled} canRemove={canRemove} canAddAction={graphActionCount < maxLogicBlocks} puzzleMode={puzzleMode} coordinateVersion={coordinateVersion} onClose={() => setInspectedNode(null)} updateBranch={updateBranch} onPickActionOperand={openActionOperandPicker} onInspectActionOperand={inspectActionOperand} onDismissOperandPicker={() => setOperandPicker(null)} onRemoveAction={removeGraphAction} />}
+            {!isSearchOpen && !isExternalConfigurationOpen && inspectedNode && <LogicNodeInspector inspectedNode={inspectedNode} graph={graph} roots={roots} stateVariables={stateVariables} selectableTypes={selectableTypes} selectableAbilityIds={selectableAbilityIds} selectedLoadout={selectedLoadout} customVariables={configuration.customVariables ?? []} disabled={disabled} canRemove={canRemove} canAddAction={graphActionCount < maxLogicBlocks} defaultVariable={defaultVariable} puzzleMode={puzzleMode} coordinateVersion={coordinateVersion} onClose={() => setInspectedNode(null)} updateBranch={updateBranch} onPickConditionOperand={openOperandPicker} onChangeAction={(rootIndex, path, actionIndex) => openNodePicker({ type: "action", rootIndex, path, actionIndex })} onPickActionOperand={openActionOperandPicker} onInspectActionOperand={inspectActionOperand} onDismissOperandPicker={() => setOperandPicker(null)} />}
             {!isSearchOpen && !isExternalConfigurationOpen && actionOperandInspector && actionOperandDefinition && <ActionVariableInspector definition={actionOperandDefinition} operand={actionOperand} selectableTypes={selectableTypes} disabled={disabled} onChange={(operand) => updateActionOperand(actionOperandInspector.rootIndex, actionOperandInspector.path, actionOperandInspector.actionIndex, actionOperandInspector.termIndex, operand)} onClose={() => setActionOperandInspector(null)} />}
         </div>
     );

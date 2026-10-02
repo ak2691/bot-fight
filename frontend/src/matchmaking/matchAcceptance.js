@@ -29,6 +29,7 @@ export function acceptanceEventForClient(event) {
         matchAcceptanceAuthoritativeEndsAtMs: event.matchAcceptanceAuthoritativeEndsAtMs ?? null,
         acceptedByMe: event.acceptedByMe === true,
         otherPlayerAccepted: event.otherPlayerAccepted === true,
+        mode: event.mode ?? null,
         message: event.message ?? null,
     };
 }

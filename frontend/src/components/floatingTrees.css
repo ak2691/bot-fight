@@ -1,0 +1,124 @@
+/* Drifting logic-tree background for the home and auth pages. The trees use the workspace's own node classes (code-bt-*);
+   this file only positions them, draws the wires, and runs the signal pulse. */
+.fl-nodes {
+  position: absolute;
+  inset: 72px 0 0;
+  z-index: 1;
+  display: none;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+.fl-nodes--auth { inset: 0; }
+
+/* Trees live only in the outer margins. Each variant shows them once the margins beside its content column are wide
+   enough (home: a 688px column; auth: the 900px card + video columns), so nothing overlaps the content. Below 900px
+   (and on phones) they are hidden. */
+@media (min-width: 1240px) {
+  .fl-nodes--home { display: block; }
+}
+
+@media (min-width: 1440px) {
+  .fl-nodes--auth { display: block; }
+}
+
+.fl-pair {
+  position: absolute;
+  width: 300px;
+  opacity: .38;
+  transform: scale(.8);
+}
+
+/* Trees sit fully inside the viewport, 16px from each edge. */
+.home-float-pair-1 { top: 24px; left: 16px; transform-origin: left top; }
+.home-float-pair-2 { bottom: 24px; left: 16px; transform-origin: left bottom; }
+.home-float-pair-3 { top: 24px; right: 16px; transform-origin: right top; }
+.home-float-pair-4 { right: 16px; bottom: 24px; transform-origin: right bottom; }
+
+.fl-tree {
+  position: relative;
+  width: 300px;
+  animation: home-node-float 7s ease-in-out infinite alternate;
+}
+
+.fl-pair:nth-child(2n) .fl-tree { animation-delay: -2.8s; animation-duration: 8.5s; }
+.fl-pair:nth-child(3n) .fl-tree { animation-delay: -4.2s; animation-duration: 9.5s; }
+
+@keyframes home-node-float {
+  from { top: -4px; }
+  to { top: 8px; }
+}
+
+.fl-wires {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: visible;
+}
+
+.fl-wires path {
+  fill: none;
+  stroke: rgba(165, 180, 252, .72);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.fl-node { position: absolute; z-index: 1; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+.fl-node.code-bt-root { gap: 2px; padding: 5px 10px; box-shadow: none; }
+.fl-node.code-bt-cond { box-shadow: none; }
+.fl-node.code-bt-task { overflow: hidden; box-shadow: none; }
+
+.fl-root-name {
+  overflow: hidden;
+  color: #e6edf3;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fl-node .code-bt-task-line { flex-wrap: nowrap; }
+.fl-node .code-action-label { white-space: nowrap; }
+
+/* Signal pulse: a cyan dot runs root -> conditional -> action every ~5s (staggered per tree); the action it reaches glows briefly. */
+.fl-dot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 999px;
+  background-color: #5fd4f0;
+  box-shadow: 0 0 8px 2px rgba(95, 212, 240, .6);
+  offset-rotate: 0deg;
+  opacity: 0;
+  animation: fl-pulse var(--fl-cycle, 5.2s) linear var(--fl-delay, 0s) infinite;
+}
+
+@keyframes fl-pulse {
+  0% { offset-distance: 0%; opacity: 0; }
+  4% { opacity: 1; }
+  30% { offset-distance: 100%; opacity: 1; }
+  32%, 100% { offset-distance: 100%; opacity: 0; }
+}
+
+.fl-action--lit { animation: fl-glow var(--fl-cycle, 5.2s) ease-out var(--fl-delay, 0s) infinite; }
+
+@keyframes fl-glow {
+  0%, 29% { border-color: #72b65d; box-shadow: none; }
+  34% { border-color: #b8e6a3; box-shadow: 0 0 0 1px rgba(184, 230, 163, .55), 0 0 18px 4px rgba(114, 182, 93, .55); }
+  58%, 100% { border-color: #72b65d; box-shadow: none; }
+}
+
+@supports not (offset-path: path("M0 0")) {
+  .fl-dot { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fl-tree, .fl-action--lit { animation: none; }
+  .fl-dot { display: none; }
+}

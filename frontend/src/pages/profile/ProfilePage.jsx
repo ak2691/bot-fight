@@ -1,10 +1,12 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import PlayerAvatar from "../../components/PlayerAvatar.jsx";
 import { useAuth } from "../../auth/auth-context";
 import { useNotifications } from "../../notifications/notification-context";
 import { newPasswordError, passwordError, userFacingAuthError, usernameError } from "../../auth/validation";
 import { apiUrl } from "../../config/api";
 import { matchModeLabel } from "../../matchmaking/matchModes";
 import { ensureCsrfHeaders } from "../../security/csrf";
+import { fetchPuzzles } from "../../puzzles/puzzleApi.js";
 import AppNavbar from "../../components/AppNavbar";
 import ProfileLink from "../../components/ProfileLink.jsx";
 import SpinningBotFace from "../../components/SpinningBotFace.jsx";
@@ -14,7 +16,27 @@ import {
     createProfileRetryTokenBucket,
     PROFILE_RETRY_REFILL_INTERVAL_MS,
 } from "./profileRetryRateLimit.js";
-import { formatCompletionReason } from "./profileCompletionReason.js";
+import {
+    MODE_FILTERS,
+    RESULT_FILTERS,
+    bannerTitle,
+    endedByLabel,
+    eloChangeTone,
+    filterMatches,
+    formatEloDelta,
+    formatScore,
+    formatShortDate,
+    groupMatchesByDate,
+    matchDetailLine,
+    matchTeams,
+    opponentLabel,
+    recordProportions,
+    resultKey,
+    roundsLabel,
+    teamColorKey,
+    teamColorLabel,
+} from "./profileMatchFormat.js";
+import "./profile.css";
 import {
     normalizeAddRootShortcut,
     readAddRootShortcut,
@@ -22,25 +44,6 @@ import {
 } from "../../gameArena/coding/addRootShortcut.js";
 
 const RECENT_MATCH_LIMIT = 5;
-
-const resultTone = {
-    WIN: "border-emerald-400/60 bg-emerald-950/30 text-emerald-300",
-    LOSS: "profile-result--loss",
-    DRAW: "border-amber-400/60 bg-amber-950/30 text-amber-300",
-};
-
-function formatMatchDate(value) {
-    if (!value) return "Date unavailable";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "Date unavailable";
-    return new Intl.DateTimeFormat(undefined, {
-        month: "short",
-        day: "numeric",
-        year: date.getFullYear() === new Date().getFullYear() ? undefined : "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-    }).format(date);
-}
 
 function formatMatchCalendarDate(value) {
     if (!value) return "Date unavailable";
@@ -51,18 +54,6 @@ function formatMatchCalendarDate(value) {
         day: "numeric",
         year: "numeric",
     }).format(date);
-}
-
-function matchTeamLabel(teamNumber, fallbackIndex) {
-    if (Number(teamNumber) === 1) return "Team Blue";
-    if (Number(teamNumber) === 2) return "Team Red";
-    return `Team ${fallbackIndex + 1}`;
-}
-
-function matchTeamTone(teamNumber) {
-    if (Number(teamNumber) === 1) return "text-cyan-300";
-    if (Number(teamNumber) === 2) return "text-rose-300";
-    return "text-slate-400";
 }
 
 function formatJoinedDate(value) {
@@ -375,10 +366,6 @@ export default function ProfilePage() {
             <AppNavbar account currentPage="profile" />
 
             <section className="relative z-[1] mx-auto w-full max-w-[1180px] px-5 py-10 sm:px-8 sm:py-12">
-                <div className="max-w-3xl">
-
-                    <ProfileSearchBar onSearch={(query) => navigate(`/profile/search?query=${encodeURIComponent(query)}`)} />
-                </div>
 
                 {(status === "loading" || (status === "ready" && !profileMatchesRoute)) && (
                     <ProfileLoading username={viewedUsername ?? user?.username} />
@@ -437,6 +424,9 @@ export default function ProfilePage() {
                     onLoadMore={() => void requestSolvedPuzzles(solvedPuzzlesPage + 1, true)}
                     onOpenPuzzle={(puzzleNumber) => navigate(`/puzzles/${encodeURIComponent(puzzleNumber)}`)}
                     onClose={() => setIsPuzzlesModalOpen(false)}
+                    username={profile?.username ?? viewedUsername ?? ""}
+                    isOwner={isOwner}
+                    canOpenPuzzles={!isGuest}
                 />
             )}
         </main>
@@ -462,48 +452,11 @@ function ProfileError({ onRetry, retryRateLimited }) {
                 type="button"
                 onClick={onRetry}
                 disabled={retryRateLimited}
-                className="profile-toolbar-button mt-6 font-bold disabled:cursor-wait"
+                className="hud-btn hud-btn--auto mt-6 font-bold disabled:cursor-wait"
             >
                 {retryRateLimited ? "Please wait..." : "Try again"}
             </button>
         </div>
-    );
-}
-
-function ProfileSearchBar({ onSearch }) {
-    const [query, setQuery] = useState("");
-
-    const handleSubmit = (event) => {
-        event.preventDefault();
-        const normalizedQuery = query.trim();
-        if (normalizedQuery) onSearch(normalizedQuery);
-    };
-
-    return (
-        <form onSubmit={handleSubmit} className="mt-6 max-w-xl" role="search">
-            <label htmlFor="profile-search" className="block">
-                <span className="font-mono text-[10px] font-bold tracking-[.18em] text-slate-500">FIND A PLAYER</span>
-                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                    <input
-                        id="profile-search"
-                        name="query"
-                        type="search"
-                        value={query}
-                        onChange={(event) => setQuery(event.target.value)}
-                        maxLength={50}
-                        placeholder="Search by username"
-                        autoComplete="off"
-                        className="h-11 min-w-0 flex-1 rounded-lg border border-slate-700 bg-[#07111b] px-4 text-sm text-white outline-none placeholder:text-slate-600 focus:border-cyan-400/70"
-                    />
-                    <button
-                        type="submit"
-                        className="profile-toolbar-button h-11 text-sm font-bold"
-                    >
-                        Search
-                    </button>
-                </div>
-            </label>
-        </form>
     );
 }
 
@@ -529,65 +482,59 @@ function ProfileContent({
     onToggleBlock,
 }) {
     const isGuestProfile = isGuest && isOwner;
-    const initial = String(profile.username || "?").slice(0, 1).toUpperCase();
+    const matchCount = isGuestProfile || historyStatus === "loading" ? "—" : totalMatches;
+    const puzzleCount = isGuestProfile ? "—" : (profile.puzzlesSolved ?? 0);
     return (
-        <div className="mt-9">
-            <header className="profile-hero">
-                <div className="profile-hero__identity">
-                    <div className="profile-hero__avatar" aria-hidden="true">{initial}</div>
-                    <div>
-                        <p className="profile-hero__eyebrow">PLAYER PROFILE</p>
-                        <h1>{profile.username}</h1>
-                    </div>
+        <div className="pf-page">
+            <header className="pf-hero">
+                <PlayerAvatar name={profile.username} size={56} className="pf-avatar" />
+                <div className="pf-hero__id">
+                    <h1>{profile.username}</h1>
+                    <p className="pf-hero__joined">
+                        Joined <time dateTime={profile.joinedAt ?? undefined}>{formatJoinedDate(profile.joinedAt)}</time>
+                    </p>
+                    <p className="pf-hero__summary">
+                        {matchCount} {matchCount === 1 ? "match" : "matches"}
+                        {" · "}
+                        {isGuestProfile ? (
+                            <span>{puzzleCount} puzzles</span>
+                        ) : (
+                            <button type="button" className="pf-link pf-link--inline" onClick={onOpenPuzzles} aria-label={`Puzzles solved: ${puzzleCount}. Open details`}>
+                                {puzzleCount} {puzzleCount === 1 ? "puzzle" : "puzzles"}
+                            </button>
+                        )}
+                    </p>
                 </div>
-                <div className="profile-hero__record" aria-label="Player activity">
-                    <div><strong>{isGuestProfile || historyStatus === "loading" ? "—" : totalMatches}</strong><span>Matches</span></div>
-                    <div><strong>{isGuestProfile ? "—" : (profile.puzzlesSolved ?? 0)}</strong><span>Puzzles solved</span></div>
+                <div className="pf-hero__stats" role="group" aria-label="Player activity">
+                    <div className="pf-stat"><strong>{matchCount}</strong><span>Matches</span></div>
+                    {isGuestProfile ? (
+                        <div className="pf-stat"><strong>{puzzleCount}</strong><span>Puzzles solved</span></div>
+                    ) : (
+                        <button type="button" className="pf-stat pf-stat--button" onClick={onOpenPuzzles} aria-label={`Puzzles solved: ${puzzleCount}. Open details`}>
+                            <strong>{puzzleCount}</strong><span>Puzzles solved</span>
+                        </button>
+                    )}
                 </div>
             </header>
-            <div className="profile-content-grid grid gap-5 lg:grid-cols-[minmax(240px,.85fr)_minmax(0,1.6fr)] lg:items-start">
-            <section className="rounded-2xl border border-cyan-800/80 bg-[linear-gradient(145deg,rgba(12,28,42,.94),rgba(6,16,26,.97))] p-6 shadow-[0_18px_60px_rgba(0,0,0,.28)] sm:p-8">
-                <div className="profile-section-heading">
-                    <p>ARENA RECORD</p>
-                    <h2>Competitive stats</h2>
-                </div>
 
-                <div className="mt-8 grid gap-3 sm:grid-cols-2">
-                    <QueueModeStatsCard label="1V1" stats={profile.queueStats?.ones} />
-                    <QueueModeStatsCard label="2V2" stats={profile.queueStats?.twos} />
-                </div>
+            {canBlock && !isGuest && (
+                <UserBlockButton
+                    username={profile.username}
+                    state={blockState}
+                    error={blockError}
+                    onToggle={onToggleBlock}
+                />
+            )}
 
-                <dl className="mt-7 border-t border-slate-700/70 pt-4">
-                    <Stat
-                        label="PUZZLES SOLVED"
-                        value={isGuestProfile ? "N/A" : (profile.puzzlesSolved ?? 0)}
-                        tone="text-cyan-300"
-                        labelClassName="font-mono text-sm font-bold tracking-[.14em] text-slate-400"
-                        valueClassName="font-interface-numeric text-2xl font-bold"
-                        showColon={false}
-                        onClick={isGuestProfile ? undefined : onOpenPuzzles}
-                    />
-                </dl>
+            <div className="pf-grid">
+                <section className="pf-card pf-ranked" aria-labelledby="pf-ranked-title">
+                    <h2 id="pf-ranked-title" className="pf-card__title">Ranked</h2>
+                    <div className="pf-ranked__tiles">
+                        <QueueModeStatsCard label="1V1" stats={profile.queueStats?.ones} />
+                        <QueueModeStatsCard label="2V2" stats={profile.queueStats?.twos} />
+                    </div>
+                </section>
 
-                <div className="mt-7 border-t border-cyan-900/70 pt-5">
-                    <p className="font-mono text-[10px] font-bold uppercase tracking-[.18em] text-slate-500">Joined</p>
-                    <time className="mt-2 block text-sm font-semibold text-slate-200" dateTime={profile.joinedAt ?? undefined}>
-                        {formatJoinedDate(profile.joinedAt)}
-                    </time>
-                </div>
-
-                {canBlock && !isGuest && (
-                    <UserBlockButton
-                        username={profile.username}
-                        state={blockState}
-                        error={blockError}
-                        onToggle={onToggleBlock}
-                    />
-                )}
-
-            </section>
-
-            <div className="min-w-0 space-y-5">
                 <RecentMatchesCard
                     matches={matches}
                     totalMatches={totalMatches}
@@ -598,62 +545,48 @@ function ProfileContent({
                     onOpenMatchDetails={onOpenMatchDetails}
                 />
             </div>
-            </div>
-            {isOwner && !isGuest && <section className="profile-settings" aria-labelledby="profile-settings-title">
-                <div className="profile-section-heading"><p>PRIVATE CONTROLS</p><h2 id="profile-settings-title">Settings</h2></div>
-                <div className="profile-settings__grid">
-                    <div>
-                        <UsernameEditor username={profile.username} onSave={onUsernameSaved} onLogout={onLogout} />
-                        <PasswordSettings hasPassword={hasPassword} googleLinked={googleLinked} onSave={onPasswordSaved} />
+
+            {isOwner && !isGuest && (
+                <section className="pf-settings" aria-labelledby="profile-settings-title">
+                    <h2 id="profile-settings-title" className="pf-card__title">Settings</h2>
+                    <UsernameSetting username={profile.username} onSave={onUsernameSaved} />
+                    <SignInSetting hasPassword={hasPassword} googleLinked={googleLinked} googleStatus={googleStatus} onSave={onPasswordSaved} />
+                    <AddRootShortcutSetting />
+                    <div className="pf-settings__footer">
+                        <button type="button" onClick={() => void onLogout()} className="pf-link pf-link--danger">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /></svg>
+                            Log out
+                        </button>
                     </div>
-                    <div className="profile-settings__side">
-                        <div className="profile-settings__sign-in">
-                            <p className="font-mono text-[10px] font-bold tracking-[.18em] text-cyan-400">CONNECTED SIGN-IN</p>
-                            <h3 className="mt-2 text-lg font-bold text-white">Google account</h3>
-                            <p className="mt-1 text-sm leading-6 text-slate-400">
-                                {googleLinked ? "Linked for sign-in." : "Link Google to use either sign-in method."}
-                            </p>
-                            {googleStatus === "ready" && (
-                                googleLinked ? (
-                                    <span className="mt-4 inline-flex rounded border border-emerald-400/40 bg-emerald-950/30 px-3 py-2 text-xs font-bold text-emerald-300">Linked</span>
-                                ) : (
-                                    <button
-                                        type="button"
-                                        onClick={() => window.location.assign(apiUrl("/api/auth/google/link"))}
-                                        className="profile-toolbar-button mt-4 text-xs font-bold"
-                                    >
-                                        Link Google account
-                                    </button>
-                                )
-                            )}
-                        </div>
-                        <AddRootShortcutSettings />
-                    </div>
-                </div>
-            </section>}
+                </section>
+            )}
         </div>
     );
 }
 
 function QueueModeStatsCard({ label, stats }) {
+    const wins = stats?.wins ?? 0;
+    const losses = stats?.losses ?? 0;
+    const draws = stats?.draws ?? 0;
+    const proportions = recordProportions(stats);
     return (
-        <section className="min-w-0 overflow-hidden rounded-2xl border border-cyan-700/70 bg-[#171c20] px-5 py-5 sm:px-6 sm:py-6">
-            <h3 className="font-display-action text-2xl font-bold tracking-wide text-white">{label}</h3>
-            <div className="mt-6">
-                <p className="font-mono text-[11px] font-bold tracking-[.18em] text-slate-400">ELO</p>
-                <p className="profile-elo-value mt-1 whitespace-nowrap font-mono text-3xl font-bold tracking-normal">
-                    {stats?.elo ?? "N/A"}
-                </p>
+        <div className="pf-tile">
+            <h3 className="pf-tile__label">{label}</h3>
+            <p className="pf-tile__elo">{stats?.elo ?? "N/A"}</p>
+            <p className="pf-tile__caption">ELO</p>
+            <div className="pf-bar" role="img" aria-label={`${wins} wins, ${losses} losses, ${draws} draws`}>
+                {proportions.total > 0 && (
+                    <>
+                        <span className="pf-bar__win" style={{ width: `${proportions.wins}%` }} />
+                        <span className="pf-bar__loss" style={{ width: `${proportions.losses}%` }} />
+                        <span className="pf-bar__draw" style={{ width: `${proportions.draws}%` }} />
+                    </>
+                )}
             </div>
-            <div className="my-5 border-t border-slate-700/80" />
-            <div>
-                <p className="font-mono text-[11px] font-bold tracking-[.18em] text-slate-400">RECORD</p>
-                <p className="mt-2 whitespace-nowrap text-center font-mono text-[11px] font-bold tracking-normal text-white sm:text-sm">
-                    {stats?.wins ?? 0}-{stats?.losses ?? 0}-{stats?.draws ?? 0}
-                </p>
-                <p className="profile-record-key mt-1 text-center font-mono text-[10px] font-bold tracking-[.16em]">W-L-D</p>
-            </div>
-        </section>
+            <p className="pf-tile__record">
+                <span className="pf-win">{wins}W</span> <span className="pf-loss">{losses}L</span> <span className="pf-draw">{draws}D</span>
+            </p>
+        </div>
     );
 }
 
@@ -661,18 +594,18 @@ function UserBlockButton({ username, state, error, onToggle }) {
     const isBlocked = state === "blocked";
     const isPending = state === "loading" || state === "saving";
     return (
-        <div className="mt-5 border-t border-cyan-900/70 pt-5">
+        <div className="pf-block">
             <button
                 type="button"
                 onClick={() => void onToggle()}
                 disabled={isPending}
-                className={`profile-toolbar-button ${isBlocked ? "profile-toolbar-button--green" : "profile-toolbar-button--red"} text-xs font-bold disabled:cursor-wait`}
+                className={`pf-link ${isBlocked ? "" : "pf-link--danger"}`}
                 aria-label={`${isBlocked ? "Unblock" : "Block"} ${username}`}
             >
                 {state === "loading" ? "Checking..." : state === "saving" ? "Saving..." : isBlocked ? "Unblock player" : "Block player"}
             </button>
-            {error && <p className="mt-2 text-xs text-rose-300" role="alert">{error}</p>}
-            {isBlocked && <p className="mt-2 text-xs text-slate-500" role="status">Their notifications and chat messages are hidden from you.</p>}
+            {error && <p className="pf-message pf-message--error" role="alert">{error}</p>}
+            {isBlocked && <p className="pf-message" role="status">Their notifications and chat messages are hidden from you.</p>}
         </div>
     );
 }
@@ -682,40 +615,32 @@ function RecentMatchesCard({ matches, totalMatches, historyStatus, isGuestProfil
     const isInitialError = historyStatus === "error" && matches.length === 0;
     if (isGuestProfile) {
         return (
-            <section className="overflow-hidden rounded-2xl border border-cyan-900/80 bg-[#091521ed] p-6 shadow-[0_18px_60px_rgba(0,0,0,.24)] sm:p-8">
-                <h2 className="text-2xl font-bold text-white">Match history</h2>
-                <p className="mt-3 text-sm leading-6 text-slate-400">
+            <section className="pf-card pf-recent">
+                <h2 className="pf-card__title">Match history</h2>
+                <p className="pf-empty">
                     Guest matches are temporary and are not saved. Create an account to keep your results.
                 </p>
             </section>
         );
     }
     return (
-        <section className="overflow-hidden rounded-2xl border border-cyan-900/80 bg-[#091521ed] shadow-[0_18px_60px_rgba(0,0,0,.24)]">
-            <div className="flex flex-col gap-4 border-b border-slate-700/70 px-6 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-8">
-                <div>
-                    <h2 className="mt-2 text-2xl font-bold text-white">Recent matches</h2>
-                </div>
-                <button
-                    type="button"
-                    onClick={onOpenMatches}
-                    className="profile-toolbar-button w-full flex-none text-sm font-bold sm:w-auto"
-                >
-                    View All Matches
+        <section className="pf-card pf-recent" aria-labelledby="pf-recent-title">
+            <div className="pf-card__head">
+                <h2 id="pf-recent-title" className="pf-card__title">Recent matches</h2>
+                <button type="button" onClick={onOpenMatches} className="pf-link pf-link--accent" aria-label="View all matches">
+                    View all {totalMatches}
                 </button>
             </div>
 
-            <div className="divide-y divide-slate-800">
+            <div className="pf-match-list">
                 {historyStatus === "loading" ? (
-                    <div className="flex items-center justify-center py-14" aria-label="Loading recent matches" aria-busy="true">
+                    <div className="pf-loading" aria-label="Loading recent matches" aria-busy="true">
                         <SpinningBotFace />
                     </div>
                 ) : isInitialError ? (
-                    <div className="px-6 py-10 text-center">
-                        <p className="text-sm text-rose-300">Recent matches could not be loaded.</p>
-                    </div>
+                    <p className="pf-empty pf-empty--error">Recent matches could not be loaded.</p>
                 ) : previewMatches.length === 0 ? (
-                    <p className="px-6 py-12 text-center text-sm text-slate-500">
+                    <p className="pf-empty">
                         {isOwner ? "Your completed matches will appear here." : "This player's completed matches will appear here."}
                     </p>
                 ) : (
@@ -728,102 +653,38 @@ function RecentMatchesCard({ matches, totalMatches, historyStatus, isGuestProfil
                     ))
                 )}
             </div>
-
-            {historyStatus !== "loading" && !isInitialError && (
-                <div className="border-t border-slate-800 px-6 py-4 sm:px-8">
-                    <p className="font-mono text-[10px] tracking-wider text-slate-500">
-                        {totalMatches} TOTAL MATCHES
-
-                    </p>
-                </div>
-            )}
         </section>
     );
 }
 
-function MatchRow({
-    match,
-    onOpenDetails = null,
-    linkParticipantNames = false,
-    showMode = true,
-    showResult = true,
-    showDate = true,
-    showTeamLabels = false,
-    roomy = false,
-}) {
-    const participantTeams = Array.isArray(match.participantTeams) ? match.participantTeams : [];
-    const participantTeamNumbers = Array.isArray(match.participantTeamNumbers) ? match.participantTeamNumbers : [];
-    const isInteractive = typeof onOpenDetails === "function";
-    const gridColumns = showMode
-        ? "grid-cols-[4.25rem_minmax(0,1fr)_auto]"
-        : showResult || showDate
-            ? "grid-cols-[minmax(0,1fr)_auto]"
-            : "grid-cols-1";
-
+function MatchRow({ match, onOpenDetails, detailed = false }) {
+    const modeLabel = matchModeLabel(match.mode);
+    const detail = matchDetailLine(match);
+    const shortDate = formatShortDate(match.completedAt);
     const handleKeyDown = (event) => {
-        if (!isInteractive || (event.key !== "Enter" && event.key !== " ")) return;
+        if (event.key !== "Enter" && event.key !== " ") return;
         event.preventDefault();
         onOpenDetails();
     };
 
     return (
         <article
-            className={`grid min-w-0 ${gridColumns} items-start ${roomy ? "gap-5 px-6 py-7 sm:px-10 sm:py-9" : "gap-3 px-6 py-4 sm:items-center sm:px-8"} ${isInteractive ? "cursor-pointer transition-colors hover:bg-slate-900/35 focus-visible:bg-slate-900/45 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-cyan-400" : ""}`}
-            role={isInteractive ? "button" : undefined}
-            tabIndex={isInteractive ? 0 : undefined}
-            aria-label={isInteractive ? `Open ${matchModeLabel(match.mode)} match details` : undefined}
-            onClick={isInteractive ? onOpenDetails : undefined}
+            className={`pf-match pf-match--${resultKey(match)} ${detailed ? "pf-match--detailed" : ""}`}
+            role="button"
+            tabIndex={0}
+            aria-label={`Open ${modeLabel} match details`}
+            onClick={onOpenDetails}
             onKeyDown={handleKeyDown}
         >
-            {showMode && (
-                <span className="profile-match-mode self-center w-full whitespace-nowrap rounded-md border px-2 py-1 text-center font-mono text-[10px] font-bold uppercase tracking-wider">
-                    {matchModeLabel(match.mode)}
-                </span>
-            )}
-            <div className="min-w-0 overflow-hidden">
-                <div className={`flex min-w-0 flex-col items-start gap-y-1 font-semibold text-slate-100 ${roomy ? "text-base sm:text-lg" : "text-sm"}`}>
-                    {participantTeams.map((team, teamIndex) => (
-                        <Fragment key={`team-${teamIndex}`}>
-                            {teamIndex > 0 && !showTeamLabels && (
-                                <span className="profile-versus px-1 text-[10px] font-bold uppercase tracking-[0.2em]" aria-hidden="true">
-                                    vs
-                                </span>
-                            )}
-                            {teamIndex > 0 && showTeamLabels && (
-                                <span className="h-2" aria-hidden="true" />
-                            )}
-                            {showTeamLabels && (
-                                <span className={`font-mono text-[10px] font-bold tracking-[.16em] ${matchTeamTone(participantTeamNumbers[teamIndex])}`}>
-                                    {matchTeamLabel(participantTeamNumbers[teamIndex], teamIndex)}
-                                </span>
-                            )}
-                            <span className="flex min-w-0 max-w-full flex-nowrap gap-x-3 gap-y-1 overflow-hidden">
-                                {(Array.isArray(team) ? team : []).map((username) => (
-                                    linkParticipantNames ? (
-                                        <ProfileLink key={`${teamIndex}-${username}`} username={username} className="min-w-0 max-w-full truncate text-slate-100">{username}</ProfileLink>
-                                    ) : (
-                                        <span key={`${teamIndex}-${username}`} className="min-w-0 max-w-full truncate">{username}</span>
-                                    )
-                                ))}
-                            </span>
-                        </Fragment>
-                    ))}
-                </div>
-            </div>
-            {(showResult || showDate) && (
-                <div className="flex min-w-max flex-col items-end gap-1 text-right sm:flex-row sm:items-center sm:gap-4">
-                    {showResult && (
-                        <span className={`w-fit rounded-lg border px-3 py-1 font-mono text-xs font-bold tracking-wider ${resultTone[match.result] ?? resultTone.DRAW}`}>
-                            {match.result}
-                        </span>
-                    )}
-                    {showDate && (
-                        <time className="whitespace-nowrap text-sm text-slate-400" dateTime={match.completedAt ?? undefined}>
-                            {formatMatchCalendarDate(match.completedAt)}
-                        </time>
-                    )}
-                </div>
-            )}
+            <span className="pf-match__result">{match.result ?? "DRAW"}</span>
+            <span className="pf-match__main">
+                <span className="pf-match__opponent">vs {opponentLabel(match)}</span>
+                <small className="pf-match__detail">{detail}</small>
+                <small className="pf-match__meta">{modeLabel} · {detail} · {shortDate}</small>
+            </span>
+            <span className="pf-tag pf-match__mode">{modeLabel}</span>
+            <time className="pf-match__date" dateTime={match.completedAt ?? undefined}>{shortDate}</time>
+            <span className="pf-match__chevron" aria-hidden="true">›</span>
         </article>
     );
 }
@@ -863,7 +724,7 @@ function AboutMeCard({ aboutMe, editable, onSave }) {
                     <button
                         type="button"
                         onClick={() => { setError(null); setIsEditing(true); }}
-                        className="profile-toolbar-button w-full text-sm font-bold sm:w-auto"
+                        className="hud-btn hud-btn--auto w-full text-sm font-bold sm:w-auto"
                     >
                         Edit About Me
                     </button>
@@ -895,10 +756,10 @@ function AboutMeCard({ aboutMe, editable, onSave }) {
                             {error ?? `${draft.length}/500 characters · Plain text only`}
                         </p>
                         <div className="flex gap-2">
-                            <button type="submit" disabled={isSaving} className="profile-toolbar-button profile-toolbar-button--primary h-11 text-sm font-bold">
+                            <button type="submit" disabled={isSaving} className="hud-btn hud-btn--play hud-btn--auto h-11 text-sm font-bold">
                                 {isSaving ? "Saving..." : "Save"}
                             </button>
-                            <button type="button" onClick={() => { setDraft(aboutMe ?? ""); setError(null); setIsEditing(false); }} className="profile-toolbar-button h-11 text-sm">
+                            <button type="button" onClick={() => { setDraft(aboutMe ?? ""); setError(null); setIsEditing(false); }} className="hud-btn hud-btn--auto h-11 text-sm">
                                 Cancel
                             </button>
                         </div>
@@ -912,8 +773,15 @@ function AboutMeCard({ aboutMe, editable, onSave }) {
 function MatchesModal({ matches, totalMatches, historyStatus, hasMore, onLoadMore, onOpenMatchDetails, onClose }) {
     const dialogRef = useRef(null);
     const closeButtonRef = useRef(null);
+    const listRef = useRef(null);
+    const [modeFilter, setModeFilter] = useState("ALL");
+    const [resultFilter, setResultFilter] = useState(null);
     const isLoadingMore = historyStatus === "loading-more";
     const isIncrementalError = historyStatus === "error" && matches.length > 0;
+    const filtersActive = modeFilter !== "ALL" || resultFilter !== null;
+    // Filters apply to the matches loaded so far; the endpoint only pages newest first.
+    const visibleMatches = filterMatches(matches, { mode: modeFilter, result: resultFilter });
+    const groups = groupMatchesByDate(visibleMatches);
 
     useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onClose, lockScroll: true });
 
@@ -926,65 +794,120 @@ function MatchesModal({ matches, totalMatches, historyStatus, hasMore, onLoadMor
         if (distanceFromBottom <= 24) onLoadMore();
     };
 
+    // A filter can leave too few rows to scroll; keep loading until the list fills or ends.
+    useEffect(() => {
+        const list = listRef.current;
+        if (!list || !hasMore || historyStatus !== "ready") return;
+        if (list.scrollHeight <= list.clientHeight + 24) onLoadMore();
+    }, [hasMore, historyStatus, onLoadMore, visibleMatches.length]);
+
+    const clearFilters = () => {
+        setModeFilter("ALL");
+        setResultFilter(null);
+    };
+
     return (
         <div
-            className="profile-modal-overlay fixed inset-0 z-[110] grid place-items-center bg-[#02070de8] backdrop-blur-sm"
+            className="pf-overlay"
             onMouseDown={(event) => {
                 if (event.target === event.currentTarget) onClose();
             }}
         >
             <section
                 ref={dialogRef}
-                className="profile-dialog flex max-h-[min(calc(100dvh-6.5rem),54rem)] w-[min(48rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-cyan-400/50 bg-[#071521] shadow-[0_24px_90px_rgba(0,0,0,.6)]"
+                className="pf-dialog pf-dialog--history"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="match-history-modal-title"
                 tabIndex={-1}
             >
-                <header className="flex items-start justify-between gap-5 border-b border-slate-700/80 px-6 py-5 sm:px-8">
-                    <div>
-                        <h2 id="match-history-modal-title" className="mt-2 text-2xl font-bold text-white">All Matches</h2>
-                        <p className="mt-1 text-sm text-slate-500">Showing {matches.length} of {totalMatches}, newest first.</p>
-                    </div>
-                    <button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Close all matches" className="modal-close-button">
+                <header className="pf-dialog__header">
+                    <h2 id="match-history-modal-title" className="pf-dialog__title">
+                        Match history <span className="pf-count">{totalMatches}</span>
+                    </h2>
+                    <button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Close match history" className="modal-close-button">
                         <span aria-hidden="true">×</span>
                     </button>
                 </header>
 
+                <div className="pf-filters">
+                    <div className="pf-chips" role="group" aria-label="Filter by mode">
+                        {MODE_FILTERS.map((filter) => (
+                            <button
+                                key={filter.id}
+                                type="button"
+                                className={`pf-chip ${modeFilter === filter.id ? "is-active" : ""}`}
+                                aria-pressed={modeFilter === filter.id}
+                                onClick={() => setModeFilter(filter.id)}
+                            >
+                                {filter.label}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="pf-chips" role="group" aria-label="Filter by result">
+                        {RESULT_FILTERS.map((filter) => (
+                            <button
+                                key={filter.id}
+                                type="button"
+                                className={`pf-chip ${resultFilter === filter.id ? "is-active" : ""}`}
+                                aria-pressed={resultFilter === filter.id}
+                                onClick={() => setResultFilter((current) => (current === filter.id ? null : filter.id))}
+                            >
+                                {filter.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
                 <div
-                    className="min-h-0 overflow-y-auto divide-y divide-slate-800"
+                    ref={listRef}
+                    className="pf-history"
                     onScroll={handleMatchesScroll}
                     aria-live="polite"
                 >
                     {historyStatus === "loading" && matches.length === 0 ? (
-                        <div className="flex items-center justify-center py-16" aria-busy="true" aria-label="Loading matches">
+                        <div className="pf-loading" aria-busy="true" aria-label="Loading matches">
                             <SpinningBotFace />
                         </div>
                     ) : matches.length === 0 ? (
-                        <p className="px-6 py-14 text-center text-sm text-slate-500">No completed matches yet.</p>
+                        <p className="pf-empty">No completed matches yet.</p>
+                    ) : visibleMatches.length === 0 ? (
+                        <p className="pf-empty">
+                            No loaded matches fit these filters.{" "}
+                            <button type="button" className="pf-link pf-link--inline pf-link--accent" onClick={clearFilters}>Clear filters</button>
+                        </p>
                     ) : (
-                        matches.map((match) => (
-                            <MatchRow
-                                key={match.matchId}
-                                match={match}
-                                onOpenDetails={() => onOpenMatchDetails(match)}
-                            />
+                        groups.map((group) => (
+                            <section key={group.label} className="pf-history__group" aria-label={group.label}>
+                                <h3 className="pf-history__heading">{group.label}</h3>
+                                {group.matches.map((match) => (
+                                    <MatchRow
+                                        key={match.matchId}
+                                        match={match}
+                                        detailed
+                                        onOpenDetails={() => onOpenMatchDetails(match)}
+                                    />
+                                ))}
+                            </section>
                         ))
                     )}
                 </div>
 
-                <footer className="flex flex-col gap-3 border-t border-slate-700/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+                <footer className="pf-dialog__footer">
                     {isLoadingMore ? (
-                        <p className="text-xs text-slate-500" role="status">Loading more matches...</p>
+                        <p role="status">Loading more matches…</p>
                     ) : isIncrementalError ? (
-                        <p className="text-sm text-rose-300" role="alert">More matches could not be loaded. Your loaded matches are still visible.</p>
-                    ) : hasMore ? (
-                        <p className="text-xs text-slate-500">Scroll to the bottom to load more matches.</p>
+                        <p className="pf-message pf-message--error" role="alert">More matches could not be loaded. Your loaded matches are still visible.</p>
                     ) : (
-                        <p className="text-xs text-slate-500">All available matches are loaded.</p>
+                        <p>
+                            {filtersActive
+                                ? `${visibleMatches.length} ${visibleMatches.length === 1 ? "match fits" : "matches fit"} · ${matches.length} of ${totalMatches} loaded`
+                                : `Showing ${matches.length} of ${totalMatches}`}
+                            {hasMore ? " · loading more as you scroll" : ""}
+                        </p>
                     )}
                     {isIncrementalError && (
-                        <button type="button" onClick={onLoadMore} className="profile-toolbar-button w-full text-sm font-bold sm:w-auto">
+                        <button type="button" onClick={onLoadMore} className="pf-btn">
                             Try again
                         </button>
                     )}
@@ -997,101 +920,119 @@ function MatchesModal({ matches, totalMatches, historyStatus, hasMore, onLoadMor
 function MatchDetailsModal({ match, onClose }) {
     const dialogRef = useRef(null);
     const closeButtonRef = useRef(null);
+    const teams = matchTeams(match);
+    const teamNumbers = Array.isArray(match.participantTeamNumbers) ? match.participantTeamNumbers : [];
+    const [ownTeam, ...otherTeams] = teams;
+    const score = formatScore(match.score);
+    const eloTone = eloChangeTone(match);
+    const eloDelta = formatEloDelta(match);
+    const renderSide = (team, index, side) => {
+        const colorKey = teamColorKey(teamNumbers[index]);
+        const isYou = index === 0;
+        return (
+            <div key={`team-${index}`} className={`pf-side pf-side--${colorKey} pf-side--${side}`}>
+                <span className="pf-side__tag">{teamColorLabel(teamNumbers[index], index)}{isYou ? " · YOU" : ""}</span>
+                {team.map((username) => (
+                    <ProfileLink key={`${index}-${username}`} username={username} className="pf-side__name">{username}</ProfileLink>
+                ))}
+            </div>
+        );
+    };
 
     useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onClose, lockScroll: true });
 
     return (
         <div
-            className="profile-modal-overlay fixed inset-0 z-[120] grid place-items-center bg-[#02070de8] backdrop-blur-sm"
+            className="pf-overlay pf-overlay--top"
             onMouseDown={(event) => {
                 if (event.target === event.currentTarget) onClose();
             }}
         >
             <section
                 ref={dialogRef}
-                className="profile-dialog flex max-h-[min(calc(100dvh-6.5rem),48rem)] w-[min(42rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-cyan-400/50 bg-[#071521] shadow-[0_24px_90px_rgba(0,0,0,.6)]"
+                className="pf-dialog pf-dialog--details"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="match-details-modal-title"
                 tabIndex={-1}
             >
-                <header className="flex items-start justify-between gap-5 border-b border-slate-700/80 px-6 py-5 sm:px-8">
+                <header className={`pf-banner pf-banner--${resultKey(match)}`}>
                     <div>
-                        <p className="font-mono text-[10px] font-bold tracking-[.18em] text-cyan-400">MATCH DETAILS</p>
-                        <h2 id="match-details-modal-title" className="mt-2 text-2xl font-bold text-white">
-                            {matchModeLabel(match.mode)}
-                        </h2>
-                        <p className="mt-1 text-sm text-slate-500">{formatMatchCalendarDate(match.completedAt)}</p>
+                        <h2 id="match-details-modal-title" className="pf-banner__title">{bannerTitle(match)}</h2>
+                        <p className="pf-banner__meta">
+                            {matchModeLabel(match.mode)} match · {formatMatchCalendarDate(match.completedAt)} · Ended by {endedByLabel(match)}
+                        </p>
                     </div>
                     <button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Close match details" className="modal-close-button">
                         <span aria-hidden="true">×</span>
                     </button>
                 </header>
 
-                <div className="min-h-0 overflow-y-auto">
-                    <div className="border-b border-slate-800">
-                        <MatchRow match={match} linkParticipantNames showMode={false} showResult={false} showDate={false} showTeamLabels roomy />
+                <div className="pf-dialog__body">
+                    <div className="pf-versus">
+                        {ownTeam && renderSide(ownTeam, 0, "left")}
+                        <p className="pf-versus__score" aria-label={score ? `Score ${score}` : "Score unavailable"}>
+                            {score ? score.replace("–", " – ") : "—"}
+                        </p>
+                        <div className="pf-versus__others">
+                            {otherTeams.map((team, offset) => renderSide(team, offset + 1, "right"))}
+                        </div>
                     </div>
-                    <dl className="grid gap-4 px-6 py-6 sm:grid-cols-2 sm:px-8">
-                        <MatchDetail label="RESULT">
-                            <span className={`inline-flex w-fit rounded-lg border px-3 py-1 font-mono text-xs font-bold tracking-wider ${resultTone[match.result] ?? resultTone.DRAW}`}>
-                                {match.result ?? "DRAW"}
-                            </span>
-                        </MatchDetail>
-                        <MatchDetail label="SCORE">
-                            <span className="font-mono text-lg font-bold text-white">{match.score ?? "Score unavailable"}</span>
-                        </MatchDetail>
-                        <MatchDetail label="ELO CHANGE">
-                            <span className={`font-mono text-lg font-bold ${eloChangeTone(match)}`}>{formatEloChange(match)}</span>
-                        </MatchDetail>
-                        <MatchDetail label="COMPLETION">
-                            <span className="font-mono text-lg font-bold text-white">{formatCompletionReason(match.completionReason)}</span>
-                        </MatchDetail>
+
+                    <dl className="pf-facts">
+                        <div className="pf-fact">
+                            <dt>ELO change</dt>
+                            <dd>
+                                {eloDelta == null ? <strong>Not rated</strong> : (
+                                    <>
+                                        <strong className={`pf-elo pf-elo--${eloTone}`}>{eloDelta} ELO</strong>
+                                        <small>{match.ratingBefore} → {match.ratingAfter}</small>
+                                    </>
+                                )}
+                            </dd>
+                        </div>
+                        <div className="pf-fact">
+                            <dt>Rounds</dt>
+                            <dd><strong>{roundsLabel(match)}</strong></dd>
+                        </div>
                     </dl>
-                    <p className="border-t border-slate-800 px-6 py-4 text-xs text-slate-500 sm:px-8">
-                        Select a player name to open that player&apos;s profile.
-                    </p>
                 </div>
             </section>
         </div>
     );
 }
 
-function MatchDetail({ label, children }) {
-    return (
-        <div className="profile-dialog-detail min-w-0 rounded-lg border border-[#344047] bg-[#1B2227] px-4 py-3">
-            <dt className="font-mono text-[10px] font-bold tracking-[.16em] text-slate-500">{label}</dt>
-            <dd className="mt-2 min-w-0">{children}</dd>
-        </div>
-    );
+function shortSolvedDate(value) {
+    const date = value ? new Date(value) : null;
+    if (!date || Number.isNaN(date.getTime())) return "";
+    return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
 }
 
-function formatEloChange(match) {
-    if (!Number.isFinite(match.ratingBefore) || !Number.isFinite(match.ratingAfter)) return "Not rated";
-    const change = Number.isFinite(match.eloChange)
-        ? match.eloChange
-        : match.ratingAfter - match.ratingBefore;
-    const sign = change > 0 ? "+" : "";
-    return `${sign}${change} ELO (${match.ratingBefore} → ${match.ratingAfter})`;
-}
-
-function eloChangeTone(match) {
-    if (!Number.isFinite(match.ratingBefore) || !Number.isFinite(match.ratingAfter)) return "text-white";
-    const change = Number.isFinite(match.eloChange)
-        ? match.eloChange
-        : match.ratingAfter - match.ratingBefore;
-    if (change > 0) return "text-emerald-300";
-    if (change < 0) return "text-rose-300";
-    return "text-slate-200";
-}
-
-function SolvedPuzzlesModal({ puzzles, totalPuzzles, puzzlesStatus, hasMore, onLoadMore, onOpenPuzzle, onClose }) {
+function SolvedPuzzlesModal({ puzzles, totalPuzzles, puzzlesStatus, hasMore, onLoadMore, onOpenPuzzle, onClose, username = "", isOwner = false, canOpenPuzzles = true }) {
     const dialogRef = useRef(null);
     const closeButtonRef = useRef(null);
+    const [puzzleTotal, setPuzzleTotal] = useState(null);
     const isLoadingMore = puzzlesStatus === "loading-more";
     const isIncrementalError = puzzlesStatus === "error" && puzzles.length > 0;
+    const solvedCount = Math.max(Number(totalPuzzles) || 0, puzzles.length);
+    const ringTotal = puzzleTotal != null ? Math.max(puzzleTotal, solvedCount) : null;
+    const radius = 20;
+    const circumference = 2 * Math.PI * radius;
+    const progress = ringTotal ? Math.min(1, solvedCount / ringTotal) : 1;
 
     useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onClose, lockScroll: true });
+
+    // The total puzzle count only decorates the progress ring, so a failed lookup is ignored.
+    useEffect(() => {
+        let active = true;
+        fetchPuzzles(0, 1, "")
+            .then((result) => {
+                const total = Number(result?.totalElements);
+                if (active && Number.isFinite(total) && total > 0) setPuzzleTotal(total);
+            })
+            .catch(() => {});
+        return () => { active = false; };
+    }, []);
 
     const handlePuzzlesScroll = (event) => {
         if (!hasMore || puzzlesStatus !== "ready") return;
@@ -1104,23 +1045,30 @@ function SolvedPuzzlesModal({ puzzles, totalPuzzles, puzzlesStatus, hasMore, onL
 
     return (
         <div
-            className="profile-modal-overlay fixed inset-0 z-[110] grid place-items-center bg-[#02070de8] backdrop-blur-sm"
+            className="profile-modal-overlay fixed inset-0 z-[110] grid place-items-center bg-[#02070de8] px-4 pb-4 pt-[5.5rem] backdrop-blur-sm max-sm:grid-rows-[minmax(0,1fr)] max-sm:items-stretch max-sm:p-0 max-sm:pt-[72px]"
             onMouseDown={(event) => {
                 if (event.target === event.currentTarget) onClose();
             }}
         >
             <section
                 ref={dialogRef}
-                className="profile-dialog flex max-h-[min(calc(100dvh-6.5rem),54rem)] w-[min(48rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-cyan-400/50 bg-[#071521] shadow-[0_24px_90px_rgba(0,0,0,.6)]"
+                className="profile-dialog flex max-h-[calc(100dvh-7.5rem)] w-[min(34rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-[#262c33] bg-[#0f1418] shadow-[0_24px_90px_rgba(0,0,0,.6)] max-sm:h-full max-sm:max-h-none max-sm:w-full max-sm:rounded-none max-sm:border-0"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="solved-puzzles-modal-title"
                 tabIndex={-1}
             >
-                <header className="flex items-start justify-between gap-5 border-b border-slate-700/80 px-6 py-5 sm:px-8">
-                    <div>
-                        <h2 id="solved-puzzles-modal-title" className="mt-2 text-2xl font-bold text-white">Solved Puzzles</h2>
-                        <p className="mt-1 text-sm text-slate-500">Showing {puzzles.length} of {totalPuzzles}, newest first.</p>
+                <header className="flex items-center gap-3 border-b border-[#262c33] px-5 py-4">
+                    <div className="relative h-12 w-12 shrink-0" role="img" aria-label={ringTotal ? `${solvedCount} of ${ringTotal} puzzles solved` : `${solvedCount} puzzles solved`}>
+                        <svg viewBox="0 0 48 48" className="h-12 w-12 -rotate-90" aria-hidden="true">
+                            <circle cx="24" cy="24" r={radius} fill="none" stroke="#262c33" strokeWidth="4" />
+                            <circle cx="24" cy="24" r={radius} fill="none" stroke="#34d399" strokeWidth="4" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - progress)} />
+                        </svg>
+                        <span className="absolute inset-0 grid place-items-center font-display text-[11px] font-bold text-white">{ringTotal ? `${solvedCount}/${ringTotal}` : solvedCount}</span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                        <h2 id="solved-puzzles-modal-title" className="font-display text-xl font-bold text-white">Solved puzzles</h2>
+                        <p className="truncate text-xs text-slate-500">{username ? `${username} · ` : ""}newest first</p>
                     </div>
                     <button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Close solved puzzles" className="modal-close-button">
                         <span aria-hidden="true">×</span>
@@ -1128,7 +1076,7 @@ function SolvedPuzzlesModal({ puzzles, totalPuzzles, puzzlesStatus, hasMore, onL
                 </header>
 
                 <div
-                    className="min-h-0 overflow-y-auto divide-y divide-slate-800"
+                    className="min-h-0 flex-1 overflow-y-auto"
                     onScroll={handlePuzzlesScroll}
                     aria-live="polite"
                 >
@@ -1137,40 +1085,49 @@ function SolvedPuzzlesModal({ puzzles, totalPuzzles, puzzlesStatus, hasMore, onL
                             <SpinningBotFace />
                         </div>
                     ) : puzzles.length === 0 ? (
-                        <p className="px-6 py-14 text-center text-sm text-slate-500">No solved puzzles yet.</p>
+                        <p className="px-6 py-14 text-center text-sm text-slate-500">{isOwner ? "You haven't solved any puzzles yet." : `${username || "This player"} hasn't solved any puzzles yet.`}</p>
                     ) : (
-                        puzzles.map((puzzle) => (
-                            <button
-                                key={`${puzzle.puzzleNumber}-${puzzle.solvedAt}`}
-                                type="button"
-                                onClick={() => onOpenPuzzle(puzzle.puzzleNumber)}
-                                className="grid w-full min-w-0 gap-3 px-6 py-4 text-left transition hover:bg-cyan-950/20 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-8"
-                                aria-label={`Open puzzle ${puzzle.puzzleNumber}: ${puzzle.name}`}
-                            >
-                                <span className="min-w-0">
-                                    <span className="block font-mono text-[10px] font-bold tracking-wider text-cyan-400">PUZZLE #{puzzle.puzzleNumber}</span>
-                                    <span className="mt-1 block break-words font-semibold text-slate-100">{puzzle.name}</span>
-                                </span>
-                                <time className="text-sm text-slate-400 sm:text-right" dateTime={puzzle.solvedAt ?? undefined}>
-                                    {formatMatchDate(puzzle.solvedAt)}
-                                </time>
-                            </button>
-                        ))
+                        <ul>
+                            {puzzles.map((puzzle) => {
+                                const content = (
+                                    <>
+                                        <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 fill-none stroke-emerald-400" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" role="img" aria-label="Solved"><circle cx="12" cy="12" r="9" /><path d="m8 12.3 2.6 2.6L16 9.5" /></svg>
+                                        <span className="w-9 shrink-0 font-display text-sm text-slate-500">#{puzzle.puzzleNumber}</span>
+                                        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-100" title={puzzle.name}>{puzzle.name}</span>
+                                        <time className="shrink-0 text-xs text-slate-500" dateTime={puzzle.solvedAt ?? undefined}>{shortSolvedDate(puzzle.solvedAt)}</time>
+                                        {canOpenPuzzles && <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 fill-none stroke-slate-500" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>}
+                                    </>
+                                );
+                                const rowClass = "flex min-h-[42px] w-full items-center gap-3 px-5 text-left max-sm:min-h-[44px]";
+                                return (
+                                    <li key={`${puzzle.puzzleNumber}-${puzzle.solvedAt}`} className="border-b border-[#1c2228] even:bg-[#12181d]">
+                                        {canOpenPuzzles ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => onOpenPuzzle(puzzle.puzzleNumber)}
+                                                className={`${rowClass} transition hover:bg-[#172028]`}
+                                                aria-label={`Open puzzle ${puzzle.puzzleNumber}: ${puzzle.name}`}
+                                            >
+                                                {content}
+                                            </button>
+                                        ) : <div className={rowClass}>{content}</div>}
+                                    </li>
+                                );
+                            })}
+                        </ul>
                     )}
                 </div>
 
-                <footer className="flex flex-col gap-3 border-t border-slate-700/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+                <footer className="flex items-center justify-between gap-3 border-t border-[#262c33] px-5 py-3">
                     {isLoadingMore ? (
-                        <p className="text-xs text-slate-500" role="status">Loading more solved puzzles...</p>
+                        <p className="text-xs text-slate-500" role="status">Loading more&hellip;</p>
                     ) : isIncrementalError ? (
                         <p className="text-sm text-rose-300" role="alert">More solved puzzles could not be loaded. Your loaded puzzles are still visible.</p>
-                    ) : hasMore ? (
-                        <p className="text-xs text-slate-500">Scroll to the bottom to load more puzzles.</p>
-                    ) : (
-                        <p className="text-xs text-slate-500">All solved puzzles are loaded.</p>
-                    )}
+                    ) : canOpenPuzzles && puzzles.length > 0 ? (
+                        <p className="text-xs text-slate-500">Open a puzzle to try it yourself.</p>
+                    ) : <span />}
                     {isIncrementalError && (
-                        <button type="button" onClick={onLoadMore} className="profile-toolbar-button w-full text-sm font-bold sm:w-auto">
+                        <button type="button" onClick={onLoadMore} className="hud-btn hud-btn--auto text-sm font-bold">
                             Try again
                         </button>
                     )}
@@ -1180,63 +1137,95 @@ function SolvedPuzzlesModal({ puzzles, totalPuzzles, puzzlesStatus, hasMore, onL
     );
 }
 
-function AddRootShortcutSettings() {
+function SettingsRow({ label, action = null, children }) {
+    return (
+        <div className="pf-row">
+            <div className="pf-row__text">
+                <p className="pf-row__label">{label}</p>
+                {children}
+            </div>
+            {action && <div className="pf-row__action">{action}</div>}
+        </div>
+    );
+}
+
+function AddRootShortcutSetting() {
     const [draft, setDraft] = useState(() => readAddRootShortcut().toUpperCase());
+    const [shortcut, setShortcut] = useState(() => readAddRootShortcut().toUpperCase());
+    const [isEditing, setIsEditing] = useState(false);
     const [error, setError] = useState(null);
     const [notice, setNotice] = useState(null);
 
     const handleSave = (event) => {
         event.preventDefault();
-        const shortcut = normalizeAddRootShortcut(draft);
-        if (!shortcut) {
+        const nextShortcut = normalizeAddRootShortcut(draft);
+        if (!nextShortcut) {
             setError("Choose one letter or number (A–Z, 0–9).");
             setNotice(null);
             return;
         }
-        if (!saveAddRootShortcut(shortcut)) {
+        if (!saveAddRootShortcut(nextShortcut)) {
             setError("This browser could not save the shortcut.");
             setNotice(null);
             return;
         }
-        setDraft(shortcut.toUpperCase());
+        setDraft(nextShortcut.toUpperCase());
+        setShortcut(nextShortcut.toUpperCase());
         setError(null);
         setNotice("Shortcut saved on this browser.");
+        setIsEditing(false);
+    };
+
+    const cancel = () => {
+        setDraft(shortcut);
+        setError(null);
+        setIsEditing(false);
     };
 
     return (
-        <section className="profile-settings__shortcut" aria-labelledby="profile-add-root-shortcut-title">
-            <p className="font-mono text-[10px] font-bold tracking-[.18em] text-cyan-300">WORKSPACE SHORTCUT</p>
-            <h3 id="profile-add-root-shortcut-title" className="mt-2 text-lg font-bold text-white">Add root key</h3>
-            <p id="profile-add-root-shortcut-help" className="mt-1 text-sm leading-6 text-slate-300">
-                Press this key when no node is selected in the workspace. This setting is saved on this browser.
+        <SettingsRow
+            label="Add root key"
+            action={!isEditing && (
+                <>
+                    <kbd className="pf-kbd">{shortcut}</kbd>
+                    <button type="button" className="pf-btn" onClick={() => { setNotice(null); setError(null); setIsEditing(true); }}>Change</button>
+                </>
+            )}
+        >
+            <p id="profile-add-root-shortcut-help" className="pf-row__hint">
+                Adds a root when nothing is selected in the code workspace. Saved on this browser.
             </p>
-            <form onSubmit={handleSave} className="mt-4 flex flex-wrap items-end gap-2">
-                <label htmlFor="profile-add-root-shortcut" className="flex flex-col gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-300">
-                    Key
-                    <input
-                        id="profile-add-root-shortcut"
-                        type="text"
-                        value={draft}
-                        onChange={(event) => { setDraft(event.target.value.toUpperCase()); setError(null); setNotice(null); }}
-                        onFocus={(event) => event.target.select()}
-                        maxLength={1}
-                        autoCapitalize="off"
-                        autoComplete="off"
-                        spellCheck={false}
-                        aria-invalid={Boolean(error)}
-                        aria-describedby={error ? "profile-add-root-shortcut-error" : "profile-add-root-shortcut-help"}
-                        className="h-10 w-16 rounded border border-[#5b7b85] bg-[#102027] px-2 text-center font-mono text-base font-bold text-white outline-none focus:border-cyan-300"
-                    />
-                </label>
-                <button type="submit" className="profile-toolbar-button profile-toolbar-button--primary h-10 text-xs font-bold">Save key</button>
-            </form>
-            {error && <p id="profile-add-root-shortcut-error" role="alert" className="mt-2 text-xs text-rose-300">{error}</p>}
-            {notice && <p role="status" className="mt-2 text-xs text-emerald-300">{notice}</p>}
-        </section>
+            {isEditing && (
+                <form onSubmit={handleSave} className="pf-form pf-form--inline">
+                    <label htmlFor="profile-add-root-shortcut" className="pf-field pf-field--key">
+                        <span>Key</span>
+                        <input
+                            id="profile-add-root-shortcut"
+                            type="text"
+                            value={draft}
+                            onChange={(event) => { setDraft(event.target.value.toUpperCase()); setError(null); setNotice(null); }}
+                            onFocus={(event) => event.target.select()}
+                            maxLength={1}
+                            autoCapitalize="off"
+                            autoComplete="off"
+                            autoFocus
+                            spellCheck={false}
+                            aria-invalid={Boolean(error)}
+                            aria-describedby={error ? "profile-add-root-shortcut-error" : "profile-add-root-shortcut-help"}
+                            className="pf-input pf-input--key"
+                        />
+                    </label>
+                    <button type="submit" className="pf-btn pf-btn--primary">Save key</button>
+                    <button type="button" className="pf-btn" onClick={cancel}>Cancel</button>
+                </form>
+            )}
+            {error && <p id="profile-add-root-shortcut-error" role="alert" className="pf-message pf-message--error">{error}</p>}
+            {notice && <p role="status" className="pf-message pf-message--success">{notice}</p>}
+        </SettingsRow>
     );
 }
 
-function UsernameEditor({ username, onSave, onLogout }) {
+function UsernameSetting({ username, onSave }) {
     const [isEditing, setIsEditing] = useState(false);
     const [draft, setDraft] = useState(username ?? "");
     const [error, setError] = useState(null);
@@ -1267,15 +1256,18 @@ function UsernameEditor({ username, onSave, onLogout }) {
     };
 
     return (
-        <div className="mt-7 border-t border-cyan-900/70 pt-5">
+        <SettingsRow
+            label="Username"
+            action={!isEditing && (
+                <button type="button" onClick={() => { setError(null); setIsEditing(true); }} className="pf-btn">Change</button>
+            )}
+        >
             {!isEditing ? (
-                <button type="button" onClick={() => { setError(null); setIsEditing(true); }} className="profile-toolbar-button text-sm font-bold">
-                    Change username
-                </button>
+                <p className="pf-row__value">{username}</p>
             ) : (
-                <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-                    <label htmlFor="profile-username" className="block min-w-0">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">New username</span>
+                <form onSubmit={handleSubmit} className="pf-form pf-form--inline">
+                    <label htmlFor="profile-username" className="pf-field">
+                        <span>New username</span>
                         <input
                             id="profile-username"
                             name="username"
@@ -1289,35 +1281,24 @@ function UsernameEditor({ username, onSave, onLogout }) {
                             required
                             aria-invalid={Boolean(error)}
                             aria-describedby={error ? "profile-username-error" : "profile-username-help"}
-                            className="mt-1 h-11 w-full rounded-lg border border-slate-700 bg-[#07111b] px-4 text-sm text-white outline-none focus:border-cyan-400/70"
+                            className="pf-input"
                         />
                     </label>
-                    <div className="flex gap-2">
-                        <button type="submit" disabled={isSaving} className="profile-toolbar-button profile-toolbar-button--primary h-11 text-sm font-bold">
-                            {isSaving ? "Saving..." : "Save"}
-                        </button>
-                        <button type="button" onClick={() => { setDraft(username ?? ""); setError(null); setIsEditing(false); }} className="profile-toolbar-button h-11 text-sm">
-                            Cancel
-                        </button>
-                    </div>
+                    <button type="submit" disabled={isSaving} className="pf-btn pf-btn--primary">
+                        {isSaving ? "Saving..." : "Save"}
+                    </button>
+                    <button type="button" onClick={() => { setDraft(username ?? ""); setError(null); setIsEditing(false); }} className="pf-btn">
+                        Cancel
+                    </button>
                 </form>
             )}
-            <div className="mt-3">
-                <button
-                    type="button"
-                    onClick={() => void onLogout()}
-                    className="profile-toolbar-button profile-toolbar-button--red text-sm font-bold"
-                >
-                    Log out
-                </button>
-            </div>
-            {error && <p id="profile-username-error" className="form-error mt-2 text-sm text-rose-300" role="alert">{error}</p>}
-            {!error && isEditing && <p id="profile-username-help" className="mt-2 text-xs text-slate-500">3–20 characters: letters, numbers, underscores, and hyphens only.</p>}
-        </div>
+            {error && <p id="profile-username-error" className="pf-message pf-message--error" role="alert">{error}</p>}
+            {!error && isEditing && <p id="profile-username-help" className="pf-row__hint">3–20 characters: letters, numbers, underscores, and hyphens only.</p>}
+        </SettingsRow>
     );
 }
 
-function PasswordSettings({ hasPassword, googleLinked, onSave }) {
+function SignInSetting({ hasPassword, googleLinked, googleStatus, onSave }) {
     const [isEditing, setIsEditing] = useState(false);
     const [currentPassword, setCurrentPassword] = useState("");
     const [newPassword, setNewPassword] = useState("");
@@ -1365,31 +1346,32 @@ function PasswordSettings({ hasPassword, googleLinked, onSave }) {
         }
     };
 
-    return (
-        <div className="mt-7 border-t border-cyan-900/70 pt-5">
-            <p className="font-mono text-[10px] font-bold uppercase tracking-[.18em] text-slate-500">PASSWORD SIGN-IN</p>
-            {!hasPassword ? (
-                <>
-                    <h2 className="mt-2 text-lg font-bold text-white">Password managed by Google</h2>
-                    <p className="mt-1 text-sm leading-6 text-slate-400">
-                        {googleLinked
-                            ? "This account signs in through Google and does not have a local password."
-                            : "This account does not use password authentication."}
-                    </p>
-                </>
-            ) : !isEditing ? (
-                <>
-                    <h2 className="mt-2 text-lg font-bold text-white">Change password</h2>
-                    <p className="mt-1 text-sm leading-6 text-slate-400">Update the password used for email sign-in.</p>
-                    <button type="button" onClick={() => { setNotice(null); setError(null); setIsEditing(true); }} className="profile-toolbar-button mt-4 text-xs font-bold">
-                        Change password
-                    </button>
-                    {notice && <p className="mt-2 text-sm text-emerald-300" role="status">{notice}</p>}
-                </>
+    const description = hasPassword
+        ? (googleLinked ? "Email and password. Google is also linked." : "Email and password.")
+        : (googleLinked
+            ? "Google account. Password is managed by Google."
+            : "This account does not use password sign-in.");
+
+    const action = (
+        <>
+            {hasPassword && !isEditing && (
+                <button type="button" onClick={() => { setNotice(null); setError(null); setIsEditing(true); }} className="pf-btn">Change password</button>
+            )}
+            {googleStatus === "ready" && (googleLinked ? (
+                <span className="pf-badge pf-badge--linked"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" /></svg>Linked</span>
             ) : (
-                <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-3">
-                    <label htmlFor="profile-current-password" className="block">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Current password</span>
+                <button type="button" onClick={() => window.location.assign(apiUrl("/api/auth/google/link"))} className="pf-btn">Link Google account</button>
+            ))}
+        </>
+    );
+
+    return (
+        <SettingsRow label="Sign-in" action={action}>
+            <p className="pf-row__hint">{description}</p>
+            {isEditing && (
+                <form onSubmit={handleSubmit} className="pf-form">
+                    <label htmlFor="profile-current-password" className="pf-field">
+                        <span>Current password</span>
                         <input
                             id="profile-current-password"
                             name="currentPassword"
@@ -1398,11 +1380,11 @@ function PasswordSettings({ hasPassword, googleLinked, onSave }) {
                             onChange={(event) => setCurrentPassword(event.target.value)}
                             autoComplete="current-password"
                             required
-                            className="mt-1 h-11 w-full rounded-lg border border-slate-700 bg-[#07111b] px-4 text-sm text-white outline-none focus:border-cyan-400/70"
+                            className="pf-input"
                         />
                     </label>
-                    <label htmlFor="profile-new-password" className="block">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">New password</span>
+                    <label htmlFor="profile-new-password" className="pf-field">
+                        <span>New password</span>
                         <input
                             id="profile-new-password"
                             name="newPassword"
@@ -1411,11 +1393,11 @@ function PasswordSettings({ hasPassword, googleLinked, onSave }) {
                             onChange={(event) => setNewPassword(event.target.value)}
                             autoComplete="new-password"
                             required
-                            className="mt-1 h-11 w-full rounded-lg border border-slate-700 bg-[#07111b] px-4 text-sm text-white outline-none focus:border-cyan-400/70"
+                            className="pf-input"
                         />
                     </label>
-                    <label htmlFor="profile-confirm-password" className="block">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Confirm password</span>
+                    <label htmlFor="profile-confirm-password" className="pf-field">
+                        <span>Confirm password</span>
                         <input
                             id="profile-confirm-password"
                             name="confirmPassword"
@@ -1424,49 +1406,21 @@ function PasswordSettings({ hasPassword, googleLinked, onSave }) {
                             onChange={(event) => setConfirmPassword(event.target.value)}
                             autoComplete="new-password"
                             required
-                            className="mt-1 h-11 w-full rounded-lg border border-slate-700 bg-[#07111b] px-4 text-sm text-white outline-none focus:border-cyan-400/70"
+                            className="pf-input"
                         />
                     </label>
-                    {error && <p className="form-error text-sm text-rose-300" role="alert">{error}</p>}
-                    <p className="text-xs text-slate-500">Use 8–128 characters without spaces.</p>
-                    <div className="flex gap-2">
-                        <button type="submit" disabled={isSaving} className="profile-toolbar-button profile-toolbar-button--primary h-11 text-sm font-bold">
+                    {error && <p className="pf-message pf-message--error" role="alert">{error}</p>}
+                    <p className="pf-row__hint">Use 8–128 characters without spaces.</p>
+                    <div className="pf-form__actions">
+                        <button type="submit" disabled={isSaving} className="pf-btn pf-btn--primary">
                             {isSaving ? "Saving..." : "Save"}
                         </button>
-                        <button type="button" onClick={cancel} className="profile-toolbar-button h-11 text-sm">Cancel</button>
+                        <button type="button" onClick={cancel} className="pf-btn">Cancel</button>
                     </div>
                 </form>
             )}
-            {error && !isEditing && <p className="form-error mt-2 text-sm text-rose-300" role="alert">{error}</p>}
-        </div>
-    );
-}
-
-function Stat({
-    label,
-    value,
-    tone,
-    onClick,
-    labelClassName = "text-sm text-slate-400",
-    valueClassName = "font-interface-numeric text-xl",
-    showColon = true,
-}) {
-    const interactiveProps = onClick ? {
-        role: "button",
-        tabIndex: 0,
-        onClick,
-        onKeyDown: (event) => {
-            if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                onClick();
-            }
-        },
-        "aria-label": `${label}: ${value}. Open details`,
-    } : {};
-    return (
-        <div {...interactiveProps} className={`profile-stat flex items-center justify-between gap-4 px-2 py-2.5 ${onClick ? "profile-stat--interactive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400" : ""}`}>
-            <dt className={labelClassName}>{label}{showColon ? ":" : ""}</dt>
-            <dd className={`${valueClassName} ${tone}`}>{value}</dd>
-        </div>
+            {error && !isEditing && <p className="pf-message pf-message--error" role="alert">{error}</p>}
+            {notice && <p className="pf-message pf-message--success" role="status">{notice}</p>}
+        </SettingsRow>
     );
 }

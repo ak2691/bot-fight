@@ -78,14 +78,6 @@ const RUNTIME_RESOLVERS = Object.freeze({
         const bearing = bearingToTarget(selectable, target, targetMode, targetAngle);
         return bearing == null ? 0 : Math.abs(signedAngleDelta(normalizeRotation(selectable.rotation), bearing));
     },
-    [STATE_VARIABLE_SOURCES.SELECTABLE_RELATIVE_BEARING_CLOCKWISE]: ({ selectable, target, targetMode, targetAngle }) => {
-        const bearing = bearingToTarget(selectable, target, targetMode, targetAngle);
-        return bearing == null ? 0 : clockwiseAngleDelta(normalizeRotation(selectable.rotation), bearing);
-    },
-    [STATE_VARIABLE_SOURCES.SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE]: ({ selectable, target, targetMode, targetAngle }) => {
-        const bearing = bearingToTarget(selectable, target, targetMode, targetAngle);
-        return bearing == null ? 0 : clockwiseAngleDelta(bearing, normalizeRotation(selectable.rotation));
-    },
     [STATE_VARIABLE_SOURCES.SELECTABLE_FACING]: ({ selectable }) => selectable ? normalizeRotation(selectable.rotation) : 0,
     [STATE_VARIABLE_SOURCES.SELECTABLE_COUNT]: ({ normalizedSelectableId, operations, state }) => operations.matchingSelectables(state, normalizedSelectableId).length,
     [STATE_VARIABLE_SOURCES.SELECTABLE_AGE]: ({ selectable }) => millisecondsToSeconds(selectable?.ageMs ?? 0),
@@ -213,7 +205,6 @@ function signedBearing(a, b) { if (!a || !b) return 0; const value = compassBear
 function movementDirection(selectable) { const x = Number(selectable?.velocityX ?? 0); const y = Number(selectable?.velocityY ?? 0); return Math.hypot(x, y) <= .001 ? Number.NaN : signedBearing({ x: 0, y: 0 }, { x, y }); }
 function normalizeRotation(value) { return ((Number(value ?? 0) % 360) + 360) % 360; }
 function signedAngleDelta(from, to) { return ((to - from + 540) % 360) - 180; }
-function clockwiseAngleDelta(from, to) { return ((to - from) % 360 + 360) % 360; }
 function edgeDistance(entity) {
     if (!entity) return 0;
     return Math.max(0, Math.min(

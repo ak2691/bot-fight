@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AbilityModal } from "../../catalogue/AbilityCataloguePage.jsx";
+import { abilityTypeLabels, typeTagClass } from "../../catalogue/abilityTypeTags.js";
 import { getAbilityCatalogueIcon } from "../../../abilityCatalogueIcons.js";
 import MatchToolIcon from "../../../gameArena/coding/controls/MatchToolIcon.jsx";
 import { BOT_ABILITIES, MAX_EQUIPPED_ABILITIES } from "../../../gameArena/loadout/BotLoadout.js";
@@ -75,159 +76,189 @@ export default function AbilitySelectionPanel({
     const draft = loadoutDraftState(loadout, roundNumber, abilityOffers);
     const { normalized, draftRule, offeredAbilityIds, inheritedAbilityIds, draftedAbilities, draftedAbilityIds, hasAllDraftPicks } = draft;
     const [selectedAbility, setSelectedAbility] = useState(null);
+    // The largest timer value seen this round sizes the countdown ring.
+    const [ringTotal, setRingTotal] = useState(1);
+    const secondsLeft = Math.max(0, Number(remaining) || 0);
+    if (secondsLeft > ringTotal) setRingTotal(secondsLeft);
     const toggleAbility = (id) => {
         if (playerLocked || inheritedAbilityIds.has(id)) return;
         onChange(toggleDraftAbility(normalized, draft.roundNumber, abilityOffers, id));
     };
+    const picks = draftRule.picks;
+    const offeredAbilities = BOT_ABILITIES.filter((ability) => offeredAbilityIds.has(ability.id));
+    const hasGuaranteedOffer = guaranteedAbilityId != null
+        && offeredAbilities.some((ability) => String(ability.id) === String(guaranteedAbilityId));
+    const pickedCount = draftedAbilities.length;
+    const allPicked = pickedCount >= picks;
+    const timerTone = secondsLeft <= 5 ? "#f87171" : secondsLeft <= 15 ? "#fbbf24" : "#34d399";
+    const RING_RADIUS = 20;
+    const ringCircumference = 2 * Math.PI * RING_RADIUS;
+    const ringOffset = ringCircumference * (1 - Math.min(1, secondsLeft / ringTotal));
+    const meLabel = (participant) => (
+        player?.userId != null && participant.userId != null && String(player.userId) === String(participant.userId)
+    );
+    const rosterChips = teamGroups.flatMap((group) => group.participants.map((participant) => ({ participant, teamNumber: group.teamNumber })));
+    const lockLabel = submitting
+        ? "LOCKING IN..."
+        : playerLocked
+            ? "LOCKED IN"
+            : "LOCK IN";
+    const statusLine = allPlayersReady
+        ? "All players locked in"
+        : ownTeamReady
+            ? "Your team is ready"
+            : null;
+    const opponentSummary = opponentsReady ? "opponent locked" : "opponent choosing";
+
     return (
-        <section className="flex min-h-[calc(100vh-72px)] items-center justify-center bg-[radial-gradient(circle_at_50%_25%,rgba(8,79,116,0.16),transparent_48%)] px-4 py-8 sm:px-6">
-            <div className="w-full max-w-[1280px]">
-                <div className="flex flex-wrap items-end justify-between gap-4">
-                    <div>
-                        <p className="font-mono text-xs tracking-[0.25em] text-cyan">ROUND LOADOUT</p>
-                        <h1 className="mt-2 font-display-action text-5xl uppercase tracking-wide text-white sm:text-6xl">Build your bot</h1>
-                        <p className="mt-2 text-sm text-ink-muted">Select {draftRule.picks} of {draftRule.offered} abilities</p>
+        <section className="flex min-h-[calc(100vh-72px)] items-start justify-center px-3 pb-28 pt-6 sm:items-center sm:px-6 sm:pb-8">
+            <div className="w-full max-w-[1100px] rounded-2xl border border-[#262c33] bg-[#0f1418] p-4 sm:p-6">
+                <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                        <p className="text-[11px] font-semibold uppercase text-cyan-300">Round {draft.roundNumber} of 3 &middot; Draft</p>
+                        <h1 className="mt-1 font-display text-2xl font-bold text-white sm:text-3xl">Pick {picks} {picks === 1 ? "ability" : "abilities"}</h1>
+                        <p className="mt-1 hidden text-xs text-slate-400 sm:block">
+                            From these {draftRule.offered}.{hasGuaranteedOffer ? " Your guaranteed offer is marked." : ""}
+                        </p>
                     </div>
-                    <div className="text-right">
-                        <div className="font-mono text-[10px] tracking-[0.22em] text-cyan">ROUND TIMER</div>
-                        <div className="mt-1 font-mono text-5xl font-bold text-cyan-300 [text-shadow:0_0_22px_rgba(34,211,238,0.24)]">{remaining}</div>
+                    <div className="flex shrink-0 items-center gap-3">
+                        <div className="hidden items-center gap-2 sm:flex" role="status" aria-live="polite" aria-label={`${pickedCount} of ${picks} abilities selected`}>
+                            {Array.from({ length: picks }, (_, index) => {
+                                const picked = BOT_ABILITIES.find((ability) => ability.id === draftedAbilities[index]);
+                                return (
+                                    <span key={index} className={`grid h-11 w-11 place-items-center rounded-lg ${picked ? "border border-emerald-400/70 bg-emerald-500/10" : "border border-dashed border-[#3a444d] text-xs text-slate-500"}`} title={picked?.label}>
+                                        {picked ? <AbilityCatalogueIcon ability={picked} className="h-8 w-8 object-contain" /> : index + 1}
+                                    </span>
+                                );
+                            })}
+                        </div>
+                        <div className="relative h-14 w-14" role="timer" aria-label={`${secondsLeft} seconds left`}>
+                            <svg viewBox="0 0 48 48" className="h-14 w-14 -rotate-90" aria-hidden="true">
+                                <circle cx="24" cy="24" r={RING_RADIUS} fill="none" stroke="#262c33" strokeWidth="4" />
+                                <circle cx="24" cy="24" r={RING_RADIUS} fill="none" stroke={timerTone} strokeWidth="4" strokeLinecap="round" strokeDasharray={ringCircumference} strokeDashoffset={ringOffset} style={{ transition: "stroke-dashoffset 400ms linear, stroke 200ms ease" }} />
+                            </svg>
+                            <span className="absolute inset-0 grid place-items-center font-display text-lg font-bold tabular-nums" style={{ color: timerTone }}>{secondsLeft}</span>
+                        </div>
                     </div>
                 </div>
                 {remaining === 0 && (
-                    <div role="status" aria-live="polite" className="mt-4 flex items-center gap-3 rounded border border-cyan-900/60 bg-cyan-950/15 px-4 py-3 font-mono text-[10px] tracking-widest text-cyan-200/80">
+                    <div role="status" aria-live="polite" className="mt-4 flex items-center gap-3 rounded-lg border border-cyan-900/60 bg-cyan-950/15 px-4 py-3 text-xs text-cyan-200/80">
                         <span className="h-2 w-2 animate-pulse rounded-full bg-cyan-300/80" aria-hidden="true" />
-                        <span>PREPARING BUILDING SESSION &middot; FINALIZING LOADOUTS</span>
+                        <span>Preparing building session &middot; finalizing loadouts</span>
                     </div>
                 )}
                 {error && (
-                    <div role="alert" className="mt-4 rounded border border-red-700/70 bg-red-950/35 px-4 py-3 text-sm text-red-200">
+                    <div role="alert" className="mt-4 rounded-lg border border-red-700/70 bg-red-950/35 px-4 py-3 text-sm text-red-200">
                         {error}
                     </div>
                 )}
-                <div className="mt-6">
-                    <div>
-                        <div className="mb-3 rounded border border-cyan-900/60 bg-cyan-950/15 px-4 py-3 font-mono text-[10px] tracking-widest text-cyan-100" role="status" aria-live="polite">
-                            <span className="text-cyan-300">ABILITIES SELECTED {draftedAbilities.length}/{draftRule.picks}</span>
-                            {draftedAbilities.length > 0 && (
-                                <span className="ml-3 text-ink-muted">
-                                    {draftedAbilities.map((id) => BOT_ABILITIES.find((ability) => ability.id === id)?.label ?? id).join(" · ")}
-                                </span>
-                            )}
-                        </div>
-                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                            {BOT_ABILITIES.filter((ability) => offeredAbilityIds.has(ability.id)).map((ability) => {
-                                const active = draftedAbilityIds.has(ability.id);
-                                const guaranteed = guaranteedAbilityId != null
-                                    && String(guaranteedAbilityId) === String(ability.id);
-                                const unavailable = playerLocked || (!active && hasAllDraftPicks);
-                                return (
-                                    <div key={ability.id} className="relative">
-                                        <button
-                                            type="button"
-                                            disabled={unavailable}
-                                            aria-pressed={active}
-                                            onClick={() => toggleAbility(ability.id)}
-                                            className={`gray-button-surface ability-card group relative block min-h-52 w-full overflow-hidden rounded-none border p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 ${active
-                                                    ? "-translate-y-1 cursor-pointer border-cyan-400 bg-cyan-950/35 shadow-[0_8px_24px_rgba(8,145,178,0.12)] ring-2 ring-cyan-300/75 ring-offset-2 ring-offset-[#050d16] hover:border-cyan-300"
-                                                    : unavailable
-                                                        ? "cursor-not-allowed border-slate-800 bg-slate-950/45 opacity-35 saturate-0"
-                                                        : "cursor-pointer border-slate-700/75 bg-[#091522]/85 hover:border-cyan-700 hover:bg-cyan-950/15"
-                                                }`}
-                                        >
-                                            <AbilityCatalogueIcon ability={ability} className="ability-card-art" />
-                                            <span className="ability-card-gradient" aria-hidden="true" />
-                                            {guaranteed && (
-                                                <span className="pointer-events-none absolute left-3 top-3 z-10 rounded border border-cyan-200/50 bg-cyan-950/90 px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[.16em] text-cyan-100">
-                                                    Guaranteed
-                                                </span>
-                                            )}
-                                            <span className="ability-card-content absolute inset-x-0 bottom-0 px-5 py-4">
-                                                {active && <span className="mb-1 block font-mono text-[9px] font-bold tracking-[.2em] text-cyan-200">SELECTED</span>}
-                                                <span className="block font-display-action text-xl uppercase tracking-wider text-white">{ability.label}</span>
+                <div className="mt-4 grid grid-cols-2 gap-3 sm:mt-5 sm:grid-cols-3">
+                    {offeredAbilities.map((ability) => {
+                        const pickIndex = draftedAbilities.indexOf(ability.id);
+                        const active = draftedAbilityIds.has(ability.id);
+                        const guaranteed = guaranteedAbilityId != null
+                            && String(guaranteedAbilityId) === String(ability.id);
+                        const unavailable = playerLocked || (!active && hasAllDraftPicks);
+                        const types = abilityTypeLabels(ability);
+                        return (
+                            <div key={ability.id} className="relative">
+                                <button
+                                    type="button"
+                                    disabled={unavailable}
+                                    aria-pressed={active}
+                                    onClick={() => toggleAbility(ability.id)}
+                                    className={`ability-card group relative block min-h-36 w-full overflow-hidden rounded-xl border p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-200 sm:min-h-44 ${active
+                                        ? "cursor-pointer border-emerald-400 bg-emerald-500/10 shadow-[0_0_0_1px_rgba(52,211,153,.5)]"
+                                        : unavailable
+                                            ? `cursor-not-allowed border-[#262c33] bg-[#0b0f12] ${allPicked && !playerLocked ? "opacity-45" : "opacity-35 saturate-0"}`
+                                            : "cursor-pointer border-[#262c33] bg-[#0b0f12] hover:border-slate-500"}`}
+                                >
+                                    <AbilityCatalogueIcon ability={ability} className="ability-card-art" />
+                                    <span className="ability-card-gradient" aria-hidden="true" />
+                                    {active && (
+                                        <span className="pointer-events-none absolute left-2.5 top-2.5 z-10 grid h-6 w-6 place-items-center rounded-full bg-emerald-500 font-display text-xs font-bold text-white" aria-label={`Pick ${pickIndex + 1}`}>
+                                            {pickIndex + 1}
+                                        </span>
+                                    )}
+                                    <span className="ability-card-content absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 px-3 py-2.5">
+                                        <span className="min-w-0">
+                                            <span className="block truncate font-display text-sm font-bold text-white sm:text-base">{ability.label}</span>
+                                            <span className="mt-1 flex flex-wrap gap-1">
+                                                {types.map((type) => (
+                                                    <span key={type} className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${typeTagClass(type)}`}>{type}</span>
+                                                ))}
                                             </span>
-                                        </button>
-                                        <img
-                                            src="/assets/arena-toolbar/info-circle-icon.png"
-                                            alt=""
-                                            role="button"
-                                            aria-label={`View ${ability.label} stats`}
-                                            tabIndex={0}
-                                            onClick={() => setSelectedAbility(ability)}
-                                            onKeyDown={(event) => {
-                                                if (event.key !== "Enter" && event.key !== " ") return;
-                                                event.preventDefault();
-                                                setSelectedAbility(ability);
-                                            }}
-                                            className="info-circle-icon absolute right-3 top-3 z-20 h-5 w-5 cursor-pointer select-none opacity-80 transition duration-150 hover:scale-110 hover:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200"
-                                        />
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
+                                        </span>
+                                        {guaranteed && (
+                                            <span className="pointer-events-none shrink-0 rounded border border-amber-400/50 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">
+                                                Guaranteed
+                                            </span>
+                                        )}
+                                    </span>
+                                </button>
+                                <img
+                                    src="/assets/arena-toolbar/info-circle-icon.png"
+                                    alt=""
+                                    role="button"
+                                    aria-label={`View ${ability.label} stats`}
+                                    tabIndex={0}
+                                    onClick={() => setSelectedAbility(ability)}
+                                    onKeyDown={(event) => {
+                                        if (event.key !== "Enter" && event.key !== " ") return;
+                                        event.preventDefault();
+                                        setSelectedAbility(ability);
+                                    }}
+                                    className="info-circle-icon absolute right-2.5 top-2.5 z-20 h-5 w-5 cursor-pointer select-none opacity-80 transition duration-150 hover:scale-110 hover:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200"
+                                />
+                            </div>
+                        );
+                    })}
                 </div>
-                <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded border border-slate-700/70 bg-[#081522]/75 p-4">
-                    <div className="min-w-0 flex-1 font-mono text-[10px] tracking-widest text-ink-muted">
-                        <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-                            <span className="text-cyan">&#9679;</span>
-                            <span className="text-cyan-100">
-                                {allPlayersReady
-                                    ? "ALL PLAYERS LOCKED - PREPARING..."
-                                    : ownTeamReady && opponentsReady
-                                        ? "ALL TEAMS READY - PREPARING..."
-                                        : ownTeamReady
-                                            ? "YOUR TEAM READY - WAITING FOR OPPONENTS..."
-                                            : "WAITING FOR ALL PLAYERS TO LOCK"}
-                            </span>
-                        </div>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                            {teamGroups.map((group) => {
-                                const isOwnTeam = group.teamNumber === ownTeamNumber;
-                                const lockedCount = group.participants.filter((participant) => participant.loadoutSelected).length;
+                <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[#262c33] bg-[#0f1418]/95 px-3 py-2.5 backdrop-blur sm:static sm:z-auto sm:mt-4 sm:rounded-xl sm:border sm:bg-[#12181d] sm:p-3">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                        <div className="hidden min-w-0 flex-1 flex-wrap items-center gap-2 sm:flex" aria-label="Draft status">
+                            {rosterChips.map(({ participant, teamNumber }) => {
+                                const self = meLabel(participant);
+                                const locked = Boolean(participant.loadoutSelected);
                                 return (
-                                    <div key={group.teamNumber} className="rounded border border-slate-800/80 bg-slate-950/30 px-2 py-2">
-                                        <div className="mb-1 text-[9px] text-slate-500">
-                                            {isOwnTeam ? "YOUR TEAM" : `TEAM ${group.teamNumber}`}: {lockedCount}/{group.participants.length} LOCKED
-                                        </div>
-                                        <div className="flex flex-wrap gap-x-3 gap-y-1">
-                                            {group.participants.map((participant) => (
-                                                <span key={participant.userId ?? participant.username} className={participant.loadoutSelected ? "text-green-300" : "text-amber-200"}>
-                                                    {participant.username ?? "PLAYER"}{player?.userId != null && participant.userId != null && String(player.userId) === String(participant.userId) ? " (Me)" : ""}: {participant.loadoutSelected ? "LOCKED" : "CHOOSING"}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
+                                    <span key={participant.userId ?? participant.username} className="inline-flex items-center gap-2 rounded-lg border border-[#262c33] bg-[#0f1418] px-2.5 py-1.5 text-xs">
+                                        <span className={`h-5 w-5 rounded-full ${teamNumber === ownTeamNumber ? "bg-sky-600" : "bg-rose-700"}`} aria-hidden="true" />
+                                        <span className="flex flex-col leading-tight">
+                                            <span className="font-semibold text-slate-100">{self ? "You" : (participant.username ?? "Player")}</span>
+                                            <span className={`text-[10px] ${locked ? "text-emerald-400" : "text-slate-500"}`}>
+                                                {locked ? "🔒 Locked in" : self ? `Choosing · ${pickedCount}/${picks}` : "Choosing"}
+                                            </span>
+                                        </span>
+                                    </span>
                                 );
                             })}
+                            {statusLine && <span className="text-[11px] text-slate-400" role="status">{statusLine}</span>}
                         </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3">
+                        <p className="min-w-0 flex-1 text-xs text-slate-400 sm:hidden" role="status">{pickedCount}/{picks} picked &middot; {opponentSummary}</p>
                         <button
                             type="button"
                             onClick={onSurrender}
                             aria-label={hasSurrendered ? "WITHDRAW FORFEIT VOTE" : surrenderPending ? "UPDATING FORFEIT VOTE" : "VOTE TO FORFEIT"}
                             title={hasSurrendered ? "WITHDRAW FORFEIT VOTE" : surrenderPending ? "UPDATING FORFEIT VOTE" : "VOTE TO FORFEIT"}
                             disabled={!canSurrender || surrenderPending}
-                            className="arena-toolbar-button arena-toolbar-button--red arena-toolbar-button--inline"
+                            className="inline-flex min-h-9 items-center gap-1.5 px-2 text-xs font-semibold text-rose-400 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                            <MatchToolIcon name="flag" className="h-4 w-4" />
-                            {hasSurrendered ? "WITHDRAW FORFEIT" : surrenderPending ? "UPDATING VOTE" : "VOTE TO FORFEIT"}
+                            <MatchToolIcon name="flag" className="h-3.5 w-3.5" />
+                            <span className="max-sm:hidden">{hasSurrendered ? "WITHDRAW FORFEIT" : surrenderPending ? "UPDATING VOTE" : "Surrender vote"}</span>
                         </button>
-                        <button
-                            type="button"
-                            onClick={onLockLoadout}
-                            disabled={submitting || playerLocked || normalized.abilities.length > MAX_EQUIPPED_ABILITIES}
-                            className="arena-toolbar-button arena-toolbar-button--blue arena-toolbar-button--inline min-w-52"
-                        >
-                            {submitting
-                                ? "LOCKING LOADOUT"
-                                : playerLocked
-                                    ? "LOADOUT LOCKED"
-                                    : draftedAbilities.length === draftRule.picks
-                                        ? "LOCK LOADOUT"
-                                        : `LOCK + AUTO-PICK ${draftRule.picks - draftedAbilities.length}`}
-                        </button>
+                        <div className="flex flex-col items-stretch sm:items-end">
+                            <button
+                                type="button"
+                                onClick={onLockLoadout}
+                                disabled={submitting || playerLocked || normalized.abilities.length > MAX_EQUIPPED_ABILITIES}
+                                className="inline-flex min-h-11 min-w-36 items-center justify-center gap-2 rounded-xl border-b-[3px] border-[#1f6b3f] bg-[#2fa866] px-6 font-display text-base font-bold text-white hover:bg-[#38bd74] disabled:cursor-not-allowed disabled:border-[#1a2026] disabled:bg-[#1b232a] disabled:text-slate-400 sm:min-h-12 sm:min-w-44"
+                            >
+                                <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
+                                {lockLabel}
+                            </button>
+                        </div>
                     </div>
+                    <p className="mt-2 hidden text-right text-[11px] text-slate-500 sm:block">Unpicked slots are filled randomly when you lock in or time runs out.</p>
                 </div>
             </div>
             {selectedAbility && <AbilityModal ability={selectedAbility} onClose={() => setSelectedAbility(null)} />}

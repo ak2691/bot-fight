@@ -2,46 +2,17 @@ import { useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import AppNavbar from "../../components/AppNavbar";
 import FloatingLogicBackground from "../../components/FloatingLogicBackground";
-import { useMatchmaking } from "../../matchmaking/matchmaking-context";
+import { useAuth } from "../../auth/auth-context";
 import { loadAbilityCatalogue, loadConditionalCatalogue, loadMatch, loadProfile, loadTutorial } from "../../routeLoaders";
-
-const actions = [
-    { id: "match", title: "Queue Match", tone: "blue", icon: "/assets/homepage/queue-icon%20(1).svg" },
-    { id: "room", title: "Practice Room", tone: "blue", icon: "/assets/homepage/business-management-icon.svg" },
-    {
-        id: "abilities",
-        title: "Ability Catalogue",
-        tone: "teal",
-        icons: [
-            "/assets/ability-list/icons/temporal_rewind.webp",
-            "/assets/ability-list/icons/rail_shot.webp",
-            "/assets/ability-list/icons/shoot_fireball.webp",
-        ],
-    },
-    { id: "conditions", title: "Conditional Catalogue", tone: "blue", icon: "/assets/homepage/book-icon.svg" },
-];
-
-function formatQueueTime(elapsedSeconds) {
-    const minutes = Math.floor(elapsedSeconds / 60);
-    const seconds = elapsedSeconds % 60;
-    return `${minutes}:${String(seconds).padStart(2, "0")}`;
-}
-
-function HomeActionIcon({ action }) {
-    if (action.icons) {
-        return <span className="home-action-ability-icons" aria-hidden="true">
-            {action.icons.map((icon, index) => <span className={`home-action-ability-card home-action-ability-card-${index + 1}`} key={icon}>
-                <img src={icon} alt="" />
-            </span>)}
-        </span>;
-    }
-
-    return <span className="home-action-icon" aria-hidden="true"><img src={action.icon} alt="" /></span>;
-}
+import { AbilityTileArt, ConditionalsTileIcon, PuzzleTileIcon } from "../../components/exploreTileArt.jsx";
+import RankedMatchBlock from "./RankedMatchBlock.jsx";
+import { useHomeProfile } from "./useHomeProfile.js";
+import "./home.css";
 
 export default function HomePage({ activeMatch = false, activeMatchId = null }) {
     const navigate = useNavigate();
-    const { isQueueing, queueElapsed } = useMatchmaking();
+    const { user, isGuest } = useAuth();
+    const { profileStats, puzzlesSolved, totalPuzzles } = useHomeProfile(user, isGuest);
 
     useEffect(() => {
         const prefetchGameplay = () => void Promise.allSettled([loadAbilityCatalogue(), loadConditionalCatalogue(), loadMatch(), loadProfile(), loadTutorial()]);
@@ -53,74 +24,64 @@ export default function HomePage({ activeMatch = false, activeMatchId = null }) 
         return () => window.clearTimeout(timeoutId);
     }, []);
 
-    const matchActionTitle = activeMatch
-        ? "Return to match"
-        : isQueueing
-            ? `Searching · ${formatQueueTime(queueElapsed)}`
-            : "Queue Match";
-
-    const handleAction = (id) => {
-        if (id === "match") {
-            if (activeMatch) {
-                navigate("/match", {
-                    state: {
-                        activeMatchVerified: true,
-                        matchId: activeMatchId,
-                    },
-                });
-                return;
-            }
-            navigate("/queue");
-            return;
-        }
-        if (id === "room") navigate("/practice");
-        if (id === "abilities") navigate("/ability-catalogue");
-        if (id === "conditions") navigate("/conditionals");
-    };
+    const hasPuzzleProgress = puzzlesSolved !== null && totalPuzzles !== null && totalPuzzles > 0;
+    const puzzleProgress = hasPuzzleProgress ? Math.min(100, Math.round((puzzlesSolved / totalPuzzles) * 100)) : 0;
 
     return (
         <main className="home-grid home-dashboard min-h-screen bg-[#050d16] font-interface text-slate-100">
-            <AppNavbar account />
+            <AppNavbar account currentPage="home" />
 
-            <FloatingLogicBackground />
+            <FloatingLogicBackground variant="home" />
 
-            <section className="relative z-[2] mx-auto flex min-h-[calc(100vh-72px)] w-full max-w-[1240px] flex-col justify-center px-5 py-8 sm:px-8">
-                <div className="text-center">
-                    <h1 className="home-title text-6xl font-bold leading-[.82] tracking-[-.04em] sm:text-8xl">
+            <section className="hq-page relative z-[2] mx-auto flex min-h-[calc(100vh-72px)] w-full max-w-[1240px] flex-col items-center px-5 py-8 sm:px-8">
+                <div className="hq-logo text-center">
+                    <h1 className="home-title text-6xl font-bold leading-[.82] sm:text-8xl">
                         <span className="home-title-bot block">BOT</span>
                         <span className="home-title-fight block">FIGHT</span>
                     </h1>
                 </div>
 
-                <div className="mx-auto mt-10 grid w-full max-w-[860px] gap-4 sm:grid-cols-2">
-                    {actions.map((action) => (
-                        <button
-                            key={action.id}
-                            type="button"
-                            onClick={() => handleAction(action.id)}
-                            className={`home-action home-action-${action.tone} home-action-${action.id} group flex min-h-[92px] items-center justify-center gap-5 rounded-xl p-4 text-left shadow-[0_18px_40px_rgba(0,0,0,.2)] disabled:cursor-wait disabled:opacity-70`}
-                        >
-                            <HomeActionIcon action={action} />
-                            <span>
-                                <strong className={`block leading-tight text-white ${action.id === "match" ? "text-sm whitespace-nowrap" : "text-base"}`}>
-                                    {action.id === "match" ? matchActionTitle : action.title}
-                                </strong>
-                            </span>
+                <RankedMatchBlock activeMatch={activeMatch} activeMatchId={activeMatchId} profileStats={profileStats} />
 
-                        </button>
-                    ))}
-                </div>
-
-                <div className="mx-auto mt-7 flex flex-wrap items-center justify-center gap-3">
-                    <button type="button" onClick={() => navigate("/puzzles")} className="home-tutorial-button inline-flex min-h-11 items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-300 hover:text-cyan-200" aria-label="Open puzzles">
-                        <span className="grid h-7 w-7 place-items-center" aria-hidden="true">
-                            <img src="/assets/homepage/puzzle-icon.png" alt="" className="h-6 w-6 brightness-0 invert" />
+                <nav className="hq-tiles" aria-label="Explore Bot Fight">
+                    <button type="button" onClick={() => navigate("/puzzles")} className="hq-tile hq-tile--puzzles" aria-label="Open puzzles">
+                        <span className="hq-tile__icon hq-tile__icon--puzzle"><PuzzleTileIcon /></span>
+                        <span className="hq-tile__text">
+                            <strong>Puzzles</strong>
+                            <small>
+                                {isGuest ? "Sign in to track progress" : puzzlesSolved === null
+                                    ? "Logic challenges"
+                                    : hasPuzzleProgress ? `${puzzlesSolved} of ${totalPuzzles} solved` : `${puzzlesSolved} solved`}
+                            </small>
+                            {hasPuzzleProgress && (
+                                <span className="hq-tile__bar" role="progressbar" aria-label="Puzzles solved" aria-valuemin={0} aria-valuemax={totalPuzzles} aria-valuenow={puzzlesSolved}>
+                                    <span style={{ width: `${puzzleProgress}%` }} />
+                                </span>
+                            )}
                         </span>
-                        <span>Puzzles</span>
                     </button>
-                    <button type="button" onClick={() => navigate("/tutorial")} className="home-tutorial-button min-h-11 px-4 py-2 text-sm" aria-label="Open tutorial"><span className="font-bold text-slate-200">New to Bot Fight?</span> <span className="font-extrabold tracking-wide text-cyan-200">Tutorial</span></button>
-                </div>
-                <Link to="/credits" className="mx-auto mt-2 inline-flex min-h-11 items-center px-4 py-2 text-sm font-semibold text-slate-500 hover:border-transparent hover:text-cyan-200">Credits</Link>
+                    <button type="button" onClick={() => navigate("/ability-catalogue")} className="hq-tile hq-tile--abilities" aria-label="Open ability catalogue">
+                        <AbilityTileArt />
+                        <span className="hq-tile__text">
+                            <strong>Abilities</strong>
+                            <small>Every ability and its stats</small>
+                        </span>
+                    </button>
+                    <button type="button" onClick={() => navigate("/conditionals")} className="hq-tile hq-tile--conditionals" aria-label="Open conditional catalogue">
+                        <span className="hq-tile__icon hq-tile__icon--conditionals"><ConditionalsTileIcon /></span>
+                        <span className="hq-tile__text">
+                            <strong>Conditionals</strong>
+                            <small>Every variable you can check</small>
+                        </span>
+                    </button>
+                </nav>
+
+                <p className="hq-footer">
+                    New to Bot Fight?{" "}
+                    <button type="button" onClick={() => navigate("/tutorial")} className="hq-footer__link" aria-label="Open tutorial">Start the tutorial</button>
+                    {" · "}
+                    <Link to="/credits" className="hq-footer__link">Credits</Link>
+                </p>
             </section>
         </main>
     );

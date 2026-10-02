@@ -1,0 +1,158 @@
+/* Account navbar: wordmark, labelled links, Find player, account icons and the phone tab bar. */
+.nb-wordmark {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+  font-family: "Chakra Petch", sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  line-height: .9;
+  text-align: left;
+  text-shadow: none;
+}
+
+/* Same colours, 1px stroke and no drop shadow on every page (the home/auth logo styles must not leak in). */
+.app-navbar .nb-wordmark .nb-wordmark__bot,
+.app-navbar .nb-wordmark .nb-wordmark__fight {
+  -webkit-text-stroke: 1px #101214;
+  paint-order: stroke fill;
+  text-shadow: none;
+}
+
+.app-navbar .nb-wordmark .nb-wordmark__bot { color: #57b8ff; }
+.app-navbar .nb-wordmark .nb-wordmark__fight { color: #ff7166; }
+
+.nb-links { display: flex; align-items: stretch; gap: .25rem; margin-right: auto; margin-left: 1rem; }
+
+.nb-link {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  border-bottom: 2px solid transparent;
+  border-radius: 7px;
+  padding: 0 .75rem;
+  color: #9fb0bd;
+  font: 600 .9375rem "IBM Plex Sans", system-ui, sans-serif;
+  text-decoration: none;
+}
+
+.nb-link.is-active { border-bottom-color: #3aa6c9; color: #ffffff; }
+.nb-tab:focus-visible { outline: 2px solid #5fd4f0; outline-offset: -2px; }
+
+.nb-right { display: flex; min-width: 0; align-items: center; gap: .5rem; }
+
+.nb-search {
+  display: flex;
+  width: 11rem;
+  height: 2.25rem;
+  align-items: center;
+  gap: .5rem;
+  border: 1px solid #2a3a45;
+  border-radius: 10px;
+  padding: 0 .75rem;
+  background-color: #0b1217;
+  color: #8b98a5;
+  transition: width 150ms ease, border-color 150ms ease;
+}
+
+.nb-search:focus-within { width: 14rem; border-color: #3aa6c9; color: #5fd4f0; }
+
+.app-navbar .nb-search__input {
+  min-width: 0;
+  height: 100%;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  padding: 0;
+  background: transparent;
+  color: #e6edf3;
+  font: 14px "IBM Plex Sans", system-ui, sans-serif;
+  box-shadow: none;
+}
+
+.app-navbar .nb-search__input:focus { border: 0; background: transparent; }
+.nb-find-icon { display: none; }
+
+/* Signed-out navbar (credits): a secondary Log in button on the right. Hover uses the shared .app-navbar-control style. */
+.nb-login {
+  display: inline-flex;
+  height: 34px;
+  align-items: center;
+  border: 1px solid #2f3b46;
+  border-radius: 8px;
+  padding: 0 .875rem;
+  color: #e6edf3;
+  font: 600 14px "IBM Plex Sans", system-ui, sans-serif;
+  text-decoration: none;
+}
+
+.nb-unread {
+  position: absolute;
+  top: .5rem;
+  right: .5rem;
+  width: .5rem;
+  height: .5rem;
+  border-radius: 999px;
+  background-color: #ff7166;
+}
+
+.nb-profile { border-radius: 9px; }
+
+/* "Sign in" is a regular secondary button. */
+.nb-signin {
+  min-height: 34px;
+  border: 1px solid #2a3a45;
+  border-radius: 8px;
+  padding: 0 .875rem;
+  background-color: #12202a;
+  color: #e6edf3;
+  font: 600 .875rem "IBM Plex Sans", system-ui, sans-serif;
+}
+
+.nb-profile__text { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; line-height: 1.15; }
+.nb-profile__name { max-width: 140px; overflow: hidden; color: #e6edf3; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.nb-profile__elo { color: #5fd4f0; font: 700 11px "Chakra Petch", sans-serif; }
+
+.nb-tabbar { display: none; }
+
+/* Tablet: Find player collapses to an icon that opens the search page. */
+@media (max-width: 899px) {
+  .nb-search { display: none; }
+  .nb-find-icon { display: grid; }
+}
+
+/* Phones: compact top bar (wordmark, friends, notifications, avatar) plus a bottom tab bar. */
+@media (max-width: 639px) {
+  .nb-links, .nb-profile__text, .nb-find-icon { display: none; }
+  .nb-right { margin-left: auto; }
+
+  .nb-tabbar {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 40;
+    display: flex;
+    border-top: 1px solid #2a3a45;
+    padding-bottom: env(safe-area-inset-bottom);
+    background-color: #0e1a22;
+  }
+
+  .nb-tab {
+    display: flex;
+    min-height: 3.5rem;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    color: #8b98a5;
+    font: 500 11px "IBM Plex Sans", system-ui, sans-serif;
+    text-decoration: none;
+  }
+
+  .nb-tab.is-active { color: #5fd4f0; }
+
+  body.has-tabbar { padding-bottom: calc(3.5rem + env(safe-area-inset-bottom)); }
+}

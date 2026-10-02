@@ -1,4 +1,5 @@
-import { canonicalBotSelectableId } from "../../botlogic/code/contracts/BotLogicContracts.js";
+import { canonicalBotSelectableId, CUSTOM_VARIABLE_OPERATIONS } from "../../botlogic/code/contracts/BotLogicContracts.js";
+import { variableOperatorPresentation } from "../controls/variableOperatorPresentation.js";
 
 export const UNAVAILABLE_TARGET_LABEL = "Unavailable target";
 
@@ -187,4 +188,30 @@ export function measureActionNodeWidth({
         targetPresentation,
     });
     return Math.max(200, Math.ceil(Math.max(headingWidth, targetWidth, variableExpressionWidth) + ACTION_NODE_HORIZONTAL_SPACE));
+}
+
+function variableOperandText(operand, stateVariables) {
+    if (operand?.type === "variable") {
+        return stateVariables.find((variable) => variable.id === operand.value)?.label ?? String(operand.value ?? "");
+    }
+    return String(operand?.value ?? 0);
+}
+
+/**
+ * Right-hand side of a custom-variable action, without the leading "=".
+ * A first term that sets reads "<term1> <op> <term2>..."; otherwise the variable's
+ * current value leads: "<Variable> <op> <term1> ...".
+ */
+export function variableActionSummary({ target, terms = [], stateVariables = [] }) {
+    const parts = terms.map((term, index) => {
+        const text = variableOperandText(term?.operand, stateVariables);
+        const operator = term?.operator ?? (index === 0 ? CUSTOM_VARIABLE_OPERATIONS.SET : CUSTOM_VARIABLE_OPERATIONS.ADD);
+        const symbol = variableOperatorPresentation(operator).compactSymbol;
+        return { text, symbol, isSet: operator === CUSTOM_VARIABLE_OPERATIONS.SET };
+    });
+    if (!parts.length) return String(target?.name ?? "");
+    const [first, ...rest] = parts;
+    const tail = rest.map((part) => `${part.symbol} ${part.text}`);
+    if (first.isSet) return [first.text, ...tail].join(" ");
+    return [target?.name ?? "", `${first.symbol} ${first.text}`, ...tail].join(" ");
 }

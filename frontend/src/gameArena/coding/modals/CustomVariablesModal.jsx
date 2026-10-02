@@ -47,6 +47,42 @@ function DeferredTextInput({ value, onCommit, ...props }) {
     return <input {...props} value={draft} onChange={(event) => setDraft(sanitize(event.target.value))} onBlur={commit} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } }} />;
 }
 
+// How many nodes (conditions and variable actions) reference a custom variable.
+function countVariableReferences(configuration, variableId) {
+    let count = 0;
+    const operandUses = (operand) => operand?.type === "variable" && operand.value === variableId;
+    const visitBranch = (branch) => {
+        for (const condition of branch?.conditions ?? []) {
+            if (condition?.left === variableId || operandUses(condition?.right)) count += 1;
+        }
+        const actions = Array.isArray(branch?.actions) ? branch.actions : branch?.action ? [branch] : [];
+        for (const entry of actions) {
+            if (entry?.action !== "variable") continue;
+            const terms = Array.isArray(entry.terms) ? entry.terms : [];
+            if (entry.variableId === variableId || operandUses(entry.operand) || terms.some((term) => operandUses(term?.operand))) count += 1;
+        }
+        (branch?.children ?? []).forEach(visitBranch);
+    };
+    (configuration?.roots ?? []).forEach((root) => (root?.branches ?? []).forEach(visitBranch));
+    return count;
+}
+
+function formatLiveValue(value) {
+    return typeof value === "boolean" ? String(value) : String(value);
+}
+
+function BracesIcon() {
+    return <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6 2.5C4.5 2.5 4.5 4 4.5 5.5S4.5 7.5 3 8c1.5.5 1.5 1.5 1.5 2.5S4.5 13.5 6 13.5M10 2.5c1.5 0 1.5 1.5 1.5 3S11.5 7.5 13 8c-1.5.5-1.5 1.5-1.5 2.5s0 3-1.5 3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+function SearchGlyph() {
+    return <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M10.5 10.5 14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>;
+}
+
+function TrashGlyph() {
+    return <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8h5.8l.6-8M7 7v3.5M9 7v3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
 export default function CustomVariablesModal({ configuration, currentValues, maxSlots = MAX_CUSTOM_VARIABLE_SLOTS, idPrefix = "custom", disabled, onChange, onClose }) {
     const dialogRef = useRef(null);
     useDialogFocus(dialogRef, { onClose, lockScroll: true });
@@ -54,45 +90,88 @@ export default function CustomVariablesModal({ configuration, currentValues, max
     const variables = configuration?.customVariables ?? [];
     const [query, setQuery] = useState("");
     const [selectedVariableId, setSelectedVariableId] = useState(() => variables[0]?.id ?? null);
+    // Phones show the list and the detail as separate screens.
+    const [showDetail, setShowDetail] = useState(false);
     const visibleVariables = filterCustomVariableEntries(variables, query);
     const effectiveSelectedVariableId = variables.some((variable) => variable.id === selectedVariableId) ? selectedVariableId : variables[0]?.id ?? null;
     const selectedIndex = variables.findIndex((variable) => variable.id === effectiveSelectedVariableId);
     const selectedVariable = selectedIndex >= 0 ? variables[selectedIndex] : null;
     const slots = countVariableSlots(configuration);
+    const atLimit = slots >= maxSlots;
     const update = (index, next) => onChange(updateCustomVariableConfiguration(configuration, index, next));
     const addVariable = () => {
+        if (disabled || atLimit) return;
         const variable = { id: createCustomVariableId(idPrefix), name: `Variable ${variables.length + 1}`, valueType: "number", initialValue: 0 };
         onChange({ ...configuration, customVariables: [...variables, variable] });
         setSelectedVariableId(variable.id);
+        setShowDetail(true);
         setQuery("");
     };
     const removeSelectedVariable = () => {
+        const uses = countVariableReferences(configuration, selectedVariable.id);
+        if (uses > 0 && !window.confirm(`Used in ${uses} node${uses === 1 ? "" : "s"}. Delete anyway?`)) return;
         const nextSelection = variables[selectedIndex + 1]?.id ?? variables[selectedIndex - 1]?.id ?? null;
         onChange(removeCustomVariableConfiguration(configuration, selectedVariable.id));
         setSelectedVariableId(nextSelection);
+        setShowDetail(false);
     };
-    return <div className="code-custom-variables-overlay absolute inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/75 p-6" role="presentation"><section ref={dialogRef} className="code-custom-variables-dialog flex flex-col overflow-hidden rounded border border-emerald-900 bg-[#11171a] shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="custom-variables-title" tabIndex={-1}>
-        <header className="flex min-h-20 items-center justify-between gap-4 px-6"><div><h2 id="custom-variables-title" className="font-mono text-sm font-bold tracking-widest text-cyan-300">{'{ }'} / CUSTOM VARIABLES</h2><p className="mt-2 font-mono text-[9px] text-ink-muted">{slots}/{maxSlots} VARIABLE SLOTS</p></div><div className="flex flex-wrap justify-end gap-3"><button type="button" disabled={disabled || slots >= maxSlots} onClick={addVariable} className="arena-toolbar-button arena-toolbar-button--green code-custom-variable-add-button"><AddIcon /> ADD VARIABLE</button><button type="button" onClick={onClose} aria-label="Close custom variables" className="modal-close-button"><span aria-hidden="true">×</span></button></div></header>
-        <div className="grid min-h-0 flex-1 grid-cols-1 border-t border-border-lo md:grid-cols-[320px_minmax(0,1fr)]">
-            <aside className="flex min-h-0 flex-col border-b border-border-lo bg-[#15191d] p-4 md:border-r md:border-b-0">
-                <label className="font-mono text-[9px] text-ink-muted"><span className="sr-only">Search variables</span><input aria-label="Search custom variables" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search variables…" className="h-[38px] w-full rounded-none border border-slate-400/50 bg-[#090b0d] px-2.5 font-mono text-[10px] text-white outline-none" /></label>
-                <div className="code-custom-variable-list mt-1.5 grid min-h-0 flex-1 content-start gap-0 overflow-y-auto border border-slate-400/50 bg-[#090b0d] py-1" role="listbox" aria-label="Custom variables">
-                    {visibleVariables.map(({ variable }) => <button key={variable.id} type="button" role="option" aria-selected={variable.id === effectiveSelectedVariableId} onClick={() => setSelectedVariableId(variable.id)} className={`code-custom-variable-option ${variable.id === effectiveSelectedVariableId ? "is-selected" : ""}`}>
-                        <strong className="min-w-0 truncate text-[10px]">{variable.name || "UNTITLED VARIABLE"}</strong><small className="shrink-0 text-[7px] text-emerald-300">{variable.valueType === "boolean" ? "TRUE / FALSE" : "NUMBER"}</small>
+    const usedIn = selectedVariable ? countVariableReferences(configuration, selectedVariable.id) : 0;
+    const liveValue = selectedVariable ? (currentValues?.[selectedVariable.id] ?? selectedVariable.initialValue ?? (selectedVariable.valueType === "boolean" ? false : 0)) : null;
+    const newVariableButton = <button type="button" disabled={disabled || atLimit} onClick={addVariable} className="code-cv-new" title={atLimit ? "Variable limit reached" : undefined}><AddIcon className="code-cv-new-icon" /> New variable</button>;
+    return <div className="code-custom-variables-overlay absolute inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/75 p-6" role="presentation"><section ref={dialogRef} data-screen={showDetail ? "detail" : "list"} className="code-cv" role="dialog" aria-modal="true" aria-labelledby="custom-variables-title" tabIndex={-1}>
+        <header className="code-cv-header">
+            <span className="code-cv-header-icon"><BracesIcon /></span>
+            <h2 id="custom-variables-title">Custom variables</h2>
+            <span className="code-cv-count code-cv-mono">{slots} / {maxSlots}</span>
+            <button type="button" onClick={onClose} aria-label="Close custom variables" title="Close" className="code-cv-close"><span aria-hidden="true">×</span></button>
+        </header>
+        <div className="code-cv-body">
+            <aside className="code-cv-list-pane">
+                <label className="code-cv-search"><SearchGlyph /><span className="sr-only">Search variables</span><input aria-label="Search custom variables" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search variables" /></label>
+                <div className="code-cv-list" role="listbox" aria-label="Custom variables">
+                    {visibleVariables.map(({ variable }) => <button key={variable.id} type="button" role="option" aria-selected={variable.id === effectiveSelectedVariableId} onClick={() => { setSelectedVariableId(variable.id); setShowDetail(true); }} className={`code-cv-row ${variable.id === effectiveSelectedVariableId ? "is-selected" : ""}`}>
+                        <span className="code-cv-row-name">{variable.name || "Untitled variable"}</span>
+                        <span className={`code-cv-tag ${variable.valueType === "boolean" ? "is-boolean" : "is-number"}`}>{variable.valueType === "boolean" ? "True/false" : "Number"}</span>
+                        <span className="code-cv-row-value code-cv-mono">{variable.valueType === "boolean" ? ((currentValues?.[variable.id] ?? variable.initialValue) ? "T" : "F") : formatLiveValue(currentValues?.[variable.id] ?? variable.initialValue ?? 0)}</span>
+                        <span className="code-cv-row-chevron" aria-hidden="true">›</span>
                     </button>)}
-                    {!variables.length && <p className="px-3 py-4 font-mono text-[9px] tracking-widest text-ink-muted">NO CUSTOM VARIABLES YET</p>}
-                    {variables.length > 0 && !visibleVariables.length && <p className="px-3 py-4 font-mono text-[9px] tracking-widest text-ink-muted">NO VARIABLES MATCH “{query}”.</p>}
+                    {variables.length > 0 && !visibleVariables.length && <p className="code-cv-empty-note">No variables match “{query}”.</p>}
+                    {!variables.length && <div className="code-cv-empty">
+                        <strong>No variables yet</strong>
+                        <p>Custom variables store a number or a true/false value your bot can read and change.</p>
+                    </div>}
                 </div>
+                {newVariableButton}
             </aside>
-            <main className="min-h-0 overflow-y-auto bg-[#11171a]">
-                {!selectedVariable && <div className="flex h-full min-h-40 items-center justify-center px-6 font-mono text-[10px] tracking-widest text-ink-muted">SELECT A VARIABLE TO CONFIGURE</div>}
-                {selectedVariable && <div className="p-5 sm:p-6">
-                    <div className="flex items-center justify-between gap-4 border-b border-border-lo pb-3"><p className="font-mono text-[8px] tracking-[.18em] text-emerald-400">VARIABLE CONFIGURATION</p><div className="flex items-center gap-3"><span className="font-mono text-[8px] font-bold text-emerald-300">CURRENT: {String(currentValues?.[selectedVariable.id] ?? selectedVariable.initialValue)}</span><button type="button" disabled={disabled} onClick={removeSelectedVariable} className="arena-toolbar-button arena-toolbar-button--red code-custom-variable-delete-button">DELETE</button></div></div>
-                    <div className="code-custom-variable-fields grid items-end gap-2.5 pt-4">
-                        <label className="w-56 min-w-40 font-mono text-[8px] text-ink-muted">NAME<DeferredTextInput key={`${selectedVariable.id}:${selectedVariable.name}`} aria-label="Variable name" disabled={disabled} value={selectedVariable.name} maxLength={40} onCommit={(name) => update(selectedIndex, { name })} className="mt-1 h-8 w-full rounded border border-border-mid bg-zinc-950 px-2 font-mono text-[9px] text-white" /></label>
-                        <label className="w-28 shrink-0 font-mono text-[8px] text-ink-muted">TYPE<select disabled={disabled} value={selectedVariable.valueType} onChange={(event) => update(selectedIndex, { valueType: event.target.value, initialValue: event.target.value === "boolean" ? false : 0 })} className="mt-1 h-8 w-full rounded border border-border-mid bg-zinc-950 px-2 font-mono text-[9px] text-white"><option value="number">NUMBER</option><option value="boolean">BOOLEAN</option></select></label>
-                        <label className="w-28 shrink-0 font-mono text-[8px] text-ink-muted">STARTING VALUE{selectedVariable.valueType === "boolean" ? <select disabled={disabled} value={String(selectedVariable.initialValue ?? false)} onChange={(event) => update(selectedIndex, { initialValue: event.target.value === "true" })} className="mt-1 h-8 w-full rounded border border-border-lo bg-zinc-950 px-2 font-mono text-[9px] text-white"><option value="false">FALSE</option><option value="true">TRUE</option></select> : <DeferredNumberInput key={selectedVariable.id} disabled={disabled} min={CUSTOM_NUMBER_MIN} max={CUSTOM_NUMBER_MAX} value={selectedVariable.initialValue ?? 0} onCommit={(initialValue) => update(selectedIndex, { initialValue })} className="mt-1 h-8 w-full rounded border border-border-lo bg-zinc-950 px-2 font-mono text-[9px] text-white" />}</label>
+            <main className="code-cv-detail">
+                {!selectedVariable && <div className="code-cv-empty code-cv-detail-empty"><p>Select a variable to configure it.</p></div>}
+                {selectedVariable && <div className="code-cv-form">
+                    <div className="code-cv-detail-head">
+                        <button type="button" className="code-cv-back" onClick={() => setShowDetail(false)} aria-label="Back to variable list"><span aria-hidden="true">‹</span></button>
+                        <strong>{selectedVariable.name}</strong>
                     </div>
+                    <label className="code-cv-field"><span>Name</span><DeferredTextInput key={`${selectedVariable.id}:${selectedVariable.name}`} aria-label="Variable name" disabled={disabled} value={selectedVariable.name} maxLength={40} onCommit={(name) => update(selectedIndex, { name })} className="code-cv-input code-cv-input-name" /></label>
+                    <div className="code-cv-row-fields">
+                        <div className="code-cv-field"><span id="cv-type-label">Type</span>
+                            <div className="code-cv-segmented" role="group" aria-labelledby="cv-type-label">
+                                {[["number", "Number"], ["boolean", "True / false"]].map(([type, label]) => <button key={type} type="button" disabled={disabled} aria-pressed={selectedVariable.valueType === type} className={selectedVariable.valueType === type ? "is-active" : ""} onClick={() => { if (selectedVariable.valueType !== type) update(selectedIndex, { valueType: type, initialValue: type === "boolean" ? false : 0 }); }}>{label}</button>)}
+                            </div>
+                        </div>
+                        <div className="code-cv-field"><span id="cv-start-label">Starts at</span>
+                            {selectedVariable.valueType === "boolean"
+                                ? <div className="code-cv-segmented" role="group" aria-labelledby="cv-start-label">
+                                    {[[false, "False"], [true, "True"]].map(([value, label]) => <button key={label} type="button" disabled={disabled} aria-pressed={Boolean(selectedVariable.initialValue) === value} className={Boolean(selectedVariable.initialValue) === value ? "is-active" : ""} onClick={() => update(selectedIndex, { initialValue: value })}>{label}</button>)}
+                                </div>
+                                : <DeferredNumberInput key={selectedVariable.id} aria-labelledby="cv-start-label" disabled={disabled} min={CUSTOM_NUMBER_MIN} max={CUSTOM_NUMBER_MAX} value={selectedVariable.initialValue ?? 0} onCommit={(initialValue) => update(selectedIndex, { initialValue })} className="code-cv-input code-cv-input-number code-cv-mono" />}
+                        </div>
+                    </div>
+                    <div className="code-cv-live">
+                        <span className="code-cv-live-dot" aria-hidden="true" />
+                        <span>Live value</span>
+                        <strong className="code-cv-mono">{formatLiveValue(liveValue)}</strong>
+                        <span className="code-cv-live-uses">Used in {usedIn} node{usedIn === 1 ? "" : "s"}</span>
+                    </div>
+                    <button type="button" disabled={disabled} onClick={removeSelectedVariable} className="code-cv-delete"><TrashGlyph /> Delete variable</button>
                 </div>}
             </main>
         </div>

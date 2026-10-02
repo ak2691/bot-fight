@@ -35,12 +35,12 @@ function SandboxAbilityCard({ ability, selected, onToggle }) {
                 />
             )}
             <span className="ability-card-gradient" aria-hidden="true" />
-            <span className="absolute right-4 top-2 font-display-action text-6xl text-white/[.035]" aria-hidden="true">
+            <span className="absolute right-4 top-2 font-display text-6xl text-white/[.035]" aria-hidden="true">
                 {String(ability.id).padStart(2, "0")}
             </span>
             <span className="ability-card-content absolute inset-x-0 bottom-0 border-t border-white/10 px-5 py-4">
                 {selected && <span className="mb-1 block font-mono text-[9px] font-bold tracking-[.2em] text-green-200">EQUIPPED</span>}
-                <span className="block font-display-action text-xl uppercase tracking-wider text-white">{ability.label}</span>
+                <span className="block font-display text-xl uppercase tracking-wider text-white">{ability.label}</span>
                 <span className="mt-2 flex flex-wrap gap-1.5">
                     <span className="font-mono text-[8px] font-bold tracking-[.16em] text-green-300/70">{ability.kind.toUpperCase()}</span>
                     {(ability.catalogueTags ?? []).map((tag) => (
@@ -99,7 +99,7 @@ export default function SandboxLoadoutModal({
                 <div className="flex items-start justify-between gap-4 border-b border-slate-700/70 pb-5">
                     <div>
                         <p className="font-mono text-[10px] font-bold tracking-[.28em] text-green-300">BOT LOADOUT EDITOR</p>
-                        <h2 id="sandbox-loadout-title" className="mt-2 font-display-action text-4xl uppercase tracking-wide text-white sm:text-5xl">{activeLoadoutEntry.username} loadout</h2>
+                        <h2 id="sandbox-loadout-title" className="mt-2 font-display text-4xl uppercase tracking-wide text-white sm:text-5xl">{activeLoadoutEntry.username} loadout</h2>
                         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">Choose abilities for every bot in this room.</p>
                     </div>
                     <button type="button" onClick={onClose} aria-label="Close sandbox loadout editor" className="modal-close-button"><span aria-hidden="true">×</span></button>
@@ -160,7 +160,7 @@ export default function SandboxLoadoutModal({
                                 <div className="mb-4 flex items-end justify-between gap-4 border-b border-slate-700/60 pb-3">
                                     <div>
                                         <p className="font-mono text-[9px] font-bold tracking-[.28em] text-slate-500">DRAFT TIER 0{round}</p>
-                                        <h3 id={`sandbox-round-${round}-title`} className="mt-1 font-display-action text-3xl uppercase tracking-wider text-white">Round {round}</h3>
+                                        <h3 id={`sandbox-round-${round}-title`} className="mt-1 font-display text-3xl uppercase tracking-wider text-white">Round {round}</h3>
                                     </div>
                                     <span className="font-mono text-[9px] tracking-widest text-green-300">{roundAbilities.length} ABILITIES</span>
                                 </div>

@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Toast, { ToastStack } from "../../components/Toast.jsx";
+import Stepper from "../../components/Stepper.jsx";
+import ArenaSetup from "../../gameArena/components/ArenaSetup.jsx";
 import { useNavigate, useParams } from "react-router-dom";
 import AppNavbar from "../../components/AppNavbar.jsx";
 import Arena from "../../gameArena/Arena.jsx";
@@ -27,7 +30,7 @@ import {
     PRACTICE_OPPONENT_PUBLIC_START,
     PRACTICE_PLAYER_PUBLIC_START,
 } from "../../gameArena/modelPayloads/arenaConstants.js";
-import { selectableAbilityIdsForLoadouts, selectableTypesForLoadouts } from "../../gameArena/coding/nodes/GraphNodes.jsx";
+import { countActions, selectableAbilityIdsForLoadouts, selectableTypesForLoadouts } from "../../gameArena/coding/nodes/GraphNodes.jsx";
 import { fetchAdminPuzzle, savePuzzle, updatePuzzle } from "../../puzzles/puzzleApi.js";
 import PuzzleLogicWorkspace, {
     createDefaultPuzzleLogic,
@@ -430,7 +433,33 @@ function PuzzleConfigurationModal({ draft, conditionVariables, conditionTargets,
     />;
 }
 
-function PuzzleRulesModal({ draft, setDraft, onTeamSizeChange, onClose }) {
+function SwitchRow({ label, helper, checked, onChange }) {
+    return (
+        <div className="flex min-h-12 items-center justify-between gap-4 border-b border-[#1c2228] py-1.5 last:border-b-0">
+            <div className="min-w-0">
+                <p className="text-sm text-slate-200">{label}</p>
+                <p className="text-[11px] text-slate-500">{helper}</p>
+            </div>
+            <button
+                type="button"
+                role="switch"
+                aria-checked={checked}
+                aria-label={label}
+                onClick={() => onChange(!checked)}
+                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${checked ? "bg-[#2088ac]" : "bg-[#262c33]"}`}
+            >
+                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${checked ? "left-[22px]" : "left-0.5"}`} />
+            </button>
+        </div>
+    );
+}
+
+function RulesSectionLabel({ children }) {
+    return <h3 className="mb-1 mt-4 text-[10px] font-bold uppercase text-slate-500 first:mt-0">{children}</h3>;
+}
+
+// Rules and limits. Every change applies straight to the draft; the save button on the panel persists it.
+function PuzzleRulesModal({ draft, setDraft, onClose }) {
     const dialogRef = useRef(null);
     const closeButtonRef = useRef(null);
     useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onClose, lockScroll: true });
@@ -446,121 +475,101 @@ function PuzzleRulesModal({ draft, setDraft, onTeamSizeChange, onClose }) {
             timeLimitMs: Number.isFinite(currentTimeLimitMs) ? Math.min(currentTimeLimitMs, maxTimeLimitMs) : maxTimeLimitMs,
         };
     });
-    const rows = [
-        ["TIME PASSED / SEC", <EditableNumberInput key="initial-time" value={initialElapsedSeconds} min={0} max={MAX_INITIAL_ELAPSED_SECONDS} fallback={0} emptyValue={0} integerOnly ariaLabel="Time already passed at puzzle start in seconds" onCommit={updateInitialElapsed} className="h-9 w-28 border border-slate-700 bg-slate-900 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-400" />],
-        ["TIME LIMIT / SEC", <EditableNumberInput key="time" value={Number(draft.timeLimitMs ?? 0) / 1000} min={0} max={maxTimeSeconds} fallback={0} emptyValue={0} integerOnly ariaLabel="Puzzle time limit in seconds" onCommit={(value) => setDraft((current) => ({ ...current, timeLimitMs: value * 1000 }))} className="h-9 w-28 border border-slate-700 bg-slate-900 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-400" />],
-        ["BLUE TEAM PLAYERS", <EditableNumberInput key="blue-team-size" value={draft.playerTeamSize} min={MIN_PUZZLE_TEAM_SIZE} max={MAX_PUZZLE_TEAM_SIZE} fallback={MIN_PUZZLE_TEAM_SIZE} emptyValue={MIN_PUZZLE_TEAM_SIZE} integerOnly ariaLabel="Number of blue team players" onCommit={(value) => onTeamSizeChange("playerTeamSize", value)} className="h-9 w-28 border-2 border-cyan-400/80 bg-cyan-950/20 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-300" />],
-        ["RED TEAM PLAYERS", <EditableNumberInput key="red-team-size" value={draft.opponentTeamSize} min={MIN_PUZZLE_TEAM_SIZE} max={MAX_PUZZLE_TEAM_SIZE} fallback={MIN_PUZZLE_TEAM_SIZE} emptyValue={MIN_PUZZLE_TEAM_SIZE} integerOnly ariaLabel="Number of red team players" onCommit={(value) => onTeamSizeChange("opponentTeamSize", value)} className="h-9 w-28 border-2 border-red-400/80 bg-red-950/20 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-red-300" />],
-        ["ACTION NODES", <EditableNumberInput key="actions" value={draft.maxActionNodes} min={0} max={MAX_ACTION_NODES} fallback={0} emptyValue={0} integerOnly ariaLabel="Maximum action nodes" onCommit={(value) => updateLimit("maxActionNodes", value)} className="h-9 w-28 border border-slate-700 bg-slate-900 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-400" />],
-        ["CONDITIONAL NODES", <EditableNumberInput key="conditions" value={draft.maxConditionNodes} min={0} max={MAX_CONDITION_NODES} fallback={0} emptyValue={0} integerOnly ariaLabel="Maximum conditional nodes" onCommit={(value) => updateLimit("maxConditionNodes", value)} className="h-9 w-28 border border-slate-700 bg-slate-900 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-400" />],
-        ["CUSTOM VARIABLES", <EditableNumberInput key="variables" value={draft.maxCustomVariables} min={0} max={MAX_CUSTOM_VARIABLES} fallback={0} emptyValue={0} integerOnly ariaLabel="Maximum custom variables" onCommit={(value) => updateLimit("maxCustomVariables", value)} className="h-9 w-28 border border-slate-700 bg-slate-900 px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-400" />],
-    ];
-    return <div className="fixed inset-0 z-[110] grid place-items-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-        <section ref={dialogRef} className="w-[min(92vw,520px)] rounded-xl border border-cyan-700/70 bg-[#11171a] shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="puzzle-rules-title" tabIndex={-1}>
-            <header className="flex items-center justify-between gap-4 border-b border-slate-700/80 bg-slate-950/70 px-5 py-4"><div><p className="font-mono text-[9px] font-bold tracking-[.2em] text-cyan-300">PUZZLE RULES</p><h2 id="puzzle-rules-title" className="mt-1 text-lg font-bold text-white">Limits & visibility</h2></div><button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Close puzzle rules" className="modal-close-button"><span aria-hidden="true">×</span></button></header>
-            <div className="space-y-2 p-5">
-                {rows.map(([label, control]) => <div key={label} className="flex min-h-12 items-center justify-between gap-4 border-b border-slate-800/80 pb-2 font-mono text-[9px] text-slate-400"><span>{label}</span>{control}</div>)}
-                <label className="flex min-h-12 items-center justify-between gap-4 border-b border-slate-800/80 pb-2 font-mono text-[9px] text-slate-300"><span>PUBLISH PUZZLE</span><input type="checkbox" checked={draft.published} onChange={(event) => setDraft((current) => ({ ...current, published: event.target.checked }))} /></label>
-                <label className="flex min-h-12 items-center justify-between gap-4 font-mono text-[9px] text-slate-300"><span>HIDE OPPONENT CODE</span><input type="checkbox" checked={draft.hideOpponentCode} onChange={(event) => setDraft((current) => ({ ...current, hideOpponentCode: event.target.checked }))} /></label>
-            </div>
-            <footer className="flex justify-end border-t border-slate-700/80 bg-slate-950/70 px-5 py-4"><button type="button" onClick={onClose} className="gray-button-surface min-h-10 border border-cyan-400 px-6 font-mono text-[10px] font-bold tracking-[.16em] text-cyan-100">DONE</button></footer>
-        </section>
-    </div>;
-}
-
-function puzzleTeamLabel(teamNumber) {
-    return Number(teamNumber) === PUZZLE_OPPONENT_TEAM ? "RED TEAM" : "BLUE TEAM";
-}
-
-function puzzleBotDisplayName(bot) {
-    const teamNumber = Number(bot?.teamNumber);
-    const slot = Number(bot?.slot) || 1;
-    if (teamNumber === PUZZLE_PLAYER_TEAM && slot === 1) return "My Bot";
-    return teamNumber === PUZZLE_PLAYER_TEAM ? `Teammate ${slot - 1}` : `Opponent ${slot}`;
-}
-
-function PuzzleStartingStatsEditor({ draft, setDraft, onSave }) {
-    const bots = Array.isArray(draft.bots) && draft.bots.length > 0
-        ? draft.bots
-        : [draft.playerBot, draft.opponentBot].filter(Boolean);
-    const [selectedIndex, setSelectedIndex] = useState(0);
-    const selectedBotIndex = Math.min(selectedIndex, Math.max(0, bots.length - 1));
-    const selectedBot = bots[selectedBotIndex] ?? bots[0] ?? createDefaultPuzzleBot(PUZZLE_PLAYER_TEAM, 1);
-    const teamNumber = Number(selectedBot.teamNumber) === PUZZLE_OPPONENT_TEAM ? PUZZLE_OPPONENT_TEAM : PUZZLE_PLAYER_TEAM;
-    const teamSize = normalizePuzzleTeamSize(teamNumber === PUZZLE_PLAYER_TEAM ? draft.playerTeamSize : draft.opponentTeamSize);
-    const fallbackStart = defaultPuzzleStart(teamNumber, Number(selectedBot.slot) || 1, teamSize);
-    const tone = teamNumber === PUZZLE_OPPONENT_TEAM ? "red" : "blue";
-    const updateSelectedBot = (field, value) => setDraft((current) => {
-        const currentBots = Array.isArray(current.bots) ? current.bots : [current.playerBot, current.opponentBot].filter(Boolean);
-        const nextBots = currentBots.map((bot, index) => index === selectedBotIndex ? { ...bot, [field]: value } : bot);
-        return normalizeDraftRoster(current, nextBots);
-    });
-    const cycle = (direction) => {
-        if (bots.length < 2) return;
-        setSelectedIndex((current) => (Math.min(current, bots.length - 1) + direction + bots.length) % bots.length);
-    };
-
+    const row = (label, control) => (
+        <div className="flex min-h-11 items-center justify-between gap-4 border-b border-[#1c2228]">
+            <span className="text-sm text-slate-200">{label}</span>
+            {control}
+        </div>
+    );
     return (
-        <section className="rounded-xl border border-slate-600/70 bg-slate-950/55 p-4">
-            <div className="mb-2 flex items-center justify-between gap-2"><h2 className="font-mono text-[10px] font-bold tracking-[.16em] text-cyan-200">STARTING STATS</h2></div>
-            <div className="code-bot-selector-stack w-full max-w-none">
-                <div className={`code-bot-selector ${tone === "red" ? "is-red" : "is-blue"}`} role="group" aria-label="Select puzzle starting stats">
-                    <button type="button" aria-label="Show previous player starting stats" title="Previous player" onClick={() => cycle(-1)} disabled={bots.length < 2} className="code-bot-selector__arrow">‹</button>
-                    <div className="code-bot-selector__current" aria-live="polite">
-                        <span className="code-bot-selector__name">{puzzleBotDisplayName(selectedBot)}</span>
-                        <span className="code-bot-selector__meta">{puzzleTeamLabel(teamNumber)} · STARTING STATS · {Math.max(1, selectedBotIndex + 1)}/{bots.length}</span>
+        <div className="fixed inset-0 z-[110] grid place-items-center bg-black/75 px-4 pb-4 pt-[5.5rem] backdrop-blur-sm max-sm:grid-rows-[minmax(0,1fr)] max-sm:items-stretch max-sm:p-0 max-sm:pt-[72px]" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+            <section ref={dialogRef} className="flex max-h-[calc(100dvh-7.5rem)] w-[min(94vw,28rem)] flex-col overflow-hidden rounded-2xl border border-[#262c33] bg-[#0f1418] text-slate-100 shadow-2xl max-sm:h-full max-sm:max-h-none max-sm:w-full max-sm:rounded-none max-sm:border-0" role="dialog" aria-modal="true" aria-labelledby="puzzle-rules-title" tabIndex={-1}>
+                <header className="flex items-center justify-between gap-4 border-b border-[#262c33] px-5 py-4">
+                    <h2 id="puzzle-rules-title" className="font-display text-xl font-bold text-white">Rules and limits</h2>
+                    <button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Close rules and limits" className="modal-close-button"><span aria-hidden="true">×</span></button>
+                </header>
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
+                    <RulesSectionLabel>Match</RulesSectionLabel>
+                    {row("Time limit", <Stepper value={Math.round(Number(draft.timeLimitMs ?? 0) / 1000)} min={0} max={maxTimeSeconds} unit=" s" ariaLabel="Puzzle time limit in seconds" onChange={(value) => updateLimit("timeLimitMs", value * 1000)} />)}
+                    {row("Start at", <Stepper value={Math.round(initialElapsedSeconds)} min={0} max={MAX_INITIAL_ELAPSED_SECONDS} unit=" s" ariaLabel="Time already passed at puzzle start in seconds" onChange={updateInitialElapsed} />)}
+                    <div className="flex min-h-11 items-center justify-between gap-4">
+                        <span className="text-sm text-slate-200">Players</span>
+                        <span className="text-xs text-slate-500">set in Arena setup &middot; {draft.playerTeamSize}v{draft.opponentTeamSize}</span>
                     </div>
-                    <button type="button" aria-label="Show next player starting stats" title="Next player" onClick={() => cycle(1)} disabled={bots.length < 2} className="code-bot-selector__arrow">›</button>
+
+                    <RulesSectionLabel>Solver budget</RulesSectionLabel>
+                    {row("Actions", <Stepper value={draft.maxActionNodes} min={0} max={MAX_ACTION_NODES} ariaLabel="Maximum action nodes" onChange={(value) => updateLimit("maxActionNodes", value)} />)}
+                    {row("Conditions", <Stepper value={draft.maxConditionNodes} min={0} max={MAX_CONDITION_NODES} ariaLabel="Maximum conditional nodes" onChange={(value) => updateLimit("maxConditionNodes", value)} />)}
+                    {row("Custom variables", <Stepper value={draft.maxCustomVariables} min={0} max={MAX_CUSTOM_VARIABLES} ariaLabel="Maximum custom variables" onChange={(value) => updateLimit("maxCustomVariables", value)} />)}
+
+                    <RulesSectionLabel>Visibility</RulesSectionLabel>
+                    <SwitchRow label="Hide opponent code" helper="Solvers can't open the opponent's logic" checked={draft.hideOpponentCode} onChange={(value) => setDraft((current) => ({ ...current, hideOpponentCode: value }))} />
+                    <SwitchRow label="Published" helper="Listed on the Puzzles page" checked={draft.published} onChange={(value) => setDraft((current) => ({ ...current, published: value }))} />
                 </div>
-            </div>
-            <div className={`mt-2 rounded border p-2 font-mono text-[9px] ${tone === "red" ? "border-red-900/60 bg-red-950/20" : "border-cyan-400/65 bg-cyan-950/30"}`}>
-                <p className={tone === "red" ? "text-red-200" : "text-cyan-200"}>{puzzleBotDisplayName(selectedBot)}</p>
-                <div className="mt-2 space-y-2">
-                    <div className="grid grid-cols-2 gap-1.5">
-                        <label className="text-[8px] text-slate-500"><span className="block">X</span><EditableNumberInput value={selectedBot.startX} min={PUBLIC_BOT_CENTER_MIN_X} max={PUBLIC_BOT_CENTER_MAX_X} fallback={fallbackStart.startX} emptyValue={fallbackStart.startX} decimalPlaces={1} ariaLabel={`${puzzleBotDisplayName(selectedBot)} starting X coordinate`} onCommit={(value) => updateSelectedBot("startX", value)} className={`mt-1 h-8 w-full border bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none ${tone === "red" ? "border-red-900/80 focus:border-red-400" : "border-cyan-900/80 focus:border-cyan-400"}`} /></label>
-                        <label className="text-[8px] text-slate-500"><span className="block">Y</span><EditableNumberInput value={selectedBot.startY} min={PUBLIC_BOT_CENTER_MIN_Y} max={PUBLIC_BOT_CENTER_MAX_Y} fallback={fallbackStart.startY} emptyValue={fallbackStart.startY} decimalPlaces={1} ariaLabel={`${puzzleBotDisplayName(selectedBot)} starting Y coordinate`} onCommit={(value) => updateSelectedBot("startY", value)} className={`mt-1 h-8 w-full border bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none ${tone === "red" ? "border-red-900/80 focus:border-red-400" : "border-cyan-900/80 focus:border-cyan-400"}`} /></label>
-                    </div>
-                    <label className="block text-[8px] text-slate-500"><span className="block">ROTATION</span><EditableNumberInput value={selectedBot.rotation} min={-360} max={360} fallback={fallbackStart.rotation} emptyValue={fallbackStart.rotation} decimalPlaces={1} ariaLabel={`${puzzleBotDisplayName(selectedBot)} starting rotation`} onCommit={(value) => updateSelectedBot("rotation", value)} className={`mt-1 h-8 w-full border bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none ${tone === "red" ? "border-red-900/80 focus:border-red-400" : "border-cyan-900/80 focus:border-cyan-400"}`} /></label>
-                    <label className="block text-[8px] text-slate-500"><span className="block">HP</span><EditableNumberInput value={selectedBot.startHp} min={1} max={BASE_BOT_HP} fallback={BASE_BOT_HP} emptyValue={BASE_BOT_HP} decimalPlaces={1} ariaLabel={`${puzzleBotDisplayName(selectedBot)} starting HP`} onCommit={(value) => updateSelectedBot("startHp", value)} className={`mt-1 h-8 w-full border bg-slate-900 px-1 text-center font-interface-numeric text-xs text-white outline-none ${tone === "red" ? "border-red-900/80 focus:border-red-400" : "border-cyan-900/80 focus:border-cyan-400"}`} /></label>
-                </div>
-            </div>
-            <button type="button" onClick={onSave} className="arena-toolbar-button arena-toolbar-button--blue mt-2">SAVE STARTING STATS</button>
-        </section>
+            </section>
+        </div>
     );
 }
 
-function PuzzleBuilderControls({ draft, setDraft, saveState, onSaveStartingStats, onSaveOpponentCode, onSavePuzzle, onOpenConfiguration, onOpenRules, onPuzzleTeamSizeChange, isSaving, isEditing, conditionVariables, conditionTargets, conditionTargetAbilityIds, isConfigurationOpen, onCloseConfiguration, isRulesOpen, onCloseRules, onPuzzleLogicChange }) {
+function StepIcon({ state }) {
+    if (state === "done") {
+        return <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 fill-none stroke-emerald-400" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-label="Complete"><circle cx="12" cy="12" r="9" /><path d="m8 12.3 2.6 2.6L16 9.5" /></svg>;
+    }
+    return <span className={`h-4 w-4 shrink-0 rounded-full border-2 ${state === "next" ? "border-cyan-400" : "border-slate-600"}`} aria-label={state === "next" ? "Next step" : "Not started"} role="img" />;
+}
 
+function ChecklistRow({ title, summary, warn = false, state, onClick }) {
+    return (
+        <li>
+            <button type="button" onClick={onClick} className={`flex min-h-11 w-full items-center gap-2.5 border-l-2 px-3 text-left hover:bg-white/[.03] ${state === "next" ? "border-l-cyan-400 bg-white/[.03]" : "border-l-transparent"}`}>
+                <StepIcon state={state} />
+                <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-slate-100">{title}</span>
+                <span className={`shrink-0 text-[11px] ${warn ? "font-semibold text-amber-300" : "text-slate-500"}`}>{summary}</span>
+                <span className="shrink-0 text-slate-500" aria-hidden="true">&rsaquo;</span>
+            </button>
+        </li>
+    );
+}
+
+function PuzzleBuilderControls({ draft, setDraft, steps, dirty, onSavePuzzle, isSaving, isEditing, onOpenArenaSetup, onOpenConfiguration, onOpenRules, openOpponentCode, startTest, saveState, onDismissSaveState, children = null }) {
+    const stepActions = {
+        arena: onOpenArenaSetup,
+        rules: onOpenConfiguration,
+        opponent: openOpponentCode,
+        limits: onOpenRules,
+        test: startTest,
+    };
     return (
         <div className="space-y-3">
-            <section className="rounded-xl border border-cyan-700/60 bg-slate-950/65 p-4 shadow-[0_10px_30px_rgba(0,0,0,.2)]">
-                <label className="mt-3 block font-mono text-[9px] tracking-widest text-slate-400">
-                    PUZZLE NAME
-                    <input value={draft.name} maxLength={120} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Untitled challenge" className="mt-1.5 h-10 w-full border border-slate-600 bg-slate-900 px-2.5 font-interface text-sm tracking-normal text-white outline-none focus:border-cyan-400" />
+            <section className="rounded-xl border border-[#262c33] bg-[#0f1418] p-3.5">
+                <label className="block text-[11px] text-slate-500">
+                    Puzzle name
+                    <input value={draft.name} maxLength={120} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Untitled challenge" className="mt-1 h-9 w-full rounded-md border border-[#262c33] bg-[#0b0f12] px-2.5 text-sm text-white outline-none focus:border-cyan-400" />
                 </label>
-                <label className="mt-3 block font-mono text-[9px] tracking-widest text-slate-400">
-                    PUZZLE DESCRIPTION
-                    <textarea value={draft.description} maxLength={2000} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} placeholder="Describe the challenge" rows={4} className="mt-1.5 w-full resize-y border border-slate-600 bg-slate-900 px-2.5 py-2 font-interface text-sm leading-5 tracking-normal text-white outline-none focus:border-cyan-400" />
+                <label className="mt-3 block text-[11px] text-slate-500">
+                    Description
+                    <textarea value={draft.description} maxLength={2000} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} placeholder="What should the solver do?" rows={3} className="mt-1 w-full resize-y rounded-md border border-[#262c33] bg-[#0b0f12] px-2.5 py-2 text-sm leading-5 text-white outline-none focus:border-cyan-400" />
                 </label>
-                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <button type="button" onClick={onOpenConfiguration} className="arena-toolbar-button arena-toolbar-button--blue">CONFIG</button>
-                    <button type="button" onClick={onOpenRules} className="arena-toolbar-button arena-toolbar-button--neutral">LIMITS</button>
-                </div>
             </section>
 
-            <PuzzleStartingStatsEditor draft={draft} setDraft={setDraft} onSave={onSaveStartingStats} />
-
-            <section className="rounded-xl border border-red-900/60 bg-slate-950/55 p-4">
-                <div className="mb-2 flex items-center justify-between"><h2 className="font-mono text-[10px] font-bold tracking-[.16em] text-red-200">OPPONENT BOT</h2></div>
-                <button type="button" onClick={onSaveOpponentCode} className="arena-toolbar-button arena-toolbar-button--opponent mt-2">SAVE OPPONENT CODE</button>
+            <section className="overflow-hidden rounded-xl border border-[#262c33] bg-[#0f1418]" aria-label="Puzzle steps">
+                <ol className="divide-y divide-[#1c2228]">
+                    {steps.map((step) => <ChecklistRow key={step.id} title={step.title} summary={step.summary} warn={step.warn} state={step.state} onClick={stepActions[step.id]} />)}
+                </ol>
             </section>
 
-            <section className="rounded-xl border border-cyan-700/60 bg-cyan-950/20 p-4">
-                {saveState && <p role="status" className={`mb-2 font-mono text-[9px] leading-relaxed ${saveState.ok ? "text-emerald-300" : "text-rose-300"}`}>{saveState.message}</p>}
-                <button type="button" disabled={isSaving} onClick={onSavePuzzle} className="arena-toolbar-button arena-toolbar-button--blue">{isSaving ? (isEditing ? "UPDATING PUZZLE..." : "SAVING PUZZLE...") : (isEditing ? "UPDATE PUZZLE" : "SAVE PUZZLE")}</button>
-            </section>
-            {isConfigurationOpen && <PuzzleConfigurationModal draft={draft} conditionVariables={conditionVariables} conditionTargets={conditionTargets} conditionTargetAbilityIds={conditionTargetAbilityIds} onPuzzleLogicChange={onPuzzleLogicChange} onClose={onCloseConfiguration} />}
-            {isRulesOpen && <PuzzleRulesModal draft={draft} setDraft={setDraft} onTeamSizeChange={onPuzzleTeamSizeChange} onClose={onCloseRules} />}
+            <div>
+                <button type="button" disabled={isSaving} onClick={onSavePuzzle} className="flex min-h-12 w-full items-center justify-center rounded-xl border-b-[3px] border-[#1f6b3f] bg-[#2fa866] font-display text-base font-bold text-white hover:bg-[#38bd74] disabled:cursor-wait disabled:opacity-60">
+                    {isSaving ? (isEditing ? "UPDATING..." : "SAVING...") : (isEditing ? "UPDATE PUZZLE" : "SAVE PUZZLE")}
+                </button>
+                <p className={`mt-1.5 text-center text-[11px] ${dirty ? "text-amber-300" : "text-slate-500"}`} role="status">{dirty ? "Unsaved changes" : "All changes saved"}</p>
+            </div>
+            {saveState && (
+                <ToastStack>
+                    <Toast tone={saveState.ok ? "success" : "error"} onDismiss={onDismissSaveState}>{saveState.message}</Toast>
+                </ToastStack>
+            )}
+            {children}
         </div>
     );
 }
@@ -576,7 +585,9 @@ export default function PuzzleBuilderPage() {
     const [isSaving, setIsSaving] = useState(false);
     const [isConfigurationOpen, setIsConfigurationOpen] = useState(false);
     const [isRulesOpen, setIsRulesOpen] = useState(false);
-    const saveNoticeTimer = useRef(null);
+    const [isArenaSetupOpen, setIsArenaSetupOpen] = useState(false);
+    const [savedSignature, setSavedSignature] = useState(null);
+    const loadedAtRef = useRef(0);
 
     useEffect(() => {
         if (!isEditing) {
@@ -625,11 +636,38 @@ export default function PuzzleBuilderPage() {
         });
     }, []);
 
-    const showDraftNotice = useCallback((message) => {
-        setSaveState({ ok: true, message });
-        if (saveNoticeTimer.current) window.clearTimeout(saveNoticeTimer.current);
-        saveNoticeTimer.current = window.setTimeout(() => setSaveState(null), 2600);
-    }, []);
+    // "Unsaved changes" compares the draft with what was loaded or last saved. The arena normalizes the
+    // draft right after it mounts, so changes in that first second count as the baseline.
+    const draftSignature = useMemo(() => JSON.stringify(draft), [draft]);
+    useEffect(() => {
+        if (!isLoading) loadedAtRef.current = Date.now();
+    }, [isLoading]);
+    useEffect(() => {
+        if (Date.now() - loadedAtRef.current < 1000) setSavedSignature(draftSignature);
+    }, [draftSignature]);
+    const dirty = savedSignature !== null && savedSignature !== draftSignature;
+
+    useEffect(() => {
+        if (!dirty) return undefined;
+        const warnBeforeUnload = (event) => {
+            event.preventDefault();
+            event.returnValue = "";
+        };
+        // In-app links: ask before leaving with unsaved changes.
+        const confirmLinkNavigation = (event) => {
+            const link = event.target instanceof Element ? event.target.closest("a[href^='/']") : null;
+            if (link && !window.confirm("You have unsaved changes. Leave without saving?")) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+        };
+        window.addEventListener("beforeunload", warnBeforeUnload);
+        document.addEventListener("click", confirmLinkNavigation, true);
+        return () => {
+            window.removeEventListener("beforeunload", warnBeforeUnload);
+            document.removeEventListener("click", confirmLinkNavigation, true);
+        };
+    }, [dirty]);
 
     const logicLimits = useMemo(() => ({
         maxActionNodes: draft.maxActionNodes,
@@ -744,6 +782,7 @@ export default function PuzzleBuilderPage() {
             const saved = isEditing
                 ? await updatePuzzle(puzzleNumber, payload)
                 : await savePuzzle(payload);
+            setSavedSignature(JSON.stringify(draft));
             setSaveState({ ok: true, message: `Puzzle #${saved.puzzleNumber} ${isEditing ? "updated" : "saved"}.` });
             if (draft.published) window.setTimeout(() => navigate("/puzzles"), 700);
         } catch (error) {
@@ -760,31 +799,93 @@ export default function PuzzleBuilderPage() {
         return <PuzzleBuilderStatus message={loadError} error onBack={() => navigate("/puzzles")} />;
     }
 
-    const builderControls = (
+    const rootKinds = (draft.puzzleLogic?.roots ?? []).map((root) => root?.kind);
+    const winRules = rootKinds.filter((kind) => kind === "win").length;
+    const loseRules = rootKinds.filter((kind) => kind === "lose").length;
+    const opponentActions = countActions(draft.opponentBot?.brain);
+    const completion = { arena: true, rules: winRules > 0, opponent: opponentActions > 0, limits: true, test: false };
+    const nextStepId = ["arena", "rules", "opponent", "limits", "test"].find((id) => !completion[id]);
+    const stepState = (id) => (completion[id] ? "done" : id === nextStepId ? "next" : "todo");
+    const steps = [
+        { id: "arena", title: "Arena setup", summary: `${draft.playerTeamSize}v${draft.opponentTeamSize} \u00b7 positions set`, state: stepState("arena") },
+        {
+            id: "rules",
+            title: "Win and lose rules",
+            summary: winRules > 0 ? `${winRules} win \u00b7 ${loseRules} lose` : "Add a win rule",
+            warn: winRules === 0,
+            state: stepState("rules"),
+        },
+        {
+            id: "opponent",
+            title: "Opponent bot",
+            summary: opponentActions > 0 ? `${opponentActions} ${opponentActions === 1 ? "action" : "actions"}` : "No code yet",
+            warn: opponentActions === 0,
+            state: stepState("opponent"),
+        },
+        { id: "limits", title: "Rules and limits", summary: `${Math.round(Number(draft.timeLimitMs ?? 0) / 1000)} s \u00b7 ${draft.hideOpponentCode ? "hidden" : "visible"}`, state: stepState("limits") },
+        // The builder has no self-submission result to read back, so this step runs the existing preview.
+        { id: "test", title: "Test it yourself", summary: "play to preview", state: stepState("test") },
+    ];
+
+    // Team sizes go through the existing handler so the default win/lose rules follow the roster.
+    const applyArenaSetup = (setup) => {
+        if (setup.playerTeamSize !== draft.playerTeamSize) handlePuzzleTeamSizeChange("playerTeamSize", setup.playerTeamSize);
+        if (setup.opponentTeamSize !== draft.opponentTeamSize) handlePuzzleTeamSizeChange("opponentTeamSize", setup.opponentTeamSize);
+        setDraft((current) => {
+            const nextBots = (current.bots ?? []).map((bot) => {
+                const match = setup.bots.find((candidate) => puzzleBotKey(candidate) === puzzleBotKey(bot));
+                return match
+                    ? { ...bot, startX: match.startX, startY: match.startY, rotation: match.rotation, startHp: match.startHp }
+                    : bot;
+            });
+            const maxTimeLimitMs = (MAX_TIME_SECONDS - setup.initialElapsedMs / 1000) * 1000;
+            const currentTimeLimitMs = Number(current.timeLimitMs);
+            return normalizeDraftRoster({
+                ...current,
+                initialElapsedMs: setup.initialElapsedMs,
+                timeLimitMs: Number.isFinite(currentTimeLimitMs) ? Math.min(currentTimeLimitMs, maxTimeLimitMs) : maxTimeLimitMs,
+            }, nextBots);
+        });
+        setIsArenaSetupOpen(false);
+    };
+
+    const builderControls = ({ openOpponentCode, startTest } = {}) => (
         <PuzzleBuilderControls
             draft={draft}
             setDraft={setDraft}
+            steps={steps}
+            dirty={dirty}
             saveState={saveState}
+            onDismissSaveState={() => setSaveState(null)}
             isSaving={isSaving}
-            onSaveStartingStats={() => showDraftNotice("Starting stats saved.")}
-            onSaveOpponentCode={() => showDraftNotice("Opponent code saved.")}
             onSavePuzzle={handleSavePuzzle}
+            onOpenArenaSetup={() => setIsArenaSetupOpen(true)}
             onOpenConfiguration={() => setIsConfigurationOpen(true)}
             onOpenRules={() => setIsRulesOpen(true)}
-            isConfigurationOpen={isConfigurationOpen}
-            onCloseConfiguration={() => setIsConfigurationOpen(false)}
-            isRulesOpen={isRulesOpen}
-            onCloseRules={() => setIsRulesOpen(false)}
-            onPuzzleLogicChange={handlePuzzleLogicChange}
-            onPuzzleTeamSizeChange={handlePuzzleTeamSizeChange}
+            openOpponentCode={openOpponentCode}
+            startTest={startTest}
             isEditing={isEditing}
-            conditionVariables={conditionVariables}
-            conditionTargets={conditionTargets}
-            conditionTargetAbilityIds={conditionTargetAbilityIds}
         />
     );
 
-    return <Arena puzzleBuilder initialPuzzle={draft} onPuzzleDraftChange={handleArenaDraftChange} builderControls={builderControls} logicLimits={logicLimits} />;
+    return (
+        <>
+            <Arena puzzleBuilder initialPuzzle={draft} onPuzzleDraftChange={handleArenaDraftChange} builderControls={builderControls} logicLimits={logicLimits} />
+            {isArenaSetupOpen && (
+                <ArenaSetup
+                    draft={draft}
+                    onClose={() => setIsArenaSetupOpen(false)}
+                    onApply={applyArenaSetup}
+                    title="Arena setup"
+                    subtitle="Puzzle builder"
+                    titleId="puzzle-arena-setup-title"
+                    maxElapsedSeconds={MAX_INITIAL_ELAPSED_SECONDS}
+                />
+            )}
+            {isConfigurationOpen && <PuzzleConfigurationModal draft={draft} conditionVariables={conditionVariables} conditionTargets={conditionTargets} conditionTargetAbilityIds={conditionTargetAbilityIds} onPuzzleLogicChange={handlePuzzleLogicChange} onClose={() => setIsConfigurationOpen(false)} />}
+            {isRulesOpen && <PuzzleRulesModal draft={draft} setDraft={setDraft} onClose={() => setIsRulesOpen(false)} />}
+        </>
+    );
 }
 
 function PuzzleBuilderStatus({ message, error = false, onBack = null }) {

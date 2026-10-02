@@ -8,7 +8,9 @@ import {
     measureVariableActionExpressionWidth,
     resolveSelectableTarget,
     UNAVAILABLE_TARGET_LABEL,
+    variableActionSummary,
 } from "./actionNodePresentation.js";
+import { CUSTOM_VARIABLE_OPERATIONS } from "../../botlogic/code/BotCode.js";
 
 const singularityTarget = SELECTABLE_TYPES.find((selectable) => selectable.id === "opponent_1_singularity_zone");
 const availableTargets = SELECTABLE_TYPES.filter((selectable) => selectable.id !== singularityTarget.id);
@@ -88,4 +90,18 @@ test("long visible labels, coordinates, angles, and variable expressions can exp
     assert.ok(longCoordinates > baseline);
     assert.ok(longAngle > baseline);
     assert.ok(variableAction > baseline);
+});
+
+test("custom variable summaries lead with the term when setting and with the variable when changing", () => {
+    const target = { id: "custom.variable-1", name: "Variable 1", valueType: "number" };
+    const stateVariables = [{ id: "selectable.hp", label: "HP" }];
+    const num = (value) => ({ type: "number", value });
+    const { SET, ADD, SUBTRACT } = CUSTOM_VARIABLE_OPERATIONS;
+
+    assert.equal(variableActionSummary({ target, stateVariables, terms: [{ operator: ADD, operand: num(1) }] }), "Variable 1 + 1");
+    assert.equal(variableActionSummary({ target, stateVariables, terms: [
+        { operator: SET, operand: { type: "variable", value: "selectable.hp" } },
+        { operator: SUBTRACT, operand: num(20) },
+    ] }), "HP - 20");
+    assert.equal(variableActionSummary({ target, stateVariables, terms: [{ operator: SET, operand: { type: "boolean", value: true } }] }), "true");
 });

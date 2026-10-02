@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/auth-context";
 import AppNavbar from "../../components/AppNavbar.jsx";
@@ -7,6 +7,11 @@ import { customVariableDefinitions, STATE_VARIABLES, VISIBLE_STATE_VARIABLES } f
 import { selectableAbilityIdsForLoadouts, selectableTypesForLoadouts } from "../../gameArena/coding/nodes/GraphNodes.jsx";
 import { fetchPuzzle, submitPuzzleAttempt } from "../../puzzles/puzzleApi.js";
 import { puzzleConditionLabel } from "../../puzzles/puzzleConditions.js";
+import { readPuzzleBotCodeDraft } from "../../puzzles/puzzleBotCodeStorage.js";
+import { resolveSelectableTarget } from "../../gameArena/coding/nodes/actionNodePresentation.js";
+import { summarizeCondition } from "../../gameArena/coding/nodes/conditionSummary.js";
+import { useStackedLayout } from "../../tutorial/useStackedLayout.js";
+import "../../tutorial/tutorialGuide.css";
 import { loadPuzzleSubmissions, savePuzzleSubmission } from "../../puzzles/puzzleSubmissions.js";
 import PuzzleLogicWorkspace from "./PuzzleLogicWorkspace.jsx";
 import {
@@ -43,112 +48,180 @@ function puzzleWithBotRoles(payload) {
     };
 }
 
-function PuzzleConditionItem({ condition, variableDefinitions, onOpenConfiguration }) {
-    const label = puzzleConditionLabel(condition, variableDefinitions);
+function PuzzleConditionStrip({ condition, variableDefinitions, selectableTypes, onOpenConfiguration }) {
     const canOpenConfiguration = typeof onOpenConfiguration === "function";
-    const activate = () => onOpenConfiguration?.();
-    const onKeyDown = (event) => {
-        if (!canOpenConfiguration || !["Enter", " "].includes(event.key)) return;
-        event.preventDefault();
-        activate();
+    const isFull = condition?.type === "always" || condition?.type === "expression";
+    const lookups = {
+        variable: (id) => variableDefinitions.find((variable) => variable.id === id) ?? null,
+        selectable: (id) => resolveSelectableTarget(id, selectableTypes).description,
+        ability: (id) => {
+            for (const variable of variableDefinitions) {
+                const option = (variable.abilityOptions ?? []).find((ability) => ability.id === id);
+                if (option) return option.label;
+            }
+            return String(id ?? "Ability");
+        },
     };
-    return <li>
-        <span aria-hidden="true">- </span>
-        <span
-            role={canOpenConfiguration ? "button" : undefined}
-            tabIndex={canOpenConfiguration ? 0 : undefined}
-            title={canOpenConfiguration ? "View puzzle configuration" : undefined}
-            onClick={canOpenConfiguration ? activate : undefined}
-            onKeyDown={canOpenConfiguration ? onKeyDown : undefined}
-            className={canOpenConfiguration ? "cursor-pointer transition hover:font-bold focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300" : ""}
-        >
-            {label}
+    const label = puzzleConditionLabel(condition, variableDefinitions);
+    const summary = isFull ? summarizeCondition(condition, lookups) : null;
+    const body = summary ? (
+        <span className="code-bt-strip-text">
+            <span className="code-bt-subject">{summary.subject}</span>
+            {summary.entities.map((entity, index) => <span className="code-bt-entity" key={index}>{entity}</span>)}
+            {summary.comparator && <span className="code-bt-comparator">{summary.comparator}</span>}
+            {summary.value && <span className="code-bt-value">{summary.value}</span>}
+            {summary.valueEntities.map((entity, index) => <span className="code-bt-entity" key={`value-${index}`}>{entity}</span>)}
         </span>
-    </li>;
+    ) : <span className="code-bt-strip-text"><span className="code-bt-subject">{label}</span></span>;
+    return (
+        <li>
+            {canOpenConfiguration ? (
+                <button type="button" onClick={onOpenConfiguration} title="View puzzle configuration" aria-label={label} className="code-bt-strip puzzle-strip is-clickable w-full text-left">{body}</button>
+            ) : (
+                <div className="code-bt-strip puzzle-strip" title={label} aria-label={label}>{body}</div>
+            )}
+        </li>
+    );
 }
 
-function PuzzlePlayInfoModal({ puzzle, outcome, onOpenConfiguration }) {
-    const [minimized, setMinimized] = useState(false);
-    const descriptionRef = useRef(null);
-    const descriptionScrollTopRef = useRef(0);
+function PuzzleIcon({ className = "h-5 w-5" }) {
+    return (
+        <svg viewBox="0 0 24 24" className={`${className} fill-none stroke-current`} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M10 4a2 2 0 1 1 4 0v1h3a1 1 0 0 1 1 1v3h-1a2 2 0 1 0 0 4h1v3a1 1 0 0 1-1 1h-3v-1a2 2 0 1 0-4 0v1H7a1 1 0 0 1-1-1v-3h1a2 2 0 1 0 0-4H6V6a1 1 0 0 1 1-1h3Z" />
+        </svg>
+    );
+}
+
+function PuzzleInfoBody({ puzzle, isSolved, variableDefinitions, selectableTypes, onOpenConfiguration }) {
     const winConditions = Array.isArray(puzzle.winConditions) ? puzzle.winConditions : [];
     const loseConditions = Array.isArray(puzzle.loseConditions) ? puzzle.loseConditions : [];
+    const description = typeof puzzle.description === "string" ? puzzle.description.trim() : "";
+    const playerTeam = Number(puzzle.playerTeamSize);
+    const opponentTeam = Number(puzzle.opponentTeamSize);
+    const mode = playerTeam > 0 && opponentTeam > 0 ? `${playerTeam}v${opponentTeam}` : null;
+    const strips = (conditions) => conditions.map((condition, index) => (
+        <PuzzleConditionStrip
+            key={condition.id ?? `${condition.left}-${index}`}
+            condition={condition}
+            variableDefinitions={variableDefinitions}
+            selectableTypes={selectableTypes}
+            onOpenConfiguration={onOpenConfiguration}
+        />
+    ));
+    return (
+        <>
+            <div className="tg-card__body puzzle-info__body">
+                {description && <p className="whitespace-pre-wrap text-sm leading-6 text-slate-300">{description}</p>}
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-lg border border-[#262c33] bg-[#12181d] px-2 py-2">
+                        <span className="block text-[10px] text-slate-500">Time limit</span>
+                        <strong className="mt-0.5 block font-display text-sm text-white">{Math.round(Number(puzzle.timeLimitMs ?? 90_000) / 1000)} s</strong>
+                    </div>
+                    <div className="rounded-lg border border-[#262c33] bg-[#12181d] px-2 py-2">
+                        <span className="block text-[10px] text-slate-500">Opponent code</span>
+                        <strong className="mt-0.5 flex items-center justify-center gap-1 font-display text-sm text-white">
+                            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-none stroke-current" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                {puzzle.hideOpponentCode === false
+                                    ? <><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z" /><circle cx="12" cy="12" r="2.6" /></>
+                                    : <><path d="M3 3l18 18" /><path d="M10.6 6.2A9.6 9.6 0 0 1 12 6c6.4 0 10 6 10 6a17 17 0 0 1-3 3.6M6.5 7.6C3.9 9.3 2 12 2 12s3.6 6 10 6a9.6 9.6 0 0 0 4-.9" /></>}
+                            </svg>
+                            {puzzle.hideOpponentCode === false ? "Visible" : "Hidden"}
+                        </strong>
+                    </div>
+                    {mode && (
+                        <div className="rounded-lg border border-[#262c33] bg-[#12181d] px-2 py-2">
+                            <span className="block text-[10px] text-slate-500">Mode</span>
+                            <strong className="mt-0.5 block font-display text-sm text-white">{mode}</strong>
+                        </div>
+                    )}
+                </div>
+
+                <section className="mt-3 rounded-lg border border-emerald-500/40 bg-emerald-500/[.06] p-2" aria-label="Win if">
+                    <h3 className="mb-1.5 text-[10px] font-bold text-emerald-300">WIN IF</h3>
+                    <ul className="space-y-1">{strips(winConditions)}</ul>
+                </section>
+
+                {loseConditions.length > 0 && (
+                    <section className="mt-2 rounded-lg border border-rose-500/40 bg-rose-500/[.06] p-2" aria-label="Lose if">
+                        <h3 className="mb-1.5 text-[10px] font-bold text-rose-300">LOSE IF</h3>
+                        <ul className="space-y-1">{strips(loseConditions)}</ul>
+                    </section>
+                )}
+            </div>
+            <p className="flex gap-2 border-t border-[#262c33] pt-2.5 text-[11px] leading-4 text-slate-500">
+                <span aria-hidden="true">&#9432;</span>
+                <span>Play previews your code here. Submit runs a hidden server check that decides the result.</span>
+            </p>
+            {isSolved && <span className="sr-only" role="status">Solved</span>}
+        </>
+    );
+}
+
+function PuzzlePlayInfoModal({ puzzle, outcome, onOpenConfiguration, selectableTypes }) {
+    const stacked = useStackedLayout();
+    const [minimized, setMinimized] = useState(false);
+    const [sheetOpen, setSheetOpen] = useState(false);
     const variableDefinitions = [
         ...STATE_VARIABLES,
         ...customVariableDefinitions(puzzle.logicConfiguration),
     ];
-    const description = typeof puzzle.description === "string" ? puzzle.description.trim() : "";
     const isSolved = puzzle.solved === true || outcome?.status === "solved";
-    useLayoutEffect(() => {
-        if (!minimized && descriptionRef.current) {
-            descriptionRef.current.scrollTop = descriptionScrollTopRef.current;
-        }
-    }, [minimized, puzzle.id]);
+    const title = `#${puzzle.puzzleNumber} · ${puzzle.name}`;
 
-    if (minimized) {
+    const card = (sheet) => (
+        <aside id="puzzle-info-panel" className={`tg-card puzzle-info-card ${sheet ? "tg-card--sheet" : ""}`} aria-label="Puzzle information">
+            {sheet && <button type="button" className="tg-card__handle" aria-label="Close puzzle info" onClick={() => setSheetOpen(false)}><span aria-hidden="true" /></button>}
+            <header className="tg-card__header">
+                <div className="min-w-0 flex-1">
+                    <p className="tg-eyebrow flex flex-wrap items-center gap-2">
+                        Puzzle #{puzzle.puzzleNumber}
+                        {isSolved && <span className="inline-flex items-center gap-1 text-emerald-400">&#10003; Solved</span>}
+                    </p>
+                    <h2 className="tg-title" title={puzzle.name}>{puzzle.name}</h2>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => (sheet ? setSheetOpen(false) : setMinimized(true))}
+                    className="tg-minimize"
+                    aria-label={sheet ? "Close puzzle info" : "Minimize puzzle information"}
+                    title={sheet ? "Close" : "Minimize puzzle information"}
+                ><span aria-hidden="true">{sheet ? "×" : "–"}</span></button>
+            </header>
+            <PuzzleInfoBody puzzle={puzzle} isSolved={isSolved} variableDefinitions={variableDefinitions} selectableTypes={selectableTypes} onOpenConfiguration={onOpenConfiguration} />
+        </aside>
+    );
+
+    if (stacked) {
         return (
-            <button type="button" onClick={() => setMinimized(false)} className="puzzle-info-button tutorial-guide-button info-popup-minimized gray-button-surface flex items-center gap-2 rounded-lg border border-cyan-400/40 px-3 py-2 text-left shadow-2xl" aria-label="Expand puzzle information" aria-expanded="false" aria-controls="puzzle-info-panel">
-                <span className="tutorial-guide-button__label font-mono text-[9px] font-bold tracking-[.16em] text-slate-300">PUZZLE INFO</span>
-                <img src="/assets/homepage/book-icon.svg" alt="" aria-hidden="true" className="tutorial-guide-button__icon h-5 w-5" />
-            </button>
+            <div className="tg-arena-host">
+                <div className="tg-stacked">
+                    {sheetOpen ? card(true) : (
+                        <button type="button" className="tg-fab tg-fab--amber" onClick={() => setSheetOpen(true)} aria-label="Puzzle info" title={title}>
+                            <PuzzleIcon className="tg-fab__icon" />
+                            {isSolved && <span className="tg-fab__badge tg-fab__badge--solved">&#10003;</span>}
+                        </button>
+                    )}
+                </div>
+            </div>
         );
     }
 
     return (
-        <aside id="puzzle-info-panel" className="tutorial-guide-panel puzzle-info-panel info-popup-panel w-[19rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-cyan-400/30 bg-[#07111b] shadow-[0_18px_50px_rgba(0,0,0,.48)]" aria-label="Puzzle information">
-            <div className="tutorial-guide-header flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                    <p className="font-mono text-[9px] font-bold tracking-[.16em] text-cyan-300">PUZZLE</p>
-                    <p className="mt-2 break-words font-mono text-lg font-bold leading-tight text-white">{puzzle.puzzleNumber}. {puzzle.name}</p>
-                </div>
-                <button type="button" onClick={() => setMinimized(true)} className="puzzle-info-minimize" aria-label="Minimize puzzle information" title="Minimize puzzle information"><span aria-hidden="true">-</span></button>
-            </div>
-            <div
-                ref={descriptionRef}
-                onScroll={(event) => { descriptionScrollTopRef.current = event.currentTarget.scrollTop; }}
-                className="tutorial-guide-content p-3.5"
-            >
-                {description && <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-300">{description}</p>}
-
-                <div className="mt-5 grid grid-cols-2 gap-4 border-y border-white/10 py-3 font-mono text-[9px]">
-                    <div>
-                        <span className="block font-bold tracking-[.14em] text-cyan-300">TIME LIMIT</span>
-                        <strong className="mt-1 block text-sm text-white">{Math.round(Number(puzzle.timeLimitMs ?? 90_000) / 1000)}s</strong>
-                    </div>
-                    <div>
-                        <span className="block font-bold tracking-[.14em] text-cyan-300">OPPONENT CODE</span>
-                        <strong className="mt-1 block text-sm text-white">{puzzle.hideOpponentCode === false ? "VISIBLE" : "HIDDEN"}</strong>
-                    </div>
-                </div>
-
-                {isSolved && <div role="status" className="mt-4 inline-flex items-center rounded-full border border-emerald-500/60 bg-emerald-950/40 px-3 py-1.5 font-mono text-[10px] font-bold tracking-widest text-emerald-200">Solved</div>}
-
-                <section className="mt-5">
-                    <h2 className="font-mono text-[10px] font-bold tracking-[.16em] text-emerald-200">WIN CONDITIONS:</h2>
-                    <ul className="mt-2 space-y-1.5 font-mono text-[9px] leading-4 text-slate-300">
-                        {winConditions.map((condition, index) => <PuzzleConditionItem key={condition.id ?? `${condition.left}-${index}`} condition={condition} variableDefinitions={variableDefinitions} onOpenConfiguration={onOpenConfiguration} />)}
-                    </ul>
-                </section>
-
-                {loseConditions.length > 0 && (
-                    <section className="mt-5">
-                        <h2 className="font-mono text-[10px] font-bold tracking-[.16em] text-rose-200">LOSE CONDITIONS:</h2>
-                        <ul className="mt-2 space-y-1.5 font-mono text-[9px] leading-4 text-slate-300">
-                            {loseConditions.map((condition, index) => <PuzzleConditionItem key={condition.id ?? `${condition.left}-${index}`} condition={condition} variableDefinitions={variableDefinitions} onOpenConfiguration={onOpenConfiguration} />)}
-                        </ul>
-                    </section>
-                )}
-
-            </div>
-        </aside>
+        <div className="tg-arena-host">
+            {minimized ? (
+                <button type="button" onClick={() => setMinimized(false)} className="tg-pill" aria-label={`Expand puzzle information, ${title}`} aria-expanded="false" aria-controls="puzzle-info-panel" title={title}>
+                    <PuzzleIcon className="tg-pill__icon text-amber-300" />
+                    <span className="tg-pill__name">{title}</span>
+                    {isSolved && <span className="tg-pill__count text-emerald-400" aria-label="Solved">&#10003;</span>}
+                </button>
+            ) : card(false)}
+        </div>
     );
 }
 
 function PuzzlePlayToolbarControls({ onBack }) {
     return (
-        <div className="space-y-2">
-            <button type="button" onClick={onBack} className="arena-toolbar-button arena-toolbar-button--neutral">BACK TO PUZZLES</button>
-        </div>
+        <button type="button" onClick={onBack} className="puzzle-back-link">&larr; Puzzles</button>
     );
 }
 
@@ -163,41 +236,53 @@ function PuzzleStatusPage({ children }) {
     );
 }
 
-function PuzzleSubmissionsModal({ submissions, onClose, onLoad }) {
+const SUBMISSION_STYLES = Object.freeze({
+    solved: { label: "SOLVED", bar: "bg-emerald-400", text: "text-emerald-300" },
+    error: { label: "ERROR", bar: "bg-amber-400", text: "text-amber-300" },
+    failed: { label: "FAILED", bar: "bg-rose-400", text: "text-rose-300" },
+});
+
+function PuzzleSubmissionsModal({ puzzle, submissions, onClose, onLoad }) {
     return (
-        <div className="fixed inset-0 z-[200] grid place-items-center bg-[#02070de8] p-4 font-interface backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="puzzle-submissions-title" tabIndex={-1} onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
-            <section className="flex max-h-[min(88vh,54rem)] w-[min(42rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-slate-600/80 bg-[#171c20] text-[#f2f4f5] shadow-[0_24px_90px_rgba(0,0,0,.6)]">
-                <header className="flex items-start justify-between gap-5 border-b border-slate-700/80 px-6 py-5 sm:px-8">
-                    <div>
-                        <p className="font-mono text-[10px] font-bold tracking-[.2em] text-cyan-300">PUZZLE HISTORY</p>
-                        <h2 id="puzzle-submissions-title" className="mt-2 text-2xl font-bold text-white">Submissions</h2>
-                        <p className="mt-1 text-sm text-slate-500">Your last 10 submissions</p>
+        <div className="fixed inset-0 z-[200] grid place-items-center bg-[#02070de8] px-4 pb-4 pt-[5.5rem] font-interface backdrop-blur-sm max-sm:grid-rows-[minmax(0,1fr)] max-sm:items-stretch max-sm:p-0 max-sm:pt-[72px]" role="dialog" aria-modal="true" aria-labelledby="puzzle-submissions-title" tabIndex={-1} onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
+            <section className="flex max-h-[calc(100dvh-7.5rem)] w-[min(34rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-[#262c33] bg-[#0f1418] text-[#f2f4f5] shadow-[0_24px_90px_rgba(0,0,0,.6)] max-sm:h-full max-sm:max-h-none max-sm:w-full max-sm:rounded-none max-sm:border-0">
+                <header className="flex items-start justify-between gap-4 border-b border-[#262c33] px-5 py-4">
+                    <div className="min-w-0">
+                        <h2 id="puzzle-submissions-title" className="font-display text-xl font-bold text-white">Submissions</h2>
+                        <p className="mt-0.5 truncate text-xs text-slate-500">#{puzzle.puzzleNumber} &middot; {puzzle.name} &middot; last 10</p>
                     </div>
                     <button type="button" onClick={onClose} className="modal-close-button" aria-label="Close submissions"><span aria-hidden="true">×</span></button>
                 </header>
 
                 {submissions.length > 0 ? (
-                    <ol className="min-h-0 overflow-y-auto p-6 pt-5 sm:px-8" aria-label="Puzzle submissions">
+                    <ol className="min-h-0 flex-1 overflow-y-auto" aria-label="Puzzle submissions">
                         {submissions.map((submission, index) => {
-                            const solved = submission.status === "solved";
-                            const error = submission.status === "error";
+                            const style = SUBMISSION_STYLES[submission.status] ?? SUBMISSION_STYLES.failed;
                             return (
-                                <li key={submission.id}>
-                                    <button type="button" onClick={() => onLoad(submission)} className="gray-button-surface flex w-full items-center gap-4 rounded-lg border border-slate-700 px-4 py-3 text-left transition hover:border-cyan-400/70">
-                                        <span className={`grid h-9 w-9 flex-none place-items-center rounded-full border font-mono text-sm font-bold ${solved ? "border-emerald-400/60 bg-emerald-950/40 text-emerald-300" : error ? "border-amber-400/60 bg-amber-950/30 text-amber-300" : "border-rose-400/60 bg-rose-950/30 text-rose-300"}`} aria-hidden="true">{solved ? "✓" : error ? "!" : "×"}</span>
-                                        <span className="min-w-0 flex-1">
-                                            <span className={`block font-mono text-[10px] font-bold tracking-widest ${solved ? "text-emerald-300" : error ? "text-amber-300" : "text-rose-300"}`}>{solved ? "SUCCESSFUL" : error ? "ERROR" : "FAILED"}{index === 0 && <span className="ml-2 text-slate-500">LATEST</span>}</span>
-                                            <time className="mt-1 block text-sm text-slate-300" dateTime={submission.submittedAt}>{formatSubmissionDate(submission.submittedAt)}</time>
-                                        </span>
-                                        <span className="flex-none font-mono text-[9px] font-bold tracking-widest text-cyan-200">LOAD CODE</span>
+                                <li key={submission.id} className="flex min-h-14 items-center gap-3 border-b border-[#1c2228] px-5 py-2.5 max-sm:min-h-[44px]">
+                                    <span className={`h-9 w-[3px] shrink-0 rounded-full ${style.bar}`} aria-hidden="true" />
+                                    <div className="min-w-0 flex-1">
+                                        <p className={`flex items-center gap-2 font-display text-sm font-bold ${style.text}`}>
+                                            {style.label}
+                                            {index === 0 && <span className="rounded border border-[#2d353c] px-1.5 py-0.5 font-interface text-[10px] font-semibold text-slate-400">Latest</span>}
+                                        </p>
+                                        <p className="truncate text-xs text-slate-500">
+                                            <time dateTime={submission.submittedAt}>{formatSubmissionDate(submission.submittedAt)}</time>
+                                            {submission.message ? ` · ${submission.message}` : ""}
+                                        </p>
+                                    </div>
+                                    <button type="button" onClick={() => onLoad(submission)} className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-md border border-[#2d353c] bg-[#12181d] px-3 text-xs font-semibold text-slate-200 hover:border-slate-500" aria-label={`Load code from ${style.label.toLowerCase()} submission`}>
+                                        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 20h14" /></svg>
+                                        Load code
                                     </button>
                                 </li>
                             );
                         })}
                     </ol>
                 ) : (
-                    <p className="mt-6 rounded-lg border border-slate-700 bg-slate-950/25 px-4 py-8 text-center font-mono text-[10px] tracking-widest text-slate-500">NO SUBMISSIONS YET.</p>
+                    <p className="px-5 py-10 text-center text-sm text-slate-500">No submissions yet. Submit your code to see results here.</p>
                 )}
+                <footer className="border-t border-[#262c33] px-5 py-3 text-[11px] text-slate-500">Loading replaces the code in your workspace.</footer>
             </section>
         </div>
     );
@@ -206,7 +291,12 @@ function PuzzleSubmissionsModal({ submissions, onClose, onLoad }) {
 function formatSubmissionDate(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "Date unavailable";
-    return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+    const startOfDay = (candidate) => new Date(candidate.getFullYear(), candidate.getMonth(), candidate.getDate()).getTime();
+    const dayDifference = Math.round((startOfDay(new Date()) - startOfDay(date)) / 86_400_000);
+    const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(date);
+    if (dayDifference === 0) return `Today, ${time}`;
+    if (dayDifference === 1) return `Yesterday, ${time}`;
+    return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
 }
 
 export default function PuzzlePlayPage() {
@@ -280,10 +370,16 @@ export default function PuzzlePlayPage() {
     }, [puzzleNumber]);
 
     const handleLoadSubmission = useCallback((submission) => {
+        // Loading replaces the workspace code; confirm first when it holds edits that no submission has.
+        const reference = activeRestoredSubmission ?? submissions[0] ?? null;
+        const draft = readPuzzleBotCodeDraft(puzzleNumber);
+        const untouched = JSON.stringify(draft) === JSON.stringify(readPuzzleBotCodeDraft(""));
+        if (draft && reference && !untouched && JSON.stringify(draft) !== JSON.stringify(reference.brain)
+            && !window.confirm("Replace the code in your workspace? Your unsaved changes will be lost.")) return;
         setOutcome(null);
         setOpenSubmissionsFor(null);
         setRestoredSubmission({ puzzleNumber, submission });
-    }, [puzzleNumber]);
+    }, [activeRestoredSubmission, puzzleNumber, submissions]);
 
     const puzzleForArena = useMemo(() => {
         if (!puzzle || !activeRestoredSubmission) return puzzle;
@@ -340,10 +436,10 @@ export default function PuzzlePlayPage() {
         : null;
 
     if (isLoading) return <PuzzleStatusPage><p className="font-mono text-xs tracking-widest text-slate-400">LOADING PUZZLE...</p></PuzzleStatusPage>;
-    if (error || !puzzle) return <PuzzleStatusPage><p className="font-mono text-xs text-rose-300">{error ?? "Puzzle not found."}</p><button type="button" onClick={() => navigate("/puzzles")} className="gray-button-surface mt-5 min-h-11 border border-slate-600 px-4 font-mono text-[10px] font-bold tracking-widest text-slate-300 hover:border-cyan-400 hover:text-cyan-200">BACK TO PUZZLES</button></PuzzleStatusPage>;
+    if (error || !puzzle) return <PuzzleStatusPage><p className="font-mono text-xs text-rose-300">{error ?? "Puzzle not found."}</p><button type="button" onClick={() => navigate("/puzzles")} className="hud-btn hud-btn--auto mt-5 min-h-11">Back to puzzles</button></PuzzleStatusPage>;
 
     return <>
-        <Arena key={`${puzzleNumber}:${activeRestoredSubmission?.id ?? "puzzle-default"}`} puzzleMode puzzleNumber={puzzleNumber} puzzleCodeOverride={activeRestoredSubmission?.brain ?? null} initialPuzzle={puzzleForArena} arenaInfo={<PuzzlePlayInfoModal puzzle={puzzle} outcome={outcome} onOpenConfiguration={canViewConfiguration ? openConfiguration : undefined} />} puzzleControls={controls} onOpenPuzzleSubmissions={() => setOpenSubmissionsFor(puzzleNumber)} onPuzzleOutcome={setOutcome} onPuzzleAttempt={handlePuzzleAttempt} logicLimits={{ maxActionNodes: puzzle.maxActionNodes, maxConditionNodes: puzzle.maxConditionNodes, maxCustomVariables: puzzle.maxCustomVariables }} />
+        <Arena key={`${puzzleNumber}:${activeRestoredSubmission?.id ?? "puzzle-default"}`} puzzleMode puzzleNumber={puzzleNumber} puzzleCodeOverride={activeRestoredSubmission?.brain ?? null} initialPuzzle={puzzleForArena} arenaInfo={<PuzzlePlayInfoModal puzzle={puzzle} outcome={outcome} selectableTypes={viewerSelectableTypes} onOpenConfiguration={canViewConfiguration ? openConfiguration : undefined} />} puzzleLastResult={submissions[0]?.status ?? null} puzzleControls={controls} onOpenPuzzleSubmissions={() => setOpenSubmissionsFor(puzzleNumber)} onPuzzleOutcome={setOutcome} onPuzzleAttempt={handlePuzzleAttempt} logicLimits={{ maxActionNodes: puzzle.maxActionNodes, maxConditionNodes: puzzle.maxConditionNodes, maxCustomVariables: puzzle.maxCustomVariables }} />
         {isConfigurationOpen && canViewConfiguration && <PuzzleLogicWorkspace
             configuration={puzzle.logicConfiguration}
             onChange={() => {}}
@@ -354,6 +450,6 @@ export default function PuzzlePlayPage() {
             readOnly
             onClose={() => setIsConfigurationOpen(false)}
         />}
-        {openSubmissionsFor === puzzleNumber && <PuzzleSubmissionsModal submissions={submissions} onClose={() => setOpenSubmissionsFor(null)} onLoad={handleLoadSubmission} />}
+        {openSubmissionsFor === puzzleNumber && <PuzzleSubmissionsModal puzzle={puzzle} submissions={submissions} onClose={() => setOpenSubmissionsFor(null)} onLoad={handleLoadSubmission} />}
     </>;
 }

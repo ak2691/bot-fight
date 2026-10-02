@@ -1,61 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import ChatPanel from "../../components/ChatPanel.jsx";
 import ProfileLink from "../../components/ProfileLink.jsx";
-import ChatReportButton from "../../chatModeration/ChatReportButton.jsx";
 
-const MAX_MESSAGE_LENGTH = 280;
-
-export default function CustomLobbyChat({ messages, onSend, disabled = false, notice = null, className = "", currentUsername = null }) {
-    const [draft, setDraft] = useState("");
-    const messagesRef = useRef(null);
-
-    useEffect(() => {
-        if (messagesRef.current) messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
-    }, [messages]);
-
-    const submit = (event) => {
-        event.preventDefault();
-        const message = draft.trim();
-        if (!message || disabled) return;
-        if (onSend(message) !== false) setDraft("");
-    };
-
+export default function CustomLobbyChat({ messages, onSend, disabled = false, notice = null, className = "", currentUsername = null, teamByUsername = null }) {
     return (
-        <section className={`custom-lobby-chat ${className}`.trim()} aria-label="Custom lobby chat">
-            <header className="custom-lobby-chat__header">
-                <span><ChatIcon /> LOBBY CHAT</span>
-                <span className="custom-lobby-chat__channel">ALL CHAT</span>
-            </header>
-            <div ref={messagesRef} className="custom-lobby-chat__messages" aria-live="polite">
-                {messages.length === 0 && <p className="custom-lobby-chat__empty">No messages yet.</p>}
-                {messages.map((message) => (
-                    <div key={message.messageId ?? `${message.sentAt}-${message.username}-${message.message}`} className="custom-lobby-chat__message-row">
-                        <p className="custom-lobby-chat__message">
-                            <strong><ProfileLink username={message.username}>{message.username}</ProfileLink>:</strong> {message.message}
-                        </p>
-                        {message.username !== currentUsername && <ChatReportButton messageId={message.messageId} />}
-                    </div>
-                ))}
-            </div>
-            {notice && <p role="status" className="custom-lobby-chat__notice">{notice}</p>}
-            <form className="custom-lobby-chat__form" onSubmit={submit}>
-                <input
-                    id="custom-lobby-chat-message"
-                    name="message"
-                    type="text"
-                    value={draft}
-                    onChange={(event) => setDraft(event.target.value)}
-                    maxLength={MAX_MESSAGE_LENGTH}
-                    placeholder={disabled ? "Chat unavailable" : "Type a message..."}
-                    aria-label="Custom lobby chat message"
-                    autoComplete="off"
-                    disabled={disabled}
-                />
-                <button type="submit" className="gray-button-surface" disabled={disabled || !draft.trim()} aria-label="Send lobby chat message">➤</button>
-            </form>
-        </section>
+        <ChatPanel
+            className={`custom-lobby-chat ${className}`.trim()}
+            label="Custom lobby chat"
+            inputId="custom-lobby-chat-message"
+            inputLabel="Custom lobby chat message"
+            sendLabel="Send lobby chat message"
+            messages={messages}
+            currentUsername={currentUsername}
+            teamByUsername={teamByUsername}
+            onSend={onSend}
+            disabled={disabled}
+            notice={notice}
+            renderName={(username) => <ProfileLink username={username}>{username}</ProfileLink>}
+        />
     );
-}
-
-function ChatIcon() {
-    return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5h14v10H9l-4 3v-13Z" /></svg>;
 }

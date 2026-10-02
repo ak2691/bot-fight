@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { ABILITY_CATALOGUE_ICON_LAYOUTS, ABILITY_CATALOGUE_ICONS, getAbilityCatalogueIcon, getAbilityCatalogueIconLayout } from "../../abilityCatalogueIcons.js";
+import { ABILITY_CATALOGUE_ICON_LAYOUTS, ABILITY_CATALOGUE_ICONS, getAbilityCatalogueIcon } from "../../abilityCatalogueIcons.js";
 import { BOT_ABILITIES } from "../../gameArena/loadout/BotLoadout.js";
 import { EFFECT_GUIDE } from "./statusEffectCatalogue.js";
 
@@ -64,67 +64,6 @@ test("icon extraction manifest covers the catalog and keeps explicit frame contr
     assert.notEqual(hash("reactive_armor"), hash("absolute_guard"));
 });
 
-test("catalogue cards keep text accessible and artwork decorative", () => {
-    const source = readFileSync(CATALOGUE_PAGE_PATH, "utf8");
-    assert.match(source, /className=\{`ability-card-art ability-card-art-\$\{getAbilityCatalogueIconLayout\(ability\.id\)\}`\}/);
-    assert.match(source, /alt=""/);
-    assert.match(source, /aria-hidden="true"/);
-    assert.match(source, /aria-label=\{`View \$\{ability\.label\} stats`\}/);
-    assert.match(source, /onError=\{\(event\) => \{/);
-    assert.doesNotMatch(source, /src="\/assets\/arena-toolbar\/info-circle-icon\.png"/);
-});
-
-test("catalogue uses compact text effect cards with detail modals and round navigation", () => {
-    const source = readFileSync(CATALOGUE_PAGE_PATH, "utf8");
-
-    assert.equal(EFFECT_GUIDE.length, 19);
-    assert.ok(EFFECT_GUIDE.every(({ label, category, description }) => label && category && description));
-    assert.equal(EFFECT_GUIDE.find(({ id }) => id === "damage_reflection")?.category, "Combat");
-    assert.equal(EFFECT_GUIDE.find(({ id }) => id === "interrupt")?.category, "Combat");
-    assert.equal(EFFECT_GUIDE.find(({ id }) => id === "hit-stagger")?.category, "Combat");
-    assert.equal(EFFECT_GUIDE.find(({ id }) => id === "knockback")?.category, "Combat");
-    assert.equal(EFFECT_GUIDE.find(({ id }) => id === "pull")?.category, "Combat");
-    assert.equal(EFFECT_GUIDE.find(({ id }) => id === "healing")?.category, "Combat");
-    assert.match(EFFECT_GUIDE.find(({ id }) => id === "interrupt")?.description ?? "", /cooldown or reload/);
-    assert.match(EFFECT_GUIDE.find(({ id }) => id === "silence")?.description ?? "", /without resetting its cooldown/);
-    assert.match(source, /aria-labelledby="combat-effects-title"/);
-    assert.match(source, /EFFECT_GUIDE\.map/);
-    assert.match(source, /<EffectModal key=\{selectedEffect\.id\} effect=\{selectedEffect\}/);
-    assert.match(source, /onClick=\{\(\) => setSelectedEffect\(effect\)\}/);
-    assert.match(source, /status-effect-card__chevron/);
-    assert.match(source, /aria-label="Jump to ability round"/);
-    assert.match(source, /href=\{`#round-\$\{round\}-abilities`\}/);
-    assert.match(source, /id=\{`round-\$\{round\}-abilities`\}/);
-    assert.match(source, /catalogue-scroll-top/);
-    assert.match(source, /window\.scrollY > 180/);
-    assert.match(source, /window\.scrollTo\(\{ top: 0, behavior: "smooth" \}\)/);
-    assert.doesNotMatch(source, /iconAbilityId|EFFECT ICON/);
-    assert.doesNotMatch(source, /<article key=\{status\.id\}/);
-    assert.doesNotMatch(source, /aria-labelledby="ability-types-title"/);
-    assert.doesNotMatch(source, />Ability types<\/h2>/);
-    assert.match(source, /HIDDEN_ABILITY_LIST_TAGS = new Set\(\["status-effect"\]\)/);
-});
-
-test("new catalogue artwork uses shape-aware layouts", () => {
-    const source = readFileSync(CATALOGUE_PAGE_PATH, "utf8");
-    const styles = readFileSync(INDEX_CSS_PATH, "utf8");
-    assert.deepEqual(ABILITY_CATALOGUE_ICON_LAYOUTS, {
-        tether_bolt: "wide",
-        vampiric_beam: "wide",
-        disruptor_dart: "wide",
-        snare_bomb: "square",
-        overclock: "square",
-        singularity: "square",
-        frost_ring: "square",
-    });
-    assert.equal(getAbilityCatalogueIconLayout(28), "wide");
-    assert.equal(getAbilityCatalogueIconLayout(33), "square");
-    assert.match(source, /getAbilityCatalogueIconLayout\(ability\.id\)/);
-    assert.match(source, /ability-card-art-\$\{getAbilityCatalogueIconLayout/);
-    assert.match(styles, /\.ability-card-art-wide[\s\S]*width: 90%;[\s\S]*height: 68%;/);
-    assert.match(styles, /\.ability-card-art-square[\s\S]*width: 76%;[\s\S]*height: 94%;/);
-});
-
 test("missing icon mappings fail soft without removing the ability name", () => {
     assert.equal(getAbilityCatalogueIcon("unknown_future_ability"), null);
 });
@@ -134,9 +73,10 @@ test("ability details can launch a practice room preset", () => {
     const arena = readFileSync(ARENA_PATH, "utf8");
 
     assert.match(catalogue, /onTestAbility = null/);
-    assert.match(catalogue, />\s*TEST ABILITY\s*</);
-    assert.match(catalogue, /arena-toolbar-button arena-toolbar-button--green arena-toolbar-button--inline/);
+    assert.match(catalogue, /Test in practice/);
+    assert.match(catalogue, /bg-\[#2fa866\]/);
     assert.match(catalogue, /navigate\(`\/practice\?ability=\$\{encodeURIComponent\(ability\.id\)\}`\)/);
     assert.match(arena, /findAbilityTestingPreset/);
     assert.match(arena, /buildAbilityTestingArenaShapes\(catalogueAbilityTestingPreset\)/);
 });
+

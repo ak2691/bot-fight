@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/auth-context";
 import MatchAcceptanceModal from "./MatchAcceptanceModal.jsx";
+import Toast, { ToastStack } from "../components/Toast.jsx";
 import {
     isMatchAcceptanceTerminalEventForMatch,
     isMatchAcceptanceUnavailableError,
@@ -1128,6 +1129,7 @@ export default function MatchmakingProvider({ children }) {
                     visibleStartMs={acceptanceStartDeadlineMs}
                     acceptanceState={acceptanceState}
                     otherPlayerAccepted={pendingAcceptance.otherPlayerAccepted === true}
+                    mode={pendingAcceptance.mode ?? null}
                     connectionStatus={connectionStatus}
                     error={acceptanceError}
                     onAccept={acceptPendingMatch}
@@ -1135,13 +1137,9 @@ export default function MatchmakingProvider({ children }) {
                 />
             )}
             {queueError && !pendingAcceptance && (
-                <div
-                    role="alert"
-                    aria-live="assertive"
-                    className="fixed bottom-6 left-1/2 z-[1000] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded border border-red-700 bg-red-950 px-4 py-2 text-center font-mono text-xs tracking-widest text-red-400 shadow-lg"
-                >
-                    {queueError}
-                </div>
+                <ToastStack>
+                    <Toast tone="error">{queueError}</Toast>
+                </ToastStack>
             )}
         </MatchmakingContext.Provider>
     );

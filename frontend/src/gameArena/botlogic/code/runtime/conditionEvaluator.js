@@ -1,7 +1,6 @@
 import {
     BOT_CODE_COMPARATORS,
     BOT_CODE_CONDITIONS,
-    CONDITION_JOINS,
 } from "../contracts/BotLogicContracts.js";
 
 export function evaluateConditionNode(condition, state, evaluateExpression) {
@@ -9,20 +8,48 @@ export function evaluateConditionNode(condition, state, evaluateExpression) {
     return condition?.type === BOT_CODE_CONDITIONS.ALWAYS;
 }
 
+// A pair variable (distance, bearings) carries its own entity/target configuration.
+// When it is the compared-to side of a condition that configuration lives in the
+// right* fields, so the two sides never share one target. Older brains without
+// right* fields fall back to the left configuration, which keeps their behavior.
+const RIGHT_PAIR_FIELDS = Object.freeze({
+    selectable1: "rightSelectable1",
+    selectable2: "rightSelectable2",
+    targetMode: "rightTargetMode",
+    targetX: "rightTargetX",
+    targetY: "rightTargetY",
+    targetAngle: "rightTargetAngle",
+});
+
+export function rightOperandView(condition) {
+    if (!condition) return condition;
+    const selectable2 = condition.rightSelectable2 ?? condition.selectable2 ?? condition.selectable;
+    return {
+        ...condition,
+        selectable1: condition.rightSelectable1 ?? condition.selectable1,
+        selectable2,
+        selectable: selectable2,
+        targetMode: condition.rightTargetMode ?? condition.targetMode,
+        targetX: condition.rightTargetX ?? condition.targetX,
+        targetY: condition.rightTargetY ?? condition.targetY,
+        targetAngle: condition.rightTargetAngle ?? condition.targetAngle,
+    };
+}
+
+// Maps pair-configuration updates ({ targetMode: "coordinates" }) onto the right* fields.
+export function rightPairUpdates(updates) {
+    return Object.fromEntries(Object.entries(updates).map(([key, value]) => [RIGHT_PAIR_FIELDS[key] ?? key, value]));
+}
+
+export function rightPairFieldValues(view) {
+    return Object.fromEntries(Object.entries(RIGHT_PAIR_FIELDS)
+        .filter(([key]) => view?.[key] !== undefined)
+        .map(([key, field]) => [field, view[key]]));
+}
+
 export function evaluateConditionNodes(conditions, state, evaluateExpression) {
-    if (!conditions.length) return true;
-    let anyGroupMatches = false;
-    let currentGroupMatches = true;
-    conditions.forEach((condition, index) => {
-        const conditionMatches = evaluateConditionNode(condition, state, evaluateExpression);
-        if (index > 0 && condition.join === CONDITION_JOINS.OR) {
-            anyGroupMatches ||= currentGroupMatches;
-            currentGroupMatches = conditionMatches;
-        } else {
-            currentGroupMatches &&= conditionMatches;
-        }
-    });
-    return anyGroupMatches || currentGroupMatches;
+    // Conditions are AND-only; an empty list always matches.
+    return conditions.every((condition) => evaluateConditionNode(condition, state, evaluateExpression));
 }
 
 export function compareValues(left, comparator, right, valueType) {

@@ -80,20 +80,13 @@ export function sanitizeStrategyConfigurationForLoadout(configuration, loadoutId
     const editorGraph = sourceConfiguration.editorGraph?.version === CODE_EDITOR_GRAPH_VERSION
         ? sanitizeCodeEditorGraph(sourceConfiguration.editorGraph)
         : null;
-    const sanitizedEditorGraph = editorGraph ? sanitizeCodeEditorGraph({
-        ...editorGraph,
-        detachedBranches: editorGraph.detachedBranches.map((entry) => ({
-            ...entry,
-            branch: sanitizeBlock(entry.branch),
-        })),
-    }) : null;
     return {
         ...source,
         roots: Array.isArray(source.roots) ? source.roots.map((root) => ({
             ...root,
             branches: Array.isArray(root?.branches) ? root.branches.map(sanitizeBlock) : [],
         })) : [],
-        ...(sanitizedEditorGraph ? { editorGraph: sanitizedEditorGraph } : {}),
+        ...(editorGraph ? { editorGraph } : {}),
     };
 }
 

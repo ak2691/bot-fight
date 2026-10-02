@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
     BOT_CODE_ACTIONS,
     BOT_CODE_SELECTABLES,
@@ -11,200 +11,188 @@ import { createCodeRoot } from "../gameArena/botlogic/code/configuration/configu
 import { encodeSandboxLoadout } from "../gameArena/loadout/BotLoadout.js";
 import {
     buildLogicGraph,
+    GraphActionNode,
+    GraphConditionNode,
+    GraphRootNode,
+    graphBranchActions,
+    graphEdgePath,
     TutorialLogicInspector,
 } from "../gameArena/coding/nodes/GraphNodes.jsx";
 import { TUTORIAL_ACTIONS } from "./TutorialPresets.js";
 
 const EMPTY_LOADOUT = encodeSandboxLoadout({ abilities: [] });
 const FIREBALL_LOADOUT = encodeSandboxLoadout({ abilities: [TUTORIAL_ACTIONS.FIREBALL] });
-const EMPTY_SET = new Set();
+const NOOP = () => {};
+const CANVAS_PADDING = 28;
+// buildLogicGraph places first-level conditionals at y=300 (below a tall root gap);
+// the tutorial pulls them up so small diagrams stay compact.
+const FIRST_LEVEL_Y = 300;
+const COMPACT_GAP_AFTER_ROOT = 70;
 
 function branch(id, condition, actions = [], priority = 1, branchType = "if") {
     return {
         id,
         branchType,
         priority,
-        conditions: [condition],
+        conditions: branchType === "else" || !condition ? [] : [condition],
         actions,
         children: [],
     };
 }
 
-function makePreview(id, name, { priority = 1, condition = null, actions = [], branches = null, selectedLoadout = EMPTY_LOADOUT } = {}) {
-    const rootBranches = branches ?? (condition ? [branch(`tutorial-preview-branch-${id}`, condition, actions)] : []);
-    const root = {
+function makeRoots(specs) {
+    return specs.map(({ id, name, priority = 1, branches = [] }) => ({
         ...createCodeRoot(priority, name, `tutorial-preview-root-${id}`),
-        branches: rootBranches,
-    };
-    const graph = buildLogicGraph([root], VISIBLE_STATE_VARIABLES, selectedLoadout, SELECTABLE_TYPES);
+        branches,
+    }));
+}
+
+/** Lay the real workspace graph out tightly: drop the root gap and crop to the nodes. */
+function buildStaticLayout(roots, selectedLoadout, { showActions }) {
+    const graph = buildLogicGraph(roots, VISIBLE_STATE_VARIABLES, selectedLoadout, SELECTABLE_TYPES);
+    const conditions = graph.conditions;
+    const actions = showActions ? graph.actions : [];
+    const rootNodes = graph.roots;
+    const rootBottom = Math.max(...rootNodes.map((node) => node.y + node.height));
+    const pull = FIRST_LEVEL_Y - (rootBottom + COMPACT_GAP_AFTER_ROOT);
+    const moved = (node) => (node.y >= FIRST_LEVEL_Y ? { ...node, y: node.y - pull } : { ...node });
+    const nodes = [...rootNodes.map(moved), ...conditions.map(moved), ...actions.map(moved)];
+    const byId = new Map(nodes.map((node) => [node.id, node]));
+    const minX = Math.min(...nodes.map((node) => node.x));
+    const minY = Math.min(...nodes.map((node) => node.y));
+    const shift = (node) => ({ ...node, x: node.x - minX + CANVAS_PADDING, y: node.y - minY + CANVAS_PADDING });
+    const shiftedById = new Map([...byId].map(([id, node]) => [id, shift(node)]));
+    const pick = (list) => list.map((node) => shiftedById.get(node.id)).filter(Boolean);
+    const edges = graph.edges.flatMap((edge) => {
+        const from = shiftedById.get(edge.fromId);
+        const to = shiftedById.get(edge.toId);
+        if (!from || !to) return [];
+        return [{ ...edge, x1: from.x + from.width / 2, y1: from.y + from.height, x2: to.x + to.width / 2, y2: to.y }];
+    });
+    const shifted = [...shiftedById.values()];
     return {
-        root,
-        roots: [root],
-        graph,
-        rootNode: graph.roots[0],
-        branch: rootBranches[0] ?? null,
-        conditionNode: graph.conditions[0] ?? null,
-        actionNodes: graph.actions,
-        selectedLoadout,
+        roots: pick(rootNodes),
+        conditions: pick(conditions),
+        actions: pick(actions),
+        edges,
+        width: Math.max(...shifted.map((node) => node.x + node.width)) + CANVAS_PADDING,
+        height: Math.max(...shifted.map((node) => node.y + node.height)) + CANVAS_PADDING,
     };
 }
 
-function edgeKey(edge, index) {
-    return edge.id ?? `${edge.fromId}-${edge.toId}-${index}`;
+function siblingInfo(rootBranches, path) {
+    let siblings = rootBranches;
+    for (let index = 0; index < path.length - 1; index += 1) siblings = siblings?.[path[index]]?.children;
+    const position = path[path.length - 1] ?? 0;
+    return { rank: position + 1, siblingCount: siblings?.length ?? 1 };
 }
 
-function AbstractNodeGroup({ type, nodes, registerNode }) {
-    return (
-        <div className={`tutorial-node-abstract__group tutorial-node-abstract__group--${type}`}>
-            {nodes.map((node) => (
-                <div
-                    key={node.id}
-                    ref={(element) => registerNode(node.id, element)}
-                    className={`tutorial-node-abstract__node tutorial-node-abstract__node--${type}${node.active ? " tutorial-node-abstract__node--active" : ""}`}
-                >
-                    <span>{node.label}</span>
-                    {node.status && <span className="tutorial-node-abstract__status">{node.status}</span>}
-                </div>
-            ))}
-        </div>
-    );
+function branchAt(rootBranches, path) {
+    let current = rootBranches?.[path[0]];
+    for (let index = 1; current && index < path.length; index += 1) current = current.children?.[path[index]];
+    return current;
 }
 
-function AbstractGraphPreview({ rootNodes, conditionNodes, actionNodes, edges, evaluation = null }) {
-    const groups = [
-        { type: "root", nodes: rootNodes.map((node, index) => ({ id: node.id, label: `Root ${index + 1}` })) },
-        { type: "conditional", nodes: conditionNodes.map((node, index) => ({
-            id: node.id,
-            label: `Conditional ${index + 1}`,
-            status: evaluation?.conditionStatuses?.[node.id] ?? null,
-        })) },
-        { type: "action", nodes: actionNodes.map((node) => ({
-            id: node.id,
-            label: "Action",
-            active: evaluation?.activeNodeIds?.has(node.id) ?? false,
-        })) },
-    ].filter((group) => group.nodes.length > 0);
-    const containerRef = useRef(null);
-    const nodeRefs = useRef(new Map());
-    const highlightedEdgeIds = evaluation?.highlightedEdgeIds ?? EMPTY_SET;
-    const edgeSignature = edges.map((edge, index) => `${edgeKey(edge, index)}:${edge.fromId}:${edge.toId}:${highlightedEdgeIds.has(edgeKey(edge, index))}`).join("|");
-    const [wireState, setWireState] = useState({ width: 1, height: 1, paths: [] });
+/**
+ * Static, non-interactive render of the real workspace nodes on the dotted canvas.
+ * Scales down to fit narrow columns; `inert` keeps every control out of the tab order.
+ */
+function StaticTree({ roots, selectedLoadout = EMPTY_LOADOUT, showActions = true, caption, label }) {
+    const layout = useMemo(() => buildStaticLayout(roots, selectedLoadout, { showActions }), [roots, selectedLoadout, showActions]);
+    const frameRef = useRef(null);
+    const [scale, setScale] = useState(1);
 
     useLayoutEffect(() => {
-        const container = containerRef.current;
-        if (!container) return undefined;
-
-        const updateWires = () => {
-            const containerRect = container.getBoundingClientRect();
-            const width = Math.max(container.clientWidth, container.scrollWidth, 1);
-            const height = Math.max(container.clientHeight, container.scrollHeight, 1);
-            const paths = edges.flatMap((edge, index) => {
-                const source = nodeRefs.current.get(edge.fromId);
-                const target = nodeRefs.current.get(edge.toId);
-                if (!source || !target) return [];
-                const sourceRect = source.getBoundingClientRect();
-                const targetRect = target.getBoundingClientRect();
-                const startX = sourceRect.left - containerRect.left + sourceRect.width / 2;
-                const startY = sourceRect.bottom - containerRect.top;
-                const endX = targetRect.left - containerRect.left + targetRect.width / 2;
-                const endY = targetRect.top - containerRect.top;
-                const middleY = startY + (endY - startY) / 2;
-                return [{
-                    id: edgeKey(edge, index),
-                    active: highlightedEdgeIds.has(edgeKey(edge, index)),
-                    d: `M ${startX} ${startY} C ${startX} ${middleY}, ${endX} ${middleY}, ${endX} ${endY}`,
-                }];
-            });
-            setWireState((current) => {
-                const unchanged = current.width === width
-                    && current.height === height
-                    && current.paths.length === paths.length
-                    && current.paths.every((path, index) => path.id === paths[index].id && path.d === paths[index].d && path.active === paths[index].active);
-                return unchanged ? current : { width, height, paths };
-            });
+        const frame = frameRef.current;
+        if (!frame) return undefined;
+        const update = () => {
+            const available = frame.clientWidth;
+            setScale(available > 0 ? Math.min(1, available / layout.width) : 1);
         };
-
-        updateWires();
-        const hasWindow = typeof window !== "undefined";
-        const frame = hasWindow ? window.requestAnimationFrame(updateWires) : null;
-        const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(updateWires);
-        resizeObserver?.observe(container);
-        if (hasWindow) window.addEventListener("resize", updateWires);
-        return () => {
-            if (frame != null && hasWindow) window.cancelAnimationFrame(frame);
-            resizeObserver?.disconnect();
-            if (hasWindow) window.removeEventListener("resize", updateWires);
-        };
-    }, [edgeSignature, edges, highlightedEdgeIds]);
-
-    const registerNode = (nodeId, element) => {
-        if (element) nodeRefs.current.set(nodeId, element);
-        else nodeRefs.current.delete(nodeId);
-    };
+        update();
+        const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+        observer?.observe(frame);
+        return () => observer?.disconnect();
+    }, [layout.width]);
 
     return (
-        <div ref={containerRef} className="tutorial-node-abstract" role="img" aria-label="Abstract behavior tree example">
-            <svg
-                className="tutorial-node-abstract__wires"
-                width={wireState.width}
-                height={wireState.height}
-                viewBox={`0 0 ${wireState.width} ${wireState.height}`}
-                aria-hidden="true"
-            >
-                {wireState.paths.map((path) => (
-                    <path
-                        key={path.id}
-                        className={`tutorial-node-abstract__wire${path.active ? " tutorial-node-abstract__wire--active" : ""}`}
-                        d={path.d}
-                        fill="none"
-                        strokeWidth={path.active ? "3" : "2"}
-                        strokeLinecap="round"
-                    />
-                ))}
-            </svg>
-            <div className="tutorial-node-abstract__stages">
-                {groups.map((group) => (
-                    <div key={group.type} className="tutorial-node-abstract__stage">
-                        <AbstractNodeGroup type={group.type} nodes={group.nodes} registerNode={registerNode} />
-                    </div>
-                ))}
-            </div>
-            {evaluation && (
-                <div className="tutorial-node-abstract__evaluation" role="note">
-                    <p>Conditional 1 is true. Conditional 2 is true.</p>
-                    <p>Only the action connected to Conditional 1 gets executed.</p>
+        <figure className="tutorial-node-visual tutorial-node-visual--graph">
+            <div ref={frameRef} className="tutorial-graph-frame" style={{ height: layout.height * scale }} role="img" aria-label={label ?? caption}>
+                <div
+                    className="tutorial-graph-canvas bg-[#171b20] bg-[radial-gradient(circle,rgba(100,116,139,.24)_1px,transparent_1px)] bg-[size:20px_20px]"
+                    style={{ width: layout.width, height: layout.height, transform: `scale(${scale})`, transformOrigin: "0 0" }}
+                    inert
+                >
+                    <svg className="pointer-events-none absolute inset-0 overflow-hidden" width={layout.width} height={layout.height} aria-hidden="true">
+                        {layout.edges.map((edge) => <path key={edge.id} d={graphEdgePath(edge)} fill="none" stroke="rgba(165,180,252,.72)" strokeWidth="2" />)}
+                    </svg>
+                    {layout.roots.map((node) => {
+                        const root = roots[node.rootIndex];
+                        return <GraphRootNode
+                            key={node.id}
+                            node={node}
+                            rootNode={root}
+                            nodeOffsets={{}}
+                            disabled
+                            canRemove={false}
+                            rank={node.rootIndex + 1}
+                            siblingCount={roots.length}
+                            graphConditionCount={0}
+                            maxTotalConditions={0}
+                        />;
+                    })}
+                    {layout.conditions.map((node) => {
+                        const root = roots[node.rootIndex];
+                        const nodeBranch = branchAt(root.branches, node.path);
+                        if (!nodeBranch) return null;
+                        const { rank, siblingCount } = siblingInfo(root.branches, node.path);
+                        return <GraphConditionNode
+                            key={node.id}
+                            node={node}
+                            branch={nodeBranch}
+                            disabled
+                            canRemove={false}
+                            canAddAction={false}
+                            canAddCondition={false}
+                            stateVariables={VISIBLE_STATE_VARIABLES}
+                            defaultVariable={VISIBLE_STATE_VARIABLES[0]}
+                            selectableTypes={SELECTABLE_TYPES}
+                            nodeOffsets={{}}
+                            beginNodeDrag={NOOP}
+                            selected={false}
+                            rank={rank}
+                            siblingCount={siblingCount}
+                            onSelect={NOOP}
+                            onChange={NOOP}
+                            onRemove={NOOP}
+                            onRemoveCondition={NOOP}
+                        />;
+                    })}
+                    {layout.actions.map((node) => {
+                        const root = roots[node.rootIndex];
+                        const nodeBranch = branchAt(root.branches, node.path);
+                        const entry = graphBranchActions(nodeBranch)[node.actionIndex];
+                        if (!entry) return null;
+                        return <GraphActionNode
+                            key={node.id}
+                            node={node}
+                            entry={entry}
+                            disabled
+                            canRemove={false}
+                            selectedLoadout={selectedLoadout}
+                            selectableTypes={SELECTABLE_TYPES}
+                            stateVariables={VISIBLE_STATE_VARIABLES}
+                            nodeOffsets={{}}
+                            beginNodeDrag={NOOP}
+                            selectedNode={false}
+                            onInspect={NOOP}
+                            onRemove={NOOP}
+                        />;
+                    })}
                 </div>
-            )}
-        </div>
-    );
-}
-
-function GraphPreview({ preview, includeActions = false, demonstrateEvaluation = false }) {
-    const rootNodes = preview.graph.roots;
-    const conditionNodes = preview.graph.conditions;
-    const actionNodes = includeActions ? preview.graph.actions : [];
-    const visibleNodes = [...rootNodes, ...conditionNodes, ...actionNodes].filter(Boolean);
-    const visibleIds = new Set(visibleNodes.map((node) => node.id));
-    const edges = preview.graph.edges.filter((edge) => visibleIds.has(edge.fromId) && visibleIds.has(edge.toId));
-    const evaluation = demonstrateEvaluation && conditionNodes.length >= 2
-        ? (() => {
-            const selectedCondition = conditionNodes[0];
-            const selectedEdges = edges.filter((edge) => edge.fromId === selectedCondition.id);
-            return {
-                conditionStatuses: Object.fromEntries(conditionNodes.slice(0, 2).map((node) => [node.id, "TRUE"])),
-                highlightedEdgeIds: new Set(selectedEdges.map((edge, index) => edgeKey(edge, edges.indexOf(edge) >= 0 ? edges.indexOf(edge) : index))),
-                activeNodeIds: new Set(selectedEdges.map((edge) => edge.toId)),
-            };
-        })()
-        : null;
-    return (
-        <AbstractGraphPreview
-            rootNodes={rootNodes}
-            conditionNodes={conditionNodes}
-            actionNodes={actionNodes}
-            edges={edges}
-            evaluation={evaluation}
-        />
+            </div>
+            {caption && <figcaption className="tutorial-node-visual__caption">{caption}</figcaption>}
+        </figure>
     );
 }
 
@@ -234,56 +222,45 @@ function fireballAction() {
     };
 }
 
-function VisualFigure({ children, className = "" }) {
-    return <figure className={`tutorial-node-visual ${className}`}>
-        {children}
-    </figure>;
-}
+const ROOT_PRIORITY_ROOTS = makeRoots([
+    { id: "priority-one", name: "Emergency rule", priority: 1 },
+    { id: "priority-two", name: "Attack rule", priority: 2 },
+]);
 
-function rootPriorityPreview() {
-    const roots = [
-        { ...createCodeRoot(1, "Emergency rule", "tutorial-preview-root-priority-one"), branches: [] },
-        { ...createCodeRoot(2, "Attack rule", "tutorial-preview-root-priority-two"), branches: [] },
-    ];
-    const graph = buildLogicGraph(roots, VISIBLE_STATE_VARIABLES, EMPTY_LOADOUT, SELECTABLE_TYPES);
-    return {
-        root: roots[0],
-        roots,
-        graph,
-        rootNode: graph.roots[0],
-        branch: null,
-        conditionNode: null,
-        actionNodes: [],
-        selectedLoadout: EMPTY_LOADOUT,
-    };
-}
+const DISTANCE_TREE_ROOTS = makeRoots([{
+    id: "distance-tree",
+    name: "Distance plan",
+    branches: [
+        branch("distance-far", distanceCondition("gt", 432), [walkAction(0)], 1, "if"),
+        branch("distance-close", distanceCondition("lte", 432), [walkAction(180), fireballAction()], 2, "else_if"),
+    ],
+}]);
 
 function RootPriorityVisual() {
-    return <VisualFigure>
-        <GraphPreview preview={rootPriorityPreview()} />
-    </VisualFigure>;
-}
-
-function distanceTreePreview() {
-    return makePreview("distance-tree", "Distance plan", {
-        branches: [
-            branch("distance-far", distanceCondition("gt", 432), [walkAction(0)], 1, "if"),
-            branch("distance-close", distanceCondition("lte", 432), [walkAction(180), fireballAction()], 2, "else_if"),
-        ],
-        selectedLoadout: FIREBALL_LOADOUT,
-    });
+    return <StaticTree
+        roots={ROOT_PRIORITY_ROOTS}
+        caption="Roots run left to right. The badge shows each root's priority: 1 goes first."
+        label="Two root nodes, Emergency rule with priority 1 and Attack rule with priority 2"
+    />;
 }
 
 function ConditionalExamplesVisual() {
-    return <VisualFigure>
-        <GraphPreview preview={distanceTreePreview()} />
-    </VisualFigure>;
+    return <StaticTree
+        roots={DISTANCE_TREE_ROOTS}
+        selectedLoadout={FIREBALL_LOADOUT}
+        showActions={false}
+        caption="The IF branch is checked first. The ELSE IF branch is only checked when the IF is false."
+        label="A root with an IF and an ELSE IF conditional comparing distance to 432"
+    />;
 }
 
 function ActionExamplesVisual() {
-    return <VisualFigure>
-        <GraphPreview preview={distanceTreePreview()} includeActions demonstrateEvaluation />
-    </VisualFigure>;
+    return <StaticTree
+        roots={DISTANCE_TREE_ROOTS}
+        selectedLoadout={FIREBALL_LOADOUT}
+        caption="Actions hang below the conditional that selects them. Only the first true branch's actions run."
+        label="The same tree with its walk and fireball action nodes"
+    />;
 }
 
 function entityHpCondition() {
@@ -315,14 +292,19 @@ function rotateFaceTargetAction() {
     };
 }
 
+function PanelFigure({ children, caption }) {
+    return <figure className="tutorial-node-visual tutorial-node-visual--configuration">
+        <div className="tutorial-config-preview">{children}</div>
+        {caption && <figcaption className="tutorial-node-visual__caption">{caption}</figcaption>}
+    </figure>;
+}
+
 function ConfigurationExamplesVisual() {
-    return <VisualFigure className="tutorial-node-visual--configuration">
-        <div className="tutorial-config-preview">
-            <TutorialLogicInspector kind="condition" condition={entityHpCondition()} />
-            <TutorialLogicInspector kind="condition" condition={abilityCooldownCondition()} selectedLoadout={FIREBALL_LOADOUT} />
-            <TutorialLogicInspector kind="action" action={rotateFaceTargetAction()} />
-        </div>
-    </VisualFigure>;
+    return <PanelFigure caption="The side panel for a variable, an ability variable and an action. Each asks which entity (or ability) to look at.">
+        <TutorialLogicInspector kind="condition" condition={entityHpCondition()} />
+        <TutorialLogicInspector kind="condition" condition={abilityCooldownCondition()} selectedLoadout={FIREBALL_LOADOUT} />
+        <TutorialLogicInspector kind="action" action={rotateFaceTargetAction()} />
+    </PanelFigure>;
 }
 
 function customNumberAction() {
@@ -346,20 +328,18 @@ function customBooleanAction() {
 }
 
 function CustomVariableExamplesVisual() {
-    return <VisualFigure className="tutorial-node-visual--configuration">
-        <div className="tutorial-config-preview">
-            <TutorialLogicInspector
-                kind="action"
-                action={customNumberAction()}
-                customVariables={[{ id: "custom.variable-1", name: "Variable 1", valueType: "number", initialValue: 0 }]}
-            />
-            <TutorialLogicInspector
-                kind="action"
-                action={customBooleanAction()}
-                customVariables={[{ id: "custom.boolean-1", name: "Boolean 1", valueType: "boolean", initialValue: false }]}
-            />
-        </div>
-    </VisualFigure>;
+    return <PanelFigure caption="Modify custom variable sets, adds to or subtracts from a number, or sets a true/false value.">
+        <TutorialLogicInspector
+            kind="action"
+            action={customNumberAction()}
+            customVariables={[{ id: "custom.variable-1", name: "Variable 1", valueType: "number", initialValue: 0 }]}
+        />
+        <TutorialLogicInspector
+            kind="action"
+            action={customBooleanAction()}
+            customVariables={[{ id: "custom.boolean-1", name: "Boolean 1", valueType: "boolean", initialValue: false }]}
+        />
+    </PanelFigure>;
 }
 
 export default function TutorialNodeVisual({ kind }) {

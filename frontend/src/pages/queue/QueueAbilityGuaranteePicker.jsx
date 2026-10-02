@@ -1,37 +1,27 @@
-import { Fragment, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AbilityModal } from "../catalogue/AbilityCataloguePage.jsx";
-import { getAbilityCatalogueIcon, getAbilityCatalogueIconLayout } from "../../abilityCatalogueIcons.js";
+import { getAbilityCatalogueIcon } from "../../abilityCatalogueIcons.js";
 import { ALL_ABILITY_DEFINITIONS } from "../../gameArena/loadout/BotLoadout.js";
+import { GUARANTEE_ROUNDS, abilityForRound } from "./queueGuarantees.js";
+import { abilityTypeLabels, typeTagClass } from "../catalogue/abilityTypeTags.js";
 import { useDialogFocus } from "../../components/useDialogFocus.js";
-
-const GUARANTEE_ROUNDS = [1, 2, 3];
-
-function abilityForRound(values, round) {
-    const abilityId = Number(values?.[round - 1]);
-    if (!Number.isInteger(abilityId)) return null;
-    return ALL_ABILITY_DEFINITIONS.find((ability) => (
-        ability.id === abilityId && ability.round === round
-    )) ?? null;
-}
+import "./guarantees.css";
 
 function AbilitySlotIcon({ ability }) {
     const iconPath = getAbilityCatalogueIcon(ability?.id);
     return (
-        <span className={`grid h-10 w-10 shrink-0 place-items-center border sm:h-11 sm:w-11 ${ability
-            ? "border-green-400/70 bg-green-950/35 shadow-[0_0_20px_rgba(114,182,93,.14)]"
-            : "border-dashed border-slate-600 bg-slate-950/40"}`}>
+        <span className={`hq-slot__icon ${ability ? "is-set" : ""}`} aria-hidden="true">
             {iconPath ? (
                 <img
                     src={iconPath}
                     alt=""
-                    aria-hidden="true"
-                    className="h-full w-full object-contain p-1"
                     onError={(event) => {
                         event.currentTarget.hidden = true;
                     }}
                 />
             ) : (
-                <span className="font-mono text-[9px] tracking-[.16em] text-slate-500">RANDOM</span>
+                <span className="hq-slot__unknown">?</span>
             )}
         </span>
     );
@@ -40,7 +30,12 @@ function AbilitySlotIcon({ ability }) {
 function QueueGuaranteeDialog({ round, selectedAbility, onSelect, onClear, onClose, onInfo }) {
     const dialogRef = useRef(null);
     const closeButtonRef = useRef(null);
-    const abilities = ALL_ABILITY_DEFINITIONS.filter((ability) => ability.round === round);
+    const [search, setSearch] = useState("");
+    const query = search.trim().toLowerCase();
+    const abilities = ALL_ABILITY_DEFINITIONS
+        .filter((ability) => ability.round === round)
+        .filter((ability) => !query || `${ability.label} ${abilityTypeLabels(ability).join(" ")}`.toLowerCase().includes(query));
+    const selectedIcon = selectedAbility ? getAbilityCatalogueIcon(selectedAbility.id) : null;
 
     useDialogFocus(dialogRef, {
         initialFocusRef: closeButtonRef,
@@ -48,9 +43,9 @@ function QueueGuaranteeDialog({ round, selectedAbility, onSelect, onClear, onClo
         lockScroll: true,
     });
 
-    return (
+    return createPortal(
         <div
-            className="fixed inset-0 z-[900] flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur-sm"
+            className="fixed inset-0 z-[110] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm max-sm:p-0"
             onMouseDown={(event) => {
                 if (event.target === event.currentTarget) onClose();
             }}
@@ -61,16 +56,15 @@ function QueueGuaranteeDialog({ round, selectedAbility, onSelect, onClear, onClo
                 aria-modal="true"
                 aria-labelledby="queue-guarantee-dialog-title"
                 tabIndex={-1}
-                className="game-dialog flex max-h-[min(860px,calc(100dvh-3rem))] w-full max-w-6xl flex-col overflow-hidden border border-green-400/45 bg-[#0b1116] shadow-[0_24px_90px_rgba(0,0,0,.65)]"
+                className="game-dialog flex max-h-[85vh] w-full max-w-[880px] flex-col overflow-hidden rounded-xl border border-[#262c33] bg-[#0f1418] shadow-2xl max-sm:h-full max-sm:max-h-none max-sm:rounded-none"
             >
-                <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-700/80 bg-[#111a20] px-5 py-4 sm:px-7">
+                <header className="flex shrink-0 items-start justify-between gap-4 border-b border-[#262c33] px-5 py-3.5">
                     <div>
-                        <p className="font-mono text-[9px] font-bold tracking-[.28em] text-green-300">QUEUE LOADOUT IDENTITY</p>
-                        <h2 id="queue-guarantee-dialog-title" className="mt-2 font-display-action text-3xl uppercase tracking-wide text-white sm:text-4xl">
-                            Round {round} guarantee
+                        <h2 id="queue-guarantee-dialog-title" className="font-display text-lg font-bold text-white">
+                            Round {round} guaranteed offer
                         </h2>
-                        <p className="mt-1 max-w-2xl text-sm leading-5 text-slate-400">
-                            Choose one ability from this round. It will be added to your round {round} offer pool every match.
+                        <p className="mt-0.5 text-xs text-slate-400">
+                            Pick one. It&apos;s added to your round {round} offers every match.
                         </p>
                     </div>
                     <button
@@ -84,25 +78,38 @@ function QueueGuaranteeDialog({ round, selectedAbility, onSelect, onClear, onClo
                     </button>
                 </header>
 
-                <div className="min-h-0 overflow-y-auto px-5 py-5 sm:px-7">
-                    <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
-                        <p className="font-mono text-[10px] tracking-[.18em] text-slate-400">
-                            {selectedAbility ? `SELECTED · ${selectedAbility.label.toUpperCase()}` : "EMPTY SLOT · RANDOM OFFER POOL"}
-                        </p>
-                        <button
-                            type="button"
-                            onClick={onClear}
-                            className={`border px-3 py-2 font-mono text-[9px] font-bold tracking-[.16em] transition ${selectedAbility
-                                ? "border-amber-400/60 text-amber-200 hover:border-amber-300 hover:text-white"
-                                : "cursor-default border-slate-800 text-slate-600"}`}
-                            disabled={!selectedAbility}
-                        >
-                            USE RANDOM FOR ROUND {round}
-                        </button>
-                    </div>
+                <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[#262c33] px-5 py-3">
+                    <p className="flex min-w-0 flex-1 basis-40 items-center gap-2 text-xs text-slate-400">
+                        Current:
+                        {selectedIcon && (
+                            <span className="hq-slot__icon is-set !h-6 !w-6" aria-hidden="true">
+                                <img src={selectedIcon} alt="" />
+                            </span>
+                        )}
+                        <strong className="truncate font-display text-[13px] text-white">{selectedAbility?.label ?? "Random"}</strong>
+                    </p>
+                    <input
+                        type="search"
+                        value={search}
+                        onChange={(event) => setSearch(event.target.value)}
+                        placeholder="Search"
+                        aria-label="Search abilities by name or type"
+                        className="h-8 w-44 rounded-md border border-[#262c33] bg-[#12181d] px-2.5 text-xs text-white outline-none focus:border-cyan-400 max-sm:order-last max-sm:w-full"
+                    />
+                    <button
+                        type="button"
+                        onClick={onClear}
+                        disabled={!selectedAbility}
+                        className="h-8 rounded-md border border-[#2d353c] bg-[#12181d] px-3 text-xs font-semibold text-slate-200 hover:bg-white/[.06] disabled:cursor-default disabled:opacity-45 disabled:hover:bg-[#12181d]"
+                    >
+                        Use random
+                    </button>
+                </div>
 
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                        {abilities.map((ability, index) => {
+                <div className="min-h-0 flex-1 overflow-y-auto p-5">
+                    {abilities.length === 0 && <p className="text-center text-sm text-slate-500">No abilities match that search.</p>}
+                    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                        {abilities.map((ability) => {
                             const iconPath = getAbilityCatalogueIcon(ability.id);
                             const active = selectedAbility?.id === ability.id;
                             return (
@@ -111,42 +118,37 @@ function QueueGuaranteeDialog({ round, selectedAbility, onSelect, onClear, onClo
                                         type="button"
                                         onClick={() => onSelect(ability)}
                                         aria-pressed={active}
-                                        className={`ability-card ability-card-${round} group relative min-h-48 w-full overflow-hidden rounded-none border p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-200 ${active ? "ability-card-selected" : "border-slate-700/75 bg-[#091522]/85 hover:border-green-700 hover:bg-green-950/15"}`}
+                                        className={`gp-card${active ? " is-selected" : ""}`}
                                     >
                                         {iconPath && (
                                             <img
                                                 src={iconPath}
                                                 alt=""
                                                 aria-hidden="true"
-                                                className={`ability-card-art ability-card-art-${getAbilityCatalogueIconLayout(ability.id)}`}
+                                                className="gp-card__art"
                                                 onError={(event) => {
                                                     event.currentTarget.hidden = true;
                                                 }}
                                             />
                                         )}
-                                        <span className="ability-card-gradient" aria-hidden="true" />
-                                        <span className="absolute right-4 top-2 font-display-action text-6xl text-white/[.035]" aria-hidden="true">
-                                            {String(index + 1).padStart(2, "0")}
-                                        </span>
-                                        <span className="ability-card-content absolute inset-x-0 bottom-0 border-t border-white/10 px-4 py-3">
-                                            {active && <span className="mb-1 block font-mono text-[9px] font-bold tracking-[.2em] text-green-200">GUARANTEED</span>}
-                                            <span className="block font-display-action text-lg uppercase tracking-wider text-white">{ability.label}</span>
-                                            <span className="mt-1 block font-mono text-[8px] font-bold tracking-[.16em] text-green-300/70">ROUND {round} ABILITY</span>
+                                        <span className="gp-card__label">
+                                            <span className="gp-card__name">{ability.label}</span>
+                                            <span className="gp-card__tags">
+                                                {abilityTypeLabels(ability).map((type) => (
+                                                    <span key={type} className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${typeTagClass(type)}`}>{type}</span>
+                                                ))}
+                                            </span>
                                         </span>
                                     </button>
+                                    {active && <span className="gp-card__check" aria-hidden="true">✓</span>}
                                     <button
                                         type="button"
                                         aria-label={`View ${ability.label} stats`}
                                         title={`View ${ability.label} stats`}
                                         onClick={() => onInfo(ability)}
-                                        className="absolute right-3 top-3 z-20 grid h-7 w-7 place-items-center rounded-full border border-slate-300/25 bg-slate-950/60 transition hover:scale-110 hover:border-green-300 hover:bg-slate-950/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-200"
+                                        className="gp-card__info"
                                     >
-                                        <img
-                                            src="/assets/arena-toolbar/info-circle-icon.png"
-                                            alt=""
-                                            aria-hidden="true"
-                                            className="info-circle-icon h-5 w-5 opacity-85"
-                                        />
+                                        <img src="/assets/arena-toolbar/info-circle-icon.png" alt="" aria-hidden="true" className="info-circle-icon h-4 w-4 opacity-85" />
                                     </button>
                                 </div>
                             );
@@ -154,7 +156,8 @@ function QueueGuaranteeDialog({ round, selectedAbility, onSelect, onClear, onClo
                     </div>
                 </div>
             </section>
-        </div>
+        </div>,
+        document.body,
     );
 }
 
@@ -192,36 +195,33 @@ export default function QueueAbilityGuaranteePicker({ values = [], onChange, dis
 
     return (
         <>
-            <section aria-labelledby="queue-guarantees-title" className="queue-guarantees mt-5 rounded-xl border px-4 py-4 sm:px-6 sm:py-5">
-                <h2 id="queue-guarantees-title" className="font-mono text-[11px] font-bold uppercase tracking-[.2em] text-green-300">Guaranteed Offers</h2>
-                <p className="mt-1 text-sm text-slate-400">Pick an ability to add to each round's draft offers.</p>
+            <section aria-labelledby="queue-guarantees-title" className="hq-guarantees">
+                <h3 id="queue-guarantees-title" className="hq-guarantees__title">
+                    Guaranteed offers <span>· optional · one per draft round</span>
+                </h3>
 
-                <div className="queue-guarantee-flow mt-4">
+                <div className="hq-slots">
                     {GUARANTEE_ROUNDS.map((round) => {
                         const ability = abilityForRound(values, round);
                         return (
-                            <Fragment key={round}>
                             <button
+                                key={round}
                                 type="button"
                                 disabled={disabled}
                                 onClick={() => openPicker(round)}
                                 aria-label={`Choose round ${round} guarantee`}
-                                className={`queue-guarantee-card flex min-h-16 w-full min-w-0 items-center gap-3 rounded-lg border px-3 py-2 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-200 sm:min-h-[4.5rem] ${ability
-                                    ? "border-green-400/60 bg-green-950/20 hover:border-green-300"
-                                    : "border-slate-700/80 bg-slate-950/30 hover:border-green-700/70"} ${disabled ? "cursor-not-allowed opacity-45" : ""}`}
+                                title={ability ? `Round ${round}: ${ability.label}` : `Round ${round}: random`}
+                                className={`hq-slot ${ability ? "is-set" : ""}`}
                             >
                                 <AbilitySlotIcon ability={ability} />
-                                <span className="min-w-0">
-                                    <span className="block font-mono text-[8px] font-bold tracking-[.14em] text-green-300">ROUND {round}</span>
-                                    <span className="mt-0.5 block truncate font-display-action text-sm tracking-wide text-white sm:text-base">
-                                        {ability?.label ?? "Random Ability"}
-                                    </span>
+                                <span className="hq-slot__text">
+                                    <small>Round {round}</small>
+                                    <strong>{ability?.label ?? "Random"}</strong>
                                 </span>
                             </button>
-                            {round < 3 && <span className="queue-guarantee-chevron" aria-hidden="true">›</span>}
-                            </Fragment>
                         );
                     })}
+                    <span className="hq-slots__caption" aria-hidden="true">R1 · R2 · R3</span>
                 </div>
             </section>
 
@@ -235,12 +235,13 @@ export default function QueueAbilityGuaranteePicker({ values = [], onChange, dis
                     onInfo={showAbilityInfo}
                 />
             )}
-            {infoAbility && (
+            {infoAbility && createPortal(
                 <AbilityModal
                     ability={infoAbility}
                     onClose={() => setInfoAbility(null)}
-                    overlayClassName="z-[950]"
-                />
+                    overlayClassName="z-[120]"
+                />,
+                document.body,
             )}
         </>
     );

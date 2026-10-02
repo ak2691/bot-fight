@@ -37,7 +37,6 @@ public final class BotLogicContracts {
     public static final String CUSTOM_VARIABLE_OPERATION_ADD = "add";
     public static final String CUSTOM_VARIABLE_OPERATION_SUBTRACT = "subtract";
     public static final String CUSTOM_VARIABLE_OPERATION_MODULO = "modulo";
-    public static final String JOIN_OR = "or";
     public static final double ANGLE_MIN = -360.0;
     public static final double ANGLE_MAX = 360.0;
     public static final int NUMBER_DECIMAL_PLACES = 1;
@@ -85,8 +84,6 @@ public final class BotLogicContracts {
         SELECTABLE_MOVEMENT_DIRECTION,
         SELECTABLE_SPEED,
         SELECTABLE_RELATIVE_BEARING,
-        SELECTABLE_RELATIVE_BEARING_CLOCKWISE,
-        SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE,
         SELECTABLE_FACING,
         SELECTABLE_COUNT,
         SELECTABLE_AGE,
@@ -197,18 +194,14 @@ public final class BotLogicContracts {
         public boolean isPairVariable() {
             return source == VariableSource.SELECTABLE_DISTANCE
                     || source == VariableSource.SELECTABLE_ABSOLUTE_BEARING
-                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING
-                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING_CLOCKWISE
-                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE;
+                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING;
         }
 
         public Set<String> targetModes() {
             if (source == VariableSource.SELECTABLE_DISTANCE) {
                 return Set.of(TARGET_MODE_TARGET, TARGET_MODE_COORDINATES);
             }
-            if (source == VariableSource.SELECTABLE_RELATIVE_BEARING
-                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING_CLOCKWISE
-                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE) {
+            if (source == VariableSource.SELECTABLE_RELATIVE_BEARING) {
                 return Set.of(TARGET_MODE_TARGET, TARGET_MODE_ANGLE, TARGET_MODE_COORDINATES);
             }
             return Set.of();
@@ -221,9 +214,7 @@ public final class BotLogicContracts {
 
         private boolean isBearingVariable() {
             return source == VariableSource.SELECTABLE_ABSOLUTE_BEARING
-                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING
-                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING_CLOCKWISE
-                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE;
+                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING;
         }
 
         public boolean selectableOrderable() {
@@ -234,8 +225,6 @@ public final class BotLogicContracts {
             return source == VariableSource.SELECTABLE_ABSOLUTE_BEARING
                     || source == VariableSource.SELECTABLE_MOVEMENT_DIRECTION
                     || source == VariableSource.SELECTABLE_RELATIVE_BEARING
-                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING_CLOCKWISE
-                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE
                     || source == VariableSource.SELECTABLE_FACING;
         }
 
@@ -244,13 +233,11 @@ public final class BotLogicContracts {
         }
 
         public boolean boundedRelativeBearing() {
-            return source == VariableSource.SELECTABLE_RELATIVE_BEARING
-                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING_CLOCKWISE
-                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE;
+            return source == VariableSource.SELECTABLE_RELATIVE_BEARING;
         }
 
         public double relativeBearingMaximum() {
-            return source == VariableSource.SELECTABLE_RELATIVE_BEARING ? 180.0 : 360.0;
+            return 180.0;
         }
 
         public boolean nonNegativeTime() {
@@ -633,10 +620,6 @@ public final class BotLogicContracts {
                 0, 100, "selectable.speed");
         addNumbers(variables, VariableSource.SELECTABLE_RELATIVE_BEARING, VariableScope.SELECTABLE,
                 0, 180, "selectable.relativeBearing");
-        addNumbers(variables, VariableSource.SELECTABLE_RELATIVE_BEARING_CLOCKWISE, VariableScope.SELECTABLE,
-                0, 360, "selectable.relativeBearingClockwise");
-        addNumbers(variables, VariableSource.SELECTABLE_RELATIVE_BEARING_COUNTERCLOCKWISE, VariableScope.SELECTABLE,
-                0, 360, "selectable.relativeBearingCounterclockwise");
         addNumbers(variables, VariableSource.SELECTABLE_FACING, VariableScope.SELECTABLE,
                 -ANGLE_MAX, ANGLE_MAX, "selectable.facing");
         addNumbers(variables, VariableSource.SELECTABLE_COUNT, VariableScope.SELECTABLE,
