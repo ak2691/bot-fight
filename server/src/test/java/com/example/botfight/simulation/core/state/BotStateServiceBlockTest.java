@@ -35,7 +35,7 @@ class BotStateServiceBlockTest {
     @Test
     void serverGrantedAbilitiesContainOnlyTheThreeBaseAbilities() throws Exception {
         var brain = new tools.jackson.databind.json.JsonMapper().readTree("{}");
-        assertThat(new BotCodeService().readAbilities(brain)).containsExactlyInAnyOrder(19, 20, 34);
+        assertThat(new BotCodeService().readAbilities(brain)).containsExactlyInAnyOrder(19, 34);
     }
 
     @Test
@@ -53,20 +53,20 @@ class BotStateServiceBlockTest {
         DuelSimulationService.Bot bot = new DuelSimulationService.Bot();
         bot.hp = 100;
         bot.maxHp = 100;
-        bot.abilities = Set.of(5);
-        bot.abilityCharges.put(5, 0);
-        bot.abilityRechargeMs.put(5, 3_000);
-        bot.abilityActiveMs.put(5, 500);
-        bot.abilityCooldowns.put(5, 100);
+        bot.abilities = Set.of(12);
+        bot.abilityCharges.put(12, 0);
+        bot.abilityRechargeMs.put(12, 3_000);
+        bot.abilityActiveMs.put(12, 500);
+        bot.abilityCooldowns.put(12, 100);
 
         for (int tick = 0; tick < 5; tick++) {
             service.beginTick(bot);
-            assertThat(bot.abilityRechargeMs.get(5)).isEqualTo(3_000);
+            assertThat(bot.abilityRechargeMs.get(12)).isEqualTo(3_000);
         }
-        assertThat(bot.abilityActiveMs.get(5)).isZero();
+        assertThat(bot.abilityActiveMs.get(12)).isZero();
 
         service.beginTick(bot);
-        assertThat(bot.abilityRechargeMs.get(5)).isEqualTo(2_900);
+        assertThat(bot.abilityRechargeMs.get(12)).isEqualTo(2_900);
     }
 
     @Test
@@ -74,13 +74,13 @@ class BotStateServiceBlockTest {
         DuelSimulationService.Bot bot = new DuelSimulationService.Bot();
         bot.hp = 100;
         bot.maxHp = 100;
-        bot.abilityCharges.put(3, 1);
+        bot.abilityCharges.put(12, 1);
         BotStateService.upsertStatusEffect(bot, new StatusEffectState("overclock", 4_000, 0)
                 .addEffect(new StatusEffectState.Effect("cooldown_modifier", "constant")
                         .multiplier(0.5)));
 
-        assertThat(service.consumeAbilityCharge(bot, 3)).isTrue();
-        assertThat(bot.abilityRechargeMs.get(3)).isEqualTo(2_500);
+        assertThat(service.consumeAbilityCharge(bot, 12)).isTrue();
+        assertThat(bot.abilityRechargeMs.get(12)).isEqualTo(1_500);
     }
 
 }

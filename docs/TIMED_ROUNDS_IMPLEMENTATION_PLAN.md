@@ -7,11 +7,12 @@ Status: plan, not started. This turns the design in [`TIMED_ROUNDS_MATCH_FORMAT.
 | Area | Decision |
 |---|---|
 | Rounds | Up to 6 rounds in one continuous fight. No best-of series |
-| Base kit | Dash (19) and Lock On (20). Basic Strike (34) is no longer granted |
+| Base kit | Dash (19, stamina-based), Sprint (stamina-based) and the weapon (34). Lock On (20) is removed from the base kit (its definitions stay for old replays); fast turn replaces it |
+| Movement | Facing never affects movement speed. Stamina pool, sprint in any direction (attacking cancels it), chained stamina dashes, wind-up cancel, hits checked at the active frame, exhaustion = 1.5 s without regeneration (no slowdown). See section 3a |
 | Weapon | Round 1 only, chosen from **all** weapons. All weapons are melee, reach ≤ 300 units |
 | Abilities | 1 per round. Rounds 1–2 tier 1, 3–4 tier 2, 5–6 tier 3. 3 offers (2 in tier 3) |
 | Offers | Shared seed, never an owned ability, no guarantees, no role tags |
-| Clock | 2:00 base per player, +20 s at the start of every build (round 1 starts at 2:20), no per-round cap |
+| Clock | 5:00 base per player, +30 s at the start of every build (round 1 starts at 5:30; at most 8:00 per match), no per-round cap. Log clock used per round per player |
 | Pick time | 30 s in round 1 (weapon + ability), 20 s in rounds 2–6. Not taken from the clock |
 | Submit | Final, validated, hold-to-submit |
 | Timeout | Player setting: submit current code (if valid), or last round's code |
@@ -41,45 +42,51 @@ At a boundary tick, before logic evaluation, for each bot:
 1. Replace `brain`, re-run `prepareStrategy`, and update `abilities` and `combatLoadout`.
 2. A **newly added** ability gets fresh resources: cooldown 0, full charges. Use the same initialization as `BotStateService.create`; extract a helper rather than duplicating it.
 3. Reconcile custom variables:
-   - same name and type, not reset → keep the value;
-   - reset, new, or type changed → the declared default;
+   - same name and type, not reset → keep the value (a timer keeps its value and its running state);
+   - reset, new, or type changed → the declared default (a timer is stopped at 0);
    - no longer declared → dropped.
-4. Everything else continues untouched: position, HP, statuses, cooldowns, wind-ups, entities, zone.
+4. End any running action chain (section 3d); the new brain may not contain it.
+5. Everything else continues untouched: position, HP, statuses, cooldowns, wind-ups, entities, zone.
 
 Live match state needs nothing new except per-player clocks, picks, fallback settings and variable resets, all in memory under the existing match lock. The **only** real-time element is the clock, and it's a set of server deadlines, the same pattern as today's building deadline.
 
 ## 3. Weapons and ability rework (both runtimes)
 
-Cycle = wind-up + active + cooldown. Today, cooldown starts after the active phase ends (`abilityPendingCooldownMs`). Damage per second assumes every hit lands. With 300 HP, the weapon damage-per-second band of about 8–11 gives about 30 s time-to-kill at 100% uptime, roughly 3 segments at realistic uptime.
+Cycle = wind-up + active + cooldown. Today, cooldown starts after the active phase ends (`abilityPendingCooldownMs`). Damage per second assumes every hit lands. With 300 HP, the weapon damage-per-second band of about 9–11 gives about 30 s time-to-kill at 100% uptime, roughly 3 segments at realistic uptime. All numbers are starting points; the owner will tune them.
 
 ### Weapons (new category `weapon`)
 
-| Weapon | ID | Hitbox | Damage | Wind-up / active / cooldown | Damage per second | Identity |
-|---|---|---|---|---|---|---|
-| Slash | 1 (retuned) | arc 120°, range 92 | 8 | 0 / 300 / 500 | 10.0 | Baseline |
-| Spear | 35 (new) | rectangle length 170, width 36 | 9 | 0 / 300 / 800 | 8.2 | Reach, narrow |
-| Axe | 36 (new) | arc 150°, range 105 | 14 | 400 / 300 / 600 | 10.8 | Wind-up telegraph, big hits |
-| Daggers | 37 (new) | arc 70°, range 72 | 4 × 2 hits, 150 ms apart | 0 / 300 / 450 | 10.7 | Shortest reach, two hits |
+Weapon names describe the **hitbox and motion**, not a character identity. They show in the UI as "Weapon: Slash" and so on. **No icons for weapons for now:** status tiles and the catalogue use the existing text fallback.
 
-- All weapon hitboxes use `includeTargetRadius: true`, like Slash today.
-- Daggers use the existing `EVENT_SCHEDULE_MODES.REPEAT` with `count: 2` and `intervalMs: 150` (it is already supported by the contract normalizer).
+Geometry conventions (verified in `gameconfig/hitboxGeometry.js`): arc and rectangle hitboxes start at the **bot's center** and extend forward along its facing. With `includeTargetRadius: true`, a hit registers when the target's body (radius 30; `BOT_SIZE` 60) overlaps, so **effective reach = hitbox length + 30**, measured center to center.
+
+| Weapon | ID | Hitbox | Effective reach | Damage | Wind-up / active / cooldown | Damage per second | Character |
+|---|---|---|---|---|---|---|---|
+| Slash | 1 (retuned) | arc 120°, range 92 | 122 | 8 | 0 / 300 / 500 | 10.0 | Quick, standard |
+| Thrust | 35 (new) | rectangle length 190, width 30 | 220 | 10 | 100 / 300 / 700 | 9.1 | Longest reach, thin: needs accurate facing |
+| Cleave | 36 (new) | arc 160°, range 112 | 142 | 15 | 500 / 300 / 700 | 10.7 | Slow, wide, hits harder; readable wind-up |
+| Smash | 37 (new) | rectangle length 125, width 100 | 155 | 11 + knockback 120 | 300 / 300 / 700 | 8.8 | Between Slash and Cleave in size; boxy; pushes the target away (toward walls and the zone) |
+
+- All weapon hitboxes use `includeTargetRadius: true`, like Slash today. Every reach is ≤ 300.
+- Smash's knockback uses the existing `EFFECT_TYPES.KNOCKBACK` (as Repelling Blast does), on bots and summons.
 - No ammo on any weapon.
 - `attackDamageMultiplier` and `attackSpeedMultiplier` apply as they do to Slash today.
+- Trade-offs: Slash has no wind-up and the best uptime. Thrust out-ranges everything but misses if facing is off. Cleave has the most damage and width but telegraphs for 500 ms, so it's the best target for dodges and feints. Smash's knockback controls spacing.
 
 ### Reworked tier 1 abilities
 
 | Ability | ID | Change |
 |---|---|---|
 | Fireball | 5 | Remove ammo and reload. Cooldown 5,500. Projectile hitbox 30×30 → **64×64**, visual 30 → 60. Lifetime 1,000 → 1,400 (about 700 units at speed 50). Damage 15 → 20, burn unchanged (2/s for 5 s) |
-| Sniper (was Gun) | 3 | Rename (label and catalogue text). Remove ammo and falloff. Wind-up **900** (aim telegraph), active 200, cooldown 9,000. Ray range 1,200, width 6. Flat damage 40 |
-| Shotgun Blast (was Pistol) | 12 | Rename. Remove ammo. Wind-up 150, active 200, cooldown 5,000. Arc hitbox range 220, 50°. Damage falloff 24 at ≤ 80 units to 8 at 220. Knockback 120 on bots. If damage falloff only supports rays today, use a flat 18 and note it |
+| Sniper (was Gun) | 3 | Rename (label and catalogue text). Remove ammo and falloff. Wind-up **900** (aim telegraph), active 200, cooldown 9,000. Ray range 1,200, width 6. Flat damage 40. The bot may keep rotating during the wind-up; the ray fires along its facing at release |
+| Shotgun Blast (was Pistol) | 12 | **Deferred to the last stage (S7), together with the multi-spawn engine (section 3c).** Until then Pistol stays exactly as it is |
 
-- Keep IDs 3, 5 and 12. No code re-simulates old matches, and `duel-v2` marks the change.
-- **Basic Strike (34)** is removed from `STANDARD_ABILITY_IDS` (browser) and the server's equivalent standard set, and is never offered. Keep its definition for now.
-- **Heavy Slash (7)** stays a tier 1 ability, unchanged. The owner may revisit it, since it overlaps with Axe.
-- Other abilities keep their numbers for now. HP doubling makes them relatively weaker; a balance pass comes after playtesting.
+- Keep IDs 3, 5 and 12 (12 when S7 happens). No code re-simulates old matches, and `duel-v2` (P4) marks the change.
+- **Basic Strike (34)** is removed from the standard set **in P4** (when the round 1 weapon pick exists), not before, so current matches always have a basic attack.
+- **Heavy Slash (7)** stays a tier 1 ability, unchanged. The owner may revisit it, since it overlaps with Cleave.
+- Other abilities keep their numbers for now. HP doubling (P4) makes them relatively weaker; a balance pass comes after playtesting.
 
-### Pools
+### Pools (applied in P4)
 
 - Tier 1 (rounds 1–2): `3, 4, 5, 7, 9, 10, 11, 12, 26, 28, 29` (Slash removed).
 - Tier 2 (rounds 3–4): unchanged.
@@ -88,28 +95,185 @@ Cycle = wind-up + active + cooldown. Today, cooldown starts after the active pha
 - Server: `MatchLoadoutService.ROUND_ABILITIES` becomes tier pools plus `tierForRound(r) = (r + 1) / 2`. Browser mirror: `ROUND_ABILITY_DRAFT` and the catalog `round` field in `gameArena/loadout/BotLoadout.js`. Add `category: "weapon"` metadata.
 - **Offer generation:** shuffle the tier pool with `simulationSeed ^ (constant * round)` (as today), then for each player take the first N abilities they don't own. Offers stay shared except where ownership differs.
 - **New IDs** need entries in: `AbilityRegistry.js`, `Abilities.js` timing, `AbilityContracts.js` (browser), the server `simulation/gameconfig/` and `simulation/ecs/contracts/AbilityContracts.java`, both compact ability code tables (`CompactAbilityCode` on the server and the loadout encoding on the browser), and the catalogue. Use `tools/botfight-mcp` scaffolds and its parity report, and follow `docs/ADDING_AN_ABILITY_OR_MOVE.md`.
+- **Until P4**, the new weapons are available in the practice-room loadout editor but not in the current match draft, so current 3-round matches keep working.
+
+## 3a. Movement and stamina
+
+The design is in [`TIMED_ROUNDS_MATCH_FORMAT.md`](TIMED_ROUNDS_MATCH_FORMAT.md) section 5a. Implementation happens in two steps: a browser-only prototype (P0a), then the authoritative server version with parity (P0b). Weapon numbers in section 3 are retuned after P0b, so weapons aren't balanced twice.
+
+### Starting values (prototype, then tune)
+
+**100 ms rule:** the simulation ticks every 100 ms. Every duration, delay, cooldown and timer must be a whole multiple of 100 ms, and per-second rates are applied as whole amounts per tick (stamina is always an integer). Never add a value like 750 or 250 ms. The prototype keeps every number in `frontend/src/gameArena/gameconfig/MovementConfig.js`.
+
+| Mechanic | Value |
+|---|---|
+| Stamina | 100 max |
+| Regeneration | 20 per second (2 per tick), after 800 ms without spending |
+| Exhaustion | At 0 stamina: 1,500 ms with no regeneration. No movement slowdown |
+| Sprint | +50% movement speed, any direction. Drains 30 per second (3 per tick). Ends when the bot attacks or uses an ability, or when stamina runs out |
+| Fast turn | A setting on Rotate (`fastTurn: true`, stored only when on). Rotation step 12 -> 24 degrees per tick (times the hit-stagger rotation multiplier). Drains 2 per tick (20 per second), only on ticks where the bot actually rotates; no drain while already facing. Below 2 stamina or while exhausted: normal step, no cost. Can drain in the same tick as sprint; attacking does not end it. `fastTurnMultiplier: 2` and `fastTurnDrainPerTick: 2` in both `MovementConfig`s |
+| Dash (19) | Costs 30 stamina instead of the 1,800 ms cooldown. A 300 ms gap between chained dashes. Distance and active time unchanged |
+| Wind-up cancel | Cancels the bot's own wind-up (`preparingAbility`) for 25 stamina. The ability does not go on cooldown and uses no charge. There is no restart lock: it can start again on the next tick (one ability action per tick), and the 25 stamina is the price |
+| Recovery | For now, the ability's existing active time acts as recovery. A separate active/recovery refactor is planned by the owner, so don't add a new recovery field |
+
+### Engine work
+
+- **Bot state (both runtimes):** `stamina`, `staminaRegenDelayMs`, `exhaustedMs`, `sprinting`, `fastTurning`, `dashGapMs`. They live on the `Bot` in `DuelSimulationService` and the browser bot state, and must go into replay frames (compact) so the status panel and spectators can show stamina.
+- **Actions:** start sprint, stop sprint, and cancel wind-up. They're new allowlisted logic actions with stable IDs, on the movement and ability channels, mirrored in `BotLogicContracts.js` and the server `simulation/bots/` registry. Dash keeps its ID and actions; only its cost model changes.
+- **Conditions and state variables**, to match design section 5a ("What code must be able to read"):
+  - self: stamina, exhausted, sprinting, turning fast;
+  - opponent: stamina, exhausted, sprinting, turning fast, winding up (and which ability), velocity and heading, facing angle relative to me;
+  - reach: my weapon's reach and the opponent's.
+
+  Wire them through `modelPayloads/strategyStatePayload.js`, `stateVariableResolver.js` and the server mirror. Some (velocity, preparing ability) may already exist. Check before adding.
+- **Hit timing:** confirm hits are already checked at the active frame, after the wind-up, using positions at that tick, in both runtimes. Abilities with `windupMs` resolve after `preparingMs`. If any ability captures its target position at wind-up start, flag it rather than silently changing it.
+- **Movement speed is the same in every direction.** Facing never affects walking or sprint speed. Don't add directional speed modifiers.
+- **Status panel and HUD:** a stamina bar on the fighter card, with an exhausted state.
+- **Lock On and fast turn: decided.** Lock On is removed from the base kit (`STANDARD_ABILITY_IDS` is `[19, 34]`, server `STANDARD_ABILITY_ORDER` likewise; no migration, old brains show "Ability not equipped"). Fast turn is the Rotate setting above; the planner uses the effective step so it never overshoots, and the replay carries a `fastTurning` flag like `sprinting`.
+
+## 3b. Bot language changes
+
+The design is in [`TIMED_ROUNDS_MATCH_FORMAT.md`](TIMED_ROUNDS_MATCH_FORMAT.md) section 5b. Every change below is a logic contract change: mirror it in the browser (`gameArena/botlogic/code/contracts/BotLogicContracts.js`, `runtime/stateVariableResolver.js`, `modelPayloads/strategyStatePayload.js`) and the server (`simulation/bots/`, `simulation/core/logic/`), with stable IDs and parity tests.
+
+| Change | Details |
+|---|---|
+| Approach Angle (new state variable) | `selectable.approachAngle`, group "Movement", 0–180°. The angle between the selected entity's movement direction (last tick) and the direction from it to My Bot (or the second selectable, if it's a pair variable). 0 = coming straight at me, 180 = moving straight away. When the entity didn't move last tick the value is 90; pair it with Is Moving |
+| Is Moving (new) | `selectable.moving`, true/false: the entity moved last tick (any non-zero displacement, including knockback and dash) |
+| Any Ability Winding Up (new) | `bot.anyAbilityPreparing`, true/false, any bot selectable: true while any of its abilities is in its wind-up (`preparingAbility` set) |
+| Speed (hidden) | Remove `selectable.speed` from the picker (`VISIBLE_STATE_VARIABLES`), but keep it in `STATE_VARIABLES` and keep evaluating it unchanged, so old brains still work. No unit change |
+| Raw Move Direction | Unchanged; stays in the picker |
+| Lead aim (Rotate: Face Target, and ability actions with a target) | New optional `aim` field: `current` (default, today's behavior), `lead` with `leadSeconds` (0–2, step 0.1), or `auto` with `leadAbilityId`. Predicted point = target position + target velocity (last-tick displacement per second) × lead time. For `auto`, lead time = that ability's remaining wind-up (full wind-up if not started) + projectile travel time (distance ÷ projectile speed; 0 for hitscan and melee). Target velocity is the last-tick displacement, so a direction change defeats it. Clamp the predicted point to the arena |
+| Reach autofill (browser UI only) | A ghost "Reach" button beside the number input of a Distance or Angle To condition. It opens a list of the bot's equipped abilities with their effective values and fills the number when one is picked. Add `abilityReach(abilityId)` in `loadout/` returning `{ distance, halfAngle }` from the real contract hitbox: arc → range (+30 if `includeTargetRadius`) and arc/2; rectangle → length (+30) and none; ray → range; projectile → speed × lifetime. Inserts a plain number. Mock up first, following the `botfight-ui-design` skill |
+| Sprint checkbox on Walk | Part of the movement work (P0a/P0b), not this stage |
+
+Not added (see design section 5b): Hold Distance, In Range condition, Seeded Random, Time to Impact, templates, closing speed.
+
+## 3c. Multi-spawn engine and Shotgun Blast (last stage, S7)
+
+Saved for last on purpose. It's a general engine feature; Shotgun Blast is its first user.
+
+### Why
+
+Today every ability spawns **at most one** entity:
+
+- server: `ActionExecutionService.spawnAbilityEntity` sets a single `bot.abilitySpawn`, the serial counter goes up by 1, and `DuelSimulationService` adds that one entity each tick;
+- browser: `ecs/bots/ActionExecutionSystem.js` returns a single `abilitySpawn`;
+- contract: each entity's `spawn` block has one `offset`, `rotation`, `rotationSpace`.
+
+Everything after spawning (movement, collision, phases, rendering, replay, entity conditions) already handles many entities. Only the spawn step is single.
+
+### Design
+
+The count belongs to the **spawn**, not to phases. Phases describe one entity's life (travel, armed, detonate); spawning several is about how many are created and at what angles.
+
+```js
+spawn: {
+  offset: { x: 0, y: 47 }, rotation: 0, rotationSpace: "owner",
+  pattern: { type: "fan", count: 7, spreadDeg: 40 },
+}
+```
+
+- `fan`: `count` entities with rotations evenly spaced across `spreadDeg`, centered on the aim.
+- `ring`: `count` entities evenly around 360° (future use).
+- `line`: `count` entities side by side with a `spacing` (future use).
+- No randomness. `count` bounded to 1–12. Default: no pattern = one entity, so every existing ability is unchanged.
+
+Engine changes, mirrored in both runtimes:
+
+1. **Contract:** add `pattern` to the spawn normalizer (browser `AbilityContracts.js`, server `AbilityContracts.java`).
+2. **Spawning:** `abilitySpawn` becomes a list `abilitySpawns`. Each copy goes through the existing spawn transform with its own rotation offset and gets the next serial ID **in index order**; the serial counter goes up by the number spawned. Order matters because collision resolution follows entity order.
+3. **Arena step:** add all spawns, not just one.
+4. **Volley hit rule:** optional `oncePerVolley` flag on a collision event. Without it, every entity applies its effects (damage stacks per pellet, as Shotgun wants). With it, a target is affected at most once per volley, which you'd want for knockback, slow or stun on multi-spawn abilities.
+5. **Selectable flag:** optional `selectable: false` on an entity contract, so very short-lived entities (pellets) stay out of the condition picker.
+6. **Later (not in S7):** a phase action that spawns a pattern from an entity (for example a grenade bursting into fragments), reusing the same `pattern` struct.
+
+### Shotgun Blast (Pistol, id 12)
+
+- Rename, remove ammo. Wind-up 150, active 200, cooldown 5,000.
+- 7 pellet projectiles, `fan` 40°, speed about 650 units/s, lifetime about 400 ms (about 260 range), 4 damage each, removed on hit, `selectable: false`.
+- Up close the pellets land almost instantly; at range they take a few ticks, so a well-timed sideways dash can dodge some. Fewer pellets reach a distant target, so damage falls off naturally (about 28 point blank, about 12 at 200 units).
+- Collision checks sweep each pellet's path between ticks (`movingEntityCollision`); a parity test must confirm fast pellets can't skip through a bot.
+- Visual: each pellet renders as a small projectile through the normal entity pipeline, plus a muzzle flash on the bot.
+
+## 3d. Action chains and Time Since Hit (stages C1–C4)
+
+The design is in [`TIMED_ROUNDS_MATCH_FORMAT.md`](TIMED_ROUNDS_MATCH_FORMAT.md) section 5d. Both runtimes, in parity. Built before P3.
+
+### Time Since Hit (C1)
+
+- `bot.selectedAbilitySinceHit` ("Time Since Hit"), number, seconds (step 0.1), in `GENERIC_ABILITY_VARIABLES`, so it reuses the ability picker and works for My Bot or an opponent. Range 0–99,999 (the general number limit); "never hit" reads **99,999**, so it round-trips through custom number variables unchanged. A real reading can never get near it (a match lasts at most 180 s), so "has ever hit" is `< 99999` and "never hit" is `= 99999`.
+- Per bot: last hit time per ability ID, set when that ability, or an entity it spawned, damages or applies an effect to an **enemy bot** that tick. Use the entity's owner and ability ID for attribution. One record per ability; a multi-hit tick counts once.
+
+### Brain data
+
+```js
+chains: [{ id: "chain.<slug>", name: "Punish", steps: [/* step */] }]
+// step types:
+{ type: "action", ...existingActionEntry,           // ability / walk / rotate / variable / cancel_windup
+  continue: "end" | "now",                           // ability only, default "end"
+  forMs, untilConditions, maxMs }                    // walk / rotate only: forMs OR (untilConditions + maxMs)
+{ type: "wait", forMs } | { type: "wait", untilConditions, maxMs }
+{ type: "if" | "elseIf", conditions, steps: [step] } // first matching body, then after the group
+{ type: "repeat", count } | { type: "repeat", whileConditions, maxMs }, plus steps: [step]
+{ type: "runChain", chainId } | { type: "exitLoop" } | { type: "end" }
+```
+
+Root action: `run_chain` (`chainId`; a running chain is never replaced). It uses a movement, rotation or ability category.
+
+Bounds (normalization and server validation): 16 chains, 32 steps per chain counting nested steps, Repeat count 1–20, every `forMs`/`maxMs` a multiple of 100 from 100 to 10,000, loop nesting 2, call depth 3, no call cycles (validate the call graph), `chainId` references must exist. Unknown step types are rejected.
+
+### Runtime state per bot
+
+`chainStack`: up to 3 frames of `{ chainId, path, stepElapsedMs, issued, loops: [{ passes, elapsedMs }] }`. `path` is the step position, e.g. `[1, "branch", 0]`. Empty means no chain is running. It goes into replay frames in C4.
+
+### Per-tick algorithm
+
+Tick order (design section 5d): evaluate roots → chain control (the highest-priority Run chain: start only when none is running) → `resumeChain` → roots fill categories the chain didn't use → simulate. Stun or death at the start of `resumeChain` ends the chain.
+
+`resumeChain` loops over the current step with a set of categories used this tick:
+
+- **No step left:** pop the frame (return to the caller). If the stack is empty, the chain ends.
+- **Instant** (variable writes, If, Run chain push, Exit loop, End): apply and advance. Chain writes are visible to later chain steps this tick. Chain conditions read start-of-tick world state.
+- **Cancel Wind-up:** uses the cancel category (`ACTION_HEADS.CANCEL`; server head `"cancel"`). Issue it (a no-op if nothing can be cancelled), advance, and **stop for this tick**: execution starts no ability on a cancel tick, so a following Use step must wait for the next tick, or it would see the old wind-up and skip the ability.
+- **Use ability, not yet issued:** if the ability category is used, stop. If the ability can't start now (`actionExecutableNow` false), advance and stop for this tick; process the next step next tick. Otherwise issue it and mark it used. With `continue: "now"`, advance; otherwise mark the step issued and stop.
+- **Use ability, issued:** at the start of a later tick, once the bot is no longer winding up or active with that ability (any reason), advance; otherwise stop.
+- **Walk/Rotate:** an until-condition that's true at the start of the tick → advance without issuing. Otherwise, if the category is used, stop; issue and add 100 ms; advance when `forMs`/`maxMs` is reached. A step with `forMs` N issues on exactly N/100 ticks.
+- **Wait:** an until-condition that's true → advance. Otherwise add 100 ms and stop; once `forMs`/`maxMs` is reached, the next step runs at the start of that tick.
+- **If / Else if:** scan adjacent alternatives once and enter the first matching body. Its completion skips all remaining alternatives. Saved `then` / `else` lists migrate to If / always-true Else if bodies.
+- **End / Exit loop:** End returns from the current chain, even inside Repeat. Exit loop leaves only the nearest Repeat. There is no Cancel chain action or step (owner decision); a running chain is never replaced; it ends only through its own End step (owner decision: no Skip or Replace option).
+- **Repeat:** on entry or at the top of a pass, check the count, or the while-condition and its max time, then enter the body or skip past it. The end of the body jumps back to the Repeat and **stops for this tick**.
+
+Root interplay: the chain's issued actions take their categories (movement, rotation, ability, cancel) first; roots fill the rest by priority, as today.
+
+### Editor (C3, direction A "node column" approved 2026-10-02)
+
+The workspace canvas switches scope to a chain, with a breadcrumb and a fixed CHAIN header node. Steps auto-layout top to bottom (no free drag) as the existing node designs, numbered in reading order; If / Else if have nested bodies in blue brackets; Repeat is a violet bracket. Details are in the C3 prompt. A Chains list sits beside Roots with "+ Chain". Run chain nodes have Open, and the picker has "New chain…". Deleting a chain that's in use asks for confirmation.
 
 ## 4. Placeholder visuals (Pixi, presentation-only)
 
 Rules:
 
-- Use procedural `Graphics` or reuse existing sprites. No new image assets.
-- Drive every effect only from shape state (`abilityActiveMs`, wind-up state). **No `Math.random`**: any jitter derives from ability ID and activation tick, so replays render identically.
+- Use procedural `Graphics` or reuse existing sprites. No new image assets; the owner may add sprites later.
+- Drive every effect only from shape state (`abilityActiveMs`, wind-up state). **No `Math.random`**, so replays render identically.
+- Draw every hitbox-shaped effect **from the same hitbox numbers the gameplay uses** (read the contract), so what players see matches what hits.
 - Register each one in `pixi/botAbilityPresentationDefinitions.js` and implement it next to the existing effect types in `pixi/PixiCanvas.jsx`.
 
 | Ability | Effect | Placeholder |
 |---|---|---|
-| Spear (35) | `spearThrust` | A 4 px metallic shaft (`0xcbd5e1`) from the bot edge, with a 14 px triangular tip. Length extends 0 → 170 over the first 35% of the active time, holds for 30%, then retracts |
-| Axe (36) wind-up | `axeWindup` | An amber (`0xf59e0b`) 150° pie outline at radius 105, filling with wind-up progress, alpha 0.25 → 0.6 |
-| Axe (36) active | reuse `heavySlash` | Sized by the Axe hitbox (`sizingHitboxAbilityId: 36`), tint `0xfde68a` |
-| Daggers (37) | reuse `meleeSwing` frames | Two swings at 0.6 scale, the second 150 ms later and mirrored. Tint `0xe2e8f0` |
-| Sniper (3) wind-up | `sniperSight` | A 2 px red (`0xef4444`) aim line to range or the first bot hit, alpha pulsing 0.35–0.8 |
+| Slash (1) | existing `meleeSwing` | Unchanged |
+| Thrust (35) wind-up | `thrustWindup` | The shaft pulls back slightly: a 4 px line, 40 units long, behind the bot's front edge |
+| Thrust (35) active | `thrust` | A 4 px metallic shaft (`0xcbd5e1`) along the facing, with a 14 px triangular tip. Length extends 0 → 190 over the first 35% of the active time, holds for 30%, then retracts |
+| Cleave (36) wind-up | `cleaveWindup` | An amber (`0xf59e0b`) outline of the 160° hitbox arc, plus a fill growing from the bot outward with wind-up progress, alpha 0.25 → 0.6 |
+| Cleave (36) active | `cleave` | Its own effect, not the slash crescent: a filled wedge (`0xfde68a`, alpha about 0.35) sweeps across the full hitbox arc over the first 60% of active time, with a solid 8 px leading edge (`0xfff4cc`) from the bot to the tip and a 5 px rim on the outer edge; the trail fades over the last 40% |
+| Smash (37) wind-up | `smashWindup` | The rectangle outline (125 × 100) in front of the bot, alpha rising with wind-up progress |
+| Smash (37) active | `smash` | The rectangle flashes filled (`0xe2e8f0`, alpha 0.5 → 0) with a short impact line at the far edge, plus 3 small dust puffs that drift outward. Reuse `dashSmoke` frames if they fit |
+| Sniper (3) wind-up | `sniperSight` | A 2 px red (`0xef4444`) aim line along the facing, to range or the first bot hit, alpha pulsing 0.35–0.8 |
 | Sniper (3) fire | reuse `abilityRay` | `rail_shot` frames, height about 40, muzzle flash |
-| Shotgun Blast (12) | `shotgunCone` | Muzzle flash plus 7 pellet streaks (1.5 px) spread across 50° to 220 units, with deterministic jitter; a faint cone fill (alpha 0.12), fading over the 200 ms active phase |
+| Shotgun Blast (12) | entity pellets (S7) | Each pellet renders as a small projectile through the normal entity pipeline, plus a muzzle flash on the bot. Done in S7 |
 | Fireball (5) | existing sprite | Visual size 60, matching the new hitbox |
 
 - **Wind-up telegraphs need wind-up state in replay frames.** Verify the compact replay carries `preparingAbility` and `preparingMs`; if it doesn't, add them in both runtimes.
-- Add simple SVG catalogue icons for Spear, Axe and Daggers (`getAbilityCatalogueIcon`). Rename the icons for Sniper and Shotgun Blast.
+- No icons for weapons. Rename the existing icons for Sniper and Shotgun Blast only if the current icons say "gun" or "pistol".
 
 ## 5. Phases and timing
 
@@ -133,7 +297,7 @@ Then the next pick, or `MATCH_RESULT_READY` on KO or after round 6. The `OBJECT_
 - On an accepted submit: `clockRemainingMs = max(0, clockRemainingMs - (submitAt - buildStartedAt))`. A submit inside the grace period leaves 0.
 - On a deadline: if the client sent nothing, create a fallback submission. If the setting is `CURRENT`, the client auto-submits its current brain just before its displayed clock hits zero. The server validates it, and if it's invalid, falls back to the previous round's brain. If the setting is `PREVIOUS`, or nothing valid arrived, use the existing `createBuildingTimeoutSubmission` (previous brain plus the new loadout).
 - Round 1 with no previous brain falls back to an empty brain, as today.
-- Policy constants go in `MatchTimingPolicy`: base 120 s, increment 20 s, pick 30 s / 20 s, segment 30 s, max rounds 6.
+- Policy constants go in `MatchTimingPolicy`: base 300 s, increment 30 s, pick 30 s / 20 s, segment 30 s, max rounds 6.
 - **Custom lobbies:** the "round duration" setting becomes a base clock (30 s–10 min) plus an increment (0–60 s).
 
 ### Events (additive fields on existing DTOs)
@@ -202,19 +366,48 @@ Then the next pick, or `MATCH_RESULT_READY` on KO or after round 6. The `OBJECT_
 
 ## 8. Order, risks and checks
 
-**Order:**
+**Order:** small stages, each testable in the practice room before the next.
 
-1. P1 combat content and P3 segmented simulation, in parallel.
-2. P2 visuals (after P1).
-3. P4 lifecycle (after P3).
+| Stage | What | Test in |
+|---|---|---|
+| S1 | Weapons: Slash retune, plus Thrust, Cleave and Smash (combat, both runtimes) | Practice room: equip each weapon, check reach, damage and knockback against a dummy |
+| S2 | Weapon placeholder visuals | Practice room and a replay |
+| S3 | Fireball and Sniper rework, plus their visuals | Practice room |
+| S4 | Language: Approach Angle, Is Moving, Any Ability Winding Up, hide Speed | Write conditions in the practice room |
+| S5 | Lead aim | Practice room against a moving dummy |
+| S6 | Reach autofill UI (after a mockup) | Condition editor |
+| S7 (last) | Multi-spawn engine, then Shotgun Blast as pellet projectiles | Practice room: fan spread, pellets per distance, dodging at range |
+
+S1–S6 don't depend on the timed-rounds format. S7 is saved for the very end, after the format work below. Current 3-round matches keep working: the new weapons are not in the match draft until P4, and Basic Strike stays a standard ability until P4. The Slash retune and the ability reworks **do** apply to current matches right away.
+
+Status (2026-10-02): S1–S6, Approach Angle with two entities, P0a, P0b and the Cancel Wind-up fixes are implemented (uncommitted). S2's Cleave active effect still reuses the Heavy Slash sprite instead of its own wedge.
+
+Then action chains (section 3d), before the format work:
+
+| Stage | What | Test in |
+|---|---|---|
+| C1 | Time Since Hit ability value (both runtimes) | Practice room: conditions on a hit and a miss, a projectile hit |
+| C2 | Chain engine, data model and validation (both runtimes, parity) | Engine tests only; nothing to click yet |
+| C3 | Chain editor (direction A, "node column", approved) | Practice room: build the Punish and feint examples |
+| C4 | Chain call stack in replay frames, highlight the running step | Replay and practice room |
+
+Then the format work:
+
+1. ~~P0a movement prototype~~ and ~~P0b movement on the server~~: done.
+2. P3 segmented simulation (it must end running chains at a boundary).
+3. P4 lifecycle (after P3). This is also where weapons enter the draft, Basic Strike leaves the standard set, HP goes to 300, and the ruleset becomes `duel-v2`.
 4. P5 frontend flow (after P4 and the UI mockups).
 5. P6 content surfaces, at any time (puzzle hiding can ship first).
+6. **S7 multi-spawn engine and Shotgun Blast**, last.
+
+Weapon numbers were set before the movement system exists; expect to retune them after P0b.
 
 **Main risks:**
 
 - **Brain swap leaking state.** Test that brain *k* never runs on a tick after boundary *k*. Test that segment *k*'s frames are identical whether produced in round *k* or by re-simulating at round 6.
 - **Round-transition state leaks.** The existing checklist in `MATCH_TIMING.md` warns about this, and it now spans 6 rounds. Test rounds 2, 3, 5 and 6 explicitly, including pick timeout auto-picks (weapon defaults to Slash; the ability defaults to the first offer).
 - **Clock arithmetic at the edges:** a submit during the grace period, a reconnect mid-build, both clocks at 0, a 2v2 where one teammate has expired.
+- **Stamina parity:** regeneration delay, exhaustion and dash gaps are timers, which is exactly the "timer-driven state" class of bug in the regression checklist. Test tick-by-tick traces on both runtimes, including a stamina change at a round boundary (stamina carries over like everything else).
 - **Browser/server parity for weapons and the zone.** The zone needs a new `ClosingZoneConfig.timedRoundsV2()`:
   - no zone in round 1 (`startDelayMs` 30,000);
   - 5 contraction phases of 30 s (5 s approach, 25 s hold) with targets 4/5 → 0;
@@ -227,54 +420,450 @@ Then the next pick, or `MATCH_RESULT_READY` on KO or after round 6. The `OBJECT_
 
 - Server: `.\mvnw.cmd test`, with focused suites first (simulation, gameconfig/ecs parity, match lifecycle).
 - Frontend: `npm test`, `npm run lint`, `npm run build`.
-- Run `docs/ARENA_VISUAL_AND_COMBAT_REGRESSION_CHECKLIST.md` for P1 and P2.
+- Run `docs/ARENA_VISUAL_AND_COMBAT_REGRESSION_CHECKLIST.md` for S1 to S3 and S7.
 
 ## 9. Sonnet prompts
 
 Each prompt is self-contained. Run them in the order in section 8. Each one ends with "update affected tests" and "don't commit".
 
-### P1: Weapons, ability rework, HP
+### S1: Weapons (combat only)
 
 ```
-Botfight: implement the weapon/ability changes in
-docs/TIMED_ROUNDS_IMPLEMENTATION_PLAN.md section 3, in BOTH runtimes
-(browser frontend/src/gameArena/gameconfig + ecs/contracts + loadout, server
-simulation/gameconfig + simulation/ecs/contracts). Follow
-docs/ADDING_AN_ABILITY_OR_MOVE.md and use tools/botfight-mcp scaffolds and its
-parity report.
-- New weapons Spear (35), Axe (36), Daggers (37); retune Slash (1). Add a
-  "weapon" category in catalog metadata. Daggers use the existing REPEAT
-  schedule (count 2, 150 ms).
-- Rework Fireball (5), Gun (3) -> Sniper, Pistol (12) -> Shotgun Blast exactly
-  as specified; keep IDs.
-- Base HP 150 -> 300 (BASE_BOT_STATS, server default HP and any other
-  copies). Remove Basic Strike (34) from the standard/granted set on both
-  sides; keep its definition.
-- Update tier pools per section 3 (Slash out of tier 1), compact ability codes
-  for new IDs on both sides, and catalogue text. Rename "duel-v1" to "duel-v2"
-  in both DUEL_RULESET_VERSION constants.
-- Existing visuals may fall back for new IDs; dedicated visuals are a later
-  task.
-Add parity tests for every new or changed ability (damage, hitbox, timings,
-multi-hit). Update affected tests. Run server tests and frontend npm test.
+Botfight: add the weapon set from docs/TIMED_ROUNDS_IMPLEMENTATION_PLAN.md
+section 3 ("Weapons") in BOTH runtimes: browser frontend/src/gameArena
+(gameconfig/AbilityRegistry.js, gameconfig/Abilities.js,
+ecs/contracts/AbilityContracts.js, loadout/BotLoadout.js) and server
+simulation/gameconfig + simulation/ecs/contracts/AbilityContracts.java.
+Follow docs/ADDING_AN_ABILITY_OR_MOVE.md; use the tools/botfight-mcp
+scaffolds and parity report.
+
+Weapons (all hitboxes start at the bot's center, includeTargetRadius: true,
+no ammo; times in ms):
+- Slash (1, retune): arc 120°, range 92; 8 damage; windup 0 / active 300 /
+  cooldown 500.
+- Thrust (35, new): rectangle length 190, width 30; 10 damage;
+  100 / 300 / 700.
+- Cleave (36, new): arc 160°, range 112; 15 damage; 450 / 300 / 650.
+- Smash (37, new): rectangle length 125, width 100; 11 damage + knockback
+  120 (existing KNOCKBACK effect, bots and summons, as Repelling Blast does);
+  250 / 300 / 700.
+attackDamageMultiplier and attackSpeedMultiplier apply as they do to Slash.
+
+- Add category: "weapon" catalog metadata. Action and catalogue labels read
+  "Weapon: <name>" for this category (instead of "Ability: <name>"). No icons:
+  use the existing text fallback.
+- New IDs need registry entries, compact ability codes on both sides
+  (server CompactAbilityCode and the browser loadout encoding), and catalogue
+  descriptions.
+- Make all four weapons selectable in the practice-room loadout editor.
+  Slash stays in the tier 1 draft pool; Thrust, Cleave and Smash are NOT
+  added to any match draft pool. Do NOT change Basic Strike, HP, or the
+  ruleset version (those come later with the match format).
+- Visuals may use existing fallbacks; dedicated visuals are the next stage.
+
+Add parity tests per weapon: a target just inside and just outside effective
+reach (hitbox length + 30), arc and rectangle side edges, damage, timing,
+and Smash knockback. Update affected tests. Run server tests (.\mvnw.cmd test
+from server/) and frontend npm test. Don't commit.
+```
+
+### S2: Weapon placeholder visuals
+
+```
+Botfight frontend: add placeholder Pixi visuals for the weapons Thrust (35),
+Cleave (36) and Smash (37), per docs/TIMED_ROUNDS_IMPLEMENTATION_PLAN.md
+section 4. Slash (1) keeps its existing meleeSwing visual unchanged.
+Reference animation (rough canvas mock of the intended look and timing):
+docs/previews/weapon-placeholder-visuals.html.
+Files: frontend/src/gameArena/pixi/botAbilityPresentationDefinitions.js,
+PixiCanvas.jsx, pixiVisualState.js.
+
+Rules:
+- Presentation only: never affects hits, damage, cooldowns or results.
+- Procedural Pixi Graphics or existing sprites only; no new image assets.
+- No Math.random; drive everything from bot state (wind-up progress from
+  preparingAbility/preparingMs, active progress from abilityActiveMs), so
+  replays render identically to live play.
+- Size every shape from the ability's real contract hitbox (range, arc,
+  length, width), not hard-coded numbers, so retuning a weapon updates its
+  visual.
+- Register each effect in botAbilityPresentationDefinitions.js and implement
+  it beside the existing effect types in PixiCanvas.jsx.
+
+Effects:
+- Thrust wind-up ("thrustWindup"): a 4 px metallic line (0xcbd5e1) pulling
+  back about 40 units behind the bot's front edge as wind-up progresses.
+- Thrust active ("thrust"): the same shaft with a 14 px triangular tip along
+  the facing; length grows 0 -> hitbox length over the first 35% of active
+  time, holds for 30%, retracts over the last 35%.
+- Cleave wind-up ("cleaveWindup"): an amber (0xf59e0b) outline of the
+  hitbox arc (160°, its range), plus a fill that grows from the bot outward
+  with wind-up progress; alpha rises about 0.25 -> 0.6.
+- Cleave active ("cleave"): its own effect, NOT the slash crescent. A filled
+  wedge (0xfde68a, alpha about 0.35) sweeps across the full hitbox arc over
+  the first 60% of active time, with a solid 8 px leading edge (0xfff4cc) from
+  the bot to the tip and a 5 px rim along the outer edge; the trail fades over
+  the last 40%.
+- Smash wind-up ("smashWindup"): the hitbox rectangle outline in front of
+  the bot, alpha rising with wind-up progress.
+- Smash active ("smash"): the rectangle flashes filled (0xe2e8f0, alpha
+  0.5 -> 0), a short bright impact line at its far edge, and 3 small dust
+  puffs drifting outward and fading (reuse dashSmoke frames if they fit,
+  otherwise circles).
+
+Replay prerequisite: first verify the compact replay carries each bot's
+wind-up state (preparingAbility, preparingMs) so wind-up telegraphs render in
+match replays. If it doesn't, add it on both sides (server
+simulation/core/replay + the replay DTO, browser replay mapping) and add a
+parity test.
+
+Run docs/ARENA_VISUAL_AND_COMBAT_REGRESSION_CHECKLIST.md. Add or update
+pixi tests (pixiVisualState.test.js, botAbilityPresentationDefinitions.test.js)
+for the new definitions and progress math. Run npm test, lint, build (and
+server tests if you touched the replay). Don't commit.
+```
+
+### S3: Fireball and Sniper
+
+```
+Botfight: rework Fireball (5) and Gun (3) -> Sniper per
+docs/TIMED_ROUNDS_IMPLEMENTATION_PLAN.md section 3 ("Reworked tier 1
+abilities"), in both runtimes, keeping their IDs.
+- Fireball: remove ammo/reload; cooldown, 64x64 hitbox, visual size 60,
+  lifetime and damage as specified.
+- Sniper: rename label and catalogue text; remove ammo and falloff; 900 ms
+  wind-up during which the bot may still rotate; fires along its facing at
+  release; range, width and damage as specified.
+- Visuals from section 4: Fireball size; Sniper sight line during wind-up,
+  rail_shot ray on fire.
+- Check any puzzles, tutorial presets or tests that rely on Gun ammo, and
+  update the tests (puzzles are remade by the owner later).
+Add parity tests. Update affected tests. Run server tests and frontend
+npm test, lint, build. Don't commit.
+```
+
+### S4: Language: new conditions
+
+```
+Botfight: implement the state-variable changes in
+docs/TIMED_ROUNDS_IMPLEMENTATION_PLAN.md section 3b (Approach Angle, Is
+Moving, Any Ability Winding Up, hide Speed), in BOTH runtimes
+(frontend/src/gameArena/botlogic/code + modelPayloads; server simulation/bots
++ simulation/core/logic).
+- Stable new IDs; picker labels and one-line descriptions (VARIABLE_DESCRIPTIONS).
+- Speed: remove it from the visible picker only; keep evaluating it for old
+  brains.
+- Validate the new IDs at the submission boundary.
+Parity tests for each variable, including the stationary case of Approach
+Angle (90) and knockback counting as moving. Update affected tests. Run
+server tests and frontend npm test. Don't commit.
+```
+
+### S5: Lead aim
+
+```
+Botfight: add lead aim per docs/TIMED_ROUNDS_IMPLEMENTATION_PLAN.md section
+3b to Rotate: Face Target and to ability actions that aim at a target, in
+BOTH runtimes.
+- New optional block fields: aim = current | lead | auto, leadSeconds
+  (0-2, step 0.1), leadAbilityId. Default current = today's behavior; old
+  brains unchanged.
+- Predicted point = target position + last-tick velocity x lead time,
+  clamped to the arena. Auto lead time = the chosen ability's remaining
+  wind-up (full wind-up if not started) + projectile travel time (0 for
+  hitscan and melee).
+- Editor: an "Aim" segmented control (Current | Lead | Auto) in the action
+  config, following the botfight-ui-design skill; validate and bound the
+  fields at normalization and at the server boundary.
+Parity tests: stationary target (no lead), straight-line mover, mid-segment
+direction change. Update affected tests. Don't commit.
+```
+
+### S3–S5 combined (one Sonnet run)
+
+```
+Botfight: implement stages S3, S4 and S5 from
+docs/TIMED_ROUNDS_IMPLEMENTATION_PLAN.md, in this order. Each part touches
+BOTH runtimes (browser frontend/src/gameArena, server simulation/) and must
+keep them in parity. Finish each part (code + its tests passing) before
+starting the next, and at the end report what changed per part.
+
+PART A: S3, Fireball and Sniper (plan sections 3 and 4)
+- Fireball (id 5): remove ammo/reload (maxCharges, resourceModel, chargeType,
+  reloadMs); cooldown 5500 ms; projectile hitbox 30x30 -> 64x64; visual size
+  30 -> 60; lifetime 1000 -> 1400 ms; damage 15 -> 20; burn unchanged.
+- Gun (id 3) -> Sniper: change the display label and catalogue text to
+  "Sniper". Keep the internal registry name "gun" and the ID, because saved
+  brains may refer to abilities by legacy name (abilityIdFromLegacyName).
+  Remove ammo and damage falloff. Wind-up 900 ms, active 200, cooldown 9000.
+  Ray range 1200, width 6, flat damage 40. The bot may keep rotating during
+  the wind-up; the ray fires from the bot's position and facing at release,
+  not where it was when the wind-up started.
+- Visuals (presentation only, no Math.random, sized from the contract):
+  Fireball uses its existing sprite at the new size. Sniper wind-up
+  ("sniperSight"): a 2 px red (0xef4444) aim line along the facing to max
+  range or the first bot it would hit, alpha pulsing 0.35-0.8. Sniper fire:
+  reuse the abilityRay effect with rail_shot frames, height about 40, with a
+  muzzle flash. Update presentation definition 3 accordingly.
+- Update tests, tutorial presets and fixtures that rely on Gun or Fireball
+  ammo. Leave puzzles alone (the owner remakes them later).
+- Parity tests: Fireball hitbox edges at 64x64 and travel distance; Sniper
+  hit at 1200, miss beyond, the aim follows rotation during the wind-up.
+
+PART B: S4, new conditions (plan section 3b)
+- Add state variables, mirrored in frontend botlogic/code/contracts/
+  BotLogicContracts.js, runtime/stateVariableResolver.js,
+  modelPayloads/strategyStatePayload.js and the server simulation/bots +
+  simulation/core/logic:
+  - selectable.approachAngle ("Approach Angle", group Movement, 0-180 deg):
+    the angle between the entity's last-tick movement direction and the
+    direction from it to My Bot. 0 = coming straight at me, 180 = moving
+    straight away; 90 when it didn't move last tick.
+  - selectable.moving ("Is Moving", boolean): moved last tick, including
+    knockback and dash.
+  - bot.anyAbilityPreparing ("Any Ability Winding Up", boolean, any bot
+    selectable): true while any of its abilities is winding up.
+- Remove selectable.speed from the visible picker only. Keep it in
+  STATE_VARIABLES and keep evaluating it unchanged so old brains still work.
+  Raw Move Direction stays.
+- Add one-line picker descriptions (VARIABLE_DESCRIPTIONS). Validate and
+  bound the new IDs at the server submission boundary.
+- Parity tests for each, including Approach Angle when stationary (90),
+  head-on (0), fleeing (180), and knockback counting as moving.
+
+PART C: S5, lead aim (plan section 3b)
+- Add an optional aim setting to Rotate: Face Target and to ability actions
+  that aim at a target: aim = current (default; exactly today's behavior) |
+  lead (with leadSeconds, 0-2, step 0.1) | auto (with leadAbilityId).
+- Predicted point = target position + target velocity (last-tick
+  displacement per second) x lead time, clamped to the arena. For auto, lead
+  time = the chosen ability's remaining wind-up (full wind-up if not started)
+  + projectile travel time (distance / projectile speed; 0 for hitscan and
+  melee).
+- Old brains without the field behave exactly as today. Normalize and bound
+  the new fields in browser normalization and at the server boundary.
+- Editor: an "Aim" segmented control (Current | Lead | Auto) in the action
+  config, with a seconds input for Lead and an ability picker for Auto,
+  following the botfight-ui-design skill (tool surface: Plex Sans, ~32 px
+  controls, segmented toggle).
+- Parity tests: a stationary target (no lead), a straight-line mover, a
+  target that changes direction (the prediction misses).
+
+Throughout: follow docs/ADDING_AN_ABILITY_OR_MOVE.md for the ability changes
+and run docs/ARENA_VISUAL_AND_COMBAT_REGRESSION_CHECKLIST.md for Part A.
+Update affected tests. Run server tests (.\mvnw.cmd test from server/) and
+frontend npm test, lint, build. Don't commit.
+```
+
+### S6: Base Range ability variable
+
+```
+Botfight: replace the reach-autofill proposal in section 3b with a numeric
+"Base Range" ability variable in the existing variable system.
+- Select an equipped ability and read its configured base range directly,
+  so conditions such as Distance(My Bot, Opponent) <= Base Range(Slash)
+  stay linked to the ability's current tuning rather than inserting a number.
+- Derive the value from the real ability contract in arena units: arc range,
+  rectangle length, ray range, or projectile speed x lifetime (with matching
+  time units). Do not add target radius; this is base range, not a hit check.
+  Exclude abilities without a meaningful range from the ability picker.
+- Do not add Base Arc or the Reach autofill button.
+- Mirror the variable ID, ability selection, normalization, validation and
+  evaluation in the browser and authoritative server. Add picker help text
+  and parity tests for supported range types and invalid ability selections.
+Update affected tests. Run server tests (.\mvnw.cmd test from server/) and
+frontend npm test, lint, build. Don't commit.
+```
+
+Follow-up to S4: generalize Approach Angle to two entity selectors, "Moving
+Entity" and "Target Entity". Measure the first entity's last-tick movement
+against the direction from it to the second entity's position: 0 degrees toward,
+90 sideways, 180 away; retain 90 when stationary or positions coincide. This
+does not use relative velocity. Default the second selector to My Bot for saved
+conditions, preserving existing behavior. Mirror the change in browser/server
+contracts, normalization, validation and evaluation, with parity tests.
+
+### P0a: Movement prototype (browser only)
+
+```
+Botfight frontend: prototype the movement system in the browser practice arena
+only (non-authoritative), per docs/TIMED_ROUNDS_IMPLEMENTATION_PLAN.md
+section 3a and docs/TIMED_ROUNDS_MATCH_FORMAT.md section 5a. Do not touch
+the server.
+- Bot stamina (100, 20/s regen after 750 ms idle, 1.5 s no-regen
+  exhaustion at 0, no slowdown); sprint (+50%, any direction, 30/s, ends on
+  attack/ability use or 0 stamina); Dash costs 30 stamina instead of its
+  cooldown, with a 300 ms gap between chained dashes; wind-up cancel (25
+  stamina, no cooldown, no restart lock).
+- New logic actions (sprint start/stop, cancel wind-up) and the
+  conditions/state variables listed in section 3a, in
+  frontend/src/gameArena/botlogic and modelPayloads. Mark them clearly as
+  prototype so they can't be submitted to rated matches yet.
+- A stamina bar on the fighter card (status panel), with an exhausted state.
+- Keep all numbers in one config object so they're easy to tune.
+Add focused tests for stamina timers and dash chaining. Update affected
+tests. Run npm test, lint, build. Don't commit.
+```
+
+### P0b: Movement on the server, with parity
+
+```
+Botfight: make the movement system from P0a authoritative, per
+docs/TIMED_ROUNDS_IMPLEMENTATION_PLAN.md section 3a, using the numbers the owner chose after
+playtesting.
+- Server: stamina/sprint/exhaustion/dash-gap state on the Bot in
+  DuelSimulationService and BotStateService; the stamina-cost model for Dash
+  (19); sprint and wind-up-cancel actions; the new conditions/state variables
+  in simulation/bots and simulation/core/logic. Validate and bound the new
+  action and condition IDs at the submission boundary.
+- Include stamina fields in compact replay frames; mirror them in replay
+  presentation.
+- Remove the prototype gating from P0a and align the browser numbers with
+  the server.
+- Confirm hit checks happen at the active frame after the wind-up in both
+  runtimes; flag any ability that captures its target position at wind-up
+  start.
+Add tick-by-tick parity tests (stamina regen delay, exhaustion, dash chains,
+sprint cancel on attack, cancelled wind-up). Run
+docs/ARENA_VISUAL_AND_COMBAT_REGRESSION_CHECKLIST.md. Update affected tests.
 Don't commit.
 ```
 
-### P2: Placeholder visuals
+### C1: Time Since Hit
 
 ```
-Botfight: add placeholder Pixi visuals per
-docs/TIMED_ROUNDS_IMPLEMENTATION_PLAN.md section 4 (Spear thrust, Axe wind-up
-and swing, Daggers double swing, Sniper sight and shot, Shotgun cone, Fireball
-size). Files: frontend/src/gameArena/pixi/botAbilityPresentationDefinitions.js,
-PixiCanvas.jsx, pixiVisualState.js, and catalogue icons.
-- Presentation-only: no gameplay reads, no Math.random (derive any jitter from
-  ability id + activation tick), procedural Graphics or existing sprites only.
-- Verify the compact replay carries wind-up state (preparingAbility/
-  preparingMs). If not, add it on both runtimes so wind-up telegraphs render
-  in replays.
-- Run docs/ARENA_VISUAL_AND_COMBAT_REGRESSION_CHECKLIST.md.
-Update affected pixi tests. Run npm test, lint, build. Don't commit.
+Botfight: add the Time Since Hit ability value per
+docs/TIMED_ROUNDS_IMPLEMENTATION_PLAN.md section 3d (C1), in BOTH runtimes,
+in parity.
+- Variable bot.selectedAbilitySinceHit ("Time Since Hit"), number, seconds,
+  step 0.1, 0 to CUSTOM_NUMBER_MAX (99999), added to GENERIC_ABILITY_VARIABLES in
+  frontend/src/gameArena/botlogic/code/contracts/BotLogicContracts.js (ability
+  picker, My Bot or an opponent) and the server simulation/bots +
+  simulation/core/logic mirror. One-line picker description and a catalogue
+  description (pages/catalogue/ConditionalCataloguePage.jsx). Validate it at
+  the submission boundary like the other ability variables.
+- Per bot, record the time of the last hit per ability ID: the tick where
+  that ability's own hitbox, or an entity it spawned (attribute by owner +
+  ability ID), damages or applies an effect to an ENEMY BOT. Allies and
+  summons don't count; several hits in one tick count once. Find the single
+  place effects land on bots in each runtime (browser gameArena/ecs/abilities,
+  server simulation/core/combat) rather than patching each ability.
+- Value = seconds since that hit; the tick after the hit reads 0.1.
+  99999 (the general number limit) if the ability never hit, so it
+  round-trips through custom number variables. Carry it in the strategy state payload
+  (modelPayloads/strategyStatePayload.js) and the server resolver.
+- Tests (browser and server, same scenarios): Slash hit then misses; a
+  Fireball hit attributed to Fireball at impact time, not cast time; a hit
+  on a summon or ally doesn't count; opponent selectable; never-hit = 99999.
+Update affected tests. Run server tests (.\mvnw.cmd test from server/) and
+frontend npm test, lint, build. Don't commit.
+```
+
+### C2: Action chain engine
+
+```
+Botfight: implement the action chain engine per
+docs/TIMED_ROUNDS_IMPLEMENTATION_PLAN.md section 3d (brain data, runtime
+state, per-tick algorithm) and docs/TIMED_ROUNDS_MATCH_FORMAT.md section 5d,
+in BOTH runtimes, in exact parity. No editor UI yet (that's C3).
+- Brain data: `chains` with the step types in section 3d; root actions
+  run_chain (chainId; a running chain is never replaced), which uses no
+  movement/rotation/ability/cancel category. Keep this action out of the
+  action picker until C3. Normalize and preserve `chains` on save (old brains
+  have none and behave exactly as before). Count chain steps toward the
+  existing brain size metrics.
+- Validation (browser normalization and server BotSubmissionValidationService
+  + BotLogicContracts.java): the bounds in section 3d, every ms value a
+  multiple of 100, known step types only, existing chainId references, no
+  call cycles, call depth <= 3, loop nesting <= 2.
+- Runtime: a chainStack on the bot that persists across ticks (browser: carry
+  it through the action plan like customVariables, see
+  botlogic/code/runtime/actionSelector.js and
+  botlogic/planner/ArenaActionPlanner.js; server: a Bot field used by
+  DuelSimulationService.selectStrategyActionPlan). Put the step logic in one
+  module per side (e.g. botlogic/code/runtime/chainRuntime.js,
+  simulation/core/logic/ChainRuntime.java).
+- Tick order and resumeChain exactly as section 3d: chain control from roots
+  (the highest-priority Run chain), then the chain, then
+  roots fill the categories the chain didn't use. A step that issues nothing
+  claims nothing. A Use ability step that can't start skips and waits until next tick to continue. "When
+  it ends" means no longer winding up or active, for any reason. Cancel
+  Wind-up uses the cancel category and stops the chain for that tick. The
+  end of a Repeat body jumps back and stops for the tick. Stun or death ends
+  the chain. Chain variable writes are visible to later chain steps that
+  tick; roots read start-of-tick values.
+- Tests (browser and server, tick by tick, comparing step paths and actions):
+  the Punish example (Use Smash, If Time Since Hit, Walk 0.5 s + Use Thrust /
+  Dash); the feint (Use Cleave right away, Wait 0.3 s, Cancel Wind-up, Use
+  Cleave): it doesn't end itself; Wait until Ability Ready with max; Repeat
+  count and while + max, one pass per tick at most; call and return, End inside
+  Repeat returns to the caller; root abilities alongside a continuing chain;
+  one chain at a time; chain vs root claims per category;
+  a Use step that can't start skips; first-matching If / Else if bodies across
+  ticks; orphan Else if rejection; stun ends it; validation
+  rejections (cycle, depth, bounds, unknown step).
+Update affected tests. Run server tests (.\mvnw.cmd test from server/) and
+frontend npm test, lint, build. Don't commit.
+```
+
+### C3: Chain editor (direction A approved 2026-10-02)
+
+```
+Botfight frontend: build the action chain editor per
+docs/TIMED_ROUNDS_IMPLEMENTATION_PLAN.md section 3d ("Editor"), approved
+direction A ("node column"), following the botfight-ui-design skill
+(tool surface). Reuse the existing graph node components and styles in
+frontend/src/gameArena/coding/nodes/GraphNodes.jsx and index.css; don't
+restyle the main canvas.
+- Navigation: the Roots panel gets a Chains tab listing each chain with its
+  step count, plus "+ Chain". Opening a chain switches the workspace canvas
+  to that chain. The toolbar identity slot shows "← Brain › <name>" (back
+  returns to the main canvas) and a step meter "14 / 32 steps" that turns
+  amber, then red, near the limit.
+- Chain canvas: a fixed grey CHAIN header node (name, "Used by N roots").
+  Steps auto-layout top to bottom in one column joined by short connector
+  lines (no free drag), each with a step number in reading order (condition,
+  nested body, then the following siblings):
+  - action steps are green action nodes with the yellow category label
+    (ABILITY / MOVE / ROTATE / VARIABLE / CANCEL) and a one-line summary
+    ("Opp 1, continue right away", "sprint, for 0.5 s");
+  - If / Else if are blue nodes with condition strips and a blue bracket
+    around their nested body. Else if is offered only after If or Else if;
+  - Repeat is a violet (#a78bfa) left bracket around its body, labelled
+    "Repeat 2 times" / "Repeat while … (max N s)";
+  - Wait, Exit loop, End and Run chain are grey nodes with a muted label;
+  - "+ Step" at the end of each column and inside brackets and paths.
+- Selection and config: click selects (white outline); the existing side
+  panel edits the selected step. Use ability, in order: Ability, Target,
+  Aim, Continue (When it ends | Right away), with an ⓘ "If <ability> can't
+  start when this step is reached, skip it and continue next tick. Put 'Wait until
+  <ability> Ready' before it to wait." Walk/Rotate add For N s | Until
+  <conditions> + max; Wait: For | Until + max; Repeat: Times | While + max.
+  Seconds in 0.1 steps. A quiet red "Delete step" at the bottom.
+- Main canvas: show Run chain in the action picker. Run
+  chain is a green node with a CHAIN label, the chain name, "if running:
+  skip" or "replace" in its summary, and an Open button; its config has a
+  chain picker with "New chain…". Opening is
+  deliberate (Open button or double-click), never on drag.
+- Rename keeps the ID. Deleting a chain that's in use asks for confirmation.
+  The editor blocks call cycles and over-limit steps with a reason.
+- Phones: the chain is its own screen with a back arrow and the step meter;
+  If / Else if keep the same nested body layout.
+Update affected tests. Run npm test, lint, build. Don't commit.
+```
+
+### C4: Chains in replays
+
+```
+Botfight: show running chains in replays and the practice room, per
+docs/TIMED_ROUNDS_IMPLEMENTATION_PLAN.md section 3d, in BOTH runtimes.
+- Compact replay frames carry each bot's top chain frame (chainId, step
+  path) and call depth (server simulation/core/replay + DTO, browser replay
+  mapping); nothing when no chain is running.
+- Practice room and replays: a small "Chain: <name>" chip on the fighter
+  card while one runs (botfight-ui-design game surface), and when the chain
+  editor is open on that chain, highlight the running step.
+Parity test for the frame fields. Update affected tests. Don't commit.
 ```
 
 ### P3: Segmented simulation
@@ -289,7 +878,8 @@ section 2 (no snapshot serialization).
   newly added abilities fresh resources (extract a helper shared with
   BotStateService.create), and reconcile custom variables (keep same
   name+type unless reset; new/reset/type-changed get default; undeclared are
-  dropped). Nothing else resets.
+  dropped; a kept timer keeps its value and running state), and end any
+  running action chain (empty chainStack). Nothing else resets.
 - Add recordFromMs so the compact recorder keeps only the target segment and
   takes its initial state from the boundary.
 - Add ClosingZoneConfig.timedRoundsV2() (plan section 8) with
@@ -309,7 +899,12 @@ persist; a KO mid-segment ends the run. Update affected tests. Don't commit.
 Botfight server: implement the timed-rounds lifecycle per
 docs/TIMED_ROUNDS_IMPLEMENTATION_PLAN.md sections 3 (pools/offers), 5 and 6
 (guarantee removal), under service/match/.
-- MatchTimingPolicy: base clock 120 s, increment 20 s, pick 30 s (round 1) /
+- Format-level content switches, in both runtimes: add weapons 1/35/36/37
+  to the draft as the round 1 weapon pick and remove Slash from the tier 1
+  pool; remove Basic Strike (34) from the standard set (keep its
+  definition); base HP 150 -> 300 everywhere; DUEL_RULESET_VERSION
+  "duel-v1" -> "duel-v2" (both constants).
+- MatchTimingPolicy: base clock 300 s, increment 30 s, pick 30 s (round 1) /
   20 s, segment 30 s, max rounds 6. Custom lobbies configure base (30 s-10
   min) and increment (0-60 s) instead of round duration.
 - Per-player clocks on MatchPlayer (clockRemainingMs, timeoutFallback);
@@ -334,6 +929,29 @@ docs/TIMED_ROUNDS_IMPLEMENTATION_PLAN.md sections 3 (pools/offers), 5 and 6
 Tests: clock deduction and grace, both fallbacks, reconnect mid-build, picks
 across rounds 1/2/3/5/6, KO end, round-6 HP decision and draw, 2v2 per-player
 clocks. Update affected tests. Don't commit.
+```
+
+### S7: Multi-spawn engine and Shotgun Blast (last)
+
+```
+Botfight: implement the multi-spawn engine and Shotgun Blast per
+docs/TIMED_ROUNDS_IMPLEMENTATION_PLAN.md section 3c, in BOTH runtimes.
+- Contract: optional spawn.pattern (fan | ring | line; count 1-12, spreadDeg,
+  spacing), normalized and bounded; no pattern = one entity, so existing
+  abilities are unchanged.
+- Spawning: abilitySpawn becomes abilitySpawns (server
+  ActionExecutionService/DuelSimulationService; browser
+  ecs/bots/ActionExecutionSystem.js and its consumers). Serial IDs assigned in
+  index order; serial counter advances by the number spawned.
+- Optional oncePerVolley on collision events and selectable: false on entity
+  contracts, per section 3c.
+- Shotgun Blast (Pistol, id 12): rename, remove ammo, 7-pellet fan per
+  section 3c; pellets render through the normal entity pipeline plus a muzzle
+  flash.
+Parity tests: fan angles and serial order, pellets per distance (50, 120,
+200, 260), a fast pellet never skipping through a bot, oncePerVolley, an
+unchanged single-spawn ability. Update affected tests. Run server tests and
+frontend npm test, lint, build. Don't commit.
 ```
 
 ### P5: Frontend match flow
@@ -382,7 +1000,10 @@ Update affected tests. Don't commit.
 ## 10. Owner decisions still open
 
 - The final numbers after playtesting: weapon damage, HP, clock, zone, and segment length.
-- Heavy Slash versus Axe overlap.
+- Heavy Slash versus Cleave overlap.
 - Whether to add AFK auto-submit (the clock already bounds waiting).
 - Whether teammates in 2v2 can see each other's brains read-only during the build.
 - The tutorial rewrite (owner-written).
+- ~~Lock On and fast turn~~ Decided: Lock On leaves the base kit and fast turn replaces it.
+- Optional movement depth (brace, back hits), added one at a time if fights still feel shallow.
+- The active/recovery time refactor (owner will request it separately).

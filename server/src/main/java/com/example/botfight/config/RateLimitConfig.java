@@ -80,7 +80,8 @@ public class RateLimitConfig {
 
     @Bean(name = "authenticatedGetRateLimiter")
     public TokenBucketRateLimiter<String> authenticatedGetRateLimiter(Clock clock) {
-        // The generic bucket is partitioned by user and read category at the call site.
-        return new TokenBucketRateLimiter<>(clock, 1, Duration.ofSeconds(1));
+        // Generous backstop for authenticated reads, partitioned by user and read category
+        // at the call site. Burst of 30, refilling ~10/s. nginx handles coarse per-IP limiting.
+        return new TokenBucketRateLimiter<>(clock, 30, Duration.ofMillis(100));
     }
 }

@@ -20,5 +20,5 @@ test("condition rows read as sentences", () => {
     assert.equal(describeCondition({
         type: "expression", left: "bot.selectedAbilityReady", leftSelectable: "my_bot", ability: 3,
         comparator: "eq", right: { type: "boolean", value: true },
-    }, lookups), "Ability Ready (My Bot · Dash) = true");
+    }, lookups), "Ability Ready (My Bot · Dash) = True");
 });

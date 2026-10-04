@@ -3,7 +3,7 @@ import test from "node:test";
 import { ABILITY_TAGS, ALL_ABILITY_DEFINITIONS, BASE_BOT_STATS, STANDARD_ABILITY_IDS, abilityDefinition, actionIdsForLoadout, decodeBotLoadout, encodeBotLoadout, normalizedBotLoadout, statusEffectDefinitionsForAbilities } from "./BotLoadout.js";
 
 test("Basic Strike is standard equipment with its direct melee contract", () => {
-    assert.deepEqual(STANDARD_ABILITY_IDS, [19, 20, 34]);
+    assert.deepEqual(STANDARD_ABILITY_IDS, [19, 34]);
     assert.equal(abilityDefinition(34).label, "Basic Strike");
     assert.deepEqual(abilityDefinition(34).effects.map(({ type }) => type), ["damage"]);
     assert.ok(actionIdsForLoadout({ abilities: [] }).includes(34));
@@ -62,11 +62,13 @@ test("positive catalogue effects expose their numeric strength", () => {
 });
 
 test("charges keep the generic tag while HP charges retain their subtype", () => {
-    assert.equal(abilityDefinition(3).tags.includes(ABILITY_TAGS.CHARGES), true);
-    assert.equal(abilityDefinition(3).tags.some((tag) => tag.endsWith("charges") && tag !== ABILITY_TAGS.CHARGES), false);
+    assert.equal(abilityDefinition(12).tags.includes(ABILITY_TAGS.CHARGES), true);
+    assert.equal(abilityDefinition(12).tags.some((tag) => tag.endsWith("charges") && tag !== ABILITY_TAGS.CHARGES), false);
+    assert.equal(abilityDefinition(3).tags.includes(ABILITY_TAGS.CHARGES), false);
+    assert.equal(abilityDefinition(5).tags.includes(ABILITY_TAGS.CHARGES), false);
     assert.deepEqual(
         ALL_ABILITY_DEFINITIONS.filter((ability) => ability.tags.includes(ABILITY_TAGS.CHARGES)).map((ability) => ability.id),
-        [3, 5, 12],
+        [12],
     );
     assert.equal(abilityDefinition(2), null);
 });

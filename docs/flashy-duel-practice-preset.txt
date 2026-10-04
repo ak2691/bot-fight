@@ -28,7 +28,6 @@ const ABILITIES = Object.freeze({
     SINGULARITY: abilityIdFromLegacyName("singularity"),
     TETHER_BOLT: abilityIdFromLegacyName("tether_bolt"),
     DASH: abilityIdFromLegacyName("dash"),
-    LOCK_ON: abilityIdFromLegacyName("lock_on"),
     BASIC_STRIKE: abilityIdFromLegacyName("basic_strike"),
 });
 
@@ -154,6 +153,11 @@ function dash(selectable = OPPONENT, direction = 0) {
     });
 }
 
+// Fast turn is a setting on Rotate toward target; it replaces Lock On, which left the base kit.
+function fastFace(selectable = OPPONENT) {
+    return { action: BOT_CODE_ACTIONS.ROTATE_TOWARD_TARGET, selectable, fastTurn: true };
+}
+
 function attack(ability, selectable = OPPONENT, fields = {}) {
     return abilityAction(ability, selectable, fields);
 }
@@ -186,8 +190,7 @@ function buildMyBotCode() {
         root("flashy-my-lock-on", 3, [
             branch("my-lock-on-high-bearing", [
                 pairCondition("selectable.relativeBearing", "gte", 70),
-                abilityReady(ABILITIES.LOCK_ON),
-            ], [attack(ABILITIES.LOCK_ON)], 1),
+            ], [fastFace()], 1),
         ]),
         root("flashy-my-dash", 4, [
             branch("my-dash-away-from-close-threat", [
@@ -278,8 +281,7 @@ function buildOpponentCode() {
         root("flashy-opponent-lock-on", 3, [
             branch("opponent-lock-on-high-bearing", [
                 pairCondition("selectable.relativeBearing", "gte", 65),
-                abilityReady(ABILITIES.LOCK_ON),
-            ], [attack(ABILITIES.LOCK_ON)], 1),
+            ], [fastFace()], 1),
         ]),
         root("flashy-opponent-dash", 4, [
             branch("opponent-dash-away", [

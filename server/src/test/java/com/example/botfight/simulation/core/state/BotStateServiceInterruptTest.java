@@ -53,17 +53,17 @@ class BotStateServiceInterruptTest {
     @Test
     void interruptingAnAbilityAlreadyReloadingDoesNotAddASecondCooldownGate() {
         Bot bot = bot();
-        bot.abilities = Set.of(5);
-        bot.abilityActiveMs.put(5, 500);
-        bot.abilityCharges.put(5, 0);
-        bot.abilityRechargeMs.put(5, 5_000);
+        bot.abilities = Set.of(12);
+        bot.abilityActiveMs.put(12, 500);
+        bot.abilityCharges.put(12, 0);
+        bot.abilityRechargeMs.put(12, 5_000);
 
         BotStateService.applyInterrupt(bot, 250, 30);
 
-        assertThat(bot.abilityActiveMs.get(5)).isZero();
-        assertThat(bot.abilityCooldowns.getOrDefault(5, 0)).isZero();
-        assertThat(bot.abilityPendingCooldownMs).doesNotContainKey(5);
-        assertThat(bot.abilityRechargeMs).containsEntry(5, 5_000);
+        assertThat(bot.abilityActiveMs.get(12)).isZero();
+        assertThat(bot.abilityCooldowns.getOrDefault(12, 0)).isZero();
+        assertThat(bot.abilityPendingCooldownMs).doesNotContainKey(12);
+        assertThat(bot.abilityRechargeMs).containsEntry(12, 5_000);
     }
 
     private static Bot bot() {

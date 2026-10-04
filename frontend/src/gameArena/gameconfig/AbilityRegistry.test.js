@@ -24,7 +24,8 @@ import { entityContractForAbility } from "../ecs/contracts/AbilityContracts.js";
 test("ability identities are stable numeric keys independent of array position", () => {
     assert.equal(ABILITIES[3].id, 3);
     assert.equal(ABILITIES[3].name, "gun");
-    assert.equal(ABILITIES[3].label, "Gun");
+    // Sniper is a display rename: the registry name and ID stay "gun"/3 for saved brains.
+    assert.equal(ABILITIES[3].label, "Sniper");
     assert.equal(ABILITIES[3].type, "ability");
     assert.equal(abilityIdFromLegacyName("gun"), 3);
     assert.equal(abilityIdentity(3), ABILITIES[3]);
@@ -45,15 +46,18 @@ test("ability identities are stable numeric keys independent of array position",
 });
 
 test("numeric identity owns tuning and contracts", () => {
-    assert.equal(ABILITY_STATS[3].range, 700);
-    assert.equal(ABILITY_STATS[3].activeMs, 500);
-    assert.equal(ABILITY_STATS[3].cooldownMs, 1000);
-    assert.equal(ABILITY_STATS[3].reloadMs, 5000);
-    assert.equal(ABILITY_STATS[3].hitboxWidth, 5);
+    assert.equal(ABILITY_STATS[3].range, 1200);
+    assert.equal(ABILITY_STATS[3].activeMs, 200);
+    assert.equal(ABILITY_STATS[3].windupMs, 900);
+    assert.equal(ABILITY_STATS[3].cooldownMs, 9000);
+    assert.equal(ABILITY_STATS[3].reloadMs, undefined);
+    assert.equal(ABILITY_STATS[3].falloff, undefined);
+    assert.equal(ABILITY_STATS[3].damage, 40);
+    assert.equal(ABILITY_STATS[3].hitboxWidth, 6);
     assert.equal(ABILITY_STATS[34].damage, 8);
     assert.equal(ABILITY_STATS[34].range, 80);
     assert.equal(ABILITY_STATS[34].arc, 30);
-    assert.equal(ABILITY_STATS[19].cooldownMs, 1800);
+    assert.equal(ABILITY_STATS[19].cooldownMs, 0, "Dash costs stamina instead of a cooldown");
     assert.equal(ABILITY_STATS[25].hitboxWidth, 60);
     assert.equal(ABILITY_STATS[30].hitboxWidth, 8);
     assert.equal(ABILITY_STATS[32].hitboxWidth, 10);
@@ -72,12 +76,17 @@ test("numeric identity owns tuning and contracts", () => {
 });
 
 test("requested combat tuning is represented in the browser catalog", () => {
-    assert.equal(ABILITY_STATS[3].maxCharges, 6);
-    assert.equal(ABILITY_STATS[3].reloadMs, 5000);
+    assert.equal(ABILITY_STATS[3].maxCharges, undefined);
+    assert.equal(ABILITY_STATS[5].maxCharges, undefined);
     assert.equal(ABILITY_STATS[4].falloff.maxAmount, 40);
     assert.equal(ABILITY_STATS[4].radius, 70);
-    assert.equal(ABILITY_STATS[5].cooldownMs, 300);
-    assert.equal(ABILITY_STATS[5].reloadMs, 5000);
+    assert.equal(ABILITY_STATS[5].cooldownMs, 5500);
+    assert.equal(ABILITY_STATS[5].reloadMs, undefined);
+    assert.equal(ABILITY_STATS[5].damage, 20);
+    assert.equal(ABILITY_STATS[5].durationMs, 1400);
+    assert.equal(ABILITY_STATS[5].hitboxWidth, 64);
+    assert.equal(ABILITY_STATS[5].hitboxLength, 64);
+    assert.equal(ABILITY_STATS[5].size, 60);
     assert.equal(ABILITY_STATS[8].cooldownMs, 10000);
     assert.equal(ABILITY_STATS[9].statuses.slow.durationMs, 3000);
     assert.equal(ABILITY_STATS[9].windupMs, 1000);
@@ -86,7 +95,7 @@ test("requested combat tuning is represented in the browser catalog", () => {
     assert.equal(ABILITY_STATS[11].radius, 87.5);
     assert.equal(ABILITY_STATS[11].range, 87.5);
     assert.equal(ABILITY_STATS[14].range, 120);
-    assert.equal(ABILITY_STATS[3].hitboxLength, 700);
+    assert.equal(ABILITY_STATS[3].hitboxLength, 1200);
     assert.equal(ABILITY_STATS[4].hitboxWidth, undefined);
     assert.equal(ABILITY_STATS[17].hitboxWidth, 5);
     assert.equal(ABILITY_STATS[17].shotVisualMs, 300);
@@ -163,7 +172,7 @@ test("legacy names convert only through explicit allowlisted compatibility funct
 });
 
 test("malformed numeric IDs fail closed", () => {
-    for (const value of [-1, 0, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2, 35, null]) {
+    for (const value of [-1, 0, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2, 38, null]) {
         assert.equal(abilityId(value), null);
     }
 });
@@ -179,8 +188,8 @@ test("registered IDs are unique positive integers with matching stats and contra
 });
 
 test("one normalized contract registry covers direct and spawned abilities", () => {
-    assert.equal(Object.keys(ABILITY_CONTRACTS).length, 33);
-    assert.equal(Object.keys(ATTACHED_ABILITY_CONTRACTS).length, 19);
+    assert.equal(Object.keys(ABILITY_CONTRACTS).length, 36);
+    assert.equal(Object.keys(ATTACHED_ABILITY_CONTRACTS).length, 22);
     assert.equal(Object.keys(ENTITY_CONTRACTS).length, 14);
     for (const contract of Object.values(ABILITY_CONTRACTS)) {
         assert.ok(contract.category);

@@ -5,6 +5,7 @@ import { ABILITY_STATS } from "../gameconfig/Abilities.js";
 import { abilityMaxCharges } from "../gameconfig/AbilityResourceSystem.js";
 import { BASE_BOT_STATS, DEFAULT_BOT_LOADOUT, STANDARD_ABILITY_IDS, decodeBotLoadout, decodeSandboxLoadout, encodeBotLoadout, normalizedBotLoadout } from "../loadout/BotLoadout.js";
 import { withoutBotStatuses } from "../gameconfig/DefensiveState.js";
+import { initialMovementState } from "../gameconfig/StaminaSystem.js";
 import { isClosingZone } from "../ecs/entities/ClosingZoneSystem.js";
 import { normalizeStatusEffect, statusEffectsFor } from "../ecs/contracts/StatusContracts.js";
 import {
@@ -55,6 +56,7 @@ export const MAIN_SHAPE = {
     abilityCharges: initialAbilityCharges(STANDARD_ABILITY_IDS),
     abilityRechargeMs: initialAbilityRechargeMs(STANDARD_ABILITY_IDS),
     abilityEntitySerial: 1,
+    ...initialMovementState(),
 };
 
 export function buildOpponentShape(opponent) {
@@ -95,6 +97,7 @@ export function buildOpponentShape(opponent) {
         abilityCharges: initialAbilityCharges(abilities, stats.maxHp),
         abilityRechargeMs: initialAbilityRechargeMs(abilities),
         abilityEntitySerial: 1,
+        ...initialMovementState(),
         preparingAbility: null,
         preparingMs: 0,
         preparingTargetX: null,
@@ -239,6 +242,7 @@ export function cloneShape(shape) {
         statusEffects: (shape.statusEffects ?? []).map((effect) => ({ ...effect })),
         abilities: [...(shape.abilities ?? [])],
         abilityActiveMs: { ...(shape.abilityActiveMs ?? {}) },
+        abilityLastHitAgeMs: { ...(shape.abilityLastHitAgeMs ?? {}) },
         abilityCooldowns: { ...(shape.abilityCooldowns ?? {}) },
         abilityPendingCooldownMs: { ...(shape.abilityPendingCooldownMs ?? {}) },
         abilityCharges: { ...(shape.abilityCharges ?? {}) },
@@ -273,12 +277,17 @@ export function resetBotShape(shape) {
         matchElapsedMs: 0,
         closingZoneDamageCount: 0,
         customVariables: {},
+        chainStack: [],
+        runningChain: null,
         abilityActiveMs: {},
+        abilityLastHitAgeMs: {},
+        abilityHitsThisTick: [],
         abilityCooldowns: Object.fromEntries(abilities.map((ability) => [ability, 0])),
         abilityPendingCooldownMs: {},
         abilityCharges: initialAbilityCharges(abilities, stats.maxHp),
         abilityRechargeMs: initialAbilityRechargeMs(abilities),
         abilityEntitySerial: 1,
+        ...initialMovementState(),
         preparingAbility: null,
         preparingMs: 0,
         triggeredAbility: null,

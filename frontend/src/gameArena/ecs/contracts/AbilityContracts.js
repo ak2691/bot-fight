@@ -390,7 +390,7 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
     1: attachedAbility({
         phase: phase({
             hitbox: { shape: "arc", range: 92, arc: 120, includeTargetRadius: true },
-            effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 20 })],
+            effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 8 })],
             visual: { type: "meleeSlash", visualSize: 207, visibleMs: 400 },
             events: {
                 [PHASE_EVENT_TYPES.COLLISION]: {
@@ -405,11 +405,9 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
             capture: Object.freeze({ gunRayOriginX: "x", gunRayOriginY: "y", gunRayRotation: "rotation" }),
         },
         phase: phase({
-            hitbox: { shape: "ray", range: 700, width: 5 },
-            effects: [effect(EFFECT_TYPES.DAMAGE, {
-                falloff: { maxAmount: 15, minAmount: 5, falloffStart: 100, falloffEnd: 700 },
-            })],
-            visual: { type: "gun", visualSize: 16, visibleMs: 500 },
+            hitbox: { shape: "ray", range: 1200, width: 6 },
+            effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 40 })],
+            visual: { type: "gun", visualSize: 40, visibleMs: 300 },
             events: {
                 [PHASE_EVENT_TYPES.COLLISION]: {
                     actions: [PHASE_ACTIONS.APPLY_EFFECTS],
@@ -669,6 +667,45 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
             },
         }),
     }),
+    35: attachedAbility({
+        phase: phase({
+            hitbox: { shape: "rectangle", length: 190, width: 30, includeTargetRadius: true },
+            effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 10 })],
+            visual: { type: "meleeSlash", visualSize: 190, visibleMs: 300 },
+            events: {
+                [PHASE_EVENT_TYPES.COLLISION]: {
+                    actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                    schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS
+                }
+            },
+        }),
+    }),
+    36: attachedAbility({
+        phase: phase({
+            hitbox: { shape: "arc", range: 112, arc: 160, includeTargetRadius: true },
+            effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 15 })],
+            visual: { type: "meleeSlash", visualSize: 226, visibleMs: 300 },
+            events: {
+                [PHASE_EVENT_TYPES.COLLISION]: {
+                    actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                    schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS
+                }
+            },
+        }),
+    }),
+    37: attachedAbility({
+        phase: phase({
+            hitbox: { shape: "rectangle", length: 125, width: 100, includeTargetRadius: true },
+            effects: [effect(EFFECT_TYPES.DAMAGE, { amount: 11 }), effect(EFFECT_TYPES.KNOCKBACK, { amount: 120, targetKinds: BOT_AND_SUMMON_TARGET_KINDS })],
+            visual: { type: "meleeSlash", visualSize: 125, visibleMs: 300 },
+            events: {
+                [PHASE_EVENT_TYPES.COLLISION]: {
+                    actions: [PHASE_ACTIONS.APPLY_EFFECTS],
+                    schedule: { mode: EVENT_SCHEDULE_MODES.ONCE }, targetKinds: DAMAGE_TARGET_KINDS
+                }
+            },
+        }),
+    }),
 });
 
 /**
@@ -781,19 +818,19 @@ export const ENTITY_CONTRACTS = Object.freeze({
         runtimeType: "fireball",
         category: ENTITY_CATEGORIES.PROJECTILE,
         spawn: { offset: { x: 0, y: 47 }, rotation: 0, rotationSpace: "owner" },
-        lifetime: { duration: 1000 },
+        lifetime: { duration: 1400 },
         state: {
             damageMultiplier: contextValue("damageMultiplier", ownerStat("attackDamageMultiplier", 1)),
         },
         phases: Object.freeze([
             phase("active", PHASE_TYPES.PROJECTILE, {
                 movement: { speed: 50 },
-                hitbox: { shape: "rectangle", width: 30, length: 30 },
+                hitbox: { shape: "rectangle", width: 64, length: 64 },
                 effects: [
-                    effect(EFFECT_TYPES.DAMAGE, { amount: 15 }),
+                    effect(EFFECT_TYPES.DAMAGE, { amount: 20 }),
                     statusEffect("burn", { amount: 2, durationMs: 5000, intervalMs: 1000, targetKinds: BOT_AND_SUMMON_TARGET_KINDS }),
                 ],
-                visual: visual("fireball", 30),
+                visual: visual("fireball", 60),
                 events: {
                     [PHASE_EVENT_TYPES.COLLISION]: { targetKinds: DAMAGE_TARGET_KINDS, actions: [PHASE_ACTIONS.APPLY_EFFECTS, PHASE_ACTIONS.REMOVE] },
                 },

@@ -25,6 +25,6 @@ class CompactAbilityCodeTest {
         assertThat(CompactAbilityCode.codeForId(0)).isNull();
         assertThat(CompactAbilityCode.codeForId(2)).isNull();
         assertThat(CompactAbilityCode.codeForId(34)).isNull();
-        assertThat(CompactAbilityCode.codeForId(35)).isNull();
+        assertThat(CompactAbilityCode.codeForId(38)).isNull();
     }
 }

@@ -159,9 +159,9 @@ test("tutorial priority lesson starts with Dash first and solution swaps only pr
     const starting = getTutorialScenario(4).emptyCode;
     const solution = getTutorialScenario(4).solution;
 
-    assert.equal(hasTutorialPriorityOrder(starting, TUTORIAL_ACTIONS.DASH, TUTORIAL_ACTIONS.LOCK_ON), true);
-    assert.equal(hasTutorialPriorityOrder(starting, TUTORIAL_ACTIONS.LOCK_ON, TUTORIAL_ACTIONS.DASH), false);
-    assert.equal(hasTutorialPriorityOrder(solution, TUTORIAL_ACTIONS.LOCK_ON, TUTORIAL_ACTIONS.DASH), true);
+    assert.equal(hasTutorialPriorityOrder(starting, TUTORIAL_ACTIONS.DASH, BOT_CODE_ACTIONS.ROTATE_TOWARD_TARGET), true);
+    assert.equal(hasTutorialPriorityOrder(starting, BOT_CODE_ACTIONS.ROTATE_TOWARD_TARGET, TUTORIAL_ACTIONS.DASH), false);
+    assert.equal(hasTutorialPriorityOrder(solution, BOT_CODE_ACTIONS.ROTATE_TOWARD_TARGET, TUTORIAL_ACTIONS.DASH), true);
     assert.deepEqual(solution.roots.map((root) => root.id), starting.roots.map((root) => root.id));
 });
 
@@ -215,8 +215,8 @@ test("tutorial introduction maps node visuals and avoids em dashes", () => {
     assert.match(TUTORIAL_ENDING.join(" "), /A timeout is a draw/);
     assert.match(TUTORIAL_INTRODUCTION.join(" "), /100 ms tick/);
     assert.match(TUTORIAL_INTRODUCTION.join(" "), /Lower-priority roots can fill another action category/);
-    assert.match(TUTORIAL_INTRODUCTION.join(" "), /\+ And another condition.*Every condition on a node must be true.*sibling ELSE-IF/);
-    assert.match(TUTORIAL_INTRODUCTION.join(" "), /select the conditional first/);
+    assert.match(TUTORIAL_INTRODUCTION.join(" "), /\+ Condition.*Every condition on a node must be true.*sibling ELSE-IF/);
+    assert.match(TUTORIAL_INTRODUCTION.join(" "), /click a condition strip/);
     assert.match(TUTORIAL_INTRODUCTION.join(" "), /A variable such as HP requires a specific bot/);
     assert.doesNotMatch(TUTORIAL_INTRODUCTION.join(" "), /Bot HP|settings panel/);
     assert.match(TUTORIAL_INTRODUCTION.join(" "), /IF checks first, ELSE-IF checks only when earlier branches are false, and ELSE is the fallback/);
@@ -407,10 +407,10 @@ test("tutorial lessons use the current workspace labels and flow", () => {
     const lessonCopy = TUTORIAL_LESSONS.map((lesson) => tutorialCopy(lesson.id)).join(" ");
     const allCopy = `${lessonCopy} ${TUTORIAL_INTRODUCTION.join(" ")}`;
 
-    assert.match(tutorialCopy("first-steps"), /Select the conditional and press Edit \(or tap it again\) to open its settings\. New conditionals start as Always, which is always true/);
-    assert.match(tutorialCopy("first-steps"), /Pick Walk \(under Movement\)/);
-    assert.match(tutorialCopy("retreat"), /Click Always and choose HP from the list\. Set the entity to My Bot/);
-    assert.match(tutorialCopy("retreat"), /Select the action and press Edit to see its settings/);
+    assert.match(tutorialCopy("first-steps"), /Click a condition strip to open its settings\. New conditionals start as Always, which is always true/);
+    assert.match(tutorialCopy("first-steps"), /pick Walk \(under Movement\)/i);
+    assert.match(tutorialCopy("retreat"), /Click the Always strip and choose HP from the list\. Set the entity to My Bot/);
+    assert.match(tutorialCopy("retreat"), /Click the action to see its settings/);
     assert.match(tutorialCopy("aiming-basics"), /Face target \(under Rotation\)/);
     assert.match(tutorialCopy("dodging"), /the \[1\]st \[closest\] \[Grenade\] from \[Opponent 1\]/);
     assert.match(tutorialCopy("custom-variable-basics"), /Open Variables in the toolbar/);

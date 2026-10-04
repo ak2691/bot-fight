@@ -1,4 +1,4 @@
-import { ALL_ABILITY_DEFINITIONS, decodeBotLoadout, encodeBotLoadout, normalizedBotLoadout } from "../loadout/BotLoadout.js";
+import { ALL_ABILITY_DEFINITIONS, RETIRED_ABILITY_IDS, decodeBotLoadout, encodeBotLoadout, normalizedBotLoadout } from "../loadout/BotLoadout.js";
 import { abilityIdFromBoundary } from "../gameconfig/AbilityCompatibility.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, BASE_BOT_HP } from "../modelPayloads/arenaConstants.js";
 import { internalPointToPublic } from "../modelPayloads/arenaCoordinates.js";
@@ -67,7 +67,7 @@ function code(roots) {
 }
 
 function faceTarget() {
-    return { action: "rotate_toward_enemy", selectable: BOT_CODE_SELECTABLES.OPPONENT };
+    return { action: "rotate_toward_enemy", selectable: BOT_CODE_SELECTABLES.OPPONENT, fastTurn: true };
 }
 
 function moveTowardTarget() {
@@ -136,7 +136,7 @@ function positioningFor(abilityId) {
         playerRotation: 180,
         opponentRotation: 0,
     };
-    if ([1, 16, 23, 10, 7, 8, 17, 18, 34].includes(abilityId)) {
+    if ([1, 16, 23, 10, 7, 8, 17, 18, 34, 35, 36, 37].includes(abilityId)) {
         return { player: { x: TEST_CENTER_X, y: TEST_CENTER_Y }, opponent: { x: TEST_CENTER_X, y: 708 }, playerRotation: 180, opponentRotation: 0 };
     }
     if (abilityId === 6) {
@@ -189,7 +189,7 @@ function buildPreset(ability) {
     });
 }
 
-export const ABILITY_TEST_PRESETS = Object.freeze(ALL_ABILITY_DEFINITIONS.map(buildPreset));
+export const ABILITY_TEST_PRESETS = Object.freeze(ALL_ABILITY_DEFINITIONS.filter(({ id }) => !RETIRED_ABILITY_IDS.includes(id)).map(buildPreset));
 
 export function findAbilityTestingPreset(id) {
     const abilityId = abilityIdFromBoundary(id);

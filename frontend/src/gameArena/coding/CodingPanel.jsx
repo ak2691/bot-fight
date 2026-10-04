@@ -22,7 +22,8 @@ import { priorityForNode } from "../botlogic/code/configuration/identifiers.js";
 import CustomVariablesModal from "./modals/CustomVariablesModal.jsx";
 import TutorialGuide from "../../tutorial/TutorialGuide.jsx";
 import Toast, { ToastStack } from "../../components/Toast.jsx";
-import { BudgetMeter, ToolbarBracesIcon, ToolbarCloseIcon } from "./controls/WorkspaceToolbarBits.jsx";
+import { clearAllCounts, clearAllMessage, clearedConfiguration } from "./clearAll.js";
+import { BudgetMeter, PhoneBarButton, SheetRow, ToolbarBracesIcon, ToolbarCloseIcon, ToolbarMoreMenu, ToolbarNodeIcon, WorkspaceSheet } from "./controls/WorkspaceToolbarBits.jsx";
 import {
     captureTutorialNavigationScrollPosition,
     tutorialLessonNavigationForArena,
@@ -40,9 +41,13 @@ import {
     formatClock,
 } from "./nodes/GraphNodes.jsx";
 import { TreeLogicBoard } from "./LogicBoard.jsx";
+import { ChainEditor } from "./chains/ChainEditor.jsx";
+import { ChainCrumb, ChainStepMeter } from "./chains/ChainToolbarBits.jsx";
+import { NewChainDialog } from "./modals/NewChainDialog.jsx";
+import { chainLimitReason, chainUsage, chainsOf, countChainSteps, createChain, findChain, removeChain, updateChain } from "./chains/chainEditing.js";
 import { HudBudget, HudButton, HudScoreboard, HudSwitchRow } from "./HudControls.jsx";
-import { readAddRootShortcut } from "./addRootShortcut.js";
-import { BOT_LOGIC_TREE_VERSION } from "../botlogic/code/configuration/constants.js";
+import { isWorkspaceShortcutKeydown, readAddRootShortcut, readWorkspaceShortcut } from "./addRootShortcut.js";
+import { BOT_LOGIC_TREE_VERSION, MAX_CHAIN_STEPS } from "../botlogic/code/configuration/constants.js";
 import { upgradeStoredStrategyCoordinates } from "../persistence/arenaStrategyStorage.js";
 
 const MIN_ZOOM = 0.25;
@@ -203,6 +208,7 @@ function ToolbarSearchIcon() {
 export default function CodingPanel({
     configuration,
     onChange,
+    runtimeBots = [],
     opponentConfiguration = null,
     onOpponentChange = null,
     offlineCodeParticipants = null,
@@ -262,6 +268,8 @@ export default function CodingPanel({
     const [isNodeSearchOpen, setIsNodeSearchOpen] = useState(false);
     const [isQuickSearchOpen, setIsQuickSearchOpen] = useState(false);
     const [activeCode, setActiveCode] = useState("player");
+    // The chain open on the canvas, remembered with the code it belongs to so switching bots returns to the brain.
+    const [openChain, setOpenChain] = useState(null);
     const [confirmingSurrender, setConfirmingSurrender] = useState(false);
     const [isToolsSheetOpen, setIsToolsSheetOpen] = useState(false);
     const toolsSheetRef = useRef(null);
@@ -269,7 +277,27 @@ export default function CodingPanel({
     const [canvasZoom, setCanvasZoom] = useState(0.85);
     const [canvasPan, setCanvasPan] = useState({ x: 40, y: 36 });
     const logicBoardRef = useRef(null);
+    const chainEditorRef = useRef(null);
+    // Layout stage from the workspace's own width (not the viewport): full above 1100px, mid 640-1100px, phone below.
+    const [stage, setStage] = useState("full");
+    const [phoneSheet, setPhoneSheet] = useState(null);
+    // The selected node or block on a phone (reported by the active editor); it swaps the bottom bar's actions.
+    const [phoneSelection, setPhoneSelection] = useState(null);
+    const [chainDragging, setChainDragging] = useState(false);
     const logicDialogRef = useRef(null);
+    useEffect(() => {
+        const element = logicDialogRef.current;
+        if (!isLogicOpen || !element) return undefined;
+        const measure = () => {
+            const width = element.getBoundingClientRect().width;
+            setStage(width > 1100 ? "full" : width >= 640 ? "mid" : "phone");
+        };
+        measure();
+        if (typeof ResizeObserver === "undefined") return undefined;
+        const observer = new ResizeObserver(measure);
+        observer.observe(element);
+        return () => observer.disconnect();
+    }, [isLogicOpen]);
     const workspaceToolbarRef = useRef(null);
     const zoomToFitRef = useRef(null);
     const [workspaceToolbarHeight, setWorkspaceToolbarHeight] = useState(56);
@@ -286,6 +314,7 @@ export default function CodingPanel({
         return () => observer.disconnect();
     }, [isLogicOpen]);
     const closeTopLogicLayer = () => {
+        if (logicBoardRef.current?.cancelWire()) return;
         if (isNodeSearchOpen) {
             setIsNodeSearchOpen(false);
             setIsQuickSearchOpen(false);
@@ -293,6 +322,10 @@ export default function CodingPanel({
         }
         if (isCustomVariablesOpen) {
             setIsCustomVariablesOpen(false);
+            return;
+        }
+        if (openChain) {
+            setOpenChain(null);
             return;
         }
         setIsLogicOpen(false);
@@ -466,19 +499,28 @@ export default function CodingPanel({
     const openLogicWorkspace = useCallback((quickSearch = false) => {
         if (isBotCodeLocked) return;
         onWorkspaceOpen?.();
+        setOpenChain(null);
         setIsLogicOpen(true);
         if (quickSearch) {
             setIsQuickSearchOpen(true);
             setIsNodeSearchOpen(true);
         }
     }, [isBotCodeLocked, onWorkspaceOpen]);
+    const addChainRef = useRef(() => {});
     useEffect(() => {
         const handleWorkspaceShortcut = (event) => {
             const textEntry = event.target?.closest?.("input,textarea,select,[contenteditable=\"true\"]");
-            if (isBotCodeLocked || textEntry || event.ctrlKey || event.metaKey || event.altKey || event.key !== "/") return;
+            if (isBotCodeLocked || textEntry || event.ctrlKey || event.metaKey || event.altKey) return;
+            if (isLogicOpen && !openChain && !isNodeSearchOpen && !isCustomVariablesOpen && !document.querySelector(".pk")
+                && isWorkspaceShortcutKeydown(event, readWorkspaceShortcut("addChain"))) {
+                event.preventDefault();
+                addChainRef.current();
+                return;
+            }
+            if (!isWorkspaceShortcutKeydown(event, readWorkspaceShortcut("search"))) return;
             event.preventDefault();
             if (isLogicOpen) {
-                if (!isNodeSearchOpen && !isCustomVariablesOpen) {
+                if (!isNodeSearchOpen && !isCustomVariablesOpen && !openChain) {
                     setIsQuickSearchOpen(true);
                     setIsNodeSearchOpen(true);
                 }
@@ -488,7 +530,7 @@ export default function CodingPanel({
         };
         window.addEventListener("keydown", handleWorkspaceShortcut);
         return () => window.removeEventListener("keydown", handleWorkspaceShortcut);
-    }, [isBotCodeLocked, isCustomVariablesOpen, isLogicOpen, isNodeSearchOpen, openLogicWorkspace]);
+    }, [isBotCodeLocked, isCustomVariablesOpen, isLogicOpen, isNodeSearchOpen, openChain, openLogicWorkspace]);
     const applyActiveConfiguration = (next) => {
         if (isCodeEditingLocked) return;
         if (viewingOfflineParticipant) onOfflineCodeChange?.(activeOfflineParticipantId, next);
@@ -507,6 +549,17 @@ export default function CodingPanel({
             };
         });
         applyActiveConfiguration(next);
+    };
+    // Chain workspace "Clear all": empties the open chain (stacked and loose steps) in one undoable edit.
+    const clearChain = () => {
+        if (!openChainData || !countChainSteps(openChainData)) return;
+        if (!window.confirm(`Delete all ${countChainSteps(openChainData)} steps in ${openChainData.name}?`)) return;
+        updateActiveConfiguration(updateChain(activeConfiguration, openChainData.id, (chain) => ({ ...chain, steps: [], loose: [] })));
+    };
+    const clearAll = () => {
+        const message = clearAllMessage(clearAllCounts(activeConfiguration));
+        if (!message || !window.confirm(message)) return;
+        updateActiveConfiguration(clearedConfiguration(activeConfiguration));
     };
     const travelHistory = (direction) => {
         if (isTesting || isCodeEditingLocked) return;
@@ -612,6 +665,60 @@ export default function CodingPanel({
         const nextRoots = [...roots, root];
         const nodePositions = logicBoardRef.current?.placeRootAtCenter(nextRoots, nextRoots.length - 1);
         updateRoots(nextRoots, nodePositions ?? activeConfiguration.nodePositions);
+    };
+    const chainList = chainsOf(activeConfiguration);
+    const openChainId = openChain?.owner === activeCode && findChain(activeConfiguration, openChain.id) ? openChain.id : null;
+    const openChainData = openChainId ? findChain(activeConfiguration, openChainId) : null;
+    // A "Used in" entry from the Variables dialog: go to its canvas or chain, then select the node or step.
+    const [pendingUse, setPendingUse] = useState(null);
+    const jumpToUse = (target) => {
+        if (target.type === "step") openChainById(target.chainId);
+        else setOpenChain(null);
+        setPendingUse(target);
+    };
+    useEffect(() => {
+        if (!pendingUse) return;
+        const onChain = pendingUse.type === "step";
+        if (onChain ? openChainData?.id !== pendingUse.chainId : openChainData) return;
+        if (onChain) chainEditorRef.current?.selectStep(pendingUse.path);
+        else logicBoardRef.current?.selectNode(pendingUse.nodeId);
+        setPendingUse(null);
+    }, [pendingUse, openChainData]);
+    const openChainById = (chainId) => {
+        if (!findChain(activeConfiguration, chainId)) return;
+        setIsNodeSearchOpen(false);
+        setIsQuickSearchOpen(false);
+        setIsCustomVariablesOpen(false);
+        setOpenChain({ owner: activeCode, id: chainId });
+    };
+    // "+ New chain": asks for a name, then adds an empty chain and opens it.
+    const [namingChain, setNamingChain] = useState(false);
+    const addChain = () => {
+        if (isCodeEditingLocked || isTesting || namingChain || !createChain(activeConfiguration)) return;
+        setIsNodeSearchOpen(false);
+        setIsQuickSearchOpen(false);
+        setIsCustomVariablesOpen(false);
+        setNamingChain(true);
+    };
+    const confirmNewChain = (name) => {
+        setNamingChain(false);
+        const chain = createChain(activeConfiguration, name);
+        if (!chain || isCodeEditingLocked || isTesting) return;
+        updateActiveConfiguration({ ...activeConfiguration, chains: [...chainList, chain] });
+        setOpenChain({ owner: activeCode, id: chain.id });
+    };
+    addChainRef.current = addChain;
+    // Deleting a chain that something runs asks first; the calls to it go with it.
+    const removeChainById = (chainId) => {
+        const chain = findChain(activeConfiguration, chainId);
+        if (!chain || isCodeEditingLocked || isTesting) return;
+        const usage = chainUsage(activeConfiguration, chainId);
+        const users = [
+            usage.roots ? `${usage.roots} ${usage.roots === 1 ? "root" : "roots"}` : "",
+            usage.chains ? `${usage.chains} other ${usage.chains === 1 ? "chain" : "chains"}` : "",
+        ].filter(Boolean).join(" and ");
+        if (users && !window.confirm(`Delete "${chain.name}"? It is used by ${users}. Those Run chain actions and steps will be removed too.`)) return;
+        updateActiveConfiguration(removeChain(activeConfiguration, chainId));
     };
     // Zoom keeps the point under the cursor fixed. Latest zoom / pan live in refs
     // (updated synchronously) so rapid wheel events and StrictMode double renders
@@ -825,6 +932,31 @@ export default function CodingPanel({
             {surrenderControl}
         </>
     );
+    const canEditWorkspace = !isCodeEditingLocked && !isTesting && viewingCurrentRound;
+    const canUndoNow = !isCodeEditingLocked && !isTesting && (editHistory[activeCode]?.undo?.length ?? 0) > 0;
+    const canRedoNow = !isCodeEditingLocked && !isTesting && (editHistory[activeCode]?.redo?.length ?? 0) > 0;
+    const chainDisabledReason = chainLimitReason(activeConfiguration);
+    const clearAllDisabled = !canEditWorkspace || !clearAllMessage(clearAllCounts(activeConfiguration));
+    const openSearch = () => { setIsQuickSearchOpen(false); setIsNodeSearchOpen(true); };
+    const closeWorkspace = () => { setIsNodeSearchOpen(false); setIsQuickSearchOpen(false); setIsCustomVariablesOpen(false); setPhoneSheet(null); setIsLogicOpen(false); };
+    const zoomToFit = () => (openChainData ? chainEditorRef.current?.fit() : zoomToFitRef.current?.());
+    // "⋯ More" at mid width; the same tools live in the phone More sheet.
+    const moreItems = openChainData
+        ? [{ label: "Zoom to fit", onClick: zoomToFit }, { divider: true }, { label: "Clear all", danger: true, onClick: clearChain, disabled: !canEditWorkspace || !countChainSteps(openChainData) }]
+        : [
+            { label: "+ New chain", kbd: readWorkspaceShortcut("addChain").toUpperCase(), onClick: addChain, disabled: !canEditWorkspace || Boolean(chainDisabledReason) },
+            { label: "Tidy layout", onClick: () => logicBoardRef.current?.tidy(), disabled: !canEditWorkspace },
+            { label: "Zoom to fit", onClick: zoomToFit },
+            { divider: true },
+            { label: "Clear all", danger: true, onClick: clearAll, disabled: clearAllDisabled },
+        ];
+    const inSheet = (action) => () => { setPhoneSheet(null); action(); };
+    const budgetRows = [
+        ...(openChainData ? [{ label: "Steps", value: `${countChainSteps(openChainData)} of ${MAX_CHAIN_STEPS}` }] : [{ label: "Roots", value: `${totalRootNodes} of ${MAX_ROOT_NODES}` }]),
+        { label: "Actions", value: `${totalActiveBlocks} of ${maxActionNodes}` },
+        { label: "Conditions", value: `${totalActiveConditions} of ${maxConditionNodes}` },
+    ];
+
     return (
         <aside className={`arena-toolbar-panel hud-panel ${usesArenaResponsiveLimits ? "arena-right-toolbar" : ""} h-full min-h-0 w-[23rem] flex-shrink-0 overflow-y-auto border-l border-slate-700/70 p-4`}>
             <div className="hud-stack">
@@ -928,11 +1060,12 @@ export default function CodingPanel({
 
             {isLogicOpen && !isBotCodeLocked && typeof document !== "undefined" && createPortal(
                 <div className="code-workspace-overlay fixed inset-0 z-40 flex items-center justify-center overflow-hidden bg-black/70 px-4 py-5">
-                    <section ref={logicDialogRef} style={{ "--tutorial-workspace-toolbar-height": `${workspaceToolbarHeight}px` }} className="code-workspace relative flex h-[min(90vh,820px)] w-[min(94vw,1440px)] flex-col overflow-hidden rounded-sm border border-border-mid bg-[#111519] shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="code-workspace-title" tabIndex={-1}>
+                    <section ref={logicDialogRef} style={{ "--tutorial-workspace-toolbar-height": `${workspaceToolbarHeight}px` }} data-stage={stage} className="code-workspace relative flex h-[min(90vh,820px)] w-[min(94vw,1440px)] flex-col overflow-hidden rounded-sm border border-border-mid bg-[#111519] shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="code-workspace-title" tabIndex={-1}>
                         <div className="code-workspace-top-layer">
                         <header ref={workspaceToolbarRef} className="code-tb">
                             <h2 id="code-workspace-title" className="sr-only">Bot code workspace</h2>
-                            {codeSelectorRoster.length > 0 && (
+                            {openChainData && <ChainCrumb name={openChainData.name} onBack={() => setOpenChain(null)} />}
+                            {!openChainData && codeSelectorRoster.length > 0 && (
                                 <div className={`code-tb-bot ${activeSelectorRole === "red" ? "is-red" : "is-blue"}`} role="group" aria-label="Select bot code workspace">
                                     <button type="button" aria-label="Show previous bot" title="Previous bot" onClick={() => cycleCodeParticipant(-1)} disabled={codeSelectorRoster.length < 2} className="code-tb-arrow">‹</button>
                                     <span className="code-tb-dot" aria-hidden="true" />
@@ -962,43 +1095,57 @@ export default function CodingPanel({
                                 </div>
                             )}
                             <span className="code-tb-divider" aria-hidden="true" />
+                            {openChainData && <ChainStepMeter count={countChainSteps(openChainData)} max={MAX_CHAIN_STEPS} />}
                             <div className="code-tb-meters" role="group" aria-label="Code budget">
-                                <BudgetMeter label="Roots" value={totalRootNodes} max={MAX_ROOT_NODES} />
+                                {!openChainData && <BudgetMeter label="Roots" value={totalRootNodes} max={MAX_ROOT_NODES} />}
                                 <BudgetMeter label="Actions" value={totalActiveBlocks} max={maxActionNodes} />
                                 <BudgetMeter label="Conditions" value={totalActiveConditions} max={maxConditionNodes} />
                             </div>
-                            <div className="code-tb-chips" role="group" aria-label="Code budget">
-                                <BudgetMeter label="R" title="Roots" value={totalRootNodes} max={MAX_ROOT_NODES} compact />
+                            <div className="code-tb-chips" role="group" aria-label="Code budget" onClick={stage === "phone" ? () => setPhoneSheet("counts") : undefined}>
+                                {openChainData && <BudgetMeter label="Steps" title="Steps" value={countChainSteps(openChainData)} max={MAX_CHAIN_STEPS} compact />}
+                                {!openChainData && <BudgetMeter label="R" title="Roots" value={totalRootNodes} max={MAX_ROOT_NODES} compact />}
                                 <BudgetMeter label="A" title="Actions" value={totalActiveBlocks} max={maxActionNodes} compact />
                                 <BudgetMeter label="C" title="Conditions" value={totalActiveConditions} max={maxConditionNodes} compact />
                             </div>
                             <span className="code-tb-break" aria-hidden="true" />
                             <span className="code-tb-spacer" />
-                            <button type="button" onClick={() => { setIsQuickSearchOpen(false); setIsNodeSearchOpen(true); }} className="code-tb-search" aria-label="Search roots" title="Search roots">
+                            {!openChainData && <button type="button" onClick={openSearch} className="code-tb-search" aria-label="Search roots and chains" title="Search roots and chains">
                                 <ToolbarSearchIcon />
-                                <span className="code-tb-search-text">Search roots</span>
-                                <kbd className="code-tb-kbd">/</kbd>
-                            </button>
-                            <button type="button" onClick={() => setIsCustomVariablesOpen(true)} className="code-tb-btn" aria-label="Custom variables" title="Custom variables">
+                                <span className="code-tb-search-text">Search</span>
+                                <kbd className="code-tb-kbd">{readWorkspaceShortcut("search").toUpperCase()}</kbd>
+                            </button>}
+                            {stage !== "phone" && <button type="button" onClick={() => setIsCustomVariablesOpen(true)} className="code-tb-btn" aria-label="Custom variables" title="Custom variables">
                                 <ToolbarBracesIcon />
                                 <span className="code-tb-label">Variables</span>
-                            </button>
-                            <button
+                            </button>}
+                            {stage !== "phone" && openChainData && <button type="button" className="code-tb-btn" aria-label="Add node" title="Add a node under the selected one" disabled={!canEditWorkspace} onClick={() => chainEditorRef.current?.addStep()}><span className="code-tb-icon-compact"><ToolbarNodeIcon /></span><span className="code-tb-label">+ Node</span> <kbd className="code-tb-kbd">{readWorkspaceShortcut("addNode").toUpperCase()}</kbd></button>}
+                            {stage !== "phone" && !openChainData && <button
                                 type="button"
-                                disabled={isCodeEditingLocked || isTesting || !viewingCurrentRound
-                                    || totalRootNodes >= MAX_ROOT_NODES}
+                                disabled={!canEditWorkspace || totalRootNodes >= MAX_ROOT_NODES}
                                 onClick={addRootNode}
                                 className="code-tb-btn is-primary"
                                 aria-label="Add root"
                                 title="Add root"
                             >
                                 <AddIcon className="code-toolbar-icon" /> <span className="code-tb-label">Add root</span> <kbd className="code-tb-kbd">{readAddRootShortcut().toUpperCase()}</kbd>
-                            </button>
+                            </button>}
+                            {stage === "full" && !openChainData && <button
+                                type="button"
+                                onClick={addChain}
+                                disabled={!canEditWorkspace || Boolean(chainDisabledReason)}
+                                className="code-tb-btn code-tb-chain"
+                                aria-label="Add chain"
+                                title={chainDisabledReason ?? "Create a chain, then add Run chain to a conditional to use it"}
+                            >+ New chain <kbd className="code-tb-kbd">{readWorkspaceShortcut("addChain").toUpperCase()}</kbd></button>}
+                            {stage !== "phone" && !openChainData && <button type="button" className="code-tb-btn" aria-label="Add node" title="Add an unconnected node" disabled={!canEditWorkspace} onClick={() => logicBoardRef.current?.addNode()}><span className="code-tb-icon-compact"><ToolbarNodeIcon /></span><span className="code-tb-label">+ Node</span> <kbd className="code-tb-kbd">{readWorkspaceShortcut("addNode").toUpperCase()}</kbd></button>}
+                            {stage === "full" && !openChainData && <button type="button" className="code-tb-btn code-tb-clear" aria-label="Clear all" title="Delete every root, unconnected node, chain and variable" disabled={clearAllDisabled} onClick={clearAll}>Clear all</button>}
+                            {stage === "full" && openChainData && <button type="button" className="code-tb-btn code-tb-clear" aria-label="Clear all" title="Delete every step in this chain" disabled={!canEditWorkspace || !countChainSteps(openChainData)} onClick={clearChain}>Clear all</button>}
+                            {stage === "mid" && <ToolbarMoreMenu items={moreItems} />}
                             <button
                                 type="button"
                                 aria-label="Close bot code workspace"
                                 title="Close"
-                                onClick={() => { setIsNodeSearchOpen(false); setIsQuickSearchOpen(false); setIsCustomVariablesOpen(false); setIsLogicOpen(false); }}
+                                onClick={closeWorkspace}
                                 className="code-tb-close"
                             >
                                 <ToolbarCloseIcon />
@@ -1013,12 +1160,15 @@ export default function CodingPanel({
                             </ToastStack>
                         )}
                         </div>
-                        <div className="code-zoom-cluster" role="group" aria-label="Zoom">
+                        {openChainData && stage === "phone" && <div className="code-zoom-cluster" role="group" aria-label="Zoom">
+                            <button type="button" aria-label="Zoom to fit" title="Zoom to fit" onClick={zoomToFit}>⤢</button>
+                        </div>}
+                        {!openChainData && <div className="code-zoom-cluster" role="group" aria-label="Zoom">
                             <button type="button" aria-label="Zoom out" title="Zoom out" onClick={() => changeZoom(-0.1)}>−</button>
                             <span className="code-zoom-value">{Math.round(canvasZoom * 100)}%</span>
                             <button type="button" aria-label="Zoom in" title="Zoom in" onClick={() => changeZoom(0.1)}>+</button>
                             <button type="button" aria-label="Zoom to fit the tree" title="Zoom to fit" onClick={() => zoomToFitRef.current?.()}>⤢</button>
-                        </div>
+                        </div>}
                         {tutorialGuideProps && (
                             <div className="tg-workspace-host">
                                 <TutorialGuide {...tutorialGuideProps} variant="workspace" />
@@ -1050,8 +1200,42 @@ export default function CodingPanel({
                                 </div>
                             </div>
                         )}
+                        {openChainData ? (
+                            <ChainEditor
+                                ref={chainEditorRef}
+                                onDragChange={setChainDragging}
+                                phone={stage === "phone"}
+                                onSelectionChange={setPhoneSelection}
+                                configuration={activeConfiguration}
+                                chainId={openChainData.id}
+                                runningChain={viewingCurrentRound ? runtimeBots.find((bot) => viewingLiveOpponentSandbox ? false
+                                    : viewingLiveParticipant ? String(bot.userId) === String(activeLiveParticipantId)
+                                    : viewingOfflineParticipant ? bot.id === (activeOfflineParticipant.codeKey === "player" ? "main"
+                                        : activeOfflineParticipant.codeKey === "opponent" ? "opponent-model"
+                                        : `bot-puzzle-${activeOfflineParticipant.teamNumber}-${activeOfflineParticipant.slot}`)
+                                    : bot.id === (viewingOpponent ? "opponent-model" : "main"))?.runningChain : null}
+                                disabled={isCodeEditingLocked || isTesting || !viewingCurrentRound}
+                                selectedLoadout={activeLoadout}
+                                selectableAbilityIds={visibleSelectableAbilityIds}
+                                stateVariables={visibleStateVariables}
+                                defaultVariable={defaultVariable}
+                                selectableTypes={visibleSelectableTypes}
+                                onChange={updateActiveConfiguration}
+                                onOpenChain={openChainById}
+                                canUndo={!isCodeEditingLocked && !isTesting && (editHistory[activeCode]?.undo?.length ?? 0) > 0}
+                                canRedo={!isCodeEditingLocked && !isTesting && (editHistory[activeCode]?.redo?.length ?? 0) > 0}
+                                onUndo={() => travelHistory("undo")}
+                                onRedo={() => travelHistory("redo")}
+                                maxLogicBlocks={maxActionNodes}
+                                maxTotalConditions={maxConditionNodes}
+                                isExternalConfigurationOpen={isCustomVariablesOpen}
+                                onCloseExternalConfiguration={() => setIsCustomVariablesOpen(false)}
+                            />
+                        ) : (
                         <TreeLogicBoard
                                 ref={logicBoardRef}
+                                phone={stage === "phone"}
+                                onSelectionChange={setPhoneSelection}
                                 configuration={activeConfiguration}
                                 disabled={isCodeEditingLocked || isTesting || !viewingCurrentRound}
                                 canRemove={!isCodeEditingLocked && !isTesting && !roundDeleteLocked}
@@ -1080,8 +1264,44 @@ export default function CodingPanel({
                                 onCloseExternalConfiguration={() => setIsCustomVariablesOpen(false)}
                                 maxLogicBlocks={maxActionNodes}
                                 maxTotalConditions={maxConditionNodes}
+                                onOpenChain={openChainById}
+                                onCreateChain={addChain}
+                                onRemoveChain={removeChainById}
                             />
-                        {isCustomVariablesOpen && !isNodeSearchOpen && <CustomVariablesModal configuration={activeConfiguration} currentValues={activeCustomVariableValues} maxSlots={maxCustomVariableSlots} disabled={isCodeEditingLocked || isTesting} onChange={updateActiveConfiguration} onClose={() => setIsCustomVariablesOpen(false)} />}
+                        )}
+                        {stage === "phone" && phoneSelection && <nav className={`code-phone-bar ${chainDragging ? "is-faded" : ""}`} aria-label="Selection actions">
+                            <PhoneBarButton icon="✎" label="Edit" disabled={!canEditWorkspace || phoneSelection.canEdit === false} aria-label="Edit" onClick={() => (openChainData ? chainEditorRef.current?.editSelection() : logicBoardRef.current?.editSelection())} />
+                            {openChainData
+                                ? <PhoneBarButton primary icon="+" label="Below" disabled={!canEditWorkspace} aria-label="Add below" onClick={() => chainEditorRef.current?.addStep()} />
+                                : <PhoneBarButton icon="⛓" label="Disconnect" disabled={!canEditWorkspace || !phoneSelection.canDisconnect} aria-label="Disconnect" onClick={() => logicBoardRef.current?.disconnectSelection()} />}
+                            <PhoneBarButton icon="↑" label="Up" disabled={!canEditWorkspace || !phoneSelection.canUp} aria-label="Move up" onClick={() => (openChainData ? chainEditorRef.current?.moveSelection(-1) : logicBoardRef.current?.nudgeSelection(-1))} />
+                            <PhoneBarButton icon="↓" label="Down" disabled={!canEditWorkspace || !phoneSelection.canDown} aria-label="Move down" onClick={() => (openChainData ? chainEditorRef.current?.moveSelection(1) : logicBoardRef.current?.nudgeSelection(1))} />
+                            <PhoneBarButton icon="🗑" label="Delete" disabled={!canEditWorkspace || phoneSelection.canDelete === false} aria-label="Delete" onClick={() => (openChainData ? chainEditorRef.current?.deleteSelection() : logicBoardRef.current?.deleteSelection())} />
+                            <PhoneBarButton icon="✓" label="Done" aria-label="Done" onClick={() => (openChainData ? chainEditorRef.current?.clearSelection() : logicBoardRef.current?.clearSelection())} />
+                        </nav>}
+                        {stage === "phone" && !phoneSelection && <nav className={`code-phone-bar ${chainDragging ? "is-faded" : ""}`} aria-label="Workspace actions">
+                            <PhoneBarButton icon="↶" label="Undo" disabled={!canUndoNow} onClick={() => travelHistory("undo")} aria-label="Undo code edit" />
+                            <PhoneBarButton icon="↷" label="Redo" disabled={!canRedoNow} onClick={() => travelHistory("redo")} aria-label="Redo code edit" />
+                            <PhoneBarButton primary icon="+" label={openChainData ? "Node" : "Add"} disabled={!canEditWorkspace} aria-label={openChainData ? "Add node" : "Add"} onClick={() => (openChainData ? chainEditorRef.current?.addStep() : setPhoneSheet("add"))} />
+                            <PhoneBarButton icon="{ }" label="Vars" aria-label="Custom variables" onClick={() => setIsCustomVariablesOpen(true)} />
+                            <PhoneBarButton icon="⋯" label="More" aria-label="More tools" onClick={() => setPhoneSheet("more")} />
+                        </nav>}
+                        {stage === "phone" && phoneSheet === "add" && !openChainData && <WorkspaceSheet title="Add" onClose={() => setPhoneSheet(null)}>
+                            <SheetRow tag="ROOT" tone="root" label="Add root" disabled={totalRootNodes >= MAX_ROOT_NODES} onClick={inSheet(addRootNode)} />
+                            <SheetRow tag="IF" tone="if" label="Conditional node" onClick={inSheet(() => logicBoardRef.current?.addConditional())} />
+                            <SheetRow tag="ACTION" tone="action" label="Action node…" onClick={inSheet(() => logicBoardRef.current?.addNode())} />
+                            <SheetRow tag="CHAIN" tone="chain" label="New chain" disabled={Boolean(chainDisabledReason)} onClick={inSheet(addChain)} />
+                        </WorkspaceSheet>}
+                        {stage === "phone" && phoneSheet === "more" && <WorkspaceSheet title="More" onClose={() => setPhoneSheet(null)}>
+                            {!openChainData && <SheetRow label="Tidy layout" disabled={!canEditWorkspace} onClick={inSheet(() => logicBoardRef.current?.tidy())} />}
+                            <SheetRow label="Zoom to fit" onClick={inSheet(zoomToFit)} />
+                            {!openChainData && <SheetRow label="Clear all" danger disabled={clearAllDisabled} onClick={inSheet(clearAll)} />}
+                        </WorkspaceSheet>}
+                        {stage === "phone" && phoneSheet === "counts" && <WorkspaceSheet title="Counts" onClose={() => setPhoneSheet(null)}>
+                            {budgetRows.map((row) => <SheetRow key={row.label} label={row.label} value={row.value} />)}
+                        </WorkspaceSheet>}
+                        {namingChain && <NewChainDialog defaultName={createChain(activeConfiguration)?.name ?? ""} onConfirm={confirmNewChain} onCancel={() => setNamingChain(false)} />}
+                        {isCustomVariablesOpen && !isNodeSearchOpen && <CustomVariablesModal configuration={activeConfiguration} currentValues={activeCustomVariableValues} stateVariables={visibleStateVariables} selectableTypes={visibleSelectableTypes} onJumpToUse={jumpToUse} maxSlots={maxCustomVariableSlots} disabled={isCodeEditingLocked || isTesting} onChange={updateActiveConfiguration} onClose={() => setIsCustomVariablesOpen(false)} />}
                     </section>
                 </div>,
                 document.body

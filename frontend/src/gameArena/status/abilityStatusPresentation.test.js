@@ -137,24 +137,24 @@ test("preparation, active, cooldown, and ready states use remaining-time directi
 test("all ability resources use the canonical charge and recharge maps", () => {
     assert.equal(abilityChargeCountFor({ abilityCharges: { 19: 1 } }, 19), null);
 
-    const gunReload = abilityStatusFor({
-        abilityCooldowns: { 3: 0 },
-        abilityCharges: { 3: 0 },
-        abilityRechargeMs: { 3: 1500 },
-    }, 3);
-    assert.equal(gunReload.state, "cooldown");
-    assert.equal(gunReload.durationMs, 5000);
-    assert.equal(gunReload.progress, 0.7);
-    assert.equal(abilityChargeCountFor({ abilityCharges: { 3: 7 } }, 3), 6);
+    const pistolReload = abilityStatusFor({
+        abilityCooldowns: { 12: 0 },
+        abilityCharges: { 12: 0 },
+        abilityRechargeMs: { 12: 900 },
+    }, 12);
+    assert.equal(pistolReload.state, "cooldown");
+    assert.equal(pistolReload.durationMs, 3000);
+    assert.equal(pistolReload.progress, 0.7);
+    assert.equal(abilityChargeCountFor({ abilityCharges: { 12: 11 } }, 12), 10);
 
-    const fireballReload = abilityStatusFor({
-        abilityCooldowns: { 5: 0 },
-        abilityCharges: { 5: 0 },
-        abilityRechargeMs: { 5: 2250 },
-    }, 5);
-    assert.equal(fireballReload.state, "cooldown");
-    assert.equal(fireballReload.progress, 0.55);
-    assert.equal(abilityChargeCountFor({ abilityCharges: { 5: 3 } }, 5), 3);
+    // Sniper and Fireball no longer expose an ammunition count.
+    assert.equal(abilityChargeCountFor({ abilityCharges: { 3: 7 } }, 3), null);
+    assert.equal(abilityChargeCountFor({ abilityCharges: { 5: 3 } }, 5), null);
+
+    const fireballCooldown = abilityStatusFor({ abilityCooldowns: { 5: 2750 } }, 5);
+    assert.equal(fireballCooldown.state, "cooldown");
+    assert.equal(fireballCooldown.durationMs, 5500);
+    assert.equal(fireballCooldown.progress, 0.5);
 
 });
 
@@ -177,4 +177,17 @@ test("both fighter cards render every ability slot and never fabricate empty one
     assert.equal((source.match(/const HP_SEGMENTS = 10;/g) ?? []).length, 1);
     assert.doesNotMatch(source, /Array\.from\(\{ length: abilities\.length/);
     assert.doesNotMatch(source, /SLOT .*EMPTY/);
+});
+
+test("the fighter card shows a thin stamina meter under HP with an exhausted tag", () => {
+    const panel = readFileSync(PANEL_PATH, "utf8");
+    const css = readFileSync(PIXI_CSS_PATH, "utf8");
+    assert.match(panel, /role="meter"[\s\S]*aria-label="Stamina"/);
+    assert.match(panel, /aria-valuenow=\{stamina\}/);
+    assert.match(panel, /EXHAUSTED/);
+    assert.ok(panel.indexOf("<HpBar") < panel.indexOf("<StaminaBar"));
+    assert.match(css, /\.hud-sta__bar span\s*\{[^}]*#a78bfa/);
+    assert.match(css, /\.hud-sta\.is-exhausted \.hud-sta__bar span\s*\{[^}]*#6b5b95/);
+    assert.match(css, /\.hud-sta__bar\s*\{[^}]*height: 3px/);
+    assert.match(css, /"face sta abil"/, "stacks under HP on phones");
 });

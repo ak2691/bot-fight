@@ -77,7 +77,7 @@ class MatchSimulationServiceTest {
                         new MatchPlayer(firstUserId, "One", "one", 1, true, UUID.randomUUID(), 0,
                                 "custom:s", true),
                         new MatchPlayer(secondUserId, "Two", "two", 2, true, UUID.randomUUID(), 0,
-                                "custom:g", true)),
+                                "custom:p", true)),
                 Instant.now(),
                 Instant.now(),
                 Instant.now(),
@@ -95,13 +95,13 @@ class MatchSimulationServiceTest {
                 .extracting(MatchPlaybackDTO.BotStateDTO::userId)
                 .containsExactly(firstUserId, secondUserId);
         assertThat(playback.initialState().bots().getFirst().abilities())
-                .containsExactlyInAnyOrder(1, 19, 20, 34);
+                .containsExactlyInAnyOrder(1, 19, 34);
         assertThat(playback.initialState().bots().getFirst().maxHp()).isEqualTo(150);
         assertThat(playback.initialState().bots().getFirst().abilityCooldowns().getOrDefault(1, 0)).isZero();
         assertThat(playback.initialState().bots().getFirst().abilityCooldowns()).doesNotContainKey(2);
         assertThat(playback.initialState().bots().getLast().abilities())
-                .containsExactlyInAnyOrder(3, 19, 20, 34);
-        assertThat(playback.initialState().bots().getLast().abilityCharges()).containsEntry(3, 6);
+                .containsExactlyInAnyOrder(12, 19, 34);
+        assertThat(playback.initialState().bots().getLast().abilityCharges()).containsEntry(12, 10);
     }
 
     @Test
@@ -131,7 +131,7 @@ class MatchSimulationServiceTest {
         MatchPlaybackDTO playback = service.buildPreparationPlayback(session);
 
         assertThat(playback.initialState().bots().getFirst().abilities())
-                .containsExactlyInAnyOrder(10, 19, 20, 34);
+                .containsExactlyInAnyOrder(10, 19, 34);
     }
 
     @Test
@@ -205,7 +205,7 @@ class MatchSimulationServiceTest {
         MatchPlaybackDTO playback = service.buildPreparationPlayback(session);
 
         assertThat(playback.initialState().bots().getFirst().abilities())
-                .containsExactly(19, 20, 34, 12, 1, 3, 13);
+                .containsExactly(19, 34, 12, 1, 3, 13);
     }
 
     private DuelSimulationService duelSimulationService() {

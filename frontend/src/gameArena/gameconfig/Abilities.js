@@ -9,10 +9,10 @@ import {
 // Ability-level timing and resource metadata. Behavior that can change while
 // an ability is active belongs to a phase contract, not this catalog.
 const ABILITY_TIMING_BY_ID = Object.freeze({
-    1: { cooldownMs: 600, activeMs: 400 },
-    3: { maxCharges: 6, resourceModel: "reload", chargeType: "ammunition", reloadMs: 5000, cooldownMs: 1000, activeMs: 500 },
+    1: { cooldownMs: 500, windupMs: 0, activeMs: 300 },
+    3: { cooldownMs: 9000, windupMs: 900, activeMs: 200 },
     4: { cooldownMs: 12000, activeMs: 1 },
-    5: { maxCharges: 4, resourceModel: "reload", chargeType: "ammunition", reloadMs: 5000, cooldownMs: 300, activeMs: 500, durationMs: 1000 },
+    5: { cooldownMs: 5500, activeMs: 500, durationMs: 1400 },
     6: { cooldownMs: 9600, windupMs: 200, activeMs: 100, durationMs: 1200 },
     7: { cooldownMs: 4600, windupMs: 300, activeMs: 400 },
     8: { cooldownMs: 10000, activeMs: 500 },
@@ -26,7 +26,8 @@ const ABILITY_TIMING_BY_ID = Object.freeze({
     16: { cooldownMs: 9000, windupMs: 500, activeMs: 0, durationMs: 4000 },
     17: { cooldownMs: 8000, activeMs: 300, durationMs: 6000 },
     18: { cooldownMs: 7000, windupMs: 300, activeMs: 500, durationMs: 500 },
-    19: { cooldownMs: 1800, activeMs: 200, durationMs: 200 },
+    // Dash has no fixed cooldown: it costs stamina and waits out a short gap (MovementConfig.js).
+    19: { cooldownMs: 0, activeMs: 200, durationMs: 200 },
     20: { cooldownMs: 9800, windupMs: 200, activeMs: 200 },
     21: { cooldownMs: 18000, activeMs: 300, durationMs: 3100 },
     22: { cooldownMs: 18000, windupMs: 500, activeMs: 0, durationMs: 1500 },
@@ -42,6 +43,9 @@ const ABILITY_TIMING_BY_ID = Object.freeze({
     32: { cooldownMs: 10000, windupMs: 300, activeMs: 300 },
     33: { cooldownMs: 12000, windupMs: 500, activeMs: 0, durationMs: 4000 },
     34: { cooldownMs: 500, activeMs: 200 },
+    35: { cooldownMs: 700, windupMs: 100, activeMs: 300 },
+    36: { cooldownMs: 700, windupMs: 500, activeMs: 300 },
+    37: { cooldownMs: 700, windupMs: 300, activeMs: 300 },
 });
 
 function phasesFor(abilityValue) {

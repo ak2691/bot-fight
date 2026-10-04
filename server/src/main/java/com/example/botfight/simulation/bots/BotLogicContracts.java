@@ -2,6 +2,7 @@ package com.example.botfight.simulation.bots;
 
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts.AbilityContract;
+import com.example.botfight.simulation.gameconfig.MovementConfig;
 import com.example.botfight.simulation.geometry.ArenaUnits;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -22,6 +23,19 @@ public final class BotLogicContracts {
     public static final String ACTION_VARIABLE = "variable";
     public static final String ACTION_MOVE_WALK = "move_walk";
     public static final String ACTION_ROTATE_TOWARD_TARGET = "rotate_toward_enemy";
+    public static final String ACTION_CANCEL_WINDUP = "cancel_windup";
+    /** Chain control. Valid in saved brains; the editor offers them once chains have a UI. */
+    public static final String ACTION_RUN_CHAIN = "run_chain";
+    /** Action chain bounds, shared by normalization, validation and the runtime. */
+    public static final int MAX_CHAINS = 16;
+    public static final int MAX_CHAIN_STEPS = 32;
+    public static final int MAX_REPEAT_COUNT = 20;
+    public static final int CHAIN_MS_STEP = 100;
+    public static final int CHAIN_MS_MAX = 10_000;
+    public static final int MAX_LOOP_NESTING = 2;
+    public static final int MAX_CALL_DEPTH = 3;
+    public static final int MAX_CHAIN_NAME_LENGTH = 25;
+    public static final String CHAIN_ID_PATTERN = "^chain\\.[a-z0-9_-]{1,40}$";
 
     public static final String CONDITION_ALWAYS = "always";
     public static final String CONDITION_EXPRESSION = "expression";
@@ -48,7 +62,8 @@ public final class BotLogicContracts {
     public static final String TARGET_MODE_COORDINATES = "coordinates";
     public static final String TARGET_MODE_ANGLE = "angle";
 
-    public enum ActionHead { NONE, VARIABLE, MOVEMENT, ROTATION, ABILITY }
+    /** CANCEL is its own channel: it never competes with, or is blocked by, the ability lock. */
+    public enum ActionHead { NONE, VARIABLE, MOVEMENT, ROTATION, ABILITY, CANCEL, CHAIN }
     public enum ValueType { NUMBER, BOOLEAN }
     public enum VariableScope { NONE, SELECTABLE }
     public enum VariableSelectableType {
@@ -83,6 +98,13 @@ public final class BotLogicContracts {
         SELECTABLE_ABSOLUTE_BEARING,
         SELECTABLE_MOVEMENT_DIRECTION,
         SELECTABLE_SPEED,
+        SELECTABLE_APPROACH_ANGLE,
+        SELECTABLE_MOVING,
+        BOT_ANY_ABILITY_PREPARING,
+        BOT_STAMINA,
+        BOT_EXHAUSTED,
+        BOT_SPRINTING,
+        BOT_FAST_TURNING,
         SELECTABLE_RELATIVE_BEARING,
         SELECTABLE_FACING,
         SELECTABLE_COUNT,
@@ -96,9 +118,11 @@ public final class BotLogicContracts {
         SELECTED_ABILITY_ACTIVE_MS,
         SELECTED_ABILITY_ON_COOLDOWN,
         SELECTED_ABILITY_COOLDOWN_MS,
+        SELECTED_ABILITY_SINCE_HIT,
         SELECTED_ABILITY_CHARGES,
         SELECTED_ABILITY_PREPARING,
         SELECTED_ABILITY_PREPARATION_MS,
+        SELECTED_ABILITY_BASE_RANGE,
         SELECTED_STATUS_EFFECT_ACTIVE,
         SELECTED_STATUS_EFFECT_DURATION_MS
     }
@@ -149,9 +173,11 @@ public final class BotLogicContracts {
                     || source == VariableSource.SELECTED_ABILITY_ACTIVE_MS
                     || source == VariableSource.SELECTED_ABILITY_ON_COOLDOWN
                     || source == VariableSource.SELECTED_ABILITY_COOLDOWN_MS
+                    || source == VariableSource.SELECTED_ABILITY_SINCE_HIT
                     || source == VariableSource.SELECTED_ABILITY_CHARGES
                     || source == VariableSource.SELECTED_ABILITY_PREPARING
-                    || source == VariableSource.SELECTED_ABILITY_PREPARATION_MS;
+                    || source == VariableSource.SELECTED_ABILITY_PREPARATION_MS
+                    || source == VariableSource.SELECTED_ABILITY_BASE_RANGE;
         }
 
         public boolean requiresStatusEffect() {
@@ -167,7 +193,12 @@ public final class BotLogicContracts {
 
         public Set<SelectableIdentity> selectableIdentities() {
             if (isPairVariable()) return Set.of();
-            if (requiresAbility() || requiresStatusEffect()) return Set.of(SelectableIdentity.BOT);
+            if (requiresAbility() || requiresStatusEffect()
+                    || source == VariableSource.BOT_ANY_ABILITY_PREPARING
+                    || source == VariableSource.BOT_STAMINA
+                    || source == VariableSource.BOT_EXHAUSTED
+                    || source == VariableSource.BOT_SPRINTING
+                    || source == VariableSource.BOT_FAST_TURNING) return Set.of(SelectableIdentity.BOT);
             if (source == VariableSource.SELECTABLE_FACING) return Set.of(SelectableIdentity.FACING);
             if (source == VariableSource.SELECTABLE_COUNT || source == VariableSource.SELECTABLE_AGE
                     || source == VariableSource.SELECTABLE_EXISTS) return Set.of(SelectableIdentity.ABILITY_ENTITY);
@@ -194,7 +225,17 @@ public final class BotLogicContracts {
         public boolean isPairVariable() {
             return source == VariableSource.SELECTABLE_DISTANCE
                     || source == VariableSource.SELECTABLE_ABSOLUTE_BEARING
-                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING;
+                    || source == VariableSource.SELECTABLE_RELATIVE_BEARING
+                    || source == VariableSource.SELECTABLE_APPROACH_ANGLE;
+        }
+
+        /**
+         * Older saved brains stored one `selectable` for Approach Angle, the moving entity. For
+         * this variable it maps into the first pair slot (the second defaults to My Bot); for
+         * every other pair variable it maps into the second slot.
+         */
+        public boolean legacySelectableIsFirstSlot() {
+            return source == VariableSource.SELECTABLE_APPROACH_ANGLE;
         }
 
         public Set<String> targetModes() {
@@ -258,7 +299,9 @@ public final class BotLogicContracts {
             ACTION_NONE, new ActionContract(ActionHead.NONE, false, false, false, false, false, false, null),
             ACTION_VARIABLE, new ActionContract(ActionHead.VARIABLE, true, false, false, false, false, false, null),
             ACTION_MOVE_WALK, new ActionContract(ActionHead.MOVEMENT, false, true, true, false, false, false, null),
-            ACTION_ROTATE_TOWARD_TARGET, new ActionContract(ActionHead.ROTATION, false, false, true, false, false, true, "target"));
+            ACTION_ROTATE_TOWARD_TARGET, new ActionContract(ActionHead.ROTATION, false, false, true, false, false, true, "target"),
+            ACTION_CANCEL_WINDUP, new ActionContract(ActionHead.CANCEL, false, false, false, false, false, false, null),
+            ACTION_RUN_CHAIN, new ActionContract(ActionHead.CHAIN, false, false, false, false, false, false, null));
 
     private static final Map<String, SelectableContract> SELECTABLES = selectables();
     private static final Map<String, VariableContract> VARIABLES = variables();
@@ -429,6 +472,19 @@ public final class BotLogicContracts {
     }
 
     public static boolean isAllowedAction(Object action) { return actionContract(action) != null; }
+    public static final String AIM_CURRENT = "current";
+    public static final String AIM_LEAD = "lead";
+    public static final String AIM_AUTO = "auto";
+    public static final double MAX_LEAD_SECONDS = 2.0;
+
+    /** Rotate: Face Target and ability actions that aim at an entity may carry the optional `aim` setting. */
+    public static boolean actionSupportsAim(Object action) {
+        ActionContract contract = actionContract(action);
+        if (contract == null || contract.movementConfig() || contract.variableAction()) return false;
+        return contract.head() == ActionHead.ROTATION
+                || (contract.head() == ActionHead.ABILITY && (contract.targetMode() != null || contract.locationTarget()));
+    }
+
     public static boolean actionUsesTarget(Object action) {
         ActionContract contract = actionContract(action);
         return contract != null && (contract.targetMode() != null || contract.movementConfig()
@@ -469,7 +525,11 @@ public final class BotLogicContracts {
     }
 
     public static String defaultSelectableForVariable(VariableContract variable) {
-        if (variable != null && (variable.requiresAbility() || variable.requiresStatusEffect())) {
+        if (variable != null && (variable.requiresAbility() || variable.requiresStatusEffect()
+                || variable.source() == VariableSource.BOT_STAMINA
+                || variable.source() == VariableSource.BOT_EXHAUSTED
+                || variable.source() == VariableSource.BOT_SPRINTING
+                || variable.source() == VariableSource.BOT_FAST_TURNING)) {
             return SELECTABLE_MY;
         }
         if (variable != null && variable.selectableIdentities().contains(SelectableIdentity.ABILITY_ENTITY)) {
@@ -482,10 +542,12 @@ public final class BotLogicContracts {
     }
 
     public static String defaultSelectable1ForVariable(VariableContract variable) {
+        if (variable != null && variable.source() == VariableSource.SELECTABLE_APPROACH_ANGLE) return SELECTABLE_OPPONENT;
         return variable != null && variable.isPairVariable() ? SELECTABLE_MY : defaultSelectableForVariable(variable);
     }
 
     public static String defaultSelectable2ForVariable(VariableContract variable) {
+        if (variable != null && variable.source() == VariableSource.SELECTABLE_APPROACH_ANGLE) return SELECTABLE_MY;
         return variable != null && variable.isPairVariable() ? SELECTABLE_OPPONENT : defaultSelectableForVariable(variable);
     }
 
@@ -520,6 +582,9 @@ public final class BotLogicContracts {
     }
 
     public static Set<String> statusEffects() { return STATUS_EFFECTS; }
+    /** Timer custom variables: integer ms in 100 ms ticks, read as seconds; values are 0-600 s. */
+    public static final int TICK_MS = 100;
+
     public static boolean isAllowedCustomVariableOperation(String operation) {
         return Set.of(
                 CUSTOM_VARIABLE_OPERATION_SET,
@@ -618,6 +683,15 @@ public final class BotLogicContracts {
                 -ANGLE_MAX, ANGLE_MAX, "selectable.movementDirection");
         addNumbers(variables, VariableSource.SELECTABLE_SPEED, VariableScope.SELECTABLE,
                 0, 100, "selectable.speed");
+        addNumbers(variables, VariableSource.SELECTABLE_APPROACH_ANGLE, VariableScope.SELECTABLE,
+                0, 180, "selectable.approachAngle");
+        addBooleans(variables, VariableSource.SELECTABLE_MOVING, VariableScope.SELECTABLE, "selectable.moving");
+        addBooleans(variables, VariableSource.BOT_ANY_ABILITY_PREPARING, VariableScope.SELECTABLE, "bot.anyAbilityPreparing");
+        addNumbers(variables, VariableSource.BOT_STAMINA, VariableScope.SELECTABLE,
+                0, MovementConfig.STAMINA_MAX, "bot.stamina");
+        addBooleans(variables, VariableSource.BOT_EXHAUSTED, VariableScope.SELECTABLE, "bot.exhausted");
+        addBooleans(variables, VariableSource.BOT_SPRINTING, VariableScope.SELECTABLE, "bot.sprinting");
+        addBooleans(variables, VariableSource.BOT_FAST_TURNING, VariableScope.SELECTABLE, "bot.fastTurning");
         addNumbers(variables, VariableSource.SELECTABLE_RELATIVE_BEARING, VariableScope.SELECTABLE,
                 0, 180, "selectable.relativeBearing");
         addNumbers(variables, VariableSource.SELECTABLE_FACING, VariableScope.SELECTABLE,
@@ -640,11 +714,15 @@ public final class BotLogicContracts {
                 0, 60, "bot.selectedAbilityActiveMs");
         addNumbers(variables, VariableSource.SELECTED_ABILITY_COOLDOWN_MS, VariableScope.SELECTABLE,
                 0, 60, "bot.selectedAbilityCooldownMs");
+        addNumbers(variables, VariableSource.SELECTED_ABILITY_SINCE_HIT, VariableScope.SELECTABLE,
+                0, CUSTOM_NUMBER_LIMIT, "bot.selectedAbilitySinceHit");
         addNumbers(variables, VariableSource.SELECTED_ABILITY_CHARGES, VariableScope.SELECTABLE,
                 0, 100, "bot.selectedAbilityCharges");
         addBooleans(variables, VariableSource.SELECTED_ABILITY_PREPARING, VariableScope.SELECTABLE, "bot.selectedAbilityPreparing");
         addNumbers(variables, VariableSource.SELECTED_ABILITY_PREPARATION_MS, VariableScope.SELECTABLE,
                 0, 10, "bot.selectedAbilityPreparationMs");
+        addNumbers(variables, VariableSource.SELECTED_ABILITY_BASE_RANGE, VariableScope.SELECTABLE,
+                0, 2000, "bot.selectedAbilityBaseRange");
         addBooleans(variables, VariableSource.SELECTED_STATUS_EFFECT_ACTIVE, VariableScope.SELECTABLE, "bot.selectedStatusEffectActive");
         addNumbers(variables, VariableSource.SELECTED_STATUS_EFFECT_DURATION_MS, VariableScope.SELECTABLE,
                 0, 60, "bot.selectedStatusEffectDurationMs");

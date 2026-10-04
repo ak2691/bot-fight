@@ -18,9 +18,10 @@ class AbilitiesTest {
 
     @Test
     void rangedDamageProfilesUseLinearEndpointsAndPlateaus() {
-        assertThat(Abilities.amountAtDistance(3, 100)).isEqualTo(15);
-        assertThat(Abilities.amountAtDistance(3, 400)).isEqualTo(10);
-        assertThat(Abilities.amountAtDistance(3, 700)).isEqualTo(5);
+        // Sniper (3) has flat damage: no falloff at any distance within its range.
+        assertThat(Abilities.amountAtDistance(3, 100)).isEqualTo(40);
+        assertThat(Abilities.amountAtDistance(3, 700)).isEqualTo(40);
+        assertThat(Abilities.amountAtDistance(3, 1_200)).isEqualTo(40);
         assertThat(Abilities.amountAtDistance(12, 166.665)).isEqualTo(6);
         assertThat(Abilities.amountAtDistance(12, 400)).isEqualTo(4);
         assertThat(Abilities.amountAtDistance(14, 45)).isEqualTo(27.5);
@@ -60,7 +61,7 @@ class AbilitiesTest {
                 .filter(entry -> entry.getValue().charges() > 0)
                 .map(entry -> entry.getKey())
                 .toList())
-                .containsExactlyInAnyOrder(3, 5, 12);
+                .containsExactlyInAnyOrder(12);
         assertThat(Abilities.definition(16).charges()).isZero();
         assertThat(Abilities.definition(17).charges()).isZero();
     }
@@ -73,13 +74,16 @@ class AbilitiesTest {
     }
 
     @Test
-    void fireGunUsesHalfSecondActiveAndRecoveryWindowsWithoutChangingReload() {
-        assertThat(Abilities.definition(3).activeMs()).isEqualTo(500);
-        assertThat(Abilities.cooldownMs(3)).isEqualTo(1_000);
-        assertThat(Abilities.definition(3).charges()).isEqualTo(6);
-        assertThat(Abilities.definition(3).rechargeMs()).isEqualTo(5_000);
-        assertThat(Abilities.cooldownMs(5)).isEqualTo(300);
-        assertThat(Abilities.definition(5).rechargeMs()).isEqualTo(5_000);
+    void sniperAndFireballHaveNoAmmoAndPistolKeepsItsReload() {
+        assertThat(Abilities.windupMs(3)).isEqualTo(900);
+        assertThat(Abilities.definition(3).activeMs()).isEqualTo(200);
+        assertThat(Abilities.cooldownMs(3)).isEqualTo(9_000);
+        assertThat(Abilities.definition(3).charges()).isZero();
+        assertThat(Abilities.definition(3).resourceModel()).isEqualTo(Abilities.ResourceModel.NONE);
+        assertThat(Abilities.cooldownMs(5)).isEqualTo(5_500);
+        assertThat(Abilities.definition(5).charges()).isZero();
+        assertThat(Abilities.definition(5).rechargeMs()).isZero();
+        assertThat(Abilities.definition(5).resourceModel()).isEqualTo(Abilities.ResourceModel.NONE);
         assertThat(Abilities.definition(12).charges()).isEqualTo(10);
         assertThat(Abilities.definition(12).rechargeMs()).isEqualTo(3_000);
         assertThat(Abilities.definition(12).resourceModel())
@@ -103,7 +107,7 @@ class AbilitiesTest {
         assertThat(Abilities.definition(6).activeMs()).isEqualTo(100);
         assertThat(Abilities.range(6)).isEqualTo(184);
         assertThat(Abilities.stat(6, "hitboxWidth", 0)).isEqualTo(80);
-        assertThat(Abilities.stat(3, "hitboxWidth", 0)).isEqualTo(5);
+        assertThat(Abilities.stat(3, "hitboxWidth", 0)).isEqualTo(6);
         assertThat(Abilities.definition(9).damage()).isEqualTo(20);
         assertThat(Abilities.windupMs(9)).isEqualTo(1_000);
         assertThat(Abilities.stat(9, "hitboxWidth", 0)).isEqualTo(5);
@@ -175,20 +179,21 @@ class AbilitiesTest {
     }
 
     @Test
-    void dashUsesTheLongerRequestedRecoveryWindow() {
-        assertThat(Abilities.cooldownMs(19)).isEqualTo(1_800);
+    void dashHasNoFixedCooldownAndItsActiveWindowIsUnchanged() {
+        // Dash costs stamina and waits out a gap (MovementConfig) instead of a cooldown.
+        assertThat(Abilities.cooldownMs(19)).isZero();
         assertThat(Abilities.definition(19).activeMs()).isEqualTo(200);
     }
 
     @Test
     void effectiveActionLocksMatchTheBrowserTimingFallbacks() {
         int[][] expectedActiveMs = {
-                {1, 400}, {3, 500}, {4, 1}, {5, 500}, {6, 100}, {7, 400},
+                {1, 300}, {3, 200}, {4, 1}, {5, 500}, {6, 100}, {7, 400},
                 {8, 500}, {9, 300}, {10, 300}, {11, 300}, {12, 300}, {13, 300},
                 {14, 1_000}, {15, 2_000}, {16, 0}, {17, 300}, {18, 500}, {19, 200},
                 {20, 200}, {21, 300}, {22, 0}, {23, 0}, {24, 300}, {25, 300},
                 {26, 300}, {27, 300}, {28, 300}, {29, 300}, {30, 300}, {31, 300},
-                {32, 300}, {33, 0}, {34, 200},
+                {32, 300}, {33, 0}, {34, 200}, {35, 300}, {36, 300}, {37, 300},
         };
         for (int[] expected : expectedActiveMs) {
             assertThat(Abilities.definition(expected[0]).activeMs())

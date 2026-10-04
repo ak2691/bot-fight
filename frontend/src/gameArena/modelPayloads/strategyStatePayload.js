@@ -2,6 +2,7 @@ import {
     BASE_BOT_HP,
 } from "./arenaConstants.js";
 import { toSimulationBotShape } from "./arenaShapes.js";
+import { botFastTurning, botSprinting, botStamina } from "../gameconfig/StaminaSystem.js";
 import { isClosingZone } from "../ecs/entities/ClosingZoneSystem.js";
 import { truncateToNumberPrecision } from "../botlogic/code/configuration/constants.js";
 import { normalizeStatusEffect, statusEffectsFor } from "../ecs/contracts/StatusContracts.js";
@@ -149,14 +150,45 @@ function botPayload(shape, selectedLoadout, type = "model", ownerId = shape?.id,
         combatLoadout,
         matchElapsedMs: Math.max(0, Number(shape.matchElapsedMs ?? 0)),
         customVariables: { ...(shape.customVariables ?? {}) },
+        chainStack: (shape.chainStack ?? []).map((frame) => ({ ...frame, path: [...frame.path], loops: frame.loops.map((loop) => ({ ...loop })) })),
         abilityCooldowns: { ...(shape.abilityCooldowns ?? {}) },
         abilityPendingCooldownMs: { ...(shape.abilityPendingCooldownMs ?? {}) },
         abilityCharges: { ...(shape.abilityCharges ?? {}) },
         abilityRechargeMs: { ...(shape.abilityRechargeMs ?? {}) },
         abilityActiveMs: { ...(shape.abilityActiveMs ?? {}) },
+        abilityLastHitAgeMs: { ...(shape.abilityLastHitAgeMs ?? {}) },
         preparingAbility: shape.preparingAbility ?? null,
         preparingMs: Math.round(shape.preparingMs ?? 0),
+        ...staminaPayload(shape),
+        ...displacementPayload(shape),
         slot: shape.slot,
+    };
+}
+
+/** Stamina state for conditions: the bot's stamina, lockout timers and Dash gap. */
+function staminaPayload(shape) {
+    return {
+        stamina: botStamina(shape),
+        staminaRegenDelayMs: Math.max(0, Math.round(Number(shape.staminaRegenDelayMs) || 0)),
+        exhaustedMs: Math.max(0, Math.round(Number(shape.exhaustedMs) || 0)),
+        dashGapMs: Math.max(0, Math.round(Number(shape.dashGapMs) || 0)),
+        sprinting: botSprinting(shape),
+        fastTurning: botFastTurning(shape),
+    };
+}
+
+/**
+ * Last-tick displacement used by Is Moving and Approach Angle. It is the position change
+ * since the start of the previous tick, so knockback, pulls and dashes count as movement.
+ * Shapes without a recorded start report no displacement and fall back to velocity.
+ */
+function displacementPayload(shape) {
+    const startX = Number(shape.movementStartX);
+    const startY = Number(shape.movementStartY);
+    if (!Number.isFinite(startX) || !Number.isFinite(startY)) return {};
+    return {
+        displacementX: truncateToNumberPrecision(Number(shape.x ?? 0) - startX),
+        displacementY: truncateToNumberPrecision(Number(shape.y ?? 0) - startY),
     };
 }
 
@@ -213,6 +245,7 @@ function objectPayload(shape, actorId, actorShape, botShapes) {
         abilityActiveMs: { ...(shape.abilityActiveMs ?? {}) },
         preparingAbility: shape.preparingAbility ?? null,
         preparingMs: Math.round(shape.preparingMs ?? 0),
+        ...displacementPayload(shape),
         slot: shape.slot,
     };
 }

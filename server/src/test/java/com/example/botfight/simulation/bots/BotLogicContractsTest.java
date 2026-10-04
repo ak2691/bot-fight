@@ -141,15 +141,18 @@ class BotLogicContractsTest {
                 .containsExactlyInAnyOrderElementsOf(List.of(
                         "selectable.distance", "selectable.hp", "selectable.damageTakenLastTick", "selectable.hpNetChangeLastTick",
                         "selectable.x", "selectable.y", "selectable.alive", "selectable.absoluteBearing", "selectable.movementDirection",
-                        "selectable.speed", "selectable.relativeBearing", "selectable.facing", "selectable.count", "selectable.age",
+                        "selectable.speed", "selectable.approachAngle", "selectable.moving", "bot.anyAbilityPreparing",
+                        "selectable.relativeBearing", "selectable.facing", "selectable.count", "selectable.age",
                         "selectable.edgeDistance", "selectable.dangerZoneEdgeDistance", "selectable.exists",
                         "bot.selectedAbilityReady", "bot.selectedAbilityActive", "bot.selectedAbilityOnCooldown",
-                        "bot.selectedAbilityActiveMs", "bot.selectedAbilityCooldownMs", "bot.selectedAbilityCharges",
-                        "bot.selectedAbilityPreparing", "bot.selectedAbilityPreparationMs",
-                        "bot.selectedStatusEffectActive", "bot.selectedStatusEffectDurationMs"));
+                        "bot.selectedAbilityActiveMs", "bot.selectedAbilityCooldownMs", "bot.selectedAbilitySinceHit", "bot.selectedAbilityCharges",
+                        "bot.selectedAbilityPreparing", "bot.selectedAbilityPreparationMs", "bot.selectedAbilityBaseRange",
+                        "bot.selectedStatusEffectActive", "bot.selectedStatusEffectDurationMs",
+                        "bot.stamina", "bot.exhausted", "bot.sprinting", "bot.fastTurning"));
         for (String variable : List.of(
                 "selectable.hp", "selectable.damageTakenLastTick", "selectable.hpNetChangeLastTick", "selectable.x",
                 "selectable.y", "selectable.alive", "selectable.movementDirection", "selectable.speed",
+                "selectable.moving",
                 "selectable.edgeDistance", "selectable.dangerZoneEdgeDistance")) {
             assertSingle(variable);
         }
@@ -157,15 +160,21 @@ class BotLogicContractsTest {
             assertPair(variable, Set.of(BotLogicContracts.SelectableIdentity.FACING), Set.of());
         }
         assertPair("selectable.distance", Set.of(), Set.of());
+        assertPair("selectable.approachAngle", Set.of(), Set.of());
+        assertThat(BotLogicContracts.defaultSelectable1ForVariable(BotLogicContracts.variableContract("selectable.approachAngle")))
+                .isEqualTo(BotLogicContracts.SELECTABLE_OPPONENT);
+        assertThat(BotLogicContracts.defaultSelectable2ForVariable(BotLogicContracts.variableContract("selectable.approachAngle")))
+                .isEqualTo("my_bot");
         assertSingle("selectable.facing", BotLogicContracts.SelectableIdentity.FACING);
         for (String variable : List.of("selectable.count", "selectable.age", "selectable.exists")) {
             assertSingle(variable, BotLogicContracts.SelectableIdentity.ABILITY_ENTITY);
         }
         for (String variable : List.of(
                 "bot.selectedAbilityReady", "bot.selectedAbilityActive", "bot.selectedAbilityOnCooldown",
-                "bot.selectedAbilityActiveMs", "bot.selectedAbilityCooldownMs", "bot.selectedAbilityCharges",
-                "bot.selectedAbilityPreparing", "bot.selectedAbilityPreparationMs",
-                "bot.selectedStatusEffectActive", "bot.selectedStatusEffectDurationMs")) {
+                "bot.selectedAbilityActiveMs", "bot.selectedAbilityCooldownMs", "bot.selectedAbilitySinceHit", "bot.selectedAbilityCharges",
+                "bot.selectedAbilityPreparing", "bot.selectedAbilityPreparationMs", "bot.selectedAbilityBaseRange",
+                "bot.selectedStatusEffectActive", "bot.selectedStatusEffectDurationMs",
+                "bot.anyAbilityPreparing", "bot.stamina", "bot.exhausted", "bot.sprinting", "bot.fastTurning")) {
             assertSingle(variable, BotLogicContracts.SelectableIdentity.BOT);
         }
 

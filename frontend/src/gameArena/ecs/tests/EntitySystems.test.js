@@ -561,6 +561,8 @@ test("Snare Bomb takes damage from a colliding projectile without inheriting its
         y: 100,
         velocityX: 0,
         velocityY: 0,
+        // Half damage keeps the 20 HP Snare alive so the armed phase is still observable.
+        damageMultiplier: 0.5,
     };
 
     const result = tickAbilityEntityWorld({
@@ -573,7 +575,7 @@ test("Snare Bomb takes damage from a colliding projectile without inheriting its
 
     const damagedSnare = result.entities.find((entity) => entity.abilityId === 29);
     assert.equal(damagedSnare?.phaseId, "armed");
-    assert.equal(damagedSnare?.hp, 5);
+    assert.equal(damagedSnare?.hp, 10);
     assert.equal(damagedSnare?.statusEffects, undefined);
     assert.equal(result.entities.some((entity) => entity.abilityId === 5), false);
 
@@ -583,7 +585,7 @@ test("Snare Bomb takes damage from a colliding projectile without inheriting its
         height: 800,
         stepMs: 100,
     }, noDamageCombat);
-    assert.equal(next.entities.find((entity) => entity.abilityId === 29)?.hp, 5);
+    assert.equal(next.entities.find((entity) => entity.abilityId === 29)?.hp, 10);
 });
 
 test("Grenade explosion damages Snare Bomb across the explosion radius", () => {
@@ -1212,7 +1214,7 @@ test("walking starts, turns, and stops immediately without acceleration", () => 
     assert.equal(stopped.movementVelocityY, 0);
 });
 
-test("Dash exposes recovery only after its active phase ends", () => {
+test("Dash costs stamina and starts a gap instead of a cooldown", () => {
     const dashBase = {
         ...base,
         x: 200,
@@ -1226,25 +1228,21 @@ test("Dash exposes recovery only after its active phase ends", () => {
     assert.equal(first.x, 275);
     assert.equal(first.abilityCharges[19], undefined);
     assert.equal(first.abilityCooldowns[19], 0);
-    assert.equal(first.abilityPendingCooldownMs[19], 1800);
+    assert.equal(first.abilityPendingCooldownMs[19], undefined);
+    assert.equal(first.stamina, 70);
+    assert.equal(first.dashGapMs, 300);
 
-    const blocked = applyBotAction({ ...first, dashRemaining: 0 }, action, 100, applyDamageToShape);
+    // The gap blocks another dash even after the active phase and dash travel are over.
+    const blocked = applyBotAction({ ...first, dashRemaining: 0, abilityActiveMs: {} }, action, 100, applyDamageToShape);
     assert.equal(blocked.triggeredAbility, null);
-    assert.equal(blocked.abilityCharges[19], undefined);
+    assert.equal(blocked.stamina, 70);
 
-    const activeBoundary = applyBotAction({ ...first, dashRemaining: 0, abilityCooldowns: { 19: 0 }, abilityPendingCooldownMs: { 19: 100 }, abilityActiveMs: { 19: 100 } }, action, 100, applyDamageToShape);
-    assert.equal(activeBoundary.triggeredAbility, null);
-    assert.equal(activeBoundary.abilityActiveMs[19], 0);
-    assert.equal(activeBoundary.abilityCooldowns[19], 100);
-    assert.equal(activeBoundary.abilityPendingCooldownMs[19], undefined);
-
-    const cooldownEnded = tickBotState(activeBoundary, 100, applyDamageToShape);
-    assert.equal(cooldownEnded.abilityCooldowns[19], 0);
-    const boundary = applyBotAction({ ...cooldownEnded, dashRemaining: 0 }, action, 100, applyDamageToShape);
-    assert.equal(boundary.triggeredAbility, 19);
-    assert.equal(boundary.abilityCooldowns[19], 0);
-    assert.equal(boundary.abilityPendingCooldownMs[19], 1800);
-    assert.equal(boundary.abilityCharges[19], undefined);
+    const ready = applyBotAction({ ...first, dashRemaining: 0, abilityActiveMs: {}, dashGapMs: 0 }, action, 100, applyDamageToShape);
+    assert.equal(ready.triggeredAbility, 19);
+    assert.equal(ready.stamina, 40);
+    assert.equal(ready.dashGapMs, 300);
+    assert.equal(ready.abilityCooldowns[19], 0);
+    assert.equal(ready.abilityPendingCooldownMs[19], undefined);
 });
 
 test("Dash stops when its ability active timer expires and allows later dashes", () => {
@@ -1273,6 +1271,7 @@ test("Dash stops when its ability active timer expires and allows later dashes",
         abilityCooldowns: { 19: 0 },
         abilityPendingCooldownMs: {},
         abilityActiveMs: {},
+        dashGapMs: 0,
     }, action, 100, applyDamageToShape);
     assert.equal(second.triggeredAbility, 19);
     assert.ok(second.abilityActiveMs[19] > 0);
@@ -1304,84 +1303,107 @@ test("entity-backed abilities resolve through normalized entity contracts", () =
     assert.equal(ENTITY_CONTRACTS.grenade, undefined);
 });
 
-test("Gun waits for the next tick after its active boundary", () => {
-    const gun = {
+test("Pistol waits for the next tick after its active boundary", () => {
+    const pistol = {
+        ...base,
+        abilities: [12],
+        abilityCooldowns: { 12: 0 },
+        abilityCharges: { 12: 5 },
+        abilityRechargeMs: { 12: 0 },
+        abilityActiveMs: { 12: 100 },
+    };
+    const action = { dx: 0, dy: 0, dRot: 0, abilityAction: { action: 12 } };
+    const fired = applyBotAction(pistol, action, 100, applyDamageToShape);
+    assert.equal(fired.triggeredAbility, null);
+    assert.equal(fired.abilityCooldowns[12], 0);
+    assert.equal(fired.abilityActiveMs[12], 0);
+    assert.equal(fired.abilityCharges[12], 5);
+
+    const nextTick = applyBotAction(fired, action, 100, applyDamageToShape);
+    assert.equal(nextTick.triggeredAbility, 12);
+    assert.equal(nextTick.abilityCooldowns[12], 0);
+    assert.equal(nextTick.abilityPendingCooldownMs[12], 400);
+    assert.equal(nextTick.abilityActiveMs[12], 300);
+    assert.equal(nextTick.abilityCharges[12], 4);
+    assert.equal(fired.abilityRechargeMs[12], 0);
+});
+
+test("Sniper has no ammo, winds up for 900 ms, then fires with a 200 ms active phase and 9 s cooldown", () => {
+    const sniper = {
         ...base,
         abilities: [3],
         abilityCooldowns: { 3: 0 },
-        abilityCharges: { 3: 5 },
-        abilityRechargeMs: { 3: 0 },
-        abilityActiveMs: { 3: 100 },
+        abilityActiveMs: {},
     };
     const action = { dx: 0, dy: 0, dRot: 0, abilityAction: { action: 3 } };
-    const fired = applyBotAction(gun, action, 100, applyDamageToShape);
-    assert.equal(fired.triggeredAbility, null);
-    assert.equal(fired.abilityCooldowns[3], 0);
-    assert.equal(fired.abilityActiveMs[3], 0);
-    assert.equal(fired.abilityCharges[3], 5);
-
-    const nextTick = applyBotAction(fired, action, 100, applyDamageToShape);
-    assert.equal(nextTick.triggeredAbility, 3);
-    assert.equal(nextTick.abilityCooldowns[3], 0);
-    assert.equal(nextTick.abilityPendingCooldownMs[3], 1000);
-    assert.equal(nextTick.abilityActiveMs[3], 500);
-    assert.equal(nextTick.abilityCharges[3], 4);
-    assert.equal(fired.abilityRechargeMs[3], 0);
+    let bot = sniper;
+    for (let elapsed = 100; elapsed < 900; elapsed += 100) {
+        bot = applyBotAction(bot, action, 100, applyDamageToShape);
+        assert.equal(bot.triggeredAbility ?? null, null, `still aiming at ${elapsed} ms`);
+        assert.equal(bot.preparingAbility, 3);
+        assert.equal(bot.preparingMs, 900 - elapsed);
+    }
+    const fired = applyBotAction(bot, action, 100, applyDamageToShape);
+    assert.equal(fired.triggeredAbility, 3);
+    assert.equal(fired.preparingAbility ?? null, null);
+    assert.equal(fired.abilityActiveMs[3], 200);
+    assert.equal(fired.abilityPendingCooldownMs[3], 9000);
+    assert.equal(fired.abilityCharges?.[3], undefined);
+    assert.equal(fired.abilityRechargeMs?.[3], undefined);
 });
 
-test("Fireball holds recovery through its active window and starts it afterward", () => {
+test("Fireball has no ammo and holds its 5.5 s recovery until its active window ends", () => {
     const bot = {
         ...base,
         abilities: [5],
         abilityCooldowns: { 5: 0 },
-        abilityCharges: { 5: 4 },
-        abilityRechargeMs: { 5: 0 },
         abilityActiveMs: {},
     };
     const fired = applyBotAction(bot, { abilityAction: { action: 5 } }, 100, applyDamageToShape);
     assert.equal(fired.triggeredAbility, 5);
     assert.equal(fired.abilityActiveMs[5], 500);
     assert.equal(fired.abilityCooldowns[5], 0);
-    assert.equal(fired.abilityPendingCooldownMs[5], 300);
+    assert.equal(fired.abilityPendingCooldownMs[5], 5500);
+    assert.equal(fired.abilityCharges?.[5], undefined);
 
     const active = tickBotState(fired, 400, applyDamageToShape);
     assert.equal(active.abilityActiveMs[5], 100);
     assert.equal(active.abilityCooldowns[5], 0);
-    assert.equal(active.abilityPendingCooldownMs[5], 300);
+    assert.equal(active.abilityPendingCooldownMs[5], 5500);
     const recoveryStarted = tickBotState(active, 100, applyDamageToShape);
     assert.equal(recoveryStarted.abilityActiveMs[5], 0);
-    assert.equal(recoveryStarted.abilityCooldowns[5], 300);
+    assert.equal(recoveryStarted.abilityCooldowns[5], 5500);
     assert.equal(recoveryStarted.abilityPendingCooldownMs[5], undefined);
-    const nearlyReady = tickBotState(recoveryStarted, 200, applyDamageToShape);
+    const nearlyReady = tickBotState(recoveryStarted, 5400, applyDamageToShape);
     assert.equal(nearlyReady.abilityCooldowns[5], 100);
     const ready = tickBotState(nearlyReady, 100, applyDamageToShape);
     assert.equal(ready.abilityCooldowns[5], 0);
 });
 
-test("Fireball reload waits until its active window ends after the final charge", () => {
+test("Pistol reload waits until its active window ends after the final charge", () => {
     const bot = {
         ...base,
-        abilities: [5],
-        abilityCooldowns: { 5: 0 },
-        abilityCharges: { 5: 1 },
-        abilityRechargeMs: { 5: 0 },
+        abilities: [12],
+        abilityCooldowns: { 12: 0 },
+        abilityCharges: { 12: 1 },
+        abilityRechargeMs: { 12: 0 },
         abilityActiveMs: {},
     };
-    const fired = applyBotAction(bot, { abilityAction: { action: 5 } }, 100, applyDamageToShape);
-    assert.equal(fired.abilityCharges[5], 0);
-    assert.equal(fired.abilityCooldowns[5], 0);
-    assert.equal(fired.abilityRechargeMs[5], 5_000);
+    const fired = applyBotAction(bot, { abilityAction: { action: 12 } }, 100, applyDamageToShape);
+    assert.equal(fired.abilityCharges[12], 0);
+    assert.equal(fired.abilityCooldowns[12], 0);
+    assert.equal(fired.abilityRechargeMs[12], 3_000);
 
-    const active = tickBotState(fired, 400, applyDamageToShape);
-    assert.equal(active.abilityActiveMs[5], 100);
-    assert.equal(active.abilityRechargeMs[5], 5_000);
+    const active = tickBotState(fired, 200, applyDamageToShape);
+    assert.equal(active.abilityActiveMs[12], 100);
+    assert.equal(active.abilityRechargeMs[12], 3_000);
 
     const activeEnded = tickBotState(active, 100, applyDamageToShape);
-    assert.equal(activeEnded.abilityActiveMs[5], 0);
-    assert.equal(activeEnded.abilityRechargeMs[5], 5_000);
+    assert.equal(activeEnded.abilityActiveMs[12], 0);
+    assert.equal(activeEnded.abilityRechargeMs[12], 3_000);
 
     const reloading = tickBotState(activeEnded, 100, applyDamageToShape);
-    assert.equal(reloading.abilityRechargeMs[5], 4_900);
+    assert.equal(reloading.abilityRechargeMs[12], 2_900);
 });
 
 test("Lock On prepares for two ticks before facing its target and respects its 10 second cooldown", () => {
@@ -1961,8 +1983,8 @@ test("slash keeps its full visual timer through the activation step", () => {
         attackDamageMultiplier: 1, abilities: [1], abilityCooldowns: { 1: 0 }, abilityActiveMs: {},
     };
     const active = applyBotAction(bot, { abilityAction: { action: 1 } }, 100, noDamageCombat.applyDamageToShape);
-    assert.equal(active.abilityActiveMs[1], 400);
-    assert.equal(sweepAngle(active.abilityActiveMs[1], 400, -60, 60), -60);
+    assert.equal(active.abilityActiveMs[1], 300);
+    assert.equal(sweepAngle(active.abilityActiveMs[1], 300, -60, 60), -60);
     assert.equal(active.triggeredAbility, 1);
 });
 
@@ -2070,7 +2092,7 @@ test("direct melee hitboxes sweep across a moving defender", () => {
 });
 
 test("instantaneous rays use their configured finite width for collision", () => {
-    for (const [ability, width] of [[3, 5], [30, 8], [32, 10]]) {
+    for (const [ability, width] of [[3, 6], [30, 8], [32, 10]]) {
         const attacker = { x: 100, y: 100, rotation: 90, size: 60, triggeredAbility: ability, abilities: [ability] };
         const edgeOffset = 30 + width / 2;
         assert.equal(
@@ -2258,29 +2280,30 @@ test("health bar fill is the clamped fraction of current hp", () => {
     assert.equal(healthBarPercent(150, 100), 100);
 });
 
-test("gun activation retains a fading ray for the active duration", () => {
+test("sniper activation retains a fading ray for the active duration", () => {
     const bot = {
         id: "main", slot: 1, x: 100, y: 100, size: 60, rotation: 0,
         hp: 100, maxHp: 100, moveSpeed: 8, attackSpeedMultiplier: 1,
-        attackDamageMultiplier: 1, abilities: [3], abilityCharges: { 3: 10 },
-        abilityCooldowns: { 3: 0 }, abilityRechargeMs: { 3: 0 }, abilityActiveMs: {},
+        attackDamageMultiplier: 1, abilities: [3],
+        abilityCooldowns: { 3: 0 }, abilityActiveMs: {},
     };
-    const active = applyBotAction(bot, { abilityAction: { action: 3 } }, 50, noDamageCombat.applyDamageToShape);
+    // One 900 ms step consumes the whole wind-up and releases the shot.
+    const active = applyBotAction(bot, { abilityAction: { action: 3 } }, 900, noDamageCombat.applyDamageToShape);
     assert.equal(active.triggeredAbility, 3);
-    assert.equal(active.abilityActiveMs[3], 500);
+    assert.equal(active.abilityActiveMs[3], 200);
     assert.equal(abilityActiveOpacity(active, 3), 1);
-    const faded = tickBotState(active, 450, noDamageCombat.applyDamageToShape);
-    assert.equal(abilityActiveOpacity(faded, 3), 0.1);
+    const faded = tickBotState(active, 150, noDamageCombat.applyDamageToShape);
+    assert.equal(abilityActiveOpacity(faded, 3), 0.25);
 });
 
-test("gun collision uses the captured firing pose after the bot moves", () => {
+test("sniper collision uses the captured firing pose after the bot moves", () => {
     const bot = {
         id: "main", slot: 1, x: 100, y: 100, size: 60, rotation: 0,
         hp: 100, maxHp: 100, moveSpeed: 8, attackSpeedMultiplier: 1,
-        attackDamageMultiplier: 1, abilities: [3], abilityCharges: { 3: 10 },
-        abilityCooldowns: { 3: 0 }, abilityRechargeMs: { 3: 0 }, abilityActiveMs: {},
+        attackDamageMultiplier: 1, abilities: [3],
+        abilityCooldowns: { 3: 0 }, abilityActiveMs: {},
     };
-    const fired = applyBotAction(bot, { abilityAction: { action: 3 } }, 50, noDamageCombat.applyDamageToShape);
+    const fired = applyBotAction(bot, { abilityAction: { action: 3 } }, 900, noDamageCombat.applyDamageToShape);
     const movedAfterFiring = { ...fired, x: 1000, y: 100, rotation: 180 };
     assert.equal(abilityHitsTarget(movedAfterFiring, { x: 100, y: 0, size: 20 }), true);
 });
@@ -2355,18 +2378,21 @@ test("death removes every active bot status while preserving preparation and coo
     assert.equal(dead.abilityCooldowns.rail_shot, 5000);
 });
 
-test("an ALWAYS code action reaches the real fire-gun executor", () => {
+test("an ALWAYS code action reaches the real Sniper executor", () => {
     const configuration = {
         version: "bot-logic-tree-v1",
         roots: [{ priority: 1, branches: [{ id: "always-fire", branchType: "if", priority: 1, conditions: [{ type: "always" }], actions: [{ action: 3 }], children: [] }] }],
     };
     const snapshot = {
-        playerModel: { id: "main", x: 100, y: 100, rotation: 0, abilities: [3], abilityCooldowns: { 3: 0 }, abilityCharges: { 3: 6 }, abilityRechargeMs: { 3: 0 }, abilityActiveMs: {} },
+        playerModel: { id: "main", x: 100, y: 100, rotation: 0, abilities: [3], abilityCooldowns: { 3: 0 }, abilityActiveMs: {} },
         objects: [{ id: "opponent-model", type: "opponentModel", x: 500, y: 100, size: 60, hp: 100 }],
     };
     const action = buildDeterministicLogicAction(configuration, snapshot);
     const bot = { id: "main", slot: 1, x: 100, y: 100, size: 60, rotation: 0, hp: 100, maxHp: 100, moveSpeed: 8, attackSpeedMultiplier: 1, attackDamageMultiplier: 1, abilities: [3], abilityCharges: { 3: 6 }, abilityCooldowns: { 3: 0 }, abilityRechargeMs: { 3: 0 }, abilityActiveMs: {} };
-    const result = applyBotAction(bot, action, 50, noDamageCombat.applyDamageToShape);
+    const preparing = applyBotAction(bot, action, 100, noDamageCombat.applyDamageToShape);
+    assert.equal(preparing.preparingAbility, 3);
+    assert.equal(preparing.triggeredAbility, null);
+    const result = applyBotAction(preparing, action, 800, noDamageCombat.applyDamageToShape);
     assert.equal(action.abilityAction.action, 3);
     assert.equal(action.abilityAction.abilityPayload.abilityId, 3);
     assert.equal(action.abilityAction.abilityPayload.activation.capture.gunRayOriginX, "x");
@@ -2374,7 +2400,7 @@ test("an ALWAYS code action reaches the real fire-gun executor", () => {
     assert.equal(action.abilityAction.targetY, undefined);
     assert.equal(action.gun, undefined);
     assert.equal(result.triggeredAbility, 3);
-    assert.equal(result.abilityCharges[3], 5);
+    assert.equal(result.abilityCharges?.[3], undefined);
 });
 
 test("a global ability lock blocks a different ability until the active phase ends", () => {
@@ -2474,7 +2500,7 @@ test("phase entity execution returns net bot damage and removes a colliding fire
     const fireball = { id: "fireball", type: "fireball", ownerId: "owner", x: 120, y: 100, size: 30, velocityX: 5, velocityY: 0, traveled: 0, damageMultiplier: 1 };
     const result = tickAbilityEntityWorld({ bots, entities: [fireball], stepMs: 50, width: 1000, height: 800 }, noDamageCombat);
     assert.equal(result.entities.length, 0);
-    assert.equal(result.bots[1].hp, 85);
+    assert.equal(result.bots[1].hp, 80);
     assert.equal(statusIsActive(result.bots[1], "burn"), true);
 });
 
@@ -2631,8 +2657,9 @@ test("grenade damage falls linearly between its configured endpoints", () => {
 });
 
 test("ranged damage profiles use max and min plateaus around linear falloff", () => {
-    assert.equal(amountAtDistance(3, 100), 15);
-    assert.equal(amountAtDistance(3, 700), 5);
+    // Sniper damage is flat across its whole range.
+    assert.equal(amountAtDistance(3, 100), 40);
+    assert.equal(amountAtDistance(3, 1200), 40);
     assert.equal(amountAtDistance(12, 166.665), 6);
     assert.equal(amountAtDistance(12, 400), 4);
     assert.equal(amountAtDistance(14, 45), 27.5);
@@ -2684,7 +2711,7 @@ test("projectiles pass through dead bots without applying damage or status", () 
     }
     assert.equal(world.bots[1].hp, 0);
     assert.equal(statusRemainingMs(world.bots[1], "burn"), 0);
-    assert.equal(world.bots[2].hp, 85);
+    assert.equal(world.bots[2].hp, 80);
 });
 
 test("fireball lifetime, rather than traveled range, controls projectile removal", () => {
@@ -2789,5 +2816,5 @@ test("another fireball refreshes burn duration without resetting its pending dam
     assert.equal(statusEffectFor(hit.bots[1], "burn").tickMs, 300);
 
     const ticked = tickBotStatus(hit.bots[1], 300, noDamageCombat.applyDamageToShape);
-    assert.equal(ticked.hp, 83);
+    assert.equal(ticked.hp, 78);
 });

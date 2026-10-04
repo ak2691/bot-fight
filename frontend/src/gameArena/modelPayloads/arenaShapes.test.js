@@ -36,10 +36,10 @@ test("practice defaults use the game-facing bottom player and top opponent slots
     assert.deepEqual(PRACTICE_OPPONENT_START, { x: 600, y: 150, rotation: 180 });
 });
 
-test("tutorial reset includes the three standard abilities without Block charges", () => {
+test("tutorial reset includes the two standard abilities without Block charges", () => {
     const [player] = buildTutorialArenaShapes("first-steps");
     const shape = toSimulationBotShape(player);
-    assert.deepEqual(shape.abilities, [19, 20, 34]);
+    assert.deepEqual(shape.abilities, [19, 34]);
     assert.equal(shape.abilityCharges[2], undefined);
 });
 

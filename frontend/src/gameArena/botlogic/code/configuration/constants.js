@@ -25,6 +25,9 @@ export const NUMBER_STEP = 0.1;
 export const CUSTOM_NUMBER_MIN = -99_999;
 export const CUSTOM_NUMBER_MAX = 99_999;
 
+/** Simulation tick length; chain loops and timed steps measure elapsed time in these. */
+export const TICK_MS = 100;
+
 /** Truncates a finite user-facing number toward zero to one decimal place. */
 export function truncateToNumberPrecision(value) {
     const numeric = Number(value);
@@ -36,3 +39,29 @@ export const MAX_CONDITIONS_PER_BRANCH = MAX_TOTAL_CONDITIONS;
 export const MIN_PRIORITY = 1;
 export const MAX_PRIORITY = 10;
 export const STRATEGY_TIME_LIMIT_MS = 15_000;
+
+/** Lead aim: `current` (default) aims at the target where it is now. */
+export const AIM_MODES = Object.freeze({ CURRENT: "current", LEAD: "lead", AUTO: "auto" });
+export const MAX_LEAD_SECONDS = 2;
+export const LEAD_SECONDS_STEP = 0.1;
+
+/** Action chains: bounds shared by normalization, validation and the runtime. */
+export const MAX_CHAINS = 16;
+export const MAX_CHAIN_STEPS = 32;
+export const MAX_REPEAT_COUNT = 20;
+export const CHAIN_MS_STEP = 100;
+export const CHAIN_MS_MAX = 10_000;
+export const MAX_LOOP_NESTING = 2;
+export const MAX_CALL_DEPTH = 3;
+export const MAX_CHAIN_NAME_LENGTH = 25;
+export const CHAIN_ID_PATTERN = /^chain\.[a-z0-9_-]{1,40}$/;
+export const CHAIN_STEP_TYPES = Object.freeze({
+    ACTION: "action",
+    WAIT: "wait",
+    IF: "if",
+    ELSE_IF: "elseIf",
+    REPEAT: "repeat",
+    RUN_CHAIN: "runChain",
+    EXIT_LOOP: "exitLoop",
+    END: "end",
+});

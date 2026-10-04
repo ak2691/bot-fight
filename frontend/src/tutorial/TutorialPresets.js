@@ -34,6 +34,7 @@ const comparePair = (left, comparator, value, selectable1 = BOT_CODE_SELECTABLES
 const move = (direction, selectable = BOT_CODE_SELECTABLES.OPPONENT) => ({ action: BOT_CODE_ACTIONS.MOVE_WALK, movementMode: "target", movementDirection: direction, selectable });
 const moveAbsolute = (direction) => ({ action: BOT_CODE_ACTIONS.MOVE_WALK, movementMode: "absolute", movementDirection: direction });
 const face = (selectable = BOT_CODE_SELECTABLES.OPPONENT) => ({ action: BOT_CODE_ACTIONS.ROTATE_TOWARD_TARGET, selectable });
+const fastFace = (selectable = BOT_CODE_SELECTABLES.OPPONENT) => ({ ...face(selectable), fastTurn: true });
 const ability = (actionId, selectable = BOT_CODE_SELECTABLES.OPPONENT, fields = {}) => ({ action: actionId, selectable, ...fields });
 
 export const TUTORIAL_ACTIONS = Object.freeze({
@@ -45,7 +46,6 @@ export const TUTORIAL_ACTIONS = Object.freeze({
     HEAVY_SLASH: abilityIdFromLegacyName("heavy_slash"),
     WIND_BURST: abilityIdFromLegacyName("wind_burst"),
     DASH: abilityIdFromLegacyName("dash"),
-    LOCK_ON: abilityIdFromLegacyName("lock_on"),
     BASIC_STRIKE: abilityIdFromLegacyName("basic_strike"),
 });
 
@@ -101,7 +101,7 @@ function stepThreeRotationSolution() {
 
 function stepFourSolution() {
     return code([
-        root(1, [branch("lesson-4-lock-on-if", [always()], [ability(TUTORIAL_ACTIONS.LOCK_ON)])]),
+        root(1, [branch("lesson-4-lock-on-if", [always()], [fastFace()])]),
         root(2, [
             branch("lesson-4-close-if", [comparePair("selectable.distance", "gt", 115)], [move(0)]),
         ]),
@@ -155,7 +155,7 @@ function aimingLessonSolution() {
 
 function lockOnLessonSolution() {
     return code([
-        root(1, [branch("tutorial-lock-on-if", [always()], [ability(TUTORIAL_ACTIONS.LOCK_ON)])]),
+        root(1, [branch("tutorial-lock-on-if", [always()], [fastFace()])]),
     ]);
 }
 
@@ -256,8 +256,8 @@ function priorityLessonStartingCode() {
             ability(TUTORIAL_ACTIONS.DASH, BOT_CODE_SELECTABLES.OPPONENT, { movementMode: "target", movementDirection: 90 }),
         ])], "Dash", "tutorial-root-dash"),
         root(2, [branch("lesson-9-lock-on-if", [always()], [
-            ability(TUTORIAL_ACTIONS.LOCK_ON),
-        ])], "Lock On", "tutorial-root-lock-on"),
+            fastFace(),
+        ])], "Fast turn", "tutorial-root-lock-on"),
     ]);
 }
 
@@ -267,26 +267,18 @@ function priorityLessonSolution() {
             ability(TUTORIAL_ACTIONS.DASH, BOT_CODE_SELECTABLES.OPPONENT, { movementMode: "target", movementDirection: 90 }),
         ])], "Dash", "tutorial-root-dash"),
         root(1, [branch("lesson-9-lock-on-if", [always()], [
-            ability(TUTORIAL_ACTIONS.LOCK_ON),
-        ])], "Lock On", "tutorial-root-lock-on"),
+            fastFace(),
+        ])], "Fast turn", "tutorial-root-lock-on"),
     ]);
 }
 
 function orbitingSolution() {
-    const lockOnReady = {
-        type: "expression",
-        left: "bot.selectedAbilityReady",
-        comparator: "eq",
-        right: { type: "boolean", value: true },
-        ability: TUTORIAL_ACTIONS.LOCK_ON,
-    };
     return code([
         root(1, [branch("lesson-9-lock-on-if", [
             comparePair("selectable.relativeBearing", "gte", 90),
-        ], [ability(TUTORIAL_ACTIONS.LOCK_ON)])]),
+        ], [fastFace()])]),
         root(2, [branch("lesson-9-dash-if", [
             comparePair("selectable.distance", "lte", 60),
-            lockOnReady,
         ], [ability(TUTORIAL_ACTIONS.DASH, BOT_CODE_SELECTABLES.OPPONENT, { movementMode: "target", movementDirection: 45 })])]),
         root(3, [
             branch("lesson-9-orbit-close-if", [comparePair("selectable.distance", "lte", 60)], [move(90)]),
@@ -395,7 +387,7 @@ function vulnerabilityTwoSolution() {
         ], [ability(TUTORIAL_ACTIONS.SLASH)])]),
         root(5, [branch("lesson-11-lock-on", [
             comparePair("selectable.relativeBearing", "gt", 90),
-        ], [ability(TUTORIAL_ACTIONS.LOCK_ON)])]),
+        ], [fastFace()])]),
     ]);
 }
 
@@ -463,7 +455,7 @@ function vulnerabilityTwoOpponent() {
         root(1, [branch("opponent-vulnerability-lock-on", [
             comparePair("selectable.distance", "lte", 100),
             comparePair("selectable.relativeBearing", "gt", 45),
-        ], [ability(TUTORIAL_ACTIONS.LOCK_ON)])]),
+        ], [fastFace()])]),
         root(2, [branch("opponent-vulnerability-stun", [comparePair("selectable.distance", "lte", 100)], [ability(TUTORIAL_ACTIONS.STUN)])]),
         root(3, [branch("opponent-vulnerability-heavy-slash", [comparePair("selectable.distance", "lte", 100)], [ability(TUTORIAL_ACTIONS.HEAVY_SLASH)])]),
         root(4, [branch("opponent-vulnerability-face", [always()], [face()])]),
@@ -472,7 +464,7 @@ function vulnerabilityTwoOpponent() {
 
 function comboAndKiteOpponent() {
     return code([
-        root(1, [branch("opponent-combo-lock-on", [comparePair("selectable.distance", "lte", 184), comparePair("selectable.relativeBearing", "gt", 60)], [ability(TUTORIAL_ACTIONS.LOCK_ON)])]),
+        root(1, [branch("opponent-combo-lock-on", [comparePair("selectable.distance", "lte", 184), comparePair("selectable.relativeBearing", "gt", 60)], [fastFace()])]),
         root(2, [branch("opponent-combo-slash", [always()], [ability(TUTORIAL_ACTIONS.SLASH)])]),
         root(3, [branch("opponent-combo-basic-strike", [comparePair("selectable.distance", "lte", 92)], [ability(TUTORIAL_ACTIONS.BASIC_STRIKE)])]),
         root(4, [branch("opponent-combo-pursue", [always()], [move(0)])]),

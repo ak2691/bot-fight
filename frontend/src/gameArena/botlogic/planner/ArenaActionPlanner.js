@@ -1,11 +1,12 @@
 import { angleDelta, clamp } from "../../gameconfig/geometry.js";
-import { ROTATION_STEP_DEG } from "../../modelPayloads/arenaConstants.js";
+import { rotationStepDeg } from "../../gameconfig/StaminaSystem.js";
 import { BOT_CODE_SELECTABLES, resolveAbilityStrategySelectable, selectAbilityStrategyActionPlan } from "../code/BotCode.js";
 import { stateFromPayload } from "../code/runtime/runtimeState.js";
 import { compassDirection, relativeMovementVector, vectorToCompassDegrees } from "./arenaAngles.js";
 import { abilityExecutionPayload } from "../../gameconfig/AbilityExecutionPayload.js";
 import { publicOffsetToInternal, publicPointToInternal } from "../../modelPayloads/arenaCoordinates.js";
 import { BOT_LOGIC_TREE_V1, BOT_LOGIC_TREE_VERSION } from "../code/configuration/constants.js";
+import { leadAimTarget } from "./aimPrediction.js";
 
 /** Builds the action-component payload consumed by ActionExecutionSystem. */
 export function buildDeterministicLogicAction(configuration, stateSnapshot) {
@@ -25,11 +26,11 @@ export function buildDeterministicLogicAction(configuration, stateSnapshot) {
         : facingBlock?.targetMode === "angle"
             ? null
             : facingBlock
-                ? offsetTarget(resolveSelectable(state, facingBlock.selectable ?? movementBlock?.selectable), facingBlock, coordinateVersion)
+                ? offsetTarget(leadAimTarget(resolveSelectable(state, facingBlock.selectable ?? movementBlock?.selectable), facingBlock, state.player), facingBlock, coordinateVersion)
                 : resolveSelectable(state, movementBlock?.selectable);
     const specialTarget = abilityBlockWithTarget?.targetMode === "target"
         || resolvedAbilityPayload?.activation?.targetMode === "target"
-        ? offsetTarget(resolveSelectable(state, abilityBlockWithTarget.selectable), abilityBlockWithTarget, coordinateVersion)
+        ? offsetTarget(leadAimTarget(resolveSelectable(state, abilityBlockWithTarget.selectable), abilityBlockWithTarget, state.player), abilityBlockWithTarget, coordinateVersion)
         : null;
     const configuredAbilityCoordinate = abilityBlockWithTarget?.targetMode === "coordinates"
         || abilityBlockWithTarget?.movementMode === "coordinates"
@@ -39,8 +40,14 @@ export function buildDeterministicLogicAction(configuration, stateSnapshot) {
     return {
         dx: movement.dx,
         dy: movement.dy,
+        ...(movementBlock?.action === "move_walk" && movementBlock.sprint === true ? { sprint: true } : {}),
+        // Cancel is its own channel, independent of the ability lock.
+        ...(plan.cancel?.action === "cancel_windup" ? { cancelWindup: true } : {}),
+        ...(facingBlock?.action === "rotate_toward_enemy" && facingBlock.fastTurn === true ? { fastTurn: true } : {}),
         dRot: facingBlock?.action === "rotate_toward_enemy"
-            ? facingBlock.targetMode === "angle" ? turnTowardAngle(state.player, facingBlock.targetAngle) : turnToward(state.player, facingTarget)
+            ? facingBlock.targetMode === "angle"
+                ? turnTowardAngle(state.player, facingBlock.targetAngle, facingBlock.fastTurn)
+                : turnToward(state.player, facingTarget, facingBlock.fastTurn)
             : 0,
         abilityAction: abilityBlock ? {
             action: abilityBlock.action,
@@ -52,11 +59,14 @@ export function buildDeterministicLogicAction(configuration, stateSnapshot) {
             ...(abilityBlock.phaseFacingMode != null ? { phaseFacingMode: abilityBlock.phaseFacingMode } : {}),
         } : null,
         customVariables: { ...(plan.customVariables ?? state.player.customVariables ?? {}) },
+        // The running chain's call stack persists across ticks like the custom variables.
+        chainStack: plan.chainStack ?? [],
+        runningChain: plan.runningChain ?? null,
     };
 }
 
 export function idleAction() {
-    return { dx: 0, dy: 0, dRot: 0, abilityAction: null, customVariables: {} };
+    return { dx: 0, dy: 0, dRot: 0, abilityAction: null, customVariables: {}, chainStack: [], runningChain: null };
 }
 
 function offsetTarget(target, block, coordinateVersion) {
@@ -108,13 +118,14 @@ function movementVector(block, player, target) {
     return { dx: relative.x, dy: relative.y };
 }
 
-function turnToward(player, target) {
+// The step is the one the executor will really use, so a fast turn never overshoots its target.
+function turnToward(player, target, fastTurn) {
     if (!player || !target) return 0;
     const bearing = vectorToCompassDegrees(target.x - player.x, target.y - player.y);
-    return clamp(angleDelta(player.rotation ?? 0, bearing) / ROTATION_STEP_DEG, -1, 1);
+    return clamp(angleDelta(player.rotation ?? 0, bearing) / rotationStepDeg(player, fastTurn), -1, 1);
 }
 
-function turnTowardAngle(player, targetAngle) {
+function turnTowardAngle(player, targetAngle, fastTurn) {
     if (!player || !Number.isFinite(Number(targetAngle))) return 0;
-    return clamp(angleDelta(player.rotation ?? 0, Number(targetAngle)) / ROTATION_STEP_DEG, -1, 1);
+    return clamp(angleDelta(player.rotation ?? 0, Number(targetAngle)) / rotationStepDeg(player, fastTurn), -1, 1);
 }

@@ -11,7 +11,13 @@ function freezeDefinition(value) {
 const definitions = {
     // `visualPriority` preserves the existing activeBotVisual precedence.
     1: { role: "melee", visualPriority: 0, bodyEffect: { type: "meleeSwing", activeMsFallback: 400 }, activeEffect: noEffect },
-    3: { role: "gun", visualPriority: 1, directEffect: { type: "gunRay" }, activeEffect: { type: "abilityRay", height: 14, muzzleFlash: true } },
+    // Sniper keeps the internal "gun" role/registry name. Wind-up sight line, then a rail_shot ray.
+    3: {
+        role: "gun", visualPriority: 1,
+        windupEffect: { type: "sniperSight", color: 0xef4444, width: 2, alphaMin: 0.35, alphaMax: 0.8, pulses: 3 },
+        directEffect: { type: "gunRay", rayFrames: "rail_shot" },
+        activeEffect: { type: "abilityRay", height: 40, muzzleFlash: true, rayFrames: "rail_shot" },
+    },
     5: { role: "ability-5", visualPriority: 2, activeEffect: noEffect },
     6: { role: "stun", visualPriority: 3, directEffect: { type: "stun" }, activeEffect: noEffect },
     20: { role: "lock-on", visualPriority: 4, marker: { type: "lockOn" }, activeEffect: noEffect },
@@ -30,6 +36,23 @@ const definitions = {
     32: { role: "null-ray", visualPriority: 17, activeEffect: { type: "proceduralRay", color: 0xef4444, fallbackRange: 500, fallbackWidth: 5, muzzleFlash: true } },
     33: { role: "temporal-anchor", visualPriority: 18, activeEffect: { type: "temporalAnchor", periodMs: 100, pulse: 0.18 } },
     34: { role: "dash-strike", visualPriority: 19, activeEffect: { type: "proceduralRay", color: 0xf8fafc, fallbackRange: 80, fallbackWidth: 6 } },
+    // Placeholder weapon visuals: sized from each contract hitbox, driven only by
+    // preparingAbility/preparingMs (wind-up) and abilityActiveMs (active).
+    35: {
+        role: "thrust", visualPriority: 20,
+        windupEffect: { type: "thrustWindup", color: 0xcbd5e1, width: 4, pullbackUnits: 40, lengthUnits: 40 },
+        activeEffect: { type: "thrust", color: 0xcbd5e1, width: 4, tipLength: 14, tipHalfWidth: 8, extendFraction: 0.35, holdFraction: 0.3 },
+    },
+    36: {
+        role: "cleave", visualPriority: 21,
+        windupEffect: { type: "cleaveWindup", color: 0xf59e0b, alphaStart: 0.25, alphaEnd: 0.6, outlineWidth: 3 },
+        activeEffect: { type: "heavySlash", sizingHitboxAbilityId: 36, hitboxSizeScale: 1.92, tint: 0xfde68a },
+    },
+    37: {
+        role: "smash", visualPriority: 22,
+        windupEffect: { type: "smashWindup", color: 0xe2e8f0, alphaStart: 0.15, alphaEnd: 0.75, outlineWidth: 3 },
+        activeEffect: { type: "smash", color: 0xe2e8f0, fillAlpha: 0.5, impactColor: 0xffffff, impactWidth: 6, dustColor: 0x94a3b8, dustPuffs: 3 },
+    },
     21: { role: "temporal-rewind", shapeEffect: { type: "temporalRewindPulse", timerField: "temporalRewindPulseMs", durationMs: 400, xField: "temporalRewindVisualX", fallbackXField: "temporalRewindX", yField: "temporalRewindVisualY", fallbackYField: "temporalRewindY", asset: "temporalRewind", slot: "rewind-pulse", tint: 0xcffafe, width: 110, height: 110 } },
     19: { role: "dash", transitionEffect: "dashSmoke" },
 };
@@ -56,6 +79,12 @@ export function botAbilityPresentationForId(abilityId) {
 
 export function botAbilityPresentationForRole(role) {
     return definitionsByRole[role] ?? null;
+}
+
+/** Wind-up effect metadata for a bot that is currently preparing an ability. */
+export function botAbilityWindupEffect(shape) {
+    const definition = botAbilityPresentationForId(shape?.preparingAbility);
+    return definition?.windupEffect ? { definition, effect: definition.windupEffect } : null;
 }
 
 export function botAbilityActiveMs(shape, definition) {

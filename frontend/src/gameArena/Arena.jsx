@@ -1239,6 +1239,7 @@ export default function Arena({
                     </main>
 
                     <CodingPanel
+                        runtimeBots={shapes}
                         configuration={testingConfiguration}
                         onChange={updateTestingConfiguration}
                         opponentConfiguration={isMatchTesting || tutorialMode || (isPuzzleMode && initialPuzzle?.hideOpponentCode !== false) ? null : opponentTestingConfiguration}

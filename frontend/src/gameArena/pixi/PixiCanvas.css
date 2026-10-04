@@ -142,6 +142,55 @@
 .hud-hp__bar.is-mid span.is-filled { background-color: #f5b301; }
 .hud-hp__bar.is-low span.is-filled { background-color: #ef4444; }
 
+/* Stamina meter under the HP bar: label + value row, then a thin continuous bar. */
+.hud-sta {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.hud-sta__row {
+    display: flex;
+    align-items: baseline;
+    gap: .375rem;
+    color: #8b98a5;
+    font-family: "Chakra Petch", sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.hud-sta__row strong {
+    margin-left: auto;
+    color: #f1f5f9;
+    font-variant-numeric: tabular-nums;
+}
+
+.hud-sta__tag {
+    border-radius: 3px;
+    padding: 0 .3rem;
+    background: rgba(239, 68, 68, .18);
+    color: #ef4444;
+    font-size: 10px;
+    font-style: normal;
+    letter-spacing: .04em;
+}
+
+.hud-sta__bar {
+    height: 3px;
+    overflow: hidden;
+    border-radius: 2px;
+    background-color: #263039;
+}
+
+.hud-sta__bar span {
+    display: block;
+    height: 100%;
+    background-color: #a78bfa;
+}
+
+.hud-sta.is-exhausted .hud-sta__bar span { background-color: #6b5b95; }
+
 /* Up to 9 abilities: 3 base tiles first (secondary), then up to 6 loadout tiles.
    Desktop cards use 3 columns: base in row 1, loadout in rows 2-3. */
 .hud-fighter__abilities {
@@ -319,7 +368,7 @@
     .hud-fighter {
         display: grid;
         grid-template-columns: auto minmax(0, 1fr) auto;
-        grid-template-areas: "face tags abil" "face name abil" "face hp abil";
+        grid-template-areas: "face tags abil" "face name abil" "face hp abil" "face sta abil";
         align-items: center;
         column-gap: .75rem;
         row-gap: .25rem;
@@ -361,6 +410,8 @@
     }
 
     .hud-hp { grid-area: hp; gap: .25rem; }
+    .hud-sta { grid-area: sta; gap: .25rem; }
+    .hud-sta__row { color: #cbd5e1; font-size: .75rem; }
     .hud-hp__row { color: #cbd5e1; font-size: .75rem; }
     .hud-hp__row strong { font-size: .875rem; }
     .hud-hp__bar { gap: 3px; }
@@ -439,3 +490,5 @@
     .hud-ability__face { border-width: 1.5px; border-radius: 7px; }
     .ability-status-icon-button::before { inset: -.375rem -.25rem; }
 }
+
+.hud-fighter__chain { grid-column: 1 / -1; align-self: flex-start; justify-self: start; max-width: 100%; padding: 3px 7px; border: 1px solid #367286; border-radius: 5px; background: #16323a; color: #b9effa; font: 600 12px "Chakra Petch", sans-serif; overflow-wrap: anywhere; }

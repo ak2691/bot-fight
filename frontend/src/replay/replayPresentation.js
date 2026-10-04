@@ -242,6 +242,13 @@ export function hydrateReplayBot(bot, staticBot = null, participant = null) {
         abilityActiveMs: source.abilityActiveMs ?? {},
         abilityCharges: source.abilityCharges ?? {},
         abilityRechargeMs: source.abilityRechargeMs ?? {},
+        // Server replay frames carry integer stamina, plus exhausted, sprinting and fastTurning only while true.
+        stamina: Number.isFinite(Number(source.stamina)) ? Math.trunc(Number(source.stamina)) : 100,
+        exhausted: source.exhausted === true,
+        sprinting: source.sprinting === true,
+        fastTurning: source.fastTurning === true,
+        // An absent field clears the previous frame, including after a seek or handoff.
+        runningChain: source.runningChain ? { ...source.runningChain, path: [...source.runningChain.path] } : null,
     };
 }
 

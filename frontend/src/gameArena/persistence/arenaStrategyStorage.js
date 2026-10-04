@@ -2,6 +2,7 @@ import { BOT_CODE_SELECTABLES, createDefaultAbilityStrategyConfiguration, normal
 import { BOT_LOGIC_TREE_V1, BOT_LOGIC_TREE_VERSION, coordinateVersionFor } from "../botlogic/code/configuration/constants.js";
 import { CODE_EDITOR_GRAPH_VERSION, sanitizeCodeEditorGraph } from "../botlogic/graph/CodeEditorGraph.js";
 import { actionIdsForLoadoutConfiguration } from "../gameconfig/CombatLoadouts.js";
+import { CHAIN_ACTION_TYPES } from "../botlogic/code/contracts/BotLogicContracts.js";
 
 const STRATEGY_STORAGE_PREFIXES = Object.freeze([
     "arena-testing-strategy-v1-",
@@ -58,7 +59,11 @@ export function sanitizeStrategyConfigurationForLoadout(configuration, loadoutId
         ? configuration
         : createDefaultAbilityStrategyConfiguration();
     const source = normalizeAbilityStrategyConfiguration(sourceConfiguration);
-    const allowedActionIds = new Set(actionIdsForLoadoutConfiguration(loadoutId));
+    // Chain controls belong to the brain, independent of equipped abilities.
+    const allowedActionIds = new Set([
+        ...actionIdsForLoadoutConfiguration(loadoutId),
+        ...CHAIN_ACTION_TYPES.map((action) => action.id),
+    ]);
     const sanitizeAction = (action) => {
         if (!action || typeof action !== "object") return action;
         const actionId = allowedActionIds.has(action.action) ? action.action : "none";
@@ -84,8 +89,10 @@ export function sanitizeStrategyConfigurationForLoadout(configuration, loadoutId
         ...source,
         roots: Array.isArray(source.roots) ? source.roots.map((root) => ({
             ...root,
+            ...(Array.isArray(root.actions) ? { actions: root.actions.map(sanitizeAction) } : {}),
             branches: Array.isArray(root?.branches) ? root.branches.map(sanitizeBlock) : [],
         })) : [],
+        ...(Array.isArray(source.orphans) ? { orphans: source.orphans.map((node) => node.kind === "action" ? sanitizeAction(node) : sanitizeBlock(node)) } : {}),
         ...(editorGraph ? { editorGraph } : {}),
     };
 }

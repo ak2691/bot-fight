@@ -9,8 +9,9 @@ import {
 } from "../ecs/contracts/AbilityContracts.js";
 import { entityContractForAbility } from "../ecs/contracts/AbilityContracts.js";
 import { selectableIdentitiesForAbilityEntity } from "../modelPayloads/selectableIdentities.js";
+import { abilityBaseRange } from "./abilityBaseRange.js";
 
-export { ABILITY_STATS };
+export { ABILITY_STATS, abilityBaseRange };
 
 export const BASE_BOT_STATS = Object.freeze({
     maxHp: 150,
@@ -35,20 +36,21 @@ export const ABILITY_TAGS = Object.freeze({
     CHARGES: "charges",
     HP_CHARGES: "hp-charges",
     STATUS_EFFECT: "status-effect",
+    RANGE: "has-range",
 });
 
 const BOT_ABILITY_CATALOG = [
-    { id: 1, round: 1, visualInterpolation: "none", description: "A quick sweeping cut in front of you that hits everything inside the arc.", summary: "Basic slash covering a 120° arc." },
-    { id: 3, round: 1, visualInterpolation: "none", description: "Fires an instant beam that hits the first bot in line. It hits harder up close and weaker from far away.", summary: "Shoots hitscan with distance falloff." },
+    { id: 1, round: 1, category: "weapon", visualInterpolation: "none", description: "A quick sweeping cut in front of you that hits everything inside the arc.", summary: "No wind-up, 8 damage over a 120° arc with a short reach." },
+    { id: 3, round: 1, visualInterpolation: "none", description: "Line up a long-range shot. After a short aiming delay it fires an instant beam that hits the first bot in line for heavy damage. You can keep turning while you aim.", summary: "Hitscan with a 900 ms wind-up, 1200 range and flat 40 damage." },
     { id: 4, round: 1, visualInterpolation: "linear", description: "Throw an explosive that blows up when it hits something, or after a short delay. Damage is highest at the centre of the blast.", summary: "An explosive projectile that triggers on hit or after some duration." },
-    { id: 5, round: 1, visualInterpolation: "linear", description: "Hurl a ball of fire that damages whoever it hits and sets them burning.", summary: "Projectile that deals damage and applies a burn effect." },
+    { id: 5, round: 1, visualInterpolation: "linear", description: "Hurl a large ball of fire that damages whoever it hits and sets them burning.", summary: "A large projectile with a 5.5 second cooldown that deals 20 damage and applies a burn effect." },
     { id: 6, round: 2, visualInterpolation: "none", description: "A short-range strike that hurts the target and freezes them in place for a moment.", summary: "Short-ranged stun." },
     { id: 7, round: 1, visualInterpolation: "none", description: "A slow, wide swing that hits hard and causes bleeding.", summary: "A slash with preparation time that deals damage and applies a bleed effect." },
     { id: 8, round: 2, visualInterpolation: "none", description: "A burst around you that damages nearby bots and shoves them away.", summary: "Quick burst that deals damage and knocks opponents away." },
     { id: 9, round: 1, visualInterpolation: "none", description: "Charge up a shot that damages the target and slows them down.", summary: "Charge a 20-damage shot that slows its target for 3 seconds." },
     { id: 10, round: 1, visualInterpolation: "none", description: "Stand still for a moment to restore some of your health.", summary: "Channel briefly to restore 25 HP." },
     { id: 11, round: 1, visualInterpolation: "linear", description: "Drop a mine that stays on the arena and hurts any bot that gets close. Enemies can destroy it.", summary: "Place one visible, destructible proximity trap." },
-    { id: 12, round: 1, visualInterpolation: "none", description: "A fast-firing beam with lighter damage than the Gun. It hits harder up close.", summary: "Shoots hitscan shot with distance falloff. Faster version of gun but less damage." },
+    { id: 12, round: 1, visualInterpolation: "none", description: "A fast-firing beam with lighter damage than the Sniper. It hits harder up close.", summary: "Shoots hitscan shot with distance falloff. Faster than the Sniper but far less damage." },
     { id: 13, round: 2, visualInterpolation: "none", description: "Charge a powerful long beam that damages the target and shocks them.", summary: "Charge a strong beam that shocks its target." },
     { id: 14, round: 2, visualInterpolation: "linear", description: "Throw a grenade that drags bots toward it before it blows up.", summary: "Spawns a gravitational pull zone and explodes after some time." },
     { id: 15, round: 2, visualInterpolation: "linear", description: "Fire a pulse that stops the target from using abilities for a while.", summary: "Silences opponents on hit." },
@@ -71,6 +73,10 @@ const BOT_ABILITY_CATALOG = [
     { id: 32, round: 2, visualInterpolation: "none", description: "Fire a beam that damages the target and heals you for the damage it deals.", summary: "Fire a lifesteal beam." },
     { id: 33, round: 3, visualInterpolation: "none", description: "Recover faster for a while, so all your abilities come back sooner.", summary: "Reduces cooldown time of all abilities temporarily." },
     { id: 34, round: 0, standard: true, visualInterpolation: "none", description: "A quick, short-range hit you can slip in between other attacks.", summary: "A quick melee attack." },
+    // Weapons are never match-draft offers (round 0, not standard); Slash alone stays in the tier 1 pool.
+    { id: 35, round: 0, category: "weapon", visualInterpolation: "none", description: "A thin, straight stab with the longest reach of any weapon. It only connects if you are facing the target.", summary: "10 damage along a narrow 190-unit line after a short wind-up." },
+    { id: 36, round: 0, category: "weapon", visualInterpolation: "none", description: "A slow, wide swing that hits harder than any other weapon. The long wind-up gives opponents time to dodge.", summary: "15 damage over a 160° arc after a 500 ms wind-up." },
+    { id: 37, round: 0, category: "weapon", visualInterpolation: "none", description: "A boxy overhead blow that hurts and shoves the target away from you.", summary: "11 damage and 120 knockback in a wide rectangle after a short wind-up." },
 ];
 
 const CATALOGUE_ENTITY_TAGS = new Set(["projectile", "zone", "trap", "summon"]);
@@ -133,6 +139,8 @@ function abilityCapabilities(ability) {
         if (stats.chargeType === "hp") catalogueTags.add(ABILITY_TAGS.HP_CHARGES);
     }
     const tags = new Set([identity.type, ...catalogueTags]);
+    if (ability.category === "weapon") tags.add("weapon");
+    if (abilityBaseRange(ability.id) != null) tags.add(ABILITY_TAGS.RANGE);
     if (stats.windupMs) tags.add("preparation");
     if (stats.durationMs) tags.add("duration");
     tags.add(ability.visualInterpolation === VISUAL_INTERPOLATION.LINEAR ? "interpolated-visual" : "instant-visual");
@@ -143,6 +151,9 @@ function abilityCapabilities(ability) {
         name: identity.name,
         label: identity.label,
         kind: identity.type,
+        category: ability.category ?? "ability",
+        actionLabel: `${ability.category === "weapon" ? "Weapon" : "Ability"}: ${identity.label}`,
+        catalogueLabel: ability.category === "weapon" ? `Weapon: ${identity.label}` : identity.label,
         ...entityMetadata,
         selectableIdentities,
         stats: Object.freeze({ ...stats }),
@@ -172,10 +183,13 @@ function phaseCatalogueTag(abilityId, contract, entityCategory) {
 
 /** Full runtime metadata, including standard abilities that are not loadout choices. */
 export const ALL_ABILITY_DEFINITIONS = Object.freeze(BOT_ABILITY_CATALOG.map(abilityCapabilities));
-export const STANDARD_ABILITY_IDS = Object.freeze([19, 20, 34]);
+export const STANDARD_ABILITY_IDS = Object.freeze([19, 34]);
 const STANDARD_ABILITY_SET = new Set(STANDARD_ABILITY_IDS);
+/** Lock On left the base kit and is not offered anywhere; its definitions stay so old replays and brains still resolve. */
+export const RETIRED_ABILITY_IDS = Object.freeze([20]);
+const RETIRED_ABILITY_SET = new Set(RETIRED_ABILITY_IDS);
 /** Selectable/configurable ability catalog. Standard abilities are granted separately. */
-export const BOT_ABILITIES = Object.freeze(ALL_ABILITY_DEFINITIONS.filter(({ id }) => !STANDARD_ABILITY_SET.has(id)));
+export const BOT_ABILITIES = Object.freeze(ALL_ABILITY_DEFINITIONS.filter(({ id }) => !STANDARD_ABILITY_SET.has(id) && !RETIRED_ABILITY_SET.has(id)));
 export const SELECTABLE_BOT_ABILITIES = BOT_ABILITIES;
 
 const STATUS_EFFECT_LABELS = Object.freeze({
@@ -257,7 +271,7 @@ export function actionIdsForSandboxLoadout(loadout) {
     ];
 }
 
-const ABILITY_CODES = Object.freeze({ 1: "s", 3: "g", 4: "r", 5: "f", 6: "t", 7: "h", 8: "u", 9: "c", 10: "e", 11: "m", 12: "p", 13: "R", 14: "G", 15: "S", 16: "A", 17: "H", 18: "T", 21: "w", 22: "o", 23: "a", 24: "n", 25: "P", 26: "F", 27: "Q", 28: "v", 29: "k", 30: "D", 31: "d", 32: "L", 33: "O" });
+const ABILITY_CODES = Object.freeze({ 1: "s", 3: "g", 4: "r", 5: "f", 6: "t", 7: "h", 8: "u", 9: "c", 10: "e", 11: "m", 12: "p", 13: "R", 14: "G", 15: "S", 16: "A", 17: "H", 18: "T", 21: "w", 22: "o", 23: "a", 24: "n", 25: "P", 26: "F", 27: "Q", 28: "v", 29: "k", 30: "D", 31: "d", 32: "L", 33: "O", 35: "x", 36: "y", 37: "z" });
 const ABILITY_BY_CODE = Object.freeze(Object.fromEntries(Object.entries(ABILITY_CODES).map(([id, code]) => [code, id])));
 
 export function encodeBotLoadout(loadout) {

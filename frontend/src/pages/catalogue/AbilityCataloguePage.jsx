@@ -25,6 +25,9 @@ import {
 } from "./abilityTypeTags.js";
 
 const ROUNDS = [0, 1, 2, 3];
+const WEAPONS_SECTION = "weapons";
+const SECTION_KEYS = [WEAPONS_SECTION, ...ROUNDS];
+const sectionOf = (ability) => (ability.category === "weapon" ? WEAPONS_SECTION : ability.round);
 
 const ABILITY_TYPE_GUIDE = Object.freeze([
     {
@@ -59,8 +62,8 @@ const ABILITY_TYPE_GUIDE = Object.freeze([
     },
     {
         label: "Summon",
-        alias: "Logical Entity",
-        description: "The ability creates a logical entity that persists in the arena for some duration.",
+        alias: "Logical object",
+        description: "The ability creates a logical object that persists in the arena for some duration.",
     },
     {
         label: "Zone",
@@ -69,8 +72,8 @@ const ABILITY_TYPE_GUIDE = Object.freeze([
     },
     {
         label: "Trap",
-        alias: "Triggered entity",
-        description: "The ability creates an entity that persists until the end of its lifetime or some specific condition.",
+        alias: "Triggered object",
+        description: "The ability creates an object that persists until the end of its lifetime or some specific condition.",
     },
 ]);
 
@@ -215,10 +218,10 @@ export function AbilityModal({
                     <div className="relative flex items-start justify-between gap-4">
                         <div className="min-w-0 max-w-[34rem]">
                             <div className="flex flex-wrap gap-1.5 text-[11px] font-semibold">
-                                <span className="rounded border border-cyan-400/40 bg-cyan-500/10 px-1.5 py-0.5 text-cyan-200">{ability.standard ? "Standard" : `Round ${ability.round}`}</span>
+                                <span className="rounded border border-cyan-400/40 bg-cyan-500/10 px-1.5 py-0.5 text-cyan-200">{ability.category === "weapon" ? "Weapon" : ability.standard ? "Standard" : `Round ${ability.round}`}</span>
                                 {types.map((type) => <span key={type} className={`rounded border px-1.5 py-0.5 ${typeTagClass(type)}`}>{type}</span>)}
                             </div>
-                            <h2 id="ability-modal-title" className="mt-2 font-display text-3xl font-bold text-white sm:text-4xl">{ability.label}</h2>
+                            <h2 id="ability-modal-title" className="mt-2 font-display text-3xl font-bold text-white sm:text-4xl">{ability.catalogueLabel ?? ability.label}</h2>
                             <p className="mt-2 text-sm leading-6 text-slate-300">{description}</p>
                             {testButton && <div className="mt-4 max-sm:hidden">{testButton}</div>}
                         </div>
@@ -370,6 +373,7 @@ export function EffectModal({
 }
 
 const SECTION_SUBTITLES = Object.freeze({
+    [WEAPONS_SECTION]: "equipped in the practice room",
     0: "on every bot",
     1: "offered in the first draft",
     2: "offered in the second draft",
@@ -377,6 +381,7 @@ const SECTION_SUBTITLES = Object.freeze({
 });
 
 const CATALOGUE_CHIPS = Object.freeze([
+    { id: "round-weapons-abilities", label: "Weapons" },
     { id: "round-0-abilities", label: "Standard" },
     { id: "round-1-abilities", label: "Round 1" },
     { id: "round-2-abilities", label: "Round 2" },
@@ -399,7 +404,7 @@ export default function AbilityCataloguePage() {
     const visibleChips = CATALOGUE_CHIPS.filter((chip) => (
         chip.id === "combat-effects"
             ? true
-            : visibleAbilities.some((ability) => `round-${ability.round}-abilities` === chip.id)
+            : visibleAbilities.some((ability) => `round-${sectionOf(ability)}-abilities` === chip.id)
     ));
     const { activeId, scrollToSection } = useSectionSpy(visibleChips.map((chip) => chip.id));
 
@@ -452,15 +457,16 @@ export default function AbilityCataloguePage() {
             <div className="mx-auto max-w-7xl space-y-10 px-5 pb-12 pt-4 sm:px-8 sm:pb-16">
                 {normalizedSearch && <p className="catalogue-results" role="status">{visibleAbilities.length} {visibleAbilities.length === 1 ? "ability" : "abilities"} found</p>}
                 {normalizedSearch && visibleAbilities.length === 0 && <p className="condition-empty">No abilities match that search. Try a name or ability type.</p>}
-                {ROUNDS.map((round) => {
-                    const roundAbilities = visibleAbilities.filter((ability) => ability.round === round);
+                {SECTION_KEYS.map((round) => {
+                    const roundAbilities = visibleAbilities.filter((ability) => sectionOf(ability) === round);
                     if (!roundAbilities.length) return null;
                     const standard = round === 0;
+                    const weapons = round === WEAPONS_SECTION;
                     return (
                         <section id={`round-${round}-abilities`} key={round} aria-labelledby={`round-${round}-title`}>
                             <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                                 <h2 id={`round-${round}-title`} className="font-display text-xl font-bold text-white">
-                                    {standard ? "Standard" : `Round ${round}`}
+                                    {weapons ? "Weapons" : standard ? "Standard" : `Round ${round}`}
                                 </h2>
                                 <span className="text-xs text-slate-500">{roundAbilities.length} abilities · {SECTION_SUBTITLES[round]}</span>
                             </div>
@@ -474,7 +480,7 @@ export default function AbilityCataloguePage() {
                                             key={ability.id}
                                             type="button"
                                             onClick={() => selectAbility(ability)}
-                                            className={`ability-card ability-card-${round} group relative min-h-48 overflow-hidden rounded-xl border p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-200 ${isSelected ? "ability-card-selected" : ""}`}
+                                            className={`ability-card ability-card-${weapons ? 0 : round} group relative min-h-48 overflow-hidden rounded-xl border p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-200 ${isSelected ? "ability-card-selected" : ""}`}
                                             aria-label={`View ${ability.label} stats`}
                                             aria-pressed={isSelected}
                                         >
@@ -491,7 +497,7 @@ export default function AbilityCataloguePage() {
                                             )}
                                             <span className="ability-card-gradient" aria-hidden="true" />
                                             <span className="ability-card-content absolute inset-x-0 bottom-0 border-t border-white/10 px-4 py-3">
-                                                <span className="block font-display text-base font-bold text-white">{ability.label}</span>
+                                                <span className="block font-display text-base font-bold text-white">{ability.catalogueLabel ?? ability.label}</span>
                                                 <span className="mt-1.5 flex flex-wrap gap-1.5">
                                                     {abilityTypeLabels(ability).map((type) => (
                                                         <span key={type} className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${typeTagClass(type)}`}>

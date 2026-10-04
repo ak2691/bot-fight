@@ -1,7 +1,7 @@
 /** Canonical ability map. Keys are permanent IDs, never array positions. */
 export const ABILITIES = Object.freeze({
     1: Object.freeze({ id: 1, name: "slash", label: "Slash", type: "ability" }),
-    3: Object.freeze({ id: 3, name: "gun", label: "Gun", type: "ability" }),
+    3: Object.freeze({ id: 3, name: "gun", label: "Sniper", type: "ability" }),
     4: Object.freeze({ id: 4, name: "grenade", label: "Grenade", type: "ability" }),
     5: Object.freeze({ id: 5, name: "fireball", label: "Fireball", type: "ability" }),
     6: Object.freeze({ id: 6, name: "stun", label: "Stun", type: "ability" }),
@@ -33,6 +33,9 @@ export const ABILITIES = Object.freeze({
     32: Object.freeze({ id: 32, name: "vampiric_beam", label: "Vampiric Beam", type: "ability" }),
     33: Object.freeze({ id: 33, name: "overclock", label: "Overclock", type: "ability" }),
     34: Object.freeze({ id: 34, name: "basic_strike", label: "Basic Strike", type: "ability" }),
+    35: Object.freeze({ id: 35, name: "thrust", label: "Thrust", type: "ability" }),
+    36: Object.freeze({ id: 36, name: "cleave", label: "Cleave", type: "ability" }),
+    37: Object.freeze({ id: 37, name: "smash", label: "Smash", type: "ability" }),
 });
 
 const LEGACY_ABILITY_NAME_ALIASES = Object.freeze({

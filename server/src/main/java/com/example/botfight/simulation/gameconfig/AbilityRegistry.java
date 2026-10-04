@@ -56,6 +56,9 @@ public final class AbilityRegistry {
         register(names, 32, "vampiric_beam");
         register(names, 33, "overclock");
         register(names, 34, "basic_strike");
+        register(names, 35, "thrust");
+        register(names, 36, "cleave");
+        register(names, 37, "smash");
         return Map.copyOf(names);
     }
 

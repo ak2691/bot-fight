@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { activeBotVisual, closingZoneDamageOccurred, ENTITY_PRESENTATION_DEFINITIONS, entityCaption, BOT_PRESENTATION_DEFINITIONS, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, grenadeVisualState, isBotShape, LOCK_ON_PRESENTATION, normalizeReplayObstacleShape, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, replayProjectileVelocity, shapeInterpolationMs, shapeWithoutVisualEvent, visualAnimationDescriptorForShape, visualForShape, visualInstanceForShape, visualInstanceIsActive, VISUAL_LIFECYCLES, VISUAL_SPAWN_MODES, visualSizeForShape } from "./pixiVisualState.js";
+import { sniperSightAlpha, sniperSightLength, smashFlashAlpha, thrustLengthFraction, weaponActiveProgress, weaponWindupAlpha, weaponWindupProgress, activeBotVisual, closingZoneDamageOccurred, ENTITY_PRESENTATION_DEFINITIONS, entityCaption, BOT_PRESENTATION_DEFINITIONS, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, grenadeVisualState, isBotShape, LOCK_ON_PRESENTATION, normalizeReplayObstacleShape, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, replayProjectileVelocity, shapeInterpolationMs, shapeWithoutVisualEvent, visualAnimationDescriptorForShape, visualForShape, visualInstanceForShape, visualInstanceIsActive, VISUAL_LIFECYCLES, VISUAL_SPAWN_MODES, visualSizeForShape } from "./pixiVisualState.js";
 import { ABILITY_CONTRACTS, abilityPhase } from "../ecs/contracts/AbilityContracts.js";
 import { REQUIRED_ARENA_PRESENTATION_PATHS } from "./arenaPresentationAssetOwner.js";
 import { hitboxGeometriesForEntity, hitboxGeometryForBot, hitboxGeometryForEntity } from "../gameconfig/hitboxGeometry.js";
@@ -236,10 +236,10 @@ test("entity renderers use the active phase or event visual size", () => {
 });
 
 test("practice hitbox geometry mirrors projectile, explosion, and persistent ability colliders", () => {
-    assert.deepEqual(hitboxGeometryForEntity({ type: "fireball", abilityId: 5, size: 30, velocityX: 10, velocityY: 0 }), {
+    assert.deepEqual(hitboxGeometryForEntity({ type: "fireball", abilityId: 5, size: 60, velocityX: 10, velocityY: 0 }), {
         shape: "rectangle",
-        width: 30,
-        height: 30,
+        width: 64,
+        height: 64,
         rotation: 0,
     });
     [
@@ -312,8 +312,8 @@ test("practice hitbox geometry mirrors direct melee, radial, and hitscan deliver
     });
     assert.equal(ray.shape, "ray");
     assert.equal(ray.abilityId, 3);
-    assert.equal(ray.length, 700);
-    assert.equal(ray.width, 5);
+    assert.equal(ray.length, 1200);
+    assert.equal(ray.width, 6);
     assert.equal(ray.x, 300);
     assert.equal(ray.y, 400);
     assert.equal(ray.rotation, Math.PI / 2);
@@ -720,4 +720,76 @@ test("bot and entity labels derive from calculated snapshot fields", () => {
     assert.equal(entityCaption({ type: "repellerDrone", hp: 31 }), "31.0 HP");
     assert.equal(entityCaption({ type: "snareBomb", hp: 20 }), "20.0 HP");
     assert.equal(entityCaption({ type: "orbitalMarker", fuseMs: 900 }), "");
+});
+
+test("weapon wind-up progress comes from preparingAbility and preparingMs", () => {
+    assert.equal(weaponWindupProgress({ preparingAbility: 36, preparingMs: 450 }, 36, 450), 0);
+    assert.equal(weaponWindupProgress({ preparingAbility: 36, preparingMs: 225 }, 36, 450), 0.5);
+    assert.equal(weaponWindupProgress({ preparingAbility: 36, preparingMs: 0 }, 36, 450), 1);
+    assert.equal(weaponWindupProgress({ preparingAbility: 36, preparingMs: -10 }, 36, 450), 1);
+    assert.equal(weaponWindupProgress({ preparingAbility: 37, preparingMs: 100 }, 36, 450), null);
+    assert.equal(weaponWindupProgress({}, 36, 450), null);
+    assert.equal(weaponWindupProgress({ preparingAbility: 1, preparingMs: 0 }, 1, 0), null);
+});
+
+test("weapon active progress runs from the remaining abilityActiveMs timer", () => {
+    assert.equal(weaponActiveProgress(300, 300), 0);
+    assert.equal(weaponActiveProgress(150, 300), 0.5);
+    assert.equal(weaponActiveProgress(0, 300), 1);
+    assert.equal(weaponActiveProgress(500, 300), 0);
+});
+
+test("Thrust extends over 35%, holds for 30% and retracts over the last 35%", () => {
+    assert.equal(thrustLengthFraction(0), 0);
+    assert.ok(Math.abs(thrustLengthFraction(0.175) - 0.5) < 1e-9);
+    assert.equal(thrustLengthFraction(0.35), 1);
+    assert.equal(thrustLengthFraction(0.5), 1);
+    assert.ok(Math.abs(thrustLengthFraction(0.65) - 1) < 1e-9);
+    assert.ok(Math.abs(thrustLengthFraction(0.825) - 0.5) < 1e-9);
+    assert.equal(thrustLengthFraction(1), 0);
+    assert.equal(thrustLengthFraction(2), 0);
+});
+
+test("Cleave and Smash alpha ramps", () => {
+    assert.equal(weaponWindupAlpha(0, 0.25, 0.6), 0.25);
+    assert.ok(Math.abs(weaponWindupAlpha(1, 0.25, 0.6) - 0.6) < 1e-9);
+    assert.ok(Math.abs(weaponWindupAlpha(0.5, 0.25, 0.6) - 0.425) < 1e-9);
+    assert.equal(smashFlashAlpha(0, 0.5), 0.5);
+    assert.equal(smashFlashAlpha(1, 0.5), 0);
+});
+
+test("weapon active visuals are selected from abilityActiveMs and match replay state", () => {
+    for (const id of [35, 36, 37]) {
+        const live = { hp: 100, abilityActiveMs: { [id]: 200 } };
+        assert.equal(activeBotVisual(live), id);
+        assert.equal(activeBotVisual({ ...live, preparingAbility: id, preparingMs: 100, replayPhase: "playback" }), id);
+        assert.equal(activeBotVisual({ hp: 100, abilityActiveMs: {} }), null);
+    }
+});
+
+test("Sniper sight alpha pulses between 0.35 and 0.8 from wind-up progress alone", () => {
+    assert.ok(Math.abs(sniperSightAlpha(0) - 0.35) < 1e-9);
+    assert.ok(Math.abs(sniperSightAlpha(1 / 6) - 0.8) < 1e-9);
+    assert.ok(Math.abs(sniperSightAlpha(1 / 3) - 0.35) < 1e-9);
+    for (let step = 0; step <= 20; step += 1) {
+        const alpha = sniperSightAlpha(step / 20);
+        assert.ok(alpha >= 0.35 - 1e-9 && alpha <= 0.8 + 1e-9);
+    }
+    assert.equal(sniperSightAlpha(0.37), sniperSightAlpha(0.37));
+});
+
+test("Sniper sight runs to max range or stops at the first bot it would hit", () => {
+    const origin = { x: 100, y: 100 };
+    // Compass 90 faces +x.
+    assert.equal(sniperSightLength(origin, 90, 1200, 6, []), 1200);
+    assert.equal(sniperSightLength(origin, 90, 1200, 6, [{ x: 500, y: 100, size: 60 }]), 367);
+    // Targets behind the bot, or beside the ray beyond the target radius plus half width, are ignored.
+    assert.equal(sniperSightLength(origin, 90, 1200, 6, [{ x: -300, y: 100, size: 60 }]), 1200);
+    assert.equal(sniperSightLength(origin, 90, 1200, 6, [{ x: 500, y: 100 + 34, size: 60 }]), 1200);
+    assert.ok(sniperSightLength(origin, 90, 1200, 6, [{ x: 500, y: 100 + 32, size: 60 }]) < 1200);
+    // The nearest of several bots wins, and out-of-range bots do not extend the line.
+    assert.equal(sniperSightLength(origin, 90, 300, 6, [{ x: 900, y: 100, size: 60 }, { x: 250, y: 100, size: 60 }]), 117);
+    assert.equal(sniperSightLength(origin, 90, 300, 6, [{ x: 900, y: 100, size: 60 }]), 300);
+    // The line follows the facing: rotating to 180 points it along +y.
+    assert.equal(sniperSightLength(origin, 180, 1200, 6, [{ x: 100, y: 400, size: 60 }]), 267);
 });

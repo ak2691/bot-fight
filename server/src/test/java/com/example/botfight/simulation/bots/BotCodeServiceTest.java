@@ -16,12 +16,12 @@ class BotCodeServiceTest {
                 """);
 
         assertThat(service.readAbilities(brain))
-                .containsExactly(19, 20, 34, 7, 13);
+                .containsExactly(19, 34, 7, 13);
     }
 
     @Test
     void missingLoadoutDoesNotGrantClassAbilities() throws Exception {
         assertThat(service.readAbilities(jsonMapper.readTree("{}")))
-                .containsExactly(19, 20, 34);
+                .containsExactly(19, 34);
     }
 }

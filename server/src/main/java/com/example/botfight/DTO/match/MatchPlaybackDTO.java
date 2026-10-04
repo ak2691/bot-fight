@@ -64,7 +64,77 @@ public record MatchPlaybackDTO(
             Double visualOriginY,
             Double visualOriginRotation,
             Double dashDirectionX,
-            Double dashDirectionY) {
+            Double dashDirectionY,
+            Integer stamina,
+            Boolean exhausted,
+            Boolean sprinting,
+            @JsonInclude(JsonInclude.Include.NON_NULL) MatchReplayDTO.RunningChainDTO runningChain,
+            @JsonInclude(JsonInclude.Include.NON_NULL) Boolean fastTurning) {
+        /** Source compatibility for callers without fast-turn state. */
+        public BotStateDTO(UUID userId, String username, int slot, double x, double y, double rotation, double hp, double maxHp, String combatLoadout, List<Integer> abilities, List<StatusEffectState> statusEffects, Map<Integer, Integer> abilityCooldowns, Map<Integer, Integer> abilityActiveMs, Map<Integer, Integer> abilityCharges, Map<Integer, Integer> abilityRechargeMs, Integer triggeredAbility, Integer preparingAbility, int preparingMs, int temporalRewindMs, double temporalRewindX, double temporalRewindY, int temporalRewindPulseMs, int closingZoneDamageCount, int teamNumber, Double abilityTargetX, Double abilityTargetY, Double visualOriginX, Double visualOriginY, Double visualOriginRotation, Double dashDirectionX, Double dashDirectionY, Integer stamina, Boolean exhausted, Boolean sprinting, MatchReplayDTO.RunningChainDTO runningChain) {
+            this(userId, username, slot, x, y, rotation, hp, maxHp, combatLoadout, abilities, statusEffects, abilityCooldowns, abilityActiveMs, abilityCharges, abilityRechargeMs, triggeredAbility, preparingAbility, preparingMs, temporalRewindMs, temporalRewindX, temporalRewindY, temporalRewindPulseMs, closingZoneDamageCount, teamNumber, abilityTargetX, abilityTargetY, visualOriginX, visualOriginY, visualOriginRotation, dashDirectionX, dashDirectionY, stamina, exhausted, sprinting, runningChain, null);
+        }
+
+        /** Source compatibility for replay callers without chain presentation state. */
+        public BotStateDTO(
+            UUID userId,
+            String username,
+            int slot,
+            double x,
+            double y,
+            double rotation,
+            double hp,
+            double maxHp,
+            String combatLoadout,
+            List<Integer> abilities,
+            List<StatusEffectState> statusEffects,
+            Map<Integer, Integer> abilityCooldowns,
+            Map<Integer, Integer> abilityActiveMs,
+            Map<Integer, Integer> abilityCharges,
+            Map<Integer, Integer> abilityRechargeMs,
+            Integer triggeredAbility,
+            Integer preparingAbility,
+            int preparingMs,
+            int temporalRewindMs,
+            double temporalRewindX,
+            double temporalRewindY,
+            int temporalRewindPulseMs,
+            int closingZoneDamageCount,
+            int teamNumber,
+            Double abilityTargetX,
+            Double abilityTargetY,
+            Double visualOriginX,
+            Double visualOriginY,
+            Double visualOriginRotation,
+            Double dashDirectionX,
+            Double dashDirectionY,
+            Integer stamina,
+            Boolean exhausted,
+            Boolean sprinting) {
+            this(userId, username, slot, x, y, rotation, hp, maxHp, combatLoadout, abilities, statusEffects, abilityCooldowns, abilityActiveMs, abilityCharges, abilityRechargeMs, triggeredAbility, preparingAbility, preparingMs, temporalRewindMs, temporalRewindX, temporalRewindY, temporalRewindPulseMs, closingZoneDamageCount, teamNumber, abilityTargetX, abilityTargetY, visualOriginX, visualOriginY, visualOriginRotation, dashDirectionX, dashDirectionY, stamina, exhausted, sprinting, null);
+        }
+
+
+        /** Source compatibility for callers without stamina state. */
+        public BotStateDTO(
+                UUID userId, String username, int slot, double x, double y, double rotation,
+                double hp, double maxHp, String combatLoadout, List<Integer> abilities,
+                List<StatusEffectState> statusEffects, Map<Integer, Integer> abilityCooldowns,
+                Map<Integer, Integer> abilityActiveMs, Map<Integer, Integer> abilityCharges,
+                Map<Integer, Integer> abilityRechargeMs, Integer triggeredAbility,
+                Integer preparingAbility, int preparingMs, int temporalRewindMs,
+                double temporalRewindX, double temporalRewindY, int temporalRewindPulseMs,
+                int closingZoneDamageCount, int teamNumber, Double abilityTargetX,
+                Double abilityTargetY, Double visualOriginX, Double visualOriginY,
+                Double visualOriginRotation, Double dashDirectionX, Double dashDirectionY) {
+            this(userId, username, slot, x, y, rotation, hp, maxHp, combatLoadout,
+                    abilities, statusEffects, abilityCooldowns, abilityActiveMs,
+                    abilityCharges, abilityRechargeMs, triggeredAbility, preparingAbility,
+                    preparingMs, temporalRewindMs, temporalRewindX, temporalRewindY,
+                    temporalRewindPulseMs, closingZoneDamageCount, teamNumber,
+                    abilityTargetX, abilityTargetY, visualOriginX, visualOriginY,
+                    visualOriginRotation, dashDirectionX, dashDirectionY, null, null, null);
+        }
 
         public BotStateDTO(
                 UUID userId, String username, int slot, double x, double y, double rotation,

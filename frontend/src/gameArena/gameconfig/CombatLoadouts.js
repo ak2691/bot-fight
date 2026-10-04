@@ -1,6 +1,6 @@
 import { actionIdsForLoadout, actionIdsForSandboxLoadout, decodeBotLoadout, decodeSandboxLoadout, encodeBotLoadout, DEFAULT_BOT_LOADOUT } from "../loadout/BotLoadout.js";
 
-export const COMMON_ACTION_IDS = Object.freeze(["none", "variable", "move_walk", "rotate_toward_enemy"]);
+export const COMMON_ACTION_IDS = Object.freeze(["none", "variable", "move_walk", "rotate_toward_enemy", "cancel_windup"]);
 
 export const DEFAULT_BOT_CONFIGURATION_ID = encodeBotLoadout(DEFAULT_BOT_LOADOUT);
 export function actionTypesForLoadout(actionTypes, configuration = DEFAULT_BOT_CONFIGURATION_ID) {

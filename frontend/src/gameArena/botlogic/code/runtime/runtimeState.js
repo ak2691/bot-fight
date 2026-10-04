@@ -46,6 +46,7 @@ function botState(source = {}) {
         abilityCharges: abilityMapFromBoundary(source.abilityCharges),
         abilityRechargeMs: abilityMapFromBoundary(source.abilityRechargeMs),
         abilityActiveMs: abilityMapFromBoundary(source.abilityActiveMs),
+        abilityLastHitAgeMs: abilityMapFromBoundary(source.abilityLastHitAgeMs),
         preparingAbility: source.preparingAbility == null ? null : abilityIdFromBoundary(source.preparingAbility),
         preparingMs: Number(source.preparingMs) || 0,
     };

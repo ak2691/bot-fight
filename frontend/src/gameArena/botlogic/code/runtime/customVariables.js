@@ -25,7 +25,10 @@ export function customVariablesWithReferencedActions(configuration) {
         while (knownNames.has(`${CUSTOM_VARIABLE_CONTRACT.DEFAULT_NAME} ${nameIndex}`.toLocaleLowerCase())) nameIndex += 1;
         const name = `${CUSTOM_VARIABLE_CONTRACT.DEFAULT_NAME} ${nameIndex}`;
         knownNames.add(name.toLocaleLowerCase());
-        variables.push({ id, name, valueType, initialValue: valueType === "boolean" ? false : 0 });
+        variables.push({
+            id, name, valueType,
+            initialValue: valueType === "boolean" ? false : 0,
+        });
     };
 
     const visit = (node) => {
@@ -46,6 +49,8 @@ export function customVariablesWithReferencedActions(configuration) {
     };
 
     visit(configuration?.roots);
+    visit(configuration?.chains);
+    visit(configuration?.orphans);
     return variables;
 }
 
@@ -78,6 +83,11 @@ export function prepareCustomVariables(state, definitions) {
     state.customVariableDefinitions = definitions;
     definitions.forEach((definition) => {
         if (!(definition.id in state.player.customVariables)) {
+            state.player.customVariables[definition.id] = definition.initialValue;
+            return;
+        }
+        // A variable whose type changed resets to its default for the new type.
+        if (typeof state.player.customVariables[definition.id] === "object") {
             state.player.customVariables[definition.id] = definition.initialValue;
             return;
         }

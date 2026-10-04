@@ -18,6 +18,24 @@ import { sanitizeStrategyConfigurationForLoadout } from "../../persistence/arena
 import { DEFAULT_BOT_CONFIGURATION_ID } from "../../gameconfig/CombatLoadouts.js";
 import { normalizeAbilityStrategyConfiguration, STATE_VARIABLES } from "../code/BotCode.js";
 
+test("loadout filtering preserves Run chain and Cancel chain through editing and reloading", () => {
+    const source = {
+        version: "bot-logic-tree-v2",
+        roots: [{ branches: [{ conditions: [{ type: "always" }], actions: [
+            { action: "run_chain", chainId: "chain.punish", ifRunning: "replace" },
+        ] }] }],
+        chains: [{ id: "chain.punish", name: "Punish", steps: [{ type: "wait", forMs: 500 }] }],
+    };
+    for (const loadout of [DEFAULT_BOT_CONFIGURATION_ID, "custom:0", "sandbox:0"]) {
+        const clean = sanitizeStrategyConfigurationForLoadout(source, loadout);
+        const reloaded = sanitizeStrategyConfigurationForLoadout(JSON.parse(JSON.stringify(clean)), loadout);
+        assert.deepEqual(reloaded.roots[0].branches[0].actions.map(({ action }) => action), ["run_chain"]);
+        assert.equal(reloaded.roots[0].branches[0].actions[0].chainId, "chain.punish");
+        assert.equal(reloaded.roots[0].branches[0].actions[0].ifRunning, undefined);
+        assert.deepEqual(reloaded.chains, source.chains);
+    }
+});
+
 function configuration(condition, action = { action: "move_walk", movementMode: "target", movementDirection: 0, selectable: "opponent" }) {
     return {
         version: "bot-logic-tree-v1",

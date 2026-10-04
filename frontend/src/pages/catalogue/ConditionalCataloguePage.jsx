@@ -7,6 +7,9 @@ import {
 } from "../../gameArena/botlogic/code/BotCode";
 import { useSectionSpy } from "./useSectionSpy.js";
 
+// Group ids come from the variable contract; this is only how a group reads on the page.
+const GROUP_LABELS = Object.freeze({ "Ability Entity": "Objects" });
+const groupLabel = (group) => GROUP_LABELS[group] ?? group;
 const GROUP_ORDER = ["General", "Entity", "Health & Combat", "Position & Movement", "Abilities & Status", "Movement", "Rotation", "Ability Entity"];
 
 const DESCRIPTIONS = Object.freeze({
@@ -18,16 +21,20 @@ const DESCRIPTIONS = Object.freeze({
     "selectable.x": "The selected entity's horizontal position.",
     "selectable.y": "The selected entity's vertical position.",
     "selectable.alive": "True when the selected entity exists and has HP remaining.",
-    "selectable.absoluteBearing": "The arena heading from the Facing Entity toward the Target, as a signed degree measurement. The first selection must have the facing identity.",
+    "selectable.absoluteBearing": "The arena heading from From toward To, as a signed degree measurement. From must have the facing identity.",
     "selectable.movementDirection": "The selected entity's direction of travel, or 0 when it has no movement direction.",
     "selectable.speed": "The selected entity's movement speed in arena units per tick.",
-    "selectable.relativeBearing": "How far off the first entity's facing direction is from a target entity, absolute coordinate, or absolute angle, from 0 to 180 degrees. Near zero means it is aimed at the target. The first selection must have the facing identity.",
+    "selectable.approachAngle": "The angle between From's movement last tick and the direction from it to To, from 0 to 180 degrees. 0 means it is moving straight toward the target, 180 means it is moving straight away, and 90 means it moved sideways, did not move, or is on top of the target. Pair it with Is Moving.",
+    "selectable.moving": "True when the selected entity moved during the last tick. Walking, dashing and being knocked back all count.",
+    "bot.anyAbilityPreparing": "True while any of the selected bot's abilities is winding up, so you can react to an incoming attack.",
+    "selectable.relativeBearing": "How far off From's facing direction is from To (an entity, a point, or an absolute angle), from 0 to 180 degrees. Near zero means it is aimed at the target. From must have the facing identity.",
     "selectable.facing": "The selected entity's facing direction. Only entities with the facing identity are available.",
-    "selectable.count": "Number of matching ability entities of the selected type.",
-    "selectable.age": "Age or active timer of the selected ability entity, in seconds.",
+    "selectable.count": "Number of matching objects of the selected type.",
+    "selectable.age": "Age or active timer of the selected object, in seconds.",
     "selectable.edgeDistance": "Distance from the selected entity to an arena boundary. Note that it measures from the center of the entity.",
     "selectable.dangerZoneEdgeDistance": "Distance from the selected entity to the danger zone. The distance is positive when the entity is not in the danger zone, negative when it is inside the danger zone. Note that it measures from the center of the entity so the entity can be taking damage while the number is still positive.",
-    "selectable.exists": "True when an ability entity exists in the arena.",
+    "selectable.exists": "True when an object exists in the arena.",
+    "bot.selectedAbilitySinceHit": "Seconds since the selected drafted ability, or something it spawned such as a projectile, last damaged or affected an enemy bot. Hits on allies and summons do not count. The tick after a hit reads 0.1, and an ability that has never hit reads 99999, so Time Since Hit < 99999 means it has hit at least once.",
 });
 
 function describeVariable(variable) {
@@ -62,7 +69,7 @@ function selectableRule(variable) {
     if (!variable.supportsSelectable) return null;
     if (variable.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR) {
         if (variable.targetModes?.length) {
-            return `${variable.selectableSelectorLabels?.[0] ?? "Entity"} + Target mode`;
+            return `${variable.selectableSelectorLabels?.[0] ?? "Entity"} + To mode`;
         }
         return variable.selectableSelectorLabels?.join(" + ") ?? "Entity + Entity";
     }
@@ -118,7 +125,7 @@ export default function ConditionalCataloguePage() {
     const totalCount = VISIBLE_STATE_VARIABLES.length + 1;
     const categories = [
         ...(alwaysMatches ? [{ id: "conditional-basic", label: "Basic" }] : []),
-        ...groups.map(({ group }) => ({ id: groupSectionId(group), label: group })),
+        ...groups.map(({ group }) => ({ id: groupSectionId(group), label: groupLabel(group) })),
     ];
     const { activeId, scrollToSection } = useSectionSpy(categories.map((category) => category.id));
 
@@ -173,7 +180,7 @@ export default function ConditionalCataloguePage() {
 
                     {groups.map(({ group, variables }) => (
                         <section key={group} aria-labelledby={groupSectionId(group)}>
-                            <h2 id={groupSectionId(group)} className="mb-2 font-display text-xl font-bold text-white">{group}</h2>
+                            <h2 id={groupSectionId(group)} className="mb-2 font-display text-xl font-bold text-white">{groupLabel(group)}</h2>
                             <div className="overflow-hidden rounded-xl border border-[#262c33] bg-[#0f1418]">
                                 {variables.map((variable) => {
                                     const selectable = selectableRule(variable);
@@ -204,10 +211,10 @@ export default function ConditionalCataloguePage() {
                             New v2 brains use centered, Y-up coordinates from -600 to 600; bot-center positions stop at ±570. Legacy v1 brains keep top-left, Y-down coordinates. Distances remain straight-line center-to-center, and the compass remains 0° up with positive angles clockwise. Numbers use comparisons such as <span className="font-mono text-blue-200">&lt;</span>, <span className="font-mono text-blue-200">=</span>, or <span className="font-mono text-blue-200">&gt;</span>. Booleans check true or false. Direction values use signed degrees.
                         </p>
                         <p>
-                            Entity selectors use the identities attached to each entity. <strong className="text-slate-200">Entity</strong> is a general label for all entities that can exist in the arena. The options provided can be limited by the variable.
+                            Entity selectors use the identities attached to each entity. <strong className="text-slate-200">Entity</strong> is anything a bot can pick: bots (Me, Opponent, Ally) and objects. <strong className="text-slate-200">Objects</strong> are the things abilities create, such as fireballs, mines, zones and drones. The options provided can be limited by the variable.
                         </p>
                         <p>
-                            Entities created by abilities can be ordered by closest, farthest, oldest, or newest, then selected by position: first, second, and so on.
+                            Objects created by abilities can be ordered by closest, farthest, oldest, or newest, then selected by position: first, second, and so on.
                         </p>
                         <p>
                             Edge-distance measurements use the entity&apos;s center, not its hitbox edge. Arena-edge distance is the nearest distance from that center to an arena boundary. Danger-zone distance is signed relative to the zone boundary, so it is negative when the entity&apos;s center is inside the danger zone.

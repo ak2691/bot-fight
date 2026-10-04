@@ -109,6 +109,14 @@ Decide which one you're designing first.
   "Angle To", not "Entity HP" / "Distance Between Entities"). Change labels,
   never ids.
 - Abbreviate entities where space is tight: Me, Opp 1, Ally 2.
+- Naming (accepted 2026-10-04, ref docs/previews/entity-naming.html): "Entity"
+  is anything a bot can pick. Bots (Me, Opponent, Ally) and "Objects" (the
+  things abilities create: fireballs, mines, zones, drones) are its two
+  groups. Never call ability objects "entities". Pair rows read From / To,
+  not "Moving entity" / "Target entity"; "Bot entity" is just "Bot".
+- Help dialogs (angle guides etc.) follow docs/previews/angle-guide-dialog.html:
+  sentence-case title, no eyebrow tag, an interactive mini arena over static
+  diagrams where motion is the point.
 - Help text goes behind an ⓘ, not in permanent paragraphs.
 - Show units after values. Replace cryptic codes ("1/100 A") with labelled
   counts, ideally with small progress meters that turn amber/red near limits.
@@ -139,11 +147,69 @@ Decide which one you're designing first.
 - Wide bars become two rows; counts become chips that open a detail sheet;
   secondary buttons go icon-only with aria-labels.
 - List + detail becomes two screens with a back arrow.
+- Code workspace toolbar overflow (CODE_WORKSPACE_REDESIGN.md §7): stages by
+  the workspace's width. Mid width: icon-only secondaries + "⋯ More" for rare
+  tools (Clear all last, red). Phone: identity and budget chips on top, a
+  five-slot bottom action bar (Undo, Redo, Add primary centred, Vars, More);
+  Add opens a sheet; the canvas rail becomes a small corner zoom cluster.
 
 ## Logic-editor rules that affect UI
 
 - Conditionals are AND-only; OR is a sibling ELSE IF with the same actions.
 - Comparator sits between the two operands; comparators may show as words.
+- Pins and wires (accepted 2026-10-03, see docs/CODE_WORKSPACE_REDESIGN.md
+  section 2; supersedes the IF tab on top, the root "+ Conditional", hanging
+  "+" menus and ◀ ▶ order tabs once built): nodes are plain rectangles in a
+  thin frame with wide input/output pin bars (Unreal style, big hit areas),
+  never controls sticking out of the node. Kind label (IF / ELSE IF) lives in
+  the header. Click an output bar, then click the target's input bar to
+  connect, or press-and-hold an output bar and release on a node (never
+  connect on hover or pass-over: owner worried about accidental
+  connections); clicking empty canvas cancels.
+- Action nodes (accepted 2026-10-03, §2, ref docs/previews/node-anatomy.html):
+  up to three rows, yellow category label row, action name on darker green,
+  settings description on darkest green; identical in main brain and chains
+  (chains add the step number). Chain C-blocks: header and foot ("end if")
+  are separate selection targets; selecting the foot adds after the block.
+  Phones: tap selects only; a contextual bottom bar (Edit, Add below, Up,
+  Down, Delete, Done) so the config sheet never covers the add button.
+- Conditional nodes (accepted 2026-10-03, CODE_WORKSPACE_REDESIGN.md §3):
+  light blue body (#286583), darker blue condition strips (#0d2f50), yellow
+  IF / ELSE IF / ELSE label. Same header and strips in the main brain (in its
+  pin frame) and in chain C-blocks. Owner liked this better than the IF tab.
+- Side panels (accepted 2026-10-03, §4, ref docs/previews/compact-side-panel.html):
+  compact ~32px rows, label left, control right. NO indentation (owner: harder
+  to read). Controls only as wide as their content (no stretched empty
+  space); numbers a fixed 5-digit box with the unit outside; segmented
+  controls show only real options, each sized to its text; ⓘ inline after the
+  label. Condition: Value (+ its rows), hairline, Compare, hairline, With
+  (Num | Var), then "Value" again (never "Number"/"Variable").
+  Action: Action, Target (Entity | Point | Angle + its value), then the
+  action's own rows. Owner: "really clean, compact and minimalistic".
+- Chains are stacked blocks like Scratch (accepted 2026-10-03, §5),
+  superseding the node column below: no wires or gaps, C-blocks for If /
+  Repeat, drag carries only that block, snap by the dragged block's top edge
+  with a cyan insertion line, loose blocks stay where dropped. Chain If
+  headers are plain rows (yellow IF, then yellow AND rows), no strip
+  container; mouth always has its solid left edge; blocks keep their own
+  width and nested ones overhang the parent (don't squeeze right edges); ref
+  docs/previews/chain-stack-blocks.html. "+ Condition" is a dashed row inside
+  the conditional. Owner disliked: controls that only appear on selection and
+  change the node's outline.
+- Action chains (accepted 2026-10-02, "node column"): opening a chain switches
+  the canvas to its own scope ("← Brain › name" in the toolbar identity slot,
+  plus a step meter). Steps reuse the normal node designs, auto-laid-out top
+  to bottom (no free drag) and numbered in reading order. If / Else if use blue
+  condition nodes with a nested body bracket, read top to bottom like code
+  (owner prefers this to side-by-side columns: rectangular, no sideways overflow); Repeat is a violet (#a78bfa) left bracket; Wait/End are
+  grey nodes. Rejected: a modal over the canvas (cramped) and expanding chains
+  in place on the main canvas (messy). A code-like indented script list was
+  offered and not chosen (looks unlike the workspace). Use the same nested bodies on phones. Else if is offered only immediately
+  after If or Else if. End returns from the current chain; Exit loop leaves
+  the nearest Repeat. There is no Cancel chain action or step.
+  Create chains with a separate, visible "+ Chain" toolbar button beside Add
+  root; do not hide creation inside Search roots. Keep the button labelled on
+  phones. Run chain is added like any other action and opens its chain settings.
 
 ## Workflow
 

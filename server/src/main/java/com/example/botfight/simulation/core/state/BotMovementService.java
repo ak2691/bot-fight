@@ -59,6 +59,20 @@ public class BotMovementService {
     public void applyTickMovement(Bot bot, Action action, Arena arena,
                            boolean rewoundThisTick, boolean slowedWasActive,
                            boolean hitStaggerWasActive) {
+        applyTickMovement(bot, action, arena, rewoundThisTick, slowedWasActive, hitStaggerWasActive, false);
+    }
+
+    /** `sprinting` multiplies walking speed after status multipliers, the same in every direction. */
+    public void applyTickMovement(Bot bot, Action action, Arena arena,
+                           boolean rewoundThisTick, boolean slowedWasActive,
+                           boolean hitStaggerWasActive, boolean sprinting) {
+        applyTickMovement(bot, action, arena, rewoundThisTick, slowedWasActive, hitStaggerWasActive, sprinting, false);
+    }
+
+    /** `fastTurn` doubles the rotation step (after which the status rotation multiplier applies). */
+    public void applyTickMovement(Bot bot, Action action, Arena arena,
+                           boolean rewoundThisTick, boolean slowedWasActive,
+                           boolean hitStaggerWasActive, boolean sprinting, boolean fastTurn) {
         bot.movementStartX = bot.x;
         bot.movementStartY = bot.y;
         double actionMagnitude = Math.hypot(action.dx(), action.dy());
@@ -73,7 +87,9 @@ public class BotMovementService {
                         HitStagger.ROTATION_MULTIPLIER)
                 : 1.0;
         bot.rotation = normalizeDegrees(bot.rotation
-                + clamp(action.dRot(), -1, 1) * TURN_SPEED_DEGREES * rotationMultiplier);
+                + clamp(action.dRot(), -1, 1) * (TURN_SPEED_DEGREES
+                        * (fastTurn ? com.example.botfight.simulation.gameconfig.MovementConfig.FAST_TURN_MULTIPLIER : 1.0))
+                        * rotationMultiplier);
         double movementSpeedMultiplier = slowedWasActive
                 ? BotStateService.statusEffectValue(bot, "slow", "movement_modifier", "movementMultiplier",
                         HitStagger.CONCUSSIVE_MOVEMENT_MULTIPLIER)
@@ -103,7 +119,8 @@ public class BotMovementService {
                 && !BotStateService.statusActive(bot, "stun")
                 && !BotStateService.statusActive(bot, "movement-lock")) {
             Vector movementVelocity = movementVelocity(
-                    action, actionMagnitude, bot.moveSpeed * movementSpeedMultiplier);
+                    action, actionMagnitude, bot.moveSpeed * movementSpeedMultiplier
+                            * (sprinting ? com.example.botfight.simulation.gameconfig.MovementConfig.SPRINT_MULTIPLIER : 1.0));
             bot.movementVelocityX = movementVelocity.dx();
             bot.movementVelocityY = movementVelocity.dy();
             moveBotByVelocity(bot, movementVelocity.dx(), movementVelocity.dy(), arena);

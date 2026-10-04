@@ -9,6 +9,7 @@ import {
     resolveTriggeredAbilityCombatForRoster,
     settlePendingHealing,
 } from "../gameconfig/BotCombatSystem.js";
+import { settleAbilityHits } from "../gameconfig/AbilityHitRecord.js";
 import { triggeredAbilityDamage } from "../ecs/abilities/AbilityEffectSystem.js";
 import { abilityHitsTarget } from "../ecs/abilities/AbilityHitDetectionSystem.js";
 import { isClosingZone, tickClosingZoneWorld } from "../ecs/entities/ClosingZoneSystem.js";
@@ -18,12 +19,12 @@ import { toCanonicalBotShape, toSimulationBotShape } from "./arenaShapes.js";
 
 function finalizeTickMeasurements(shape, before) {
     if (!shape) return shape;
-    return {
+    return settleAbilityHits({
         ...shape,
         damageTakenLastTick: Number(shape.damageTakenThisTick ?? 0),
         damageTakenThisTick: 0,
         hpNetChangeLastTick: Number(shape.hp ?? 0) - Number(before?.hp ?? shape.hp ?? 0),
-    };
+    }, AUTO_STEP_MS);
 }
 
 export function isSimulationBotShape(shape) {
@@ -70,6 +71,8 @@ export function advanceArenaPreviewTick(prevShapes, {
         return {
             ...applyBotAction({ ...bot, lastPredictedAction: action }, action, AUTO_STEP_MS, applyDamageToShape),
             customVariables: action.customVariables,
+            chainStack: action.chainStack ?? [],
+            runningChain: action.runningChain ?? null,
         };
     });
     const spawnedEntities = botsAfterActions.map((bot) => bot.abilitySpawn).filter(Boolean);

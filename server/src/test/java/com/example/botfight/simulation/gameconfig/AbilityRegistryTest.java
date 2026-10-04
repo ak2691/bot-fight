@@ -11,16 +11,16 @@ import org.junit.jupiter.api.Test;
 
 class AbilityRegistryTest {
     @Test void permanentIdsArePositiveUniqueAndMatchDefinitions() {
-        assertThat(AbilityRegistry.all()).hasSize(33);
+        assertThat(AbilityRegistry.all()).hasSize(36);
         assertThat(AbilityRegistry.all().keySet()).allMatch(id -> id > 0);
-        assertThat(new HashSet<>(AbilityRegistry.all().values())).hasSize(33);
+        assertThat(new HashSet<>(AbilityRegistry.all().values())).hasSize(36);
         assertThat(Abilities.CATALOG.keySet()).containsExactlyInAnyOrderElementsOf(AbilityRegistry.all().keySet());
         HashSet<Integer> contractIds = new HashSet<>(AbilityContracts.attachedAll().keySet());
         contractIds.addAll(AbilityContracts.entityAll().keySet());
         assertThat(contractIds).containsExactlyInAnyOrderElementsOf(AbilityRegistry.all().keySet());
         assertThat(AbilityContracts.attachedAll().keySet())
                 .doesNotContainAnyElementsOf(AbilityContracts.entityAll().keySet());
-        assertThat(AbilityContracts.all()).hasSize(33);
+        assertThat(AbilityContracts.all()).hasSize(36);
         assertThat(AbilityContracts.all().values()).allSatisfy(contract -> {
             assertThat(contract.category()).isNotNull();
             assertThat(contract.spawn()).isNotNull();
@@ -104,6 +104,6 @@ class AbilityRegistryTest {
     @Test void invalidPermanentIdsFailClosed() {
         assertThatThrownBy(() -> AbilityRegistry.requireId(0)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> AbilityRegistry.requireId(-1)).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> AbilityRegistry.requireId(35)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> AbilityRegistry.requireId(38)).isInstanceOf(IllegalArgumentException.class);
     }
 }

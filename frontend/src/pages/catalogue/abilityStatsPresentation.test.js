@@ -30,7 +30,7 @@ test("charges and coverage share the Charges and Arc labels", () => {
 });
 
 test("charged abilities expose their reload time", () => {
-    for (const [abilityId, expectedCharges, expectedReload] of [[3, "6", "5 sec"], [5, "4", "5 sec"], [12, "10", "3 sec"]]) {
+    for (const [abilityId, expectedCharges, expectedReload] of [[12, "10", "3 sec"]]) {
         const rows = abilityStatsForDisplay(ALL_ABILITY_DEFINITIONS.find(({ id }) => id === abilityId));
         assert.ok(rows.some(({ label, value }) => label === "Charges" && value === expectedCharges), abilityId);
         assert.ok(rows.some(({ label, value }) => label === "Reload" && value === expectedReload), abilityId);
@@ -219,10 +219,20 @@ test("highlights use flat damage, wind-up and reach for melee abilities", () => 
 });
 
 test("hitscan falloff reads far to near and charges show their reload", () => {
-    const gun = abilityHighlights(abilityById(3));
-    assert.equal(gun[0].value, "5\u201315");
-    assert.equal(gun[0].label, "Damage \u00b7 far to near");
-    assert.deepEqual(gun.at(-1), { value: "6", unit: "charges", label: "5 s reload", tone: "neutral" });
+    const pistol = abilityHighlights(abilityById(12));
+    assert.equal(pistol[0].label, "Damage · far to near");
+    assert.deepEqual(pistol.at(-1), { value: "10", unit: "charges", label: "3 s reload", tone: "neutral" });
+});
+
+test("Sniper and Fireball show flat damage and no ammunition", () => {
+    const sniper = abilityHighlights(abilityById(3));
+    assert.equal(sniper[0].value, "40");
+    assert.equal(sniper[0].label, "Damage");
+    assert.ok(sniper.every((tile) => tile.unit !== "charges"));
+    const fireball = abilityHighlights(abilityById(5));
+    assert.equal(fireball[0].value, "20");
+    assert.ok(fireball.every((tile) => tile.unit !== "charges"));
+    assert.equal(abilityById(3).label, "Sniper");
 });
 
 test("healing abilities lead with a green healing tile instead of damage", () => {

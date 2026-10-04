@@ -20,6 +20,8 @@ rated results.
 - `coding/nodes/GraphNodes.jsx`: graph layout, condition/action node rendering,
   inspectors, operand editors, and shared coding controls.
 - `coding/controls/`: priority and toolbar icon controls used by the coding UI.
+- `coding/chains/`: action chain editor: the chain canvas, step inspector, toolbar
+  crumb/step meter, and pure step editing/limit/call-graph helpers (`chainEditing.js`).
 - `coding/modals/`: custom-variable and root-search modal implementations.
 - `coding/utils/`: coding-menu coordination and custom-variable search helpers.
 - `status/`: player-facing cooldown, charge, and ability-status presentation.

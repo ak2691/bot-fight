@@ -31,6 +31,11 @@ import java.util.Set;
 public final class AbilityEntitySystem {
     private AbilityEntitySystem() {}
 
+    /** Effect types that land on the enemy bot and so count as a hit for Time Since Hit. */
+    public static final Set<EffectType> ENEMY_HIT_EFFECT_TYPES = Set.of(
+            EffectType.DAMAGE, EffectType.STATUS, EffectType.INTERRUPT,
+            EffectType.KNOCKBACK, EffectType.PULL);
+
     public interface Combat<F extends AbilityEntityBot> {
         void damage(F bot, double amount);
         void damageFromOwner(List<F> bots, int ownerSlot, F target, double amount,
@@ -45,6 +50,9 @@ public final class AbilityEntitySystem {
                                                   ArenaBounds arena, int stepMs) {
             return entity;
         }
+
+        /** Notes that the owner's ability landed on an enemy bot this tick (Time Since Hit). */
+        default void recordEnemyHit(List<F> bots, int ownerSlot, int abilityId) {}
 
         /** Applies a contract-owned status through the host simulation's canonical status builder. */
         default void applyStatus(List<F> bots, int ownerSlot, F target, int abilityId,
@@ -1110,6 +1118,7 @@ public final class AbilityEntitySystem {
             Map<String, AbilityContracts.EffectOverride> overrides,
             Double rangeOverride, Set<String> statusTypes) {
         if (!isEnemy(source.ownerSlot(), target, bots)) return;
+        boolean landedOnEnemy = false;
         for (AbilityContracts.Effect effect : declaredEffects) {
             if (!AbilityContracts.effectTargetsBot(effect)) continue;
             if (!allowedEffects.isEmpty() && !allowedEffects.contains(effect.type())) continue;
@@ -1118,6 +1127,10 @@ public final class AbilityEntitySystem {
                             statusType.equalsIgnoreCase(effect.subtype()))) continue;
             AbilityContracts.EffectOverride override = effectOverrideFor(effect, overrides);
             AbilityContracts.Effect resolved = withEffectOverride(effect, override);
+            if (ENEMY_HIT_EFFECT_TYPES.contains(resolved.type())
+                    && target.entityHp() > 0 && !target.ignoresHostileEffects()) {
+                landedOnEnemy = true;
+            }
             double distance = Double.isFinite(collisionDistance)
                     ? collisionDistance
                     : distance(source.x(), source.y(), target.entityX(), target.entityY());
@@ -1185,6 +1198,7 @@ public final class AbilityEntitySystem {
                 default -> { }
             }
         }
+        if (landedOnEnemy) combat.recordEnemyHit(bots, source.ownerSlot(), abilityId);
     }
 
     private static AbilityContracts.Effect withDuration(AbilityContracts.Effect effect, int durationMs) {

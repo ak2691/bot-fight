@@ -16,7 +16,8 @@ function treeEntries(branches, rootIndex, depth = 0) {
 export function selectPriorityCandidates(normalized, state, operations) {
     return [...normalized.roots]
         .sort((first, second) => first.priority - second.priority)
-        .flatMap((root, rootIndex) => selectTreeBranches(root.branches, state, operations)
+        .flatMap((root, rootIndex) => [...selectTreeBranches(root.branches, state, operations),
+            ...(root.actions?.length && operations.blockHasExecutableAction(root, state) ? [root] : [])]
             .map((block, blockIndex) => ({ block, blockIndex, rootIndex })));
 }
 

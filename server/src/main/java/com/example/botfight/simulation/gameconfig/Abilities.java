@@ -19,10 +19,10 @@ public final class Abilities {
     // Only ability-level timing and resource values are authored here. Damage,
     // geometry, movement, effects, and visuals are owned by phase contracts.
     private static final Map<Integer, TimingDefinition> TIMING_CATALOG = Map.ofEntries(
-            Map.entry(1, timing(600, 0, 400, 0)),
-            Map.entry(3, timing(1_000, 0, 500, 0, 6, 5_000, ResourceModel.RELOAD_WHEN_EMPTY)),
+            Map.entry(1, timing(500, 0, 300, 0)),
+            Map.entry(3, timing(9_000, 900, 200, 0)),
             Map.entry(4, timing(12_000, 0, 1, 0)),
-            Map.entry(5, timing(300, 0, 500, 1_000, 4, 5_000, ResourceModel.RELOAD_WHEN_EMPTY)),
+            Map.entry(5, timing(5_500, 0, 500, 1_400)),
             Map.entry(6, timing(9_600, 200, 100, 1_200)),
             Map.entry(7, timing(4_600, 300, 400, 0)),
             Map.entry(8, timing(10_000, 0, 500, 0)),
@@ -36,7 +36,8 @@ public final class Abilities {
             Map.entry(16, timing(9_000, 500, 0, 4_000)),
             Map.entry(17, timing(8_000, 0, 300, 6_000)),
             Map.entry(18, timing(7_000, 300, 500, 500)),
-            Map.entry(19, timing(1_800, 0, 200, 200)),
+            // Dash has no fixed cooldown: it costs stamina and waits out a short gap (MovementConfig).
+            Map.entry(19, timing(0, 0, 200, 200)),
             Map.entry(20, timing(9_800, 200, 200, 0)),
             Map.entry(21, timing(18_000, 0, 300, 3_100)),
             Map.entry(22, timing(18_000, 500, 0, 1_500)),
@@ -51,7 +52,10 @@ public final class Abilities {
             Map.entry(31, timing(9_000, 0, 300, 6_000)),
             Map.entry(32, timing(10_000, 300, 300, 0)),
             Map.entry(33, timing(12_000, 500, 0, 4_000)),
-            Map.entry(34, timing(500, 0, 200, 0))
+            Map.entry(34, timing(500, 0, 200, 0)),
+            Map.entry(35, timing(700, 100, 300, 0)),
+            Map.entry(36, timing(700, 500, 300, 0)),
+            Map.entry(37, timing(700, 300, 300, 0))
     );
 
     /** Compatibility view assembled from timing metadata and phase contracts. */

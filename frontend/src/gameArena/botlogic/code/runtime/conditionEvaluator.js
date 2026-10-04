@@ -1,6 +1,7 @@
 import {
     BOT_CODE_COMPARATORS,
     BOT_CODE_CONDITIONS,
+    STATE_VARIABLE_BY_ID,
 } from "../contracts/BotLogicContracts.js";
 
 export function evaluateConditionNode(condition, state, evaluateExpression) {
@@ -23,6 +24,22 @@ const RIGHT_PAIR_FIELDS = Object.freeze({
 
 export function rightOperandView(condition) {
     if (!condition) return condition;
+    const rightVariable = condition.right?.type === "variable" ? STATE_VARIABLE_BY_ID.get(condition.right.value) : null;
+    if (rightVariable?.legacySingleSelectableSlot === 0) {
+        // Older brains kept the moving entity in the right side's single selectable.
+        const selectable1 = condition.rightSelectable1 ?? condition.rightSelectable ?? condition.selectable1 ?? condition.selectable;
+        const selectable2 = condition.rightSelectable2 ?? condition.selectable2;
+        return {
+            ...condition,
+            selectable1,
+            selectable2,
+            selectable: selectable1,
+            targetMode: condition.rightTargetMode ?? condition.targetMode,
+            targetX: condition.rightTargetX ?? condition.targetX,
+            targetY: condition.rightTargetY ?? condition.targetY,
+            targetAngle: condition.rightTargetAngle ?? condition.targetAngle,
+        };
+    }
     const selectable2 = condition.rightSelectable2 ?? condition.selectable2 ?? condition.selectable;
     return {
         ...condition,

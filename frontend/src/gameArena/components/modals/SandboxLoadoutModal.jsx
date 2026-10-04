@@ -42,7 +42,7 @@ function SandboxAbilityCard({ ability, selected, onToggle }) {
                 {selected && <span className="mb-1 block font-mono text-[9px] font-bold tracking-[.2em] text-green-200">EQUIPPED</span>}
                 <span className="block font-display text-xl uppercase tracking-wider text-white">{ability.label}</span>
                 <span className="mt-2 flex flex-wrap gap-1.5">
-                    <span className="font-mono text-[8px] font-bold tracking-[.16em] text-green-300/70">{ability.kind.toUpperCase()}</span>
+                    <span className="font-mono text-[8px] font-bold tracking-[.16em] text-green-300/70">{(ability.category === "weapon" ? "weapon" : ability.kind).toUpperCase()}</span>
                     {(ability.catalogueTags ?? []).map((tag) => (
                         <span key={tag} className="border border-green-400/40 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-[.12em] text-green-300/80">
                             {abilityDisplayTag(tag)}
@@ -77,6 +77,9 @@ export default function SandboxLoadoutModal({
     });
 
     if (!activeLoadoutEntry) return null;
+
+    const weaponAbilities = visibleSandboxAbilities.filter((ability) => ability.category === "weapon");
+    const draftAbilities = visibleSandboxAbilities.filter((ability) => ability.category !== "weapon");
 
     return (
         <div
@@ -152,8 +155,29 @@ export default function SandboxLoadoutModal({
                 </div>
 
                 <div className="mt-6 space-y-8">
+                    {weaponAbilities.length > 0 && (
+                        <section aria-labelledby="sandbox-weapons-title">
+                            <div className="mb-4 flex items-end justify-between gap-4 border-b border-slate-700/60 pb-3">
+                                <div>
+                                    <p className="font-mono text-[9px] font-bold tracking-[.28em] text-slate-500">PRACTICE ROOM</p>
+                                    <h3 id="sandbox-weapons-title" className="mt-1 font-display text-3xl uppercase tracking-wider text-white">Weapons</h3>
+                                </div>
+                                <span className="font-mono text-[9px] tracking-widest text-green-300">{weaponAbilities.length} WEAPONS</span>
+                            </div>
+                            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                {weaponAbilities.map((ability) => (
+                                    <SandboxAbilityCard
+                                        key={ability.id}
+                                        ability={ability}
+                                        selected={activeSandboxLoadout.abilities.includes(ability.id)}
+                                        onToggle={onToggleAbility}
+                                    />
+                                ))}
+                            </div>
+                        </section>
+                    )}
                     {[1, 2, 3].map((round) => {
-                        const roundAbilities = visibleSandboxAbilities.filter((ability) => ability.round === round);
+                        const roundAbilities = draftAbilities.filter((ability) => ability.round === round);
                         if (roundAbilities.length === 0) return null;
                         return (
                             <section key={round} aria-labelledby={`sandbox-round-${round}-title`}>

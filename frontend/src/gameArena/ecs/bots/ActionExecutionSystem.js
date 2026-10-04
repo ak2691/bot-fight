@@ -10,10 +10,17 @@ import { abilityExecutionPayload } from "../../gameconfig/AbilityExecutionPayloa
 import { statusEffectValue, statusIsActive, STATUS_EFFECT_APPLICATIONS } from "../contracts/StatusContracts.js";
 import { attachedAbilitySpawnTransform } from "../../gameconfig/hitboxGeometry.js";
 import { PHASE_ACTIONS, PHASE_EVENT_TYPES } from "../contracts/AbilityContracts.js";
+import { DASH_ABILITY_ID, MOVEMENT_CONFIG } from "../../gameconfig/MovementConfig.js";
+import { abilityStaminaReady, advanceStaminaTimers, botStamina, canCancelWindup, canFastTurn, cancelWindup, spendDash, spendStamina, withFastTurning, withSprinting } from "../../gameconfig/StaminaSystem.js";
 
 /** Converts one selected action payload into the bot's next component state. */
-export function applyBotAction(shape, action, elapsedMs, applyDamage) {
-    if ((shape.hp ?? 0) <= 0) return tickBotState(shape, elapsedMs, applyDamage);
+export function applyBotAction(botShape, action, elapsedMs, applyDamage) {
+    if ((botShape.hp ?? 0) <= 0) return tickBotState(botShape, elapsedMs, applyDamage);
+    // Stamina lockouts count down (and stamina regenerates) at the start of the tick;
+    // anything spent below restarts them for the next tick. Whether Dash, a cancel or a
+    // sprint is allowed is judged on the state the previous tick left (`botShape`), which is
+    // what the planner and conditions saw, exactly like ability cooldowns.
+    const shape = advanceStaminaTimers(botShape, elapsedMs);
     const seconds = Math.max(elapsedMs / 1000, 0.001);
     const cooldownMultiplier = 1 / Number(shape.attackSpeedMultiplier ?? 1);
     const slowedWasActive = statusIsActive(shape, "slow");
@@ -27,7 +34,15 @@ export function applyBotAction(shape, action, elapsedMs, applyDamage) {
     const magnitude = Math.hypot(executableAction.dx ?? 0, executableAction.dy ?? 0);
     const dx = magnitude > 0.001 ? executableAction.dx / magnitude : 0;
     const dy = magnitude > 0.001 ? executableAction.dy / magnitude : 0;
-    let next = { ...shape, rotation: normalizeAngle(Number(shape.rotation ?? 0) + clamp(executableAction.dRot ?? 0, -1, 1) * ROTATION_STEP_DEG * rotationMultiplier) };
+    // Fast turn doubles the rotation step on a tick that actually rotates, while the previous tick left
+    // enough stamina (judged on `botShape`, like sprint). A stunned bot turns at the normal speed.
+    const turn = clamp(executableAction.dRot ?? 0, -1, 1);
+    const fastTurning = executableAction.fastTurn === true
+        && Math.abs(turn) > 0.001
+        && canFastTurn(botShape)
+        && !statusIsActive(shape, "stun");
+    const rotationStep = ROTATION_STEP_DEG * (fastTurning ? MOVEMENT_CONFIG.fastTurnMultiplier : 1);
+    let next = { ...shape, rotation: normalizeAngle(Number(shape.rotation ?? 0) + turn * rotationStep * rotationMultiplier) };
     if (statusIsActive(shape, "stun")) {
         next = interruptCurrentAbility(next);
         return {
@@ -37,24 +52,47 @@ export function applyBotAction(shape, action, elapsedMs, applyDamage) {
             movementVelocityY: 0,
             velocityX: 0,
             velocityY: 0,
+            ...(shape.sprinting ? { sprinting: false } : {}),
+            ...(shape.fastTurning ? { fastTurning: false } : {}),
         };
     }
-    next = applyMovement(next, shape, executableAction, { dx, dy, magnitude, maxMoveSpeed, speedMultiplier, seconds, elapsedMs });
+    // A wind-up is locked once started, so Cancel Wind-up is handled before the locked
+    // continuation. It only works while preparing with enough stamina; otherwise it does nothing.
+    const cancelsWindup = preparationLocked
+        && action?.cancelWindup === true
+        && canCancelWindup(botShape);
+    if (cancelsWindup) next = cancelWindup(next);
+    const windupContinues = preparationLocked && !cancelsWindup;
 
-    const selectedAbility = preparationLocked
-        ? abilityExecutionPayload(next.preparingAbility)
-        : abilityExecutionPayload(action?.abilityAction?.abilityPayload ?? action?.abilityAction);
+    const selectedAbility = cancelsWindup
+        ? null
+        : windupContinues
+            ? abilityExecutionPayload(next.preparingAbility)
+            : abilityExecutionPayload(action?.abilityAction?.abilityPayload ?? action?.abilityAction);
     const abilityPayload = selectedAbility
         ? {
             ...selectedAbility,
-            targetX: preparationLocked ? next.preparingTargetX : action?.abilityAction?.targetX,
-            targetY: preparationLocked ? next.preparingTargetY : action?.abilityAction?.targetY,
+            targetX: windupContinues ? next.preparingTargetX : action?.abilityAction?.targetX,
+            targetY: windupContinues ? next.preparingTargetY : action?.abilityAction?.targetY,
             movementMode: action?.abilityAction?.movementMode,
             movementDirection: action?.abilityAction?.movementDirection,
             phaseFacingMode: action?.abilityAction?.phaseFacingMode,
         }
         : null;
-    const abilityResult = executeAbility(next, abilityPayload, elapsedMs, cooldownMultiplier, { slowedWasActive });
+    const abilityOptions = { slowedWasActive, gateShape: botShape };
+    const sprinting = sprintsThisTick(shape, executableAction, magnitude, {
+        busy: preparationLocked || startsAbility(next, abilityPayload, elapsedMs, cooldownMultiplier, abilityOptions),
+        gateShape: botShape,
+    });
+    next = applyMovement(next, shape, executableAction, {
+        dx, dy, magnitude, speedMultiplier, seconds, elapsedMs,
+        maxMoveSpeed: sprinting ? maxMoveSpeed * MOVEMENT_CONFIG.sprintMultiplier : maxMoveSpeed,
+    });
+    if (sprinting) next = spendStamina(next, MOVEMENT_CONFIG.sprintDrainPerTick);
+    next = withSprinting(next, sprinting);
+    if (fastTurning) next = spendStamina(next, MOVEMENT_CONFIG.fastTurnDrainPerTick);
+    next = withFastTurning(next, fastTurning);
+    const abilityResult = executeAbility(next, abilityPayload, elapsedMs, cooldownMultiplier, abilityOptions);
     next = abilityResult.bot;
     const ticked = tickBotState(next, elapsedMs, applyDamage,
         abilityResult.triggeredPayload?.abilityId ?? null);
@@ -73,6 +111,24 @@ export function applyBotAction(shape, action, elapsedMs, applyDamage) {
         abilityTargetY: abilityPayload?.targetY,
         abilitySpawn,
     };
+}
+
+/**
+ * Sprint is a Walk setting: it applies on a tick that actually moves while the bot has
+ * stamina and is not starting, winding up or active with any ability (attacking cancels it).
+ */
+function sprintsThisTick(shape, action, magnitude, { busy, gateShape }) {
+    if (action?.sprint !== true || magnitude <= 0.001 || botStamina(gateShape) <= 0 || busy) return false;
+    if (statusIsActive(shape, "movement-lock")) return false;
+    return !Object.values(shape.abilityActiveMs ?? {}).some((activeMs) => Number(activeMs) > 0);
+}
+
+/** Dry run of this tick's ability, to know whether it starts (or begins winding up). */
+function startsAbility(bot, payload, elapsedMs, cooldownMultiplier, options) {
+    if (!payload) return false;
+    const probe = executeAbility(bot, payload, elapsedMs, cooldownMultiplier, options);
+    return probe.triggered != null
+        || (probe.bot.preparingAbility === payload.abilityId && Number(probe.bot.preparingMs ?? 0) > 0);
 }
 
 function applyMovement(next, shape, action, movement) {
@@ -97,7 +153,7 @@ function applyMovement(next, shape, action, movement) {
     return { ...next, ...movementStart, x: clamp(shape.x + velocity.dx, shape.size / 2, ARENA_WIDTH_UNITS - shape.size / 2), y: clamp(shape.y + velocity.dy, shape.size / 2, ARENA_HEIGHT_UNITS - shape.size / 2), dashRemaining: 0, movementVelocityX: velocity.dx, movementVelocityY: velocity.dy, velocityX: velocity.dx / seconds, velocityY: velocity.dy / seconds };
 }
 
-function executeAbility(bot, payload, elapsedMs, cooldownMultiplier, { slowedWasActive = false } = {}) {
+function executeAbility(bot, payload, elapsedMs, cooldownMultiplier, { slowedWasActive = false, gateShape = bot } = {}) {
     if (!payload || !hasAbility(bot, payload.abilityId)) return { bot, triggered: null, triggeredPayload: null };
 
     const phaseMovement = payload.contract?.phases?.[0]?.movement;
@@ -113,7 +169,8 @@ function executeAbility(bot, payload, elapsedMs, cooldownMultiplier, { slowedWas
         && Number(bot.preparingMs ?? 0) > 0;
     if (!continuingPreparation
         && (!abilityTimingReady(bot, payload.abilityId, 0)
-            || !abilityResourceReady(bot, payload.abilityId, 0))) {
+            || !abilityResourceReady(bot, payload.abilityId, 0)
+            || !abilityStaminaReady(gateShape, payload.abilityId))) {
         return cancelPreparation(bot, payload);
     }
 
@@ -157,8 +214,10 @@ function executeAbility(bot, payload, elapsedMs, cooldownMultiplier, { slowedWas
         activation: true,
     });
     if (!consumed.consumed) return { bot, triggered: null, triggeredPayload: null };
+    // Dash pays stamina and starts its gap instead of a cooldown.
+    const paid = payload.abilityId === DASH_ABILITY_ID ? spendDash(consumed.shape) : consumed.shape;
     return {
-        bot: applyActivationState(consumed.shape, payload, elapsedMs),
+        bot: applyActivationState(paid, payload, elapsedMs),
         triggered,
         triggeredPayload: payload,
     };

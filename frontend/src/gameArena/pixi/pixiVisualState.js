@@ -257,7 +257,7 @@ export function entityVisualRotation(shape) {
 export const BOT_PRESENTATION_DEFINITIONS = Object.freeze({
     20: LOCK_ON_PRESENTATION,
     7: { texturePath: ["heavySlash"], animation: "progress" }, 8: { texturePath: ["repulsorBlast"], animation: "presentationClock" },
-    3: { texturePath: ["rays", "gun"], animation: "alpha" }, 12: { texturePath: ["rays", "pistol"], animation: "alpha" },
+    3: { texturePath: ["rays", "rail_shot"], animation: "alpha" }, 12: { texturePath: ["rays", "pistol"], animation: "alpha" },
     9: { texturePath: ["rays", "concussive_shot"], animation: "alpha" },
     13: { texturePath: ["rays", "rail_shot"], animation: "alpha" }, 25: { texturePath: ["phaseStrike"], animation: "progress" },
     16: { texturePath: ["shield"], animation: "progress" }, 23: { texturePath: ["shield"], animation: "progress" },
@@ -273,6 +273,73 @@ export function heavySlashRotation(compassFacingDegrees, sweepDegrees = 0) {
     return compassDegreesToRadians(compassFacingDegrees)
         + HEAVY_SLASH_ART_ROTATION_OFFSET
         + Number(sweepDegrees ?? 0) * Math.PI / 180;
+}
+
+const clamp01 = (value) => Math.max(0, Math.min(1, Number.isFinite(Number(value)) ? Number(value) : 0));
+
+/**
+ * Wind-up progress (0..1) for a weapon telegraph. `preparingMs` is the remaining
+ * wind-up reported by simulation and replay; null when the bot is not winding
+ * up that ability. Presentation only.
+ */
+export function weaponWindupProgress(shape, abilityIdValue, windupMs) {
+    if (Number(shape?.preparingAbility) !== Number(abilityIdValue)) return null;
+    const total = Number(windupMs);
+    if (!Number.isFinite(total) || total <= 0) return null;
+    return clamp01(1 - Number(shape?.preparingMs ?? 0) / total);
+}
+
+/** Active progress (0..1) from the remaining abilityActiveMs timer. */
+export function weaponActiveProgress(activeMs, durationMs) {
+    const duration = Number(durationMs);
+    if (!Number.isFinite(duration) || duration <= 0) return 1;
+    return clamp01(1 - Number(activeMs ?? 0) / duration);
+}
+
+/** Thrust extends, holds, then retracts; returns the fraction of hitbox length. */
+export function thrustLengthFraction(progress, extendFraction = 0.35, holdFraction = 0.3) {
+    const p = clamp01(progress);
+    if (p < extendFraction) return p / extendFraction;
+    if (p < extendFraction + holdFraction) return 1;
+    const retract = 1 - extendFraction - holdFraction;
+    return retract <= 0 ? 0 : clamp01(1 - (p - extendFraction - holdFraction) / retract);
+}
+
+/** Linear alpha ramp used by the Cleave and Smash telegraphs. */
+export function weaponWindupAlpha(progress, alphaStart, alphaEnd) {
+    return alphaStart + (alphaEnd - alphaStart) * clamp01(progress);
+}
+
+/** Sniper sight alpha pulses between min and max, driven by wind-up progress so replays match live play. */
+export function sniperSightAlpha(progress, alphaMin = 0.35, alphaMax = 0.8, pulses = 3) {
+    const wave = (1 - Math.cos(clamp01(progress) * pulses * Math.PI * 2)) / 2;
+    return alphaMin + (alphaMax - alphaMin) * wave;
+}
+
+/**
+ * Length of the Sniper aim line: the full range, or the distance to the first
+ * bot the ray (with its width) would touch. Presentation only.
+ */
+export function sniperSightLength(origin, rotationDegrees, range, rayWidth, targets = []) {
+    const radians = compassDegreesToRadians(rotationDegrees);
+    const dirX = Math.cos(radians);
+    const dirY = Math.sin(radians);
+    let nearest = Number(range);
+    for (const target of targets) {
+        const dx = Number(target.x) - Number(origin.x);
+        const dy = Number(target.y) - Number(origin.y);
+        const along = dx * dirX + dy * dirY;
+        const perpendicular = Math.abs(dx * dirY - dy * dirX);
+        const reach = Number(target.size ?? 60) / 2 + Number(rayWidth ?? 0) / 2;
+        if (along <= 0 || perpendicular > reach) continue;
+        nearest = Math.min(nearest, Math.max(0, along - Math.sqrt(reach * reach - perpendicular * perpendicular)));
+    }
+    return nearest;
+}
+
+/** Smash flash fades from `fillAlpha` to zero across the active phase. */
+export function smashFlashAlpha(progress, fillAlpha = 0.5) {
+    return fillAlpha * (1 - clamp01(progress));
 }
 
 export function isBotShape(shape) {

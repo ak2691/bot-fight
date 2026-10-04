@@ -28,10 +28,19 @@ test("round two abilities, including Rail Shot, can be selected independently", 
 });
 
 test("every selectable ability can be drafted when the server offers it", () => {
-    for (const ability of BOT_ABILITIES) {
+    for (const ability of BOT_ABILITIES.filter(({ round }) => round > 0)) {
         const next = toggleDraftAbility({}, ability.round, [ability.id], ability.id);
         assert.deepEqual(next.abilities, [ability.id], ability.id);
     }
+});
+
+test("practice-only weapons are never match draft offers", () => {
+    for (const id of [35, 36, 37]) {
+        for (const round of [1, 2, 3]) {
+            assert.deepEqual(toggleDraftAbility({}, round, [id], id).abilities, [], `${id} round ${round}`);
+        }
+    }
+    assert.equal(BOT_ABILITIES.find(({ id }) => id === 1).round, 1);
 });
 
 test("legacy matchmaking offers normalize once at the draft boundary", () => {

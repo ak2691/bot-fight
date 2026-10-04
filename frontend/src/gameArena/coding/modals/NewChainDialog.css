@@ -1,0 +1,11 @@
+/* New chain: a small name prompt centred over the workspace. */
+.code-nc-backdrop { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(5, 8, 11, .5); }
+.code-nc { width: min(340px, 100%); box-sizing: border-box; padding: 14px; border: 1px solid #2f3a44; border-radius: 8px; background: #12171b; color: #e6edf3; box-shadow: 0 16px 40px rgba(0, 0, 0, .55); }
+.code-nc-field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #9fb0bd; }
+.code-nc-field input { min-height: 34px; padding: 0 10px; border: 1px solid #2f3a44; border-radius: 6px; background: #0c1013; color: #e6edf3; font: inherit; font-size: 14px; }
+.code-nc-field input:focus-visible { outline: 2px solid #5fd4f0; outline-offset: -1px; }
+.code-nc-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.code-nc-actions button { min-height: 32px; padding: 0 14px; border: 1px solid #2f3a44; border-radius: 6px; background: transparent; color: #cfd8df; font: inherit; font-size: 13px; cursor: pointer; }
+.code-nc-actions button:hover { background: rgba(255, 255, 255, .06); }
+.code-nc-actions .code-nc-add { border-color: #3aa6c9; background: #1b4a5c; color: #fff; }
+.code-nc-actions .code-nc-add:hover { background: #22627a; }

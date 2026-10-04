@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Angle guide dialog</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#05080a;font-family:'IBM Plex Sans',sans-serif}
+.note{max-width:640px;margin:16px auto 0;padding:0 16px;color:#8b98a5;font-size:13px;line-height:1.5}
+.ag-wrap{padding:20px 16px;display:flex;justify-content:center}
+.ag{width:640px;max-width:100%;background:#111519;border:1px solid #262c33;border-radius:4px;color:#e6edf3;font-size:13px}
+.ag.phone{width:360px}
+.ag-h{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #262c33}
+.ag-h h3{margin:0;font-size:15px;font-weight:500;flex:1}
+.seg{display:inline-flex;border:1px solid #262c33;border-radius:5px;overflow:hidden}
+.seg button{all:unset;cursor:pointer;padding:0 10px;height:28px;line-height:28px;font-size:12px;color:#8b98a5}
+.seg button.on{background:#1d3a46;color:#e6edf3}
+.x{all:unset;cursor:pointer;width:28px;height:28px;text-align:center;line-height:28px;color:#8b98a5;font-size:18px;border-radius:5px}
+.x:hover{background:rgba(255,255,255,.06);color:#fff}
+.ag-b{display:grid;grid-template-columns:300px 1fr;gap:14px;padding:14px}
+.ag.phone .ag-b{grid-template-columns:1fr}
+.row{display:flex;align-items:center;justify-content:space-between;gap:8px;height:32px}
+.row>span{color:#8b98a5}
+.num{display:inline-flex;align-items:center;gap:6px}
+.num input{all:unset;width:56px;height:28px;padding:0 8px;border:1px solid #262c33;border-radius:5px;background:#0b0f12;font-family:'IBM Plex Mono',monospace;font-size:13px;text-align:right;color:#e6edf3}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0 10px}
+.chips button{all:unset;cursor:pointer;font-family:'IBM Plex Mono',monospace;font-size:12px;padding:3px 8px;border:1px solid #262c33;border-radius:5px;color:#b8c4cf}
+.chips button:hover{background:rgba(255,255,255,.06);color:#fff}
+.chips button.on{border-color:#3aa6c9;color:#5fd4f0}
+.says{border-left:2px solid #4ade80;padding:6px 10px;background:#122019;margin:6px 0 10px;min-height:38px}
+.says b{font-weight:500;color:#bdf5cb;display:block}
+.says small{color:#9fb7a6;font-size:12px}
+.btns{display:flex;gap:6px}
+.btn{all:unset;cursor:pointer;height:30px;padding:0 12px;border:1px solid #2f3740;border-radius:5px;font-size:12px;color:#e6edf3}
+.btn:hover{background:rgba(255,255,255,.06)}
+.foot{color:#8b98a5;font-size:12px;margin-top:10px;line-height:1.5}
+.mono{font-family:'IBM Plex Mono',monospace}
+svg text{font-family:'IBM Plex Sans',sans-serif}
+.tools{display:flex;justify-content:center;gap:8px;padding-bottom:20px}
+.tools button{background:transparent;border:1px solid #2f3740;border-radius:5px;color:#e6edf3;font:12px 'IBM Plex Sans',sans-serif;height:30px;padding:0 12px;cursor:pointer}
+</style>
+</head>
+<body>
+<p class="note">Reference for the movement angle help (relative and absolute). One dialog; each ⓘ opens it on its own tab. Drag Me or Opp, change the angle, press Play.</p>
+<div class="ag-wrap"><div class="ag" id="ag" role="dialog" aria-label="Movement direction">
+ <div class="ag-h"><h3>Movement direction</h3>
+  <div class="seg" role="group" aria-label="Angle type"><button id="tRel" class="on">Relative</button><button id="tAbs">Absolute</button></div>
+  <button class="x" aria-label="Close">×</button></div>
+ <div class="ag-b">
+  <svg id="sv" viewBox="0 0 300 300" style="width:100%;background:#0b0f12;border:1px solid #262c33;border-radius:2px;touch-action:none" aria-label="Arena preview">
+   <defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#4ade80"/></marker></defs>
+   <g id="grid"></g><g id="comp"></g>
+   <line id="ln" stroke="#8b98a5" stroke-width="1.5" stroke-dasharray="4 4"/>
+   <path id="arc" fill="none" stroke="#facc15" stroke-width="1.5"/>
+   <text id="arcT" fill="#facc15" font-size="12" class="mono"></text>
+   <polyline id="trail" fill="none" stroke="#4ade80" stroke-width="1.5" stroke-dasharray="2 3" opacity=".8"/>
+   <line id="ar" stroke="#4ade80" stroke-width="2.5" marker-end="url(#ah)"/>
+   <g id="tg" style="cursor:grab"><circle r="13" fill="#3a1418" stroke="#ff7166" stroke-width="2"/><text text-anchor="middle" y="4" font-size="11" fill="#ffd3cf">Opp</text></g>
+   <g id="bt" style="cursor:grab"><circle r="13" fill="#0b2a36" stroke="#5fd4f0" stroke-width="2"/><text text-anchor="middle" y="4" font-size="11" fill="#cdf3fc">Me</text></g>
+   <text x="150" y="290" text-anchor="middle" font-size="11" fill="#6b7783">Drag Me or Opp</text>
+  </svg>
+  <div>
+   <div class="row"><span id="lbl">Direction</span><span class="num"><input id="inp" value="0" aria-label="Direction in degrees"><span style="color:#8b98a5">deg</span></span></div>
+   <div class="chips" id="chips"></div>
+   <div class="says"><b id="s1"></b><small id="s2"></small></div>
+   <div class="btns"><button class="btn" id="play">Play</button><button class="btn" id="reset">Reset</button></div>
+   <div class="foot" id="foot"></div>
+  </div>
+ </div>
+</div></div>
+<div class="tools"><button id="ph">Phone width</button></div>
+<script>
+const $=id=>document.getElementById(id);let mode='rel',dir=0,bot={x:80,y:190},tgt={x:215,y:120},trail=[],raf=null;
+const R=d=>d*Math.PI/180,norm=d=>{d=((d%360)+360)%360;return d>180?d-360:d};
+const bear=(a,b)=>Math.atan2(b.x-a.x,-(b.y-a.y))*180/Math.PI;
+const vec=(h,l)=>({x:Math.sin(R(h))*l,y:-Math.cos(R(h))*l});
+let g='';for(let i=30;i<300;i+=30){g+=`<line x1="${i}" y1="0" x2="${i}" y2="300" stroke="#151b20"/><line x1="0" y1="${i}" x2="300" y2="${i}" stroke="#151b20"/>`}$('grid').innerHTML=g;
+const presets={rel:[0,45,90,135,180,-90],abs:[0,90,180,270,-45]};
+function say(){const d=norm(dir),a=Math.abs(d);let t,s;
+ if(mode==='rel'){if(a<1){t='Straight at the target';s='Chases it wherever it goes.'}else if(a<89){t='Angles in toward the target';s='Curves in, ending on top of it.'}else if(a<=91){t='Circles the target';s='Keeps the same distance, strafing to the '+(d>0?'right':'left')+'.'}else if(a<179){t='Angles away from the target';s='Spirals out, keeping it in view.'}else{t='Straight away from the target';s='Retreats along the line to it.'}}
+ else{const n=['north','north-east','east','south-east','south','south-west','west','north-west'][Math.round((((dir%360)+360)%360)/45)%8];t='Always '+n;s='Same arena direction wherever the target is.'}
+ $('s1').textContent=t;$('s2').textContent=s}
+function draw(){const B=bot,T=tgt;$('bt').setAttribute('transform',`translate(${B.x},${B.y})`);$('tg').setAttribute('transform',`translate(${T.x},${T.y})`);
+ const b=bear(B,T),h=mode==='rel'?b+dir:dir,v=vec(h,58);
+ $('ar').setAttribute('x1',B.x);$('ar').setAttribute('y1',B.y);$('ar').setAttribute('x2',B.x+v.x);$('ar').setAttribute('y2',B.y+v.y);
+ const ref=mode==='rel'?b:0;
+ if(mode==='rel'){$('ln').setAttribute('x1',B.x);$('ln').setAttribute('y1',B.y);$('ln').setAttribute('x2',T.x);$('ln').setAttribute('y2',T.y);$('tg').style.opacity=1}
+ else{const u=vec(0,70);$('ln').setAttribute('x1',B.x);$('ln').setAttribute('y1',B.y);$('ln').setAttribute('x2',B.x+u.x);$('ln').setAttribute('y2',B.y+u.y);$('tg').style.opacity=.35}
+ const d=norm(dir),r=30,p0=vec(ref,r),p1=vec(ref+d,r);
+ $('arc').setAttribute('d',Math.abs(d)<1?'':`M${B.x+p0.x} ${B.y+p0.y}A${r} ${r} 0 0 ${d>0?1:0} ${B.x+p1.x} ${B.y+p1.y}`);
+ const lp=vec(ref+d/2,46);$('arcT').setAttribute('x',B.x+lp.x-10);$('arcT').setAttribute('y',B.y+lp.y+4);$('arcT').textContent=Math.abs(d)<1?'':dir+'°';
+ let c='';if(mode==='abs'){[['N',0],['E',90],['S',180],['W',270]].forEach(([n,a])=>{const q=vec(a,82);c+=`<text x="${B.x+q.x}" y="${B.y+q.y+4}" text-anchor="middle" font-size="11" fill="#8b98a5">${n} <tspan class="mono" fill="#5f6b76">${a}</tspan></text>`});c=`<circle cx="${B.x}" cy="${B.y}" r="70" fill="none" stroke="#1f262d"/>`+c}$('comp').innerHTML=c;
+ $('trail').setAttribute('points',trail.map(p=>p.x+','+p.y).join(' '));say()}
+function setMode(m){mode=m;$('tRel').classList.toggle('on',m==='rel');$('tAbs').classList.toggle('on',m==='abs');$('lbl').textContent=m==='rel'?'Direction':'Angle';
+ $('foot').innerHTML=m==='rel'?'0° points at the target or point. Positive turns right, negative turns left: <span class="mono">-90°</span> is the same as <span class="mono">270°</span>.':'0° is up (north). Angles turn clockwise. Used by Move to angle, Rotate to angle and angle conditions. <span class="mono">-90°</span> is the same as <span class="mono">270°</span>.';
+ chips();stop();trail=[];draw()}
+function chips(){$('chips').innerHTML=presets[mode].map(p=>`<button class="${p===dir?'on':''}" data-v="${p}">${p}°</button>`).join('');$('chips').querySelectorAll('button').forEach(b=>b.onclick=()=>setDir(+b.dataset.v))}
+function setDir(v){dir=Math.max(-360,Math.min(360,Math.round(v)||0));$('inp').value=dir;chips();trail=[];draw()}
+$('inp').onchange=e=>setDir(+e.target.value);
+const home={b:{...bot},t:{...tgt}};
+function stop(){if(raf)cancelAnimationFrame(raf);raf=null;$('play').textContent='Play'}
+$('play').onclick=()=>{if(raf){stop();return}trail=[{...bot}];$('play').textContent='Pause';let last=performance.now(),t0=last;
+ const step=n=>{const dt=Math.min(.05,(n-last)/1000);last=n;const h=mode==='rel'?bear(bot,tgt)+dir:dir,v=vec(h,55*dt);bot.x+=v.x;bot.y+=v.y;trail.push({...bot});
+ const done=n-t0>6000||bot.x<14||bot.x>286||bot.y<14||bot.y>286||(mode==='rel'&&Math.hypot(bot.x-tgt.x,bot.y-tgt.y)<28);draw();if(done){stop();return}raf=requestAnimationFrame(step)};raf=requestAnimationFrame(step)};
+$('reset').onclick=()=>{stop();bot={...home.b};tgt={...home.t};trail=[];draw()};
+$('tRel').onclick=()=>{setDir(0);setMode('rel')};$('tAbs').onclick=()=>{setDir(90);setMode('abs')};
+let drag=null;const sv=$('sv');
+function pt(e){const r=sv.getBoundingClientRect();return{x:(e.clientX-r.left)*300/r.width,y:(e.clientY-r.top)*300/r.height}}
+$('bt').onpointerdown=e=>{drag=bot;sv.setPointerCapture(e.pointerId)};$('tg').onpointerdown=e=>{drag=tgt;sv.setPointerCapture(e.pointerId)};
+sv.onpointermove=e=>{if(!drag)return;const p=pt(e);drag.x=Math.max(14,Math.min(286,p.x));drag.y=Math.max(14,Math.min(286,p.y));trail=[];draw()};sv.onpointerup=()=>drag=null;
+$('ph').onclick=()=>{const p=$('ag').classList.toggle('phone');$('ph').textContent=p?'Desktop width':'Phone width'};
+setMode('rel');
+</script>
+</body>
+</html>

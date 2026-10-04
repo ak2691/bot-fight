@@ -1,0 +1,2124 @@
+[
+  {
+    "name": "punish: Smash hits, so Walk 0.5 s then Thrust",
+    "abilities": [
+      37,
+      35,
+      19
+    ],
+    "defenderX": 380,
+    "ticks": 22,
+    "chains": [
+      {
+        "id": "chain.punish",
+        "name": "punish",
+        "steps": [
+          {
+            "type": "action",
+            "action": 37,
+            "selectable": "opponent_1"
+          },
+          {
+            "type": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.selectedAbilitySinceHit",
+                "ability": 37,
+                "selectable": "my_bot",
+                "leftSelectable": "my_bot",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 99999
+                }
+              }
+            ],
+            "then": [
+              {
+                "type": "action",
+                "action": "move_walk",
+                "movementMode": "absolute",
+                "movementDirection": 90,
+                "forMs": 500
+              },
+              {
+                "type": "action",
+                "action": 35,
+                "selectable": "opponent_1"
+              }
+            ],
+            "else": [
+              {
+                "type": "action",
+                "action": 19,
+                "selectable": "opponent_1"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.punish"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "punish@0 | 37 - - -",
+      "punish@0 | - - - -",
+      "punish@0 | - - - -",
+      "punish@0 | - - - -",
+      "punish@0 | - - - -",
+      "punish@0 | - - - -",
+      "punish@1.branch.0 | - E - -",
+      "punish@1.branch.0 | - E - -",
+      "punish@1.branch.0 | - E - -",
+      "punish@1.branch.0 | - E - -",
+      "punish@1.branch.1 | 35 E - -",
+      "punish@1.branch.1 | - - - -",
+      "punish@1.branch.1 | - - - -",
+      "punish@1.branch.1 | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -"
+    ]
+  },
+  {
+    "name": "punish: Smash misses, so Dash",
+    "abilities": [
+      37,
+      35,
+      19
+    ],
+    "defenderX": 900,
+    "ticks": 14,
+    "chains": [
+      {
+        "id": "chain.punish",
+        "name": "punish",
+        "steps": [
+          {
+            "type": "action",
+            "action": 37,
+            "selectable": "opponent_1"
+          },
+          {
+            "type": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "bot.selectedAbilitySinceHit",
+                "ability": 37,
+                "selectable": "my_bot",
+                "leftSelectable": "my_bot",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 99999
+                }
+              }
+            ],
+            "then": [
+              {
+                "type": "action",
+                "action": "move_walk",
+                "movementMode": "absolute",
+                "movementDirection": 90,
+                "forMs": 500
+              },
+              {
+                "type": "action",
+                "action": 35,
+                "selectable": "opponent_1"
+              }
+            ],
+            "else": [
+              {
+                "type": "action",
+                "action": 19,
+                "selectable": "opponent_1"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.punish"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "punish@0 | 37 - - -",
+      "punish@0 | - - - -",
+      "punish@0 | - - - -",
+      "punish@0 | - - - -",
+      "punish@0 | - - - -",
+      "punish@0 | - - - -",
+      "punish@2.branch.0 | 19 - - -",
+      "punish@2.branch.0 | - - - -",
+      "punish@2.branch.0 | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -"
+    ]
+  },
+  {
+    "name": "feint: Cleave, Wait 0.3 s, Cancel Wind-up, Cleave again; it does not end itself",
+    "abilities": [
+      36
+    ],
+    "defenderX": 900,
+    "ticks": 22,
+    "chains": [
+      {
+        "id": "chain.feint",
+        "name": "feint",
+        "steps": [
+          {
+            "type": "action",
+            "action": 36,
+            "selectable": "opponent_1",
+            "continue": "now"
+          },
+          {
+            "type": "wait",
+            "forMs": 300
+          },
+          {
+            "type": "action",
+            "action": "cancel_windup"
+          },
+          {
+            "type": "action",
+            "action": 36,
+            "selectable": "opponent_1"
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.feint"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "feint@1 | 36 - - -",
+      "feint@1 | - - - -",
+      "feint@1 | - - - -",
+      "feint@3 | - - - cancel",
+      "feint@3 | 36 - - -",
+      "feint@3 | - - - -",
+      "feint@3 | - - - -",
+      "feint@3 | - - - -",
+      "feint@3 | - - - -",
+      "feint@3 | - - - -",
+      "feint@3 | - - - -",
+      "feint@3 | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -"
+    ]
+  },
+  {
+    "name": "wait until Smash is ready, max 1 s",
+    "abilities": [
+      37
+    ],
+    "defenderX": 900,
+    "ticks": 20,
+    "chains": [
+      {
+        "id": "chain.combo",
+        "name": "combo",
+        "steps": [
+          {
+            "type": "action",
+            "action": 37,
+            "selectable": "opponent_1"
+          },
+          {
+            "type": "wait",
+            "untilConditions": [
+              {
+                "type": "expression",
+                "left": "bot.selectedAbilityReady",
+                "ability": 37,
+                "selectable": "my_bot",
+                "leftSelectable": "my_bot",
+                "comparator": "eq",
+                "right": {
+                  "type": "boolean",
+                  "value": true
+                }
+              }
+            ],
+            "maxMs": 1000
+          },
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 90,
+            "forMs": 200
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.combo"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "combo@0 | 37 - - -",
+      "combo@0 | - - - -",
+      "combo@0 | - - - -",
+      "combo@0 | - - - -",
+      "combo@0 | - - - -",
+      "combo@0 | - - - -",
+      "combo@1 | - - - -",
+      "combo@1 | - - - -",
+      "combo@1 | - - - -",
+      "combo@1 | - - - -",
+      "combo@1 | - - - -",
+      "combo@1 | - - - -",
+      "combo@1 | - - - -",
+      "combo@2 | - E - -",
+      "idle | - E - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -"
+    ]
+  },
+  {
+    "name": "wait with a max that runs out first",
+    "abilities": [
+      37
+    ],
+    "defenderX": 900,
+    "ticks": 8,
+    "chains": [
+      {
+        "id": "chain.slow",
+        "name": "slow",
+        "steps": [
+          {
+            "type": "wait",
+            "untilConditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "gte",
+                "right": {
+                  "type": "number",
+                  "value": 99
+                }
+              }
+            ],
+            "maxMs": 300
+          },
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 90,
+            "forMs": 100
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.slow"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "slow@0 | - - - -",
+      "slow@0 | - - - -",
+      "slow@0 | - - - -",
+      "idle | - E - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -"
+    ]
+  },
+  {
+    "name": "repeat count: one pass per tick at most",
+    "abilities": [],
+    "defenderX": 900,
+    "ticks": 8,
+    "chains": [
+      {
+        "id": "chain.loop",
+        "name": "loop",
+        "steps": [
+          {
+            "type": "repeat",
+            "count": 3,
+            "steps": [
+              {
+                "type": "action",
+                "action": "move_walk",
+                "movementMode": "absolute",
+                "movementDirection": 90,
+                "forMs": 100
+              }
+            ]
+          },
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 270,
+            "forMs": 100
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.loop"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "loop@0 | - E - -",
+      "loop@0 | - E - -",
+      "loop@0 | - E - -",
+      "idle | - W - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -"
+    ]
+  },
+  {
+    "name": "repeat with an empty body still takes one tick per pass",
+    "abilities": [],
+    "defenderX": 900,
+    "ticks": 6,
+    "chains": [
+      {
+        "id": "chain.loop",
+        "name": "loop",
+        "steps": [
+          {
+            "type": "repeat",
+            "count": 2,
+            "steps": []
+          },
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 90,
+            "forMs": 100
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.loop"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "loop@0 | - - - -",
+      "loop@0 | - - - -",
+      "idle | - E - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -"
+    ]
+  },
+  {
+    "name": "repeat while with a max time",
+    "abilities": [],
+    "defenderX": 900,
+    "ticks": 10,
+    "chains": [
+      {
+        "id": "chain.loop",
+        "name": "loop",
+        "steps": [
+          {
+            "type": "repeat",
+            "whileConditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 99
+                }
+              }
+            ],
+            "maxMs": 300,
+            "steps": [
+              {
+                "type": "wait",
+                "forMs": 100
+              }
+            ]
+          },
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 90,
+            "forMs": 100
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.loop"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "loop@0.body.0 | - - - -",
+      "loop@0 | - - - -",
+      "loop@0.body.0 | - - - -",
+      "loop@0 | - - - -",
+      "idle | - E - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -"
+    ]
+  },
+  {
+    "name": "exit loop leaves the loop and continues after it",
+    "abilities": [],
+    "defenderX": 900,
+    "ticks": 6,
+    "chains": [
+      {
+        "id": "chain.loop",
+        "name": "loop",
+        "steps": [
+          {
+            "type": "repeat",
+            "count": 5,
+            "steps": [
+              {
+                "type": "action",
+                "action": "move_walk",
+                "movementMode": "absolute",
+                "movementDirection": 90,
+                "forMs": 100
+              },
+              {
+                "type": "exitLoop"
+              },
+              {
+                "type": "action",
+                "action": "move_walk",
+                "movementMode": "absolute",
+                "movementDirection": 180,
+                "forMs": 100
+              }
+            ]
+          },
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 270,
+            "forMs": 100
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.loop"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "loop@1 | - E - -",
+      "idle | - W - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -"
+    ]
+  },
+  {
+    "name": "call and return: End returns to the caller",
+    "abilities": [],
+    "defenderX": 900,
+    "ticks": 7,
+    "chains": [
+      {
+        "id": "chain.outer",
+        "name": "outer",
+        "steps": [
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 90,
+            "forMs": 100
+          },
+          {
+            "type": "runChain",
+            "chainId": "chain.inner"
+          },
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 270,
+            "forMs": 100
+          }
+        ]
+      },
+      {
+        "id": "chain.inner",
+        "name": "inner",
+        "steps": [
+          {
+            "type": "wait",
+            "forMs": 100
+          },
+          {
+            "type": "end"
+          },
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 180,
+            "forMs": 500
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.outer"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "outer@1>inner@0 | - E - -",
+      "idle | - W - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -"
+    ]
+  },
+  {
+    "name": "End inside Repeat returns only the current chain",
+    "abilities": [],
+    "defenderX": 900,
+    "ticks": 7,
+    "chains": [
+      {
+        "id": "chain.outer",
+        "name": "outer",
+        "steps": [
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 90,
+            "forMs": 100
+          },
+          {
+            "type": "runChain",
+            "chainId": "chain.inner"
+          },
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 270,
+            "forMs": 100
+          }
+        ]
+      },
+      {
+        "id": "chain.inner",
+        "name": "inner",
+        "steps": [
+          {
+            "type": "repeat",
+            "count": 5,
+            "steps": [
+              {
+                "type": "wait",
+                "forMs": 100
+              },
+              {
+                "type": "end"
+              }
+            ]
+          },
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 180,
+            "forMs": 500
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.outer"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "outer@1>inner@0.body.0 | - E - -",
+      "idle | - W - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -"
+    ]
+  },
+  {
+    "name": "root ability fills a category while the chain continues walking",
+    "abilities": [
+      37
+    ],
+    "defenderX": 900,
+    "ticks": 10,
+    "chains": [
+      {
+        "id": "chain.march",
+        "name": "march",
+        "steps": [
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 90,
+            "forMs": 5000
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.march"
+              }
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "priority": 2,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "gte",
+                "right": {
+                  "type": "number",
+                  "value": 0.45
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": 37,
+                "selectable": "opponent_1"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "march@0 | - E - -",
+      "march@0 | - E - -",
+      "march@0 | - E - -",
+      "march@0 | - E - -",
+      "march@0 | 37 E - -",
+      "march@0 | 37 E - -",
+      "march@0 | 37 E - -",
+      "march@0 | - E - -",
+      "march@0 | - E - -",
+      "march@0 | - E - -"
+    ]
+  },
+  {
+    "name": "Skip leaves the running chain alone, one chain at a time",
+    "abilities": [],
+    "defenderX": 900,
+    "ticks": 8,
+    "chains": [
+      {
+        "id": "chain.a",
+        "name": "a",
+        "steps": [
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 90,
+            "forMs": 5000
+          }
+        ]
+      },
+      {
+        "id": "chain.b",
+        "name": "b",
+        "steps": [
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 270,
+            "forMs": 5000
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.35
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.a"
+              }
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "priority": 2,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "gte",
+                "right": {
+                  "type": "number",
+                  "value": 0.35
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.b"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "a@0 | - E - -",
+      "a@0 | - E - -",
+      "a@0 | - E - -",
+      "a@0 | - E - -",
+      "a@0 | - E - -",
+      "a@0 | - E - -",
+      "a@0 | - E - -",
+      "a@0 | - E - -"
+    ]
+  },
+  {
+    "name": "the highest-priority Run chain wins when several roots run chains",
+    "abilities": [],
+    "defenderX": 900,
+    "ticks": 4,
+    "chains": [
+      {
+        "id": "chain.a",
+        "name": "a",
+        "steps": [
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 90,
+            "forMs": 5000
+          }
+        ]
+      },
+      {
+        "id": "chain.b",
+        "name": "b",
+        "steps": [
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 270,
+            "forMs": 5000
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 2,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.b"
+              }
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.a"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "a@0 | - E - -",
+      "a@0 | - E - -",
+      "a@0 | - E - -",
+      "a@0 | - E - -"
+    ]
+  },
+  {
+    "name": "chain claims beat roots in its category, roots fill the rest",
+    "abilities": [],
+    "mainRotation": 0,
+    "defenderX": 900,
+    "ticks": 5,
+    "chains": [
+      {
+        "id": "chain.march",
+        "name": "march",
+        "steps": [
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 90,
+            "forMs": 5000
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.march"
+              }
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "priority": 2,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "actions": [
+              {
+                "action": "move_walk",
+                "movementMode": "absolute",
+                "movementDirection": 270
+              },
+              {
+                "action": "rotate_toward_enemy",
+                "selectable": "opponent_1"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "march@0 | - E rot -",
+      "march@0 | - E rot -",
+      "march@0 | - E rot -",
+      "march@0 | - E rot -",
+      "march@0 | - E rot -"
+    ]
+  },
+  {
+    "name": "cooldown skips Use and processes the next step next tick",
+    "abilities": [
+      37
+    ],
+    "defenderX": 900,
+    "ticks": 13,
+    "chains": [
+      {
+        "id": "chain.twice",
+        "name": "twice",
+        "steps": [
+          {
+            "type": "action",
+            "action": 37,
+            "selectable": "opponent_1"
+          },
+          {
+            "type": "action",
+            "action": 37,
+            "selectable": "opponent_1"
+          },
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 90,
+            "forMs": 500
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.twice"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "twice@0 | 37 - - -",
+      "twice@0 | - - - -",
+      "twice@0 | - - - -",
+      "twice@0 | - - - -",
+      "twice@0 | - - - -",
+      "twice@0 | - - - -",
+      "twice@2 | - - - -",
+      "twice@2 | - E - -",
+      "twice@2 | - E - -",
+      "twice@2 | - E - -",
+      "twice@2 | - E - -",
+      "idle | - E - -",
+      "idle | - - - -"
+    ]
+  },
+  {
+    "name": "stun ends the chain",
+    "abilities": [],
+    "defenderX": 900,
+    "ticks": 8,
+    "stunAtTick": 3,
+    "chains": [
+      {
+        "id": "chain.march",
+        "name": "march",
+        "steps": [
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 90,
+            "forMs": 5000
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.march"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "march@0 | - E - -",
+      "march@0 | - E - -",
+      "march@0 | - E - -",
+      "march@0 | - E - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -",
+      "idle | - - - -"
+    ]
+  },
+  {
+    "name": "If first match keeps its body across ticks and skips other matching alternatives",
+    "abilities": [],
+    "defenderX": 900,
+    "ticks": 5,
+    "chains": [
+      {
+        "id": "chain.group",
+        "name": "group",
+        "steps": [
+          {
+            "type": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "steps": [
+              {
+                "type": "action",
+                "action": "move_walk",
+                "movementMode": "absolute",
+                "movementDirection": 90,
+                "forMs": 300
+              }
+            ]
+          },
+          {
+            "type": "elseIf",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "steps": [
+              {
+                "type": "action",
+                "action": "move_walk",
+                "movementMode": "absolute",
+                "movementDirection": 270,
+                "forMs": 300
+              }
+            ]
+          },
+          {
+            "type": "elseIf",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "steps": [
+              {
+                "type": "action",
+                "action": "move_walk",
+                "movementMode": "absolute",
+                "movementDirection": 180,
+                "forMs": 300
+              }
+            ]
+          },
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 0,
+            "forMs": 100
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.group"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "group@0.branch.0 | - E - -",
+      "group@0.branch.0 | - E - -",
+      "group@3 | - E - -",
+      "idle | - N - -",
+      "idle | - - - -"
+    ]
+  },
+  {
+    "name": "Else if selects the first match and skips subsequent alternatives",
+    "abilities": [],
+    "defenderX": 900,
+    "ticks": 5,
+    "chains": [
+      {
+        "id": "chain.group",
+        "name": "group",
+        "steps": [
+          {
+            "type": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0
+                }
+              }
+            ],
+            "steps": [
+              {
+                "type": "action",
+                "action": "move_walk",
+                "movementMode": "absolute",
+                "movementDirection": 90,
+                "forMs": 300
+              }
+            ]
+          },
+          {
+            "type": "elseIf",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "steps": [
+              {
+                "type": "action",
+                "action": "move_walk",
+                "movementMode": "absolute",
+                "movementDirection": 270,
+                "forMs": 300
+              }
+            ]
+          },
+          {
+            "type": "elseIf",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "steps": [
+              {
+                "type": "action",
+                "action": "move_walk",
+                "movementMode": "absolute",
+                "movementDirection": 180,
+                "forMs": 300
+              }
+            ]
+          },
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 0,
+            "forMs": 100
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.group"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "group@1.branch.0 | - W - -",
+      "group@1.branch.0 | - W - -",
+      "group@3 | - W - -",
+      "idle | - N - -",
+      "idle | - - - -"
+    ]
+  },
+  {
+    "name": "Else if falls through multiple false alternatives",
+    "abilities": [],
+    "defenderX": 900,
+    "ticks": 5,
+    "chains": [
+      {
+        "id": "chain.group",
+        "name": "group",
+        "steps": [
+          {
+            "type": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0
+                }
+              }
+            ],
+            "steps": [
+              {
+                "type": "action",
+                "action": "move_walk",
+                "movementMode": "absolute",
+                "movementDirection": 90,
+                "forMs": 300
+              }
+            ]
+          },
+          {
+            "type": "elseIf",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0
+                }
+              }
+            ],
+            "steps": [
+              {
+                "type": "action",
+                "action": "move_walk",
+                "movementMode": "absolute",
+                "movementDirection": 270,
+                "forMs": 300
+              }
+            ]
+          },
+          {
+            "type": "elseIf",
+            "conditions": [
+              {
+                "type": "always"
+              }
+            ],
+            "steps": [
+              {
+                "type": "action",
+                "action": "move_walk",
+                "movementMode": "absolute",
+                "movementDirection": 180,
+                "forMs": 300
+              }
+            ]
+          },
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 0,
+            "forMs": 100
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.group"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "group@2.branch.0 | - S - -",
+      "group@2.branch.0 | - S - -",
+      "group@3 | - S - -",
+      "idle | - N - -",
+      "idle | - - - -"
+    ]
+  },
+  {
+    "name": "no conditional match continues after the group",
+    "abilities": [],
+    "defenderX": 900,
+    "ticks": 2,
+    "chains": [
+      {
+        "id": "chain.group",
+        "name": "group",
+        "steps": [
+          {
+            "type": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0
+                }
+              }
+            ],
+            "steps": [
+              {
+                "type": "action",
+                "action": "move_walk",
+                "movementMode": "absolute",
+                "movementDirection": 90,
+                "forMs": 300
+              }
+            ]
+          },
+          {
+            "type": "elseIf",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0
+                }
+              }
+            ],
+            "steps": [
+              {
+                "type": "action",
+                "action": "move_walk",
+                "movementMode": "absolute",
+                "movementDirection": 270,
+                "forMs": 300
+              }
+            ]
+          },
+          {
+            "type": "elseIf",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0
+                }
+              }
+            ],
+            "steps": [
+              {
+                "type": "action",
+                "action": "move_walk",
+                "movementMode": "absolute",
+                "movementDirection": 180,
+                "forMs": 300
+              }
+            ]
+          },
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 0,
+            "forMs": 100
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.group"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "idle | - N - -",
+      "idle | - - - -"
+    ]
+  },
+  {
+    "name": "Wait until ready preserves a second ability use instead of skipping it",
+    "abilities": [
+      37
+    ],
+    "defenderX": 900,
+    "ticks": 20,
+    "chains": [
+      {
+        "id": "chain.combo",
+        "name": "combo",
+        "steps": [
+          {
+            "type": "action",
+            "action": 37,
+            "selectable": "opponent_1"
+          },
+          {
+            "type": "wait",
+            "untilConditions": [
+              {
+                "type": "expression",
+                "left": "bot.selectedAbilityReady",
+                "ability": 37,
+                "selectable": "my_bot",
+                "leftSelectable": "my_bot",
+                "comparator": "eq",
+                "right": {
+                  "type": "boolean",
+                  "value": true
+                }
+              }
+            ],
+            "maxMs": 1000
+          },
+          {
+            "type": "action",
+            "action": 37,
+            "selectable": "opponent_1"
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.combo"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "combo@0 | 37 - - -",
+      "combo@0 | - - - -",
+      "combo@0 | - - - -",
+      "combo@0 | - - - -",
+      "combo@0 | - - - -",
+      "combo@0 | - - - -",
+      "combo@1 | - - - -",
+      "combo@1 | - - - -",
+      "combo@1 | - - - -",
+      "combo@1 | - - - -",
+      "combo@1 | - - - -",
+      "combo@1 | - - - -",
+      "combo@1 | - - - -",
+      "combo@2 | 37 - - -",
+      "combo@2 | - - - -",
+      "combo@2 | - - - -",
+      "combo@2 | - - - -",
+      "combo@2 | - - - -",
+      "combo@2 | - - - -",
+      "idle | - - - -"
+    ]
+  },
+  {
+    "name": "unavailable ability preserves the caller and returns normally",
+    "abilities": [
+      37
+    ],
+    "defenderX": 900,
+    "ticks": 10,
+    "chains": [
+      {
+        "id": "chain.outer",
+        "name": "outer",
+        "steps": [
+          {
+            "type": "runChain",
+            "chainId": "chain.inner"
+          },
+          {
+            "type": "action",
+            "action": "move_walk",
+            "movementMode": "absolute",
+            "movementDirection": 270,
+            "forMs": 100
+          }
+        ]
+      },
+      {
+        "id": "chain.inner",
+        "name": "inner",
+        "steps": [
+          {
+            "type": "action",
+            "action": 37,
+            "selectable": "opponent_1"
+          },
+          {
+            "type": "action",
+            "action": 37,
+            "selectable": "opponent_1"
+          },
+          {
+            "type": "wait",
+            "forMs": 100
+          },
+          {
+            "type": "end"
+          }
+        ]
+      }
+    ],
+    "roots": [
+      {
+        "priority": 1,
+        "branches": [
+          {
+            "priority": 1,
+            "branchType": "if",
+            "conditions": [
+              {
+                "type": "expression",
+                "left": "match.elapsedSeconds",
+                "comparator": "lt",
+                "right": {
+                  "type": "number",
+                  "value": 0.15
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action": "run_chain",
+                "chainId": "chain.outer"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
+    "expected": [
+      "outer@0>inner@0 | 37 - - -",
+      "outer@0>inner@0 | - - - -",
+      "outer@0>inner@0 | - - - -",
+      "outer@0>inner@0 | - - - -",
+      "outer@0>inner@0 | - - - -",
+      "outer@0>inner@0 | - - - -",
+      "outer@0>inner@2 | - - - -",
+      "outer@0>inner@2 | - - - -",
+      "idle | - W - -",
+      "idle | - - - -"
+    ]
+  }
+]

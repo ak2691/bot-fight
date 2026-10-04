@@ -1,0 +1,57 @@
+/* Movement direction guide and the Phase Strike landing guide (ref docs/previews/angle-guide-dialog.html). */
+.ag-overlay { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgba(0, 0, 0, .72); overscroll-behavior: contain; }
+.ag, .ag * { font-family: "IBM Plex Sans", system-ui, sans-serif !important; box-sizing: border-box; text-transform: none; letter-spacing: 0; }
+.ag .ag-mono, .ag input.ag-number { font-family: "Cousine", "IBM Plex Mono", "Courier New", monospace !important; }
+.ag {
+  width: 640px; max-width: 100%; max-height: calc(100dvh - 2rem); overflow-y: auto;
+  border: 1px solid #262c33; border-radius: 4px; background: #111519; color: #e6edf3; font-size: 13px;
+}
+.ag-header { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid #262c33; }
+.ag-header h2 { flex: 1; margin: 0; color: #e6edf3; font-size: 15px; font-weight: 500; }
+.ag-segmented { display: inline-flex; overflow: hidden; border: 1px solid #262c33; border-radius: 5px; }
+.ag-segmented button { height: 28px; padding: 0 10px; border: 0; background: transparent; color: #8b98a5; font-size: 12px; cursor: pointer; }
+.ag-segmented button:hover { background: rgba(255, 255, 255, .06); color: #e6edf3; }
+.ag-segmented button.is-active { background: #1d3a46; color: #e6edf3; }
+.ag-close { width: 28px; height: 28px; border: 0; border-radius: 5px; background: transparent; color: #8b98a5; font-size: 18px; line-height: 28px; text-align: center; cursor: pointer; }
+.ag-close:hover { background: rgba(255, 255, 255, .06); color: #fff; }
+.ag-body { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 14px; padding: 14px; }
+.ag-arena { display: block; width: 100%; border: 1px solid #262c33; border-radius: 2px; background: #0b0f12; touch-action: none; }
+.ag-piece { cursor: grab; }
+.ag-piece:active { cursor: grabbing; }
+.ag-piece-label { font-size: 11px; }
+.ag-compass { font-size: 11px; fill: #8b98a5; }
+.ag-arc-label { font-size: 12px; }
+.ag-hint { font-size: 11px; fill: #6b7783; }
+.ag-controls { min-width: 0; }
+.ag-row { display: flex; height: 32px; align-items: center; justify-content: space-between; gap: 8px; }
+.ag-row > span:first-child { color: #8b98a5; }
+.ag-number-wrap { display: inline-flex; align-items: center; gap: 6px; color: #8b98a5; }
+.ag-number { width: 56px; height: 28px; padding: 0 8px; border: 1px solid #262c33; border-radius: 5px; background: #0b0f12; color: #e6edf3; font-size: 13px; text-align: right; outline: 0; }
+.ag-number:focus { border-color: #3aa6c9; }
+.ag-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 10px; }
+.ag-chips button { padding: 3px 8px; border: 1px solid #262c33; border-radius: 5px; background: transparent; color: #b8c4cf; font-family: "Cousine", "IBM Plex Mono", monospace !important; font-size: 12px; cursor: pointer; }
+.ag-chips button:hover { background: rgba(255, 255, 255, .06); color: #fff; }
+.ag-chips button.is-active { border-color: #3aa6c9; color: #5fd4f0; }
+.ag-says { min-height: 38px; margin: 6px 0 10px; padding: 6px 10px; border-left: 2px solid #4ade80; background: #122019; }
+.ag-says b { display: block; color: #bdf5cb; font-weight: 500; }
+.ag-says small { color: #9fb7a6; font-size: 12px; }
+.ag-buttons { display: flex; gap: 6px; }
+.ag-button { height: 30px; padding: 0 12px; border: 1px solid #2f3740; border-radius: 5px; background: transparent; color: #e6edf3; font-size: 12px; cursor: pointer; }
+.ag-button:hover { background: rgba(255, 255, 255, .06); }
+.ag-footnote { margin: 10px 0 0; color: #8b98a5; font-size: 12px; line-height: 1.5; }
+.ag-copy { padding: 14px; }
+.ag-copy > p:first-child { margin: 0 0 12px; color: #b8c4cf; line-height: 1.5; }
+.ag-panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.ag-panel { margin: 0; padding: 8px 10px; border: 1px solid #262c33; border-radius: 2px; background: #0b0f12; }
+.ag-panel figcaption { color: #e6edf3; font-size: 13px; font-weight: 500; }
+.ag-panel svg { display: block; width: 100%; height: auto; }
+.ag-panel p { margin: 0; color: #8b98a5; font-size: 12px; }
+.ag-ph-label { fill: #b8c4cf; font-size: 12px; }
+@media (max-width: 640px) {
+  .ag-overlay { align-items: flex-end; padding: .5rem; }
+  .ag { max-height: calc(100dvh - 1rem); border-radius: 14px; }
+  .ag-body { grid-template-columns: minmax(0, 1fr); }
+  .ag-panels { grid-template-columns: minmax(0, 1fr); }
+  .ag-number, .ag-button, .ag-segmented button, .ag-close { min-height: 34px; }
+  .ag-chips button { min-height: 34px; padding: 0 12px; }
+}

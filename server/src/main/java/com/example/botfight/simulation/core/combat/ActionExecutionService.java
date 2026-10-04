@@ -13,6 +13,8 @@ import com.example.botfight.simulation.core.logic.ConditionResolutionService;
 import com.example.botfight.simulation.core.logic.CustomVariableActionService;
 import com.example.botfight.simulation.core.state.BotMovementService;
 import com.example.botfight.simulation.core.state.BotStateService;
+import com.example.botfight.simulation.core.state.StaminaSystem;
+import com.example.botfight.simulation.gameconfig.MovementConfig;
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import com.example.botfight.simulation.ecs.entities.AbilityEntityFactory;
 import com.example.botfight.simulation.ecs.entities.ArenaBounds;
@@ -72,6 +74,8 @@ public class ActionExecutionService {
         if ("slow".equals(phaseBlockedByStatus(payload))
                 && BotStateService.statusActive(bot, "slow"))
             return false;
+        if (!StaminaSystem.abilityStaminaReady(bot, payload.abilityId()))
+            return false;
         var definition = payload.definition();
         boolean fixedResourceInactive = definition.resourceModel() == Abilities.ResourceModel.FIXED
                 && bot.abilityActiveMs.getOrDefault(payload.abilityId(), 0) <= 0;
@@ -106,8 +110,10 @@ public class ActionExecutionService {
             return 0;
         if (bot.preparingMs > 0 || bot.abilityActiveMs.getOrDefault(ability, 0) > 0)
             return 0;
-        return Math.max(bot.abilityCooldowns.getOrDefault(ability, 0),
-                botStateService.abilityRechargeMs(bot, ability));
+        return Math.max(Math.max(bot.abilityCooldowns.getOrDefault(ability, 0),
+                botStateService.abilityRechargeMs(bot, ability)),
+                // Dash waits on its gap and on having enough stamina instead of a fixed cooldown.
+                ability == MovementConfig.DASH_ABILITY_ID ? StaminaSystem.dashWaitMs(bot) : 0);
     }
 
     public boolean selectedAbilityOnCooldown(Bot bot, int ability) {
@@ -129,6 +135,12 @@ public class ActionExecutionService {
         return bot == null || !hasAbility(bot, ability)
                 ? 0
                 : bot.abilityActiveMs.getOrDefault(ability, 0);
+    }
+
+    /** Milliseconds since the ability last hit an enemy bot; {@link BotStateService#NEVER_HIT_MS} if it never has. */
+    public int selectedAbilitySinceHitMs(Bot bot, int ability) {
+        return bot == null ? BotStateService.NEVER_HIT_MS
+                : bot.abilityLastHitAgeMs.getOrDefault(ability, BotStateService.NEVER_HIT_MS);
     }
 
     public boolean selectedAbilityPresent(Bot bot, int ability) {
@@ -180,6 +192,10 @@ public class ActionExecutionService {
             botStateService.beginTick(bot);
             return;
         }
+        // Stamina lockouts count down (and stamina regenerates) as the tick starts and spends below
+        // restart them. Whether Dash, a cancel or a sprint is allowed is judged on the state the
+        // previous tick left (the bot's fields until finish), which is what conditions saw.
+        StaminaSystem.Tick stamina = StaminaSystem.begin(bot, STEP_MS);
 
         // The browser evaluates the selected action against the pre-tick
         // status/resource state, then advances bot-owned systems afterward.
@@ -191,15 +207,27 @@ public class ActionExecutionService {
         boolean silencedWasActive = BotStateService.statusActive(bot, "silence");
         Integer justActivatedAbilityId = null;
 
-        movementService.applyTickMovement(bot, action, arena, false,
-                slowedWasActive, hitStaggerWasActive);
         if (stunnedWasActive) {
+            movementService.applyTickMovement(bot, action, arena, false,
+                    slowedWasActive, hitStaggerWasActive);
             BotStateService.interruptCurrentAbility(bot);
+            stamina.finish(bot);
             botStateService.beginTick(bot);
             return;
         }
 
-        AbilityExecutionPayload payload = selectedAbilityPayload(bot, action);
+        // A wind-up is locked once started, so Cancel Wind-up is handled before the locked
+        // continuation. It only works while preparing with enough stamina; otherwise it does nothing.
+        boolean preparationLocked = bot.preparingAbility != null && bot.preparingMs > 0 && !silencedWasActive;
+        boolean cancelsWindup = preparationLocked && action.cancelWindup()
+                && StaminaSystem.canCancelWindup(bot);
+        if (cancelsWindup) {
+            StaminaSystem.clearWindup(bot);
+            stamina.spend(StaminaSystem.cancelCost());
+        }
+        boolean windupContinues = preparationLocked && !cancelsWindup;
+
+        AbilityExecutionPayload payload = cancelsWindup ? null : selectedAbilityPayload(bot, action);
         boolean blockedByStatus = payload != null
                 && (silencedWasActive
                         || ("slow".equals(phaseBlockedByStatus(payload))
@@ -207,10 +235,33 @@ public class ActionExecutionService {
         boolean blockedByAbilityState = payload != null
                 && !blockedByStatus
                 && !selectedAbilityExecutable(bot, payload);
+
+        // Sprint is a Walk setting: it applies on a tick that actually moves while the bot has
+        // stamina and is not starting, winding up or active with any ability (attacking cancels it).
+        boolean startsAbility = payload != null && !blockedByStatus && !blockedByAbilityState
+                && !BotStateService.statusActive(bot, "silence");
+        boolean sprinting = action.sprint()
+                && Math.hypot(action.dx(), action.dy()) > 0.001
+                && StaminaSystem.stamina(bot) > 0
+                && !windupContinues && !startsAbility
+                && !BotStateService.statusActive(bot, "movement-lock")
+                && bot.abilityActiveMs.values().stream().noneMatch(activeMs -> activeMs > 0);
+        // Fast turn doubles the rotation step on a tick that actually rotates, while the previous tick
+        // left enough stamina. It stacks with sprint and does not depend on attacking.
+        boolean fastTurning = action.fastTurn()
+                && Math.abs(Math.max(-1, Math.min(1, action.dRot()))) > 0.001
+                && StaminaSystem.canFastTurn(bot);
+        movementService.applyTickMovement(bot, action, arena, false,
+                slowedWasActive, hitStaggerWasActive, sprinting, fastTurning);
+        if (sprinting) stamina.spend(MovementConfig.SPRINT_DRAIN_PER_TICK);
+        if (fastTurning) stamina.spend(MovementConfig.FAST_TURN_DRAIN_PER_TICK);
+        stamina.setSprinting(sprinting);
+        stamina.setFastTurning(fastTurning);
+
         if (blockedByStatus || blockedByAbilityState) {
             cancelPreparation(bot, payload);
         } else if (payload != null && !BotStateService.statusActive(bot, "silence")) {
-            AbilityExecutionPayload activated = activateAbility(bot, payload, arena);
+            AbilityExecutionPayload activated = activateAbility(bot, payload, arena, stamina);
             if (activated != null) {
                 setTriggeredPayload(bot, activated);
                 justActivatedAbilityId = activated.abilityId();
@@ -221,6 +272,7 @@ public class ActionExecutionService {
             cancelPreparation(bot, payload);
         }
 
+        stamina.finish(bot);
         botStateService.beginTick(bot, justActivatedAbilityId);
         if (bot.triggeredAbilityPayload != null) {
             spawnAbilityEntity(bot, bot.triggeredAbilityPayload, arena);
@@ -282,7 +334,7 @@ public class ActionExecutionService {
     }
 
     private AbilityExecutionPayload activateAbility(
-            Bot bot, AbilityExecutionPayload payload, Arena arena) {
+            Bot bot, AbilityExecutionPayload payload, Arena arena, StaminaSystem.Tick stamina) {
         if (!selectedAbilityExecutable(bot, payload))
             return null;
         int windup = payload.definition().windupMs();
@@ -312,6 +364,8 @@ public class ActionExecutionService {
         int cooldownMs = activationCooldownMs(bot, payload, 1.0 / bot.attackSpeedMultiplier);
         bot.abilityActiveMs.put(payload.abilityId(), activeMs);
         botStateService.setAbilityCooldown(bot, payload.abilityId(), cooldownMs);
+        // Dash pays stamina and starts its gap instead of a cooldown.
+        if (payload.abilityId() == MovementConfig.DASH_ABILITY_ID) stamina.spendDash();
         AbilityExecutionPayload activated = payload.capture(bot);
         AbilityContracts.AbilityPhase phase = activated.phases().isEmpty()
                 ? null : activated.phases().getFirst();

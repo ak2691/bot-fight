@@ -206,6 +206,14 @@ public record MatchReplayDTO(
         }
     }
 
+    /** Only the current frame is exposed; runtime counters and caller frames stay private. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record RunningChainDTO(String chainId, List<Object> path, int callDepth, String name) {
+        public RunningChainDTO {
+            path = List.copyOf(path);
+        }
+    }
+
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record ReplayBotDTO(
             int slot,
@@ -232,7 +240,69 @@ public record MatchReplayDTO(
             Integer closingZoneDamageCount,
             Double dashDirectionX,
             Double dashDirectionY,
-            int teamNumber) {
+            int teamNumber,
+            Integer stamina,
+            Boolean exhausted,
+            Boolean sprinting,
+            RunningChainDTO runningChain,
+            @JsonInclude(JsonInclude.Include.NON_NULL) Boolean fastTurning) {
+        /** Source compatibility for callers without fast-turn state. */
+        public ReplayBotDTO(int slot, double x, double y, Double rotation, double hp, List<StatusEffectState> statusEffects, Map<Integer, Integer> abilityCooldowns, Map<Integer, Integer> abilityCharges, Map<Integer, Integer> abilityRechargeMs, Map<Integer, Integer> abilityActiveMs, Integer triggeredAbility, Integer preparingAbility, Integer preparingMs, Double abilityTargetX, Double abilityTargetY, Double visualOriginX, Double visualOriginY, Double visualOriginRotation, Double temporalRewindX, Double temporalRewindY, Integer temporalRewindPulseMs, Integer closingZoneDamageCount, Double dashDirectionX, Double dashDirectionY, int teamNumber, Integer stamina, Boolean exhausted, Boolean sprinting, RunningChainDTO runningChain) {
+            this(slot, x, y, rotation, hp, statusEffects, abilityCooldowns, abilityCharges, abilityRechargeMs, abilityActiveMs, triggeredAbility, preparingAbility, preparingMs, abilityTargetX, abilityTargetY, visualOriginX, visualOriginY, visualOriginRotation, temporalRewindX, temporalRewindY, temporalRewindPulseMs, closingZoneDamageCount, dashDirectionX, dashDirectionY, teamNumber, stamina, exhausted, sprinting, runningChain, null);
+        }
+
+        /** Source compatibility for replay callers without chain presentation state. */
+        public ReplayBotDTO(
+            int slot,
+            double x,
+            double y,
+            Double rotation,
+            double hp,
+            List<StatusEffectState> statusEffects,
+            Map<Integer, Integer> abilityCooldowns,
+            Map<Integer, Integer> abilityCharges,
+            Map<Integer, Integer> abilityRechargeMs,
+            Map<Integer, Integer> abilityActiveMs,
+            Integer triggeredAbility,
+            Integer preparingAbility,
+            Integer preparingMs,
+            Double abilityTargetX,
+            Double abilityTargetY,
+            Double visualOriginX,
+            Double visualOriginY,
+            Double visualOriginRotation,
+            Double temporalRewindX,
+            Double temporalRewindY,
+            Integer temporalRewindPulseMs,
+            Integer closingZoneDamageCount,
+            Double dashDirectionX,
+            Double dashDirectionY,
+            int teamNumber,
+            Integer stamina,
+            Boolean exhausted,
+            Boolean sprinting) {
+            this(slot, x, y, rotation, hp, statusEffects, abilityCooldowns, abilityCharges, abilityRechargeMs, abilityActiveMs, triggeredAbility, preparingAbility, preparingMs, abilityTargetX, abilityTargetY, visualOriginX, visualOriginY, visualOriginRotation, temporalRewindX, temporalRewindY, temporalRewindPulseMs, closingZoneDamageCount, dashDirectionX, dashDirectionY, teamNumber, stamina, exhausted, sprinting, null);
+        }
+
+
+        /** Source compatibility for callers without stamina state. */
+        public ReplayBotDTO(
+                int slot, double x, double y, Double rotation, double hp,
+                List<StatusEffectState> statusEffects,
+                Map<Integer, Integer> abilityCooldowns, Map<Integer, Integer> abilityCharges,
+                Map<Integer, Integer> abilityRechargeMs, Map<Integer, Integer> abilityActiveMs,
+                Integer triggeredAbility, Integer preparingAbility, Integer preparingMs,
+                Double abilityTargetX, Double abilityTargetY, Double visualOriginX,
+                Double visualOriginY, Double visualOriginRotation, Double temporalRewindX,
+                Double temporalRewindY, Integer temporalRewindPulseMs,
+                Integer closingZoneDamageCount, Double dashDirectionX, Double dashDirectionY,
+                int teamNumber) {
+            this(slot, x, y, rotation, hp, statusEffects, abilityCooldowns, abilityCharges,
+                    abilityRechargeMs, abilityActiveMs, triggeredAbility, preparingAbility,
+                    preparingMs, abilityTargetX, abilityTargetY, visualOriginX, visualOriginY,
+                    visualOriginRotation, temporalRewindX, temporalRewindY, temporalRewindPulseMs,
+                    closingZoneDamageCount, dashDirectionX, dashDirectionY, teamNumber, null, null, null);
+        }
 
         public ReplayBotDTO(
                 int slot, double x, double y, Double rotation, double hp,
@@ -330,7 +400,12 @@ public record MatchReplayDTO(
                     positiveOrNull(bot.closingZoneDamageCount()),
                     finiteOrNull(bot.dashDirectionX()),
                     finiteOrNull(bot.dashDirectionY()),
-                    bot.teamNumber());
+                    bot.teamNumber(),
+                    bot.stamina(),
+                    bot.exhausted(),
+                    bot.sprinting(),
+                    bot.runningChain(),
+                    bot.fastTurning());
         }
     }
 

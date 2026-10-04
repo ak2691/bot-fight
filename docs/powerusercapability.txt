@@ -1,0 +1,7 @@
+
+- Quick note to self as a reminder. Ignore for now.
+
+How can we make the building of the entire game purely able to be done with just the keyboard for potential power users?
+
+The idea I had in mind for the workspace: using a reliable search or ctrl f to start at a root, then using down, up left right arrows to navigate through this specific root. The chains workspace can use arrow keys to go up or down the nodes.
+

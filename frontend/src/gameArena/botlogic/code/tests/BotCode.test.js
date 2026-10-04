@@ -5,6 +5,7 @@ import {
     createExpressionCondition,
     createCodeRoot,
     countConditionSlots,
+    countActionSlots,
     inspectAbilityStrategyConditions,
     normalizeConditionSelections,
     normalizeConditions,
@@ -58,6 +59,13 @@ const SELECTABLE_IDENTITY_MATRIX = Object.freeze({
     "selectable.absoluteBearing": [[SELECTABLE_IDENTITIES.FACING], []],
     "selectable.movementDirection": [[]],
     "selectable.speed": [[]],
+    "selectable.approachAngle": [[], []],
+    "selectable.moving": [[]],
+    "bot.anyAbilityPreparing": [[SELECTABLE_IDENTITIES.BOT]],
+    "bot.stamina": [[SELECTABLE_IDENTITIES.BOT]],
+    "bot.exhausted": [[SELECTABLE_IDENTITIES.BOT]],
+    "bot.sprinting": [[SELECTABLE_IDENTITIES.BOT]],
+    "bot.fastTurning": [[SELECTABLE_IDENTITIES.BOT]],
     "selectable.relativeBearing": [[SELECTABLE_IDENTITIES.FACING], []],
     "selectable.facing": [[SELECTABLE_IDENTITIES.FACING]],
     "selectable.count": [[SELECTABLE_IDENTITIES.ABILITY_ENTITY]],
@@ -69,6 +77,8 @@ const SELECTABLE_IDENTITY_MATRIX = Object.freeze({
     "bot.selectedAbilityActive": [[SELECTABLE_IDENTITIES.BOT]],
     "bot.selectedAbilityOnCooldown": [[SELECTABLE_IDENTITIES.BOT]],
     "bot.selectedAbilityActiveMs": [[SELECTABLE_IDENTITIES.BOT]],
+    "bot.selectedAbilityBaseRange": [[SELECTABLE_IDENTITIES.BOT]],
+    "bot.selectedAbilitySinceHit": [[SELECTABLE_IDENTITIES.BOT]],
     "bot.selectedAbilityCooldownMs": [[SELECTABLE_IDENTITIES.BOT]],
     "bot.selectedAbilityCharges": [[SELECTABLE_IDENTITIES.BOT]],
     "bot.selectedAbilityPreparing": [[SELECTABLE_IDENTITIES.BOT]],
@@ -234,10 +244,10 @@ test("selectable distance defaults to My Bot and Opponent and supports custom pa
     })).primary.id, "root-1-1-1");
 });
 
-test("bearing conditionals use the configured Entity and Target pair", () => {
+test("bearing conditionals use the configured From and To pair", () => {
     const absoluteBearing = STATE_VARIABLES.find((variable) => variable.id === "selectable.absoluteBearing");
     assert.equal(absoluteBearing.selectableType, VARIABLE_SELECTABLE_TYPES.PAIR);
-    assert.deepEqual(absoluteBearing.selectableSelectorLabels, ["Facing Entity", "Target"]);
+    assert.deepEqual(absoluteBearing.selectableSelectorLabels, ["From", "To"]);
     assert.deepEqual(STATE_VARIABLES.find((variable) => variable.id === "selectable.relativeBearing").targetModes, [
         TARGET_MODES.TARGET,
         TARGET_MODES.ANGLE,
@@ -436,11 +446,11 @@ test("normalized editor positions stay with roots and conditionals after priorit
     ]);
     assert.deepEqual(normalized.nodePositions, {
         "rootNode:fire-root": { x: 100, y: 50 },
-        "condition:fire-root-1-1:root:fire-root": { x: 110, y: 300 },
-        "action:fire-root-1-1:0:root:fire-root": { x: 120, y: 500 },
+        "condition:fire-condition:root:fire-root": { x: 110, y: 300 },
+        "action:fire-condition:0:root:fire-root": { x: 120, y: 500 },
         "rootNode:concussive-root": { x: 600, y: 50 },
-        "condition:concussive-root-1-1:root:concussive-root": { x: 610, y: 300 },
-        "action:concussive-root-1-1:0:root:concussive-root": { x: 620, y: 500 },
+        "condition:concussive-condition:root:concussive-root": { x: 610, y: 300 },
+        "action:concussive-condition:0:root:concussive-root": { x: 620, y: 500 },
     });
 });
 
@@ -558,7 +568,7 @@ test("target existence and age conditions resolve spawned opponent entities", ()
         ],
     }));
 
-    assert.equal(result.movement?.id, "root-1-1-1");
+    assert.equal(result.movement?.id, "singularity-old-enough");
 
     const inspection = inspectAbilityStrategyConditions(configuration, payload({
         objects: [
@@ -607,7 +617,7 @@ test("target existence and age conditions resolve spawned opponent entities", ()
             { id: "opponent-model", type: "opponentModel", x: 600, y: 400, hp: 100, slot: 2 },
             { id: "singularity-1", type: "singularityZone", abilityId: 27, ownerId: "opponent-model", ownerSlot: 2, x: 500, y: 400, size: 240, ageMs: 0 },
         ],
-    })).movement?.id, "root-1-1-1");
+    })).movement?.id, "singularity-exists");
 });
 
 test("selectable selectors keep shared runtime entities separated and order by age", () => {
@@ -711,10 +721,10 @@ test("selectable speed uses a direction-independent per-tick movement magnitude"
     };
     assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
         objects: [{ id: "opponent-model", type: "opponentModel", x: 600, y: 400, movementVelocityX: 3, movementVelocityY: 4 }],
-    })).primary.id, "root-1-1-1");
+    })).primary.id, "speed");
     assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
         objects: [{ id: "opponent-model", type: "opponentModel", x: 600, y: 400, movementVelocityX: -3, movementVelocityY: -4 }],
-    })).primary.id, "root-1-1-1");
+    })).primary.id, "speed");
     assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
         objects: [{ id: "opponent-model", type: "opponentModel", x: 600, y: 400, movementVelocityX: 0, movementVelocityY: 3 }],
     })).primary, null);
@@ -731,7 +741,7 @@ test("selectable speed uses a direction-independent per-tick movement magnitude"
             },
             health: { current: 100, max: 100 },
         }],
-    })).primary.id, "root-1-1-1");
+    })).primary.id, "speed");
 
 });
 
@@ -757,7 +767,7 @@ test("danger-zone edge distance uses signed center-to-boundary distance", () => 
     assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
         closingZone: zone,
         playerModel: { x: 920, y: 500, size: 60 },
-    })).primary.id, "root-1-1-1");
+    })).primary.id, "outside-zone");
     assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
         closingZone: zone,
         playerModel: { x: 700, y: 500, size: 60 },
@@ -776,7 +786,7 @@ test("danger-zone edge distance uses signed center-to-boundary distance", () => 
     assert.equal(selectAbilityStrategyActionPlan(opponentConfiguration, payload({
         closingZone: zone,
         objects: [{ id: "opponent-model", type: "opponentModel", x: 920, y: 500, size: 60, hp: 100 }],
-    })).primary.id, "root-1-1-1");
+    })).primary.id, "opponent-outside-zone");
 
     const centerInsideConfiguration = {
         roots: [{ branches: [{ id: "center-inside", conditions: [{
@@ -790,7 +800,7 @@ test("danger-zone edge distance uses signed center-to-boundary distance", () => 
     assert.equal(selectAbilityStrategyActionPlan(centerInsideConfiguration, payload({
         closingZone: zone,
         playerModel: { x: 880, y: 500, size: 60 },
-    })).primary.id, "root-1-1-1");
+    })).primary.id, "center-inside");
 });
 
 test("arena edge distance uses the entity center instead of its hitbox edge", () => {
@@ -810,7 +820,7 @@ test("arena edge distance uses the entity center instead of its hitbox edge", ()
     })).primary, null);
     assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
         playerModel: { x: 10, y: 400, size: 60 },
-    })).primary.id, "root-1-1-1");
+    })).primary.id, "near-edge");
 });
 
 test("conditional ability choices include standard abilities and filter charges to real resources", () => {
@@ -822,7 +832,7 @@ test("conditional ability choices include standard abilities and filter charges 
     assert.equal(abilityDefinitionsForVariable(ready, equipped).some((ability) => ability.id === 2), false);
     assert.equal(abilityDefinitionsForVariable(ready, equipped).some((ability) => ability.id === 19), true);
     assert.equal(abilityDefinitionsForVariable(ready, equipped).some((ability) => ability.id === 20), true);
-    assert.deepEqual(abilityDefinitionsForVariable(charges, equipped).map((ability) => ability.id), [3, 5, 12]);
+    assert.deepEqual(abilityDefinitionsForVariable(charges, equipped).map((ability) => ability.id), [12]);
 
     const normalized = normalizeAbilityStrategyConfiguration({
         roots: [{ branches: [{ conditions: [{ type: "expression", left: charges.id, ability: "swing", comparator: "gt", right: { type: "number", value: 0 } }], actions: [] }] }],
@@ -833,7 +843,7 @@ test("conditional ability choices include standard abilities and filter charges 
     const defaulted = normalizeAbilityStrategyConfiguration({
         roots: [{ branches: [{ conditions: [{ type: "expression", left: charges.id, comparator: "gt", right: { type: "number", value: 0 } }], actions: [] }] }],
     });
-    assert.equal(defaulted.roots[0].branches[0].conditions[0].ability, 3);
+    assert.equal(defaulted.roots[0].branches[0].conditions[0].ability, 12);
 });
 
 test("conditional ability choices expose active state and remaining active time", () => {
@@ -869,8 +879,8 @@ test("conditional ability choices expose active state and remaining active time"
 
     assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
         playerModel: { abilityActiveMs: { concussive_shot: 850 } },
-    })).primary.id, "root-1-1-1");
-    assert.equal(selectAbilityStrategyActionPlan(configuration, payload()).primary.id, "root-1-1-2");
+    })).primary.id, "active-ability");
+    assert.equal(selectAbilityStrategyActionPlan(configuration, payload()).primary.id, "fallback");
 });
 
 test("ability phase conditionals expose mutually exclusive active, cooldown, preparation, and ready states", () => {
@@ -895,7 +905,7 @@ test("ability phase conditionals expose mutually exclusive active, cooldown, pre
     ]), payload({
         playerModel: { abilityActiveMs: { concussive_shot: 500 }, abilityCooldowns: { concussive_shot: 3000 } },
     }));
-    assert.equal(activePlan.movement?.id, "root-1-1-1");
+    assert.equal(activePlan.movement?.id, "phase");
 
     const cooldownPlan = selectAbilityStrategyActionPlan(phaseConfiguration([
         condition("bot.selectedAbilityActive", "eq", false),
@@ -905,7 +915,7 @@ test("ability phase conditionals expose mutually exclusive active, cooldown, pre
     ]), payload({
         playerModel: { abilityActiveMs: { concussive_shot: 0 }, abilityCooldowns: { concussive_shot: 500 } },
     }));
-    assert.equal(cooldownPlan.movement?.id, "root-1-1-1");
+    assert.equal(cooldownPlan.movement?.id, "phase");
 
     const preparationPlan = selectAbilityStrategyActionPlan(phaseConfiguration([
         condition("bot.selectedAbilityPreparing", "eq", true),
@@ -918,7 +928,7 @@ test("ability phase conditionals expose mutually exclusive active, cooldown, pre
     ]), payload({
         playerModel: { preparingAbility: 9, preparingMs: 400 },
     }));
-    assert.equal(preparationPlan.movement?.id, "root-1-1-1");
+    assert.equal(preparationPlan.movement?.id, "phase");
 
     const readyPlan = selectAbilityStrategyActionPlan(phaseConfiguration([
         condition("bot.selectedAbilityActive", "eq", false),
@@ -926,7 +936,7 @@ test("ability phase conditionals expose mutually exclusive active, cooldown, pre
         condition("bot.selectedAbilityOnCooldown", "eq", false),
         condition("bot.selectedAbilityReady", "eq", true),
     ]), payload());
-    assert.equal(readyPlan.movement?.id, "root-1-1-1");
+    assert.equal(readyPlan.movement?.id, "phase");
 });
 
 test("unowned ability conditionals resolve every ability state as false or zero", () => {
@@ -945,7 +955,7 @@ test("unowned ability conditionals resolve every ability state as false or zero"
             type: "expression",
             left,
             leftSelectable: target,
-            ability: 5,
+            ability: 12,
             comparator,
             right: { type, value },
         })), actions: [] }] }],
@@ -953,10 +963,10 @@ test("unowned ability conditionals resolve every ability state as false or zero"
     const stateWithStaleAbilityState = payload({
         playerModel: {
             abilities: [],
-            abilityActiveMs: { 5: 900 },
-            abilityCooldowns: { 5: 5000 },
-            abilityCharges: { 5: 2 },
-            preparingAbility: 5,
+            abilityActiveMs: { 12: 900 },
+            abilityCooldowns: { 12: 5000 },
+            abilityCharges: { 12: 2 },
+            preparingAbility: 12,
             preparingMs: 600,
         },
         objects: [{
@@ -965,10 +975,10 @@ test("unowned ability conditionals resolve every ability state as false or zero"
             x: 600,
             y: 400,
             abilities: [],
-            abilityActiveMs: { 5: 900 },
-            abilityCooldowns: { 5: 5000 },
-            abilityCharges: { 5: 2 },
-            preparingAbility: 5,
+            abilityActiveMs: { 12: 900 },
+            abilityCooldowns: { 12: 5000 },
+            abilityCharges: { 12: 2 },
+            preparingAbility: 12,
             preparingMs: 600,
         }],
     });
@@ -1014,7 +1024,7 @@ test("ability conditionals resolve several selected abilities and numeric prepar
         }, payload({
             playerModel: { abilities: [16, 19, 33], abilityActiveMs: { [abilityId]: 500 } },
         }));
-        assert.equal(result.movement?.id, "root-1-1-1", ability);
+        assert.equal(result.movement?.id, `active-${abilityId}`, ability);
     }
 
     const preparing = selectAbilityStrategyActionPlan({
@@ -1037,7 +1047,7 @@ test("ability conditionals resolve several selected abilities and numeric prepar
     }, payload({
         playerModel: { abilities: [13], preparingAbility: 13, preparingMs: 700 },
     }));
-    assert.equal(preparing.movement?.id, "root-1-1-1");
+    assert.equal(preparing.movement?.id, "preparing");
 });
 
 test("condition inspection identifies the ability represented by Ability Active", () => {
@@ -1073,7 +1083,7 @@ test("numeric-string ability selections preserve Dash active-state conditions", 
     assert.equal(normalized.roots[0].branches[0].conditions[0].ability, 19);
     assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
         playerModel: { abilities: [19], abilityActiveMs: { 19: 850 } },
-    })).primary.id, "root-1-1-1");
+    })).primary.id, "dash-active");
 });
 
 test("angle condition inputs use bounds matching their runtime ranges", () => {
@@ -1085,6 +1095,7 @@ test("angle condition inputs use bounds matching their runtime ranges", () => {
         {
             "selectable.absoluteBearing": [-360, 360],
             "selectable.movementDirection": [-360, 360],
+            "selectable.approachAngle": [0, 180],
             "selectable.relativeBearing": [0, 180],
             "selectable.facing": [-360, 360],
         },
@@ -1248,8 +1259,8 @@ test("selectable directions compare positive and negative angle equivalents", ()
     };
     assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
         objects: [{ id: "opponent-model", type: "opponentModel", x: 400, y: 300, hp: 100, rotation: 180 }],
-    })).primary.id, "root-1-1-1");
-    assert.equal(selectAbilityStrategyActionPlan(configuration, payload()).primary.id, "root-1-1-1");
+    })).primary.id, "angle");
+    assert.equal(selectAbilityStrategyActionPlan(configuration, payload()).primary.id, "angle");
 
     const boundedConfiguration = {
         roots: [{ branches: [{ id: "centered-angle", conditions: [
@@ -1259,7 +1270,7 @@ test("selectable directions compare positive and negative angle equivalents", ()
     };
     assert.equal(selectAbilityStrategyActionPlan(boundedConfiguration, payload({
         objects: [{ id: "opponent-model", type: "opponentModel", x: 400, y: 300, hp: 100, rotation: 180 }],
-    })).primary.id, "root-1-1-1");
+    })).primary.id, "centered-angle");
 
     const facingConfiguration = {
         roots: [{ branches: [{ id: "facing-range", conditions: [
@@ -1269,7 +1280,7 @@ test("selectable directions compare positive and negative angle equivalents", ()
     };
     assert.equal(selectAbilityStrategyActionPlan(facingConfiguration, payload({
         objects: [{ id: "opponent-model", type: "opponentModel", x: 600, y: 400, hp: 100, rotation: 30 }],
-    })).primary.id, "root-1-1-1");
+    })).primary.id, "facing-range");
     assert.equal(selectAbilityStrategyActionPlan(facingConfiguration, payload({
         objects: [{ id: "opponent-model", type: "opponentModel", x: 600, y: 400, hp: 100, rotation: 70 }],
     })).primary, null);
@@ -1323,7 +1334,7 @@ test("status-effect conditionals resolve multiple effect types and labels", () =
         }, payload({
             playerModel: { statusEffects: [{ type: statusEffect, remainingMs: 1200 }] },
         }));
-        assert.equal(result.movement?.id, "root-1-1-1", statusEffect);
+        assert.equal(result.movement?.id, `status-${statusEffect}`, statusEffect);
     }
 });
 
@@ -1341,7 +1352,7 @@ test("right-hand ability and status variables keep their own selection metadata"
     }, payload({
         playerModel: { hp: 1, abilities: [19], abilityCooldowns: { 19: 1800 } },
     }));
-    assert.equal(abilityResult.movement?.id, "root-1-1-1");
+    assert.equal(abilityResult.movement?.id, "right-ability");
 
     const statusResult = selectAbilityStrategyActionPlan({
         roots: [{ branches: [{ id: "right-status", conditions: [{
@@ -1355,7 +1366,7 @@ test("right-hand ability and status variables keep their own selection metadata"
     }, payload({
         playerModel: { hp: 1, statusEffects: [{ type: "overclock", remainingMs: 3200 }] },
     }));
-    assert.equal(statusResult.movement?.id, "root-1-1-1");
+    assert.equal(statusResult.movement?.id, "right-status");
 });
 
 test("status conditions read Overclock like Burn from the generic status collection", () => {
@@ -1581,7 +1592,7 @@ test("conditional priority switches values without moving siblings", () => {
     assert.deepEqual(switched[0].branches.map((branch) => branch.priority), [3, 1]);
 });
 
-test("tutorial teaches rotate before lock on", () => {
+test("tutorial teaches rotate before fast turn", () => {
     const basicStrikeScenario = getTutorialScenario(3);
     const rotateScenario = getTutorialScenario(5);
     const lockOnScenario = getTutorialScenario(6);
@@ -1591,7 +1602,7 @@ test("tutorial teaches rotate before lock on", () => {
     const lockOnActions = lockOnScenario.solution.roots.flatMap((root) => root.branches.flatMap((branch) => branch.actions ?? []));
     const basicStrikeActions = basicStrikeScenario.solution.roots.flatMap((root) => root.branches.flatMap((branch) => branch.actions ?? []));
     assert.equal(rotateActions.some((action) => action.action === "rotate_toward_enemy"), true);
-    assert.equal(lockOnActions.some((action) => action.action === 20), true);
+    assert.equal(lockOnActions.some((action) => action.action === "rotate_toward_enemy" && action.fastTurn === true), true);
     assert.equal(rotateScenario.durationMs, 2000);
     assert.equal(lockOnScenario.durationMs, 1000);
     assert.equal(rotateScenario.goal, "heavy_slash");
@@ -1613,12 +1624,12 @@ test("tutorial priority lesson keeps roots in place while swapping priorities", 
     assert.equal(getTutorialScenario(13).id, "ability-catalogue");
     assert.equal(getTutorialScenario(14).id, "conditional-catalogue");
     assert.equal(getTutorialScenario(15).id, "puzzles");
-    assert.deepEqual(scenario.emptyCode.roots.map((root) => root.name), ["Dash", "Lock On"]);
+    assert.deepEqual(scenario.emptyCode.roots.map((root) => root.name), ["Dash", "Fast turn"]);
     assert.deepEqual(scenario.emptyCode.roots.map((root) => root.priority), [1, 2]);
     assert.deepEqual(scenario.solution.roots.map((root) => root.id), scenario.emptyCode.roots.map((root) => root.id));
     assert.deepEqual(scenario.solution.roots.map((root) => root.priority), [2, 1]);
-    assert.equal(hasTutorialPriorityOrder(scenario.emptyCode, 19, 20), true);
-    assert.equal(hasTutorialPriorityOrder(scenario.solution, 20, 19), true);
+    assert.equal(hasTutorialPriorityOrder(scenario.emptyCode, 19, "rotate_toward_enemy"), true);
+    assert.equal(hasTutorialPriorityOrder(scenario.solution, "rotate_toward_enemy", 19), true);
 });
 
 test("roots count conditions and validate as a trainable code", () => {
@@ -1731,4 +1742,80 @@ test("condition variable labels are short and ids are unchanged", () => {
         "bot.selectedStatusEffectDurationMs": "Status Time",
     });
     assert.equal(new Set(STATE_VARIABLES.map((variable) => variable.label)).size, STATE_VARIABLES.length);
+});
+
+
+test("root actions fill categories after the matched branch; action-only roots run", () => {
+    const walk = { action: "move_walk", movementMode: "absolute", movementDirection: 90 };
+    const brain = { version: "bot-logic-tree-v2", roots: [{ id: "r", priority: 1, actions: [walk], branches: [
+        { id: "b", priority: 1, conditions: [{ type: "always" }], actions: [{ action: "rotate_toward_enemy" }], children: [] },
+    ] }] };
+    assert.equal(selectAbilityStrategyActionPlan(brain, payload()).movement.action, "move_walk");
+    assert.equal(selectAbilityStrategyActionPlan({ ...brain, roots: [{ ...brain.roots[0], branches: [] }] }, payload()).movement.action, "move_walk");
+    brain.roots[0].branches[0].actions = [{ ...walk, movementDirection: 180 }];
+    assert.equal(selectAbilityStrategyActionPlan(brain, payload()).movement.movementDirection, 180);
+});
+
+test("orphans survive normalization and save, never run, and share budgets", () => {
+    const brain = { version: "bot-logic-tree-v2", roots: [], nodePositions: { loose: { x: 20, y: 30 } }, orphans: [
+        { id: "loose", kind: "conditional", priority: 1, conditions: [{ type: "always" }], actions: [{ action: "move_walk" }], children: [] },
+        { id: "loose-action", kind: "action", action: "rotate_toward_enemy" },
+    ] };
+    const normalized = normalizeAbilityStrategyConfiguration(brain);
+    assert.deepEqual(normalizeAbilityStrategyConfiguration(JSON.parse(JSON.stringify(normalized))), normalized);
+    assert.equal(normalized.orphans[0].id, "loose");
+    assert.deepEqual(normalized.nodePositions.loose, { x: 20, y: 30 });
+    assert.equal(selectAbilityStrategyActionPlan(brain, payload()).movement, undefined);
+    assert.equal(countConditionSlots(brain), 1);
+    assert.equal(validateAbilityStrategyConfiguration(normalized).errors.length, 0);
+    assert.match(validateAbilityStrategyConfiguration(brain).warnings[0], /3 nodes aren't connected/);
+    assert.ok(validateAbilityStrategyConfiguration({ ...brain, orphans: [{ id: "bad", kind: "action", action: "eval" }] }).errors.length);
+    assert.ok(validateAbilityStrategyConfiguration({ ...brain, orphans: [{ id: "bad", kind: "action", action: "run_chain", chainId: "chain.missing" }] }).errors.some((error) => error.includes("does not exist")));
+});
+
+
+test("connected and orphan actions and conditions share their respective limits", () => {
+    const roots = [{ actions: Array.from({ length: 100 }, () => ({ action: "variable", variableId: "custom.a", value: false })), branches: [] }];
+    const orphans = [{ id: "extra", kind: "action", action: "move_walk" }];
+    assert.equal(countActionSlots({ roots, orphans }), 101);
+    assert.ok(validateAbilityStrategyConfiguration({ roots, orphans }).errors.some((e) => e.includes("action limit")));
+    const conditions = Array.from({ length: 301 }, (_, index) => ({ id: `c-${index}`, kind: "conditional", conditions: [{ type: "always" }], actions: [{ action: "none" }], children: [] }));
+    assert.equal(countConditionSlots({ roots: [], orphans: conditions }), 301);
+    assert.ok(validateAbilityStrategyConfiguration({ roots: [], orphans: conditions }).errors.some((e) => e.includes("301/300")));
+    for (const invalid of [{ id: "a", kind: "conditional", conditions: [{ type: "eval" }], actions: [{ action: "none" }] }, { id: "a", kind: "action", action: "move_walk", movementDirection: 999 }, { id: "a", kind: "action", action: "move_walk", children: [] }]) {
+        assert.ok(validateAbilityStrategyConfiguration({ roots: [], orphans: [invalid] }).errors.length);
+    }
+    assert.doesNotThrow(() => validateAbilityStrategyConfiguration({ roots: [], orphans: "bad" }));
+});
+
+function graphNodeIds(roots) {
+    const ids = [];
+    const walk = (branches) => (branches ?? []).forEach((branch) => { ids.push(branch.id, ...(branch.actions ?? []).map((entry) => entry.id)); walk(branch.children); });
+    roots.forEach((root) => { ids.push(root.id); walk(root.branches); });
+    return ids;
+}
+
+test("a conditional keeps its own id when an action is wired to it, and ids stay unique", () => {
+    const brain = normalizeAbilityStrategyConfiguration({
+        roots: [{ id: "root-1", branches: [{ id: "cond-1", conditions: [{ type: "always" }], actions: [{ id: "act-1", action: "move_walk" }] }] }],
+        orphans: [{ id: "orphan-cond", kind: "conditional", conditions: [{ type: "always" }], actions: [{ id: "orphan-act", action: "move_walk" }] }],
+    });
+    assert.equal(brain.roots[0].branches[0].id, "cond-1");
+    assert.equal(brain.roots[0].branches[0].actions[0].id, "act-1");
+    assert.equal(brain.orphans[0].id, "orphan-cond");
+    assert.equal(brain.orphans[0].kind, "conditional");
+    assert.equal(brain.orphans[0].actions[0].id, "orphan-act");
+    const ids = [...graphNodeIds(brain.roots), brain.orphans[0].id, ...brain.orphans[0].actions.map((entry) => entry.id)];
+    assert.equal(new Set(ids).size, ids.length);
+});
+
+test("a legacy brain without ids keeps conditional and action ids distinct", () => {
+    const brain = normalizeAbilityStrategyConfiguration({ roots: [{ branches: [
+        { conditions: [{ type: "always" }], actions: [{ action: "move_walk" }] },
+        { conditions: [{ type: "always" }], actions: [{ action: "move_walk" }] },
+    ] }] });
+    // Legacy actions carry no ids (the graph derives them from their branch); everything else must be unique.
+    const ids = graphNodeIds(brain.roots).filter(Boolean);
+    assert.equal(new Set(ids).size, ids.length);
+    assert.equal(ids.length, 3);
 });

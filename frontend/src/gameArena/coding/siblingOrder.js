@@ -64,7 +64,8 @@ export function orderGroupByPriority(nodes, roots) {
 export function positionRanks(graph, offsets, roots, groupKeys = null) {
     const ranks = new Map();
     siblingGroups(graph).forEach((group) => {
-        if (groupKeys && !groupKeys.has(group.key)) return;
+        // Roots keep their layout whatever their priority, so only conditionals read their order from positions.
+        if (group.key === ROOTS_GROUP || (groupKeys && !groupKeys.has(group.key))) return;
         orderGroupByPosition(group.nodes, offsets, roots).forEach((node, index) => ranks.set(node.id, index + 1));
     });
     return ranks;
@@ -83,6 +84,7 @@ export function priorityRanks(graph, roots) {
 export function mismatchedGroups(graph, offsets, roots) {
     const mismatched = new Set();
     siblingGroups(graph).forEach((group) => {
+        if (group.key === ROOTS_GROUP) return;
         const byPosition = orderGroupByPosition(group.nodes, offsets, roots).map((node) => node.id);
         const byPriority = orderGroupByPriority(group.nodes, roots).map((node) => node.id);
         if (byPosition.some((id, index) => id !== byPriority[index])) mismatched.add(group.key);
@@ -116,7 +118,7 @@ export function applyGroupOrder(roots, group, orderedNodes) {
 export function applyPositionOrder(roots, graph, offsets, groupKeys) {
     let next = roots;
     siblingGroups(graph).forEach((group) => {
-        if (!groupKeys.has(group.key)) return;
+        if (group.key === ROOTS_GROUP || !groupKeys.has(group.key)) return;
         next = applyGroupOrder(next, group, orderGroupByPosition(group.nodes, offsets, roots));
     });
     return next;
@@ -161,6 +163,8 @@ export function swapNodePlaces(roots, graph, offsets, node, neighbour) {
     const reordered = [...ordered];
     reordered[index] = neighbour;
     reordered[target] = node;
+    // Roots only trade priorities; they stay where they are on the board.
+    if (group.key === ROOTS_GROUP) return { roots: applyGroupOrder(roots, group, reordered), offsets };
     const nodeShift = centerX(neighbour, offsets) - centerX(node, offsets);
     const nextOffsets = { ...offsets };
     const shift = (subject, dx) => subtreeNodes(graph, subject).forEach((candidate) => {
@@ -170,6 +174,24 @@ export function swapNodePlaces(roots, graph, offsets, node, neighbour) {
     shift(node, nodeShift);
     shift(neighbour, -nodeShift);
     return { roots: applyGroupOrder(roots, group, reordered), offsets: nextOffsets };
+}
+
+/**
+ * Moves a root to a new place in execution order (0 = first), shifting the roots in between by one, unlike
+ * swapNodePlaces. Only priorities change: no root moves on the board. Returns { roots, offsets }, or null when
+ * nothing would change.
+ */
+export function moveRootToIndex(roots, graph, offsets, node, toIndex) {
+    const group = siblingGroups(graph).get(groupKeyForNode(node));
+    if (!group || group.key !== ROOTS_GROUP) return null;
+    const ordered = orderGroupByPriority(group.nodes, roots);
+    const from = ordered.findIndex((candidate) => candidate.id === node.id);
+    const to = Math.max(0, Math.min(ordered.length - 1, toIndex));
+    if (from < 0 || from === to) return null;
+    const reordered = [...ordered];
+    reordered.splice(from, 1);
+    reordered.splice(to, 0, node);
+    return { roots: applyGroupOrder(roots, group, reordered), offsets };
 }
 
 /**

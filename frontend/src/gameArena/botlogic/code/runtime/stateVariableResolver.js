@@ -10,6 +10,9 @@ import {
     botHasAbility,
 } from "./actionRuntime.js";
 import { abilityIdFromBoundary } from "../../../gameconfig/AbilityCompatibility.js";
+import { abilitySinceHitSeconds } from "../../../gameconfig/AbilityHitRecord.js";
+import { abilityBaseRange } from "../../../loadout/abilityBaseRange.js";
+import { botExhausted, botFastTurning, botSprinting, botStamina } from "../../../gameconfig/StaminaSystem.js";
 import {
     BOT_CODE_SELECTABLES,
     CUSTOM_VARIABLE_CONTRACT,
@@ -21,6 +24,7 @@ import {
     TARGET_MODES,
     VARIABLE_SELECTABLE_TYPES,
     canonicalBotSelectableId,
+    rawSelectablePair,
     selectableIdentitiesForVariable,
 } from "../contracts/BotLogicContracts.js";
 
@@ -74,6 +78,28 @@ const RUNTIME_RESOLVERS = Object.freeze({
     [STATE_VARIABLE_SOURCES.SELECTABLE_SPEED]: ({ selectable }) => selectable
         ? Math.hypot(Number(selectable.movementVelocityX ?? selectable.velocityX ?? 0), Number(selectable.movementVelocityY ?? selectable.velocityY ?? 0))
         : 0,
+    [STATE_VARIABLE_SOURCES.SELECTABLE_APPROACH_ANGLE]: ({ selectable, selectable2 }) => approachAngle(selectable, selectable2),
+    [STATE_VARIABLE_SOURCES.SELECTABLE_MOVING]: ({ selectable }) => lastTickDisplacement(selectable).moved,
+    [STATE_VARIABLE_SOURCES.BOT_ANY_ABILITY_PREPARING]: (context) => {
+        const bot = botForContext(context);
+        return bot != null && bot.preparingAbility != null && Number(bot.preparingMs) > 0;
+    },
+    [STATE_VARIABLE_SOURCES.BOT_STAMINA]: (context) => {
+        const bot = botForContext(context);
+        return bot == null ? null : botStamina(bot);
+    },
+    [STATE_VARIABLE_SOURCES.BOT_EXHAUSTED]: (context) => {
+        const bot = botForContext(context);
+        return bot == null ? null : botExhausted(bot);
+    },
+    [STATE_VARIABLE_SOURCES.BOT_SPRINTING]: (context) => {
+        const bot = botForContext(context);
+        return bot == null ? null : botSprinting(bot);
+    },
+    [STATE_VARIABLE_SOURCES.BOT_FAST_TURNING]: (context) => {
+        const bot = botForContext(context);
+        return bot == null ? null : botFastTurning(bot);
+    },
     [STATE_VARIABLE_SOURCES.SELECTABLE_RELATIVE_BEARING]: ({ selectable, target, targetMode, targetAngle }) => {
         const bearing = bearingToTarget(selectable, target, targetMode, targetAngle);
         return bearing == null ? 0 : Math.abs(signedAngleDelta(normalizeRotation(selectable.rotation), bearing));
@@ -89,6 +115,7 @@ const RUNTIME_RESOLVERS = Object.freeze({
     [STATE_VARIABLE_SOURCES.SELECTED_ABILITY_ACTIVE_MS]: (context) => millisecondsToSeconds(abilityActiveMs(botForContext(context), selectedAbilityId(context))),
     [STATE_VARIABLE_SOURCES.SELECTED_ABILITY_ON_COOLDOWN]: (context) => abilityOnCooldown(botForContext(context), selectedAbilityId(context)),
     [STATE_VARIABLE_SOURCES.SELECTED_ABILITY_COOLDOWN_MS]: (context) => millisecondsToSeconds(abilityCooldownMs(botForContext(context), selectedAbilityId(context))),
+    [STATE_VARIABLE_SOURCES.SELECTED_ABILITY_SINCE_HIT]: (context) => abilitySinceHitSeconds(botForContext(context), selectedAbilityId(context)),
     [STATE_VARIABLE_SOURCES.SELECTED_ABILITY_CHARGES]: (context) => abilityCharges(botForContext(context), selectedAbilityId(context)),
     [STATE_VARIABLE_SOURCES.SELECTED_ABILITY_PREPARING]: (context) => {
         const bot = botForContext(context);
@@ -102,6 +129,8 @@ const RUNTIME_RESOLVERS = Object.freeze({
         return botHasAbility(bot, ability) && bot?.preparingAbility === ability
             ? millisecondsToSeconds(bot.preparingMs ?? 0) : 0;
     },
+    // Static contract value; the selectable only decides which bot the condition is about.
+    [STATE_VARIABLE_SOURCES.SELECTED_ABILITY_BASE_RANGE]: (context) => abilityBaseRange(selectedAbilityId(context)),
     [STATE_VARIABLE_SOURCES.SELECTED_STATUS_EFFECT_ACTIVE]: (context) => {
         const bot = botForContext(context);
         return statusEffectActive(bot, context.condition.statusEffect);
@@ -126,9 +155,11 @@ function botForContext(context) {
 }
 
 function selectablePairIds(condition, definition) {
-    const first = condition?.selectable1 ?? definition.defaultSelectable1 ?? BOT_CODE_SELECTABLES.MY;
-    const second = condition?.selectable2 ?? condition?.selectable ?? definition.defaultSelectable2 ?? BOT_CODE_SELECTABLES.OPPONENT;
-    return [first, second];
+    const [rawFirst, rawSecond] = rawSelectablePair(condition, definition);
+    return [
+        rawFirst ?? definition.defaultSelectable1 ?? BOT_CODE_SELECTABLES.MY,
+        rawSecond ?? definition.defaultSelectable2 ?? BOT_CODE_SELECTABLES.OPPONENT,
+    ];
 }
 
 function normalizeTargetMode(condition, definition) {
@@ -202,6 +233,31 @@ function bearingToTarget(selectable, target, targetMode, targetAngle) {
     return target ? compassBearing(selectable, target) : null;
 }
 function signedBearing(a, b) { if (!a || !b) return 0; const value = compassBearing(a, b); return value > 180 ? value - 360 : value; }
+const MOVEMENT_EPSILON = 0.001;
+/**
+ * Last-tick displacement: the position change since the start of the previous
+ * tick (walking, dash, knockback and pulls all count). Entities without a
+ * recorded start fall back to their velocity vector, where only the direction
+ * and non-zero-ness matter.
+ */
+function lastTickDisplacement(selectable) {
+    if (!selectable) return { dx: 0, dy: 0, moved: false };
+    const dx = Number(selectable.displacementX ?? selectable.velocityX ?? 0);
+    const dy = Number(selectable.displacementY ?? selectable.velocityY ?? 0);
+    const finite = Number.isFinite(dx) && Number.isFinite(dy);
+    return { dx: finite ? dx : 0, dy: finite ? dy : 0, moved: finite && Math.hypot(dx, dy) > MOVEMENT_EPSILON };
+}
+/** Angle (0-180) between the first entity's last-tick movement and the direction from it to the second entity's current position. */
+function approachAngle(selectable, target) {
+    const movement = lastTickDisplacement(selectable);
+    if (!movement.moved || !target) return 90;
+    const toX = Number(target.x) - Number(selectable.x);
+    const toY = Number(target.y) - Number(selectable.y);
+    const toLength = Math.hypot(toX, toY);
+    if (!(toLength > MOVEMENT_EPSILON)) return 90;
+    const cosine = (movement.dx * toX + movement.dy * toY) / (Math.hypot(movement.dx, movement.dy) * toLength);
+    return Math.acos(Math.max(-1, Math.min(1, cosine))) * 180 / Math.PI;
+}
 function movementDirection(selectable) { const x = Number(selectable?.velocityX ?? 0); const y = Number(selectable?.velocityY ?? 0); return Math.hypot(x, y) <= .001 ? Number.NaN : signedBearing({ x: 0, y: 0 }, { x, y }); }
 function normalizeRotation(value) { return ((Number(value ?? 0) % 360) + 360) % 360; }
 function signedAngleDelta(from, to) { return ((to - from + 540) % 360) - 180; }

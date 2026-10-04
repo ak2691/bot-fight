@@ -38,9 +38,9 @@ import {
 } from "./profileMatchFormat.js";
 import "./profile.css";
 import {
-    normalizeAddRootShortcut,
-    readAddRootShortcut,
-    saveAddRootShortcut,
+    WORKSPACE_SHORTCUTS,
+    readWorkspaceShortcut,
+    saveWorkspaceShortcut,
 } from "../../gameArena/coding/addRootShortcut.js";
 
 const RECENT_MATCH_LIMIT = 5;
@@ -551,7 +551,10 @@ function ProfileContent({
                     <h2 id="profile-settings-title" className="pf-card__title">Settings</h2>
                     <UsernameSetting username={profile.username} onSave={onUsernameSaved} />
                     <SignInSetting hasPassword={hasPassword} googleLinked={googleLinked} googleStatus={googleStatus} onSave={onPasswordSaved} />
-                    <AddRootShortcutSetting />
+                    <ShortcutSetting action="addRoot" />
+                    <ShortcutSetting action="addNode" />
+                    <ShortcutSetting action="addChain" />
+                    <ShortcutSetting action="search" />
                     <div className="pf-settings__footer">
                         <button type="button" onClick={() => void onLogout()} className="pf-link pf-link--danger">
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /></svg>
@@ -1149,26 +1152,24 @@ function SettingsRow({ label, action = null, children }) {
     );
 }
 
-function AddRootShortcutSetting() {
-    const [draft, setDraft] = useState(() => readAddRootShortcut().toUpperCase());
-    const [shortcut, setShortcut] = useState(() => readAddRootShortcut().toUpperCase());
+function ShortcutSetting({ action }) {
+    const { label, hint } = WORKSPACE_SHORTCUTS[action];
+    const fieldId = `profile-${action}-shortcut`;
+    const [draft, setDraft] = useState(() => readWorkspaceShortcut(action).toUpperCase());
+    const [shortcut, setShortcut] = useState(() => readWorkspaceShortcut(action).toUpperCase());
     const [isEditing, setIsEditing] = useState(false);
     const [error, setError] = useState(null);
     const [notice, setNotice] = useState(null);
 
     const handleSave = (event) => {
         event.preventDefault();
-        const nextShortcut = normalizeAddRootShortcut(draft);
-        if (!nextShortcut) {
-            setError("Choose one letter or number (A–Z, 0–9).");
+        const refusal = saveWorkspaceShortcut(action, draft);
+        if (refusal) {
+            setError(refusal);
             setNotice(null);
             return;
         }
-        if (!saveAddRootShortcut(nextShortcut)) {
-            setError("This browser could not save the shortcut.");
-            setNotice(null);
-            return;
-        }
+        const nextShortcut = draft.trim().toLowerCase();
         setDraft(nextShortcut.toUpperCase());
         setShortcut(nextShortcut.toUpperCase());
         setError(null);
@@ -1184,7 +1185,7 @@ function AddRootShortcutSetting() {
 
     return (
         <SettingsRow
-            label="Add root key"
+            label={label}
             action={!isEditing && (
                 <>
                     <kbd className="pf-kbd">{shortcut}</kbd>
@@ -1192,15 +1193,15 @@ function AddRootShortcutSetting() {
                 </>
             )}
         >
-            <p id="profile-add-root-shortcut-help" className="pf-row__hint">
-                Adds a root when nothing is selected in the code workspace. Saved on this browser.
+            <p id={`${fieldId}-help`} className="pf-row__hint">
+                {hint} Saved on this browser.
             </p>
             {isEditing && (
                 <form onSubmit={handleSave} className="pf-form pf-form--inline">
-                    <label htmlFor="profile-add-root-shortcut" className="pf-field pf-field--key">
+                    <label htmlFor={fieldId} className="pf-field pf-field--key">
                         <span>Key</span>
                         <input
-                            id="profile-add-root-shortcut"
+                            id={fieldId}
                             type="text"
                             value={draft}
                             onChange={(event) => { setDraft(event.target.value.toUpperCase()); setError(null); setNotice(null); }}
@@ -1211,7 +1212,7 @@ function AddRootShortcutSetting() {
                             autoFocus
                             spellCheck={false}
                             aria-invalid={Boolean(error)}
-                            aria-describedby={error ? "profile-add-root-shortcut-error" : "profile-add-root-shortcut-help"}
+                            aria-describedby={error ? `${fieldId}-error` : `${fieldId}-help`}
                             className="pf-input pf-input--key"
                         />
                     </label>
@@ -1219,7 +1220,7 @@ function AddRootShortcutSetting() {
                     <button type="button" className="pf-btn" onClick={cancel}>Cancel</button>
                 </form>
             )}
-            {error && <p id="profile-add-root-shortcut-error" role="alert" className="pf-message pf-message--error">{error}</p>}
+            {error && <p id={`${fieldId}-error`} role="alert" className="pf-message pf-message--error">{error}</p>}
             {notice && <p role="status" className="pf-message pf-message--success">{notice}</p>}
         </SettingsRow>
     );

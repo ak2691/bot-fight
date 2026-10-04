@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weapon Visuals Preview</title>
+<style>
+  :root { --bg: #0b1015; --card: #12161a; --border: #262c33; --text: #e6edf3; --muted: #8b98a5; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 16px; background: var(--bg); color: var(--text); font-family: "IBM Plex Sans", system-ui, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+  p.lead { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+  .ctl { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; font-size: 13px; color: var(--muted); margin: 0 0 14px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .head { display: flex; justify-content: space-between; align-items: baseline; margin: 0 0 6px; }
+  .head b { font-size: 15px; }
+  .head span { font-size: 12px; color: var(--muted); font-family: ui-monospace, monospace; }
+  .stats { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+  canvas { width: 100%; height: auto; display: block; border-radius: 6px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Weapon placeholder visuals</h1>
+  <p class="lead">Reference for stage S2 in docs/TIMED_ROUNDS_IMPLEMENTATION_PLAN.md. The blue bot attacks the grey one. Each card loops wind-up, active, cooldown. The dashed outline is the real hitbox the effect is sized from. This is a rough canvas mock; the real effects are drawn in Pixi.</p>
+  <div class="ctl">
+    <label><input type="checkbox" id="hb" checked> Show real hitbox (dashed)</label>
+    <label>Speed <input type="range" id="sp" min="0.25" max="1" step="0.25" value="0.5" style="width:110px;vertical-align:middle"> <span id="spv">0.5×</span></label>
+  </div>
+  <div class="grid">
+    <div class="card"><div class="head"><b>Slash · id 1</b><span id="p0">—</span></div><canvas id="c0" width="600" height="400"></canvas><p class="stats">Arc 120°, range 92 · reach 122 · 8 dmg · 0 / 300 / 500 ms. In game: existing slash sprite.</p></div>
+    <div class="card"><div class="head"><b>Thrust · id 35</b><span id="p1">—</span></div><canvas id="c1" width="600" height="400"></canvas><p class="stats">Rectangle 190 × 30 · reach 220 · 10 dmg · 100 / 300 / 700 ms.</p></div>
+    <div class="card"><div class="head"><b>Cleave · id 36</b><span id="p2">—</span></div><canvas id="c2" width="600" height="400"></canvas><p class="stats">Arc 160°, range 112 · reach 142 · 15 dmg · 450 / 300 / 650 ms. Active: a filled blade wedge sweeping the full arc (not a crescent).</p></div>
+    <div class="card"><div class="head"><b>Smash · id 37</b><span id="p3">—</span></div><canvas id="c3" width="600" height="400"></canvas><p class="stats">Rectangle 125 × 100 · reach 155 · 11 dmg + knockback 120 · 250 / 300 / 700 ms.</p></div>
+  </div>
+</main>
+<script>
+const S = 1.6, BX = 80, BY = 200, R = 30 * S;
+const W = [
+  { n: "slash", w: 0, a: 300, c: 500, arc: 120, r: 92 },
+  { n: "thrust", w: 100, a: 300, c: 700, len: 190, wid: 30 },
+  { n: "cleave", w: 450, a: 300, c: 650, arc: 160, r: 112 },
+  { n: "smash", w: 250, a: 300, c: 700, len: 125, wid: 100, kb: true },
+];
+const reach = [122, 220, 142, 155];
+let speed = 0.5, showHb = true;
+const t0 = performance.now();
+document.getElementById("hb").onchange = (e) => { showHb = e.target.checked; };
+document.getElementById("sp").oninput = (e) => { speed = +e.target.value; document.getElementById("spv").textContent = speed + "×"; };
+const rad = (d) => d * Math.PI / 180;
+
+function bot(ctx, x, y, col) {
+  ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, R, 0, 7); ctx.fill();
+  ctx.strokeStyle = "#e6edf3"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + R, y); ctx.stroke();
+}
+function sector(ctx, r, arc) {
+  ctx.beginPath(); ctx.moveTo(BX, BY); ctx.arc(BX, BY, r * S, -rad(arc / 2), rad(arc / 2)); ctx.closePath();
+}
+
+function draw(i, now) {
+  const wp = W[i], ctx = document.getElementById("c" + i).getContext("2d");
+  const total = wp.w + wp.a + wp.c + 500, t = ((now - t0) * speed) % total;
+  ctx.fillStyle = "#111519"; ctx.fillRect(0, 0, 600, 400);
+  ctx.strokeStyle = "#1c232a"; ctx.lineWidth = 1;
+  for (let g = 0; g < 600; g += 40) { ctx.beginPath(); ctx.moveTo(g, 0); ctx.lineTo(g, 400); ctx.stroke(); }
+  for (let g = 0; g < 400; g += 40) { ctx.beginPath(); ctx.moveTo(0, g); ctx.lineTo(600, g); ctx.stroke(); }
+
+  let phase, p = 0;
+  if (t < wp.w) { phase = "wind-up"; p = t / wp.w; }
+  else if (t < wp.w + wp.a) { phase = "active"; p = (t - wp.w) / wp.a; }
+  else if (t < wp.w + wp.a + wp.c) phase = "cooldown";
+  else phase = "ready";
+  document.getElementById("p" + i).textContent = phase;
+
+  let tx = BX + reach[i] * S - 6;
+  if (wp.kb && phase === "active") tx += Math.min(1, p * 2) * 120 * S * 0.35;
+  if (wp.kb && phase === "cooldown") tx += 120 * S * 0.35 * Math.max(0, 1 - (t - wp.w - wp.a) / wp.c);
+  bot(ctx, tx, BY, "#3a4652");
+
+  if (showHb) {
+    ctx.setLineDash([6, 6]); ctx.strokeStyle = "#5f6b77"; ctx.lineWidth = 2;
+    if (wp.arc) { sector(ctx, wp.r, wp.arc); ctx.stroke(); }
+    else ctx.strokeRect(BX, BY - wp.wid * S / 2, wp.len * S, wp.wid * S);
+    ctx.setLineDash([]);
+  }
+
+  if (wp.n === "slash" && phase === "active") {
+    const sweep = -60 + 120 * p;
+    ctx.globalAlpha = 1 - p * 0.6; ctx.strokeStyle = "#e6edf3"; ctx.lineWidth = 10; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.arc(BX, BY, wp.r * S * 0.85, rad(sweep - 28), rad(sweep)); ctx.stroke(); ctx.globalAlpha = 1;
+  }
+
+  if (wp.n === "thrust") {
+    ctx.strokeStyle = "#cbd5e1"; ctx.fillStyle = "#cbd5e1"; ctx.lineWidth = 6; ctx.lineCap = "butt";
+    if (phase === "wind-up") {
+      ctx.beginPath(); ctx.moveTo(BX - 40 * S * p, BY); ctx.lineTo(BX + R - 12 * p, BY); ctx.stroke();
+    }
+    if (phase === "active") {
+      const L = p < 0.35 ? 190 * p / 0.35 : p < 0.65 ? 190 : 190 * (1 - (p - 0.65) / 0.35);
+      const end = BX + Math.max(R, L * S);
+      ctx.beginPath(); ctx.moveTo(BX + R * 0.6, BY); ctx.lineTo(end - 14, BY); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(end, BY); ctx.lineTo(end - 22, BY - 11); ctx.lineTo(end - 22, BY + 11); ctx.closePath(); ctx.fill();
+    }
+  }
+
+  if (wp.n === "cleave") {
+    if (phase === "wind-up") {
+      ctx.strokeStyle = "#f59e0b"; ctx.globalAlpha = 0.25 + 0.35 * p; ctx.lineWidth = 3; sector(ctx, wp.r, wp.arc); ctx.stroke();
+      ctx.fillStyle = "#f59e0b"; ctx.globalAlpha = 0.12 + 0.25 * p; sector(ctx, wp.r * p, wp.arc); ctx.fill(); ctx.globalAlpha = 1;
+    }
+    if (phase === "active") {
+      // Blade sweeps across the arc over the first 60% of active time, then the trail fades.
+      const sweepP = Math.min(1, p / 0.6);
+      const start = -wp.arc / 2, edge = start + wp.arc * sweepP;
+      const fade = p < 0.6 ? 1 : 1 - (p - 0.6) / 0.4;
+      // Filled trail behind the blade.
+      ctx.fillStyle = "#fde68a"; ctx.globalAlpha = 0.35 * fade;
+      ctx.beginPath(); ctx.moveTo(BX, BY); ctx.arc(BX, BY, wp.r * S, rad(start), rad(edge)); ctx.closePath(); ctx.fill();
+      // Solid leading edge: the blade itself, from near the bot to the tip.
+      const ex = Math.cos(rad(edge)), ey = Math.sin(rad(edge));
+      ctx.globalAlpha = fade; ctx.strokeStyle = "#fff4cc"; ctx.lineWidth = 8; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(BX + ex * R, BY + ey * R); ctx.lineTo(BX + ex * wp.r * S, BY + ey * wp.r * S); ctx.stroke();
+      // Heavy rim along the outer edge of the trail.
+      ctx.globalAlpha = 0.8 * fade; ctx.strokeStyle = "#fde68a"; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(BX, BY, wp.r * S, rad(start), rad(edge)); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  if (wp.n === "smash") {
+    const x = BX, y = BY - wp.wid * S / 2, w = wp.len * S, h = wp.wid * S;
+    if (phase === "wind-up") {
+      ctx.strokeStyle = "#e2e8f0"; ctx.globalAlpha = 0.15 + 0.6 * p; ctx.lineWidth = 3; ctx.strokeRect(x, y, w, h); ctx.globalAlpha = 1;
+    }
+    if (phase === "active") {
+      ctx.fillStyle = "#e2e8f0"; ctx.globalAlpha = 0.5 * (1 - p); ctx.fillRect(x, y, w, h);
+      ctx.globalAlpha = 1 - p; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(x + w, y + 8); ctx.lineTo(x + w, y + h - 8); ctx.stroke();
+      ctx.fillStyle = "#94a3b8";
+      [-1, 0, 1].forEach((k) => { ctx.beginPath(); ctx.arc(x + w + 10 + p * 30, BY + k * (40 + p * 25), 8 + p * 8, 0, 7); ctx.fill(); });
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  bot(ctx, BX, BY, "#3aa6c9");
+}
+
+function loop(now) { for (let i = 0; i < 4; i++) draw(i, now); requestAnimationFrame(loop); }
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

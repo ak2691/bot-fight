@@ -56,12 +56,20 @@ public class ConditionResolutionService {
             String rightFallback = BotLogicContracts.defaultSelectableForVariable(rightContract);
             String pairFirstFallback = BotLogicContracts.defaultSelectable1ForVariable(leftContract);
             String pairSecondFallback = BotLogicContracts.defaultSelectable2ForVariable(leftContract);
-            String leftSelectable = leftContract != null && leftContract.isPairVariable()
+            boolean legacyFirstSlot = leftContract != null && leftContract.isPairVariable()
+                    && leftContract.legacySelectableIsFirstSlot();
+            String leftSelectable = legacyFirstSlot
+                    ? textValue(field(condition, "selectable1"),
+                            textValue(field(condition, "leftSelectable"),
+                                    sharedSelectable != null ? sharedSelectable : pairFirstFallback))
+                    : leftContract != null && leftContract.isPairVariable()
                     ? textValue(field(condition, "selectable1"),
                             pairFirstFallback)
                     : textValue(field(condition, "leftSelectable"),
                             sharedSelectable != null ? sharedSelectable : leftFallback);
-            String pairSecondSelectable = leftContract != null && leftContract.isPairVariable()
+            String pairSecondSelectable = legacyFirstSlot
+                    ? textValue(field(condition, "selectable2"), pairSecondFallback)
+                    : leftContract != null && leftContract.isPairVariable()
                     ? textValue(field(condition, "selectable2"),
                             field(condition, "selectable1") == null
                                     ? (sharedSelectable != null ? sharedSelectable : pairSecondFallback)
@@ -132,7 +140,14 @@ public class ConditionResolutionService {
             if (value == null) value = field(condition, pair[0]);
             if (value != null) view.set(pair[0], value);
         }
-        if (field(condition, "rightSelectable2") == null && view.get("selectable2") == null && field(condition, "selectable") != null) {
+        if (rightContract.legacySelectableIsFirstSlot()) {
+            // Older brains kept the moving entity in the right side's single selectable.
+            JsonNode first = field(condition, "rightSelectable1");
+            if (first == null) first = field(condition, "rightSelectable");
+            if (first == null) first = field(condition, "selectable1");
+            if (first == null) first = field(condition, "selectable");
+            if (first != null) view.set("selectable1", first);
+        } else if (field(condition, "rightSelectable2") == null && view.get("selectable2") == null && field(condition, "selectable") != null) {
             view.set("selectable", field(condition, "selectable"));
         }
         java.util.List<Condition> normalizedView = normalizeConditions(

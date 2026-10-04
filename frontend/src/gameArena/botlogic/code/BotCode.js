@@ -9,10 +9,12 @@ import { hasStrategyActions, selectStrategyActionPlan, selectStrategyBlock } fro
 import { validateConfiguration } from "./configuration/validation.js";
 import { compareAngleValues, compareValues, evaluateConditionNode, evaluateConditionNodes, rightOperandView, rightPairFieldValues } from "./runtime/conditionEvaluator.js";
 import { normalizeConfiguration } from "./configuration/normalization.js";
+import { normalizeChainActionFields } from "./configuration/chainNormalizer.js";
+import { validateChains } from "./configuration/chainValidation.js";
 import { stateFromPayload } from "./runtime/runtimeState.js";
 import { selectPriorityCandidates as selectCandidates } from "./runtime/treeSelection.js";
 import { normalizeRoot as normalizeCodeRoot } from "./configuration/rootNormalizer.js";
-import { actionExecutableNow as canExecuteAction, actionSupportsTarget } from "./runtime/actionRuntime.js";
+import { actionExecutableNow as canExecuteAction, actionSupportsAim, actionSupportsTarget } from "./runtime/actionRuntime.js";
 import { countConditionSlots, countVariableSlots } from "./configuration/configurationMetrics.js";
 import { resolveStateVariable as resolveRuntimeVariable } from "./runtime/stateVariableResolver.js";
 import {
@@ -39,6 +41,8 @@ import {
     MIN_PRIORITY,
     MAX_PRIORITY,
     STRATEGY_TIME_LIMIT_MS,
+    AIM_MODES,
+    MAX_LEAD_SECONDS,
 } from "./configuration/constants.js";
 import {
     ACTION_BY_ID,
@@ -74,12 +78,13 @@ import {
     defaultAbilityForVariable,
     defaultStatusEffectForVariable,
     defaultSelectablePairForVariable as contractDefaultSelectablePairForVariable,
+    rawSelectablePair,
     variableDefinition,
 } from "./contracts/BotLogicContracts.js";
 
 export { createCodeRoot, createDefaultAbilityStrategyConfiguration } from "./configuration/configurationFactories.js";
 export { resolveAbilityStrategySelectable } from "./runtime/targeting.js";
-export { actionSupportsTarget } from "./runtime/actionRuntime.js";
+export { actionSupportsAim, actionSupportsTarget } from "./runtime/actionRuntime.js";
 export { actionEntryCost, countActionSlots, countConditionSlots, countVariableSlots } from "./configuration/configurationMetrics.js";
 export { insertParentLogicBranch, moveLogicRootPriority, normalizeRoots, removeLogicBranch, setLogicBranchPriority, setLogicRootPriority } from "./configuration/rootOperations.js";
 export * from "./configuration/constants.js";
@@ -183,6 +188,8 @@ export function normalizeAbilityStrategyConfiguration(configuration) {
         normalizePriority,
         normalizeConditions,
         normalizeRoots,
+        normalizeActionEntry: normalizeChainStepAction,
+        actionHead: rawActionHead,
         defaultConfiguration: createDefaultAbilityStrategyConfiguration,
     });
 }
@@ -192,7 +199,22 @@ export function validateAbilityStrategyConfiguration(configuration) {
         normalizeConfiguration: normalizeAbilityStrategyConfiguration,
         countVariableSlots,
         countConditionSlots,
+        validateChains: (configuration) => validateChains(configuration, { actionHead: rawActionHead }),
     });
+}
+
+/** The execution head of a raw action ID or name, or null when it is not a known action. */
+function rawActionHead(action) {
+    const id = typeof action === "string" ? abilityIdFromLegacyName(action) ?? action : action;
+    const definition = ACTION_BY_ID.get(id);
+    return definition ? actionExecutionHead(definition) : null;
+}
+
+/** A chain step's action, normalized like a root action. Chains cannot run N/A or chain control. */
+function normalizeChainStepAction(raw, customVariables, coordinateVersion) {
+    const [entry] = normalizedBlockActions({ actions: [raw] }, coordinateVersion);
+    return !entry || [BOT_CODE_ACTIONS.NONE, BOT_CODE_ACTIONS.RUN_CHAIN].includes(entry.action)
+        ? null : entry;
 }
 
 export function selectAbilityStrategyBlock(configuration, payload) {
@@ -327,6 +349,8 @@ function selectionRuntime() {
         actionTypes: ACTION_TYPES,
         actionSupportsTarget,
         resolveTarget: resolveAbilityStrategySelectable,
+        evaluateConditions: evaluateConditionList,
+        abilityForAction: (actionId) => ACTION_TO_ABILITY[actionId] ?? actionId,
     };
 }
 
@@ -433,7 +457,7 @@ function normalizeExpressionCondition(condition, customVariables = [], selectabl
     const abilityVariable = leftDefinition.supportsAbility ? leftDefinition : rightDefinition?.supportsAbility ? rightDefinition : null;
     const statusVariable = leftDefinition.supportsStatusEffect ? leftDefinition : rightDefinition?.supportsStatusEffect ? rightDefinition : null;
     const ability = abilityVariable ? normalizeAbilityId(condition?.ability, abilityVariable) : null;
-    if (abilityVariable?.requiredTag === ABILITY_TAGS.CHARGES && ability == null) return falseCondition();
+    if (abilityVariable && STRICT_ABILITY_TAGS.has(abilityVariable.requiredTag) && ability == null) return falseCondition();
     const normalizedSelectablePair = leftDefinition.selectableType === VARIABLE_SELECTABLE_TYPES.PAIR
         ? normalizeSelectablePair(condition, leftDefinition, selectableTypes)
         : null;
@@ -540,7 +564,7 @@ function normalizedBlockActions(block, coordinateVersion = BOT_LOGIC_TREE_VERSIO
         const entries = action.variableAction ? [normalizeVariableActionEntry(entry)] : [entry];
         for (const normalizedEntry of entries) {
             const head = actionExecutionHead(action);
-            const headKey = head === ACTION_HEADS.VARIABLE ? `${head}:${normalized.length}` : head;
+            const headKey = head === ACTION_HEADS.VARIABLE || head === ACTION_HEADS.CHAIN ? `${head}:${normalized.length}` : head;
             if (seenHeads.has(headKey)) continue;
             seenHeads.add(headKey);
             const movementMode = action.movementConfig
@@ -558,11 +582,16 @@ function normalizedBlockActions(block, coordinateVersion = BOT_LOGIC_TREE_VERSIO
                         : null;
             normalized.push({
                 action: action.id,
+                ...(typeof normalizedEntry?.id === "string" ? { id: normalizedEntry.id } : {}),
                 selectable: normalizeSelectable(normalizedEntry?.selectable, BOT_CODE_SELECTABLES.OPPONENT),
                 ...(action.movementConfig ? {
                     movementMode,
                     movementDirection: normalizeMovementDirection(normalizedEntry?.movementDirection, movementMode, action),
                 } : {}),
+                // Sprint is a Walk setting, not an action. It is stored only when on, so brains without it are unchanged.
+                ...(action.id === BOT_CODE_ACTIONS.MOVE_WALK && normalizedEntry?.sprint === true ? { sprint: true } : {}),
+                // Fast turn is a Rotate setting, stored the same way: only when on, and dropped from every other action.
+                ...(action.id === BOT_CODE_ACTIONS.ROTATE_TOWARD_TARGET && normalizedEntry?.fastTurn === true ? { fastTurn: true } : {}),
                 ...(action.orientationConfig ? { phaseFacingMode: boundedNumber(normalizedEntry?.phaseFacingMode, MOVEMENT_DIRECTION_MIN, MOVEMENT_DIRECTION_MAX, 0) } : {}),
                 ...(actionSupportsTarget(action) && !action.movementConfig ? {
                     targetOffsetX: boundedNumber(normalizedEntry?.targetOffsetX, -coordinateLimitsFor(coordinateVersion).offsetMagnitude, coordinateLimitsFor(coordinateVersion).offsetMagnitude, 0),
@@ -576,6 +605,9 @@ function normalizedBlockActions(block, coordinateVersion = BOT_LOGIC_TREE_VERSIO
                 ...(action.angleTarget ? {
                     targetAngle: boundedNumber(normalizedEntry?.targetAngle, -360, 360, 0),
                 } : {}),
+                ...(actionSupportsAim(action) && (targetMode == null || targetMode === "target")
+                    ? normalizeAim(normalizedEntry) : {}),
+                ...(action.chainAction ? normalizeChainActionFields({ ...normalizedEntry, action: action.id }) : {}),
                 ...(action.variableAction ? {
                     variableId: String(normalizedEntry?.variableId ?? ""),
                     ...(normalizedEntry?.value === true || normalizedEntry?.value === false
@@ -662,6 +694,8 @@ export function actionExecutionHead(action) {
     if (action?.head === ACTION_HEADS.VARIABLE) return ACTION_HEADS.VARIABLE;
     if (action?.head === ACTION_HEADS.MOVEMENT) return ACTION_HEADS.MOVEMENT;
     if (action?.head === ACTION_HEADS.ROTATION) return ACTION_HEADS.ROTATION;
+    if (action?.head === ACTION_HEADS.CANCEL) return ACTION_HEADS.CANCEL;
+    if (action?.head === ACTION_HEADS.CHAIN) return ACTION_HEADS.CHAIN;
     if (action?.head === ACTION_HEADS.NONE) return ACTION_HEADS.NONE;
     return ACTION_HEADS.ABILITY;
 }
@@ -759,15 +793,16 @@ function normalizeSelectable(selectableId, fallback, requiredSelectableIdentitie
 
 function normalizeSelectablePair(condition, definition, selectableTypes = SELECTABLE_TYPES) {
     const [defaultFirst, defaultSecond] = contractDefaultSelectablePairForVariable(definition, selectableTypes);
+    const [rawFirst, rawSecond] = rawSelectablePair(condition, definition);
     const first = normalizeSelectable(
-        condition?.selectable1 ?? defaultFirst,
+        rawFirst ?? defaultFirst,
         defaultFirst,
         selectableIdentitiesForVariable(definition, 0),
         null,
         definition.selectableOrderable !== false,
     );
     const second = normalizeSelectable(
-        condition?.selectable2 ?? condition?.selectable ?? defaultSecond,
+        rawSecond ?? defaultSecond,
         defaultSecond,
         selectableIdentitiesForVariable(definition, 1),
         null,
@@ -800,10 +835,8 @@ function normalizePairTarget(condition, definition, coordinateVersion = BOT_LOGI
 
 function normalizedSelectablePair(condition, definition) {
     const [defaultFirst, defaultSecond] = contractDefaultSelectablePairForVariable(definition);
-    return [
-        condition?.selectable1 ?? defaultFirst,
-        condition?.selectable2 ?? condition?.selectable ?? defaultSecond,
-    ];
+    const [first, second] = rawSelectablePair(condition, definition);
+    return [first ?? defaultFirst, second ?? defaultSecond];
 }
 
 function selectableSupportsCapability(selectableId, capability) {
@@ -852,6 +885,8 @@ function evaluateExpressionCondition(condition, state, angleOverrides = null) {
     const right = condition.right?.type === "variable"
         ? resolveStateVariable(state, rightOperandView(condition), condition.right.value, condition.rightSelectable ?? condition.selectable)
         : condition.right?.value;
+    // An unresolvable operand (for example the Base Range of an ability without one) fails closed, like the server.
+    if (left == null || right == null) return false;
     const rightDefinition = condition.right?.type === "variable"
         ? STATE_VARIABLE_BY_ID.get(condition.right.value)
         : null;
@@ -872,6 +907,9 @@ function resolveStateVariable(state, condition, variableId, selectableId = condi
     });
 }
 
+// Variables that only make sense for a tagged ability reject other abilities instead of substituting one.
+const STRICT_ABILITY_TAGS = new Set([ABILITY_TAGS.CHARGES, ABILITY_TAGS.RANGE]);
+
 function normalizeAbilityId(value, variable) {
     const normalizedId = abilityIdFromBoundary(value);
     const candidate = abilityDefinitionsForVariable(variable, [normalizedId])[0];
@@ -879,9 +917,24 @@ function normalizeAbilityId(value, variable) {
         ? new Set(variable.abilityOptions.map((ability) => ability.id))
         : null;
     if (candidate && (!available || available.has(candidate.id))) return candidate.id;
-    return variable?.requiredTag === ABILITY_TAGS.CHARGES && normalizedId != null
+    return STRICT_ABILITY_TAGS.has(variable?.requiredTag) && normalizedId != null
         ? null
         : defaultAbilityForVariable(variable);
+}
+
+/**
+ * Optional lead-aim fields. `current` is the default and is stored as no fields at all,
+ * so brains saved before this setting normalize exactly as before.
+ */
+function normalizeAim(entry) {
+    if (entry?.aim === AIM_MODES.LEAD) {
+        return { aim: AIM_MODES.LEAD, leadSeconds: boundedNumber(entry.leadSeconds, 0, MAX_LEAD_SECONDS, 0) };
+    }
+    if (entry?.aim === AIM_MODES.AUTO) {
+        const leadAbilityId = abilityIdFromBoundary(entry.leadAbilityId);
+        return leadAbilityId == null ? {} : { aim: AIM_MODES.AUTO, leadAbilityId };
+    }
+    return {};
 }
 
 function boundedNumber(value, min, max, fallback) {

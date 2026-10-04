@@ -8,7 +8,7 @@ export const COMBAT_VISUAL_MS = 300;
  * state.
  */
 export const COMBAT_VISUAL_ABILITY_IDS = Object.freeze([
-    1, 3, 6, 7, 8, 9, 10, 12, 13, 16, 20, 23, 25, 26, 30, 32, 33, 34,
+    1, 3, 6, 7, 8, 9, 10, 12, 13, 16, 20, 23, 25, 26, 30, 32, 33, 34, 35, 36, 37,
 ]);
 export const REPULSOR_BURST_VISUAL_MS = 500;
 export const REPULSOR_BURST_FRAME_COUNT = 10;

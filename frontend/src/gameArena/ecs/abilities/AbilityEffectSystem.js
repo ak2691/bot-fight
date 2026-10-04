@@ -23,6 +23,7 @@ import { abilityHitsTarget } from "./AbilityHitDetectionSystem.js";
 import { attachedAbilityPose } from "../../gameconfig/hitboxGeometry.js";
 import { combatVisualDurationMs } from "../../gameconfig/visualState.js";
 import { interruptCurrentAbility } from "../../gameconfig/AbilityResourceSystem.js";
+import { recordAbilityHit } from "../../gameconfig/AbilityHitRecord.js";
 import {
     STATUS_EFFECT_APPLICATIONS,
     upsertStatusEffect,
@@ -33,6 +34,15 @@ import {
 } from "../../gameconfig/HitStagger.js";
 
 const BLEED_INCOMING_DAMAGE_MODIFIER = 0.25;
+
+/** Effect types that land on the enemy bot and so count as a hit for Time Since Hit. */
+export const ENEMY_HIT_EFFECT_TYPES = new Set([
+    EFFECT_TYPES.DAMAGE,
+    EFFECT_TYPES.STATUS,
+    EFFECT_TYPES.INTERRUPT,
+    EFFECT_TYPES.KNOCKBACK,
+    EFFECT_TYPES.PULL,
+]);
 
 export { abilityHitsTarget } from "./AbilityHitDetectionSystem.js";
 
@@ -86,9 +96,13 @@ export function resolveTriggeredAbilityEffects(attacker, defender, combat, {
 
     let damageConfirmed = false;
     let damageConfirmedAmount = 0;
+    let landedOnEnemy = false;
     for (const effect of phaseEffects) {
         if (skipEffectTypes?.has(effect.type)) continue;
         const defenderHpBefore = Number(nextDefender?.hp ?? 0);
+        if (hostileImpact && ENEMY_HIT_EFFECT_TYPES.has(effect.type) && isAliveBot(nextDefender)) {
+            landedOnEnemy = true;
+        }
         [nextAttacker, nextDefender] = applyEffect(effect, {
             abilityId,
             stats: phaseStats,
@@ -108,6 +122,7 @@ export function resolveTriggeredAbilityEffects(attacker, defender, combat, {
             }
         }
     }
+    if (landedOnEnemy) nextAttacker = recordAbilityHit(nextAttacker, abilityId);
     return [nextAttacker, nextDefender];
 }
 

@@ -11,7 +11,8 @@ public final class CompactAbilityCode {
             Map.entry(16, "A"), Map.entry(17, "H"), Map.entry(18, "T"), Map.entry(21, "w"), Map.entry(22, "o"),
             Map.entry(23, "a"), Map.entry(24, "n"), Map.entry(25, "P"), Map.entry(26, "F"), Map.entry(27, "Q"),
             Map.entry(28, "v"), Map.entry(29, "k"), Map.entry(30, "D"), Map.entry(31, "d"),
-            Map.entry(32, "L"), Map.entry(33, "O"));
+            Map.entry(32, "L"), Map.entry(33, "O"),
+            Map.entry(35, "x"), Map.entry(36, "y"), Map.entry(37, "z"));
     private static final Map<String, Integer> BY_CODE = BY_ID.entrySet().stream()
             .collect(java.util.stream.Collectors.toUnmodifiableMap(Map.Entry::getValue, Map.Entry::getKey));
 

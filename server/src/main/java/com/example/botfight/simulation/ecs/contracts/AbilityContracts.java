@@ -534,16 +534,16 @@ public final class AbilityContracts {
         contracts.put(1, attachedAbility(1, 
                 phase("active", PhaseType.BOT_ATTACHED,
                         arc(92, 120, true),
-                        effects(damage(20)),
+                        effects(damage(8)),
                         visual("meleeSlash", 207, 400),
                         PhaseEventType.COLLISION)));
 
         contracts.put(3, attachedAbility(3, 
                 new Activation(null, true, null, false, false),
                 phase("active", PhaseType.BOT_ATTACHED,
-                        ray(700, 5),
-                        effects(computedDamage(new Falloff(5.0, 15.0, null, null, 100.0, 700.0))),
-                        visual("gun", 16, 500),
+                        ray(1200, 6),
+                        effects(damage(40)),
+                        visual("gun", 40, 300),
                         PhaseEventType.COLLISION)));
 
         contracts.put(6, attachedAbility(6, 
@@ -679,6 +679,28 @@ public final class AbilityContracts {
                         arc(80, 30, true),
                         effects(damage(8)),
                         visual("basicStrike", 80, 200),
+                        PhaseEventType.COLLISION)));
+
+        contracts.put(35, attachedAbility(35,
+                phase("active", PhaseType.BOT_ATTACHED,
+                        rectangle(30, 190, true),
+                        effects(damage(10)),
+                        visual("meleeSlash", 190, 300),
+                        PhaseEventType.COLLISION)));
+
+        contracts.put(36, attachedAbility(36,
+                phase("active", PhaseType.BOT_ATTACHED,
+                        arc(112, 160, true),
+                        effects(damage(15)),
+                        visual("meleeSlash", 226, 300),
+                        PhaseEventType.COLLISION)));
+
+        contracts.put(37, attachedAbility(37,
+                phase("active", PhaseType.BOT_ATTACHED,
+                        rectangle(100, 125, true),
+                        effects(damage(11), targeted(knockback(120),
+                                TargetKind.BOT, TargetKind.SUMMON)),
+                        visual("meleeSlash", 125, 300),
                         PhaseEventType.COLLISION)));
 
         return Collections.unmodifiableMap(contracts);
@@ -1253,16 +1275,16 @@ public final class AbilityContracts {
                                          new EventSchedule(EventScheduleMode.ONCE)))));
 
         contracts.put(5, contract(5, "fireball", "fireball", Category.PROJECTILE, FORWARD,
-                new Lifetime(TimerMode.AGE, 1_000, 0),
+                new Lifetime(TimerMode.AGE, 1_400, 0),
                 new InitialState(false, true), List.of(
                         phase("active", PhaseType.PROJECTILE,
                                 new PhaseMovement(50),
-                                rectangle(30, 30),
+                                rectangle(64, 64),
                                 effects(
-                                        damage(15),
+                                        damage(20),
                                          targeted(status("burn", 2, 5_000, 1_000, null),
                                                  TargetKind.BOT, TargetKind.SUMMON)),
-                                new Visual("fireball", 30),
+                                new Visual("fireball", 60),
                                 Map.of(PhaseEventType.COLLISION,
                                         damageEvent(null, PhaseAction.APPLY_EFFECTS,
                                                 PhaseAction.REMOVE)),

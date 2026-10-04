@@ -7,10 +7,13 @@ import com.example.botfight.DTO.match.MatchPlaybackDTO;
 import com.example.botfight.DTO.match.MatchReplayDTO;
 import com.example.botfight.simulation.core.combat.AbilityExecutionPayload;
 import com.example.botfight.simulation.core.combat.ActionExecutionService;
+import com.example.botfight.simulation.core.logic.AimPrediction;
+import com.example.botfight.simulation.core.logic.ChainRuntime;
 import com.example.botfight.simulation.core.logic.ConditionResolutionService;
 import com.example.botfight.simulation.core.logic.TargetingService;
 import com.example.botfight.simulation.core.replay.ReplayMappingService;
 import com.example.botfight.simulation.core.state.BotStateService;
+import com.example.botfight.simulation.core.state.StaminaSystem;
 import com.example.botfight.simulation.bots.BotLogicContracts;
 import com.example.botfight.simulation.ecs.entities.ClosingZoneSystem;
 import com.example.botfight.simulation.gameconfig.ClosingZoneConfig;
@@ -167,6 +170,7 @@ public class DuelSimulationService {
                     .map(bot -> predictAction(bot, firstEnemy(bot, bots), selectables, arena))
                     .toList();
             for (int index = 0; index < bots.size(); index++) {
+                bots.get(index).lastPredictedAction = predictedActions.get(index);
                 actionExecutionService.execute(bots.get(index), predictedActions.get(index), arena);
             }
             for (Bot attacker : bots) {
@@ -370,12 +374,15 @@ public class DuelSimulationService {
                 ? new TargetPoint(facingBlock.targetX(), facingBlock.targetY(), 0)
                 : facingBlock != null && "angle".equals(facingBlock.targetMode())
                     ? null
-                    : TargetingService.offsetTarget(TargetingService.selectableEntity(facingBlock != null
+                    : TargetingService.offsetTarget(AimPrediction.leadTarget(TargetingService.selectableEntity(facingBlock != null
                         ? facingBlock.selectable
-                        : movementBlock != null ? movementBlock.selectable : BotLogicContracts.SELECTABLE_OPPONENT, player, opponent, entities), facingBlock != null ? facingBlock : movementBlock);
+                        : movementBlock != null ? movementBlock.selectable : BotLogicContracts.SELECTABLE_OPPONENT, player, opponent, entities),
+                        facingBlock, player, arena), facingBlock != null ? facingBlock : movementBlock);
         Entity abilityTarget = plan.ability != null && BotLogicContracts.actionUsesSelectableTarget(
                 plan.ability.action(), plan.ability.movementMode(), plan.ability.targetMode())
-                ? TargetingService.offsetTarget(TargetingService.selectableEntity(plan.ability.selectable, player, opponent, entities), plan.ability)
+                ? TargetingService.offsetTarget(AimPrediction.leadTarget(
+                        TargetingService.selectableEntity(plan.ability.selectable, player, opponent, entities),
+                        plan.ability, player, arena), plan.ability)
                 : null;
         Vector movement = actionExecutionService.movementVector(movementBlock, player, movementTarget);
         return new Action(
@@ -383,14 +390,17 @@ public class DuelSimulationService {
                 movement.dy(),
                 facingBlock != null && BotLogicContracts.ACTION_ROTATE_TOWARD_TARGET.equals(facingBlock.action)
                         ? "angle".equals(facingBlock.targetMode())
-                            ? turnTowardAngle(player, facingBlock.targetAngle())
-                            : turnTowardTarget(player, facingTarget) : 0.0,
+                            ? turnTowardAngle(player, facingBlock.targetAngle(), facingBlock.fastTurn())
+                            : turnTowardTarget(player, facingTarget, facingBlock.fastTurn()) : 0.0,
                 actionExecutionService.configuredAbilityAction(plan.ability),
                 abilityTarget != null ? abilityTarget.x() : plan.ability != null ? plan.ability.targetX : ARENA_WIDTH_UNITS / 2.0,
                 abilityTarget != null ? abilityTarget.y() : plan.ability != null ? plan.ability.targetY : ARENA_HEIGHT_UNITS / 2.0,
                 plan.ability != null ? plan.ability.movementMode() : null,
                 plan.ability != null ? plan.ability.movementDirection() : null,
-                plan.ability != null ? plan.ability.phaseFacingMode() : null);
+                plan.ability != null ? plan.ability.phaseFacingMode() : null,
+                movementBlock != null && movementBlock.sprint(),
+                plan.cancel != null,
+                facingBlock != null && BotLogicContracts.ACTION_ROTATE_TOWARD_TARGET.equals(facingBlock.action) && facingBlock.fastTurn());
     }
 
     private Bot prepareStrategy(Bot bot) {
@@ -398,37 +408,116 @@ public class DuelSimulationService {
         bot.brainSchemaVersion = bot.brain != null
                 && BotLogicContracts.BRAIN_SCHEMA_V2.equals(textValue(field(bot.brain, "version"), ""))
                 ? BotLogicContracts.BRAIN_SCHEMA_V2 : BotLogicContracts.BRAIN_SCHEMA_V1;
-        bot.normalizedStrategy = normalizeTreeRoots(roots, bot.brainSchemaVersion);
+        // Chains share the roots' action and condition budget.
+        int[] remainingActions = { MAX_LOGIC_BLOCKS };
+        int[] remainingConditions = { MAX_TOTAL_CONDITIONS };
+        bot.normalizedStrategy = normalizeTreeRoots(roots, bot.brainSchemaVersion, remainingActions, remainingConditions);
+        JsonNode chains = bot.brain != null ? bot.brain.get("chains") : null;
+        bot.normalizedChains = ChainRuntime.normalize(chains, bot.brainSchemaVersion,
+                chainBlockNormalizer(bot.brainSchemaVersion), remainingActions, remainingConditions);
         return bot;
     }
 
+    /**
+     * One tick of decisions: roots are checked against start-of-tick state, then chain control from the
+     * roots, then the running chain, then roots fill the categories the chain did not use.
+     */
     private ActionPlan selectStrategyActionPlan(Bot player, Bot opponent, List<Entity> entities, Arena arena) {
         List<StrategyBlock> selected = selectPriorityEntries(player.normalizedStrategy, player, opponent, entities, arena);
         ActionPlan plan = new ActionPlan();
         plan.primary = selected.stream()
-                .filter(block -> !BotLogicContracts.ACTION_VARIABLE.equals(block.action))
+                .filter(block -> !BotLogicContracts.ACTION_VARIABLE.equals(block.action) && !isChainControl(block))
                 .findFirst()
                 .orElse(null);
+
+        List<StrategyBlock> chainControl = selected.stream().filter(DuelSimulationService::isChainControl).toList();
+        ChainRuntime.applyControl(player.chainStack, chainControl, player.normalizedChains);
+        for (ChainRuntime.Claim claim : ChainRuntime.resume(player.chainStack, player.normalizedChains,
+                chainHost(player, opponent, entities, arena))) {
+            placeInPlan(plan, claim.head(), claim.block());
+        }
+
         for (StrategyBlock block : selected) {
             if (BotLogicContracts.ACTION_VARIABLE.equals(block.action)) {
                 actionExecutionService.applyCustomVariableAction(
                         player, opponent, entities, arena, conditionResolutionService, block);
                 continue;
             }
+            if (isChainControl(block)) continue;
             String head = actionHead(block.action);
-            if ("ability".equals(head) && plan.ability != null) continue;
-            if ("ability".equals(head)) plan.ability = block;
-            switch (head) {
-                case "rotation" -> {
-                    if (plan.rotation == null) plan.rotation = block;
-                }
-                case "ability" -> { }
-                default -> {
-                    if (plan.movement == null) plan.movement = block;
-                }
-            }
+            if (headTaken(plan, head)) continue;
+            placeInPlan(plan, head, block);
         }
         return plan;
+    }
+
+    private static boolean isChainControl(StrategyBlock block) {
+        return BotLogicContracts.ACTION_RUN_CHAIN.equals(block.action);
+    }
+
+    private static boolean headTaken(ActionPlan plan, String head) {
+        return switch (head) {
+            case "ability" -> plan.ability != null;
+            case "rotation" -> plan.rotation != null;
+            case "cancel" -> plan.cancel != null;
+            default -> plan.movement != null;
+        };
+    }
+
+    private static void placeInPlan(ActionPlan plan, String head, StrategyBlock block) {
+        switch (head) {
+            case "ability" -> plan.ability = block;
+            case "rotation" -> plan.rotation = block;
+            case "cancel" -> plan.cancel = block;
+            default -> plan.movement = block;
+        }
+    }
+
+    private ChainRuntime.Host chainHost(Bot player, Bot opponent, List<Entity> entities, Arena arena) {
+        return new ChainRuntime.Host() {
+            @Override
+            public boolean conditionsHold(List<Condition> conditions) {
+                return conditionResolutionService.evaluateConditions(conditions, player, opponent, entities, arena);
+            }
+
+            @Override
+            public boolean executableNow(StrategyBlock block) {
+                return strategyBlockExecutableNow(block, player, opponent, entities);
+            }
+
+            @Override
+            public void applyVariable(StrategyBlock block) {
+                actionExecutionService.applyCustomVariableAction(
+                        player, opponent, entities, arena, conditionResolutionService, block);
+            }
+
+            @Override
+            public boolean canCancelWindup() {
+                return StaminaSystem.canCancelWindup(player);
+            }
+
+            @Override
+            public Integer abilityFor(Object action) {
+                return actionExecutionService.abilityForAction(action);
+            }
+
+            @Override
+            public boolean abilityBusy(int abilityId) {
+                boolean windingUp = player.preparingAbility != null && player.preparingAbility == abilityId
+                        && player.preparingMs > 0;
+                return windingUp || player.abilityActiveMs.getOrDefault(abilityId, 0) > 0;
+            }
+
+            @Override
+            public boolean stunnedOrDead() {
+                return player.hp <= 0 || BotStateService.statusActive(player, "stun");
+            }
+
+            @Override
+            public String head(Object action) {
+                return actionHead(action);
+            }
+        };
     }
 
     private List<StrategyBlock> selectPriorityEntries(List<TreeRoot> roots, Bot player, Bot opponent, List<Entity> entities, Arena arena) {
@@ -440,6 +529,7 @@ public class DuelSimulationService {
         List<StrategyBlock> selected = new ArrayList<>();
         for (TreeRoot root : normalized) {
             selected.addAll(selectTreeBranch(root.branches(), player, opponent, entities, arena));
+            root.actions().stream().filter(block -> strategyBlockExecutableNow(block, player, opponent, entities)).forEach(selected::add);
         }
         return selected;
     }
@@ -463,21 +553,59 @@ public class DuelSimulationService {
         return selected;
     }
 
-    private static List<TreeRoot> normalizeTreeRoots(JsonNode roots, String coordinateVersion) {
+    private static ChainRuntime.BlockNormalizer chainBlockNormalizer(String coordinateVersion) {
+        return new ChainRuntime.BlockNormalizer() {
+            @Override
+            public StrategyBlock normalize(JsonNode node) {
+                return normalizeStrategyBlock(node, 0, coordinateVersion);
+            }
+
+            @Override
+            public String head(Object action) {
+                BotLogicContracts.ActionContract contract = BotLogicContracts.actionContract(action);
+                return contract == null ? null : contract.head().name().toLowerCase();
+            }
+
+            @Override
+            public Object action(JsonNode node) {
+                return actionValue(field(node, "action"));
+            }
+
+            @Override
+            public int cost(StrategyBlock block) {
+                return strategyBlockActionCost(block);
+            }
+        };
+    }
+
+    private static List<TreeRoot> normalizeTreeRoots(JsonNode roots, String coordinateVersion,
+            int[] remainingActions, int[] remainingConditions) {
         if (roots == null || !roots.isArray()) return List.of();
         List<TreeRoot> normalized = new ArrayList<>();
-        int[] remainingActions = { MAX_LOGIC_BLOCKS };
-        int[] remainingConditions = { MAX_TOTAL_CONDITIONS };
         int limit = Math.min(roots.size(), MAX_ROOTS);
-        for (int index = 0; index < limit && remainingConditions[0] > 0; index += 1) {
+        for (int index = 0; index < limit; index += 1) {
             JsonNode root = roots.get(index);
             normalized.add(new TreeRoot(
                     index,
                     clamp(numberValue(field(root, "priority"), index + 1), 1, MAX_ROOTS),
-                    normalizeTreeBranches(field(root, "branches"), remainingActions, remainingConditions, coordinateVersion)));
+                    normalizeTreeBranches(field(root, "branches"), remainingActions, remainingConditions, coordinateVersion),
+                    normalizeRootActions(root, index, remainingActions, coordinateVersion)));
         }
         normalized.sort(Comparator.comparingDouble(TreeRoot::priority));
         return List.copyOf(normalized);
+    }
+
+    private static List<StrategyBlock> normalizeRootActions(JsonNode root, int index, int[] remainingActions, String version) {
+        if (field(root, "actions") == null) return List.of();
+        List<StrategyBlock> actions = new ArrayList<>();
+        for (StrategyBlock block : normalizeTreeActions(root, index, version)) {
+            if (BotLogicContracts.ACTION_NONE.equals(block.action())) continue;
+            int cost = strategyBlockActionCost(block);
+            if (cost > remainingActions[0]) break;
+            remainingActions[0] -= cost;
+            actions.add(block);
+        }
+        return List.copyOf(actions);
     }
 
     private static List<TreeBranch> normalizeTreeBranches(JsonNode branches, int[] remainingActions, int[] remainingConditions,
@@ -499,12 +627,12 @@ public class DuelSimulationService {
             }
             String branchType = index == 0 ? "if" : "else".equals(textValue(field(branch, "branchType"), "if")) ? "else" : "if";
             if ("else".equals(branchType)) {
-                blocks = blocks.stream().map(block -> new StrategyBlock(block.index(), block.action(), block.selectable(), block.targetOffsetX(), block.targetOffsetY(), block.targetMode(), block.targetX(), block.targetY(), block.movementMode(), block.movementDirection(), block.phaseFacingMode(), block.variableTerms(), block.priority(), List.of(), block.targetAngle())).toList();
+                blocks = blocks.stream().map(block -> new StrategyBlock(block.index(), block.action(), block.selectable(), block.targetOffsetX(), block.targetOffsetY(), block.targetMode(), block.targetX(), block.targetY(), block.movementMode(), block.movementDirection(), block.phaseFacingMode(), block.variableTerms(), block.priority(), List.of(), block.targetAngle(), block.aim(), block.sprint(), block.fastTurn())).toList();
             } else {
                 int conditionLimit = Math.min(remainingConditions[0], blocks.isEmpty() ? 0 : blocks.get(0).conditions().size());
                 List<Condition> limitedConditions = blocks.isEmpty() ? List.of() : blocks.get(0).conditions().subList(0, conditionLimit);
                 remainingConditions[0] -= conditionLimit;
-                blocks = blocks.stream().map(block -> new StrategyBlock(block.index(), block.action(), block.selectable(), block.targetOffsetX(), block.targetOffsetY(), block.targetMode(), block.targetX(), block.targetY(), block.movementMode(), block.movementDirection(), block.phaseFacingMode(), block.variableTerms(), block.priority(), limitedConditions, block.targetAngle())).toList();
+                blocks = blocks.stream().map(block -> new StrategyBlock(block.index(), block.action(), block.selectable(), block.targetOffsetX(), block.targetOffsetY(), block.targetMode(), block.targetX(), block.targetY(), block.movementMode(), block.movementDirection(), block.phaseFacingMode(), block.variableTerms(), block.priority(), limitedConditions, block.targetAngle(), block.aim(), block.sprint(), block.fastTurn())).toList();
             }
             normalized.add(new TreeBranch(
                     branchType,
@@ -550,10 +678,13 @@ public class DuelSimulationService {
                         textValue(field(actionNode, "movementMode"), null),
                         BotLogicContracts.ACTION_VARIABLE.equals(action) ? textValue(field(actionNode, "operation"), "set") : movementDirectionValue(field(actionNode, "movementDirection"), null),
                         BotLogicContracts.ACTION_VARIABLE.equals(action) ? textValue(field(actionNode, "variableId"), "") : movementDirectionValue(field(actionNode, "phaseFacingMode"), null),
-                        BotLogicContracts.ACTION_VARIABLE.equals(action) ? firstNonNull(field(actionNode, "operand"), field(actionNode, "terms")) : null,
+                        BotLogicContracts.ACTION_VARIABLE.equals(action) ? variableActionPayload(actionNode) : chainActionPayload(action, actionNode),
                         actionPriority(branch),
                         ConditionResolutionService.normalizeConditions(field(branch, "conditions"), coordinateVersion),
-                        clamp(numberValue(field(actionNode, "targetAngle"), 0), BotLogicContracts.ANGLE_MIN, BotLogicContracts.ANGLE_MAX)));
+                        clamp(numberValue(field(actionNode, "targetAngle"), 0), BotLogicContracts.ANGLE_MIN, BotLogicContracts.ANGLE_MAX),
+                        normalizeAim(action, actionNode),
+                        normalizeSprint(action, actionNode),
+                        normalizeFastTurn(action, actionNode)));
             }
         }
         if (blocks.isEmpty()) blocks.add(normalizeStrategyBlock(branch, index, coordinateVersion));
@@ -590,7 +721,11 @@ public class DuelSimulationService {
         if (BotLogicContracts.ACTION_VARIABLE.equals(action)) return true;
         if (BotLogicContracts.ACTION_NONE.equals(action)) return false;
         String head = actionHead(action);
+        // Chain control is instant bookkeeping: it always selects its block and uses no category.
+        if ("chain".equals(head)) return true;
         if ("movement".equals(head) || "rotation".equals(head)) return true;
+        // Cancel only selects while a wind-up can actually be cancelled, so it never blocks anything.
+        if ("cancel".equals(head)) return StaminaSystem.canCancelWindup(player);
         Integer ability = actionExecutionService.abilityForAction(action);
         return ability != null && actionExecutionService.selectedAbilityExecutable(player, ability);
     }
@@ -625,10 +760,56 @@ public class DuelSimulationService {
                 BotLogicContracts.ACTION_VARIABLE.equals(action)
                         ? textValue(field(block, "phaseFacingMode"), null)
                         : movementDirectionValue(field(block, "phaseFacingMode"), null),
-                BotLogicContracts.ACTION_VARIABLE.equals(action) ? firstNonNull(field(block, "operand"), field(block, "terms")) : null,
+                BotLogicContracts.ACTION_VARIABLE.equals(action) ? variableActionPayload(block) : chainActionPayload(action, block),
                 actionPriority(block),
                 ConditionResolutionService.normalizeConditions(field(block, "conditions"), coordinateVersion),
-                clamp(numberValue(field(block, "targetAngle"), 0), BotLogicContracts.ANGLE_MIN, BotLogicContracts.ANGLE_MAX));
+                clamp(numberValue(field(block, "targetAngle"), 0), BotLogicContracts.ANGLE_MIN, BotLogicContracts.ANGLE_MAX),
+                normalizeAim(action, block),
+                normalizeSprint(action, block),
+                normalizeFastTurn(action, block));
+    }
+
+    /** Run chain carries its chain ID in the block's payload node; other actions carry none. */
+    private static JsonNode chainActionPayload(Object action, JsonNode node) {
+        if (!BotLogicContracts.ACTION_RUN_CHAIN.equals(action)) return null;
+        return tools.jackson.databind.node.JsonNodeFactory.instance.objectNode()
+                .put("chainId", textValue(field(node, "chainId"), ""));
+    }
+
+    /** Fast turn is a Rotate setting and only a literal boolean true turns it on; anything else is off. */
+    private static boolean normalizeFastTurn(Object action, JsonNode node) {
+        return BotLogicContracts.ACTION_ROTATE_TOWARD_TARGET.equals(action)
+                && field(node, "fastTurn") != null && field(node, "fastTurn").isBoolean()
+                && field(node, "fastTurn").asBoolean();
+    }
+
+    /** Sprint is a Walk setting and only a literal boolean true turns it on; anything else is off. */
+    private static boolean normalizeSprint(Object action, JsonNode node) {
+        return BotLogicContracts.ACTION_MOVE_WALK.equals(action)
+                && field(node, "sprint") != null && field(node, "sprint").isBoolean()
+                && field(node, "sprint").asBoolean();
+    }
+
+    /**
+     * Lead aim is only honored on actions that aim at a selected entity. Anything missing or
+     * malformed normalizes to `current`, so brains saved before this setting behave as before.
+     */
+    private static Aim normalizeAim(Object action, JsonNode node) {
+        if (!BotLogicContracts.actionSupportsAim(action)) return Aim.CURRENT;
+        String mode = textValue(field(node, "aim"), BotLogicContracts.AIM_CURRENT);
+        if (BotLogicContracts.AIM_LEAD.equals(mode)) {
+            double seconds = BotLogicContracts.truncateToNumberPrecision(
+                    clamp(numberValue(field(node, "leadSeconds"), 0), 0, BotLogicContracts.MAX_LEAD_SECONDS));
+            return new Aim(BotLogicContracts.AIM_LEAD, seconds, null);
+        }
+        if (BotLogicContracts.AIM_AUTO.equals(mode)) {
+            JsonNode abilityNode = field(node, "leadAbilityId");
+            if (abilityNode != null && abilityNode.isIntegralNumber() && abilityNode.canConvertToInt()
+                    && com.example.botfight.simulation.gameconfig.AbilityRegistry.contains(abilityNode.intValue())) {
+                return new Aim(BotLogicContracts.AIM_AUTO, 0.0, abilityNode.intValue());
+            }
+        }
+        return Aim.CURRENT;
     }
 
     private static String normalizeActionTargetMode(Object action, JsonNode node) {
@@ -706,6 +887,12 @@ public class DuelSimulationService {
                                 .anyMatch(bot -> bot.entityHitIds.contains(entity.id()));
                         return recordedHit || actionExecutionService.mineHitByCurrentAttack(
                                 entity, activeBots, activeEntities);
+                    }
+
+                    @Override
+                    public void recordEnemyHit(List<Bot> activeBots, int ownerSlot, int abilityId) {
+                        activeBots.stream().filter(bot -> bot.slot == ownerSlot).findFirst()
+                                .ifPresent(owner -> owner.abilityHitsThisTick.add(abilityId));
                     }
 
                     @Override
@@ -788,6 +975,11 @@ public class DuelSimulationService {
         return 1;
     }
 
+    /** A variable write carries its operand or its terms. */
+    private static JsonNode variableActionPayload(JsonNode node) {
+        return firstNonNull(field(node, "operand"), field(node, "terms"));
+    }
+
     private static double variableValue(JsonNode node) {
         if (node != null && node.isBoolean()) return node.asBoolean() ? 1 : 0;
         if (node != null && node.isObject()) return numberValue(field(node, "value"), 0);
@@ -824,10 +1016,16 @@ public class DuelSimulationService {
                 Math.min(entity.y(), arena.height() - entity.y())));
     }
 
-    private static double turnTowardTarget(Bot player, Entity target) {
+    /** The largest turn per tick the planner may assume: doubled only when the executor will really fast turn. */
+    private static double turnStepDegrees(Bot player, boolean fastTurn) {
+        return TURN_SPEED_DEGREES * (fastTurn && com.example.botfight.simulation.core.state.StaminaSystem.canFastTurn(player)
+                ? com.example.botfight.simulation.gameconfig.MovementConfig.FAST_TURN_MULTIPLIER : 1.0);
+    }
+
+    private static double turnTowardTarget(Bot player, Entity target, boolean fastTurn) {
         if (player == null || target == null) return 0;
         double bearing = vectorBearing(target.x() - player.x, target.y() - player.y);
-        return clamp(shortestDelta(player.rotation, bearing) / TURN_SPEED_DEGREES, -1, 1);
+        return clamp(shortestDelta(player.rotation, bearing) / turnStepDegrees(player, fastTurn), -1, 1);
     }
 
     private static double clamp(double value, double min, double max) {
@@ -911,13 +1109,26 @@ public class DuelSimulationService {
     public record Arena(int width, int height, int durationMs) {
     }
 
-    private static double turnTowardAngle(Bot player, double targetAngle) {
+    private static double turnTowardAngle(Bot player, double targetAngle, boolean fastTurn) {
         if (player == null || !Double.isFinite(targetAngle)) return 0;
-        return clamp(shortestDelta(player.rotation, targetAngle) / TURN_SPEED_DEGREES, -1, 1);
+        return clamp(shortestDelta(player.rotation, targetAngle) / turnStepDegrees(player, fastTurn), -1, 1);
     }
 
+    /** `sprint` is the Walk setting and `fastTurn` the Rotate setting; `cancelWindup` is the Cancel channel, independent of the ability lock. */
     public record Action(double dx, double dy, double dRot, Integer abilityAction, double abilityTargetX, double abilityTargetY,
-                  String movementMode, String movementDirection, String phaseFacingMode) {
+                  String movementMode, String movementDirection, String phaseFacingMode,
+                  boolean sprint, boolean cancelWindup, boolean fastTurn) {
+        public Action(double dx, double dy, double dRot, Integer abilityAction, double abilityTargetX, double abilityTargetY,
+                      String movementMode, String movementDirection, String phaseFacingMode,
+                      boolean sprint, boolean cancelWindup) {
+            this(dx, dy, dRot, abilityAction, abilityTargetX, abilityTargetY,
+                    movementMode, movementDirection, phaseFacingMode, sprint, cancelWindup, false);
+        }
+        public Action(double dx, double dy, double dRot, Integer abilityAction, double abilityTargetX, double abilityTargetY,
+                      String movementMode, String movementDirection, String phaseFacingMode) {
+            this(dx, dy, dRot, abilityAction, abilityTargetX, abilityTargetY,
+                    movementMode, movementDirection, phaseFacingMode, false, false, false);
+        }
     }
 
     public record Vector(double dx, double dy) {
@@ -977,17 +1188,37 @@ public class DuelSimulationService {
         }
     }
 
-    public record StrategyBlock(int index, Object action, String selectable, double targetOffsetX, double targetOffsetY, String targetMode, double targetX, double targetY, String movementMode, String movementDirection, String phaseFacingMode, JsonNode variableTerms, int priority, List<Condition> conditions, double targetAngle) {
+    /** Optional lead-aim setting for Face Target and targeted ability actions; `current` is today's behavior. */
+    public record Aim(String mode, double leadSeconds, Integer leadAbilityId) {
+        public static final Aim CURRENT = new Aim(BotLogicContracts.AIM_CURRENT, 0.0, null);
+    }
+
+    public record StrategyBlock(int index, Object action, String selectable, double targetOffsetX, double targetOffsetY, String targetMode, double targetX, double targetY, String movementMode, String movementDirection, String phaseFacingMode, JsonNode variableTerms, int priority, List<Condition> conditions, double targetAngle, Aim aim, boolean sprint, boolean fastTurn) {
+        public StrategyBlock(int index, Object action, String selectable, double targetOffsetX, double targetOffsetY, String targetMode, double targetX, double targetY, String movementMode, String movementDirection, String phaseFacingMode, JsonNode variableTerms, int priority, List<Condition> conditions, double targetAngle, Aim aim, boolean sprint) {
+            this(index, action, selectable, targetOffsetX, targetOffsetY, targetMode, targetX, targetY,
+                    movementMode, movementDirection, phaseFacingMode, variableTerms, priority, conditions, targetAngle, aim, sprint, false);
+        }
+        public StrategyBlock(int index, Object action, String selectable, double targetOffsetX, double targetOffsetY, String targetMode, double targetX, double targetY, String movementMode, String movementDirection, String phaseFacingMode, JsonNode variableTerms, int priority, List<Condition> conditions, double targetAngle, Aim aim) {
+            this(index, action, selectable, targetOffsetX, targetOffsetY, targetMode, targetX, targetY,
+                    movementMode, movementDirection, phaseFacingMode, variableTerms, priority, conditions, targetAngle, aim, false, false);
+        }
         public StrategyBlock(int index, Object action, String selectable, double targetOffsetX, double targetOffsetY, String targetMode, double targetX, double targetY, String movementMode, String movementDirection, String phaseFacingMode, JsonNode variableTerms, int priority, List<Condition> conditions) {
             this(index, action, selectable, targetOffsetX, targetOffsetY, targetMode, targetX, targetY,
-                    movementMode, movementDirection, phaseFacingMode, variableTerms, priority, conditions, Double.NaN);
+                    movementMode, movementDirection, phaseFacingMode, variableTerms, priority, conditions, Double.NaN, Aim.CURRENT);
+        }
+        public StrategyBlock(int index, Object action, String selectable, double targetOffsetX, double targetOffsetY, String targetMode, double targetX, double targetY, String movementMode, String movementDirection, String phaseFacingMode, JsonNode variableTerms, int priority, List<Condition> conditions, double targetAngle) {
+            this(index, action, selectable, targetOffsetX, targetOffsetY, targetMode, targetX, targetY,
+                    movementMode, movementDirection, phaseFacingMode, variableTerms, priority, conditions, targetAngle, Aim.CURRENT);
+        }
+        public StrategyBlock {
+            if (aim == null) aim = Aim.CURRENT;
         }
     }
 
     public record TargetPoint(double x, double y, int size) implements Entity {
     }
 
-    private record TreeRoot(int index, double priority, List<TreeBranch> branches) {
+    private record TreeRoot(int index, double priority, List<TreeBranch> branches, List<StrategyBlock> actions) {
     }
 
     private record TreeBranch(String branchType, double priority, List<StrategyBlock> blocks, List<TreeBranch> children) {
@@ -1016,6 +1247,16 @@ public class DuelSimulationService {
         /** Coordinate semantics are owned by this bot's submitted brain. */
         public String brainSchemaVersion = BotLogicContracts.BRAIN_SCHEMA_V1;
         private List<TreeRoot> normalizedStrategy = List.of();
+        private Map<String, ChainRuntime.Chain> normalizedChains = Map.of();
+        /** The running action chain's call stack. It persists across ticks like the custom variables. */
+        public List<ChainRuntime.Frame> chainStack = new ArrayList<>();
+        /** Display metadata from the same normalized chains used by authoritative execution. */
+        public String chainName(String chainId) {
+            var chain = normalizedChains.get(chainId);
+            return chain == null ? chainId : chain.name();
+        }
+        /** What the brain decided for the tick that just ran (read by tests and replays). */
+        public Action lastPredictedAction;
         public Set<Integer> abilities = Set.of();
         public double hp;
         public long matchElapsedMs;
@@ -1043,10 +1284,21 @@ public class DuelSimulationService {
         /** Cooldowns reserved by an activation while its active phase is running. */
         public Map<Integer, Integer> abilityPendingCooldownMs = new HashMap<>();
         public Map<Integer, Integer> abilityActiveMs = new HashMap<>();
+        /** Milliseconds since each ability last hit an enemy bot; absent when it never has. */
+        public Map<Integer, Integer> abilityLastHitAgeMs = new HashMap<>();
+        /** Abilities that hit an enemy bot this tick, settled into abilityLastHitAgeMs by settleTick. */
+        public Set<Integer> abilityHitsThisTick = new java.util.LinkedHashSet<>();
         public Map<Integer, Integer> abilityCharges = new HashMap<>();
         public Map<Integer, Integer> abilityRechargeMs = new HashMap<>();
         public Map<String, Object> customVariables = new HashMap<>();
         public Map<String, String> customVariableTypes = new HashMap<>();
+        /** Stamina (an integer, 0-100) and its timers; see StaminaSystem. */
+        public int stamina = com.example.botfight.simulation.gameconfig.MovementConfig.STAMINA_MAX;
+        public int staminaRegenDelayMs;
+        public int exhaustedMs;
+        public boolean sprinting;
+        public boolean fastTurning;
+        public int dashGapMs;
         public Integer preparingAbility;
         public int preparingMs;
         public double preparingTargetX = Double.NaN;
@@ -1162,6 +1414,7 @@ public class DuelSimulationService {
         private StrategyBlock movement;
         private StrategyBlock ability;
         private StrategyBlock rotation;
+        private StrategyBlock cancel;
     }
 
     private static final class SeededRandom {

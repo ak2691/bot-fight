@@ -4,10 +4,11 @@ import {
     resolveEffectOverride,
     TARGET_KINDS,
 } from "../contracts/AbilityContracts.js";
-import { amountAtDistance, applyStatusEffect, durationAtDistance } from "./AbilityEffectSystem.js";
+import { amountAtDistance, applyStatusEffect, durationAtDistance, ENEMY_HIT_EFFECT_TYPES } from "./AbilityEffectSystem.js";
+import { recordAbilityHit } from "../../gameconfig/AbilityHitRecord.js";
 import { clamp } from "../../gameconfig/geometry.js";
 import { ignoresHostileEffects, isAliveBot } from "../../gameconfig/DefensiveState.js";
-import { applyEntityDamage } from "../entities/EntityCombat.js";
+import { applyEntityDamage, ownerBot } from "../entities/EntityCombat.js";
 import { upsertStatusEffect } from "../contracts/StatusContracts.js";
 import { interruptCurrentAbility } from "../../gameconfig/AbilityResourceSystem.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
@@ -28,6 +29,7 @@ export function applyEntityEffects(bots, targetIndex, source, abilityId, combat,
     if (!target || ignoresHostileEffects(target)) return { bots };
     let nextBots = [...bots];
     const allowed = effectTypes ? new Set(effectTypes) : null;
+    let landedOnEnemy = false;
 
     for (const effect of effects ?? []) {
         if (!effectTargetsTarget(effect, [TARGET_KINDS.BOT])) continue;
@@ -38,7 +40,8 @@ export function applyEntityEffects(bots, targetIndex, source, abilityId, combat,
             && !statusTypes.some((statusType) =>
                 String(statusType).toLowerCase() === String(effect.subtype ?? "").toLowerCase())) continue;
         const resolvedEffect = resolveEffectOverride(effect, effectOverrides);
-        const distance = Number.isFinite(Number(collisionDistance))
+        if (ENEMY_HIT_EFFECT_TYPES.has(resolvedEffect.type) && isAliveBot(nextBots[targetIndex])) landedOnEnemy = true;
+        const distance =Number.isFinite(Number(collisionDistance))
             ? Number(collisionDistance)
             : Math.hypot(Number(source.x) - Number(nextBots[targetIndex].x), Number(source.y) - Number(nextBots[targetIndex].y));
         if (resolvedEffect.type === EFFECT_TYPES.DAMAGE) {
@@ -74,7 +77,28 @@ export function applyEntityEffects(bots, targetIndex, source, abilityId, combat,
             nextBots[targetIndex] = applyPull(nextBots[targetIndex], pullSource, amountAtDistance(abilityId, distance, resolvedEffect, statOverrides), world);
         }
     }
+    if (landedOnEnemy) nextBots = recordEntityHit(nextBots, targetIndex, source, abilityId);
     return { bots: nextBots };
+}
+
+/** Attributes a hit on an enemy bot to the entity's owner and ability. Allies never count. */
+function recordEntityHit(bots, targetIndex, source, abilityId) {
+    const target = bots[targetIndex];
+    const owner = ownerBot(bots, source);
+    if (!owner || owner.id === target.id || !opposingBots(owner, target)) return bots;
+    const ownerIndex = bots.findIndex((bot) => bot.id === owner.id);
+    const next = [...bots];
+    next[ownerIndex] = recordAbilityHit(bots[ownerIndex], abilityId);
+    return next;
+}
+
+function opposingBots(first, second) {
+    const firstTeam = Number(first?.teamNumber);
+    const secondTeam = Number(second?.teamNumber);
+    if (Number.isFinite(firstTeam) && Number.isFinite(secondTeam) && firstTeam > 0 && secondTeam > 0) {
+        return firstTeam !== secondTeam;
+    }
+    return Number(first?.slot) !== Number(second?.slot);
 }
 
 function applyKnockback(target, source, distance, world, directionMode) {

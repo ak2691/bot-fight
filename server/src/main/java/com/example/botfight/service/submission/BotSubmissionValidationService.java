@@ -5,8 +5,10 @@ import com.example.botfight.DTO.submission.BotSubmissionValidationResponseDTO;
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import com.example.botfight.simulation.gameconfig.GameConfig;
 import com.example.botfight.simulation.gameconfig.Abilities;
+import com.example.botfight.simulation.gameconfig.AbilityBaseRange;
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import com.example.botfight.simulation.bots.BotLogicContracts;
+import com.example.botfight.simulation.gameconfig.AbilityRegistry;
 import com.example.botfight.simulation.geometry.ArenaUnits;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -138,7 +140,8 @@ public class BotSubmissionValidationService {
             return;
         }
         validateLogicRoots(errors, roots, loadoutSpec, customVariableTypes, requireExecutableActions,
-                coordinateBounds, brainVersion);
+                coordinateBounds, brainVersion, chainActionCost(brain.get("chains")), chainConditionCount(brain.get("chains")), brain.get("orphans"));
+        validateChains(errors, brain, loadoutSpec, customVariableTypes, requireExecutableActions, coordinateBounds, brainVersion);
     }
 
     private void validateNodePositions(List<String> errors, JsonNode positions) {
@@ -261,7 +264,7 @@ public class BotSubmissionValidationService {
         }
         Set<String> referenced = new HashSet<>();
         int rootConditions = countBrainConditionSlots(brain.get("roots"), costs, referenced);
-        return rootConditions;
+        return rootConditions + countBrainConditionSlots(brain.get("orphans"), costs, referenced) + countChainConditionSlots(brain.get("chains"), costs, referenced);
     }
 
     private int countBrainConditionSlots(JsonNode node, java.util.Map<String, Integer> costs, Set<String> referenced) {
@@ -300,7 +303,7 @@ public class BotSubmissionValidationService {
             }
             JsonNode rightNode = node.get("right");
             String right = rightNode != null && rightNode.hasNonNull("value") ? rightNode.get("value").asText() : "";
-            if (right.startsWith(BotLogicContracts.CUSTOM_VARIABLE_PREFIX) && !"number".equals(types.get(right))) errors.add(path + ".right.value must reference an existing number custom variable");
+            if (right.startsWith(BotLogicContracts.CUSTOM_VARIABLE_PREFIX) && !isNumericType(types.get(right))) errors.add(path + ".right.value must reference an existing number custom variable");
         }
         if ("variable".equals(node.hasNonNull("action") ? node.get("action").asText() : "")) {
             String id = node.hasNonNull("variableId") ? node.get("variableId").asText() : "";
@@ -341,7 +344,7 @@ public class BotSubmissionValidationService {
                     }
                     else if ("variable".equals(operandType)) {
                         String operandId = termOperand.path("value").asText("");
-                        if (!("number".equals(BotLogicContracts.variableValueType(operandId)) || "number".equals(types.get(operandId)))) errors.add(path + ".terms[" + index + "].operand must reference a numeric variable");
+                        if (!("number".equals(BotLogicContracts.variableValueType(operandId)) || isNumericType(types.get(operandId)))) errors.add(path + ".terms[" + index + "].operand must reference a numeric variable");
                     } else if (!"number".equals(operandType)) errors.add(path + ".terms[" + index + "].operand.type is invalid");
                 }
             } else if ("number".equals(type) && operand != null) {
@@ -356,6 +359,14 @@ public class BotSubmissionValidationService {
             }
         }
         node.properties().forEach(entry -> validateCustomReferences(errors, entry.getValue(), path + "." + entry.getKey(), types));
+    }
+
+    private static boolean isNumericType(String type) {
+        return "number".equals(type);
+    }
+
+    private static String conditionValueType(String customType) {
+        return customType;
     }
 
     private void validateCustomVariableOperand(List<String> errors, JsonNode operand, String path, String operation,
@@ -377,7 +388,7 @@ public class BotSubmissionValidationService {
         }
         if ("variable".equals(operandType)) {
             String operandId = operand.path("value").asText("");
-            if (!("number".equals(BotLogicContracts.variableValueType(operandId)) || "number".equals(types.get(operandId)))) {
+            if (!("number".equals(BotLogicContracts.variableValueType(operandId)) || isNumericType(types.get(operandId)))) {
                 errors.add(path + " must reference a numeric variable");
             }
             return;
@@ -441,14 +452,15 @@ public class BotSubmissionValidationService {
 
     private void validateLogicRoots(List<String> errors, JsonNode roots, GameConfig loadoutSpec,
             Map<String, String> customVariableTypes, boolean requireExecutableActions,
-            CoordinateBounds coordinateBounds, String brainVersion) {
+            CoordinateBounds coordinateBounds, String brainVersion, int chainActions, int chainConditions, JsonNode orphans) {
         if (!roots.isArray()) {
             errors.add("brain.roots must be an array");
             return;
         }
         if (roots.size() > MAX_ROOTS) errors.add("brain.roots exceeds the root limit");
-        int[] branchCount = { 0 };
-        int[] conditionCount = { 0 };
+        // Chain steps count toward the same budgets as the roots' actions and conditions.
+        int[] branchCount = { requireExecutableActions ? chainActions : 0 };
+        int[] conditionCount = { chainConditions };
         for (int rootIndex = 0; rootIndex < roots.size(); rootIndex++) {
             JsonNode root = roots.get(rootIndex);
             String path = "brain.roots[" + rootIndex + "]";
@@ -461,7 +473,12 @@ public class BotSubmissionValidationService {
             if (name != null && (!name.isTextual() || name.asText().trim().isEmpty() || name.asText().length() > MAX_ROOT_NAME_LENGTH)) {
                 errors.add(path + ".name must be 1 to " + MAX_ROOT_NAME_LENGTH + " characters");
             }
+            if (root.has("actions")) {
+                validateOptionalActions(errors, root, path, loadoutSpec, coordinateBounds, requireExecutableActions);
+                if (requireExecutableActions) branchCount[0] += executableActionCount(root);
+            }
             JsonNode branches = root.get("branches");
+            if (branches == null && root.path("actions").isArray()) continue;
             if (branches == null || !branches.isArray()) {
                 errors.add(path + ".branches must be an array");
                 continue;
@@ -469,8 +486,52 @@ public class BotSubmissionValidationService {
             validateTreeBranches(errors, branches, path + ".branches", loadoutSpec, customVariableTypes,
                     branchCount, conditionCount, requireExecutableActions, coordinateBounds, brainVersion);
         }
+        validateOrphans(errors, orphans, loadoutSpec, customVariableTypes, branchCount, conditionCount,
+                requireExecutableActions, coordinateBounds, brainVersion);
         if (branchCount[0] > MAX_LOGIC_BLOCKS) errors.add("brain tree actions exceed the action node limit");
         if (conditionCount[0] > MAX_TOTAL_CONDITIONS) errors.add("brain tree exceeds the total condition limit");
+    }
+
+    private void validateOptionalActions(List<String> errors, JsonNode node, String path, GameConfig loadout,
+            CoordinateBounds bounds, boolean executable) {
+        JsonNode actions = node.get("actions");
+        if (actions == null || !actions.isArray()) errors.add(path + ".actions must be an array");
+        else if (!actions.isEmpty() && executable) validateLogicBlockActions(errors, node, path, loadout, bounds);
+    }
+
+    private void validateOrphans(List<String> errors, JsonNode orphans, GameConfig loadout,
+            Map<String, String> types, int[] actions, int[] conditions, boolean executable,
+            CoordinateBounds bounds, String version) {
+        if (orphans == null) return;
+        if (!orphans.isArray()) { errors.add("brain.orphans must be an array"); return; }
+        if (orphans.size() > MAX_LOGIC_BLOCKS + MAX_TOTAL_CONDITIONS) errors.add("brain.orphans exceeds the node limit");
+        Set<String> ids = new HashSet<>();
+        for (int i = 0; i < orphans.size(); i++) {
+            JsonNode node = orphans.get(i);
+            String path = "brain.orphans[" + i + "]";
+            if (!node.isObject()) { errors.add(path + " must be an object"); continue; }
+            String id = node.path("id").asText("");
+            if (!node.path("id").isTextual() || !id.matches("[A-Za-z0-9_:. -]{1,160}") || !ids.add(id)) errors.add(path + ".id is invalid or duplicated");
+            String kind = node.path("kind").asText("");
+            if ("conditional".equals(kind)) {
+                if (executable) actions[0] += executableActionCount(node);
+                conditions[0] += conditionCount(node);
+                validateTreePriority(errors, node, path, MAX_LOGIC_BLOCKS);
+                validateLogicBlock(errors, node, path, loadout, types, executable, bounds, version);
+                String branchType = node.path("branchType").asText("if");
+                if (!Set.of("if", "else").contains(branchType)) errors.add(path + ".branchType is invalid");
+                JsonNode children = node.get("children");
+                if (children != null && !children.isArray()) errors.add(path + ".children must be an array");
+                else if (children != null) validateTreeBranches(errors, children, path + ".children", loadout, types, actions, conditions, executable, bounds, version);
+            } else if ("action".equals(kind)) {
+                if (node.has("children") || node.has("conditions") || node.has("actions")) errors.add(path + " action cannot contain a subtree");
+                if (executable) {
+                    actions[0] += executableActionCount(node);
+                    validateLogicBlockActions(errors, node, path, loadout, bounds);
+                    validateSelectable(errors, node.get("selectable"), path + ".selectable");
+                }
+            } else errors.add(path + ".kind must be conditional or action");
+        }
     }
 
     private void validateTreeBranches(List<String> errors, JsonNode branches, String path,
@@ -576,7 +637,7 @@ public class BotSubmissionValidationService {
                     }
                 }
                 String head = validationActionHead(action);
-                String headKey = BotLogicContracts.ACTION_VARIABLE.equals(action) ? head + ":" + index : head;
+                String headKey = BotLogicContracts.ACTION_VARIABLE.equals(action) || "chain".equals(head) ? head + ":" + index : head;
                 if (!heads.add(headKey)) errors.add(path + " has multiple " + head + " actions");
             }
             if (heads.contains(BotLogicContracts.ACTION_NONE) && heads.size() > 1) errors.add(path + " cannot combine N/A with executable actions");
@@ -608,6 +669,372 @@ public class BotSubmissionValidationService {
         JsonNode terms = entry.get("terms");
         return BotLogicContracts.ACTION_VARIABLE.equals(entry.path("action").asText())
                 && terms != null && terms.isArray() && !terms.isEmpty() ? terms.size() : 1;
+    }
+
+    // ------------------------------------------------------------------ action chains
+
+    private static final Set<String> CHAIN_STEP_TYPES = Set.of(
+            "action", "wait", "if", "elseIf", "repeat", "runChain", "exitLoop", "end");
+    private static final java.util.regex.Pattern CHAIN_ID = java.util.regex.Pattern.compile(BotLogicContracts.CHAIN_ID_PATTERN);
+
+    /** Every step of every chain, nested steps included. */
+    private List<JsonNode> allChainSteps(JsonNode chains) {
+        List<JsonNode> steps = new ArrayList<>();
+        if (chains == null || !chains.isArray()) return steps;
+        for (JsonNode chain : chains) {
+            collectSteps(chain == null ? null : chain.get("steps"), steps);
+            // Loose blocks never run but count toward the budgets like any other step.
+            JsonNode loose = chain == null ? null : chain.get("loose");
+            if (loose != null && loose.isArray()) {
+                for (JsonNode entry : loose) {
+                    JsonNode step = entry == null ? null : entry.get("step");
+                    if (step == null || !step.isObject()) continue;
+                    steps.add(step);
+                    collectSteps(step.get("then"), steps);
+                    collectSteps(step.get("else"), steps);
+                    collectSteps(step.get("steps"), steps);
+                }
+            }
+        }
+        return steps;
+    }
+
+    private void collectSteps(JsonNode list, List<JsonNode> out) {
+        if (list == null || !list.isArray()) return;
+        for (JsonNode step : list) {
+            if (step == null || !step.isObject()) continue;
+            out.add(step);
+            collectSteps(step.get("then"), out);
+            collectSteps(step.get("else"), out);
+            collectSteps(step.get("steps"), out);
+        }
+    }
+
+    /** A chain action step costs like an action; steps that are not actions cost one slot each. */
+    private int chainActionCost(JsonNode chains) {
+        int total = 0;
+        for (JsonNode step : allChainSteps(chains)) {
+            total += "action".equals(step.path("type").asText("")) ? executableActionCost(step) : 1;
+            if ("if".equals(step.path("type").asText("")) && !step.has("steps") && step.path("else").isArray() && !step.path("else").isEmpty()) total++;
+        }
+        return total;
+    }
+
+    private static final String[] CHAIN_CONDITION_FIELDS = { "conditions", "untilConditions", "whileConditions" };
+
+    private int chainConditionCount(JsonNode chains) {
+        int total = 0;
+        for (JsonNode step : allChainSteps(chains)) {
+            for (String field : CHAIN_CONDITION_FIELDS) {
+                JsonNode conditions = step.get(field);
+                if (conditions != null && conditions.isArray()) total += conditions.size();
+            }
+        }
+        return total;
+    }
+
+    private int countChainConditionSlots(JsonNode chains, java.util.Map<String, Integer> costs, Set<String> referenced) {
+        int total = 0;
+        for (JsonNode step : allChainSteps(chains)) {
+            for (String field : CHAIN_CONDITION_FIELDS) {
+                JsonNode conditions = step.get(field);
+                if (conditions != null && conditions.isArray()) total += countBrainConditionSlots(conditions, costs, referenced);
+            }
+        }
+        return total;
+    }
+
+    private static boolean isChainMs(JsonNode value) {
+        if (value == null || !value.isIntegralNumber() || !value.canConvertToInt()) return false;
+        int ms = value.intValue();
+        return ms >= BotLogicContracts.CHAIN_MS_STEP && ms <= BotLogicContracts.CHAIN_MS_MAX && ms % BotLogicContracts.CHAIN_MS_STEP == 0;
+    }
+
+    private void validateChains(List<String> errors, JsonNode brain, GameConfig loadoutSpec,
+            Map<String, String> customVariableTypes, boolean requireExecutableActions,
+            CoordinateBounds coordinateBounds, String brainVersion) {
+        JsonNode chains = brain.get("chains");
+        Set<String> ids = new HashSet<>();
+        if (chains != null && !chains.isNull()) {
+            if (!chains.isArray()) {
+                errors.add("brain.chains must be an array");
+                return;
+            }
+            if (chains.size() > BotLogicContracts.MAX_CHAINS) {
+                errors.add("brain.chains exceeds the limit of " + BotLogicContracts.MAX_CHAINS + " chains");
+            }
+            for (int index = 0; index < chains.size(); index++) {
+                JsonNode chain = chains.get(index);
+                String path = "brain.chains[" + index + "]";
+                if (chain == null || !chain.isObject()) {
+                    errors.add(path + " must be an object");
+                    continue;
+                }
+                String id = chain.path("id").asText("");
+                if (!chain.path("id").isTextual() || !CHAIN_ID.matcher(id).matches()) errors.add(path + ".id is invalid");
+                else if (!ids.add(id)) errors.add(path + ".id repeats " + id);
+                JsonNode name = chain.get("name");
+                if (name != null && (!name.isTextual() || name.asText().trim().isEmpty()
+                        || name.asText().length() > BotLogicContracts.MAX_CHAIN_NAME_LENGTH)) {
+                    errors.add(path + ".name must be 1 to " + BotLogicContracts.MAX_CHAIN_NAME_LENGTH + " characters");
+                }
+            }
+            for (int index = 0; index < chains.size(); index++) {
+                JsonNode chain = chains.get(index);
+                if (chain == null || !chain.isObject()) continue;
+                String path = "brain.chains[" + index + "]";
+                JsonNode steps = chain.get("steps");
+                int[] count = { 0 };
+                if (steps == null || !steps.isArray()) errors.add(path + ".steps must be an array");
+                else validateChainSteps(errors, steps, path + ".steps", ids, count, 0, loadoutSpec,
+                        customVariableTypes, requireExecutableActions, coordinateBounds, brainVersion, false);
+                validateLooseChainBlocks(errors, chain.get("loose"), path + ".loose", ids, count, loadoutSpec,
+                        customVariableTypes, requireExecutableActions, coordinateBounds, brainVersion);
+                if (count[0] > BotLogicContracts.MAX_CHAIN_STEPS) {
+                    errors.add(path + " has " + count[0] + " steps; the limit is " + BotLogicContracts.MAX_CHAIN_STEPS);
+                }
+            }
+            validateChainCallGraph(errors, chains, ids);
+        }
+        validateRootChainActions(errors, brain.get("roots"), ids, "brain.roots");
+        validateBranchChainActions(errors, brain.get("orphans"), ids, "brain.orphans");
+    }
+
+    private static final double MAX_LOOSE_COORDINATE = 1_000_000;
+
+    /**
+     * Loose blocks are editor leftovers: {step, x, y} entries that never run. They are bounded, validated like
+     * chain steps (a loose Else if is fine, it just is not in a list) and counted with the chain's steps.
+     */
+    private void validateLooseChainBlocks(List<String> errors, JsonNode loose, String path, Set<String> ids, int[] count,
+            GameConfig loadoutSpec, Map<String, String> customVariableTypes, boolean requireExecutableActions,
+            CoordinateBounds coordinateBounds, String brainVersion) {
+        if (loose == null || loose.isNull()) return;
+        if (!loose.isArray()) {
+            errors.add(path + " must be an array");
+            return;
+        }
+        if (loose.size() > BotLogicContracts.MAX_CHAIN_STEPS) {
+            errors.add(path + " exceeds the limit of " + BotLogicContracts.MAX_CHAIN_STEPS + " loose blocks");
+            return;
+        }
+        for (int index = 0; index < loose.size(); index++) {
+            JsonNode entry = loose.get(index);
+            String entryPath = path + "[" + index + "]";
+            if (entry == null || !entry.isObject()) {
+                errors.add(entryPath + " must be an object");
+                continue;
+            }
+            for (String axis : List.of("x", "y")) {
+                JsonNode value = entry.get(axis);
+                if (value == null || !value.isNumber() || !Double.isFinite(value.asDouble())
+                        || value.asDouble() < 0 || value.asDouble() > MAX_LOOSE_COORDINATE) {
+                    errors.add(entryPath + "." + axis + " must be a number from 0 to " + (long) MAX_LOOSE_COORDINATE);
+                }
+            }
+            JsonNode step = entry.get("step");
+            if (step == null || !step.isObject()) {
+                errors.add(entryPath + ".step must be an object");
+                continue;
+            }
+            validateChainSteps(errors, jsonMapper.createArrayNode().add(step), entryPath + ".step", ids, count, 0,
+                    loadoutSpec, customVariableTypes, requireExecutableActions, coordinateBounds, brainVersion, true);
+        }
+    }
+
+    private void validateChainSteps(List<String> errors, JsonNode steps, String path, Set<String> ids, int[] count,
+            int loopDepth, GameConfig loadoutSpec, Map<String, String> customVariableTypes,
+            boolean requireExecutableActions, CoordinateBounds coordinateBounds, String brainVersion,
+            boolean allowLeadingElseIf) {
+        for (int index = 0; index < steps.size(); index++) {
+            JsonNode step = steps.get(index);
+            String stepPath = path + "[" + index + "]";
+            count[0] += 1;
+            String type = step != null && step.isObject() ? step.path("type").asText("") : "";
+            if (!CHAIN_STEP_TYPES.contains(type)) {
+                errors.add(stepPath + " has an unknown step type");
+                continue;
+            }
+            for (String field : CHAIN_CONDITION_FIELDS) {
+                JsonNode conditions = step.get(field);
+                if (conditions == null) continue;
+                if (!conditions.isArray()) {
+                    errors.add(stepPath + "." + field + " must be an array");
+                    continue;
+                }
+                for (int conditionIndex = 0; conditionIndex < conditions.size(); conditionIndex++) {
+                    validateConditionAllowed(errors, conditions.get(conditionIndex),
+                            stepPath + "." + field + "[" + conditionIndex + "]",
+                            loadoutSpec, customVariableTypes, coordinateBounds, brainVersion);
+                }
+            }
+            switch (type) {
+                case "action" -> validateChainActionStep(errors, step, stepPath, loadoutSpec,
+                        requireExecutableActions, coordinateBounds);
+                case "wait" -> validateChainTiming(errors, step, stepPath, "untilConditions", true);
+                case "if", "elseIf" -> {
+                    if ("elseIf".equals(type) && !(allowLeadingElseIf && index == 0) && (index == 0 || !Set.of("if", "elseIf").contains(steps.get(index - 1).path("type").asText("")))) {
+                        errors.add(stepPath + " Else if must directly follow If or Else if");
+                    }
+                    if (!step.path("conditions").isArray()) errors.add(stepPath + ".conditions must be an array");
+                    if ("if".equals(type) && !step.has("steps") && step.path("else").isArray() && !step.path("else").isEmpty()) count[0]++;
+                    for (String branch : "if".equals(type) && !step.has("steps") && (step.has("then") || step.has("else")) ? List.of("then", "else") : List.of("steps")) {
+                        JsonNode branchSteps = step.get(branch);
+                        if (branchSteps == null) { if ("steps".equals(branch)) errors.add(stepPath + ".steps must be an array"); continue; }
+                        if (!branchSteps.isArray()) errors.add(stepPath + "." + branch + " must be an array");
+                        else validateChainSteps(errors, branchSteps, stepPath + "." + branch, ids, count, loopDepth,
+                                loadoutSpec, customVariableTypes, requireExecutableActions, coordinateBounds, brainVersion, false);
+                    }
+                }
+                case "repeat" -> {
+                    if (loopDepth >= BotLogicContracts.MAX_LOOP_NESTING) {
+                        errors.add(stepPath + " nests loops deeper than " + BotLogicContracts.MAX_LOOP_NESTING);
+                    }
+                    boolean hasWhile = step.hasNonNull("whileConditions");
+                    boolean hasCount = step.hasNonNull("count");
+                    if (hasWhile == hasCount) {
+                        errors.add(stepPath + " needs either a count or while conditions");
+                    } else if (hasWhile) {
+                        validateChainTiming(errors, step, stepPath, "whileConditions", false);
+                    } else if (!step.get("count").isIntegralNumber() || !step.get("count").canConvertToInt()
+                            || step.get("count").intValue() < 1
+                            || step.get("count").intValue() > BotLogicContracts.MAX_REPEAT_COUNT) {
+                        errors.add(stepPath + ".count must be a whole number from 1 to " + BotLogicContracts.MAX_REPEAT_COUNT);
+                    }
+                    JsonNode body = step.get("steps");
+                    if (body == null || !body.isArray()) errors.add(stepPath + ".steps must be an array");
+                    else validateChainSteps(errors, body, stepPath + ".steps", ids, count, loopDepth + 1,
+                            loadoutSpec, customVariableTypes, requireExecutableActions, coordinateBounds, brainVersion, false);
+                }
+                case "runChain" -> {
+                    if (!ids.contains(step.path("chainId").asText(""))) errors.add(stepPath + ".chainId runs a chain that does not exist");
+                }
+                default -> { }
+            }
+        }
+    }
+
+    /** A step runs for `forMs`, or until (or while) conditions hold, capped by `maxMs`; every time is a whole tick. */
+    private void validateChainTiming(List<String> errors, JsonNode step, String path, String conditionField, boolean allowFixed) {
+        if (step.hasNonNull(conditionField)) {
+            if (step.hasNonNull("forMs")) errors.add(path + " needs either a duration or conditions, not both");
+            if (!isChainMs(step.get("maxMs"))) errors.add(path + ".maxMs must be a multiple of 100 from 100 to " + BotLogicContracts.CHAIN_MS_MAX);
+        } else if (!allowFixed || !isChainMs(step.get("forMs"))) {
+            errors.add(path + ".forMs must be a multiple of 100 from 100 to " + BotLogicContracts.CHAIN_MS_MAX);
+        }
+    }
+
+    private void validateChainActionStep(List<String> errors, JsonNode step, String path, GameConfig loadoutSpec,
+            boolean requireExecutableActions, CoordinateBounds coordinateBounds) {
+        JsonNode actionNode = step.get("action");
+        if (actionNode == null || !(actionNode.isTextual() || actionNode.isIntegralNumber())) {
+            errors.add(path + ".action must be a movement action string or numeric ability ID");
+            return;
+        }
+        String action = actionNode.isTextual() ? actionNode.asText() : null;
+        validateActionAllowed(errors, actionNode, path, loadoutSpec);
+        Object actionValue = action != null ? action : actionNode.canConvertToInt() ? (Object) actionNode.intValue() : null;
+        BotLogicContracts.ActionContract contract = BotLogicContracts.actionContract(actionValue);
+        if (contract == null) return;
+        BotLogicContracts.ActionHead head = contract.head();
+        if (head == BotLogicContracts.ActionHead.NONE || head == BotLogicContracts.ActionHead.CHAIN) {
+            errors.add(path + ".action cannot be run by a chain");
+            return;
+        }
+        validateActionConfiguration(errors, step, actionNode, path, coordinateBounds);
+        validateSelectable(errors, step.get("selectable"), path + ".selectable");
+        if (step.has("targetOffsetX")) validateSignedCoordinate(errors, step.get("targetOffsetX"), path + ".targetOffsetX", coordinateBounds.offsetMagnitude());
+        if (step.has("targetOffsetY")) validateSignedCoordinate(errors, step.get("targetOffsetY"), path + ".targetOffsetY", coordinateBounds.offsetMagnitude());
+        if (head == BotLogicContracts.ActionHead.ABILITY && step.hasNonNull("continue")
+                && !Set.of("end", "now").contains(step.get("continue").asText(""))) {
+            errors.add(path + ".continue must be end or now");
+        }
+        if (head == BotLogicContracts.ActionHead.MOVEMENT || head == BotLogicContracts.ActionHead.ROTATION) {
+            validateChainTiming(errors, step, path, "untilConditions", true);
+        } else if (step.has("forMs") || step.has("untilConditions") || step.has("maxMs")) {
+            errors.add(path + " cannot have a duration");
+        }
+    }
+
+    private static void chainCalls(JsonNode steps, Set<String> targets) {
+        if (steps == null || !steps.isArray()) return;
+        for (JsonNode step : steps) {
+            if (step == null || !step.isObject()) continue;
+            if ("runChain".equals(step.path("type").asText("")) && step.path("chainId").isTextual()) {
+                targets.add(step.path("chainId").asText());
+            }
+            chainCalls(step.get("then"), targets);
+            chainCalls(step.get("else"), targets);
+            chainCalls(step.get("steps"), targets);
+        }
+    }
+
+    /** Rejects call cycles, and calls nested deeper than the chain stack allows. */
+    private void validateChainCallGraph(List<String> errors, JsonNode chains, Set<String> ids) {
+        Map<String, Set<String>> edges = new java.util.LinkedHashMap<>();
+        for (JsonNode chain : chains) {
+            if (chain == null || !chain.isObject() || !ids.contains(chain.path("id").asText(""))) continue;
+            Set<String> targets = new java.util.LinkedHashSet<>();
+            chainCalls(chain.get("steps"), targets);
+            targets.retainAll(ids);
+            edges.put(chain.path("id").asText(), targets);
+        }
+        Map<String, String> state = new HashMap<>();
+        Map<String, Integer> depth = new HashMap<>();
+        boolean[] cyclic = { false };
+        for (String id : edges.keySet()) chainDepth(id, edges, state, depth, cyclic);
+        if (cyclic[0]) errors.add("brain.chains cannot call each other in a cycle");
+        else if (depth.values().stream().anyMatch(value -> value > BotLogicContracts.MAX_CALL_DEPTH)) {
+            errors.add("brain.chains can call other chains at most " + BotLogicContracts.MAX_CALL_DEPTH + " levels deep");
+        }
+    }
+
+    private int chainDepth(String id, Map<String, Set<String>> edges, Map<String, String> state,
+            Map<String, Integer> depth, boolean[] cyclic) {
+        if ("done".equals(state.get(id))) return depth.get(id);
+        if ("active".equals(state.get(id))) {
+            cyclic[0] = true;
+            return 0;
+        }
+        state.put(id, "active");
+        int longest = 0;
+        for (String target : edges.get(id)) longest = Math.max(longest, chainDepth(target, edges, state, depth, cyclic));
+        state.put(id, "done");
+        depth.put(id, longest + 1);
+        return longest + 1;
+    }
+
+    /** Root Run chain actions must name an existing chain and a valid Skip/Replace setting. */
+    private void validateRootChainActions(List<String> errors, JsonNode roots, Set<String> ids, String path) {
+        if (roots == null || !roots.isArray()) return;
+        for (int rootIndex = 0; rootIndex < roots.size(); rootIndex++) {
+            JsonNode root = roots.get(rootIndex);
+            if (root != null && root.path("actions").isArray()) for (JsonNode entry : root.path("actions")) validateRunChainAction(errors, entry, ids, path + "[" + rootIndex + "].actions");
+            validateBranchChainActions(errors, root == null ? null : root.get("branches"), ids,
+                    path + "[" + rootIndex + "].branches");
+        }
+    }
+
+    private void validateBranchChainActions(List<String> errors, JsonNode branches, Set<String> ids, String path) {
+        if (branches == null || !branches.isArray()) return;
+        for (int index = 0; index < branches.size(); index++) {
+            JsonNode branch = branches.get(index);
+            if (branch == null || !branch.isObject()) continue;
+            String branchPath = path + "[" + index + "]";
+            JsonNode actions = branch.get("actions");
+            boolean listed = actions != null && actions.isArray() && !actions.isEmpty();
+            for (int actionIndex = 0; listed && actionIndex < actions.size(); actionIndex++) {
+                validateRunChainAction(errors, actions.get(actionIndex), ids, branchPath + ".actions[" + actionIndex + "]");
+            }
+            if (!listed) validateRunChainAction(errors, branch, ids, branchPath);
+            validateBranchChainActions(errors, branch.get("children"), ids, branchPath + ".children");
+        }
+    }
+
+    private void validateRunChainAction(List<String> errors, JsonNode entry, Set<String> ids, String path) {
+        if (entry == null || !entry.isObject()
+                || !BotLogicContracts.ACTION_RUN_CHAIN.equals(entry.path("action").asText(""))) return;
+        if (!ids.contains(entry.path("chainId").asText(""))) errors.add(path + ".chainId runs a chain that does not exist");
     }
 
     private String validationActionHead(String action) {
@@ -711,7 +1138,7 @@ public class BotSubmissionValidationService {
         String left = leftNode.asText();
         BotLogicContracts.VariableContract variableContract = BotLogicContracts.variableContract(left);
         String valueType = left.startsWith(BotLogicContracts.CUSTOM_VARIABLE_PREFIX)
-                ? customVariableTypes.get(left)
+                ? conditionValueType(customVariableTypes.get(left))
                 : variableValueType(left);
         if (valueType == null) {
             errors.add(path + ".left is not an allowed variable");
@@ -727,19 +1154,26 @@ public class BotSubmissionValidationService {
         }
         String targetMode = validateConditionTarget(errors, condition, path, variableContract, coordinateBounds);
         if (variableContract != null && variableContract.isPairVariable()) {
-            String selectedSelectable1 = condition.has("selectable1")
-                    ? condition.path("selectable1").asText(BotLogicContracts.SELECTABLE_MY)
+            // Approach Angle's old single selectable was the moving entity (first slot); for the
+            // other pair variables it is the second slot.
+            boolean legacyFirst = variableContract.legacySelectableIsFirstSlot();
+            String legacyFirstField = condition.has("selectable1") ? "selectable1"
+                    : legacyFirst && condition.has("leftSelectable") ? "leftSelectable"
+                    : legacyFirst && condition.has("selectable") ? "selectable" : null;
+            String selectedSelectable1 = legacyFirstField != null
+                    ? condition.path(legacyFirstField).asText(BotLogicContracts.defaultSelectable1ForVariable(variableContract))
                     : BotLogicContracts.defaultSelectable1ForVariable(variableContract);
+            boolean explicitSecond = condition.has("selectable2") || (!legacyFirst && condition.has("selectable"));
             String selectedSelectable2 = condition.has("selectable2")
-                    ? condition.path("selectable2").asText(BotLogicContracts.SELECTABLE_OPPONENT)
-                    : condition.has("selectable")
-                        ? condition.path("selectable").asText(BotLogicContracts.SELECTABLE_OPPONENT)
+                    ? condition.path("selectable2").asText(BotLogicContracts.defaultSelectable2ForVariable(variableContract))
+                    : !legacyFirst && condition.has("selectable")
+                        ? condition.path("selectable").asText(BotLogicContracts.defaultSelectable2ForVariable(variableContract))
                         : BotLogicContracts.defaultSelectable2ForVariable(variableContract);
             validateConditionSelectable(errors, path + ".selectable1", selectedSelectable1, variableContract.pairSelectableIdentities(0), variableContract,
-                    condition.has("selectable1"));
+                    legacyFirstField != null);
             if (BotLogicContracts.TARGET_MODE_TARGET.equals(targetMode)) {
                 validateConditionSelectable(errors, path + ".selectable2", selectedSelectable2, variableContract.pairSelectableIdentities(1), variableContract,
-                        condition.has("selectable2") || condition.has("selectable"));
+                        explicitSecond);
             }
         } else {
             String selectedLeftSelectable = selectedConditionSelectable(condition, "leftSelectable", variableContract);
@@ -781,7 +1215,7 @@ public class BotSubmissionValidationService {
                             brainVersion);
                 }
             } else if ("variable".equals(rightType)) {
-                if (rightValue == null || !rightValue.isTextual() || !"number".equals(variableValueType(rightValue.asText())) && !"number".equals(customVariableTypes.get(rightValue.asText()))) {
+                if (rightValue == null || !rightValue.isTextual() || !"number".equals(variableValueType(rightValue.asText())) && !isNumericType(customVariableTypes.get(rightValue.asText()))) {
                     errors.add(path + ".right.value must be a number variable");
                 } else {
                 }
@@ -894,14 +1328,20 @@ public class BotSubmissionValidationService {
             if (value != null) view.set(pair[0], value);
         }
         String mode = validateConditionTarget(errors, view, path + ".rightPair", rightContract, coordinateBounds);
+        if (rightContract.legacySelectableIsFirstSlot() && !condition.has("rightSelectable1")) {
+            // Older brains kept the moving entity in the right side's single selectable.
+            JsonNode legacyFirst = condition.has("rightSelectable") ? condition.get("rightSelectable")
+                    : condition.has("selectable1") ? condition.get("selectable1") : condition.get("selectable");
+            if (legacyFirst != null) view.set("selectable1", legacyFirst);
+        }
         String first = view.has("selectable1")
-                ? view.path("selectable1").asText(BotLogicContracts.SELECTABLE_MY)
+                ? view.path("selectable1").asText(BotLogicContracts.defaultSelectable1ForVariable(rightContract))
                 : BotLogicContracts.defaultSelectable1ForVariable(rightContract);
         validateConditionSelectable(errors, path + ".rightSelectable1", first, rightContract.pairSelectableIdentities(0), rightContract,
                 condition.has("rightSelectable1"));
         if (BotLogicContracts.TARGET_MODE_TARGET.equals(mode)) {
             String second = view.has("selectable2")
-                    ? view.path("selectable2").asText(BotLogicContracts.SELECTABLE_OPPONENT)
+                    ? view.path("selectable2").asText(BotLogicContracts.defaultSelectable2ForVariable(rightContract))
                     : BotLogicContracts.defaultSelectable2ForVariable(rightContract);
             validateConditionSelectable(errors, path + ".rightSelectable2", second, rightContract.pairSelectableIdentities(1), rightContract,
                     condition.has("rightSelectable2"));
@@ -952,6 +1392,9 @@ public class BotSubmissionValidationService {
                     || (rightContract != null && (rightContract.source() == BotLogicContracts.VariableSource.SELECTED_ABILITY_PREPARING
                     || rightContract.source() == BotLogicContracts.VariableSource.SELECTED_ABILITY_PREPARATION_MS))) {
                 if (Abilities.windupMs(ability.intValue()) <= 0) errors.add(path + ".ability does not have preparation time");
+            } else if ((leftContract != null && leftContract.source() == BotLogicContracts.VariableSource.SELECTED_ABILITY_BASE_RANGE)
+                    || (rightContract != null && rightContract.source() == BotLogicContracts.VariableSource.SELECTED_ABILITY_BASE_RANGE)) {
+                if (!AbilityBaseRange.hasRange(ability.intValue())) errors.add(path + ".ability does not have a base range");
             }
         }
         boolean requiresStatusEffect = (leftContract != null && leftContract.requiresStatusEffect())
@@ -976,6 +1419,22 @@ public class BotSubmissionValidationService {
         Object actionValue = action.isTextual() ? action.asText()
                 : action.isIntegralNumber() && action.canConvertToInt() ? action.intValue() : null;
         BotLogicContracts.ActionContract actionContract = BotLogicContracts.actionContract(actionValue);
+        // Sprint is a Walk setting and a literal boolean only.
+        if (entry.has("sprint")) {
+            if (!BotLogicContracts.ACTION_MOVE_WALK.equals(actionValue)) {
+                errors.add(path + ".sprint is only supported on the walk action");
+            } else if (!entry.get("sprint").isBoolean()) {
+                errors.add(path + ".sprint must be true or false");
+            }
+        }
+        // Fast turn is a Rotate setting and a literal boolean only.
+        if (entry.has("fastTurn")) {
+            if (!BotLogicContracts.ACTION_ROTATE_TOWARD_TARGET.equals(actionValue)) {
+                errors.add(path + ".fastTurn is only supported on the rotate action");
+            } else if (!entry.get("fastTurn").isBoolean()) {
+                errors.add(path + ".fastTurn must be true or false");
+            }
+        }
         if (actionContract != null && !actionContract.coordinateTarget() && entry.has("targetMode")) {
             String requestedMode = entry.path("targetMode").asText("");
             if (actionContract.targetMode() == null || !actionContract.targetMode().equals(requestedMode)) {
@@ -1017,6 +1476,7 @@ public class BotSubmissionValidationService {
                 }
             }
         }
+        validateAimConfiguration(errors, entry, actionValue, path);
         if (actionContract != null && actionContract.orientationConfig()) {
             JsonNode phaseFacingDirection = entry.get("phaseFacingMode");
             if (phaseFacingDirection != null
@@ -1025,6 +1485,37 @@ public class BotSubmissionValidationService {
                     || phaseFacingDirection.asDouble() > BotLogicContracts.ANGLE_MAX)) {
                 errors.add(path + ".phaseFacingMode must be a relative angle from -360 to 360 degrees");
             }
+        }
+    }
+
+    /** Lead aim is optional; when present it must be bounded and only appear on actions that aim at an entity. */
+    private void validateAimConfiguration(List<String> errors, JsonNode entry, Object actionValue, String path) {
+        JsonNode aim = entry.get("aim");
+        JsonNode leadSeconds = entry.get("leadSeconds");
+        JsonNode leadAbilityId = entry.get("leadAbilityId");
+        if (aim == null && leadSeconds == null && leadAbilityId == null) return;
+        if (aim != null && !(aim.isTextual() && (BotLogicContracts.AIM_CURRENT.equals(aim.asText())
+                || BotLogicContracts.AIM_LEAD.equals(aim.asText()) || BotLogicContracts.AIM_AUTO.equals(aim.asText())))) {
+            errors.add(path + ".aim must be current, lead or auto");
+            return;
+        }
+        String mode = aim == null ? BotLogicContracts.AIM_CURRENT : aim.asText();
+        if (!BotLogicContracts.AIM_CURRENT.equals(mode) && !BotLogicContracts.actionSupportsAim(actionValue)) {
+            errors.add(path + ".aim is not supported for this action");
+            return;
+        }
+        if (leadSeconds != null && (!leadSeconds.isNumber() || !Double.isFinite(leadSeconds.asDouble())
+                || leadSeconds.asDouble() < 0 || leadSeconds.asDouble() > BotLogicContracts.MAX_LEAD_SECONDS)) {
+            errors.add(path + ".leadSeconds must be a number from 0 to " + (int) BotLogicContracts.MAX_LEAD_SECONDS);
+        }
+        if (BotLogicContracts.AIM_AUTO.equals(mode)
+                && (leadAbilityId == null || !leadAbilityId.isIntegralNumber() || !leadAbilityId.canConvertToInt()
+                || !AbilityRegistry.contains(leadAbilityId.intValue()))) {
+            errors.add(path + ".leadAbilityId must be an existing numeric ability ID");
+        } else if (leadAbilityId != null && !BotLogicContracts.AIM_AUTO.equals(mode)
+                && (!leadAbilityId.isIntegralNumber() || !leadAbilityId.canConvertToInt()
+                || !AbilityRegistry.contains(leadAbilityId.intValue()))) {
+            errors.add(path + ".leadAbilityId must be an existing numeric ability ID");
         }
     }
 

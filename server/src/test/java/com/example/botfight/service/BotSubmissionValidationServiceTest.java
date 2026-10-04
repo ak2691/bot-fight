@@ -766,10 +766,10 @@ class BotSubmissionValidationServiceTest {
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
-                  "loadout":{"abilities":[3]},
+                  "loadout":{"abilities":[12]},
                   "roots":[{"branches":[{
-                    "branchType":"if","action":3,
-                    "conditions":[{"type":"expression","left":"bot.selectedAbilityCharges","ability":3,"comparator":"gt","right":{"type":"number","value":0}}],
+                    "branchType":"if","action":12,
+                    "conditions":[{"type":"expression","left":"bot.selectedAbilityCharges","ability":12,"comparator":"gt","right":{"type":"number","value":0}}],
                     "children":[]
                   }]}]
                 }
@@ -808,10 +808,10 @@ class BotSubmissionValidationServiceTest {
         payload.setBrain(jsonMapper.readTree("""
                 {
                   "version":"bot-logic-tree-v1",
-                  "loadout":{"abilities":[3]},
+                  "loadout":{"abilities":[12]},
                   "roots":[{"branches":[{
                     "branchType":"if","action":19,
-                    "conditions":[{"type":"expression","left":"bot.selectedAbilityCharges","ability":3,"comparator":"gt","right":{"type":"number","value":0}}],
+                    "conditions":[{"type":"expression","left":"bot.selectedAbilityCharges","ability":12,"comparator":"gt","right":{"type":"number","value":0}}],
                     "children":[]
                   }]}]
                 }
@@ -833,6 +833,159 @@ class BotSubmissionValidationServiceTest {
 
         assertThat(service.validate(payload).getErrors()).contains(
                 "brain.roots[0].branches[0].conditions[0].ability must identify an ability with charges");
+    }
+
+    @Test
+    void acceptsOldAndPairApproachAngleConditionsAndRejectsUnknownEntities() throws Exception {
+        for (String fields : new String[] {
+                "\"selectable\":\"opponent\"",
+                "\"leftSelectable\":\"opponent\",\"selectable\":\"opponent\"",
+                "\"selectable1\":\"opponent\",\"selectable2\":\"my_bot\"",
+                "\"selectable1\":\"my_bot\",\"selectable2\":\"opponent_1_fireball\""}) {
+            BotSubmissionPayloadDTO payload = validPayload();
+            payload.setBrain(jsonMapper.readTree("""
+                    {
+                      "version":"bot-logic-tree-v1",
+                      "roots":[{"branches":[{
+                        "branchType":"if","action":"move_walk",
+                        "conditions":[{"type":"expression","left":"selectable.approachAngle",%s,"comparator":"lt","right":{"type":"number","value":45}}],
+                        "children":[]
+                      }]}]
+                    }
+                    """.formatted(fields)));
+            assertThat(service.validate(payload).getErrors()).as(fields).isEmpty();
+        }
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {
+                  "version":"bot-logic-tree-v1",
+                  "roots":[{"branches":[{
+                    "branchType":"if","action":"move_walk",
+                    "conditions":[{"type":"expression","left":"selectable.approachAngle","selectable1":"opponent","selectable2":"not_an_entity","comparator":"lt","right":{"type":"number","value":45}}],
+                    "children":[]
+                  }]}]
+                }
+                """));
+        assertThat(service.validate(payload).getErrors()).isNotEmpty();
+    }
+
+    private BotSubmissionPayloadDTO variableBrain(String variables, String actions, String conditions) throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {
+                  "version":"bot-logic-tree-v1",
+                  "customVariables":[%s],
+                  "roots":[{"branches":[{
+                    "branchType":"if",
+                    "conditions":[%s],
+                    "actions":[%s],
+                    "children":[]
+                  }]}]
+                }
+                """.formatted(variables, conditions, actions)));
+        return payload;
+    }
+
+    private static final String NUMBER_VARIABLE = "{\"id\":\"custom.n\",\"name\":\"N\",\"valueType\":\"number\",\"initialValue\":0}";
+    private static final String ALWAYS = "{\"type\":\"always\"}";
+
+    @Test
+    void rejectsTimerCustomVariablesAndTimerOperations() throws Exception {
+        String timerVariable = "{\"id\":\"custom.lock\",\"name\":\"Sprint lock\",\"valueType\":\"timer\",\"timerMode\":\"countdown\",\"initialValue\":0}";
+        String stopTimer = "{\"action\":\"variable\",\"variableId\":\"custom.lock\",\"timerAction\":\"stop\"}";
+        assertThat(service.validate(variableBrain(timerVariable, stopTimer, ALWAYS)).getErrors())
+                .contains("brain.customVariables[0].valueType must be number or boolean");
+        // A timer operation cannot target a number variable either.
+        String onNumber = "{\"action\":\"variable\",\"variableId\":\"custom.n\",\"timerAction\":\"start\",\"startFrom\":\"current\"}";
+        assertThat(service.validate(variableBrain(NUMBER_VARIABLE, onNumber, ALWAYS)).getErrors()).isNotEmpty();
+        // Number and true/false variables are still accepted.
+        String setNumber = "{\"action\":\"variable\",\"variableId\":\"custom.n\",\"operation\":\"set\",\"operand\":{\"type\":\"number\",\"value\":3}}";
+        assertThat(service.validate(variableBrain(NUMBER_VARIABLE, setNumber, ALWAYS)).getErrors()).isEmpty();
+    }
+
+    @Test
+    void validatesWalkSprintCancelWindupAndStaminaVariables() throws Exception {
+        String body = """
+                {
+                  "version":"bot-logic-tree-v1",
+                  "roots":[{"branches":[{
+                    "branchType":"if",
+                    "conditions":[%s],
+                    "actions":[%s],
+                    "children":[]
+                  }]}]
+                }
+                """;
+        String always = "{\"type\":\"always\"}";
+        String walk = "{\"action\":\"move_walk\",\"movementMode\":\"absolute\",\"movementDirection\":90%s}";
+        for (String sprint : new String[] {"", ",\"sprint\":true", ",\"sprint\":false"}) {
+            BotSubmissionPayloadDTO payload = validPayload();
+            payload.setBrain(jsonMapper.readTree(body.formatted(always, walk.formatted(sprint))));
+            assertThat(service.validate(payload).getErrors()).as(sprint).isEmpty();
+        }
+        for (String sprint : new String[] {",\"sprint\":\"yes\"", ",\"sprint\":1", ",\"sprint\":null"}) {
+            BotSubmissionPayloadDTO payload = validPayload();
+            payload.setBrain(jsonMapper.readTree(body.formatted(always, walk.formatted(sprint))));
+            assertThat(service.validate(payload).getErrors()).as(sprint).isNotEmpty();
+        }
+        BotSubmissionPayloadDTO sprintOnAbility = validPayload();
+        sprintOnAbility.setBrain(jsonMapper.readTree(body.formatted(always, "{\"action\":\"rotate_toward_enemy\",\"sprint\":true}")));
+        assertThat(service.validate(sprintOnAbility).getErrors()).isNotEmpty();
+
+        BotSubmissionPayloadDTO cancel = validPayload();
+        cancel.setBrain(jsonMapper.readTree(body.formatted(always, "{\"action\":\"cancel_windup\"}")));
+        assertThat(service.validate(cancel).getErrors()).isEmpty();
+
+        for (String variable : new String[] {"bot.stamina", "bot.exhausted", "bot.sprinting"}) {
+            for (String selectable : new String[] {"my_bot", "opponent"}) {
+                String right = "bot.stamina".equals(variable)
+                        ? "{\"type\":\"number\",\"value\":50}" : "{\"type\":\"boolean\",\"value\":true}";
+                String comparator = "bot.stamina".equals(variable) ? "lt" : "eq";
+                BotSubmissionPayloadDTO payload = validPayload();
+                payload.setBrain(jsonMapper.readTree(body.formatted(
+                        "{\"type\":\"expression\",\"left\":\"" + variable + "\",\"leftSelectable\":\"" + selectable
+                                + "\",\"comparator\":\"" + comparator + "\",\"right\":" + right + "}",
+                        "{\"action\":\"cancel_windup\"}")));
+                assertThat(service.validate(payload).getErrors()).as(variable + " " + selectable).isEmpty();
+            }
+        }
+        BotSubmissionPayloadDTO outOfRange = validPayload();
+        outOfRange.setBrain(jsonMapper.readTree(body.formatted(
+                "{\"type\":\"expression\",\"left\":\"bot.stamina\",\"leftSelectable\":\"my_bot\",\"comparator\":\"lt\",\"right\":{\"type\":\"number\",\"value\":101}}",
+                "{\"action\":\"cancel_windup\"}")));
+        assertThat(service.validate(outOfRange).getErrors()).isNotEmpty();
+    }
+
+    @Test
+    void acceptsBaseRangeForAbilityWithRangeAndRejectsOneWithout() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setSelectedLoadout("custom");
+        payload.setBrain(jsonMapper.readTree("""
+                {
+                  "version":"bot-logic-tree-v1",
+                  "loadout":{"abilities":[5]},
+                  "roots":[{"branches":[{
+                    "branchType":"if","action":5,
+                    "conditions":[{"type":"expression","left":"bot.selectedAbilityBaseRange","ability":5,"comparator":"lte","right":{"type":"number","value":700}}],
+                    "children":[]
+                  }]}]
+                }
+                """));
+        assertThat(service.validate(payload).getErrors()).isEmpty();
+
+        payload.setBrain(jsonMapper.readTree("""
+                {
+                  "version":"bot-logic-tree-v1",
+                  "loadout":{"abilities":[8]},
+                  "roots":[{"branches":[{
+                    "branchType":"if","action":8,
+                    "conditions":[{"type":"expression","left":"bot.selectedAbilityBaseRange","ability":8,"comparator":"gt","right":{"type":"number","value":0}}],
+                    "children":[]
+                  }]}]
+                }
+                """));
+        assertThat(service.validate(payload).getErrors()).contains(
+                "brain.roots[0].branches[0].conditions[0].ability does not have a base range");
     }
 
     @Test
@@ -978,6 +1131,86 @@ class BotSubmissionValidationServiceTest {
         assertThat(service.validate(payload).getErrors())
                 .anyMatch(error -> error.contains("conditions[0].right.value cannot be negative"))
                 .noneMatch(error -> error.contains("conditions[1].right.value"));
+    }
+
+    @Test
+    void acceptsTheNewMovementAndWindupConditionsAndBoundsApproachAngle() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","roots":[{"branches":[{"branchType":"if",
+                  "conditions":[
+                    {"type":"expression","left":"selectable.approachAngle","selectable":"opponent","comparator":"lt","right":{"type":"number","value":30}},
+                    {"type":"expression","left":"selectable.moving","selectable":"opponent","comparator":"eq","right":{"type":"boolean","value":true}},
+                    {"type":"expression","left":"bot.anyAbilityPreparing","selectable":"opponent","comparator":"eq","right":{"type":"boolean","value":true}},
+                    {"type":"expression","left":"selectable.speed","selectable":"opponent","comparator":"gt","right":{"type":"number","value":4}}
+                  ],
+                  "actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"children":[]}]}]}
+                """));
+        assertThat(service.validate(payload).getErrors()).isEmpty();
+
+        payload.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","roots":[{"branches":[{"branchType":"if",
+                  "conditions":[
+                    {"type":"expression","left":"selectable.approachAngle","selectable":"opponent","comparator":"lt","right":{"type":"number","value":-5}},
+                    {"type":"expression","left":"selectable.approachAngle","selectable":"opponent","comparator":"lt","right":{"type":"number","value":1000}},
+                    {"type":"expression","left":"bot.anyAbilityPreparing","selectable":"opponent_grenade","comparator":"eq","right":{"type":"boolean","value":true}},
+                    {"type":"expression","left":"selectable.moving","selectable":"opponent","comparator":"lt","right":{"type":"boolean","value":true}},
+                    {"type":"expression","left":"selectable.notAVariable","selectable":"opponent","comparator":"eq","right":{"type":"boolean","value":true}}
+                  ],
+                  "actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"children":[]}]}]}
+                """));
+        assertThat(service.validate(payload).getErrors())
+                .anyMatch(error -> error.contains("conditions[0].right.value cannot be negative"))
+                .anyMatch(error -> error.contains("conditions[1].right.value must be between 0 and 180"))
+                .anyMatch(error -> error.contains("conditions[2].leftSelectable does not provide the selectable identities"))
+                .anyMatch(error -> error.contains("conditions[3].comparator is not allowed for boolean variables"))
+                .anyMatch(error -> error.contains("conditions[4].left is not an allowed variable"));
+    }
+
+    @Test
+    void validatesAndBoundsTheOptionalLeadAimFields() throws Exception {
+        BotSubmissionPayloadDTO valid = validPayload();
+        valid.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","roots":[{"branches":[{"branchType":"if",
+                  "conditions":[{"type":"always"}],
+                  "actions":[
+                    {"action":"rotate_toward_enemy","selectable":"opponent","aim":"lead","leadSeconds":1.5}
+                  ],"children":[]},
+                  {"branchType":"if","conditions":[{"type":"always"}],
+                  "actions":[
+                    {"action":"rotate_toward_enemy","selectable":"opponent","aim":"auto","leadAbilityId":3}
+                  ],"children":[]},
+                  {"branchType":"if","conditions":[{"type":"always"}],
+                  "actions":[
+                    {"action":"rotate_toward_enemy","selectable":"opponent","aim":"current"}
+                  ],"children":[]}]}]}
+                """));
+        assertThat(service.validate(valid).getErrors()).isEmpty();
+
+        BotSubmissionPayloadDTO invalid = validPayload();
+        invalid.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","roots":[{"branches":[
+                  {"branchType":"if","conditions":[{"type":"always"}],"actions":[
+                    {"action":"rotate_toward_enemy","selectable":"opponent","aim":"predict"}],"children":[]},
+                  {"branchType":"if","conditions":[{"type":"always"}],"actions":[
+                    {"action":"rotate_toward_enemy","selectable":"opponent","aim":"lead","leadSeconds":5}],"children":[]},
+                  {"branchType":"if","conditions":[{"type":"always"}],"actions":[
+                    {"action":"rotate_toward_enemy","selectable":"opponent","aim":"lead","leadSeconds":-1}],"children":[]},
+                  {"branchType":"if","conditions":[{"type":"always"}],"actions":[
+                    {"action":"rotate_toward_enemy","selectable":"opponent","aim":"auto","leadAbilityId":9999}],"children":[]},
+                  {"branchType":"if","conditions":[{"type":"always"}],"actions":[
+                    {"action":"rotate_toward_enemy","selectable":"opponent","aim":"auto"}],"children":[]},
+                  {"branchType":"if","conditions":[{"type":"always"}],"actions":[
+                    {"action":"move_walk","selectable":"opponent","movementMode":"target","movementDirection":0,"aim":"lead","leadSeconds":1}],"children":[]}
+                ]}]}
+                """));
+        assertThat(service.validate(invalid).getErrors())
+                .anyMatch(error -> error.contains("branches[0].actions[0].aim must be current, lead or auto"))
+                .anyMatch(error -> error.contains("branches[1].actions[0].leadSeconds must be a number from 0 to 2"))
+                .anyMatch(error -> error.contains("branches[2].actions[0].leadSeconds must be a number from 0 to 2"))
+                .anyMatch(error -> error.contains("branches[3].actions[0].leadAbilityId must be an existing numeric ability ID"))
+                .anyMatch(error -> error.contains("branches[4].actions[0].leadAbilityId must be an existing numeric ability ID"))
+                .anyMatch(error -> error.contains("branches[5].actions[0].aim is not supported for this action"));
     }
 
     @Test
@@ -1183,7 +1416,8 @@ class BotSubmissionValidationServiceTest {
                 "match.elapsedSeconds",
                 "selectable.distance",
                 "selectable.count",
-                "bot.selectedAbilityCooldownMs")) {
+                "bot.selectedAbilityCooldownMs",
+                "bot.selectedAbilitySinceHit")) {
             BotSubmissionPayloadDTO payload = validPayload();
             String abilityField = variable.startsWith("bot.") ? "\"ability\":1," : "";
             payload.setBrain(jsonMapper.readTree("""
@@ -1197,6 +1431,23 @@ class BotSubmissionValidationServiceTest {
                     .as("negative operand for %s", variable)
                     .anyMatch(error -> error.contains("conditions[0].right.value cannot be negative"));
         }
+    }
+
+    @Test
+    void timeSinceHitAcceptsTheGeneralNumberLimitAndRejectsAnythingAbove() throws Exception {
+        String template = """
+                {"version":"bot-logic-tree-v2","roots":[{"branches":[{"conditions":[
+                  {"type":"expression","left":"bot.selectedAbilitySinceHit","ability":1,"leftSelectable":"opponent_1",
+                    "comparator":"lt","right":{"type":"number","value":%s}}],
+                  "actions":[{"action":"move_walk","movementMode":"target","movementDirection":0}],"children":[]}]}]}
+                """;
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree(template.formatted("99999")));
+        assertThat(service.validate(payload).getErrors()).isEmpty();
+
+        payload.setBrain(jsonMapper.readTree(template.formatted("100000")));
+        assertThat(service.validate(payload).getErrors())
+                .anyMatch(error -> error.contains("conditions[0].right.value must be between 0 and 99999"));
     }
 
     @Test
@@ -1426,5 +1677,49 @@ class BotSubmissionValidationServiceTest {
         payload.setBrain(brain);
         payload.setClientBuildVersion("test");
         return payload;
+    }
+
+
+    @Test
+    void validatesFastTurnOnRotateActionsOnly() throws Exception {
+        String body = """
+                {
+                  "version":"bot-logic-tree-v1",
+                  "roots":[{"branches":[{
+                    "branchType":"if",
+                    "conditions":[{"type":"always"}],
+                    "actions":[%s],
+                    "children":[]
+                  }]}]
+                }
+                """;
+        String rotate = "{\"action\":\"rotate_toward_enemy\"%s}";
+        for (String fast : new String[] {"", ",\"fastTurn\":true", ",\"fastTurn\":false"}) {
+            BotSubmissionPayloadDTO payload = validPayload();
+            payload.setBrain(jsonMapper.readTree(body.formatted(rotate.formatted(fast))));
+            assertThat(service.validate(payload).getErrors()).as(fast).isEmpty();
+        }
+        for (String fast : new String[] {",\"fastTurn\":\"yes\"", ",\"fastTurn\":1", ",\"fastTurn\":null"}) {
+            BotSubmissionPayloadDTO payload = validPayload();
+            payload.setBrain(jsonMapper.readTree(body.formatted(rotate.formatted(fast))));
+            assertThat(service.validate(payload).getErrors()).as(fast).isNotEmpty();
+        }
+        for (String other : new String[] {
+                "{\"action\":\"move_walk\",\"movementMode\":\"absolute\",\"movementDirection\":90,\"fastTurn\":true}",
+                "{\"action\":\"cancel_windup\",\"fastTurn\":true}",
+                "{\"action\":19,\"fastTurn\":true}"}) {
+            BotSubmissionPayloadDTO payload = validPayload();
+            payload.setBrain(jsonMapper.readTree(body.formatted(other)));
+            assertThat(service.validate(payload).getErrors()).as(other).anyMatch(error -> error.contains("fastTurn"));
+        }
+        for (String variable : new String[] {"bot.fastTurning"}) {
+            BotSubmissionPayloadDTO payload = validPayload();
+            payload.setBrain(jsonMapper.readTree("""
+                    {"version":"bot-logic-tree-v1","roots":[{"branches":[{"branchType":"if",
+                      "conditions":[{"type":"expression","left":"%s","leftSelectable":"my_bot","comparator":"eq","right":{"type":"boolean","value":true}}],
+                      "actions":[{"action":"rotate_toward_enemy","fastTurn":true}],"children":[]}]}]}
+                    """.formatted(variable)));
+            assertThat(service.validate(payload).getErrors()).as(variable).isEmpty();
+        }
     }
 }

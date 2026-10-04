@@ -3,6 +3,8 @@ import { getAbilityCatalogueIcon } from "../../abilityCatalogueIcons.js";
 import { AbilityModal } from "../../pages/catalogue/AbilityCataloguePage.jsx";
 import { STANDARD_ABILITY_IDS, abilityDefinition } from "../loadout/BotLoadout.js";
 import { BASE_BOT_HP } from "../modelPayloads/arenaConstants.js";
+import { MOVEMENT_CONFIG } from "../gameconfig/MovementConfig.js";
+import { botExhausted, botStamina } from "../gameconfig/StaminaSystem.js";
 import { formatHp } from "../gameconfig/visualState.js";
 import { botColorRole } from "../pixi/pixiVisualState.js";
 import { abilityChargeCountFor, abilityRingColorFor, abilityStatusFor, fallbackAbilityText, formatAbilityTimer, statusParticipantNumber } from "./abilityStatusPresentation.js";
@@ -50,6 +52,10 @@ export default function AbilityStatusPanel({ bot, abilityInfoEnabled = false, st
                     <span className="ability-status-panel__name hud-fighter__name" title={botName}>{botName}</span>
                 </div>
                 {hasHp && <HpBar hp={Number(bot.hp)} maxHp={maxHp} />}
+                {hasHp && <StaminaBar bot={bot} />}
+                {bot?.runningChain && <span className="hud-fighter__chain" title={`Call depth ${bot.runningChain.callDepth}`}>
+                    Chain: {bot.runningChain.name ?? bot.runningChain.chainId}
+                </span>}
                 <div className="ability-status-panel__abilities hud-fighter__abilities">
                     {[["base", baseAbilities], ["loadout", loadoutAbilities]].map(([group, entries]) => entries.length > 0 && (
                         <div key={group} className={`hud-abilities hud-abilities--${group}`}>
@@ -86,6 +92,32 @@ function HpBar({ hp, maxHp }) {
                 {Array.from({ length: HP_SEGMENTS }, (_, index) => (
                     <span key={index} className={index < filled ? "is-filled" : ""} />
                 ))}
+            </div>
+        </div>
+    );
+}
+
+function StaminaBar({ bot }) {
+    const stamina = botStamina(bot);
+    const max = MOVEMENT_CONFIG.staminaMax;
+    const exhausted = botExhausted(bot);
+    return (
+        <div
+            className={`hud-sta${exhausted ? " is-exhausted" : ""}`}
+            role="meter"
+            aria-label="Stamina"
+            aria-valuemin={0}
+            aria-valuemax={max}
+            aria-valuenow={stamina}
+            aria-valuetext={`${stamina} of ${max} stamina${exhausted ? ", exhausted" : ""}`}
+        >
+            <div className="hud-sta__row">
+                <span>STA</span>
+                {exhausted && <em className="hud-sta__tag">EXHAUSTED</em>}
+                <strong>{stamina}</strong>
+            </div>
+            <div className="hud-sta__bar" aria-hidden="true">
+                <span style={{ width: `${(stamina / max) * 100}%` }} />
             </div>
         </div>
     );

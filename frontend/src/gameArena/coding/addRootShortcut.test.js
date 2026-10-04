@@ -5,6 +5,8 @@ import {
     isAddRootShortcutKeydown,
     readAddRootShortcut,
     saveAddRootShortcut,
+    readWorkspaceShortcut,
+    saveWorkspaceShortcut,
 } from "./addRootShortcut.js";
 
 function storageWith(value) {
@@ -40,4 +42,13 @@ test("add-root shortcut ignores typing, modifiers, and repeated presses", () => 
     assert.equal(isAddRootShortcutKeydown({ ...keydown, ctrlKey: true }, "r"), false);
     assert.equal(isAddRootShortcutKeydown({ ...keydown, target: { closest: () => ({}) } }, "r"), false);
     assert.equal(isAddRootShortcutKeydown({ ...keydown, key: "T" }, "r"), false);
+});
+
+test("workspace shortcuts default to F, C and S and refuse keys another action uses", () => {
+    const storage = storageWith(null);
+    assert.deepEqual(["addNode", "addChain", "search"].map((action) => readWorkspaceShortcut(action, storage)), ["f", "c", "s"]);
+    assert.match(saveWorkspaceShortcut("search", "r", storage), /already used/);
+    assert.equal(saveWorkspaceShortcut("search", "g", storage), null);
+    assert.equal(readWorkspaceShortcut("search", storage), "g");
+    assert.ok(saveWorkspaceShortcut("addNode", "-", storage));
 });

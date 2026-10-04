@@ -45,7 +45,7 @@ export const VARIABLE_CATEGORY_LABELS = Object.freeze({
     "Abilities & Status": { chip: "Abilities", title: "Abilities and status" },
     "Position & Movement": { chip: "Position", title: "Position and movement" },
     Rotation: { chip: "Rotation", title: "Rotation" },
-    "Ability Entity": { chip: "Entities", title: "Ability entities" },
+    "Ability Entity": { chip: "Objects", title: "Objects" },
     Match: { chip: "Match", title: "Match" },
     "Custom Variables": { chip: "Custom", title: "Custom variables" },
     Basic: { chip: "Basic", title: "Basic" },
@@ -58,7 +58,7 @@ export const VARIABLE_CATEGORY_TONES = Object.freeze({
     "Abilities & Status": "purple",
     "Position & Movement": "cyan",
     Rotation: "blue",
-    "Ability Entity": "purple",
+    "Ability Entity": "pink",
     "Custom Variables": "amber",
     Match: "neutral",
     Basic: "neutral",
@@ -69,7 +69,10 @@ export const ACTION_HEAD_TONES = Object.freeze({
     movement: "green",
     rotation: "blue",
     ability: "purple",
+    cancel: "red",
     variable: "amber",
+    chain: "cyan",
+    flow: "blue",
 });
 
 export function variableCategoryTone(category) {
@@ -88,7 +91,9 @@ const ACTION_HEAD_GROUPS = Object.freeze([
     { head: "movement", title: "Movement" },
     { head: "rotation", title: "Rotation" },
     { head: "ability", title: "Abilities", hint: "your loadout" },
+    { head: "cancel", title: "Cancel" },
     { head: "variable", title: "Variables" },
+    { head: "chain", title: "Chains" },
 ]);
 
 const ACTION_DESCRIPTIONS = Object.freeze({
@@ -97,15 +102,22 @@ const ACTION_DESCRIPTIONS = Object.freeze({
     variable: "Set, add or subtract",
 });
 
+const CHAIN_ACTION_COPY = Object.freeze({
+    run_chain: { label: "Run chain", description: "Start a chain of timed steps" },
+});
+
 // Rows are named by their group now, so the "Ability: / Movement: / Rotate: / Variable:" prefixes go.
 export function actionPickerLabel(action) {
+    if (CHAIN_ACTION_COPY[action?.id]) return CHAIN_ACTION_COPY[action.id].label;
     return String(action?.label ?? "")
-        .replace(/^(Ability|Movement|Rotate|Variable):\s*/i, "")
+        .replace(/^(Ability|Movement|Rotate|Cancel|Variable):\s*/i, "")
         .replace(/^Modify Custom Variable$/i, "Modify custom variable")
         .replace(/^Face Target$/i, "Face target");
 }
 
 export function actionPickerDescription(action) {
+    if (CHAIN_ACTION_COPY[action?.id]) return CHAIN_ACTION_COPY[action.id].description;
+    if (action?.id === "cancel_windup") return "Works from any root while you're winding up";
     return ACTION_DESCRIPTIONS[action?.head] ?? "";
 }
 

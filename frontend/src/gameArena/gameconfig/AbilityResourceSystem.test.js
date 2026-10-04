@@ -21,9 +21,14 @@ test("every finite ammunition or charge resource is represented by the canonical
         .filter(([, stats]) => stats.maxCharges != null)
         .map(([abilityId]) => Number(abilityId));
 
-    assert.deepEqual(chargeAbilityIds, [3, 5, 12]);
-    assert.equal(abilityChargeCount({ abilityCharges: { 3: 6 } }, 3), 6);
-    assert.equal(abilityChargeCount({ abilityCharges: { 5: 4 } }, 5), 4);
+    // Sniper (3) and Fireball (5) no longer use ammunition; Pistol is the only reload resource.
+    assert.deepEqual(chargeAbilityIds, [12]);
+    for (const id of [3, 5]) {
+        assert.equal(ABILITY_STATS[id].maxCharges, undefined);
+        assert.equal(ABILITY_STATS[id].reloadMs, undefined);
+        assert.equal(ABILITY_STATS[id].resourceModel, undefined);
+        assert.equal(abilityChargeCount({ abilityCharges: { [id]: 6 } }, id), null);
+    }
     assert.equal(abilityChargeCount({ abilityCharges: { 12: 10 } }, 12), 10);
     assert.equal(ABILITY_STATS[12].maxCharges, 10);
     assert.equal(ABILITY_STATS[12].reloadMs, 3000);
@@ -33,7 +38,8 @@ test("every finite ammunition or charge resource is represented by the canonical
 
 test("conditional charges include ammunition resources and ignore retired abilities", () => {
     assert.equal(abilityChargesFor({ abilityCharges: { 2: 25.99 } }, 2), 0);
-    assert.equal(abilityChargesFor({ abilityCharges: { 3: 7 } }, 3), 6);
+    assert.equal(abilityChargesFor({ abilityCharges: { 12: 11 } }, 12), 10);
+    assert.equal(abilityChargesFor({ abilityCharges: { 3: 7 } }, 3), 0);
     assert.equal(abilityChargesFor({ abilityCharges: { 1: 1 } }, 1), 0);
 });
 
@@ -89,56 +95,56 @@ test("resource ticking applies the same function to every equipped charge defini
         abilityRechargeMs: { 3: 3_000, 5: 3_000, 11: 0, 12: 3_000 },
     }, 100);
 
-    assert.deepEqual(next.charges, { 3: 0, 5: 0, 12: 0 });
-    assert.deepEqual(next.rechargeMs, { 3: 2_900, 5: 2_900, 12: 2_900 });
+    assert.deepEqual(next.charges, { 12: 0 });
+    assert.deepEqual(next.rechargeMs, { 12: 2_900 });
 });
 
 test("charge reloads wait for the active phase before consuming time", () => {
     const source = {
-        abilities: [5],
-        abilityCharges: { 5: 0 },
-        abilityRechargeMs: { 5: 3_000 },
-        abilityActiveMs: { 5: 500 },
+        abilities: [12],
+        abilityCharges: { 12: 0 },
+        abilityRechargeMs: { 12: 3_000 },
+        abilityActiveMs: { 12: 500 },
     };
     const active = rechargeAbilityResources(source, 100);
-    assert.equal(active.rechargeMs[5], 3_000);
+    assert.equal(active.rechargeMs[12], 3_000);
 
     const recovering = rechargeAbilityResources({
         ...source,
         abilityCharges: active.charges,
         abilityRechargeMs: active.rechargeMs,
-        abilityActiveMs: { 5: 0 },
+        abilityActiveMs: { 12: 0 },
     }, 100);
-    assert.equal(recovering.rechargeMs[5], 2_900);
+    assert.equal(recovering.rechargeMs[12], 2_900);
 });
 
 test("generic charge consumption starts reloads only when a resource becomes empty", () => {
-    const gun = consumeAbilityCharges({
-        abilityCharges: { 3: 1 },
-        abilityRechargeMs: { 3: 0 },
-    }, 3, 1, { elapsedMs: 100, cooldownMultiplier: 1 });
-    assert.equal(gun.consumed, true);
-    assert.equal(abilityChargeCount(gun.shape, 3), 0);
-    assert.equal(gun.shape.abilityCooldowns?.[3] ?? 0, 0);
-    assert.equal(abilityRechargeRemainingMs(gun.shape, 3), 5_100);
+    const reloadsWhenEmpty = consumeAbilityCharges({
+        abilityCharges: { 12: 1 },
+        abilityRechargeMs: { 12: 0 },
+    }, 12, 1, { elapsedMs: 100, cooldownMultiplier: 1 });
+    assert.equal(reloadsWhenEmpty.consumed, true);
+    assert.equal(abilityChargeCount(reloadsWhenEmpty.shape, 12), 0);
+    assert.equal(reloadsWhenEmpty.shape.abilityCooldowns?.[12] ?? 0, 0);
+    assert.equal(abilityRechargeRemainingMs(reloadsWhenEmpty.shape, 12), 3_100);
 
-    const fireball = consumeAbilityCharges({
-        abilityCharges: { 5: 4 },
-        abilityRechargeMs: { 5: 0 },
-    }, 5, 1, { elapsedMs: 100, cooldownMultiplier: 1 });
-    assert.equal(abilityChargeCount(fireball.shape, 5), 3);
-    assert.equal(fireball.shape.abilityRechargeMs[5], 0);
+    const stillLoaded = consumeAbilityCharges({
+        abilityCharges: { 12: 4 },
+        abilityRechargeMs: { 12: 0 },
+    }, 12, 1, { elapsedMs: 100, cooldownMultiplier: 1 });
+    assert.equal(abilityChargeCount(stillLoaded.shape, 12), 3);
+    assert.equal(stillLoaded.shape.abilityRechargeMs[12], 0);
 
     const overclockedReload = consumeAbilityCharges({
-        abilityCharges: { 3: 1 },
-        abilityRechargeMs: { 3: 0 },
+        abilityCharges: { 12: 1 },
+        abilityRechargeMs: { 12: 0 },
         statusEffects: [{
             type: "overclock",
             remainingMs: 4_000,
             effects: [{ type: "cooldown_modifier", mode: "constant", multiplier: 0.5 }],
         }],
-    }, 3, 1, { elapsedMs: 100, cooldownMultiplier: 1 });
-    assert.equal(abilityRechargeRemainingMs(overclockedReload.shape, 3), 2_600);
+    }, 12, 1, { elapsedMs: 100, cooldownMultiplier: 1 });
+    assert.equal(abilityRechargeRemainingMs(overclockedReload.shape, 12), 1_600);
 
     const pistol = consumeAbilityCharges({
         abilityCharges: { 12: 1 },
@@ -172,21 +178,21 @@ test("interrupting preparation starts recovery without activating the ability", 
 
 test("interrupting an active ability exposes reserved recovery and leaves reload as the only gate", () => {
     const active = interruptCurrentAbility({
-        abilities: [9, 5],
+        abilities: [9, 12],
         attackSpeedMultiplier: 1,
-        abilityCooldowns: { 9: 0, 5: 0 },
+        abilityCooldowns: { 9: 0, 12: 0 },
         abilityPendingCooldownMs: { 9: 6_700 },
-        abilityActiveMs: { 9: 300, 5: 500 },
-        abilityCharges: { 5: 0 },
-        abilityRechargeMs: { 5: 5_000 },
+        abilityActiveMs: { 9: 300, 12: 300 },
+        abilityCharges: { 12: 0 },
+        abilityRechargeMs: { 12: 5_000 },
     });
 
     assert.equal(active.abilityActiveMs[9], 0);
     assert.equal(active.abilityCooldowns[9], 6_700);
     assert.equal(active.abilityPendingCooldownMs?.[9], undefined);
-    assert.equal(active.abilityActiveMs[5], 0);
-    assert.equal(active.abilityCooldowns[5], 0);
-    assert.equal(active.abilityRechargeMs[5], 5_000);
+    assert.equal(active.abilityActiveMs[12], 0);
+    assert.equal(active.abilityCooldowns[12], 0);
+    assert.equal(active.abilityRechargeMs[12], 5_000);
 });
 
 test("interrupting a dash clears its movement state", () => {
@@ -204,5 +210,5 @@ test("interrupting a dash clears its movement state", () => {
     assert.equal(interrupted.dashRemaining, 0);
     assert.equal(interrupted.movementVelocityX, 0);
     assert.equal(interrupted.velocityX, 0);
-    assert.equal(interrupted.abilityCooldowns[19], 1_800);
+    assert.equal(interrupted.abilityCooldowns[19], 0, "Dash has no fixed cooldown");
 });

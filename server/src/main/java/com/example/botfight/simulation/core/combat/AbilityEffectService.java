@@ -8,6 +8,7 @@ import com.example.botfight.simulation.core.state.BotMovementService;
 import com.example.botfight.simulation.core.state.BotStateService;
 import com.example.botfight.simulation.core.state.StatusEffectState;
 import com.example.botfight.simulation.gameconfig.Abilities;
+import com.example.botfight.simulation.ecs.abilities.AbilityEntitySystem;
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts.EffectType;
 import com.example.botfight.simulation.gameconfig.HitStagger;
@@ -57,7 +58,9 @@ class AbilityEffectService {
         AbilityExecutionPayload.Pose pose = payload.pose(attacker);
         double sourceX = pose.x();
         double sourceY = pose.y();
-        applyContractEffects(attacker, defender, payload, arena, sourceX, sourceY, skipTeleport);
+        boolean landedOnEnemy = applyContractEffects(
+                attacker, defender, payload, arena, sourceX, sourceY, skipTeleport);
+        if (landedOnEnemy && !targetsOwner) attacker.abilityHitsThisTick.add(payload.abilityId());
     }
 
     void resolveTriggeredAbilities(Bot attacker, List<Bot> bots, Arena arena) {
@@ -100,12 +103,14 @@ class AbilityEffectService {
         }
     }
 
-    private void applyContractEffects(Bot attacker, Bot defender,
-                                      AbilityExecutionPayload payload,
-                                      Arena arena,
-                                      double sourceX,
-                                      double sourceY,
-                                      boolean skipTeleport) {
+    /** Applies the phase effects and reports whether any of them landed on a living defender. */
+    private boolean applyContractEffects(Bot attacker, Bot defender,
+                                         AbilityExecutionPayload payload,
+                                         Arena arena,
+                                         double sourceX,
+                                         double sourceY,
+                                         boolean skipTeleport) {
+        boolean landedOnEnemy = false;
         AbilityContracts.AbilityPhase phase = firstPhase(payload);
         Map<String, AbilityContracts.EffectOverride> overrides = phase == null
                 ? Map.of() : phase.effectOverrides();
@@ -115,6 +120,10 @@ class AbilityEffectService {
             double distance = defender == null ? 0 : between(sourceX, sourceY, defender.x, defender.y);
             AbilityContracts.Effect resolved = withEffectOverride(effect, effectOverrideFor(effect, overrides));
             resolved = withResolvedDuration(payload, resolved, distance, rangeOverride);
+            if (defender != null && defender.hp > 0
+                    && AbilityEntitySystem.ENEMY_HIT_EFFECT_TYPES.contains(resolved.type())) {
+                landedOnEnemy = true;
+            }
             switch (resolved.type()) {
                 case DAMAGE -> {
                     if (defender == null || defender.hp <= 0) continue;
@@ -173,6 +182,7 @@ class AbilityEffectService {
                 default -> { }
             }
         }
+        return landedOnEnemy;
     }
 
     /** Reads direct effects from the canonical active phase before root fallback. */

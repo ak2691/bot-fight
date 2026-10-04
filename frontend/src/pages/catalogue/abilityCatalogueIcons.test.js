@@ -12,6 +12,9 @@ const MANIFEST_PATH = fileURLToPath(new URL("../../../scripts/ability_catalogue_
 const CATALOGUE_PAGE_PATH = fileURLToPath(new URL("./AbilityCataloguePage.jsx", import.meta.url));
 const ARENA_PATH = fileURLToPath(new URL("../../gameArena/Arena.jsx", import.meta.url));
 const INDEX_CSS_PATH = fileURLToPath(new URL("../../index.css", import.meta.url));
+// Weapons added for the timed-rounds format have no icon until their dedicated art stage.
+const ICONLESS_WEAPON_IDS = new Set([35, 36, 37]);
+const ICONED_ABILITIES = BOT_ABILITIES.filter(({ id }) => !ICONLESS_WEAPON_IDS.has(id));
 const LEGACY_ICON_FILENAMES = Object.freeze({
     slash: "swing",
     gun: "fire_gun",
@@ -24,8 +27,8 @@ const LEGACY_ICON_FILENAMES = Object.freeze({
 });
 
 test("every registered ability has one generated catalogue icon", () => {
-    assert.equal(Object.keys(ABILITY_CATALOGUE_ICONS).length, BOT_ABILITIES.length + 2);
-    for (const ability of BOT_ABILITIES) {
+    assert.equal(Object.keys(ABILITY_CATALOGUE_ICONS).length, ICONED_ABILITIES.length + 2);
+    for (const ability of ICONED_ABILITIES) {
         const iconPath = getAbilityCatalogueIcon(ability.id);
         const iconFilename = `${LEGACY_ICON_FILENAMES[ability.name] ?? ability.name}.webp`;
         const expectedIconPath = `/assets/ability-list/icons/${iconFilename}`;
@@ -35,11 +38,12 @@ test("every registered ability has one generated catalogue icon", () => {
     assert.equal(getAbilityCatalogueIcon(19), "/assets/ability-list/icons/dash.webp");
     assert.equal(existsSync(`${ICON_DIRECTORY}dash.webp`), true);
     assert.match(getAbilityCatalogueIcon(20), /crosshair\.png$/);
+    for (const id of ICONLESS_WEAPON_IDS) assert.equal(getAbilityCatalogueIcon(id), null, id);
 });
 
 test("icon extraction manifest covers the catalog and keeps explicit frame contracts", () => {
     const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
-    assert.deepEqual(Object.keys(manifest.icons).sort(), BOT_ABILITIES.map(({ name }) => name).sort());
+    assert.deepEqual(Object.keys(manifest.icons).sort(), ICONED_ABILITIES.map(({ name }) => name).sort());
     for (const [abilityId, spec] of Object.entries(manifest.icons)) {
         if (!spec.grid) continue;
         const { columns, rows, used_frames = columns * rows, frame_index } = spec.grid;

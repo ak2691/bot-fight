@@ -30,9 +30,9 @@ class ArenaEntityCombatServiceTest {
                 summon, List.of(), List.of(summon, fireball),
                 new ArenaBounds(1000, 800));
 
-        assertThat(damagedSnare.hp()).isEqualTo(5);
+        assertThat(damagedSnare.hp()).isZero();
         assertThat(damagedSnare.statusEffects()).noneMatch(status -> status.type().equals("burn"));
-        assertThat(damagedSummon.hp()).isEqualTo(35);
+        assertThat(damagedSummon.hp()).isEqualTo(30);
         assertThat(damagedSummon.statusEffects()).anyMatch(status -> status.type().equals("burn"));
     }
 
@@ -51,6 +51,6 @@ class ArenaEntityCombatServiceTest {
                 new AbilityHitDetectionService());
 
         assertThat(combat.damageToEntityThisTick(snare, List.of(), List.of(snare, fireball)))
-                .isEqualTo(15);
+                .isEqualTo(20);
     }
 }

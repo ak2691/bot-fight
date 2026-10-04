@@ -23,6 +23,8 @@ import tools.jackson.databind.JsonNode;
 @Service
 public class BotStateService {
     private static final int STEP_MS = 100;
+    /** Cap on a hit record's age; also the Time Since Hit reading (99,999 s) of an ability that never hit. */
+    public static final int NEVER_HIT_MS = 99_999_000;
 
     private final GameConfig gameConfig;
     private final BotCodeService botCodeService;
@@ -221,6 +223,18 @@ public class BotStateService {
         }
         bot.damageTakenLastTick = bot.damageTakenThisTick;
         bot.hpNetChangeLastTick = bot.hp - bot.tickStartHp;
+        settleAbilityHits(bot);
+    }
+
+    /**
+     * Ends a tick for the hit ledger: abilities that hit this tick start at one step
+     * (so the next tick's logic reads 0.1 s) and every older record ages by one step.
+     */
+    private static void settleAbilityHits(DuelSimulationService.Bot bot) {
+        bot.abilityLastHitAgeMs.replaceAll((id, ageMs) ->
+                (int) Math.min(NEVER_HIT_MS, (long) ageMs + STEP_MS));
+        for (Integer abilityId : bot.abilityHitsThisTick) bot.abilityLastHitAgeMs.put(abilityId, STEP_MS);
+        bot.abilityHitsThisTick.clear();
     }
 
     public void applyDamage(DuelSimulationService.Bot target, double damage) {

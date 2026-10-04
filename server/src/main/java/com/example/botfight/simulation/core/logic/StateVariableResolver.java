@@ -17,7 +17,9 @@ import com.example.botfight.simulation.core.orchestration.DuelSimulationService.
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Velocity;
 import com.example.botfight.simulation.core.combat.ActionExecutionService;
 import com.example.botfight.simulation.core.state.BotStateService;
+import com.example.botfight.simulation.core.state.StaminaSystem;
 import com.example.botfight.simulation.ecs.entities.ClosingZoneSystem;
+import com.example.botfight.simulation.gameconfig.AbilityBaseRange;
 import com.example.botfight.simulation.gameconfig.ClosingZoneConfig;
 import com.example.botfight.simulation.geometry.ArenaCoordinates;
 import java.util.Map;
@@ -50,6 +52,21 @@ final class StateVariableResolver {
                     context -> number(movementDirection(context.selectable()))),
             Map.entry(VariableSource.SELECTABLE_SPEED,
                     context -> number(movementSpeed(context.selectable()))),
+            Map.entry(VariableSource.SELECTABLE_APPROACH_ANGLE,
+                    context -> number(approachAngle(context.selectable(), context.selectable2()))),
+            Map.entry(VariableSource.SELECTABLE_MOVING,
+                    context -> bool(lastTickMovement(context.selectable()).moved())),
+            Map.entry(VariableSource.BOT_ANY_ABILITY_PREPARING,
+                    context -> bool(context.bot() != null && context.bot().preparingAbility != null
+                            && context.bot().preparingMs > 0)),
+            Map.entry(VariableSource.BOT_STAMINA,
+                    context -> context.bot() == null ? null : number(StaminaSystem.stamina(context.bot()))),
+            Map.entry(VariableSource.BOT_EXHAUSTED,
+                    context -> context.bot() == null ? null : bool(StaminaSystem.exhausted(context.bot()))),
+            Map.entry(VariableSource.BOT_SPRINTING,
+                    context -> context.bot() == null ? null : bool(context.bot().sprinting)),
+            Map.entry(VariableSource.BOT_FAST_TURNING,
+                    context -> context.bot() == null ? null : bool(context.bot().fastTurning)),
             Map.entry(VariableSource.SELECTABLE_RELATIVE_BEARING,
                     context -> number(relativeBearing(context))),
             Map.entry(VariableSource.SELECTABLE_FACING,
@@ -79,12 +96,16 @@ final class StateVariableResolver {
                     context -> bool(selectedAbilityOnCooldown(context))),
             Map.entry(VariableSource.SELECTED_ABILITY_COOLDOWN_MS,
                     context -> number(millisecondsToSeconds(selectedAbilityCooldownMs(context)))),
+            Map.entry(VariableSource.SELECTED_ABILITY_SINCE_HIT,
+                    context -> number(millisecondsToSeconds(selectedAbilitySinceHitMs(context)))),
             Map.entry(VariableSource.SELECTED_ABILITY_CHARGES,
                     context -> number(selectedAbilityCharges(context))),
             Map.entry(VariableSource.SELECTED_ABILITY_PREPARING,
                     context -> bool(selectedAbilityPreparing(context))),
             Map.entry(VariableSource.SELECTED_ABILITY_PREPARATION_MS,
                     context -> number(selectedAbilityPreparationMs(context))),
+            Map.entry(VariableSource.SELECTED_ABILITY_BASE_RANGE,
+                    context -> selectedAbilityBaseRange(context)),
             Map.entry(VariableSource.SELECTED_STATUS_EFFECT_ACTIVE,
                     context -> bool(statusEffectActive(context.bot(), context.condition().statusEffect()))),
             Map.entry(VariableSource.SELECTED_STATUS_EFFECT_DURATION_MS,
@@ -157,6 +178,12 @@ final class StateVariableResolver {
                 : context.actionExecutionService().selectedAbilityActiveMs(context.bot(), ability);
     }
 
+    private static int selectedAbilitySinceHitMs(ResolutionContext context) {
+        Integer ability = context.condition().ability();
+        return ability == null || context.bot() == null ? BotStateService.NEVER_HIT_MS
+                : context.actionExecutionService().selectedAbilitySinceHitMs(context.bot(), ability);
+    }
+
     private static int selectedAbilityCharges(ResolutionContext context) {
         Integer ability = context.condition().ability();
         return ability == null || context.bot() == null ? 0
@@ -173,6 +200,14 @@ final class StateVariableResolver {
     private static double selectedAbilityPreparationMs(ResolutionContext context) {
         // Bot.preparingMs is the remaining countdown for the active wind-up.
         return selectedAbilityPreparing(context) ? millisecondsToSeconds(context.bot().preparingMs) : 0.0;
+    }
+
+    /** Static contract value; the selectable only decides which bot the condition is about. */
+    private static StateValue selectedAbilityBaseRange(ResolutionContext context) {
+        Integer ability = context.condition().ability();
+        if (ability == null) return null;
+        java.util.OptionalDouble range = AbilityBaseRange.of(ability);
+        return range.isPresent() ? number(range.getAsDouble()) : null;
     }
 
     private static boolean statusEffectActive(Bot bot, String statusEffect) {
@@ -246,6 +281,47 @@ final class StateVariableResolver {
         if (velocity == null || Math.hypot(velocity.x(), velocity.y()) <= 0.001) return Double.NaN;
         double bearing = normalizeDegrees(Math.toDegrees(Math.atan2(velocity.x(), -velocity.y())));
         return bearing > 180 ? bearing - 360 : bearing;
+    }
+
+    private static final double MOVEMENT_EPSILON = 0.001;
+
+    private record Movement(double dx, double dy, boolean moved) {}
+
+    /**
+     * Last-tick displacement: the position change since the start of the previous tick, so
+     * walking, dash, knockback and pulls all count. Entities without a recorded start use
+     * their velocity vector, where only direction and non-zero-ness matter.
+     */
+    private static Movement lastTickMovement(Entity selectable) {
+        double dx;
+        double dy;
+        if (selectable instanceof Bot bot) {
+            dx = bot.x - bot.movementStartX;
+            dy = bot.y - bot.movementStartY;
+        } else {
+            Velocity velocity = TargetingService.entityVelocity(selectable);
+            if (velocity == null) return new Movement(0, 0, false);
+            dx = velocity.x();
+            dy = velocity.y();
+        }
+        if (!Double.isFinite(dx) || !Double.isFinite(dy)) return new Movement(0, 0, false);
+        return new Movement(dx, dy, Math.hypot(dx, dy) > MOVEMENT_EPSILON);
+    }
+
+    /**
+     * Angle (0-180) between the first entity's last-tick movement and the direction from it to the
+     * second entity's current position; 90 when it did not move or the positions coincide.
+     */
+    private static double approachAngle(Entity selectable, Entity target) {
+        Movement movement = lastTickMovement(selectable);
+        if (!movement.moved() || target == null) return 90.0;
+        double toX = target.x() - selectable.x();
+        double toY = target.y() - selectable.y();
+        double toLength = Math.hypot(toX, toY);
+        if (!(toLength > MOVEMENT_EPSILON)) return 90.0;
+        double cosine = (movement.dx() * toX + movement.dy() * toY)
+                / (Math.hypot(movement.dx(), movement.dy()) * toLength);
+        return Math.toDegrees(Math.acos(Math.max(-1.0, Math.min(1.0, cosine))));
     }
 
     private static double velocityMagnitude(Entity selectable) {

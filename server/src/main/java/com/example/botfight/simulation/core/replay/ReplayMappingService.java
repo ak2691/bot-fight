@@ -3,6 +3,7 @@ package com.example.botfight.simulation.core.replay;
 import com.example.botfight.DTO.match.MatchPlaybackDTO;
 import com.example.botfight.DTO.match.MatchReplayDTO;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
+import com.example.botfight.simulation.core.state.StaminaSystem;
 import com.example.botfight.simulation.core.state.StatusEffectState;
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import com.example.botfight.simulation.ecs.entities.ArenaEntity;
@@ -29,7 +30,9 @@ public class ReplayMappingService {
                 bot.temporalRewindPulseMs, bot.closingZoneDamageCount, bot.teamNumber,
                 triggeredTargetX(bot), triggeredTargetY(bot),
                 finiteOrNull(bot.visualOriginX), finiteOrNull(bot.visualOriginY),
-                finiteOrNull(bot.visualOriginRotation), dashDirectionX(bot), dashDirectionY(bot));
+                finiteOrNull(bot.visualOriginRotation), dashDirectionX(bot), dashDirectionY(bot),
+                StaminaSystem.stamina(bot), StaminaSystem.exhausted(bot), bot.sprinting, runningChain(bot),
+                bot.fastTurning ? Boolean.TRUE : null);
     }
 
     public MatchPlaybackDTO.ArenaEntityDTO toArenaEntity(ArenaEntity entity) {
@@ -102,7 +105,19 @@ public class ReplayMappingService {
                 positiveOrNull(bot.closingZoneDamageCount),
                 dashDirectionX(bot),
                 dashDirectionY(bot),
-                bot.teamNumber);
+                bot.teamNumber,
+                StaminaSystem.stamina(bot),
+                // Only set while true, like the other compact optional fields.
+                StaminaSystem.exhausted(bot) ? Boolean.TRUE : null,
+                bot.sprinting ? Boolean.TRUE : null, runningChain(bot),
+                bot.fastTurning ? Boolean.TRUE : null);
+    }
+
+    private static MatchReplayDTO.RunningChainDTO runningChain(DuelSimulationService.Bot bot) {
+        if (bot.chainStack.isEmpty()) return null;
+        var frame = bot.chainStack.getLast();
+        return new MatchReplayDTO.RunningChainDTO(frame.chainId, frame.path, bot.chainStack.size(),
+                bot.chainName(frame.chainId));
     }
 
     private MatchReplayDTO.ReplayEntityDTO toReplayEntity(ArenaEntity entity) {

@@ -1,5 +1,6 @@
 import { canonicalBotSelectableId, CUSTOM_VARIABLE_OPERATIONS } from "../../botlogic/code/contracts/BotLogicContracts.js";
 import { variableOperatorPresentation } from "../controls/variableOperatorPresentation.js";
+import { actionSupportsTarget } from "../../botlogic/code/runtime/actionRuntime.js";
 
 export const UNAVAILABLE_TARGET_LABEL = "Unavailable target";
 
@@ -194,6 +195,7 @@ function variableOperandText(operand, stateVariables) {
     if (operand?.type === "variable") {
         return stateVariables.find((variable) => variable.id === operand.value)?.label ?? String(operand.value ?? "");
     }
+    if (typeof operand?.value === "boolean") return operand.value ? "True" : "False";
     return String(operand?.value ?? 0);
 }
 
@@ -214,4 +216,24 @@ export function variableActionSummary({ target, terms = [], stateVariables = [] 
     const tail = rest.map((part) => `${part.symbol} ${part.text}`);
     if (first.isSet) return [first.text, ...tail].join(" ");
     return [target?.name ?? "", `${first.symbol} ${first.text}`, ...tail].join(" ");
+}
+
+/** How an action picks its target: an entity, a point, an angle or an absolute direction. Null when it takes none. */
+export function actionTargetMode(entry, definition) {
+    if (definition?.movementConfig) {
+        if (entry?.movementMode === "absolute") return "absolute";
+        return entry?.movementMode === "coordinates" ? "coordinates" : "target";
+    }
+    if (definition?.angleTarget) {
+        return ["target", "angle", "coordinates"].includes(entry?.targetMode) ? entry.targetMode : "target";
+    }
+    if (definition?.coordinateTarget) return entry?.targetMode === "coordinates" ? "coordinates" : "target";
+    return actionSupportsTarget(definition) ? "target" : null;
+}
+
+/** "to Opponent 1" at 0 deg, "away from Opponent 1" at 180 deg, otherwise "90° from Opponent 1". */
+export function relativeMovementPhrase(angle, subject) {
+    const degrees = Number(angle);
+    if (degrees === 0) return `to ${subject}`;
+    return Math.abs(degrees) === 180 ? `away from ${subject}` : `${degrees}° from ${subject}`;
 }

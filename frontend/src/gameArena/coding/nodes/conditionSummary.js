@@ -37,7 +37,7 @@ export function summarizeCondition(condition, lookups) {
     const right = condition.right;
     let value = "";
     const valueEntities = [];
-    if (right?.type === "boolean") value = right.value ? "true" : "false";
+    if (right?.type === "boolean") value = right.value ? "True" : "False";
     else if (right?.type === "variable") {
         const rightVariable = lookups.variable(right.value);
         value = rightVariable?.label ?? String(right.value ?? "");

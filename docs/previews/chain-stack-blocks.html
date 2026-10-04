@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chain Stack Blocks</title>
+<style>
+  :root { --bg: #0b1015; --canvas: #0e1216; --text: #e6edf3; --muted: #9ba4ad; --yellow: #facc15;
+    --act: #31583a; --act-line: #72b65d; --if: #286583; --if-line: #43a6d1; --strip: #0d2f50; --hat: #2b3137; --hat-line: #4b5563; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 16px; background: var(--bg); color: var(--text); font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 13px; }
+  main { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+  p.lead { color: var(--muted); margin: 0 0 14px; line-height: 1.5; max-width: 820px; }
+  /* Scrolls horizontally early: content gets 300 px of extra room past its right-most block. */
+  .cv { background: var(--canvas); border: 1px solid #262c33; border-radius: 4px; height: 470px; overflow: auto;
+    background-image: radial-gradient(#1c232a 1px, transparent 1px); background-size: 16px 16px; }
+  .stack { padding: 20px 300px 40px 24px; width: max-content; }
+  /* Every block keeps its own fixed width (300 px). Nested blocks are offset by the mouth (14 px)
+     and stick out past their parent's right edge; nothing is squeezed to line up. */
+  .blk { width: 300px; min-height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid; border-radius: 2px; }
+  .hat { background: var(--hat); border-color: var(--hat-line); }
+  .act { background: var(--act); border-color: var(--act-line); }
+  .n { color: #c9d4de; font-family: ui-monospace, monospace; font-size: 11px; width: 14px; }
+  .lab { color: var(--yellow); font-size: 11px; font-weight: 700; }
+  .sub { color: #cfe9c6; font-size: 12px; margin-left: auto; }
+  /* C-block: header rows, then the mouth (solid left edge running the full height of the body), then the foot. */
+  .c { width: max-content; }
+  .c-hd { width: 300px; background: var(--if); border: 1px solid var(--if-line); border-bottom: 0; border-radius: 2px 2px 0 0; padding: 5px 10px 6px; }
+  .cond { display: flex; align-items: center; gap: 8px; min-height: 24px; white-space: nowrap; overflow: hidden; }
+  .cond .t { overflow: hidden; text-overflow: ellipsis; color: #dbeafe; }
+  .cond .kwb { color: var(--yellow); font-size: 11px; font-weight: 700; width: 26px; flex: none; }
+  .addc { margin: 3px 0 0 40px; padding: 1px 8px; color: #bfe3f2; border: 1px dashed #6fb6d6; border-radius: 2px; font-size: 12px; width: max-content; }
+  .mouth { display: flex; }
+  .edge { width: 14px; flex: none; background: var(--if); border-left: 1px solid var(--if-line); }
+  .body { padding: 0; }
+  .foot { width: 300px; height: 12px; background: var(--if); border: 1px solid var(--if-line); border-top: 0; border-radius: 0 0 2px 2px; }
+  .sel { outline: 2px solid #ffffff; outline-offset: -1px; position: relative; z-index: 1; }
+  .note { color: var(--muted); font-size: 12px; margin-top: 12px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Chain stack blocks: reference</h1>
+  <p class="lead">docs/CODE_WORKSPACE_REDESIGN.md section 5. No separate header container: an If's conditions are plain rows inside the C-block header, the first starting with a yellow IF and the rest with a yellow AND. The mouth has a solid left edge from the header down to the foot. Every block keeps its own 300 px width, so nested blocks stick out to the right of their parent. The canvas scrolls horizontally once content comes within 300 px of the right edge.</p>
+  <div class="cv">
+    <div class="stack">
+      <div class="blk hat"><span class="lab" style="color:#cbd5e1">CHAIN</span><b style="font-weight:600">Chain 4</b><span class="sub" style="color:var(--muted)">Used by 0 roots</span></div>
+      <div class="blk act"><span class="n">1</span><span class="lab">MOVE</span>Walk 0° absolute<span class="sub">for 0.5 s</span></div>
+      <div class="c">
+        <div class="c-hd">
+          <div class="cond"><span class="n">2</span><span class="kwb">IF</span><span class="t">Distance My Bot → Opp 1 &lt; 50</span></div>
+          <div class="cond"><span class="n"></span><span class="kwb">AND</span><span class="t">Distance My Bot → Opp 1 &lt; Distance Opp 1 → Opp 2</span></div>
+          <div class="addc">+ Condition</div>
+        </div>
+        <div class="mouth"><div class="edge"></div><div class="body">
+          <div class="blk act"><span class="n">3</span><span class="lab">MOVE</span>Walk to Opp 1<span class="sub">for 0.5 s</span></div>
+          <div class="c">
+            <div class="c-hd">
+              <div class="cond"><span class="n">4</span><span class="kwb">IF</span><span class="t">Distance My Bot → Opp 1 &lt; 50</span></div>
+              <div class="addc">+ Condition</div>
+            </div>
+            <div class="mouth"><div class="edge"></div><div class="body">
+              <div class="blk act sel"><span class="n">5</span><span class="lab">ABILITY</span>Use Thrust</div>
+              <div class="c">
+                <div class="c-hd"><div class="cond"><span class="n">6</span><span class="kwb">IF</span><span class="t">Since Hit (Thrust) &lt; 0.3 s</span></div><div class="addc">+ Condition</div></div>
+                <div class="mouth"><div class="edge"></div><div class="body">
+                  <div class="blk act"><span class="n">7</span><span class="lab">ABILITY</span>Use Dash</div>
+                </div></div>
+                <div class="foot"></div>
+              </div>
+            </div></div>
+            <div class="foot"></div>
+          </div>
+        </div></div>
+        <div class="foot"></div>
+      </div>
+      <div class="blk act"><span class="n">8</span><span class="lab">VARIABLE</span>Combo + 1</div>
+    </div>
+  </div>
+  <p class="note">Press F anywhere on the chain canvas (outside text fields) to add a step: it opens the step picker, and the new step goes directly under the selected step, or at the end of the chain if nothing is selected.</p>
+</main>
+</body>
+</html>

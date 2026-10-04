@@ -26,6 +26,7 @@ public final class CustomVariableActionService {
         String id = block.phaseFacingMode();
         String type = bot.customVariableTypes.get(id);
         if (type == null) return;
+        JsonNode payload = block.variableTerms();
         if ("boolean".equals(type)) {
             JsonNode operand = block.variableTerms();
             if (operand != null && operand.isObject() && "variable".equals(textValue(field(operand, "type"), ""))) {
