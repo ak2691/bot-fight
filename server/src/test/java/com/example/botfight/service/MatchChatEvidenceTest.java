@@ -40,7 +40,6 @@ class MatchChatEvidenceTest {
                 null,
                 null,
                 1,
-                1,
                 List.of(),
                 Map.of());
         var sessions = new ConcurrentHashMap<UUID, MatchSession>();

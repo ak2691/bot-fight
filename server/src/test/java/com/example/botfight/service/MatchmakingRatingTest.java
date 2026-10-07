@@ -62,7 +62,6 @@ class MatchmakingRatingTest {
                 List.of(new MatchEntrant(
                         first, "guest-one", "guest-one@example.invalid", "guest-one-socket")),
                 null,
-                List.of(),
                 QueuePool.GUEST);
         var found = service.joinQueue(
                 second,
@@ -73,7 +72,6 @@ class MatchmakingRatingTest {
                 List.of(new MatchEntrant(
                         second, "guest-two", "guest-two@example.invalid", "guest-two-socket")),
                 null,
-                List.of(),
                 QueuePool.GUEST);
 
         assertThat(found).hasSize(2)
@@ -101,7 +99,6 @@ class MatchmakingRatingTest {
                     MatchMode.TWOS,
                     List.of(new MatchEntrant(guest, username, principal, username + "-socket")),
                     null,
-                    List.of(),
                     QueuePool.GUEST);
         }
 
@@ -115,7 +112,6 @@ class MatchmakingRatingTest {
                 List.of(new MatchEntrant(
                         fourth, "guest-3", "guest-3@example.invalid", "guest-3-socket")),
                 null,
-                List.of(),
                 QueuePool.GUEST);
 
         assertThat(found).hasSize(4)

@@ -148,8 +148,8 @@ test("weapons are category weapon with Weapon: labels and compact codes", () => 
     assert.equal(abilityDefinition(3).actionLabel, "Ability: Sniper");
 });
 
-test("weapons stay out of every match draft pool except Slash in tier 1", () => {
-    assert.equal(abilityDefinition(1).round, 1);
-    for (const id of [35, 36, 37]) assert.equal(abilityDefinition(id).round, 0);
+test("weapons stay out of every ability draft pool: they are the round 1 weapon pick", () => {
+    for (const id of [1, 35, 36, 37]) assert.equal(abilityDefinition(id).round, 0);
+    for (const id of [1, 35, 36, 37]) assert.equal(abilityDefinition(id).category, "weapon");
     assert.equal(abilityDefinition(34).standard, true, "Basic Strike is unchanged");
 });

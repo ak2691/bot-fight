@@ -52,17 +52,17 @@ test("every ms value in MovementConfig is a whole multiple of 100 and every amou
         else if (key !== "sprintMultiplier") assert.equal(Number.isInteger(value), true, `${key} must be a whole amount`);
     }
     assert.deepEqual({ ...MOVEMENT_CONFIG }, {
-        staminaMax: 100, regenPerTick: 2, regenDelayMs: 800, exhaustionMs: 1500, sprintMultiplier: 1.5,
+        staminaMax: 100, regenPerTick: 2, regenDelayMs: 500, hitStaminaRefund: 10, sprintMultiplier: 1.5,
         fastTurnMultiplier: 2, fastTurnDrainPerTick: 2, sprintDrainPerTick: 3, dashCost: 30, dashGapMs: 300, windupCancelCost: 25,
     });
 });
 
-test("stamina regenerates only after the 800 ms delay, 2 per tick, capped at the maximum", () => {
+test("stamina regenerates only after the 500 ms pause, 2 per tick, capped at the maximum", () => {
     let current = step(bot(), dashAction); // spend 30 on tick 0
     assert.equal(current.stamina, 70);
-    assert.equal(current.staminaRegenDelayMs, 800);
-    // Eight idle ticks pass with no regeneration...
-    for (let tick = 1; tick <= 8; tick += 1) {
+    assert.equal(current.staminaRegenDelayMs, 500);
+    // Five idle ticks pass with no regeneration...
+    for (let tick = 1; tick <= 5; tick += 1) {
         current = step(current);
         assert.equal(current.stamina, 70, `tick ${tick}`);
     }
@@ -75,26 +75,23 @@ test("stamina regenerates only after the 800 ms delay, 2 per tick, capped at the
     assert.equal(run(current, idle, 40).stamina, 100);
     // Any spend restarts the delay.
     const respent = step({ ...current, dashGapMs: 0, abilityActiveMs: {} }, dashAction);
-    assert.equal(respent.staminaRegenDelayMs, 800);
+    assert.equal(respent.staminaRegenDelayMs, 500);
 });
 
-test("exhaustion at 0 stamina blocks regeneration for 1500 ms and never slows the bot", () => {
-    // A spend last tick keeps regeneration locked, so 3 stamina is drained straight to 0.
-    let current = step(bot({ stamina: 3, staminaRegenDelayMs: 800 }), walk({ sprint: true }));
+test("at 0 stamina there is no exhaustion: the bot walks at full speed and refills after the pause", () => {
+    // A spend last tick keeps regeneration paused, so 3 stamina is drained straight to 0.
+    let current = step(bot({ stamina: 3, staminaRegenDelayMs: 500 }), walk({ sprint: true }));
     assert.equal(current.stamina, 0, "drain is clamped at 0");
-    assert.equal(current.exhaustedMs, 1500);
-    assert.equal(current.staminaRegenDelayMs, 800);
-    for (let tick = 1; tick <= 15; tick += 1) {
+    assert.equal(Object.hasOwn(current, "exhaustedMs"), false);
+    assert.equal(current.staminaRegenDelayMs, 500);
+    for (let tick = 1; tick <= 5; tick += 1) {
         const x = current.x;
         current = step(current, walk());
         assert.equal(current.stamina, 0, `tick ${tick}`);
-        assert.equal(current.x - x, WALK_SPEED, "no slowdown while exhausted");
+        assert.equal(current.x - x, WALK_SPEED, "no slowdown at 0 stamina");
     }
-    assert.equal(current.exhaustedMs, 0);
-    const before = current.x;
     current = step(current, walk());
-    assert.equal(current.stamina, 2, "regeneration resumes once the exhaustion is over");
-    assert.equal(current.x - before, WALK_SPEED);
+    assert.equal(current.stamina, 2, "regeneration resumes after the 500 ms pause");
 });
 
 test("a dash chain runs until stamina runs out, one dash per 300 ms gap", () => {
@@ -124,7 +121,6 @@ test("the dash gap and the stamina check are reflected in Ready and Cooldown Lef
     assert.equal(abilityCooldownMs(short, DASH_ABILITY_ID), 1000);
     // A lockout is added on top.
     assert.equal(abilityCooldownMs({ ...short, staminaRegenDelayMs: 500 }, DASH_ABILITY_ID), 1500);
-    assert.equal(abilityCooldownMs({ ...short, exhaustedMs: 1500, staminaRegenDelayMs: 800 }, DASH_ABILITY_ID), 2500);
     assert.equal(abilityReady({ ...fresh, stamina: 30 }, DASH_ABILITY_ID), true);
 });
 
@@ -133,7 +129,7 @@ test("sprint is x1.5 in every direction and drains 3 stamina per tick", () => {
     assert.equal(current.x, 200 + WALK_SPEED * 1.5);
     assert.equal(current.stamina, 97);
     assert.equal(current.sprinting, true);
-    assert.equal(current.staminaRegenDelayMs, 800);
+    assert.equal(current.staminaRegenDelayMs, 500);
     current = run(current, walk({ sprint: true }), 9);
     assert.equal(current.stamina, 70);
 
@@ -161,7 +157,7 @@ test("sprint is x1.5 in every direction and drains 3 stamina per tick", () => {
     assert.equal(step(bot(), { ...idle, sprint: true }).stamina ?? 100, 100);
 });
 
-test("sprint stops at 0 stamina and resumes only after the exhaustion", () => {
+test("sprint stops at 0 stamina and resumes only after the pause", () => {
     let current = bot({ stamina: 5, staminaRegenDelayMs: 800 });
     current = step(current, walk({ sprint: true }));
     assert.equal(current.stamina, 2);
@@ -174,37 +170,32 @@ test("sprint stops at 0 stamina and resumes only after the exhaustion", () => {
     assert.equal(current.x - x, WALK_SPEED);
 });
 
-test("starting, winding up or being active with any ability cancels sprint", () => {
-    // Attacking cancels sprint on the same tick: no speed bonus and no drain.
+test("attacking no longer slows sprint: it holds while an ability starts, winds up and is active", () => {
+    const fast = WALK_SPEED * 1.5;
     const attack = step(bot(), { ...slash, dx: 1, sprint: true });
     assert.equal(attack.triggeredAbility, 1);
-    assert.equal(attack.x, 200 + WALK_SPEED);
-    assert.equal(attack.stamina ?? 100, 100);
-    assert.equal(attack.sprinting ?? false, false);
-    // It stays off while the ability is active (300 ms for Slash) and resumes afterwards.
+    assert.equal(attack.x, 200 + fast);
+    assert.equal(attack.stamina, 97);
+    assert.equal(attack.sprinting, true);
     let current = attack;
     for (let tick = 1; tick <= 3; tick += 1) {
         const x = current.x;
         current = step(current, walk({ sprint: true }));
-        assert.equal(current.x - x, WALK_SPEED, `active tick ${tick}`);
-        assert.equal(current.stamina ?? 100, 100);
+        assert.equal(current.x - x, fast, `active tick ${tick}`);
     }
-    const resumed = step(current, walk({ sprint: true }));
-    assert.equal(resumed.x - current.x, WALK_SPEED * 1.5);
-    assert.equal(resumed.stamina, 97);
+    assert.equal(current.stamina, 88);
 
-    // A wind-up also cancels it: Sniper winds up for 900 ms.
     const winding = step(bot(), { ...snipe, dx: 1, sprint: true });
     assert.equal(winding.preparingAbility, 3);
-    assert.equal(winding.x, 200 + WALK_SPEED);
+    assert.equal(winding.x, 200 + fast);
     const stillWinding = step(winding, walk({ sprint: true }));
-    assert.equal(stillWinding.x - winding.x, WALK_SPEED);
-    assert.equal(stillWinding.stamina ?? 100, 100);
+    assert.equal(stillWinding.x - winding.x, fast);
+    assert.equal(stillWinding.stamina, 94);
 
-    // An ability that cannot start (still on cooldown) does not cancel sprint.
-    const onCooldown = step(bot({ abilityCooldowns: { 1: 500 } }), { ...slash, dx: 1, sprint: true });
-    assert.equal(onCooldown.triggeredAbility, null);
-    assert.equal(onCooldown.x, 200 + WALK_SPEED * 1.5);
+    // Movement-lock and 0 stamina still stop it.
+    const locked = step(bot({ statusEffects: [{ type: "movement-lock", remainingMs: 1000, mode: "duration" }] }), walk({ sprint: true }));
+    assert.equal(locked.sprinting, false);
+    assert.equal(step(bot({ stamina: 0, staminaRegenDelayMs: 500 }), walk({ sprint: true })).sprinting, false);
 });
 
 test("Cancel Wind-up clears the wind-up for 25 stamina, with no cooldown or charge, and the ability can restart next tick", () => {
@@ -217,7 +208,7 @@ test("Cancel Wind-up clears the wind-up for 25 stamina, with no cooldown or char
     assert.equal(cancelled.preparingMs, 0);
     assert.equal(cancelled.triggeredAbility, null);
     assert.equal(cancelled.stamina, 75);
-    assert.equal(cancelled.staminaRegenDelayMs, 800);
+    assert.equal(cancelled.staminaRegenDelayMs, 500);
     assert.equal(cancelled.abilityCooldowns?.[3] ?? 0, 0, "no cooldown");
     assert.equal(Object.hasOwn(cancelled, "abilityRelockMs"), false, "no restart lock");
     assert.equal(abilityReady(cancelled, 3), true);
@@ -229,11 +220,11 @@ test("Cancel Wind-up clears the wind-up for 25 stamina, with no cooldown or char
     assert.equal(restarted.stamina, 75, "starting the wind-up again costs nothing");
 });
 
-test("Cancel Wind-up that reaches 0 stamina starts exhaustion", () => {
+test("Cancel Wind-up that reaches 0 stamina just leaves the bot at 0", () => {
     const winding = step(bot({ stamina: 25, staminaRegenDelayMs: 800 }), snipe);
     const cancelled = step(winding, cancel);
     assert.equal(cancelled.stamina, 0);
-    assert.equal(cancelled.exhaustedMs, 1500);
+    assert.equal(Object.hasOwn(cancelled, "exhaustedMs"), false);
 });
 
 test("Cancel Wind-up does nothing without a wind-up or enough stamina", () => {
@@ -361,15 +352,16 @@ test("resetting a bot restores full stamina and clears timers", () => {
     const spent = step(bot({ stamina: 3, staminaRegenDelayMs: 800 }), walk({ sprint: true }));
     const reset = resetBotShape({ ...spent, type: "circle", combatLoadout: "custom:", loadout: { abilities: [] } });
     assert.equal(reset.stamina, MOVEMENT_CONFIG.staminaMax);
-    assert.equal(reset.exhaustedMs, 0);
+    assert.equal(Object.hasOwn(reset, "exhaustedMs"), false);
     assert.equal(reset.staminaRegenDelayMs, 0);
     assert.equal(reset.sprinting, false);
     assert.equal(reset.dashGapMs, 0);
     assert.equal(Object.hasOwn(reset, "abilityRelockMs"), false);
 });
 
-test("Stamina, Exhausted and Sprinting read for My Bot and for an opponent", () => {
-    for (const id of ["bot.stamina", "bot.exhausted", "bot.sprinting", "bot.fastTurning"]) {
+test("Stamina and Sprinting read for My Bot and for an opponent, and Exhausted is gone", () => {
+    assert.equal(STATE_VARIABLE_BY_ID.has("bot.exhausted"), false);
+    for (const id of ["bot.stamina", "bot.sprinting", "bot.fastTurning"]) {
         const variable = STATE_VARIABLE_BY_ID.get(id);
         assert.equal(variable.supportsSelectable, true);
         assert.deepEqual(variable.selectableIdentities, ["bot"]);
@@ -378,7 +370,6 @@ test("Stamina, Exhausted and Sprinting read for My Bot and for an opponent", () 
     assert.equal(STATE_VARIABLE_BY_ID.get("bot.stamina").label, "Stamina");
     assert.equal(STATE_VARIABLE_BY_ID.get("bot.stamina").min, 0);
     assert.equal(STATE_VARIABLE_BY_ID.get("bot.stamina").max, 100);
-    assert.equal(STATE_VARIABLE_BY_ID.get("bot.exhausted").label, "Exhausted");
     assert.equal(STATE_VARIABLE_BY_ID.get("bot.sprinting").label, "Sprinting");
     assert.equal(STATE_VARIABLE_BY_ID.get("bot.fastTurning").label, "Turning fast");
     assert.equal(STATE_VARIABLE_BY_ID.get("bot.fastTurning").group, "Rotation");
@@ -386,7 +377,7 @@ test("Stamina, Exhausted and Sprinting read for My Bot and for an opponent", () 
     const mine = { ...resetBotShape(bot({ type: "circle" })), id: "main", stamina: 64 };
     const theirs = {
         ...resetBotShape(bot({ id: "opponent-model", type: "opponentModel", slot: 2, x: 600 })),
-        id: "opponent-model", stamina: 12, exhaustedMs: 700, sprinting: true,
+        id: "opponent-model", stamina: 12, sprinting: true,
     };
     const state = stateFromPayload(buildStatePayload([mine, theirs], "custom:", "main"));
     const holds = (left, selectable, comparator, right) => evaluateCondition({
@@ -395,8 +386,6 @@ test("Stamina, Exhausted and Sprinting read for My Bot and for an opponent", () 
     assert.equal(holds("bot.stamina", "my_bot", "eq", { type: "number", value: 64 }), true);
     assert.equal(holds("bot.stamina", "opponent_1", "eq", { type: "number", value: 12 }), true);
     assert.equal(holds("bot.stamina", "opponent_1", "gt", { type: "number", value: 12 }), false);
-    assert.equal(holds("bot.exhausted", "opponent_1", "eq", { type: "boolean", value: true }), true);
-    assert.equal(holds("bot.exhausted", "my_bot", "eq", { type: "boolean", value: false }), true);
     assert.equal(holds("bot.sprinting", "opponent_1", "eq", { type: "boolean", value: true }), true);
     assert.equal(holds("bot.sprinting", "my_bot", "eq", { type: "boolean", value: true }), false);
 });
@@ -442,18 +431,17 @@ test("fast turn pays nothing on a tick that does not rotate", () => {
     assert.equal(facing.staminaRegenDelayMs ?? 0, 0);
 });
 
-test("below 2 stamina or while exhausted the bot turns at normal speed for free", () => {
-    for (const low of [bot({ stamina: 1, staminaRegenDelayMs: 800 }), bot({ stamina: 0, exhaustedMs: 1000 })]) {
+test("below 2 stamina the bot turns at normal speed for free", () => {
+    for (const low of [bot({ stamina: 1, staminaRegenDelayMs: 800 }), bot({ stamina: 0, staminaRegenDelayMs: 800 })]) {
         const slow = step(low, turn(1));
         assert.equal(slow.rotation, 102);
         assert.equal(slow.stamina, low.stamina);
         assert.equal(slow.fastTurning, false);
     }
-    // Exactly 2 stamina still turns fast, and spending it empties the bar into exhaustion.
+    // Exactly 2 stamina still turns fast, and spending it empties the bar.
     const last = step(bot({ stamina: 2, staminaRegenDelayMs: 800 }), turn(1));
     assert.equal(last.rotation, 114);
     assert.equal(last.stamina, 0);
-    assert.equal(last.exhaustedMs, MOVEMENT_CONFIG.exhaustionMs);
 });
 
 test("fast turn and sprint drain in the same tick", () => {
@@ -495,7 +483,7 @@ test("the planner uses the step the executor will use, so a fast turn never over
     const rotateToAngle = (angle, fastTurn) => ({
         roots: [{ branches: [{ conditions: [{ type: "always" }], actions: [{ action: "rotate_toward_enemy", targetMode: "angle", targetAngle: angle, ...(fastTurn ? { fastTurn: true } : {}) }] }] }],
     });
-    const snapshotOf = (shape) => buildStatePayload([{ ...resetBotShape(bot({ type: "circle" })), id: "main", rotation: shape.rotation, stamina: shape.stamina ?? 100, exhaustedMs: shape.exhaustedMs ?? 0 }, opponentShape()], "custom:", "main");
+    const snapshotOf = (shape) => buildStatePayload([{ ...resetBotShape(bot({ type: "circle" })), id: "main", rotation: shape.rotation, stamina: shape.stamina ?? 100 }, opponentShape()], "custom:", "main");
     const plan = (configuration, shape) => buildDeterministicLogicAction(configuration, snapshotOf(shape));
 
     // 10 degrees to go: the doubled step covers it in one turn and lands exactly on it.

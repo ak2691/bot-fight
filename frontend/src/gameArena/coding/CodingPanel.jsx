@@ -38,7 +38,6 @@ import {
     abilityIdsForConfiguration,
     selectableAbilityIdsForLoadouts,
     selectableTypesForLoadouts,
-    formatClock,
 } from "./nodes/GraphNodes.jsx";
 import { TreeLogicBoard } from "./LogicBoard.jsx";
 import { ChainEditor } from "./chains/ChainEditor.jsx";
@@ -46,6 +45,11 @@ import { ChainCrumb, ChainStepMeter } from "./chains/ChainToolbarBits.jsx";
 import { NewChainDialog } from "./modals/NewChainDialog.jsx";
 import { chainLimitReason, chainUsage, chainsOf, countChainSteps, createChain, findChain, removeChain, updateChain } from "./chains/chainEditing.js";
 import { HudBudget, HudButton, HudScoreboard, HudSwitchRow } from "./HudControls.jsx";
+import BuildClocks, { BuildOutOfTime, BuildWaiting } from "./BuildClocks.jsx";
+import HoldToSubmitButton from "./HoldToSubmitButton.jsx";
+import { roundLabel, teamHpTotals } from "./matchHud.js";
+import { formatHp } from "../gameconfig/visualState.js";
+import { TIMEOUT_FALLBACKS } from "../../matchmaking/buildClock.js";
 import { isWorkspaceShortcutKeydown, readAddRootShortcut, readWorkspaceShortcut } from "./addRootShortcut.js";
 import { BOT_LOGIC_TREE_VERSION, MAX_CHAIN_STEPS } from "../botlogic/code/configuration/constants.js";
 import { upgradeStoredStrategyCoordinates } from "../persistence/arenaStrategyStorage.js";
@@ -191,12 +195,6 @@ function teamLabel(teamNumber) {
     return Number(teamNumber) === 2 ? "RED TEAM" : "BLUE TEAM";
 }
 
-function roundWinsForTeam(participants, teamNumber) {
-    return participants
-        .filter((participant) => participantTeamNumber(participant) === teamNumber)
-        .reduce((highest, participant) => Math.max(highest, Math.max(0, Number(participant?.roundWins) || 0)), 0);
-}
-
 // Small labelled count with a 3px progress bar; amber near the limit, red at it.
 
 function ToolbarSearchIcon() {
@@ -225,7 +223,11 @@ export default function CodingPanel({
     onRequestCodeView = null,
     sandboxCodeCopies = {},
     onSandboxParticipantChange = null,
-    testingRemaining = null,
+    submitBlockedReason = null,
+    timeoutFallback = TIMEOUT_FALLBACKS.CURRENT,
+    onTimeoutFallbackChange = null,
+    variableResetChoices = null,
+    onVariableResetChoiceChange = null,
     isAutoPlaying = false,
     measurementEnabled = false,
     onMeasurementToggle,
@@ -493,8 +495,7 @@ export default function CodingPanel({
             opponentLoadouts: opponents.map((participant) => participant.selectedLoadout),
         };
     }, [activeParticipant, codeSelectorRoster, isMatchTesting, matchContext, selectableParticipants]);
-    const blueTeamRoundWins = roundWinsForTeam(liveCodeRoster, 1);
-    const redTeamRoundWins = roundWinsForTeam(liveCodeRoster, 2);
+    const teamHp = teamHpTotals(matchContext?.players, matchContext?.timedRounds?.segmentEndState);
     const isCodeEditingLocked = isBotCodeLocked || activeCodeReadOnly;
     const openLogicWorkspace = useCallback((quickSearch = false) => {
         if (isBotCodeLocked) return;
@@ -590,7 +591,6 @@ export default function CodingPanel({
     const selectedLogicRound = currentRound;
     const currentRoundBlockCount = totalActiveBlocks;
     const roundBlockLimit = maxActionNodes;
-    const totalRounds = isMatchTesting ? 3 : Math.max(1, (matchContext?.winsRequired ?? 1) * 2 - 1);
     const visibleConditionTypes = CONDITION_TYPES;
     const visibleStateVariables = useMemo(() => {
         const ownAbilities = abilityIdsForConfiguration(activeLoadout);
@@ -822,29 +822,25 @@ export default function CodingPanel({
     const matchClosed = finishStatus === "SURRENDERED" || finishStatus === "FINISHED";
     const surrenderVoted = finishStatus === "SURRENDER_VOTED";
     const lockLabel = finishStatus === "FINISHED"
-        ? "LOCKED IN"
+        ? "Submitted"
         : finishStatus === "SURRENDERED"
-            ? "RESIGNED"
-            : surrenderVoted
-                ? "LOCK IN / WITHDRAW VOTE"
-                : finishBusy
-                    ? "LOCKING IN"
-                    : "LOCK IN";
+            ? "Resigned"
+            : finishBusy
+                ? "Submitting"
+                : "Hold to submit";
     const surrenderLabel = finishStatus === "SURRENDERING"
         ? "Surrendering"
         : surrenderVoted ? "Withdraw vote" : "Surrender vote";
     const surrenderDisabled = !onSurrenderMatch || matchClosed || finishBusy || isTesting;
     const isPuzzleRoom = Boolean(onPuzzleSubmit);
     const primaryAction = isMatchTesting ? (
-        <HudButton
-            variant="primary"
-            icon="check"
-            className="hud-btn--lg"
-            onClick={onFinishMatch}
+        <HoldToSubmitButton
+            onSubmit={onFinishMatch}
             disabled={!canFinishMatch || matchClosed || finishBusy || isTesting}
-        >
-            {lockLabel}
-        </HudButton>
+            blockedReason={matchClosed || finishBusy ? null : submitBlockedReason}
+            label="Hold to submit"
+            busyLabel={matchClosed || finishBusy ? lockLabel : null}
+        />
     ) : isPuzzleRoom ? (
         <HudButton
             variant="primary"
@@ -961,12 +957,14 @@ export default function CodingPanel({
         <aside className={`arena-toolbar-panel hud-panel ${usesArenaResponsiveLimits ? "arena-right-toolbar" : ""} h-full min-h-0 w-[23rem] flex-shrink-0 overflow-y-auto border-l border-slate-700/70 p-4`}>
             <div className="hud-stack">
                 {isMatchTesting && (
-                    <HudScoreboard
-                        blueScore={blueTeamRoundWins}
-                        redScore={redTeamRoundWins}
-                        roundLabel={`${matchContext?.roundNumber ?? 1}/${totalRounds}`}
-                        clock={formatClock(testingRemaining)}
-                    />
+                    <>
+                        <HudScoreboard
+                            blueValue={formatHp(teamHp.blue)}
+                            redValue={formatHp(teamHp.red)}
+                            roundLabel={roundLabel(matchContext?.roundNumber, matchContext?.timedRounds?.maxRounds)}
+                        />
+                        <BuildClocks players={matchContext?.players ?? []} selfUserId={matchContext?.player?.userId} />
+                    </>
                 )}
                 {typeof builderControls === "function"
                     ? builderControls({
@@ -981,20 +979,25 @@ export default function CodingPanel({
                         {teamLabel(participantTeamNumber(matchContext?.player))} forfeit votes: {matchContext.surrenderVoteCount}/{matchContext.surrenderVoteRequired}
                     </div>
                 )}
-                {isMatchTesting && matchContext?.opponent?.finished && finishStatus !== "FINISHED" && (
-                    <div className="hud-notice hud-notice--green">Opponent locked in</div>
-                )}
-                {isMatchTesting && testingRemaining === 0 && finishStatus === "BUILDING" && (
-                    <div role="status" aria-live="polite" className="hud-notice hud-notice--cyan">
-                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-300/80" aria-hidden="true" />
-                        Preparing replay · you can still lock in
-                    </div>
+                {isMatchTesting && finishStatus === "BUILDING" && <BuildOutOfTime player={matchContext?.player} />}
+                {isMatchTesting && (finishStatus === "FINISHED" || finishStatus === "SUBMITTING") && (
+                    <BuildWaiting players={matchContext?.players ?? []} selfUserId={matchContext?.player?.userId} />
                 )}
 
                 <section className="hud-card hud-card--brain" aria-labelledby="hud-brain-title">
                     <h2 id="hud-brain-title" className="hud-card__title"><ToolIcon name="node" className="h-4 w-4" /> Your bot's brain</h2>
                     {budget}
                     {primaryAction}
+                    {isMatchTesting && onTimeoutFallbackChange && !matchClosed && (
+                        <div className="hud-fallback" role="group" aria-labelledby="hud-fallback-label">
+                            <span id="hud-fallback-label" className="hud-fallback__label">If time runs out, submit</span>
+                            <div className="hud-segmented">
+                                {[[TIMEOUT_FALLBACKS.CURRENT, "Current code"], [TIMEOUT_FALLBACKS.PREVIOUS, "Last round's code"]].map(([value, label]) => (
+                                    <button key={value} type="button" aria-pressed={timeoutFallback === value} className={timeoutFallback === value ? "is-active" : ""} disabled={finishBusy} onClick={() => onTimeoutFallbackChange(value)}>{label}</button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                     <div className="hud-row">
                         {isPuzzleRoom && (
                             <HudButton variant="play" icon={isAutoPlaying ? "pause" : "play"} className="hud-btn--half" onClick={onAutoPlayToggle} disabled={isBaseTesting || isTesting}>
@@ -1301,7 +1304,7 @@ export default function CodingPanel({
                             {budgetRows.map((row) => <SheetRow key={row.label} label={row.label} value={row.value} />)}
                         </WorkspaceSheet>}
                         {namingChain && <NewChainDialog defaultName={createChain(activeConfiguration)?.name ?? ""} onConfirm={confirmNewChain} onCancel={() => setNamingChain(false)} />}
-                        {isCustomVariablesOpen && !isNodeSearchOpen && <CustomVariablesModal configuration={activeConfiguration} currentValues={activeCustomVariableValues} stateVariables={visibleStateVariables} selectableTypes={visibleSelectableTypes} onJumpToUse={jumpToUse} maxSlots={maxCustomVariableSlots} disabled={isCodeEditingLocked || isTesting} onChange={updateActiveConfiguration} onClose={() => setIsCustomVariablesOpen(false)} />}
+                        {isCustomVariablesOpen && !isNodeSearchOpen && <CustomVariablesModal resetChoices={isMatchTesting && !viewingOpponent && !viewingLiveParticipant ? variableResetChoices : null} onResetChoiceChange={onVariableResetChoiceChange} configuration={activeConfiguration} currentValues={activeCustomVariableValues} stateVariables={visibleStateVariables} selectableTypes={visibleSelectableTypes} onJumpToUse={jumpToUse} maxSlots={maxCustomVariableSlots} disabled={isCodeEditingLocked || isTesting} onChange={updateActiveConfiguration} onClose={() => setIsCustomVariablesOpen(false)} />}
                     </section>
                 </div>,
                 document.body

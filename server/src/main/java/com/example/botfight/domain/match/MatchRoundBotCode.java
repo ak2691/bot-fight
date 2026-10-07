@@ -62,6 +62,19 @@ public class MatchRoundBotCode {
     @Column(name = "submitted_at", nullable = false)
     private Instant submittedAt;
 
+    /** JSON array of custom variables the player reset to their default at this round's boundary. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "variable_resets", nullable = false)
+    private String variableResets = "[]";
+
+    /** What the player chose to happen if their clock ran out: CURRENT or PREVIOUS. */
+    @Column(name = "timeout_fallback", length = 10)
+    private String timeoutFallback;
+
+    public String getVariableResets() { return variableResets; }
+    public void setVariableResets(String variableResets) { this.variableResets = variableResets; }
+    public String getTimeoutFallback() { return timeoutFallback; }
+    public void setTimeoutFallback(String timeoutFallback) { this.timeoutFallback = timeoutFallback; }
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
     public Match getMatch() { return match; }

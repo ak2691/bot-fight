@@ -41,7 +41,6 @@ class MatchChatTeamVisibilityTest {
                 null,
                 null,
                 1,
-                1,
                 List.of(),
                 Map.of());
         ConcurrentMap<UUID, MatchSession> activeSessions = new ConcurrentHashMap<>();

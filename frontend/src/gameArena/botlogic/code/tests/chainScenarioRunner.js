@@ -15,7 +15,8 @@ function formatAction(action) {
     const sign = (value) => Math.abs(value) < 1e-6 ? 0 : Math.sign(value);
     const moves = `${["W", "", "E"][sign(action.dx) + 1]}${["N", "", "S"][sign(action.dy) + 1]}`;
     return [
-        action.abilityAction?.action ?? "-",
+        // Ability and dash are separate channels; both show when they start on the same tick ("3+19").
+        [action.abilityAction?.action, action.dashAction?.action].filter((value) => value != null).join("+") || "-",
         moves || "-",
         action.dRot !== 0 ? "rot" : "-",
         action.cancelWindup ? "cancel" : "-",

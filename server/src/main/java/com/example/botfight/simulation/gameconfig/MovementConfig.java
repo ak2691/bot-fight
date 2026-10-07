@@ -11,12 +11,15 @@ public final class MovementConfig {
     public static final int TICK_MS = 100;
     /** Stamina cap; a bot starts every round full. */
     public static final int STAMINA_MAX = 100;
-    /** Stamina regained per tick (20 per second) once the regen delay and exhaustion have run out. */
+    /** Stamina regained per tick (20 per second) once the regen pause has run out. */
     public static final int REGEN_PER_TICK = 2;
-    /** Time after any stamina spend before regeneration resumes. */
-    public static final int REGEN_DELAY_MS = 800;
-    /** Time with no regeneration after stamina hits 0. There is no movement slowdown. */
-    public static final int EXHAUSTION_MS = 1_500;
+    /** Time after any stamina spend before regeneration resumes. Only spending starts or restarts it. */
+    public static final int REGEN_DELAY_MS = 500;
+    /**
+     * Stamina a bot gains when its weapon or ability lands on an enemy bot, once per activation (capped at
+     * {@link #STAMINA_MAX}). Instant and independent of the regen pause: it never starts, ends or restarts it.
+     */
+    public static final int HIT_STAMINA_REFUND = 10;
     /** Movement speed factor while sprinting, the same in every direction. */
     public static final double SPRINT_MULTIPLIER = 1.5;
     /** Stamina drained per sprinting tick (30 per second). */

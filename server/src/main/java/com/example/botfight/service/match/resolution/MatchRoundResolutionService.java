@@ -7,6 +7,7 @@ import com.example.botfight.service.match.connection.MatchConnectionService;
 import com.example.botfight.service.match.coordination.MatchLockService;
 import com.example.botfight.service.match.event.MatchEventFactory;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
+import com.example.botfight.service.match.model.HpDecision;
 import com.example.botfight.service.match.model.MatchPlayer;
 import com.example.botfight.service.match.model.MatchSession;
 import com.example.botfight.service.match.persistence.MatchPersistenceService;
@@ -17,6 +18,7 @@ import com.example.botfight.service.match.state.PreparedReplay;
 import com.example.botfight.service.match.state.RoundSubmissionRecord;
 import com.example.botfight.service.match.state.SimulationKey;
 import com.example.botfight.service.match.submission.MatchSubmissionService;
+import com.example.botfight.service.match.timing.MatchTimingPolicy;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -36,8 +38,7 @@ public final class MatchRoundResolutionService {
     private static final long ROUND_RESULT_HOLD_MILLIS = 3_000L;
     private static final long TERMINAL_RESULT_RECONNECT_MILLIS = 30_000L;
     private static final long MATCH_CHAT_RETENTION_MILLIS = 30_000L;
-    private static final int WINS_REQUIRED = 2;
-    private static final int TOTAL_ROUNDS = 3;
+    private static final int TOTAL_ROUNDS = MatchTimingPolicy.MAX_ROUNDS;
 
     private final MatchRuntimeState state;
     private final Clock clock;
@@ -100,7 +101,7 @@ public final class MatchRoundResolutionService {
             }
             long simulationStartedNanos = System.nanoTime();
             MatchReplayDTO calculatedPlayback = simulationService.buildDuelReplay(
-                    simulationSession, submissionsByUserId);
+                    simulationSession, submissionsThroughThisRound(simulationSession, submissionsByUserId));
             if (calculatedPlayback == null || "ERROR".equals(calculatedPlayback.result())) {
                 throw new IllegalStateException("authoritative duel simulation failed");
             }
@@ -110,12 +111,7 @@ public final class MatchRoundResolutionService {
                     simulationSession.roundNumber(),
                     calculatedPlayback.result(),
                     elapsedMillis(simulationStartedNanos));
-            Map<UUID, Integer> roundWinsBeforeResult = new HashMap<>();
-            simulationSession.players().forEach(player ->
-                    roundWinsBeforeResult.put(player.userId(), Math.max(0, player.roundWins())));
-            MatchReplayDTO playback = replayService.withRoundWinsBeforeResult(
-                    calculatedPlayback,
-                    roundWinsBeforeResult);
+            MatchReplayDTO playback = calculatedPlayback;
             long replayPreparationStartedNanos = System.nanoTime();
             PreparedReplay preparedReplay = replayService.prepare(playback);
             log.info(
@@ -212,33 +208,54 @@ public final class MatchRoundResolutionService {
         if (!simulationSession.equals(currentSession)) return List.of();
 
         MatchReplayDTO playback = calculatedPlayback;
-        MatchSession scoredSession = simulationSession.withRoundResult(playback.winnerUserId());
-        Map<UUID, Integer> roundWins = new HashMap<>();
-        scoredSession.players().forEach(player ->
-                roundWins.put(player.userId(), Math.max(0, player.roundWins())));
-        persistenceService.recordRoundScores(scoredSession.matchId(), roundWins);
+        // The segment's last frame is the frozen position the next round continues from.
+        List<MatchReplayDTO.ReplayBotDTO> endState = playback.frames().isEmpty()
+                ? List.of()
+                : playback.frames().getLast().bots();
+        MatchSession scoredSession = simulationSession.withSegmentEndState(endState);
         state.roundHistoryByMatchId()
                 .computeIfAbsent(simulationSession.matchId(), ignored -> new ArrayList<>())
                 .add(new RoundSubmissionRecord(
                         simulationSession.roundNumber(),
                         playback.winnerUserId(),
                         Map.copyOf(submissionsByUserId),
-                        replayService.roundLossScores(simulationSession, playback)));
+                        Map.of()));
         submissionService.removeForRound(
                 simulationSession.matchId(), simulationSession.roundNumber());
 
-        boolean seriesComplete = simulationSession.roundNumber() >= TOTAL_ROUNDS
-                || scoredSession.players().stream()
-                        .anyMatch(player -> player.roundWins() >= WINS_REQUIRED);
+        // The fight ends when at most one team is left standing, or after the last round, when the
+        // team with more total HP wins. Two teams that fall on the same tick, or finish level, draw.
+        long teamsStanding = endState.stream()
+                .filter(bot -> bot.hp() > 0)
+                .map(MatchReplayDTO.ReplayBotDTO::teamNumber)
+                .distinct()
+                .count();
+        // The simulator says "CONTINUES" for a segment that ended with the fight still going, and
+        // BOT_WIN for a knockout. Anything else ("DRAW") is a knockout only if nobody is left to
+        // compare: a final segment that ran out of time with two teams standing is decided on HP.
+        String simulatedResult = playback.result();
+        boolean timedOut = "CONTINUES".equals(simulatedResult)
+                || (!"BOT_WIN".equals(simulatedResult) && teamsStanding > 1);
+        boolean knockout = !timedOut;
+        boolean lastRound = simulationSession.roundNumber() >= TOTAL_ROUNDS;
+        boolean seriesComplete = knockout || lastRound;
+        String completionReason = "SIMULATION";
         if (seriesComplete) {
-            UUID seriesWinner = seriesWinner(scoredSession);
-            playback = replayService.withWinner(
-                    playback,
-                    seriesWinner,
-                    seriesWinner == null
-                            ? "The best-of-three match ended tied."
-                            : teamLabel(playerForUser(scoredSession, seriesWinner).teamNumber())
-                                    + " wins.");
+            if (!knockout) {
+                HpDecision decision = HpDecision.fromEndState(endState);
+                completionReason = MatchPersistenceService.COMPLETION_REASON_HP_DECISION;
+                UUID hpWinner = decision == null || decision.winningTeam() == null
+                        ? null
+                        : firstPlayerOnTeam(scoredSession, decision.winningTeam());
+                playback = replayService.withWinner(
+                        playback,
+                        hpWinner,
+                        hpWinner == null
+                                ? "Both teams finished with equal HP: a draw."
+                                : teamLabel(decision.winningTeam()) + " wins on HP.");
+            } else if (playback.winnerUserId() == null) {
+                playback = replayService.withWinner(playback, null, "The fight ended in a draw.");
+            }
             long codeHistoryStartedNanos = System.nanoTime();
             log.info(
                     "Terminal round code-history persistence started matchId={} round={}",
@@ -255,7 +272,7 @@ public final class MatchRoundResolutionService {
                     "Terminal match-result persistence started matchId={} round={}",
                     simulationSession.matchId(),
                     simulationSession.roundNumber());
-            persistenceService.completeMatch(scoredSession.matchId(), playback);
+            persistenceService.completeMatch(scoredSession.matchId(), playback, completionReason);
             log.info(
                     "Terminal match-result persistence completed matchId={} round={} elapsedMs={}",
                     simulationSession.matchId(),
@@ -404,59 +421,26 @@ public final class MatchRoundResolutionService {
         return teamNumber == 2 ? "Red Team" : "Blue Team";
     }
 
-    private UUID seriesWinner(MatchSession session) {
-        if (session.players().size() > 2) {
-            Map<Integer, List<MatchPlayer>> playersByTeam = session.players().stream()
-                    .collect(java.util.stream.Collectors.groupingBy(
-                            MatchPlayer::teamNumber,
-                            java.util.LinkedHashMap::new,
-                            java.util.stream.Collectors.toList()));
-            Map<Integer, Integer> winsByTeam = playersByTeam.entrySet().stream()
-                    .collect(java.util.stream.Collectors.toMap(
-                            Map.Entry::getKey,
-                            entry -> entry.getValue().stream()
-                                    .mapToInt(MatchPlayer::roundWins)
-                                    .max()
-                                    .orElse(0)));
-            int highestWins = winsByTeam.values().stream().mapToInt(Integer::intValue).max().orElse(0);
-            List<Integer> leadingTeams = winsByTeam.entrySet().stream()
-                    .filter(entry -> entry.getValue() == highestWins)
-                    .map(Map.Entry::getKey)
-                    .toList();
-            if (leadingTeams.size() == 1) {
-                return playersByTeam.get(leadingTeams.getFirst()).getFirst().userId();
-            }
+    private UUID firstPlayerOnTeam(MatchSession session, int teamNumber) {
+        return session.players().stream()
+                .filter(player -> player.teamNumber() == teamNumber)
+                .map(MatchPlayer::userId)
+                .findFirst()
+                .orElse(null);
+    }
 
-            Map<Integer, Double> totalsByTeam = new HashMap<>();
-            state.roundHistoryByMatchId().getOrDefault(session.matchId(), List.of()).forEach(round ->
-                    round.lossScores().forEach((userId, score) -> session.players().stream()
-                            .filter(player -> player.userId().equals(userId))
-                            .findFirst()
-                            .ifPresent(player -> totalsByTeam.merge(
-                                    player.teamNumber(), score, Double::sum))));
-            double highestTotal = leadingTeams.stream()
-                    .mapToDouble(team -> totalsByTeam.getOrDefault(team, 0.0))
-                    .max()
-                    .orElse(0.0);
-            List<Integer> tiedTeams = leadingTeams.stream()
-                    .filter(team -> Math.abs(totalsByTeam.getOrDefault(team, 0.0) - highestTotal) < 0.000001)
-                    .toList();
-            return tiedTeams.size() == 1
-                    ? playersByTeam.get(tiedTeams.getFirst()).getFirst().userId()
-                    : null;
-        }
-        MatchPlayer first = session.players().get(0);
-        MatchPlayer second = session.players().get(1);
-        if (first.roundWins() != second.roundWins()) {
-            return first.roundWins() > second.roundWins() ? first.userId() : second.userId();
-        }
-        Map<UUID, Double> totals = new HashMap<>();
-        state.roundHistoryByMatchId().getOrDefault(session.matchId(), List.of()).forEach(round ->
-                round.lossScores().forEach((userId, score) -> totals.merge(userId, score, Double::sum)));
-        double firstScore = totals.getOrDefault(first.userId(), 0.0);
-        double secondScore = totals.getOrDefault(second.userId(), 0.0);
-        if (Math.abs(firstScore - secondScore) < 0.000001) return null;
-        return firstScore > secondScore ? first.userId() : second.userId();
+    /**
+     * Every round's stored brains up to and including this one. The segment simulator replays the whole
+     * match from tick 0 with them, so the current segment is exact whatever the earlier rounds did.
+     */
+    private Map<Integer, Map<UUID, com.example.botfight.domain.submission.BotSubmission>> submissionsThroughThisRound(
+            MatchSession session,
+            Map<UUID, com.example.botfight.domain.submission.BotSubmission> currentRound) {
+        Map<Integer, Map<UUID, com.example.botfight.domain.submission.BotSubmission>> byRound = new HashMap<>();
+        state.roundHistoryByMatchId().getOrDefault(session.matchId(), List.of())
+                .forEach(round -> byRound.put(round.roundNumber(), round.submissionsByUser()));
+        byRound.put(session.roundNumber(), currentRound);
+        return byRound;
     }
 
     private MatchPlayer playerForUser(MatchSession session, UUID userId) {

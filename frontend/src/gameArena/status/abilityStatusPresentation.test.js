@@ -173,21 +173,32 @@ test("status presentation remains driven by generic charge fields", () => {
 
 test("both fighter cards render every ability slot and never fabricate empty ones", () => {
     const source = readFileSync(PANEL_PATH, "utf8");
-    assert.equal((source.match(/abilities\.map\(/g) ?? []).length, 1);
+    assert.equal((source.match(/abilities\s*\.map\(/g) ?? []).length, 1);
     assert.equal((source.match(/const HP_SEGMENTS = 10;/g) ?? []).length, 1);
     assert.doesNotMatch(source, /Array\.from\(\{ length: abilities\.length/);
     assert.doesNotMatch(source, /SLOT .*EMPTY/);
 });
 
-test("the fighter card shows a thin stamina meter under HP with an exhausted tag", () => {
+test("the fighter card shows a thin stamina meter under HP and no exhaustion state", () => {
     const panel = readFileSync(PANEL_PATH, "utf8");
     const css = readFileSync(PIXI_CSS_PATH, "utf8");
     assert.match(panel, /role="meter"[\s\S]*aria-label="Stamina"/);
     assert.match(panel, /aria-valuenow=\{stamina\}/);
-    assert.match(panel, /EXHAUSTED/);
+    assert.doesNotMatch(panel, /exhaust/i);
+    assert.doesNotMatch(css, /is-exhausted|hud-sta__tag/);
     assert.ok(panel.indexOf("<HpBar") < panel.indexOf("<StaminaBar"));
     assert.match(css, /\.hud-sta__bar span\s*\{[^}]*#a78bfa/);
-    assert.match(css, /\.hud-sta\.is-exhausted \.hud-sta__bar span\s*\{[^}]*#6b5b95/);
     assert.match(css, /\.hud-sta__bar\s*\{[^}]*height: 3px/);
     assert.match(css, /"face sta abil"/, "stacks under HP on phones");
+});
+
+test("all ability tiles share one grid in acquisition order with base tiles marked by a modifier", () => {
+    const panel = readFileSync(PANEL_PATH, "utf8");
+    const css = readFileSync(PIXI_CSS_PATH, "utf8");
+    assert.equal((panel.match(/className="hud-abilities"/g) ?? []).length, 1);
+    assert.doesNotMatch(panel, /hud-abilities--/);
+    assert.match(panel, /hud-ability--base/);
+    assert.match(css, /\.hud-abilities\s*\{[^}]*repeat\(4, minmax\(0, 1fr\)\)/);
+    assert.match(css, /\.hud-ability--base \.hud-ability__face\s*\{[^}]*#3b4652/);
+    assert.doesNotMatch(css, /Up to 9 abilities|3 base tiles/);
 });

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams, Navigate } from "react-router-dom";
 import { useAuth } from "../auth/auth-context";
+import { puzzlesVisibleTo } from "../config/featureFlags.js";
 import AppNavbar from "../components/AppNavbar.jsx";
 import BackToTopButton from "../components/BackToTopButton.jsx";
 import { AbilityTileArt, ButtonIcon, ConditionalsTileIcon, PuzzleTileIcon } from "../components/exploreTileArt.jsx";
@@ -201,7 +202,7 @@ export default function TutorialPage() {
                             <span className="hq-tile__icon hq-tile__icon--play"><ButtonIcon name="queue" /></span>
                             <span className="hq-tile__text"><strong>Play a match</strong><small>Queue ranked</small></span>
                         </Link>
-                        <Link to="/puzzles" className="hq-tile hq-tile--next">
+                        {puzzlesVisibleTo(user) && <Link to="/puzzles" className="hq-tile hq-tile--next">
                             <span className="hq-tile__icon hq-tile__icon--puzzle"><PuzzleTileIcon /></span>
                             <span className="hq-tile__text">
                                 <strong>Puzzles</strong>
@@ -216,7 +217,7 @@ export default function TutorialPage() {
                                     </span>
                                 )}
                             </span>
-                        </Link>
+                        </Link>}
                         <Link to="/ability-catalogue" className="hq-tile hq-tile--next">
                             <AbilityTileArt />
                             <span className="hq-tile__text"><strong>Abilities</strong><small>Every ability and its stats</small></span>

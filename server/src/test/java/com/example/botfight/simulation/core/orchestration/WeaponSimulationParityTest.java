@@ -34,7 +34,7 @@ class WeaponSimulationParityTest {
             new Weapon(36, "Cleave", 15, 500, 300, 700, 0),
             new Weapon(37, "Smash", 11, 300, 300, 700, 120));
 
-    private static final double START_HP = 150;
+    private static final double START_HP = 300;
     private final JsonMapper jsonMapper = new JsonMapper();
     private final DuelSimulationService service = newService();
 

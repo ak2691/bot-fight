@@ -139,7 +139,7 @@ function validateActionStep(step, label, context) {
         errors.push(`${label} uses an action that chains cannot run.`);
         return;
     }
-    if (head === ACTION_HEADS.ABILITY && present(step.continue) && !["end", "now"].includes(step.continue)) {
+    if ((head === ACTION_HEADS.ABILITY || head === ACTION_HEADS.DASH) && present(step.continue) && !["end", "now"].includes(step.continue)) {
         errors.push(`${label} continue must be end or now.`);
     }
     if (head === ACTION_HEADS.MOVEMENT || head === ACTION_HEADS.ROTATION) validateTimed(step, label, errors, true);

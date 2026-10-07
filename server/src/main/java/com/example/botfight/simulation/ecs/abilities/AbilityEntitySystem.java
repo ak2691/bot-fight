@@ -52,7 +52,7 @@ public final class AbilityEntitySystem {
         }
 
         /** Notes that the owner's ability landed on an enemy bot this tick (Time Since Hit). */
-        default void recordEnemyHit(List<F> bots, int ownerSlot, int abilityId) {}
+        default void recordEnemyHit(List<F> bots, int ownerSlot, int abilityId, String entityId) {}
 
         /** Applies a contract-owned status through the host simulation's canonical status builder. */
         default void applyStatus(List<F> bots, int ownerSlot, F target, int abilityId,
@@ -1198,7 +1198,7 @@ public final class AbilityEntitySystem {
                 default -> { }
             }
         }
-        if (landedOnEnemy) combat.recordEnemyHit(bots, source.ownerSlot(), abilityId);
+        if (landedOnEnemy) combat.recordEnemyHit(bots, source.ownerSlot(), abilityId, source.id());
     }
 
     private static AbilityContracts.Effect withDuration(AbilityContracts.Effect effect, int durationMs) {

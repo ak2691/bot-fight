@@ -63,7 +63,8 @@ public final class BotLogicContracts {
     public static final String TARGET_MODE_ANGLE = "angle";
 
     /** CANCEL is its own channel: it never competes with, or is blocked by, the ability lock. */
-    public enum ActionHead { NONE, VARIABLE, MOVEMENT, ROTATION, ABILITY, CANCEL, CHAIN }
+    /** DASH is its own channel (interim): one dash and one ability can start on the same tick. */
+    public enum ActionHead { NONE, VARIABLE, MOVEMENT, ROTATION, ABILITY, CANCEL, CHAIN, DASH }
     public enum ValueType { NUMBER, BOOLEAN }
     public enum VariableScope { NONE, SELECTABLE }
     public enum VariableSelectableType {
@@ -102,7 +103,6 @@ public final class BotLogicContracts {
         SELECTABLE_MOVING,
         BOT_ANY_ABILITY_PREPARING,
         BOT_STAMINA,
-        BOT_EXHAUSTED,
         BOT_SPRINTING,
         BOT_FAST_TURNING,
         SELECTABLE_RELATIVE_BEARING,
@@ -196,7 +196,6 @@ public final class BotLogicContracts {
             if (requiresAbility() || requiresStatusEffect()
                     || source == VariableSource.BOT_ANY_ABILITY_PREPARING
                     || source == VariableSource.BOT_STAMINA
-                    || source == VariableSource.BOT_EXHAUSTED
                     || source == VariableSource.BOT_SPRINTING
                     || source == VariableSource.BOT_FAST_TURNING) return Set.of(SelectableIdentity.BOT);
             if (source == VariableSource.SELECTABLE_FACING) return Set.of(SelectableIdentity.FACING);
@@ -466,7 +465,7 @@ public final class BotLogicContracts {
                 .anyMatch(phase -> phase.movement() != null && phase.movement().distance() != null);
         String targetMode = activation.targetMode();
         if (targetMode == null && locationTarget) targetMode = "target";
-        return new ActionContract(ActionHead.ABILITY, false, movement,
+        return new ActionContract(abilityId == MovementConfig.DASH_ABILITY_ID ? ActionHead.DASH : ActionHead.ABILITY, false, movement,
                 movement || locationTarget, locationTarget,
                 activation.phaseFacingDefault() != null, false, targetMode);
     }
@@ -527,7 +526,6 @@ public final class BotLogicContracts {
     public static String defaultSelectableForVariable(VariableContract variable) {
         if (variable != null && (variable.requiresAbility() || variable.requiresStatusEffect()
                 || variable.source() == VariableSource.BOT_STAMINA
-                || variable.source() == VariableSource.BOT_EXHAUSTED
                 || variable.source() == VariableSource.BOT_SPRINTING
                 || variable.source() == VariableSource.BOT_FAST_TURNING)) {
             return SELECTABLE_MY;
@@ -689,7 +687,6 @@ public final class BotLogicContracts {
         addBooleans(variables, VariableSource.BOT_ANY_ABILITY_PREPARING, VariableScope.SELECTABLE, "bot.anyAbilityPreparing");
         addNumbers(variables, VariableSource.BOT_STAMINA, VariableScope.SELECTABLE,
                 0, MovementConfig.STAMINA_MAX, "bot.stamina");
-        addBooleans(variables, VariableSource.BOT_EXHAUSTED, VariableScope.SELECTABLE, "bot.exhausted");
         addBooleans(variables, VariableSource.BOT_SPRINTING, VariableScope.SELECTABLE, "bot.sprinting");
         addBooleans(variables, VariableSource.BOT_FAST_TURNING, VariableScope.SELECTABLE, "bot.fastTurning");
         addNumbers(variables, VariableSource.SELECTABLE_RELATIVE_BEARING, VariableScope.SELECTABLE,

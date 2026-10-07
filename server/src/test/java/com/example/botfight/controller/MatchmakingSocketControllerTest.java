@@ -88,7 +88,6 @@ class MatchmakingSocketControllerTest {
                 any(),
                 any(),
                 eq(null),
-                any(),
                 any());
     }
 

@@ -88,7 +88,8 @@ function recordEntityHit(bots, targetIndex, source, abilityId) {
     if (!owner || owner.id === target.id || !opposingBots(owner, target)) return bots;
     const ownerIndex = bots.findIndex((bot) => bot.id === owner.id);
     const next = [...bots];
-    next[ownerIndex] = recordAbilityHit(bots[ownerIndex], abilityId);
+    // The refund belongs to the activation that spawned this entity, not to the owner's latest one.
+    next[ownerIndex] = recordAbilityHit(bots[ownerIndex], abilityId, owner.entityActivations?.[source.id] ?? owner.activationSerial ?? 0);
     return next;
 }
 

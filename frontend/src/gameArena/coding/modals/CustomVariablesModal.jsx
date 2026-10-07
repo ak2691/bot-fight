@@ -61,7 +61,7 @@ function SearchGlyph() {
 
 const placesLabel = (count) => `${count} place${count === 1 ? "" : "s"}`;
 
-export default function CustomVariablesModal({ configuration, currentValues, stateVariables = [], selectableTypes, maxSlots = MAX_CUSTOM_VARIABLE_SLOTS, idPrefix = "custom", disabled, onChange, onClose, onJumpToUse }) {
+export default function CustomVariablesModal({ resetChoices = null, onResetChoiceChange = null, configuration, currentValues, stateVariables = [], selectableTypes, maxSlots = MAX_CUSTOM_VARIABLE_SLOTS, idPrefix = "custom", disabled, onChange, onClose, onJumpToUse }) {
     const dialogRef = useRef(null);
     const searchRef = useRef(null);
     useDialogFocus(dialogRef, { onClose, lockScroll: true });
@@ -167,6 +167,11 @@ export default function CustomVariablesModal({ configuration, currentValues, sta
                     </div>
                     <div className="code-cv-rule" />
                     <div className="code-cv-field"><span>Live value</span><span className="code-cv-live"><span className="code-cv-live-dot" aria-hidden="true" /><span className="code-cv-mono">{formatLiveValue(liveValue)}</span></span></div>
+                    {resetChoices && onResetChoiceChange && <div className="code-cv-field"><span id="cv-carry-label">Next round</span>
+                        <div className="code-cv-segmented" role="group" aria-labelledby="cv-carry-label">
+                            {[[false, "Keep last value"], [true, "Reset to start"]].map(([reset, label]) => <button key={label} type="button" aria-pressed={(resetChoices[selectedVariable.id] === true) === reset} className={(resetChoices[selectedVariable.id] === true) === reset ? "is-active" : ""} onClick={() => onResetChoiceChange(selectedVariable.id, reset)}>{label}</button>)}
+                        </div>
+                    </div>}
                     <button type="button" className="code-cv-field code-cv-usedrow" disabled={uses.length === 0} onClick={() => setScreen("uses")}>
                         <span>{uses.length ? `Used in ${placesLabel(uses.length)}` : "Not used yet"}</span>
                         {uses.length > 0 && <span className="code-cv-usedrow-go" aria-hidden="true">{placesLabel(uses.length)} ›</span>}

@@ -13,7 +13,6 @@ import com.example.botfight.service.block.BlockLookup;
 import com.example.botfight.service.limits.RateLimitExceededException;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;
-import com.example.botfight.service.match.loadout.MatchAbilityGuaranteeService;
 import com.example.botfight.service.match.event.OutboundMatchmakingEvent;
 import com.example.botfight.service.match.model.MatchEntrant;
 import com.example.botfight.service.match.timing.MatchTimingPolicy;
@@ -66,7 +65,6 @@ public class CustomLobbyService {
     private final BlockLookup blockLookup;
     private final SingleUserWebSocketSessionRegistry socketRegistry;
     private final PartyService partyService;
-    private final MatchAbilityGuaranteeService guaranteeService;
     private final MatchmakingService matchmakingService;
     private final MatchParticipationCoordinator participationCoordinator;
 
@@ -85,7 +83,6 @@ public class CustomLobbyService {
             BlockLookup blockLookup,
             SingleUserWebSocketSessionRegistry socketRegistry,
             PartyService partyService,
-            MatchAbilityGuaranteeService guaranteeService,
             MatchmakingService matchmakingService) {
         this(
                 currentUserService,
@@ -97,7 +94,6 @@ public class CustomLobbyService {
                 blockLookup,
                 socketRegistry,
                 partyService,
-                guaranteeService,
                 matchmakingService,
                 new MatchParticipationCoordinator());
     }
@@ -113,7 +109,6 @@ public class CustomLobbyService {
             BlockLookup blockLookup,
             SingleUserWebSocketSessionRegistry socketRegistry,
             PartyService partyService,
-            MatchAbilityGuaranteeService guaranteeService,
             MatchmakingService matchmakingService,
             MatchParticipationCoordinator participationCoordinator) {
         this.currentUserService = currentUserService;
@@ -125,39 +120,10 @@ public class CustomLobbyService {
         this.blockLookup = blockLookup;
         this.socketRegistry = socketRegistry;
         this.partyService = partyService;
-        this.guaranteeService = guaranteeService == null
-                ? new MatchAbilityGuaranteeService()
-                : guaranteeService;
         this.matchmakingService = matchmakingService;
         this.participationCoordinator = participationCoordinator == null
                 ? new MatchParticipationCoordinator()
                 : participationCoordinator;
-    }
-
-    /** Compatibility constructor for fixtures that provide the guarantee service. */
-    public CustomLobbyService(
-            CurrentUserService currentUserService,
-            UserRepository userRepository,
-            MatchService matchService,
-            TokenBucketRateLimiter<UUID> inviteRateLimiter,
-            TokenBucketRateLimiter<UUID> teamRateLimiter,
-            Clock clock,
-            BlockLookup blockLookup,
-            SingleUserWebSocketSessionRegistry socketRegistry,
-            PartyService partyService,
-            MatchAbilityGuaranteeService guaranteeService) {
-        this(
-                currentUserService,
-                userRepository,
-                matchService,
-                inviteRateLimiter,
-                teamRateLimiter,
-                clock,
-                blockLookup,
-                socketRegistry,
-                partyService,
-                guaranteeService,
-                null);
     }
 
     /** Compatibility constructor for focused service tests. */
@@ -181,7 +147,6 @@ public class CustomLobbyService {
                 blockLookup,
                 socketRegistry,
                 partyService,
-                new MatchAbilityGuaranteeService(),
                 null);
     }
 
@@ -439,23 +404,31 @@ public class CustomLobbyService {
         return stateChange(lobby);
     }
 
-    public synchronized LobbyChange updateRoundDuration(
+    /** Sets the lobby's chess clock; a null value leaves that part of the clock as it was. */
+    public synchronized LobbyChange updateClock(
             Authentication authentication,
             UUID lobbyId,
-            Integer requestedRoundDurationSeconds) {
+            Integer requestedBaseClockSeconds,
+            Integer requestedIncrementSeconds) {
         AppUser owner = currentUserService.requireCurrentUser(authentication);
         rejectGuest(owner);
         ActiveLobby lobby = requireLobby(lobbyId);
         requireOwner(lobby, owner.getId());
         requireLobbyAvailable(lobby);
-        final int roundDurationSeconds;
+        final int baseClockSeconds;
+        final int incrementSeconds;
         try {
-            roundDurationSeconds = MatchTimingPolicy.requireCustomRoundDurationSeconds(
-                    requestedRoundDurationSeconds);
+            baseClockSeconds = requestedBaseClockSeconds == null
+                    ? lobby.baseClockSeconds
+                    : MatchTimingPolicy.requireCustomBaseClockSeconds(requestedBaseClockSeconds);
+            incrementSeconds = requestedIncrementSeconds == null
+                    ? lobby.incrementSeconds
+                    : MatchTimingPolicy.requireCustomIncrementSeconds(requestedIncrementSeconds);
         } catch (IllegalArgumentException exception) {
             throw new AuthException(exception.getMessage());
         }
-        lobby.roundDurationSeconds = roundDurationSeconds;
+        lobby.baseClockSeconds = baseClockSeconds;
+        lobby.incrementSeconds = incrementSeconds;
         return stateChange(lobby);
     }
 
@@ -489,7 +462,8 @@ public class CustomLobbyService {
     public StartedMatch start(Authentication authentication, UUID lobbyId) {
         ActiveLobby lobby;
         UUID startReservationId = UUID.randomUUID();
-        int roundDurationSeconds;
+        int baseClockSeconds;
+        int incrementSeconds;
         List<LobbyStartMember> members;
         MatchmakingService.ExternalMatchStartPreparation startPreparation;
         synchronized (this) {
@@ -518,7 +492,8 @@ public class CustomLobbyService {
             members = lobby.members.values().stream()
                     .map(member -> new LobbyStartMember(member.user, member.teamNumber))
                     .toList();
-            roundDurationSeconds = lobby.roundDurationSeconds;
+            baseClockSeconds = lobby.baseClockSeconds;
+            incrementSeconds = lobby.incrementSeconds;
             startPreparation = matchmakingService == null
                     ? null
                     : matchmakingService.prepareExternalMatchStart(
@@ -533,11 +508,10 @@ public class CustomLobbyService {
                             member.user().getUsername(),
                             member.user().getEmail(),
                             currentSocketForPrincipal(member.user().getEmail()),
-                            member.teamNumber())
-                            .withGuaranteedAbilities(guaranteeService.forUser(member.user().getId())))
+                            member.teamNumber()))
                     .toList();
             List<OutboundMatchmakingEvent> events = matchService.startTeamMatch(
-                    entrants, MatchMode.CUSTOM, roundDurationSeconds);
+                    entrants, MatchMode.CUSTOM, baseClockSeconds, incrementSeconds);
             UUID matchId = events.stream()
                     .map(OutboundMatchmakingEvent::event)
                     .map(event -> event.matchId())
@@ -766,7 +740,8 @@ public class CustomLobbyService {
                 ownerId,
                 lobby.owner == null ? null : lobby.owner.getUsername(),
                 CURRENT_LOBBY_CAPACITY,
-                lobby.roundDurationSeconds,
+                lobby.baseClockSeconds,
+                lobby.incrementSeconds,
                 lobby.members.values().stream()
                         .map(member -> new CustomLobbyMemberDTO(
                                 member.user.getId(),
@@ -908,7 +883,8 @@ public class CustomLobbyService {
         private long nextMemberOrder = 1L;
         private UUID activeMatchId;
         private UUID startReservationId;
-        private int roundDurationSeconds = MatchTimingPolicy.DEFAULT_CUSTOM_ROUND_SECONDS;
+        private int baseClockSeconds = MatchTimingPolicy.DEFAULT_CUSTOM_BASE_CLOCK_SECONDS;
+        private int incrementSeconds = MatchTimingPolicy.DEFAULT_INCREMENT_SECONDS;
 
         private ActiveLobby(UUID lobbyId, AppUser owner) {
             this.lobbyId = lobbyId;

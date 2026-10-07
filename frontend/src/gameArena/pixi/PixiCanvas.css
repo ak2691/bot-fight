@@ -166,16 +166,6 @@
     font-variant-numeric: tabular-nums;
 }
 
-.hud-sta__tag {
-    border-radius: 3px;
-    padding: 0 .3rem;
-    background: rgba(239, 68, 68, .18);
-    color: #ef4444;
-    font-size: 10px;
-    font-style: normal;
-    letter-spacing: .04em;
-}
-
 .hud-sta__bar {
     height: 3px;
     overflow: hidden;
@@ -189,10 +179,9 @@
     background-color: #a78bfa;
 }
 
-.hud-sta.is-exhausted .hud-sta__bar span { background-color: #6b5b95; }
 
-/* Up to 9 abilities: 3 base tiles first (secondary), then up to 6 loadout tiles.
-   Desktop cards use 3 columns: base in row 1, loadout in rows 2-3. */
+/* Up to 8 abilities in one grid, in acquisition order (base tiles first, muted).
+   Desktop cards use 4 columns x 2 rows. */
 .hud-fighter__abilities {
     display: flex;
     flex-direction: column;
@@ -201,13 +190,13 @@
 
 .hud-abilities {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 5px;
 }
 
 /* Desktop only: the standard (base) abilities read as secondary so drafted abilities stand out. */
-.hud-abilities--base .hud-ability { opacity: .8; }
-.hud-abilities--base .hud-ability__face { border-color: #3b4652; }
+.hud-ability--base { opacity: .8; }
+.hud-ability--base .hud-ability__face { border-color: #3b4652; }
 
 /* Desktop: tiles fill the card width. The strip layouts below restore fixed --tile sizes. */
 .hud-abilities { --tile: 2.75rem; }
@@ -437,8 +426,8 @@
         aspect-ratio: auto;
     }
 
-    .hud-abilities--base .hud-ability { opacity: 1; }
-    .hud-abilities--base .hud-ability__face { border-color: var(--hud-ability-ring); }
+    .hud-ability--base { opacity: 1; }
+    .hud-ability--base .hud-ability__face { border-color: var(--hud-ability-ring); }
     .hud-ability__face { border-width: 2px; border-radius: 10px; }
     .ability-status-icon-button { width: auto; border-radius: 10px; }
     .hud-ability__icon { padding: 3px; }
@@ -474,12 +463,6 @@
     .hud-fighter__abilities {
         flex-direction: column;
         align-items: flex-start;
-        gap: .25rem;
-    }
-
-    .hud-abilities {
-        display: grid;
-        grid-template-columns: repeat(3, var(--tile));
         gap: .25rem;
     }
 

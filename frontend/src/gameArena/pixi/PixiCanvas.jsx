@@ -1990,6 +1990,19 @@ function drawClosingZone(graphics, shape) {
     const safeRadius = Math.max(0, Number(shape.safeRadius ?? Number(shape.size ?? 0) / 2));
     const arenaRadius = Math.hypot(ARENA_WIDTH_UNITS, ARENA_HEIGHT_UNITS) / 2;
     graphics.clear();
+    if (shape.warningOnly) {
+        // The next zone ring: a dashed outline, no fill.
+        const dashCount = 72;
+        for (let index = 0; index < dashCount; index += 2) {
+            const start = index / dashCount * Math.PI * 2;
+            const end = (index + 1) / dashCount * Math.PI * 2;
+            graphics
+                .moveTo(Math.cos(start) * safeRadius, Math.sin(start) * safeRadius)
+                .arc(0, 0, safeRadius, start, end)
+                .stroke({ color: COLORS.closingZone, alpha: 0.9, width: 3 });
+        }
+        return;
+    }
     if (safeRadius <= 0.5) {
         graphics.rect(-ARENA_WIDTH_UNITS / 2, -ARENA_HEIGHT_UNITS / 2, ARENA_WIDTH_UNITS, ARENA_HEIGHT_UNITS)
             .fill({ color: COLORS.closingZone, alpha: 0.28 });

@@ -2,7 +2,6 @@ import { CODE_EDITOR_GRAPH_VERSION, sanitizeCodeEditorGraph } from "./botlogic/g
 import { normalizeAbilityStrategyConfiguration } from "./botlogic/code/BotCode.js";
 import { upgradeStoredStrategyCoordinates } from "./persistence/arenaStrategyStorage.js";
 import {
-    DEFAULT_BOT_LOADOUT,
     decodeBotLoadout,
     decodeSandboxLoadout,
     encodeBotLoadout,
@@ -29,6 +28,8 @@ import {
 export const PRACTICE_ROOM_STORAGE_KEY = "arena-practice-room-v1";
 export const PRACTICE_ROOM_STORAGE_VERSION = 3;
 const MAX_PRACTICE_ROOM_BYTES = 750_000;
+/** Practice and sandbox bots start with Slash (1) equipped now that Basic Strike left the base kit. */
+export const DEFAULT_PRACTICE_LOADOUT = encodeSandboxLoadout({ abilities: [1] });
 
 function defaultPracticeBot(teamNumber, slot) {
     const isPlayer = Number(teamNumber) === PUZZLE_PLAYER_TEAM;
@@ -37,7 +38,7 @@ function defaultPracticeBot(teamNumber, slot) {
         role: puzzleBotRole(teamNumber),
         teamNumber,
         slot,
-        loadout: encodeBotLoadout(DEFAULT_BOT_LOADOUT),
+        loadout: DEFAULT_PRACTICE_LOADOUT,
         startX: start.x,
         startY: start.y,
         rotation: start.rotation,
@@ -69,7 +70,7 @@ export function normalizePracticeLoadout(value) {
     if (typeof value === "string" && value.startsWith("custom:")) {
         return encodeBotLoadout(decodeBotLoadout(value));
     }
-    return encodeBotLoadout(DEFAULT_BOT_LOADOUT);
+    return DEFAULT_PRACTICE_LOADOUT;
 }
 
 function boundedNumber(value, fallback, min, max) {

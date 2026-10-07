@@ -15,7 +15,6 @@ import {
 import { monotonicEpochNowMs } from "./networkDelayEstimator.js";
 import { relativeLocalDeadlineMs } from "./relativeMatchTiming.js";
 import { apiUrl } from "../config/api";
-import { ensureCsrfHeaders } from "../security/csrf";
 import { serverErrorMessage } from "../auth/serverError.js";
 import {
     forceDisconnectActiveMatchmakingClient,
@@ -40,18 +39,6 @@ const INITIAL_ACTIVE_MATCH_STATUS = {
     matchId: null,
     error: null,
 };
-const EMPTY_QUEUE_GUARANTEES = Object.freeze([null, null, null]);
-
-function normalizeQueueGuarantees(values) {
-    const source = Array.isArray(values) ? values : EMPTY_QUEUE_GUARANTEES;
-    return [0, 1, 2].map((index) => {
-        const value = source[index];
-        if (value == null || value === "") return null;
-        const numeric = Number(value);
-        return Number.isInteger(numeric) ? numeric : null;
-    });
-}
-
 function secondsRemaining(deadlineMs, nowMs = monotonicEpochNowMs()) {
     if (deadlineMs == null) return 0;
     return Math.max(0, Math.ceil((Number(deadlineMs) - Number(nowMs)) / 1000));
@@ -119,10 +106,6 @@ export default function MatchmakingProvider({ children }) {
     const activeMatchSnapshotRef = useRef(null);
     const [isQueueing, setIsQueueing] = useState(false);
     const [queueMode, setQueueMode] = useState("ONES");
-    const queueGuaranteesRef = useRef([...EMPTY_QUEUE_GUARANTEES]);
-    const queueGuaranteeEditVersionRef = useRef(0);
-    const queueGuaranteeSaveChainRef = useRef(Promise.resolve(true));
-    const [queueGuarantees, setQueueGuarantees] = useState(() => [...EMPTY_QUEUE_GUARANTEES]);
     const [queueStartedAt, setQueueStartedAt] = useState(null);
     const [queueElapsed, setQueueElapsed] = useState(0);
     const [queueError, setQueueError] = useState(null);
@@ -147,67 +130,6 @@ export default function MatchmakingProvider({ children }) {
 
     isQueueingRef.current = isQueueing;
     queueModeRef.current = queueMode;
-
-    const persistQueueGuarantees = useCallback(async (values) => {
-        const normalized = normalizeQueueGuarantees(values);
-        const save = queueGuaranteeSaveChainRef.current.then(async () => {
-            try {
-                const response = await fetch(apiUrl("/api/match-preferences/ability-guarantees"), {
-                    method: "POST",
-                    credentials: "include",
-                    headers: {
-                        "Content-Type": "application/json",
-                        ...(await ensureCsrfHeaders("POST")),
-                    },
-                    body: JSON.stringify({ guaranteedAbilityIds: normalized }),
-                });
-                return response.ok;
-            } catch {
-                // Ranked queue still carries the current player's choices in
-                // its join payload; this is a best-effort preference sync for
-                // the other match entry points.
-                return false;
-            }
-        });
-        queueGuaranteeSaveChainRef.current = save;
-        return save;
-    }, []);
-
-    const waitForQueueGuarantees = useCallback(
-        () => queueGuaranteeSaveChainRef.current,
-        [],
-    );
-
-    useEffect(() => {
-        const requestVersion = queueGuaranteeEditVersionRef.current;
-        if (!isAuthenticated) {
-            queueGuaranteeEditVersionRef.current += 1;
-            queueGuaranteeSaveChainRef.current = Promise.resolve(true);
-            queueGuaranteesRef.current = [...EMPTY_QUEUE_GUARANTEES];
-            setQueueGuarantees([...EMPTY_QUEUE_GUARANTEES]);
-            return undefined;
-        }
-
-        let disposed = false;
-        fetch(apiUrl("/api/match-preferences/ability-guarantees"), {
-            credentials: "include",
-            cache: "no-store",
-        })
-            .then((response) => response.ok ? response.json().catch(() => null) : null)
-            .then((body) => {
-                if (disposed || requestVersion !== queueGuaranteeEditVersionRef.current) return;
-                const normalized = normalizeQueueGuarantees(body?.guaranteedAbilityIds);
-                queueGuaranteesRef.current = normalized;
-                setQueueGuarantees(normalized);
-            })
-            .catch(() => {
-                // An unavailable preference snapshot leaves the three slots
-                // empty and does not prevent matchmaking.
-            });
-        return () => {
-            disposed = true;
-        };
-    }, [isAuthenticated, user?.id]);
 
     useEffect(() => {
         if (!queueError || connectionStatus === "SESSION_LIMIT_REACHED") return undefined;
@@ -597,27 +519,9 @@ export default function MatchmakingProvider({ children }) {
         clearPendingAcceptance();
     }, [clearPendingAcceptance]);
 
-    const updateQueueGuarantee = useCallback((round, abilityId) => {
-        const index = Number(round) - 1;
-        if (!Number.isInteger(index) || index < 0 || index >= EMPTY_QUEUE_GUARANTEES.length) return;
-        const next = [...queueGuaranteesRef.current];
-        next[index] = abilityId == null || abilityId === "" ? null : Number(abilityId);
-        queueGuaranteeEditVersionRef.current += 1;
-        queueGuaranteesRef.current = next;
-        setQueueGuarantees(next);
-        return persistQueueGuarantees(next);
-    }, [persistQueueGuarantees]);
-
-    const startQueue = useCallback(async (
-        mode = "ONES",
-        guaranteedAbilityIds = queueGuaranteesRef.current,
-    ) => {
+    const startQueue = useCallback(async (mode = "ONES") => {
         if (queueStartInFlightRef.current) return;
         const selectedMode = String(mode ?? "ONES").trim().toUpperCase() || "ONES";
-        const normalizedGuarantees = normalizeQueueGuarantees(guaranteedAbilityIds);
-        if (isAuthenticated) void persistQueueGuarantees(normalizedGuarantees);
-        queueGuaranteesRef.current = normalizedGuarantees;
-        setQueueGuarantees(normalizedGuarantees);
         if (party?.members?.some((member) => member.online === false)) {
             setQueueError("Every party member must be online before the queue can start.");
             return;
@@ -682,9 +586,7 @@ export default function MatchmakingProvider({ children }) {
         markActiveMatch,
         navigate,
         party,
-        persistQueueGuarantees,
         queueConnectionEnabled,
-        isAuthenticated,
         verifyActiveMatchForQueue,
     ]);
 
@@ -865,9 +767,7 @@ export default function MatchmakingProvider({ children }) {
                     if (queueStartRequestedRef.current) {
                         queueStartRequestedRef.current = false;
                         queueEntryKnownRef.current = true;
-                        client.joinQueue(
-                            queueModeRef.current,
-                            queueGuaranteesRef.current);
+                        client.joinQueue(queueModeRef.current);
                         return;
                     }
                     if (queueEntryKnownRef.current) {
@@ -891,9 +791,7 @@ export default function MatchmakingProvider({ children }) {
                     if (queueStartRequestedRef.current) {
                         queueStartRequestedRef.current = false;
                         queueEntryKnownRef.current = true;
-                        client.joinQueue(
-                            queueModeRef.current,
-                            queueGuaranteesRef.current);
+                        client.joinQueue(queueModeRef.current);
                         return;
                     }
                     const hadQueue = isQueueingRef.current || queueEntryKnownRef.current;
@@ -1079,7 +977,6 @@ export default function MatchmakingProvider({ children }) {
         queueElapsed,
         queueError,
         queueReconnectRemaining,
-        queueGuarantees,
         connectionStatus,
         party,
         partyLoading,
@@ -1091,8 +988,6 @@ export default function MatchmakingProvider({ children }) {
         markActiveMatch,
         clearActiveMatch,
         startQueue,
-        updateQueueGuarantee,
-        waitForQueueGuarantees,
         cancelQueue,
     }), [
         activeMatchStatus,
@@ -1106,7 +1001,6 @@ export default function MatchmakingProvider({ children }) {
         queueElapsed,
         queueError,
         queueReconnectRemaining,
-        queueGuarantees,
         party,
         partyError,
         partyLoading,
@@ -1114,8 +1008,6 @@ export default function MatchmakingProvider({ children }) {
         sendCustomLobbyChat,
         refreshActiveMatchStatus,
         startQueue,
-        updateQueueGuarantee,
-        waitForQueueGuarantees,
     ]);
 
     return (

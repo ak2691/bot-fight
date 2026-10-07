@@ -12,7 +12,8 @@ export function selectStrategyBlock(configuration, payload, runtime) {
 function executionHeadFor(action) {
     return action.head === ACTION_HEADS.MOVEMENT ? ACTION_HEADS.MOVEMENT
         : action.head === ACTION_HEADS.ROTATION ? ACTION_HEADS.ROTATION
-            : action.head === ACTION_HEADS.CANCEL ? ACTION_HEADS.CANCEL : ACTION_HEADS.ABILITY;
+            : action.head === ACTION_HEADS.CANCEL ? ACTION_HEADS.CANCEL
+                : action.head === ACTION_HEADS.DASH ? ACTION_HEADS.DASH : ACTION_HEADS.ABILITY;
 }
 
 function placeInPlan(plan, block, action) {

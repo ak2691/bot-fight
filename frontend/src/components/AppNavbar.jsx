@@ -8,6 +8,7 @@ import PartyPopover from "./PartyPopover.jsx";
 import PlayerAvatar from "./PlayerAvatar.jsx";
 import { Icon } from "./SocialBits.jsx";
 import { formatRelativeTime } from "./relativeTime.js";
+import { puzzlesVisibleTo } from "../config/featureFlags.js";
 import { loadCachedProfileStats } from "../pages/profile/profileStatsCache.js";
 import "./navbar.css";
 
@@ -88,12 +89,16 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
     // Cached by the home and profile pages; read on each render so it follows the latest snapshot.
     const oneVsOneElo = account && !isGuest ? loadCachedProfileStats(profileCacheKey)?.ones?.elo ?? null : null;
     const [findPlayerQuery, setFindPlayerQuery] = useState("");
-    const navLinks = [
+    const puzzlesVisible = puzzlesVisibleTo(user);
+    const allNavLinks = [
         { id: "play", label: "Play", to: "/home", active: pathname === "/home" || currentPage === "home" },
         { id: "puzzles", label: "Puzzles", to: "/puzzles", active: pathname.startsWith("/puzzles") || pathname.startsWith("/admin/puzzles") },
         { id: "catalogue", label: "Catalogue", to: "/ability-catalogue", active: pathname.startsWith("/ability-catalogue") || pathname.startsWith("/conditionals") },
         { id: "tutorial", label: "Tutorial", to: "/tutorial", active: pathname.startsWith("/tutorial") },
     ];
+    // Public puzzles are hidden for non-admins for now; see config/featureFlags.js.
+    const navLinks = allNavLinks.filter((link) => link.id !== "puzzles" || puzzlesVisible);
+    const linkActive = (id) => allNavLinks.find((link) => link.id === id)?.active ?? false;
     const profileActive = pathname.startsWith("/profile") || currentPage === "profile";
 
     // Sticky page controls (e.g. the catalogue search) sit below the navbar while it is showing.
@@ -229,12 +234,12 @@ export default function AppNavbar({ account = false, currentPage = null, onHome 
         {account && (
             <nav className="nb-tabbar" aria-label="Primary">
                 {[
-                    { id: "play", label: "Play", to: "/home", active: navLinks[0].active, icon: <path d="m14.5 4 5.5 5.5M4 20l8-8m-2-8-6 6 2 2 6-6Zm4 16 6-6-2-2-6 6Z" /> },
-                    { id: "puzzles", label: "Puzzles", to: "/puzzles", active: navLinks[1].active, icon: <path d="M10 4a2 2 0 1 1 4 0v1h3a1 1 0 0 1 1 1v3h-1a2 2 0 1 0 0 4h1v3a1 1 0 0 1-1 1h-3v-1a2 2 0 1 0-4 0v1H7a1 1 0 0 1-1-1v-3h1a2 2 0 1 0 0-4H6V6a1 1 0 0 1 1-1h3Z" /> },
-                    { id: "catalogue", label: "Catalogue", to: "/ability-catalogue", active: navLinks[2].active, icon: <path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3Zm0 13a3 3 0 0 1 3-3h11" /> },
-                    { id: "tutorial", label: "Tutorial", to: "/tutorial", active: navLinks[3].active, icon: <path d="M12 3 2 8l10 5 10-5Zm-6 7.5V15c0 1.5 2.7 3 6 3s6-1.5 6-3v-4.5" /> },
+                    { id: "play", label: "Play", to: "/home", active: linkActive("play"), icon: <path d="m14.5 4 5.5 5.5M4 20l8-8m-2-8-6 6 2 2 6-6Zm4 16 6-6-2-2-6 6Z" /> },
+                    { id: "puzzles", label: "Puzzles", to: "/puzzles", active: linkActive("puzzles"), icon: <path d="M10 4a2 2 0 1 1 4 0v1h3a1 1 0 0 1 1 1v3h-1a2 2 0 1 0 0 4h1v3a1 1 0 0 1-1 1h-3v-1a2 2 0 1 0-4 0v1H7a1 1 0 0 1-1-1v-3h1a2 2 0 1 0 0-4H6V6a1 1 0 0 1 1-1h3Z" /> },
+                    { id: "catalogue", label: "Catalogue", to: "/ability-catalogue", active: linkActive("catalogue"), icon: <path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3Zm0 13a3 3 0 0 1 3-3h11" /> },
+                    { id: "tutorial", label: "Tutorial", to: "/tutorial", active: linkActive("tutorial"), icon: <path d="M12 3 2 8l10 5 10-5Zm-6 7.5V15c0 1.5 2.7 3 6 3s6-1.5 6-3v-4.5" /> },
                     { id: "profile", label: "Profile", to: "/profile", active: profileActive, icon: <><circle cx="12" cy="8" r="3.25" /><path d="M5.75 19c.7-3.45 2.78-5.25 6.25-5.25s5.55 1.8 6.25 5.25" /></> },
-                ].map((tab) => (
+                ].filter((tab) => tab.id !== "puzzles" || puzzlesVisible).map((tab) => (
                     <Link key={tab.id} to={tab.to} className={`nb-tab ${tab.active ? "is-active" : ""}`} aria-current={tab.active ? "page" : undefined}>
                         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{tab.icon}</svg>
                         <span>{tab.label}</span>

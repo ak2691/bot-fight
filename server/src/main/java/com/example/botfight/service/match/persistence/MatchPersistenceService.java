@@ -45,6 +45,8 @@ import tools.jackson.databind.json.JsonMapper;
 public class MatchPersistenceService {
 
     private static final String COMPLETION_REASON_SIMULATION = "SIMULATION";
+    /** The match went the full six rounds and the higher team HP decided it (or it was a tie). */
+    public static final String COMPLETION_REASON_HP_DECISION = "HP_DECISION";
     public static final String COMPLETION_REASON_SERVER_RESTART = "SERVER_RESTART";
     public static final String COMPLETION_REASON_SIMULATION_FAILURE = "SIMULATION_FAILURE";
     private static final String TIMEOUT_CLIENT_BUILD_VERSION = "server-building-timeout-v1";
@@ -358,6 +360,8 @@ public class MatchPersistenceService {
                             row.setBrainPayload(submission.getBrainPayload() == null
                                     ? "{}"
                                     : submission.getBrainPayload());
+                            row.setVariableResets(variableResetsJson(submission));
+                            row.setTimeoutFallback(submission.getTimeoutFallback());
                             row.setSubmittedAt(submission.getSubmittedAt() == null
                                     ? persistedAt
                                     : submission.getSubmittedAt());
@@ -373,15 +377,32 @@ public class MatchPersistenceService {
         completeMatch(
                 matchId,
                 playback.winnerUserId(),
-                "FAILED".equals(playback.status()) || "ERROR".equals(playback.result()));
+                "FAILED".equals(playback.status()) || "ERROR".equals(playback.result()),
+                COMPLETION_REASON_SIMULATION);
     }
 
     @Transactional
     public void completeMatch(UUID matchId, MatchReplayDTO playback) {
+        completeMatch(matchId, playback, COMPLETION_REASON_SIMULATION);
+    }
+
+    /** Completes a match with an explicit reason, such as {@link #COMPLETION_REASON_HP_DECISION}. */
+    @Transactional
+    public void completeMatch(UUID matchId, MatchReplayDTO playback, String completionReason) {
         completeMatch(
                 matchId,
                 playback.winnerUserId(),
-                "ERROR".equals(playback.result()));
+                "ERROR".equals(playback.result()),
+                completionReason);
+    }
+
+    private String variableResetsJson(BotSubmission submission) {
+        try {
+            return jsonMapper.writeValueAsString(
+                    submission.getVariableResets() == null ? List.of() : submission.getVariableResets());
+        } catch (Exception exception) {
+            return "[]";
+        }
     }
 
     /**
@@ -488,14 +509,14 @@ public class MatchPersistenceService {
                 });
     }
 
-    private void completeMatch(UUID matchId, UUID winnerUserId, boolean failed) {
+    private void completeMatch(UUID matchId, UUID winnerUserId, boolean failed, String completionReason) {
         Match match = runningMatch(matchId);
         if (match == null) return;
         List<MatchParticipant> participants =
                 matchParticipantRepository.findByMatchId(matchId);
 
         match.setStatus(failed ? MatchStatus.FAILED : MatchStatus.COMPLETED);
-        match.setCompletionReason(COMPLETION_REASON_SIMULATION);
+        match.setCompletionReason(completionReason);
         Instant completedAt = Instant.now(clock);
         match.setCompletedAt(completedAt);
 

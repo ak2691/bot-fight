@@ -7,38 +7,53 @@ import com.example.botfight.domain.match.MatchMode;
 import org.junit.jupiter.api.Test;
 
 class MatchTimingPolicyTest {
-
     @Test
-    void usesTheRankedDurationsAndIndependentCustomDefault() {
-        assertThat(MatchTimingPolicy.LOADOUT_SELECTION_SECONDS).isEqualTo(60);
-        assertThat(MatchTimingPolicy.SUBMISSION_GRACE_SECONDS).isEqualTo(2);
-        assertThat(MatchTimingPolicy.MIN_CUSTOM_ROUND_SECONDS).isEqualTo(30);
-        assertThat(MatchTimingPolicy.MAX_CUSTOM_ROUND_SECONDS).isEqualTo(600);
-        assertThat(MatchTimingPolicy.defaultRoundDurationSeconds(MatchMode.ONES))
-                .isEqualTo(180);
-        assertThat(MatchTimingPolicy.defaultRoundDurationSeconds(MatchMode.TWOS))
-                .isEqualTo(300);
-        assertThat(MatchTimingPolicy.defaultRoundDurationSeconds(MatchMode.CUSTOM))
-                .isEqualTo(300);
-        assertThat(MatchTimingPolicy.resolveRoundDurationSeconds(MatchMode.ONES, 600))
-                .isEqualTo(180);
-        assertThat(MatchTimingPolicy.resolveRoundDurationSeconds(MatchMode.TWOS, 30))
-                .isEqualTo(300);
-        assertThat(MatchTimingPolicy.resolveRoundDurationSeconds(MatchMode.CUSTOM, null))
-                .isEqualTo(300);
-        assertThat(MatchTimingPolicy.resolveRoundDurationSeconds(MatchMode.CUSTOM, 420))
-                .isEqualTo(420);
+    void rankedModesUseTheirFixedBaseClockAndIncrement() {
+        assertThat(MatchTimingPolicy.ONES_BASE_CLOCK_SECONDS).isEqualTo(300);
+        assertThat(MatchTimingPolicy.TWOS_BASE_CLOCK_SECONDS).isEqualTo(420);
+        assertThat(MatchTimingPolicy.DEFAULT_INCREMENT_SECONDS).isEqualTo(30);
+        assertThat(MatchTimingPolicy.defaultBaseClockSeconds(MatchMode.ONES)).isEqualTo(300);
+        assertThat(MatchTimingPolicy.defaultBaseClockSeconds(MatchMode.TWOS)).isEqualTo(420);
+        assertThat(MatchTimingPolicy.defaultBaseClockSeconds(MatchMode.CUSTOM)).isEqualTo(300);
+        // A ranked match ignores any requested clock.
+        assertThat(MatchTimingPolicy.resolveBaseClockSeconds(MatchMode.ONES, 600)).isEqualTo(300);
+        assertThat(MatchTimingPolicy.resolveBaseClockSeconds(MatchMode.TWOS, 30)).isEqualTo(420);
+        assertThat(MatchTimingPolicy.resolveIncrementSeconds(MatchMode.TWOS, 60)).isEqualTo(30);
     }
 
     @Test
-    void acceptsTheCustomBoundsAndRejectsValuesOutsideThem() {
-        assertThat(MatchTimingPolicy.requireCustomRoundDurationSeconds(30)).isEqualTo(30);
-        assertThat(MatchTimingPolicy.requireCustomRoundDurationSeconds(600)).isEqualTo(600);
-        assertThatThrownBy(() -> MatchTimingPolicy.requireCustomRoundDurationSeconds(29))
+    void picksSegmentsAndRoundsFollowTheTimedRoundsPolicy() {
+        assertThat(MatchTimingPolicy.pickSeconds(1)).isEqualTo(30);
+        assertThat(MatchTimingPolicy.pickSeconds(2)).isEqualTo(20);
+        assertThat(MatchTimingPolicy.pickSeconds(6)).isEqualTo(20);
+        assertThat(MatchTimingPolicy.SEGMENT_SECONDS).isEqualTo(20);
+        assertThat(MatchTimingPolicy.MAX_ROUNDS).isEqualTo(6);
+        assertThat(MatchTimingPolicy.SUBMISSION_GRACE_SECONDS).isEqualTo(2);
+    }
+
+    @Test
+    void customLobbiesChooseABoundedBaseClockAndIncrement() {
+        assertThat(MatchTimingPolicy.resolveBaseClockSeconds(MatchMode.CUSTOM, null)).isEqualTo(300);
+        assertThat(MatchTimingPolicy.resolveBaseClockSeconds(MatchMode.CUSTOM, 420)).isEqualTo(420);
+        assertThat(MatchTimingPolicy.resolveIncrementSeconds(MatchMode.CUSTOM, null)).isEqualTo(30);
+        assertThat(MatchTimingPolicy.resolveIncrementSeconds(MatchMode.CUSTOM, 0)).isZero();
+
+        assertThat(MatchTimingPolicy.requireCustomBaseClockSeconds(30)).isEqualTo(30);
+        assertThat(MatchTimingPolicy.requireCustomBaseClockSeconds(600)).isEqualTo(600);
+        assertThatThrownBy(() -> MatchTimingPolicy.requireCustomBaseClockSeconds(29))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> MatchTimingPolicy.requireCustomRoundDurationSeconds(601))
+        assertThatThrownBy(() -> MatchTimingPolicy.requireCustomBaseClockSeconds(601))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> MatchTimingPolicy.requireCustomRoundDurationSeconds(null))
+        assertThatThrownBy(() -> MatchTimingPolicy.requireCustomBaseClockSeconds(null))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        assertThat(MatchTimingPolicy.requireCustomIncrementSeconds(0)).isZero();
+        assertThat(MatchTimingPolicy.requireCustomIncrementSeconds(60)).isEqualTo(60);
+        assertThatThrownBy(() -> MatchTimingPolicy.requireCustomIncrementSeconds(-1))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> MatchTimingPolicy.requireCustomIncrementSeconds(61))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> MatchTimingPolicy.requireCustomIncrementSeconds(null))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 }

@@ -59,11 +59,65 @@ public class BotStateService {
         bot.spawnY = bot.y;
         bot.movementStartX = bot.x;
         bot.movementStartY = bot.y;
-        bot.abilities.stream()
-                .filter(abilityId -> Abilities.definition(abilityId).charges() > 0)
-                .filter(abilityId -> Abilities.definition(abilityId).resourceModel() != ResourceModel.FIXED)
-                .forEach(abilityId -> bot.abilityCharges.put(abilityId, Abilities.maxCharges(abilityId, bot.maxHp)));
+        bot.abilities.forEach(abilityId -> initializeAbilityResources(bot, abilityId));
         return bot;
+    }
+
+    /** Gives an ability its starting charges. Cooldowns need no entry: an absent cooldown is ready. */
+    private void initializeAbilityResources(DuelSimulationService.Bot bot, int abilityId) {
+        if (Abilities.definition(abilityId).charges() > 0
+                && Abilities.definition(abilityId).resourceModel() != ResourceModel.FIXED) {
+            bot.abilityCharges.put(abilityId, Abilities.maxCharges(abilityId, bot.maxHp));
+        }
+    }
+
+    /**
+     * Swaps in the next segment's brain at a timed-rounds boundary. Only the brain, the loadout and the
+     * custom variables change: an ability the bot did not have starts ready with full charges, while
+     * the cooldowns, charges, wind-up, stamina, position, HP and statuses already in play carry over.
+     * A running action chain ends, because the new brain may not contain it.
+     */
+    public void applyBrainSchedule(DuelSimulationService.Bot bot, JsonNode brain, java.util.Collection<String> variableResets) {
+        bot.brain = brain;
+        bot.combatLoadout = "custom";
+        reconcileCustomVariables(bot, variableResets == null ? Set.of() : new HashSet<>(variableResets));
+        Set<Integer> next = botCodeService.readAbilities(brain);
+        for (int abilityId : next) {
+            if (bot.abilities.contains(abilityId)) continue;
+            bot.abilityCooldowns.remove(abilityId);
+            bot.abilityPendingCooldownMs.remove(abilityId);
+            bot.abilityActiveMs.remove(abilityId);
+            bot.abilityCharges.remove(abilityId);
+            bot.abilityRechargeMs.remove(abilityId);
+            initializeAbilityResources(bot, abilityId);
+        }
+        bot.abilities = next;
+        bot.chainStack.clear();
+    }
+
+    /**
+     * A variable that keeps its name and type keeps its value unless it is reset; a new, reset or
+     * retyped variable takes its declared default; a variable the brain no longer declares is dropped.
+     */
+    private void reconcileCustomVariables(DuelSimulationService.Bot bot, Set<String> resets) {
+        Map<String, Object> previousValues = new HashMap<>(bot.customVariables);
+        Map<String, String> previousTypes = new HashMap<>(bot.customVariableTypes);
+        bot.customVariables.clear();
+        bot.customVariableTypes.clear();
+        initializeCustomVariables(bot);
+        JsonNode variables = bot.brain != null ? bot.brain.get("customVariables") : null;
+        if (variables == null || !variables.isArray()) return;
+        int slots = 0;
+        for (JsonNode variable : variables) {
+            slots += 1;
+            if (slots > 100) break;
+            String id = variable.path("id").asText("");
+            String type = bot.customVariableTypes.get(id);
+            if (type == null || !type.equals(previousTypes.get(id))) continue;
+            if (resets.contains(id) || resets.contains(variable.path("name").asText(null))) continue;
+            Object kept = previousValues.get(id);
+            if (kept != null) bot.customVariables.put(id, kept);
+        }
     }
 
     public void startTick(DuelSimulationService.Bot bot) {
@@ -224,12 +278,27 @@ public class BotStateService {
         bot.damageTakenLastTick = bot.damageTakenThisTick;
         bot.hpNetChangeLastTick = bot.hp - bot.tickStartHp;
         settleAbilityHits(bot);
+        // Banked hit refunds are paid after the tick's spends and regeneration; the pause is untouched.
+        com.example.botfight.simulation.core.state.StaminaSystem.refund(bot, bot.pendingStaminaRefund);
+        bot.pendingStaminaRefund = 0;
     }
 
     /**
      * Ends a tick for the hit ledger: abilities that hit this tick start at one step
      * (so the next tick's logic reads 0.1 s) and every older record ages by one step.
      */
+    /**
+     * Notes that {@code owner}'s ability landed on an enemy bot this tick (Time Since Hit). The same hit
+     * earns the hit stamina refund, once per activation: {@code activationSerial} identifies the activation
+     * that landed it, so multi-hit, piercing and damage-over-time effects pay out once.
+     */
+    public static void recordEnemyHit(DuelSimulationService.Bot owner, int abilityId, int activationSerial) {
+        owner.abilityHitsThisTick.add(abilityId);
+        if (owner.refundedActivations.add(activationSerial)) {
+            owner.pendingStaminaRefund += com.example.botfight.simulation.gameconfig.MovementConfig.HIT_STAMINA_REFUND;
+        }
+    }
+
     private static void settleAbilityHits(DuelSimulationService.Bot bot) {
         bot.abilityLastHitAgeMs.replaceAll((id, ageMs) ->
                 (int) Math.min(NEVER_HIT_MS, (long) ageMs + STEP_MS));

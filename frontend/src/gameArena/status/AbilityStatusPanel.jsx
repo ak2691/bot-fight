@@ -4,7 +4,7 @@ import { AbilityModal } from "../../pages/catalogue/AbilityCataloguePage.jsx";
 import { STANDARD_ABILITY_IDS, abilityDefinition } from "../loadout/BotLoadout.js";
 import { BASE_BOT_HP } from "../modelPayloads/arenaConstants.js";
 import { MOVEMENT_CONFIG } from "../gameconfig/MovementConfig.js";
-import { botExhausted, botStamina } from "../gameconfig/StaminaSystem.js";
+import { botStamina } from "../gameconfig/StaminaSystem.js";
 import { formatHp } from "../gameconfig/visualState.js";
 import { botColorRole } from "../pixi/pixiVisualState.js";
 import { abilityChargeCountFor, abilityRingColorFor, abilityStatusFor, fallbackAbilityText, formatAbilityTimer, statusParticipantNumber } from "./abilityStatusPresentation.js";
@@ -24,10 +24,10 @@ export default function AbilityStatusPanel({ bot, abilityInfoEnabled = false, st
     const participantNumber = showParticipantNumbers ? statusParticipantNumber(bot, statusRoster) : null;
     const accessibleBotName = `${botName}${isCurrentUser ? " (Me)" : participantNumber != null ? ` (${participantNumber})` : ""}`;
     const teamTag = red ? "RED" : "BLUE";
-    // Base abilities lead in their own group; loadout abilities follow. A group with no abilities renders nothing.
-    const indexedAbilities = abilities.map((abilityId, index) => ({ abilityId, index }));
-    const baseAbilities = indexedAbilities.filter(({ abilityId }) => BASE_ABILITY_IDS.has(abilityId));
-    const loadoutAbilities = indexedAbilities.filter(({ abilityId }) => !BASE_ABILITY_IDS.has(abilityId));
+    // One grid in acquisition order: base abilities (Dash) lead, then the weapon and picks.
+    const orderedAbilities = abilities
+        .map((abilityId, index) => ({ abilityId, index, base: BASE_ABILITY_IDS.has(abilityId) }))
+        .sort((a, b) => Number(b.base) - Number(a.base) || a.index - b.index);
     const hasHp = bot?.hp != null;
     const maxHp = Math.max(1, Number(bot?.maxHp ?? BASE_BOT_HP));
 
@@ -57,18 +57,17 @@ export default function AbilityStatusPanel({ bot, abilityInfoEnabled = false, st
                     Chain: {bot.runningChain.name ?? bot.runningChain.chainId}
                 </span>}
                 <div className="ability-status-panel__abilities hud-fighter__abilities">
-                    {[["base", baseAbilities], ["loadout", loadoutAbilities]].map(([group, entries]) => entries.length > 0 && (
-                        <div key={group} className={`hud-abilities hud-abilities--${group}`}>
-                            {entries.map(({ abilityId, index }) => (
-                                <AbilityStatusTile
-                                    key={`${abilityId}-${index}`}
-                                    bot={bot}
-                                    abilityId={abilityId}
-                                    onAbilityInfo={abilityInfoEnabled ? setSelectedAbility : null}
-                                />
-                            ))}
-                        </div>
-                    ))}
+                    <div className="hud-abilities">
+                        {orderedAbilities.map(({ abilityId, index, base }) => (
+                            <AbilityStatusTile
+                                key={`${abilityId}-${index}`}
+                                bot={bot}
+                                abilityId={abilityId}
+                                base={base}
+                                onAbilityInfo={abilityInfoEnabled ? setSelectedAbility : null}
+                            />
+                        ))}
+                    </div>
                 </div>
             </section>
             {abilityInfoEnabled && selectedAbility && (
@@ -100,20 +99,19 @@ function HpBar({ hp, maxHp }) {
 function StaminaBar({ bot }) {
     const stamina = botStamina(bot);
     const max = MOVEMENT_CONFIG.staminaMax;
-    const exhausted = botExhausted(bot);
     return (
         <div
-            className={`hud-sta${exhausted ? " is-exhausted" : ""}`}
+            className="hud-sta"
+            title="Refills 0.5 s after you stop spending it, and +10 for each landed hit. At 0 you cannot dash, sprint or fast turn."
             role="meter"
             aria-label="Stamina"
             aria-valuemin={0}
             aria-valuemax={max}
             aria-valuenow={stamina}
-            aria-valuetext={`${stamina} of ${max} stamina${exhausted ? ", exhausted" : ""}`}
+            aria-valuetext={`${stamina} of ${max} stamina`}
         >
             <div className="hud-sta__row">
                 <span>STA</span>
-                {exhausted && <em className="hud-sta__tag">EXHAUSTED</em>}
                 <strong>{stamina}</strong>
             </div>
             <div className="hud-sta__bar" aria-hidden="true">
@@ -123,7 +121,7 @@ function StaminaBar({ bot }) {
     );
 }
 
-function AbilityStatusTile({ bot, abilityId, onAbilityInfo = null }) {
+function AbilityStatusTile({ bot, abilityId, base = false, onAbilityInfo = null }) {
     const definition = abilityDefinition(abilityId);
     const label = definition?.label ?? humanizeAbilityId(abilityId);
     const iconPath = getAbilityCatalogueIcon(abilityId);
@@ -143,7 +141,7 @@ function AbilityStatusTile({ bot, abilityId, onAbilityInfo = null }) {
     };
     const tile = (
         <div
-            className="ability-status-ring hud-ability"
+            className={`ability-status-ring hud-ability${base ? " hud-ability--base" : ""}`}
             data-ability-state={status.state}
             data-ring-progress={tileProgress}
             style={{ "--hud-ability-ring": abilityRingColorFor(abilityId, status) }}

@@ -1,28 +1,29 @@
 # Timed Rounds Implementation Plan
 
-Status: plan, not started. This turns the design in [`TIMED_ROUNDS_MATCH_FORMAT.md`](TIMED_ROUNDS_MATCH_FORMAT.md) into implementation work for Sonnet. Section 9 has one prompt per work package. File paths and symbols were checked against the code on 2026-10-01; confirm them again before editing.
+Status: partly built. S1-S6, P0a/P0b (movement and stamina on both runtimes), C1-C4 (action chains and Time Since Hit) and fast turn are built. Lock On (20) and Basic Strike (34) are out of the base kit (the base kit is Dash and Sprint, with fast turn on Rotate). P3 (the segmented simulation) and P4 (the server match lifecycle: clocks, picks, resolution, ruleset `duel-v2`, 300 HP, guarantee removal) are built. The client has only the mirrored constants and draft rules; P5 (the pick panel, build HUD, clocks and the guarantee UI removal) onward, and S7, are not started. This turns the design in [`TIMED_ROUNDS_MATCH_FORMAT.md`](TIMED_ROUNDS_MATCH_FORMAT.md) into implementation work for Sonnet. Section 9 has one prompt per work package. File paths and symbols were checked against the code on 2026-10-01; confirm them again before editing.
 
 ## 1. Locked decisions
 
 | Area | Decision |
 |---|---|
 | Rounds | Up to 6 rounds in one continuous fight. No best-of series |
-| Base kit | Dash (19, stamina-based), Sprint (stamina-based) and the weapon (34). Lock On (20) is removed from the base kit (its definitions stay for old replays); fast turn replaces it |
-| Movement | Facing never affects movement speed. Stamina pool, sprint in any direction (attacking cancels it), chained stamina dashes, wind-up cancel, hits checked at the active frame, exhaustion = 1.5 s without regeneration (no slowdown). See section 3a |
+| Base kit | Dash (19, stamina-based) and Sprint (a Walk setting), with fast turn on Rotate. Lock On (20) and Basic Strike (34) are out of the base kit (their definitions stay for old replays; no migration, old brains show "Ability not equipped"). Max abilities: Dash + weapon + 6 |
+| Movement | Facing never affects movement speed. Stamina pool, sprint in any direction (attacking does not slow it), chained stamina dashes, wind-up cancel, hits checked at the active frame, no exhaustion (at 0 stamina the bot just cannot dash, sprint or fast turn), stamina refills 0.5 s after the last spend at 20/s, and each landed hit refunds +10 stamina once per activation (separate from the regen pause) to reward accurate aggression. See section 3a |
 | Weapon | Round 1 only, chosen from **all** weapons. All weapons are melee, reach ≤ 300 units |
 | Abilities | 1 per round. Rounds 1–2 tier 1, 3–4 tier 2, 5–6 tier 3. 3 offers (2 in tier 3) |
 | Offers | Shared seed, never an owned ability, no guarantees, no role tags |
-| Clock | 5:00 base per player, +30 s at the start of every build (round 1 starts at 5:30; at most 8:00 per match), no per-round cap. Log clock used per round per player |
+| Clock | 1v1: 5:00 base per player, +30 s at the start of every build (round 1 starts at 5:30; at most 8:00 per match). 2v2: 7:00 base, +30 s (at most 10:00). No per-round cap. Log clock used per round per player |
 | Pick time | 30 s in round 1 (weapon + ability), 20 s in rounds 2–6. Not taken from the clock |
 | Submit | Final, validated, hold-to-submit |
 | Timeout | Player setting: submit current code (if valid), or last round's code |
-| Segment | 30 s of simulation per round, continuing exactly from the previous segment |
+| Segment | 20 s of simulation per round (6 rounds = 2:00 of fight, at most 1,200 ticks), continuing exactly from the previous segment |
 | Variables | Keep their last-frame value, or reset to default, per variable |
 | Ending | KO ends the match. After round 6, higher HP wins (2v2: team HP sum). Draw on equal HP or a simultaneous death |
-| HP | 150 → **300** |
+| HP | 150 → **300**. Target: median KO in round 5 |
+| Zone | Rounds 5–6 only. `ClosingZoneConfig.timedRoundsV2()` starts at 80,000 ms; 1200 → 900 units at the start of round 5 and → 600 at the start of round 6 (5 s contraction each); a warning ring shows the next size during the round before each step; damage unchanged; `simulationDurationMs` 120,000 |
 | Ruleset | `duel-v1` → `duel-v2` |
 | Puzzles | Hidden from the public. Admins can still edit them |
-| 2v2 | Per-player clocks, picks, brains and fallback settings |
+| 2v2 | Per-player clocks (7:00 + 0:30), picks, brains and fallback settings. Offers are shared by all four players. Teammates can view each other's brains read-only during the build. 2v2 HP is a tuning item |
 
 ## 2. Architecture: one continuous simulation with a brain schedule
 
@@ -31,7 +32,7 @@ Status: plan, not started. This turns the design in [`TIMED_ROUNDS_MATCH_FORMAT.
 Reasons:
 
 - **Determinism is guaranteed by construction.** There is no snapshot format to keep complete. `Bot` has more than 60 mutable fields (statuses, pending cooldowns, charges, wind-ups, rewind state, entities, zone state, RNG), and a snapshot that misses one breaks resume silently.
-- **It's cheap.** The whole match is at most 1,800 ticks, which takes milliseconds.
+- **It's cheap.** The whole match is at most 1,200 ticks, which takes milliseconds.
 - **The audit trail is complete.** A finished match re-simulates from seed + ruleset + each round's (brain, loadout, variable resets) per player. Round brains are already kept in history (`V24__match_round_bot_code_history.sql`).
 - **The "last frame" for the next round** is simply the final frame of segment *k*. The server also sends it explicitly at round ready and on reconnect.
 
@@ -42,8 +43,8 @@ At a boundary tick, before logic evaluation, for each bot:
 1. Replace `brain`, re-run `prepareStrategy`, and update `abilities` and `combatLoadout`.
 2. A **newly added** ability gets fresh resources: cooldown 0, full charges. Use the same initialization as `BotStateService.create`; extract a helper rather than duplicating it.
 3. Reconcile custom variables:
-   - same name and type, not reset → keep the value (a timer keeps its value and its running state);
-   - reset, new, or type changed → the declared default (a timer is stopped at 0);
+   - same name and type, not reset → keep the value;
+   - reset, new, or type changed → the declared default;
    - no longer declared → dropped.
 4. End any running action chain (section 3d); the new brain may not contain it.
 5. Everything else continues untouched: position, HP, statuses, cooldowns, wind-ups, entities, zone.
@@ -52,7 +53,7 @@ Live match state needs nothing new except per-player clocks, picks, fallback set
 
 ## 3. Weapons and ability rework (both runtimes)
 
-Cycle = wind-up + active + cooldown. Today, cooldown starts after the active phase ends (`abilityPendingCooldownMs`). Damage per second assumes every hit lands. With 300 HP, the weapon damage-per-second band of about 9–11 gives about 30 s time-to-kill at 100% uptime, roughly 3 segments at realistic uptime. All numbers are starting points; the owner will tune them.
+Cycle = wind-up + active + cooldown. Today, cooldown starts after the active phase ends (`abilityPendingCooldownMs`). Damage per second assumes every hit lands. With 300 HP, the weapon damage-per-second band of about 9–11 gives about 30 s time-to-kill at 100% uptime, which is 4–5 segments of 20 s at realistic uptime (about 30–35%), matching the target median KO in round 5. All numbers are starting points; the owner will tune them.
 
 ### Weapons (new category `weapon`)
 
@@ -82,7 +83,7 @@ Geometry conventions (verified in `gameconfig/hitboxGeometry.js`): arc and recta
 | Shotgun Blast (was Pistol) | 12 | **Deferred to the last stage (S7), together with the multi-spawn engine (section 3c).** Until then Pistol stays exactly as it is |
 
 - Keep IDs 3, 5 and 12 (12 when S7 happens). No code re-simulates old matches, and `duel-v2` (P4) marks the change.
-- **Basic Strike (34)** is removed from the standard set **in P4** (when the round 1 weapon pick exists), not before, so current matches always have a basic attack.
+- **Basic Strike (34)** is already out of the standard set (`STANDARD_ABILITY_IDS` is `[19]`, server `STANDARD_ABILITY_ORDER` likewise). Its definitions and visuals stay for old replays, and it is not selectable. Until P4 adds the round 1 weapon pick, current matches get a melee attack only if Slash is drafted. Practice rooms and the sandbox start with Slash equipped for both bots.
 - **Heavy Slash (7)** stays a tier 1 ability, unchanged. The owner may revisit it, since it overlaps with Cleave.
 - Other abilities keep their numbers for now. HP doubling (P4) makes them relatively weaker; a balance pass comes after playtesting.
 
@@ -103,33 +104,34 @@ The design is in [`TIMED_ROUNDS_MATCH_FORMAT.md`](TIMED_ROUNDS_MATCH_FORMAT.md) 
 
 ### Starting values (prototype, then tune)
 
-**100 ms rule:** the simulation ticks every 100 ms. Every duration, delay, cooldown and timer must be a whole multiple of 100 ms, and per-second rates are applied as whole amounts per tick (stamina is always an integer). Never add a value like 750 or 250 ms. The prototype keeps every number in `frontend/src/gameArena/gameconfig/MovementConfig.js`.
+**100 ms rule:** the simulation ticks every 100 ms. Every duration, delay and cooldown must be a whole multiple of 100 ms, and per-second rates are applied as whole amounts per tick (stamina is always an integer). Never add a value like 750 or 250 ms. The prototype keeps every number in `frontend/src/gameArena/gameconfig/MovementConfig.js`.
 
 | Mechanic | Value |
 |---|---|
 | Stamina | 100 max |
-| Regeneration | 20 per second (2 per tick), after 800 ms without spending |
-| Exhaustion | At 0 stamina: 1,500 ms with no regeneration. No movement slowdown |
-| Sprint | +50% movement speed, any direction. Drains 30 per second (3 per tick). Ends when the bot attacks or uses an ability, or when stamina runs out |
-| Fast turn | A setting on Rotate (`fastTurn: true`, stored only when on). Rotation step 12 -> 24 degrees per tick (times the hit-stagger rotation multiplier). Drains 2 per tick (20 per second), only on ticks where the bot actually rotates; no drain while already facing. Below 2 stamina or while exhausted: normal step, no cost. Can drain in the same tick as sprint; attacking does not end it. `fastTurnMultiplier: 2` and `fastTurnDrainPerTick: 2` in both `MovementConfig`s |
-| Dash (19) | Costs 30 stamina instead of the 1,800 ms cooldown. A 300 ms gap between chained dashes. Distance and active time unchanged |
+| Regeneration | 20 per second (2 per tick), after 500 ms without spending (`regenDelayMs` / `REGEN_DELAY_MS`). Only spending starts or restarts the pause |
+| No exhaustion | `exhaustionMs` is gone. At 0 stamina the bot cannot dash, sprint or fast turn until it refills. No movement slowdown |
+| Hit refund | `hitStaminaRefund` / `HIT_STAMINA_REFUND` = 10. When a weapon or ability lands on an enemy bot the attacker gains 10 stamina (capped), at most once per activation (multi-hit, piercing and damage-over-time count once; entities count for the activation that spawned them). Banked during the tick and paid when it settles, using the same hit tracking as Time Since Hit. It never starts, ends or restarts the regen pause. Design intent: reward accurate aggression |
+| Sprint | +50% movement speed, any direction. Drains 30 per second (3 per tick). Attacking no longer slows it: it applies on any tick the bot walks with sprint on and has stamina, including while an ability is starting, winding up or active. Movement-lock, stun and 0 stamina stop it |
+| Fast turn | A setting on Rotate (`fastTurn: true`, stored only when on). Rotation step 12 -> 24 degrees per tick (times the hit-stagger rotation multiplier). Drains 2 per tick (20 per second), only on ticks where the bot actually rotates; no drain while already facing. Below 2 stamina: normal step, no cost. Can drain in the same tick as sprint; attacking does not end it. `fastTurnMultiplier: 2` and `fastTurnDrainPerTick: 2` in both `MovementConfig`s |
+| Dash (19) | Costs 30 stamina instead of the 1,800 ms cooldown. A 300 ms gap between chained dashes. Distance and active time unchanged. **Interim (a movement/ability audit is planned):** Dash has its own action category `dash` (`ACTION_HEADS.DASH` / `ActionHead.DASH`, its own `plan.dash` and `Action.dash` channel) and `ignoresGlobalAbilityLock` in both `AbilityContracts`, so it never blocks or waits on another ability and one dash and one ability start on the same tick (ability first, then dash). Silence no longer stops it; stun, slow and movement-lock still do |
 | Wind-up cancel | Cancels the bot's own wind-up (`preparingAbility`) for 25 stamina. The ability does not go on cooldown and uses no charge. There is no restart lock: it can start again on the next tick (one ability action per tick), and the 25 stamina is the price |
 | Recovery | For now, the ability's existing active time acts as recovery. A separate active/recovery refactor is planned by the owner, so don't add a new recovery field |
 
 ### Engine work
 
-- **Bot state (both runtimes):** `stamina`, `staminaRegenDelayMs`, `exhaustedMs`, `sprinting`, `fastTurning`, `dashGapMs`. They live on the `Bot` in `DuelSimulationService` and the browser bot state, and must go into replay frames (compact) so the status panel and spectators can show stamina.
+- **Bot state (both runtimes):** `stamina`, `staminaRegenDelayMs`, `sprinting`, `fastTurning`, `dashGapMs`, plus the refund bookkeeping `activationSerial`, `refundedActivations`, `entityActivations` and `pendingStaminaRefund`. They live on the `Bot` in `DuelSimulationService` and the browser bot state, and must go into replay frames (compact) so the status panel and spectators can show stamina.
 - **Actions:** start sprint, stop sprint, and cancel wind-up. They're new allowlisted logic actions with stable IDs, on the movement and ability channels, mirrored in `BotLogicContracts.js` and the server `simulation/bots/` registry. Dash keeps its ID and actions; only its cost model changes.
 - **Conditions and state variables**, to match design section 5a ("What code must be able to read"):
-  - self: stamina, exhausted, sprinting, turning fast;
-  - opponent: stamina, exhausted, sprinting, turning fast, winding up (and which ability), velocity and heading, facing angle relative to me;
+  - self: stamina, sprinting, turning fast (an old "Exhausted" condition migrates to Stamina < 1 or Stamina >= 1 in both normalizers, and `bot.exhausted` is rejected);
+  - opponent: stamina, sprinting, turning fast, winding up (and which ability), velocity and heading, facing angle relative to me;
   - reach: my weapon's reach and the opponent's.
 
   Wire them through `modelPayloads/strategyStatePayload.js`, `stateVariableResolver.js` and the server mirror. Some (velocity, preparing ability) may already exist. Check before adding.
 - **Hit timing:** confirm hits are already checked at the active frame, after the wind-up, using positions at that tick, in both runtimes. Abilities with `windupMs` resolve after `preparingMs`. If any ability captures its target position at wind-up start, flag it rather than silently changing it.
 - **Movement speed is the same in every direction.** Facing never affects walking or sprint speed. Don't add directional speed modifiers.
-- **Status panel and HUD:** a stamina bar on the fighter card, with an exhausted state.
-- **Lock On and fast turn: decided.** Lock On is removed from the base kit (`STANDARD_ABILITY_IDS` is `[19, 34]`, server `STANDARD_ABILITY_ORDER` likewise; no migration, old brains show "Ability not equipped"). Fast turn is the Rotate setting above; the planner uses the effective step so it never overshoots, and the replay carries a `fastTurning` flag like `sprinting`.
+- **Status panel and HUD:** a stamina bar on the fighter card (no exhausted state).
+- **Lock On and fast turn: decided.** Lock On is removed from the base kit (`STANDARD_ABILITY_IDS` is `[19]`, server `STANDARD_ABILITY_ORDER` likewise; no migration, old brains show "Ability not equipped"). Fast turn is the Rotate setting above; the planner uses the effective step so it never overshoots, and the replay carries a `fastTurning` flag like `sprinting`.
 
 ## 3b. Bot language changes
 
@@ -201,7 +203,7 @@ The design is in [`TIMED_ROUNDS_MATCH_FORMAT.md`](TIMED_ROUNDS_MATCH_FORMAT.md) 
 
 ### Time Since Hit (C1)
 
-- `bot.selectedAbilitySinceHit` ("Time Since Hit"), number, seconds (step 0.1), in `GENERIC_ABILITY_VARIABLES`, so it reuses the ability picker and works for My Bot or an opponent. Range 0–99,999 (the general number limit); "never hit" reads **99,999**, so it round-trips through custom number variables unchanged. A real reading can never get near it (a match lasts at most 180 s), so "has ever hit" is `< 99999` and "never hit" is `= 99999`.
+- `bot.selectedAbilitySinceHit` ("Time Since Hit"), number, seconds (step 0.1), in `GENERIC_ABILITY_VARIABLES`, so it reuses the ability picker and works for My Bot or an opponent. Range 0–99,999 (the general number limit); "never hit" reads **99,999**, so it round-trips through custom number variables unchanged. A real reading can never get near it (a match lasts at most 120 s), so "has ever hit" is `< 99999` and "never hit" is `= 99999`.
 - Per bot: last hit time per ability ID, set when that ability, or an entity it spawned, damages or applies an effect to an **enemy bot** that tick. Use the entity's owner and ability ID for attribution. One record per ability; a multi-hit tick counts once.
 
 ### Brain data
@@ -285,7 +287,7 @@ Rules:
 | Prep (existing, ≤ 2 s) | ≤ 2 s | Paused |
 | `BUILDING` | Per-player deadline = build start + that player's remaining clock, plus a 2 s hidden grace. Ends when all players have submitted or expired | **Running** per player until they submit |
 | `SIMULATION_LOADING` | Until the simulation finishes | Paused |
-| `REPLAY` (`SIMULATION_PREPARING` 3 s + segment frames) | ≤ 30 s, shorter on KO | Paused |
+| `REPLAY` (`SIMULATION_PREPARING` 3 s + segment frames) | ≤ 20 s, shorter on KO | Paused |
 | Result hold | 3 s (`roundReadyAt`) | Paused |
 
 Then the next pick, or `MATCH_RESULT_READY` on KO or after round 6. The `OBJECT_PLACEMENT` phase is unchanged; confirm it can only occur where it does today.
@@ -297,7 +299,7 @@ Then the next pick, or `MATCH_RESULT_READY` on KO or after round 6. The `OBJECT_
 - On an accepted submit: `clockRemainingMs = max(0, clockRemainingMs - (submitAt - buildStartedAt))`. A submit inside the grace period leaves 0.
 - On a deadline: if the client sent nothing, create a fallback submission. If the setting is `CURRENT`, the client auto-submits its current brain just before its displayed clock hits zero. The server validates it, and if it's invalid, falls back to the previous round's brain. If the setting is `PREVIOUS`, or nothing valid arrived, use the existing `createBuildingTimeoutSubmission` (previous brain plus the new loadout).
 - Round 1 with no previous brain falls back to an empty brain, as today.
-- Policy constants go in `MatchTimingPolicy`: base 300 s, increment 30 s, pick 30 s / 20 s, segment 30 s, max rounds 6.
+- Policy constants go in `MatchTimingPolicy`: base 300 s (1v1) / 420 s (2v2), increment 30 s, pick 30 s / 20 s, segment 20 s, max rounds 6.
 - **Custom lobbies:** the "round duration" setting becomes a base clock (30 s–10 min) plus an increment (0–60 s).
 
 ### Events (additive fields on existing DTOs)
@@ -356,7 +358,7 @@ Then the next pick, or `MATCH_RESULT_READY` on KO or after round 6. The `OBJECT_
   - guaranteed offers;
   - fixed 3- or 5-minute building.
 
-  Replace them with a short placeholder describing the new loop, marked `TODO(owner)` for rewriting. Bump `tutorialVersion.js` if completion depends on the content. Tutorial presets that use Basic Strike or old weapons should switch to Slash.
+  Replace them with a short placeholder describing the new loop, marked `TODO(owner)` for rewriting. Bump `tutorialVersion.js` if completion depends on the content. Tutorial presets and the "Slash" lesson already use Slash instead of Basic Strike; the old weapons should switch to Slash too.
 - **Ability catalogue:** a Weapons section, the tier labels "Rounds 1–2", "Rounds 3–4" and "Rounds 5–6", and the renamed Sniper and Shotgun Blast.
 - **Docs:**
   - update `AGENTS.md`: the timeout-is-draw rule becomes the HP-decision rule, and the format becomes timed rounds;
@@ -378,9 +380,9 @@ Then the next pick, or `MATCH_RESULT_READY` on KO or after round 6. The `OBJECT_
 | S6 | Reach autofill UI (after a mockup) | Condition editor |
 | S7 (last) | Multi-spawn engine, then Shotgun Blast as pellet projectiles | Practice room: fan spread, pellets per distance, dodging at range |
 
-S1–S6 don't depend on the timed-rounds format. S7 is saved for the very end, after the format work below. Current 3-round matches keep working: the new weapons are not in the match draft until P4, and Basic Strike stays a standard ability until P4. The Slash retune and the ability reworks **do** apply to current matches right away.
+S1–S6 don't depend on the timed-rounds format. S7 is saved for the very end, after the format work below. Current 3-round matches keep working: the new weapons are not in the match draft until P4. Basic Strike has already left the standard set, so a current match has a melee attack only if Slash is drafted. The Slash retune and the ability reworks **do** apply to current matches right away.
 
-Status (2026-10-02): S1–S6, Approach Angle with two entities, P0a, P0b and the Cancel Wind-up fixes are implemented (uncommitted). S2's Cleave active effect still reuses the Heavy Slash sprite instead of its own wedge.
+Status (2026-10-04): S1–S6, Approach Angle with two entities, P0a, P0b, the Cancel Wind-up fixes, fast turn and C1–C4 are implemented. Lock On and Basic Strike are out of the base kit. S2's Cleave active effect still reuses the Heavy Slash sprite instead of its own wedge.
 
 Then action chains (section 3d), before the format work:
 
@@ -393,9 +395,9 @@ Then action chains (section 3d), before the format work:
 
 Then the format work:
 
-1. ~~P0a movement prototype~~ and ~~P0b movement on the server~~: done.
-2. P3 segmented simulation (it must end running chains at a boundary).
-3. P4 lifecycle (after P3). This is also where weapons enter the draft, Basic Strike leaves the standard set, HP goes to 300, and the ruleset becomes `duel-v2`.
+1. ~~P0a movement prototype~~ and ~~P0b movement on the server~~: done. ~~C1–C4 chains~~: done.
+2. ~~P3 segmented simulation~~: done. `DuelSimulationRequest` takes ordered `segments` and `recordFromMs`; `ClosingZoneConfig.timedRoundsV2()` is mirrored in `ArenaHazardConfig.js`. The warning ring exists as data (`warningDiameterAt` / `closingZoneWarningDiameter`) but is not yet emitted into replay frames or drawn.
+3. ~~P4 lifecycle~~: done on the server. Weapons are the round 1 pick, HP is 300 and the ruleset is `duel-v2` in both runtimes. Events carry the new fields as a `timedRounds` block (`maxRounds`, `baseClockSeconds`, `incrementSeconds`, `pickSeconds`, `segmentSeconds`, `weaponOffers`, `zoneStartsInRound`, `zoneNextDiameterUnits`, `segmentEndState`, `hpDecision`) and each player carries `clockRemainingMs`, `buildEndsAt` and `timeoutFallback`. `winsRequired` is always null now and `roundWins` stays 0. The `/app/matchmaking.timeoutFallback` message sets the fallback while building. Next migration: V57 is taken (`variable_resets`, `timeout_fallback` on `match_round_bot_codes`).
 4. P5 frontend flow (after P4 and the UI mockups).
 5. P6 content surfaces, at any time (puzzle hiding can ship first).
 6. **S7 multi-spawn engine and Shotgun Blast**, last.
@@ -407,12 +409,13 @@ Weapon numbers were set before the movement system exists; expect to retune them
 - **Brain swap leaking state.** Test that brain *k* never runs on a tick after boundary *k*. Test that segment *k*'s frames are identical whether produced in round *k* or by re-simulating at round 6.
 - **Round-transition state leaks.** The existing checklist in `MATCH_TIMING.md` warns about this, and it now spans 6 rounds. Test rounds 2, 3, 5 and 6 explicitly, including pick timeout auto-picks (weapon defaults to Slash; the ability defaults to the first offer).
 - **Clock arithmetic at the edges:** a submit during the grace period, a reconnect mid-build, both clocks at 0, a 2v2 where one teammate has expired.
-- **Stamina parity:** regeneration delay, exhaustion and dash gaps are timers, which is exactly the "timer-driven state" class of bug in the regression checklist. Test tick-by-tick traces on both runtimes, including a stamina change at a round boundary (stamina carries over like everything else).
+- **Stamina parity:** the regeneration pause, hit refunds and dash gaps are tick-counted state, which is exactly the "timer-driven state" class of bug in the regression checklist. Test tick-by-tick traces on both runtimes, including a stamina change at a round boundary (stamina carries over like everything else).
 - **Browser/server parity for weapons and the zone.** The zone needs a new `ClosingZoneConfig.timedRoundsV2()`:
-  - no zone in round 1 (`startDelayMs` 30,000);
-  - 5 contraction phases of 30 s (5 s approach, 25 s hold) with targets 4/5 → 0;
+  - no zone in rounds 1–4: it starts at 80,000 ms, the start of round 5;
+  - two contractions of 5 s each: 1200 → 900 units at the start of round 5 and 900 → 600 at the start of round 6;
+  - a warning ring shows the next size during the round before each step (the 900 ring in round 4, the 600 ring in round 5);
   - damage unchanged;
-  - `simulationDurationMs` 180,000.
+  - `simulationDurationMs` 120,000.
 
   Mirror it in the browser's `gameconfig/ArenaHazardConfig.js`.
 
@@ -701,7 +704,7 @@ the server.
   prototype so they can't be submitted to rated matches yet.
 - A stamina bar on the fighter card (status panel), with an exhausted state.
 - Keep all numbers in one config object so they're easy to tune.
-Add focused tests for stamina timers and dash chaining. Update affected
+Add focused tests for stamina regeneration and dash chaining. Update affected
 tests. Run npm test, lint, build. Don't commit.
 ```
 
@@ -878,13 +881,16 @@ section 2 (no snapshot serialization).
   newly added abilities fresh resources (extract a helper shared with
   BotStateService.create), and reconcile custom variables (keep same
   name+type unless reset; new/reset/type-changed get default; undeclared are
-  dropped; a kept timer keeps its value and running state), and end any
+  dropped), and end any
   running action chain (empty chainStack). Nothing else resets.
 - Add recordFromMs so the compact recorder keeps only the target segment and
   takes its initial state from the boundary.
-- Add ClosingZoneConfig.timedRoundsV2() (plan section 8) with
-  simulationDurationMs 180000; mirror it in the browser's
-  gameconfig/ArenaHazardConfig.js. Lift the 90 s cap checks accordingly.
+- Add ClosingZoneConfig.timedRoundsV2() (plan section 8): starts at 80000 ms,
+  1200 -> 900 units at the start of round 5 and -> 600 at the start of round 6
+  (5 s contraction each), with a warning ring showing the next size during the
+  round before each step, damage unchanged, simulationDurationMs 120000;
+  mirror it in the browser's gameconfig/ArenaHazardConfig.js. Segments are 20 s.
+  Lift the 90 s cap checks accordingly.
 - Keep the single-segment path identical, so puzzles and existing callers are
   unaffected.
 Tests: segment k frames identical whether produced alone or re-simulated after
@@ -901,12 +907,14 @@ docs/TIMED_ROUNDS_IMPLEMENTATION_PLAN.md sections 3 (pools/offers), 5 and 6
 (guarantee removal), under service/match/.
 - Format-level content switches, in both runtimes: add weapons 1/35/36/37
   to the draft as the round 1 weapon pick and remove Slash from the tier 1
-  pool; remove Basic Strike (34) from the standard set (keep its
-  definition); base HP 150 -> 300 everywhere; DUEL_RULESET_VERSION
-  "duel-v1" -> "duel-v2" (both constants).
-- MatchTimingPolicy: base clock 300 s, increment 30 s, pick 30 s (round 1) /
-  20 s, segment 30 s, max rounds 6. Custom lobbies configure base (30 s-10
-  min) and increment (0-60 s) instead of round duration.
+  pool; base HP 150 -> 300 everywhere; DUEL_RULESET_VERSION
+  "duel-v1" -> "duel-v2" (both constants). (Basic Strike and Lock On are
+  already out of the standard set.)
+- MatchTimingPolicy: base clock 300 s (1v1) / 420 s (2v2), increment 30 s,
+  pick 30 s (round 1) / 20 s, segment 20 s, max rounds 6. Custom lobbies
+  configure base (30 s-10 min) and increment (0-60 s) instead of round
+  duration. Offers are shared by all four players in 2v2, and teammates can
+  view each other's brains read-only during the build.
 - Per-player clocks on MatchPlayer (clockRemainingMs, timeoutFallback);
   per-player build deadlines; submit deducts elapsed build time; the build
   ends when all have submitted or expired; fallback per plan section 5. Clocks
@@ -988,8 +996,8 @@ Botfight: per docs/TIMED_ROUNDS_IMPLEMENTATION_PLAN.md section 7:
   non-admins; the admin builder is unchanged.
 - Tutorial: remove the outdated match-format facts in
   tutorial/TutorialContent.js and replace them with a short placeholder
-  marked TODO(owner); switch tutorial presets off Basic Strike and the old
-  weapons; bump tutorialVersion.js if needed.
+  marked TODO(owner); switch tutorial presets off the old weapons (Basic
+  Strike is already replaced by Slash); bump tutorialVersion.js if needed.
 - Ability catalogue: a Weapons section, tier labels by round pair, and the
   renamed abilities.
 - Update AGENTS.md product constraints (HP decision instead of
@@ -1002,7 +1010,8 @@ Update affected tests. Don't commit.
 - The final numbers after playtesting: weapon damage, HP, clock, zone, and segment length.
 - Heavy Slash versus Cleave overlap.
 - Whether to add AFK auto-submit (the clock already bounds waiting).
-- Whether teammates in 2v2 can see each other's brains read-only during the build.
+- ~~Whether teammates in 2v2 can see each other's brains read-only during the build.~~ Decided: yes, read-only; offers are shared by all four players. Whether 2v2 needs its own HP pool is a tuning item.
+- Whether round 1 starts from an empty brain or from a saved one.
 - The tutorial rewrite (owner-written).
 - ~~Lock On and fast turn~~ Decided: Lock On leaves the base kit and fast turn replaces it.
 - Optional movement depth (brace, back hits), added one at a time if fights still feel shallow.

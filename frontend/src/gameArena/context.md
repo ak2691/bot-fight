@@ -80,8 +80,8 @@ rated results.
 
 ## Relevant documentation
 
-Read [`../../../docs/context.md`](../../../docs/context.md) before adding an
-ability or changing effect/entity semantics. For visual, timer, transform,
+Read [`../../../docs/ABILITIES.md`](../../../docs/ABILITIES.md) before adding an
+ability or changing effect/entity/stamina semantics. For visual, timer, transform,
 or simultaneous-effect work, run through the regression checklist indexed there.
 
 ## Tests
@@ -92,7 +92,8 @@ or simultaneous-effect work, run through the regression checklist indexed there.
 - `pixi/pixiVisualState.test.js`: renderer mapping and visual-state rules.
 - `botlogic/code/tests/BotCode.test.js`: schema, conditions, targets, normalization, and
   deterministic selection.
-- `ecs/tests/EntitySystems.test.js`: movement intent generation and execution.
+- `ecs/tests/MovementStamina.test.js`, `DashChannel.test.js`, `StaminaRefund.test.js`:
+  movement, Dash and stamina.
 - `coding/strategyToolbar.test.js`: coding workspace and graph source contracts.
 - `status/abilityStatusPresentation.test.js`: status-panel source and timing contracts.
 

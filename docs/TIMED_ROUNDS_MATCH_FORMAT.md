@@ -1,6 +1,6 @@
 # Timed Rounds Match Format
 
-Status: proposal, still being considered. Nothing here is implemented. It records the current direction and the reasoning behind it. Verify current code before acting on any of it. Where it conflicts with today's rules in `AGENTS.md` (for example "a timeout is a draw"), this document describes the intended future rules, not the current ones.
+Status: partly built. The building blocks are done: weapons and ability rework (S1-S6), movement and stamina on both runtimes (P0a/P0b, including sprint and fast turn), action chains with Time Since Hit (C1-C4), and the segmented authoritative simulation (P3). Lock On and Basic Strike are out of the base kit. The rest of the match format (lifecycle, clocks, frontend flow: P4 onward) is not implemented. Verify current code before acting on any of it. Where it conflicts with today's rules in `AGENTS.md` (for example "a timeout is a draw"), this document describes the intended future rules, not the current ones.
 
 ## 1. Problem
 
@@ -15,22 +15,25 @@ One continuous fight, split into up to **6 rounds**. There is no best-of series:
 1. **Pick:** fixed (30 s in round 1, 20 s after), not taken from the clock. In round 1, players pick a weapon plus one ability. In rounds 2–6, they pick 1 ability from the offers (3, or 2 in tier 3; see section 5). Both players' picks are revealed to both players.
 2. **Build:** both players edit their brain at the same time and in secret. Each player's clock runs until they submit.
 3. **Simulate:** one authoritative batch simulation of the next segment. It takes milliseconds.
-4. **Watch:** about 30 s of segment playback. **Clocks are paused and editing is locked**, otherwise watching would be free build time.
+4. **Watch:** about 20 s of segment playback. **Clocks are paused and editing is locked**, otherwise watching would be free build time.
 
 Repeat until a bot's HP reaches zero or round 6 ends (section 6).
 
 ### Phase system changes
 
-This replaces today's fixed-length rounds with fixed pick counts (round 1 picks 3 of 6, round 2 picks 2 of 4, round 3 picks 1 of 3) and fixed timers.
+This replaces today's fixed-length rounds with fixed pick counts (round 1 picks 3 of 6, round 2 picks 2 of 4, round 3 picks 1 of 3) and fixed durations.
 
 - **Per-player build deadlines:** each player's deadline is when the build started plus that player's remaining clock. The build ends when every player has submitted or run out of clock.
 - **The server owns all phase and deadline transitions.**
 
 ### 2v2
 
-- **Per-player clocks, not a shared team clock.** A shared clock would let one teammate burn everyone's time, and a player who has submitted should stop their own timer.
+- **Per-player clocks, not a shared team clock.** A shared clock would let one teammate burn everyone's time, and a player who has submitted should stop their own clock.
 - Each player picks their own weapon and abilities, builds their own brain, and sets their own timeout fallback.
-- **Open:** can teammates see each other's brains read-only during the build? (Leaning yes.) Are offers shared by all four players or per team?
+- **Clock:** base 7:00 with a +0:30 increment per round (1v1 stays 5:00 + 0:30). The larger base gives each player time to coordinate with a teammate's brain.
+- **Offers are shared by all four players.** Everyone sees the same offers from the match seed, as in 1v1.
+- **Teammates can view each other's brains read-only during the build.** Opponents' brains stay secret.
+- **HP:** 2v2 uses the 1v1 HP pool for now. Whether it needs its own value is a tuning item, because each bot faces two attackers.
 
 ## 3. Clock
 
@@ -45,13 +48,15 @@ Modelled on a chess time control with a per-move bonus (a Fischer increment).
 - **The server owns the clock.** Deadlines live on the server and the client only displays them (same pattern as `MATCH_TIMING.md`). Allow a small grace period for a submit that is in flight when the clock hits zero.
 - Show both clocks to both players and to spectators.
 - **Why a large base and a small increment:** the extra complexity lands in round 1. Later rounds integrate one ability into an existing brain. A +1:00 increment was considered, but it adds time to the rounds that need it least and stretches matches.
-- **Match length:** each round also has about 1 minute of fixed overhead (pick, replay, holds), about 6 minutes over 6 rounds, and each round lasts as long as the slower player takes.
+- **Match length:** each round also has about 50 seconds of fixed overhead (pick, a 20 s replay, holds), about 5 minutes over 6 rounds, and each round lasts as long as the slower player takes.
 
   | Option | Max build per player | Worst-case match | Typical (about 60% of clock used) |
   |---|---|---|---|
-  | 5:00 + 1:00 per round | 10–11 min | about 16–17 min | about 12 min |
-  | **5:00 + 0:30 per round (chosen)** | 8 min | about 14 min | about 11 min |
-  | 4:00 + 0:30 per round | 7 min | about 13 min | about 10 min |
+  | 5:00 + 1:00 per round | 10–11 min | about 15–16 min | about 11 min |
+  | **5:00 + 0:30 per round (chosen)** | 8 min | about 13 min | about 10 min |
+  | 4:00 + 0:30 per round | 7 min | about 12 min | about 9 min |
+
+  For 2v2 (7:00 + 0:30), the maximum build is 10 min and the worst-case match is about 15 min.
 
 - **Log clock used per round per player** from the first playtests, so the base and increment can be tuned from evidence. If late rounds feel rushed, raise the increment.
 
@@ -86,18 +91,18 @@ The new ability is still added to the loadout either way. A brain written generi
 | Slot | Source |
 |---|---|
 | Dash | Always present (base, uses stamina) |
-| Sprint | Always present (base, uses stamina) |
+| Sprint / fast turn | Always present (Walk and Rotate settings, use stamina) |
 | Weapon | Picked in round 1 |
 | Abilities 1–6 | One per round, rounds 1–6 |
 
-The maximum is **8 abilities** (dash + weapon + 6 abilities). Sprint is a movement mode, not counted as an ability. Many matches will end by KO before round 6, so they never reach the full 8.
+The maximum is **8 abilities** (Dash + weapon + 6 abilities). Sprint is a Walk setting and fast turn is a Rotate setting, so neither counts as an ability. Many matches will end by KO before round 6, so they never reach the full 8.
 
-### Base kit: dash, sprint, weapon
+### Base kit: Dash and Sprint
 
-- **Dash** stays a base ability, now paid for with stamina (section 5a).
-- **Sprint** is new, also paid for with stamina (section 5a).
-- **Lock On is gone from the base kit.** It removed the facing game entirely, so turning is now a stamina decision: fast turn (section 5a). Its definitions stay in the code so old replays still render.
-- **Basic Strike (34) is replaced by the round 1 weapon pick.** Every bot gets a melee weapon, so a separate generic strike is redundant.
+- **Dash** is the only base ability, paid for with stamina (section 5a).
+- **Sprint** is a setting on Walk, also paid for with stamina (section 5a). **Fast turn** is the matching setting on Rotate.
+- **Lock On is out of the base kit.** It removed the facing game entirely, so turning is now a stamina decision: fast turn (section 5a). Its definitions stay in the code so old replays still render.
+- **Basic Strike (34) is out of the base kit.** The round 1 weapon pick gives every bot a melee weapon, so a separate generic strike is redundant. Its definitions and visuals stay so old replays still render. Existing brains that use it show "Ability not equipped"; there is no migration.
 
 The base kit plus the round 1 picks is everything a bot has in segment 1, so the base kit shapes every opening. Balance it first.
 
@@ -117,17 +122,19 @@ A bot sees the present perfectly, but it can't see the future and can't undo com
 
 ### Decided
 
-- **Stamina:** one pool, about 100. It regenerates 20/s (2 per tick) after 800 ms without spending.
-- **Exhaustion:** reaching 0 stamina means about **1.5 s with no regeneration**. There is **no movement slowdown**.
+- **Stamina:** one pool, about 100. It refills at 20/s (2 per tick), starting **0.5 s after the last spend**. Only spending stamina starts or restarts that pause.
+- **No exhaustion:** at 0 stamina the bot simply cannot dash, sprint or fast turn until it refills. There is no extra lockout and **no movement slowdown**.
+- **Hit refund:** when a bot's weapon or ability lands on an enemy bot, the attacker gains **+10 stamina** (capped at the maximum), at most **once per activation** (multi-hit, piercing and damage-over-time count once; a spawned entity counts for the activation that spawned it). The refund is instant and **separate from the regen pause**: it never starts, ends or restarts it. The design intent is to reward accurate aggression: landing hits pays for the next dash or sprint, so a bot that keeps missing runs dry.
 - **Facing never affects movement speed.** Walking and sprinting are the same speed in every direction. Facing only matters for where attacks go.
-- **Sprint:** about +50% movement speed, in any direction. It drains 30 stamina/s (3 per tick). **Attacking cancels sprint.**
-- **Fast turn:** a setting on every Rotate action (like sprint on Walk). It turns twice as fast (24° per tick instead of 12°, still scaled by the hit-stagger rotation multiplier) and drains 20 stamina/s (2 per tick), **only on ticks where the bot actually rotates**; a bot already facing its target pays nothing. Below 2 stamina, or while exhausted, the bot turns at the normal speed for free. It can drain in the same tick as sprint, and attacking does not end it.
+- **Sprint:** about +50% movement speed, in any direction. It drains 30 stamina/s (3 per tick). **Attacking no longer slows it:** sprint applies on any tick the bot walks with sprint on and has stamina, including while an ability is starting, winding up or active. Movement-lock, stun and 0 stamina still stop it.
+- **Fast turn:** a setting on every Rotate action (like sprint on Walk). It turns twice as fast (24° per tick instead of 12°, still scaled by the hit-stagger rotation multiplier) and drains 20 stamina/s (2 per tick), **only on ticks where the bot actually rotates**; a bot already facing its target pays nothing. Below 2 stamina the bot turns at the normal speed for free. It can drain in the same tick as sprint, and attacking does not end it.
+- **Dash is its own action category (interim; a movement/ability audit is planned).** It has the action head `dash` (like Cancel Wind-up has `cancel`) and ignores the global ability lock both ways: another ability winding up or active never stops a dash, a running dash never blocks another ability, and one dash and one ability can be chosen and start on the same tick (each from its own highest-priority root). A wind-up continues while dashing, the same as while walking. Silence no longer stops Dash; stun, slow and movement-lock still do.
 - **Dash on stamina:** each dash costs about 30 stamina instead of having a fixed cooldown. Dashes can be chained in short bursts (a 300 ms gap between them) while stamina lasts. It's still strong, but now it's a budget decision rather than "use it when it's ready."
-- **Wind-up cancel (feint):** cancel your own wind-up for 25 stamina, with no restart lock (the ability can start again on the next tick; the stamina is the cost). This is how you bait an attack that's too fast to bait by movement alone: code that dashes on every enemy wind-up can be feinted into exhaustion. The counter-skill is "only dodge if they still have the stamina to feint."
+- **Wind-up cancel (feint):** cancel your own wind-up for 25 stamina, with no restart lock (the ability can start again on the next tick; the stamina is the cost). This is how you bait an attack that's too fast to bait by movement alone: code that dashes on every enemy wind-up can be feinted into running out of stamina. The counter-skill is "only dodge if they still have the stamina to feint."
 - **Hits are checked when the attack lands.** The hitbox is checked at the active frame, after the wind-up, so moving out of range during the wind-up makes the attacker whiff (fighting-game "footsies"). For a bot this becomes a prediction problem: will the target still be in range when my swing lands?
 - **Recovery:** for now, an ability's existing active time acts as its recovery window. The owner plans a separate refactor of active and recovery time later.
 
-All numbers are starting points for prototyping. The simulation ticks every 100 ms, so every duration, delay, cooldown and timer is a whole multiple of 100 ms and per-second rates are whole amounts per tick (never values like 750 or 250 ms).
+All numbers are starting points for prototyping. The simulation ticks every 100 ms, so every duration, delay and cooldown is a whole multiple of 100 ms and per-second rates are whole amounts per tick (never values like 750 or 250 ms).
 
 ### Open
 
@@ -143,10 +150,10 @@ All numbers are starting points for prototyping. The simulation ticks every 100 
 |---|---|
 | Stay far | Outside their weapon's reach; regenerating stamina; waiting for them to commit and whiff |
 | Stay close | Inside a longer weapon's reach, where it is awkward (Slash under a Thrust's tip); pressuring them toward edges |
-| Close the gap | They're exhausted, in their active or recovery time, or cornered |
+| Close the gap | They're out of stamina, in their active or recovery time, or cornered |
 | Sprint mid-fight | Chase a retreating opponent, or reposition while they're committed to an attack |
-| Save sprint | Sprinting into range can't end in an attack (attacking cancels it), and arriving with no stamina leaves no dash to escape a counter |
-| Save stamina while taking damage | Spending it now (dodges, feints) can mean exhaustion and a bigger follow-up; sometimes taking a small hit to keep your escape is better |
+| Save sprint | Sprinting into range drains stamina even if you swing on arrival, and arriving with none leaves no dash to escape a counter |
+| Save stamina while taking damage | Spending it now (dodges, feints) can leave you at 0 with no escape and a bigger follow-up; sometimes taking a small hit to keep your escape is better |
 
 ### Example: round 1, Thrust vs. Slash
 
@@ -158,8 +165,8 @@ All numbers are starting points for prototyping. The simulation ticks every 100 
 
 | | Values |
 |---|---|
-| Self | stamina, exhausted, sprinting, turning fast, in active/recovery time |
-| Opponent | stamina, exhausted, sprinting, turning fast, in active/recovery time, winding up (and which ability), velocity and heading, facing angle relative to me |
+| Self | stamina, sprinting, turning fast, in active/recovery time |
+| Opponent | stamina, sprinting, turning fast, in active/recovery time, winding up (and which ability), velocity and heading, facing angle relative to me |
 | Reach | my weapon's reach and theirs |
 
 Prediction helpers: only **lead aim** is added (section 5b). "Time until in range" and similar helpers are not, so prediction stays a coding skill.
@@ -245,8 +252,6 @@ These are the current low-cooldown ranged "weapons." They move out of the weapon
 
 - **Tiers map to rounds**, two rounds per tier, with no reorganizing of the existing pools:
 
-  | Rounds | Offers drawn from |
-  |---|---|
   | Rounds | Offers drawn from | Offers |
   |---|---|---|
   | 1–2 | Tier 1 (Slash removed; it's now a weapon) | 3, pick 1 |
@@ -262,11 +267,11 @@ These are the current low-cooldown ranged "weapons." They move out of the weapon
 
 ### HP
 
-**A larger HP pool**, so a fight realistically lasts several segments. Tune it so that one strong segment matters but doesn't decide the match on its own.
+**HP stays at 300** (up from 150), so a fight realistically lasts several segments. The target is a **median KO in round 5**: one strong segment matters but doesn't decide the match on its own, and most matches end before the round 6 HP decision. Tune weapon damage against this, not HP.
 
 ### Balancing approach
 
-- **Set a target time-to-kill.** For example: weapon only, no dodging, about 3–4 segments to kill. Derive each weapon's damage per second from that, then adjust for its range and how reliably it hits.
+- **Set a target time-to-kill.** The target is a median KO in round 5 (about 80–100 s of fighting, 4–5 segments of 20 s) with 300 HP. Derive each weapon's damage per second from that, then adjust for its range and how reliably it hits.
 - **Run matchup tables with the deterministic simulation.** Write a few simple reference brains ("chase and melee", "kite and poke with abilities", "hold and counter"), then batch-simulate every weapon against every other, and later weapon and ability combinations. Fights take milliseconds, so a whole win-rate table takes seconds. If kiting with ranged abilities beats chasing with melee most of the time, ranged abilities are too strong.
 
 ## 5d. Action chains
@@ -335,7 +340,10 @@ A Chains list sits beside Roots, with "+ Chain". Opening a chain (from the list,
 
 ## 6. Ending the match
 
-- **Zone escalation:** the closing zone (existing `ClosingZoneSystem`) tightens round by round, pushing bots together and forcing a result.
+- **Zone escalation:** the closing zone (existing `ClosingZoneSystem`) only appears in rounds 5–6, pushing bots together late and forcing a result. `ClosingZoneConfig.timedRoundsV2()` starts the zone at 80,000 ms, the start of round 5:
+  - the zone side goes from 1200 to 900 units at the start of round 5, then to 600 at the start of round 6, each a 5 s contraction;
+  - for the round before each step, a warning ring shows the next size (the 900 ring during round 4, the 600 ring during round 5);
+  - damage is unchanged, and `simulationDurationMs` is 120,000.
 - **Round limit:** after round 6, the bot with **higher HP wins**. This stops degenerate stalls such as two bots healing forever.
 - **Draw** only if both bots die on the same tick, or HP is equal at the round limit.
 - Match length varies, as it does in most competitive games. The zone and the round limit guarantee the match ends.
@@ -361,7 +369,7 @@ Prepared module libraries were considered and **not adopted**: they would move t
 
 No real-time server is needed. Each fight segment is an ordinary authoritative batch simulation. The full implementation plan is in [`TIMED_ROUNDS_IMPLEMENTATION_PLAN.md`](TIMED_ROUNDS_IMPLEMENTATION_PLAN.md).
 
-- **Approach: a brain schedule, not snapshots.** To produce segment *k*, the server re-runs the whole match from tick 0 with the original seed. It swaps each bot's brain and loadout at each round boundary, and records only segment *k*. This is deterministic by construction, needs no snapshot format, and costs milliseconds (at most 1,800 ticks).
+- **Approach: a brain schedule, not snapshots.** To produce segment *k*, the server re-runs the whole match from tick 0 with the original seed. It swaps each bot's brain and loadout at each round boundary, and records only segment *k*. This is deterministic by construction, needs no snapshot format, and costs milliseconds (at most 1,200 ticks).
 - **Persistence:** store each round's brains, picks, and variable resets plus the seed, so the whole match re-simulates exactly and stays auditable.
 - **Server-side checks:** submit ownership, brain validation and bounds, the offered-ability allowlist (a player can only pick from what they were offered), the weapon allowlist, no duplicate abilities, clock deadlines, and one final submit per player per round.
 - **Offer generation** stays deterministic from the match seed and round number (as `MatchLoadoutService` does today), now using the tier-per-two-rounds mapping and excluding abilities the player already owns.
@@ -377,7 +385,8 @@ No real-time server is needed. Each fight segment is an ordinary authoritative b
 
 ## 10. Open questions
 
-- The numbers: base clock, increment, pick time, segment length, HP pool, weapon damage, and the zone schedule.
+- The numbers: base clock, increment, pick time, weapon damage, and the zone sizes. Segment length (20 s), HP (300), the zone schedule and the 2v2 clock are set but still starting points. Whether 2v2 needs its own HP pool is a tuning item.
+- **Round 1 brain:** does round 1 start from an empty brain or from a saved one? A saved brain makes round 1 faster but lets players prepare outside the clock, which the format otherwise avoids (prepared module libraries were not adopted).
 - The open items in section 5c: final weapon numbers and Heavy Slash vs. Cleave.
 - The open items in section 5a: optional depth (brace, back hits). Turning is decided (fast turn replaces Lock On).
 - Whether players can run quick test fights against the frozen position during the build, and against what (their own brain only, or the opponent's last-segment behavior).

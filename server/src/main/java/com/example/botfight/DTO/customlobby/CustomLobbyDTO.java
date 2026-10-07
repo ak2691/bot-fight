@@ -9,7 +9,8 @@ public record CustomLobbyDTO(
         UUID ownerId,
         String ownerUsername,
         int capacity,
-        int roundDurationSeconds,
+        int baseClockSeconds,
+        int incrementSeconds,
         List<CustomLobbyMemberDTO> members) {
 
     /** Compatibility constructor for callers that do not provide settings. */
@@ -19,6 +20,6 @@ public record CustomLobbyDTO(
             String ownerUsername,
             int capacity,
             List<CustomLobbyMemberDTO> members) {
-        this(lobbyId, ownerId, ownerUsername, capacity, 5 * 60, members);
+        this(lobbyId, ownerId, ownerUsername, capacity, 5 * 60, 30, members);
     }
 }

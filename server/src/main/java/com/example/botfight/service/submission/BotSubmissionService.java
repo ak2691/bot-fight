@@ -146,6 +146,11 @@ public class BotSubmissionService {
                     "missing-brain-schema",
                     MAX_VERSION_LENGTH));
             submission.setBrainPayload(toJson(brain, "{}"));
+            // Validated against the brain's declared variables before this point.
+            submission.setVariableResets(payload.getVariableResets() == null
+                    ? List.of()
+                    : payload.getVariableResets().stream().distinct().toList());
+            submission.setTimeoutFallback(payload.getTimeoutFallback());
         } else {
             submission.setBrainSchemaVersion("missing-payload");
             submission.setBrainPayload("{}");
@@ -176,6 +181,13 @@ public class BotSubmissionService {
                     canonical.put("clientBuildVersion", payload.getClientBuildVersion());
                 }
                 if (payload.getBrain() != null) canonical.set("brain", payload.getBrain());
+                if (payload.getVariableResets() != null && !payload.getVariableResets().isEmpty()) {
+                    var resets = canonical.putArray("variableResets");
+                    payload.getVariableResets().stream().distinct().sorted().forEach(resets::add);
+                }
+                if (payload.getTimeoutFallback() != null) {
+                    canonical.put("timeoutFallback", payload.getTimeoutFallback());
+                }
                 fingerprintPayload = canonical;
             }
             byte[] serializedPayload = jsonMapper.writeValueAsString(fingerprintPayload)

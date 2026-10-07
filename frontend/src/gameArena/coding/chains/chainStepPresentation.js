@@ -18,6 +18,7 @@ export const CHAIN_CATEGORY_LABELS = Object.freeze({
     [ACTION_HEADS.ABILITY]: "ABILITY",
     [ACTION_HEADS.VARIABLE]: "VARIABLE",
     [ACTION_HEADS.CANCEL]: "CANCEL",
+    [ACTION_HEADS.DASH]: "DASH",
 });
 
 const FLOW_LABELS = Object.freeze({
@@ -133,7 +134,7 @@ function describeActionStep(step, definition, { selectableTypes, customVariables
         if (parts.length) parts[parts.length - 1] += ", fast";
         else parts.push("Fast");
     }
-    if (head === ACTION_HEADS.ABILITY && step.continue === "end") parts.push("waits for it to end");
+    if ((head === ACTION_HEADS.ABILITY || head === ACTION_HEADS.DASH) && step.continue === "end") parts.push("waits for it to end");
     // The time goes after the settings on the same row: "to Opponent 1 for 0.5 s".
     const timing = head === ACTION_HEADS.MOVEMENT || head === ACTION_HEADS.ROTATION ? timingPhrase(step, lookups).text : "";
     return { tag, tone: "action", label, summary: [parts.join(", "), timing].filter(Boolean).join(" ") };

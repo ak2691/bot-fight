@@ -136,7 +136,10 @@ class ChainRuntimeSimulationTest {
     private static String formatAction(Action action) {
         String moves = new String[] {"W", "", "E"}[sign(action.dx()) + 1] + new String[] {"N", "", "S"}[sign(action.dy()) + 1];
         return String.join(" ",
-                action.abilityAction() == null ? "-" : String.valueOf(action.abilityAction()),
+                // Ability and dash are separate channels; both show when they start on the same tick ("3+19").
+                java.util.stream.Stream.of(action.abilityAction(), action.dash() == null ? null : action.dash().abilityId())
+                        .filter(java.util.Objects::nonNull).map(String::valueOf)
+                        .reduce((first, second) -> first + "+" + second).orElse("-"),
                 moves.isEmpty() ? "-" : moves,
                 action.dRot() != 0 ? "rot" : "-",
                 action.cancelWindup() ? "cancel" : "-");

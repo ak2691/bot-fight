@@ -1,68 +1,44 @@
-# Documentation and audit context
+# Documentation index
 
-Use this index to open only the document relevant to the task. Source code and
-tests remain authoritative when a document is stale.
+Open only the document relevant to the task. Source code and tests win when a
+document is stale.
 
-## Gameplay contract and implementation guides
+## Gameplay
 
-- [`MATCH_TIMING.md`](MATCH_TIMING.md): authoritative server deadlines,
-  Cristian clock conversion, and lifecycle countdown rules.
-- [`ABILITY_EFFECT_CONTRACT.md`](ABILITY_EFFECT_CONTRACT.md): declarative
-  delivery/effect model and browser/server ownership. Read for effect
-  semantics, presentation boundaries, or contract review.
-- [`ADDING_AN_ABILITY_OR_MOVE.md`](ADDING_AN_ABILITY_OR_MOVE.md): end-to-end
-  browser + server workflow and definition of done. Read first when adding or
-  materially changing a move, ability, entity, targeting mode, or visual.
-- [`ADDING_A_BACKEND_ABILITY_OR_MOVE.md`](ADDING_A_BACKEND_ABILITY_OR_MOVE.md):
-  detailed authoritative catalog, validation, simulation, ECS, replay, and test
-  checklist. Read for server implementation after the end-to-end guide.
-- [`MODIFYING_ABILITIES.md`](MODIFYING_ABILITIES.md): practical tuning guide for
-  changing stats, adding existing generic effects, statuses, entities, delivery,
-  defensive effects, visuals, and new effect types.
-
-## Audits and regression review
-
+- [`ABILITIES.md`](ABILITIES.md): abilities, weapons, Dash and stamina,
+  contracts and phases, effects and statuses, entities, the tick order,
+  visuals, and how to add or tune an ability in both runtimes.
+- [`GAMEPLAY_REFACTOR_PLAN.md`](GAMEPLAY_REFACTOR_PLAN.md): planned refactor
+  to shared JSON data, a verb-based ability model and one entity tick
+  (stages R0-R8 with Sonnet prompts).
 - [`ARENA_VISUAL_AND_COMBAT_REGRESSION_CHECKLIST.md`](ARENA_VISUAL_AND_COMBAT_REGRESSION_CHECKLIST.md):
-  recurring failures involving transform ownership, timer-driven visuals,
-  accumulated combat state, statuses, and browser/server parity. Use for any
-  arena visual, ability, move, entity, replay field, or bot-state change.
-- [`LEGACY_PATH_DECISIONS.md`](LEGACY_PATH_DECISIONS.md): source-verified status
-  and production evidence required before removing legacy persistence or replay
-  paths.
+  recurring visual, timer and same-tick combat failures. Use for any ability,
+  entity, replay field or bot-state change, and for reviews.
+- [`PLAYER_COORDINATES_AND_BRAIN_VERSIONS.md`](PLAYER_COORDINATES_AND_BRAIN_VERSIONS.md):
+  public centered/Y-up coordinates versus internal ones, and brain schema
+  versions v1/v2.
+- [`CODE_WORKSPACE_REDESIGN.md`](CODE_WORKSPACE_REDESIGN.md): how the brain and
+  chain editors work (execution order, nodes, panels, chains, toolbar).
 
-For a code review or audit, pair the checklist with the affected runtime map:
+## Match format and timing
 
-- browser arena/Pixi: [`../frontend/src/gameArena/context.md`](../frontend/src/gameArena/context.md);
-- server authority/security/persistence: [`../server/context.md`](../server/context.md);
-- cross-boundary/API/logic: both runtime contexts plus root
-  [`../context.md`](../context.md)'s end-to-end trace.
-
-## Design proposals (not implemented)
-
-- [`TIMED_ROUNDS_MATCH_FORMAT.md`](TIMED_ROUNDS_MATCH_FORMAT.md): chess-clock
-  match format with per-round ability picks, frozen-state fight segments,
-  HP-check ending, brain-schedule simulation, and shelved live-input ideas.
+- [`TIMED_ROUNDS_MATCH_FORMAT.md`](TIMED_ROUNDS_MATCH_FORMAT.md): the six-round
+  format design and its rationale.
 - [`TIMED_ROUNDS_IMPLEMENTATION_PLAN.md`](TIMED_ROUNDS_IMPLEMENTATION_PLAN.md):
-  work packages, weapon/ability numbers, placeholder visuals, phase and clock
-  rules, and the Sonnet prompts for implementing that format.
+  locked decisions, remaining work (P5, P6, S7) and their Sonnet prompts.
+- [`MATCH_TIMING.md`](MATCH_TIMING.md): server deadlines, client clock
+  conversion, and the round-transition checklist.
 
-## Security, privacy, and moderation
+## Server, security and legacy
 
-- [`CHAT_MODERATION.md`](CHAT_MODERATION.md): server-verified chat evidence,
-  report authorization, retention periods, and the admin review contract.
+- [`CHAT_MODERATION.md`](CHAT_MODERATION.md): chat evidence, report
+  authorization, retention and the admin review contract.
+- [`LEGACY_PATH_DECISIONS.md`](LEGACY_PATH_DECISIONS.md): evidence required
+  before removing legacy party persistence or replay recorders.
 
-## Documentation maintenance
+## Maintaining docs
 
-- [`MAINTAINING_CONTEXT_FILES.md`](MAINTAINING_CONTEXT_FILES.md): directory-first
-  policy for changing routing maps as the repository grows. Read before adding,
-  splitting, or substantially expanding any `context.md`.
-
-- Keep context files as navigation, not duplicated specifications. Stable detail
-  belongs in a focused document or next to the DTO/type that owns the contract.
-- Update an existing guide when behavior changes; avoid parallel documents for
-  the same contract.
-- Add a new context layer only when a high-level area has multiple subsystems and
-  agents otherwise need broad discovery. Do not add one for every directory.
-- Keep each context file under 200 lines and use repository-relative links.
-- If code, tests, and docs disagree, verify current behavior and update the stale
-  documentation in the same change when it is in scope.
+- [`MAINTAINING_CONTEXT_FILES.md`](MAINTAINING_CONTEXT_FILES.md): when and how
+  to change the `context.md` routing maps.
+- Update the existing guide when behavior changes; do not add a parallel
+  document for the same contract. Keep context files under 200 lines.

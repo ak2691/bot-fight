@@ -13,14 +13,17 @@ export function isClosingZone(shape) {
     return shape?.type === CLOSING_ZONE_TYPE || shape?.id === CLOSING_ZONE_ID;
 }
 
-export function createClosingZone(width, height) {
-    const safeRadius = fullArenaCircleRadius(width, height);
+export function createClosingZone(width, height, config = CLOSING_ZONE_CONFIG) {
+    const safeRadius = isSteppedZone(config)
+        ? Number(config.startDiameterUnits) / 2
+        : fullArenaCircleRadius(width, height, config);
     return zoneShape(width, height, safeRadius, 0, 0);
 }
 
 export function closingZoneSafeRadius(elapsedMs, width, height, config = CLOSING_ZONE_CONFIG) {
     const activeElapsedMs = Math.max(0, Number(elapsedMs) - Number(config.startDelayMs));
     if (Number(elapsedMs) < Number(config.startDelayMs)) return null;
+    if (isSteppedZone(config)) return steppedSafeRadius(Number(elapsedMs), config);
 
     const fullRadius = fullArenaCircleRadius(width, height, config);
     const phaseCount = Math.max(1, Math.floor(Number(config.phaseCount) || 1));
@@ -45,6 +48,40 @@ export function closingZoneSafeRadius(elapsedMs, width, height, config = CLOSING
     return fullRadius * Math.max(0, startFraction - 1 / phaseCount);
 }
 
+/** A stepped config starts at a fixed diameter and contracts through its steps; see the server's ClosingZoneConfig. */
+function isSteppedZone(config) {
+    return Array.isArray(config?.steps) && config.steps.length > 0;
+}
+
+function steppedSafeRadius(elapsedMs, config) {
+    let radius = Number(config.startDiameterUnits) / 2;
+    for (const step of config.steps) {
+        const target = Number(step.toDiameterUnits) / 2;
+        if (elapsedMs <= Number(step.startMs)) return radius;
+        const contractMs = Math.max(0, Number(step.contractMs) || 0);
+        if (elapsedMs < Number(step.startMs) + contractMs) {
+            return lerp(radius, target, (elapsedMs - Number(step.startMs)) / contractMs);
+        }
+        radius = target;
+    }
+    return radius;
+}
+
+/**
+ * The warning ring: for `warningLeadMs` before each step starts, the diameter that step contracts to.
+ * Null when no ring is shown.
+ */
+export function closingZoneWarningDiameter(elapsedMs, config = CLOSING_ZONE_CONFIG) {
+    if (!isSteppedZone(config)) return null;
+    for (const step of config.steps) {
+        const start = Number(step.startMs);
+        if (elapsedMs >= start - Number(config.warningLeadMs ?? 0) && elapsedMs < start) {
+            return Number(step.toDiameterUnits);
+        }
+    }
+    return null;
+}
+
 export function closingZoneTouchesBot(zone, bot) {
     if (!zone || !bot || Number(bot.hp ?? 0) <= 0) return false;
     const safeRadius = Number(zone.safeRadius ?? Number(zone.size ?? 0) / 2);
@@ -63,20 +100,22 @@ export function tickClosingZoneWorld({
     stepMs = 100,
     width,
     height,
+    config = CLOSING_ZONE_CONFIG,
 } = {}, { applyDamageToShape } = {}) {
     const currentElapsedMs = Math.max(0, Number(elapsedMs) || 0);
-    if (currentElapsedMs < Number(CLOSING_ZONE_CONFIG.startDelayMs)) {
+    if (currentElapsedMs < Number(config.startDelayMs)) {
         return { bots, zone: null };
     }
 
-    const activeElapsedMs = Math.max(0, currentElapsedMs - CLOSING_ZONE_CONFIG.startDelayMs);
-    const currentZone = zone ?? createClosingZone(width, height);
-    const updateIntervalMs = Math.max(1, Number(CLOSING_ZONE_CONFIG.geometryUpdateMs) || 1);
+    const activeElapsedMs = Math.max(0, currentElapsedMs - config.startDelayMs);
+    const currentZone = zone ?? createClosingZone(width, height, config);
+    const updateIntervalMs = Math.max(1, Number(config.geometryUpdateMs) || 1);
     const geometryElapsedMs = Math.floor(activeElapsedMs / updateIntervalMs) * updateIntervalMs;
     const candidateSafeRadius = closingZoneSafeRadius(
-        Number(CLOSING_ZONE_CONFIG.startDelayMs) + geometryElapsedMs,
+        Number(config.startDelayMs) + geometryElapsedMs,
         width,
         height,
+        config,
     );
     const geometryChanged = Math.abs(candidateSafeRadius - Number(currentZone.safeRadius ?? 0)) > 1e-9;
     const nextZone = geometryChanged
@@ -85,14 +124,14 @@ export function tickClosingZoneWorld({
 
     let nextBots = bots ?? [];
     const previousElapsedMs = Math.max(0, currentElapsedMs - Math.max(1, Number(stepMs) || 1));
-    const damageTickCount = completedDamageTicks(previousElapsedMs, currentElapsedMs);
+    const damageTickCount = completedDamageTicks(previousElapsedMs, currentElapsedMs, config);
     if (damageTickCount > 0 && typeof applyDamageToShape === "function") {
         const damageSource = { id: CLOSING_ZONE_ID, type: CLOSING_ZONE_TYPE };
         for (let tick = 0; tick < damageTickCount; tick += 1) {
             nextBots = nextBots.map((bot) => {
                 if (!closingZoneTouchesBot(nextZone, bot)) return bot;
                 const damage = Math.max(0, roundCombatValue(
-                    Number(bot.maxHp ?? bot.hp ?? 0) * Number(CLOSING_ZONE_CONFIG.damagePercentMaxHp),
+                    Number(bot.maxHp ?? bot.hp ?? 0) * Number(config.damagePercentMaxHp),
                 ));
                 return applyDamageToShape(bot, damage, damageSource);
             });
@@ -114,6 +153,22 @@ function updateZoneGeometry(zone, width, height, geometryElapsedMs, safeRadius) 
     };
 }
 
+export const CLOSING_ZONE_WARNING_ID = "closing-zone-warning";
+
+/**
+ * The ring that previews the diameter the zone contracts to next. Presentation only: the replay shows
+ * it from the server's `zoneNextDiameterUnits`, and it never touches a bot.
+ */
+export function closingZoneWarningShape(diameterUnits, width, height) {
+    const diameter = Number(diameterUnits);
+    if (!(diameter > 0)) return null;
+    return {
+        ...zoneShape(width, height, diameter / 2, 0, 0),
+        id: CLOSING_ZONE_WARNING_ID,
+        warningOnly: true,
+    };
+}
+
 function zoneShape(width, height, safeRadius, activeElapsedMs, geometryElapsedMs) {
     return {
         id: CLOSING_ZONE_ID,
@@ -129,9 +184,9 @@ function zoneShape(width, height, safeRadius, activeElapsedMs, geometryElapsedMs
     };
 }
 
-function completedDamageTicks(previousElapsedMs, currentElapsedMs) {
-    const start = Number(CLOSING_ZONE_CONFIG.startDelayMs);
-    const interval = Math.max(1, Number(CLOSING_ZONE_CONFIG.damageIntervalMs) || 1);
+function completedDamageTicks(previousElapsedMs, currentElapsedMs, config = CLOSING_ZONE_CONFIG) {
+    const start = Number(config.startDelayMs);
+    const interval = Math.max(1, Number(config.damageIntervalMs) || 1);
     const previousActive = Math.max(0, previousElapsedMs - start);
     const currentActive = Math.max(0, currentElapsedMs - start);
     return Math.max(0, Math.floor(currentActive / interval) - Math.floor(previousActive / interval));

@@ -136,7 +136,7 @@ class MovementStaminaSimulationTest {
     }
 
     @Test
-    void compactReplayFramesCarryStaminaExhaustedAndSprinting() {
+    void compactReplayFramesCarryStaminaAndSprinting() {
         String sprintEast = "{\"action\":\"move_walk\",\"movementMode\":\"absolute\",\"movementDirection\":90,\"sprint\":true}";
         MatchReplayDTO replay = service.simulateCompact(new DuelSimulationRequest(
                 UUID.nameUUIDFromBytes("stamina-replay".getBytes()), DuelSimulationService.DUEL_RULESET_VERSION, 11L,
@@ -148,7 +148,6 @@ class MovementStaminaSimulationTest {
         var frames = replay.frames();
         assertThat(frames.get(0).bots().get(0).stamina()).isEqualTo(97);
         assertThat(frames.get(0).bots().get(0).sprinting()).isTrue();
-        assertThat(frames.get(0).bots().get(0).exhausted()).isNull();
         // 100 / 3 = 34 sprint ticks to empty; the opponent never spends and stays full and quiet.
         assertThat(frames.get(0).bots().get(1).stamina()).isEqualTo(100);
         assertThat(frames.get(0).bots().get(1).sprinting()).isNull();

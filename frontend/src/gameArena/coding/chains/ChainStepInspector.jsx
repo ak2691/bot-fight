@@ -111,9 +111,10 @@ export function ChainStepInspector({
         if (!definition) return <p className="cx-note">This action is not available with the current loadout.</p>;
         const targetMode = actionTargetMode(step, definition);
         const needsTarget = targetMode !== null;
-        const abilities = actionTypes.filter((action) => action.head === ACTION_HEADS.ABILITY);
+        const abilityLike = (action) => action.head === ACTION_HEADS.ABILITY || action.head === ACTION_HEADS.DASH;
+        const abilities = actionTypes.filter(abilityLike);
         return <>
-            {head === ACTION_HEADS.ABILITY && <label className="code-inspector-field"><span>Ability</span>
+            {(head === ACTION_HEADS.ABILITY || head === ACTION_HEADS.DASH) && <label className="code-inspector-field"><span>Ability</span>
                 <select disabled={disabled} aria-label="Ability" value={String(step.action)} onChange={(event) => {
                     const next = abilities.find((action) => String(action.id) === event.target.value);
                     if (next) onUpdate((current) => changeStepAction(current, next, { customVariables, chains }));

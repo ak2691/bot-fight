@@ -4,15 +4,17 @@ import PixiCanvas from "../gameArena/pixi/PixiCanvas";
 import { PROJECTILE_WALL_LENGTH, PROJECTILE_WALL_TYPE } from "../gameArena/ArenaObjects";
 import { decodeBotLoadout, encodeBotLoadout } from "../gameArena/loadout/BotLoadout";
 import { AUTO_STEP_MS, BASE_BOT_HP, DEFENSE_WALL_TYPE, ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../gameArena/modelPayloads/arenaConstants";
-import { MATCH_DURATION_MS } from "../gameArena/gameconfig/ArenaHazardConfig.js";
+import { closingZoneWarningShape } from "../gameArena/ecs/entities/ClosingZoneSystem.js";
+import { finalTeamHp, matchEndReason, roundLabel, teamHpFromBots } from "../gameArena/coding/matchHud.js";
+import { formatHp } from "../gameArena/gameconfig/visualState.js";
 import { attachedAbilityContract } from "../gameArena/ecs/contracts/AbilityContracts.js";
-import { botColorRole, normalizeReplayObstacleShape } from "../gameArena/pixi/pixiVisualState.js";
+import { normalizeReplayObstacleShape } from "../gameArena/pixi/pixiVisualState.js";
 import { compassDegreesToRadians } from "../gameArena/botlogic/planner/arenaAngles.js";
 import MatchToolIcon from "../gameArena/coding/controls/MatchToolIcon.jsx";
 import BotLogo from "../components/BotLogo.jsx";
 import { matchModeLabel } from "../matchmaking/matchModes.js";
 import { eloChangeTone, eloChangeValue } from "../pages/profile/profileMatchFormat.js";
-import { centeredTeamPosition, displayedRoundWins, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, replayAbilitiesFor, replayAbilityTarget, replayAbilityVisual, replayBotAbilityState, replayDamageEvents, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayFrameIndexForElapsedMs, replayRayOrigin, replayRatingChanges, replayRemainingSeconds, replayResultVisibility, replayShapeKey } from "./replayPresentation.js";
+import { centeredTeamPosition, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, replayAbilitiesFor, replayAbilityTarget, replayAbilityVisual, replayBotAbilityState, replayDamageEvents, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayFrameIndexForElapsedMs, replayRayOrigin, replayRatingChanges, replayRemainingSeconds, replayResultVisibility, replayShapeKey } from "./replayPresentation.js";
 
 const EMPTY_LIST = Object.freeze([]);
 const NOOP = () => { };
@@ -27,19 +29,6 @@ function participantTeamNumber(participant) {
     return Number.isFinite(explicitTeam) && explicitTeam > 0
         ? explicitTeam
         : Number(participant?.slot) === 1 ? 1 : 2;
-}
-
-function teamLabel(teamNumber) {
-    return Number(teamNumber) === 2 ? "Red Team" : "Blue Team";
-}
-
-function roundWinsForTeam(participants, teamNumber, roundWinsBeforeResult, revealCurrentRoundPoint) {
-    return participants
-        .filter((participant) => participantTeamNumber(participant) === teamNumber)
-        .reduce((highest, participant) => Math.max(
-            highest,
-            displayedRoundWins(participant, roundWinsBeforeResult, revealCurrentRoundPoint),
-        ), 0);
 }
 
 export default function SimulationReplay({
@@ -147,7 +136,6 @@ export default function SimulationReplay({
     const winner = [...bots, ...initialBots, ...participants]
         .find((bot) => sameId(bot?.userId, playback.winnerUserId));
     const winnerTeamNumber = winner ? participantTeamNumber(winner) : null;
-    const winnerTeamLabel = teamLabel(winnerTeamNumber);
     const hasPlaybackStarted = countdownRemainingMs <= 0;
     const hasDisplayedFinalFrame = hasPlaybackStarted && (frames.length === 0
         || elapsedPlaybackMs >= finalElapsedMs);
@@ -155,7 +143,7 @@ export default function SimulationReplay({
     const hasReachedReplayEnd = hasAuthorizedTerminalFrame && hasDisplayedFinalFrame;
     const resultRevealReceived = playback.resultRevealReceived === true;
     const roundResultRevealReceived = playback.roundResultRevealReceived === true;
-    const { roundResultRevealed, matchResultRevealed } = replayResultVisibility({
+    const { matchResultRevealed } = replayResultVisibility({
         result: playback.result,
         hasAuthorizedTerminalFrame,
         hasDisplayedFinalFrame,
@@ -164,8 +152,8 @@ export default function SimulationReplay({
     });
     const ratingChanges = replayRatingChanges(playback, matchResultRevealed, viewer?.username);
 
-    const winnerColorRole = botColorRole(winner);
-    const replaySeconds = replayRemainingSeconds(MATCH_DURATION_MS, displayElapsedMs);
+    const segmentMs = (Number(playback.timedRounds?.segmentSeconds) > 0 ? Number(playback.timedRounds.segmentSeconds) : 20) * 1000;
+    const replaySeconds = replayRemainingSeconds(segmentMs, displayElapsedMs);
 
     useEffect(() => {
         let animationFrameId = null;
@@ -204,9 +192,14 @@ export default function SimulationReplay({
             : frameIndex > 0 ? [frames[frameIndex - 1]] : EMPTY_LIST;
         return [...initialFrame, ...previousTwo];
     }, [activeElapsedMs, frameIndex, frames, initialBots, playback.initialState?.entities]);
-    const shapes = useMemo(() => playbackInput
-        ? replayArenaShapes(bots, entities, recentFrames, entranceProgress, frames, frameIndex, isInitialHandoff, viewerUserId)
-        : preloadShapes, [bots, entities, entranceProgress, frameIndex, frames, isInitialHandoff, playbackInput, preloadShapes, recentFrames, viewerUserId]);
+    const zoneNextDiameterUnits = playback.timedRounds?.zoneNextDiameterUnits;
+    const shapes = useMemo(() => {
+        if (!playbackInput) return preloadShapes;
+        const replayShapes = replayArenaShapes(bots, entities, recentFrames, entranceProgress, frames, frameIndex, isInitialHandoff, viewerUserId);
+        const warning = isForfeitResult ? null : closingZoneWarningShape(zoneNextDiameterUnits, ARENA_WIDTH_UNITS, ARENA_HEIGHT_UNITS);
+        return warning ? [...replayShapes, warning] : replayShapes;
+    }, [bots, entities, entranceProgress, frameIndex, frames, isForfeitResult, isInitialHandoff, playbackInput, preloadShapes, recentFrames, viewerUserId, zoneNextDiameterUnits]);
+    const liveTeamHp = useMemo(() => teamHpFromBots(bots), [bots]);
 
     return <section className="arena-content-shell relative match-arena-shell flex h-[calc(100svh-72px)] min-h-0 overflow-hidden">
         <main className="arena-stage-main match-arena-stage flex min-w-0 flex-1 items-center justify-center overflow-hidden p-2">
@@ -222,13 +215,11 @@ export default function SimulationReplay({
             opponent={opponent}
             participants={participants}
             replaySeconds={replaySeconds}
+            liveTeamHp={liveTeamHp}
             countdownRemainingMs={countdownRemainingMs}
-            roundResultRevealed={roundResultRevealed}
             matchResultRevealed={matchResultRevealed}
             hasReachedReplayEnd={hasReachedReplayEnd}
-            winnerTeamLabel={winnerTeamLabel}
             winnerTeamNumber={winnerTeamNumber}
-            winnerColorRole={winnerColorRole}
             onCancel={onCancel}
             cancelLabel={cancelLabel}
             isCustomMatch={isCustomMatch}
@@ -251,13 +242,11 @@ function ReplaySidebar({
     opponent,
     participants,
     replaySeconds,
+    liveTeamHp,
     countdownRemainingMs,
-    roundResultRevealed,
     matchResultRevealed,
     hasReachedReplayEnd,
-    winnerTeamLabel,
     winnerTeamNumber,
-    winnerColorRole,
     onCancel,
     cancelLabel,
     isCustomMatch,
@@ -269,23 +258,14 @@ function ReplaySidebar({
     onHome = null,
     onQueueAgain = null,
 }) {
-    const roundWinsBeforeResult = playback.roundWinsBeforeResult;
-    const revealCurrentRoundPoint = roundResultRevealed || matchResultRevealed;
     const roundParticipants = participants.length > 0 ? participants : [player, opponent].filter(Boolean);
-    const blueTeamWins = roundWinsForTeam(roundParticipants, 1, roundWinsBeforeResult, revealCurrentRoundPoint);
-    const redTeamWins = roundWinsForTeam(roundParticipants, 2, roundWinsBeforeResult, revealCurrentRoundPoint);
-    const roundResultTitle = replayRoundResultTitle({
-        roundResultRevealed,
-        hasReachedReplayEnd,
-        result: playback.result,
-        winnerTeamLabel,
-        winnerColorRole,
-    });
+    const maxRounds = playback.timedRounds?.maxRounds;
+    const finalHp = finalTeamHp(playback.timedRounds);
+    const roundResultTitle = replayRoundResultTitle({ hasReachedReplayEnd });
     const statusMessage = countdownRemainingMs > 0
         ? "Bots entering the arena."
         : matchResultRevealed ? "Official match result confirmed."
-            : roundResultRevealed ? "Round result confirmed."
-                : hasReachedReplayEnd ? "Waiting for the round result."
+            : hasReachedReplayEnd ? "Segment complete."
                 : "Watching the submitted bots fight.";
 
     return (
@@ -307,8 +287,7 @@ function ReplaySidebar({
                         participants={roundParticipants}
                         mode={mode}
                         isCustomMatch={isCustomMatch}
-                        blueTeamWins={blueTeamWins}
-                        redTeamWins={redTeamWins}
+                        finalHp={finalHp}
                         winnerTeamNumber={winnerTeamNumber}
                         finalElapsedMs={finalElapsedMs}
                         ratingChanges={ratingChanges}
@@ -320,23 +299,23 @@ function ReplaySidebar({
                 ) : (
                     <>
                         <section className="rounded-xl border border-slate-600/70 bg-slate-900/55 p-4 text-[10px] shadow-[0_10px_30px_rgba(0,0,0,.2)]">
-                            <ReplayPanelHeading icon="status">MATCH STATUS</ReplayPanelHeading>
+                            <ReplayPanelHeading icon="status">Match status</ReplayPanelHeading>
                             <div className="flex items-center justify-between text-ink-muted">
-                                <span>ROUND</span>
-                                <strong className="font-interface-numeric text-ink-white">{playback.roundNumber ?? 1}/3</strong>
+                                <span>Round</span>
+                                <strong className="font-interface-numeric text-ink-white">{roundLabel(playback.roundNumber, maxRounds)}</strong>
                             </div>
                             <div className="mt-2 flex items-center justify-between text-ink-muted">
-                                <span>TIME REMAINING</span>
+                                <span>Segment time left</span>
                                 <strong className="font-interface-numeric text-amber-200">{formatReplayClock(replaySeconds)}</strong>
                             </div>
                             <div className="mt-3 grid grid-cols-2 gap-2">
-                                <ReplayScoreBox label="BLUE TEAM" value={blueTeamWins} tone="blue" />
-                                <ReplayScoreBox label="RED TEAM" value={redTeamWins} tone="red" opponent />
+                                <ReplayScoreBox label="Blue HP" value={formatHp(liveTeamHp.blue)} tone="blue" />
+                                <ReplayScoreBox label="Red HP" value={formatHp(liveTeamHp.red)} tone="red" opponent />
                             </div>
                         </section>
 
                         <section className="rounded-xl border border-slate-600/70 bg-slate-900/55 p-4 shadow-[0_10px_30px_rgba(0,0,0,.2)]">
-                            <ReplayPanelHeading icon="bot">ROUND REPLAY</ReplayPanelHeading>
+                            <ReplayPanelHeading icon="bot">Replay</ReplayPanelHeading>
                             <p className="mt-2 break-words text-base font-bold text-ink-white" aria-live="polite">
                                 {countdownRemainingMs > 0 ? "Preparing replay..." : roundResultTitle}
                             </p>
@@ -349,23 +328,14 @@ function ReplaySidebar({
     );
 }
 
-function howEnded(result, viewerWon) {
-    if (result === "DRAW") return "timeout";
-    if (result === "RESIGNATION_WIN") return viewerWon ? "forfeit" : "forfeit";
-    if (result === "DISCONNECTION_WIN") return "disconnect";
-    return "knockout";
-}
-
 function MatchFinishedCard({
     playback,
     player,
     participants,
     mode,
     isCustomMatch,
-    blueTeamWins,
-    redTeamWins,
+    finalHp,
     winnerTeamNumber,
-    finalElapsedMs,
     ratingChanges,
     onHome,
     onQueueAgain,
@@ -389,11 +359,12 @@ function MatchFinishedCard({
     const modeName = isCustomMatch || String(mode ?? "").toUpperCase() === "CUSTOM"
         ? "Custom match"
         : `Ranked ${matchModeLabel(mode)}`;
+    const reason = matchEndReason({ result, hpDecision: playback.timedRounds?.hpDecision });
     const forfeitText = result === "RESIGNATION_WIN"
         ? viewerWon ? "opponent forfeited" : "you forfeited"
         : result === "DISCONNECTION_WIN"
             ? viewerWon ? "opponent disconnected" : "you disconnected"
-            : draw ? "timeout draw" : "knockout";
+            : reason;
     const subtitle = cancelled || failed ? modeName : `${modeName}, ${forfeitText}`;
     const teamNames = (teamNumber) => participants
         .filter((participant) => participantTeamNumber(participant) === teamNumber)
@@ -402,53 +373,9 @@ function MatchFinishedCard({
     const blueNames = teamNames(1);
     const redNames = teamNames(2);
     const teamRows = [
-        { key: "blue", label: "BLUE", names: blueNames, fallback: "Blue Team", score: blueTeamWins, isViewer: viewerTeam === 1, band: "bg-[#0c2a3a]", tag: "text-sky-300", pill: "bg-sky-400/15 text-sky-200" },
-        { key: "red", label: "RED", names: redNames, fallback: "Red Team", score: redTeamWins, isViewer: viewerTeam === 2, band: "bg-[#3a1418]", tag: "text-rose-300", pill: "bg-rose-400/15 text-rose-200" },
+        { key: "blue", label: "BLUE", names: blueNames, fallback: "Blue Team", score: finalHp ? formatHp(finalHp.blue) : null, isViewer: viewerTeam === 1, band: "bg-[#0c2a3a]", tag: "text-sky-300", pill: "bg-sky-400/15 text-sky-200" },
+        { key: "red", label: "RED", names: redNames, fallback: "Red Team", score: finalHp ? formatHp(finalHp.red) : null, isViewer: viewerTeam === 2, band: "bg-[#3a1418]", tag: "text-rose-300", pill: "bg-rose-400/15 text-rose-200" },
     ];
-
-    // Per-round history is not part of the playback payload, so earlier rounds are inferred
-    // from the final score and only shown when that inference is unambiguous.
-    const viewerWins = viewerTeam === 2 ? redTeamWins : blueTeamWins;
-    const opponentWins = viewerTeam === 2 ? blueTeamWins : redTeamWins;
-    const roundsPlayed = Math.max(1, Number(playback.roundNumber ?? 1));
-    const lastRoundViewerWin = viewerWon ? 1 : 0;
-    const lastRoundOpponentWin = WIN_RESULTS.includes(result) && !viewerWon ? 1 : 0;
-    const earlierCount = roundsPlayed - 1;
-    const earlierViewerWins = Math.max(0, viewerWins - lastRoundViewerWin);
-    const earlierOpponentWins = Math.max(0, opponentWins - lastRoundOpponentWin);
-    const earlierDraws = Math.max(0, earlierCount - earlierViewerWins - earlierOpponentWins);
-    const rounds = [];
-    const mixedEarlier = [earlierViewerWins, earlierOpponentWins, earlierDraws].filter((count) => count > 0).length > 1;
-    if (earlierCount > 0 && !mixedEarlier) {
-        for (let index = 0; index < earlierCount; index += 1) {
-            rounds.push({
-                key: `round-${index + 1}`,
-                label: `R${index + 1}`,
-                outcome: earlierViewerWins > 0 ? "won" : earlierOpponentWins > 0 ? "lost" : "draw",
-                how: null,
-            });
-        }
-    } else if (earlierCount > 0) {
-        rounds.push({
-            key: "earlier",
-            label: earlierCount === 2 ? "R1–R2" : "R1",
-            outcome: "mixed",
-            how: [earlierViewerWins ? `${earlierViewerWins} won` : null, earlierOpponentWins ? `${earlierOpponentWins} lost` : null, earlierDraws ? `${earlierDraws} drawn` : null].filter(Boolean).join(", "),
-        });
-    }
-    if (!cancelled && !failed) {
-        const clock = result === "BOT_WIN" || result === "WIN"
-            ? ` at ${formatReplayClock(Math.max(0, Math.ceil(finalElapsedMs / 1000)))}`
-            : "";
-        rounds.push({
-            key: `round-${roundsPlayed}`,
-            label: `R${roundsPlayed}`,
-            outcome: draw ? "draw" : viewerWon ? "won" : "lost",
-            how: `${howEnded(result, viewerWon) === "knockout" ? "KO" : howEnded(result, viewerWon)}${clock}`,
-        });
-    }
-    const barClass = { won: "bg-emerald-400", lost: "bg-rose-400", draw: "bg-slate-400", mixed: "bg-amber-300" };
-    const outcomeWord = { won: "Won", lost: "Lost", draw: "Draw", mixed: "Mixed" };
 
     return (
         <div className="space-y-3 font-interface" aria-label="MATCH RESULT">
@@ -471,7 +398,7 @@ function MatchFinishedCard({
                                             </p>
                                         ))}
                                     </div>
-                                    <p className="shrink-0 font-display text-xl font-bold text-white">{row.score}</p>
+                                    {row.score != null && <p className="shrink-0 font-display text-xl font-bold text-white" aria-label={`${row.label} HP`}>{row.score} <span className="text-xs font-semibold text-slate-400">HP</span></p>}
                                 </div>
                             );
                         })}
@@ -480,18 +407,6 @@ function MatchFinishedCard({
             </section>
 
             <RatingCard playback={playback} player={player} mode={mode} isCustomMatch={isCustomMatch} ratingChanges={ratingChanges} cancelled={cancelled || failed} isFinalMatchResult={isFinalMatchResult} />
-
-            {rounds.length > 1 && (
-                <ul className="space-y-1.5 rounded-xl border border-[#262c33] bg-[#0f1418] p-2" aria-label="Rounds">
-                    {rounds.map((round) => (
-                        <li key={round.key} className="flex items-center gap-2 rounded-md bg-[#12181d] px-2.5 py-2 text-xs text-slate-200">
-                            <span className="w-8 shrink-0 font-display font-bold text-slate-400">{round.label}</span>
-                            <span className={`h-4 w-[3px] shrink-0 rounded-full ${barClass[round.outcome]}`} aria-hidden="true" />
-                            <span className="min-w-0 flex-1 truncate">{outcomeWord[round.outcome]}{round.how ? `, ${round.how}` : ""}</span>
-                        </li>
-                    ))}
-                </ul>
-            )}
 
             <div className="space-y-2">
                 {onReturnToLobby ? (
@@ -563,19 +478,9 @@ function formatReplayClock(seconds) {
     return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-function replayRoundResultTitle({ roundResultRevealed, hasReachedReplayEnd, result, winnerTeamLabel, winnerColorRole }) {
-    if (!roundResultRevealed) return hasReachedReplayEnd ? "Awaiting round result" : "Replay in progress";
-    if (result === "DRAW") return "Round drawn.";
-    if (result === "MATCH_CANCELLED") return "Match canceled.";
-    if (!["BOT_WIN", "WIN", "RESIGNATION_WIN", "DISCONNECTION_WIN"].includes(result)) return "Simulation failed.";
-
-    const suffix = result === "RESIGNATION_WIN" ? " wins by forfeit."
-        : result === "DISCONNECTION_WIN" ? " wins by disconnect."
-            : " wins the round.";
-    return <>
-        <span className={winnerColorRole === "red" ? "text-[#ff7166]" : "text-[#57b8ff]"}>{winnerTeamLabel}</span>
-        {suffix}
-    </>;
+// Between segments there is no round winner: the fight carries on, so a segment only ends or continues.
+function replayRoundResultTitle({ hasReachedReplayEnd }) {
+    return hasReachedReplayEnd ? "Segment complete" : "Replay in progress";
 }
 
 function replayArenaShapes(bots, entities, recentFrames = [], entranceProgress = 1, frames = [], frameIndex = 0, initialHandoff = false, viewerUserId = null) {

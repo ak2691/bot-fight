@@ -26,8 +26,10 @@ Confirm current symbols and contracts in code before changing behavior.
   allowlisted logic-block configuration is the submitted brain; never execute
   arbitrary user code or expression text.
 - Rated outcomes come from authoritative deterministic server simulation.
-  Browser training and rendering are previews, not match authority. A timeout
-  is a draw; a win requires defeating the opponent through HP damage.
+  Browser training and rendering are previews, not match authority. A match
+  is six 20-second segments of one continuous fight. It ends by KO, or after
+  round 6 by HP decision (the team with more total HP wins; equal HP or a
+  simultaneous death is a draw).
 - Treat client submissions, identifiers, hashes, logs, and claimed outcomes as
   hostile input. Validate and bound them at server boundaries and enforce row
   ownership with the authenticated user.

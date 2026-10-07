@@ -46,7 +46,6 @@ export const TUTORIAL_ACTIONS = Object.freeze({
     HEAVY_SLASH: abilityIdFromLegacyName("heavy_slash"),
     WIND_BURST: abilityIdFromLegacyName("wind_burst"),
     DASH: abilityIdFromLegacyName("dash"),
-    BASIC_STRIKE: abilityIdFromLegacyName("basic_strike"),
 });
 
 export function createEmptyTutorialCode() {
@@ -118,8 +117,8 @@ function stepFiveSolution(selectable = BOT_CODE_SELECTABLES.OPPONENT) {
     ])])]);
 }
 
-function stepSixBasicStrikeSolution() {
-    return code([root(1, [branch("lesson-6-basic-strike-if", [always()], [ability(TUTORIAL_ACTIONS.BASIC_STRIKE)])])]);
+function stepSixSlashSolution() {
+    return code([root(1, [branch("lesson-6-slash-if", [always()], [ability(TUTORIAL_ACTIONS.SLASH)])])]);
 }
 
 function stepEightCustomVariableSolution() {
@@ -286,7 +285,6 @@ function orbitingSolution() {
         ]),
         root(4, [branch("lesson-9-face-if", [always()], [face()])]),
         root(5, [branch("lesson-9-slash-if", [always()], [ability(TUTORIAL_ACTIONS.SLASH)])]),
-        root(6, [branch("lesson-9-basic-strike-if", [always()], [ability(TUTORIAL_ACTIONS.BASIC_STRIKE)])]),
     ]);
 }
 
@@ -438,7 +436,6 @@ function orbitingOpponent() {
     return code([
         root(1, [branch("opponent-orbit-face-if", [always()], [face()])]),
         root(2, [branch("opponent-orbit-slash-if", [always()], [ability(TUTORIAL_ACTIONS.SLASH)])]),
-        root(3, [branch("opponent-orbit-basic-strike-if", [always()], [ability(TUTORIAL_ACTIONS.BASIC_STRIKE)])]),
     ]);
 }
 
@@ -466,9 +463,8 @@ function comboAndKiteOpponent() {
     return code([
         root(1, [branch("opponent-combo-lock-on", [comparePair("selectable.distance", "lte", 184), comparePair("selectable.relativeBearing", "gt", 60)], [fastFace()])]),
         root(2, [branch("opponent-combo-slash", [always()], [ability(TUTORIAL_ACTIONS.SLASH)])]),
-        root(3, [branch("opponent-combo-basic-strike", [comparePair("selectable.distance", "lte", 92)], [ability(TUTORIAL_ACTIONS.BASIC_STRIKE)])]),
-        root(4, [branch("opponent-combo-pursue", [always()], [move(0)])]),
-        root(5, [branch("opponent-combo-face", [always()], [face()])]),
+        root(3, [branch("opponent-combo-pursue", [always()], [move(0)])]),
+        root(4, [branch("opponent-combo-face", [always()], [face()])]),
     ]);
 }
 
@@ -506,7 +502,7 @@ const SCENARIO_DEFINITIONS = [
     { id: "arena-basics", playerLoadout: loadout(), opponentLoadout: loadout(), solution: createEmptyTutorialCode, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(150), opponentY: tutorialY(-140), playerRotation: 0, opponentRotation: 180 } },
     { id: "movement", playerLoadout: loadout(), opponentLoadout: loadout(), solution: stepOneSolution, opponentCode: passiveOpponent, spawn: { playerY: tutorialY(150), opponentY: tutorialY(-140), playerRotation: 0, opponentRotation: 180 } },
     { id: "distance", playerLoadout: loadout(), opponentLoadout: loadout(1), solution: stepTwoSolution, opponentCode: meleeOpponent, spawn: { playerY: tutorialY(60), opponentY: tutorialY(-80), playerRotation: 0, opponentRotation: 180 } },
-    { id: "basic-strike", playerLoadout: loadout(34), opponentLoadout: loadout(), solution: stepSixBasicStrikeSolution, opponentCode: passiveOpponent, durationMs: 2000, goal: "basic_strike", spawn: { playerY: tutorialY(60), opponentY: tutorialY(0), playerRotation: 0, opponentRotation: 180 } },
+    { id: "basic-strike", playerLoadout: loadout(1), opponentLoadout: loadout(), solution: stepSixSlashSolution, opponentCode: passiveOpponent, durationMs: 2000, goal: "slash", spawn: { playerY: tutorialY(60), opponentY: tutorialY(0), playerRotation: 0, opponentRotation: 180 } },
     { id: "rotate", playerLoadout: loadout(7), opponentLoadout: loadout(), solution: stepThreeRotationSolution, opponentCode: passiveOpponent, durationMs: 2000, goal: "heavy_slash", spawn: { playerY: tutorialY(60), opponentY: tutorialY(-60), playerRotation: 180, opponentRotation: 180 } },
     { id: "lock-on", playerLoadout: loadout(7), opponentLoadout: loadout(), solution: stepFourSolution, opponentCode: passiveOpponent, durationMs: 1000, goal: "heavy_slash", spawn: { playerY: tutorialY(60), opponentY: tutorialY(-60), playerRotation: 180, opponentRotation: 180 } },
     { id: "dodge", playerLoadout: loadout(), opponentLoadout: loadout(4), solution: stepFiveSolution, opponentCode: grenadeOpponent, durationMs: 3000, goal: "dodge_grenade", spawn: { playerY: tutorialY(70), opponentY: tutorialY(-80), playerRotation: 0, opponentRotation: 180 } },

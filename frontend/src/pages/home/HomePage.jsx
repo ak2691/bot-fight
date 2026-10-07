@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import AppNavbar from "../../components/AppNavbar";
 import FloatingLogicBackground from "../../components/FloatingLogicBackground";
 import { useAuth } from "../../auth/auth-context";
+import { puzzlesVisibleTo } from "../../config/featureFlags.js";
 import { loadAbilityCatalogue, loadConditionalCatalogue, loadMatch, loadProfile, loadTutorial } from "../../routeLoaders";
 import { AbilityTileArt, ConditionalsTileIcon, PuzzleTileIcon } from "../../components/exploreTileArt.jsx";
 import RankedMatchBlock from "./RankedMatchBlock.jsx";
@@ -44,7 +45,7 @@ export default function HomePage({ activeMatch = false, activeMatchId = null }) 
                 <RankedMatchBlock activeMatch={activeMatch} activeMatchId={activeMatchId} profileStats={profileStats} />
 
                 <nav className="hq-tiles" aria-label="Explore Bot Fight">
-                    <button type="button" onClick={() => navigate("/puzzles")} className="hq-tile hq-tile--puzzles" aria-label="Open puzzles">
+                    {puzzlesVisibleTo(user) && <button type="button" onClick={() => navigate("/puzzles")} className="hq-tile hq-tile--puzzles" aria-label="Open puzzles">
                         <span className="hq-tile__icon hq-tile__icon--puzzle"><PuzzleTileIcon /></span>
                         <span className="hq-tile__text">
                             <strong>Puzzles</strong>
@@ -59,7 +60,7 @@ export default function HomePage({ activeMatch = false, activeMatchId = null }) 
                                 </span>
                             )}
                         </span>
-                    </button>
+                    </button>}
                     <button type="button" onClick={() => navigate("/ability-catalogue")} className="hq-tile hq-tile--abilities" aria-label="Open ability catalogue">
                         <AbilityTileArt />
                         <span className="hq-tile__text">

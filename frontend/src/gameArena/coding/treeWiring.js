@@ -68,7 +68,7 @@ function detach(roots, node) {
     return item;
 }
 
-const HEAD_LABELS = { movement: "Move", rotation: "Rotate", ability: "Ability", cancel: "Cancel" };
+const HEAD_LABELS = { movement: "Move", rotation: "Rotate", ability: "Ability", dash: "Dash", cancel: "Cancel" };
 const isTail = (branch) => branch.branchType === "else" || branch._rootActions;
 
 // Why `child` cannot be wired under `parent`, or null when it can. Every input takes one wire, so wiring a

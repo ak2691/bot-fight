@@ -7,10 +7,14 @@ import com.example.botfight.DTO.match.MatchmakingEventDTO.RoundBrainDTO;
 import com.example.botfight.DTO.match.MatchmakingPlayerDTO;
 import com.example.botfight.service.match.chat.MatchChatService;
 import com.example.botfight.service.match.connection.MatchConnectionService;
+import com.example.botfight.service.match.loadout.MatchLoadoutService;
+import com.example.botfight.service.match.model.HpDecision;
 import com.example.botfight.service.match.model.MatchPlayer;
 import com.example.botfight.service.match.model.MatchSession;
 import com.example.botfight.service.match.persistence.MatchPersistenceService;
 import com.example.botfight.service.match.simulation.MatchSimulationService;
+import com.example.botfight.service.match.timing.MatchTimingPolicy;
+import com.example.botfight.simulation.gameconfig.ClosingZoneConfig;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -415,7 +419,7 @@ public final class MatchEventFactory {
                         MatchSimulationService.DUEL_RULESET_VERSION,
                         replayPayload,
                         session.roundNumber(),
-                        session.winsRequired(),
+                        null,
                         message,
                         entityPlacementUserId,
                         entityPlacements != null ? List.copyOf(entityPlacements) : List.of(),
@@ -437,10 +441,39 @@ public final class MatchEventFactory {
                         .withSurrenderState(
                                 session.surrenderVotes().contains(player.userId()),
                                 surrenderVoteCount(session, player),
-                                surrenderVoteRequired(session, player)),
+                                surrenderVoteRequired(session, player))
+                        .withTimedRounds(timedRounds(session)),
 
                 delayMillis,
                 "MATCH_ROUND_READY".equals(type) ? roundReadyAt : null);
+    }
+
+    /**
+     * The timed-rounds block every snapshot carries: the match's clock and round count, the weapon
+     * offers while they are open, where the zone appears, and the frozen end of the last segment.
+     * The zone ring shown in a round is the size it will contract to at the next step, if any.
+     */
+    private MatchmakingEventDTO.TimedRoundsDTO timedRounds(MatchSession session) {
+        ClosingZoneConfig zone = ClosingZoneConfig.timedRoundsV2();
+        int segmentMs = MatchTimingPolicy.SEGMENT_SECONDS * 1_000;
+        double warning = zone.warningDiameterAt((Math.max(1, session.roundNumber()) - 1) * segmentMs);
+        HpDecision hpDecision = session.seriesComplete()
+                && session.roundNumber() >= MatchTimingPolicy.MAX_ROUNDS
+                ? HpDecision.fromEndState(session.segmentEndState())
+                : null;
+        return new MatchmakingEventDTO.TimedRoundsDTO(
+                MatchTimingPolicy.MAX_ROUNDS,
+                session.baseClockSeconds(),
+                session.incrementSeconds(),
+                MatchTimingPolicy.pickSeconds(session.roundNumber()),
+                MatchTimingPolicy.SEGMENT_SECONDS,
+                session.roundNumber() <= 1 ? MatchLoadoutService.WEAPON_IDS : List.of(),
+                zone.startDelayMs() / segmentMs + 1,
+                Double.isNaN(warning) ? null : warning,
+                session.segmentEndState().isEmpty() ? null : session.segmentEndState(),
+                hpDecision == null
+                        ? null
+                        : new MatchmakingEventDTO.HpDecisionDTO(hpDecision.teamHp(), hpDecision.winningTeam()));
     }
 
     private int ratingChangeOrder(MatchPlayer candidate, MatchPlayer recipient) {
@@ -517,7 +550,7 @@ public final class MatchEventFactory {
                         MatchSimulationService.DUEL_RULESET_VERSION,
                         compactPlayback,
                         session.roundNumber(),
-                        session.winsRequired(),
+                        null,
                         message,
                         null,
                         List.of(),
@@ -535,7 +568,8 @@ public final class MatchEventFactory {
                         .withSurrenderState(
                                 session.surrenderVotes().contains(recipient.userId()),
                                 surrenderVoteCount(session, recipient),
-                                surrenderVoteRequired(session, recipient)));
+                                surrenderVoteRequired(session, recipient))
+                        .withTimedRounds(timedRounds(session)));
     }
 
     private int surrenderVoteCount(MatchSession session, MatchPlayer player) {

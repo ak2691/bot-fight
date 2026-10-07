@@ -1,4 +1,4 @@
-# Machiner repository context
+# Botfight repository context
 
 This file is the first-stop map for agents. It routes by directory ownership,
 not by individual file. Read the smallest matching area context below, then
@@ -11,7 +11,7 @@ a browser arena, and submit the normalized configuration for an authoritative
 fight. The React client owns editing, testing feedback, matchmaking UI, Pixi
 presentation, and replay display. The Spring application owns authentication,
 sessions, submissions, validation, matchmaking state, persistence, and rated
-`duel-v1` simulation.
+`duel-v2` simulation.
 
 The browser and server intentionally mirror combat and logic behavior, but the
 server is authoritative. Cross-runtime changes must preserve stable IDs, units,
@@ -23,13 +23,13 @@ timing, rounding, targeting, effects, loadout encoding, and replay shape.
 | --- | --- | --- |
 | React routes, pages, auth, CSRF, frontend API calls | [`frontend/context.md`](frontend/context.md) | `frontend/src/pages/`, `auth/`, `security/` |
 | Testing room, arena UI, Pixi, visuals, interpolation | [`frontend/context.md`](frontend/context.md), then [`frontend/src/gameArena/context.md`](frontend/src/gameArena/context.md) | `frontend/src/gameArena/` |
-| Logic blocks, conditions, actions, targeting, code normalization | [`frontend/context.md`](frontend/context.md); add [`server/context.md`](server/context.md) for submitted/rated behavior | `frontend/src/gameArena/logic/`, server validation and simulation areas |
+| Logic blocks, conditions, actions, targeting, code normalization | [`frontend/context.md`](frontend/context.md); add [`server/context.md`](server/context.md) for submitted/rated behavior | `frontend/src/gameArena/botlogic/`, server validation and simulation areas |
 | Matchmaking UI or WebSocket protocol | [`frontend/context.md`](frontend/context.md) and [`server/context.md`](server/context.md) | frontend matchmaking/page areas and server controller/service areas |
 | REST endpoints, auth, CSRF, submissions | [`server/context.md`](server/context.md); add frontend context for callers | server controller, service, security, and DTO areas |
 | Chat reporting and moderation | [`server/context.md`](server/context.md), [`frontend/context.md`](frontend/context.md), and [`docs/CHAT_MODERATION.md`](docs/CHAT_MODERATION.md) | chat moderation services, chat UI, and admin report workflow |
 | Persistence, ownership, migrations | [`server/context.md`](server/context.md) | server domain, repository, and migration areas |
 | Rated fights, deterministic simulation, replay, combat parity | [`server/context.md`](server/context.md), [`frontend/src/gameArena/context.md`](frontend/src/gameArena/context.md), and [`docs/context.md`](docs/context.md) | server simulation and frontend arena/runtime areas |
-| Adding/changing abilities, effects, shields, arena entities | [`docs/context.md`](docs/context.md) first, then both runtime contexts | documentation and both gameplay runtime areas |
+| Adding/changing abilities, effects, statuses, stamina, arena entities | [`docs/ABILITIES.md`](docs/ABILITIES.md) first, then both runtime contexts | documentation and both gameplay runtime areas |
 | Review, regression audit, combat/visual checklist | [`docs/context.md`](docs/context.md) plus the affected runtime context | documentation and affected runtime areas |
 | Docker, ports, local service orchestration | this file, then relevant area context | repository root and component roots |
 | Ability authoring MCP, structured scaffolds, browser/server parity reports | [`tools/botfight-mcp/README.md`](tools/botfight-mcp/README.md) | `tools/botfight-mcp/`, browser and server ability catalogs/contracts |
@@ -53,8 +53,6 @@ to find the implementation and tests.
   Inspect only for an artifact-specific request.
 - `.github/`: repository automation. `.vscode/`: local editor configuration.
 - `docker-compose.yml`: PostgreSQL, pgAdmin, backend, and frontend orchestration.
-- `MATCH_COMPONENTS.txt`: older rules snapshot; do not use it as current
-  authority when it conflicts with code or the docs index.
 
 ## Cross-boundary change rule
 

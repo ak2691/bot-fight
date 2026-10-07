@@ -1920,8 +1920,10 @@ test("the global ability lock includes preparation, not only active time", () =>
     assert.equal(anotherAbilityActive(preparing, 34), true);
     assert.equal(anotherAbilityActive(preparing, 16), false);
 
-    assert.equal(anotherAbilityActive({ abilityActiveMs: { 19: 200 } }, 34), true);
-    assert.equal(anotherAbilityActive({ abilityActiveMs: { 34: 200 } }, 19), true);
+    // Dash ignores the lock both ways: a running dash blocks nothing, and nothing blocks a dash.
+    assert.equal(anotherAbilityActive({ abilityActiveMs: { 19: 200 } }, 34), false);
+    assert.equal(anotherAbilityActive({ abilityActiveMs: { 34: 200 } }, 19), false);
+    assert.equal(anotherAbilityActive({ preparingAbility: 16, abilityActiveMs: {} }, 19), false);
     assert.equal(anotherAbilityActive({ abilityActiveMs: { 5: 200 } }, 34), true);
 });
 
@@ -2441,7 +2443,7 @@ test("a global ability lock blocks a different ability until the active phase en
     assert.ok(afterConcussive.abilityActiveMs[9] > 0);
 });
 
-test("Dash participates in the global ability lock while retaining its own cooldown", () => {
+test("Dash starts during another ability's active phase and keeps its own cooldown rules", () => {
     const configuration = {
         version: "bot-logic-tree-v1",
         roots: [{ priority: 1, branches: [
@@ -2460,11 +2462,11 @@ test("Dash participates in the global ability lock while retaining its own coold
     const action = buildDeterministicLogicAction(configuration, buildStatePayload([bot, opponent], "custom"));
     const result = applyBotAction(bot, action, 100, noDamageCombat.applyDamageToShape);
 
-    assert.equal(action.abilityAction, null);
-    assert.equal(result.triggeredAbility, null);
-    assert.equal(result.abilityCooldowns[19], 0);
-    assert.equal(result.abilityPendingCooldownMs[19], undefined);
-    assert.equal(result.x, bot.x);
+    assert.equal(action.abilityAction, null, "the active fireball cannot be selected again");
+    assert.equal(action.dashAction.action, 19, "the dash is its own category");
+    assert.equal(result.triggeredAbility, 19);
+    assert.ok(result.abilityActiveMs[19] > 0);
+    assert.ok(result.abilityActiveMs[5] > 0, "the fireball's active phase carries on");
 });
 
 test("a higher-priority fireball yields to grenade during its one-tick recovery", () => {

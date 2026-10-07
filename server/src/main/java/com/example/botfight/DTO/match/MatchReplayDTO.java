@@ -242,13 +242,12 @@ public record MatchReplayDTO(
             Double dashDirectionY,
             int teamNumber,
             Integer stamina,
-            Boolean exhausted,
             Boolean sprinting,
             RunningChainDTO runningChain,
             @JsonInclude(JsonInclude.Include.NON_NULL) Boolean fastTurning) {
         /** Source compatibility for callers without fast-turn state. */
-        public ReplayBotDTO(int slot, double x, double y, Double rotation, double hp, List<StatusEffectState> statusEffects, Map<Integer, Integer> abilityCooldowns, Map<Integer, Integer> abilityCharges, Map<Integer, Integer> abilityRechargeMs, Map<Integer, Integer> abilityActiveMs, Integer triggeredAbility, Integer preparingAbility, Integer preparingMs, Double abilityTargetX, Double abilityTargetY, Double visualOriginX, Double visualOriginY, Double visualOriginRotation, Double temporalRewindX, Double temporalRewindY, Integer temporalRewindPulseMs, Integer closingZoneDamageCount, Double dashDirectionX, Double dashDirectionY, int teamNumber, Integer stamina, Boolean exhausted, Boolean sprinting, RunningChainDTO runningChain) {
-            this(slot, x, y, rotation, hp, statusEffects, abilityCooldowns, abilityCharges, abilityRechargeMs, abilityActiveMs, triggeredAbility, preparingAbility, preparingMs, abilityTargetX, abilityTargetY, visualOriginX, visualOriginY, visualOriginRotation, temporalRewindX, temporalRewindY, temporalRewindPulseMs, closingZoneDamageCount, dashDirectionX, dashDirectionY, teamNumber, stamina, exhausted, sprinting, runningChain, null);
+        public ReplayBotDTO(int slot, double x, double y, Double rotation, double hp, List<StatusEffectState> statusEffects, Map<Integer, Integer> abilityCooldowns, Map<Integer, Integer> abilityCharges, Map<Integer, Integer> abilityRechargeMs, Map<Integer, Integer> abilityActiveMs, Integer triggeredAbility, Integer preparingAbility, Integer preparingMs, Double abilityTargetX, Double abilityTargetY, Double visualOriginX, Double visualOriginY, Double visualOriginRotation, Double temporalRewindX, Double temporalRewindY, Integer temporalRewindPulseMs, Integer closingZoneDamageCount, Double dashDirectionX, Double dashDirectionY, int teamNumber, Integer stamina, Boolean sprinting, RunningChainDTO runningChain) {
+            this(slot, x, y, rotation, hp, statusEffects, abilityCooldowns, abilityCharges, abilityRechargeMs, abilityActiveMs, triggeredAbility, preparingAbility, preparingMs, abilityTargetX, abilityTargetY, visualOriginX, visualOriginY, visualOriginRotation, temporalRewindX, temporalRewindY, temporalRewindPulseMs, closingZoneDamageCount, dashDirectionX, dashDirectionY, teamNumber, stamina, sprinting, runningChain, null);
         }
 
         /** Source compatibility for replay callers without chain presentation state. */
@@ -279,9 +278,8 @@ public record MatchReplayDTO(
             Double dashDirectionY,
             int teamNumber,
             Integer stamina,
-            Boolean exhausted,
             Boolean sprinting) {
-            this(slot, x, y, rotation, hp, statusEffects, abilityCooldowns, abilityCharges, abilityRechargeMs, abilityActiveMs, triggeredAbility, preparingAbility, preparingMs, abilityTargetX, abilityTargetY, visualOriginX, visualOriginY, visualOriginRotation, temporalRewindX, temporalRewindY, temporalRewindPulseMs, closingZoneDamageCount, dashDirectionX, dashDirectionY, teamNumber, stamina, exhausted, sprinting, null);
+            this(slot, x, y, rotation, hp, statusEffects, abilityCooldowns, abilityCharges, abilityRechargeMs, abilityActiveMs, triggeredAbility, preparingAbility, preparingMs, abilityTargetX, abilityTargetY, visualOriginX, visualOriginY, visualOriginRotation, temporalRewindX, temporalRewindY, temporalRewindPulseMs, closingZoneDamageCount, dashDirectionX, dashDirectionY, teamNumber, stamina, sprinting, null);
         }
 
 
@@ -402,8 +400,7 @@ public record MatchReplayDTO(
                     finiteOrNull(bot.dashDirectionY()),
                     bot.teamNumber(),
                     bot.stamina(),
-                    bot.exhausted(),
-                    bot.sprinting(),
+                            bot.sprinting(),
                     bot.runningChain(),
                     bot.fastTurning());
         }

@@ -36,7 +36,7 @@ public final class ClosingZoneSystem {
 
         int activeElapsedMs = Math.max(0, elapsedMs - config.startDelayMs());
         State initial = current == null
-                ? new State(fullArenaCircleRadius(width, height, config), 0, 0)
+                ? new State(config.stepped() ? config.startDiameterUnits() / 2.0 : fullArenaCircleRadius(width, height, config), 0, 0)
                 : current;
         int updateIntervalMs = Math.max(1, config.geometryUpdateMs());
         int geometryElapsedMs = activeElapsedMs / updateIntervalMs * updateIntervalMs;
@@ -62,6 +62,7 @@ public final class ClosingZoneSystem {
 
     public static double safeRadiusAt(int elapsedMs, int width, int height, ClosingZoneConfig config) {
         if (elapsedMs < config.startDelayMs()) return Double.NaN;
+        if (config.stepped()) return steppedSafeRadiusAt(elapsedMs, config);
         int activeElapsedMs = Math.max(0, elapsedMs - config.startDelayMs());
         double fullRadius = fullArenaCircleRadius(width, height, config);
         int phaseCount = Math.max(1, config.phaseCount());
@@ -78,6 +79,21 @@ public final class ClosingZoneSystem {
             return fullRadius * lerp(startFraction, endFraction, progress);
         }
         return fullRadius * Math.max(0, startFraction - 1.0 / phaseCount);
+    }
+
+    /** Stepped model: hold the previous diameter, contract linearly over each step, then hold its target. */
+    private static double steppedSafeRadiusAt(int elapsedMs, ClosingZoneConfig config) {
+        double radius = config.startDiameterUnits() / 2.0;
+        for (ClosingZoneConfig.Step step : config.steps()) {
+            double target = step.toDiameterUnits() / 2.0;
+            if (elapsedMs <= step.startMs()) return radius;
+            int contractMs = Math.max(0, step.contractMs());
+            if (elapsedMs < step.startMs() + contractMs) {
+                return lerp(radius, target, (double) (elapsedMs - step.startMs()) / contractMs);
+            }
+            radius = target;
+        }
+        return radius;
     }
 
     public static boolean touchesDamageZone(State zone, AbilityEntityBot bot, int width, int height) {

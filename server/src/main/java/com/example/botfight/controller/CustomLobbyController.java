@@ -2,7 +2,7 @@ package com.example.botfight.controller;
 
 import com.example.botfight.DTO.customlobby.CustomLobbyDTO;
 import com.example.botfight.DTO.customlobby.CustomLobbyInviteCreateRequestDTO;
-import com.example.botfight.DTO.customlobby.CustomLobbyRoundDurationRequestDTO;
+import com.example.botfight.DTO.customlobby.CustomLobbyClockRequestDTO;
 import com.example.botfight.DTO.customlobby.CustomLobbyStartDTO;
 import com.example.botfight.DTO.customlobby.CustomLobbyStateEventDTO;
 import com.example.botfight.DTO.customlobby.CustomLobbyTeamRequestDTO;
@@ -119,11 +119,12 @@ public class CustomLobbyController {
     public CustomLobbyDTO updateSettings(
             Authentication authentication,
             @PathVariable UUID lobbyId,
-            @RequestBody CustomLobbyRoundDurationRequestDTO request) {
-        CustomLobbyService.LobbyChange change = customLobbyService.updateRoundDuration(
+            @RequestBody CustomLobbyClockRequestDTO request) {
+        CustomLobbyService.LobbyChange change = customLobbyService.updateClock(
                 authentication,
                 lobbyId,
-                request == null ? null : request.roundDurationSeconds());
+                request == null ? null : request.baseClockSeconds(),
+                request == null ? null : request.incrementSeconds());
         publishLobbyChange(change);
         return change.lobby();
     }

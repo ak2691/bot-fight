@@ -33,9 +33,9 @@ class BotStateServiceBlockTest {
     }
 
     @Test
-    void serverGrantedAbilitiesContainOnlyTheThreeBaseAbilities() throws Exception {
+    void serverGrantedAbilitiesContainOnlyDash() throws Exception {
         var brain = new tools.jackson.databind.json.JsonMapper().readTree("{}");
-        assertThat(new BotCodeService().readAbilities(brain)).containsExactlyInAnyOrder(19, 34);
+        assertThat(new BotCodeService().readAbilities(brain)).containsExactlyInAnyOrder(19);
     }
 
     @Test
@@ -44,7 +44,7 @@ class BotStateServiceBlockTest {
         DuelSimulationService.Bot bot = service.create(new DuelSimulationService.DuelBotRequest(
                 UUID.randomUUID(), "Puzzle", 1, 100, 100, 0d, 20, "custom", brain, 70d));
 
-        assertThat(bot.maxHp).isEqualTo(150);
+        assertThat(bot.maxHp).isEqualTo(300);
         assertThat(bot.hp).isEqualTo(70);
     }
 

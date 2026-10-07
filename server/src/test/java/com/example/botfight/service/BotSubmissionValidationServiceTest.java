@@ -88,7 +88,7 @@ class BotSubmissionValidationServiceTest {
         assertThat(result.isAccepted()).isFalse();
         assertThat(result.getErrors()).contains(
                 "brain.loadout.abilities contains an invalid or duplicate ability",
-                "brain.roots[0].branches[0].action is not allowed for duel-v1");
+                "brain.roots[0].branches[0].action is not allowed for duel-v2");
     }
 
     @Test
@@ -676,7 +676,7 @@ class BotSubmissionValidationServiceTest {
 
         assertThat(result.isAccepted()).isFalse();
         assertThat(result.getErrors()).contains(
-                "brain.roots[0].branches[0].actions[0].action is not allowed for duel-v1");
+                "brain.roots[0].branches[0].actions[0].action is not allowed for duel-v2");
     }
 
     @Test
@@ -936,7 +936,7 @@ class BotSubmissionValidationServiceTest {
         cancel.setBrain(jsonMapper.readTree(body.formatted(always, "{\"action\":\"cancel_windup\"}")));
         assertThat(service.validate(cancel).getErrors()).isEmpty();
 
-        for (String variable : new String[] {"bot.stamina", "bot.exhausted", "bot.sprinting"}) {
+        for (String variable : new String[] {"bot.stamina", "bot.sprinting"}) {
             for (String selectable : new String[] {"my_bot", "opponent"}) {
                 String right = "bot.stamina".equals(variable)
                         ? "{\"type\":\"number\",\"value\":50}" : "{\"type\":\"boolean\",\"value\":true}";
@@ -948,6 +948,13 @@ class BotSubmissionValidationServiceTest {
                         "{\"action\":\"cancel_windup\"}")));
                 assertThat(service.validate(payload).getErrors()).as(variable + " " + selectable).isEmpty();
             }
+        }
+        for (String right : new String[] {"true", "false"}) {
+            BotSubmissionPayloadDTO exhausted = validPayload();
+            exhausted.setBrain(jsonMapper.readTree(body.formatted(
+                    "{\"type\":\"expression\",\"left\":\"bot.exhausted\",\"leftSelectable\":\"my_bot\",\"comparator\":\"eq\",\"right\":{\"type\":\"boolean\",\"value\":" + right + "}}",
+                    "{\"action\":\"cancel_windup\"}")));
+            assertThat(service.validate(exhausted).getErrors()).as("bot.exhausted is rejected").isNotEmpty();
         }
         BotSubmissionPayloadDTO outOfRange = validPayload();
         outOfRange.setBrain(jsonMapper.readTree(body.formatted(
@@ -1089,7 +1096,7 @@ class BotSubmissionValidationServiceTest {
                 """));
 
         assertThat(service.validate(payload).getErrors())
-                .contains("brain.roots[0].branches[0].actions[0].action is not allowed for duel-v1");
+                .contains("brain.roots[0].branches[0].actions[0].action is not allowed for duel-v2");
     }
 
     @Test
@@ -1657,6 +1664,91 @@ class BotSubmissionValidationServiceTest {
 
         var result = service.validate(payload);
         assertThat(result.getErrors()).contains("brain.customVariables[0].conditions are no longer supported");
+    }
+
+    private BotSubmissionPayloadDTO payloadWithVariables() throws Exception {
+        BotSubmissionPayloadDTO payload = validPayload();
+        payload.setBrain(jsonMapper.readTree("""
+                {
+                  "version": "bot-logic-tree-v1",
+                  "customVariables":[
+                    {"id":"custom.counter","name":"Counter","valueType":"number","initialValue":0},
+                    {"id":"custom.flag","name":"Flag","valueType":"boolean","initialValue":false}
+                  ],
+                  "roots": [{"branches":[
+                    {"id":"node-1","action":"move_walk","movementMode":"target","movementDirection":0,"conditions":[]}
+                  ]}]
+                }
+                """));
+        return payload;
+    }
+
+    @Test
+    void acceptsVariableResetsByIdOrNameForDeclaredVariables() throws Exception {
+        BotSubmissionPayloadDTO payload = payloadWithVariables();
+        payload.setVariableResets(java.util.List.of("custom.counter", "Flag"));
+        payload.setTimeoutFallback("PREVIOUS");
+
+        var result = service.validate(payload);
+
+        assertThat(result.isAccepted()).as(String.valueOf(result.getErrors())).isTrue();
+    }
+
+    @Test
+    void rejectsVariableResetsForUndeclaredVariablesAndOutOfBoundsLists() throws Exception {
+        BotSubmissionPayloadDTO undeclared = payloadWithVariables();
+        undeclared.setVariableResets(java.util.List.of("custom.counter", "custom.ghost"));
+        assertThat(service.validate(undeclared).getErrors())
+                .contains("variableResets names a variable the brain does not declare");
+
+        BotSubmissionPayloadDTO tooMany = payloadWithVariables();
+        tooMany.setVariableResets(java.util.Collections.nCopies(101, "custom.counter"));
+        assertThat(service.validate(tooMany).getErrors())
+                .contains("variableResets exceeds the 100 variable limit");
+
+        BotSubmissionPayloadDTO tooLong = payloadWithVariables();
+        tooLong.setVariableResets(java.util.List.of("x".repeat(65)));
+        assertThat(service.validate(tooLong).getErrors())
+                .contains("variableResets contains an invalid variable name");
+
+        BotSubmissionPayloadDTO blank = payloadWithVariables();
+        blank.setVariableResets(java.util.Arrays.asList("custom.counter", " "));
+        assertThat(service.validate(blank).isAccepted()).isFalse();
+
+        // A brain with no variables has nothing to reset.
+        BotSubmissionPayloadDTO none = validPayload();
+        none.setVariableResets(java.util.List.of("custom.counter"));
+        assertThat(service.validate(none).isAccepted()).isFalse();
+    }
+
+    @Test
+    void validatesTheTimeoutFallbackChoice() throws Exception {
+        BotSubmissionPayloadDTO current = validPayload();
+        current.setTimeoutFallback("CURRENT");
+        assertThat(service.validate(current).isAccepted()).isTrue();
+
+        BotSubmissionPayloadDTO invalid = validPayload();
+        invalid.setTimeoutFallback("SKIP");
+        var result = service.validate(invalid);
+        assertThat(result.isAccepted()).isFalse();
+        assertThat(result.getErrors()).contains("timeoutFallback must be CURRENT or PREVIOUS");
+    }
+
+    @Test
+    void allowsAWeaponPlusSixAbilitiesInTheLoadout() throws Exception {
+        BotSubmissionPayloadDTO seven = validPayload();
+        seven.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","loadout":{"abilities":[1,3,4,5,7,9,10]},"roots":[]}
+                """));
+        assertThat(service.validate(seven).isAccepted()).isTrue();
+
+        BotSubmissionPayloadDTO eight = validPayload();
+        eight.setBrain(jsonMapper.readTree("""
+                {"version":"bot-logic-tree-v1","loadout":{"abilities":[1,3,4,5,7,9,10,11]},"roots":[]}
+                """));
+        var result = service.validate(eight);
+        assertThat(result.isAccepted()).isFalse();
+        assertThat(result.getErrors()).contains("brain.loadout.abilities must contain between 0 and 7 abilities");
     }
 
     private BotSubmissionPayloadDTO validPayload() throws Exception {

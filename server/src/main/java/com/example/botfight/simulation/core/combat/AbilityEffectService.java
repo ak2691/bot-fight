@@ -60,7 +60,9 @@ class AbilityEffectService {
         double sourceY = pose.y();
         boolean landedOnEnemy = applyContractEffects(
                 attacker, defender, payload, arena, sourceX, sourceY, skipTeleport);
-        if (landedOnEnemy && !targetsOwner) attacker.abilityHitsThisTick.add(payload.abilityId());
+        if (landedOnEnemy && !targetsOwner) {
+            BotStateService.recordEnemyHit(attacker, payload.abilityId(), attacker.activationSerial);
+        }
     }
 
     void resolveTriggeredAbilities(Bot attacker, List<Bot> bots, Arena arena) {

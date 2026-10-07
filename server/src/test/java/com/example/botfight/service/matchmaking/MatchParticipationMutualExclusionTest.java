@@ -17,7 +17,6 @@ import com.example.botfight.service.block.BlockLookup;
 import com.example.botfight.service.customlobby.CustomLobbyService;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;
-import com.example.botfight.service.match.loadout.MatchAbilityGuaranteeService;
 import com.example.botfight.service.match.model.MatchEntrant;
 import com.example.botfight.service.party.PartyService;
 import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
@@ -62,7 +61,6 @@ class MatchParticipationMutualExclusionTest {
                 clock,
                 new TokenBucketRateLimiter<>(clock, 10, Duration.ofSeconds(3)),
                 null,
-                new MatchAbilityGuaranteeService(),
                 coordinator);
         customLobbyService = new CustomLobbyService(
                 currentUserService,
@@ -74,7 +72,6 @@ class MatchParticipationMutualExclusionTest {
                 BlockLookup.none(),
                 socketRegistry,
                 mock(PartyService.class),
-                new MatchAbilityGuaranteeService(),
                 matchmakingService,
                 coordinator);
         when(matchService.activeMatchStatus(any())).thenReturn(ActiveMatchStatusDTO.none());
@@ -104,7 +101,6 @@ class MatchParticipationMutualExclusionTest {
                 MatchMode.TWOS,
                 party,
                 partyId,
-                List.of(),
                 QueuePool.REGISTERED))
                 .isInstanceOf(AuthException.class)
                 .hasMessageContaining("Leave the custom lobby");

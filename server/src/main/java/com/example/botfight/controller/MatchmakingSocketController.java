@@ -1,6 +1,7 @@
 package com.example.botfight.controller;
 
 import com.example.botfight.DTO.match.MatchLoadoutSelectionDTO;
+import com.example.botfight.DTO.match.MatchTimeoutFallbackDTO;
 import com.example.botfight.DTO.match.MatchCodeViewRequestDTO;
 import com.example.botfight.DTO.match.MatchCodeViewResponseDTO;
 import com.example.botfight.DTO.match.MatchChatEventDTO;
@@ -230,7 +231,6 @@ public class MatchmakingSocketController {
                 mode,
                 queueGroup,
                 queueContext == null ? null : queueContext.partyId(),
-                payload == null ? List.of() : payload.guaranteedAbilityIds(),
                 user.isGuest() ? QueuePool.GUEST : QueuePool.REGISTERED);
         publish(events);
         publishPartyQueueState(queueContext, mode, events, "WAITING");
@@ -472,6 +472,17 @@ public class MatchmakingSocketController {
                         payload.roundNumber(),
                         payload.selectedLoadout());
         publish(events);
+    }
+
+    @MessageMapping("/matchmaking.timeoutFallback")
+    public void setTimeoutFallback(@Payload MatchTimeoutFallbackDTO payload, Principal principal) {
+        AppUser user = requireUser(principal);
+        if (payload == null) return;
+        publish(matchService.setTimeoutFallback(
+                user.getId(),
+                payload.matchId(),
+                payload.roundNumber(),
+                payload.timeoutFallback()));
     }
 
     @MessageMapping("/matchmaking.leaveCompletedMatch")

@@ -26,6 +26,7 @@ public final class ChainRuntime {
     private static final String BRANCH = "branch";
     private static final String BODY = "body";
     private static final String ABILITY = "ability";
+    private static final String DASH = "dash";
 
     private ChainRuntime() {}
 
@@ -243,7 +244,7 @@ public final class ChainRuntime {
         Integer forMs = null;
         Integer maxMs = null;
         List<Condition> until = List.of();
-        if (ABILITY.equals(head)) continueMode = "now".equals(text(raw, "continue", "")) ? "now" : "end";
+        if (ABILITY.equals(head) || DASH.equals(head)) continueMode = "now".equals(text(raw, "continue", "")) ? "now" : "end";
         if ("movement".equals(head) || "rotation".equals(head)) {
             until = conditionsFor(raw.get("untilConditions"), context);
             if (until.isEmpty()) forMs = chainMs(raw.get("forMs"));
@@ -453,7 +454,8 @@ public final class ChainRuntime {
             return Outcome.CONTINUE;
         }
         if ("cancel".equals(head)) return runCancelWindup(step, frame, host, used, claims);
-        if (ABILITY.equals(head)) return runUseAbility(step, frame, host, used, claims);
+        // Dash is issued like an ability (it can wait for its end), but claims its own category.
+        if (ABILITY.equals(head) || DASH.equals(head)) return runUseAbility(step, frame, host, head, used, claims);
         return runTimedAction(step, frame, host, head, used, claims);
     }
 
@@ -467,7 +469,7 @@ public final class ChainRuntime {
         return Outcome.STOP;
     }
 
-    private static Outcome runUseAbility(Step step, Frame frame, Host host, Set<String> used, List<Claim> claims) {
+    private static Outcome runUseAbility(Step step, Frame frame, Host host, String category, Set<String> used, List<Claim> claims) {
         Integer abilityId = host.abilityFor(step.block().action());
         if (frame.issued) {
             // "When it ends": no longer winding up or active, for any reason.
@@ -475,11 +477,11 @@ public final class ChainRuntime {
             advance(frame);
             return Outcome.CONTINUE;
         }
-        if (used.contains(ABILITY)) return Outcome.STOP;
+        if (used.contains(category)) return Outcome.STOP;
         // An unavailable ability is skipped; the next step is attempted next tick.
         if (!host.executableNow(step.block())) { advance(frame); return Outcome.STOP; }
-        used.add(ABILITY);
-        claims.add(new Claim(ABILITY, step.block()));
+        used.add(category);
+        claims.add(new Claim(category, step.block()));
         if ("now".equals(step.continueMode())) {
             advance(frame);
             return Outcome.CONTINUE;

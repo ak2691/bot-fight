@@ -4,18 +4,13 @@ import { projectRoot } from "./runtime.js";
 
 const authoringPaths = {
     add: [
-        "docs/ADDING_AN_ABILITY_OR_MOVE.md",
-        "docs/REQUESTING_NEW_ABILITIES.md",
-        "docs/ABILITY_EFFECT_CONTRACT.md",
-        "docs/ADDING_A_BACKEND_ABILITY_OR_MOVE.md",
+        "docs/ABILITIES.md",
         "docs/ARENA_VISUAL_AND_COMBAT_REGRESSION_CHECKLIST.md",
         "frontend/src/gameArena/context.md",
         "server/context.md",
     ],
     edit: [
-        "docs/MODIFYING_ABILITIES.md",
-        "docs/ABILITY_EFFECT_CONTRACT.md",
-        "docs/ADDING_AN_ABILITY_OR_MOVE.md",
+        "docs/ABILITIES.md",
         "docs/ARENA_VISUAL_AND_COMBAT_REGRESSION_CHECKLIST.md",
         "frontend/src/gameArena/context.md",
         "server/context.md",
@@ -23,43 +18,21 @@ const authoringPaths = {
 };
 
 const keyHeadings = {
-    "docs/ADDING_AN_ABILITY_OR_MOVE.md": [
-        "## 1. Define the contract",
-        "## 2. Browser catalog and logic",
-        "## 3. Browser execution",
-        "## 4. Visuals",
-        "## 5. Authoritative mirror",
-        "## 6. Required regression coverage",
-        "## Done",
-    ],
-    "docs/REQUESTING_NEW_ABILITIES.md": [
-        "## Minimum information",
-        "## Phase vocabulary",
-        "## Example request",
-    ],
-    "docs/MODIFYING_ABILITIES.md": [
-        "## The short version",
-        "## Where each kind of change lives",
-        "## 1. Modify an ability stat",
-        "## 2. Modify phase geometry, effects, or visuals",
-    ],
-    "docs/ABILITY_EFFECT_CONTRACT.md": [
-        "## Effects",
-        "### Event and effect targets",
-        "### Phase transitions",
-        "### Visuals",
-    ],
-    "docs/ADDING_A_BACKEND_ABILITY_OR_MOVE.md": [
-        "## Definitions and draft identity",
-        "## Simulation flow",
-        "## Persistent entities",
-        "## Replay",
+    "docs/ABILITIES.md": [
+        "## 1. Where an ability lives",
+        "## 2. Two kinds of contract",
+        "## 4. Ability lifecycle on the bot",
+        "## 6. Phase contract reference",
+        "## 7. Entities",
+        "## 8. Visuals",
+        "## 9. Making a change",
     ],
     "docs/ARENA_VISUAL_AND_COMBAT_REGRESSION_CHECKLIST.md": [
-        "## Visual and interpolation ownership",
-        "## Ability and entity timing",
-        "## Hitbox and target eligibility",
-        "## Browser/server parity",
+        "## Transforms",
+        "## Timed visuals",
+        "## Collision schedules",
+        "## Combat state",
+        "## Required surfaces and tests",
     ],
     "frontend/src/gameArena/context.md": [
         "## Boundaries to preserve",

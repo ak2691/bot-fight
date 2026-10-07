@@ -72,6 +72,49 @@ class ClosingZoneSystemTest {
         assertThat(held.state()).isSameAs(contracted.state());
     }
 
+    /** Parity: the browser's ClosingZoneSystem.test.js checks these same numbers for the mirrored config. */
+    @Test
+    void timedRoundsZoneOnlyExistsInRoundsFiveAndSixAndContractsFrom1200To900To600() {
+        ClosingZoneConfig v2 = ClosingZoneConfig.timedRoundsV2();
+        assertThat(v2.simulationDurationMs()).isEqualTo(120_000);
+        assertThat(v2.startDelayMs()).isEqualTo(80_000);
+        double[][] radii = {
+                {79_900, Double.NaN}, {80_000, 600}, {82_500, 525}, {85_000, 450}, {99_900, 450},
+                {100_000, 450}, {102_500, 375}, {105_000, 300}, {120_000, 300}};
+        for (double[] row : radii) {
+            double actual = ClosingZoneSystem.safeRadiusAt((int) row[0], ArenaUnits.WIDTH, ArenaUnits.HEIGHT, v2);
+            if (Double.isNaN(row[1])) assertThat(actual).isNaN();
+            else assertThat(actual).as("radius at %d", (int) row[0]).isCloseTo(row[1], org.assertj.core.data.Offset.offset(1e-9));
+        }
+        double[][] warnings = {
+                {59_900, Double.NaN}, {60_000, 900}, {79_900, 900}, {80_000, 600}, {99_900, 600}, {100_000, Double.NaN}};
+        for (double[] row : warnings) {
+            double actual = v2.warningDiameterAt((int) row[0]);
+            if (Double.isNaN(row[1])) assertThat(actual).isNaN();
+            else assertThat(actual).as("warning at %d", (int) row[0]).isEqualTo(row[1]);
+        }
+        assertThat(CONFIG.warningDiameterAt(60_000)).isNaN();
+    }
+
+    @Test
+    void timedRoundsZoneStartsAtTheRoundFiveBoundaryWithA1200UnitCircle() {
+        ClosingZoneConfig v2 = ClosingZoneConfig.timedRoundsV2();
+        TestBot center = new TestBot(1, 600, 600, 60, 100);
+        TestBot corner = new TestBot(2, 60, 60, 60, 100);
+
+        ClosingZoneSystem.TickResult<TestBot> before = ClosingZoneSystem.tick(
+                null, 79_900, 100, ArenaUnits.WIDTH, ArenaUnits.HEIGHT, List.of(center, corner), v2, damage());
+        ClosingZoneSystem.TickResult<TestBot> started = ClosingZoneSystem.tick(
+                null, 80_000, 100, ArenaUnits.WIDTH, ArenaUnits.HEIGHT, List.of(center, corner), v2, damage());
+        ClosingZoneSystem.TickResult<TestBot> contracted = ClosingZoneSystem.tick(
+                started.state(), 85_000, 100, ArenaUnits.WIDTH, ArenaUnits.HEIGHT, List.of(center, corner), v2, damage());
+
+        assertThat(before.entity()).isNull();
+        assertThat(started.entity().size()).isEqualTo(1_200);
+        assertThat(contracted.entity().size()).isEqualTo(900);
+        assertThat(center.hp).isEqualTo(100);
+    }
+
     private static ClosingZoneSystem.Damage<TestBot> damage() {
         return new ClosingZoneSystem.Damage<>() {
             @Override

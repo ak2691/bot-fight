@@ -486,7 +486,7 @@ function NodeKindPicker({ selectedLoadout, onCancel, onChooseAction, title = "Ad
             <h3 className="pk-group-title"><span>{group.title}</span><span className="pk-group-hint">{group.hint ?? group.options.length}</span></h3>
             {group.options.map((action) => {
                 const index = filteredActions.indexOf(action);
-                const isAbility = action.head === "ability";
+                const isAbility = action.head === "ability" || action.head === "dash";
                 const label = action.flow ? action.label : actionPickerLabel(action);
                 const description = action.flow ? action.description : actionPickerDescription(action);
                 const blocked = action.flow ? flowBlockReason(action.id) : null;
@@ -692,7 +692,7 @@ function ConditionalOperandBox({ operand, condition, stateVariables, selectableT
     </div>;
 }
 
-const ACTION_CHANNEL_LABELS = Object.freeze({ movement: "MOVE", rotation: "TURN", ability: "ABILITY", cancel: "CANCEL", variable: "VARIABLE", chain: "CHAIN" });
+const ACTION_CHANNEL_LABELS = Object.freeze({ movement: "MOVE", rotation: "TURN", ability: "ABILITY", dash: "DASH", cancel: "CANCEL", variable: "VARIABLE", chain: "CHAIN" });
 
 // Condition text wraps onto the next row instead of being cut off.
 function summarizeConditionForNode(condition, lookups) {
@@ -1155,7 +1155,7 @@ function LogicNodeInspector({ inspectedNode, graph, roots, stateVariables, selec
         const removeAction = () => updateBranch(node.rootIndex, node.path, (current) => setGraphActions(current, actions.filter((_, index) => index !== node.actionIndex)));
         return panel(channelLabel || "ACTION", "Action", <>
             {onChangeAction && !definition?.variableAction && <div className="code-inspector-field"><span>Action</span><button type="button" className="code-cond-variable" disabled={disabled} onClick={() => onChangeAction(node.rootIndex, node.path, node.actionIndex)} aria-label="Change action"><span className="code-cond-variable-label">{definition?.label ?? (missingAction ? "Ability not equipped" : "Action")}</span><span className="code-cond-change" aria-hidden="true">▾</span></button></div>}
-            {needsTarget && <ActionTargetControls entry={entry} definition={definition} selectableTypes={selectableTypes} disabled={disabled} onChange={update} coordinateVersion={coordinateVersion} showSprint={definition.id === BOT_CODE_ACTIONS.MOVE_WALK} showFastTurn={definition.id === BOT_CODE_ACTIONS.ROTATE_TOWARD_TARGET} leadAbilityOptions={actionTypes.filter((action) => action.head === "ability" && action.abilityId != null)} />}
+            {needsTarget && <ActionTargetControls entry={entry} definition={definition} selectableTypes={selectableTypes} disabled={disabled} onChange={update} coordinateVersion={coordinateVersion} showSprint={definition.id === BOT_CODE_ACTIONS.MOVE_WALK} showFastTurn={definition.id === BOT_CODE_ACTIONS.ROTATE_TOWARD_TARGET} leadAbilityOptions={actionTypes.filter((action) => (action.head === "ability" || action.head === "dash") && action.abilityId != null)} />}
             {definition?.id === BOT_CODE_ACTIONS.RUN_CHAIN && <RunChainControls entry={entry} chains={chains} disabled={disabled} onChange={update} onNewChain={() => onNewChain?.(node.rootIndex, node.path, node.actionIndex)} onOpenChain={onOpenChain} />}
             {definition?.variableAction && <VariableActionControls entry={entry} variables={customVariables} stateVariables={stateVariables} selectableTypes={selectableTypes} disabled={disabled} canAddAction={canAddAction} allowRemoveAction={false} onChange={update} onPickOperand={(termIndex) => onPickActionOperand?.(node.rootIndex, node.path, node.actionIndex, termIndex)} onInspectOperand={(termIndex) => onInspectActionOperand?.(node.rootIndex, node.path, node.actionIndex, termIndex)} onRemoveAction={() => {}} />}
             {definition?.orientationConfig && <PhaseOrientationControls entry={entry} disabled={disabled} onChange={update} />}
@@ -1513,7 +1513,7 @@ function BooleanVariableActionRow({ entry, variableName, stateVariables, disable
 }
 
 const FAST_TURN_HELP = "Turns twice as fast (24° per tick). Drains 20 stamina/s while turning; normal speed below 2 stamina.";
-const SPRINT_HELP = "+50% speed in any direction. Drains 30 stamina/s. Ends when you attack or use an ability, or at 0 stamina.";
+const SPRINT_HELP = "+50% speed in any direction. Drains 30 stamina/s. Stops at 0 stamina.";
 
 function AbsoluteArenaAngleHelpButton() {
     const [open, setOpen] = useState(false);

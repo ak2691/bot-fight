@@ -685,13 +685,8 @@ export function createMatchmakingClient({
             activeMatchId = null;
             terminalMatchId = null;
         },
-        joinQueue(mode = "ONES", guaranteedAbilityIds = []) {
-            publish("/app/matchmaking.join", {
-                mode,
-                guaranteedAbilityIds: Array.isArray(guaranteedAbilityIds)
-                    ? guaranteedAbilityIds.slice(0, 3)
-                    : [],
-            });
+        joinQueue(mode = "ONES") {
+            publish("/app/matchmaking.join", { mode });
         },
         resumeMatch() {
             publish("/app/matchmaking.resume");
@@ -719,6 +714,9 @@ export function createMatchmakingClient({
         },
         selectLoadout(selectedLoadout, matchId, roundNumber) {
             publish("/app/matchmaking.selectLoadout", { matchId, roundNumber, selectedLoadout });
+        },
+        setTimeoutFallback(matchId, roundNumber, timeoutFallback) {
+            return publish("/app/matchmaking.timeoutFallback", { matchId, roundNumber, timeoutFallback });
         },
         surrender() {
             publish("/app/matchmaking.surrender");

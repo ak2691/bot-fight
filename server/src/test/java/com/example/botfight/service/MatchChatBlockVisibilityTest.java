@@ -36,7 +36,6 @@ class MatchChatBlockVisibilityTest {
                 null,
                 null,
                 1,
-                2,
                 List.of(),
                 java.util.Map.of());
         ConcurrentMap<UUID, MatchSession> activeSessions = new ConcurrentHashMap<>();

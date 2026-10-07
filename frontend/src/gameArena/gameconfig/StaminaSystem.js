@@ -16,7 +16,6 @@ export function initialMovementState() {
     return {
         stamina: MOVEMENT_CONFIG.staminaMax,
         staminaRegenDelayMs: 0,
-        exhaustedMs: 0,
         sprinting: false,
         fastTurning: false,
         dashGapMs: 0,
@@ -28,11 +27,6 @@ export function botStamina(shape) {
     return Number.isFinite(value) ? Math.max(0, Math.min(MOVEMENT_CONFIG.staminaMax, value)) : MOVEMENT_CONFIG.staminaMax;
 }
 
-export function botExhausted(shape) {
-    // Compact server replay frames carry a plain `exhausted` flag instead of the timer.
-    return wholeMs(shape?.exhaustedMs) > 0 || shape?.exhausted === true;
-}
-
 export function botSprinting(shape) {
     return shape?.sprinting === true;
 }
@@ -42,11 +36,11 @@ export function botFastTurning(shape) {
 }
 
 /**
- * Fast turn needs the drain in stamina and no exhaustion. It is judged on the state the previous
- * tick left (what the planner saw), exactly like sprint.
+ * Fast turn needs the drain in stamina; at 0 stamina it simply cannot run until the bot refills. It is
+ * judged on the state the previous tick left (what the planner saw), exactly like sprint.
  */
 export function canFastTurn(shape) {
-    return botStamina(shape) >= MOVEMENT_CONFIG.fastTurnDrainPerTick && !botExhausted(shape);
+    return botStamina(shape) >= MOVEMENT_CONFIG.fastTurnDrainPerTick;
 }
 
 /** Largest turn per tick (before status multipliers) the bot may make: doubled only when a fast turn will really apply. */
@@ -55,28 +49,26 @@ export function rotationStepDeg(shape, fastTurn) {
 }
 
 /**
- * Start-of-tick timers: lockouts count down and, once both are over, stamina regenerates.
- * Spending later in the same tick sets the lockouts fresh, so a spend in tick N gives
- * N+1..N+8 of no regeneration and regeneration from N+9.
+ * Start-of-tick timers: the regen pause and Dash gap count down and, once the pause is over, stamina
+ * regenerates. Spending later in the same tick sets the pause fresh, so a spend in tick N gives N+1..N+5
+ * of no regeneration and regeneration from N+6. A hit refund (see settleAbilityHits) never touches it.
  */
 export function advanceStaminaTimers(shape, elapsedMs) {
     const elapsed = wholeMs(elapsedMs);
     const delay = wholeMs(shape?.staminaRegenDelayMs);
-    const exhausted = wholeMs(shape?.exhaustedMs);
     const dashGap = wholeMs(shape?.dashGapMs);
     const stamina = botStamina(shape);
-    const regenerates = delay <= 0 && exhausted <= 0 && stamina < MOVEMENT_CONFIG.staminaMax;
-    if (delay <= 0 && exhausted <= 0 && dashGap <= 0 && !regenerates) return shape;
+    const regenerates = delay <= 0 && stamina < MOVEMENT_CONFIG.staminaMax;
+    if (delay <= 0 && dashGap <= 0 && !regenerates) return shape;
     return {
         ...shape,
         stamina: regenerates ? Math.min(MOVEMENT_CONFIG.staminaMax, stamina + MOVEMENT_CONFIG.regenPerTick) : stamina,
         staminaRegenDelayMs: Math.max(0, delay - elapsed),
-        exhaustedMs: Math.max(0, exhausted - elapsed),
         dashGapMs: Math.max(0, dashGap - elapsed),
     };
 }
 
-/** Spends stamina (never below 0), restarts the regeneration delay and starts exhaustion at 0. */
+/** Spends stamina (never below 0) and restarts the regeneration pause. Only a spend does that. */
 export function spendStamina(shape, amount) {
     const before = botStamina(shape);
     const stamina = Math.max(0, before - Math.max(0, Math.trunc(Number(amount) || 0)));
@@ -84,8 +76,14 @@ export function spendStamina(shape, amount) {
         ...shape,
         stamina,
         staminaRegenDelayMs: MOVEMENT_CONFIG.regenDelayMs,
-        exhaustedMs: stamina === 0 && before > 0 ? MOVEMENT_CONFIG.exhaustionMs : wholeMs(shape?.exhaustedMs),
     };
+}
+
+/** Adds refunded stamina (capped at the maximum) without touching the regeneration pause. */
+export function refundStamina(shape, amount) {
+    const gain = Math.max(0, Math.trunc(Number(amount) || 0));
+    if (gain === 0) return shape;
+    return { ...shape, stamina: Math.min(MOVEMENT_CONFIG.staminaMax, botStamina(shape) + gain) };
 }
 
 export function dashReady(shape) {
@@ -97,7 +95,7 @@ export function dashWaitMs(shape) {
     const gap = wholeMs(shape?.dashGapMs);
     const missing = MOVEMENT_CONFIG.dashCost - botStamina(shape);
     if (missing <= 0) return gap;
-    const lockout = Math.max(wholeMs(shape?.staminaRegenDelayMs), wholeMs(shape?.exhaustedMs));
+    const lockout = wholeMs(shape?.staminaRegenDelayMs);
     const regenMs = Math.ceil(missing / MOVEMENT_CONFIG.regenPerTick) * 100;
     return Math.max(gap, lockout + regenMs);
 }

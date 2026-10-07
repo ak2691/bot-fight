@@ -165,12 +165,11 @@ function botPayload(shape, selectedLoadout, type = "model", ownerId = shape?.id,
     };
 }
 
-/** Stamina state for conditions: the bot's stamina, lockout timers and Dash gap. */
+/** Stamina state for conditions: the bot's stamina, regen pause and Dash gap. */
 function staminaPayload(shape) {
     return {
         stamina: botStamina(shape),
         staminaRegenDelayMs: Math.max(0, Math.round(Number(shape.staminaRegenDelayMs) || 0)),
-        exhaustedMs: Math.max(0, Math.round(Number(shape.exhaustedMs) || 0)),
         dashGapMs: Math.max(0, Math.round(Number(shape.dashGapMs) || 0)),
         sprinting: botSprinting(shape),
         fastTurning: botFastTurning(shape),

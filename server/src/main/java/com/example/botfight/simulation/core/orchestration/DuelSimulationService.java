@@ -39,7 +39,7 @@ import tools.jackson.databind.JsonNode;
 
 @Service
 public class DuelSimulationService {
-    public static final String DUEL_RULESET_VERSION = "duel-v1";
+    public static final String DUEL_RULESET_VERSION = "duel-v2";
     /** Maximum roster size accepted by the bounded XvX simulator contract. */
     public static final int MAX_SIMULATION_BOTS = 8;
 
@@ -55,6 +55,13 @@ public class DuelSimulationService {
     private static final int MAX_PRIORITY = 10;
     private static final ClosingZoneConfig CLOSING_ZONE_CONFIG = ClosingZoneConfig.duelV1();
     public static final int SIMULATION_DURATION_MS = CLOSING_ZONE_CONFIG.simulationDurationMs();
+    /** Timed rounds: up to six consecutive segments of at most 20 s, 120 s in all. */
+    public static final int SEGMENT_DURATION_MS = 20_000;
+    public static final int MAX_SEGMENTS = 6;
+    /** Result of a segment that ended with no knockout and more segments to come. */
+    public static final String SEGMENT_CONTINUES = "CONTINUES";
+    private static final int MAX_VARIABLE_RESETS = 100;
+    private static final int MAX_VARIABLE_RESET_LENGTH = 64;
 
     private final ConditionResolutionService conditionResolutionService;
     private final ReplayMappingService replayMappingService;
@@ -126,21 +133,34 @@ public class DuelSimulationService {
             ReplayRecorder<T> replayRecorder,
             SimulationTickObserver observer) {
         if (request == null || !DUEL_RULESET_VERSION.equals(request.rulesetVersion())) {
-            throw new IllegalArgumentException("rulesetVersion must be duel-v1");
+            throw new IllegalArgumentException("rulesetVersion must be duel-v2");
         }
         validateBotRoster(request);
 
+        // A segmented request runs the timed-rounds schedule: its own zone and a longer cap. The
+        // single-segment path below keeps the single-fight zone and its 90 second cap exactly.
+        List<SegmentRequest> segments = request.segments() == null ? List.of() : request.segments();
+        boolean segmented = !segments.isEmpty();
+        ClosingZoneConfig zoneConfig = segmented ? ClosingZoneConfig.timedRoundsV2() : CLOSING_ZONE_CONFIG;
+        int maxDurationMs = zoneConfig.simulationDurationMs();
+        if (segmented) validateSegments(request, segments, maxDurationMs);
+        int requestedDurationMs = segmented
+                ? segments.get(segments.size() - 1).endsAtMs()
+                : request.arena() != null ? request.arena().durationMs() : SIMULATION_DURATION_MS;
         Arena arena = new Arena(
                 request.arena() != null ? request.arena().width() : ARENA_WIDTH_UNITS,
                 request.arena() != null ? request.arena().height() : ARENA_HEIGHT_UNITS,
-                request.arena() != null ? request.arena().durationMs() : SIMULATION_DURATION_MS);
+                requestedDurationMs,
+                zoneConfig);
         int initialElapsedMs = request.arena() == null
                 ? 0
                 : request.arena().initialElapsedMs();
         if (initialElapsedMs < 0
-                || initialElapsedMs > SIMULATION_DURATION_MS
-                || (long) initialElapsedMs + Math.max(0L, (long) arena.durationMs()) > SIMULATION_DURATION_MS) {
-            throw new IllegalArgumentException("initialElapsedMs must leave room within the 90 second duel");
+                || initialElapsedMs > maxDurationMs
+                || (long) initialElapsedMs + Math.max(0L, (long) arena.durationMs()) > maxDurationMs
+                || (segmented && initialElapsedMs != 0)) {
+            throw new IllegalArgumentException("initialElapsedMs must leave room within the "
+                    + maxDurationMs / 1000 + " second duel");
         }
 
         List<Bot> bots = request.bots().stream()
@@ -149,7 +169,22 @@ public class DuelSimulationService {
                 .toList();
         attachRoster(bots);
         bots.forEach(bot -> bot.matchElapsedMs = initialElapsedMs);
-        replayRecorder.initialize(arena, bots);
+
+        // The recorder keeps only the requested segment. Its initial state is the bot state at that
+        // segment's boundary (after the brain swap), and its frames are relative to the boundary.
+        int recordStartMs = segmented && request.recordFromMs() != null ? request.recordFromMs() : 0;
+        int loopEndMs = arena.durationMs();
+        // Asking for one segment stops the run when that segment ends: later segments cannot change it.
+        if (segmented && request.recordFromMs() != null) {
+            loopEndMs = Math.min(loopEndMs, segmentEndAfter(segments, recordStartMs));
+        }
+        int recordTickOffset = recordStartMs / STEP_MS;
+        boolean recording = false;
+        if (recordStartMs == 0) {
+            replayRecorder.initialize(arena, bots);
+            recording = true;
+        }
+        int nextSegment = 1;
         List<ArenaEntity> entities = new ArrayList<>();
         ClosingZoneSystem.State closingZone = null;
 
@@ -159,7 +194,18 @@ public class DuelSimulationService {
         // 100 ms step. Starting at zero used to apply an unaccounted step and
         // run once beyond the requested duration, making movement and every
         // cooldown appear one tick ahead in authoritative replays.
-        for (int elapsedMs = STEP_MS, tick = 1; elapsedMs <= arena.durationMs(); elapsedMs += STEP_MS, tick += 1) {
+        for (int elapsedMs = STEP_MS, tick = 1; elapsedMs <= loopEndMs; elapsedMs += STEP_MS, tick += 1) {
+            // A segment boundary is the end of the previous tick: swap each bot's brain and loadout
+            // before any logic of this tick runs, then start recording if this is the target segment.
+            int boundaryMs = elapsedMs - STEP_MS;
+            if (nextSegment < segments.size() && boundaryMs == segments.get(nextSegment - 1).endsAtMs()) {
+                applySegment(bots, segments.get(nextSegment));
+                nextSegment += 1;
+            }
+            if (!recording && boundaryMs == recordStartMs) {
+                replayRecorder.initialize(arena, bots);
+                recording = true;
+            }
             entities = advanceEntityAges(entities);
             for (Bot bot : bots) {
                 botStateService.startTick(bot);
@@ -189,7 +235,7 @@ public class DuelSimulationService {
                     arena.width(),
                     arena.height(),
                     bots,
-                    CLOSING_ZONE_CONFIG,
+                    zoneConfig,
                     new ClosingZoneSystem.Damage<>() {
                         @Override
                         public double maxHp(Bot bot) {
@@ -206,7 +252,7 @@ public class DuelSimulationService {
 
             List<ArenaEntity> frameEntities = new ArrayList<>(entities);
             if (closingZoneUpdate.entity() != null) frameEntities.add(closingZoneUpdate.entity());
-            replayRecorder.addFrame(tick, elapsedMs, bots, frameEntities);
+            if (recording) replayRecorder.addFrame(tick - recordTickOffset, elapsedMs - recordStartMs, bots, frameEntities);
             if (observer != null && observer.afterTick(elapsedMs, bots, frameEntities, arena)) {
                 return replayRecorder.complete(request.matchId(), null);
             }
@@ -222,11 +268,86 @@ public class DuelSimulationService {
                                 .filter(bot -> aliveTeams.contains(bot.teamNumber) && bot.alive())
                                 .findFirst()
                                 .orElse(null);
+                // A knockout before the target segment leaves nothing to replay, but the result
+                // still needs an initial state.
+                if (!recording) replayRecorder.initialize(arena, bots);
                 return replayRecorder.complete(request.matchId(), winner);
             }
         }
 
-        return replayRecorder.complete(request.matchId(), null);
+        if (!recording) replayRecorder.initialize(arena, bots);
+        // A segment that ends before the last one has not decided the match.
+        boolean continues = loopEndMs < arena.durationMs();
+        return continues
+                ? replayRecorder.completeContinuing(request.matchId())
+                : replayRecorder.complete(request.matchId(), null);
+    }
+
+    private static int segmentEndAfter(List<SegmentRequest> segments, int startMs) {
+        if (startMs == 0) return segments.get(0).endsAtMs();
+        for (int index = 0; index + 1 < segments.size(); index += 1) {
+            if (segments.get(index).endsAtMs() == startMs) return segments.get(index + 1).endsAtMs();
+        }
+        throw new IllegalArgumentException("recordFromMs must be the start of a segment");
+    }
+
+    private static void validateSegments(DuelSimulationRequest request, List<SegmentRequest> segments, int maxDurationMs) {
+        if (segments.size() > MAX_SEGMENTS) {
+            throw new IllegalArgumentException("a match has at most " + MAX_SEGMENTS + " segments");
+        }
+        Set<Integer> slots = new HashSet<>();
+        request.bots().forEach(bot -> slots.add(bot.slot()));
+        int previousEndMs = 0;
+        for (int index = 0; index < segments.size(); index += 1) {
+            SegmentRequest segment = segments.get(index);
+            if (segment == null || segment.endsAtMs() <= previousEndMs
+                    || segment.endsAtMs() - previousEndMs > SEGMENT_DURATION_MS
+                    || segment.endsAtMs() % STEP_MS != 0
+                    || segment.endsAtMs() > maxDurationMs) {
+                throw new IllegalArgumentException("segments must end in increasing multiples of " + STEP_MS
+                        + " ms, at most " + SEGMENT_DURATION_MS / 1000 + " seconds long, within "
+                        + maxDurationMs / 1000 + " seconds");
+            }
+            previousEndMs = segment.endsAtMs();
+            List<SegmentBotRequest> updates = segment.bots() == null ? List.of() : segment.bots();
+            if (index == 0 && !updates.isEmpty()) {
+                throw new IllegalArgumentException("the first segment's bots come from the request's bots");
+            }
+            Set<Integer> updated = new HashSet<>();
+            for (SegmentBotRequest update : updates) {
+                if (update == null || !slots.contains(update.slot()) || !updated.add(update.slot())) {
+                    throw new IllegalArgumentException("segment bots must name each roster slot at most once");
+                }
+                List<String> resets = update.variableResets() == null ? List.of() : update.variableResets();
+                if (resets.size() > MAX_VARIABLE_RESETS
+                        || resets.stream().anyMatch(name -> name == null || name.length() > MAX_VARIABLE_RESET_LENGTH)) {
+                    throw new IllegalArgumentException("variableResets exceeds its bounds");
+                }
+            }
+        }
+        Integer recordFromMs = request.recordFromMs();
+        if (recordFromMs != null && recordFromMs != 0) {
+            boolean boundary = false;
+            for (int index = 0; index + 1 < segments.size(); index += 1) {
+                boundary |= segments.get(index).endsAtMs() == recordFromMs;
+            }
+            if (!boundary) throw new IllegalArgumentException("recordFromMs must be the start of a segment");
+        }
+    }
+
+    /**
+     * Applies one segment's brain schedule at its boundary. Only brain, loadout and custom variables
+     * change; position, HP, statuses, cooldowns, wind-ups, stamina, entities and the zone carry over.
+     */
+    private void applySegment(List<Bot> bots, SegmentRequest segment) {
+        if (segment.bots() == null) return;
+        for (SegmentBotRequest update : segment.bots()) {
+            Bot bot = bots.stream().filter(candidate -> candidate.slot == update.slot()).findFirst().orElse(null);
+            if (bot == null) continue;
+            botStateService.applyBrainSchedule(bot, update.brain() != null ? update.brain() : bot.brain,
+                    update.variableResets());
+            prepareStrategy(bot);
+        }
     }
 
     private static void validateBotRoster(DuelSimulationRequest request) {
@@ -234,7 +355,7 @@ public class DuelSimulationService {
                 || request.bots().size() < 2
                 || request.bots().size() > MAX_SIMULATION_BOTS) {
             throw new IllegalArgumentException(
-                    "duel-v1 requires between two and " + MAX_SIMULATION_BOTS + " bots");
+                    "duel-v2 requires between two and " + MAX_SIMULATION_BOTS + " bots");
         }
         Set<Integer> slots = new HashSet<>();
         Set<Integer> teams = new HashSet<>();
@@ -246,7 +367,7 @@ public class DuelSimulationService {
             teams.add(bot.teamNumber());
         }
         if (teams.size() < 2) {
-            throw new IllegalArgumentException("duel-v1 requires at least two teams");
+            throw new IllegalArgumentException("duel-v2 requires at least two teams");
         }
     }
 
@@ -273,6 +394,9 @@ public class DuelSimulationService {
         void addFrame(int tick, int elapsedMs, List<Bot> bots, List<ArenaEntity> entities);
 
         T complete(UUID matchId, Bot winner);
+
+        /** The recorded segment ended with the fight still going. */
+        T completeContinuing(UUID matchId);
     }
 
     private static final class NoReplayRecorder implements ReplayRecorder<Void> {
@@ -284,6 +408,9 @@ public class DuelSimulationService {
 
         @Override
         public Void complete(UUID matchId, Bot winner) { return null; }
+
+        @Override
+        public Void completeContinuing(UUID matchId) { return null; }
     }
 
     private final class FullReplayRecorder implements ReplayRecorder<MatchPlaybackDTO> {
@@ -312,6 +439,12 @@ public class DuelSimulationService {
         public MatchPlaybackDTO complete(UUID matchId, Bot winner) {
             return duelResult(matchId, initialState, frames, winner);
         }
+
+        @Override
+        public MatchPlaybackDTO completeContinuing(UUID matchId) {
+            return new MatchPlaybackDTO(matchId, DUEL_RULESET_VERSION, "COMPLETED", initialState, frames,
+                    SEGMENT_CONTINUES, null, "The fight continues.");
+        }
     }
 
     private final class CompactReplayRecorder implements ReplayRecorder<MatchReplayDTO> {
@@ -339,6 +472,12 @@ public class DuelSimulationService {
                     null,
                     null,
                     null);
+        }
+
+        @Override
+        public MatchReplayDTO completeContinuing(UUID matchId) {
+            return new MatchReplayDTO(initialState, List.copyOf(frames), SEGMENT_CONTINUES, null,
+                    "The fight continues.", null, null, null);
         }
     }
 
@@ -385,6 +524,20 @@ public class DuelSimulationService {
                         plan.ability, player, arena), plan.ability)
                 : null;
         Vector movement = actionExecutionService.movementVector(movementBlock, player, movementTarget);
+        DashAction dash = null;
+        if (plan.dash != null) {
+            Entity dashTarget = BotLogicContracts.actionUsesSelectableTarget(
+                    plan.dash.action(), plan.dash.movementMode(), plan.dash.targetMode())
+                    ? TargetingService.offsetTarget(AimPrediction.leadTarget(
+                            TargetingService.selectableEntity(plan.dash.selectable, player, opponent, entities),
+                            plan.dash, player, arena), plan.dash)
+                    : null;
+            dash = new DashAction(
+                    actionExecutionService.configuredAbilityAction(plan.dash),
+                    dashTarget != null ? dashTarget.x() : plan.dash.targetX,
+                    dashTarget != null ? dashTarget.y() : plan.dash.targetY,
+                    plan.dash.movementMode(), plan.dash.movementDirection(), plan.dash.phaseFacingMode());
+        }
         return new Action(
                 movement.dx(),
                 movement.dy(),
@@ -400,7 +553,8 @@ public class DuelSimulationService {
                 plan.ability != null ? plan.ability.phaseFacingMode() : null,
                 movementBlock != null && movementBlock.sprint(),
                 plan.cancel != null,
-                facingBlock != null && BotLogicContracts.ACTION_ROTATE_TOWARD_TARGET.equals(facingBlock.action) && facingBlock.fastTurn());
+                facingBlock != null && BotLogicContracts.ACTION_ROTATE_TOWARD_TARGET.equals(facingBlock.action) && facingBlock.fastTurn(),
+                dash);
     }
 
     private Bot prepareStrategy(Bot bot) {
@@ -460,6 +614,7 @@ public class DuelSimulationService {
             case "ability" -> plan.ability != null;
             case "rotation" -> plan.rotation != null;
             case "cancel" -> plan.cancel != null;
+            case "dash" -> plan.dash != null;
             default -> plan.movement != null;
         };
     }
@@ -469,6 +624,7 @@ public class DuelSimulationService {
             case "ability" -> plan.ability = block;
             case "rotation" -> plan.rotation = block;
             case "cancel" -> plan.cancel = block;
+            case "dash" -> plan.dash = block;
             default -> plan.movement = block;
         }
     }
@@ -890,9 +1046,10 @@ public class DuelSimulationService {
                     }
 
                     @Override
-                    public void recordEnemyHit(List<Bot> activeBots, int ownerSlot, int abilityId) {
+                    public void recordEnemyHit(List<Bot> activeBots, int ownerSlot, int abilityId, String entityId) {
                         activeBots.stream().filter(bot -> bot.slot == ownerSlot).findFirst()
-                                .ifPresent(owner -> owner.abilityHitsThisTick.add(abilityId));
+                                .ifPresent(owner -> BotStateService.recordEnemyHit(owner, abilityId,
+                                        owner.entityActivations.getOrDefault(entityId, owner.activationSerial)));
                     }
 
                     @Override
@@ -1053,7 +1210,32 @@ public class DuelSimulationService {
             String rulesetVersion,
             long seed,
             DuelArenaRequest arena,
-            List<DuelBotRequest> bots) {
+            List<DuelBotRequest> bots,
+            List<SegmentRequest> segments,
+            Integer recordFromMs) {
+        public DuelSimulationRequest(
+                UUID matchId,
+                String rulesetVersion,
+                long seed,
+                DuelArenaRequest arena,
+                List<DuelBotRequest> bots) {
+            this(matchId, rulesetVersion, seed, arena, bots, null, null);
+        }
+    }
+
+    /**
+     * One timed-rounds segment: it ends at {@code endsAtMs} of the match and starts where the previous
+     * one ended. The first segment's bots are the request's bots; later segments swap in the listed
+     * bots' brain at their boundary.
+     */
+    public record SegmentRequest(int endsAtMs, List<SegmentBotRequest> bots) {
+    }
+
+    /**
+     * A bot's brain schedule entry. {@code variableResets} names the custom variables (by id or name)
+     * to reset to their declared default instead of keeping their last value.
+     */
+    public record SegmentBotRequest(int slot, String selectedLoadout, JsonNode brain, List<String> variableResets) {
     }
 
     public record DuelArenaRequest(
@@ -1106,7 +1288,10 @@ public class DuelSimulationService {
         }
     }
 
-    public record Arena(int width, int height, int durationMs) {
+    public record Arena(int width, int height, int durationMs, ClosingZoneConfig closingZone) {
+        public Arena(int width, int height, int durationMs) {
+            this(width, height, durationMs, ClosingZoneConfig.duelV1());
+        }
     }
 
     private static double turnTowardAngle(Bot player, double targetAngle, boolean fastTurn) {
@@ -1115,19 +1300,29 @@ public class DuelSimulationService {
     }
 
     /** `sprint` is the Walk setting and `fastTurn` the Rotate setting; `cancelWindup` is the Cancel channel, independent of the ability lock. */
+    /** A Dash chosen through its own channel; it starts alongside the tick's ability. */
+    public record DashAction(Integer abilityId, double targetX, double targetY,
+                             String movementMode, String movementDirection, String phaseFacingMode) {}
+
     public record Action(double dx, double dy, double dRot, Integer abilityAction, double abilityTargetX, double abilityTargetY,
                   String movementMode, String movementDirection, String phaseFacingMode,
-                  boolean sprint, boolean cancelWindup, boolean fastTurn) {
+                  boolean sprint, boolean cancelWindup, boolean fastTurn, DashAction dash) {
+        public Action(double dx, double dy, double dRot, Integer abilityAction, double abilityTargetX, double abilityTargetY,
+                      String movementMode, String movementDirection, String phaseFacingMode,
+                      boolean sprint, boolean cancelWindup, boolean fastTurn) {
+            this(dx, dy, dRot, abilityAction, abilityTargetX, abilityTargetY,
+                    movementMode, movementDirection, phaseFacingMode, sprint, cancelWindup, fastTurn, null);
+        }
         public Action(double dx, double dy, double dRot, Integer abilityAction, double abilityTargetX, double abilityTargetY,
                       String movementMode, String movementDirection, String phaseFacingMode,
                       boolean sprint, boolean cancelWindup) {
             this(dx, dy, dRot, abilityAction, abilityTargetX, abilityTargetY,
-                    movementMode, movementDirection, phaseFacingMode, sprint, cancelWindup, false);
+                    movementMode, movementDirection, phaseFacingMode, sprint, cancelWindup, false, null);
         }
         public Action(double dx, double dy, double dRot, Integer abilityAction, double abilityTargetX, double abilityTargetY,
                       String movementMode, String movementDirection, String phaseFacingMode) {
             this(dx, dy, dRot, abilityAction, abilityTargetX, abilityTargetY,
-                    movementMode, movementDirection, phaseFacingMode, false, false, false);
+                    movementMode, movementDirection, phaseFacingMode, false, false, false, null);
         }
     }
 
@@ -1288,6 +1483,14 @@ public class DuelSimulationService {
         public Map<Integer, Integer> abilityLastHitAgeMs = new HashMap<>();
         /** Abilities that hit an enemy bot this tick, settled into abilityLastHitAgeMs by settleTick. */
         public Set<Integer> abilityHitsThisTick = new java.util.LinkedHashSet<>();
+        /** Counts this bot's ability activations, so a hit stamina refund is paid once per activation. */
+        public int activationSerial;
+        /** Activations that already paid their hit refund. */
+        public Set<Integer> refundedActivations = new java.util.HashSet<>();
+        /** The activation that spawned each of this bot's entities, by entity id. */
+        public Map<String, Integer> entityActivations = new HashMap<>();
+        /** Hit refunds earned this tick, paid into stamina by settleTick. */
+        public int pendingStaminaRefund;
         public Map<Integer, Integer> abilityCharges = new HashMap<>();
         public Map<Integer, Integer> abilityRechargeMs = new HashMap<>();
         public Map<String, Object> customVariables = new HashMap<>();
@@ -1295,7 +1498,6 @@ public class DuelSimulationService {
         /** Stamina (an integer, 0-100) and its timers; see StaminaSystem. */
         public int stamina = com.example.botfight.simulation.gameconfig.MovementConfig.STAMINA_MAX;
         public int staminaRegenDelayMs;
-        public int exhaustedMs;
         public boolean sprinting;
         public boolean fastTurning;
         public int dashGapMs;
@@ -1415,6 +1617,7 @@ public class DuelSimulationService {
         private StrategyBlock ability;
         private StrategyBlock rotation;
         private StrategyBlock cancel;
+        private StrategyBlock dash;
     }
 
     private static final class SeededRandom {

@@ -148,7 +148,7 @@ class BotLogicContractsTest {
                         "bot.selectedAbilityActiveMs", "bot.selectedAbilityCooldownMs", "bot.selectedAbilitySinceHit", "bot.selectedAbilityCharges",
                         "bot.selectedAbilityPreparing", "bot.selectedAbilityPreparationMs", "bot.selectedAbilityBaseRange",
                         "bot.selectedStatusEffectActive", "bot.selectedStatusEffectDurationMs",
-                        "bot.stamina", "bot.exhausted", "bot.sprinting", "bot.fastTurning"));
+                        "bot.stamina", "bot.sprinting", "bot.fastTurning"));
         for (String variable : List.of(
                 "selectable.hp", "selectable.damageTakenLastTick", "selectable.hpNetChangeLastTick", "selectable.x",
                 "selectable.y", "selectable.alive", "selectable.movementDirection", "selectable.speed",
@@ -174,7 +174,7 @@ class BotLogicContractsTest {
                 "bot.selectedAbilityActiveMs", "bot.selectedAbilityCooldownMs", "bot.selectedAbilitySinceHit", "bot.selectedAbilityCharges",
                 "bot.selectedAbilityPreparing", "bot.selectedAbilityPreparationMs", "bot.selectedAbilityBaseRange",
                 "bot.selectedStatusEffectActive", "bot.selectedStatusEffectDurationMs",
-                "bot.anyAbilityPreparing", "bot.stamina", "bot.exhausted", "bot.sprinting", "bot.fastTurning")) {
+                "bot.anyAbilityPreparing", "bot.stamina", "bot.sprinting", "bot.fastTurning")) {
             assertSingle(variable, BotLogicContracts.SelectableIdentity.BOT);
         }
 

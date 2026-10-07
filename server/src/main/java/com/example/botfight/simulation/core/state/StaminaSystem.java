@@ -3,7 +3,6 @@ package com.example.botfight.simulation.core.state;
 import static com.example.botfight.simulation.gameconfig.MovementConfig.DASH_ABILITY_ID;
 import static com.example.botfight.simulation.gameconfig.MovementConfig.DASH_COST;
 import static com.example.botfight.simulation.gameconfig.MovementConfig.DASH_GAP_MS;
-import static com.example.botfight.simulation.gameconfig.MovementConfig.EXHAUSTION_MS;
 import static com.example.botfight.simulation.gameconfig.MovementConfig.FAST_TURN_DRAIN_PER_TICK;
 import static com.example.botfight.simulation.gameconfig.MovementConfig.REGEN_DELAY_MS;
 import static com.example.botfight.simulation.gameconfig.MovementConfig.REGEN_PER_TICK;
@@ -16,19 +15,16 @@ import com.example.botfight.simulation.core.orchestration.DuelSimulationService.
  * Stamina rules, mirrored by the browser's gameconfig/StaminaSystem.js.
  *
  * <p>A tick works like the browser's: readiness (Dash, cancel, sprint) is judged on the state the
- * previous tick left, which is what conditions saw. {@link Tick} advances the lockout timers and
+ * previous tick left, which is what conditions saw. {@link Tick} advances the regen pause and
  * regeneration from that state, collects this tick's spends, and writes the result when finished, so
- * a spend in tick N gives N+1..N+8 of no regeneration and regeneration from N+9.
+ * a spend in tick N gives N+1..N+5 of no regeneration and regeneration from N+6. A hit refund is paid
+ * when the tick settles ({@code BotStateService.settleTick}) and never touches the pause.
  */
 public final class StaminaSystem {
     private StaminaSystem() {}
 
     public static int stamina(Bot bot) {
         return Math.max(0, Math.min(STAMINA_MAX, bot.stamina));
-    }
-
-    public static boolean exhausted(Bot bot) {
-        return bot.exhaustedMs > 0;
     }
 
     public static boolean dashReady(Bot bot) {
@@ -40,7 +36,7 @@ public final class StaminaSystem {
         int gap = Math.max(0, bot.dashGapMs);
         int missing = DASH_COST - stamina(bot);
         if (missing <= 0) return gap;
-        int lockout = Math.max(Math.max(0, bot.staminaRegenDelayMs), Math.max(0, bot.exhaustedMs));
+        int lockout = Math.max(0, bot.staminaRegenDelayMs);
         int regenMs = (int) Math.ceil(missing / (double) REGEN_PER_TICK) * 100;
         return Math.max(gap, lockout + regenMs);
     }
@@ -50,9 +46,18 @@ public final class StaminaSystem {
         return abilityId != DASH_ABILITY_ID || dashReady(bot);
     }
 
-    /** Fast turn needs the drain in stamina and no exhaustion, judged on the state the previous tick left. */
+    /**
+     * Fast turn needs the drain in stamina; at 0 stamina it simply cannot run until the bot refills. Judged
+     * on the state the previous tick left.
+     */
     public static boolean canFastTurn(Bot bot) {
-        return stamina(bot) >= FAST_TURN_DRAIN_PER_TICK && !exhausted(bot);
+        return stamina(bot) >= FAST_TURN_DRAIN_PER_TICK;
+    }
+
+    /** Adds refunded stamina (capped at the maximum) without touching the regeneration pause. */
+    public static void refund(Bot bot, int amount) {
+        if (amount <= 0) return;
+        bot.stamina = Math.min(STAMINA_MAX, stamina(bot) + amount);
     }
 
     public static boolean canCancelWindup(Bot bot) {
@@ -63,7 +68,6 @@ public final class StaminaSystem {
     public static final class Tick {
         private final int stamina;
         private final int regenDelayMs;
-        private final int exhaustedMs;
         private final int dashGapMs;
         private int spent;
         private boolean spentAny;
@@ -73,12 +77,10 @@ public final class StaminaSystem {
 
         private Tick(Bot bot, int elapsedMs) {
             int delay = Math.max(0, bot.staminaRegenDelayMs);
-            int exhausted = Math.max(0, bot.exhaustedMs);
             int current = stamina(bot);
-            boolean regenerates = delay <= 0 && exhausted <= 0 && current < STAMINA_MAX;
+            boolean regenerates = delay <= 0 && current < STAMINA_MAX;
             this.stamina = regenerates ? Math.min(STAMINA_MAX, current + REGEN_PER_TICK) : current;
             this.regenDelayMs = Math.max(0, delay - elapsedMs);
-            this.exhaustedMs = Math.max(0, exhausted - elapsedMs);
             this.dashGapMs = Math.max(0, bot.dashGapMs - elapsedMs);
         }
 
@@ -102,12 +104,11 @@ public final class StaminaSystem {
             fastTurning = value;
         }
 
-        /** Writes the tick's result: spends clamp at 0, restart the delay, and starting exhaustion at 0. */
+        /** Writes the tick's result: spends clamp at 0 and restart the regen pause. */
         public void finish(Bot bot) {
             int result = Math.max(0, stamina - spent);
             bot.stamina = result;
             bot.staminaRegenDelayMs = spentAny ? REGEN_DELAY_MS : regenDelayMs;
-            bot.exhaustedMs = spentAny && result == 0 && stamina > 0 ? EXHAUSTION_MS : exhaustedMs;
             bot.dashGapMs = dashStarted ? DASH_GAP_MS : dashGapMs;
             bot.sprinting = sprinting;
             bot.fastTurning = fastTurning;

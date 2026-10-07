@@ -136,6 +136,7 @@ function categoryOf(action) {
     if (action.head === ACTION_HEADS.MOVEMENT) return ACTION_HEADS.MOVEMENT;
     if (action.head === ACTION_HEADS.ROTATION) return ACTION_HEADS.ROTATION;
     if (action.head === ACTION_HEADS.CANCEL) return ACTION_HEADS.CANCEL;
+    if (action.head === ACTION_HEADS.DASH) return ACTION_HEADS.DASH;
     return CATEGORY_ABILITY;
 }
 
@@ -194,7 +195,8 @@ function runActionStep(step, frame, ctx) {
     }
     const category = categoryOf(action);
     if (action.id === BOT_CODE_ACTIONS.CANCEL_WINDUP) return runCancelWindup(step, frame, ctx, category);
-    if (category === CATEGORY_ABILITY) return runUseAbility(step, frame, ctx, category);
+    // Dash is issued like an ability (it can wait for its end), but claims its own category.
+    if (category === CATEGORY_ABILITY || category === ACTION_HEADS.DASH) return runUseAbility(step, frame, ctx, category);
     return runTimedAction(step, frame, ctx, category);
 }
 

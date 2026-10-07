@@ -5,6 +5,7 @@ import ActiveMatchProtectedRoute from './auth/ActiveMatchProtectedRoute'
 import MatchProtectedRoute from './auth/MatchProtectedRoute.jsx'
 import ProtectedRoute from './auth/ProtectedRoute'
 import AdminRoute from './auth/AdminRoute.jsx'
+import PuzzlesRoute from './auth/PuzzlesRoute.jsx'
 import RouteErrorBoundary from './auth/RouteErrorBoundary.jsx'
 import HomePage from './pages/home/HomePage'
 import CustomLobbyPage from './pages/customLobby/CustomLobbyPage.jsx'
@@ -115,7 +116,9 @@ function App() {
               path="/puzzles"
               element={(
                 <ProtectedRoute allowGuest>
-                  <PuzzleListPage />
+                  <PuzzlesRoute>
+                    <PuzzleListPage />
+                  </PuzzlesRoute>
                 </ProtectedRoute>
               )}
             />
@@ -123,7 +126,9 @@ function App() {
               path="/puzzles/:puzzleNumber"
               element={(
                 <ProtectedRoute allowGuest>
-                  <PuzzlePlayPage />
+                  <PuzzlesRoute>
+                    <PuzzlePlayPage />
+                  </PuzzlesRoute>
                 </ProtectedRoute>
               )}
             />

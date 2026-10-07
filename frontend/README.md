@@ -1,10 +1,9 @@
 # Botfight frontend
 
-Botfight now submits deterministic melee bot brains. Players author priority
-logic blocks in the arena UI, check the rules, and submit the normalized logic
-configuration to the backend. Clean Play and rated fights evaluate those blocks
-directly; there is no browser TensorFlow model, generated dataset, loss curve,
-or base-model artifact in the active flow.
+React 19 + Vite client: the bot code editor, the practice arena (a browser
+preview of the deterministic simulation), PixiJS rendering, matchmaking and
+replays. Rated results come from the server. Start with
+[`context.md`](context.md).
 
 ```bash
 npm run dev

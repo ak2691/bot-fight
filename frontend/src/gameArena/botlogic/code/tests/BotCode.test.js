@@ -63,7 +63,6 @@ const SELECTABLE_IDENTITY_MATRIX = Object.freeze({
     "selectable.moving": [[]],
     "bot.anyAbilityPreparing": [[SELECTABLE_IDENTITIES.BOT]],
     "bot.stamina": [[SELECTABLE_IDENTITIES.BOT]],
-    "bot.exhausted": [[SELECTABLE_IDENTITIES.BOT]],
     "bot.sprinting": [[SELECTABLE_IDENTITIES.BOT]],
     "bot.fastTurning": [[SELECTABLE_IDENTITIES.BOT]],
     "selectable.relativeBearing": [[SELECTABLE_IDENTITIES.FACING], []],
@@ -1611,8 +1610,9 @@ test("tutorial teaches rotate before fast turn", () => {
     assert.equal(basicStrikeScenario.durationMs, 2000);
     assert.equal(combineScenario.durationMs, 3000);
     assert.equal(dodgeScenario.goal, "dodge_grenade");
-    assert.equal(basicStrikeScenario.goal, "basic_strike");
-    assert.equal(basicStrikeActions.some((action) => action.action === 34), true);
+    assert.equal(basicStrikeScenario.goal, "slash");
+    assert.equal(basicStrikeActions.some((action) => action.action === 1), true);
+    assert.equal(basicStrikeActions.some((action) => action.action === 34), false);
     assert.equal(basicStrikeActions.some((action) => action.action === 2), false);
 });
 

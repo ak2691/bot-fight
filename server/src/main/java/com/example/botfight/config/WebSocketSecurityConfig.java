@@ -32,6 +32,7 @@ public class WebSocketSecurityConfig {
                         "/app/matchmaking.cancel",
                         "/app/matchmaking.leave",
                         "/app/matchmaking.selectLoadout",
+                        "/app/matchmaking.timeoutFallback",
                         "/app/matchmaking.surrender",
                         "/app/matchmaking.codeView.request",
                         "/app/matchmaking.codeView.response",

@@ -10,12 +10,15 @@ export const MOVEMENT_TICK_MS = 100;
 export const MOVEMENT_CONFIG = Object.freeze({
     /** Stamina cap; a bot starts every round full. */
     staminaMax: 100,
-    /** Stamina regained per tick (20 per second) once regenDelayMs and exhaustionMs have both run out. */
+    /** Stamina regained per tick (20 per second) once regenDelayMs has run out. */
     regenPerTick: 2,
-    /** Time after any stamina spend before regeneration resumes. */
-    regenDelayMs: 800,
-    /** Time with no regeneration after stamina hits 0. There is no movement slowdown. */
-    exhaustionMs: 1500,
+    /** Time after any stamina spend before regeneration resumes. Only spending starts or restarts it. */
+    regenDelayMs: 500,
+    /**
+     * Stamina a bot gains when its weapon or ability lands on an enemy bot, once per activation (capped at
+     * staminaMax). It is instant and independent of the regen pause: it never starts, ends or restarts it.
+     */
+    hitStaminaRefund: 10,
     /** Movement speed factor while sprinting, the same in every direction. */
     sprintMultiplier: 1.5,
     /** Stamina drained per sprinting tick (30 per second). */

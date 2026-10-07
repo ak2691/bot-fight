@@ -375,7 +375,7 @@ export function newActionEntry(action, { customVariables = [], chains = [] } = {
 
 function actionStepFields(action) {
     // An ability step moves straight on to the next step on the next tick; use Wait to hold for something.
-    if (action.head === ACTION_HEADS.ABILITY) return { continue: "now" };
+    if (action.head === ACTION_HEADS.ABILITY || action.head === ACTION_HEADS.DASH) return { continue: "now" };
     if (action.head === ACTION_HEADS.MOVEMENT || action.head === ACTION_HEADS.ROTATION) return { forMs: DEFAULT_STEP_MS };
     return {};
 }

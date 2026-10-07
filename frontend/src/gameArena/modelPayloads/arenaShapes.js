@@ -141,15 +141,16 @@ export function buildMatchSpawnShapes(matchContext) {
         const baseShape = isPlayer
             ? { ...MAIN_SHAPE }
             : buildOpponentShape({ ...participant, selectedLoadout: loadoutId });
-        return resetBotShape({
+        const frozen = frozenBotState(matchContext, participant);
+        const spawned = resetBotShape({
             ...baseShape,
             id: shapeId,
             type: isPlayer ? "circle" : "bot",
             combatLoadout: loadoutId,
             loadout: loadoutObject(loadoutId),
-            x: position.x,
-            y: position.y,
-            rotation: position.rotation,
+            x: frozen?.x ?? position.x,
+            y: frozen?.y ?? position.y,
+            rotation: frozen?.rotation ?? position.rotation,
             slot: Number(participant.slot) || (isPlayer ? 1 : 2),
             teamNumber: teamNumberForParticipant(participant),
             isCurrentUser: isPlayer,
@@ -158,7 +159,31 @@ export function buildMatchSpawnShapes(matchContext) {
             opponentUsername: participant.username ?? (isPlayer ? "Player" : "Opponent"),
             locked: !isPlayer,
         });
+        // Reset restores full HP and stamina; the frozen frame carries what the last segment left.
+        return frozen
+            ? { ...spawned, hp: frozen.hp, ...(frozen.stamina != null ? { stamina: frozen.stamina } : {}) }
+            : spawned;
     });
+}
+
+/**
+ * The end of the last segment, frozen: the building room starts from where each bot stood (position,
+ * rotation, HP, stamina) instead of the spawn row. A non-authoritative preview; the server simulates
+ * the real continuation. The preview opponent stays a stationary dummy because it runs no code.
+ */
+function frozenBotState(matchContext, participant) {
+    const states = matchContext?.timedRounds?.segmentEndState;
+    if (!Array.isArray(states)) return null;
+    const state = states.find((bot) => Number(bot?.slot) === Number(participant?.slot));
+    if (!state || !Number.isFinite(Number(state.x)) || !Number.isFinite(Number(state.y))) return null;
+    const hp = Number(state.hp);
+    return {
+        x: Number(state.x),
+        y: Number(state.y),
+        rotation: Number.isFinite(Number(state.rotation)) ? Number(state.rotation) : null,
+        hp: Number.isFinite(hp) ? Math.max(0, hp) : BASE_BOT_HP,
+        stamina: Number.isFinite(Number(state.stamina)) ? Number(state.stamina) : undefined,
+    };
 }
 
 function matchParticipants(matchContext) {
@@ -282,6 +307,10 @@ export function resetBotShape(shape) {
         abilityActiveMs: {},
         abilityLastHitAgeMs: {},
         abilityHitsThisTick: [],
+        activationSerial: 0,
+        refundedActivations: [],
+        entityActivations: {},
+        pendingStaminaRefund: 0,
         abilityCooldowns: Object.fromEntries(abilities.map((ability) => [ability, 0])),
         abilityPendingCooldownMs: {},
         abilityCharges: initialAbilityCharges(abilities, stats.maxHp),

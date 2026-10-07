@@ -11,7 +11,7 @@ import { apiUrl } from "../../config/api";
 import { ensureCsrfHeaders } from "../../security/csrf";
 import { useMatchmaking } from "../../matchmaking/matchmaking-context";
 import CustomLobbyChat from "./CustomLobbyChat.jsx";
-import QueueAbilityGuaranteePicker from "../queue/QueueAbilityGuaranteePicker.jsx";
+import { clampClockSetting, formatClock, formatClockSetting } from "./customLobbyClock.js";
 
 const TEAM_NONE = 0;
 const BLUE_TEAM = 1;
@@ -21,8 +21,11 @@ const STATUS_MESSAGE_DURATION_MS = 3500;
 const INVITE_RATE_LIMIT_MESSAGE = "Inviting too fast, please wait";
 const INVITE_FAILURE_MESSAGE = "Can not invite this player";
 const RANKED_PARTICIPATION_BLOCK_MESSAGE = "Leave ranked matchmaking or return to the active match before entering a custom lobby.";
-const MIN_ROUND_DURATION_SECONDS = 30;
-const MAX_ROUND_DURATION_SECONDS = 10 * 60;
+const MIN_BASE_CLOCK_SECONDS = 30;
+const MAX_BASE_CLOCK_SECONDS = 600;
+const MAX_INCREMENT_SECONDS = 60;
+const DEFAULT_BASE_CLOCK_SECONDS = 300;
+const DEFAULT_INCREMENT_SECONDS = 30;
 
 async function customLobbyRequest(path, { method = "GET", body } = {}) {
     const headers = method === "GET" || method === "HEAD"
@@ -50,36 +53,39 @@ function memberIsCurrent(member, userId) {
     return member && userId && String(member.userId) === String(userId);
 }
 
-function formatRoundDuration(seconds) {
-    const totalSeconds = Number(seconds);
-    if (!Number.isFinite(totalSeconds) || totalSeconds < MIN_ROUND_DURATION_SECONDS) return "5 min";
-    if (totalSeconds % 60 === 0) return `${totalSeconds / 60} min`;
-    return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, "0")}`;
+function ClockField({ id, label, hint, value, min, max, onChange, onCommit }) {
+    return (
+        <div className="flex items-center gap-3">
+            <label htmlFor={id} className="w-24 shrink-0 text-[13px] font-semibold text-[#e6edf3]" title={hint}>{label}</label>
+            <input
+                id={id}
+                type="number" min={min} max={max} step="1"
+                value={value}
+                onChange={(event) => onChange(event.target.value)}
+                onBlur={onCommit}
+                onKeyDown={(event) => {
+                    if (event.key !== "Enter") return;
+                    onCommit();
+                }}
+                aria-label={`${label} in seconds`}
+                title={hint}
+                className="h-9 w-24 rounded-lg border border-[#262c33] bg-[#12181d] px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-400"
+            />
+            <span className="text-xs text-slate-500">seconds</span>
+            <span className="ml-auto font-interface-numeric text-sm font-semibold text-slate-200" aria-live="polite">{formatClock(Number(value) || 0)}</span>
+        </div>
+    );
 }
 
-function normalizeMinimumRoundDuration(value) {
-    const seconds = Number(value);
-    if (!Number.isFinite(seconds)) return String(MIN_ROUND_DURATION_SECONDS);
-    return String(Math.max(MIN_ROUND_DURATION_SECONDS, Math.floor(seconds)));
-}
-
-const ROUND_DURATION_PRESETS = [[60, "1 min"], [180, "3 min"], [300, "5 min"]];
-const ROUND_DURATION_STEP_SECONDS = 15;
-
-function CustomLobbySettingsModal({ roundSeconds, onRoundSecondsChange, onClose, onSubmit, saving, error }) {
+function CustomLobbySettingsModal({ baseClockSeconds, incrementSeconds, onBaseClockChange, onIncrementChange, onClose, onSubmit, saving, error }) {
     const dialogRef = useRef(null);
-    const [customOpen, setCustomOpen] = useState(() => !ROUND_DURATION_PRESETS.some(([seconds]) => String(seconds) === String(roundSeconds)));
     useDialogFocus(dialogRef, {
         onClose,
         lockScroll: true,
         enabled: true,
     });
-    const presetActive = (seconds) => !customOpen && String(seconds) === String(roundSeconds);
-    const stepSeconds = (delta) => {
-        const current = Number(roundSeconds);
-        const base = Number.isFinite(current) ? current : MIN_ROUND_DURATION_SECONDS;
-        onRoundSecondsChange(String(Math.min(MAX_ROUND_DURATION_SECONDS, Math.max(MIN_ROUND_DURATION_SECONDS, Math.floor(base) + delta))));
-    };
+    const commitBase = () => onBaseClockChange(String(clampClockSetting(baseClockSeconds, MIN_BASE_CLOCK_SECONDS, MAX_BASE_CLOCK_SECONDS, DEFAULT_BASE_CLOCK_SECONDS)));
+    const commitIncrement = () => onIncrementChange(String(clampClockSetting(incrementSeconds, 0, MAX_INCREMENT_SECONDS, DEFAULT_INCREMENT_SECONDS)));
 
     return (
         <div className="fixed inset-0 z-[110] grid place-items-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
@@ -90,35 +96,27 @@ function CustomLobbySettingsModal({ roundSeconds, onRoundSecondsChange, onClose,
                 </header>
                 <form onSubmit={onSubmit}>
                     <div className="space-y-3 p-5">
-                        <p className="text-[13px] font-semibold text-[#e6edf3]" id="custom-lobby-build-time-label">Build time per round</p>
-                        <div className="grid grid-cols-4 overflow-hidden rounded-lg border border-[#262c33] bg-[#12181d]" role="group" aria-labelledby="custom-lobby-build-time-label">
-                            {ROUND_DURATION_PRESETS.map(([seconds, label]) => (
-                                <button key={seconds} type="button" aria-pressed={presetActive(seconds)} onClick={() => { setCustomOpen(false); onRoundSecondsChange(String(seconds)); }} className={`h-9 text-[13px] font-semibold ${presetActive(seconds) ? "bg-[#1f6f8b] text-white" : "text-slate-400 hover:bg-white/[.06] hover:text-white"}`}>{label}</button>
-                            ))}
-                            <button type="button" aria-pressed={customOpen} onClick={() => setCustomOpen(true)} className={`h-9 text-[13px] font-semibold ${customOpen ? "bg-[#1f6f8b] text-white" : "text-slate-400 hover:bg-white/[.06] hover:text-white"}`}>Custom</button>
-                        </div>
-                        {customOpen && (
-                            <div className="flex items-center gap-2">
-                                <button type="button" onClick={() => stepSeconds(-ROUND_DURATION_STEP_SECONDS)} aria-label="Decrease round time" className="h-9 w-9 rounded-lg border border-[#262c33] bg-[#12181d] text-lg text-slate-200 hover:bg-white/[.06]">−</button>
-                                <input
-                                    id="custom-lobby-round-seconds"
-                                    type="number" min="30" max="600" step="1"
-                                    value={roundSeconds}
-                                    onChange={(event) => onRoundSecondsChange(event.target.value)}
-                                    onBlur={() => onRoundSecondsChange(normalizeMinimumRoundDuration(roundSeconds))}
-                                    onKeyDown={(event) => {
-                                        if (event.key !== "Enter") return;
-                                        event.preventDefault();
-                                        onRoundSecondsChange(normalizeMinimumRoundDuration(event.currentTarget.value));
-                                    }}
-                                    aria-label="Custom match round time in seconds"
-                                    className="h-9 w-24 rounded-lg border border-[#262c33] bg-[#12181d] px-2 text-center font-interface-numeric text-sm text-white outline-none focus:border-cyan-400"
-                                />
-                                <button type="button" onClick={() => stepSeconds(ROUND_DURATION_STEP_SECONDS)} aria-label="Increase round time" className="h-9 w-9 rounded-lg border border-[#262c33] bg-[#12181d] text-lg text-slate-200 hover:bg-white/[.06]">+</button>
-                                <span className="text-xs text-slate-500">seconds</span>
-                            </div>
-                        )}
-                        <p className="text-xs leading-5 text-slate-500">How long players have to code before each round. 30 s – 10 min.</p>
+                        <ClockField
+                            id="custom-lobby-base-clock"
+                            label="Base clock"
+                            hint="Coding time each player starts with. 30 s to 10 min."
+                            value={baseClockSeconds}
+                            min={MIN_BASE_CLOCK_SECONDS}
+                            max={MAX_BASE_CLOCK_SECONDS}
+                            onChange={onBaseClockChange}
+                            onCommit={commitBase}
+                        />
+                        <ClockField
+                            id="custom-lobby-increment"
+                            label="Increment"
+                            hint="Coding time each player gains every round. 0 to 60 s."
+                            value={incrementSeconds}
+                            min={0}
+                            max={MAX_INCREMENT_SECONDS}
+                            onChange={onIncrementChange}
+                            onCommit={commitIncrement}
+                        />
+                        <p className="text-xs leading-5 text-slate-500">Each player's coding time carries across rounds, plus the increment.</p>
                         {error && <p className="rounded-lg border border-rose-400/40 bg-rose-950/20 px-3 py-2 text-xs leading-5 text-rose-200" role="alert">{error}</p>}
                     </div>
                     <footer className="flex justify-end gap-2 border-t border-[#262c33] px-5 py-3.5">
@@ -142,9 +140,6 @@ export default function CustomLobbyPage() {
         isQueueing,
         pendingAcceptance,
         activeMatchStatus,
-        queueGuarantees,
-        updateQueueGuarantee,
-        waitForQueueGuarantees,
     } = useMatchmaking();
     const [lobby, setLobby] = useState(null);
     const [loadState, setLoadState] = useState("loading");
@@ -152,7 +147,8 @@ export default function CustomLobbyPage() {
     const [notice, setNotice] = useState(null);
     const [inviteUsername, setInviteUsername] = useState("");
     const [inviteStatus, setInviteStatus] = useState(null);
-    const [roundSeconds, setRoundSeconds] = useState("300");
+    const [baseClockSeconds, setBaseClockSeconds] = useState(String(DEFAULT_BASE_CLOCK_SECONDS));
+    const [incrementSeconds, setIncrementSeconds] = useState(String(DEFAULT_INCREMENT_SECONDS));
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [chatOpen, setChatOpen] = useState(false);
     const [action, setAction] = useState(null);
@@ -223,9 +219,10 @@ export default function CustomLobbyPage() {
     }, [lobby?.lobbyId]);
 
     useEffect(() => {
-        if (lobby?.roundDurationSeconds == null) return;
-        setRoundSeconds(String(Number(lobby.roundDurationSeconds)));
-    }, [lobby?.lobbyId, lobby?.roundDurationSeconds]);
+        if (lobby?.baseClockSeconds == null) return;
+        setBaseClockSeconds(String(Number(lobby.baseClockSeconds)));
+        setIncrementSeconds(String(Number(lobby.incrementSeconds ?? 0)));
+    }, [lobby?.lobbyId, lobby?.baseClockSeconds, lobby?.incrementSeconds]);
 
     useEffect(() => {
         if (!notice && !error) return undefined;
@@ -378,25 +375,20 @@ export default function CustomLobbyPage() {
         if (result) setInviteUsername("");
     };
 
-    const saveRoundDuration = async (event) => {
+    const saveClock = async (event) => {
         event.preventDefault();
         if (!lobby?.lobbyId || !isOwner || action !== null) return;
-        const normalizedRoundSeconds = normalizeMinimumRoundDuration(roundSeconds);
-        if (normalizedRoundSeconds !== String(roundSeconds)) {
-            setRoundSeconds(normalizedRoundSeconds);
-        }
-        const seconds = Number(normalizedRoundSeconds);
-        if (seconds > MAX_ROUND_DURATION_SECONDS) {
-            setError("Round time must be a whole number between 30 and 600 seconds.");
-            return;
-        }
+        const base = clampClockSetting(baseClockSeconds, MIN_BASE_CLOCK_SECONDS, MAX_BASE_CLOCK_SECONDS, DEFAULT_BASE_CLOCK_SECONDS);
+        const increment = clampClockSetting(incrementSeconds, 0, MAX_INCREMENT_SECONDS, DEFAULT_INCREMENT_SECONDS);
+        setBaseClockSeconds(String(base));
+        setIncrementSeconds(String(increment));
         const result = await performAction(
             "settings",
             () => customLobbyRequest(`/api/custom-lobbies/${encodeURIComponent(lobby.lobbyId)}/settings`, {
                 method: "POST",
-                body: { roundDurationSeconds: seconds },
+                body: { baseClockSeconds: base, incrementSeconds: increment },
             }),
-            "Round time updated.",
+            "Clock updated.",
         );
         if (result) setSettingsOpen(false);
     };
@@ -444,12 +436,7 @@ export default function CustomLobbyPage() {
         if (!lobby?.lobbyId || !canStart || action !== null) return;
         const result = await performAction(
             "start",
-            async () => {
-                if (!await waitForQueueGuarantees()) {
-                    throw new Error("Guaranteed offers could not be saved. Try again before starting.");
-                }
-                return customLobbyRequest(`/api/custom-lobbies/${encodeURIComponent(lobby.lobbyId)}/start`, { method: "POST" });
-            },
+            () => customLobbyRequest(`/api/custom-lobbies/${encodeURIComponent(lobby.lobbyId)}/start`, { method: "POST" }),
             null,
             false,
         );
@@ -501,7 +488,7 @@ export default function CustomLobbyPage() {
                                 <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-semibold text-[#c9d3dc]">
                                     <span className="inline-flex items-center gap-1.5 rounded-md border border-[#262c33] bg-[#12181d] px-2 py-1"><Icon name="lock" className="h-3 w-3" />Invite only</span>
                                     <span className="inline-flex items-center gap-1.5 rounded-md border border-[#262c33] bg-[#12181d] px-2 py-1">{members.length} / {capacity} players</span>
-                                    <span className="inline-flex items-center gap-1.5 rounded-md border border-[#262c33] bg-[#12181d] px-2 py-1"><Icon name="clock" className="h-3 w-3" />{formatRoundDuration(lobby.roundDurationSeconds)} rounds</span>
+                                    <span className="inline-flex items-center gap-1.5 rounded-md border border-[#262c33] bg-[#12181d] px-2 py-1"><Icon name="clock" className="h-3 w-3" />{formatClockSetting(lobby.baseClockSeconds, lobby.incrementSeconds)}</span>
                                 </div>
                             )}
                         </div>
@@ -568,13 +555,6 @@ export default function CustomLobbyPage() {
                                     action={action}
                                     onKick={kickPlayer}
                                 />
-                                <div className="custom-lobby-guarantees rounded-xl border border-[#262c33] bg-[#0f1418] p-3.5">
-                                    <QueueAbilityGuaranteePicker
-                                        values={queueGuarantees}
-                                        onChange={updateQueueGuarantee}
-                                        disabled={action === "start"}
-                                    />
-                                </div>
                             </div>
                             {!isGuest && (
                                 <div className="min-w-0">
@@ -634,10 +614,12 @@ export default function CustomLobbyPage() {
             </main>
             {settingsOpen && (
                 <CustomLobbySettingsModal
-                    roundSeconds={roundSeconds}
-                    onRoundSecondsChange={setRoundSeconds}
+                    baseClockSeconds={baseClockSeconds}
+                    incrementSeconds={incrementSeconds}
+                    onBaseClockChange={setBaseClockSeconds}
+                    onIncrementChange={setIncrementSeconds}
                     onClose={closeSettings}
-                    onSubmit={saveRoundDuration}
+                    onSubmit={saveClock}
                     saving={action === "settings"}
                     error={error}
                 />

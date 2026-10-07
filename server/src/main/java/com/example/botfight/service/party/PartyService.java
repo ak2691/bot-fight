@@ -20,7 +20,6 @@ import com.example.botfight.service.block.BlockLookup;
 import com.example.botfight.service.limits.RateLimitExceededException;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;
-import com.example.botfight.service.match.loadout.MatchAbilityGuaranteeService;
 import com.example.botfight.service.match.model.MatchEntrant;
 import com.example.botfight.service.invite.InviteTargetUnavailableException;
 import com.example.botfight.service.websocket.SingleUserWebSocketSessionRegistry;
@@ -64,7 +63,6 @@ public class PartyService {
     private final Clock clock;
     private final BlockLookup blockLookup;
     private final SingleUserWebSocketSessionRegistry socketRegistry;
-    private final MatchAbilityGuaranteeService guaranteeService;
 
     private final Map<UUID, Party> activePartiesById = new HashMap<>();
     private final Map<UUID, UUID> partyIdsByUserId = new HashMap<>();
@@ -83,8 +81,7 @@ public class PartyService {
             @Qualifier("partyInviteRateLimiter") TokenBucketRateLimiter<UUID> inviteRateLimiter,
             Clock clock,
             BlockLookup blockLookup,
-            SingleUserWebSocketSessionRegistry socketRegistry,
-            MatchAbilityGuaranteeService guaranteeService) {
+            SingleUserWebSocketSessionRegistry socketRegistry) {
         this.currentUserService = currentUserService;
         this.userRepository = userRepository;
         this.matchService = matchService;
@@ -92,35 +89,6 @@ public class PartyService {
         this.clock = clock;
         this.blockLookup = blockLookup;
         this.socketRegistry = socketRegistry;
-        this.guaranteeService = guaranteeService == null
-                ? new MatchAbilityGuaranteeService()
-                : guaranteeService;
-    }
-
-    /** Compatibility constructor for fixtures that provide a socket registry. */
-    public PartyService(
-            CurrentUserService currentUserService,
-            UserRepository userRepository,
-            PartyRepository partyRepository,
-            PartyMemberRepository partyMemberRepository,
-            PartyInviteRepository partyInviteRepository,
-            MatchService matchService,
-            TokenBucketRateLimiter<UUID> inviteRateLimiter,
-            Clock clock,
-            BlockLookup blockLookup,
-            SingleUserWebSocketSessionRegistry socketRegistry) {
-        this(
-                currentUserService,
-                userRepository,
-                partyRepository,
-                partyMemberRepository,
-                partyInviteRepository,
-                matchService,
-                inviteRateLimiter,
-                clock,
-                blockLookup,
-                socketRegistry,
-                new MatchAbilityGuaranteeService());
     }
 
     /** Compatibility constructor for unit fixtures without a socket registry. */
@@ -144,8 +112,7 @@ public class PartyService {
                 inviteRateLimiter,
                 clock,
                 blockLookup,
-                null,
-                new MatchAbilityGuaranteeService());
+                null);
     }
 
     public PartyService(
@@ -167,8 +134,7 @@ public class PartyService {
                 inviteRateLimiter,
                 clock,
                 BlockLookup.none(),
-                null,
-                new MatchAbilityGuaranteeService());
+                null);
     }
 
     /** Binds a party member to the socket that authenticated the party session. */
@@ -235,8 +201,7 @@ public class PartyService {
                             requesterId,
                             requesterUsername,
                             requesterPrincipalName,
-                            requesterSocketSessionId)
-                            .withGuaranteedAbilities(guaranteeService.forUser(requesterId))),
+                            requesterSocketSessionId)),
                     List.of(new PartyRecipient(requesterPrincipalName, requesterId)),
                     userIsGuest(requesterId));
         }
@@ -625,8 +590,7 @@ public class PartyService {
                 user.getId(),
                 requester ? requesterUsername : user.getUsername(),
                 principalName,
-                socketSessionId)
-                .withGuaranteedAbilities(guaranteeService.forUser(user.getId()));
+                socketSessionId);
     }
 
     private void addMember(Party party, AppUser user, short slot) {

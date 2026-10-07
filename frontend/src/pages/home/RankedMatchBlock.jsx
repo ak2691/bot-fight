@@ -4,10 +4,8 @@ import { useAuth } from "../../auth/auth-context";
 import { apiUrl } from "../../config/api";
 import { useMatchmaking } from "../../matchmaking/matchmaking-context";
 import { MATCH_MODES, QUEUE_MODES } from "../../matchmaking/matchModes";
-import QueueAbilityGuaranteePicker from "../queue/QueueAbilityGuaranteePicker.jsx";
 import { ButtonIcon } from "../../components/exploreTileArt.jsx";
 import Toast, { ToastStack } from "../../components/Toast.jsx";
-import { guaranteeSummary } from "../queue/queueGuarantees.js";
 
 const PARTY_QUEUE_NOTICE_DURATION_MS = 3500;
 
@@ -48,8 +46,6 @@ export default function RankedMatchBlock({ activeMatch = false, activeMatchId = 
         connectionStatus,
         pendingAcceptance,
         activeMatchStatus,
-        queueGuarantees,
-        updateQueueGuarantee,
         startQueue,
         cancelQueue,
         party,
@@ -121,7 +117,7 @@ export default function RankedMatchBlock({ activeMatch = false, activeMatchId = 
         }
         if (modeBlocked(candidate)) return;
         setSelectedMode(candidate.id);
-        void startQueue(candidate.id, queueGuarantees);
+        void startQueue(candidate.id);
     };
 
     const partySizeBlocked = isFullParty && mode.id === MATCH_MODES.ONES;
@@ -160,7 +156,6 @@ export default function RankedMatchBlock({ activeMatch = false, activeMatchId = 
                         <span className="hq-timer" aria-live="polite">{formatQueueTime(queueElapsed)}</span>
                     </header>
                     <div className="hq-progress" role="progressbar" aria-label="Searching for a match" aria-valuetext="Searching"><span /></div>
-                    <p className="hq-note">Offers locked in: {guaranteeSummary(queueGuarantees)}</p>
                     {connectionStatus !== "CONNECTED" && (
                         <p className="hq-note hq-note--warn" role="status">
                             Reconnecting{queueReconnectRemaining > 0 ? ` · ${queueReconnectRemaining}s` : ""}
@@ -207,12 +202,6 @@ export default function RankedMatchBlock({ activeMatch = false, activeMatchId = 
                             Guest matches are against other guests only. No Elo or match history is saved.
                         </p>
                     )}
-
-                    <QueueAbilityGuaranteePicker
-                        values={queueGuarantees}
-                        onChange={updateQueueGuarantee}
-                        disabled={isQueueing}
-                    />
 
                     <button
                         type="button"

@@ -37,6 +37,14 @@ export function buildDeterministicLogicAction(configuration, stateSnapshot) {
         ? internalCoordinateTarget(abilityBlockWithTarget, coordinateVersion)
         : null;
     const movement = movementVector(movementBlock, state.player, movementTarget);
+    const dashBlock = plan.dash ?? null;
+    const dashPayload = abilityExecutionPayload(dashBlock?.action);
+    const dashCoordinate = dashBlock?.targetMode === "coordinates" || dashBlock?.movementMode === "coordinates"
+        ? internalCoordinateTarget(dashBlock, coordinateVersion)
+        : null;
+    const dashTarget = dashBlock && dashBlock.movementMode !== "absolute" && !dashCoordinate
+        ? offsetTarget(resolveSelectable(state, dashBlock.selectable), dashBlock, coordinateVersion)
+        : null;
     return {
         dx: movement.dx,
         dy: movement.dy,
@@ -58,6 +66,16 @@ export function buildDeterministicLogicAction(configuration, stateSnapshot) {
             ...(abilityBlock.movementDirection != null ? { movementDirection: abilityBlock.movementDirection } : {}),
             ...(abilityBlock.phaseFacingMode != null ? { phaseFacingMode: abilityBlock.phaseFacingMode } : {}),
         } : null,
+        // Dash is its own channel: it starts alongside whatever ability the tick selects.
+        dashAction: dashBlock && dashPayload ? {
+            action: dashBlock.action,
+            abilityPayload: dashPayload,
+            targetX: dashTarget?.x ?? dashCoordinate?.x ?? dashBlock.targetX,
+            targetY: dashTarget?.y ?? dashCoordinate?.y ?? dashBlock.targetY,
+            ...(dashBlock.movementMode ? { movementMode: dashBlock.movementMode } : {}),
+            ...(dashBlock.movementDirection != null ? { movementDirection: dashBlock.movementDirection } : {}),
+            ...(dashBlock.phaseFacingMode != null ? { phaseFacingMode: dashBlock.phaseFacingMode } : {}),
+        } : null,
         customVariables: { ...(plan.customVariables ?? state.player.customVariables ?? {}) },
         // The running chain's call stack persists across ticks like the custom variables.
         chainStack: plan.chainStack ?? [],
@@ -66,7 +84,7 @@ export function buildDeterministicLogicAction(configuration, stateSnapshot) {
 }
 
 export function idleAction() {
-    return { dx: 0, dy: 0, dRot: 0, abilityAction: null, customVariables: {}, chainStack: [], runningChain: null };
+    return { dx: 0, dy: 0, dRot: 0, abilityAction: null, dashAction: null, customVariables: {}, chainStack: [], runningChain: null };
 }
 
 function offsetTarget(target, block, coordinateVersion) {

@@ -12,7 +12,7 @@ import {
 import { abilityIdFromBoundary } from "../../../gameconfig/AbilityCompatibility.js";
 import { abilitySinceHitSeconds } from "../../../gameconfig/AbilityHitRecord.js";
 import { abilityBaseRange } from "../../../loadout/abilityBaseRange.js";
-import { botExhausted, botFastTurning, botSprinting, botStamina } from "../../../gameconfig/StaminaSystem.js";
+import { botFastTurning, botSprinting, botStamina } from "../../../gameconfig/StaminaSystem.js";
 import {
     BOT_CODE_SELECTABLES,
     CUSTOM_VARIABLE_CONTRACT,
@@ -87,10 +87,6 @@ const RUNTIME_RESOLVERS = Object.freeze({
     [STATE_VARIABLE_SOURCES.BOT_STAMINA]: (context) => {
         const bot = botForContext(context);
         return bot == null ? null : botStamina(bot);
-    },
-    [STATE_VARIABLE_SOURCES.BOT_EXHAUSTED]: (context) => {
-        const bot = botForContext(context);
-        return bot == null ? null : botExhausted(bot);
     },
     [STATE_VARIABLE_SOURCES.BOT_SPRINTING]: (context) => {
         const bot = botForContext(context);

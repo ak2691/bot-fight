@@ -355,3 +355,10 @@ test("an authentication probe survives a reconnect-attempt generation change on 
     assert.equal(authenticationLostCount, 1);
     assert.equal(transport.deactivationCount, 1);
 });
+
+test("the timeout fallback message exists and the join message carries only the mode", () => {
+    const source = readFileSync(new URL("./stompClient.js", import.meta.url), "utf8");
+    assert.match(source, /"\/app\/matchmaking\.timeoutFallback", \{ matchId, roundNumber, timeoutFallback \}/);
+    assert.match(source, /publish\("\/app\/matchmaking\.join", \{ mode \}\)/);
+    assert.doesNotMatch(source, /guaranteedAbilityIds/);
+});

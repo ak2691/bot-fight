@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { combatVisualDurationMs } from "../gameArena/gameconfig/visualState.js";
 import { centeredTeamPosition, displayedRoundWins, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, localReplaySchedule, mergeReplayFrames, replayAbilitiesFor, replayAbilityTarget, replayAbilityVisual, replayClockSeconds, replayDamageEvents, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayBotAbilityState, replayFrameIndexForElapsedMs, replayRayOrigin, replayRatingChange, replayRatingChanges, replayRemainingMs, replayRemainingSeconds, replayResultRevealReached, replayResultVisibility, replayShapeKey } from "./replayPresentation.js";
-import { botExhausted, botSprinting, botStamina } from "../gameArena/gameconfig/StaminaSystem.js";
+import { botSprinting, botStamina } from "../gameArena/gameconfig/StaminaSystem.js";
 import { runningChainSnapshot } from "../gameArena/botlogic/code/runtime/chainPresentation.js";
 
 test("chain presentation matches compact server fields and clears absent state", () => {
@@ -286,7 +286,7 @@ test("compact replay bots recover participant metadata by slot", () => {
     assert.deepEqual(bot.abilityCooldowns, { 3: 1000, 19: 1500, 20: 10000 });
     assert.deepEqual(bot.abilityCharges, { 3: 9 });
     assert.deepEqual(bot.abilityRechargeMs, { 3: 0 });
-    assert.deepEqual(bot.abilities, [19, 34, 3]);
+    assert.deepEqual(bot.abilities, [19, 3]);
 });
 
 test("initial replay bots carry resource state before the preparation countdown ends", () => {
@@ -302,14 +302,15 @@ test("initial replay bots carry resource state before the preparation countdown 
         abilityRechargeMs: { 3: 0, 5: 0 },
     });
 
-    assert.deepEqual(bot.abilities, [19, 34, 3, 5, 20]); // an old replay keeps the Lock On it recorded
+    assert.deepEqual(bot.abilities, [19, 3, 5, 20]); // an old replay keeps the Lock On it recorded
     assert.deepEqual(bot.abilityCooldowns, { 3: 0, 5: 0, 19: 1500, 20: 10000 });
     assert.deepEqual(bot.abilityCharges, { 3: 10, 5: 4 });
     assert.deepEqual(bot.abilityRechargeMs, { 3: 0, 5: 0 });
 });
 
 test("replay status order preserves the current acquisition order", () => {
-    assert.deepEqual(replayAbilitiesFor([12, 1, 3, 13]), [19, 34, 12, 1, 3, 13]);
+    assert.deepEqual(replayAbilitiesFor([12, 1, 3, 13]), [19, 12, 1, 3, 13]);
+    assert.deepEqual(replayAbilitiesFor([34, 1]), [19, 34, 1]); // an old replay keeps the Basic Strike it recorded
 });
 
 test("buffered replay frames are selected directly from the fixed simulation step", () => {
@@ -484,19 +485,16 @@ test("forfeit team formation keeps match-spawn spacing while centering the winne
 });
 
 
-test("hydrated replay bots carry server stamina, exhausted and sprinting for the stamina meter", () => {
+test("hydrated replay bots carry server stamina and sprinting for the stamina meter, with no exhaustion", () => {
     const quiet = hydrateReplayBot({ slot: 1, hp: 100 }, { slot: 1 });
     assert.equal(quiet.stamina, 100);
-    assert.equal(quiet.exhausted, false);
+    assert.equal("exhausted" in quiet, false);
     assert.equal(quiet.sprinting, false);
     assert.equal(quiet.fastTurning, false);
-    const spent = hydrateReplayBot({ slot: 1, hp: 100, stamina: 12, exhausted: true, sprinting: true, fastTurning: true }, { slot: 1 });
+    const spent = hydrateReplayBot({ slot: 1, hp: 100, stamina: 12, sprinting: true, fastTurning: true }, { slot: 1 });
     assert.equal(spent.stamina, 12);
-    assert.equal(spent.exhausted, true);
     assert.equal(spent.sprinting, true);
     assert.equal(spent.fastTurning, true);
-    assert.equal(botExhausted(spent), true, "the panel reads the compact flag");
     assert.equal(botStamina(spent), 12);
     assert.equal(botSprinting(spent), true);
-    assert.equal(botExhausted(quiet), false);
 });

@@ -27,7 +27,6 @@ import java.util.function.Function;
 
 /** Resolves built-in bot variables from contract metadata and live duel state. */
 final class StateVariableResolver {
-    private static final ClosingZoneConfig CLOSING_ZONE_CONFIG = ClosingZoneConfig.duelV1();
 
     private static final Map<VariableSource, Function<ResolutionContext, StateValue>> RESOLVERS = Map.ofEntries(
             Map.entry(VariableSource.MATCH_ELAPSED_SECONDS,
@@ -61,8 +60,6 @@ final class StateVariableResolver {
                             && context.bot().preparingMs > 0)),
             Map.entry(VariableSource.BOT_STAMINA,
                     context -> context.bot() == null ? null : number(StaminaSystem.stamina(context.bot()))),
-            Map.entry(VariableSource.BOT_EXHAUSTED,
-                    context -> context.bot() == null ? null : bool(StaminaSystem.exhausted(context.bot()))),
             Map.entry(VariableSource.BOT_SPRINTING,
                     context -> context.bot() == null ? null : bool(context.bot().sprinting)),
             Map.entry(VariableSource.BOT_FAST_TURNING,
@@ -345,14 +342,15 @@ final class StateVariableResolver {
 
     private static StateValue dangerZoneEdgeDistance(ResolutionContext context, Entity entity) {
         if (entity == null) return null;
+        ClosingZoneConfig zoneConfig = context.arena().closingZone();
         int elapsedMs = (int) Math.min(Integer.MAX_VALUE, Math.max(0, context.player().matchElapsedMs));
-        if (elapsedMs < CLOSING_ZONE_CONFIG.startDelayMs()) return null;
-        int updateIntervalMs = Math.max(1, CLOSING_ZONE_CONFIG.geometryUpdateMs());
-        int activeElapsedMs = Math.max(0, elapsedMs - CLOSING_ZONE_CONFIG.startDelayMs());
+        if (elapsedMs < zoneConfig.startDelayMs()) return null;
+        int updateIntervalMs = Math.max(1, zoneConfig.geometryUpdateMs());
+        int activeElapsedMs = Math.max(0, elapsedMs - zoneConfig.startDelayMs());
         int geometryElapsedMs = activeElapsedMs / updateIntervalMs * updateIntervalMs;
         double safeRadius = ClosingZoneSystem.safeRadiusAt(
-                CLOSING_ZONE_CONFIG.startDelayMs() + geometryElapsedMs,
-                context.arena().width(), context.arena().height(), CLOSING_ZONE_CONFIG);
+                zoneConfig.startDelayMs() + geometryElapsedMs,
+                context.arena().width(), context.arena().height(), zoneConfig);
         if (!Double.isFinite(safeRadius)) return null;
         double centerDistance = between(entity.x(), entity.y(), context.arena().width() / 2.0, context.arena().height() / 2.0);
         return number(safeRadius - centerDistance);

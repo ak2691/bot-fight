@@ -2,7 +2,7 @@ import { attachedAbilityContract } from "../../../ecs/contracts/AbilityContracts
 import { entityContractForAbility } from "../../../ecs/contracts/AbilityContracts.js";
 import { ABILITY_TAGS, ALL_ABILITY_DEFINITIONS, entitySelectableDefinitions } from "../../../loadout/BotLoadout.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../../modelPayloads/arenaConstants.js";
-import { MOVEMENT_CONFIG } from "../../../gameconfig/MovementConfig.js";
+import { DASH_ABILITY_ID, MOVEMENT_CONFIG } from "../../../gameconfig/MovementConfig.js";
 import { BOT_SELECTABLE_IDENTITIES, SELECTABLE_DEPENDENCIES, SELECTABLE_IDENTITIES, selectableHasIdentity } from "../../../modelPayloads/selectableIdentities.js";
 import { CUSTOM_NUMBER_MAX } from "../configuration/constants.js";
 
@@ -71,6 +71,9 @@ export const ACTION_HEADS = Object.freeze({
     ABILITY: "ability",
     // Cancel has its own channel: it never competes with, or is blocked by, the ability lock.
     CANCEL: "cancel",
+    // Dash has its own channel too (interim): a dash never blocks or waits on another ability, and one dash
+    // and one ability can start on the same tick.
+    DASH: "dash",
     // Chain control uses no movement, rotation, ability or cancel category.
     CHAIN: "chain",
 });
@@ -107,7 +110,6 @@ export const STATE_VARIABLE_SOURCES = Object.freeze({
     SELECTABLE_MOVING: "selectableMoving",
     BOT_ANY_ABILITY_PREPARING: "botAnyAbilityPreparing",
     BOT_STAMINA: "botStamina",
-    BOT_EXHAUSTED: "botExhausted",
     BOT_SPRINTING: "botSprinting",
     BOT_FAST_TURNING: "botFastTurning",
     SELECTABLE_RELATIVE_BEARING: "selectableRelativeBearing",
@@ -317,8 +319,7 @@ const VARIABLE_DESCRIPTIONS = Object.freeze({
     "selectable.approachAngle": "0 = moving toward the target, 180 = away",
     "selectable.moving": "Moved during the last tick",
     "bot.anyAbilityPreparing": "Any of its abilities is winding up",
-    "bot.stamina": "Stamina left, from 0 to 100",
-    "bot.exhausted": "Out of stamina and not recovering yet",
+    "bot.stamina": "Stamina left, from 0 to 100. At 0 the bot cannot dash, sprint or fast turn until it refills",
     "bot.sprinting": "Currently sprinting",
     "bot.fastTurning": "Currently turning fast",
     "selectable.relativeBearing": "How far to turn to face the other entity",
@@ -409,7 +410,6 @@ export const STATE_VARIABLES = Object.freeze([
     ...GENERIC_ABILITY_VARIABLES,
     variableDefinition("bot.anyAbilityPreparing", "Any Ability Winding Up", "boolean", { group: "Abilities & Status", supportsSelectable: true, selectableIdentities: [SELECTABLE_IDENTITIES.BOT], selectableOrderable: false, defaultSelectable: BOT_CODE_SELECTABLES.OPPONENT, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.BOT_ANY_ABILITY_PREPARING }),
     variableDefinition("bot.stamina", "Stamina", "number", { group: "Movement", min: 0, max: MOVEMENT_CONFIG.staminaMax, unit: "stamina", step: 1, supportsSelectable: true, selectableIdentities: [SELECTABLE_IDENTITIES.BOT], selectableOrderable: false, defaultSelectable: BOT_CODE_SELECTABLES.MY, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.BOT_STAMINA }),
-    variableDefinition("bot.exhausted", "Exhausted", "boolean", { group: "Movement", supportsSelectable: true, selectableIdentities: [SELECTABLE_IDENTITIES.BOT], selectableOrderable: false, defaultSelectable: BOT_CODE_SELECTABLES.MY, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.BOT_EXHAUSTED }),
     variableDefinition("bot.fastTurning", "Turning fast", "boolean", { group: "Rotation", supportsSelectable: true, selectableIdentities: [SELECTABLE_IDENTITIES.BOT], selectableOrderable: false, defaultSelectable: BOT_CODE_SELECTABLES.MY, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.BOT_FAST_TURNING }),
     variableDefinition("bot.sprinting", "Sprinting", "boolean", { group: "Movement", supportsSelectable: true, selectableIdentities: [SELECTABLE_IDENTITIES.BOT], selectableOrderable: false, defaultSelectable: BOT_CODE_SELECTABLES.MY, scope: STATE_VARIABLE_SCOPES.SELECTABLE, runtimeSource: STATE_VARIABLE_SOURCES.BOT_SPRINTING }),
     ...GENERIC_STATUS_VARIABLES,
@@ -486,7 +486,7 @@ function abilityActionDefinition(ability, actionId) {
         id: actionId,
         abilityId: ability.id,
         label: ability.actionLabel ?? `Ability: ${ability.label}`,
-        head: "ability",
+        head: ability.id === DASH_ABILITY_ID ? ACTION_HEADS.DASH : ACTION_HEADS.ABILITY,
         targetMode: contract?.activation?.targetMode ?? (locationTarget ? "target" : null),
         coordinateTarget: movementConfig || locationTarget,
         locationTarget,

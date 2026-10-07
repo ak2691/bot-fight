@@ -136,7 +136,7 @@ function positioningFor(abilityId) {
         playerRotation: 180,
         opponentRotation: 0,
     };
-    if ([1, 16, 23, 10, 7, 8, 17, 18, 34, 35, 36, 37].includes(abilityId)) {
+    if ([1, 16, 23, 10, 7, 8, 17, 18, 35, 36, 37].includes(abilityId)) {
         return { player: { x: TEST_CENTER_X, y: TEST_CENTER_Y }, opponent: { x: TEST_CENTER_X, y: 708 }, playerRotation: 180, opponentRotation: 0 };
     }
     if (abilityId === 6) {

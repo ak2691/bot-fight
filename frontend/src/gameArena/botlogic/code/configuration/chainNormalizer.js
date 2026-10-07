@@ -151,7 +151,7 @@ function normalizeActionStep(raw, context) {
     if (!charge(context, cost)) return null;
     context.steps.count += 1;
     const step = { type: CHAIN_STEP_TYPES.ACTION, ...entry };
-    if (head === ACTION_HEADS.ABILITY) step.continue = raw.continue === "now" ? "now" : "end";
+    if (head === ACTION_HEADS.ABILITY || head === ACTION_HEADS.DASH) step.continue = raw.continue === "now" ? "now" : "end";
     // Walk and Rotate run for a fixed time; waiting for a condition is what Repeat while is for.
     if (stepOnly) step.forMs = chainMs(raw.forMs);
     return step;

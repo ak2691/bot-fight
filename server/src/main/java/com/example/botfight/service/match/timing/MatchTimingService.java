@@ -22,7 +22,6 @@ import java.util.function.Supplier;
 
 /** Owns loadout, countdown, building-deadline, and round-boundary timing. */
 public final class MatchTimingService {
-    private static final int LOADOUT_SELECTION_SECONDS = MatchTimingPolicy.LOADOUT_SELECTION_SECONDS;
     private static final int SUBMISSION_GRACE_SECONDS = MatchTimingPolicy.SUBMISSION_GRACE_SECONDS;
     private static final int BUILDING_ROOM_PREPARATION_SECONDS = 2;
     private static final String BUILDING_PHASE = "BUILDING";
@@ -73,6 +72,44 @@ public final class MatchTimingService {
         return withLock(expectedMatchId, () -> selectLoadoutLocked(userId, selectedLoadout));
     }
 
+    /**
+     * Records what a building player wants if their clock runs out: submit their current brain (CURRENT)
+     * or resubmit last round's (PREVIOUS). It only matters before the player submits.
+     */
+    public List<OutboundMatchmakingEvent> setTimeoutFallback(
+            UUID userId,
+            UUID expectedMatchId,
+            Integer expectedRoundNumber,
+            String timeoutFallback) {
+        if (expectedMatchId == null || expectedRoundNumber == null
+                || !MatchPlayer.isTimeoutFallback(timeoutFallback)) {
+            return List.of();
+        }
+        return withLock(expectedMatchId, () -> {
+            MatchSession session = state.activeSessionsByUserId().get(userId);
+            if (session == null
+                    || !expectedMatchId.equals(session.matchId())
+                    || expectedRoundNumber.intValue() != session.roundNumber()
+                    || session.countdownEndsAt() == null
+                    || session.isReplay()) {
+                return List.<OutboundMatchmakingEvent>of();
+            }
+            MatchPlayer player = playerForUser(session, userId);
+            if (player.finished() || timeoutFallback.equals(player.timeoutFallback())) {
+                return List.<OutboundMatchmakingEvent>of();
+            }
+            MatchSession updated = session.withTimeoutFallback(userId, timeoutFallback);
+            state.putSession(updated);
+            return List.of(eventFactory.forPlayer(
+                    updated,
+                    playerForUser(updated, userId),
+                    "PLAYER_TIMEOUT_FALLBACK",
+                    "PREP",
+                    null,
+                    "Timeout fallback set to " + timeoutFallback + "."));
+        });
+    }
+
     public List<OutboundMatchmakingEvent> resolveLoadoutSelectionTimeout(UUID matchId) {
         return withLock(matchId, () -> resolveLoadoutSelectionTimeoutLocked(matchId));
     }
@@ -101,7 +138,7 @@ public final class MatchTimingService {
         Instant now = Instant.now(clock);
         List<MatchSession> expiredSessions = state.distinctActiveSessions().stream()
                 .filter(session -> session.buildingEndsAt() != null)
-                .filter(session -> !now.isBefore(session.buildingEndsAt()))
+                .filter(session -> !expiredBuilders(session, now).isEmpty())
                 .toList();
         List<OutboundMatchmakingEvent> events = new ArrayList<>();
         for (MatchSession session : expiredSessions) {
@@ -182,18 +219,28 @@ public final class MatchTimingService {
         MatchSession session = state.activeSessionForMatch(matchId);
         if (session == null
                 || session.buildingEndsAt() == null
-                || !session.buildingEndsAt().equals(expectedDeadline)
-                || Instant.now(clock).isBefore(session.buildingEndsAt())) {
+                || (expectedDeadline != null && !session.buildingEndsAt().equals(expectedDeadline))) {
             return List.of();
         }
         return resolveExpiredBuilding(session);
     }
 
+    /**
+     * The players whose own clocks have run out and who have not submitted. A player is resolved at
+     * their own deadline, not the session's: a teammate who is still building keeps their clock.
+     */
+    private List<MatchPlayer> expiredBuilders(MatchSession session, Instant now) {
+        return session.players().stream()
+                .filter(player -> !player.finished())
+                .filter(player -> player.buildExpiresAt() != null && !now.isBefore(player.buildExpiresAt()))
+                .toList();
+    }
+
     private List<OutboundMatchmakingEvent> resolveExpiredBuilding(MatchSession session) {
         MatchSession resolvedSession = session;
         boolean playerTimedOut = false;
-        for (MatchPlayer player : session.players()) {
-            if (player.finished()) continue;
+        Instant now = Instant.now(clock);
+        for (MatchPlayer player : expiredBuilders(session, now)) {
             BotSubmission previous = submissionService.latestRoundSubmission(
                     session.matchId(), player.userId());
             BotSubmission submission = persistenceService.createBuildingTimeoutSubmission(
@@ -205,14 +252,15 @@ public final class MatchTimingService {
                             BUILDING_PHASE,
                             player.userId()),
                     submission);
-            resolvedSession = resolvedSession.withFinishedPlayer(player.userId(), submission.getId());
+            // Past the player's deadline, so the whole clock is spent.
+            resolvedSession = resolvedSession.withFinishedPlayer(player.userId(), submission.getId(), now);
             playerTimedOut = true;
         }
         if (!playerTimedOut) return List.of();
         state.putSession(resolvedSession);
         return submissionService.afterPlayerFinished(
                 resolvedSession,
-                "Building ended; the server resolved the missing bot brain.");
+                "A player ran out of time; the server resolved their missing bot brain.");
     }
 
     private List<OutboundMatchmakingEvent> startExpiredLoadoutSelection(MatchSession session) {
@@ -237,7 +285,7 @@ public final class MatchTimingService {
                         "MATCH_LOADOUT_SELECTION_READY",
                         "LOADOUT_SELECT",
                         null,
-                        "Choose your opening loadout."))
+                        "Pick your weapon and first ability."))
                 .toList();
     }
 
@@ -258,8 +306,9 @@ public final class MatchTimingService {
             if (session.roundNumber() + 1 != event.roundNumber()) {
                 return null;
             }
-            session = session.nextRound().withLoadoutSelection(
-                    loadoutSelectionDeadlineAt(Instant.now(clock)));
+            session = session.nextRound();
+            session = session.withLoadoutSelection(
+                    loadoutSelectionDeadlineAt(Instant.now(clock), session.roundNumber()));
             state.putSession(session);
         } else if (session.roundNumber() != event.roundNumber()) {
             return null;
@@ -280,7 +329,7 @@ public final class MatchTimingService {
         MatchSession activeSession = session;
         if (activeSession.loadoutSelectionEndsAt() == null) {
             activeSession = activeSession.withLoadoutSelection(
-                    loadoutSelectionDeadlineAt(Instant.now(clock)));
+                    loadoutSelectionDeadlineAt(Instant.now(clock), activeSession.roundNumber()));
             state.putSession(activeSession);
         }
         return new OutboundMatchmakingEvent(
@@ -307,9 +356,8 @@ public final class MatchTimingService {
                 && countdownEndsAt.isAfter(session.loadoutSelectionEndsAt())) {
             countdownEndsAt = session.loadoutSelectionEndsAt();
         }
-        Instant buildingEndsAt = countdownEndsAt.plusSeconds(
-                session.roundDurationSeconds() + SUBMISSION_GRACE_SECONDS);
-        MatchSession countdownSession = session.withCountdown(countdownEndsAt, buildingEndsAt);
+        // Every player's clock gains the increment and starts running here.
+        MatchSession countdownSession = session.withCountdown(countdownEndsAt);
         state.putSession(countdownSession);
         for (MatchPlayer player : countdownSession.players()) {
             persistenceService.updateParticipantSelectedLoadout(
@@ -326,8 +374,9 @@ public final class MatchTimingService {
                 .toList();
     }
 
-    private Instant loadoutSelectionDeadlineAt(Instant phaseStartedAt) {
-        return phaseStartedAt.plusSeconds(LOADOUT_SELECTION_SECONDS + SUBMISSION_GRACE_SECONDS);
+    private Instant loadoutSelectionDeadlineAt(Instant phaseStartedAt, int roundNumber) {
+        return phaseStartedAt.plusSeconds(
+                MatchTimingPolicy.pickSeconds(roundNumber) + SUBMISSION_GRACE_SECONDS);
     }
 
     private <T> T withLock(UUID matchId, Supplier<T> operation) {

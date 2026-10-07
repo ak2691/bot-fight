@@ -70,6 +70,7 @@ export const ACTION_HEAD_TONES = Object.freeze({
     rotation: "blue",
     ability: "purple",
     cancel: "red",
+    dash: "green",
     variable: "amber",
     chain: "cyan",
     flow: "blue",
@@ -91,6 +92,7 @@ const ACTION_HEAD_GROUPS = Object.freeze([
     { head: "movement", title: "Movement" },
     { head: "rotation", title: "Rotation" },
     { head: "ability", title: "Abilities", hint: "your loadout" },
+    { head: "dash", title: "Dash" },
     { head: "cancel", title: "Cancel" },
     { head: "variable", title: "Variables" },
     { head: "chain", title: "Chains" },
@@ -99,6 +101,7 @@ const ACTION_HEAD_GROUPS = Object.freeze([
 const ACTION_DESCRIPTIONS = Object.freeze({
     movement: "Move toward a target or point",
     rotation: "Turn toward a target or angle",
+    dash: "Starts alongside any ability, and is never blocked by one",
     variable: "Set, add or subtract",
 });
 

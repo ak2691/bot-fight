@@ -73,7 +73,7 @@ test("practice room storage bounds the shared practice roster config and keeps c
     assert.equal(saved.config.initialElapsedMs, 60_000);
     assert.equal(saved.config.bots.length, 3);
     assert.equal(saved.config.bots[0].startX, -5);
-    assert.equal(saved.config.bots[0].startHp, 150);
+    assert.equal(saved.config.bots[0].startHp, 300);
     assert.equal(saved.config.bots[0].brain, undefined);
 });
 

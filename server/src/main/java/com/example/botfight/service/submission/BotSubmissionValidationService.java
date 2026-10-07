@@ -2,6 +2,7 @@ package com.example.botfight.service.submission;
 
 import com.example.botfight.DTO.submission.BotSubmissionPayloadDTO;
 import com.example.botfight.DTO.submission.BotSubmissionValidationResponseDTO;
+import com.example.botfight.service.match.model.MatchPlayer;
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import com.example.botfight.simulation.gameconfig.GameConfig;
 import com.example.botfight.simulation.gameconfig.Abilities;
@@ -38,6 +39,10 @@ public class BotSubmissionValidationService {
     private static final int MAX_ROOTS = 100;
     private static final int MAX_ROOT_NAME_LENGTH = 25;
     private static final int MAX_CONDITIONS_PER_BLOCK = MAX_TOTAL_CONDITIONS;
+    /** A weapon plus one ability per round: the timed-rounds loadout holds at most seven picks. */
+    private static final int MAX_LOADOUT_ABILITIES = 7;
+    private static final int MAX_VARIABLE_RESETS = 100;
+    private static final int MAX_VARIABLE_RESET_LENGTH = 64;
     private static final Set<Integer> ALLOWED_ABILITIES = Set.copyOf(AbilityContracts.actions());
 
     private final JsonMapper jsonMapper;
@@ -65,8 +70,46 @@ public class BotSubmissionValidationService {
         GameConfig loadoutSpec = combatLoadoutes.duelV1();
         JsonNode brain = submittedBrain(payload);
         validateBrain(errors, brain, loadoutSpec);
+        validateVariableResets(errors, payload.getVariableResets(), brain);
+        if (payload.getTimeoutFallback() != null
+                && !MatchPlayer.isTimeoutFallback(payload.getTimeoutFallback())) {
+            errors.add("timeoutFallback must be CURRENT or PREVIOUS");
+        }
 
         return response(errors.isEmpty(), errors, warnings, false);
+    }
+
+    /**
+     * Each reset must name a variable the submitted brain declares (by id or by name), so a client can
+     * only choose between "keep" and "reset" for state it actually has. The list is bounded.
+     */
+    private void validateVariableResets(List<String> errors, List<String> resets, JsonNode brain) {
+        if (resets == null || resets.isEmpty()) return;
+        if (resets.size() > MAX_VARIABLE_RESETS) {
+            errors.add("variableResets exceeds the " + MAX_VARIABLE_RESETS + " variable limit");
+            return;
+        }
+        java.util.Set<String> declared = new java.util.HashSet<>();
+        JsonNode variables = brain == null ? null : brain.get("customVariables");
+        if (variables != null && variables.isArray()) {
+            for (JsonNode variable : variables) {
+                if (variable == null || !variable.isObject()) continue;
+                String id = variable.path("id").asText("");
+                String name = variable.path("name").asText("");
+                if (!id.isEmpty()) declared.add(id);
+                if (!name.isEmpty()) declared.add(name);
+            }
+        }
+        for (String reset : resets) {
+            if (reset == null || reset.isBlank() || reset.length() > MAX_VARIABLE_RESET_LENGTH) {
+                errors.add("variableResets contains an invalid variable name");
+                return;
+            }
+            if (!declared.contains(reset)) {
+                errors.add("variableResets names a variable the brain does not declare");
+                return;
+            }
+        }
     }
 
     /** Validates an in-memory brain with the same logic contract as a saved submission. */
@@ -185,8 +228,8 @@ public class BotSubmissionValidationService {
             return;
         }
         JsonNode abilities = loadout.get("abilities");
-        if (abilities == null || !abilities.isArray() || abilities.size() > 6) {
-            errors.add("brain.loadout.abilities must contain between 0 and 6 abilities");
+        if (abilities == null || !abilities.isArray() || abilities.size() > MAX_LOADOUT_ABILITIES) {
+            errors.add("brain.loadout.abilities must contain between 0 and " + MAX_LOADOUT_ABILITIES + " abilities");
         } else {
             Set<Integer> seen = new HashSet<>();
             abilities.forEach(ability -> {
@@ -945,7 +988,7 @@ public class BotSubmissionValidationService {
         validateSelectable(errors, step.get("selectable"), path + ".selectable");
         if (step.has("targetOffsetX")) validateSignedCoordinate(errors, step.get("targetOffsetX"), path + ".targetOffsetX", coordinateBounds.offsetMagnitude());
         if (step.has("targetOffsetY")) validateSignedCoordinate(errors, step.get("targetOffsetY"), path + ".targetOffsetY", coordinateBounds.offsetMagnitude());
-        if (head == BotLogicContracts.ActionHead.ABILITY && step.hasNonNull("continue")
+        if ((head == BotLogicContracts.ActionHead.ABILITY || head == BotLogicContracts.ActionHead.DASH) && step.hasNonNull("continue")
                 && !Set.of("end", "now").contains(step.get("continue").asText(""))) {
             errors.add(path + ".continue must be end or now");
         }

@@ -66,7 +66,6 @@ class CustomLobbyServiceTest {
             BlockLookup.none(),
             socketRegistry,
             partyService,
-            null,
             matchmakingService);
 
     @BeforeEach
@@ -318,7 +317,8 @@ class CustomLobbyServiceTest {
         when(matchmakingService.prepareExternalMatchStart(anyCollection()))
                 .thenReturn(startPreparation);
         when(matchService.startTeamMatch(any(), eq(MatchMode.CUSTOM),
-                eq(MatchTimingPolicy.DEFAULT_CUSTOM_ROUND_SECONDS))).thenReturn(
+                eq(MatchTimingPolicy.DEFAULT_CUSTOM_BASE_CLOCK_SECONDS),
+                eq(MatchTimingPolicy.DEFAULT_INCREMENT_SECONDS))).thenReturn(
                 List.of(new OutboundMatchmakingEvent(owner.getEmail(), event)));
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
 
@@ -339,7 +339,8 @@ class CustomLobbyServiceTest {
                 .containsOnly(CustomLobbyService.TEAM_NONE);
         assertThat(service.currentForPrincipal(owner.getEmail())).isNotNull();
         verify(matchService).startTeamMatch(any(), eq(MatchMode.CUSTOM),
-                eq(MatchTimingPolicy.DEFAULT_CUSTOM_ROUND_SECONDS));
+                eq(MatchTimingPolicy.DEFAULT_CUSTOM_BASE_CLOCK_SECONDS),
+                eq(MatchTimingPolicy.DEFAULT_INCREMENT_SECONDS));
         verify(partyService).prepareForCustomMatch(anyCollection());
     }
 
@@ -366,7 +367,7 @@ class CustomLobbyServiceTest {
                 .isInstanceOf(AuthException.class)
                 .hasMessage("a queue match is already starting");
 
-        verify(matchService, never()).startTeamMatch(any(), eq(MatchMode.CUSTOM), anyInt());
+        verify(matchService, never()).startTeamMatch(any(), eq(MatchMode.CUSTOM), anyInt(), anyInt());
         assertThat(service.currentForPrincipal(owner.getEmail()).members()).hasSize(2);
     }
 
@@ -389,7 +390,7 @@ class CustomLobbyServiceTest {
         MatchmakingService.ExternalMatchStartPreparation preparation =
                 new MatchmakingService.ExternalMatchStartPreparation(UUID.randomUUID(), List.of());
         when(matchmakingService.prepareExternalMatchStart(anyCollection())).thenReturn(preparation);
-        when(matchService.startTeamMatch(any(), eq(MatchMode.CUSTOM), anyInt()))
+        when(matchService.startTeamMatch(any(), eq(MatchMode.CUSTOM), anyInt(), anyInt()))
                 .thenThrow(new AuthException("the custom match could not be started"));
 
         assertThatThrownBy(() -> service.start(authentication, lobby.lobbyId()))
@@ -401,22 +402,33 @@ class CustomLobbyServiceTest {
     }
 
     @Test
-    void ownerCanSetAValidatedCustomRoundDuration() {
+    void ownerCanSetAValidatedCustomClock() {
         when(currentUserService.requireCurrentUser(authentication)).thenReturn(owner);
         CustomLobbyDTO lobby = service.create(authentication);
+        assertThat(lobby.baseClockSeconds()).isEqualTo(MatchTimingPolicy.DEFAULT_CUSTOM_BASE_CLOCK_SECONDS);
+        assertThat(lobby.incrementSeconds()).isEqualTo(MatchTimingPolicy.DEFAULT_INCREMENT_SECONDS);
 
-        CustomLobbyService.LobbyChange updated = service.updateRoundDuration(
-                authentication, lobby.lobbyId(), 90);
+        CustomLobbyService.LobbyChange updated = service.updateClock(
+                authentication, lobby.lobbyId(), 90, 15);
 
-        assertThat(updated.lobby().roundDurationSeconds()).isEqualTo(90);
-        assertThatThrownBy(() -> service.updateRoundDuration(
-                authentication, lobby.lobbyId(), 29))
+        assertThat(updated.lobby().baseClockSeconds()).isEqualTo(90);
+        assertThat(updated.lobby().incrementSeconds()).isEqualTo(15);
+        // A null leaves that half of the clock alone.
+        assertThat(service.updateClock(authentication, lobby.lobbyId(), null, 0).lobby().baseClockSeconds())
+                .isEqualTo(90);
+        assertThat(service.updateClock(authentication, lobby.lobbyId(), 600, null).lobby().incrementSeconds())
+                .isZero();
+        assertThatThrownBy(() -> service.updateClock(authentication, lobby.lobbyId(), 29, null))
                 .isInstanceOf(AuthException.class)
-                .hasMessage("round duration must be between 30 seconds and 10 minutes");
-        assertThatThrownBy(() -> service.updateRoundDuration(
-                authentication, lobby.lobbyId(), 601))
+                .hasMessage("base clock must be between 30 seconds and 10 minutes");
+        assertThatThrownBy(() -> service.updateClock(authentication, lobby.lobbyId(), 601, null))
                 .isInstanceOf(AuthException.class)
-                .hasMessage("round duration must be between 30 seconds and 10 minutes");
+                .hasMessage("base clock must be between 30 seconds and 10 minutes");
+        assertThatThrownBy(() -> service.updateClock(authentication, lobby.lobbyId(), null, 61))
+                .isInstanceOf(AuthException.class)
+                .hasMessage("clock increment must be between 0 and 60 seconds");
+        assertThatThrownBy(() -> service.updateClock(authentication, lobby.lobbyId(), null, -1))
+                .isInstanceOf(AuthException.class);
     }
 
     @Test

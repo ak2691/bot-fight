@@ -98,7 +98,7 @@ class DuelSimulationServiceTest {
         assertThat(result.frames()).hasSize(2);
         assertThat(result.frames().getFirst().bots()).extracting(MatchReplayDTO.ReplayBotDTO::slot)
                 .containsExactly(1, 2);
-        assertThat(result.initialState().bots().getFirst().abilities()).contains(19, 34);
+        assertThat(result.initialState().bots().getFirst().abilities()).contains(19).doesNotContain(34);
         assertThat(result.initialState().bots().getFirst().abilityCooldowns())
                 .containsEntry(19, 0)
                 .doesNotContainKey(20);
@@ -158,7 +158,7 @@ class DuelSimulationServiceTest {
                 bot("bot-2", "Two", 2, 900, 500, "custom", loadoutBrain)));
 
         assertThat(result.initialState().entities()).isEmpty();
-        assertThat(result.initialState().bots()).extracting(MatchPlaybackDTO.BotStateDTO::hp).containsOnly(150.0);
+        assertThat(result.initialState().bots()).extracting(MatchPlaybackDTO.BotStateDTO::hp).containsOnly(300.0);
         assertThat(result.initialState().bots().getFirst().abilityCharges()).doesNotContainKey(2);
         assertThat(result.result()).isEqualTo("DRAW");
     }
@@ -178,7 +178,7 @@ class DuelSimulationServiceTest {
         MatchPlaybackDTO result = service.simulate(request(
                 new DuelArenaRequest(1000, 1000, 30_000),
                 bot("bot-1", "One", 1, 480, 500, "custom", attackerBrain),
-                bot("bot-2", "Two", 2, 520, 500, "custom", defenderBrain)));
+                botWithTeam("bot-2", "Two", 2, 520, 500, 2, defenderBrain, 100.0)));
 
         assertThat(result.result()).isEqualTo("BOT_WIN");
         assertThat(result.winnerUserId()).isEqualTo(UUID.nameUUIDFromBytes("bot-1".getBytes()));
@@ -465,7 +465,7 @@ class DuelSimulationServiceTest {
     }
 
     @Test
-    void dashIsBlockedDuringAnotherAbilityActivePhase() {
+    void dashStartsDuringAnotherAbilityActivePhase() {
         JsonNode dashDuringLockOn = customBrain("[20]", """
                 [
                   {"priority":1,"conditions":[{"type":"always"}],"action":20},
@@ -478,12 +478,12 @@ class DuelSimulationServiceTest {
                 bot("dash-during-lock", "Dash", 1, 100, 400, "custom", dashDuringLockOn),
                 bot("dash-during-lock-target", "Target", 2, 700, 400, "custom", customBrain("[]", "[]"))));
 
-        assertThat(result.frames()).noneMatch(frame -> Integer.valueOf(19).equals(frame.bots().getFirst().triggeredAbility()));
-        assertThat(result.frames()).allSatisfy(frame -> assertThat(frame.bots().getFirst().x()).isEqualTo(100));
+        // Dash ignores the ability lock, so the active ability never stops it.
+        assertThat(result.frames()).anyMatch(frame -> Integer.valueOf(19).equals(frame.bots().getFirst().triggeredAbility()));
     }
 
     @Test
-    void anotherAbilityIsBlockedDuringDashActivePhase() {
+    void anotherAbilityStartsDuringDashActivePhase() {
         JsonNode abilityDuringDash = customBrain("[19,20]", """
                 [
                   {"priority":1,"conditions":[{"type":"always"}],"action":19,"movementMode":"absolute","movementDirection":"east"},
@@ -496,18 +496,19 @@ class DuelSimulationServiceTest {
                 bot("ability-during-dash", "Dash", 1, 100, 400, "custom", abilityDuringDash),
                 bot("ability-during-dash-target", "Target", 2, 700, 400, "custom", customBrain("[]", "[]"))));
 
-        assertThat(result.frames()).noneMatch(frame -> Integer.valueOf(20).equals(frame.bots().getFirst().triggeredAbility()));
+        // A running dash never counts as "another ability active".
+        assertThat(result.frames()).anyMatch(frame -> Integer.valueOf(20).equals(frame.bots().getFirst().triggeredAbility()));
     }
 
     @Test
-    void everyBotReceivesDashAndLockOnAsStandardAbilities() {
+    void everyBotReceivesDashAsTheOnlyStandardAbility() {
         MatchPlaybackDTO result = service.simulate(request(
                 arena(100),
                 bot("bot-1", "One", 1, 100, 400, idleBrain),
                 bot("bot-2", "Two", 2, 700, 400, idleBrain)));
 
         assertThat(result.initialState().bots())
-                .allSatisfy(bot -> assertThat(bot.abilities()).contains(19, 34));
+                .allSatisfy(bot -> assertThat(bot.abilities()).contains(19).doesNotContain(34));
     }
 
     @Test
@@ -755,11 +756,11 @@ class DuelSimulationServiceTest {
                 bot("target", "Target", 2, 300, 400, idleBrain)));
         var windupFrame = result.frames().get(0).bots();
         assertThat(windupFrame.getFirst().preparingAbility()).isEqualTo(3);
-        assertThat(windupFrame.get(1).hp()).isEqualTo(150);
+        assertThat(windupFrame.get(1).hp()).isEqualTo(300);
         var firing = result.frames().stream()
-                .filter(frame -> frame.bots().get(1).hp() < 150).findFirst().orElseThrow();
+                .filter(frame -> frame.bots().get(1).hp() < 300).findFirst().orElseThrow();
         assertThat(firing.elapsedMs()).isEqualTo(900);
-        assertThat(firing.bots().get(1).hp()).isEqualTo(110);
+        assertThat(firing.bots().get(1).hp()).isEqualTo(260);
         assertThat(firing.bots().getFirst().abilityActiveMs()).containsEntry(3, 200);
         assertThat(firing.bots().getFirst().abilityCharges()).doesNotContainKey(3);
     }
@@ -778,10 +779,10 @@ class DuelSimulationServiceTest {
     }
 
     @Test
-    void basicStrikeIsStandardImmediateDamageWithItsAuthoritativeTiming() {
+    void equippedBasicStrikeKeepsItsImmediateDamageAndAuthoritativeTimingForOldBrains() {
         MatchPlaybackDTO result = service.simulate(request(
                 arena(500),
-                bot("basic-striker", "Basic", 1, 100, 400, "custom", customBrain("[]", """
+                bot("basic-striker", "Basic", 1, 100, 400, "custom", customBrain("[34]", """
                         [{"conditions":[{"type":"always"}],"action":34}]
                         """)),
                 bot("basic-target", "Target", 2, 160, 400, idleBrain)));
@@ -792,19 +793,19 @@ class DuelSimulationServiceTest {
         assertThat(attacker.triggeredAbility()).isEqualTo(34);
         assertThat(attacker.abilityCooldowns()).containsEntry(34, 0);
         assertThat(attacker.abilityActiveMs()).containsEntry(34, 200);
-        assertThat(defender.hp()).isEqualTo(142);
+        assertThat(defender.hp()).isEqualTo(292);
     }
 
     @Test
-    void basicStrikeHitsAnOverlappingTargetBehindTheAttacker() {
+    void equippedBasicStrikeHitsAnOverlappingTargetBehindTheAttacker() {
         MatchPlaybackDTO result = service.simulate(request(
                 arena(500),
-                botWithRotation("basic-striker-overlap", "Basic", 1, 100, 410, "custom", customBrain("[]", """
+                botWithRotation("basic-striker-overlap", "Basic", 1, 100, 410, "custom", customBrain("[34]", """
                         [{"conditions":[{"type":"always"}],"action":34}]
                         """), 180.0),
                 botWithRotation("basic-target-overlap", "Target", 2, 100, 400, "custom", idleBrain, 0.0)));
 
-        assertThat(result.frames().getFirst().bots().get(1).hp()).isEqualTo(142);
+        assertThat(result.frames().getFirst().bots().get(1).hp()).isEqualTo(292);
     }
 
     @Test
@@ -818,9 +819,9 @@ class DuelSimulationServiceTest {
                 botWithTeamAndLoadout("phase-edge", "Edge", 4, 230, 400, 2, "custom", idleBrain))));
 
         var frame = result.frames().getFirst();
-        assertThat(frame.bots().get(1).hp()).isEqualTo(135);
-        assertThat(frame.bots().get(2).hp()).isEqualTo(135);
-        assertThat(frame.bots().get(3).hp()).isEqualTo(135);
+        assertThat(frame.bots().get(1).hp()).isEqualTo(285);
+        assertThat(frame.bots().get(2).hp()).isEqualTo(285);
+        assertThat(frame.bots().get(3).hp()).isEqualTo(285);
         assertThat(frame.bots().getFirst().x()).isEqualTo(220.0);
         assertThat(frame.bots().getFirst().y()).isEqualTo(400.0);
         assertThat(frame.bots().getFirst().rotation()).isEqualTo(180.0);
@@ -924,7 +925,7 @@ class DuelSimulationServiceTest {
                     assertThat(entity.phaseId()).isEqualTo("active");
                     assertThat(entity.eventType()).isEqualTo("collision");
                 });
-        assertThat(result.frames().getFirst().bots().get(1).hp()).isLessThan(150);
+        assertThat(result.frames().getFirst().bots().get(1).hp()).isLessThan(300);
 
         MatchReplayDTO compact = service.simulateCompact(request(
                 arena(100),
@@ -971,7 +972,7 @@ class DuelSimulationServiceTest {
                 .anySatisfy(frame -> assertThat(frame.bots().get(1).x()).isEqualTo(770.0));
         assertThat(result.frames())
                 .filteredOn(frame -> frame.bots().get(1).x() == 770.0)
-                .allSatisfy(frame -> assertThat(frame.bots().get(1).hp()).isEqualTo(130));
+                .allSatisfy(frame -> assertThat(frame.bots().get(1).hp()).isEqualTo(280));
     }
 
     @Test
@@ -1450,7 +1451,7 @@ class DuelSimulationServiceTest {
                 .findFirst()
                 .orElseThrow();
         var target = interrupted.bots().get(1);
-        assertThat(target.hp()).isEqualTo(130);
+        assertThat(target.hp()).isEqualTo(280);
         assertThat(target.preparingAbility()).isNull();
         assertThat(target.preparingMs()).isZero();
         assertThat(target.triggeredAbility()).isNull();
@@ -1549,7 +1550,7 @@ class DuelSimulationServiceTest {
                 bot("idle-ability", "Idle", 2, 180, 400, "custom", customBrain("[]", "[]"))));
 
         assertThat(result.frames()).anyMatch(frame -> Integer.valueOf(1).equals(frame.bots().getFirst().triggeredAbility()));
-        assertThat(result.frames().getLast().bots().get(1).hp()).isLessThan(150);
+        assertThat(result.frames().getLast().bots().get(1).hp()).isLessThan(300);
     }
 
     @Test

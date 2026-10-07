@@ -609,7 +609,9 @@ public final class AbilityContracts {
                         visual("reactiveArmor", 80, 300),
                         PhaseEventType.ACTIVATION)));
 
-        contracts.put(19, attachedAbility(19, 
+        contracts.put(19, attachedAbility(19,
+                // Interim: Dash never blocks, and is never blocked by, another ability.
+                new Activation(null, false, null, true, false),
                 phase("active", PhaseType.BOT_ATTACHED,
                         new PhaseMovement(75, 150.0, 300, "slow"),
                         null,

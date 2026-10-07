@@ -4,6 +4,7 @@ import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Action;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
 import com.example.botfight.simulation.gameconfig.Abilities;
+import com.example.botfight.simulation.gameconfig.MovementConfig;
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import java.util.List;
 
@@ -37,6 +38,29 @@ public record AbilityExecutionPayload(
         if (action == null) return null;
         Integer abilityId = AbilityContracts.abilityForAction(action.abilityAction());
         return abilityId == null ? null : from(abilityId, action);
+    }
+
+    /** The tick's ability channel: the selected ability, never Dash (which has its own channel). */
+    public static AbilityExecutionPayload abilityChannel(Action action) {
+        if (action == null) return null;
+        Integer abilityId = AbilityContracts.abilityForAction(action.abilityAction());
+        return abilityId == null || abilityId == MovementConfig.DASH_ABILITY_ID ? null : from(abilityId, action);
+    }
+
+    /** The tick's dash channel: the planned dash, or a Dash selected through the ability channel (older callers). */
+    public static AbilityExecutionPayload dashChannel(Action action) {
+        if (action == null) return null;
+        DuelSimulationService.DashAction dash = action.dash();
+        if (dash != null && dash.abilityId() != null) {
+            Integer abilityId = AbilityContracts.abilityForAction(dash.abilityId());
+            if (abilityId == null) return null;
+            return new AbilityExecutionPayload(
+                    dash.abilityId(), abilityId, Abilities.definition(abilityId), AbilityContracts.forAbility(abilityId),
+                    dash.targetX(), dash.targetY(), dash.movementMode(), dash.movementDirection(), dash.phaseFacingMode(),
+                    Double.NaN, Double.NaN, Double.NaN);
+        }
+        Integer abilityId = AbilityContracts.abilityForAction(action.abilityAction());
+        return abilityId != null && abilityId == MovementConfig.DASH_ABILITY_ID ? from(abilityId, action) : null;
     }
 
     public static AbilityExecutionPayload forAbility(Integer abilityId) {

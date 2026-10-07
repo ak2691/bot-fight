@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ABILITY_TAGS, ALL_ABILITY_DEFINITIONS, BASE_BOT_STATS, STANDARD_ABILITY_IDS, abilityDefinition, actionIdsForLoadout, decodeBotLoadout, encodeBotLoadout, normalizedBotLoadout, statusEffectDefinitionsForAbilities } from "./BotLoadout.js";
+import { ABILITY_TAGS, ALL_ABILITY_DEFINITIONS, BASE_BOT_STATS, STANDARD_ABILITY_IDS, abilityDefinition, actionIdsForLoadout, decodeBotLoadout, encodeBotLoadout, normalizedBotLoadout, SELECTABLE_BOT_ABILITIES, statusEffectDefinitionsForAbilities } from "./BotLoadout.js";
 
-test("Basic Strike is standard equipment with its direct melee contract", () => {
-    assert.deepEqual(STANDARD_ABILITY_IDS, [19, 34]);
+test("Dash is the only standard ability; Basic Strike is retired but still resolves for old replays", () => {
+    assert.deepEqual(STANDARD_ABILITY_IDS, [19]);
     assert.equal(abilityDefinition(34).label, "Basic Strike");
     assert.deepEqual(abilityDefinition(34).effects.map(({ type }) => type), ["damage"]);
-    assert.ok(actionIdsForLoadout({ abilities: [] }).includes(34));
+    assert.equal(actionIdsForLoadout({ abilities: [] }).includes(34), false);
+    assert.equal(SELECTABLE_BOT_ABILITIES.some(({ id }) => id === 34), false);
+    assert.deepEqual(normalizedBotLoadout({ abilities: [34, 1] }), { abilities: [1] });
     assert.equal(abilityDefinition(34).stats.damage, 8);
     assert.equal(abilityDefinition(34).stats.range, 80);
 });
@@ -20,7 +22,7 @@ test("loadout payloads contain abilities only and use the default combat stats",
     assert.deepEqual(normalizedBotLoadout({ abilities: [1] }), { abilities: [1] });
     assert.equal(encodeBotLoadout({ abilities: [1] }), "custom:s");
     assert.deepEqual(decodeBotLoadout("custom:s"), { abilities: [1] });
-    assert.equal(BASE_BOT_STATS.maxHp, 150);
+    assert.equal(BASE_BOT_STATS.maxHp, 300);
     assert.equal(BASE_BOT_STATS.moveSpeed, 15);
 });
 

@@ -39,20 +39,19 @@ export function HudSwitchRow({ icon, label, checked, onChange, disabled }) {
     );
 }
 
-export function HudScoreboard({ blueScore, redScore, roundLabel, clock }) {
+export function HudScoreboard({ blueValue, redValue, roundLabel }) {
     return (
-        <div className="hud-scoreboard" role="group" aria-label="Match score">
+        <div className="hud-scoreboard" role="group" aria-label="Team HP">
             <div className="hud-score hud-score--blue">
-                <span className="hud-score__team">BLUE</span>
-                <strong className="hud-score__value">{blueScore}</strong>
+                <span className="hud-score__team">Blue HP</span>
+                <strong className="hud-score__value">{blueValue}</strong>
             </div>
             <div className="hud-score-mid">
-                <span className="hud-score-mid__round">ROUND {roundLabel}</span>
-                <strong className="hud-score-mid__clock">{clock}</strong>
+                <strong className="hud-score-mid__round">{roundLabel}</strong>
             </div>
             <div className="hud-score hud-score--red">
-                <span className="hud-score__team">RED</span>
-                <strong className="hud-score__value">{redScore}</strong>
+                <span className="hud-score__team">Red HP</span>
+                <strong className="hud-score__value">{redValue}</strong>
             </div>
         </div>
     );

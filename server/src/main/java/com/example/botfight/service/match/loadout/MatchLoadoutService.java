@@ -4,38 +4,59 @@ import com.example.botfight.domain.submission.BotSubmission;
 import com.example.botfight.service.auth.AuthException;
 import com.example.botfight.service.match.model.MatchPlayer;
 import com.example.botfight.service.match.model.MatchSession;
+import com.example.botfight.service.match.timing.MatchTimingPolicy;
 import com.example.botfight.simulation.gameconfig.CompactAbilityCode;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Validates and deterministically completes the loadout draft for each round. */
+/**
+ * Validates and deterministically completes the pick for each round of a timed-rounds match.
+ *
+ * <p>Round 1 picks a weapon (any of {@link #WEAPON_IDS}) and one ability. Rounds 2 to 6 pick one
+ * ability each. Offers come from the match seed, are the same for every player, and never include an
+ * ability the player already owns.
+ */
 public final class MatchLoadoutService {
-    private static final int MAX_EQUIPPED_ABILITIES = 6;
-    private static final Map<Integer, Integer> ROUND_OFFER_COUNTS = Map.of(1, 6, 2, 4, 3, 3);
-    private static final Map<Integer, Integer> ROUND_PICK_COUNTS = Map.of(1, 3, 2, 2, 3, 1);
-    private static final Map<Integer, List<Integer>> ROUND_ABILITIES = Map.of(
-            1, List.of(1, 3, 4, 5, 7, 9, 10, 11, 12, 26, 28, 29),
+    /** The weapon pick of round 1. All weapons are melee; Slash is the timeout default. */
+    public static final List<Integer> WEAPON_IDS = List.of(1, 35, 36, 37);
+    public static final int DEFAULT_WEAPON_ID = 1;
+    /** A weapon plus one ability per round. */
+    private static final int MAX_EQUIPPED_ABILITIES = 1 + MatchTimingPolicy.MAX_ROUNDS;
+    /** Ability pools by tier; rounds 1-2 use tier 1, 3-4 tier 2, and 5-6 tier 3. Slash is a weapon now. */
+    private static final Map<Integer, List<Integer>> TIER_ABILITIES = Map.of(
+            1, List.of(3, 4, 5, 7, 9, 10, 11, 12, 26, 28, 29),
             2, List.of(6, 8, 13, 14, 15, 16, 17, 18, 25, 30, 31, 32),
             3, List.of(21, 22, 23, 24, 27, 33));
+    private static final Map<Integer, Integer> TIER_OFFER_COUNTS = Map.of(1, 3, 2, 3, 3, 2);
     private final JsonMapper jsonMapper;
 
     public MatchLoadoutService(JsonMapper jsonMapper) {
         this.jsonMapper = jsonMapper;
     }
 
+    /** Rounds map to tiers two at a time: 1-2 -> 1, 3-4 -> 2, 5-6 -> 3. */
+    public static int tierForRound(int roundNumber) {
+        return Math.max(1, Math.min(3, (Math.max(1, roundNumber) + 1) / 2));
+    }
+
+    /** How many new abilities (including the round 1 weapon) a round's pick must add. */
+    public static int requiredPicks(int roundNumber) {
+        return roundNumber <= 1 ? 2 : 1;
+    }
+
     public String normalize(String selectedLoadout) {
         if (selectedLoadout != null
-                && selectedLoadout.matches("custom:[A-Za-z0-9]{0,6}")) {
+                && selectedLoadout.matches("custom:[A-Za-z0-9]{0," + MAX_EQUIPPED_ABILITIES + "}")) {
             return selectedLoadout;
         }
         if ("custom".equals(selectedLoadout)) return "custom";
@@ -77,71 +98,63 @@ public final class MatchLoadoutService {
         return loadout;
     }
 
+    /** Validates a finished pick: it keeps every prior ability and adds exactly this round's picks. */
     public void validateRoundAbilityDraft(
             MatchSession session,
             MatchPlayer player,
             String nextLoadout) {
         if (nextLoadout == null || !nextLoadout.startsWith("custom:")) return;
-        String nextCodes = nextLoadout.split(":", -1)[1];
-        String previousLoadout = player.selectedLoadout();
-        String previousCodes = previousLoadout != null && previousLoadout.startsWith("custom:")
-                ? previousLoadout.split(":", -1)[1]
-                : "";
-        Set<Integer> previous = previousCodes.chars().boxed().collect(Collectors.toSet());
-        Set<Integer> next = nextCodes.chars().boxed().collect(Collectors.toSet());
-        Set<Integer> offered = offeredCodes(session, player.userId());
-        Set<Integer> drafted = new HashSet<>(next);
-        drafted.removeAll(previous);
-        int requiredPicks = ROUND_PICK_COUNTS.getOrDefault(session.roundNumber(), 0);
-        if (!next.containsAll(previous)
-                || drafted.size() != requiredPicks
-                || !offered.containsAll(drafted)
-                || next.size() > MAX_EQUIPPED_ABILITIES) {
+        Draft draft = draft(session, player, nextLoadout);
+        int required = requiredPicks(session.roundNumber());
+        if (!draft.valid() || draft.addedCodes().size() != required) {
             throw new AuthException(
                     "bot loadout must retain prior abilities and choose exactly "
-                            + requiredPicks + " abilities from this round's offers");
+                            + required + " from this round's weapon and ability offers");
         }
     }
 
+    /**
+     * Completes a possibly partial pick. Anything the player did not pick is chosen for them: Slash if
+     * no weapon was picked in round 1, then the first offers in offer order.
+     */
     public String completeRoundAbilityDraft(
             MatchSession session,
             MatchPlayer player,
             String nextLoadout) {
         if (nextLoadout == null || !nextLoadout.startsWith("custom:")) return nextLoadout;
-        String[] parts = nextLoadout.split(":", -1);
-        String nextCodes = parts[1];
-        String previousLoadout = player.selectedLoadout();
-        String previousCodes = previousLoadout != null && previousLoadout.startsWith("custom:")
-                ? previousLoadout.split(":", -1)[1]
-                : "";
-        Set<Integer> previous = previousCodes.chars().boxed().collect(Collectors.toSet());
-        Set<Integer> next = nextCodes.chars().boxed().collect(Collectors.toSet());
-        Set<Integer> offered = offeredCodes(session, player.userId());
-        Set<Integer> drafted = new HashSet<>(next);
-        drafted.removeAll(previous);
-        int requiredPicks = ROUND_PICK_COUNTS.getOrDefault(session.roundNumber(), 0);
-        if (next.size() != nextCodes.length()
-                || !next.containsAll(previous)
-                || drafted.size() > requiredPicks
-                || !offered.containsAll(drafted)
-                || next.size() > MAX_EQUIPPED_ABILITIES) {
+        Draft draft = draft(session, player, nextLoadout);
+        int required = requiredPicks(session.roundNumber());
+        if (!draft.valid() || draft.addedCodes().size() > required) {
             throw new AuthException(
                     "bot loadout must retain prior abilities and choose up to "
-                            + requiredPicks + " abilities from this round's offers");
+                            + required + " from this round's weapon and ability offers");
         }
 
-        int missingPicks = requiredPicks - drafted.size();
-        List<Integer> additions = automaticAbilityPicks(session, player, drafted, missingPicks);
-        Set<Integer> included = previousCodes.chars().boxed().collect(Collectors.toSet());
-        StringBuilder ordered = new StringBuilder(previousCodes);
-        for (char code : nextCodes.toCharArray()) {
-            if (included.add((int) code)) ordered.append(code);
+        LinkedHashSet<String> added = new LinkedHashSet<>(draft.addedCodes());
+        if (session.roundNumber() <= 1 && added.stream().noneMatch(MatchLoadoutService::isWeaponCode)) {
+            added.add(CompactAbilityCode.codeForId(DEFAULT_WEAPON_ID));
         }
-        for (Integer ability : additions) {
-            String code = CompactAbilityCode.codeForId(ability);
-            if (code != null && included.add((int) code.charAt(0))) ordered.append(code);
+        if (added.size() < required) {
+            Set<String> taken = new LinkedHashSet<>(draft.previousCodes());
+            taken.addAll(added);
+            for (Integer offer : abilityOffersForPlayer(session, player.userId())) {
+                if (added.size() >= required) break;
+                String code = CompactAbilityCode.codeForId(offer);
+                if (code != null && !taken.contains(code)) added.add(code);
+            }
         }
+
+        // Acquisition order is the match and replay presentation order: prior picks first, and in
+        // round 1 the weapon before the ability.
+        StringBuilder ordered = new StringBuilder(String.join("", draft.previousCodes()));
+        added.stream().filter(MatchLoadoutService::isWeaponCode).forEach(ordered::append);
+        added.stream().filter(code -> !isWeaponCode(code)).forEach(ordered::append);
         return "custom:" + ordered;
+    }
+
+    /** The weapons a player may pick in round 1; empty in every later round. */
+    public List<Integer> weaponOffers(MatchSession session) {
+        return session.roundNumber() <= 1 ? WEAPON_IDS : List.of();
     }
 
     public List<Integer> abilityOffers(MatchSession session) {
@@ -149,56 +162,24 @@ public final class MatchLoadoutService {
         return abilityOffersForPlayer(session, recipientUserId);
     }
 
-    /** Returns the common round offer plus this player's preselected guarantee, if any. */
+    /**
+     * The offers for this round: the tier's pool shuffled from the match seed and round (the same for
+     * everyone), with the abilities this player already owns skipped, cut to the tier's offer count.
+     */
     public List<Integer> abilityOffersForPlayer(MatchSession session, UUID recipientUserId) {
-        List<Integer> offers = commonAbilityOffers(session, recipientUserId);
-        Integer guarantee = session.guaranteedAbilitiesFor(recipientUserId)
-                .get(session.roundNumber());
-        if (guarantee != null && !offers.contains(guarantee)) {
-            offers.add(guarantee);
+        int tier = tierForRound(session.roundNumber());
+        List<Integer> pool = new ArrayList<>(TIER_ABILITIES.getOrDefault(tier, List.of()));
+        long seed = session.simulationSeed() ^ (0x9E3779B97F4A7C15L * session.roundNumber());
+        Collections.shuffle(pool, new Random(seed));
+        Set<String> owned = ownedCodes(session, recipientUserId);
+        List<Integer> offers = new ArrayList<>();
+        int offerCount = TIER_OFFER_COUNTS.getOrDefault(tier, 0);
+        for (Integer abilityId : pool) {
+            if (offers.size() >= offerCount) break;
+            String code = CompactAbilityCode.codeForId(abilityId);
+            if (code != null && !owned.contains(code)) offers.add(abilityId);
         }
         return List.copyOf(offers);
-    }
-
-    /**
-     * Normalizes the three queue slots into round-numbered guarantees. Empty
-     * slots intentionally remain absent so the normal random offer pool is
-     * used for that round.
-     */
-    public static Map<Integer, Integer> normalizeAbilityGuarantees(List<Integer> requestedAbilityIds) {
-        List<Integer> requested = requestedAbilityIds == null ? List.of() : requestedAbilityIds;
-        if (requested.size() > ROUND_ABILITIES.size()) {
-            throw new AuthException("choose at most one guaranteed ability for each round");
-        }
-
-        Map<Integer, Integer> guarantees = new java.util.LinkedHashMap<>();
-        for (int round = 1; round <= requested.size(); round++) {
-            Integer requestedId = requested.get(round - 1);
-            if (requestedId != null && !ROUND_ABILITIES.getOrDefault(round, List.of()).contains(requestedId)) {
-                throw new AuthException("guaranteed ability must belong to its round");
-            }
-            if (requestedId != null) guarantees.put(round, requestedId);
-        }
-        return Map.copyOf(guarantees);
-    }
-
-    private List<Integer> commonAbilityOffers(MatchSession session, UUID recipientUserId) {
-        List<Integer> offers = new ArrayList<>(
-                ROUND_ABILITIES.getOrDefault(session.roundNumber(), List.of()));
-        Set<Integer> guaranteedIds = session.guaranteedAbilitiesByUserId().values().stream()
-                .flatMap(abilities -> abilities.values().stream())
-                .collect(Collectors.toSet());
-        offers.removeIf(guaranteedIds::contains);
-        long seed = session.simulationSeed()
-                ^ (0x9E3779B97F4A7C15L * session.roundNumber());
-        Collections.shuffle(offers, new Random(seed));
-        boolean hasGuarantee = session.guaranteedAbilitiesFor(recipientUserId)
-                .containsKey(session.roundNumber());
-        int randomOfferCount = ROUND_OFFER_COUNTS.getOrDefault(session.roundNumber(), 0)
-                - (hasGuarantee ? 1 : 0);
-        return new ArrayList<>(offers.subList(
-                0,
-                Math.min(Math.max(0, randomOfferCount), offers.size())));
     }
 
     public MatchSession withDefaultAbilitySelections(MatchSession session) {
@@ -217,30 +198,54 @@ public final class MatchLoadoutService {
         return result;
     }
 
-    private Set<Integer> offeredCodes(MatchSession session, UUID recipientUserId) {
-        return abilityOffersForPlayer(session, recipientUserId).stream()
-                .map(CompactAbilityCode::codeForId)
-                .filter(java.util.Objects::nonNull)
-                .map(code -> (int) code.charAt(0))
-                .collect(Collectors.toSet());
+    private Set<String> ownedCodes(MatchSession session, UUID userId) {
+        return session.players().stream()
+                .filter(player -> Objects.equals(player.userId(), userId))
+                .findFirst()
+                .map(player -> new LinkedHashSet<>(codesOf(player.selectedLoadout())))
+                .map(codes -> (Set<String>) codes)
+                .orElse(Set.of());
     }
 
-    private List<Integer> automaticAbilityPicks(
-            MatchSession session,
-            MatchPlayer player,
-            Set<Integer> excludedCodes,
-            int pickCount) {
-        List<Integer> picks = new ArrayList<>(abilityOffersForPlayer(session, player.userId()));
-        picks.removeIf(ability -> {
-            String code = CompactAbilityCode.codeForId(ability);
-            return code == null || excludedCodes.contains((int) code.charAt(0));
-        });
-        long seed = session.simulationSeed()
-                ^ player.userId().getMostSignificantBits()
-                ^ player.userId().getLeastSignificantBits()
-                ^ (0xD1B54A32D192ED03L * session.roundNumber());
-        Collections.shuffle(picks, new Random(seed));
-        return picks.subList(0, Math.min(pickCount, picks.size()));
+    private static List<String> codesOf(String loadout) {
+        if (loadout == null || !loadout.startsWith("custom:")) return List.of();
+        String[] parts = loadout.split(":", -1);
+        if (parts.length != 2) return List.of();
+        List<String> codes = new ArrayList<>();
+        for (char code : parts[1].toCharArray()) codes.add(String.valueOf(code));
+        return codes;
     }
 
+    private static boolean isWeaponCode(String code) {
+        Integer abilityId = CompactAbilityCode.idForCode(code);
+        return abilityId != null && WEAPON_IDS.contains(abilityId);
+    }
+
+    /** What a submitted loadout adds to the player's previous one, and whether it is allowed. */
+    private Draft draft(MatchSession session, MatchPlayer player, String nextLoadout) {
+        List<String> previous = codesOf(player.selectedLoadout());
+        List<String> next = codesOf(nextLoadout);
+        Set<String> nextSet = new LinkedHashSet<>(next);
+        Set<String> previousSet = new LinkedHashSet<>(previous);
+        List<String> added = next.stream().filter(code -> !previousSet.contains(code)).toList();
+        boolean valid = nextSet.size() == next.size()
+                && nextSet.containsAll(previousSet)
+                && next.size() <= MAX_EQUIPPED_ABILITIES
+                && next.stream().allMatch(code -> CompactAbilityCode.idForCode(code) != null);
+        if (valid) {
+            Set<String> offered = new LinkedHashSet<>();
+            abilityOffersForPlayer(session, player.userId())
+                    .forEach(offer -> offered.add(CompactAbilityCode.codeForId(offer)));
+            long weapons = added.stream().filter(MatchLoadoutService::isWeaponCode).count();
+            boolean abilitiesOffered = added.stream()
+                    .filter(code -> !isWeaponCode(code))
+                    .allMatch(offered::contains);
+            // The weapon is picked once, in round 1, and only from the weapon list.
+            boolean weaponAllowed = session.roundNumber() <= 1 ? weapons <= 1 : weapons == 0;
+            valid = abilitiesOffered && weaponAllowed;
+        }
+        return new Draft(previous, added, valid);
+    }
+
+    private record Draft(List<String> previousCodes, List<String> addedCodes, boolean valid) {}
 }

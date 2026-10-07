@@ -138,7 +138,11 @@ public final class MatchSubmissionService {
 
         if (submission.getId() == null) submission.setId(UUID.randomUUID());
         submissionsByKey.put(key, submission);
-        MatchSession updatedSession = session.withFinishedPlayer(userId, submission.getId());
+        // The time spent building comes off this player's clock.
+        MatchSession updatedSession = session.withFinishedPlayer(userId, submission.getId(), Instant.now(clock));
+        if (MatchPlayer.isTimeoutFallback(submission.getTimeoutFallback())) {
+            updatedSession = updatedSession.withTimeoutFallback(userId, submission.getTimeoutFallback());
+        }
         putSession(updatedSession);
         return MatchSubmissionResult.accepted(afterPlayerFinished(
                 updatedSession,
@@ -249,12 +253,14 @@ public final class MatchSubmissionService {
                 || session.roundNumber() != expectedRoundNumber
                 || session.countdownEndsAt() == null
                 || session.buildingEndsAt() == null
-                || !Instant.now(clock).isBefore(session.buildingEndsAt())
                 || session.players().stream().allMatch(MatchPlayer::finished)) {
             return false;
         }
-        playerForUser(session, userId);
-        return true;
+        // Each player builds against their own clock, so a teammate running out does not close this
+        // player's window.
+        MatchPlayer builder = playerForUser(session, userId);
+        Instant expiresAt = builder.buildExpiresAt();
+        return expiresAt != null && Instant.now(clock).isBefore(expiresAt);
     }
 
     private void bindSubmissionToAuthoritativeLoadout(

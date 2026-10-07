@@ -529,6 +529,8 @@ const RAW_ATTACHED_ABILITY_CONTRACTS_BY_ID = Object.freeze({
         }),
     }),
     19: attachedAbility({
+        // Interim: Dash never blocks, and is never blocked by, another ability.
+        activation: { ignoresGlobalAbilityLock: true },
         phase: phase({
             movement: { distance: 150, speed: 75, trailMs: 300, blockedByStatus: "slow" },
             visual: { type: "dash", visualSize: 114, visibleMs: 300 },

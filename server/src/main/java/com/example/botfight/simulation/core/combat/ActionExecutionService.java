@@ -67,7 +67,8 @@ public class ActionExecutionService {
     private boolean selectedAbilityReady(Bot bot, AbilityExecutionPayload payload) {
         if (payload == null || bot == null || !hasAbility(bot, payload.abilityId()))
             return false;
-        if (bot.preparingAbility != null && bot.preparingMs > 0)
+        // Dash ignores the ability lock, so another ability's wind-up never stops it from starting.
+        if (!payload.activation().ignoresGlobalAbilityLock() && bot.preparingAbility != null && bot.preparingMs > 0)
             return false;
         if (bot.abilityActiveMs.getOrDefault(payload.abilityId(), 0) > 0)
             return false;
@@ -108,7 +109,7 @@ public class ActionExecutionService {
     public int selectedAbilityCooldownMs(Bot bot, int ability) {
         if (bot == null || !hasAbility(bot, ability))
             return 0;
-        if (bot.preparingMs > 0 || bot.abilityActiveMs.getOrDefault(ability, 0) > 0)
+        if (windingUpBlocks(bot, ability) || bot.abilityActiveMs.getOrDefault(ability, 0) > 0)
             return 0;
         return Math.max(Math.max(bot.abilityCooldowns.getOrDefault(ability, 0),
                 botStateService.abilityRechargeMs(bot, ability)),
@@ -116,9 +117,14 @@ public class ActionExecutionService {
                 ability == MovementConfig.DASH_ABILITY_ID ? StaminaSystem.dashWaitMs(bot) : 0);
     }
 
+    /** A wind-up hides an ability's cooldown readout, except for Dash, which a wind-up never blocks. */
+    private static boolean windingUpBlocks(Bot bot, int ability) {
+        return bot.preparingMs > 0 && !AbilityContracts.activationFor(ability).ignoresGlobalAbilityLock();
+    }
+
     public boolean selectedAbilityOnCooldown(Bot bot, int ability) {
         return bot != null && hasAbility(bot, ability)
-                && bot.preparingMs <= 0
+                && !windingUpBlocks(bot, ability)
                 && bot.abilityActiveMs.getOrDefault(ability, 0) <= 0
                 && selectedAbilityCooldownMs(bot, ability) > 0;
     }
@@ -225,7 +231,6 @@ public class ActionExecutionService {
             StaminaSystem.clearWindup(bot);
             stamina.spend(StaminaSystem.cancelCost());
         }
-        boolean windupContinues = preparationLocked && !cancelsWindup;
 
         AbilityExecutionPayload payload = cancelsWindup ? null : selectedAbilityPayload(bot, action);
         boolean blockedByStatus = payload != null
@@ -236,16 +241,12 @@ public class ActionExecutionService {
                 && !blockedByStatus
                 && !selectedAbilityExecutable(bot, payload);
 
-        // Sprint is a Walk setting: it applies on a tick that actually moves while the bot has
-        // stamina and is not starting, winding up or active with any ability (attacking cancels it).
-        boolean startsAbility = payload != null && !blockedByStatus && !blockedByAbilityState
-                && !BotStateService.statusActive(bot, "silence");
+        // Sprint applies on any tick that actually moves while the bot has stamina, including while an
+        // ability is starting, winding up or active. Movement-lock, stun (handled above) and 0 stamina stop it.
         boolean sprinting = action.sprint()
                 && Math.hypot(action.dx(), action.dy()) > 0.001
                 && StaminaSystem.stamina(bot) > 0
-                && !windupContinues && !startsAbility
-                && !BotStateService.statusActive(bot, "movement-lock")
-                && bot.abilityActiveMs.values().stream().noneMatch(activeMs -> activeMs > 0);
+                && !BotStateService.statusActive(bot, "movement-lock");
         // Fast turn doubles the rotation step on a tick that actually rotates, while the previous tick
         // left enough stamina. It stacks with sprint and does not depend on attacking.
         boolean fastTurning = action.fastTurn()
@@ -258,6 +259,7 @@ public class ActionExecutionService {
         stamina.setSprinting(sprinting);
         stamina.setFastTurning(fastTurning);
 
+        boolean abilityTriggered = false;
         if (blockedByStatus || blockedByAbilityState) {
             cancelPreparation(bot, payload);
         } else if (payload != null && !BotStateService.statusActive(bot, "silence")) {
@@ -265,11 +267,27 @@ public class ActionExecutionService {
             if (activated != null) {
                 setTriggeredPayload(bot, activated);
                 justActivatedAbilityId = activated.abilityId();
+                abilityTriggered = true;
             }
         } else if (payload != null
                 && bot.preparingAbility != null
                 && (BotStateService.statusActive(bot, "silence") || BotStateService.statusActive(bot, "stun"))) {
             cancelPreparation(bot, payload);
+        }
+
+        // Dash is its own channel: it starts after the ability (so it never changes where that ability was
+        // captured), a wind-up in progress does not stop it, and silence does not either. Slow still does
+        // (the dash's movement is blocked by it), and stun returned above. When the ability also started this
+        // tick it keeps the trigger so its hit resolves; the dash still counts as an activation.
+        AbilityExecutionPayload dashPayload = AbilityExecutionPayload.dashChannel(action);
+        if (dashPayload != null
+                && !("slow".equals(phaseBlockedByStatus(dashPayload)) && slowedWasActive)) {
+            AbilityExecutionPayload dashed = activateAbility(bot, dashPayload, arena, stamina);
+            if (dashed != null) {
+                if (abilityTriggered) bot.activationSerial++;
+                else setTriggeredPayload(bot, dashed);
+                if (justActivatedAbilityId == null) justActivatedAbilityId = dashed.abilityId();
+            }
         }
 
         stamina.finish(bot);
@@ -324,13 +342,14 @@ public class ActionExecutionService {
             return AbilityExecutionPayload.forAbility(bot.preparingAbility)
                     .withPreparationTarget(bot.preparingTargetX, bot.preparingTargetY);
         }
-        return AbilityExecutionPayload.from(action);
+        return AbilityExecutionPayload.abilityChannel(action);
     }
 
     private void setTriggeredPayload(Bot bot, AbilityExecutionPayload payload) {
         AbilityExecutionPayload captured = payload.capture(bot);
         bot.triggeredAbilityPayload = captured;
         bot.triggeredAbility = captured.actionId();
+        bot.activationSerial++;
     }
 
     private AbilityExecutionPayload activateAbility(
@@ -353,7 +372,8 @@ public class ActionExecutionService {
             if (bot.preparingMs > 0)
                 return null;
         }
-        cancelPreparation(bot);
+        // Only an ability's own wind-up ends here; a dash starting beside another ability's wind-up leaves it be.
+        if (Integer.valueOf(payload.abilityId()).equals(bot.preparingAbility)) cancelPreparation(bot);
         botStateService.startAbilityResource(bot, payload.abilityId());
         if (payload.definition().charges() > 0
                 && payload.definition().resourceModel() != Abilities.ResourceModel.FIXED
@@ -439,8 +459,10 @@ public class ActionExecutionService {
                 && firstPhase.type() == AbilityContracts.PhaseType.PROJECTILE
                         ? entityContract.runtimeType()
                         : "ability";
+        String entityId = idPrefix + "-" + bot.userId + "-" + bot.abilityEntitySerial++;
+        bot.entityActivations.put(entityId, bot.activationSerial);
         bot.abilitySpawn = AbilityEntityFactory.create(
-                idPrefix + "-" + bot.userId + "-" + bot.abilityEntitySerial++,
+                entityId,
                 payload.abilityId(),
                 bot.slot,
                 bot.x,

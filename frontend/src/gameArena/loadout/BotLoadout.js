@@ -14,17 +14,26 @@ import { abilityBaseRange } from "./abilityBaseRange.js";
 export { ABILITY_STATS, abilityBaseRange };
 
 export const BASE_BOT_STATS = Object.freeze({
-    maxHp: 150,
+    maxHp: 300,
     moveSpeed: 15,
     attackDamagePercent: 100,
     attackSpeedPercent: 100,
 });
 
-export const MAX_EQUIPPED_ABILITIES = 6;
+/** A weapon plus one ability for each of the six rounds. */
+export const MAX_EQUIPPED_ABILITIES = 7;
+/**
+ * The timed-rounds pick for each round, mirroring the server's MatchLoadoutService: round 1 picks a
+ * weapon and one ability, every later round one ability. Rounds 1-2 draw from tier 1, 3-4 from tier 2
+ * and 5-6 from tier 3 (the catalog `round` field is the tier); tier 3 offers two, the others three.
+ */
 export const ROUND_ABILITY_DRAFT = Object.freeze({
-    1: Object.freeze({ offered: 6, picks: 3 }),
-    2: Object.freeze({ offered: 4, picks: 2 }),
-    3: Object.freeze({ offered: 3, picks: 1 }),
+    1: Object.freeze({ tier: 1, offered: 3, picks: 1, weaponPick: true }),
+    2: Object.freeze({ tier: 1, offered: 3, picks: 1, weaponPick: false }),
+    3: Object.freeze({ tier: 2, offered: 3, picks: 1, weaponPick: false }),
+    4: Object.freeze({ tier: 2, offered: 3, picks: 1, weaponPick: false }),
+    5: Object.freeze({ tier: 3, offered: 2, picks: 1, weaponPick: false }),
+    6: Object.freeze({ tier: 3, offered: 2, picks: 1, weaponPick: false }),
 });
 
 export const VISUAL_INTERPOLATION = Object.freeze({
@@ -40,7 +49,7 @@ export const ABILITY_TAGS = Object.freeze({
 });
 
 const BOT_ABILITY_CATALOG = [
-    { id: 1, round: 1, category: "weapon", visualInterpolation: "none", description: "A quick sweeping cut in front of you that hits everything inside the arc.", summary: "No wind-up, 8 damage over a 120° arc with a short reach." },
+    { id: 1, round: 0, category: "weapon", visualInterpolation: "none", description: "A quick sweeping cut in front of you that hits everything inside the arc.", summary: "No wind-up, 8 damage over a 120° arc with a short reach." },
     { id: 3, round: 1, visualInterpolation: "none", description: "Line up a long-range shot. After a short aiming delay it fires an instant beam that hits the first bot in line for heavy damage. You can keep turning while you aim.", summary: "Hitscan with a 900 ms wind-up, 1200 range and flat 40 damage." },
     { id: 4, round: 1, visualInterpolation: "linear", description: "Throw an explosive that blows up when it hits something, or after a short delay. Damage is highest at the centre of the blast.", summary: "An explosive projectile that triggers on hit or after some duration." },
     { id: 5, round: 1, visualInterpolation: "linear", description: "Hurl a large ball of fire that damages whoever it hits and sets them burning.", summary: "A large projectile with a 5.5 second cooldown that deals 20 damage and applies a burn effect." },
@@ -183,10 +192,10 @@ function phaseCatalogueTag(abilityId, contract, entityCategory) {
 
 /** Full runtime metadata, including standard abilities that are not loadout choices. */
 export const ALL_ABILITY_DEFINITIONS = Object.freeze(BOT_ABILITY_CATALOG.map(abilityCapabilities));
-export const STANDARD_ABILITY_IDS = Object.freeze([19, 34]);
+export const STANDARD_ABILITY_IDS = Object.freeze([19]);
 const STANDARD_ABILITY_SET = new Set(STANDARD_ABILITY_IDS);
-/** Lock On left the base kit and is not offered anywhere; its definitions stay so old replays and brains still resolve. */
-export const RETIRED_ABILITY_IDS = Object.freeze([20]);
+/** Lock On (20) and Basic Strike (34) left the base kit and are not offered anywhere; their definitions stay so old replays and brains still resolve. */
+export const RETIRED_ABILITY_IDS = Object.freeze([20, 34]);
 const RETIRED_ABILITY_SET = new Set(RETIRED_ABILITY_IDS);
 /** Selectable/configurable ability catalog. Standard abilities are granted separately. */
 export const BOT_ABILITIES = Object.freeze(ALL_ABILITY_DEFINITIONS.filter(({ id }) => !STANDARD_ABILITY_SET.has(id) && !RETIRED_ABILITY_SET.has(id)));

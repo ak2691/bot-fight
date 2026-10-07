@@ -9,6 +9,7 @@ import { hasStrategyActions, selectStrategyActionPlan, selectStrategyBlock } fro
 import { validateConfiguration } from "./configuration/validation.js";
 import { compareAngleValues, compareValues, evaluateConditionNode, evaluateConditionNodes, rightOperandView, rightPairFieldValues } from "./runtime/conditionEvaluator.js";
 import { normalizeConfiguration } from "./configuration/normalization.js";
+import { migrateExhaustedCondition } from "./configuration/legacyConditions.js";
 import { normalizeChainActionFields } from "./configuration/chainNormalizer.js";
 import { validateChains } from "./configuration/chainValidation.js";
 import { stateFromPayload } from "./runtime/runtimeState.js";
@@ -417,7 +418,8 @@ function evaluateAllAndAngleGroups(conditions, state, groups) {
 
 export function normalizeConditions(conditions, customVariables = [], selectableTypes = SELECTABLE_TYPES, coordinateVersion = BOT_LOGIC_TREE_VERSION) {
     const source = Array.isArray(conditions) ? conditions : [{ type: CONDITION_TYPES[0].id }];
-    return source.slice(0, MAX_CONDITIONS_PER_BRANCH).map((condition) => {
+    return source.slice(0, MAX_CONDITIONS_PER_BRANCH).map((rawCondition) => {
+        const condition = migrateExhaustedCondition(rawCondition);
         if (condition?.type === BOT_CODE_CONDITIONS.EXPRESSION || condition?.left) {
             return normalizeExpressionCondition(condition, customVariables, selectableTypes, coordinateVersion);
         }
@@ -695,6 +697,7 @@ export function actionExecutionHead(action) {
     if (action?.head === ACTION_HEADS.MOVEMENT) return ACTION_HEADS.MOVEMENT;
     if (action?.head === ACTION_HEADS.ROTATION) return ACTION_HEADS.ROTATION;
     if (action?.head === ACTION_HEADS.CANCEL) return ACTION_HEADS.CANCEL;
+    if (action?.head === ACTION_HEADS.DASH) return ACTION_HEADS.DASH;
     if (action?.head === ACTION_HEADS.CHAIN) return ACTION_HEADS.CHAIN;
     if (action?.head === ACTION_HEADS.NONE) return ACTION_HEADS.NONE;
     return ACTION_HEADS.ABILITY;

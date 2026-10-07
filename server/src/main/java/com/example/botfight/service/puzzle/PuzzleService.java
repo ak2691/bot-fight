@@ -76,7 +76,7 @@ public class PuzzleService {
     private static final double ARENA_HEIGHT = ArenaUnits.HEIGHT;
     private static final double BOT_SIZE = 60;
     private static final double BOT_RADIUS = BOT_SIZE / 2;
-    private static final double BASE_BOT_HP = 150;
+    private static final double BASE_BOT_HP = 300;
     private static final String PUZZLE_LOGIC_V1 = BotLogicContracts.BRAIN_SCHEMA_V1;
     private static final String PUZZLE_LOGIC_V2 = BotLogicContracts.BRAIN_SCHEMA_V2;
     public static final String PUZZLE_COORDINATE_SYSTEM_VERSION = "centered-y-up-v1";

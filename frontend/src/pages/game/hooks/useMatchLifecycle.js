@@ -33,6 +33,7 @@ import {
     acceptanceVisibleStartMs,
     MATCH_ACCEPTANCE_SUBMISSION_GRACE_MS,
 } from "../../../matchmaking/matchAcceptance.js";
+import { normalizeTimeoutFallback, withPlayerClockDeadlines } from "../../../matchmaking/buildClock.js";
 import { localReplaySchedule, mergeReplayFrames } from "../../../replay/replayPresentation.js";
 import { matchEventOpponent, matchEventParticipants, matchEventViewer } from "../matchEventParticipants.js";
 import { useMatchmaking } from "../../../matchmaking/matchmaking-context";
@@ -159,7 +160,7 @@ function stableLocalDeadline(event, previousEvent, rawField, localField, calcula
 
 function normalizeEventTimes(event, estimatedOneWayDelayMs, localNowMs = monotonicEpochNowMs(), previousEvent = null) {
     return {
-        ...event,
+        ...withPlayerClockDeadlines(event, previousEvent, estimatedOneWayDelayMs, localNowMs),
         matchAcceptanceEndsAtMs: toLocalDeadlineMs(
             event.matchAcceptanceEndsAt,
             event.serverNow,
@@ -290,6 +291,7 @@ export function useMatchLifecycle({ navigate }) {
     const [matchAcceptanceError, setMatchAcceptanceError] = useState(null);
     const [loadoutSubmitPending, setLoadoutSubmitPending] = useState(false);
     const [hasFinished, setHasFinished] = useState(false);
+    const [timeoutFallbackOverride, setTimeoutFallbackOverride] = useState(null);
     const [finishPending, setFinishPending] = useState(false);
     const [hasSurrendered, setHasSurrendered] = useState(false);
     const [surrenderPending, setSurrenderPending] = useState(false);
@@ -841,6 +843,7 @@ export function useMatchLifecycle({ navigate }) {
                     terminalBatch: event.playback?.frames?.length
                         ? Boolean(event.playback.terminalBatch || currentPlayback.terminalBatch)
                         : Boolean(currentPlayback.terminalBatch),
+                    timedRounds: event.timedRounds ?? currentPlayback.timedRounds ?? null,
                     status: event.playback?.status ?? currentPlayback.status,
                     result: event.playback?.result ?? currentPlayback.result,
                     winnerUserId: event.playback?.winnerUserId ?? currentPlayback.winnerUserId,
@@ -896,6 +899,7 @@ export function useMatchLifecycle({ navigate }) {
                     players: event.players ?? currentPlayback?.players,
                     roundNumber: event.roundNumber ?? currentPlayback?.roundNumber,
                     winsRequired: event.winsRequired ?? currentPlayback?.winsRequired,
+                    timedRounds: event.timedRounds ?? currentPlayback?.timedRounds ?? null,
                     resultRevealReceived: true,
                     roundResultRevealReceived: true,
                 };
@@ -1030,6 +1034,13 @@ export function useMatchLifecycle({ navigate }) {
     const viewer = matchEventViewer(matchEvent);
     const opponent = matchEventOpponent(matchEvent);
     const participants = matchEventParticipants(matchEvent);
+    const timeoutFallback = normalizeTimeoutFallback(timeoutFallbackOverride ?? viewer?.timeoutFallback);
+    const setTimeoutFallback = useCallback((value) => {
+        const next = normalizeTimeoutFallback(value);
+        setTimeoutFallbackOverride(next);
+        const event = matchEventRef.current;
+        if (event?.matchId) clientRef.current?.setTimeoutFallback?.(event.matchId, event.roundNumber, next);
+    }, []);
     const handleChatMinimizedChange = (next) => {
         setChatMinimized(next);
         if (!next) setChatMessages((current) => current.map((message) => ({ ...message, unread: false })));
@@ -1052,6 +1063,9 @@ export function useMatchLifecycle({ navigate }) {
         entityPlacementEndsAtMs: matchEvent?.entityPlacementEndsAtMs,
         rulesetVersion: matchEvent?.rulesetVersion,
         roundNumber: matchEvent?.roundNumber,
+        timedRounds: matchEvent?.timedRounds ?? null,
+        timeoutFallback,
+        onTimeoutFallbackChange: setTimeoutFallback,
         winsRequired: matchEvent?.winsRequired,
         arenaEntities: matchEvent?.arenaEntities ?? [],
         roundBrains: matchEvent?.roundBrains ?? [],
@@ -1086,6 +1100,9 @@ export function useMatchLifecycle({ navigate }) {
         matchEvent?.entityPlacementEndsAtMs,
         matchEvent?.rulesetVersion,
         matchEvent?.roundNumber,
+        matchEvent?.timedRounds,
+        timeoutFallback,
+        setTimeoutFallback,
         matchEvent?.winsRequired,
         matchEvent?.arenaEntities,
         matchEvent?.roundBrains,
@@ -1166,6 +1183,7 @@ function buildPreparationPlayback(event) {
         players: participants,
         roundNumber: event.roundNumber,
         winsRequired: event.winsRequired,
+        timedRounds: event.timedRounds ?? playback.timedRounds ?? null,
         playbackStartsAt: event.playbackStartsAt,
         playbackStartsAtMs: event.playbackStartsAtMs,
         resultRevealsAt: event.resultRevealsAt ?? playback.resultRevealsAt,

@@ -21,7 +21,6 @@ import com.example.botfight.service.customlobby.CustomLobbyService;
 import com.example.botfight.service.customlobby.CustomLobbyStatePublisher;
 import com.example.botfight.service.limits.TokenBucketRateLimiter;
 import com.example.botfight.service.match.MatchService;
-import com.example.botfight.service.match.loadout.MatchAbilityGuaranteeService;
 import com.example.botfight.service.matchmaking.MatchParticipationCoordinator;
 import com.example.botfight.service.matchmaking.MatchmakingService;
 import java.time.Clock;
@@ -60,7 +59,6 @@ class MatchmakingParticipationSocketTest {
                 clock,
                 new TokenBucketRateLimiter<>(clock, 3, Duration.ofSeconds(3)),
                 null,
-                new MatchAbilityGuaranteeService(),
                 coordinator);
         CurrentUserService currentUserService = mock(CurrentUserService.class);
         Authentication authentication = mock(Authentication.class);

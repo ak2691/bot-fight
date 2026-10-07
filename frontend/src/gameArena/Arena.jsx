@@ -5,13 +5,16 @@ import AppNavbar from "../components/AppNavbar";
 import PixiCanvas from "./pixi/PixiCanvas.jsx";
 import CodingPanel from "./coding/CodingPanel.jsx";
 import { SELECTABLE_BOT_ABILITIES, encodeSandboxLoadout, normalizedSandboxLoadout } from "./loadout/BotLoadout.js";
-import { loadoutDraftForEntry, loadoutDraftsForRoster } from "./loadout/sandboxLoadout.js";
+import { loadoutDraftForEntry, loadoutDraftsForRoster, sandboxLoadoutWithWeapon, toggleSandboxAbility } from "./loadout/sandboxLoadout.js";
 import ArenaSetup from "./components/ArenaSetup.jsx";
 import SandboxLoadoutModal from "./components/modals/SandboxLoadoutModal.jsx";
 import {
     createDefaultAbilityStrategyConfiguration,
     normalizeAbilityStrategyConfiguration,
+    validateAbilityStrategyConfiguration,
 } from "./botlogic/code/BotCode.js";
+import { submitBlockedReason } from "./coding/holdToSubmit.js";
+import { CLOCK_TICK_MS, TIMEOUT_FALLBACKS, inAutoSubmitWindow, playerClockView } from "../matchmaking/buildClock.js";
 import {
     buildBotSubmissionPayload,
     submitBotPayload
@@ -20,7 +23,7 @@ import { isClosingZone } from "./ecs/entities/ClosingZoneSystem.js";
 import {
     DEFAULT_BOT_CONFIGURATION_ID,
 } from "./gameconfig/CombatLoadouts.js";
-import { normalizePracticeConfig, readPracticeRoomDraft, savePracticeRoomDraft } from "./practiceRoomStorage.js";
+import { DEFAULT_PRACTICE_LOADOUT, normalizePracticeConfig, readPracticeRoomDraft, savePracticeRoomDraft } from "./practiceRoomStorage.js";
 import { readPuzzleBotCodeDraft, savePuzzleBotCodeDraft } from "../puzzles/puzzleBotCodeStorage.js";
 import {
     PUZZLE_OPPONENT_TEAM,
@@ -79,16 +82,6 @@ import { getTutorialLesson, getTutorialLessonForScenario } from "../tutorial/Tut
 import { completeTutorialGoal } from "../tutorial/tutorialCompletion.js";
 import TutorialGuide from "../tutorial/TutorialGuide.jsx";
 
-function secondsRemaining(targetTime) {
-    if (!targetTime) return null;
-    const targetMs = typeof targetTime === "number"
-        ? targetTime
-        : new Date(targetTime).getTime();
-    if (!Number.isFinite(targetMs)) return null;
-    return Math.max(0, Math.ceil((targetMs - monotonicEpochNowMs()) / 1000));
-}
-
-const AUTO_FINISH_SAFETY_BUFFER_MS = 500;
 const PUZZLE_SUBMIT_STATUS_DURATION_MS = 3_500;
 
 function oneDecimal(value) {
@@ -199,13 +192,13 @@ export default function Arena({
         ? initialTutorialScenario.playerLoadout
         : isAbilityTesting ? catalogueAbilityTestingPreset.playerLoadout
             : usesPuzzleSetup ? puzzleBotForSetup(initialPuzzle, PUZZLE_PLAYER_TEAM)?.loadout ?? DEFAULT_BOT_CONFIGURATION_ID
-                : isPracticeRoom ? storedPracticeRoom?.player?.loadout ?? DEFAULT_BOT_CONFIGURATION_ID
+                : isPracticeRoom ? storedPracticeRoom?.player?.loadout ?? DEFAULT_PRACTICE_LOADOUT
                     : matchContext?.player?.selectedLoadout ?? DEFAULT_BOT_CONFIGURATION_ID);
     const [opponentLoadout, setOpponentLoadout] = useState(() => tutorialMode
         ? initialTutorialScenario.opponentLoadout
         : isAbilityTesting ? catalogueAbilityTestingPreset.opponentLoadout
             : usesPuzzleSetup ? puzzleBotForSetup(initialPuzzle, PUZZLE_OPPONENT_TEAM)?.loadout ?? DEFAULT_BOT_CONFIGURATION_ID
-                : isPracticeRoom ? storedPracticeRoom?.opponent?.loadout ?? DEFAULT_BOT_CONFIGURATION_ID
+                : isPracticeRoom ? storedPracticeRoom?.opponent?.loadout ?? DEFAULT_PRACTICE_LOADOUT
                     : matchContext?.opponent?.selectedLoadout ?? DEFAULT_BOT_CONFIGURATION_ID);
     const strategyStorageKey = matchStrategyConfigurationKey(matchId, matchUserId, selectedLoadout);
     const opponentStrategyStorageKey = opponentStrategyConfigurationKey(matchId, matchUserId, opponentLoadout);
@@ -300,8 +293,14 @@ export default function Arena({
     }, [isMatchTesting, matchContext?.registerCodeViewResponder, selectedLoadout, testingConfiguration]);
 
     const [isFinishingMatch, setIsFinishingMatch] = useState(false);
-    const [testingRemaining, setTestingRemaining] = useState(() =>
-        secondsRemaining(matchContext?.buildingEndsAtMs ?? matchContext?.buildingEndsAt));
+    // Variables the player chose to reset to their start value next round (by variable id).
+    const [variableResetChoices, setVariableResetChoices] = useState({});
+    const timeoutFallback = matchContext?.timeoutFallback ?? TIMEOUT_FALLBACKS.CURRENT;
+    const ownBrainValidation = useMemo(
+        () => validateAbilityStrategyConfiguration(testingConfiguration),
+        [testingConfiguration],
+    );
+    const ownSubmitBlockedReason = submitBlockedReason(ownBrainValidation);
     const [sandboxLoadoutTarget, setSandboxLoadoutTarget] = useState(null);
     const [sandboxLoadoutDrafts, setSandboxLoadoutDrafts] = useState({});
     const [sandboxLoadoutSearch, setSandboxLoadoutSearch] = useState("");
@@ -683,16 +682,7 @@ export default function Arena({
         if (!activeLoadoutEntry) return;
         setSandboxLoadoutDrafts((current) => {
             const currentDraft = current[activeLoadoutEntry.key] ?? loadoutDraftForEntry(activeLoadoutEntry);
-            const selected = currentDraft.abilities.includes(abilityId);
-            return {
-                ...current,
-                [activeLoadoutEntry.key]: normalizedSandboxLoadout({
-                    ...currentDraft,
-                    abilities: selected
-                        ? currentDraft.abilities.filter((id) => id !== abilityId)
-                        : [...currentDraft.abilities, abilityId],
-                }),
-            };
+            return { ...current, [activeLoadoutEntry.key]: toggleSandboxAbility(currentDraft, abilityId) };
         });
     };
 
@@ -702,7 +692,7 @@ export default function Arena({
             return;
         }
         const updates = loadoutEditorRoster.map((entry) => {
-            const draft = sandboxLoadoutDrafts[entry.key] ?? loadoutDraftForEntry(entry);
+            const draft = sandboxLoadoutWithWeapon(sandboxLoadoutDrafts[entry.key] ?? loadoutDraftForEntry(entry));
             const encoded = encodeSandboxLoadout(draft);
             return {
                 ...entry,
@@ -1096,6 +1086,10 @@ export default function Arena({
                 phase: "BUILDING",
                 selectedLoadout: selectedLoadout,
                 loadout: matchContext?.loadout ?? null,
+                variableResets: (configuration.customVariables ?? [])
+                    .filter((variable) => variableResetChoices[variable.id] === true)
+                    .map((variable) => variable.id),
+                timeoutFallback,
             });
 
             const result = await submitBotPayload(payload);
@@ -1120,7 +1114,7 @@ export default function Arena({
     };
     const handleFinishMatch = async () => {
         if (!onFinishMatch || finishStatus === "FINISHED" || finishStatus === "SURRENDERED"
-            || isFinishingMatch || finishInFlightRef.current) return;
+            || isFinishingMatch || finishInFlightRef.current || ownSubmitBlockedReason) return;
         finishInFlightRef.current = true;
         setIsFinishingMatch(true);
 
@@ -1137,39 +1131,22 @@ export default function Arena({
     useEffect(() => {
         handleFinishMatchRef.current = handleFinishMatch;
     });
+    // With "Current code", submit the current valid brain just before this player's own clock runs out.
+    // A brain that does not validate is left for the server's fallback to last round's code.
     useEffect(() => {
-        const visibleDeadline = matchContext?.buildingEndsAtMs ?? matchContext?.buildingEndsAt;
-        const authoritativeDeadline = matchContext?.buildingEndsAtAuthoritativeMs
-            ?? matchContext?.buildingEndsAt
-            ?? visibleDeadline;
-        const autoSubmitDeadline = typeof authoritativeDeadline === "number"
-            ? authoritativeDeadline - AUTO_FINISH_SAFETY_BUFFER_MS
-            : authoritativeDeadline;
-        if (!visibleDeadline || !authoritativeDeadline || !onFinishMatch) return;
-
+        const player = matchContext?.player;
+        if (!isMatchTesting || !onFinishMatch || finishStatus !== "BUILDING"
+            || timeoutFallback !== TIMEOUT_FALLBACKS.CURRENT || !Number.isFinite(Number(player?.buildEndsAtMs))) return undefined;
+        const roundKey = `${matchId}:${matchContext?.roundNumber}:${player.buildEndsAt}`;
         const interval = setInterval(() => {
-            const remaining = secondsRemaining(visibleDeadline);
-            setTestingRemaining(remaining);
-            const authoritativeRemaining = secondsRemaining(autoSubmitDeadline);
-            if (authoritativeRemaining === 0) {
-                clearInterval(interval);
-                const deadlineKey = String(authoritativeDeadline);
-                if (autoFinishDeadlineRef.current !== deadlineKey) {
-                    autoFinishDeadlineRef.current = deadlineKey;
-                    // Preserve the latest in-memory graph/loadout even when
-                    // the player never presses the manual submit button.
-                    handleFinishMatchRef.current?.();
-                }
-            }
-        }, 100);
-
+            if (autoFinishDeadlineRef.current === roundKey) return;
+            if (!inAutoSubmitWindow(playerClockView(matchContext.player, monotonicEpochNowMs()))) return;
+            autoFinishDeadlineRef.current = roundKey;
+            clearInterval(interval);
+            handleFinishMatchRef.current?.();
+        }, CLOCK_TICK_MS);
         return () => clearInterval(interval);
-    }, [
-        matchContext?.buildingEndsAt,
-        matchContext?.buildingEndsAtAuthoritativeMs,
-        matchContext?.buildingEndsAtMs,
-        onFinishMatch,
-    ]);
+    }, [finishStatus, isMatchTesting, matchContext?.player, matchContext?.roundNumber, matchId, onFinishMatch, timeoutFallback]);
 
     return (
         <div className={`arena-page-shell relative flex h-screen flex-col text-ink-hi font-ui overflow-hidden ${isMatchTesting ? "match-arena-shell" : "bg-arena-deep"} ${isPracticeRoom ? "practice-room-shell" : ""}`}>
@@ -1258,7 +1235,11 @@ export default function Arena({
                         onRequestCodeView={matchContext?.requestCodeView}
                         sandboxCodeCopies={sandboxCodeCopies}
                         onSandboxParticipantChange={updateSandboxParticipantConfiguration}
-                        testingRemaining={testingRemaining}
+                        submitBlockedReason={ownSubmitBlockedReason}
+                        timeoutFallback={timeoutFallback}
+                        onTimeoutFallbackChange={isMatchTesting ? matchContext?.onTimeoutFallbackChange ?? null : null}
+                        variableResetChoices={isMatchTesting ? variableResetChoices : null}
+                        onVariableResetChoiceChange={(variableId, reset) => setVariableResetChoices((current) => ({ ...current, [variableId]: reset }))}
                         isAutoPlaying={isAutoPlaying}
                         measurementEnabled={measurementEnabled}
                         onMeasurementToggle={() => setMeasurementEnabled((current) => {

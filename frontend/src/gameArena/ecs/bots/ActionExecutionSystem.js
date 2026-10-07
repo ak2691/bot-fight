@@ -64,26 +64,40 @@ export function applyBotAction(botShape, action, elapsedMs, applyDamage) {
     if (cancelsWindup) next = cancelWindup(next);
     const windupContinues = preparationLocked && !cancelsWindup;
 
+    // Dash is its own channel: it starts alongside whatever ability the tick selects, and a wind-up in
+    // progress does not stop it. A Dash chosen through the ability channel (older callers) is the same thing.
+    const plannedAbility = action?.abilityAction ?? null;
+    const dashThroughAbility = isDashAction(plannedAbility);
+    const abilitySource = dashThroughAbility ? null : plannedAbility;
+    const dashSource = action?.dashAction ?? (dashThroughAbility ? plannedAbility : null);
     const selectedAbility = cancelsWindup
         ? null
         : windupContinues
             ? abilityExecutionPayload(next.preparingAbility)
-            : abilityExecutionPayload(action?.abilityAction?.abilityPayload ?? action?.abilityAction);
+            : abilityExecutionPayload(abilitySource?.abilityPayload ?? abilitySource);
     const abilityPayload = selectedAbility
         ? {
             ...selectedAbility,
-            targetX: windupContinues ? next.preparingTargetX : action?.abilityAction?.targetX,
-            targetY: windupContinues ? next.preparingTargetY : action?.abilityAction?.targetY,
-            movementMode: action?.abilityAction?.movementMode,
-            movementDirection: action?.abilityAction?.movementDirection,
-            phaseFacingMode: action?.abilityAction?.phaseFacingMode,
+            targetX: windupContinues ? next.preparingTargetX : abilitySource?.targetX,
+            targetY: windupContinues ? next.preparingTargetY : abilitySource?.targetY,
+            movementMode: abilitySource?.movementMode,
+            movementDirection: abilitySource?.movementDirection,
+            phaseFacingMode: abilitySource?.phaseFacingMode,
+        }
+        : null;
+    const selectedDash = abilityExecutionPayload(dashSource?.abilityPayload ?? dashSource);
+    const dashPayload = selectedDash
+        ? {
+            ...selectedDash,
+            targetX: dashSource?.targetX,
+            targetY: dashSource?.targetY,
+            movementMode: dashSource?.movementMode,
+            movementDirection: dashSource?.movementDirection,
+            phaseFacingMode: dashSource?.phaseFacingMode,
         }
         : null;
     const abilityOptions = { slowedWasActive, gateShape: botShape };
-    const sprinting = sprintsThisTick(shape, executableAction, magnitude, {
-        busy: preparationLocked || startsAbility(next, abilityPayload, elapsedMs, cooldownMultiplier, abilityOptions),
-        gateShape: botShape,
-    });
+    const sprinting = sprintsThisTick(shape, executableAction, magnitude, { gateShape: botShape });
     next = applyMovement(next, shape, executableAction, {
         dx, dy, magnitude, speedMultiplier, seconds, elapsedMs,
         maxMoveSpeed: sprinting ? maxMoveSpeed * MOVEMENT_CONFIG.sprintMultiplier : maxMoveSpeed,
@@ -92,43 +106,60 @@ export function applyBotAction(botShape, action, elapsedMs, applyDamage) {
     next = withSprinting(next, sprinting);
     if (fastTurning) next = spendStamina(next, MOVEMENT_CONFIG.fastTurnDrainPerTick);
     next = withFastTurning(next, fastTurning);
+    // The ability starts first, then the dash, so a dash that moves the bot never changes where the same
+    // tick's ability was captured; the hit and spawn are resolved after both, from the final pose.
     const abilityResult = executeAbility(next, abilityPayload, elapsedMs, cooldownMultiplier, abilityOptions);
     next = abilityResult.bot;
+    const dashResult = executeAbility(next, dashPayload, elapsedMs, cooldownMultiplier, abilityOptions);
+    next = dashResult.bot;
+    const triggered = abilityResult.triggered ?? dashResult.triggered;
     const ticked = tickBotState(next, elapsedMs, applyDamage,
-        abilityResult.triggeredPayload?.abilityId ?? null);
+        abilityResult.triggeredPayload?.abilityId ?? dashResult.triggeredPayload?.abilityId ?? null);
     const entitySerial = Math.max(1, Math.trunc(Number(next.abilityEntitySerial) || 1));
     const abilitySpawn = spawnForAbility(next, abilityResult.triggeredPayload, entitySerial);
+    // Each activation gets a serial so a hit refund is paid once per activation; a spawned entity remembers
+    // the activation that made it.
+    const activationSerial = (Math.trunc(Number(next.activationSerial)) || 0)
+        + (abilityResult.triggered != null ? 1 : 0) + (dashResult.triggered != null ? 1 : 0);
     return {
         ...ticked,
+        activationSerial,
+        entityActivations: abilitySpawn?.id != null
+            ? { ...(next.entityActivations ?? {}), [abilitySpawn.id]: activationSerial }
+            : next.entityActivations ?? {},
         abilityEntitySerial: abilitySpawn ? entitySerial + 1 : entitySerial,
         preparingAbility: next.preparingAbility ?? null,
         preparingMs: next.preparingMs ?? 0,
-        triggeredAbility: abilityResult.triggered,
-        triggeredPhaseFacingMode: abilityResult.triggered == null
+        triggeredAbility: triggered,
+        triggeredPhaseFacingMode: triggered == null
             ? null
-            : abilityPayload?.phaseFacingMode ?? abilityPayload?.activation?.phaseFacingDefault ?? null,
-        abilityTargetX: abilityPayload?.targetX,
-        abilityTargetY: abilityPayload?.targetY,
+            : triggeredPayloadOptions(abilityResult, abilityPayload, dashPayload)?.phaseFacingMode
+                ?? triggeredPayloadOptions(abilityResult, abilityPayload, dashPayload)?.activation?.phaseFacingDefault ?? null,
+        abilityTargetX: (abilityPayload ?? dashPayload)?.targetX,
+        abilityTargetY: (abilityPayload ?? dashPayload)?.targetY,
         abilitySpawn,
     };
 }
 
 /**
- * Sprint is a Walk setting: it applies on a tick that actually moves while the bot has
- * stamina and is not starting, winding up or active with any ability (attacking cancels it).
+ * Sprint is a Walk setting: it applies on any tick that actually moves while the bot has stamina, including
+ * while an ability is starting, winding up or active. Movement-lock, stun (handled before this) and 0 stamina
+ * stop it.
  */
-function sprintsThisTick(shape, action, magnitude, { busy, gateShape }) {
-    if (action?.sprint !== true || magnitude <= 0.001 || botStamina(gateShape) <= 0 || busy) return false;
-    if (statusIsActive(shape, "movement-lock")) return false;
-    return !Object.values(shape.abilityActiveMs ?? {}).some((activeMs) => Number(activeMs) > 0);
+function sprintsThisTick(shape, action, magnitude, { gateShape }) {
+    if (action?.sprint !== true || magnitude <= 0.001 || botStamina(gateShape) <= 0) return false;
+    return !statusIsActive(shape, "movement-lock");
 }
 
-/** Dry run of this tick's ability, to know whether it starts (or begins winding up). */
-function startsAbility(bot, payload, elapsedMs, cooldownMultiplier, options) {
-    if (!payload) return false;
-    const probe = executeAbility(bot, payload, elapsedMs, cooldownMultiplier, options);
-    return probe.triggered != null
-        || (probe.bot.preparingAbility === payload.abilityId && Number(probe.bot.preparingMs ?? 0) > 0);
+/** True when an action payload (or a raw ability id) is the Dash ability. */
+function isDashAction(source) {
+    if (!source) return false;
+    return abilityExecutionPayload(source.abilityPayload ?? source)?.abilityId === DASH_ABILITY_ID;
+}
+
+/** The payload that owns this tick's trigger: the ability's when it started, otherwise the dash's. */
+function triggeredPayloadOptions(abilityResult, abilityPayload, dashPayload) {
+    return abilityResult.triggered != null ? abilityPayload : dashPayload;
 }
 
 function applyMovement(next, shape, action, movement) {
@@ -157,7 +188,8 @@ function executeAbility(bot, payload, elapsedMs, cooldownMultiplier, { slowedWas
     if (!payload || !hasAbility(bot, payload.abilityId)) return { bot, triggered: null, triggeredPayload: null };
 
     const phaseMovement = payload.contract?.phases?.[0]?.movement;
-    if (statusIsActive(bot, "silence")
+    // Silence blocks abilities, but never Dash.
+    if ((statusIsActive(bot, "silence") && payload.abilityId !== DASH_ABILITY_ID)
         || (phaseMovement?.blockedByStatus === "slow"
             && (statusIsActive(bot, "slow") || slowedWasActive))) {
         return cancelPreparation(bot, payload);

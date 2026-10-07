@@ -100,13 +100,18 @@ test("puzzle arenas keep bot selection and dragging enabled while paused", () =>
     assert.match(source, /stopAutoPlay\(\);\s*setIsEditingArena\(true\);/);
 });
 
-test("the visible building deadline preserves the manual submission grace window", () => {
+test("each player's own clock drives the auto-submit and the out-of-time notice", () => {
     const arenaSource = read(ARENA_PATH);
     const panelSource = read(PANEL_PATH);
 
-    assert.match(arenaSource, /const authoritativeRemaining = secondsRemaining\(autoSubmitDeadline\)/);
-    assert.match(arenaSource, /if \(authoritativeRemaining === 0\) \{\s*clearInterval\(interval\);[\s\S]*handleFinishMatchRef\.current\?\.\(\);[\s\S]*\}/);
-    assert.match(panelSource, /testingRemaining === 0 && finishStatus === "BUILDING"/);
+    assert.match(arenaSource, /timeoutFallback !== TIMEOUT_FALLBACKS\.CURRENT/);
+    assert.match(arenaSource, /inAutoSubmitWindow\(playerClockView\(matchContext\.player, monotonicEpochNowMs\(\)\)\)/);
+    assert.match(arenaSource, /handleFinishMatchRef\.current\?\.\(\)/);
+    assert.match(arenaSource, /ownSubmitBlockedReason\) return;/);
+    assert.match(panelSource, /<BuildOutOfTime player=\{matchContext\?\.player\} \/>/);
+    assert.match(panelSource, /<HoldToSubmitButton/);
+    assert.match(panelSource, /roundLabel\(matchContext\?\.roundNumber, matchContext\?\.timedRounds\?\.maxRounds\)/);
+    assert.doesNotMatch(panelSource, /roundWins|winsRequired/);
 });
 
 test("submitted match code closes and disables the coding workspace", () => {
@@ -290,7 +295,7 @@ test("code workspace controls keep accessible names, roles and focus handling", 
 test("the Walk action config has a Sprint switch with help and a summary chip", () => {
     const nodes = read("./nodes/GraphNodes.jsx");
     assert.match(nodes, /<HudSwitchRow label="Sprint"/);
-    assert.match(nodes, /\+50% speed in any direction\. Drains 30 stamina\/s\. Ends when you attack or use an ability, or at 0 stamina\./);
+    assert.match(nodes, /\+50% speed in any direction\. Drains 30 stamina\/s\. Stops at 0 stamina\./);
     assert.match(nodes, /\+= ", sprint"/);
 });
 

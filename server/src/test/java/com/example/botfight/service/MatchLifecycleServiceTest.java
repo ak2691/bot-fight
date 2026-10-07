@@ -179,7 +179,7 @@ class MatchLifecycleServiceTest {
                 eq("MATCH_STARTED"),
                 eq("LOADOUT_SELECT"),
                 isNull(),
-                eq("Match accepted. Choose your opening loadout."));
+                eq("Match accepted. Pick your weapon and first ability."));
         MatchLifecycleService lifecycle = lifecycle(state, persistence, connections, eventFactory);
         UUID firstPlayer = UUID.randomUUID();
         UUID secondPlayer = UUID.randomUUID();

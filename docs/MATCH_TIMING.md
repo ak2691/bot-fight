@@ -57,56 +57,68 @@ but it cannot introduce a wall-clock offset error.
   countdown. The server creates the persisted match and emits `MATCH_STARTED`
   only after both acceptance requests succeed; a provisional pairing has no
   database match yet.
-- The queue and custom-lobby pages offer three optional guarantee slots, one for
-  each ability selection round. The server stores the current authenticated
-  player's choices as a transient preference and applies them independently to
-  ranked 1v1, ranked 2v2, custom-lobby, and direct-invite entrants. The queue
-  request also carries the current player's IDs for immediate ranked fallback;
-  empty slots remain empty and preserve the normal random offer pool. The server
-  validates each selected ID against its round before it can enter a match.
-- Ability selection displays 60 seconds. During this phase,
-  `loadoutSelectionEndsAt` is the authoritative deadline 62 seconds after the
-  phase begins, including the hidden two-second submission grace. If both
-  players select early,
-  building-room preparation lasts up to two seconds but never extends beyond
-  that authoritative selection deadline. The random portion of the offer pool
-  is shared by both players; a player's selected queue guarantees are added
-  only to that player's corresponding round.
-  This WebSocket countdown is a critical timing contract: do not change the
-  60/62-second ability-selection interval or the two-second grace without an
-  explicit timing-contract change. The event field keeps its existing name for
-  wire compatibility; its meaning is the active selection phase's deadline.
-- During building-room preparation the client displays "Both players have
-  selected, preparing building room." Building then displays the server-owned
-  round duration: 180 seconds (3 minutes) for 1v1, 300 seconds (5 minutes) for
-  2v2, or the custom lobby's configured duration. Custom durations are bounded
-  to 30 seconds through 600 seconds (10 minutes), with a separate 300-second
-  default.
-  `buildingEndsAt` is two seconds later than the visible deadline so an in-flight
-  final submission can still be accepted before the server creates its fallback.
+- There are no guaranteed offers. Every offer comes from the match seed: the same offers for every
+  player (2v2 too), minus the abilities a player already owns.
+- **The pick phase is 30 seconds in round 1 and 20 seconds in rounds 2 to 6.** Round 1 picks a weapon
+  (Slash, Thrust, Cleave or Smash) and one of three tier 1 abilities; each later round picks one ability
+  (three offers in rounds 2 to 4, two in rounds 5 and 6; rounds 1-2 draw from tier 1, 3-4 from tier 2,
+  5-6 from tier 3). `loadoutSelectionEndsAt` is the authoritative deadline: the visible 30 or 20 seconds
+  plus the hidden two-second submission grace (32 or 22 seconds after the phase begins). **This
+  intentionally replaces the old 60/62-second ability-selection contract**; the grace is unchanged.
+  If every player locks in early, building-room preparation lasts up to two seconds but never extends
+  beyond that authoritative deadline. A player who has not picked when it passes gets a deterministic
+  auto-pick: Slash as the weapon in round 1, and the first offer in offer order. The event field keeps
+  its existing name for wire compatibility; its meaning is the active selection phase's deadline. The
+  pick phase never touches a player's clock.
+- During building-room preparation the client displays "Both players have selected, preparing
+  building room."
+- **Building runs a per-player chess clock.** A player's clock starts at 5:00 (1v1), 7:00 (2v2) or the
+  custom lobby's base (30 seconds to 10 minutes), and gains the increment (30 seconds; custom lobbies
+  choose 0 to 60 seconds) at the start of every build, round 1 included. The clock only runs while that
+  player is building: the pick, the replay and the result hold are free, and a player who has submitted
+  stops their own clock. The server owns the clocks; the client only displays them.
+  - Each player's `buildEndsAt` (on their `players[]` entry) is the absolute instant their clock reaches
+    zero. `clockRemainingMs` is the clock as it stood when the build began, or what was left once they
+    submitted. The event's `buildingEndsAt` is the instant the **last** player's build can still be
+    accepted (their deadline plus the grace), so it is also when every build is over.
+  - A submit deducts the time spent since the build began from that player's clock. A submit that
+    arrives after the visible deadline but inside the two-second grace is accepted and leaves the clock
+    at zero.
+  - A player's `timeoutFallback` is `CURRENT` (the default) or `PREVIOUS`, set on a submission or with
+    the `/app/matchmaking.timeoutFallback` message while building. With `CURRENT` the client
+    auto-submits its current brain just before its clock reaches zero and the server keeps that player
+    open for the grace so it can arrive; if the submission is invalid, or nothing arrives, the server
+    submits last round's brain. With `PREVIOUS` the server resolves the player exactly at their visible
+    deadline with last round's brain and the new loadout (an empty brain in round 1).
+  - The build ends when every player has submitted or run out. A player who runs out is resolved at
+    their own deadline, even while a teammate or opponent is still building; resolving one player never
+    cuts anyone else's clock short.
 - After both submissions are accepted, the client enters `SIMULATION_LOADING`.
   This phase has no deadline: the backend calculates the complete authoritative
   replay before publishing a playback schedule. Simulation runs on a dedicated
   executor and uses a match-scoped claim; it must not occupy the lifecycle
   scheduler or serialize state transitions for unrelated matches.
-- Once calculation finishes, the server publishes `SIMULATION_PREPARING` with
-  the initial arena state, `serverNow`, and the absolute replay deadlines. A
-  three-second server-authored preparation window preserves the arena entrance
-  animation before playback begins.
+- Once calculation finishes, the server publishes `SIMULATION_PREPARING` with the initial arena state,
+  `serverNow`, and the absolute replay deadlines. A three-second server-authored preparation window
+  preserves the arena entrance animation before playback begins. Each round's replay is one 20-second
+  segment of a single continuous fight (positions, HP, statuses, cooldowns, stamina and entities carry
+  over; only brains, loadouts and custom variables change), so a replay is at most 20 seconds long and
+  shorter when a team is knocked out.
 - Authoritative replay frames are delivered in one-second windows with two
   seconds of lookahead. The first window is sent two seconds into preparation,
   so the two-second buffer is built through consecutive one-second messages,
   not an initial two-second burst. Every window has an absolute publication
   timestamp derived from `playbackStartsAt`; delivery never waits for a client
   acknowledgement and never derives the next deadline from the prior send.
-- Replay uses the original authoritative simulation `elapsedMs` values. The
-  terminal window completes frame delivery without disclosing whether the
-  series has ended. A reconnect receives the authorized replay prefix and
-  original `playbackStartsAt`, allowing the client to select the current frame
-  from server-authoritative elapsed time. When a round decides the series, the
-  server publishes a separate `MATCH_RESULT_READY` at `resultRevealsAt`; no
-  terminal flag is included in replay or result payloads. Immediate non-replay
-  outcomes such as surrender or a disconnect also use `MATCH_RESULT_READY`.
+- Replay uses the original authoritative simulation `elapsedMs` values, relative to the start of the
+  segment. The terminal window completes frame delivery without disclosing whether the match has
+  ended. A reconnect receives the authorized replay prefix and original `playbackStartsAt`, allowing the
+  client to select the current frame from server-authoritative elapsed time. The match ends when a
+  team is eliminated during a segment, or after round 6, when the team with the higher total HP wins
+  (`HP_DECISION`; equal totals, or both teams falling on the same tick, are a draw). The server then
+  publishes a separate `MATCH_RESULT_READY` at `resultRevealsAt`; no terminal flag is included in replay
+  or result payloads. Immediate non-replay outcomes such as surrender or a disconnect also use
+  `MATCH_RESULT_READY`.
 - The post-result hold ends at `roundReadyAt`, normally three seconds after
   `resultRevealsAt`. The backend schedules `MATCH_ROUND_READY` for that
   deadline; the client switches to the next ability selection when that event
@@ -129,29 +141,38 @@ relative duration, as `SIMULATION_PREPARING` does.
 
 ## Round-transition regression checklist
 
-Run this sequence whenever round lifecycle, loadouts, building sessions, or
-submission ownership changes:
+Run this sequence whenever round lifecycle, loadouts, building sessions, clocks or submission
+ownership changes. A match has six rounds, so the transitions that matter are 1 to 2, 2 to 3, 4 to 5
+and 5 to 6 (the tier and offer-count changes), and the last one:
 
-1. Finish round one and verify `MATCH_ROUND_READY` for round two has
-   `loadoutSelected: false`; inherited prior-round abilities may be carried as
-   the base, but round-two offered abilities must be an empty draft.
-2. Let round two expire without selecting anything. The server must deterministically
-   add exactly two round-two offers, enter `PREP`, and allow a bot submission
-   even if the client still holds the pre-timeout brain. The server-owned
-   finalized loadout must be the loadout used by the submission and simulation.
-3. Repeat immediately for round three: start with no round-three picks, add
-   exactly one offer on timeout, and submit successfully. Do not stop after
-   proving only the round-two transition.
-4. Exercise reconnect during the result hold and at `MATCH_ROUND_READY`; the
-   resumed round must expose the same active deadline and draft state.
+1. Finish round one and verify `MATCH_ROUND_READY` for round two has `loadoutSelected: false`; the
+   weapon and first ability are carried as the base, the round-two offers are an empty draft, and no
+   weapon offers are sent (`timedRounds.weaponOffers` is empty after round 1).
+2. Let round one's pick expire without selecting anything. The server must deterministically add Slash
+   plus the first offer, enter `PREP`, and allow a bot submission even if the client still holds the
+   pre-timeout brain. The server-owned finalized loadout must be the loadout used by the submission and
+   simulation.
+3. Repeat for rounds two, three, five and six: start with no pick for that round, add exactly one offer
+   on timeout (the first offer, never one the player already owns), and submit successfully. Rounds
+   five and six offer two abilities, rounds one to four three. Do not stop after proving only the
+   round-two transition.
+4. Check the clocks across rounds: each build adds the increment to the clock the previous round left,
+   a player who submitted early keeps the time they saved, and a player whose clock ran out starts the
+   next round with only the increment.
+5. Exercise reconnect during the result hold, at `MATCH_ROUND_READY` and mid-build; the resumed round
+   must expose the same active deadline, the same per-player `buildEndsAt`, and the same draft state.
+6. End a match both ways: a knockout mid-segment (no further rounds, completion reason `SIMULATION`),
+   and six rounds with no knockout (`HP_DECISION`, with the winning team or a draw).
 
 Recurring mistakes to guard against:
 
 - Reusing the previous encoded loadout as if it were the new round's draft;
+- Letting one player's expiry (or submit) change another player's clock or deadline;
+- Running a clock outside BUILDING, or adding the increment twice for one build;
 - Creating the next deadline when replay preparation finishes instead of when
   the next selection phase actually activates;
 - Treating a client-echoed loadout as authority after the server auto-picks;
 - Testing only the first non-opening round, which lets round-three state leaks
-  survive unnoticed; and
+  survive unnoticed (and now rounds five and six too); and
 - Verifying timer values without verifying `loadoutSelected`, inherited picks,
   automatic pick counts, and submission ownership together.

@@ -195,7 +195,8 @@ class AbilityContractsTest {
         assertThat(AbilityContracts.get(19).phases().getFirst().events()
                 .get(AbilityContracts.PhaseEventType.ACTIVATION).actions())
                 .containsExactly(AbilityContracts.PhaseAction.START_MOVEMENT);
-        assertThat(AbilityContracts.get(19).activation().ignoresGlobalAbilityLock()).isFalse();
+        // Interim: Dash ignores the global ability lock both ways.
+        assertThat(AbilityContracts.get(19).activation().ignoresGlobalAbilityLock()).isTrue();
         assertThat(AbilityContracts.get(20).activation().targetMode()).isEqualTo("target");
         assertThat(AbilityContracts.get(20).phases().getFirst().orientation())
                 .isEqualTo(new AbilityContracts.PhaseOrientation("faceTarget", "activationTarget"));

@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { applyDamageToShape } from "../../gameconfig/BotCombatSystem.js";
-import { CLOSING_ZONE_CONFIG } from "../../gameconfig/ArenaHazardConfig.js";
+import { CLOSING_ZONE_CONFIG, TIMED_ROUNDS_V2_ZONE_CONFIG } from "../../gameconfig/ArenaHazardConfig.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
 import {
     closingZoneSafeRadius,
+    closingZoneWarningDiameter,
     tickClosingZoneWorld,
 } from "./ClosingZoneSystem.js";
 
@@ -94,4 +95,51 @@ test("closing zone damages only bot hitboxes that reach the unsafe side", () => 
     assert.equal(atDamageTick.bots[0].closingZoneDamageCount ?? 0, 0);
     assert.equal(atDamageTick.bots[1].closingZoneDamageCount, 1);
     assert.equal(closingZoneSafeRadius(60_000, arena.width, arena.height), 0);
+});
+
+// Parity: the server's ClosingZoneSystemTest checks these same numbers for ClosingZoneConfig.timedRoundsV2().
+const V2_RADII = [
+    [79_900, null],
+    [80_000, 600],
+    [82_500, 525],
+    [85_000, 450],
+    [99_900, 450],
+    [100_000, 450],
+    [102_500, 375],
+    [105_000, 300],
+    [120_000, 300],
+];
+const V2_WARNINGS = [
+    [59_900, null],
+    [60_000, 900],
+    [79_900, 900],
+    [80_000, 600],
+    [99_900, 600],
+    [100_000, null],
+];
+
+test("timed rounds zone matches the server schedule: rounds 5 and 6 only, 1200 -> 900 -> 600", () => {
+    assert.equal(TIMED_ROUNDS_V2_ZONE_CONFIG.simulationDurationMs, 120_000);
+    for (const [elapsedMs, radius] of V2_RADII) {
+        const actual = closingZoneSafeRadius(elapsedMs, arena.width, arena.height, TIMED_ROUNDS_V2_ZONE_CONFIG);
+        if (radius === null) assert.equal(actual, null, `radius at ${elapsedMs}`);
+        else assert.ok(Math.abs(actual - radius) < 1e-9, `radius at ${elapsedMs}: ${actual}`);
+    }
+    for (const [elapsedMs, diameter] of V2_WARNINGS) {
+        assert.equal(closingZoneWarningDiameter(elapsedMs, TIMED_ROUNDS_V2_ZONE_CONFIG), diameter, `warning at ${elapsedMs}`);
+    }
+    assert.equal(closingZoneWarningDiameter(60_000, CLOSING_ZONE_CONFIG), null);
+});
+
+test("timed rounds zone world tick starts at round 5 with a 1200-unit zone and damages outside bots", () => {
+    const config = TIMED_ROUNDS_V2_ZONE_CONFIG;
+    const before = tickClosingZoneWorld({ bots: [bot()], elapsedMs: 79_900, stepMs: 100, config, ...arena }, { applyDamageToShape });
+    assert.equal(before.zone, null);
+    const started = tickClosingZoneWorld({ bots: [bot({ x: 600, y: 600 })], elapsedMs: 80_000, stepMs: 100, config, ...arena }, { applyDamageToShape });
+    assert.equal(started.zone.size, 1_200);
+    assert.equal(started.bots[0].hp, 100);
+    const corner = tickClosingZoneWorld({ bots: [bot({ x: 60, y: 60 })], elapsedMs: 80_500, stepMs: 100, config, ...arena }, { applyDamageToShape });
+    assert.ok(corner.bots[0].hp < 100);
+    const contracted = tickClosingZoneWorld({ bots: [bot({ x: 600, y: 600 })], elapsedMs: 85_000, stepMs: 100, config, ...arena }, { applyDamageToShape });
+    assert.equal(contracted.zone.size, 900);
 });

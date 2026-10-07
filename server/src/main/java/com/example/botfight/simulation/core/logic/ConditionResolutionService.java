@@ -44,7 +44,7 @@ public class ConditionResolutionService {
         List<Condition> normalized = new java.util.ArrayList<>();
         int limit = Math.min(conditions.size(), MAX_TOTAL_CONDITIONS);
         for (int index = 0; index < limit; index += 1) {
-            JsonNode condition = conditions.get(index);
+            JsonNode condition = migrateExhaustedCondition(conditions.get(index));
             String sharedSelectable = textValue(field(condition, "selectable"), null);
             String left = textValue(field(condition, "left"), "");
             JsonNode rightNode = field(condition, "right");
@@ -117,6 +117,28 @@ public class ConditionResolutionService {
                     normalizeRightView(condition, rightVariable, rightContract, coordinateVersion)));
         }
         return normalized;
+    }
+
+    /**
+     * Stamina exhaustion was removed. A saved brain that tests "Exhausted" tests the equivalent stamina
+     * threshold instead: Exhausted is true means Stamina < 1, Exhausted is false means Stamina >= 1. The
+     * browser's normalizer applies the same rewrite. Anything that is not a plain true/false comparison is
+     * left alone and rejected by validation.
+     */
+    static JsonNode migrateExhaustedCondition(JsonNode condition) {
+        if (condition == null || !condition.isObject()
+                || !"bot.exhausted".equals(textValue(field(condition, "left"), ""))) return condition;
+        JsonNode right = field(condition, "right");
+        if (right == null || !"boolean".equals(textValue(field(right, "type"), ""))) return condition;
+        String comparator = textValue(field(condition, "comparator"), "");
+        if (!"eq".equals(comparator) && !"neq".equals(comparator)) return condition;
+        boolean value = booleanValue(field(right, "value"), true);
+        boolean exhausted = "eq".equals(comparator) == value;
+        tools.jackson.databind.node.ObjectNode migrated = ((tools.jackson.databind.node.ObjectNode) condition).deepCopy();
+        migrated.put("left", "bot.stamina");
+        migrated.put("comparator", exhausted ? "lt" : "gte");
+        migrated.putObject("right").put("type", "number").put("value", 1);
+        return migrated;
     }
 
     /**

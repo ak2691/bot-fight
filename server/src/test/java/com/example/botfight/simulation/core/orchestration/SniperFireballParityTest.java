@@ -22,7 +22,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /** Authoritative Sniper and Fireball rework; mirrors the frontend SniperFireballParity tests. */
 class SniperFireballParityTest {
-    private static final double START_HP = 150;
+    private static final double START_HP = 300;
     private final JsonMapper jsonMapper = new JsonMapper();
     private final DuelSimulationService service = newService();
 

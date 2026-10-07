@@ -3,7 +3,6 @@ import ArenaLoadingScreen from "../../components/ArenaLoadingScreen.jsx";
 import SimulationReplay from "../../replay/SimulationReplay";
 import { matchReplayArenaLifecycle } from "../../replay/arenaLifecycle.js";
 import MatchAcceptanceModal from "../../matchmaking/MatchAcceptanceModal.jsx";
-import { useMatchmaking } from "../../matchmaking/matchmaking-context.js";
 import AbilitySelectionPanel from "./components/AbilitySelectionPanel.jsx";
 import MatchHeader from "./components/MatchHeader.jsx";
 import MatchView from "./components/MatchView.jsx";
@@ -21,7 +20,6 @@ function matchModeContextLabel(mode) {
 
 export default function GamePage() {
     const navigate = useNavigate();
-    const { queueGuarantees } = useMatchmaking();
     const lifecycle = useMatchLifecycle({
         navigate,
     });
@@ -154,7 +152,6 @@ export default function GamePage() {
     }
 
     if (queueStatus === "LOADOUT_SELECT") {
-        const currentRound = Math.max(1, Number(matchEvent?.roundNumber ?? 1));
         return (
             <main className={MATCH_SURFACE_CLASS}>
                 <MatchHeader
@@ -173,7 +170,7 @@ export default function GamePage() {
                     players={matchContext?.players}
                     roundNumber={matchEvent?.roundNumber ?? 1}
                     abilityOffers={matchEvent?.abilityOffers ?? []}
-                    guaranteedAbilityId={queueGuarantees?.[currentRound - 1] ?? null}
+                    timedRounds={matchContext?.timedRounds ?? matchEvent?.timedRounds ?? null}
                     remaining={remaining}
                     error={finishError}
                     onSurrender={surrenderMatch}

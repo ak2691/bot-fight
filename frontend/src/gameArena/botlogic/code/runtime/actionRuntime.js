@@ -41,10 +41,16 @@ export function actionExecutableNow(block, state, operations) {
     return abilityActionReady(state.player, ability);
 }
 
+/** A wind-up hides the ability's cooldown readout, except for Dash, which a wind-up never blocks. */
+function windingUpBlocks(bot, abilityId) {
+    return !abilityIgnoresGlobalLock(abilityId) && Number(bot?.preparingMs) > 0;
+}
+
 export function abilityReady(bot, ability) {
     const abilityId = abilityIdFromBoundary(ability);
     if (!botHasAbility(bot, abilityId)) return false;
-    if (Number(bot?.preparingMs) > 0 && bot?.preparingAbility != null) {
+    // Dash ignores the ability lock, so another ability's wind-up never stops it from starting.
+    if (!abilityIgnoresGlobalLock(abilityId) && Number(bot?.preparingMs) > 0 && bot?.preparingAbility != null) {
         return false;
     }
 
@@ -72,7 +78,7 @@ export function abilityActionReady(bot, ability) {
 export function abilityCooldownMs(bot, ability) {
     const abilityId = abilityIdFromBoundary(ability);
     if (!botHasAbility(bot, abilityId)) return 0;
-    if (Number(bot?.abilityActiveMs?.[abilityId]) > 0 || Number(bot?.preparingMs) > 0) {
+    if (Number(bot?.abilityActiveMs?.[abilityId]) > 0 || windingUpBlocks(bot, abilityId)) {
         return 0;
     }
 
@@ -88,7 +94,7 @@ export function abilityOnCooldown(bot, ability) {
     const abilityId = abilityIdFromBoundary(ability);
     return botHasAbility(bot, abilityId)
         && abilityActiveMs(bot, abilityId) <= 0
-        && Number(bot?.preparingMs) <= 0
+        && !windingUpBlocks(bot, abilityId)
         && abilityCooldownMs(bot, abilityId) > 0;
 }
 

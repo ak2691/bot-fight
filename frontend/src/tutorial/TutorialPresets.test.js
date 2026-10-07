@@ -112,7 +112,7 @@ test("vulnerability tutorial configures its attacks and tactics", () => {
     assert.equal(first.id, "vulnerability-1");
     assert.equal(first.goal, "defeat_opponent_survive");
     assert.equal(firstPlayer.hp, 40);
-    assert.equal(firstPlayer.maxHp, 150);
+    assert.equal(firstPlayer.maxHp, 300);
     assert.equal(firstPlayer.transform.position.y - firstOpponent.transform.position.y, 300);
     assert.equal(first.opponentLoadout, "sandbox:7,13");
     assert.equal(first.solution.roots.length, 4);
@@ -139,7 +139,7 @@ test("combo and kite tutorial cycles its combo and responds to edge pressure", (
     assert.equal(scenario.playerLoadout, "sandbox:6,7,18");
     assert.equal(scenario.opponentLoadout, "sandbox:1");
     assert.equal(player.hp, 1);
-    assert.equal(player.maxHp, 150);
+    assert.equal(player.maxHp, 300);
     assert.deepEqual(solution.customVariables, [{ id: "custom.combo-step", name: "Combo Step", valueType: "number", initialValue: 0 }]);
     assert.deepEqual(comboBranches.map((branch) => branch.actions[0].action), [TUTORIAL_ACTIONS.STUN, TUTORIAL_ACTIONS.HEAVY_SLASH]);
     assert.deepEqual(comboBranches.map((branch) => branch.conditions[1].right.value), [0, 1]);
@@ -212,7 +212,6 @@ test("tutorial introduction maps node visuals and avoids em dashes", () => {
     assert.deepEqual(Object.values(TUTORIAL_INTRODUCTION_VISUALS), ["root-priorities", "conditional-examples", "action-examples", "configuration-examples", "custom-variable-examples"]);
     assert.equal(TUTORIAL_INTRODUCTION.some((paragraph) => paragraph.includes(String.fromCharCode(0x2014))), false);
     assert.equal(TUTORIAL_ENDING.some((paragraph) => paragraph.includes(String.fromCharCode(0x2014))), false);
-    assert.match(TUTORIAL_ENDING.join(" "), /A timeout is a draw/);
     assert.match(TUTORIAL_INTRODUCTION.join(" "), /100 ms tick/);
     assert.match(TUTORIAL_INTRODUCTION.join(" "), /Lower-priority roots can fill another action category/);
     assert.match(TUTORIAL_INTRODUCTION.join(" "), /\+ Condition.*Every condition on a node must be true.*sibling ELSE-IF/);
@@ -228,10 +227,12 @@ test("tutorial ending points players to both gameplay catalogues", () => {
     const rowSource = pageSource.slice(pageSource.indexOf("function TutorialLessonRow"), pageSource.indexOf("export default function TutorialPage"));
     const expandedDescriptionIndex = rowSource.indexOf("{expanded &&");
 
-    assert.match(endingCopy, /Try the puzzles, then check the catalogues for details/);
-    assert.match(endingCopy, /guaranteed offer for each round on the homepage, above Queue match/);
+    assert.match(endingCopy, /the catalogues have the details/);
+    assert.doesNotMatch(endingCopy, /puzzles/i, "public puzzles are hidden for now");
     assert.doesNotMatch(endingCopy, /Tactical Challenges/);
-    assert.match(endingCopy, /3 minutes.*1v1.*5 minutes.*2v2/);
+    // Old format facts are gone: best of three, 3/2/1 picks, guaranteed offers, exhaustion, fixed build times.
+    assert.doesNotMatch(endingCopy, /best of three|guaranteed offer|exhaust|\d+ minutes?|Select \d abilities|A timeout is a draw/i);
+    assert.match(readFileSync(fileURLToPath(new URL("./TutorialContent.js", import.meta.url)), "utf8"), /TODO\(owner\)/);
     assert.ok(rowSource.indexOf("Start lesson") > expandedDescriptionIndex);
 });
 

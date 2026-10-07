@@ -155,7 +155,7 @@
 .hq-footer__link:hover { text-decoration: underline; }
 .hq-footer__link:focus-visible { outline: 2px solid #5fd4f0; outline-offset: 2px; border-radius: 2px; }
 
-/* Phones: guarantee slots become 44px squares, tiles become full-width rows. */
+/* Phones: tiles become full-width rows. */
 @media (max-width: 639px) {
   .hq-block { margin-top: 1rem; padding: .875rem 1rem 1rem; }
   .hq-head { gap: .375rem .625rem; }

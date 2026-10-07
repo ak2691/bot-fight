@@ -57,11 +57,11 @@ class MovementStaminaParityTest {
         assertThat(MovementConfig.TICK_MS).isEqualTo(100);
         assertThat(new int[] {
                 MovementConfig.STAMINA_MAX, MovementConfig.REGEN_PER_TICK, MovementConfig.REGEN_DELAY_MS,
-                MovementConfig.EXHAUSTION_MS, MovementConfig.SPRINT_DRAIN_PER_TICK, MovementConfig.DASH_COST,
+                MovementConfig.HIT_STAMINA_REFUND, MovementConfig.SPRINT_DRAIN_PER_TICK, MovementConfig.DASH_COST,
                 MovementConfig.DASH_GAP_MS, MovementConfig.WINDUP_CANCEL_COST})
-                .containsExactly(100, 2, 800, 1_500, 3, 30, 300, 25);
+                .containsExactly(100, 2, 500, 10, 3, 30, 300, 25);
         assertThat(MovementConfig.SPRINT_MULTIPLIER).isEqualTo(1.5);
-        for (int ms : new int[] {MovementConfig.REGEN_DELAY_MS, MovementConfig.EXHAUSTION_MS, MovementConfig.DASH_GAP_MS}) {
+        for (int ms : new int[] {MovementConfig.REGEN_DELAY_MS, MovementConfig.DASH_GAP_MS}) {
             assertThat(ms % MovementConfig.TICK_MS).isZero();
         }
     }
@@ -71,8 +71,8 @@ class MovementStaminaParityTest {
         Bot bot = bot();
         step(bot, ability(19, 0, false));
         assertThat(bot.stamina).isEqualTo(70);
-        assertThat(bot.staminaRegenDelayMs).isEqualTo(800);
-        for (int tick = 1; tick <= 8; tick += 1) {
+        assertThat(bot.staminaRegenDelayMs).isEqualTo(500);
+        for (int tick = 1; tick <= 5; tick += 1) {
             step(bot, idle());
             assertThat(bot.stamina).as("tick %d", tick).isEqualTo(70);
         }
@@ -86,25 +86,21 @@ class MovementStaminaParityTest {
     }
 
     @Test
-    void exhaustionBlocksRegenerationForFifteenHundredMsWithoutSlowdown() {
+    void atZeroStaminaThereIsNoExhaustionAndTheBotRefillsAfterThePause() {
         Bot bot = bot();
         bot.stamina = 3;
-        bot.staminaRegenDelayMs = 800;
+        bot.staminaRegenDelayMs = 500;
         step(bot, walk(true));
         assertThat(bot.stamina).isZero();
-        assertThat(bot.exhaustedMs).isEqualTo(1_500);
-        assertThat(bot.staminaRegenDelayMs).isEqualTo(800);
-        for (int tick = 1; tick <= 15; tick += 1) {
+        assertThat(bot.staminaRegenDelayMs).isEqualTo(500);
+        for (int tick = 1; tick <= 5; tick += 1) {
             double x = bot.x;
             step(bot, walk(false));
             assertThat(bot.stamina).as("tick %d", tick).isZero();
             assertThat(bot.x - x).isEqualTo(WALK);
         }
-        assertThat(bot.exhaustedMs).isZero();
-        double before = bot.x;
         step(bot, walk(false));
         assertThat(bot.stamina).isEqualTo(2);
-        assertThat(bot.x - before).isEqualTo(WALK);
     }
 
     @Test
@@ -135,9 +131,6 @@ class MovementStaminaParityTest {
         assertThat(executor.selectedAbilityCooldownMs(shortOnStamina, 19)).isEqualTo(1_000);
         shortOnStamina.staminaRegenDelayMs = 500;
         assertThat(executor.selectedAbilityCooldownMs(shortOnStamina, 19)).isEqualTo(1_500);
-        shortOnStamina.exhaustedMs = 1_500;
-        shortOnStamina.staminaRegenDelayMs = 800;
-        assertThat(executor.selectedAbilityCooldownMs(shortOnStamina, 19)).isEqualTo(2_500);
         Bot enough = bot();
         enough.stamina = 30;
         assertThat(executor.selectedAbilityReady(enough, 19)).isTrue();
@@ -150,7 +143,7 @@ class MovementStaminaParityTest {
         assertThat(bot.x).isEqualTo(200 + WALK * 1.5);
         assertThat(bot.stamina).isEqualTo(97);
         assertThat(bot.sprinting).isTrue();
-        assertThat(bot.staminaRegenDelayMs).isEqualTo(800);
+        assertThat(bot.staminaRegenDelayMs).isEqualTo(500);
         run(bot, walk(true), 9);
         assertThat(bot.stamina).isEqualTo(70);
         for (double[] direction : new double[][] {{0, 1}, {-1, 0}, {1, 1}, {-1, -1}}) {
@@ -188,38 +181,40 @@ class MovementStaminaParityTest {
     }
 
     @Test
-    void startingWindingUpOrBeingActiveWithAnyAbilityCancelsSprint() {
+    void attackingNoLongerSlowsSprintItHoldsWhileAnAbilityStartsWindsUpAndIsActive() {
+        double fast = WALK * 1.5;
         Bot bot = bot();
         step(bot, ability(1, 1, true));
         assertThat(bot.triggeredAbility).isEqualTo(1);
-        assertThat(bot.x).isEqualTo(200 + WALK);
-        assertThat(bot.stamina).isEqualTo(100);
-        assertThat(bot.sprinting).isFalse();
+        assertThat(bot.x).isEqualTo(200 + fast);
+        assertThat(bot.stamina).isEqualTo(97);
+        assertThat(bot.sprinting).isTrue();
         for (int tick = 1; tick <= 3; tick += 1) {
             double x = bot.x;
             step(bot, walk(true));
-            assertThat(bot.x - x).as("active tick %d", tick).isEqualTo(WALK);
-            assertThat(bot.stamina).isEqualTo(100);
+            assertThat(bot.x - x).as("active tick %d", tick).isEqualTo(fast);
         }
-        double x = bot.x;
-        step(bot, walk(true));
-        assertThat(bot.x - x).isEqualTo(WALK * 1.5);
-        assertThat(bot.stamina).isEqualTo(97);
+        assertThat(bot.stamina).isEqualTo(88);
 
         Bot winding = bot();
         step(winding, ability(3, 1, true));
         assertThat(winding.preparingAbility).isEqualTo(3);
-        assertThat(winding.x).isEqualTo(200 + WALK);
+        assertThat(winding.x).isEqualTo(200 + fast);
         double windingX = winding.x;
         step(winding, walk(true));
-        assertThat(winding.x - windingX).isEqualTo(WALK);
-        assertThat(winding.stamina).isEqualTo(100);
+        assertThat(winding.x - windingX).isEqualTo(fast);
+        assertThat(winding.stamina).isEqualTo(94);
 
-        Bot onCooldown = bot();
-        onCooldown.abilityCooldowns.put(1, 500);
-        step(onCooldown, ability(1, 1, true));
-        assertThat(onCooldown.triggeredAbility).isNull();
-        assertThat(onCooldown.x).isEqualTo(200 + WALK * 1.5);
+        // Movement-lock and 0 stamina still stop it.
+        Bot locked = bot();
+        BotStateService.upsertStatusEffect(locked, new com.example.botfight.simulation.core.state.StatusEffectState("movement-lock", 1_000, 0));
+        step(locked, walk(true));
+        assertThat(locked.sprinting).isFalse();
+        Bot empty = bot();
+        empty.stamina = 0;
+        empty.staminaRegenDelayMs = 500;
+        step(empty, walk(true));
+        assertThat(empty.sprinting).isFalse();
     }
 
     @Test
@@ -233,7 +228,7 @@ class MovementStaminaParityTest {
         assertThat(bot.preparingMs).isZero();
         assertThat(bot.triggeredAbility).isNull();
         assertThat(bot.stamina).isEqualTo(75);
-        assertThat(bot.staminaRegenDelayMs).isEqualTo(800);
+        assertThat(bot.staminaRegenDelayMs).isEqualTo(500);
         assertThat(bot.abilityCooldowns.getOrDefault(3, 0)).isZero();
         assertThat(executor.selectedAbilityReady(bot, 3)).isTrue();
         step(bot, ability(3, 0, false));
@@ -243,14 +238,13 @@ class MovementStaminaParityTest {
     }
 
     @Test
-    void cancelAtExactlyTheCostStartsExhaustionAndDoesNothingOtherwise() {
+    void cancelAtExactlyTheCostEmptiesTheBarAndDoesNothingOtherwise() {
         Bot bot = bot();
         bot.stamina = 25;
         bot.staminaRegenDelayMs = 800;
         step(bot, ability(3, 0, false));
         step(bot, cancel());
         assertThat(bot.stamina).isZero();
-        assertThat(bot.exhaustedMs).isEqualTo(1_500);
 
         Bot idleCancel = bot();
         step(idleCancel, cancel());
@@ -281,13 +275,12 @@ class MovementStaminaParityTest {
         run(bot, walk(false), 5);
         assertThat(bot.stamina).isEqualTo(100);
         assertThat(bot.staminaRegenDelayMs).isZero();
-        assertThat(bot.exhaustedMs).isZero();
         assertThat(bot.dashGapMs).isZero();
         assertThat(bot.sprinting).isFalse();
     }
 
     @Test
-    void staminaExhaustedAndSprintingReadForMyBotAndTheOpponent() {
+    void staminaAndSprintingReadForMyBotAndTheOpponentAndExhaustedIsGone() {
         var resolver = new com.example.botfight.simulation.core.logic.ConditionResolutionService(
                 new com.example.botfight.simulation.bots.ConditionEvaluationService(), executor);
         Bot mine = bot();
@@ -295,7 +288,6 @@ class MovementStaminaParityTest {
         Bot theirs = bot();
         theirs.slot = 2;
         theirs.stamina = 12;
-        theirs.exhaustedMs = 700;
         theirs.sprinting = true;
         java.util.function.BiFunction<String, String, com.example.botfight.simulation.core.orchestration.DuelSimulationService.StateValue> read =
                 (variable, selectable) -> resolver.resolveStateVariable(variable, selectable,
@@ -305,8 +297,7 @@ class MovementStaminaParityTest {
                         mine, theirs, java.util.List.of(), arena);
         assertThat(read.apply("bot.stamina", "my_bot").numberValue()).isEqualTo(64.0);
         assertThat(read.apply("bot.stamina", "opponent").numberValue()).isEqualTo(12.0);
-        assertThat(read.apply("bot.exhausted", "opponent").booleanValue()).isTrue();
-        assertThat(read.apply("bot.exhausted", "my_bot").booleanValue()).isFalse();
+        assertThat(com.example.botfight.simulation.bots.BotLogicContracts.variableContract("bot.exhausted")).isNull();
         assertThat(read.apply("bot.sprinting", "opponent").booleanValue()).isTrue();
         assertThat(read.apply("bot.sprinting", "my_bot").booleanValue()).isFalse();
     }
@@ -328,7 +319,7 @@ class MovementStaminaParityTest {
         assertThat(bot.rotation).isEqualTo(114.0);
         assertThat(bot.stamina).isEqualTo(98);
         assertThat(bot.fastTurning).isTrue();
-        assertThat(bot.staminaRegenDelayMs).isEqualTo(800);
+        assertThat(bot.staminaRegenDelayMs).isEqualTo(500);
         Bot plain = bot();
         step(plain, turn(1, false));
         assertThat(plain.rotation).isEqualTo(102.0);
@@ -350,7 +341,7 @@ class MovementStaminaParityTest {
     }
 
     @Test
-    void belowTwoStaminaOrWhileExhaustedTheBotTurnsAtNormalSpeedForFree() {
+    void belowTwoStaminaTheBotTurnsAtNormalSpeedForFree() {
         Bot low = bot();
         low.stamina = 1;
         low.staminaRegenDelayMs = 800;
@@ -358,20 +349,19 @@ class MovementStaminaParityTest {
         assertThat(low.rotation).isEqualTo(102.0);
         assertThat(low.stamina).isEqualTo(1);
         assertThat(low.fastTurning).isFalse();
-        Bot exhausted = bot();
-        exhausted.stamina = 0;
-        exhausted.exhaustedMs = 1000;
-        step(exhausted, turn(1, true));
-        assertThat(exhausted.rotation).isEqualTo(102.0);
-        assertThat(exhausted.stamina).isZero();
-        assertThat(exhausted.fastTurning).isFalse();
+        Bot empty = bot();
+        empty.stamina = 0;
+        empty.staminaRegenDelayMs = 800;
+        step(empty, turn(1, true));
+        assertThat(empty.rotation).isEqualTo(102.0);
+        assertThat(empty.stamina).isZero();
+        assertThat(empty.fastTurning).isFalse();
         Bot last = bot();
         last.stamina = 2;
         last.staminaRegenDelayMs = 800;
         step(last, turn(1, true));
         assertThat(last.rotation).isEqualTo(114.0);
         assertThat(last.stamina).isZero();
-        assertThat(last.exhaustedMs).isEqualTo(MovementConfig.EXHAUSTION_MS);
     }
 
     @Test

@@ -330,8 +330,9 @@ public class MatchService {
     public List<OutboundMatchmakingEvent> startTeamMatch(
             List<MatchEntrant> entrants,
             MatchMode mode,
-            Integer roundDurationSeconds) {
-        return matchLifecycleService.startTeamMatch(entrants, mode, roundDurationSeconds);
+            Integer baseClockSeconds,
+            Integer incrementSeconds) {
+        return matchLifecycleService.startTeamMatch(entrants, mode, baseClockSeconds, incrementSeconds);
     }
 
     @Transactional
@@ -343,6 +344,14 @@ public class MatchService {
     }
 
     @Transactional
+    public List<OutboundMatchmakingEvent> setTimeoutFallback(
+            UUID userId,
+            UUID matchId,
+            Integer roundNumber,
+            String timeoutFallback) {
+        return matchTimingService.setTimeoutFallback(userId, matchId, roundNumber, timeoutFallback);
+    }
+
     public List<OutboundMatchmakingEvent> selectLoadout(UUID userId, String selectedLoadout) {
         return matchTimingService.selectLoadout(userId, selectedLoadout);
     }

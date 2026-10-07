@@ -31,7 +31,7 @@ public class ReplayMappingService {
                 triggeredTargetX(bot), triggeredTargetY(bot),
                 finiteOrNull(bot.visualOriginX), finiteOrNull(bot.visualOriginY),
                 finiteOrNull(bot.visualOriginRotation), dashDirectionX(bot), dashDirectionY(bot),
-                StaminaSystem.stamina(bot), StaminaSystem.exhausted(bot), bot.sprinting, runningChain(bot),
+                StaminaSystem.stamina(bot), bot.sprinting, runningChain(bot),
                 bot.fastTurning ? Boolean.TRUE : null);
     }
 
@@ -108,7 +108,6 @@ public class ReplayMappingService {
                 bot.teamNumber,
                 StaminaSystem.stamina(bot),
                 // Only set while true, like the other compact optional fields.
-                StaminaSystem.exhausted(bot) ? Boolean.TRUE : null,
                 bot.sprinting ? Boolean.TRUE : null, runningChain(bot),
                 bot.fastTurning ? Boolean.TRUE : null);
     }

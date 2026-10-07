@@ -13,6 +13,8 @@ export async function buildBotSubmissionPayload({
     phase = null,
     selectedLoadout = "custom",
     loadout = null,
+    variableResets = null,
+    timeoutFallback = null,
 }) {
     const normalizedCode = {
         ...normalizeAbilityStrategyConfiguration(code),
@@ -26,6 +28,8 @@ export async function buildBotSubmissionPayload({
         selectedLoadout,
         clientBuildVersion: CLIENT_BUILD_VERSION,
         brain: normalizedCode,
+        ...(Array.isArray(variableResets) && variableResets.length > 0 ? { variableResets: [...new Set(variableResets)] } : {}),
+        ...(timeoutFallback ? { timeoutFallback } : {}),
     };
 }
 

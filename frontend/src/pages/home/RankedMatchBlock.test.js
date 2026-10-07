@@ -3,15 +3,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { cacheProfileStats, loadCachedProfileStats, PROFILE_STATS_CACHE_TTL_MS } from "../profile/profileStatsCache.js";
-import { abilityForRound, guaranteeSummary } from "../queue/queueGuarantees.js";
 
 const read = (relative) => readFileSync(fileURLToPath(new URL(relative, import.meta.url)), "utf8");
 const BLOCK = read("./RankedMatchBlock.jsx");
 const HOME = read("./HomePage.jsx");
 const HOME_PROFILE = read("./useHomeProfile.js");
 const HOME_CSS = read("./home.css");
-const PICKER = read("../queue/QueueAbilityGuaranteePicker.jsx");
-const GUARANTEE_CSS = read("../queue/guarantees.css");
 const PROVIDER = read("../../matchmaking/MatchmakingProvider.jsx");
 const APP = read("../../App.jsx");
 const LOBBY = read("../customLobby/CustomLobbyPage.jsx");
@@ -30,10 +27,10 @@ test("ranked queue controls are disabled while a custom lobby exists and private
     assert.match(BLOCK, /disabled=\{!hasCustomLobby && \(rankedParticipationActive \|\| !customLobbyChecked\)\}/);
 });
 
-test("guarantee helpers find the round's ability and summarise locked offers", () => {
-    assert.equal(abilityForRound([], 1), null);
-    assert.equal(abilityForRound([null, null, null], 2), null);
-    assert.equal(guaranteeSummary([]), "random (R1), random (R2), random (R3)");
+test("guaranteed offers are gone from the queue flow", () => {
+    assert.doesNotMatch(BLOCK, /uarantee/);
+    assert.doesNotMatch(PROVIDER, /uarantee/);
+    assert.match(BLOCK, /void startQueue\(candidate\.id\);/);
 });
 
 test("route changes do not leave and rejoin an active queue", () => {

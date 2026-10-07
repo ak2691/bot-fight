@@ -175,62 +175,6 @@ public final class MatchReplayService {
                 roundWinsBeforeResult);
     }
 
-    public Map<UUID, Double> roundLossScores(
-            MatchSession session,
-            MatchReplayDTO playback) {
-        Map<UUID, Double> scores = new HashMap<>();
-        session.players().forEach(player -> scores.put(player.userId(), 0.0));
-        if (playback.winnerUserId() == null) return Map.copyOf(scores);
-        MatchPlayer winner = playerForUser(session, playback.winnerUserId());
-        if (session.players().size() > 2) {
-            int elapsedMs = playback.frames().isEmpty()
-                    ? 0
-                    : playback.frames().getLast().elapsedMs();
-            double lossScore = Math.max(0.0, Math.min(1.0,
-                    elapsedMs / (double) MatchSimulationService.SIMULATION_DURATION_MS));
-            session.players().stream()
-                    .filter(player -> player.teamNumber() != winner.teamNumber())
-                    .forEach(player -> scores.put(player.userId(), lossScore));
-            return Map.copyOf(scores);
-        }
-        MatchPlayer loser = session.players().stream()
-                .filter(player -> !player.userId().equals(winner.userId()))
-                .findFirst()
-                .orElseThrow();
-        if (loser.slot() == 2) {
-            MatchReplayDTO.ReplayBotDTO finalWinner = playback.frames().isEmpty()
-                    ? null
-                    : playback.frames().getLast().bots().stream()
-                            .filter(bot -> winner.slot() == bot.slot())
-                            .findFirst()
-                            .orElse(null);
-            MatchReplayDTO.ReplayBotStaticDTO initialWinner = playback.initialState() == null
-                    ? null
-                    : playback.initialState().bots().stream()
-                            .filter(bot -> winner.slot() == bot.slot())
-                            .findFirst()
-                            .orElse(null);
-            double winnerMaxHp = initialWinner == null
-                    ? 150.0
-                    : Math.max(1.0, initialWinner.maxHp());
-            double winnerHp = finalWinner == null
-                    ? winnerMaxHp
-                    : Math.max(0.0, finalWinner.hp());
-            scores.put(
-                    loser.userId(),
-                    Math.max(0.0, Math.min(1.0, (winnerMaxHp - winnerHp) / winnerMaxHp)));
-        } else {
-            int elapsedMs = playback.frames().isEmpty()
-                    ? 0
-                    : playback.frames().getLast().elapsedMs();
-            scores.put(
-                    loser.userId(),
-                    Math.max(0.0, Math.min(1.0,
-                            elapsedMs / (double) MatchSimulationService.SIMULATION_DURATION_MS)));
-        }
-        return Map.copyOf(scores);
-    }
-
     public int finalElapsedMs(MatchReplayDTO playback) {
         return playback.frames().isEmpty() ? 0 : playback.frames().getLast().elapsedMs();
     }

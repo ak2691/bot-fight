@@ -28,11 +28,11 @@ export const TUTORIAL_INTRODUCTION_VISUALS = Object.freeze({
 
 export const TUTORIAL_ENDING = Object.freeze([
     "That was the tutorial! There are still many things to learn, such as what each ability does and what tactics you can come up with. The practice room is a great way to learn about each ability. You can edit the abilities you have with the Loadout button, set up positions, rotations, starting HP, and more. You can also click the ability icons in the stats panel, where the ability timers are shown, to view information about each ability.",
-    "Now, how does an actual match play out? A match is best of three rounds. When you start a match, you get 1 minute to select abilities from a randomly chosen pool for that round. After both players have chosen, you get 3 minutes to program your bot in a 1v1 match or 5 minutes in a 2v2 match.",
-    "First round: Select 3 abilities from 6 options.\nSecond round: Select 2 abilities from 4 options.\nThird round: Select 1 ability from 3 options.",
-    "You can also choose a guaranteed offer for each round on the homepage, above Queue match.",
-    "Before your first real match, test with the drafted loadout: only drafted or equipped abilities can execute, and actions targeting an ability object are unavailable until that object exists. In 2v2, check that each selected teammate or opponent is the one you intend. A timeout is a draw; a win requires defeating the opponent through HP damage.",
-    "Want more practice before you fight? Try the puzzles, then check the catalogues for details.",
+    // TODO(owner): placeholder for the timed-rounds match loop. Replace it with the real walkthrough
+    // (the pick, the build clock, the segment replay, KO or HP decision) once the format is final.
+    "Now, how does an actual match play out? A match is played in rounds. Each round you pick, then you code your bot against your own clock, then you watch the fight. A full walkthrough of the new match format is coming soon.",
+    "Before your first real match, test with the loadout you picked: only picked or equipped abilities can execute, and actions targeting an ability object are unavailable until that object exists. In 2v2, check that each selected teammate or opponent is the one you intend.",
+    "Want more practice before you fight? The practice room and the catalogues have the details.",
 ]);
 
 const instructionSteps = (...items) => Object.freeze({
@@ -79,12 +79,12 @@ export const TUTORIAL_CATEGORIES = Object.freeze([
                     "Set your bot to walk away from Opponent 1 when its HP falls below 100.",
                 ),
             ]),
-            lesson("basic-strike", "Basic Strike", [
-                "Basic Strike is one of the two base abilities you have. It deals some damage, hits quickly, and has a short range. It can be used between other attacks to deal extra damage. ",
-                "Set up the code on your own. Always use Basic Strike.",
+            lesson("basic-strike", "Slash", [
+                "Slash is a weapon. It has no wind-up, sweeps a wide arc in front of you, and hits everything inside it for 8 damage. Because it is quick, it is a good one to keep firing between other attacks.",
+                "Set up the code on your own. Always use Slash.",
             ]),
             lesson("dash-basics", "Dash", [
-                "Dash is the other base ability you have. Normal walking is 15 units per tick, and each tick is 100 milliseconds. Dash covers 200 units in two ticks. Pretty good!",
+                "Dash is the base ability every bot has. Normal walking is 15 units per tick, and each tick is 100 milliseconds. Dash covers 200 units in two ticks. Pretty good!",
                 "Try it out and experiment. Look through all the configuration settings and think about what you can do with dashing. No, seriously, get comfortable with this.",
             ]),
             lesson("aiming-basics", "Aiming", [

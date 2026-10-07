@@ -28,9 +28,7 @@ import java.util.UUID;
 
 /** Owns match creation, surrender, and cleanup of in-memory match state. */
 public final class MatchLifecycleService {
-    private static final int LOADOUT_SELECTION_SECONDS = MatchTimingPolicy.LOADOUT_SELECTION_SECONDS;
     private static final int SUBMISSION_GRACE_SECONDS = MatchTimingPolicy.SUBMISSION_GRACE_SECONDS;
-    private static final int WINS_REQUIRED = 2;
     private static final String COMPLETION_REASON_RESIGNATION = "RESIGNATION";
 
     private final MatchRuntimeState state;
@@ -92,7 +90,7 @@ public final class MatchLifecycleService {
             MatchEntrant opponent,
             MatchEntrant player,
             MatchMode mode) {
-        return startMatchInternal(List.of(opponent, player), mode, false, mode != MatchMode.CUSTOM, null);
+        return startMatchInternal(List.of(opponent, player), mode, false, mode != MatchMode.CUSTOM, null, null);
     }
 
     public List<OutboundMatchmakingEvent> startMatch(
@@ -100,32 +98,34 @@ public final class MatchLifecycleService {
             MatchEntrant player,
             MatchMode mode,
             boolean ranked) {
-        return startMatchInternal(List.of(opponent, player), mode, false, ranked, null);
+        return startMatchInternal(List.of(opponent, player), mode, false, ranked, null, null);
     }
 
     public List<OutboundMatchmakingEvent> startTeamMatch(
             List<MatchEntrant> entrants,
             MatchMode mode) {
-        return startTeamMatch(entrants, mode, null);
+        return startTeamMatch(entrants, mode, null, null);
     }
 
     public List<OutboundMatchmakingEvent> startTeamMatch(
             List<MatchEntrant> entrants,
             MatchMode mode,
-            Integer requestedRoundDurationSeconds) {
+            Integer requestedBaseClockSeconds,
+            Integer requestedIncrementSeconds) {
         return startMatchInternal(
                 entrants,
                 mode,
                 false,
                 mode != MatchMode.CUSTOM,
-                requestedRoundDurationSeconds);
+                requestedBaseClockSeconds,
+                requestedIncrementSeconds);
     }
 
     public List<OutboundMatchmakingEvent> startTeamMatch(
             List<MatchEntrant> entrants,
             MatchMode mode,
             boolean ranked) {
-        return startMatchInternal(entrants, mode, false, ranked, null);
+        return startMatchInternal(entrants, mode, false, ranked, null, null);
     }
 
     private List<OutboundMatchmakingEvent> startMatchInternal(
@@ -138,6 +138,7 @@ public final class MatchLifecycleService {
                 mode,
                 useLegacyCreateMatch,
                 useLegacyCreateMatch || resolvedMode != MatchMode.CUSTOM,
+                null,
                 null);
     }
 
@@ -146,12 +147,16 @@ public final class MatchLifecycleService {
             MatchMode mode,
             boolean useLegacyCreateMatch,
             boolean ranked,
-            Integer requestedRoundDurationSeconds) {
+            Integer requestedBaseClockSeconds,
+            Integer requestedIncrementSeconds) {
         MatchMode resolvedMode = mode == null ? MatchMode.ONES : mode;
-        int roundDurationSeconds;
+        int baseClockSeconds;
+        int incrementSeconds;
         try {
-            roundDurationSeconds = MatchTimingPolicy.resolveRoundDurationSeconds(
-                    resolvedMode, requestedRoundDurationSeconds);
+            baseClockSeconds = MatchTimingPolicy.resolveBaseClockSeconds(
+                    resolvedMode, requestedBaseClockSeconds);
+            incrementSeconds = MatchTimingPolicy.resolveIncrementSeconds(
+                    resolvedMode, requestedIncrementSeconds);
         } catch (IllegalArgumentException exception) {
             throw new AuthException(exception.getMessage());
         }
@@ -179,7 +184,8 @@ public final class MatchLifecycleService {
                     .map(entrant -> new MatchPlayer(
                             entrant.userId(), entrant.username(), entrant.principalName(),
                             orderedEntrants.indexOf(entrant) + 1,
-                            entrant.teamNumber(), false, null, 0, "custom:", false))
+                            entrant.teamNumber(), false, null, 0, "custom:", false,
+                            baseClockSeconds * 1_000L, MatchPlayer.TIMEOUT_FALLBACK_CURRENT, null))
                     .toList();
 
             MatchSession pendingSession = new MatchSession(
@@ -191,7 +197,6 @@ public final class MatchLifecycleService {
                     null,
                     null,
                     1,
-                    WINS_REQUIRED,
                     List.of(),
                     Map.of(),
                     null,
@@ -200,16 +205,10 @@ public final class MatchLifecycleService {
                     null,
                     false,
                     resolvedMode,
-                    roundDurationSeconds);
+                    baseClockSeconds,
+                    incrementSeconds);
             persistenceService.createParticipants(match, pendingSession);
             MatchSession session = pendingSession;
-            for (MatchEntrant entrant : orderedEntrants) {
-                if (entrant.guaranteedAbilities() != null
-                        && !entrant.guaranteedAbilities().isEmpty()) {
-                    session = session.withGuaranteedAbilities(
-                            entrant.userId(), entrant.guaranteedAbilities());
-                }
-            }
             session = session.withLoadoutSelection(
                     loadoutSelectionDeadlineAt(Instant.now(clock)));
             MatchSession sessionToStart = session;
@@ -221,7 +220,7 @@ public final class MatchLifecycleService {
                             "MATCH_STARTED",
                             "LOADOUT_SELECT",
                             null,
-                            "Match accepted. Choose your opening loadout."))
+                            "Match accepted. Pick your weapon and first ability."))
                     .toList();
             for (MatchEntrant entrant : normalizedEntrants) {
                 socketRegistrationAttempts.add(entrant.userId());
@@ -432,7 +431,8 @@ public final class MatchLifecycleService {
     }
 
     private Instant loadoutSelectionDeadlineAt(Instant phaseStartedAt) {
-        return phaseStartedAt.plusSeconds(LOADOUT_SELECTION_SECONDS + SUBMISSION_GRACE_SECONDS);
+        return phaseStartedAt.plusSeconds(
+                MatchTimingPolicy.pickSeconds(1) + SUBMISSION_GRACE_SECONDS);
     }
 
     private MatchPlayer playerForUser(MatchSession session, UUID userId) {
