@@ -18,9 +18,10 @@ public final class AbilityBaseRange {
 
     /** Empty for abilities without a meaningful range. */
     public static OptionalDouble of(int abilityId) {
-        AbilityContract attached = AbilityContracts.attachedAbilityContract(abilityId);
-        AbilityPhase attachedPhase = attached == null || attached.phases().isEmpty() ? null : attached.phases().get(0);
-        Hitbox hitbox = attachedPhase == null ? null : attachedPhase.hitbox();
+        AbilityContract contract = AbilityContracts.forAbility(abilityId);
+        AbilityContracts.HitVerb hit = contract == null || contract.hitVerbs().isEmpty()
+                ? null : contract.hitVerbs().get(0);
+        Hitbox hitbox = hit == null ? null : hit.hitbox();
         if (hitbox != null && hitbox.shape() != null) {
             switch (hitbox.shape()) {
                 case "arc", "ray" -> { return positive(hitbox.range()); }
@@ -35,7 +36,7 @@ public final class AbilityBaseRange {
         return of(abilityId).isPresent();
     }
 
-    private static OptionalDouble projectileRange(AbilityContract entity) {
+    private static OptionalDouble projectileRange(AbilityContracts.EntityContract entity) {
         if (entity == null || entity.phases().isEmpty()) return OptionalDouble.empty();
         AbilityPhase phase = entity.phases().get(0);
         if (phase.type() != AbilityContracts.PhaseType.PROJECTILE || phase.movement() == null) {

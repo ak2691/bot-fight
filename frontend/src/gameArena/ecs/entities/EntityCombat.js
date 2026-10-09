@@ -1,16 +1,9 @@
-/** Applies damage through the shared combat contract, including reflection. */
-export function applyEntityDamage(bots, targetIndex, entity, damage, combat) {
-    const target = bots[targetIndex];
-    const owner = ownerBot(bots, entity);
-    const ownerIndex = owner ? bots.findIndex((bot) => bot.id === owner.id) : -1;
-    if (ownerIndex >= 0 && ownerIndex !== targetIndex && typeof combat.applyDamageFromShapes === "function") {
-        const nextBots = [...bots];
-        [nextBots[ownerIndex], nextBots[targetIndex]] = combat.applyDamageFromShapes(owner, target, damage, entity);
-        return nextBots;
-    }
-    return bots.map((bot, index) => index === targetIndex
-        ? combat.applyDamageToShape(bot, damage, owner ?? entity)
-        : bot);
+/** `kind` of an arena entity (a projectile, trap, zone or summon). Bots have `kind: "bot"` (see botState.js). */
+export const ENTITY_KIND = "entity";
+
+/** True for an arena entity. Everything else that takes part in combat is a bot. */
+export function isEntityShape(shape) {
+    return shape?.kind === ENTITY_KIND;
 }
 
 export function ownerBot(bots, entity) {

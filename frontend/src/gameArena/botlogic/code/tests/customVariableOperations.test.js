@@ -5,8 +5,12 @@ import {
     CUSTOM_VARIABLE_OPERATIONS,
     countActionSlots,
     normalizeAbilityStrategyConfiguration,
-    selectAbilityStrategyActionPlan,
+    selectAbilityStrategyActionPlan as selectAbilityStrategyActionPlanNormalized,
 } from "../BotCode.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../BotCode.js";
+
+// The engine takes normalized brains; tests pass raw ones, so normalize here like the edge does.
+const selectAbilityStrategyActionPlan = (configuration, ...rest) => selectAbilityStrategyActionPlanNormalized(normalizeBrainForTick(configuration), ...rest);
 
 function payload(customVariables = {}, playerOverrides = {}) {
     return {
@@ -15,7 +19,6 @@ function payload(customVariables = {}, playerOverrides = {}) {
             y: 400,
             hp: 80,
             abilities: [],
-            abilityCooldowns: {},
             customVariables,
             ...playerOverrides,
         },
@@ -133,6 +136,6 @@ test("the first matching sibling prevents an ALWAYS fallback from overwriting it
         ] }],
     });
 
-    assert.equal(selectAbilityStrategyActionPlan(normalized, payload({}, { abilities: [1], abilityCooldowns: { 1: 500 } })).customVariables[variable.id], true);
+    assert.equal(selectAbilityStrategyActionPlan(normalized, payload({}, { abilities: [1], abilityState: { 1: { stage: "cooldown", remainingMs: 500 } } })).customVariables[variable.id], true);
     assert.equal(selectAbilityStrategyActionPlan(normalized, payload({}, { abilities: [1] })).customVariables[variable.id], false);
 });

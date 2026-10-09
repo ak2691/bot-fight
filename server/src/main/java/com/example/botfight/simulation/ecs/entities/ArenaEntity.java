@@ -38,7 +38,11 @@ public record ArenaEntity(
         int eventSequence,
         String eventType,
         Map<String, EventScheduleState> eventScheduleState,
-        String eventPhaseId) {
+        String eventPhaseId,
+        String entityKey,
+        boolean bindToCast,
+        double patternAngle,
+        double patternLateral) {
 
     public ArenaEntity {
         hitLedger = hitLedger == null ? Map.of() : Map.copyOf(hitLedger);
@@ -46,6 +50,26 @@ public record ArenaEntity(
         eventScheduleState = eventScheduleState == null ? Map.of() : Map.copyOf(eventScheduleState);
         ageMs = Math.max(0, ageMs);
         eventSequence = Math.max(0, eventSequence);
+    }
+
+    /** The former canonical shape: an entity with no entity key, no cast binding and no spawn pattern. */
+    public ArenaEntity(String id, String type, int ownerSlot, double x, double y, int size,
+                       double velocityX, double velocityY, double traveled, int timerMs,
+                       boolean armed, int hp, double damageMultiplier,
+                       Integer abilityId, int intervalTimerMs, int phaseTimerMs, int ageMs,
+                       double tickStartHp, double damageTakenThisTick,
+                       double damageTakenLastTick, double hpNetChangeLastTick,
+                       double rotation, Map<Integer, Integer> hitLedger,
+                       String phaseId, boolean phaseLocked, List<EntityStatus> statusEffects,
+                       int eventSequence, String eventType,
+                       Map<String, EventScheduleState> eventScheduleState,
+                       String eventPhaseId) {
+        this(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs,
+                armed, hp, damageMultiplier, abilityId, intervalTimerMs, phaseTimerMs,
+                ageMs, tickStartHp, damageTakenThisTick, damageTakenLastTick,
+                hpNetChangeLastTick, rotation, hitLedger, phaseId, phaseLocked,
+                statusEffects, eventSequence, eventType, eventScheduleState, eventPhaseId,
+                null, false, 0, 0);
     }
 
     /** Source-compatible full constructor without the event's source phase. */
@@ -219,6 +243,14 @@ public record ArenaEntity(
                 hpNetChangeLastTick, x, y, velocityX, velocityY, rotation);
     }
 
+    public ArenaEntity withIntervalTimerMs(int nextIntervalTimerMs) {
+        return new ArenaEntity(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs,
+                armed, hp, damageMultiplier, abilityId, nextIntervalTimerMs, phaseTimerMs, ageMs,
+                tickStartHp, damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick, rotation,
+                hitLedger, phaseId, phaseLocked, statusEffects, eventSequence, eventType,
+                eventScheduleState, eventPhaseId, entityKey, bindToCast, patternAngle, patternLateral);
+    }
+
     public ArenaEntity withHp(int nextHp) {
         return copy(hitLedger, phaseId, phaseLocked, statusEffects, eventSequence, eventType, eventPhaseId,
                 ageMs, Math.max(0, nextHp), damageTakenThisTick, damageTakenLastTick,
@@ -276,7 +308,8 @@ public record ArenaEntity(
                 intervalTimerMs, phaseTimerMs, ageMs,
                 tickStartHp, damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick,
                 rotation, hitLedger, phaseId, phaseLocked, statusEffects, eventSequence,
-                eventType, nextEventScheduleState, eventPhaseId);
+                eventType, nextEventScheduleState, eventPhaseId, entityKey, bindToCast, patternAngle,
+                patternLateral);
     }
 
     public ArenaEntity withPosition(double nextX, double nextY,
@@ -300,7 +333,7 @@ public record ArenaEntity(
                 tickStartHp, nextDamageTakenThisTick, nextDamageTakenLastTick,
                 nextHpNetChangeLastTick, nextRotation, nextHitLedger, nextPhaseId,
                 nextPhaseLocked, nextStatusEffects, nextEventSequence, nextEventType,
-                eventScheduleState, nextEventPhaseId);
+                eventScheduleState, nextEventPhaseId, entityKey, bindToCast, patternAngle, patternLateral);
     }
 
     private ArenaEntity withTickStartHp(double nextTickStartHp) {
@@ -309,7 +342,26 @@ public record ArenaEntity(
                 intervalTimerMs, phaseTimerMs, ageMs, nextTickStartHp,
                 damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick,
                 rotation, hitLedger, phaseId, phaseLocked, statusEffects,
-                eventSequence, eventType, eventScheduleState, eventPhaseId);
+                eventSequence, eventType, eventScheduleState, eventPhaseId, entityKey, bindToCast,
+                patternAngle, patternLateral);
+    }
+
+    /** Names which entity of its ability this is, whether it ends with its cast, and its spawn placement. */
+    public ArenaEntity withBinding(String nextEntityKey, boolean nextBindToCast, double nextPatternAngle,
+                                   double nextPatternLateral) {
+        return new ArenaEntity(id, type, ownerSlot, x, y, size, velocityX, velocityY, traveled, timerMs,
+                armed, hp, damageMultiplier, abilityId, intervalTimerMs, phaseTimerMs, ageMs, tickStartHp,
+                damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick, rotation, hitLedger, phaseId,
+                phaseLocked, statusEffects, eventSequence, eventType, eventScheduleState, eventPhaseId,
+                nextEntityKey, nextBindToCast, nextPatternAngle, nextPatternLateral);
+    }
+
+    /** Moves the entity to a pose, keeping everything else. */
+    public ArenaEntity withPose(double nextX, double nextY, double nextVelocityX, double nextVelocityY,
+                                double nextRotation) {
+        return copy(hitLedger, phaseId, phaseLocked, statusEffects, eventSequence, eventType, eventPhaseId,
+                ageMs, hp, damageTakenThisTick, damageTakenLastTick, hpNetChangeLastTick,
+                nextX, nextY, nextVelocityX, nextVelocityY, nextRotation);
     }
 
     public record EntityStatus(String type, int remainingMs, int intervalMs,

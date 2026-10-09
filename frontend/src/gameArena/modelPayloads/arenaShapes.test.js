@@ -1,8 +1,10 @@
+import { createBotState } from "./botState.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAutoPlayStartShapes, buildInitialArenaShapes, buildMatchSpawnShapes, toSimulationBotShape } from "./arenaShapes.js";
+import { buildAutoPlayStartShapes, buildInitialArenaShapes, buildMatchSpawnShapes } from "./arenaShapes.js";
 import { PRACTICE_OPPONENT_START, PRACTICE_PLAYER_START } from "./arenaConstants.js";
 import { buildTutorialArenaShapes } from "../../tutorial/TutorialPresets.js";
+import { abilityRecord } from "../gameconfig/AbilityState.js";
 
 test("resuming autoplay preserves arena entities", () => {
     const shapes = [
@@ -18,17 +20,23 @@ test("resuming autoplay preserves arena entities", () => {
     assert.notEqual(resumed[1], shapes[1]);
 });
 
-test("bot arena shapes group health, stats, transform, and statuses", () => {
+test("bots are one flat state with every field present and an explicit kind", () => {
     const [player, opponent] = buildInitialArenaShapes(null);
 
-    assert.deepEqual(player.health, { current: 300, max: 300 });
-    assert.deepEqual(player.transform.position, { x: 600, y: 600 });
-    assert.deepEqual(player.transform.velocity, { x: 0, y: 0 });
+    assert.equal(player.kind, "bot");
+    assert.equal(opponent.kind, "bot");
+    assert.equal(player.hp, 300);
+    assert.equal(player.maxHp, 300);
+    assert.deepEqual([player.x, player.y], [600, 600]);
+    assert.deepEqual([player.velocityX, player.velocityY], [0, 0]);
     assert.deepEqual(player.statusEffects, []);
-    assert.equal(player.hp, undefined);
-    assert.equal(player.x, undefined);
-    assert.equal(opponent.health.current, 300);
-    assert.deepEqual(opponent.transform.position, { x: 600, y: 1050 });
+    assert.equal(opponent.hp, 300);
+    assert.deepEqual([opponent.x, opponent.y], [600, 1050]);
+    for (const nested of ["health", "stats", "transform"]) {
+        assert.equal(nested in player, false, `${nested} is not a bot field`);
+    }
+    assert.deepEqual(Object.keys(player), Object.keys(opponent), "every bot has the same fields in the same order");
+    assert.deepEqual(Object.keys(player), Object.keys(createBotState({})));
 });
 
 test("practice defaults use the game-facing bottom player and top opponent slots", () => {
@@ -38,9 +46,9 @@ test("practice defaults use the game-facing bottom player and top opponent slots
 
 test("tutorial reset includes the standard ability without Block charges", () => {
     const [player] = buildTutorialArenaShapes("first-steps");
-    const shape = toSimulationBotShape(player);
+    const shape = player;
     assert.deepEqual(shape.abilities, [19]);
-    assert.equal(shape.abilityCharges[2], undefined);
+    assert.equal(abilityRecord(shape, 2)?.charges, undefined);
 });
 
 test("match spawn shapes assign stable slots and spread each team across its row", () => {
@@ -54,7 +62,7 @@ test("match spawn shapes assign stable slots and spread each team across its row
             { userId: "user-3", username: "Three", slot: 3, teamNumber: 2, selectedLoadout: "melee" },
             { userId: "user-4", username: "Four", slot: 4, teamNumber: 2, selectedLoadout: "melee" },
         ],
-    }).map(toSimulationBotShape);
+    });
 
     assert.deepEqual(shapes.map((shape) => [shape.id, shape.slot, shape.teamNumber]), [
         ["main", 1, 1],
@@ -88,13 +96,13 @@ test("match spawn shapes start from the frozen end of the last segment when the 
                 { slot: 2, x: 700, y: 650, rotation: 200, hp: 80, stamina: 0 },
             ],
         },
-    }).map(toSimulationBotShape);
+    });
     assert.deepEqual(shapes.map((shape) => [shape.x, shape.y, shape.rotation, shape.hp, shape.stamina]), [
         [500, 600, 45, 120, 40],
         [700, 650, 200, 80, 0],
     ]);
     assert.equal(shapes[1].locked, true, "the opponent is a stationary dummy");
 
-    const fresh = buildMatchSpawnShapes({ matchId: "m", player: players[0], loadout: "melee", players }).map(toSimulationBotShape);
+    const fresh = buildMatchSpawnShapes({ matchId: "m", player: players[0], loadout: "melee", players });
     assert.equal(fresh[0].hp, 300);
 });

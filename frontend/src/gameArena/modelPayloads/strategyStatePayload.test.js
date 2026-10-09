@@ -1,13 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildStatePayload, createStatePayloadFactory } from "./strategyStatePayload.js";
+import { buildStatePayload as buildStatePayloadFromBots, createStatePayloadFactory as createFactoryFromBots, setPayloadFreezing } from "./strategyStatePayload.js";
+import { asBots } from "../testing/botFixtures.js";
 import { stateFromPayload } from "../botlogic/code/runtime/runtimeState.js";
 import { statusEffectFor, statusIsActive } from "../ecs/contracts/StatusContracts.js";
 import { SELECTABLE_IDENTITIES } from "./selectableIdentities.js";
-import { buildDeterministicLogicAction } from "../botlogic/planner/ArenaActionPlanner.js";
-import { applyBotAction } from "../ecs/bots/ActionExecutionSystem.js";
-import { applyDamageToShape } from "../gameconfig/BotCombatSystem.js";
-import { toSimulationBotShape } from "./arenaShapes.js";
+import { buildDeterministicLogicAction as buildDeterministicLogicActionNormalized } from "../botlogic/planner/ArenaActionPlanner.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../botlogic/code/BotCode.js";
+import { applyBotAction } from "../testing/pureTicks.js";
+
+setPayloadFreezing(true);
+
+const buildStatePayload = (shapes, ...rest) => buildStatePayloadFromBots(asBots(shapes), ...rest);
+const createStatePayloadFactory = (shapes) => createFactoryFromBots(asBots(shapes));
+
+// The engine takes normalized brains; tests pass raw ones, so normalize here like the edge does.
+const buildDeterministicLogicAction = (configuration, ...rest) => buildDeterministicLogicActionNormalized(normalizeBrainForTick(configuration), ...rest);
 
 test("bot payloads group health, stats, transform, and active statuses", () => {
     const payload = buildStatePayload([
@@ -34,7 +42,7 @@ test("bot payloads group health, stats, transform, and active statuses", () => {
                 { type: "burn", remainingMs: 2500, tickMs: 1000, effects: [{ type: "damage", mode: "tick", amount: 2 }] },
             ],
             abilities: [5],
-            abilityCooldowns: { 5: 3200 },
+            abilityState: { 5: { stage: "cooldown", remainingMs: 3200 } },
         },
         {
             id: "opponent-model",
@@ -120,14 +128,13 @@ test("one immutable tick snapshot matches per-actor payloads, actions, and previ
         hp: 75 + index,
         maxHp: 100,
         abilities: [5, 13],
-        abilityCooldowns: { 5: 1_000 + index, 13: 500 },
-        abilityCharges: { 5: 1 },
         statusEffects: [{
             type: "slow",
             remainingMs: 700 + index,
             effects: [{ type: "movement_modifier", mode: "constant", movementMultiplier: .8 }],
         }],
-    }));
+        abilityState: { 5: { stage: "cooldown", remainingMs: 1_000 + index, charges: 1 }, 13: { stage: "cooldown", remainingMs: 500 } },
+}));
     const entities = Array.from({ length: 128 }, (_, index) => ({
         id: `entity-${index}`,
         type: index % 2 === 0 ? "proximityMine" : "fireball",
@@ -143,8 +150,8 @@ test("one immutable tick snapshot matches per-actor payloads, actions, and previ
         ageMs: index * 7,
         armed: index % 2 === 0,
         fuseMs: 900,
-        abilityCooldowns: { 5: 900 },
         statusEffects: [],
+        abilityState: { 5: { stage: "cooldown", remainingMs: 900 } },
     }));
     const shapes = [...bots, ...entities];
     const payloadFactory = createStatePayloadFactory(shapes);
@@ -168,9 +175,9 @@ test("one immutable tick snapshot matches per-actor payloads, actions, and previ
         const referenceAction = buildDeterministicLogicAction(configuration, referencePayload);
         assert.deepEqual(optimizedAction, referenceAction, `action for ${bot.id}`);
 
-        const inputShape = toSimulationBotShape(bot);
-        const optimizedState = applyBotAction({ ...inputShape }, optimizedAction, 100, applyDamageToShape);
-        const referenceState = applyBotAction({ ...inputShape }, referenceAction, 100, applyDamageToShape);
+        const inputShape = bot;
+        const optimizedState = applyBotAction({ ...inputShape }, optimizedAction, 100);
+        const referenceState = applyBotAction({ ...inputShape }, referenceAction, 100);
         assert.deepEqual(optimizedState, referenceState, `preview state for ${bot.id}`);
     }
 

@@ -67,8 +67,9 @@ class AbilitiesTest {
     }
 
     @Test
-    void fixedResourceModelIsReservedForActiveChargePools() {
-        assertThat(Abilities.ResourceModel.values()).contains(Abilities.ResourceModel.FIXED);
+    void onlyReloadResourceModelRemains() {
+        assertThat(Abilities.ResourceModel.values())
+                .containsExactly(Abilities.ResourceModel.NONE, Abilities.ResourceModel.RELOAD_WHEN_EMPTY);
         assertThat(Abilities.definition(16).resourceModel()).isEqualTo(Abilities.ResourceModel.NONE);
         assertThat(Abilities.definition(17).resourceModel()).isEqualTo(Abilities.ResourceModel.NONE);
     }
@@ -179,9 +180,9 @@ class AbilitiesTest {
     }
 
     @Test
-    void dashHasNoFixedCooldownAndItsActiveWindowIsUnchanged() {
-        // Dash costs stamina and waits out a gap (MovementConfig) instead of a cooldown.
-        assertThat(Abilities.cooldownMs(19)).isZero();
+    void dashRecoversForOneHundredMillisecondsAfterItsActiveWindow() {
+        // Dash costs stamina (ability data), then 200 ms active and a 100 ms cooldown: a 300 ms gap from its start.
+        assertThat(Abilities.cooldownMs(19)).isEqualTo(100);
         assertThat(Abilities.definition(19).activeMs()).isEqualTo(200);
     }
 

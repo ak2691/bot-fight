@@ -4,13 +4,14 @@ import static com.example.botfight.simulation.geometry.AngleCalculator.vectorBea
 
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Action;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Arena;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
+import com.example.botfight.simulation.core.orchestration.Bot;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Entity;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.StrategyBlock;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Vector;
 import com.example.botfight.simulation.bots.BotLogicContracts;
 import com.example.botfight.simulation.core.logic.ConditionResolutionService;
 import com.example.botfight.simulation.core.logic.CustomVariableActionService;
+import com.example.botfight.simulation.core.state.AbilityState;
 import com.example.botfight.simulation.core.state.BotMovementService;
 import com.example.botfight.simulation.core.state.BotStateService;
 import com.example.botfight.simulation.core.state.StaminaSystem;
@@ -19,9 +20,13 @@ import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import com.example.botfight.simulation.ecs.entities.AbilityEntityFactory;
 import com.example.botfight.simulation.ecs.entities.ArenaBounds;
 import com.example.botfight.simulation.ecs.entities.ArenaEntity;
+import com.example.botfight.simulation.gameconfig.AbilityChannels;
 import com.example.botfight.simulation.gameconfig.Abilities;
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts.EffectType;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -67,23 +72,21 @@ public class ActionExecutionService {
     private boolean selectedAbilityReady(Bot bot, AbilityExecutionPayload payload) {
         if (payload == null || bot == null || !hasAbility(bot, payload.abilityId()))
             return false;
-        // Dash ignores the ability lock, so another ability's wind-up never stops it from starting.
-        if (!payload.activation().ignoresGlobalAbilityLock() && bot.preparingAbility != null && bot.preparingMs > 0)
+        String channel = AbilityChannels.channel(payload.abilityId());
+        // A wind-up in this ability's channel (its own included) stops it from starting; other channels never do.
+        if (AbilityState.channelWindingUp(bot, channel))
             return false;
-        if (bot.abilityActiveMs.getOrDefault(payload.abilityId(), 0) > 0)
+        if (AbilityState.activeRemainingMs(bot, payload.abilityId()) > 0)
             return false;
-        if ("slow".equals(phaseBlockedByStatus(payload))
-                && BotStateService.statusActive(bot, "slow"))
+        // A status that blocks the channel and reports it not ready (slow, for the dash channel).
+        if (AbilityChannels.notReadyStatuses(channel).stream().anyMatch(status -> BotStateService.statusActive(bot, status)))
             return false;
         if (!StaminaSystem.abilityStaminaReady(bot, payload.abilityId()))
             return false;
         var definition = payload.definition();
-        boolean fixedResourceInactive = definition.resourceModel() == Abilities.ResourceModel.FIXED
-                && bot.abilityActiveMs.getOrDefault(payload.abilityId(), 0) <= 0;
         return selectedAbilityCooldownMs(bot, payload.abilityId()) <= 0
-                && !anotherAbilityActive(bot, payload.abilityId(),
-                        payload.activation().ignoresGlobalAbilityLock())
-                && (definition.charges() <= 0 || fixedResourceInactive
+                && !anotherAbilityActive(bot, payload.abilityId())
+                && (definition.charges() <= 0
                         || botStateService.abilityCharges(bot, payload.abilityId()) > 0)
                 && !(definition.resourceModel() == Abilities.ResourceModel.RELOAD_WHEN_EMPTY
                         && botStateService.abilityRechargeMs(bot, payload.abilityId()) > 0);
@@ -101,31 +104,30 @@ public class ActionExecutionService {
     private boolean selectedAbilityExecutable(Bot bot, AbilityExecutionPayload payload) {
         if (payload == null || bot == null || !hasAbility(bot, payload.abilityId()))
             return false;
-        boolean continuingPreparation = Integer.valueOf(payload.abilityId()).equals(bot.preparingAbility)
-                && bot.preparingMs > 0;
+        boolean continuingPreparation = AbilityState.windupRemainingMs(bot, payload.abilityId()) > 0;
         return continuingPreparation || selectedAbilityReady(bot, payload);
     }
 
+    /** The longest of the ability's cooldown, its reload and the time to afford its stamina cost. */
     public int selectedAbilityCooldownMs(Bot bot, int ability) {
         if (bot == null || !hasAbility(bot, ability))
             return 0;
-        if (windingUpBlocks(bot, ability) || bot.abilityActiveMs.getOrDefault(ability, 0) > 0)
+        if (windingUpBlocks(bot, ability) || AbilityState.activeRemainingMs(bot, ability) > 0)
             return 0;
-        return Math.max(Math.max(bot.abilityCooldowns.getOrDefault(ability, 0),
+        return Math.max(Math.max(AbilityState.cooldownRemainingMs(bot, ability),
                 botStateService.abilityRechargeMs(bot, ability)),
-                // Dash waits on its gap and on having enough stamina instead of a fixed cooldown.
-                ability == MovementConfig.DASH_ABILITY_ID ? StaminaSystem.dashWaitMs(bot) : 0);
+                StaminaSystem.staminaWaitMs(bot, ability));
     }
 
-    /** A wind-up hides an ability's cooldown readout, except for Dash, which a wind-up never blocks. */
+    /** A wind-up in the ability's own channel hides its cooldown readout; another channel's wind-up never does. */
     private static boolean windingUpBlocks(Bot bot, int ability) {
-        return bot.preparingMs > 0 && !AbilityContracts.activationFor(ability).ignoresGlobalAbilityLock();
+        return AbilityState.channelWindingUp(bot, AbilityChannels.channel(ability));
     }
 
     public boolean selectedAbilityOnCooldown(Bot bot, int ability) {
         return bot != null && hasAbility(bot, ability)
                 && !windingUpBlocks(bot, ability)
-                && bot.abilityActiveMs.getOrDefault(ability, 0) <= 0
+                && AbilityState.activeRemainingMs(bot, ability) <= 0
                 && selectedAbilityCooldownMs(bot, ability) > 0;
     }
 
@@ -140,7 +142,7 @@ public class ActionExecutionService {
     public int selectedAbilityActiveMs(Bot bot, int ability) {
         return bot == null || !hasAbility(bot, ability)
                 ? 0
-                : bot.abilityActiveMs.getOrDefault(ability, 0);
+                : AbilityState.activeRemainingMs(bot, ability);
     }
 
     /** Milliseconds since the ability last hit an enemy bot; {@link BotStateService#NEVER_HIT_MS} if it never has. */
@@ -211,7 +213,15 @@ public class ActionExecutionService {
         boolean hitStaggerWasActive = BotStateService.statusActive(bot, "hit-stagger");
         boolean stunnedWasActive = BotStateService.statusActive(bot, "stun");
         boolean silencedWasActive = BotStateService.statusActive(bot, "silence");
-        Integer justActivatedAbilityId = null;
+        // Every ability that activates this step keeps its stages for the step.
+        Set<Integer> justActivatedAbilityIds = new LinkedHashSet<>();
+        // The statuses that block any channel, as they were when the tick started.
+        Set<String> blockingAtStart = new HashSet<>();
+        for (String channel : List.of(AbilityChannels.ABILITY, AbilityChannels.DASH)) {
+            for (String status : AbilityChannels.blockingStatuses(channel)) {
+                if (BotStateService.statusActive(bot, status)) blockingAtStart.add(status);
+            }
+        }
 
         if (stunnedWasActive) {
             movementService.applyTickMovement(bot, action, arena, false,
@@ -224,7 +234,7 @@ public class ActionExecutionService {
 
         // A wind-up is locked once started, so Cancel Wind-up is handled before the locked
         // continuation. It only works while preparing with enough stamina; otherwise it does nothing.
-        boolean preparationLocked = bot.preparingAbility != null && bot.preparingMs > 0 && !silencedWasActive;
+        boolean preparationLocked = AbilityState.isWindingUp(bot) && !silencedWasActive;
         boolean cancelsWindup = preparationLocked && action.cancelWindup()
                 && StaminaSystem.canCancelWindup(bot);
         if (cancelsWindup) {
@@ -233,10 +243,8 @@ public class ActionExecutionService {
         }
 
         AbilityExecutionPayload payload = cancelsWindup ? null : selectedAbilityPayload(bot, action);
-        boolean blockedByStatus = payload != null
-                && (silencedWasActive
-                        || ("slow".equals(phaseBlockedByStatus(payload))
-                                && slowedWasActive));
+        // The ability's channel decides which statuses stop it: silence stops the ability channel, slow the dash.
+        boolean blockedByStatus = payload != null && channelBlockedBy(payload.abilityId(), blockingAtStart);
         boolean blockedByAbilityState = payload != null
                 && !blockedByStatus
                 && !selectedAbilityExecutable(bot, payload);
@@ -262,38 +270,36 @@ public class ActionExecutionService {
         boolean abilityTriggered = false;
         if (blockedByStatus || blockedByAbilityState) {
             cancelPreparation(bot, payload);
-        } else if (payload != null && !BotStateService.statusActive(bot, "silence")) {
+        } else if (payload != null && !channelBlockedNow(bot, payload.abilityId())) {
             AbilityExecutionPayload activated = activateAbility(bot, payload, arena, stamina);
             if (activated != null) {
                 setTriggeredPayload(bot, activated);
-                justActivatedAbilityId = activated.abilityId();
+                justActivatedAbilityIds.add(activated.abilityId());
                 abilityTriggered = true;
             }
-        } else if (payload != null
-                && bot.preparingAbility != null
-                && (BotStateService.statusActive(bot, "silence") || BotStateService.statusActive(bot, "stun"))) {
+        } else if (payload != null && AbilityState.isWindingUp(bot)) {
             cancelPreparation(bot, payload);
         }
 
-        // Dash is its own channel: it starts after the ability (so it never changes where that ability was
-        // captured), a wind-up in progress does not stop it, and silence does not either. Slow still does
-        // (the dash's movement is blocked by it), and stun returned above. When the ability also started this
+        // Channels are independent: the dash channel starts after the ability (so it never changes where that
+        // ability was captured), a wind-up in progress does not stop it, and silence does not either. Slow
+        // still does (its blocking statuses), and stun returned above. When the ability also started this
         // tick it keeps the trigger so its hit resolves; the dash still counts as an activation.
         AbilityExecutionPayload dashPayload = AbilityExecutionPayload.dashChannel(action);
-        if (dashPayload != null
-                && !("slow".equals(phaseBlockedByStatus(dashPayload)) && slowedWasActive)) {
+        if (dashPayload != null && !channelBlockedBy(dashPayload.abilityId(), blockingAtStart)) {
             AbilityExecutionPayload dashed = activateAbility(bot, dashPayload, arena, stamina);
             if (dashed != null) {
                 if (abilityTriggered) bot.activationSerial++;
                 else setTriggeredPayload(bot, dashed);
-                if (justActivatedAbilityId == null) justActivatedAbilityId = dashed.abilityId();
+                justActivatedAbilityIds.add(dashed.abilityId());
             }
         }
 
         stamina.finish(bot);
-        botStateService.beginTick(bot, justActivatedAbilityId);
+        botStateService.beginTick(bot, justActivatedAbilityIds);
         if (bot.triggeredAbilityPayload != null) {
-            spawnAbilityEntity(bot, bot.triggeredAbilityPayload, arena);
+            bot.abilitySpawn = new java.util.ArrayList<>();
+            spawnAbilityEntities(bot, bot.triggeredAbilityPayload, arena);
         }
     }
 
@@ -301,29 +307,18 @@ public class ActionExecutionService {
         abilityEffectService.resolveTriggeredAbility(attacker, defender, arena);
     }
 
-    private static String phaseBlockedByStatus(AbilityExecutionPayload payload) {
-        if (payload == null) return null;
-        return payload.phases().stream()
-                .map(AbilityContracts.AbilityPhase::movement)
-                .filter(movement -> movement != null && movement.blockedByStatus() != null)
-                .map(AbilityContracts.PhaseMovement::blockedByStatus)
-                .findFirst()
-                .orElse(null);
+    /** True when one of the ability channel's blocking statuses is in {@code active}. */
+    private static boolean channelBlockedBy(int abilityId, Set<String> active) {
+        return AbilityChannels.blockingStatuses(AbilityChannels.channel(abilityId)).stream().anyMatch(active::contains);
+    }
+
+    private static boolean channelBlockedNow(Bot bot, int abilityId) {
+        return AbilityChannels.blockingStatuses(AbilityChannels.channel(abilityId)).stream()
+                .anyMatch(status -> BotStateService.statusActive(bot, status));
     }
 
     public void resolveTriggeredAbilities(Bot attacker, List<Bot> bots, Arena arena) {
         abilityEffectService.resolveTriggeredAbilities(attacker, bots, arena);
-    }
-
-    /** Keeps persistent-entity status impacts on the same path as direct abilities. */
-    public void applyEntityStatus(Bot attacker, Bot defender, int abilityId,
-                                  AbilityContracts.Effect effect) {
-        abilityEffectService.applyStatusEffect(attacker, defender, abilityId, effect);
-    }
-
-    public int damageToEntityThisTick(ArenaEntity entity, List<Bot> bots,
-            List<ArenaEntity> entities) {
-        return entityCombatService.damageToEntityThisTick(entity, bots, entities);
     }
 
     public ArenaEntity applyEffectsToEntity(ArenaEntity entity, List<Bot> bots,
@@ -337,10 +332,11 @@ public class ActionExecutionService {
     }
 
     private AbilityExecutionPayload selectedAbilityPayload(Bot bot, Action action) {
-        if (bot.preparingAbility != null && bot.preparingMs > 0
-                && !BotStateService.statusActive(bot, "silence")) {
-            return AbilityExecutionPayload.forAbility(bot.preparingAbility)
-                    .withPreparationTarget(bot.preparingTargetX, bot.preparingTargetY);
+        Integer preparing = AbilityState.preparingAbilityId(bot);
+        if (preparing != null && !channelBlockedNow(bot, preparing)) {
+            AbilityState.Record record = AbilityState.record(bot, preparing);
+            return AbilityExecutionPayload.forAbility(preparing)
+                    .withPreparationTarget(record.targetX, record.targetY);
         }
         return AbilityExecutionPayload.abilityChannel(action);
     }
@@ -358,55 +354,66 @@ public class ActionExecutionService {
             return null;
         int windup = payload.definition().windupMs();
         if (windup > 0) {
-            boolean continuingPreparation = Integer.valueOf(payload.abilityId()).equals(bot.preparingAbility);
-            // Store the countdown value exposed to bot logic and replay. The
+            boolean continuingPreparation = AbilityState.windupRemainingMs(bot, payload.abilityId()) > 0;
+            // The windup record's remainingMs is the countdown exposed to bot logic and replay. The
             // current fixed step is consumed before checking activation.
-            bot.preparingMs = continuingPreparation
-                    ? Math.max(0, bot.preparingMs - STEP_MS)
+            int remainingMs = continuingPreparation
+                    ? Math.max(0, AbilityState.windupRemainingMs(bot, payload.abilityId()) - STEP_MS)
                     : Math.max(0, windup - STEP_MS);
+            AbilityState.Record record = AbilityState.ensure(bot, payload.abilityId());
             if (!continuingPreparation) {
-                bot.preparingTargetX = payload.targetX();
-                bot.preparingTargetY = payload.targetY();
+                record.targetX = payload.targetX();
+                record.targetY = payload.targetY();
             }
-            bot.preparingAbility = payload.abilityId();
-            if (bot.preparingMs > 0)
+            record.stage = AbilityState.Stage.WINDUP;
+            record.remainingMs = remainingMs;
+            record.cooldownMs = 0;
+            if (remainingMs > 0)
                 return null;
         }
         // Only an ability's own wind-up ends here; a dash starting beside another ability's wind-up leaves it be.
-        if (Integer.valueOf(payload.abilityId()).equals(bot.preparingAbility)) cancelPreparation(bot);
-        botStateService.startAbilityResource(bot, payload.abilityId());
-        if (payload.definition().charges() > 0
-                && payload.definition().resourceModel() != Abilities.ResourceModel.FIXED
-                && payload.definition().resourceModel() != Abilities.ResourceModel.HP) {
+        if (AbilityState.stage(bot, payload.abilityId()) == AbilityState.Stage.WINDUP) {
+            AbilityState.ready(bot, payload.abilityId());
+        }
+        if (payload.definition().charges() > 0) {
             botStateService.consumeAbilityCharge(bot, payload.abilityId());
         }
         int activeMs = activationActiveMs(payload);
         int cooldownMs = activationCooldownMs(bot, payload, 1.0 / bot.attackSpeedMultiplier);
-        bot.abilityActiveMs.put(payload.abilityId(), activeMs);
+        BotStateService.startAbilityActive(bot, payload.abilityId(), activeMs);
         botStateService.setAbilityCooldown(bot, payload.abilityId(), cooldownMs);
-        // Dash pays stamina and starts its gap instead of a cooldown.
-        if (payload.abilityId() == MovementConfig.DASH_ABILITY_ID) stamina.spendDash();
-        AbilityExecutionPayload activated = payload.capture(bot);
-        AbilityContracts.AbilityPhase phase = activated.phases().isEmpty()
-                ? null : activated.phases().getFirst();
-        AbilityContracts.PhaseEvent activationEvent = phase == null ? null
-                : phase.events().get(AbilityContracts.PhaseEventType.ACTIVATION);
-        List<AbilityContracts.PhaseAction> actions = activationEvent == null
-                ? List.of() : activationEvent.actions();
-        if (actions.contains(AbilityContracts.PhaseAction.START_ORIENTATION)
-                && phase.orientation() != null
-                && "faceTarget".equals(phase.orientation().mode())
-                && "activationTarget".equals(phase.orientation().targetSource())
-                && Double.isFinite(activated.targetX()) && Double.isFinite(activated.targetY())) {
-            bot.rotation = vectorBearing(activated.targetX() - bot.x, activated.targetY() - bot.y);
-            activated = activated.capture(bot);
+        // An ability that declares a stamina cost (the dash channel) pays it on activation.
+        stamina.spendForAbility(payload.abilityId());
+        // The act-stage verbs: the owner faces its target (and the pose is captured again), then moves.
+        ActHost host = new ActHost(bot, payload.capture(bot), arena);
+        AbilityVerbs.run(payload.verbs(), AbilityVerbs.Stage.ACT, host);
+        return host.activated;
+    }
+
+    /** Where the act-stage verbs run: the owner bot as the tick starts its ability. */
+    private final class ActHost implements AbilityVerbs.Host {
+        private final Bot bot;
+        private final Arena arena;
+        AbilityExecutionPayload activated;
+
+        ActHost(Bot bot, AbilityExecutionPayload activated, Arena arena) {
+            this.bot = bot;
+            this.activated = activated;
+            this.arena = arena;
         }
-        if (actions.contains(AbilityContracts.PhaseAction.START_MOVEMENT)
-                && phase.movement() != null && phase.movement().distance() != null
-                && bot.dashRemaining <= 0) {
-            movementService.startDash(bot, activated, arena);
+
+        @Override
+        public void face(AbilityContracts.FaceVerb verb) {
+            if (Double.isFinite(activated.targetX()) && Double.isFinite(activated.targetY())) {
+                bot.rotation = vectorBearing(activated.targetX() - bot.x, activated.targetY() - bot.y);
+                activated = activated.capture(bot);
+            }
         }
-        return activated;
+
+        @Override
+        public void move(AbilityContracts.MoveVerb verb) {
+            if (bot.dashRemaining <= 0) movementService.startDash(bot, activated, arena, verb);
+        }
     }
 
     /**
@@ -429,8 +436,7 @@ public class ActionExecutionService {
         // Defensive effects and Overclock own their duration as statuses, not
         // as post-activation action locks. Other short-lived combat visuals
         // retain their explicit active fallback.
-        boolean hasPhaseStatus = payload.phases().stream()
-                .flatMap(phase -> phase.effects().stream())
+        boolean hasPhaseStatus = payload.contract().triggerEffects().stream()
                 .anyMatch(effect -> effect.type() == EffectType.DAMAGE_REDUCTION
                 || effect.type() == EffectType.DAMAGE_IMMUNITY
                 || effect.type() == EffectType.DAMAGE_REFLECTION
@@ -449,42 +455,37 @@ public class ActionExecutionService {
         return AbilityContracts.entityContractForAbility(payload.abilityId()) != null;
     }
 
-    private static void spawnAbilityEntity(Bot bot, AbilityExecutionPayload payload, Arena arena) {
+    /** The spawn verbs create their entities from the bot's final pose, in verb order and pattern index order. */
+    private static void spawnAbilityEntities(Bot bot, AbilityExecutionPayload payload, Arena arena) {
         if (arena == null || !spawnsEntity(payload))
             return;
-        AbilityContracts.AbilityContract entityContract = AbilityContracts.entityContractForAbility(payload.abilityId());
-        AbilityContracts.AbilityPhase firstPhase = entityContract == null || entityContract.phases().isEmpty()
-                ? null : entityContract.phases().getFirst();
-        String idPrefix = firstPhase != null
-                && firstPhase.type() == AbilityContracts.PhaseType.PROJECTILE
-                        ? entityContract.runtimeType()
-                        : "ability";
-        String entityId = idPrefix + "-" + bot.userId + "-" + bot.abilityEntitySerial++;
-        bot.entityActivations.put(entityId, bot.activationSerial);
-        bot.abilitySpawn = AbilityEntityFactory.create(
-                entityId,
-                payload.abilityId(),
-                bot.slot,
-                bot.x,
-                bot.y,
-                bot.size,
-                bot.rotation,
-                bot.attackDamageMultiplier,
-                payload.targetX(),
-                payload.targetY(),
-                arena.width(),
-                arena.height());
+        AbilityVerbs.run(payload.verbs(), new AbilityVerbs.Host() {
+            @Override
+            public void spawn(AbilityContracts.SpawnVerb verb) {
+                AbilityContracts.EntityContract entity = payload.contract().entities().get(verb.entity());
+                if (entity == null) return;
+                String idPrefix = !entity.phases().isEmpty()
+                        && entity.phases().getFirst().type() == AbilityContracts.PhaseType.PROJECTILE
+                                ? entity.runtimeType()
+                                : "ability";
+                for (AbilityEntityFactory.Placement placement : AbilityEntityFactory.placements(verb.pattern())) {
+                    String entityId = idPrefix + "-" + bot.userId + "-" + bot.abilityEntitySerial++;
+                    bot.entityActivations.put(entityId, bot.activationSerial);
+                    bot.abilitySpawn.add(AbilityEntityFactory.create(
+                            entityId, entity, bot.slot, bot.x, bot.y, bot.size, bot.rotation,
+                            bot.attackDamageMultiplier, payload.targetX(), payload.targetY(),
+                            arena.width(), arena.height(), placement));
+                }
+            }
+        });
     }
 
     private static void cancelPreparation(Bot bot) {
-        bot.preparingAbility = null;
-        bot.preparingMs = 0;
-        bot.preparingTargetX = Double.NaN;
-        bot.preparingTargetY = Double.NaN;
+        AbilityState.clearWindup(bot);
     }
 
     private static void cancelPreparation(Bot bot, AbilityExecutionPayload payload) {
-        if (payload != null && !Integer.valueOf(payload.abilityId()).equals(bot.preparingAbility))
+        if (payload != null && AbilityState.windupRemainingMs(bot, payload.abilityId()) <= 0)
             return;
         cancelPreparation(bot);
     }
@@ -493,17 +494,9 @@ public class ActionExecutionService {
         return bot.abilities.contains(ability);
     }
 
-    private static boolean anotherAbilityActive(Bot bot, int ability, boolean ignoresGlobalAbilityLock) {
-        if (ignoresGlobalAbilityLock)
-            return false;
-        if (bot.preparingAbility != null
-                && bot.preparingAbility != ability
-                && !AbilityContracts.activationFor(bot.preparingAbility).ignoresGlobalAbilityLock())
-            return true;
-        return bot.abilityActiveMs.entrySet().stream()
-                .anyMatch(entry -> entry.getKey() != ability
-                        && entry.getValue() > 0
-                        && !AbilityContracts.activationFor(entry.getKey()).ignoresGlobalAbilityLock());
+    /** True when another ability of the same channel is winding up or active. */
+    private static boolean anotherAbilityActive(Bot bot, int ability) {
+        return AbilityState.channelBusy(bot, AbilityChannels.channel(ability), ability);
     }
 
 }

@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { brainFromEditorRoots, editorRootsFor, wireNodes, canWireNodes, wireBlockReason, disconnectNode, removeRootKeepingChildren } from "./treeWiring.js";
-import { normalizeAbilityStrategyConfiguration, selectAbilityStrategyActionPlan } from "../botlogic/code/BotCode.js";
+import { normalizeAbilityStrategyConfiguration, selectAbilityStrategyActionPlan as selectAbilityStrategyActionPlanNormalized } from "../botlogic/code/BotCode.js";
 import { graphEdgePath } from "./graphEdgeGeometry.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../botlogic/code/BotCode.js";
+
+// The engine takes normalized brains; tests pass raw ones, so normalize here like the edge does.
+const selectAbilityStrategyActionPlan = (configuration, ...rest) => selectAbilityStrategyActionPlanNormalized(normalizeBrainForTick(configuration), ...rest);
 
 function fixture() {
     const brain = { roots: [{ id: "r", branches: [{ id: "b", conditions: [{ type: "always" }], actions: [], children: [{ id: "c", actions: [], conditions: [], children: [] }] }] }],

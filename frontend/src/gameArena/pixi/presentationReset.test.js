@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { MAIN_SHAPE, resetBotShapeToStartingConfiguration, toSimulationBotShape } from "../modelPayloads/arenaShapes.js";
+import { MAIN_SHAPE, resetBotShapeToStartingConfiguration } from "../modelPayloads/arenaShapes.js";
 import { createPreviewBaseline, restorePreviewBaseline } from "../modelPayloads/previewBaseline.js";
 import { createPresentationClock } from "./presentationClock.js";
 import { clearPresentationArtifacts, initialPresentationViewState } from "./presentationReset.js";
@@ -33,7 +33,7 @@ test("reset view state snaps visual bot position and rotation to the practice se
         rotation: 127,
     });
     const [restoredBot] = restorePreviewBaseline(createPreviewBaseline([resetBot]));
-    const visualBot = toSimulationBotShape(restoredBot);
+    const visualBot = restoredBot;
     const viewState = initialPresentationViewState(visualBot, 900);
 
     assert.equal(viewState.shape, visualBot);
@@ -48,24 +48,23 @@ test("reset view state snaps visual bot position and rotation to the practice se
     assert.equal(viewState.shape.rotation, 127);
 });
 
-test("reset clears entity views, standalone effects, particles, and lock-on markers", () => {
+test("reset clears entity views, standalone effects, and particles, and releases renderer state per view", () => {
     const botDisplay = fakeDisplay();
     const entityDisplay = fakeDisplay();
     const standaloneDisplay = fakeDisplay();
-    const markerDisplay = fakeDisplay();
     const particleDisplay = fakeDisplay();
     const views = new Map([["main", { container: botDisplay.display }], ["grenade", { container: entityDisplay.display }]]);
     const visualViews = new Map([["event:main:1", { container: standaloneDisplay.display }]]);
-    const lockOnMarkers = new Map([["main", { container: markerDisplay.display }]]);
+    const releasedViews = [];
     const particles = [{ display: particleDisplay.display, lifeMs: 300 }];
 
-    clearPresentationArtifacts({ views, visualViews, lockOnMarkers, particles });
+    clearPresentationArtifacts({ views, visualViews, particles, destroyView: (view) => releasedViews.push(view) });
 
     assert.equal(views.size, 0);
     assert.equal(visualViews.size, 0);
-    assert.equal(lockOnMarkers.size, 0);
+    assert.deepEqual(releasedViews.map((view) => view.container), [botDisplay.display, entityDisplay.display]);
     assert.deepEqual(particles, []);
-    for (const { display, parent } of [botDisplay, entityDisplay, standaloneDisplay, markerDisplay, particleDisplay]) {
+    for (const { display, parent } of [botDisplay, entityDisplay, standaloneDisplay, particleDisplay]) {
         assert.equal(display.destroyed, true);
         assert.deepEqual(parent.children, []);
     }
@@ -106,6 +105,6 @@ test("Reset Stats keeps autoplay state and requests an immediate Pixi presentati
     assert.doesNotMatch(resetAction, /stopAutoPlay\(/);
     assert.doesNotMatch(autoPlaySource, /buildTutorialArenaShapes|buildAutoPlayStartShapes/);
     assert.match(arenaSource, /presentationResetVersion=\{presentationResetVersion\}/);
-    assert.match(pixiSource, /useLayoutEffect\(\(\) => \{[\s\S]*runtimeRef\.current\?\.setPlaying\(isPlaying\);[\s\S]*if \(resetPresentation\) runtimeRef\.current\?\.resetPresentation\(presentationShapes\)/);
+    assert.match(pixiSource, /useLayoutEffect\(\(\) => \{[\s\S]*runtimeRef\.current\?\.setPlaying\(isPlaying\);[\s\S]*if \(resetPresentation\) runtimeRef\.current\?\.resetPresentation\(shapes\)/);
     assert.match(pixiSource, /function resetPresentation\(nextShapes\) \{[\s\S]*clearPresentationArtifacts\([\s\S]*syncShapes\(nextShapes, \{ snapPositions: true, suppressTransientPresentation: true \}\);[\s\S]*render\(presentationClock\.current\(\)\)/);
 });

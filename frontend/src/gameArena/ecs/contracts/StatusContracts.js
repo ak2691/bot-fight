@@ -15,7 +15,10 @@ const PRESENCE_MODE = "presence";
 const CONSTANT_MODE = "constant";
 const TICK_MODE = "tick";
 
-/** Normalizes one internal or boundary status record into the generic shape. */
+/**
+ * Normalizes one internal or boundary status record into the one status shape (every field present, in
+ * this order; `tickMs` and `tickElapsedMs` are 0 for a status that does not tick).
+ */
 export function normalizeStatusEffect(status) {
     if (!status || status.type == null) return null;
     const remainingMs = Math.max(0, Number(status.remainingMs ?? 0));
@@ -29,12 +32,14 @@ export function normalizeStatusEffect(status) {
             }))
         : [];
     return {
-        ...status,
         type: String(status.type).toLowerCase(),
+        abilityId: status.abilityId ?? null,
         mode: status.mode === PRESENCE_MODE ? PRESENCE_MODE : "duration",
         remainingMs,
-        ...(Number(status.tickMs) > 0 ? { tickMs: Number(status.tickMs) } : {}),
-        ...(Number(status.tickElapsedMs) > 0 ? { tickElapsedMs: Number(status.tickElapsedMs) } : {}),
+        tickMs: Number(status.tickMs) > 0 ? Number(status.tickMs) : 0,
+        tickElapsedMs: Number(status.tickElapsedMs) > 0 ? Number(status.tickElapsedMs) : 0,
+        sourceSlot: status.sourceSlot ?? null,
+        source: status.source ?? null,
         effects,
     };
 }
@@ -108,69 +113,16 @@ export function incomingDamageFor(shape, source = null) {
     return { damageModifier, truncateToTenths };
 }
 
-/** Adds or refreshes one status while preserving an active tick clock. */
-export function upsertStatusEffect(shape, incomingStatus) {
-    const incoming = normalizeStatusEffect(incomingStatus);
-    if (!incoming) return shape;
-    const currentStatuses = statusEffectsFor(shape);
-    const current = currentStatuses.find((status) => status.type === incoming.type && status.mode === incoming.mode);
-    if (!current) return { ...shape, statusEffects: [...currentStatuses, incoming] };
-
-    const merged = {
-        ...current,
-        ...incoming,
-        remainingMs: Math.max(current.remainingMs, incoming.remainingMs),
-        tickMs: current.remainingMs > 0 ? current.tickMs : (incoming.tickMs ?? current.tickMs),
-        tickElapsedMs: current.remainingMs > 0
-            ? Number(current.tickElapsedMs ?? 0)
-            : Number(incoming.tickElapsedMs ?? 0),
-        effects: mergeStatusEffects(current.effects, incoming.effects),
-    };
-    return {
-        ...shape,
-        statusEffects: currentStatuses.map((status) => status.type === merged.type && status.mode === merged.mode
-            ? merged : status),
-    };
-}
-
-export function removeStatusEffect(shape, type, { presenceOnly = false } = {}) {
-    const normalizedType = String(type ?? "").toLowerCase();
-    return {
-        ...shape,
-        statusEffects: statusEffectsFor(shape).filter((status) => status.type !== normalizedType
-            || (presenceOnly && status.mode !== PRESENCE_MODE)),
-    };
-}
-
+/**
+ * Drops the presence statuses of a bot or entity in place (they are re-applied each tick by whatever the
+ * target stands in). The status list is replaced only when it holds one.
+ */
 export function clearPresenceStatuses(shape) {
-    return {
-        ...shape,
-        statusEffects: statusEffectsFor(shape).filter((status) => status.mode !== PRESENCE_MODE),
-    };
-}
-
-function mergeStatusEffects(currentEffects, incomingEffects) {
-    const merged = [...(currentEffects ?? [])];
-    for (const incoming of incomingEffects ?? []) {
-        const index = merged.findIndex((effect) => effect.type === incoming.type && effect.mode === incoming.mode);
-        if (index < 0) {
-            merged.push(incoming);
-            continue;
-        }
-        const current = merged[index];
-        merged[index] = {
-            ...current,
-            ...incoming,
-            ...mergeNumericMaximum(current, incoming, "amount"),
-            ...mergeNumericMaximum(current, incoming, "multiplier"),
-        };
+    const statuses = Array.isArray(shape.statusEffects) ? shape.statusEffects : [];
+    if (statuses.some((status) => status?.mode === PRESENCE_MODE)) {
+        shape.statusEffects = statusEffectsFor(shape).filter((status) => status.mode !== PRESENCE_MODE);
     }
-    return merged;
-}
-
-function mergeNumericMaximum(current, incoming, field) {
-    if (current[field] == null || incoming[field] == null) return {};
-    return { [field]: Math.max(Number(current[field]), Number(incoming[field])) };
+    return shape;
 }
 
 function damageSourceIsExcluded(effect, source) {

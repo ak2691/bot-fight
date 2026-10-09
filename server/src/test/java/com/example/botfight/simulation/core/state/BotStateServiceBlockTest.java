@@ -1,5 +1,7 @@
 package com.example.botfight.simulation.core.state;
 
+import com.example.botfight.simulation.core.orchestration.Bot;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.botfight.simulation.bots.BotCodeService;
@@ -14,7 +16,7 @@ class BotStateServiceBlockTest {
 
     @Test
     void staleRetiredBlockStateNeverAbsorbsDamage() {
-        DuelSimulationService.Bot target = new DuelSimulationService.Bot();
+        Bot target = new Bot();
         target.slot = 2;
         target.x = 150;
         target.y = 100;
@@ -22,14 +24,14 @@ class BotStateServiceBlockTest {
         target.hp = 100;
         target.maxHp = 100;
         target.abilities = Set.of(2);
-        target.abilityCharges.put(2, 25);
-        target.abilityActiveMs.put(2, 500);
+        LegacyAbility.setCharges(target, 2, 25);
+        LegacyAbility.setActive(target, 2, 500);
 
         service.applyDamage(target, 20, 1, 100, 100);
 
         assertThat(target.hp).isEqualTo(80);
-        assertThat(target.abilityCharges.get(2)).isEqualTo(25);
-        assertThat(target.abilityActiveMs.get(2)).isEqualTo(500);
+        assertThat(LegacyAbility.charges(target, 2)).isEqualTo(25);
+        assertThat(LegacyAbility.activeMs(target, 2)).isEqualTo(500);
     }
 
     @Test
@@ -41,7 +43,7 @@ class BotStateServiceBlockTest {
     @Test
     void startingHpOverridesTheDefaultBotHp() throws Exception {
         var brain = new tools.jackson.databind.json.JsonMapper().readTree("{}");
-        DuelSimulationService.Bot bot = service.create(new DuelSimulationService.DuelBotRequest(
+        Bot bot = service.create(new DuelSimulationService.DuelBotRequest(
                 UUID.randomUUID(), "Puzzle", 1, 100, 100, 0d, 20, "custom", brain, 70d));
 
         assertThat(bot.maxHp).isEqualTo(300);
@@ -50,37 +52,37 @@ class BotStateServiceBlockTest {
 
     @Test
     void chargeReloadWaitsUntilActiveWindowEnds() {
-        DuelSimulationService.Bot bot = new DuelSimulationService.Bot();
+        Bot bot = new Bot();
         bot.hp = 100;
         bot.maxHp = 100;
         bot.abilities = Set.of(12);
-        bot.abilityCharges.put(12, 0);
-        bot.abilityRechargeMs.put(12, 3_000);
-        bot.abilityActiveMs.put(12, 500);
-        bot.abilityCooldowns.put(12, 100);
+        LegacyAbility.setCharges(bot, 12, 0);
+        LegacyAbility.setRecharge(bot, 12, 3_000);
+        LegacyAbility.setActive(bot, 12, 500);
+        LegacyAbility.setCooldown(bot, 12, 100);
 
         for (int tick = 0; tick < 5; tick++) {
             service.beginTick(bot);
-            assertThat(bot.abilityRechargeMs.get(12)).isEqualTo(3_000);
+            assertThat(LegacyAbility.recharge(bot, 12)).isEqualTo(3_000);
         }
-        assertThat(bot.abilityActiveMs.get(12)).isZero();
+        assertThat(LegacyAbility.activeMs(bot, 12)).isZero();
 
         service.beginTick(bot);
-        assertThat(bot.abilityRechargeMs.get(12)).isEqualTo(2_900);
+        assertThat(LegacyAbility.recharge(bot, 12)).isEqualTo(2_900);
     }
 
     @Test
     void overclockReducesAChargeReloadWhenTheReloadStarts() {
-        DuelSimulationService.Bot bot = new DuelSimulationService.Bot();
+        Bot bot = new Bot();
         bot.hp = 100;
         bot.maxHp = 100;
-        bot.abilityCharges.put(12, 1);
+        LegacyAbility.setCharges(bot, 12, 1);
         BotStateService.upsertStatusEffect(bot, new StatusEffectState("overclock", 4_000, 0)
                 .addEffect(new StatusEffectState.Effect("cooldown_modifier", "constant")
                         .multiplier(0.5)));
 
         assertThat(service.consumeAbilityCharge(bot, 12)).isTrue();
-        assertThat(bot.abilityRechargeMs.get(12)).isEqualTo(1_500);
+        assertThat(LegacyAbility.recharge(bot, 12)).isEqualTo(1_500);
     }
 
 }

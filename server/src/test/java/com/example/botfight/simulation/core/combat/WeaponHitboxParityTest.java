@@ -2,7 +2,7 @@ package com.example.botfight.simulation.core.combat;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
+import com.example.botfight.simulation.core.orchestration.Bot;
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import com.example.botfight.simulation.geometry.AngleCalculator;
 import java.util.List;
@@ -52,7 +52,7 @@ class WeaponHitboxParityTest {
     void contractsMatchTheWeaponTable() {
         for (Weapon weapon : WEAPONS) {
             AbilityContracts.Hitbox hitbox = AbilityContracts.forAbility(weapon.id())
-                    .phases().getFirst().hitbox();
+                    .hitVerbs().getFirst().hitbox();
             assertThat(hitbox.shape()).as(weapon.name()).isEqualTo(weapon.shape());
             assertThat(hitbox.includeTargetRadius()).as(weapon.name()).isTrue();
             if ("arc".equals(weapon.shape())) {

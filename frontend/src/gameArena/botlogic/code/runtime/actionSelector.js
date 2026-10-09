@@ -2,8 +2,8 @@ import { runningChainSnapshot } from "./chainPresentation.js";
 import { ACTION_HEADS, BOT_CODE_ACTIONS } from "../contracts/BotLogicContracts.js";
 import { applyChainControl, cloneChainStack, resumeChain } from "./chainRuntime.js";
 
-export function selectStrategyBlock(configuration, payload, runtime) {
-    const normalized = runtime.normalizeConfiguration(configuration);
+/** `normalized` is a configuration already run through normalizeConfiguration; the selector never normalizes. */
+export function selectStrategyBlock(normalized, payload, runtime) {
     const state = runtime.stateFromPayload(payload, normalized.version);
     return runtime.selectPriorityCandidates(normalized, state).find((entry) => runtime.isTrainableBlock(entry.block))?.block ?? null;
 }
@@ -29,8 +29,7 @@ function placeInPlan(plan, block, action) {
  * One tick of decisions: roots are checked against start-of-tick state, then chain control from
  * the roots, then the running chain, then roots fill the categories the chain did not use.
  */
-export function selectStrategyActionPlan(configuration, payload, runtime) {
-    const normalized = runtime.normalizeConfiguration(configuration);
+export function selectStrategyActionPlan(normalized, payload, runtime) {
     const state = runtime.stateFromPayload(payload, normalized.version);
     runtime.prepareCustomVariables(state, normalized.customVariables);
     const selected = runtime.selectPriorityCandidates(normalized, state);
@@ -67,7 +66,6 @@ export function selectStrategyActionPlan(configuration, payload, runtime) {
     return plan;
 }
 
-export function hasStrategyActions(configuration, normalizeConfiguration) {
-    const normalized = normalizeConfiguration(configuration);
+export function hasStrategyActions(normalized) {
     return normalized.roots.some((root) => root.branches.length > 0 || root.actions?.length > 0);
 }

@@ -2,7 +2,7 @@ package com.example.botfight.simulation.core.logic;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
+import com.example.botfight.simulation.core.orchestration.Bot;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Arena;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Condition;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Entity;

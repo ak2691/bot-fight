@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { advanceArenaPreviewTick } from "../modelPayloads/arenaPreviewSimulation.js";
-import { mergeBotShapeUpdates, toSimulationBotShape } from "../modelPayloads/arenaShapes.js";
+import { advanceShapes as advanceArenaPreviewTickNormalized } from "../testing/fightTick.js";
+
 import { DEFAULT_BOT_LOADOUT, encodeBotLoadout } from "../loadout/BotLoadout.js";
 import { PRACTICE_OPPONENT_PUBLIC_START, PRACTICE_PLAYER_PUBLIC_START } from "../modelPayloads/arenaConstants.js";
 import { publicPointToInternal } from "../modelPayloads/arenaCoordinates.js";
@@ -12,6 +12,15 @@ import {
     puzzleBuilderSimulationLookups,
     synchronizePuzzleBuilderBotShape,
 } from "./ArenaSetup.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../botlogic/code/BotCode.js";
+
+// The tick takes normalized brains; tests pass raw ones, so normalize here like the edge does.
+const normalizeOrNull = (configuration) => (configuration ? normalizeBrainForTick(configuration) : configuration);
+const advanceArenaPreviewTick = (shapes, options) => advanceArenaPreviewTickNormalized(shapes, {
+    ...options,
+    testingConfiguration: normalizeOrNull(options.testingConfiguration),
+    opponentTestingConfiguration: normalizeOrNull(options.opponentTestingConfiguration),
+});
 
 const ARENA_SOURCE = fileURLToPath(new URL("../Arena.jsx", import.meta.url));
 const LOADOUT = encodeBotLoadout(DEFAULT_BOT_LOADOUT);
@@ -43,7 +52,7 @@ function puzzleSetup(bots = configuredBots) {
 function simulationBotsByKey(shapes) {
     return new Map(shapes
         .filter((shape) => shape.puzzleBotKey)
-        .map((shape) => [shape.puzzleBotKey, toSimulationBotShape(shape)]));
+        .map((shape) => [shape.puzzleBotKey, shape]));
 }
 
 function assertConfiguredInternalPositions(shapes) {
@@ -90,14 +99,15 @@ test("puzzle builder initialization, sync, play, pause/resume, and reset retain 
     // Model the former bug: public values have leaked into the live simulation shapes.
     const leakedPublicCoordinates = freshShapes.map((shape) => {
         const configured = draft.bots.find((bot) => `${bot.teamNumber}:${bot.slot}` === shape.puzzleBotKey);
-        return mergeBotShapeUpdates(shape, {
+        return {
+            ...shape,
             x: configured.startX,
             y: configured.startY,
             startX: configured.startX,
             startY: configured.startY,
             spawnX: configured.startX,
             spawnY: configured.startY,
-        });
+        };
     });
     const synchronized = leakedPublicCoordinates.map((shape) => (
         synchronizePuzzleBuilderBotShape(shape, lookups, 0).shape
@@ -113,7 +123,7 @@ test("puzzle builder initialization, sync, play, pause/resume, and reset retain 
         }, 0);
         assert.equal(fallbackResult.changed, true);
         assert.deepEqual(
-            { x: toSimulationBotShape(fallbackResult.shape).x, y: toSimulationBotShape(fallbackResult.shape).y },
+            { x: fallbackResult.shape.x, y: fallbackResult.shape.y },
             expectedInternalByKey.get(key),
         );
     }
@@ -147,12 +157,12 @@ test("legacy puzzle inputs and ordinary practice setup retain their existing coo
         opponentBot: { role: "OPPONENT", startX: 250, startY: -400, rotation: 180, startHp: 150, brain: EMPTY_BRAIN },
     };
     const legacyShapes = buildPracticeArenaShapes(LOADOUT, LOADOUT, legacyPuzzle);
-    const legacyById = new Map(legacyShapes.map((shape) => [shape.id, toSimulationBotShape(shape)]));
+    const legacyById = new Map(legacyShapes.map((shape) => [shape.id, shape]));
     assert.deepEqual({ x: legacyById.get("main").x, y: legacyById.get("main").y }, { x: 300, y: 150 });
     assert.deepEqual({ x: legacyById.get("opponent-model").x, y: legacyById.get("opponent-model").y }, { x: 850, y: 1000 });
 
     const practiceShapes = buildPracticeArenaShapes(LOADOUT, LOADOUT);
-    const practiceById = new Map(practiceShapes.map((shape) => [shape.id, toSimulationBotShape(shape)]));
+    const practiceById = new Map(practiceShapes.map((shape) => [shape.id, shape]));
     assert.deepEqual(
         { x: practiceById.get("main").x, y: practiceById.get("main").y },
         publicPointToInternal(PRACTICE_PLAYER_PUBLIC_START),

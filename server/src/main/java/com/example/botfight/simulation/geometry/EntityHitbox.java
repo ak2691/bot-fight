@@ -103,7 +103,7 @@ public final class EntityHitbox {
     }
 
     private static double circleRadius(ArenaEntity entity) {
-        AbilityContracts.AbilityContract contract = AbilityContracts.forEntity(entity);
+        AbilityContracts.EntityContract contract = AbilityContracts.forEntity(entity);
         AbilityContracts.AbilityPhase phase = AbilityContracts.phaseFor(entity);
         AbilityContracts.Hitbox hitbox = phase == null ? null : phase.hitbox();
         if (contract != null && hitbox != null

@@ -1,12 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sniperSightAlpha, sniperSightLength, smashFlashAlpha, thrustLengthFraction, weaponActiveProgress, weaponWindupAlpha, weaponWindupProgress, activeBotVisual, closingZoneDamageOccurred, ENTITY_PRESENTATION_DEFINITIONS, entityCaption, BOT_PRESENTATION_DEFINITIONS, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, grenadeVisualState, isBotShape, LOCK_ON_PRESENTATION, normalizeReplayObstacleShape, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, replayProjectileVelocity, shapeInterpolationMs, shapeWithoutVisualEvent, visualAnimationDescriptorForShape, visualForShape, visualInstanceForShape, visualInstanceIsActive, VISUAL_LIFECYCLES, VISUAL_SPAWN_MODES, visualSizeForShape } from "./pixiVisualState.js";
-import { ABILITY_CONTRACTS, abilityPhase } from "../ecs/contracts/AbilityContracts.js";
+import { sniperSightAlpha, sniperSightLength, smashFlashAlpha, thrustLengthFraction, weaponActiveProgress, weaponWindupAlpha, weaponWindupProgress, activeBotVisual, closingZoneDamageOccurred, ENTITY_PRESENTATION_DEFINITIONS, entityCaption, BOT_PRESENTATION_DEFINITIONS, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, grenadeVisualState, LOCK_ON_PRESENTATION, normalizeReplayObstacleShape, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, replayProjectileVelocity, shapeInterpolationMs, shapeWithoutVisualEvent, visualAnimationDescriptorForShape, visualForShape, visualInstanceForShape, visualInstanceIsActive, VISUAL_LIFECYCLES, VISUAL_SPAWN_MODES, visualSizeForShape } from "./pixiVisualState.js";
+import { ABILITY_CONTRACTS, eventVerbs } from "../ecs/contracts/AbilityContracts.js";
 import { REQUIRED_ARENA_PRESENTATION_PATHS } from "./arenaPresentationAssetOwner.js";
 import { hitboxGeometriesForEntity, hitboxGeometryForBot, hitboxGeometryForEntity } from "../gameconfig/hitboxGeometry.js";
+import { createBotState, isBotState } from "../modelPayloads/botState.js";
 
 test("Pixi renderer classifies every combat snapshot family without changing game state", () => {
-    assert.equal(isBotShape({ id: "main" }), true);
+    assert.equal(isBotState(createBotState({ id: "main" })), true);
+    assert.equal(isBotState({ id: "main", type: "circle", slot: 1, userId: "u" }), false, "only the factory kind marks a bot");
+    assert.equal(isBotState({ id: "fireball-1", type: "fireball", abilityId: 5, ownerSlot: 1 }), false);
     assert.equal(pixiLayerForShape({ type: "fireball" }), "projectiles");
     assert.equal(pixiLayerForShape({ type: "nullZone" }), "zones");
     assert.equal(pixiLayerForShape({ type: "closingZone" }), "zones");
@@ -24,8 +27,8 @@ test("overlapping bot sprites receive equal interior opacity without changing th
 });
 
 test("building and replay bot shapes resolve to the same presentation definition", () => {
-    const buildingShape = { id: "main", type: "circle", slot: 1, x: 300, y: 400, rotation: 90 };
-    const replayShape = { id: "bot-user-7", type: "bot", userId: "user-7", slot: 1, x: 300, y: 400, rotation: 90 };
+    const buildingShape = createBotState({ id: "main", type: "circle", slot: 1, x: 300, y: 400, rotation: 90 });
+    const replayShape = createBotState({ id: "bot-user-7", type: "bot", userId: "user-7", slot: 1, x: 300, y: 400, rotation: 90 });
     assert.deepEqual(presentationDefinitionForShape(buildingShape), presentationDefinitionForShape(replayShape));
     assert.equal(pixiLayerForShape(buildingShape), pixiLayerForShape(replayShape));
 });
@@ -110,42 +113,32 @@ test("replay resolves transitioned event visuals from the phase that declared th
 
 test("event visual declarations emit and resolve from event metadata only", () => {
     for (const contract of Object.values(ABILITY_CONTRACTS)) {
-        const phaseGroups = [
-            contract.phases ?? [],
-            ...(contract.abilities ?? []).map((ability) => ability.phases ?? []),
-        ];
-        for (const phases of phaseGroups) for (const phase of phases) {
-            for (const [eventType, handler] of Object.entries(phase.events ?? {})) {
-                const declaredVisualType = handler.visualType;
-                if (!declaredVisualType) continue;
+        for (const entity of Object.values(contract.entities)) for (const phase of entity.phases) {
+            for (const [eventType, handler] of Object.entries(phase.on ?? {})) {
+                // A visual is declared by an emitVisual verb, or by the visual of a hit verb (a summon's shot).
+                const verbs = eventVerbs(handler);
+                const emit = verbs.find((verb) => verb.do === "emitVisual");
+                const shot = verbs.find((verb) => verb.do === "hit" && verb.visual);
+                const declared = emit
+                    ? { type: emit.visualType, visibleMs: emit.visibleMs }
+                    : shot ? { type: shot.visual.type, visibleMs: shot.visual.visibleMs } : null;
+                if (!declared) continue;
 
-                assert.ok(Number.isInteger(handler.visibleMs) && handler.visibleMs > 0,
+                assert.ok(Number.isInteger(declared.visibleMs) && declared.visibleMs > 0,
                     `${contract.abilityId}:${phase.id}:${eventType} declares its event visual duration`);
-                assert.ok(handler.actions?.includes("emitVisual"),
-                    `${contract.abilityId}:${phase.id}:${eventType} emits its declared visual`);
 
-                const visual = visualForShape({
+                const shape = {
                     id: `${contract.abilityId}:${phase.id}:${eventType}`,
-                    type: contract.runtimeType ?? contract.entityType,
+                    type: entity.runtimeType,
                     abilityId: contract.abilityId,
-                    phaseId: handler.transition?.to ?? phase.id,
+                    phaseId: verbs.find((verb) => verb.do === "transition")?.to ?? phase.id,
                     eventPhaseId: phase.id,
                     eventType,
                     eventSequence: 1,
-                });
-
-                assert.ok(declaredVisualType, `${contract.abilityId}:${phase.id}:${eventType} declares a visual`);
-                assert.equal(visual?.type, declaredVisualType, `${contract.abilityId}:${phase.id}:${eventType}`);
-                const instance = visualInstanceForShape({
-                    id: `${contract.abilityId}:${phase.id}:${eventType}`,
-                    type: contract.runtimeType ?? contract.entityType,
-                    abilityId: contract.abilityId,
-                    phaseId: handler.transition?.to ?? phase.id,
-                    eventPhaseId: phase.id,
-                    eventType,
-                    eventSequence: 1,
-                }, 1_000);
-                assert.equal(instance?.type, declaredVisualType,
+                };
+                assert.equal(visualForShape(shape)?.type, declared.type, `${contract.abilityId}:${phase.id}:${eventType}`);
+                const instance = visualInstanceForShape(shape, 1_000);
+                assert.equal(instance?.type, declared.type,
                     `${contract.abilityId}:${phase.id}:${eventType} creates its separate visual`);
                 assert.equal(instance?.followEntity, false,
                     `${contract.abilityId}:${phase.id}:${eventType} does not follow its source`);
@@ -154,38 +147,21 @@ test("event visual declarations emit and resolve from event metadata only", () =
     }
 });
 
-test("an event visual declaration must include its own duration", () => {
-    const phase = abilityPhase("active", "zone", {
-        events: {
-            collision: {
-                actions: ["applyEffects"],
-                visualType: "testExplosion",
-                visibleMs: 240,
-            },
-        },
-    });
-
-    assert.deepEqual(phase.events.collision.actions, ["applyEffects", "emitVisual"]);
-    assert.equal(phase.events.collision.visibleMs, 240);
-    assert.throws(() => abilityPhase("active", "zone", {
-        events: { collision: { actions: ["applyEffects"], visualType: "testExplosion" } },
-    }), /must declare a positive visibleMs/);
-    assert.throws(() => abilityPhase("active", "zone", {
-        events: { collision: { actions: ["applyEffects"], visualType: "testExplosion", visibleMs: 0 } },
-    }), /must declare a positive visibleMs/);
+test("a replayed summon shot recorded as a collision event still resolves the shot visual", () => {
+    const shot = { type: "hunterDrone", abilityId: 17, phaseId: "active", eventPhaseId: "active", eventSequence: 1 };
+    assert.equal(visualForShape({ ...shot, eventType: "schedule" })?.type, "gun");
+    assert.equal(visualForShape({ ...shot, eventType: "collision" })?.type, "gun");
 });
 
 test("semantic event lookup matches camel-cased contract event keys", () => {
     const contract = {
         category: "zone",
+        runtimeType: "testZone",
         phases: [{
             id: "active",
-            events: {
+            on: {
                 lifetimeEnd: {
-                    actions: ["emitVisual"],
-                    visualType: "expiryPulse",
-                    visibleMs: 250,
-                    visualSize: 45,
+                    do: [{ do: "emitVisual", visualType: "expiryPulse", visibleMs: 250, visualSize: 45 }],
                 },
             },
         }],
@@ -332,10 +308,10 @@ test("practice hitbox geometry mirrors direct melee, radial, and hitscan deliver
     const radial = hitboxGeometryForBot({
         hp: 100,
         size: 60,
-        abilityActiveMs: { 26: 300 },
         x: 500,
         y: 500,
         rotation: 0,
+        abilityState: { 26: { stage: "active", remainingMs: 300 } },
     });
     assert.equal(radial.shape, "circle");
     assert.equal(radial.abilityId, 26);
@@ -386,8 +362,8 @@ test("closing-zone particle events only trigger when the damage counter advances
 });
 
 test("slot-only replay bots remain visible when an opponent user id is omitted", () => {
-    const opponent = { id: "bot-slot-2", type: "bot", slot: 2, x: 700, y: 500 };
-    assert.equal(isBotShape(opponent), true);
+    const opponent = createBotState({ id: "bot-slot-2", type: "bot", slot: 2, x: 700, y: 500 });
+    assert.equal(isBotState(opponent), true);
     assert.equal(pixiLayerForShape(opponent), "bots");
     assert.equal(presentationDefinitionForShape(opponent).fallback, undefined);
 });
@@ -709,27 +685,28 @@ test("bot and entity labels derive from calculated snapshot fields", () => {
     assert.deepEqual(botStatusLabels({ statusEffects: [{ type: "overclock", remainingMs: 100 }] }), ["OVERCLOCK"]);
     assert.equal(activeBotVisual({ abilityVisual: { ability: 7, ms: 200 } }), 7);
     assert.equal(activeBotVisual({ abilityVisual: { ability: 19, ms: 200 } }), null);
-    assert.equal(activeBotVisual({ abilityActiveMs: { 19: 200 } }), null);
-    assert.equal(activeBotVisual({ abilityActiveMs: { 20: 200 } }), 20);
+    assert.equal(activeBotVisual({ abilityState: { 19: { stage: "active", remainingMs: 200 } } }), null);
+    assert.equal(activeBotVisual({ abilityState: { 20: { stage: "active", remainingMs: 200 } } }), 20);
     assert.equal(LOCK_ON_PRESENTATION.markerSize, 48);
-    assert.equal(activeBotVisual({ abilityActiveMs: { 16: 3000 } }), 16);
-    assert.equal(activeBotVisual({ abilityActiveMs: { 23: 1500 } }), 23);
-    assert.equal(activeBotVisual({ abilityActiveMs: { 33: 3000 } }), 33);
-    assert.equal(activeBotVisual({ abilityActiveMs: { 34: 200 } }), 34);
+    assert.equal(activeBotVisual({ abilityState: { 16: { stage: "active", remainingMs: 3000 } } }), 16);
+    assert.equal(activeBotVisual({ abilityState: { 23: { stage: "active", remainingMs: 1500 } } }), 23);
+    assert.equal(activeBotVisual({ abilityState: { 33: { stage: "active", remainingMs: 3000 } } }), 33);
+    assert.equal(activeBotVisual({ abilityState: { 34: { stage: "active", remainingMs: 200 } } }), 34);
     assert.equal(entityCaption({ type: "proximityMine", armed: true }), "");
     assert.equal(entityCaption({ type: "repellerDrone", hp: 31 }), "31.0 HP");
     assert.equal(entityCaption({ type: "snareBomb", hp: 20 }), "20.0 HP");
     assert.equal(entityCaption({ type: "orbitalMarker", fuseMs: 900 }), "");
 });
 
-test("weapon wind-up progress comes from preparingAbility and preparingMs", () => {
-    assert.equal(weaponWindupProgress({ preparingAbility: 36, preparingMs: 450 }, 36, 450), 0);
-    assert.equal(weaponWindupProgress({ preparingAbility: 36, preparingMs: 225 }, 36, 450), 0.5);
-    assert.equal(weaponWindupProgress({ preparingAbility: 36, preparingMs: 0 }, 36, 450), 1);
-    assert.equal(weaponWindupProgress({ preparingAbility: 36, preparingMs: -10 }, 36, 450), 1);
-    assert.equal(weaponWindupProgress({ preparingAbility: 37, preparingMs: 100 }, 36, 450), null);
+test("weapon wind-up progress comes from the ability's wind-up record", () => {
+    assert.equal(weaponWindupProgress({ abilityState: { 36: { stage: "windup", remainingMs: 450 } } }, 36, 450), 0);
+    assert.equal(weaponWindupProgress({ abilityState: { 36: { stage: "windup", remainingMs: 225 } } }, 36, 450), 0.5);
+    // A wind-up with no time left has already fired, so no wind-up record exists.
+    assert.equal(weaponWindupProgress({ abilityState: { 36: { stage: "ready", remainingMs: 0 } } }, 36, 450), null);
+    assert.equal(weaponWindupProgress({ abilityState: { 36: { stage: "ready", remainingMs: 0 } } }, 36, 450), null);
+    assert.equal(weaponWindupProgress({ abilityState: { 37: { stage: "windup", remainingMs: 100 } } }, 36, 450), null);
     assert.equal(weaponWindupProgress({}, 36, 450), null);
-    assert.equal(weaponWindupProgress({ preparingAbility: 1, preparingMs: 0 }, 1, 0), null);
+    assert.equal(weaponWindupProgress({ abilityState: { 1: { stage: "ready", remainingMs: 0 } } }, 1, 0), null);
 });
 
 test("weapon active progress runs from the remaining abilityActiveMs timer", () => {
@@ -758,12 +735,12 @@ test("Cleave and Smash alpha ramps", () => {
     assert.equal(smashFlashAlpha(1, 0.5), 0);
 });
 
-test("weapon active visuals are selected from abilityActiveMs and match replay state", () => {
+test("weapon active visuals are selected from the active stage and match replay state", () => {
     for (const id of [35, 36, 37]) {
-        const live = { hp: 100, abilityActiveMs: { [id]: 200 } };
+        const live = { hp: 100, abilityState: { [id]: { stage: "active", remainingMs: 200 } } };
         assert.equal(activeBotVisual(live), id);
-        assert.equal(activeBotVisual({ ...live, preparingAbility: id, preparingMs: 100, replayPhase: "playback" }), id);
-        assert.equal(activeBotVisual({ hp: 100, abilityActiveMs: {} }), null);
+        assert.equal(activeBotVisual({ ...live, replayPhase: "playback", abilityState: { ...live.abilityState, 3: { stage: "windup", remainingMs: 100 } } }), id);
+        assert.equal(activeBotVisual({ hp: 100, abilityState: {} }), null);
     }
 });
 

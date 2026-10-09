@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "statuses": {
+    "burn": {
+      "presenceWhenInside": false,
+      "tickIntervalDefaultMs": 1000,
+      "carriesSourceSlot": true,
+      "clearsVelocity": false,
+      "effects": [
+        { "type": "damage", "mode": "tick", "amount": "$amount", "multiplier": "$damageMultiplier", "movementMultiplier": null, "rotationMultiplier": null, "durationMs": null, "damageModifier": null, "rounding": null, "excludedDamageSourceTypes": null }
+      ]
+    },
+    "silence": {
+      "presenceWhenInside": true,
+      "tickIntervalDefaultMs": null,
+      "carriesSourceSlot": false,
+      "clearsVelocity": false,
+      "effects": [
+        { "type": "silence", "mode": "constant", "amount": null, "multiplier": null, "movementMultiplier": null, "rotationMultiplier": null, "durationMs": null, "damageModifier": null, "rounding": null, "excludedDamageSourceTypes": null }
+      ]
+    },
+    "stun": {
+      "presenceWhenInside": false,
+      "tickIntervalDefaultMs": null,
+      "carriesSourceSlot": false,
+      "clearsVelocity": true,
+      "effects": [
+        { "type": "stun", "mode": "constant", "amount": null, "multiplier": null, "movementMultiplier": null, "rotationMultiplier": null, "durationMs": null, "damageModifier": null, "rounding": null, "excludedDamageSourceTypes": null }
+      ]
+    },
+    "slow": {
+      "presenceWhenInside": false,
+      "tickIntervalDefaultMs": null,
+      "carriesSourceSlot": false,
+      "clearsVelocity": false,
+      "effects": [
+        { "type": "movement_modifier", "mode": "constant", "amount": null, "multiplier": null, "movementMultiplier": 0.5, "rotationMultiplier": 0.5, "durationMs": null, "damageModifier": null, "rounding": null, "excludedDamageSourceTypes": null }
+      ]
+    },
+    "shock": {
+      "presenceWhenInside": false,
+      "tickIntervalDefaultMs": 1000,
+      "carriesSourceSlot": true,
+      "clearsVelocity": false,
+      "effects": [
+        { "type": "damage", "mode": "tick", "amount": "$amount", "multiplier": null, "movementMultiplier": null, "rotationMultiplier": null, "durationMs": null, "damageModifier": null, "rounding": null, "excludedDamageSourceTypes": null },
+        { "type": "movement_lock", "mode": "tick", "amount": null, "multiplier": null, "movementMultiplier": null, "rotationMultiplier": null, "durationMs": "$movementLockMs", "damageModifier": null, "rounding": null, "excludedDamageSourceTypes": null }
+      ]
+    },
+    "bleed": {
+      "presenceWhenInside": false,
+      "tickIntervalDefaultMs": 1000,
+      "carriesSourceSlot": true,
+      "clearsVelocity": false,
+      "effects": [
+        { "type": "damage", "mode": "tick", "amount": "$amount", "multiplier": null, "movementMultiplier": null, "rotationMultiplier": null, "durationMs": null, "damageModifier": null, "rounding": null, "excludedDamageSourceTypes": null },
+        { "type": "incoming_damage_modifier", "mode": "constant", "amount": null, "multiplier": null, "movementMultiplier": null, "rotationMultiplier": null, "durationMs": null, "damageModifier": 0.25, "rounding": "truncate_tenths", "excludedDamageSourceTypes": ["bleed"] }
+      ]
+    }
+  }
+}

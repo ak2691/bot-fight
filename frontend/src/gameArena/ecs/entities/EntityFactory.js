@@ -1,12 +1,16 @@
 import { compassDirection } from "../../botlogic/planner/arenaAngles.js";
 import { abilityId as resolveAbilityId } from "../../gameconfig/AbilityRegistry.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
-import { entityContractForAbility } from "../contracts/AbilityContracts.js";
+import { abilityContract, entityContractForAbility, SPAWN_PATTERN_TYPES } from "../contracts/AbilityContracts.js";
 import { selectableIdentitiesForAbilityEntity } from "../../modelPayloads/selectableIdentities.js";
+import { ENTITY_KIND } from "./EntityCombat.js";
 
 let nextEntityId = 1;
 
-/** Creates the canonical component envelope used by browser arena systems. */
+/**
+ * Creates the one entity format. Every field is present, in this order, for every entity (`null` or a
+ * neutral value when it does not apply), so all entities share one object shape.
+ */
 export function createEntity({
     id,
     type,
@@ -16,68 +20,79 @@ export function createEntity({
     selectableIdentities,
     owner,
     transform,
-    motion = {},
-    lifetime = {},
-    health = null,
-    size = 0,
-    state = {},
-    phaseId = null,
-    phaseTimerMs = 0,
-    eventScheduleState = {},
-    intervalTimerMs = 0,
-    armed = false,
-    phaseLocked = false,
-    hitLedger = {},
-    ...runtime
+    motion,
+    lifetime,
+    health,
+    size,
+    state,
+    phaseId,
+    phaseTimerMs,
+    eventScheduleState,
+    intervalTimerMs,
+    armed,
+    entityKey,
+    patternAngle,
+    patternLateral,
+    bindToCast,
+    boundActivation,
 }) {
     const entityId = id ?? `${type}-${owner.id}-${Date.now()}-${nextEntityId++}`;
     return {
+        kind: ENTITY_KIND,
         id: entityId,
         type,
-        ...(entityContractId ? { entityContractId } : {}),
-        ...(entityContractType ? { entityContractType } : {}),
-        ...(entityCategory ? { category: entityCategory, entityCategory } : {}),
-        selectableIdentities: selectableIdentities ?? [],
+        entityContractId,
+        entityContractType,
+        category: entityCategory,
+        entityCategory,
+        selectableIdentities,
         abilityId: owner.abilityId,
         ownerId: owner.id,
         ownerSlot: owner.slot,
-        ownerTeam: owner.teamNumber,
+        ownerTeam: owner.teamNumber ?? null,
         x: transform.x,
         y: transform.y,
-        rotation: transform.rotation ?? 0,
-        size: Number(size ?? 0),
-        velocityX: motion.x ?? 0,
-        velocityY: motion.y ?? 0,
-        traveled: motion.traveled ?? 0,
-        ageMs: lifetime.ageMs ?? 0,
-        remainingMs: lifetime.remainingMs ?? null,
-        hp: health?.hp,
-        maxHp: health?.maxHp,
+        rotation: transform.rotation,
+        size,
+        velocityX: motion.x,
+        velocityY: motion.y,
+        traveled: motion.traveled,
+        ageMs: lifetime.ageMs,
+        remainingMs: lifetime.remainingMs,
+        hp: health ? health.hp : null,
+        maxHp: health ? health.maxHp : null,
+        statusEffects: [],
         phaseId,
         phaseTimerMs,
         eventScheduleState,
         intervalTimerMs,
         armed,
-        phaseLocked,
-        hitLedger,
+        phaseLocked: false,
+        phaseEnteredThisTick: false,
+        hitLedger: {},
         locked: true,
-        components: {
-            transform: { ...transform },
-            motion: { ...motion },
-            lifetime: { ...lifetime },
-            ownership: { ownerId: owner.id, ownerSlot: owner.slot, ownerTeam: owner.teamNumber },
-            ...(health ? { health: { ...health } } : {}),
-        },
-        ...state,
-        ...runtime,
+        damageMultiplier: state.damageMultiplier ?? null,
+        entityKey,
+        patternAngle,
+        patternLateral,
+        bindToCast,
+        boundActivation,
+        tickStartHp: null,
+        damageTakenThisTick: 0,
+        damageTakenLastTick: 0,
+        hpNetChangeLastTick: 0,
+        eventSequence: 0,
+        eventType: null,
+        eventPhaseId: null,
+        visualEvent: 0,
+        visualEventMs: 0,
+        shotVisualMs: null,
     };
 }
 
 /**
- * Resolves the entity contract for an ability and creates its normalized
- * payload. Entity existence and behavior are owned by the entity registry;
- * direct ability contracts use their spawn only for attached hitbox/visual
- * pose resolution and never create an arena entity here.
+ * Resolves the entity definition of an ability and creates its normalized payload (the single entity of the
+ * ability's `spawn` verb, with no pattern).
  */
 export function createAbilityEntity(bot, abilityValue, context = {}) {
     const abilityId = resolveAbilityId(abilityValue);
@@ -85,14 +100,49 @@ export function createAbilityEntity(bot, abilityValue, context = {}) {
 
     const entityDefinition = entityContractForAbility(abilityId);
     if (!entityDefinition) return null;
+    return createEntityForDefinition(bot, abilityId, entityDefinition, context, 0, { angle: 0, lateral: 0 });
+}
 
+/**
+ * The placements a spawn pattern describes, in index order: a heading offset in degrees and a sideways
+ * offset in units from the spawn point. No pattern is one entity straight ahead.
+ */
+export function spawnPlacements(pattern) {
+    if (!pattern) return [{ angle: 0, lateral: 0 }];
+    const count = Math.max(1, Math.trunc(Number(pattern.count)));
+    return Array.from({ length: count }, (_, index) => {
+        if (pattern.type === SPAWN_PATTERN_TYPES.FAN) {
+            const spread = Number(pattern.spreadDeg);
+            return { angle: count === 1 ? 0 : -spread / 2 + index * spread / (count - 1), lateral: 0 };
+        }
+        if (pattern.type === SPAWN_PATTERN_TYPES.RING) return { angle: 360 * index / count, lateral: 0 };
+        if (pattern.type === SPAWN_PATTERN_TYPES.LINE) {
+            return { angle: 0, lateral: (index - (count - 1) / 2) * Number(pattern.spacing) };
+        }
+        return { angle: 0, lateral: 0 };
+    });
+}
+
+/**
+ * Creates the entities one `spawn` verb makes from `source` (the bot, or an entity spawning from its own
+ * pose). Serial IDs run in index order from `context.serial`.
+ */
+export function spawnVerbEntities(source, abilityId, verb, context = {}) {
+    const definition = abilityContract(abilityId)?.entities?.[verb?.entity];
+    if (!definition) return [];
+    return spawnPlacements(verb.pattern).map((placement, index) =>
+        createEntityForDefinition(source, abilityId, definition, context, index, placement));
+}
+
+function createEntityForDefinition(bot, abilityId, definition, context, index, placement) {
     const serial = context.serial ?? null;
-    return createEntityFromContract(bot, entityDefinition, {
+    return createEntityFromContract(bot, definition, {
         ...context,
         abilityId,
-        entityContractId: entityDefinition.abilityId,
-        entityContractType: entityDefinition.entityType,
-        id: context.id ?? (serial == null ? undefined : `${entityDefinition.runtimeType}-${bot.id}-${serial}`),
+        entityContractId: abilityId,
+        entityContractType: definition.entityType,
+        placement,
+        id: context.id ?? (serial == null ? undefined : `${definition.runtimeType}-${bot.id}-${serial + index}`),
     });
 }
 
@@ -110,9 +160,10 @@ function buildEntityOptions(bot, contract, context) {
     // catalogue as a second entity-definition source.
     const stats = {};
     const firstPhase = contract.phases?.[0] ?? null;
+    const placement = context.placement ?? { angle: 0, lateral: 0 };
     const size = Number(context.sizeOverride ?? phaseSize(firstPhase));
-    const transform = buildTransform(bot, contract.spawn, contract.targeting, size, { ...context, stats });
-    const motion = buildMotion(bot, firstPhase, { stats, context });
+    const transform = buildTransform(bot, contract.spawn, contract.targeting, size, { ...context, stats }, placement);
+    const motion = buildMotion(bot, firstPhase, { stats, context }, placement);
     const state = resolveRecord(contract.state, { bot, stats, context });
     const healthDefinition = firstPhase?.health ?? null;
     const lifetime = buildLifetime(contract.lifetime, {
@@ -145,6 +196,12 @@ function buildEntityOptions(bot, contract, context) {
         intervalTimerMs: 0,
         armed: firstPhase?.id === "armed",
         state,
+        entityKey: contract.entityType,
+        patternAngle: placement.angle,
+        patternLateral: placement.lateral,
+        // A bound entity lives only while the activation that made it is still the ability's active stage.
+        bindToCast: Boolean(contract.bindToCast),
+        boundActivation: contract.bindToCast ? Number(context.activationSerial ?? 0) : null,
     };
 }
 
@@ -162,11 +219,11 @@ function phaseSize(phase) {
     return 0;
 }
 
-function buildTransform(bot, spawn, targeting, size, context) {
-    const ownerRotation = Number(bot.rotation ?? 0);
-    const rotation = spawn?.rotationSpace === "world"
+function buildTransform(bot, spawn, targeting, size, context, placement) {
+    const ownerRotation = bot.rotation;
+    const rotation = (spawn?.rotationSpace === "world"
         ? Number(spawn.rotation ?? 0)
-        : ownerRotation + Number(spawn?.rotation ?? 0);
+        : ownerRotation + Number(spawn?.rotation ?? 0)) + placement.angle;
     if (targeting?.position === "target") {
         const radius = targeting.clampToRadius == null
             ? 0
@@ -183,11 +240,20 @@ function buildTransform(bot, spawn, targeting, size, context) {
             rotation,
         };
     }
+    return ownerRelativePose(bot, spawn, placement);
+}
+
+/** The pose of an entity placed relative to its owner: spawn offset (x right, y forward) and rotation. */
+export function ownerRelativePose(bot, spawn, placement = { angle: 0, lateral: 0 }) {
+    const ownerRotation = bot.rotation;
+    const rotation = (spawn?.rotationSpace === "world"
+        ? Number(spawn.rotation ?? 0)
+        : ownerRotation + Number(spawn?.rotation ?? 0)) + placement.angle;
     const offset = spawn?.offset ?? { x: 0, y: 0 };
-    const localX = Number(offset.x ?? 0);
+    const localX = Number(offset.x ?? 0) + placement.lateral;
     const localY = Number(offset.y ?? 0);
     const forward = compassDirection(bot.rotation);
-    const right = compassDirection(Number(bot.rotation ?? 0) + 90);
+    const right = compassDirection(bot.rotation + 90);
     return {
         x: Number(bot.x) + right.x * localX + forward.x * localY,
         y: Number(bot.y) + right.y * localX + forward.y * localY,
@@ -195,9 +261,9 @@ function buildTransform(bot, spawn, targeting, size, context) {
     };
 }
 
-function buildMotion(bot, firstPhase, { stats, context }) {
-    const direction = compassDirection(bot.rotation);
-    const speedValue = firstPhase?.movement?.speed;
+function buildMotion(bot, firstPhase, { stats, context }, placement) {
+    const direction = compassDirection(bot.rotation + placement.angle);
+    const speedValue = firstPhase?.movement?.unitsPerTick;
     const speed = typeof speedValue === "number"
         ? speedValue
         : Number(resolveStat(speedValue, { bot, stats, context }));

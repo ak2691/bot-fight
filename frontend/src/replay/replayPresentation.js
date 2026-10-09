@@ -1,6 +1,7 @@
 import { decodeBotLoadout, STANDARD_ABILITY_IDS } from "../gameArena/loadout/BotLoadout.js";
 import { BASE_BOT_HP } from "../gameArena/modelPayloads/arenaConstants.js";
-import { attachedAbilityContract } from "../gameArena/ecs/contracts/AbilityContracts.js";
+import { triggerView } from "../gameArena/ecs/contracts/AbilityContracts.js";
+import { createBotState } from "../gameArena/modelPayloads/botState.js";
 
 export const REPLAY_PREPARATION_MS = 3_000;
 
@@ -154,10 +155,12 @@ export function replayRemainingMs(durationMs, activationElapsedMs, currentElapse
     return Math.max(0, duration - (current - activation));
 }
 
-/** Replay consumes the same organized ability timers emitted by simulation. */
+/**
+ * Replay frames carry the ability timers as the replay DTO fields (abilityActiveMs, abilityCooldowns, ...).
+ * The presentation shape holds them as ability records, built here with canonical ability ids.
+ */
 export function replayBotAbilityState(bot) {
-    const abilityActiveMs = canonicalAbilityTimerMap(bot?.abilityActiveMs);
-    return { abilityActiveMs };
+    return { abilityState: abilityStateFromBoundary(abilityStateFromLegacy(bot)) };
 }
 
 /** Recreates the Bot Room's transient direct-ability visual from its trigger. */
@@ -170,7 +173,7 @@ export function replayAbilityVisual(bot, frames = [], frameIndex = 0) {
     for (let index = currentIndex; index >= 0; index -= 1) {
         const candidate = replayBotAtFrame(frames[index], bot);
         const ability = Number(candidate?.triggeredAbility);
-        const visual = attachedAbilityContract(ability)?.phases?.[0]?.visual;
+        const visual = triggerView(ability)?.visual;
         const durationMs = Number(visual?.visibleMs ?? visual?.durationMs ?? 0);
         if (!visual?.type || !Number.isFinite(durationMs) || durationMs <= 0) continue;
 
@@ -228,7 +231,7 @@ export function hydrateReplayBot(bot, staticBot = null, participant = null) {
         ?? decodeBotLoadout(loadout).abilities;
     const abilities = replayAbilitiesFor(configuredAbilities);
 
-    return {
+    return createBotState({
         ...initial,
         ...source,
         userId: source.userId ?? initial.userId ?? participant?.userId,
@@ -248,7 +251,7 @@ export function hydrateReplayBot(bot, staticBot = null, participant = null) {
         fastTurning: source.fastTurning === true,
         // An absent field clears the previous frame, including after a seek or handoff.
         runningChain: source.runningChain ? { ...source.runningChain, path: [...source.runningChain.path] } : null,
-    };
+    });
 }
 
 export function replayAbilitiesFor(abilities) {
@@ -256,13 +259,6 @@ export function replayAbilitiesFor(abilities) {
     const selected = [...new Set(Array.isArray(abilities) ? abilities : [])]
         .filter((abilityId) => !standardAbilities.has(abilityId));
     return [...STANDARD_ABILITY_IDS, ...selected];
-}
-
-function canonicalAbilityTimerMap(value) {
-    if (value == null || typeof value !== "object" || Array.isArray(value)) return {};
-    return Object.fromEntries(Object.entries(value)
-        .map(([rawId, timer]) => [abilityId(Number(rawId)), Math.max(0, Number(timer) || 0)])
-        .filter(([id]) => id != null));
 }
 
 export function replayFrameIndexForElapsedMs(frames, elapsedMs, stepMs = 100) {
@@ -456,4 +452,5 @@ function interpolateNumber(from, to, alpha) {
 function clampedRoundWins(value) {
     return Math.max(0, Math.min(3, Number(value) || 0));
 }
-import { abilityId } from "../gameArena/gameconfig/AbilityRegistry.js";
+import { abilityStateFromBoundary } from "../gameArena/gameconfig/AbilityCompatibility.js";
+import { abilityStateFromLegacy } from "../gameArena/gameconfig/AbilityState.js";

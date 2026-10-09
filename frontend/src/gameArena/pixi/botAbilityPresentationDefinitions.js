@@ -1,4 +1,6 @@
-const noEffect = Object.freeze({ type: "none" });
+import { activeRemainingMs } from "../gameconfig/AbilityState.js";
+import { ABILITIES } from "../gameconfig/AbilityRegistry.js";
+import { triggerView } from "../ecs/contracts/AbilityContracts.js";
 
 function freezeDefinition(value) {
     if (value && typeof value === "object" && !Object.isFrozen(value)) {
@@ -8,85 +10,102 @@ function freezeDefinition(value) {
     return value;
 }
 
-const definitions = {
-    // `visualPriority` preserves the existing activeBotVisual precedence.
-    1: { role: "melee", visualPriority: 0, bodyEffect: { type: "meleeSwing", activeMsFallback: 400 }, activeEffect: noEffect },
-    // Sniper keeps the internal "gun" role/registry name. Wind-up sight line, then a rail_shot ray.
-    3: {
-        role: "gun", visualPriority: 1,
-        windupEffect: { type: "sniperSight", color: 0xef4444, width: 2, alphaMin: 0.35, alphaMax: 0.8, pulses: 3 },
-        directEffect: { type: "gunRay", rayFrames: "rail_shot" },
-        activeEffect: { type: "abilityRay", height: 40, muzzleFlash: true, rayFrames: "rail_shot" },
+/**
+ * Renderer settings keyed by the verb's visual `type` in shared/gameplay/abilities.json.
+ * Each key has a renderer module of the same name in `renderers/`. Settings are
+ * presentation-only (colours, sizes, fallbacks); they never describe gameplay outcomes.
+ * `visualPriority` preserves which active bot visual wins when several are active.
+ */
+const settingsByType = {
+    meleeSlash: { visualPriority: 0, activeMsFallback: 400 },
+    // Sniper: a sight line during the wind-up, then a rail_shot ray (direct from the ray origin, active from the visual origin).
+    gun: {
+        visualPriority: 1,
+        sight: { color: 0xef4444, width: 2, alphaMin: 0.35, alphaMax: 0.8, pulses: 3 },
+        directRay: { rayFrames: "rail_shot", fallbackRange: 700, fallbackHeight: 16 },
+        activeRay: { height: 40, muzzleFlash: true, rayFrames: "rail_shot" },
     },
-    5: { role: "ability-5", visualPriority: 2, activeEffect: noEffect },
-    6: { role: "stun", visualPriority: 3, directEffect: { type: "stun" }, activeEffect: noEffect },
-    20: { role: "lock-on", visualPriority: 4, marker: { type: "lockOn" }, activeEffect: noEffect },
-    7: { role: "heavy-slash", visualPriority: 5, activeEffect: { type: "heavySlash", sizingHitboxAbilityId: 1 } },
-    18: { role: "ability-18", visualPriority: 6, activeEffect: noEffect },
-    12: { role: "pistol", visualPriority: 7, activeEffect: { type: "abilityRay", height: 14, muzzleFlash: true } },
-    9: { role: "concussive-shot", visualPriority: 8, activeEffect: { type: "abilityRay", height: 76, muzzleFlash: true } },
-    13: { role: "rail-shot", visualPriority: 9, activeEffect: { type: "abilityRay", height: 100, muzzleFlash: true } },
-    8: { role: "repulsor", visualPriority: 10, visualClock: "repulsorBurst", activeEffect: { type: "repulsorBurst" } },
-    10: { role: "basic-heal", visualPriority: 11, onVisualStart: { type: "repairPulse" }, activeEffect: noEffect },
-    16: { role: "absolute-guard", visualPriority: 12, selfGuardFlash: true, activeEffect: { type: "shield", tint: 0xfbbf24 } },
-    23: { role: "reactive-armor", visualPriority: 13, selfGuardFlash: true, activeEffect: { type: "shield", tint: 0xe2e8f0 } },
-    25: { role: "phase-strike", visualPriority: 14, onVisualStart: { type: "burst", color: 0xc4b5fd, count: 12 }, activeEffect: { type: "phaseStrike" } },
-    26: { role: "frost-ring", visualPriority: 15, activeEffect: { type: "frostRing" } },
-    30: { role: "temporal-ray", visualPriority: 16, activeEffect: { type: "proceduralRay", color: 0x22d3ee, fallbackRange: 500, fallbackWidth: 5, muzzleFlash: true } },
-    32: { role: "null-ray", visualPriority: 17, activeEffect: { type: "proceduralRay", color: 0xef4444, fallbackRange: 500, fallbackWidth: 5, muzzleFlash: true } },
-    33: { role: "temporal-anchor", visualPriority: 18, activeEffect: { type: "temporalAnchor", periodMs: 100, pulse: 0.18 } },
-    34: { role: "dash-strike", visualPriority: 19, activeEffect: { type: "proceduralRay", color: 0xf8fafc, fallbackRange: 80, fallbackWidth: 6 } },
+    stun: { visualPriority: 3 },
+    lockOn: { visualPriority: 4 },
+    heavySlash: { visualPriority: 5, sizingHitboxAbilityId: 1 },
+    pistol: { visualPriority: 7, activeRay: { height: 14, muzzleFlash: true } },
+    concussiveShot: { visualPriority: 8, activeRay: { height: 76, muzzleFlash: true } },
+    railShot: { visualPriority: 9, activeRay: { height: 100, muzzleFlash: true } },
+    repulsorBurst: { visualPriority: 10 },
+    basicHeal: { visualPriority: 11 },
+    reactiveArmor: { visualPriority: 12, selfGuardFlash: true, tint: 0xfbbf24 },
+    absoluteGuard: { visualPriority: 13, selfGuardFlash: true, tint: 0xe2e8f0 },
+    phaseStrike: { visualPriority: 14, startBurst: { color: 0xc4b5fd, count: 12 } },
+    frostRing: { visualPriority: 15 },
+    disruptorDart: { visualPriority: 16, ray: { color: 0x22d3ee, fallbackRange: 500, fallbackWidth: 5, muzzleFlash: true } },
+    vampiricBeam: { visualPriority: 17, ray: { color: 0xef4444, fallbackRange: 500, fallbackWidth: 5, muzzleFlash: true } },
+    overclock: { visualPriority: 18, periodMs: 100, pulse: 0.18 },
+    basicStrike: { visualPriority: 19, ray: { color: 0xf8fafc, fallbackRange: 80, fallbackWidth: 6 } },
     // Placeholder weapon visuals: sized from each contract hitbox, driven only by
-    // preparingAbility/preparingMs (wind-up) and abilityActiveMs (active).
-    35: {
-        role: "thrust", visualPriority: 20,
-        windupEffect: { type: "thrustWindup", color: 0xcbd5e1, width: 4, pullbackUnits: 40, lengthUnits: 40 },
-        activeEffect: { type: "thrust", color: 0xcbd5e1, width: 4, tipLength: 14, tipHalfWidth: 8, extendFraction: 0.35, holdFraction: 0.3 },
+    // the ability's wind-up and active stages (abilityState).
+    thrust: {
+        visualPriority: 20,
+        windup: { color: 0xcbd5e1, width: 4, pullbackUnits: 40, lengthUnits: 40 },
+        active: { color: 0xcbd5e1, width: 4, tipLength: 14, tipHalfWidth: 8, extendFraction: 0.35, holdFraction: 0.3 },
     },
-    36: {
-        role: "cleave", visualPriority: 21,
-        windupEffect: { type: "cleaveWindup", color: 0xf59e0b, alphaStart: 0.25, alphaEnd: 0.6, outlineWidth: 3 },
-        activeEffect: { type: "heavySlash", sizingHitboxAbilityId: 36, hitboxSizeScale: 1.92, tint: 0xfde68a },
+    cleave: {
+        visualPriority: 21,
+        windup: { color: 0xf59e0b, alphaStart: 0.25, alphaEnd: 0.6, outlineWidth: 3 },
+        sizingHitboxAbilityId: 36, hitboxSizeScale: 1.92, tint: 0xfde68a,
     },
-    37: {
-        role: "smash", visualPriority: 22,
-        windupEffect: { type: "smashWindup", color: 0xe2e8f0, alphaStart: 0.15, alphaEnd: 0.75, outlineWidth: 3 },
-        activeEffect: { type: "smash", color: 0xe2e8f0, fillAlpha: 0.5, impactColor: 0xffffff, impactWidth: 6, dustColor: 0x94a3b8, dustPuffs: 3 },
+    smash: {
+        visualPriority: 22,
+        windup: { color: 0xe2e8f0, alphaStart: 0.15, alphaEnd: 0.75, outlineWidth: 3 },
+        active: { color: 0xe2e8f0, fillAlpha: 0.5, impactColor: 0xffffff, impactWidth: 6, dustColor: 0x94a3b8, dustPuffs: 3 },
     },
-    21: { role: "temporal-rewind", shapeEffect: { type: "temporalRewindPulse", timerField: "temporalRewindPulseMs", durationMs: 400, xField: "temporalRewindVisualX", fallbackXField: "temporalRewindX", yField: "temporalRewindVisualY", fallbackYField: "temporalRewindY", asset: "temporalRewind", slot: "rewind-pulse", tint: 0xcffafe, width: 110, height: 110 } },
-    19: { role: "dash", transitionEffect: "dashSmoke" },
+    // Not an activation visual: the pulse follows the bot's rewind timer fields.
+    temporalRewindZone: {
+        pulse: {
+            timerField: "temporalRewindPulseMs", durationMs: 400,
+            xField: "temporalRewindVisualX", fallbackXField: "temporalRewindX",
+            yField: "temporalRewindVisualY", fallbackYField: "temporalRewindY",
+            asset: "temporalRewind", slot: "rewind-pulse", tint: 0xcffafe, width: 110, height: 110,
+        },
+    },
+    dash: { smokeMs: 500, smokeFrameMs: 100 },
 };
 
-export const BOT_ABILITY_PRESENTATION_DEFINITIONS = Object.freeze(Object.fromEntries(
-    Object.entries(definitions).map(([id, definition]) => [Number(id), freezeDefinition({ id: Number(id), ...definition })]),
+export const BOT_ABILITY_VISUAL_SETTINGS = Object.freeze(Object.fromEntries(
+    Object.entries(settingsByType).map(([type, settings]) => [type, freezeDefinition(settings)]),
 ));
 
-export const BOT_ABILITY_VISUAL_PRIORITY = Object.freeze(Object.values(BOT_ABILITY_PRESENTATION_DEFINITIONS)
-    .filter((definition) => definition.visualPriority != null)
-    .sort((left, right) => left.visualPriority - right.visualPriority)
-    .map((definition) => definition.id));
+const abilityIdByType = new Map();
+for (const id of Object.keys(ABILITIES).map(Number)) {
+    const type = triggerView(id)?.visual?.type;
+    if (type && BOT_ABILITY_VISUAL_SETTINGS[type] && !abilityIdByType.has(type)) abilityIdByType.set(type, id);
+}
 
-const definitionsByRole = Object.freeze(Object.fromEntries(
-    Object.values(BOT_ABILITY_PRESENTATION_DEFINITIONS).map((definition) => [definition.role, definition]),
-));
+/** Settings plus the ability that declares the type; `abilityId` is null for types without a trigger visual. */
+const presentations = Object.entries(BOT_ABILITY_VISUAL_SETTINGS).map(([type, settings]) =>
+    freezeDefinition({ type, abilityId: abilityIdByType.get(type) ?? null, ...settings }));
+
+/** Presentations in active-visual precedence order, then those without a precedence. */
+export const BOT_ABILITY_PRESENTATIONS = Object.freeze([...presentations].sort((left, right) =>
+    (left.visualPriority ?? Infinity) - (right.visualPriority ?? Infinity)));
+
+const presentationsByType = new Map(BOT_ABILITY_PRESENTATIONS.map((presentation) => [presentation.type, presentation]));
+const presentationsByAbilityId = new Map(BOT_ABILITY_PRESENTATIONS
+    .filter((presentation) => presentation.abilityId != null)
+    .map((presentation) => [presentation.abilityId, presentation]));
+
+/** Ability ids in active-visual precedence order, the order `activeBotVisual` picks from. */
+export const BOT_ABILITY_VISUAL_PRIORITY = Object.freeze(BOT_ABILITY_PRESENTATIONS
+    .filter((presentation) => presentation.visualPriority != null && presentation.abilityId != null)
+    .map((presentation) => presentation.abilityId));
+
+export function botAbilityPresentationForType(type) {
+    return presentationsByType.get(type) ?? null;
+}
 
 export function botAbilityPresentationForId(abilityId) {
-    const normalizedId = Number(abilityId);
-    return Number.isInteger(normalizedId)
-        ? BOT_ABILITY_PRESENTATION_DEFINITIONS[normalizedId] ?? null
-        : null;
+    return presentationsByAbilityId.get(Number(abilityId)) ?? null;
 }
 
-export function botAbilityPresentationForRole(role) {
-    return definitionsByRole[role] ?? null;
-}
-
-/** Wind-up effect metadata for a bot that is currently preparing an ability. */
-export function botAbilityWindupEffect(shape) {
-    const definition = botAbilityPresentationForId(shape?.preparingAbility);
-    return definition?.windupEffect ? { definition, effect: definition.windupEffect } : null;
-}
-
-export function botAbilityActiveMs(shape, definition) {
-    return Number(shape?.abilityActiveMs?.[definition?.id] ?? 0);
+export function botAbilityActiveMs(shape, presentation) {
+    return presentation?.abilityId == null ? 0 : activeRemainingMs(shape, presentation.abilityId);
 }

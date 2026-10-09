@@ -1,7 +1,10 @@
 package com.example.botfight.simulation.core.state;
 
+import com.example.botfight.simulation.core.orchestration.Bot;
+
 import com.example.botfight.simulation.bots.BotCodeService;
 import com.example.botfight.simulation.bots.BotLogicContracts;
+import com.example.botfight.simulation.core.orchestration.CombatLog;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
 import com.example.botfight.simulation.gameconfig.Abilities;
 import com.example.botfight.simulation.gameconfig.GameConfig;
@@ -34,8 +37,8 @@ public class BotStateService {
         this.botCodeService = botCodeService;
     }
 
-    public DuelSimulationService.Bot create(DuelSimulationService.DuelBotRequest request) {
-        DuelSimulationService.Bot bot = new DuelSimulationService.Bot();
+    public Bot create(DuelSimulationService.DuelBotRequest request) {
+        Bot bot = new Bot();
         bot.userId = request.userId();
         bot.username = request.username();
         bot.slot = request.slot();
@@ -63,11 +66,10 @@ public class BotStateService {
         return bot;
     }
 
-    /** Gives an ability its starting charges. Cooldowns need no entry: an absent cooldown is ready. */
-    private void initializeAbilityResources(DuelSimulationService.Bot bot, int abilityId) {
-        if (Abilities.definition(abilityId).charges() > 0
-                && Abilities.definition(abilityId).resourceModel() != ResourceModel.FIXED) {
-            bot.abilityCharges.put(abilityId, Abilities.maxCharges(abilityId, bot.maxHp));
+    /** Gives an ability its starting charges. Cooldowns need no entry: an absent record is ready. */
+    private void initializeAbilityResources(Bot bot, int abilityId) {
+        if (Abilities.definition(abilityId).charges() > 0) {
+            AbilityState.ensure(bot, abilityId).charges = Abilities.maxCharges(abilityId, bot.maxHp);
         }
     }
 
@@ -77,18 +79,14 @@ public class BotStateService {
      * the cooldowns, charges, wind-up, stamina, position, HP and statuses already in play carry over.
      * A running action chain ends, because the new brain may not contain it.
      */
-    public void applyBrainSchedule(DuelSimulationService.Bot bot, JsonNode brain, java.util.Collection<String> variableResets) {
+    public void applyBrainSchedule(Bot bot, JsonNode brain, java.util.Collection<String> variableResets) {
         bot.brain = brain;
         bot.combatLoadout = "custom";
         reconcileCustomVariables(bot, variableResets == null ? Set.of() : new HashSet<>(variableResets));
         Set<Integer> next = botCodeService.readAbilities(brain);
         for (int abilityId : next) {
             if (bot.abilities.contains(abilityId)) continue;
-            bot.abilityCooldowns.remove(abilityId);
-            bot.abilityPendingCooldownMs.remove(abilityId);
-            bot.abilityActiveMs.remove(abilityId);
-            bot.abilityCharges.remove(abilityId);
-            bot.abilityRechargeMs.remove(abilityId);
+            bot.abilityState.remove(abilityId);
             initializeAbilityResources(bot, abilityId);
         }
         bot.abilities = next;
@@ -99,7 +97,7 @@ public class BotStateService {
      * A variable that keeps its name and type keeps its value unless it is reset; a new, reset or
      * retyped variable takes its declared default; a variable the brain no longer declares is dropped.
      */
-    private void reconcileCustomVariables(DuelSimulationService.Bot bot, Set<String> resets) {
+    private void reconcileCustomVariables(Bot bot, Set<String> resets) {
         Map<String, Object> previousValues = new HashMap<>(bot.customVariables);
         Map<String, String> previousTypes = new HashMap<>(bot.customVariableTypes);
         bot.customVariables.clear();
@@ -120,7 +118,7 @@ public class BotStateService {
         }
     }
 
-    public void startTick(DuelSimulationService.Bot bot) {
+    public void startTick(Bot bot) {
         bot.tickStartHp = bot.hp;
         bot.damageTakenThisTick = 0;
         // The browser clears one-tick outputs before the next action is
@@ -128,22 +126,31 @@ public class BotStateService {
         // boundary; the current tick may repopulate these fields below.
         bot.triggeredAbility = null;
         bot.triggeredAbilityPayload = null;
-        bot.abilitySpawn = null;
+        bot.abilitySpawn = java.util.List.of();
         bot.visualOriginX = Double.NaN;
         bot.visualOriginY = Double.NaN;
         bot.visualOriginRotation = Double.NaN;
         bot.entityHitIds.clear();
     }
 
-    public void beginTick(DuelSimulationService.Bot bot) {
-        beginTick(bot, null);
+    public void beginTick(Bot bot) {
+        beginTick(bot, Set.of());
     }
 
     /** Advances one step without consuming a just-activated ability's active window. */
-    public void beginTick(DuelSimulationService.Bot bot, Integer justActivatedAbilityId) {
+    public void beginTick(Bot bot, Integer justActivatedAbilityId) {
+        beginTick(bot, justActivatedAbilityId == null ? Set.of() : Set.of(justActivatedAbilityId));
+    }
+
+    /**
+     * Advances one step. Every ability that activated this step (an ability and a dash can both start in one
+     * step) keeps its stages for the step, so a dash started beside an ability gets the same active and
+     * cooldown timing as a dash started alone.
+     */
+    public void beginTick(Bot bot, Set<Integer> justActivatedAbilityIds) {
         bot.matchElapsedMs = Math.min(99_999_000L, bot.matchElapsedMs + STEP_MS);
         if (bot.hp <= 0) {
-            bot.abilityActiveMs.replaceAll((id, value) -> Math.max(0, value - STEP_MS));
+            runOutActiveStages(bot);
             bot.dashRemaining = 0;
             bot.movementVelocityX = 0;
             bot.movementVelocityY = 0;
@@ -154,9 +161,9 @@ public class BotStateService {
             return;
         }
 
-        var activeBeforeTimers = new HashMap<>(bot.abilityActiveMs);
-        tickAbilityTimers(bot, STEP_MS, justActivatedAbilityId);
-        tickAbilityResources(bot, STEP_MS, activeBeforeTimers, justActivatedAbilityId);
+        var activeBeforeTimers = activeRemainingByAbility(bot);
+        tickAbilityTimers(bot, STEP_MS, justActivatedAbilityIds);
+        tickAbilityResources(bot, STEP_MS, activeBeforeTimers, justActivatedAbilityIds);
         tickStatuses(bot);
         if (bot.hp <= 0) {
             clearBotEffects(bot);
@@ -173,7 +180,9 @@ public class BotStateService {
         bot.damageTakenThisTick = 0;
     }
 
-    private void tickStatuses(DuelSimulationService.Bot bot) {
+    private void tickStatuses(Bot bot) {
+        Map<String, Integer> remainingAtStart = new HashMap<>();
+        bot.statusEffects.forEach((key, status) -> remainingAtStart.put(key, status.remainingMs));
         for (String key : new ArrayList<>(bot.statusEffects.keySet())) {
             StatusEffectState status = bot.statusEffects.get(key);
             if (status == null || !status.active()) {
@@ -181,6 +190,9 @@ public class BotStateService {
                 continue;
             }
             if ("presence".equals(status.mode)) continue;
+            // A sibling's tick effect refreshed this status during this interval (burn re-applying
+            // hit-stagger): the refresh starts at full duration, whatever order the statuses are visited in.
+            if (status.remainingMs != remainingAtStart.get(key)) continue;
             int previousRemainingMs = Math.max(0, status.remainingMs);
             int activeElapsedMs = Math.min(STEP_MS, previousRemainingMs);
             int tickMs = Math.max(0, status.tickMs);
@@ -188,12 +200,17 @@ public class BotStateService {
             while (tickMs > 0 && tickElapsedMs >= tickMs) {
                 for (StatusEffectState.Effect effect : status.effects) {
                     if (!"tick".equals(effect.mode)) continue;
-                    if ("damage".equals(effect.type)) {
-                        applyDamage(bot, Math.max(0, effect.amount * effect.multiplier), status.sourceSlot,
-                                Double.NaN, Double.NaN, "status", status.type);
-                        if (bot.hp <= 0) return;
-                    } else if ("movement_lock".equals(effect.type) && effect.durationMs > 0) {
-                        upsertStatusEffect(bot, new StatusEffectState("movement-lock", effect.durationMs, 0));
+                    Integer previousAbility = CombatLog.setAbility(status.abilityId);
+                    try {
+                        if ("damage".equals(effect.type)) {
+                            applyDamage(bot, Math.max(0, effect.amount * effect.multiplier), status.sourceSlot,
+                                    Double.NaN, Double.NaN, "status", status.type);
+                            if (bot.hp <= 0) return;
+                        } else if ("movement_lock".equals(effect.type) && effect.durationMs > 0) {
+                            upsertStatusEffect(bot, new StatusEffectState("movement-lock", effect.durationMs, 0));
+                        }
+                    } finally {
+                        CombatLog.setAbility(previousAbility);
                     }
                 }
                 tickElapsedMs -= tickMs;
@@ -204,19 +221,19 @@ public class BotStateService {
         }
     }
 
-    public static boolean statusActive(DuelSimulationService.Bot bot, String type) {
+    public static boolean statusActive(Bot bot, String type) {
         return bot != null && bot.statusEffects.values().stream()
                 .filter(status -> type.equalsIgnoreCase(status.type))
                 .anyMatch(StatusEffectState::active);
     }
 
-    public static int statusRemainingMs(DuelSimulationService.Bot bot, String type) {
+    public static int statusRemainingMs(Bot bot, String type) {
         return bot == null ? 0 : bot.statusEffects.values().stream()
                 .filter(status -> type.equalsIgnoreCase(status.type) && !"presence".equals(status.mode))
                 .mapToInt(status -> Math.max(0, status.remainingMs)).max().orElse(0);
     }
 
-    public static double statusEffectValue(DuelSimulationService.Bot bot, String statusType, String effectType,
+    public static double statusEffectValue(Bot bot, String statusType, String effectType,
                                             String field, double fallback) {
         if (!statusActive(bot, statusType)) return fallback;
         return bot.statusEffects.values().stream()
@@ -234,10 +251,12 @@ public class BotStateService {
                 .findFirst().orElse(fallback);
     }
 
-    public static void upsertStatusEffect(DuelSimulationService.Bot bot, StatusEffectState incoming) {
+    public static void upsertStatusEffect(Bot bot, StatusEffectState incoming) {
         if (bot == null || incoming == null || incoming.type == null || incoming.type.isBlank()) return;
         incoming.type = incoming.type.toLowerCase(Locale.ROOT);
         incoming.mode = "presence".equals(incoming.mode) ? "presence" : "duration";
+        CombatLog.record("status", CombatLog.bot(incoming.sourceSlot), CombatLog.bot(bot.slot),
+                incoming.abilityId, incoming.type, incoming.remainingMs);
         String key = incoming.type + ":" + incoming.mode;
         StatusEffectState current = bot.statusEffects.get(key);
         if (current == null) {
@@ -270,7 +289,7 @@ public class BotStateService {
         }
     }
 
-    public void settleTick(DuelSimulationService.Bot bot) {
+    public void settleTick(Bot bot) {
         if (bot.pendingHealing > 0) {
             bot.hp = Math.min(bot.maxHp, bot.hp + bot.pendingHealing);
             bot.pendingHealing = 0;
@@ -292,46 +311,46 @@ public class BotStateService {
      * earns the hit stamina refund, once per activation: {@code activationSerial} identifies the activation
      * that landed it, so multi-hit, piercing and damage-over-time effects pay out once.
      */
-    public static void recordEnemyHit(DuelSimulationService.Bot owner, int abilityId, int activationSerial) {
+    public static void recordEnemyHit(Bot owner, int abilityId, int activationSerial) {
         owner.abilityHitsThisTick.add(abilityId);
         if (owner.refundedActivations.add(activationSerial)) {
             owner.pendingStaminaRefund += com.example.botfight.simulation.gameconfig.MovementConfig.HIT_STAMINA_REFUND;
         }
     }
 
-    private static void settleAbilityHits(DuelSimulationService.Bot bot) {
+    private static void settleAbilityHits(Bot bot) {
         bot.abilityLastHitAgeMs.replaceAll((id, ageMs) ->
                 (int) Math.min(NEVER_HIT_MS, (long) ageMs + STEP_MS));
         for (Integer abilityId : bot.abilityHitsThisTick) bot.abilityLastHitAgeMs.put(abilityId, STEP_MS);
         bot.abilityHitsThisTick.clear();
     }
 
-    public void applyDamage(DuelSimulationService.Bot target, double damage) {
+    public void applyDamage(Bot target, double damage) {
         applyDamage(target, damage, (Integer) null);
     }
 
-    public void applyClosingZoneDamage(DuelSimulationService.Bot target, double damage) {
+    public void applyClosingZoneDamage(Bot target, double damage) {
         double previousHp = target.hp;
         applyDamage(target, damage);
         if (target.hp < previousHp) target.closingZoneDamageCount++;
     }
 
-    public void applyDamage(DuelSimulationService.Bot target, double damage, DuelSimulationService.Bot source) {
+    public void applyDamage(Bot target, double damage, Bot source) {
         applyDamage(target, damage, source == null ? null : source.slot,
                 source == null ? Double.NaN : source.x,
                 source == null ? Double.NaN : source.y);
     }
 
-    public void applyDamage(DuelSimulationService.Bot target, double damage, Integer sourceSlot) {
+    public void applyDamage(Bot target, double damage, Integer sourceSlot) {
         applyDamage(target, damage, sourceSlot, Double.NaN, Double.NaN);
     }
 
-    public void applyDamage(DuelSimulationService.Bot target, double damage, Integer sourceSlot,
+    public void applyDamage(Bot target, double damage, Integer sourceSlot,
                             double sourceX, double sourceY) {
         applyDamage(target, damage, sourceSlot, sourceX, sourceY, null, null);
     }
 
-    private void applyDamage(DuelSimulationService.Bot target, double damage, Integer sourceSlot,
+    private void applyDamage(Bot target, double damage, Integer sourceSlot,
                              double sourceX, double sourceY, String damageSourceKind,
                              String damageSourceType) {
         if (target.hp <= 0 || target.ignoresHostileEffects()) return;
@@ -343,6 +362,7 @@ public class BotStateService {
         remaining = roundCombatValue(remaining);
         if (remaining > 0) target.hp = roundCombatValue(Math.max(0, target.hp - remaining));
         double appliedDamage = roundCombatValue(Math.max(0, previousHp - target.hp));
+        CombatLog.record("effect", CombatLog.bot(sourceSlot), CombatLog.bot(target.slot), null, "damage", appliedDamage);
         target.damageTakenThisTick = roundCombatValue(target.damageTakenThisTick + appliedDamage);
         if (appliedDamage > 0 && sourceSlot != null && sourceSlot != target.slot) {
             upsertStatusEffect(target, new StatusEffectState("hit-stagger", HitStagger.DURATION_MS, 0)
@@ -352,16 +372,21 @@ public class BotStateService {
         if (previousHp > 0 && target.hp <= 0) clearBotEffects(target);
     }
 
-    public void applyDamageFrom(DuelSimulationService.Bot source, DuelSimulationService.Bot target, double damage) {
+    public void applyDamageFrom(Bot source, Bot target, double damage) {
+        applyDamageFrom(source, target, damage, source.x, source.y);
+    }
+
+    /** Damage from {@code source} landing at an origin (sourceX, sourceY), reflected back if the target reflects. */
+    public void applyDamageFrom(Bot source, Bot target, double damage, double sourceX, double sourceY) {
         double reflectionMultiplier = statusEffectValue(
                 target, "reactive-armor", "damage_reflection", "multiplier", 0.0);
         boolean reflecting = source != null && source != target && reflectionMultiplier > 0;
-        applyDamage(target, damage, source.slot, source.x, source.y);
+        applyDamage(target, damage, source.slot, sourceX, sourceY);
         if (reflecting) applyDamage(source,
                 roundCombatValue(Math.max(0, damage) * reflectionMultiplier), target);
     }
 
-    private static IncomingDamage incomingDamageFor(DuelSimulationService.Bot bot,
+    private static IncomingDamage incomingDamageFor(Bot bot,
                                                     String damageSourceKind,
                                                     String damageSourceType) {
         double damageModifier = 0;
@@ -406,49 +431,41 @@ public class BotStateService {
         return Math.round(value * 1000.0) / 1000.0;
     }
 
-    public double damageMultiplier(DuelSimulationService.Bot bot) {
+    public double damageMultiplier(Bot bot) {
         return bot.attackDamageMultiplier;
     }
 
-    public void clearBotEffects(DuelSimulationService.Bot bot) {
+    public void clearBotEffects(Bot bot) {
         bot.statusEffects.clear();
         bot.dashRemaining = 0;
-        bot.abilityActiveMs.clear();
-        bot.abilityPendingCooldownMs.forEach((abilityId, pending) ->
-                bot.abilityCooldowns.merge(abilityId, pending, Math::max));
-        bot.abilityPendingCooldownMs.clear();
+        // Active stages end now; the cooldown each reserved starts in full.
+        for (int abilityId : AbilityState.idsInStage(bot, AbilityState.Stage.ACTIVE)) {
+            AbilityState.endActive(bot, abilityId);
+        }
         bot.temporalRewindMs = 0;
         bot.temporalRewindPulseMs = 0;
         bot.pendingHealing = 0;
         bot.utilityHealAccumulatorMs = 0;
     }
 
-    public static int abilityCharges(DuelSimulationService.Bot bot, int abilityId) {
+    public static int abilityCharges(Bot bot, int abilityId) {
         int maxCharges = Abilities.maxCharges(abilityId, bot.maxHp);
+        AbilityState.Record record = AbilityState.record(bot, abilityId);
         return Math.max(0, Math.min(
                 maxCharges,
-                bot.abilityCharges.getOrDefault(abilityId, 0)));
+                record == null || record.charges == null ? 0 : record.charges));
     }
 
-    public int abilityRechargeMs(DuelSimulationService.Bot bot, int abilityId) {
-        var definition = Abilities.definition(abilityId);
-        int timer = bot.abilityRechargeMs.getOrDefault(abilityId, 0);
-        return definition.resourceModel() == ResourceModel.REGENERATE && abilityCharges(bot, abilityId) < definition.charges()
-                ? Math.max(0, definition.rechargeMs() - timer) : timer;
+    public int abilityRechargeMs(Bot bot, int abilityId) {
+        AbilityState.Record record = AbilityState.record(bot, abilityId);
+        return record == null || record.reloadMs == null ? 0 : record.reloadMs;
     }
 
-    public boolean consumeAbilityCharge(DuelSimulationService.Bot bot, int abilityId) {
+    public boolean consumeAbilityCharge(Bot bot, int abilityId) {
         return consumeAbilityCharges(bot, abilityId, 1);
     }
 
-    public void startAbilityResource(DuelSimulationService.Bot bot, int abilityId) {
-        var definition = Abilities.definition(abilityId);
-        if (definition.resourceModel() != ResourceModel.FIXED || definition.charges() <= 0) return;
-        bot.abilityCharges.put(abilityId, definition.charges());
-        bot.abilityRechargeMs.put(abilityId, 0);
-    }
-
-    public void setAbilityReuseCooldown(DuelSimulationService.Bot bot, int abilityId) {
+    public void setAbilityReuseCooldown(Bot bot, int abilityId) {
         int reuseMs = Abilities.definition(abilityId).reuseCooldownMs();
         setAbilityCooldown(bot, abilityId, acceleratedCooldownMs(bot, reuseMs));
     }
@@ -458,28 +475,20 @@ public class BotStateService {
      * any already-spawned ability entity. Each interrupted phase immediately
      * enters its normal cooldown or reload gate.
      */
-    public static boolean interruptCurrentAbility(DuelSimulationService.Bot bot) {
+    public static boolean interruptCurrentAbility(Bot bot) {
         if (bot == null || bot.hp <= 0) return false;
         Set<Integer> abilityIds = new HashSet<>();
-        if (bot.preparingAbility != null && bot.preparingMs > 0) {
-            abilityIds.add(bot.preparingAbility);
-        }
-        bot.abilityActiveMs.forEach((abilityId, activeMs) -> {
-            if (activeMs != null && activeMs > 0) abilityIds.add(abilityId);
-        });
+        abilityIds.addAll(AbilityState.idsInStage(bot, AbilityState.Stage.WINDUP));
+        abilityIds.addAll(AbilityState.idsInStage(bot, AbilityState.Stage.ACTIVE));
         boolean interrupted = false;
         for (Integer abilityId : abilityIds) {
             interrupted |= interruptAbility(bot, abilityId);
         }
-        bot.preparingAbility = null;
-        bot.preparingMs = 0;
-        bot.preparingTargetX = Double.NaN;
-        bot.preparingTargetY = Double.NaN;
         return interrupted;
     }
 
     /** Applies the shared interrupt state transition and its control status. */
-    public static void applyInterrupt(DuelSimulationService.Bot bot, int durationMs,
+    public static void applyInterrupt(Bot bot, int durationMs,
                                       Integer sourceAbilityId) {
         if (bot == null || bot.hp <= 0 || bot.ignoresHostileEffects()) return;
         interruptCurrentAbility(bot);
@@ -493,40 +502,30 @@ public class BotStateService {
         bot.velocityY = 0;
     }
 
-    private static boolean interruptAbility(DuelSimulationService.Bot bot, int abilityId) {
-        boolean preparing = bot.preparingAbility != null
-                && bot.preparingAbility == abilityId
-                && bot.preparingMs > 0;
-        boolean active = bot.abilityActiveMs.getOrDefault(abilityId, 0) > 0;
+    private static boolean interruptAbility(Bot bot, int abilityId) {
+        boolean preparing = AbilityState.windupRemainingMs(bot, abilityId) > 0;
+        boolean active = AbilityState.activeRemainingMs(bot, abilityId) > 0;
         if (!preparing && !active) return false;
 
         var definition = Abilities.definition(abilityId);
-        if (preparing) {
-            bot.preparingAbility = null;
-            bot.preparingMs = 0;
-            bot.preparingTargetX = Double.NaN;
-            bot.preparingTargetY = Double.NaN;
-        }
-        if (active) bot.abilityActiveMs.put(abilityId, 0);
+        if (preparing) AbilityState.ready(bot, abilityId);
+        if (active) AbilityState.endActive(bot, abilityId);
 
         boolean reloadActive = definition.resourceModel() == ResourceModel.RELOAD_WHEN_EMPTY
                 && abilityCharges(bot, abilityId) == 0
-                && bot.abilityRechargeMs.getOrDefault(abilityId, 0) > 0;
+                && reloadMs(bot, abilityId) > 0;
         if (preparing && !reloadActive
                 && definition.charges() > 0
-                && definition.resourceModel() != ResourceModel.FIXED
-                && definition.resourceModel() != ResourceModel.HP
                 && abilityCharges(bot, abilityId) > 0) {
             if (consumeAbilityCharges(bot, abilityId, 1)) {
                 reloadActive = definition.resourceModel() == ResourceModel.RELOAD_WHEN_EMPTY
                         && abilityCharges(bot, abilityId) == 0
-                        && bot.abilityRechargeMs.getOrDefault(abilityId, 0) > 0;
+                        && reloadMs(bot, abilityId) > 0;
             }
         }
 
         if (reloadActive) {
-            bot.abilityCooldowns.put(abilityId, 0);
-            bot.abilityPendingCooldownMs.remove(abilityId);
+            AbilityState.ready(bot, abilityId);
         } else {
             double attackSpeed = bot.attackSpeedMultiplier > 0
                     && Double.isFinite(bot.attackSpeedMultiplier) ? bot.attackSpeedMultiplier : 1.0;
@@ -536,9 +535,8 @@ public class BotStateService {
             setAbilityCooldown(bot, abilityId, cooldownMs);
         }
 
-        var contract = AbilityContracts.attachedAll().get(abilityId);
-        boolean hasPhaseDash = contract != null && contract.phases().stream()
-                .anyMatch(phase -> phase.movement() != null && phase.movement().distance() != null);
+        var contract = AbilityContracts.forAbility(abilityId);
+        boolean hasPhaseDash = contract != null && contract.has(AbilityContracts.MoveVerb.class);
         if (active && hasPhaseDash) {
             bot.dashRemaining = 0;
             bot.movementVelocityX = 0;
@@ -549,41 +547,63 @@ public class BotStateService {
         return true;
     }
 
-    /** Sets a cooldown in the active or recovery phase without exposing both at once. */
-    public static void setAbilityCooldown(DuelSimulationService.Bot bot, int abilityId, int cooldownMs) {
+    private static int reloadMs(Bot bot, int abilityId) {
+        AbilityState.Record record = AbilityState.record(bot, abilityId);
+        return record == null || record.reloadMs == null ? 0 : record.reloadMs;
+    }
+
+    /**
+     * Sets a cooldown in the stage where it will actually run: while the ability is active it stays reserved on
+     * the record and starts when the active stage ends; otherwise it is the visible cooldown.
+     */
+    public static void setAbilityCooldown(Bot bot, int abilityId, int cooldownMs) {
         int requested = Math.max(0, cooldownMs);
-        int current = Math.max(
-                bot.abilityCooldowns.getOrDefault(abilityId, 0),
-                bot.abilityPendingCooldownMs.getOrDefault(abilityId, 0));
-        if (bot.abilityActiveMs.getOrDefault(abilityId, 0) > 0) {
-            bot.abilityCooldowns.put(abilityId, 0);
-            int pending = Math.max(current, requested);
-            if (pending > 0) bot.abilityPendingCooldownMs.put(abilityId, pending);
-            else bot.abilityPendingCooldownMs.remove(abilityId);
+        AbilityState.Record record = AbilityState.ensure(bot, abilityId);
+        if (record.stage == AbilityState.Stage.ACTIVE) {
+            record.cooldownMs = Math.max(Math.max(0, record.cooldownMs), requested);
         } else {
-            bot.abilityCooldowns.put(abilityId, Math.max(current, requested));
-            bot.abilityPendingCooldownMs.remove(abilityId);
+            int cooldown = Math.max(AbilityState.cooldownRemainingMs(bot, abilityId), requested);
+            record.stage = cooldown > 0 ? AbilityState.Stage.COOLDOWN : AbilityState.Stage.READY;
+            record.remainingMs = cooldown;
+            record.cooldownMs = 0;
+            record.targetX = Double.NaN;
+            record.targetY = Double.NaN;
+        }
+    }
+
+    /**
+     * Starts an ability's active stage. A cooldown still running (or reserved) is carried over to the end of
+     * the active stage; an ability with no active time goes straight to its cooldown.
+     */
+    public static void startAbilityActive(Bot bot, int abilityId, int activeMs) {
+        AbilityState.Record record = AbilityState.ensure(bot, abilityId);
+        int carried = Math.max(AbilityState.cooldownRemainingMs(bot, abilityId),
+                AbilityState.pendingCooldownMs(bot, abilityId));
+        record.targetX = Double.NaN;
+        record.targetY = Double.NaN;
+        if (activeMs > 0) {
+            record.stage = AbilityState.Stage.ACTIVE;
+            record.remainingMs = activeMs;
+            record.cooldownMs = carried;
+        } else {
+            record.stage = carried > 0 ? AbilityState.Stage.COOLDOWN : AbilityState.Stage.READY;
+            record.remainingMs = carried;
+            record.cooldownMs = 0;
         }
     }
 
     private static boolean consumeAbilityCharges(
-            DuelSimulationService.Bot bot, int abilityId, int amount) {
+            Bot bot, int abilityId, int amount) {
         var definition = Abilities.definition(abilityId);
         if (definition.charges() <= 0) return true;
-        int current = bot.abilityCharges.getOrDefault(abilityId, 0);
+        AbilityState.Record record = AbilityState.ensure(bot, abilityId);
+        int current = record.charges == null ? 0 : record.charges;
         if (current <= 0) return false;
         int remaining = Math.max(0, current - Math.max(0, amount));
-        if (remaining == 0 && definition.resourceModel() == ResourceModel.FIXED) {
-            bot.abilityCharges.remove(abilityId);
-            bot.abilityRechargeMs.remove(abilityId);
-            bot.abilityActiveMs.remove(abilityId);
-        } else {
-            bot.abilityCharges.put(abilityId, remaining);
-        }
+        record.charges = remaining;
         if (remaining == 0 && definition.resourceModel() == ResourceModel.RELOAD_WHEN_EMPTY) {
-            bot.abilityRechargeMs.put(abilityId,
-                    (int) Math.round(definition.rechargeMs() / bot.attackSpeedMultiplier
-                            * cooldownStartMultiplier(bot)));
+            record.reloadMs = (int) Math.round(definition.rechargeMs() / bot.attackSpeedMultiplier
+                    * cooldownStartMultiplier(bot));
         }
         if (remaining > 0 && definition.reuseCooldownMs() > 0) {
             setAbilityCooldown(bot, abilityId, definition.reuseCooldownMs());
@@ -591,107 +611,76 @@ public class BotStateService {
         return true;
     }
 
-    /** Advances active/recovery phases in order; cooldown modifiers are snapshotted at activation. */
-    private static void tickAbilityTimers(DuelSimulationService.Bot bot, int stepMs,
-                                          Integer justActivatedAbilityId) {
-        Set<Integer> abilityIds = new HashSet<>(bot.abilityCooldowns.keySet());
-        abilityIds.addAll(bot.abilityPendingCooldownMs.keySet());
-        abilityIds.addAll(bot.abilityActiveMs.keySet());
-        for (Integer abilityId : abilityIds) {
-            int activeBefore = Math.max(0, bot.abilityActiveMs.getOrDefault(abilityId, 0));
-            int visible = Math.max(0, bot.abilityCooldowns.getOrDefault(abilityId, 0));
-            int pending = Math.max(0, bot.abilityPendingCooldownMs.getOrDefault(abilityId, 0));
-            if (java.util.Objects.equals(abilityId, justActivatedAbilityId)) {
-                // Activation is at this step's boundary; active time begins at its configured value.
-                if (activeBefore > 0) {
-                    pending = Math.max(pending, visible);
-                    bot.abilityCooldowns.put(abilityId, 0);
-                    if (pending > 0) bot.abilityPendingCooldownMs.put(abilityId, pending);
-                    else bot.abilityPendingCooldownMs.remove(abilityId);
-                } else {
-                    bot.abilityCooldowns.put(abilityId, Math.max(visible, pending));
-                    bot.abilityPendingCooldownMs.remove(abilityId);
-                }
-                continue;
-            }
-            if (activeBefore > 0) {
-                // Migrate old/incoming state that still carries recovery in the
-                // visible map while the active phase is running.
-                pending = Math.max(pending, visible);
-                bot.abilityCooldowns.put(abilityId, 0);
-                if (activeBefore <= stepMs) {
-                    int recoveryElapsed = Math.max(0, stepMs - activeBefore);
-                    bot.abilityCooldowns.put(abilityId, Math.max(0, pending - recoveryElapsed));
-                    bot.abilityPendingCooldownMs.remove(abilityId);
-                } else if (pending > 0) {
-                    bot.abilityPendingCooldownMs.put(abilityId, pending);
-                } else {
-                    bot.abilityPendingCooldownMs.remove(abilityId);
-                }
-            } else {
-                int current = Math.max(visible, pending);
-                bot.abilityCooldowns.put(abilityId, Math.max(0, current - stepMs));
-                bot.abilityPendingCooldownMs.remove(abilityId);
-            }
-        }
-        bot.abilityActiveMs.replaceAll((id, value) -> java.util.Objects.equals(id, justActivatedAbilityId)
-                ? Math.max(0, value) : Math.max(0, value - stepMs));
+    private static Map<Integer, Integer> activeRemainingByAbility(Bot bot) {
+        Map<Integer, Integer> active = new HashMap<>();
+        bot.abilityState.forEach((id, record) -> {
+            if (record.stage == AbilityState.Stage.ACTIVE) active.put(id, Math.max(0, record.remainingMs));
+        });
+        return active;
     }
 
-    private static void tickAbilityResources(DuelSimulationService.Bot bot, int stepMs,
+    /** A dead bot only runs out its active stages. */
+    private static void runOutActiveStages(Bot bot) {
+        for (AbilityState.Record record : bot.abilityState.values()) {
+            if (record.stage != AbilityState.Stage.ACTIVE) continue;
+            record.remainingMs = Math.max(0, record.remainingMs - STEP_MS);
+            if (record.remainingMs <= 0) record.toReady();
+        }
+    }
+
+    /**
+     * Advances active and cooldown stages in order: when an active stage ends, only the part of the step left
+     * over counts toward the cooldown that starts then. Cooldown modifiers were snapshotted at activation.
+     */
+    private static void tickAbilityTimers(Bot bot, int stepMs,
+                                          Set<Integer> justActivatedAbilityIds) {
+        for (Map.Entry<Integer, AbilityState.Record> entry : bot.abilityState.entrySet()) {
+            AbilityState.Record record = entry.getValue();
+            // Activation is at this step's boundary; the stage begins at its configured value.
+            if (justActivatedAbilityIds.contains(entry.getKey())) continue;
+            if (record.stage == AbilityState.Stage.ACTIVE) {
+                if (record.remainingMs <= stepMs) {
+                    int recoveryElapsed = Math.max(0, stepMs - record.remainingMs);
+                    int cooldown = Math.max(0, record.cooldownMs - recoveryElapsed);
+                    record.stage = cooldown > 0 ? AbilityState.Stage.COOLDOWN : AbilityState.Stage.READY;
+                    record.remainingMs = cooldown;
+                    record.cooldownMs = 0;
+                } else {
+                    record.remainingMs -= stepMs;
+                }
+            } else if (record.stage == AbilityState.Stage.COOLDOWN) {
+                record.remainingMs = Math.max(0, record.remainingMs - stepMs);
+                if (record.remainingMs <= 0) record.toReady();
+            }
+        }
+    }
+
+    private static void tickAbilityResources(Bot bot, int stepMs,
                                              java.util.Map<Integer, Integer> activeBeforeTimers,
-                                             Integer justActivatedAbilityId) {
+                                             Set<Integer> justActivatedAbilityIds) {
         for (int abilityId : bot.abilities) {
             var definition = Abilities.definition(abilityId);
             if (definition.charges() <= 0) continue;
             int maxCharges = Abilities.maxCharges(abilityId, bot.maxHp);
-            int charges = (int) clamp(bot.abilityCharges.getOrDefault(abilityId, definition.charges()),
+            AbilityState.Record record = AbilityState.ensure(bot, abilityId);
+            int charges = (int) clamp(record.charges == null ? definition.charges() : record.charges,
                     0, maxCharges);
-            if (definition.resourceModel() == ResourceModel.FIXED) {
-                if (bot.abilityActiveMs.getOrDefault(abilityId, 0) <= 0) {
-                    bot.abilityCharges.remove(abilityId);
-                } else {
-                    bot.abilityCharges.put(abilityId, charges);
-                }
-                bot.abilityRechargeMs.remove(abilityId);
-                continue;
-            }
             int activeBefore = Math.max(0, activeBeforeTimers.getOrDefault(abilityId, 0));
-            int recoveryElapsed = java.util.Objects.equals(abilityId, justActivatedAbilityId)
+            int recoveryElapsed = justActivatedAbilityIds.contains(abilityId)
                     ? 0 : Math.max(0, stepMs - Math.min(stepMs, activeBefore));
-            bot.abilityCharges.put(abilityId, charges);
+            record.charges = charges;
             if (charges >= maxCharges) {
-                bot.abilityRechargeMs.remove(abilityId);
+                record.reloadMs = null;
                 continue;
             }
-            if (definition.resourceModel() == ResourceModel.REGENERATE) {
-                int elapsed = bot.abilityRechargeMs.getOrDefault(abilityId, 0) + recoveryElapsed;
-                while (charges < maxCharges && elapsed >= definition.rechargeMs()) {
-                    charges += 1;
-                    elapsed -= definition.rechargeMs();
-                }
-                bot.abilityCharges.put(abilityId, charges);
-                if (charges >= maxCharges) bot.abilityRechargeMs.remove(abilityId);
-                else bot.abilityRechargeMs.put(abilityId, elapsed);
-            } else if (definition.resourceModel() == ResourceModel.HP) {
-                if (bot.abilityActiveMs.getOrDefault(abilityId, 0) > 0) continue;
-                int rateHpPerSecond = Math.max(0,
-                        (int) Math.floor(Abilities.stat(abilityId, "chargeRegenHpPerSecond", 0)));
-                long total = bot.abilityRechargeMs.getOrDefault(abilityId, 0)
-                        + (long) rateHpPerSecond * recoveryElapsed;
-                int gained = (int) (total / 1_000L);
-                charges = Math.min(maxCharges, charges + gained);
-                bot.abilityCharges.put(abilityId, charges);
-                if (charges >= maxCharges) bot.abilityRechargeMs.remove(abilityId);
-                else bot.abilityRechargeMs.put(abilityId, (int) (total % 1_000L));
-            } else if (definition.resourceModel() == ResourceModel.RELOAD_WHEN_EMPTY && charges == 0) {
+            if (definition.resourceModel() == ResourceModel.RELOAD_WHEN_EMPTY && charges == 0) {
                 int remaining = Math.max(0,
-                        bot.abilityRechargeMs.getOrDefault(abilityId, definition.rechargeMs()) - recoveryElapsed);
+                        (record.reloadMs == null ? definition.rechargeMs() : record.reloadMs) - recoveryElapsed);
                 if (remaining == 0) {
-                    bot.abilityCharges.put(abilityId, maxCharges);
-                    bot.abilityRechargeMs.remove(abilityId);
+                    record.charges = maxCharges;
+                    record.reloadMs = null;
                 } else {
-                    bot.abilityRechargeMs.put(abilityId, remaining);
+                    record.reloadMs = remaining;
                 }
             }
         }
@@ -701,17 +690,17 @@ public class BotStateService {
         return Math.max(min, Math.min(max, value));
     }
 
-    private static int acceleratedCooldownMs(DuelSimulationService.Bot bot, int cooldownMs) {
+    private static int acceleratedCooldownMs(Bot bot, int cooldownMs) {
         return (int) Math.round(cooldownMs * cooldownStartMultiplier(bot));
     }
 
-    private static double cooldownStartMultiplier(DuelSimulationService.Bot bot) {
+    private static double cooldownStartMultiplier(Bot bot) {
         return statusActive(bot, "overclock")
                 ? Math.min(1.0, Math.max(0.0, statusEffectValue(
                         bot, "overclock", "cooldown_modifier", "multiplier", 1.0))) : 1.0;
     }
 
-    private static void initializeCustomVariables(DuelSimulationService.Bot bot) {
+    private static void initializeCustomVariables(Bot bot) {
         JsonNode variables = bot.brain != null ? bot.brain.get("customVariables") : null;
         if (variables == null || !variables.isArray()) return;
         int slots = 0;

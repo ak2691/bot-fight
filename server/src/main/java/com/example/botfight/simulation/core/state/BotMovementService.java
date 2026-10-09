@@ -8,7 +8,7 @@ import static com.example.botfight.simulation.geometry.AngleCalculator.normalize
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Action;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Arena;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
+import com.example.botfight.simulation.core.orchestration.Bot;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Entity;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Vector;
 import com.example.botfight.simulation.core.combat.AbilityExecutionPayload;
@@ -76,7 +76,7 @@ public class BotMovementService {
         bot.movementStartX = bot.x;
         bot.movementStartY = bot.y;
         double actionMagnitude = Math.hypot(action.dx(), action.dy());
-        boolean continuingDash = bot.abilityActiveMs.getOrDefault(19, 0) > 0
+        boolean continuingDash = AbilityState.channelActive(bot, com.example.botfight.simulation.gameconfig.AbilityChannels.DASH)
                 && bot.dashRemaining > 0;
         if (!continuingDash && bot.dashRemaining > 0) bot.dashRemaining = 0;
         double rotationMultiplier = slowedWasActive
@@ -158,11 +158,8 @@ public class BotMovementService {
                 + BotLogicContracts.relativeMovementAngle(facingDirection));
     }
 
-    public void startDash(Bot bot, AbilityExecutionPayload payload, Arena arena) {
-        AbilityContracts.AbilityPhase phase = payload.phases().isEmpty()
-                ? null : payload.phases().getFirst();
-        AbilityContracts.PhaseMovement movement = phase == null ? null : phase.movement();
-        if (movement == null || movement.distance() == null) return;
+    public void startDash(Bot bot, AbilityExecutionPayload payload, Arena arena, AbilityContracts.MoveVerb movement) {
+        if (movement == null) return;
         double targetX = payload.targetX();
         double targetY = payload.targetY();
         double movementDx = Double.isFinite(targetX) && Double.isFinite(targetY) ? targetX - bot.x : 0;
@@ -176,7 +173,7 @@ public class BotMovementService {
                 movementDx, movementDy);
         double beforeX = bot.x, beforeY = bot.y;
         double dashDistance = movement.distance();
-        double stepDistance = Math.max(0, Math.min(movement.speed(), dashDistance));
+        double stepDistance = Math.max(0, Math.min(movement.unitsPerTick(), dashDistance));
         bot.movementStartX = bot.x;
         bot.movementStartY = bot.y;
         double velocityX = bot.velocityX;
@@ -187,7 +184,7 @@ public class BotMovementService {
         bot.dashDirectionX = direction.dx();
         bot.dashDirectionY = direction.dy();
         bot.dashRemaining = Math.max(0, dashDistance - Math.hypot(bot.x - beforeX, bot.y - beforeY));
-        bot.dashStepDistance = movement.speed();
+        bot.dashStepDistance = movement.unitsPerTick();
     }
 
     void moveBot(Bot bot, double dx, double dy, double distance, Arena arena) {

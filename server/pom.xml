@@ -116,6 +116,16 @@
 	</dependencies>
 
 	<build>
+		<resources>
+			<resource>
+				<directory>src/main/resources</directory>
+			</resource>
+			<!-- The gameplay data shared with the browser; GameplayData.java reads it from gameplay/ on the classpath. -->
+			<resource>
+				<directory>../shared/gameplay</directory>
+				<targetPath>gameplay</targetPath>
+			</resource>
+		</resources>
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>

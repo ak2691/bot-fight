@@ -1,4 +1,5 @@
 import { ABILITY_STATS } from "./Abilities.js";
+import { activeRemainingMs } from "./AbilityState.js";
 
 export const COMBAT_VISUAL_MS = 300;
 /**
@@ -37,7 +38,7 @@ export function formatHp(hp, fallback = 0) {
 }
 
 export function abilityActiveOpacity(shape, abilityId) {
-    const activeMs = Math.max(0, Number(shape?.abilityActiveMs?.[abilityId] ?? 0));
+    const activeMs = activeRemainingMs(shape, abilityId);
     return clamp01(activeMs / Math.max(1, Number(ABILITY_STATS[abilityId]?.activeMs ?? 1)));
 }
 
@@ -59,14 +60,14 @@ export function combatVisualDurationMs(abilityId, phaseVisual = null) {
 
 /**
  * Bot-room fights carry the transient effect in abilityVisual while
- * authoritative replay frames carry the same timer in abilityActiveMs.
+ * authoritative replay frames carry the same timer as the ability's active stage.
  */
 export function combatVisualRemainingMs(shape, ability) {
     if (!ability) return 0;
     const abilityMs = shape?.abilityVisual?.ability === ability
         ? Number(shape.abilityVisual.ms ?? 0)
         : 0;
-    return Math.max(0, abilityMs, Number(shape?.abilityActiveMs?.[ability] ?? 0));
+    return Math.max(0, abilityMs, activeRemainingMs(shape, ability));
 }
 
 export function visualProgress(remainingMs, durationMs = COMBAT_VISUAL_MS) {

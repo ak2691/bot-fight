@@ -37,9 +37,7 @@ import { internalPointToPublic } from "./modelPayloads/arenaCoordinates.js";
 import {
     buildInitialArenaShapes,
     buildOpponentShape,
-    mergeBotShapeUpdates,
     resetBotShape,
-    toSimulationBotShape,
 } from "./modelPayloads/arenaShapes.js";
 import {
     buildAbilityTestingArenaShapes,
@@ -58,7 +56,7 @@ import {
     puzzleSetupForArena,
     synchronizePuzzleBuilderBotShape,
 } from "./setup/ArenaSetup.js";
-import { isSimulationBotShape } from "./modelPayloads/arenaPreviewSimulation.js";
+import { isBotState } from "./modelPayloads/botState.js";
 import { createPreviewBaseline, restorePreviewBaseline } from "./modelPayloads/previewBaseline.js";
 import { useArenaAutoPlay } from "./hooks/useArenaAutoPlay.js";
 import {
@@ -90,11 +88,8 @@ function oneDecimal(value) {
 
 function practiceConfigWithLiveBotState(config, shapes) {
     const liveByRosterKey = new Map((Array.isArray(shapes) ? shapes : [])
-        .filter(isSimulationBotShape)
-        .map((shape) => {
-            const bot = toSimulationBotShape(shape);
-            return [puzzleBotKey(bot.teamNumber, bot.puzzleSlot ?? bot.slot), bot];
-        }));
+        .filter(isBotState)
+        .map((bot) => [puzzleBotKey(bot.teamNumber, bot.puzzleSlot ?? bot.slot), bot]));
     const normalized = normalizePracticeConfig(config);
     return normalizePracticeConfig({
         ...normalized,
@@ -256,12 +251,15 @@ export default function Arena({
     // The fixed-step interval is intentionally started only by the Play control.
     // Keep its editable inputs live so code changes take effect on the next tick
     // without restarting the preview (and therefore without resetting its state).
-    const testingConfigurationRef = useRef(testingConfiguration);
-    const opponentTestingConfigurationRef = useRef(opponentTestingConfiguration);
+    // The tick takes normalized brains: normalize here, when the code changes, never per tick.
+    const normalizedTestingConfiguration = useMemo(() => normalizeAbilityStrategyConfiguration(testingConfiguration), [testingConfiguration]);
+    const normalizedOpponentConfiguration = useMemo(() => normalizeAbilityStrategyConfiguration(opponentTestingConfiguration), [opponentTestingConfiguration]);
+    const testingConfigurationRef = useRef(normalizedTestingConfiguration);
+    const opponentTestingConfigurationRef = useRef(normalizedOpponentConfiguration);
     useLayoutEffect(() => {
-        testingConfigurationRef.current = testingConfiguration;
-        opponentTestingConfigurationRef.current = opponentTestingConfiguration;
-    }, [opponentTestingConfiguration, testingConfiguration]);
+        testingConfigurationRef.current = normalizedTestingConfiguration;
+        opponentTestingConfigurationRef.current = normalizedOpponentConfiguration;
+    }, [normalizedOpponentConfiguration, normalizedTestingConfiguration]);
     const {
         isAutoPlaying,
         runAutoPlay,
@@ -270,6 +268,7 @@ export default function Arena({
         isPracticeRoom,
         isPuzzleMode,
         isMatchTesting,
+        shapes,
         selectedLoadout,
         opponentLoadout,
         testingConfigurationRef,
@@ -768,7 +767,7 @@ export default function Arena({
         const updatedShapes = shapes.map((shape) => {
             const update = updates.find((entry) => entry.shapeId === shape.id);
             return update
-                ? resetBotShape({ ...shape, combatLoadout: update.encoded, strategyConfiguration: update.nextConfiguration })
+                ? resetBotShape({ ...shape, combatLoadout: update.encoded, strategyConfiguration: normalizeAbilityStrategyConfiguration(update.nextConfiguration) })
                 : shape;
         });
         setShapes(updatedShapes);
@@ -850,7 +849,7 @@ export default function Arena({
     const handleUpdateShape = useCallback((id, updates) => {
         setShapes((previous) => previous.map((shape) => (
             shape.id === id && (!shape.locked || allowLockedBotEditing)
-                ? mergeBotShapeUpdates(shape, updates)
+                ? { ...shape, ...updates }
                 : shape
         )));
     }, [allowLockedBotEditing]);
@@ -861,7 +860,8 @@ export default function Arena({
         const key = shape ? puzzleBotShapeKey(shape) : null;
         if (!shape || (isPuzzleBuilder && !key)) return;
         setShapes((previous) => previous.map((candidate) => candidate.id === id
-            ? mergeBotShapeUpdates(candidate, {
+            ? {
+                ...candidate,
                 x: internalPosition.x,
                 y: internalPosition.y,
                 ...(isPuzzleBuilder ? {
@@ -870,7 +870,7 @@ export default function Arena({
                     spawnX: internalPosition.x,
                     spawnY: internalPosition.y,
                 } : {}),
-            })
+            }
             : candidate));
         if (isPuzzleBuilder) {
             const publicPosition = internalPointToPublic(internalPosition);
@@ -900,7 +900,7 @@ export default function Arena({
         if (previousPuzzleSetupKeyRef.current === puzzleSetupKey) return;
         previousPuzzleSetupKeyRef.current = puzzleSetupKey;
         const freshBotShapes = buildPracticeArenaShapes(selectedLoadout, opponentLoadout, initialPuzzle, isPuzzleBuilder)
-            .filter(isSimulationBotShape);
+            .filter(isBotState);
         // Puzzle-builder configuration changes are explicit baseline changes;
         // playback start, pause, and resume never flow through this branch.
         // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -965,10 +965,10 @@ export default function Arena({
                 if (!configuration
                     || key === puzzleBotKey(PUZZLE_PLAYER_TEAM, 1)
                     || key === puzzleBotKey(PUZZLE_OPPONENT_TEAM, 1)) return shape;
-                const current = toSimulationBotShape(shape).strategyConfiguration;
+                const current = shape.strategyConfiguration;
                 if (JSON.stringify(current) === JSON.stringify(configuration)) return shape;
                 changed = true;
-                return mergeBotShapeUpdates(shape, { strategyConfiguration: configuration });
+                return { ...shape, strategyConfiguration: configuration };
             });
             return changed ? next : previous;
         });

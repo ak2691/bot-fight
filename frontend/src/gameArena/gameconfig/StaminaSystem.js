@@ -1,5 +1,8 @@
 import { ROTATION_STEP_DEG } from "../modelPayloads/arenaConstants.js";
-import { DASH_ABILITY_ID, MOVEMENT_CONFIG } from "./MovementConfig.js";
+import { MOVEMENT_CONFIG } from "./MovementConfig.js";
+import { abilityStaminaCost } from "./AbilityChannels.js";
+import { clearWindup, isWindingUp, preparingRemainingMs } from "./AbilityState.js";
+import { botRef, logCombat } from "../ecs/combatLog.js";
 
 /**
  * Pure stamina helpers shared by action execution, ability readiness and the
@@ -18,7 +21,6 @@ export function initialMovementState() {
         staminaRegenDelayMs: 0,
         sprinting: false,
         fastTurning: false,
-        dashGapMs: 0,
     };
 }
 
@@ -49,89 +51,80 @@ export function rotationStepDeg(shape, fastTurn) {
 }
 
 /**
- * Start-of-tick timers: the regen pause and Dash gap count down and, once the pause is over, stamina
+ * Start-of-tick timers: the regen pause counts down and, once the pause is over, stamina
  * regenerates. Spending later in the same tick sets the pause fresh, so a spend in tick N gives N+1..N+5
  * of no regeneration and regeneration from N+6. A hit refund (see settleAbilityHits) never touches it.
  */
 export function advanceStaminaTimers(shape, elapsedMs) {
     const elapsed = wholeMs(elapsedMs);
     const delay = wholeMs(shape?.staminaRegenDelayMs);
-    const dashGap = wholeMs(shape?.dashGapMs);
     const stamina = botStamina(shape);
     const regenerates = delay <= 0 && stamina < MOVEMENT_CONFIG.staminaMax;
-    if (delay <= 0 && dashGap <= 0 && !regenerates) return shape;
-    return {
-        ...shape,
-        stamina: regenerates ? Math.min(MOVEMENT_CONFIG.staminaMax, stamina + MOVEMENT_CONFIG.regenPerTick) : stamina,
-        staminaRegenDelayMs: Math.max(0, delay - elapsed),
-        dashGapMs: Math.max(0, dashGap - elapsed),
-    };
+    if (delay <= 0 && !regenerates) return shape;
+    shape.stamina = regenerates ? Math.min(MOVEMENT_CONFIG.staminaMax, stamina + MOVEMENT_CONFIG.regenPerTick) : stamina;
+    shape.staminaRegenDelayMs = Math.max(0, delay - elapsed);
+    return shape;
 }
 
 /** Spends stamina (never below 0) and restarts the regeneration pause. Only a spend does that. */
 export function spendStamina(shape, amount) {
     const before = botStamina(shape);
-    const stamina = Math.max(0, before - Math.max(0, Math.trunc(Number(amount) || 0)));
-    return {
-        ...shape,
-        stamina,
-        staminaRegenDelayMs: MOVEMENT_CONFIG.regenDelayMs,
-    };
+    const cost = Math.max(0, Math.trunc(Number(amount) || 0));
+    const stamina = Math.max(0, before - cost);
+    if (cost > 0) logCombat("stamina", { target: botRef(shape), effect: "spend", amount: cost });
+    shape.stamina = stamina;
+    shape.staminaRegenDelayMs = MOVEMENT_CONFIG.regenDelayMs;
+    return shape;
 }
 
 /** Adds refunded stamina (capped at the maximum) without touching the regeneration pause. */
 export function refundStamina(shape, amount) {
     const gain = Math.max(0, Math.trunc(Number(amount) || 0));
     if (gain === 0) return shape;
-    return { ...shape, stamina: Math.min(MOVEMENT_CONFIG.staminaMax, botStamina(shape) + gain) };
+    logCombat("stamina", { target: botRef(shape), effect: "refund", amount: gain });
+    shape.stamina = Math.min(MOVEMENT_CONFIG.staminaMax, botStamina(shape) + gain);
+    return shape;
 }
 
-export function dashReady(shape) {
-    return botStamina(shape) >= MOVEMENT_CONFIG.dashCost && wholeMs(shape?.dashGapMs) <= 0;
-}
-
-/** Time until Dash can start again, assuming no further stamina is spent. */
-export function dashWaitMs(shape) {
-    const gap = wholeMs(shape?.dashGapMs);
-    const missing = MOVEMENT_CONFIG.dashCost - botStamina(shape);
-    if (missing <= 0) return gap;
+/**
+ * Time until the bot can afford an ability's stamina cost, assuming no further stamina is spent: what is left
+ * of the regeneration pause, then the ticks of regeneration. 0 when the ability costs nothing or is affordable.
+ */
+export function staminaWaitMs(shape, abilityId) {
+    const missing = abilityStaminaCost(abilityId) - botStamina(shape);
+    if (missing <= 0) return 0;
     const lockout = wholeMs(shape?.staminaRegenDelayMs);
-    const regenMs = Math.ceil(missing / MOVEMENT_CONFIG.regenPerTick) * 100;
-    return Math.max(gap, lockout + regenMs);
+    return lockout + Math.ceil(missing / MOVEMENT_CONFIG.regenPerTick) * 100;
 }
 
-/** Dash pays stamina and starts its gap instead of a cooldown. */
-export function spendDash(shape) {
-    return { ...spendStamina(shape, MOVEMENT_CONFIG.dashCost), dashGapMs: MOVEMENT_CONFIG.dashGapMs };
-}
-
-/** Stamina-side readiness: only Dash is gated, on stamina and its gap. */
+/** Stamina-side readiness: the bot must have enough stamina to pay the ability's cost (0 for most). */
 export function abilityStaminaReady(shape, abilityId) {
-    return Number(abilityId) !== DASH_ABILITY_ID || dashReady(shape);
+    return botStamina(shape) >= abilityStaminaCost(abilityId);
+}
+
+/** Pays the stamina an activation of the ability costs; an ability with no cost leaves stamina and the pause alone. */
+export function spendAbilityStamina(shape, abilityId) {
+    const cost = abilityStaminaCost(abilityId);
+    return cost > 0 ? spendStamina(shape, cost) : shape;
 }
 
 export function canCancelWindup(shape) {
-    return shape?.preparingAbility != null
-        && wholeMs(shape?.preparingMs) > 0
+    return isWindingUp(shape)
+        && preparingRemainingMs(shape) > 0
         && botStamina(shape) >= MOVEMENT_CONFIG.windupCancelCost;
 }
 
 /** Clears the wind-up without a cooldown or used charge and pays stamina. */
 export function cancelWindup(shape) {
-    const paid = spendStamina(shape, MOVEMENT_CONFIG.windupCancelCost);
-    return {
-        ...paid,
-        preparingAbility: null,
-        preparingMs: 0,
-        preparingTargetX: null,
-        preparingTargetY: null,
-    };
+    return clearWindup(spendStamina(shape, MOVEMENT_CONFIG.windupCancelCost));
 }
 
 export function withFastTurning(shape, fastTurning) {
-    return Boolean(shape?.fastTurning) === fastTurning ? shape : { ...shape, fastTurning };
+    if (Boolean(shape?.fastTurning) !== fastTurning) shape.fastTurning = fastTurning;
+    return shape;
 }
 
 export function withSprinting(shape, sprinting) {
-    return Boolean(shape?.sprinting) === sprinting ? shape : { ...shape, sprinting };
+    if (Boolean(shape?.sprinting) !== sprinting) shape.sprinting = sprinting;
+    return shape;
 }

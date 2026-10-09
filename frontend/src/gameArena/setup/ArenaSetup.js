@@ -14,9 +14,7 @@ import { publicPointToInternal } from "../modelPayloads/arenaCoordinates.js";
 import {
     buildInitialArenaShapes,
     buildOpponentShape,
-    mergeBotShapeUpdates,
     resetBotShapeToStartingConfiguration,
-    toSimulationBotShape,
 } from "../modelPayloads/arenaShapes.js";
 import { normalizePracticeConfig } from "../practiceRoomStorage.js";
 import {
@@ -86,14 +84,13 @@ export function puzzleBuilderSimulationLookups(freshBotShapes) {
     (Array.isArray(freshBotShapes) ? freshBotShapes : []).forEach((shape) => {
         const key = puzzleBotShapeKey(shape);
         if (!key) return;
-        const simulation = toSimulationBotShape(shape);
         const setup = {
-            x: Number(simulation.x),
-            y: Number(simulation.y),
-            startX: Number(simulation.startX ?? simulation.x),
-            startY: Number(simulation.startY ?? simulation.y),
-            rotation: Number(simulation.rotation),
-            startHp: Number(simulation.startHp ?? simulation.hp ?? BASE_BOT_HP),
+            x: Number(shape.x),
+            y: Number(shape.y),
+            startX: Number(shape.startX ?? shape.x),
+            startY: Number(shape.startY ?? shape.y),
+            rotation: Number(shape.rotation),
+            startHp: Number(shape.startHp ?? shape.hp ?? BASE_BOT_HP),
         };
         setupByKey[key] = setup;
         if (shape.id === "main" || shape.id === "opponent-model") setupById[shape.id] = setup;
@@ -114,28 +111,28 @@ export function synchronizePuzzleBuilderBotShape(shape, lookups, initialElapsedM
     const rotation = Number(setup.rotation);
     const startHp = Number.isFinite(Number(setup.startHp))
         ? Math.max(1, Math.min(BASE_BOT_HP, Number(setup.startHp)))
-        : Number(toSimulationBotShape(shape).startHp ?? BASE_BOT_HP);
+        : Number(shape.startHp ?? BASE_BOT_HP);
     if (![x, y, startX, startY, rotation, startHp].every(Number.isFinite)) {
         return { shape, changed: false };
     }
 
-    const current = toSimulationBotShape(shape);
-    const elapsedChanged = Number(current.matchElapsedMs ?? 0) !== initialElapsedMs;
-    const changed = current.x !== x
-        || current.y !== y
-        || current.startX !== startX
-        || current.startY !== startY
-        || current.rotation !== rotation
-        || current.startRotation !== rotation
-        || current.hp !== startHp
-        || current.startHp !== startHp
-        || current.spawnX !== startX
-        || current.spawnY !== startY
+    const elapsedChanged = Number(shape.matchElapsedMs ?? 0) !== initialElapsedMs;
+    const changed = shape.x !== x
+        || shape.y !== y
+        || shape.startX !== startX
+        || shape.startY !== startY
+        || shape.rotation !== rotation
+        || shape.startRotation !== rotation
+        || shape.hp !== startHp
+        || shape.startHp !== startHp
+        || shape.spawnX !== startX
+        || shape.spawnY !== startY
         || elapsedChanged;
     if (!changed) return { shape, changed: false };
 
     return {
-        shape: mergeBotShapeUpdates(shape, {
+        shape: {
+            ...shape,
             x,
             y,
             rotation,
@@ -147,7 +144,7 @@ export function synchronizePuzzleBuilderBotShape(shape, lookups, initialElapsedM
             matchElapsedMs: initialElapsedMs,
             spawnX: startX,
             spawnY: startY,
-        }),
+        },
         changed: true,
     };
 }
@@ -251,7 +248,7 @@ export function buildPracticeArenaShapes(playerLoadout, opponentLoadout, puzzleS
                 locked: !isPlayer && !allowPuzzleBotEditing,
             };
             const reset = resetBotShapeToStartingConfiguration(configured, startConfiguration);
-            return initialElapsedMs > 0 ? mergeBotShapeUpdates(reset, { matchElapsedMs: initialElapsedMs }) : reset;
+            return initialElapsedMs > 0 ? { ...reset, matchElapsedMs: initialElapsedMs } : reset;
         });
         const initialClosingZone = buildInitialClosingZone(initialElapsedMs);
         return initialClosingZone ? [...botShapes, initialClosingZone] : botShapes;
@@ -282,7 +279,7 @@ export function buildPracticeArenaShapes(playerLoadout, opponentLoadout, puzzleS
             combatLoadout: loadout,
             loadout: loadoutForId(loadout),
         }, startConfiguration);
-        return initialElapsedMs > 0 ? mergeBotShapeUpdates(reset, { matchElapsedMs: initialElapsedMs }) : reset;
+        return initialElapsedMs > 0 ? { ...reset, matchElapsedMs: initialElapsedMs } : reset;
     });
     const initialClosingZone = buildInitialClosingZone(initialElapsedMs);
     return initialClosingZone ? [...botShapes, initialClosingZone] : botShapes;

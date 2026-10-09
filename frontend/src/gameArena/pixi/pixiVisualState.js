@@ -1,12 +1,13 @@
 import { abilityDefinition, VISUAL_INTERPOLATION } from "../loadout/BotLoadout.js";
 import { abilityId } from "../gameconfig/AbilityRegistry.js";
-import { attachedAbilityContract } from "../ecs/contracts/AbilityContracts.js";
 import { CLOSING_ZONE_TYPE } from "../gameconfig/ArenaHazardConfig.js";
 import { AUTO_STEP_MS } from "../modelPayloads/arenaConstants.js";
+import { isBotState } from "../modelPayloads/botState.js";
 import { compassDegreesToRadians } from "../botlogic/planner/arenaAngles.js";
 import { statusIsActive } from "../ecs/contracts/StatusContracts.js";
-import { entityAbilityPhaseForEntity, entityContract, phaseForEntity } from "../ecs/contracts/AbilityContracts.js";
+import { entityContract, eventVerbs, phaseForEntity, phaseSpeed, triggerView, VERBS } from "../ecs/contracts/AbilityContracts.js";
 import { BOT_ABILITY_VISUAL_PRIORITY } from "./botAbilityPresentationDefinitions.js";
+import { activeRemainingMs, windupRemainingMs } from "../gameconfig/AbilityState.js";
 
 const ZONE_TYPES = new Set([CLOSING_ZONE_TYPE, "grenadeExplosion", "mineExplosion", "gravityZone", "gravityExplosion", "nullZone", "orbitalMarker", "orbitalExplosion", "silenceWave", "temporalRewindZone", "singularityZone", "singularityExplosion", "staticSnareBurst"]);
 const PROJECTILE_TYPES = new Set(["grenade", "fireball", "windburstProjectile"]);
@@ -62,7 +63,7 @@ export const ENTITY_PRESENTATION_DEFINITIONS = Object.freeze({
 export const LOCK_ON_PRESENTATION = Object.freeze({
     texturePath: ["lockOnCrosshair"],
     animation: "target",
-    markerSize: Number(attachedAbilityContract(20)?.phases?.[0]?.visual?.visualSize ?? 48),
+    markerSize: Number(triggerView(20)?.visual?.visualSize ?? 48),
 });
 
 function semanticVisualEventActive(shape) {
@@ -72,8 +73,17 @@ function semanticVisualEventActive(shape) {
 }
 
 function eventHandlerFor(phase, eventType) {
-    return Object.entries(phase?.events ?? {})
+    return Object.entries(phase?.on ?? {})
         .find(([declaredType]) => declaredType.toLowerCase() === eventType)?.[1] ?? null;
+}
+
+/** The visual an event shows: its emitVisual verb, or the visual of a hit verb (a summon's shot). */
+function eventVisualFor(handler) {
+    const verbs = eventVerbs(handler);
+    const emit = verbs.find((verb) => verb.do === VERBS.EMIT_VISUAL);
+    if (emit) return { type: emit.visualType, visualSize: emit.visualSize, visibleMs: emit.visibleMs };
+    const hit = verbs.find((verb) => verb.do === VERBS.HIT && verb.visual);
+    return hit ? { type: hit.visual.type, visualSize: hit.visual.visualSize, visibleMs: hit.visual.visibleMs } : null;
 }
 
 export const VISUAL_LIFECYCLES = Object.freeze({
@@ -215,19 +225,19 @@ export function visualForShape(shape) {
         const eventPhase = declaredEventPhase
             ?? (eventHandlerFor(phase, contractEventType) ? phase
                 : eventPhaseCandidates.length === 1 ? eventPhaseCandidates[0] : phase);
-        const embeddedPhase = entityAbilityPhaseForEntity(shape);
+        // Replays recorded before summons had a timer event name their shot `collision`.
         const handler = eventHandlerFor(eventPhase, contractEventType)
             ?? eventHandlerFor(phase, contractEventType)
-            ?? eventHandlerFor(embeddedPhase, contractEventType)
+            ?? (contractEventType === "collision" ? eventHandlerFor(phase, "schedule") : null)
             ?? null;
-        const eventType = handler?.visualType ?? null;
-        if (eventType) {
+        const visual = eventVisualFor(handler);
+        if (visual?.type) {
             return {
-                type: eventType,
-                ...(handler.visualSize == null
-                    ? {} : { visualSize: Number(handler.visualSize) }),
-                ...(handler.visibleMs == null
-                    ? {} : { visibleMs: Number(handler.visibleMs) }),
+                type: visual.type,
+                ...(visual.visualSize == null
+                    ? {} : { visualSize: Number(visual.visualSize) }),
+                ...(visual.visibleMs == null
+                    ? {} : { visibleMs: Number(visual.visibleMs) }),
             };
         }
         return null;
@@ -278,18 +288,19 @@ export function heavySlashRotation(compassFacingDegrees, sweepDegrees = 0) {
 const clamp01 = (value) => Math.max(0, Math.min(1, Number.isFinite(Number(value)) ? Number(value) : 0));
 
 /**
- * Wind-up progress (0..1) for a weapon telegraph. `preparingMs` is the remaining
+ * Wind-up progress (0..1) for a weapon telegraph. The ability's wind-up record holds the remaining
  * wind-up reported by simulation and replay; null when the bot is not winding
  * up that ability. Presentation only.
  */
 export function weaponWindupProgress(shape, abilityIdValue, windupMs) {
-    if (Number(shape?.preparingAbility) !== Number(abilityIdValue)) return null;
+    const remainingMs = windupRemainingMs(shape, Number(abilityIdValue));
+    if (remainingMs <= 0) return null;
     const total = Number(windupMs);
     if (!Number.isFinite(total) || total <= 0) return null;
-    return clamp01(1 - Number(shape?.preparingMs ?? 0) / total);
+    return clamp01(1 - remainingMs / total);
 }
 
-/** Active progress (0..1) from the remaining abilityActiveMs timer. */
+/** Active progress (0..1) from the ability's remaining active time. */
 export function weaponActiveProgress(activeMs, durationMs) {
     const duration = Number(durationMs);
     if (!Number.isFinite(duration) || duration <= 0) return 1;
@@ -342,13 +353,6 @@ export function smashFlashAlpha(progress, fillAlpha = 0.5) {
     return fillAlpha * (1 - clamp01(progress));
 }
 
-export function isBotShape(shape) {
-    return shape?.id === "main"
-        || shape?.type === "bot"
-        || shape?.type === "opponentModel"
-        || (shape?.userId != null && shape?.slot != null);
-}
-
 export function botColorRole(bot) {
     const teamNumber = Number(bot?.teamNumber);
     if (Number.isFinite(teamNumber) && teamNumber > 0) {
@@ -379,7 +383,7 @@ export function closingZoneDamageOccurred(shape, previousShape) {
 }
 
 export function pixiLayerForShape(shape) {
-    if (isBotShape(shape)) return "bots";
+    if (isBotState(shape)) return "bots";
     const presentationType = presentationTypeForShape(shape);
     if (ZONE_TYPES.has(presentationType)) return "zones";
     if (PROJECTILE_TYPES.has(presentationType)) return "projectiles";
@@ -389,7 +393,7 @@ export function pixiLayerForShape(shape) {
 }
 
 export function presentationDefinitionForShape(shape) {
-    if (isBotShape(shape)) return { kind: "bot", layer: "bots", texturePath: ["bot"], animation: "static" };
+    if (isBotState(shape)) return { kind: "bot", layer: "bots", texturePath: ["bot"], animation: "static" };
     if (shape?.type === CLOSING_ZONE_TYPE) return { kind: "arenaHazard", layer: "zones", animation: "geometry" };
     const phase = phaseForEntity(shape);
     const phaseVisual = phase?.visual;
@@ -492,7 +496,7 @@ export function shapeInterpolationMs(shape, from = null, to = null) {
         && shape?.phaseId === "return"
         && Number(shape?.phaseTimerMs ?? 0) > 0
         && from && to) {
-        const speed = Number(phaseForEntity(shape)?.movement?.speed ?? 0);
+        const speed = phaseSpeed(phaseForEntity(shape));
         const distance = Math.hypot(
             Number(to.x ?? 0) - Number(from.x ?? 0),
             Number(to.y ?? 0) - Number(from.y ?? 0),
@@ -579,8 +583,8 @@ export function normalizeReplayObstacleShape(obstacle, previousObstacle, {
     ) > 0.01;
     const velocity = obstacle?.type === "grenade"
         ? { velocityX: Number(obstacle.velocityX ?? 0), velocityY: Number(obstacle.velocityY ?? 0) }
-        : obstaclePhase?.movement?.speed != null
-            && Number(obstaclePhase.movement.speed) <= 0 && !hasProvidedVelocity
+        : obstaclePhase?.movement != null
+            && phaseSpeed(obstaclePhase) <= 0 && !hasProvidedVelocity
             ? { velocityX: 0, velocityY: 0 }
         : replayProjectileVelocity(obstacle, previousObstacle, nextObstacle);
     const legacyVisibleMs = obstacle?.visibleMs != null
@@ -636,18 +640,19 @@ export function activeBotVisual(shape) {
     const abilityVisual = Number(shape?.abilityVisual?.ms ?? 0) > 0 ? shape.abilityVisual.ability : null;
     if (abilityVisual === 19) return null;
     if (abilityVisual != null) {
-        return attachedAbilityContract(abilityVisual)?.phases?.[0]?.visual?.type
+        return triggerView(abilityVisual)?.visual?.type
             ? abilityVisual : null;
     }
     const active = BOT_ABILITY_VISUAL_PRIORITY
-        .find((id) => Number(shape?.abilityActiveMs?.[id] ?? 0) > 0
-            && Boolean(attachedAbilityContract(id)?.phases?.[0]?.visual?.type));
+        .find((id) => activeRemainingMs(shape, id) > 0
+            && Boolean(triggerView(id)?.visual?.type));
     return abilityVisual ?? active ?? null;
 }
 
 export function lockOnTargetPoint(shape) {
-    const x = Number(shape?.abilityTargetX);
-    const y = Number(shape?.abilityTargetY);
+    if (shape?.abilityTargetX == null || shape?.abilityTargetY == null) return null;
+    const x = Number(shape.abilityTargetX);
+    const y = Number(shape.abilityTargetY);
     return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
 }
 

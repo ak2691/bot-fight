@@ -1,7 +1,8 @@
 import {
-    attachedAbilityContract,
     entityContractForAbility,
     PHASE_TYPES,
+    phaseSpeed,
+    triggerView,
 } from "../ecs/contracts/AbilityContracts.js";
 import { abilityIdFromBoundary } from "../gameconfig/AbilityCompatibility.js";
 import { AUTO_STEP_MS } from "../modelPayloads/arenaConstants.js";
@@ -15,7 +16,7 @@ function finitePositive(value) {
 function projectileBaseRange(entity) {
     const phase = entity?.phases?.[0];
     if (phase?.type !== PHASE_TYPES.PROJECTILE) return null;
-    const speed = finitePositive(phase.movement?.speed);
+    const speed = finitePositive(phaseSpeed(phase));
     const durationMs = finitePositive(phase.durationMs ?? entity.lifetime?.duration);
     return speed == null || durationMs == null ? null : speed * (durationMs / AUTO_STEP_MS);
 }
@@ -29,7 +30,7 @@ function projectileBaseRange(entity) {
 export function abilityBaseRange(abilityId) {
     const id = abilityIdFromBoundary(abilityId);
     if (id == null) return null;
-    const hitbox = attachedAbilityContract(id)?.phases?.[0]?.hitbox;
+    const hitbox = triggerView(id)?.hitbox;
     switch (hitbox?.shape) {
         case "arc":
         case "ray":

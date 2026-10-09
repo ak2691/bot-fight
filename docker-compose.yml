@@ -33,6 +33,9 @@ services:
     backend:
         build:
             context: ./server
+            # The gameplay data both runtimes read (shared/gameplay); the Dockerfile copies it to /shared.
+            additional_contexts:
+                shared: ./shared
         container_name: spring-api
         ports:
             - "8080:8080"
@@ -44,6 +47,8 @@ services:
     frontend:
         build:
             context: ./frontend
+            additional_contexts:
+                shared: ./shared
         container_name: react-client
         #command: npm run dev -- --host 0.0.0.0 --port 5173
         command: sh -c "npm run build && npm run preview -- --host 0.0.0.0 --port 5173"

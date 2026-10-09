@@ -1,12 +1,15 @@
+import { GAMEPLAY_DATA } from "./gameplayData.js";
 import { statusEffectFor, statusEffectValue, statusIsActive, STATUS_EFFECT_APPLICATIONS } from "../ecs/contracts/StatusContracts.js";
 
 export const HIT_STAGGER_DURATION_MS = 300;
 export const HIT_STAGGER_MOVEMENT_MULTIPLIER = 0.85;
 export const HIT_STAGGER_ROTATION_MULTIPLIER = 0.85;
 
-export const CONCUSSIVE_SHOT_SLOW_DURATION_MS = 3000;
-export const CONCUSSIVE_SHOT_MOVEMENT_MULTIPLIER = 0.50;
-export const CONCUSSIVE_ROTATION_MULTIPLIER = 0.50;
+// The slow status (shared/gameplay/statuses.json) is x0.5 movement and rotation.
+const SLOW_MODIFIER = GAMEPLAY_DATA.statuses.statuses.slow.effects
+    .find((effect) => effect.type === "movement_modifier");
+export const CONCUSSIVE_SHOT_MOVEMENT_MULTIPLIER = SLOW_MODIFIER.movementMultiplier;
+export const CONCUSSIVE_ROTATION_MULTIPLIER = SLOW_MODIFIER.rotationMultiplier;
 
 export function effectiveMovementSpeedMultiplier(shape) {
     if (statusIsActive(shape, "slow") && statusEffectFor(shape, "slow")?.effects

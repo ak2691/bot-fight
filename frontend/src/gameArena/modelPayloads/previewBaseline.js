@@ -1,17 +1,12 @@
-import { isSimulationBotShape } from "./arenaPreviewSimulation.js";
-import {
-    mergeBotShapeUpdates,
-    resetBotShapeToStartingConfiguration,
-    toSimulationBotShape,
-} from "./arenaShapes.js";
+import { resetBotShapeToStartingConfiguration } from "./arenaShapes.js";
+import { isBotState } from "./botState.js";
 
 function botAtStartingState(shape, startingState = null) {
-    const current = toSimulationBotShape(shape);
     const start = startingState ?? {
-        startX: current.x,
-        startY: current.y,
-        rotation: current.rotation,
-        startHp: current.hp,
+        startX: shape.x,
+        startY: shape.y,
+        rotation: shape.rotation,
+        startHp: shape.hp,
     };
     const clean = {
         ...shape,
@@ -20,7 +15,7 @@ function botAtStartingState(shape, startingState = null) {
         hpNetChangeLastTick: 0,
         pendingHealing: 0,
         lastPredictedAction: null,
-        abilitySpawn: null,
+        abilitySpawn: [],
         triggeredAbility: null,
         abilityVisual: null,
         temporalRewindMs: 0,
@@ -40,11 +35,11 @@ function botAtStartingState(shape, startingState = null) {
  * entities are deliberately excluded.
  */
 export function createPreviewBaseline(shapes, { initialElapsedMs = null } = {}) {
-    const configuredBots = (Array.isArray(shapes) ? shapes : []).filter(isSimulationBotShape);
+    const configuredBots = (Array.isArray(shapes) ? shapes : []).filter(isBotState);
     const bots = configuredBots.map((shape) => botAtStartingState(shape));
     const suppliedElapsedMs = Number(initialElapsedMs);
     const shapeElapsedMs = configuredBots.length > 0
-        ? Number(toSimulationBotShape(configuredBots[0]).matchElapsedMs ?? 0)
+        ? Number(configuredBots[0].matchElapsedMs ?? 0)
         : 0;
     return {
         bots,
@@ -58,15 +53,14 @@ export function createPreviewBaseline(shapes, { initialElapsedMs = null } = {}) 
 export function restorePreviewBaseline(baseline) {
     const elapsedMs = Math.max(0, Number(baseline?.initialElapsedMs) || 0);
     return (Array.isArray(baseline?.bots) ? baseline.bots : []).map((bot) => {
-        const current = toSimulationBotShape(bot);
         const reset = botAtStartingState(bot, {
-            startX: bot.startX ?? current.x,
-            startY: bot.startY ?? current.y,
-            rotation: bot.startRotation ?? current.rotation,
-            startHp: bot.startHp ?? current.hp,
+            startX: bot.startX ?? bot.x,
+            startY: bot.startY ?? bot.y,
+            rotation: bot.startRotation ?? bot.rotation,
+            startHp: bot.startHp ?? bot.hp,
         });
         return elapsedMs > 0
-            ? mergeBotShapeUpdates(reset, { matchElapsedMs: elapsedMs })
+            ? { ...reset, matchElapsedMs: elapsedMs }
             : reset;
     });
 }

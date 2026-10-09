@@ -77,18 +77,18 @@ class SniperFireballParityTest {
 
     @Test
     void contractsMatchTheReworkTable() {
-        AbilityContracts.AbilityPhase sniper = AbilityContracts.forAbility(3).phases().getFirst();
+        AbilityContracts.HitVerb sniper = AbilityContracts.forAbility(3).hitVerbs().getFirst();
         assertThat(sniper.hitbox().range()).isEqualTo(1200d);
         assertThat(sniper.hitbox().width()).isEqualTo(6d);
         assertThat(sniper.effects().getFirst().amount()).isEqualTo(40d);
         assertThat(sniper.effects().getFirst().falloff()).isNull();
 
-        AbilityContracts.AbilityPhase fireball = AbilityContracts.forAbility(5).phases().getFirst();
+        AbilityContracts.AbilityPhase fireball = AbilityContracts.entityContractForAbility(5).phases().getFirst();
         assertThat(fireball.hitbox().width()).isEqualTo(64d);
         assertThat(fireball.hitbox().length()).isEqualTo(64d);
         assertThat(fireball.effects().getFirst().amount()).isEqualTo(20d);
         assertThat(fireball.visual().visualSize()).isEqualTo(60d);
-        assertThat(AbilityContracts.forAbility(5).lifetime().duration()).isEqualTo(1_400);
+        assertThat(AbilityContracts.entityContractForAbility(5).lifetime().duration()).isEqualTo(1_400);
     }
 
     @Test

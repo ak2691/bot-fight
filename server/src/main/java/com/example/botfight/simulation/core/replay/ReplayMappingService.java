@@ -1,9 +1,13 @@
 package com.example.botfight.simulation.core.replay;
 
+import com.example.botfight.simulation.core.orchestration.Bot;
+
 import com.example.botfight.DTO.match.MatchPlaybackDTO;
 import com.example.botfight.DTO.match.MatchReplayDTO;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
+import com.example.botfight.simulation.core.state.AbilityState;
 import com.example.botfight.simulation.core.state.StaminaSystem;
+import com.example.botfight.simulation.gameconfig.AbilityChannels;
 import com.example.botfight.simulation.core.state.StatusEffectState;
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import com.example.botfight.simulation.ecs.entities.ArenaEntity;
@@ -15,17 +19,18 @@ import org.springframework.stereotype.Service;
 /** Maps authoritative mutable simulation state into immutable replay DTOs. */
 @Service
 public class ReplayMappingService {
-    public MatchPlaybackDTO.BotStateDTO toBotState(DuelSimulationService.Bot bot) {
+    public MatchPlaybackDTO.BotStateDTO toBotState(Bot bot) {
         return new MatchPlaybackDTO.BotStateDTO(
                 bot.userId, bot.username, bot.slot,
                 round(bot.x), round(bot.y), round(bot.rotation),
                 bot.hp, bot.maxHp, bot.combatLoadout,
                 List.copyOf(bot.abilities),
                 copyStatusEffects(bot),
-                Map.copyOf(bot.abilityCooldowns), Map.copyOf(bot.abilityActiveMs),
-                Map.copyOf(bot.abilityCharges), Map.copyOf(bot.abilityRechargeMs),
+                Map.copyOf(AbilityState.legacyCooldowns(bot)), Map.copyOf(AbilityState.legacyActiveMs(bot)),
+                Map.copyOf(AbilityState.legacyCharges(bot)), Map.copyOf(AbilityState.legacyRechargeMs(bot)),
                 bot.triggeredAbility,
-                bot.preparingAbility, bot.preparingMs, bot.temporalRewindMs,
+                AbilityState.legacyPreparingAbility(bot), AbilityState.preparingRemainingMs(bot),
+                bot.temporalRewindMs,
                 round(bot.temporalRewindX), round(bot.temporalRewindY),
                 bot.temporalRewindPulseMs, bot.closingZoneDamageCount, bot.teamNumber,
                 triggeredTargetX(bot), triggeredTargetY(bot),
@@ -47,7 +52,7 @@ public class ReplayMappingService {
     }
 
     /** Records the static bot metadata once for the compact replay. */
-    public MatchReplayDTO.ReplayInitialStateDTO toReplayInitialState(List<DuelSimulationService.Bot> bots) {
+    public MatchReplayDTO.ReplayInitialStateDTO toReplayInitialState(List<Bot> bots) {
         return new MatchReplayDTO.ReplayInitialStateDTO(
                 bots.stream().map(this::toReplayStaticBot).toList());
     }
@@ -55,7 +60,7 @@ public class ReplayMappingService {
     /** Records only the dynamic state required by the compact replay contract. */
     public MatchReplayDTO.ReplayFrameDTO toReplayFrame(
             int elapsedMs,
-            List<DuelSimulationService.Bot> bots,
+            List<Bot> bots,
             List<ArenaEntity> entities) {
         return new MatchReplayDTO.ReplayFrameDTO(
                 elapsedMs,
@@ -63,7 +68,7 @@ public class ReplayMappingService {
                 entities.stream().map(this::toReplayEntity).toList());
     }
 
-    private MatchReplayDTO.ReplayBotStaticDTO toReplayStaticBot(DuelSimulationService.Bot bot) {
+    private MatchReplayDTO.ReplayBotStaticDTO toReplayStaticBot(Bot bot) {
         List<Integer> abilities = List.copyOf(bot.abilities);
         return new MatchReplayDTO.ReplayBotStaticDTO(
                 bot.slot,
@@ -73,14 +78,15 @@ public class ReplayMappingService {
                 bot.hp,
                 bot.maxHp,
                 abilities,
-                initialEntries(abilities, bot.abilityCooldowns),
-                positiveEntries(bot.abilityActiveMs),
-                nonNegativeEntries(bot.abilityCharges),
-                initialEntries(bot.abilityCharges.keySet().stream().toList(), bot.abilityRechargeMs),
+                initialEntries(abilities, AbilityState.legacyCooldowns(bot)),
+                positiveEntries(AbilityState.legacyActiveMs(bot)),
+                nonNegativeEntries(AbilityState.legacyCharges(bot)),
+                initialEntries(AbilityState.legacyCharges(bot).keySet().stream().toList(),
+                        AbilityState.legacyRechargeMs(bot)),
                 bot.teamNumber);
     }
 
-    private MatchReplayDTO.ReplayBotDTO toReplayBot(DuelSimulationService.Bot bot) {
+    private MatchReplayDTO.ReplayBotDTO toReplayBot(Bot bot) {
         int temporalRewindPulseMs = bot.temporalRewindPulseMs;
         return new MatchReplayDTO.ReplayBotDTO(
                 bot.slot,
@@ -89,13 +95,13 @@ public class ReplayMappingService {
                 finiteOrNull(round(bot.rotation)),
                 bot.hp,
                 copyStatusEffects(bot),
-                positiveEntries(bot.abilityCooldowns),
-                nonNegativeEntries(bot.abilityCharges),
-                positiveEntries(bot.abilityRechargeMs),
-                positiveEntries(bot.abilityActiveMs),
+                positiveEntries(AbilityState.legacyCooldowns(bot)),
+                nonNegativeEntries(AbilityState.legacyCharges(bot)),
+                positiveEntries(AbilityState.legacyRechargeMs(bot)),
+                positiveEntries(AbilityState.legacyActiveMs(bot)),
                 bot.triggeredAbility,
-                bot.preparingAbility,
-                positiveOrNull(bot.preparingMs),
+                AbilityState.legacyPreparingAbility(bot),
+                positiveOrNull(AbilityState.preparingRemainingMs(bot)),
                 triggeredTargetX(bot), triggeredTargetY(bot),
                 finiteOrNull(bot.visualOriginX), finiteOrNull(bot.visualOriginY),
                 finiteOrNull(bot.visualOriginRotation),
@@ -112,7 +118,7 @@ public class ReplayMappingService {
                 bot.fastTurning ? Boolean.TRUE : null);
     }
 
-    private static MatchReplayDTO.RunningChainDTO runningChain(DuelSimulationService.Bot bot) {
+    private static MatchReplayDTO.RunningChainDTO runningChain(Bot bot) {
         if (bot.chainStack.isEmpty()) return null;
         var frame = bot.chainStack.getLast();
         return new MatchReplayDTO.RunningChainDTO(frame.chainId, frame.path, bot.chainStack.size(),
@@ -154,7 +160,7 @@ public class ReplayMappingService {
         return phase == null ? entity.phaseId() : phase.id();
     }
 
-    private static List<StatusEffectState> copyStatusEffects(DuelSimulationService.Bot bot) {
+    private static List<StatusEffectState> copyStatusEffects(Bot bot) {
         return bot.statusEffects.values().stream().map(status -> {
             StatusEffectState copy = new StatusEffectState(status.type, status.remainingMs, status.tickMs);
             copy.tickElapsedMs = status.tickElapsedMs;
@@ -191,26 +197,26 @@ public class ReplayMappingService {
         return value > 0 ? value : null;
     }
 
-    private static Double triggeredTargetX(DuelSimulationService.Bot bot) {
+    private static Double triggeredTargetX(Bot bot) {
         return bot.triggeredAbilityPayload == null
                 ? null : finiteOrNull(bot.triggeredAbilityPayload.targetX());
     }
 
-    private static Double triggeredTargetY(DuelSimulationService.Bot bot) {
+    private static Double triggeredTargetY(Bot bot) {
         return bot.triggeredAbilityPayload == null
                 ? null : finiteOrNull(bot.triggeredAbilityPayload.targetY());
     }
 
-    private static Double dashDirectionX(DuelSimulationService.Bot bot) {
+    private static Double dashDirectionX(Bot bot) {
         return hasDashVisualState(bot) ? finiteOrNull(bot.dashDirectionX) : null;
     }
 
-    private static Double dashDirectionY(DuelSimulationService.Bot bot) {
+    private static Double dashDirectionY(Bot bot) {
         return hasDashVisualState(bot) ? finiteOrNull(bot.dashDirectionY) : null;
     }
 
-    private static boolean hasDashVisualState(DuelSimulationService.Bot bot) {
-        return bot.dashRemaining > 0 || bot.abilityActiveMs.getOrDefault(19, 0) > 0;
+    private static boolean hasDashVisualState(Bot bot) {
+        return bot.dashRemaining > 0 || AbilityState.channelActive(bot, AbilityChannels.DASH);
     }
 
     private static Double finiteOrNull(double value) {

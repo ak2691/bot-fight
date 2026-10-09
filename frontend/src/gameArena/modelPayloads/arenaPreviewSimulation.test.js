@@ -1,9 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { AUTO_STEP_MS } from "./arenaConstants.js";
-import { buildInitialArenaShapes, toSimulationBotShape } from "./arenaShapes.js";
-import { advanceArenaPreviewTick } from "./arenaPreviewSimulation.js";
+import { buildInitialArenaShapes } from "./arenaShapes.js";
+import { advanceShapes as advanceArenaPreviewTickNormalized } from "../testing/fightTick.js";
 import { sanitizeStrategyConfigurationForLoadout } from "../persistence/arenaStrategyStorage.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../botlogic/code/BotCode.js";
+import { preparingAbilityId, preparingRemainingMs, cooldownRemainingMs, activeRemainingMs } from "../gameconfig/AbilityState.js";
+
+// The tick takes normalized brains; tests pass raw ones, so normalize here like the edge does.
+const normalizeOrNull = (configuration) => (configuration ? normalizeBrainForTick(configuration) : configuration);
+const advanceArenaPreviewTick = (shapes, options) => advanceArenaPreviewTickNormalized(shapes, {
+    ...options,
+    testingConfiguration: normalizeOrNull(options.testingConfiguration),
+    opponentTestingConfiguration: normalizeOrNull(options.opponentTestingConfiguration),
+});
 
 test("a Run chain action survives the editor loadout filter and runs in both practice slots", () => {
     const loadout = "custom:0";
@@ -22,8 +32,8 @@ test("a Run chain action survives the editor loadout filter and runs in both pra
         testingConfiguration: configuration, opponentTestingConfiguration: configuration,
     });
     for (const id of ["main", "opponent-model"]) {
-        const before = toSimulationBotShape(initial.find((bot) => bot.id === id));
-        const after = toSimulationBotShape(next.find((bot) => bot.id === id));
+        const before = initial.find((bot) => bot.id === id);
+        const after = next.find((bot) => bot.id === id);
         assert.equal(after.chainStack[0].chainId, "chain.walk");
         assert.equal(after.runningChain.name, "Walk");
         assert.ok(after.x > before.x, "the chain's Walk step executes");
@@ -51,27 +61,27 @@ for (const actorId of ["main", "opponent-model"]) {
             testingConfiguration: actorId === "main" ? configuration : null,
             opponentTestingConfiguration: actorId === "opponent-model" ? configuration : null,
         };
-        const actor = () => toSimulationBotShape(shapes.find((shape) => shape.id === actorId));
+        const actor = () => shapes.find((shape) => shape.id === actorId);
         for (const remainingMs of [800, 700, 600, 500, 400, 300]) {
             shapes = advanceArenaPreviewTick(shapes, options);
-            assert.equal(actor().preparingMs, remainingMs);
+            assert.equal(preparingRemainingMs(actor()), remainingMs);
             assert.equal(actor().triggeredAbility, null);
         }
         shapes = advanceArenaPreviewTick(shapes, options);
         const cancelled = actor();
         assert.equal(cancelled.lastPredictedAction.cancelWindup, true);
-        assert.equal(cancelled.preparingAbility, null);
-        assert.equal(cancelled.preparingMs, 0);
+        assert.equal(preparingAbilityId(cancelled), null);
+        assert.equal(preparingRemainingMs(cancelled), 0);
         assert.equal(cancelled.triggeredAbility, null);
         assert.equal(cancelled.stamina, 75);
-        assert.equal(cancelled.abilityCooldowns?.[3] ?? 0, 0);
-        assert.equal(cancelled.abilityActiveMs?.[3] ?? 0, 0);
+        assert.equal(cooldownRemainingMs(cancelled, 3) ?? 0, 0);
+        assert.equal(activeRemainingMs(cancelled, 3) ?? 0, 0);
     });
 }
 
 test("preview tick decides from the previous state and returns a new state snapshot", () => {
     const initialShapes = buildInitialArenaShapes(null);
-    const initialMain = toSimulationBotShape(initialShapes.find((shape) => shape.id === "main"));
+    const initialMain = initialShapes.find((shape) => shape.id === "main");
     const walkEast = {
         roots: [{ priority: 1, branches: [{
             id: "walk-east",
@@ -89,11 +99,11 @@ test("preview tick decides from the previous state and returns a new state snaps
         testingConfiguration: walkEast,
         opponentTestingConfiguration: null,
     });
-    const nextMain = toSimulationBotShape(nextShapes.find((shape) => shape.id === "main"));
+    const nextMain = nextShapes.find((shape) => shape.id === "main");
 
     assert.ok(nextMain.x > initialMain.x);
     assert.equal(nextMain.matchElapsedMs, Number(initialMain.matchElapsedMs ?? 0) + AUTO_STEP_MS);
     assert.deepEqual(initialShapes.map((shape) => shape.id), ["main", "opponent-model"]);
     assert.deepEqual(nextShapes.map((shape) => shape.id), ["main", "opponent-model"]);
-    assert.equal(toSimulationBotShape(initialShapes.find((shape) => shape.id === "main")).x, initialMain.x);
+    assert.equal(initialShapes.find((shape) => shape.id === "main").x, initialMain.x);
 });

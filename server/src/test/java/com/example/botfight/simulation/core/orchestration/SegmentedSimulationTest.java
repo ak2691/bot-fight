@@ -9,7 +9,7 @@ import com.example.botfight.simulation.bots.BotCodeService;
 import com.example.botfight.simulation.bots.ConditionEvaluationService;
 import com.example.botfight.simulation.core.combat.ActionExecutionService;
 import com.example.botfight.simulation.core.logic.ConditionResolutionService;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
+import com.example.botfight.simulation.core.orchestration.Bot;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.DuelArenaRequest;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.DuelBotRequest;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.DuelSimulationRequest;
@@ -25,6 +25,7 @@ import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import com.example.botfight.simulation.core.state.LegacyAbility;
 
 /**
  * Timed rounds: a match is one continuous simulation with a brain schedule. Each segment boundary swaps
@@ -104,8 +105,8 @@ class SegmentedSimulationTest {
         List<Seen> seen = new ArrayList<>();
         service.simulateWithoutReplay(request, (elapsedMs, bots, entities, arena) -> {
             Bot bot = bots.get(0);
-            seen.add(new Seen(elapsedMs, bot.x, bot.y, bot.hp, bot.stamina, bot.sprinting, bot.preparingAbility,
-                    bot.preparingMs, bot.triggeredAbility, new java.util.HashMap<>(bot.abilityCooldowns),
+            seen.add(new Seen(elapsedMs, bot.x, bot.y, bot.hp, bot.stamina, bot.sprinting, LegacyAbility.preparingAbility(bot),
+                    LegacyAbility.preparingMs(bot), bot.triggeredAbility, new java.util.HashMap<>(com.example.botfight.simulation.core.state.AbilityState.legacyCooldowns(bot)),
                     new java.util.LinkedHashSet<>(bot.abilities), new java.util.HashMap<>(bot.customVariables),
                     new java.util.HashMap<>(bot.customVariableTypes), bot.chainStack.size()));
             return false;

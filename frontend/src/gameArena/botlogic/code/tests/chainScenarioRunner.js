@@ -1,6 +1,8 @@
-import { advanceArenaPreviewTick } from "../../../modelPayloads/arenaPreviewSimulation.js";
-import { buildInitialArenaShapes, mergeBotShapeUpdates, toSimulationBotShape } from "../../../modelPayloads/arenaShapes.js";
-import { STATUS_EFFECT_APPLICATIONS, upsertStatusEffect } from "../../../ecs/contracts/StatusContracts.js";
+import { normalizeAbilityStrategyConfiguration } from "../BotCode.js";
+import { advanceShapes as advanceArenaPreviewTick } from "../../../testing/fightTick.js";
+import { buildInitialArenaShapes } from "../../../modelPayloads/arenaShapes.js";
+import { STATUS_EFFECT_APPLICATIONS } from "../../../ecs/contracts/StatusContracts.js";
+import { applyStatus } from "../../../ecs/abilities/effects.js";
 
 const MAIN_X = 300;
 const MAIN_Y = 600;
@@ -28,11 +30,11 @@ export function traceScenario(scenario, onTick = null) {
     const loadout = "custom:0";
     let shapes = buildInitialArenaShapes(null).map((shape) => {
         const placed = shape.id === "main"
-            ? mergeBotShapeUpdates(shape, { x: MAIN_X, y: MAIN_Y, rotation: scenario.mainRotation ?? 90, teamNumber: 1 })
-            : mergeBotShapeUpdates(shape, { x: scenario.defenderX, y: MAIN_Y, rotation: 270 });
+            ? { ...shape, x: MAIN_X, y: MAIN_Y, rotation: scenario.mainRotation ?? 90, teamNumber: 1 }
+            : { ...shape, x: scenario.defenderX, y: MAIN_Y, rotation: 270 };
         return { ...placed, abilities: shape.id === "main" ? scenario.abilities : [], combatLoadout: loadout };
     });
-    const configuration = { version: "bot-logic-tree-v1", roots: scenario.roots, chains: scenario.chains };
+    const configuration = normalizeAbilityStrategyConfiguration({ version: "bot-logic-tree-v1", roots: scenario.roots, chains: scenario.chains });
     const lines = [];
     for (let tick = 0; tick < scenario.ticks; tick += 1) {
         shapes = advanceArenaPreviewTick(shapes, {
@@ -42,15 +44,13 @@ export function traceScenario(scenario, onTick = null) {
             opponentTestingConfiguration: null,
         });
         if (tick === scenario.stunAtTick) {
-            shapes = shapes.map((shape) => shape.id !== "main" ? shape : mergeBotShapeUpdates(shape, {
-                statusEffects: upsertStatusEffect(toSimulationBotShape(shape), {
-                    type: "stun",
-                    remainingMs: 500,
-                    effects: [{ type: STATUS_EFFECT_APPLICATIONS.STUN, mode: "constant" }],
-                }).statusEffects,
+            shapes = shapes.map((shape) => shape.id !== "main" ? shape : applyStatus({ ...shape }, {
+                type: "stun",
+                remainingMs: 500,
+                effects: [{ type: STATUS_EFFECT_APPLICATIONS.STUN, mode: "constant" }],
             }));
         }
-        const main = toSimulationBotShape(shapes.find((shape) => shape.id === "main"));
+        const main = shapes.find((shape) => shape.id === "main");
         onTick?.(main, tick);
         lines.push(`${formatStack(main.chainStack)} | ${formatAction(main.lastPredictedAction)}`);
     }

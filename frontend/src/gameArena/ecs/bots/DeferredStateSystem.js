@@ -1,15 +1,13 @@
 import { DEFERRED_STATE_CONTRACTS } from "../contracts/DeferredStateContracts.js";
 
-/** Advances every registered delayed state transition for one bot tick. */
+/** Advances every registered delayed state transition for one bot tick, in place. */
 export function tickDeferredStates(shape, elapsedMs) {
     const elapsed = Math.max(0, Number(elapsedMs) || 0);
-    return DEFERRED_STATE_CONTRACTS.reduce(
-        (next, contract) => advanceDeferredState(next, contract, elapsed),
-        shape,
-    );
+    for (const contract of DEFERRED_STATE_CONTRACTS) advanceDeferredState(shape, contract, elapsed);
+    return shape;
 }
 
-/** Applies one declarative delayed-state contract. Exported for focused contract tests. */
+/** Applies one declarative delayed-state contract in place. Exported for focused contract tests. */
 export function advanceDeferredState(shape, contract, elapsedMs) {
     const remainingBefore = Math.max(0, Number(shape?.[contract.remainingField] ?? 0));
     const remainingMs = Math.max(0, remainingBefore - elapsedMs);
@@ -19,14 +17,15 @@ export function advanceDeferredState(shape, contract, elapsedMs) {
     const snapshot = completes ? clearedFields(contract.snapshotFields) : {};
     const presentation = completionVisualFields(shape, contract.completionVisualFields, remainingMs, completionVisualMs);
 
-    return {
-        ...shape,
-        ...completion,
-        [contract.remainingField]: remainingMs,
-        ...completionVisualFieldsFor(contract, completionVisualMs),
-        ...snapshot,
-        ...presentation,
-    };
+    Object.assign(
+        shape,
+        completion,
+        { [contract.remainingField]: remainingMs },
+        completionVisualFieldsFor(contract, completionVisualMs),
+        snapshot,
+        presentation,
+    );
+    return shape;
 }
 
 function advanceCompletionVisual(shape, contract, elapsedMs, completes) {

@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyDamageToShape } from "../../gameconfig/BotCombatSystem.js";
 import { CLOSING_ZONE_CONFIG, TIMED_ROUNDS_V2_ZONE_CONFIG } from "../../gameconfig/ArenaHazardConfig.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../modelPayloads/arenaConstants.js";
 import {
@@ -31,16 +30,16 @@ test("closing zone stays absent before its configured start delay", () => {
         elapsedMs: CLOSING_ZONE_CONFIG.startDelayMs - 100,
         stepMs: 100,
         ...arena,
-    }, { applyDamageToShape });
+    });
 
     assert.equal(result.zone, null);
     assert.equal(result.bots[0].hp, 100);
 });
 
 test("closing zone caches its radius between one-second geometry updates", () => {
-    const first = tickClosingZoneWorld({ bots: [bot()], elapsedMs: 15_000, stepMs: 100, ...arena }, { applyDamageToShape });
-    const second = tickClosingZoneWorld({ bots: [bot()], zone: first.zone, elapsedMs: 15_900, stepMs: 100, ...arena }, { applyDamageToShape });
-    const third = tickClosingZoneWorld({ bots: [bot()], zone: second.zone, elapsedMs: 16_000, stepMs: 100, ...arena }, { applyDamageToShape });
+    const first = tickClosingZoneWorld({ bots: [bot()], elapsedMs: 15_000, stepMs: 100, ...arena });
+    const second = tickClosingZoneWorld({ bots: [bot()], zone: first.zone, elapsedMs: 15_900, stepMs: 100, ...arena });
+    const third = tickClosingZoneWorld({ bots: [bot()], zone: second.zone, elapsedMs: 16_000, stepMs: 100, ...arena });
 
     assert.equal(second.zone.size, first.zone.size);
     assert.equal(second.zone, first.zone);
@@ -67,14 +66,14 @@ test("closing zone contracts for five seconds and holds for fifteen seconds", ()
         elapsedMs: 20_000,
         stepMs: 100,
         ...arena,
-    }, { applyDamageToShape });
+    });
     const held = tickClosingZoneWorld({
         bots: [bot()],
         zone: contracted.zone,
         elapsedMs: 25_000,
         stepMs: 100,
         ...arena,
-    }, { applyDamageToShape });
+    });
     assert.equal(held.zone, contracted.zone);
 });
 
@@ -88,7 +87,7 @@ test("closing zone damages only bot hitboxes that reach the unsafe side", () => 
             + CLOSING_ZONE_CONFIG.damageIntervalMs,
         stepMs: 100,
         ...arena,
-    }, { applyDamageToShape });
+    });
 
     assert.equal(atDamageTick.bots[0].hp, 100);
     assert.equal(atDamageTick.bots[1].hp, 98);
@@ -133,13 +132,13 @@ test("timed rounds zone matches the server schedule: rounds 5 and 6 only, 1200 -
 
 test("timed rounds zone world tick starts at round 5 with a 1200-unit zone and damages outside bots", () => {
     const config = TIMED_ROUNDS_V2_ZONE_CONFIG;
-    const before = tickClosingZoneWorld({ bots: [bot()], elapsedMs: 79_900, stepMs: 100, config, ...arena }, { applyDamageToShape });
+    const before = tickClosingZoneWorld({ bots: [bot()], elapsedMs: 79_900, stepMs: 100, config, ...arena });
     assert.equal(before.zone, null);
-    const started = tickClosingZoneWorld({ bots: [bot({ x: 600, y: 600 })], elapsedMs: 80_000, stepMs: 100, config, ...arena }, { applyDamageToShape });
+    const started = tickClosingZoneWorld({ bots: [bot({ x: 600, y: 600 })], elapsedMs: 80_000, stepMs: 100, config, ...arena });
     assert.equal(started.zone.size, 1_200);
     assert.equal(started.bots[0].hp, 100);
-    const corner = tickClosingZoneWorld({ bots: [bot({ x: 60, y: 60 })], elapsedMs: 80_500, stepMs: 100, config, ...arena }, { applyDamageToShape });
+    const corner = tickClosingZoneWorld({ bots: [bot({ x: 60, y: 60 })], elapsedMs: 80_500, stepMs: 100, config, ...arena });
     assert.ok(corner.bots[0].hp < 100);
-    const contracted = tickClosingZoneWorld({ bots: [bot({ x: 600, y: 600 })], elapsedMs: 85_000, stepMs: 100, config, ...arena }, { applyDamageToShape });
+    const contracted = tickClosingZoneWorld({ bots: [bot({ x: 600, y: 600 })], elapsedMs: 85_000, stepMs: 100, config, ...arena });
     assert.equal(contracted.zone.size, 900);
 });

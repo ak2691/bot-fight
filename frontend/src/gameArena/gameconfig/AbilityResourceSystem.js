@@ -1,11 +1,32 @@
 import { ABILITY_STATS, abilityMaxChargesForShape } from "./Abilities.js";
-import { attachedAbilityContract } from "../ecs/contracts/AbilityContracts.js";
+import { findVerb, triggerVerbs, VERBS } from "../ecs/contracts/AbilityContracts.js";
 import { statusEffectValue, statusIsActive, STATUS_EFFECT_APPLICATIONS } from "../ecs/contracts/StatusContracts.js";
+import { abilityChannel } from "./AbilityChannels.js";
+import {
+    ABILITY_STAGES,
+    abilityIdsInStage,
+    abilityRecord,
+    activeRemainingMs,
+    channelBusy,
+    cooldownRemainingMs,
+    endActiveStage,
+    patchAbilityRecord,
+    pendingCooldownMs,
+    readyAbilityRecord,
+} from "./AbilityState.js";
+import { staminaWaitMs } from "./StaminaSystem.js";
 
-const REGENERATE_RESOURCE = "regenerate";
 const RELOAD_RESOURCE = "reload";
-const FIXED_RESOURCE = "fixed";
-const HP_RESOURCE = "hp";
+
+/** The starting records for a bot's abilities: ready, with full charges for the charge-bearing ones. */
+export function initialAbilityState(abilities, maxHp = null) {
+    return Object.fromEntries((abilities ?? []).map((id) => {
+        const maxCharges = positiveInteger(abilityMaxChargesForShape(id, { maxHp }));
+        return [id, maxCharges == null
+            ? { stage: ABILITY_STAGES.READY, remainingMs: 0 }
+            : { stage: ABILITY_STAGES.READY, remainingMs: 0, charges: maxCharges, reloadMs: 0 }];
+    }));
+}
 
 /** Returns the canonical resource payload for one ability. */
 export function abilityResourceFor(shape, abilityId, stats = ABILITY_STATS[abilityId] ?? {}) {
@@ -13,24 +34,22 @@ export function abilityResourceFor(shape, abilityId, stats = ABILITY_STATS[abili
     if (maxCharges == null) {
         return { abilityId, stats, maxCharges: null, charges: null, rechargeMs: 0 };
     }
-    const rawCharges = shape?.abilityCharges?.[abilityId];
-    const charges = clampInteger(rawCharges == null
-        ? (stats.resourceModel === FIXED_RESOURCE ? 0 : maxCharges)
-        : rawCharges, 0, maxCharges);
+    const record = abilityRecord(shape, abilityId);
+    const charges = clampInteger(record?.charges == null ? maxCharges : record.charges, 0, maxCharges);
     return {
         abilityId,
         stats,
         maxCharges,
         charges,
-        rechargeMs: positiveNumber(shape?.abilityRechargeMs?.[abilityId]),
+        rechargeMs: positiveNumber(record?.reloadMs),
     };
 }
 
-/** Returns the charge count from the canonical resource map, or null for uncharged abilities. */
+/** Returns the charge count from the ability record, or null for uncharged abilities. */
 export function abilityChargeCount(shape, abilityId) {
     const maxCharges = positiveInteger(abilityMaxChargesForShape(abilityId, shape));
     if (maxCharges == null) return null;
-    const rawCharges = shape?.abilityCharges?.[abilityId];
+    const rawCharges = abilityRecord(shape, abilityId)?.charges;
     return rawCharges == null ? null : clampInteger(rawCharges, 0, maxCharges);
 }
 
@@ -48,13 +67,8 @@ export function abilityChargesFor(shape, abilityId) {
 export function abilityRechargeRemainingMs(shape, abilityId) {
     const resource = abilityResourceFor(shape, abilityId);
     if (resource.maxCharges == null || resource.charges >= resource.maxCharges) return 0;
-    if (resource.stats.resourceModel === HP_RESOURCE) return 0;
-    const durationMs = resourceDurationMs(resource.stats);
-    if (resource.stats.resourceModel === REGENERATE_RESOURCE) {
-        return Math.max(0, durationMs - resource.rechargeMs);
-    }
     if (resource.stats.resourceModel === RELOAD_RESOURCE && resource.charges === 0) {
-        return resource.rechargeMs > 0 ? resource.rechargeMs : durationMs;
+        return resource.rechargeMs > 0 ? resource.rechargeMs : resourceDurationMs(resource.stats);
     }
     return 0;
 }
@@ -62,90 +76,101 @@ export function abilityRechargeRemainingMs(shape, abilityId) {
 /** Checks whether an ability's resource can be spent within the current simulation step. */
 export function abilityResourceReady(shape, abilityId, readinessMs = 0) {
     const resource = abilityResourceFor(shape, abilityId);
-    const fixedInactive = resource.stats.resourceModel === FIXED_RESOURCE
-        && Number(shape?.abilityActiveMs?.[abilityId] ?? 0) <= Math.max(0, Number(readinessMs) || 0);
     return resource.maxCharges == null
-        || fixedInactive
         || (resource.charges > 0 && abilityRechargeRemainingMs(shape, abilityId) <= Math.max(0, Number(readinessMs) || 0));
+}
+
+/**
+ * Generic wait before an ability can start again: the longest of its cooldown, its reload and the time to
+ * afford its stamina cost. It does not include a running wind-up or active stage; callers that show a readout
+ * report 0 for those, as the ability is not recovering yet.
+ */
+export function abilityReadyInMs(shape, abilityId) {
+    return Math.max(
+        cooldownRemainingMs(shape, abilityId),
+        abilityRechargeRemainingMs(shape, abilityId),
+        staminaWaitMs(shape, abilityId),
+    );
 }
 
 /**
  * Checks the two-phase ability timer at the end of the current fixed step.
  *
- * `abilityCooldowns` is the visible post-active recovery timer. While an
- * ability is active, its reserved recovery lives in
- * `abilityPendingCooldownMs`; only any time left in the step after the active
- * window expires may consume recovery. This keeps the phase values mutually
- * exclusive for conditions, UI, replay, and execution.
+ * The visible cooldown is the post-active recovery timer. While an ability is
+ * active, its reserved recovery waits in the record's `cooldownMs`; only any
+ * time left in the step after the active window expires may consume recovery.
+ * The stages are mutually exclusive for conditions, UI, replay, and execution.
  */
 export function abilityTimingReady(shape, abilityId, elapsedMs = 100) {
     const elapsed = positiveNumber(elapsedMs);
-    const activeMs = positiveNumber(shape?.abilityActiveMs?.[abilityId]);
-    const cooldownMs = positiveNumber(shape?.abilityCooldowns?.[abilityId]);
+    const activeMs = activeRemainingMs(shape, abilityId);
+    const cooldownMs = cooldownRemainingMs(shape, abilityId);
     const recoveryWindow = Math.max(0, elapsed - Math.min(elapsed, activeMs));
     return activeMs <= elapsed
         && cooldownMs <= recoveryWindow;
 }
 
 /**
- * Stores a cooldown in the phase where it will actually run. Active time is
- * consumed first, so a cooldown created by an activation remains pending until
- * the active phase reaches zero.
+ * Stores a cooldown in the stage where it will actually run. While the ability is active the cooldown stays
+ * reserved on the active record and starts when the active stage reaches zero.
  */
 export function setAbilityCooldownState(shape, abilityId, cooldownMs) {
-    const cooldowns = { ...(shape?.abilityCooldowns ?? {}) };
-    const pendingCooldowns = { ...(shape?.abilityPendingCooldownMs ?? {}) };
     const requested = positiveNumber(cooldownMs);
-    const current = Math.max(
-        positiveNumber(cooldowns[abilityId]),
-        positiveNumber(pendingCooldowns[abilityId]),
-    );
-    const active = positiveNumber(shape?.abilityActiveMs?.[abilityId]);
-    if (active > 0) {
-        cooldowns[abilityId] = 0;
-        const pending = Math.max(current, requested);
-        if (pending > 0) pendingCooldowns[abilityId] = pending;
-        else delete pendingCooldowns[abilityId];
-    } else {
-        cooldowns[abilityId] = Math.max(current, requested);
-        delete pendingCooldowns[abilityId];
+    const record = abilityRecord(shape, abilityId);
+    if (record?.stage === ABILITY_STAGES.ACTIVE) {
+        const pending = Math.max(pendingCooldownMs(shape, abilityId), requested);
+        return patchAbilityRecord(shape, abilityId, { cooldownMs: pending > 0 ? pending : undefined });
     }
-    return { ...shape, abilityCooldowns: cooldowns, abilityPendingCooldownMs: pendingCooldowns };
+    const cooldown = Math.max(cooldownRemainingMs(shape, abilityId), requested);
+    return patchAbilityRecord(shape, abilityId, {
+        stage: cooldown > 0 ? ABILITY_STAGES.COOLDOWN : ABILITY_STAGES.READY,
+        remainingMs: cooldown,
+        cooldownMs: undefined,
+        target: undefined,
+    });
 }
 
 /**
- * Interrupts every bot-owned ability phase that is currently preparing or
+ * Starts an ability's active stage. A cooldown still running (or reserved) is carried over to the end of
+ * the active stage; an ability with no active time goes straight to its cooldown.
+ */
+export function startAbilityActive(shape, abilityId, activeMs) {
+    const carried = Math.max(cooldownRemainingMs(shape, abilityId), pendingCooldownMs(shape, abilityId));
+    const active = positiveNumber(activeMs);
+    if (active > 0) {
+        return patchAbilityRecord(shape, abilityId, {
+            stage: ABILITY_STAGES.ACTIVE,
+            remainingMs: active,
+            cooldownMs: carried > 0 ? carried : undefined,
+            target: undefined,
+        });
+    }
+    return patchAbilityRecord(shape, abilityId, {
+        stage: carried > 0 ? ABILITY_STAGES.COOLDOWN : ABILITY_STAGES.READY,
+        remainingMs: carried,
+        cooldownMs: undefined,
+        target: undefined,
+    });
+}
+
+/**
+ * Interrupts every bot-owned ability stage that is currently preparing or
  * active. Ability entities are deliberately not touched: once an entity has
  * been spawned, its own contract owns its remaining lifetime.
  */
 export function interruptCurrentAbility(shape, options = {}) {
     if (!shape || (shape.hp != null && Number(shape.hp) <= 0)) return shape;
-    const ids = new Set();
-    const preparingAbilityId = shape.preparingAbility == null ? null : Number(shape.preparingAbility);
-    if (Number.isFinite(preparingAbilityId) && positiveNumber(shape.preparingMs) > 0) {
-        ids.add(preparingAbilityId);
-    }
-    for (const [abilityId, activeMs] of Object.entries(shape.abilityActiveMs ?? {})) {
-        if (positiveNumber(activeMs) > 0) ids.add(Number(abilityId));
-    }
-
+    const ids = new Set([
+        ...abilityIdsInStage(shape, ABILITY_STAGES.WINDUP),
+        ...abilityIdsInStage(shape, ABILITY_STAGES.ACTIVE),
+    ]);
     let next = shape;
     for (const abilityId of ids) next = interruptAbility(next, abilityId, options);
-    if (next.preparingAbility != null || positiveNumber(next.preparingMs) > 0
-        || next.preparingTargetX != null || next.preparingTargetY != null) {
-        next = {
-            ...next,
-            preparingAbility: null,
-            preparingMs: 0,
-            preparingTargetX: null,
-            preparingTargetY: null,
-        };
-    }
     return next;
 }
 
 /**
- * Cancels one ability phase and starts the relevant recovery gate without
+ * Cancels one ability stage and starts the relevant recovery gate without
  * firing its activation effects. Reloading resources remain on reload rather
  * than also receiving a cooldown, so the two resource gates cannot overlap.
  */
@@ -153,37 +178,21 @@ export function interruptAbility(shape, abilityId, { cooldownMultiplier = null }
     const id = Number(abilityId);
     if (!shape || !Number.isFinite(id)) return shape;
 
-    const preparing = Number(shape.preparingAbility) === id
-        && positiveNumber(shape.preparingMs) > 0;
-    const active = positiveNumber(shape.abilityActiveMs?.[id]) > 0;
+    const stage = abilityRecord(shape, id)?.stage;
+    const preparing = stage === ABILITY_STAGES.WINDUP && positiveNumber(abilityRecord(shape, id).remainingMs) > 0;
+    const active = activeRemainingMs(shape, id) > 0;
     if (!preparing && !active) return shape;
 
     const stats = ABILITY_STATS[id] ?? {};
     const multiplier = positiveMultiplier(cooldownMultiplier == null
         ? 1 / Number(shape.attackSpeedMultiplier ?? 1)
         : cooldownMultiplier);
-    let next = preparing
-        ? {
-            ...shape,
-            preparingAbility: null,
-            preparingMs: 0,
-            preparingTargetX: null,
-            preparingTargetY: null,
-        }
-        : shape;
-
-    if (active) {
-        next = {
-            ...next,
-            abilityActiveMs: { ...(next.abilityActiveMs ?? {}), [id]: 0 },
-        };
-    }
+    let next = preparing ? readyAbilityRecord(shape, id) : endActiveStage(shape, id);
 
     let reloadActive = isReloadingResource(next, id, stats);
     if (preparing && !reloadActive
         && abilityMaxChargesForShape(id, next) != null
-        && abilityChargesFor(next, id) > 0
-        && ![FIXED_RESOURCE, HP_RESOURCE].includes(stats.resourceModel)) {
+        && abilityChargesFor(next, id) > 0) {
         const consumed = consumeAbilityCharges(next, id, 1, {
             elapsedMs: 0,
             cooldownMultiplier: multiplier,
@@ -195,10 +204,7 @@ export function interruptAbility(shape, abilityId, { cooldownMultiplier = null }
     }
 
     if (reloadActive) {
-        const cooldowns = { ...(next.abilityCooldowns ?? {}), [id]: 0 };
-        const pendingCooldowns = { ...(next.abilityPendingCooldownMs ?? {}) };
-        delete pendingCooldowns[id];
-        next = { ...next, abilityCooldowns: cooldowns, abilityPendingCooldownMs: pendingCooldowns };
+        next = readyAbilityRecord(next, id);
     } else {
         const configuredCooldownMs = Math.round(
             Number(stats.cooldownMs ?? stats.reuseCooldownMs ?? 1000)
@@ -207,15 +213,12 @@ export function interruptAbility(shape, abilityId, { cooldownMultiplier = null }
         next = setAbilityCooldownState(next, id, configuredCooldownMs);
     }
 
-    if (active && attachedAbilityContract(id)?.phases?.[0]?.movement?.distance != null) {
-        next = {
-            ...next,
-            dashRemaining: 0,
-            movementVelocityX: 0,
-            movementVelocityY: 0,
-            velocityX: 0,
-            velocityY: 0,
-        };
+    if (active && findVerb(triggerVerbs(id), VERBS.MOVE) != null) {
+        next.dashRemaining = 0;
+        next.movementVelocityX = 0;
+        next.movementVelocityY = 0;
+        next.velocityX = 0;
+        next.velocityY = 0;
     }
     return next;
 }
@@ -227,67 +230,9 @@ function isReloadingResource(shape, abilityId, stats) {
         && resource.rechargeMs > 0;
 }
 
-/** Returns true when a different non-bypass ability is active or still preparing. */
-export function anotherAbilityActive(shape, abilityId, ignoresGlobalAbilityLock = abilityIgnoresGlobalLock(abilityId)) {
-    if (ignoresGlobalAbilityLock) return false;
-    const candidateAbilityId = Number(abilityId);
-    const preparingAbilityId = shape?.preparingAbility == null ? null : Number(shape.preparingAbility);
-    if (Number.isFinite(preparingAbilityId)
-        && preparingAbilityId !== candidateAbilityId
-        && !abilityIgnoresGlobalLock(preparingAbilityId)) return true;
-    return Object.entries(shape?.abilityActiveMs ?? {})
-        .some(([activeAbilityId, value]) => Number(activeAbilityId) !== candidateAbilityId
-            && !abilityIgnoresGlobalLock(Number(activeAbilityId))
-            && positiveNumber(value) > 0);
-}
-
-export function abilityIgnoresGlobalLock(abilityId) {
-    return Boolean(attachedAbilityContract(abilityId)?.activation?.ignoresGlobalAbilityLock);
-}
-
-/** Advances every equipped charge-bearing ability through the same resource state machine. */
-export function rechargeAbilityResources(shape, elapsedMs, activeValues = shape?.abilityActiveMs,
-    justActivatedAbilityId = null) {
-    const elapsed = positiveNumber(elapsedMs);
-    const charges = { ...(shape?.abilityCharges ?? {}) };
-    const rechargeMs = { ...(shape?.abilityRechargeMs ?? {}) };
-    const abilityIds = new Set([
-        ...(Array.isArray(shape?.abilities) ? shape.abilities : []),
-        ...Object.keys(charges).map(Number),
-        ...Object.keys(rechargeMs).map(Number),
-    ]);
-
-    for (const abilityId of abilityIds) {
-        const stats = ABILITY_STATS[abilityId];
-        if (stats?.maxCharges == null) {
-            delete charges[abilityId];
-            delete rechargeMs[abilityId];
-            continue;
-        }
-        if (stats.resourceModel === FIXED_RESOURCE
-            && Number(shape?.abilityActiveMs?.[abilityId] ?? 0) <= 0) {
-            delete charges[abilityId];
-            delete rechargeMs[abilityId];
-            continue;
-        }
-        const activeBefore = positiveNumber(activeValues?.[abilityId]);
-        const recoveryElapsed = justActivatedAbilityId != null
-            && abilityId === Number(justActivatedAbilityId)
-            ? 0
-            : Math.max(0, elapsed - Math.min(elapsed, activeBefore));
-        const resource = rechargeAbility({
-            ...abilityResourceFor({
-                maxHp: shape?.maxHp ?? shape?.health?.max,
-                abilityCharges: charges,
-                abilityRechargeMs: rechargeMs,
-            }, abilityId, stats),
-            stats,
-            active: Number(shape?.abilityActiveMs?.[abilityId] ?? 0) > 0,
-        }, recoveryElapsed);
-        charges[abilityId] = resource.charges;
-        rechargeMs[abilityId] = resource.rechargeMs;
-    }
-    return { charges, rechargeMs };
+/** Returns true when another ability of the same channel is winding up or active. */
+export function anotherAbilityActive(shape, abilityId) {
+    return channelBusy(shape, abilityChannel(abilityId), abilityId);
 }
 
 /**
@@ -298,37 +243,12 @@ export function rechargeAbility(resource, elapsedMs) {
     const maxCharges = resource?.maxCharges;
     if (maxCharges == null) return { ...resource, charges: null, rechargeMs: 0 };
 
-    let charges = clampInteger(resource.charges, 0, maxCharges);
-    let rechargeMs = positiveNumber(resource.rechargeMs);
+    const charges = clampInteger(resource.charges, 0, maxCharges);
+    const rechargeMs = positiveNumber(resource.rechargeMs);
     const elapsed = positiveNumber(elapsedMs);
     const durationMs = resourceDurationMs(resource.stats);
 
-    if (resource.stats?.resourceModel === FIXED_RESOURCE) {
-        return resource.active === false
-            ? { ...resource, charges: 0, rechargeMs: 0 }
-            : { ...resource, charges, rechargeMs: 0 };
-    }
-    if (resource.stats?.resourceModel === HP_RESOURCE) {
-        if (resource.active === false && durationMs <= 0) {
-            const rate = positiveNumber(resource.stats.chargeRegenHpPerSecond);
-            if (rate > 0) {
-                rechargeMs += rate * elapsed;
-                const gained = Math.floor(rechargeMs / 1000);
-                charges = Math.min(maxCharges, charges + gained);
-                rechargeMs = charges >= maxCharges ? 0 : rechargeMs % 1000;
-            }
-        }
-        return { ...resource, charges, rechargeMs };
-    }
     if (charges >= maxCharges) return { ...resource, charges: maxCharges, rechargeMs: 0 };
-    if (resource.stats?.resourceModel === REGENERATE_RESOURCE && durationMs > 0) {
-        rechargeMs += elapsed;
-        while (charges < maxCharges && rechargeMs >= durationMs) {
-            charges += 1;
-            rechargeMs -= durationMs;
-        }
-        return { ...resource, charges, rechargeMs: charges >= maxCharges ? 0 : rechargeMs };
-    }
     if (resource.stats?.resourceModel === RELOAD_RESOURCE && charges === 0 && durationMs > 0) {
         const remainingMs = Math.max(0, (rechargeMs > 0 ? rechargeMs : durationMs) - elapsed);
         return remainingMs <= 0
@@ -339,22 +259,9 @@ export function rechargeAbility(resource, elapsedMs) {
 }
 
 /** Consumes one generic ability resource, starting a reload only when empty. */
-export function consumeAbilityCharges(shape, abilityId, amount = 1, { elapsedMs = 0, cooldownMultiplier = 1, activation = false } = {}) {
+export function consumeAbilityCharges(shape, abilityId, amount = 1, { elapsedMs = 0, cooldownMultiplier = 1 } = {}) {
     const resource = abilityResourceFor(shape, abilityId);
     if (resource.maxCharges == null) return { shape, consumed: true };
-    if (activation && resource.stats.resourceModel === FIXED_RESOURCE) {
-        return {
-            shape: {
-                ...shape,
-                abilityCharges: { ...(shape?.abilityCharges ?? {}), [abilityId]: resource.maxCharges },
-                abilityRechargeMs: { ...(shape?.abilityRechargeMs ?? {}), [abilityId]: 0 },
-            },
-            consumed: true,
-        };
-    }
-    if (activation && resource.stats.resourceModel === HP_RESOURCE) {
-        return { shape, consumed: resource.charges > 0 };
-    }
     const spend = Math.max(0, Math.round(Number(amount) || 0));
     if (spend <= 0) return { shape, consumed: true };
     if (resource.charges <= 0) return { shape, consumed: false };
@@ -363,44 +270,21 @@ export function consumeAbilityCharges(shape, abilityId, amount = 1, { elapsedMs 
     let nextRechargeMs = resource.rechargeMs;
     if (charges >= resource.maxCharges) nextRechargeMs = 0;
     if (charges === 0 && resource.stats.resourceModel === RELOAD_RESOURCE) {
-        const activeRemaining = positiveNumber(shape?.abilityActiveMs?.[abilityId]);
-        const currentStepOffset = activeRemaining > 0 ? 0 : positiveNumber(elapsedMs);
+        const currentStepOffset = activeRemainingMs(shape, abilityId) > 0 ? 0 : positiveNumber(elapsedMs);
         // Snapshot Overclock when the reload starts; the timer ticks normally afterward.
         nextRechargeMs = Math.max(0, Math.round(resourceDurationMs(resource.stats)
             * positiveMultiplier(cooldownMultiplier) * cooldownStartMultiplier(shape) + currentStepOffset));
     }
-    const startsRecharge = charges === 0
-        && (resource.stats.resourceModel === RELOAD_RESOURCE
-            || resource.stats.resourceModel === REGENERATE_RESOURCE);
-    const nextCharges = { ...(shape?.abilityCharges ?? {}) };
-    const nextRecharge = { ...(shape?.abilityRechargeMs ?? {}) };
-    const nextCooldowns = { ...(shape?.abilityCooldowns ?? {}) };
-    const nextPendingCooldowns = { ...(shape?.abilityPendingCooldownMs ?? {}) };
-    nextCharges[abilityId] = charges;
-    nextRecharge[abilityId] = nextRechargeMs;
-    // A charged ability has exactly one post-active gate: the short
-    // between-charge cooldown while charges remain, or the reload/recharge
-    // timer after the final charge. Never leave both gates armed together.
+    const startsRecharge = charges === 0 && resource.stats.resourceModel === RELOAD_RESOURCE;
+    let next = patchAbilityRecord(shape, abilityId, { charges, reloadMs: nextRechargeMs });
+    // A charged ability has exactly one post-active gate: the short between-charge cooldown while charges
+    // remain, or the reload timer after the final charge. Never leave both gates armed together.
     if (startsRecharge) {
-        nextCooldowns[abilityId] = 0;
-        delete nextPendingCooldowns[abilityId];
+        next = abilityRecord(next, abilityId)?.stage === ABILITY_STAGES.ACTIVE
+            ? patchAbilityRecord(next, abilityId, { cooldownMs: undefined })
+            : readyAbilityRecord(next, abilityId);
     }
-    if (resource.stats.resourceModel === FIXED_RESOURCE && charges === 0) {
-        delete nextCharges[abilityId];
-        delete nextRecharge[abilityId];
-    }
-    return {
-        shape: {
-            ...shape,
-            abilityCharges: nextCharges,
-            abilityRechargeMs: nextRecharge,
-            abilityPendingCooldownMs: nextPendingCooldowns,
-            ...(startsRecharge || shape?.abilityCooldowns != null
-                ? { abilityCooldowns: nextCooldowns }
-                : {}),
-        },
-        consumed: true,
-    };
+    return { shape: next, consumed: true };
 }
 
 function resourceDurationMs(stats = {}) {
@@ -412,7 +296,7 @@ function positiveMultiplier(value) {
     return Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1;
 }
 
-function cooldownStartMultiplier(shape) {
+export function cooldownStartMultiplier(shape) {
     return statusIsActive(shape, "overclock")
         ? Math.min(1, Math.max(0, statusEffectValue(
             shape,

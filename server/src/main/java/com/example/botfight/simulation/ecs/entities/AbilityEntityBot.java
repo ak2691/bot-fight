@@ -1,5 +1,7 @@
 package com.example.botfight.simulation.ecs.entities;
 
+import com.example.botfight.simulation.core.state.StatusEffectState;
+
 /** Minimal mutable bot surface required by persistent ability systems. */
 public interface AbilityEntityBot {
     int entitySlot();
@@ -15,27 +17,15 @@ public interface AbilityEntityBot {
     /** Defender-owned immunity gate checked before any hostile state mutation. */
     boolean ignoresHostileEffects();
     void setEntityPosition(double x, double y);
-    void applySilence(int durationMs);
-    void setZoneSilenced(boolean silenced);
-    void applyStun(int durationMs);
+    /** Gives the bot the speed of a push, in units per second. */
+    default void setEntityVelocity(double velocityX, double velocityY) {}
+    /**
+     * Adds or refreshes a status built from a statuses.json preset. {@code clearsVelocity} (the preset's flag)
+     * stops the bot where it stands.
+     */
+    void applyStatus(StatusEffectState status, boolean clearsVelocity);
     /** Applies the full contract-owned interrupt transition to this bot. */
-    void applyInterrupt(int durationMs);
-
-    /** Generic status hooks used by contract-declared entity effects. */
-    default void applyStatus(String subtype, int durationMs, int sourceSlot) {
-        if ("silence".equals(subtype)) applySilence(durationMs);
-        else if ("stun".equals(subtype)) applyStun(durationMs);
-        else if ("slow".equals(subtype)) applySlow(durationMs);
-    }
-
-    /** Optional status hook keeps lightweight entity-test fakes minimal. */
-    default void applySlow(int durationMs) {}
-
-    default void clearPresence(String field) {
-        if ("silence".equals(field)) setZoneSilenced(false);
-    }
-
-    default void setPresence(String field, boolean active) {
-        if ("silence".equals(field)) setZoneSilenced(active);
-    }
+    void applyInterrupt(int durationMs, Integer abilityId);
+    /** Drops the statuses that last only while the bot stands inside a zone. */
+    void clearZonePresence();
 }

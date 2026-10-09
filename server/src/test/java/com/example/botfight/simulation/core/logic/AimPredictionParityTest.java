@@ -6,12 +6,13 @@ import static org.assertj.core.api.Assertions.within;
 import com.example.botfight.simulation.bots.BotLogicContracts;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Aim;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Arena;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
+import com.example.botfight.simulation.core.orchestration.Bot;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Entity;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.StrategyBlock;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import com.example.botfight.simulation.core.state.LegacyAbility;
 
 /** Authoritative mirror of frontend aimPrediction.test.js; keep the cases in step. */
 class AimPredictionParityTest {
@@ -105,12 +106,10 @@ class AimPredictionParityTest {
         assertThat(AimPrediction.projectileSpeedPerSecond(3)).isZero();
         assertThat(AimPrediction.leadSeconds(auto(3), player(), target)).isCloseTo(0.9, within(1e-9));
         Bot winding = player();
-        winding.preparingAbility = 3;
-        winding.preparingMs = 300;
+        LegacyAbility.setPreparing(winding, 3, 300);
         assertThat(AimPrediction.leadSeconds(auto(3), winding, target)).isCloseTo(0.3, within(1e-9));
         Bot otherWindup = player();
-        otherWindup.preparingAbility = 9;
-        otherWindup.preparingMs = 300;
+        LegacyAbility.setPreparing(otherWindup, 9, 300);
         assertThat(AimPrediction.leadSeconds(auto(3), otherWindup, target)).isCloseTo(0.9, within(1e-9));
         // Melee has neither wind-up nor travel.
         assertThat(AimPrediction.leadSeconds(auto(1), player(), target)).isZero();

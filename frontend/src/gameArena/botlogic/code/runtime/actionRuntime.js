@@ -1,8 +1,10 @@
-import { abilityChargesFor, abilityIgnoresGlobalLock, abilityRechargeRemainingMs, abilityTimingReady, anotherAbilityActive } from "../../../gameconfig/AbilityResourceSystem.js";
+import { abilityChargesFor, abilityReadyInMs, abilityRechargeRemainingMs, abilityTimingReady, anotherAbilityActive } from "../../../gameconfig/AbilityResourceSystem.js";
+import { abilityChannel, channelNotReadyStatuses } from "../../../gameconfig/AbilityChannels.js";
+import { statusIsActive } from "../../../ecs/contracts/StatusContracts.js";
+import { activeRemainingMs, channelWindingUp, windupRemainingMs } from "../../../gameconfig/AbilityState.js";
 import { abilityIdFromBoundary } from "../../../gameconfig/AbilityCompatibility.js";
 import { ACTION_HEADS, BOT_CODE_ACTIONS } from "../contracts/BotLogicContracts.js";
-import { abilityStaminaReady, canCancelWindup, dashWaitMs } from "../../../gameconfig/StaminaSystem.js";
-import { DASH_ABILITY_ID } from "../../../gameconfig/MovementConfig.js";
+import { abilityStaminaReady, canCancelWindup } from "../../../gameconfig/StaminaSystem.js";
 
 export function actionSupportsTarget(action) {
     return Boolean(action.movementConfig)
@@ -41,27 +43,27 @@ export function actionExecutableNow(block, state, operations) {
     return abilityActionReady(state.player, ability);
 }
 
-/** A wind-up hides the ability's cooldown readout, except for Dash, which a wind-up never blocks. */
+/** A wind-up in the ability's own channel hides its cooldown readout; another channel's wind-up never does. */
 function windingUpBlocks(bot, abilityId) {
-    return !abilityIgnoresGlobalLock(abilityId) && Number(bot?.preparingMs) > 0;
+    return channelWindingUp(bot, abilityChannel(abilityId));
 }
 
 export function abilityReady(bot, ability) {
     const abilityId = abilityIdFromBoundary(ability);
     if (!botHasAbility(bot, abilityId)) return false;
-    // Dash ignores the ability lock, so another ability's wind-up never stops it from starting.
-    if (!abilityIgnoresGlobalLock(abilityId) && Number(bot?.preparingMs) > 0 && bot?.preparingAbility != null) {
-        return false;
-    }
+    // Another ability's wind-up in this ability's channel stops it from starting; other channels never do.
+    if (windingUpBlocks(bot, abilityId)) return false;
+    // A status that blocks the channel and reports it not ready (slow, for the dash channel).
+    if (channelNotReadyStatuses(abilityChannel(abilityId)).some((status) => statusIsActive(bot, status))) return false;
 
     // Selection happens before this fixed step advances its timers. Do not
     // reserve the action for an ability whose recovery/reload ends later in
     // the step; a lower-priority action must be allowed to take over now.
     return abilityTimingReady(bot, abilityId, 0)
-        && !anotherAbilityActive(bot, abilityId, abilityIgnoresGlobalLock(abilityId))
+        && !anotherAbilityActive(bot, abilityId)
         && abilityRechargeRemainingMs(bot, abilityId) <= 0
         && abilityStaminaReady(bot, abilityId)
-        && (bot?.abilityCharges?.[abilityId] == null || Number(bot.abilityCharges[abilityId]) > 0);
+        && (bot?.abilityState?.[abilityId]?.charges == null || Number(bot.abilityState[abilityId].charges) > 0);
 }
 
 // Conditions use abilityReady() to describe whether a new activation can
@@ -70,24 +72,17 @@ export function abilityReady(bot, ability) {
 export function abilityActionReady(bot, ability) {
     const abilityId = abilityIdFromBoundary(ability);
     if (!botHasAbility(bot, abilityId)) return false;
-    const preparingSameAbility = Number(bot?.preparingAbility) === abilityId
-        && Number(bot?.preparingMs) > 0;
-    return preparingSameAbility || abilityReady(bot, abilityId);
+    return windupRemainingMs(bot, abilityId) > 0 || abilityReady(bot, abilityId);
 }
 
 export function abilityCooldownMs(bot, ability) {
     const abilityId = abilityIdFromBoundary(ability);
     if (!botHasAbility(bot, abilityId)) return 0;
-    if (Number(bot?.abilityActiveMs?.[abilityId]) > 0 || windingUpBlocks(bot, abilityId)) {
+    if (activeRemainingMs(bot, abilityId) > 0 || windingUpBlocks(bot, abilityId)) {
         return 0;
     }
-
-    return Math.max(
-        Number(bot?.abilityCooldowns?.[abilityId]) || 0,
-        abilityRechargeRemainingMs(bot, abilityId),
-        // Dash waits on its gap and on having enough stamina instead of a fixed cooldown.
-        abilityId === DASH_ABILITY_ID ? dashWaitMs(bot) : 0,
-    );
+    // The longest of the cooldown, the reload and the time to afford the stamina cost.
+    return abilityReadyInMs(bot, abilityId);
 }
 
 export function abilityOnCooldown(bot, ability) {
@@ -100,7 +95,7 @@ export function abilityOnCooldown(bot, ability) {
 
 export function abilityActiveMs(bot, ability) {
     const abilityId = abilityIdFromBoundary(ability);
-    return botHasAbility(bot, abilityId) ? Number(bot?.abilityActiveMs?.[abilityId]) || 0 : 0;
+    return botHasAbility(bot, abilityId) ? activeRemainingMs(bot, abilityId) : 0;
 }
 
 export function abilityCharges(bot, ability) {

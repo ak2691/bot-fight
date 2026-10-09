@@ -3,6 +3,7 @@ import {
     CLOSING_ZONE_ID,
     CLOSING_ZONE_TYPE,
 } from "../../gameconfig/ArenaHazardConfig.js";
+import { dealDamage } from "../abilities/effects.js";
 
 /**
  * The closing zone is a world hazard rather than a bot-visible ability
@@ -83,16 +84,20 @@ export function closingZoneWarningDiameter(elapsedMs, config = CLOSING_ZONE_CONF
 }
 
 export function closingZoneTouchesBot(zone, bot) {
-    if (!zone || !bot || Number(bot.hp ?? 0) <= 0) return false;
+    if (!zone || !bot || bot.hp <= 0) return false;
     const safeRadius = Number(zone.safeRadius ?? Number(zone.size ?? 0) / 2);
-    const botRadius = Math.max(0, Number(bot.size ?? 0)) / 2;
+    const botRadius = Math.max(0, bot.size) / 2;
     const distance = Math.hypot(
-        Number(bot.x ?? 0) - Number(zone.x ?? 0),
-        Number(bot.y ?? 0) - Number(zone.y ?? 0),
+        bot.x - Number(zone.x ?? 0),
+        bot.y - Number(zone.y ?? 0),
     );
     return distance + botRadius >= safeRadius;
 }
 
+/**
+ * Shrinks the zone and hurts the bots outside it, changing the bots in place. Returns { bots, zone }; the zone
+ * is a new object when its geometry changed, otherwise the one passed in.
+ */
 export function tickClosingZoneWorld({
     zone,
     bots,
@@ -101,7 +106,7 @@ export function tickClosingZoneWorld({
     width,
     height,
     config = CLOSING_ZONE_CONFIG,
-} = {}, { applyDamageToShape } = {}) {
+} = {}) {
     const currentElapsedMs = Math.max(0, Number(elapsedMs) || 0);
     if (currentElapsedMs < Number(config.startDelayMs)) {
         return { bots, zone: null };
@@ -122,23 +127,23 @@ export function tickClosingZoneWorld({
         ? updateZoneGeometry(currentZone, width, height, geometryElapsedMs, candidateSafeRadius)
         : currentZone;
 
-    let nextBots = bots ?? [];
+    const hurtBots = bots ?? [];
     const previousElapsedMs = Math.max(0, currentElapsedMs - Math.max(1, Number(stepMs) || 1));
     const damageTickCount = completedDamageTicks(previousElapsedMs, currentElapsedMs, config);
-    if (damageTickCount > 0 && typeof applyDamageToShape === "function") {
+    if (damageTickCount > 0) {
         const damageSource = { id: CLOSING_ZONE_ID, type: CLOSING_ZONE_TYPE };
         for (let tick = 0; tick < damageTickCount; tick += 1) {
-            nextBots = nextBots.map((bot) => {
-                if (!closingZoneTouchesBot(nextZone, bot)) return bot;
+            for (const bot of hurtBots) {
+                if (!closingZoneTouchesBot(nextZone, bot)) continue;
                 const damage = Math.max(0, roundCombatValue(
-                    Number(bot.maxHp ?? bot.hp ?? 0) * Number(config.damagePercentMaxHp),
+                    bot.maxHp * Number(config.damagePercentMaxHp),
                 ));
-                return applyDamageToShape(bot, damage, damageSource);
-            });
+                dealDamage(bot, damage, damageSource);
+            }
         }
     }
 
-    return { bots: nextBots, zone: nextZone };
+    return { bots: hurtBots, zone: nextZone };
 }
 
 function roundCombatValue(value) {

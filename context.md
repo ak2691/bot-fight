@@ -29,10 +29,9 @@ timing, rounding, targeting, effects, loadout encoding, and replay shape.
 | Chat reporting and moderation | [`server/context.md`](server/context.md), [`frontend/context.md`](frontend/context.md), and [`docs/CHAT_MODERATION.md`](docs/CHAT_MODERATION.md) | chat moderation services, chat UI, and admin report workflow |
 | Persistence, ownership, migrations | [`server/context.md`](server/context.md) | server domain, repository, and migration areas |
 | Rated fights, deterministic simulation, replay, combat parity | [`server/context.md`](server/context.md), [`frontend/src/gameArena/context.md`](frontend/src/gameArena/context.md), and [`docs/context.md`](docs/context.md) | server simulation and frontend arena/runtime areas |
-| Adding/changing abilities, effects, statuses, stamina, arena entities | [`docs/ABILITIES.md`](docs/ABILITIES.md) first, then both runtime contexts | documentation and both gameplay runtime areas |
+| Adding/changing abilities, effects, statuses, stamina, arena entities | [`docs/ABILITIES.md`](docs/ABILITIES.md) first, then both runtime contexts | `shared/gameplay/` and both gameplay runtime areas |
 | Review, regression audit, combat/visual checklist | [`docs/context.md`](docs/context.md) plus the affected runtime context | documentation and affected runtime areas |
 | Docker, ports, local service orchestration | this file, then relevant area context | repository root and component roots |
-| Ability authoring MCP, structured scaffolds, browser/server parity reports | [`tools/botfight-mcp/README.md`](tools/botfight-mcp/README.md) | `tools/botfight-mcp/`, browser and server ability catalogs/contracts |
 | Adding folders or maintaining context maps | [`docs/MAINTAINING_CONTEXT_FILES.md`](docs/MAINTAINING_CONTEXT_FILES.md) | closest existing context boundary |
 
 For a task spanning boundaries, read each relevant area context. For a local
@@ -47,8 +46,16 @@ to find the implementation and tests.
   duel simulator. There is no separate active Node simulation package.
 - `docs/`: durable gameplay contracts, implementation guides, and regression
   audit checklists. Use its context index instead of opening every document.
-- `tools/botfight-mcp/`: local stdio MCP for canonical ability specs, paired
-  authoring scaffolds, current catalog/contract inspection, and runtime parity.
+- `shared/gameplay/`: the ability, status and movement data both runtimes read
+  (`abilities.json`, `statuses.json`, `movement.json`). Edit it once; the browser
+  (`gameconfig/gameplayData.js`) and server (`GameplayData.java`) validate it.
+- `shared/gameplay-tests/`: golden scenarios (`goldenScenarios.json`) run by
+  both runtimes, with one committed golden per runtime (`golden.browser.json`,
+  `golden.server.json`: combat log plus per-tick state hashes). Regenerate with
+  `npm run golden:update` (from `frontend/`) and
+  `.\mvnw.cmd test -Dtest=GoldenScenariosTest -Dgolden.update=true` (from `server/`).
+  The parity test also compares per-tick state hashes; to read a mismatch, write the unhashed state lines of
+  both runtimes with `npm run golden:dump -- <id|all>` and `-Dgolden.debug=<id|all>` (to `artifacts/golden-debug/`) and diff them.
 - `artifacts/`: ignored runtime/base-model assets mounted read-only by Docker.
   Inspect only for an artifact-specific request.
 - `.github/`: repository automation. `.vscode/`: local editor configuration.

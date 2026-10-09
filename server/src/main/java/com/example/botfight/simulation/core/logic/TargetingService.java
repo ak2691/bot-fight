@@ -3,7 +3,7 @@ package com.example.botfight.simulation.core.logic;
 import static com.example.botfight.simulation.geometry.AngleCalculator.clockwiseDelta;
 
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Entity;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
+import com.example.botfight.simulation.core.orchestration.Bot;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.StrategyBlock;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.TargetPoint;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.SelectableSnapshot;

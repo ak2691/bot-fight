@@ -50,7 +50,9 @@ class ArenaEntityCombatServiceTest {
         ArenaEntityCombatService combat = new ArenaEntityCombatService(
                 new AbilityHitDetectionService());
 
-        assertThat(combat.damageToEntityThisTick(snare, List.of(), List.of(snare, fireball)))
-                .isEqualTo(20);
+        ArenaEntity damaged = combat.applyEffectsToEntity(snare, List.of(),
+                List.of(snare, fireball), new ArenaBounds(1000, 800));
+
+        assertThat(snare.hp() - damaged.hp()).isEqualTo(20);
     }
 }

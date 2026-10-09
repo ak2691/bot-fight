@@ -7,7 +7,7 @@ import com.example.botfight.simulation.bots.BotLogicContracts;
 import com.example.botfight.simulation.bots.ConditionEvaluationService;
 import com.example.botfight.simulation.core.combat.ActionExecutionService;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Arena;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
+import com.example.botfight.simulation.core.orchestration.Bot;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Condition;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Entity;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.SelectableSnapshot;
@@ -18,6 +18,7 @@ import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import com.example.botfight.simulation.core.state.LegacyAbility;
 
 /** Authoritative mirror of frontend NewConditions.test.js; keep the cases in step. */
 class NewConditionsParityTest {
@@ -143,17 +144,14 @@ class NewConditionsParityTest {
         Bot player = bot(1, 400, 400);
         Bot winding = opponent(600, 400, 600, 400);
         assertThat(resolve("bot.anyAbilityPreparing", "opponent", player, winding).booleanValue()).isFalse();
-        winding.preparingAbility = 36;
-        winding.preparingMs = 300;
+        LegacyAbility.setPreparing(winding, 36, 300);
         assertThat(resolve("bot.anyAbilityPreparing", "opponent", player, winding).booleanValue()).isTrue();
-        winding.preparingMs = 0;
+        LegacyAbility.setPreparing(winding, LegacyAbility.preparingAbility(winding), 0);
         assertThat(resolve("bot.anyAbilityPreparing", "opponent", player, winding).booleanValue()).isFalse();
-        winding.preparingAbility = null;
-        winding.preparingMs = 300;
+        LegacyAbility.setPreparing(winding, null, 300);
         assertThat(resolve("bot.anyAbilityPreparing", "opponent", player, winding).booleanValue()).isFalse();
         Bot selfWinding = bot(1, 400, 400);
-        selfWinding.preparingAbility = 9;
-        selfWinding.preparingMs = 200;
+        LegacyAbility.setPreparing(selfWinding, 9, 200);
         assertThat(resolve("bot.anyAbilityPreparing", "my_bot", selfWinding, opponent(600, 400, 600, 400)).booleanValue()).isTrue();
     }
 

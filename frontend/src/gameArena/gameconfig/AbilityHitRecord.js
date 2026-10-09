@@ -17,18 +17,14 @@ const MAX_HIT_AGE_MS = NEVER_HIT_SECONDS * 1000;
  */
 export function recordAbilityHit(owner, abilityId, activationSerial = owner?.activationSerial ?? 0) {
     if (!owner || abilityId == null) return owner;
-    let next = owner;
-    const pending = next.abilityHitsThisTick ?? [];
-    if (!pending.includes(abilityId)) next = { ...next, abilityHitsThisTick: [...pending, abilityId] };
-    const refunded = next.refundedActivations ?? [];
+    const pending = owner.abilityHitsThisTick ?? [];
+    if (!pending.includes(abilityId)) owner.abilityHitsThisTick = [...pending, abilityId];
+    const refunded = owner.refundedActivations ?? [];
     if (!refunded.includes(activationSerial)) {
-        next = {
-            ...next,
-            refundedActivations: [...refunded, activationSerial],
-            pendingStaminaRefund: (Number(next.pendingStaminaRefund) || 0) + MOVEMENT_CONFIG.hitStaminaRefund,
-        };
+        owner.refundedActivations = [...refunded, activationSerial];
+        owner.pendingStaminaRefund = (Number(owner.pendingStaminaRefund) || 0) + MOVEMENT_CONFIG.hitStaminaRefund;
     }
-    return next;
+    return owner;
 }
 
 /**
@@ -38,14 +34,19 @@ export function recordAbilityHit(owner, abilityId, activationSerial = owner?.act
  */
 export function settleAbilityHits(shape, stepMs = AUTO_STEP_MS) {
     const refund = Number(shape?.pendingStaminaRefund) || 0;
-    const refunded = refund > 0 ? { ...refundStamina(shape, refund), pendingStaminaRefund: 0 } : shape;
-    const hits = refunded?.abilityHitsThisTick ?? [];
-    const previous = refunded?.abilityLastHitAgeMs ?? {};
-    if (hits.length === 0 && Object.keys(previous).length === 0) return refunded;
+    if (refund > 0) {
+        refundStamina(shape, refund);
+        shape.pendingStaminaRefund = 0;
+    }
+    const hits = shape?.abilityHitsThisTick ?? [];
+    const previous = shape?.abilityLastHitAgeMs ?? {};
+    if (hits.length === 0 && Object.keys(previous).length === 0) return shape;
     const ages = Object.fromEntries(Object.entries(previous)
         .map(([id, ageMs]) => [id, Math.min(MAX_HIT_AGE_MS, Number(ageMs) + stepMs)]));
     for (const id of hits) ages[id] = stepMs;
-    return { ...refunded, abilityLastHitAgeMs: ages, abilityHitsThisTick: [] };
+    shape.abilityLastHitAgeMs = ages;
+    shape.abilityHitsThisTick = [];
+    return shape;
 }
 
 /** Seconds since the bot's ability last hit an enemy bot; the never-hit sentinel when it has not. */

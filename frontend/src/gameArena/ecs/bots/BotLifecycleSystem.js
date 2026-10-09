@@ -3,7 +3,7 @@ const LIFECYCLE_COMPONENTS = Object.freeze([
     Object.freeze({ field: "hitFlashMs", mode: "countdown" }),
     Object.freeze({ field: "abilityVisual", mode: "nestedCountdown", timerField: "ms" }),
     Object.freeze({ field: "triggeredAbility", mode: "reset", value: null }),
-    Object.freeze({ field: "abilitySpawn", mode: "reset", value: null }),
+    Object.freeze({ field: "abilitySpawn", mode: "reset", value: [] }),
     Object.freeze({ field: "entityHitIds", mode: "reset", value: [] }),
     Object.freeze({ field: "damageTakenThisTick", mode: "reset", value: 0 }),
 ]);
@@ -16,17 +16,14 @@ const DEAD_COMPONENTS = Object.freeze({
     velocityY: 0,
 });
 
-/** Advances bot lifecycle/presentation fields and clears per-tick transient state. */
+/** Advances bot lifecycle/presentation fields and clears per-tick transient state, in place. */
 export function tickBotLifecycle(shape, elapsedMs) {
     const elapsed = Math.max(0, Number(elapsedMs) || 0);
-    const updates = Object.fromEntries(LIFECYCLE_COMPONENTS.map((component) => [
-        component.field,
-        advanceLifecycleComponent(shape, component, elapsed),
-    ]));
-    const next = { ...shape, ...updates };
-    return Number(next.hp ?? 0) > 0
-        ? next
-        : { ...next, ...DEAD_COMPONENTS };
+    for (const component of LIFECYCLE_COMPONENTS) {
+        shape[component.field] = advanceLifecycleComponent(shape, component, elapsed);
+    }
+    if (Number(shape.hp ?? 0) <= 0) Object.assign(shape, DEAD_COMPONENTS);
+    return shape;
 }
 
 function advanceLifecycleComponent(shape, component, elapsedMs) {

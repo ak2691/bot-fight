@@ -8,7 +8,7 @@ import { publicOffsetToInternal, publicPointToInternal } from "../../modelPayloa
 import { BOT_LOGIC_TREE_V1, BOT_LOGIC_TREE_VERSION } from "../code/configuration/constants.js";
 import { leadAimTarget } from "./aimPrediction.js";
 
-/** Builds the action-component payload consumed by ActionExecutionSystem. */
+/** Builds the action-component payload consumed by ActionExecutionSystem. `configuration` must be normalized. */
 export function buildDeterministicLogicAction(configuration, stateSnapshot) {
     const plan = selectAbilityStrategyActionPlan(configuration, stateSnapshot);
     const coordinateVersion = plan.coordinateVersion ?? configuration?.version ?? BOT_LOGIC_TREE_VERSION;

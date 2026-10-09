@@ -1,5 +1,6 @@
 package com.example.botfight.simulation.core.logic;
 
+import com.example.botfight.simulation.core.state.AbilityState;
 import static com.example.botfight.simulation.geometry.AngleCalculator.normalizeDegrees;
 import static com.example.botfight.simulation.geometry.AngleCalculator.shortestDelta;
 import static com.example.botfight.simulation.geometry.DistanceCalculator.between;
@@ -8,7 +9,7 @@ import com.example.botfight.simulation.bots.BotLogicContracts;
 import com.example.botfight.simulation.bots.BotLogicContracts.VariableContract;
 import com.example.botfight.simulation.bots.BotLogicContracts.VariableSource;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Arena;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
+import com.example.botfight.simulation.core.orchestration.Bot;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Condition;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Entity;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.StateValue;
@@ -56,8 +57,7 @@ final class StateVariableResolver {
             Map.entry(VariableSource.SELECTABLE_MOVING,
                     context -> bool(lastTickMovement(context.selectable()).moved())),
             Map.entry(VariableSource.BOT_ANY_ABILITY_PREPARING,
-                    context -> bool(context.bot() != null && context.bot().preparingAbility != null
-                            && context.bot().preparingMs > 0)),
+                    context -> bool(context.bot() != null && AbilityState.isWindingUp(context.bot()))),
             Map.entry(VariableSource.BOT_STAMINA,
                     context -> context.bot() == null ? null : number(StaminaSystem.stamina(context.bot()))),
             Map.entry(VariableSource.BOT_SPRINTING,
@@ -191,12 +191,13 @@ final class StateVariableResolver {
         Integer ability = context.condition().ability();
         return ability != null && context.bot() != null
                 && context.actionExecutionService().selectedAbilityPresent(context.bot(), ability)
-                && ability.equals(context.bot().preparingAbility) && context.bot().preparingMs > 0;
+                && AbilityState.windupRemainingMs(context.bot(), ability) > 0;
     }
 
     private static double selectedAbilityPreparationMs(ResolutionContext context) {
-        // Bot.preparingMs is the remaining countdown for the active wind-up.
-        return selectedAbilityPreparing(context) ? millisecondsToSeconds(context.bot().preparingMs) : 0.0;
+        // The windup record's remainingMs is the remaining countdown for the active wind-up.
+        return selectedAbilityPreparing(context)
+                ? millisecondsToSeconds(AbilityState.windupRemainingMs(context.bot(), context.condition().ability())) : 0.0;
     }
 
     /** Static contract value; the selectable only decides which bot the condition is about. */

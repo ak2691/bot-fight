@@ -9,7 +9,7 @@ import com.example.botfight.simulation.core.logic.ConditionResolutionService;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Action;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Arena;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
+import com.example.botfight.simulation.core.orchestration.Bot;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.DashAction;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.DuelArenaRequest;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.DuelBotRequest;
@@ -25,6 +25,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import com.example.botfight.simulation.core.state.LegacyAbility;
 
 /** Authoritative mirror of frontend DashChannel.test.js; keep the scenarios and numbers in step. */
 class DashChannelTest {
@@ -81,14 +82,13 @@ class DashChannelTest {
         assertThat(BotLogicContracts.actionContract(DASH).head()).isEqualTo(BotLogicContracts.ActionHead.DASH);
         assertThat(BotLogicContracts.actionContract(SLASH).head()).isEqualTo(BotLogicContracts.ActionHead.ABILITY);
         Bot winding = bot();
-        winding.preparingAbility = SNIPER;
-        winding.preparingMs = 500;
+        LegacyAbility.setPreparing(winding, SNIPER, 500);
         assertThat(executor.selectedAbilityReady(winding, DASH)).isTrue();
         Bot fireballActive = bot();
-        fireballActive.abilityActiveMs.put(FIREBALL, 300);
+        LegacyAbility.setActive(fireballActive, FIREBALL, 300);
         assertThat(executor.selectedAbilityReady(fireballActive, DASH)).isTrue();
         Bot dashing = bot();
-        dashing.abilityActiveMs.put(DASH, 300);
+        LegacyAbility.setActive(dashing, DASH, 300);
         assertThat(executor.selectedAbilityReady(dashing, SLASH)).isTrue();
     }
 
@@ -97,10 +97,13 @@ class DashChannelTest {
         Bot both = bot();
         step(both, action(0, false, SLASH, true));
         assertThat(both.triggeredAbility).as("the swing owns the trigger so its hit still resolves").isEqualTo(SLASH);
-        assertThat(both.abilityActiveMs.get(SLASH)).isPositive();
-        assertThat(both.abilityActiveMs.get(DASH)).isPositive();
+        assertThat(LegacyAbility.activeMs(both, SLASH)).isPositive();
+        assertThat(LegacyAbility.activeMs(both, DASH)).isPositive();
         assertThat(both.stamina).isEqualTo(70);
-        assertThat(both.dashGapMs).isEqualTo(300);
+        // The dash pays its stamina and reserves its 100 ms cooldown; a dash started beside an ability keeps
+        // its full active stage.
+        assertThat(LegacyAbility.pending(both, DASH)).isEqualTo(100);
+        assertThat(LegacyAbility.stage(both, DASH)).isEqualTo("active:200");
         assertThat(both.x).isGreaterThan(200);
         Bot alone = bot();
         step(alone, action(0, false, null, true));
@@ -111,16 +114,16 @@ class DashChannelTest {
     void aDashStartsDuringAnotherAbilitysWindupAndActivePhaseAndTheWindupCarriesOn() {
         Bot winding = bot();
         step(winding, action(0, false, SNIPER, false));
-        assertThat(winding.preparingAbility).isEqualTo(SNIPER);
-        int preparingMs = winding.preparingMs;
+        assertThat(LegacyAbility.preparingAbility(winding)).isEqualTo(SNIPER);
+        int preparingMs = LegacyAbility.preparingMs(winding);
         step(winding, action(0, false, SNIPER, true));
         assertThat(winding.triggeredAbility).isEqualTo(DASH);
-        assertThat(winding.preparingAbility).isEqualTo(SNIPER);
-        assertThat(winding.preparingMs).isEqualTo(preparingMs - 100);
+        assertThat(LegacyAbility.preparingAbility(winding)).isEqualTo(SNIPER);
+        assertThat(LegacyAbility.preparingMs(winding)).isEqualTo(preparingMs - 100);
 
         Bot active = bot();
         step(active, action(0, false, SLASH, false));
-        assertThat(active.abilityActiveMs.get(SLASH)).isPositive();
+        assertThat(LegacyAbility.activeMs(active, SLASH)).isPositive();
         step(active, action(0, false, null, true));
         assertThat(active.triggeredAbility).isEqualTo(DASH);
     }
@@ -129,13 +132,13 @@ class DashChannelTest {
     void anAttackStartsDuringADash() {
         Bot dashing = bot();
         step(dashing, action(0, false, null, true));
-        assertThat(dashing.abilityActiveMs.get(DASH)).isPositive();
+        assertThat(LegacyAbility.activeMs(dashing, DASH)).isPositive();
         step(dashing, action(0, false, SLASH, false));
         assertThat(dashing.triggeredAbility).isEqualTo(SLASH);
         Bot winding = bot();
         step(winding, action(0, false, null, true));
         step(winding, action(0, false, SNIPER, false));
-        assertThat(winding.preparingAbility).isEqualTo(SNIPER);
+        assertThat(LegacyAbility.preparingAbility(winding)).isEqualTo(SNIPER);
     }
 
     @Test
@@ -179,13 +182,13 @@ class DashChannelTest {
         step(enough, action(0, false, null, true));
         assertThat(enough.triggeredAbility).isEqualTo(DASH);
         Bot gapped = bot();
-        gapped.dashGapMs = 200;
+        LegacyAbility.setCooldown(gapped, DASH, 200);
         step(gapped, action(0, false, null, true));
         assertThat(gapped.triggeredAbility).isNull();
         Bot dashed = bot();
         step(dashed, action(0, false, null, true));
         assertThat(dashed.stamina).isEqualTo(70);
-        assertThat(dashed.abilityCooldowns.getOrDefault(DASH, 0)).as("no cooldown").isZero();
+        assertThat(LegacyAbility.cooldown(dashed, DASH)).as("the cooldown is reserved while the dash is active").isZero();
     }
 
     @Test
@@ -204,7 +207,7 @@ class DashChannelTest {
         assertThat(bot.stamina).isEqualTo(88);
         Bot winding = bot();
         step(winding, action(1, true, SNIPER, false));
-        assertThat(winding.preparingAbility).isEqualTo(SNIPER);
+        assertThat(LegacyAbility.preparingAbility(winding)).isEqualTo(SNIPER);
         assertThat(winding.x).isEqualTo(200 + fast);
         double x = winding.x;
         step(winding, action(1, true, null, false));
@@ -217,7 +220,7 @@ class DashChannelTest {
         for (Action action : script) {
             test.step(bot, action);
             rows.add(List.of(bot.triggeredAbility == null ? "none" : bot.triggeredAbility, bot.x, bot.stamina,
-                    bot.staminaRegenDelayMs, bot.dashGapMs, bot.sprinting));
+                    bot.staminaRegenDelayMs, LegacyAbility.stage(bot, DASH), bot.sprinting));
         }
         return rows;
     }
@@ -225,11 +228,11 @@ class DashChannelTest {
     @Test
     void parityTraceDashPlusSwing() {
         assertThat(trace(bot(), this, action(0, false, SLASH, true), idle(), idle(), idle(), idle())).containsExactly(
-                List.of(SLASH, 275.0, 70, 500, 300, false),
-                List.of("none", 350.0, 70, 400, 200, false),
-                List.of("none", 350.0, 70, 300, 100, false),
-                List.of("none", 350.0, 70, 200, 0, false),
-                List.of("none", 350.0, 70, 100, 0, false));
+                List.of(SLASH, 275.0, 70, 500, "active:200", false),
+                List.of("none", 350.0, 70, 400, "active:100", false),
+                List.of("none", 350.0, 70, 300, "cooldown:100", false),
+                List.of("none", 350.0, 70, 200, "ready:0", false),
+                List.of("none", 350.0, 70, 100, "ready:0", false));
     }
 
     @Test
@@ -239,11 +242,11 @@ class DashChannelTest {
         bot.staminaRegenDelayMs = 500;
         Action run = action(1, true, null, false);
         assertThat(trace(bot, this, run, action(1, true, SLASH, false), run, run, run)).containsExactly(
-                List.of("none", 222.5, 9, 500, 0, true),
-                List.of(SLASH, 245.0, 6, 500, 0, true),
-                List.of("none", 267.5, 3, 500, 0, true),
-                List.of("none", 290.0, 0, 500, 0, true),
-                List.of("none", 305.0, 0, 400, 0, false));
+                List.of("none", 222.5, 9, 500, "ready:0", true),
+                List.of(SLASH, 245.0, 6, 500, "ready:0", true),
+                List.of("none", 267.5, 3, 500, "ready:0", true),
+                List.of("none", 290.0, 0, 500, "ready:0", true),
+                List.of("none", 305.0, 0, 400, "ready:0", false));
     }
 
     // ---- Through the real selection (two roots, one conditional, a chain) ----
@@ -281,8 +284,8 @@ class DashChannelTest {
                 (elapsedMs, bots, entities, arena) -> {
                     if (!seen[0]) {
                         seen[0] = true;
-                        active[0] = bots.get(0).abilityActiveMs.getOrDefault(SLASH, 0);
-                        active[1] = bots.get(0).abilityActiveMs.getOrDefault(DASH, 0);
+                        active[0] = LegacyAbility.activeMs(bots.get(0), SLASH);
+                        active[1] = LegacyAbility.activeMs(bots.get(0), DASH);
                     }
                     return false;
                 });

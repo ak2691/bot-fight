@@ -1,13 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyBotAction } from "../bots/ActionExecutionSystem.js";
-import { applyDamageToShape } from "../../gameconfig/BotCombatSystem.js";
-import { DASH_ABILITY_ID, MOVEMENT_CONFIG, MOVEMENT_TICK_MS } from "../../gameconfig/MovementConfig.js";
+import { MOVEMENT_CONFIG, MOVEMENT_TICK_MS } from "../../gameconfig/MovementConfig.js";
 import { initialMovementState } from "../../gameconfig/StaminaSystem.js";
 import { recordAbilityHit, settleAbilityHits } from "../../gameconfig/AbilityHitRecord.js";
-import { advanceArenaPreviewTick } from "../../modelPayloads/arenaPreviewSimulation.js";
-import { buildInitialArenaShapes, mergeBotShapeUpdates, toSimulationBotShape } from "../../modelPayloads/arenaShapes.js";
+import { advanceShapes as advanceArenaPreviewTickNormalized } from "../../testing/fightTick.js";
+import { buildInitialArenaShapes } from "../../modelPayloads/arenaShapes.js";
 import { normalizeAbilityStrategyConfiguration } from "../../botlogic/code/BotCode.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../botlogic/code/BotCode.js";
+import { applyBotAction } from "../../testing/pureTicks.js";
+
+// The tick takes normalized brains; tests pass raw ones, so normalize here like the edge does.
+const normalizeOrNull = (configuration) => (configuration ? normalizeBrainForTick(configuration) : configuration);
+const advanceArenaPreviewTick = (shapes, options) => advanceArenaPreviewTickNormalized(shapes, {
+    ...options,
+    testingConfiguration: normalizeOrNull(options.testingConfiguration),
+    opponentTestingConfiguration: normalizeOrNull(options.opponentTestingConfiguration),
+});
+
+const DASH_ABILITY_ID = 19;
 
 // Mirrors the server's StaminaRefundTest; keep the scenarios and numbers in step.
 const SLASH = 1;
@@ -22,14 +32,13 @@ function bot(extra = {}) {
     return {
         id: "main", slot: 1, x: 200, y: 400, size: 60, rotation: 90, hp: 100, maxHp: 100,
         moveSpeed: 15, attackSpeedMultiplier: 1, movementVelocityX: 0, movementVelocityY: 0,
-        abilities: [1, 3, 19], abilityCooldowns: {}, abilityActiveMs: {}, abilityCharges: {},
-        ...initialMovementState(),
+        abilities: [1, 3, 19], abilityState: {}, ...initialMovementState(),
         ...extra,
     };
 }
 
 const step = (shape, action = idle, hit = null) => {
-    let next = applyBotAction(shape, action, MOVEMENT_TICK_MS, applyDamageToShape);
+    let next = applyBotAction(shape, action, MOVEMENT_TICK_MS);
     if (hit) next = recordAbilityHit(next, hit.abilityId, hit.activationSerial);
     return settleAbilityHits(next, MOVEMENT_TICK_MS);
 };
@@ -114,8 +123,8 @@ function arena({ ability, defenderX }) {
     const loadout = `custom:${ability}`;
     const shapes = buildInitialArenaShapes(null).map((shape) => {
         const placed = shape.id === "main"
-            ? mergeBotShapeUpdates(shape, { x: 300, y: MAIN_Y, rotation: 90, teamNumber: 1 })
-            : mergeBotShapeUpdates(shape, { x: defenderX, y: MAIN_Y, rotation: 270 });
+            ? { ...shape, x: 300, y: MAIN_Y, rotation: 90, teamNumber: 1 }
+            : { ...shape, x: defenderX, y: MAIN_Y, rotation: 270 };
         return { ...placed, abilities: [ability], combatLoadout: loadout, ...(shape.id === "main" ? { stamina: 40, staminaRegenDelayMs: PAUSED } : {}) };
     });
     return { shapes, loadout };
@@ -131,8 +140,8 @@ function mainStaminaTrace({ shapes, loadout }, ability, ticks) {
             selectedLoadout: loadout, opponentLoadout: loadout,
             testingConfiguration: { roots: [castAbility(ability)] }, opponentTestingConfiguration: null,
         });
-        const main = toSimulationBotShape(current.find((shape) => shape.id === "main"));
-        const defender = toSimulationBotShape(current.find((shape) => shape.id === "opponent-model"));
+        const main = current.find((shape) => shape.id === "main");
+        const defender = current.find((shape) => shape.id === "opponent-model");
         trace.push({ stamina: main.stamina, delay: main.staminaRegenDelayMs, hp: defender.hp });
     }
     return trace;
@@ -182,7 +191,7 @@ test("parity trace: dash, idle, hit, idle, dash", () => {
     ];
     for (const [action, hit] of script) {
         current = step(current, action, hit);
-        trace.push([current.stamina, current.staminaRegenDelayMs, current.dashGapMs]);
+        trace.push([current.stamina, current.staminaRegenDelayMs, `${current.abilityState[DASH_ABILITY_ID].stage}:${current.abilityState[DASH_ABILITY_ID].remainingMs}`]);
     }
-    assert.deepEqual(trace, [[70, 500, 300], [70, 400, 200], [80, 300, 100], [80, 200, 0], [50, 500, 300]]);
+    assert.deepEqual(trace, [[70, 500, "active:200"], [70, 400, "active:100"], [80, 300, "cooldown:100"], [80, 200, "ready:0"], [50, 500, "active:200"]]);
 });

@@ -122,10 +122,10 @@ test("Approach Angle reflects knockback toward or away from My Bot", () => {
 
 test("Any Ability Winding Up is true only while a wind-up is counting down", () => {
     assert.equal(boolVariable([main(), opponent()], "bot.anyAbilityPreparing"), false);
-    assert.equal(boolVariable([main(), opponent({ preparingAbility: 36, preparingMs: 300 })], "bot.anyAbilityPreparing"), true);
-    assert.equal(boolVariable([main(), opponent({ preparingAbility: 36, preparingMs: 0 })], "bot.anyAbilityPreparing"), false);
-    assert.equal(boolVariable([main(), opponent({ preparingAbility: null, preparingMs: 300 })], "bot.anyAbilityPreparing"), false);
-    assert.equal(boolVariable([main({ preparingAbility: 9, preparingMs: 200 }), opponent()], "bot.anyAbilityPreparing", "my_bot"), true);
+    assert.equal(boolVariable([main(), opponent({ abilityState: { 36: { stage: "windup", remainingMs: 300 } } })], "bot.anyAbilityPreparing"), true);
+    assert.equal(boolVariable([main(), opponent({ abilityState: { 36: { stage: "ready", remainingMs: 0 } } })], "bot.anyAbilityPreparing"), false);
+    assert.equal(boolVariable([main(), opponent({ abilityState: {} })], "bot.anyAbilityPreparing"), false);
+    assert.equal(boolVariable([main({ abilityState: { 9: { stage: "windup", remainingMs: 200 } } }), opponent()], "bot.anyAbilityPreparing", "my_bot"), true);
 });
 
 test("new variables survive normalization with bounded values", () => {

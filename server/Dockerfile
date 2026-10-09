@@ -3,6 +3,8 @@ WORKDIR /app
 COPY pom.xml .
 RUN mvn dependency:go-offline -B
 COPY src ./src
+# The shared gameplay data: pom.xml copies ../shared/gameplay (here /shared/gameplay) onto the classpath.
+COPY --from=shared . /shared
 RUN mvn clean package -DskipTests
 FROM eclipse-temurin:21-jre-jammy
 RUN groupadd --system app && useradd --system --gid app app

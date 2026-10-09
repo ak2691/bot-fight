@@ -9,7 +9,7 @@ export function tutorialGoalSatisfied(scenario, shapes) {
     if (scenario?.goal === "fireball_hit") {
         return (Array.isArray(shapes) ? shapes : []).some((shape) => (
             Number(shape?.teamNumber) === 2
-            && Number(shape?.health?.damageTakenLastTick ?? shape?.damageTakenLastTick ?? 0) > 0
+            && Number(shape?.damageTakenLastTick ?? 0) > 0
         ));
     }
     return false;

@@ -1,119 +1,77 @@
-import { rechargeAbilityResources } from "../../gameconfig/AbilityResourceSystem.js";
+import { ABILITY_STATS } from "../../gameconfig/Abilities.js";
+import { abilityResourceFor, rechargeAbility } from "../../gameconfig/AbilityResourceSystem.js";
+import { ABILITY_STAGES } from "../../gameconfig/AbilityState.js";
 
-const RESOURCE_COMPONENTS = Object.freeze([
-    Object.freeze({ field: "abilityCooldowns", advanceWhenDead: false }),
-    Object.freeze({ field: "abilityActiveMs", advanceWhenDead: true }),
-]);
-
-/** Advances bot-owned ability timing and resource components. */
-/** Advances timers, leaving a newly activated ability's active window untouched this step. */
-export function tickBotResources(shape, elapsedMs, justActivatedAbilityId = null) {
+/**
+ * Advances every ability record of the bot by one step, in place, leaving the active stage (and any cooldown) of an ability that
+ * activated this step untouched. `justActivatedAbilityIds` is one id, a list of ids (an ability and a dash can
+ * both start in one step) or null. Cooldown-after-active timing: when an active stage ends, only the part of the step left over counts
+ * toward the cooldown that starts then. Overclock and attack speed were applied when the cooldown or reload
+ * was created, so running timers just count down. A dead bot only runs out its active stages.
+ */
+export function tickBotResources(shape, elapsedMs, justActivatedAbilityIds = null) {
     const elapsed = Math.max(0, Number(elapsedMs) || 0);
     const alive = Number(shape?.hp ?? 0) > 0;
-    const cooldownState = alive
-        ? advanceCooldownState(
-            shape?.abilityCooldowns,
-            shape?.abilityPendingCooldownMs,
-            shape?.abilityActiveMs,
-            elapsed,
-            justActivatedAbilityId,
-        )
-        : {
-            cooldowns: { ...(shape?.abilityCooldowns ?? {}) },
-            pendingCooldowns: { ...(shape?.abilityPendingCooldownMs ?? {}) },
-        };
-    const timerUpdates = Object.fromEntries(
-        RESOURCE_COMPONENTS
-            .filter(({ advanceWhenDead }) => alive || advanceWhenDead)
-            .map(({ field }) => [field, field === "abilityCooldowns"
-                ? cooldownState.cooldowns
-                : advanceAbilityActiveTimers(shape?.[field], elapsed, justActivatedAbilityId)]),
-    );
-    const timedShape = {
-        ...shape,
-        ...timerUpdates,
-        abilityPendingCooldownMs: cooldownState.pendingCooldowns,
-    };
-    if (!alive) return timedShape;
-
-    const resources = rechargeAbilityResources(
-        timedShape, elapsed, shape?.abilityActiveMs, justActivatedAbilityId);
-    return {
-        ...timedShape,
-        abilityCharges: resources.charges,
-        abilityRechargeMs: resources.rechargeMs,
-    };
-}
-
-export function advanceTimerMap(values, elapsedMs) {
-    const elapsed = Math.max(0, Number(elapsedMs) || 0);
-    return Object.fromEntries(Object.entries(values ?? {}).map(([id, value]) => [
-        id,
-        Math.max(0, Number(value ?? 0) - elapsed),
-    ]));
-}
-
-/** Advances cooldowns normally; Overclock is applied when a new cooldown is created. */
-export function advanceCooldownMap(values, activeValues, elapsedMs) {
-    return advanceCooldownState(values, {}, activeValues, elapsedMs).cooldowns;
-}
-
-export function advanceCooldownState(values, pendingValues, activeValues, elapsedMs,
-    justActivatedAbilityId = null) {
-    const elapsed = Math.max(0, Number(elapsedMs) || 0);
-    const cooldowns = { ...(values ?? {}) };
-    const pendingCooldowns = { ...(pendingValues ?? {}) };
+    const justActivated = new Set([justActivatedAbilityIds].flat().filter((id) => id != null).map(Number));
+    const records = shape?.abilityState ?? {};
     const ids = new Set([
-        ...Object.keys(cooldowns),
-        ...Object.keys(pendingCooldowns),
-        ...Object.keys(activeValues ?? {}),
+        ...Object.keys(records),
+        ...(alive && Array.isArray(shape?.abilities) ? shape.abilities.map(String) : []),
     ]);
-    for (const id of ids) {
-        const activeRemaining = Math.max(0, Number(activeValues?.[id] ?? 0));
-        const visible = Math.max(0, Number(cooldowns[id] ?? 0));
-        const pending = Math.max(
-            0,
-            Number(pendingCooldowns[id] ?? 0),
-            activeRemaining > 0 ? visible : 0,
-        );
-        if (justActivatedAbilityId != null && Number(id) === Number(justActivatedAbilityId)) {
-            // The action activates at this step's boundary, so this step cannot consume its timer.
-            if (activeRemaining > 0) {
-                cooldowns[id] = 0;
-                if (pending > 0) pendingCooldowns[id] = pending;
-                else delete pendingCooldowns[id];
-            } else {
-                cooldowns[id] = Math.max(visible, pending);
-                delete pendingCooldowns[id];
-            }
-            continue;
-        }
-        if (activeRemaining > 0) {
-            cooldowns[id] = 0;
-            if (activeRemaining <= elapsed) {
-                const recoveryElapsed = Math.max(0, elapsed - activeRemaining);
-                cooldowns[id] = Math.max(0, pending - recoveryElapsed);
-                delete pendingCooldowns[id];
-            } else if (pending > 0) {
-                pendingCooldowns[id] = pending;
-            } else {
-                delete pendingCooldowns[id];
-            }
-        } else {
-            cooldowns[id] = Math.max(0, Math.max(visible, pending) - elapsed);
-            delete pendingCooldowns[id];
-        }
+    const abilityState = {};
+    for (const rawId of ids) {
+        const id = Number(rawId);
+        const record = records[rawId] ?? { stage: ABILITY_STAGES.READY, remainingMs: 0 };
+        const activeBefore = record.stage === ABILITY_STAGES.ACTIVE ? Math.max(0, Number(record.remainingMs) || 0) : 0;
+        const skipped = justActivated.has(id);
+        const advanced = alive ? advanceRecord(record, elapsed, skipped) : advanceActiveOnly(record, elapsed, skipped);
+        abilityState[rawId] = alive ? recharge(advanced, id, elapsed, skipped ? 0 : activeBefore, skipped) : advanced;
     }
-    return { cooldowns, pendingCooldowns };
+    shape.abilityState = abilityState;
+    return shape;
 }
 
-function advanceAbilityActiveTimers(values, elapsedMs, justActivatedAbilityId) {
-    const timers = advanceTimerMap(values, elapsedMs);
-    if (justActivatedAbilityId == null) return timers;
-    for (const [id, value] of Object.entries(values ?? {})) {
-        if (Number(id) === Number(justActivatedAbilityId)) {
-            timers[id] = Math.max(0, Number(value) || 0);
-        }
+function advanceRecord(record, elapsed, skipped) {
+    if (skipped) return record;
+    const remaining = Math.max(0, Number(record.remainingMs) || 0);
+    if (record.stage === ABILITY_STAGES.ACTIVE) {
+        if (remaining > elapsed) return { ...record, remainingMs: remaining - elapsed };
+        const cooldown = Math.max(0, (Number(record.cooldownMs) || 0) - Math.max(0, elapsed - remaining));
+        return recovery(record, cooldown);
     }
-    return timers;
+    if (record.stage === ABILITY_STAGES.COOLDOWN) {
+        const cooldown = Math.max(0, remaining - elapsed);
+        return recovery(record, cooldown);
+    }
+    return record;
+}
+
+function advanceActiveOnly(record, elapsed, skipped) {
+    if (skipped || record.stage !== ABILITY_STAGES.ACTIVE) return record;
+    const remaining = Math.max(0, (Number(record.remainingMs) || 0) - elapsed);
+    return remaining > 0 ? { ...record, remainingMs: remaining } : recovery(record, 0);
+}
+
+/** The record after an active/cooldown stage: a cooldown of `cooldownMs` or ready. */
+function recovery(record, cooldownMs) {
+    const { cooldownMs: _reserved, target: _target, ...kept } = record;
+    return cooldownMs > 0
+        ? { ...kept, stage: ABILITY_STAGES.COOLDOWN, remainingMs: cooldownMs }
+        : { ...kept, stage: ABILITY_STAGES.READY, remainingMs: 0 };
+}
+
+/** Counts a charge-bearing ability's reload down; the time the active stage used does not count. */
+function recharge(record, id, elapsed, activeBefore, skipped) {
+    const stats = ABILITY_STATS[id];
+    if (stats?.maxCharges == null) {
+        // Only charge-bearing abilities carry charges; drop anything stale.
+        const { charges: _charges, reloadMs: _reloadMs, ...uncharged } = record;
+        return uncharged;
+    }
+    const recoveryElapsed = skipped ? 0 : Math.max(0, elapsed - Math.min(elapsed, activeBefore));
+    const resource = rechargeAbility({
+        ...abilityResourceFor({ abilityState: { [id]: record } }, id, stats),
+        stats,
+    }, recoveryElapsed);
+    return { ...record, charges: resource.charges, reloadMs: resource.rechargeMs };
 }

@@ -1,5 +1,7 @@
 package com.example.botfight.simulation.core.state;
 
+import com.example.botfight.simulation.core.orchestration.Bot;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
@@ -8,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class DeferredStateSystemTest {
     @Test
     void restoresTemporalSnapshotAndAdvancesItsCompletionVisual() {
-        DuelSimulationService.Bot bot = new DuelSimulationService.Bot();
+        Bot bot = new Bot();
         bot.x = 500;
         bot.y = 300;
         bot.hp = 40;

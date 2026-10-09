@@ -1,109 +1,125 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import {
-    BOT_ABILITY_PRESENTATION_DEFINITIONS,
+    BOT_ABILITY_PRESENTATIONS,
     BOT_ABILITY_VISUAL_PRIORITY,
+    BOT_ABILITY_VISUAL_SETTINGS,
     botAbilityActiveMs,
     botAbilityPresentationForId,
-    botAbilityPresentationForRole,
-    botAbilityWindupEffect,
+    botAbilityPresentationForType,
 } from "./botAbilityPresentationDefinitions.js";
+import { BOT_ABILITY_RENDERERS } from "./renderers/index.js";
+import { triggerView } from "../ecs/contracts/AbilityContracts.js";
 
-test("ability presentation registry is keyed by ability ID and immutable", () => {
-    assert.ok(Object.keys(BOT_ABILITY_PRESENTATION_DEFINITIONS).length > 0);
-    for (const [id, definition] of Object.entries(BOT_ABILITY_PRESENTATION_DEFINITIONS)) {
-        assert.equal(definition.id, Number(id));
-    }
-    for (const definition of Object.values(BOT_ABILITY_PRESENTATION_DEFINITIONS)) {
-        assert.ok(Object.isFrozen(definition));
-        for (const metadata of [definition.bodyEffect, definition.directEffect, definition.activeEffect, definition.onVisualStart, definition.marker, definition.shapeEffect]) {
-            if (metadata) assert.ok(Object.isFrozen(metadata));
-        }
-        const fields = [definition, definition.bodyEffect, definition.directEffect, definition.activeEffect, definition.onVisualStart, definition.marker, definition.shapeEffect]
-            .filter(Boolean).flatMap((metadata) => Object.keys(metadata));
+const sourceOf = (relativePath) => readFile(fileURLToPath(new URL(relativePath, import.meta.url)), "utf8");
+
+test("presentation settings are keyed by the visual type, immutable, and presentation-only", () => {
+    assert.ok(Object.keys(BOT_ABILITY_VISUAL_SETTINGS).length > 0);
+    for (const [type, settings] of Object.entries(BOT_ABILITY_VISUAL_SETTINGS)) {
+        const presentation = botAbilityPresentationForType(type);
+        assert.equal(presentation.type, type);
+        assert.ok(Object.isFrozen(settings));
+        assert.ok(Object.isFrozen(presentation));
+        const fields = [];
+        const collect = (value) => {
+            for (const [key, nested] of Object.entries(value)) {
+                fields.push(key);
+                if (nested && typeof nested === "object") {
+                    assert.ok(Object.isFrozen(nested), `${type}.${key} must be frozen`);
+                    collect(nested);
+                }
+            }
+        };
+        collect(settings);
         assert.ok(!fields.some((field) => ["damage", "hit", "cooldown", "knockback"].includes(field)),
             "presentation metadata must not describe gameplay outcomes");
     }
-    assert.equal(botAbilityPresentationForId("8").activeEffect.type, "repulsorBurst");
+    assert.equal(botAbilityPresentationForType("missing"), null);
     assert.equal(botAbilityPresentationForId("invalid"), null);
-    assert.equal(botAbilityPresentationForRole("missing"), null);
+});
+
+test("each presentation type resolves to the ability whose trigger declares that visual type", () => {
+    for (const presentation of BOT_ABILITY_PRESENTATIONS) {
+        if (presentation.abilityId == null) continue;
+        assert.equal(triggerView(presentation.abilityId).visual.type, presentation.type);
+        assert.equal(botAbilityPresentationForId(presentation.abilityId), presentation);
+    }
+    // Rewind's visual lives on its entity phase, so it is driven by bot timer fields instead.
+    assert.deepEqual(BOT_ABILITY_PRESENTATIONS.filter((presentation) => presentation.abilityId == null).map(({ type }) => type),
+        ["temporalRewindZone"]);
+});
+
+test("every presentation type has exactly one renderer module and vice versa", async () => {
+    assert.deepEqual(Object.keys(BOT_ABILITY_RENDERERS).sort(), Object.keys(BOT_ABILITY_VISUAL_SETTINGS).sort());
+    const files = (await readdir(fileURLToPath(new URL("./renderers/", import.meta.url))))
+        .filter((file) => !["index.js", "rendererHelpers.js", "pixiToolkit.js"].includes(file) && file.endsWith(".js") && !file.endsWith(".test.js"))
+        .map((file) => file.replace(/\.js$/, ""));
+    assert.deepEqual(files.sort(), Object.keys(BOT_ABILITY_RENDERERS).sort());
+    for (const [type, renderer] of Object.entries(BOT_ABILITY_RENDERERS)) {
+        assert.equal(typeof renderer.create, "function", `${type}.create`);
+        assert.equal(typeof renderer.update, "function", `${type}.update`);
+        assert.equal(typeof renderer.destroy, "function", `${type}.destroy`);
+    }
 });
 
 test("active presentation precedence matches the established ability priority", () => {
     assert.deepEqual(BOT_ABILITY_VISUAL_PRIORITY,
-        [1, 3, 5, 6, 20, 7, 18, 12, 9, 13, 8, 10, 16, 23, 25, 26, 30, 32, 33, 34, 35, 36, 37]);
+        [1, 3, 6, 20, 7, 12, 9, 13, 8, 10, 16, 23, 25, 26, 30, 32, 33, 34, 35, 36, 37]);
 });
 
-test("named definitions read only renderer-facing active clocks", () => {
-    const dash = botAbilityPresentationForRole("dash");
-    assert.equal(dash.transitionEffect, "dashSmoke");
-    assert.equal(botAbilityActiveMs({ abilityActiveMs: { [dash.id]: 500 } }, dash), 500);
-    assert.equal(botAbilityActiveMs({}, dash), 0);
-    assert.equal(botAbilityPresentationForRole("lock-on").marker.type, "lockOn");
-    assert.equal(botAbilityPresentationForRole("temporal-rewind").shapeEffect.timerField, "temporalRewindPulseMs");
+test("the weapons have their own visual types instead of sharing meleeSlash", () => {
+    assert.equal(botAbilityPresentationForId(1).type, "meleeSlash");
+    assert.equal(botAbilityPresentationForId(35).type, "thrust");
+    assert.equal(botAbilityPresentationForId(36).type, "cleave");
+    assert.equal(botAbilityPresentationForId(37).type, "smash");
+    assert.equal(botAbilityPresentationForType("thrust").active.color, 0xcbd5e1);
+    assert.equal(botAbilityPresentationForType("cleave").windup.color, 0xf59e0b);
+    assert.equal(botAbilityPresentationForType("cleave").sizingHitboxAbilityId, 36);
+    assert.equal(botAbilityPresentationForType("cleave").tint, 0xfde68a);
+    assert.equal(botAbilityPresentationForType("smash").windup.alphaEnd, 0.75);
+    assert.equal(botAbilityPresentationForType("heavySlash").sizingHitboxAbilityId, 1);
 });
 
-test("PixiCanvas dispatches active bot effects through the keyed registry", async () => {
-    const source = await readFile(fileURLToPath(new URL("./PixiCanvas.jsx", import.meta.url)), "utf8");
-    assert.match(source, /botAbilityPresentationForId\(visual\)/);
-    assert.match(source, /effect\.type === "abilityRay"/);
-    assert.match(source, /definition\.shapeEffect/);
-    assert.doesNotMatch(source, /visual\s*===\s*(?:7|8|10|16|23|25|26|30|32|33|34)\b/);
-    assert.doesNotMatch(source, /abilityActiveMs\?\.\[(?:1|3|6|19|20)\]/);
-});
-
-test("weapon placeholder visuals are registered and Slash keeps its meleeSwing", () => {
-    assert.equal(botAbilityPresentationForId(1).bodyEffect.type, "meleeSwing");
-    assert.equal(botAbilityPresentationForId(1).windupEffect, undefined);
-    assert.equal(botAbilityPresentationForId(35).windupEffect.type, "thrustWindup");
-    assert.equal(botAbilityPresentationForId(35).activeEffect.type, "thrust");
-    assert.equal(botAbilityPresentationForId(35).activeEffect.color, 0xcbd5e1);
-    assert.equal(botAbilityPresentationForId(36).windupEffect.type, "cleaveWindup");
-    assert.equal(botAbilityPresentationForId(36).windupEffect.color, 0xf59e0b);
-    assert.equal(botAbilityPresentationForId(36).activeEffect.type, "heavySlash");
-    assert.equal(botAbilityPresentationForId(36).activeEffect.sizingHitboxAbilityId, 36);
-    assert.equal(botAbilityPresentationForId(36).activeEffect.tint, 0xfde68a);
-    assert.equal(botAbilityPresentationForId(37).windupEffect.type, "smashWindup");
-    assert.equal(botAbilityPresentationForId(37).activeEffect.type, "smash");
-    assert.ok(Object.isFrozen(botAbilityPresentationForId(37).windupEffect));
-});
-
-test("wind-up effects resolve only while the bot prepares that weapon", () => {
-    assert.equal(botAbilityWindupEffect({ preparingAbility: 36 }).effect.type, "cleaveWindup");
-    assert.equal(botAbilityWindupEffect({ preparingAbility: 1 }), null);
-    assert.equal(botAbilityWindupEffect({ preparingAbility: null }), null);
-    assert.equal(botAbilityWindupEffect({}), null);
-});
-
-test("PixiCanvas draws weapon effects from the contract hitbox and bot state only", async () => {
-    const source = await readFile(fileURLToPath(new URL("./PixiCanvas.jsx", import.meta.url)), "utf8");
-    const start = source.indexOf("function drawWeaponWindup");
-    const end = source.indexOf("function drawProceduralAbilityRay");
-    const weaponSource = source.slice(start, end);
-    assert.ok(start > 0 && end > start);
-    assert.doesNotMatch(weaponSource, /Math\.random/);
-    assert.match(weaponSource, /hitbox\.length/);
-    assert.match(weaponSource, /hitbox\.width/);
-    assert.match(weaponSource, /hitbox\.range/);
-    assert.match(weaponSource, /hitbox\.arc/);
-    assert.match(source, /effect\.type === "thrust"/);
-    assert.match(source, /effect\.type === "smash"/);
-});
-
-test("Sniper presentation keeps the gun role with a sight wind-up and rail_shot fire", () => {
+test("Sniper keeps the gun type with a sight wind-up and rail_shot fire", () => {
     const sniper = botAbilityPresentationForId(3);
-    assert.equal(sniper.role, "gun");
-    assert.equal(sniper.windupEffect.type, "sniperSight");
-    assert.equal(sniper.windupEffect.color, 0xef4444);
-    assert.equal(sniper.windupEffect.width, 2);
-    assert.equal(sniper.windupEffect.alphaMin, 0.35);
-    assert.equal(sniper.windupEffect.alphaMax, 0.8);
-    assert.equal(sniper.activeEffect.type, "abilityRay");
-    assert.equal(sniper.activeEffect.rayFrames, "rail_shot");
-    assert.equal(sniper.activeEffect.height, 40);
-    assert.equal(sniper.activeEffect.muzzleFlash, true);
-    assert.equal(sniper.directEffect.rayFrames, "rail_shot");
-    assert.equal(botAbilityWindupEffect({ preparingAbility: 3 }).effect.type, "sniperSight");
+    assert.equal(sniper.type, "gun");
+    assert.deepEqual({ ...sniper.sight }, { color: 0xef4444, width: 2, alphaMin: 0.35, alphaMax: 0.8, pulses: 3 });
+    assert.equal(sniper.activeRay.rayFrames, "rail_shot");
+    assert.equal(sniper.activeRay.height, 40);
+    assert.equal(sniper.activeRay.muzzleFlash, true);
+    assert.equal(sniper.directRay.rayFrames, "rail_shot");
+});
+
+test("active clocks come from ability records only", () => {
+    const dash = botAbilityPresentationForType("dash");
+    assert.equal(dash.abilityId, 19);
+    assert.equal(botAbilityActiveMs({ abilityState: { [dash.abilityId]: { stage: "active", remainingMs: 500 } } }, dash), 500);
+    assert.equal(botAbilityActiveMs({}, dash), 0);
+    assert.equal(botAbilityActiveMs({}, botAbilityPresentationForType("temporalRewindZone")), 0);
+});
+
+test("PixiCanvas dispatches bot ability visuals through the renderer registry only", async () => {
+    const source = await sourceOf("./PixiCanvas.jsx");
+    assert.match(source, /updateBotAbilityRenderers\(view, rendererContext\)/);
+    assert.match(source, /syncBotAbilityRenderers\(view,/);
+    assert.match(source, /destroyBotAbilityRenderers\(view, rendererKit\)/);
+    assert.doesNotMatch(source, /botAbilityPresentationForRole|BOT_ABILITY_PRESENTATION_DEFINITIONS/);
+    assert.doesNotMatch(source, /effect\.type\s*===|visual\s*===\s*(?:\d+|[A-Z_]+\.id)\b/);
+    assert.doesNotMatch(source, /abilityActiveMs\?\.\[\d+\]/);
+    for (const removed of ["drawBotWorldEffects", "drawWeaponWindup", "drawThrustActive", "drawSmashActive", "drawDashSmoke", "drawLockOnMarkers"]) {
+        assert.doesNotMatch(source, new RegExp(removed));
+    }
+});
+
+test("renderers are driven only by state and contract numbers", async () => {
+    const directory = new URL("./renderers/", import.meta.url);
+    const files = (await readdir(fileURLToPath(directory))).filter((file) => file.endsWith(".js") && !file.endsWith(".test.js"));
+    assert.ok(files.length > BOT_ABILITY_PRESENTATIONS.length);
+    for (const file of files) {
+        const source = await readFile(fileURLToPath(new URL(file, directory)), "utf8");
+        assert.doesNotMatch(source, /Math\.random|Date\.now|performance\.now/, `${file} must not read randomness or wall time`);
+        if (file !== "pixiToolkit.js") assert.doesNotMatch(source, /from "pixi\.js"/, `${file} must reach Pixi through ctx.kit`);
+    }
 });

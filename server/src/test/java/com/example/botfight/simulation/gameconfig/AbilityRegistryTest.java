@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class AbilityRegistryTest {
@@ -15,22 +14,22 @@ class AbilityRegistryTest {
         assertThat(AbilityRegistry.all().keySet()).allMatch(id -> id > 0);
         assertThat(new HashSet<>(AbilityRegistry.all().values())).hasSize(36);
         assertThat(Abilities.CATALOG.keySet()).containsExactlyInAnyOrderElementsOf(AbilityRegistry.all().keySet());
-        HashSet<Integer> contractIds = new HashSet<>(AbilityContracts.attachedAll().keySet());
-        contractIds.addAll(AbilityContracts.entityAll().keySet());
-        assertThat(contractIds).containsExactlyInAnyOrderElementsOf(AbilityRegistry.all().keySet());
-        assertThat(AbilityContracts.attachedAll().keySet())
-                .doesNotContainAnyElementsOf(AbilityContracts.entityAll().keySet());
+        assertThat(AbilityContracts.all().keySet()).containsExactlyInAnyOrderElementsOf(AbilityRegistry.all().keySet());
         assertThat(AbilityContracts.all()).hasSize(36);
+        assertThat(AbilityContracts.entityAll()).hasSize(14);
         assertThat(AbilityContracts.all().values()).allSatisfy(contract -> {
-            assertThat(contract.category()).isNotNull();
-            assertThat(contract.spawn()).isNotNull();
             assertThat(contract.activation()).isNotNull();
-            assertThat(contract.phases()).isNotEmpty();
+            assertThat(contract.onTrigger()).isNotEmpty();
+            contract.entities().values().forEach(entity -> assertThat(entity.phases()).isNotEmpty());
         });
-        assertThat(AbilityContracts.get(15).phases().getFirst()
-                .events().get(AbilityContracts.PhaseEventType.COLLISION).targetKinds())
+        AbilityContracts.entityAll().forEach((abilityId, entity) ->
+                assertThat(AbilityContracts.get(abilityId).onTrigger()).anySatisfy(verb ->
+                        assertThat(verb).isInstanceOfSatisfying(AbilityContracts.SpawnVerb.class,
+                                spawn -> assertThat(spawn.entity()).isEqualTo(entity.entityType()))));
+        assertThat(AbilityContracts.entityContractForAbility(15).phases().getFirst()
+                .on().get(AbilityContracts.PhaseEventType.COLLISION).targets())
                 .containsExactly(AbilityContracts.TargetKind.BOT, AbilityContracts.TargetKind.SUMMON);
-        assertThat(AbilityContracts.get(11).phases().get(1).trigger())
+        assertThat(AbilityContracts.entityContractForAbility(11).phases().get(1).trigger())
                 .satisfies(trigger -> {
                     assertThat(trigger.botContact()).isTrue();
                     assertThat(trigger.attackHits()).isFalse();
@@ -49,56 +48,27 @@ class AbilityRegistryTest {
     }
 
     @Test void eventVisualsAreExplicitAndAlwaysEmitSeparatelyFromPhaseVisuals() {
-        AbilityContracts.all().values().forEach(contract -> {
-            contract.phases().forEach(phase -> phase.events().values().forEach(event -> {
-                if (event.visualType() != null) {
-                    assertThat(event.actions())
-                            .contains(AbilityContracts.PhaseAction.EMIT_VISUAL);
-                    assertThat(event.visibleMs()).isPositive();
-                }
-            }));
-            contract.abilities().forEach(ability -> ability.phases().forEach(phase ->
-                    phase.events().values().forEach(event -> {
-                        if (event.visualType() != null) {
-                            assertThat(event.actions())
-                                    .contains(AbilityContracts.PhaseAction.EMIT_VISUAL);
-                            assertThat(event.visibleMs()).isPositive();
-                        }
-                    })));
-        });
+        AbilityContracts.all().values().forEach(contract -> contract.entities().values().forEach(entity ->
+                entity.phases().forEach(phase -> phase.on().values().forEach(event ->
+                        event.verbs().stream().filter(AbilityContracts.EmitVisualVerb.class::isInstance)
+                                .map(AbilityContracts.EmitVisualVerb.class::cast).forEach(emit -> {
+                                    assertThat(emit.visualType()).isNotNull();
+                                    assertThat(emit.visibleMs()).isPositive();
+                                })))));
 
         for (int abilityId : List.of(4, 11, 14, 27, 29)) {
-            AbilityContracts.AbilityContract contract = AbilityContracts.entityAll().get(abilityId);
-            AbilityContracts.AbilityPhase explosionPhase = contract.phases().stream()
+            AbilityContracts.EntityContract entity = AbilityContracts.entityAll().get(abilityId);
+            AbilityContracts.AbilityPhase explosionPhase = entity.phases().stream()
                     .filter(phase -> phase.id().equals(abilityId == 29 ? "destroyed" : "active"))
                     .findFirst().orElseThrow();
             assertThat(explosionPhase.visual()).isNull();
         }
 
-        AbilityContracts.AbilityPhase droneShot = AbilityContracts.entityAll().get(17)
-                .abilities().getFirst().phases().getFirst();
-        assertThat(droneShot.visual()).isNull();
-        assertThat(droneShot.events().get(AbilityContracts.PhaseEventType.COLLISION).visualType())
-                .isEqualTo("gun");
-        assertThat(droneShot.events().get(AbilityContracts.PhaseEventType.COLLISION).visibleMs())
-                .isEqualTo(300);
-        assertThat(droneShot.events().get(AbilityContracts.PhaseEventType.COLLISION).visualSize())
-                .isEqualTo(16.0);
-
-        AbilityContracts.PhaseEvent explicitVisual = new AbilityContracts.PhaseEvent(
-                List.of(AbilityContracts.PhaseAction.APPLY_EFFECTS), Set.of(), null, null,
-                "testExplosion", 240, null, null,
-                List.of(AbilityContracts.TargetKind.BOT));
-        assertThat(explicitVisual.actions())
-                .containsExactly(AbilityContracts.PhaseAction.APPLY_EFFECTS,
-                        AbilityContracts.PhaseAction.EMIT_VISUAL);
-        assertThat(explicitVisual.visibleMs()).isEqualTo(240);
-        assertThatThrownBy(() -> new AbilityContracts.PhaseEvent(
-                List.of(AbilityContracts.PhaseAction.APPLY_EFFECTS), Set.of(), null, null,
-                "testExplosion", null, null, null,
-                List.of(AbilityContracts.TargetKind.BOT)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("positive visibleMs");
+        AbilityContracts.HitVerb droneShot = AbilityContracts.entityAll().get(17).phases().getFirst().scheduledHit();
+        assertThat(droneShot.visual().type()).isEqualTo("gun");
+        assertThat(droneShot.visual().visibleMs()).isEqualTo(300);
+        assertThat(droneShot.visual().visualSize()).isEqualTo(16.0);
+        assertThat(droneShot.aim()).isEqualTo("seekTarget");
     }
 
     @Test void invalidPermanentIdsFailClosed() {

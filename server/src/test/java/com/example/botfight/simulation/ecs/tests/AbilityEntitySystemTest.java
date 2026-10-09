@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.botfight.simulation.ecs.abilities.AbilityEntitySystem;
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
+import com.example.botfight.simulation.core.state.StatusEffectState;
 import com.example.botfight.simulation.ecs.entities.AbilityEntityBot;
 import com.example.botfight.simulation.ecs.entities.AbilityEntityFactory;
 import com.example.botfight.simulation.ecs.entities.ArenaBounds;
@@ -24,9 +25,6 @@ class AbilityEntitySystemTest {
                             && effect.type() != null);
                 }));
 
-        assertThat(AbilityContracts.entityAll().values()).allSatisfy(contract ->
-                assertThat(AbilityContracts.attachedAbilityContract(contract.abilityId())).isNull());
-
         assertThat(AbilityContracts.entityContractForAbility(5).phases().getFirst().effects())
                 .anySatisfy(effect -> {
                     assertThat(effect.type()).isEqualTo(AbilityContracts.EffectType.STATUS);
@@ -35,60 +33,57 @@ class AbilityEntitySystemTest {
                     assertThat(effect.durationMs()).isEqualTo(5_000);
                 });
 
-        AbilityContracts.AbilityContract attached =
-                AbilityContracts.attachedAbilityContract(1);
-        assertThat(attached.spawn().offsetX()).isZero();
-        assertThat(attached.spawn().offsetY()).isZero();
-        assertThat(attached.phases().getFirst().events()
-                .get(AbilityContracts.PhaseEventType.COLLISION).schedule().mode())
-                .isEqualTo(AbilityContracts.EventScheduleMode.ONCE);
+        AbilityContracts.HitVerb slash = AbilityContracts.forAbility(1).hitVerbs().getFirst();
+        assertThat(slash.origin().offsetX()).isZero();
+        assertThat(slash.origin().offsetY()).isZero();
+        assertThat(slash.nearestOnly()).isFalse();
+        assertThat(AbilityContracts.entityContractForAbility(1)).isNull();
         assertThat(AbilityContracts.entityAll().values())
                 .allSatisfy(contract -> assertThat(contract.phases()).allSatisfy(phase ->
-                        assertThat(phase.events().values()).allSatisfy(event ->
+                        assertThat(phase.on().values()).allSatisfy(event ->
                                 assertThat(event.schedule()).isNotNull())));
     }
+
     @Test
     void phaseContractsKeepTargetPolicyOnEventsAndUseExplicitCollisionSchedules() {
         AbilityContracts.AbilityPhase grenadeTravel = AbilityContracts.entityContractForAbility(4).phases().getFirst();
-        AbilityContracts.PhaseEvent transition = grenadeTravel.events()
+        AbilityContracts.PhaseEvent transition = grenadeTravel.on()
                 .get(AbilityContracts.PhaseEventType.COLLISION);
         AbilityContracts.PhaseEvent silenceCollision = AbilityContracts.entityContractForAbility(15).phases().getFirst()
-                .events().get(AbilityContracts.PhaseEventType.COLLISION);
+                .on().get(AbilityContracts.PhaseEventType.COLLISION);
         AbilityContracts.AbilityPhase orbitalPhase = AbilityContracts.entityContractForAbility(22).phases().getFirst();
-        AbilityContracts.PhaseEvent orbitalCollision = orbitalPhase.events()
+        AbilityContracts.PhaseEvent orbitalCollision = orbitalPhase.on()
                 .get(AbilityContracts.PhaseEventType.COLLISION);
 
-        assertThat(transition.transition().to()).isEqualTo("active");
+        assertThat(((AbilityContracts.TransitionVerb) transition.verbs().getFirst()).to()).isEqualTo("active");
         assertThat(silenceCollision.targetPolicy().mode()).isEqualTo(AbilityContracts.TargetPolicyMode.ONCE);
         assertThat(orbitalCollision.targetPolicy()).isNull();
         assertThat(orbitalCollision.schedule().mode())
                 .isEqualTo(AbilityContracts.EventScheduleMode.REPEAT);
         assertThat(orbitalCollision.schedule().intervalMs()).isEqualTo(500);
-        assertThat(orbitalPhase.execution()).isNull();
-        assertThat(AbilityContracts.get(21).phases().getFirst()
-                .events().get(AbilityContracts.PhaseEventType.ACTIVATION).targetKinds())
-                .containsExactly(AbilityContracts.TargetKind.BOT);
+        assertThat(orbitalPhase.on()).doesNotContainKey(AbilityContracts.PhaseEventType.SCHEDULE);
+        assertThat(((AbilityContracts.ApplyEffectsVerb) AbilityContracts.get(21).onTrigger().getFirst()).ownerTarget())
+                .isTrue();
         assertThat(AbilityContracts.entityContractForAbility(5).phases().getFirst()
-                .events().get(AbilityContracts.PhaseEventType.COLLISION).targetKinds())
+                .on().get(AbilityContracts.PhaseEventType.COLLISION).targets())
                 .containsExactly(AbilityContracts.TargetKind.BOT,
                         AbilityContracts.TargetKind.HP_ENTITY);
         assertThat(AbilityContracts.entityContractForAbility(29).phases().get(2)
-                .events().get(AbilityContracts.PhaseEventType.COLLISION).targetKinds())
+                .on().get(AbilityContracts.PhaseEventType.COLLISION).targets())
                 .containsExactly(AbilityContracts.TargetKind.BOT,
                         AbilityContracts.TargetKind.HP_ENTITY);
     }
 
     @Test
-    void phaseEventsCanSelectIndividualStatusSubtypes() {
-        AbilityContracts.PhaseEvent event = new AbilityContracts.PhaseEvent(
-                List.of(AbilityContracts.PhaseAction.APPLY_EFFECTS),
-                java.util.Set.of(AbilityContracts.EffectType.STATUS),
-                null, null, null, null, null, null,
-                List.of(AbilityContracts.TargetKind.BOT),
-                java.util.Set.of("silence"));
-
-        assertThat(event.statusTypes()).containsExactly("silence");
-        assertThat(event.effectTypes()).containsExactly(AbilityContracts.EffectType.STATUS);
+    void anApplyEffectsVerbListsOnlyTheEffectsItApplies() {
+        // Silence Pulse applies the silence status and nothing else on collision.
+        assertThat(AbilityContracts.entityContractForAbility(15).phases().getFirst()
+                .on().get(AbilityContracts.PhaseEventType.COLLISION).applyEffects())
+                .filteredOn(effect -> effect.type() == AbilityContracts.EffectType.STATUS)
+                .isNotEmpty()
+                .allMatch(effect -> "silence".equals(effect.subtype()));
+        assertThat(AbilityContracts.forAbility(1).triggerEffects()).extracting(AbilityContracts.Effect::type)
+                .containsExactly(AbilityContracts.EffectType.DAMAGE);
     }
 
     @Test
@@ -98,17 +93,11 @@ class AbilityEntitySystemTest {
         AbilityContracts.Effect summonSlow = AbilityContracts.targeted(slow,
                 AbilityContracts.TargetKind.BOT, AbilityContracts.TargetKind.SUMMON);
         AbilityContracts.PhaseEvent botEvent = new AbilityContracts.PhaseEvent(
-                List.of(AbilityContracts.PhaseAction.APPLY_EFFECTS), java.util.Set.of(),
-                null, null, null, null, null, null,
-                List.of(AbilityContracts.TargetKind.BOT));
+                List.of(AbilityContracts.TargetKind.BOT), null, null, true, false, false, List.of());
         AbilityContracts.PhaseEvent hpEntityEvent = new AbilityContracts.PhaseEvent(
-                List.of(AbilityContracts.PhaseAction.APPLY_EFFECTS), java.util.Set.of(),
-                null, null, null, null, null, null,
-                List.of(AbilityContracts.TargetKind.HP_ENTITY));
+                List.of(AbilityContracts.TargetKind.HP_ENTITY), null, null, true, false, false, List.of());
         AbilityContracts.PhaseEvent summonEvent = new AbilityContracts.PhaseEvent(
-                List.of(AbilityContracts.PhaseAction.APPLY_EFFECTS), java.util.Set.of(),
-                null, null, null, null, null, null,
-                List.of(AbilityContracts.TargetKind.SUMMON));
+                List.of(AbilityContracts.TargetKind.SUMMON), null, null, true, false, false, List.of());
 
         assertThat(AbilityContracts.eventTargetsEntity(botEvent, true)).isFalse();
         assertThat(AbilityContracts.eventTargetsEntity(hpEntityEvent, false)).isTrue();
@@ -132,7 +121,7 @@ class AbilityEntitySystemTest {
     void spawnedAbilitiesResolveThroughStableAbilityContractsAndGenericFactory() {
         int[] spawnedAbilities = {4, 5, 11, 14, 15, 17, 18, 21, 22, 24, 27, 28, 29, 31};
         for (int abilityId : spawnedAbilities) {
-            AbilityContracts.AbilityContract contract = AbilityContracts.entityContractForAbility(abilityId);
+            AbilityContracts.EntityContract contract = AbilityContracts.entityContractForAbility(abilityId);
             assertThat(contract).as("missing contract for %s", abilityId).isNotNull();
             ArenaEntity entity = AbilityEntityFactory.create(
                     "entity-" + abilityId, abilityId, 1, 100, 200, 60, 90, 1,
@@ -175,23 +164,23 @@ class AbilityEntitySystemTest {
     }
 
     @Test
-    void droneBodiesOwnOnlyHealthLifecycleWhileTheirMiniAbilityOwnsTheRay() {
-        assertThat(AbilityContracts.entityContractForAbility(17).phases().getFirst().hitbox().shape())
-                .isEqualTo("circle");
-        assertThat(AbilityContracts.entityContractForAbility(17).phases().getFirst().hitbox().radius())
-                .isEqualTo(14.0);
-        assertThat(AbilityContracts.entityContractForAbility(17).phases().getFirst().events())
-                .doesNotContainKey(AbilityContracts.PhaseEventType.COLLISION);
-        assertThat(AbilityContracts.entityContractForAbility(17).abilities()).singleElement()
-                .satisfies(ability -> {
-                    assertThat(ability.spawn().offsetX()).isZero();
-                    assertThat(ability.spawn().offsetY()).isZero();
-                    assertThat(ability.spawn().rotation()).isZero();
-                    assertThat(ability.spawn().rotationSpace())
-                            .isEqualTo(AbilityContracts.RotationSpace.OWNER);
-                    assertThat(ability.phases()).singleElement()
-                            .satisfies(phase -> assertThat(phase.hitbox().shape()).isEqualTo("ray"));
-                });
+    void droneBodiesOwnOnlyHealthLifecycleWhileTheirScheduleEventOwnsTheRay() {
+        AbilityContracts.AbilityPhase body = AbilityContracts.entityContractForAbility(17).phases().getFirst();
+        assertThat(body.hitbox().shape()).isEqualTo("circle");
+        assertThat(body.hitbox().radius()).isEqualTo(14.0);
+        assertThat(body.on()).doesNotContainKey(AbilityContracts.PhaseEventType.COLLISION);
+        assertThat(body.movement().mode()).isEqualTo(AbilityContracts.MovementMode.SEEK);
+        AbilityContracts.PhaseEvent schedule = body.on().get(AbilityContracts.PhaseEventType.SCHEDULE);
+        assertThat(schedule.schedule().mode()).isEqualTo(AbilityContracts.EventScheduleMode.REPEAT);
+        assertThat(schedule.schedule().intervalMs()).isEqualTo(1_000);
+        assertThat(schedule.waitForHit()).isTrue();
+        AbilityContracts.HitVerb shot = body.scheduledHit();
+        assertThat(shot.aim()).isEqualTo("seekTarget");
+        assertThat(shot.origin().offsetX()).isZero();
+        assertThat(shot.origin().offsetY()).isZero();
+        assertThat(shot.origin().rotation()).isZero();
+        assertThat(shot.origin().rotationSpace()).isEqualTo(AbilityContracts.RotationSpace.OWNER);
+        assertThat(shot.hitbox().shape()).isEqualTo("ray");
     }
 
     @Test
@@ -416,6 +405,46 @@ class AbilityEntitySystemTest {
     }
 
     @Test
+    void anUntouchedSnareBombIsRemovedWhenItsLifetimeEnds() {
+        TestCombatant faraway = new TestCombatant(2, 900, 700, 60, 100);
+        int lifetimeTicks = AbilityContracts.entityContractForAbility(29).lifetime().duration() / 100;
+        List<ArenaEntity> entities = List.of(AbilityEntityFactory.create(
+                "snare-1", 29, 1, 100, 100, 60, 0, 1, Double.NaN, Double.NaN, 1000, 800));
+        for (int tick = 1; tick <= lifetimeTicks; tick += 1) {
+            int elapsedMs = tick * 100;
+            entities = AbilityEntitySystem.tick(
+                    entities.stream().map(entity -> entity.withAgeMs(elapsedMs)).toList(),
+                    List.of(faraway), new ArenaBounds(1000, 800), 100, noDamageCombat());
+            if (tick < lifetimeTicks) assertThat(entities).as("alive at tick %s", tick).hasSize(1);
+        }
+        assertThat(entities).isEmpty();
+    }
+
+    @Test
+    void anArmedSnareBombHitsABotInsideItsTriggerRadius() {
+        TestCombatant faraway = new TestCombatant(2, 900, 700, 60, 100);
+        List<ArenaEntity> entities = List.of(AbilityEntityFactory.create(
+                "snare-1", 29, 1, 100, 100, 60, 0, 1, Double.NaN, Double.NaN, 1000, 800));
+        for (int tick = 1; tick <= 40 && !"armed".equals(entities.getFirst().phaseId()); tick += 1) {
+            int elapsedMs = tick * 100;
+            entities = AbilityEntitySystem.tick(
+                    entities.stream().map(entity -> entity.withAgeMs(elapsedMs)).toList(),
+                    List.of(faraway), new ArenaBounds(1000, 800), 100, noDamageCombat());
+        }
+        ArenaEntity armed = entities.getFirst();
+        assertThat(armed.phaseId()).isEqualTo("armed");
+
+        // 60 units out: inside the trigger radius, well outside the armed phase's own 12-unit hitbox.
+        TestCombatant target = new TestCombatant(2, armed.x() + 60, armed.y(), 60, 100);
+        AbilityEntitySystem.tick(List.of(armed.withAgeMs(armed.ageMs() + 100)), List.of(target),
+                new ArenaBounds(1000, 800), 100, damageCombat());
+
+        assertThat(target.hp).isEqualTo(75);
+        assertThat(target.slowedMs).isPositive();
+        assertThat(target.stunMs).isPositive();
+    }
+
+    @Test
     void snareBombUsesItsStrongerPhaseWhenGenericDamageReachesZero() {
         ArenaEntity snare = AbilityEntityFactory.create(
                 "snare-1", 29, 1, 100, 100, 60, 0, 1,
@@ -423,7 +452,10 @@ class AbilityEntitySystemTest {
         AbilityEntitySystem.Combat<TestCombatant> destroyer = new AbilityEntitySystem.Combat<>() {
             @Override public void damage(TestCombatant bot, double amount) {}
             @Override public void damageFromOwner(List<TestCombatant> bots, int ownerSlot, TestCombatant target, double amount, double sourceX, double sourceY) {}
-            @Override public int damageToEntity(ArenaEntity entity, List<TestCombatant> bots, List<ArenaEntity> entities) { return 20; }
+            @Override public ArenaEntity applyEffectsToEntity(ArenaEntity entity, List<TestCombatant> bots,
+                                                              List<ArenaEntity> entities, ArenaBounds arena, int stepMs) {
+                return entity.withHp(Math.max(0, entity.hp() - 20)).withDamageTakenThisTick(20);
+            }
             @Override public boolean entityHitByCurrentAttack(ArenaEntity entity, List<TestCombatant> bots, List<ArenaEntity> entities) { return false; }
         };
 
@@ -450,10 +482,10 @@ class AbilityEntitySystemTest {
             @Override public void damageFromOwner(List<TestCombatant> bots, int ownerSlot,
                                                   TestCombatant target, double amount,
                                                   double sourceX, double sourceY) {}
-            @Override public int damageToEntity(ArenaEntity entity, List<TestCombatant> bots,
-                                                List<ArenaEntity> entities) {
+            @Override public ArenaEntity applyEffectsToEntity(ArenaEntity entity, List<TestCombatant> bots,
+                                                              List<ArenaEntity> entities, ArenaBounds arena, int stepMs) {
                 return entities.stream().anyMatch(candidate -> "fireball".equals(candidate.type()))
-                        ? 15 : 0;
+                        ? entity.withHp(Math.max(0, entity.hp() - 15)).withDamageTakenThisTick(15) : entity;
             }
             @Override public boolean entityHitByCurrentAttack(ArenaEntity entity,
                                                                List<TestCombatant> bots,
@@ -516,8 +548,10 @@ class AbilityEntitySystemTest {
                                                   double amount, double sourceX, double sourceY) {
                 target.hp -= amount;
             }
-            @Override public int damageToEntity(ArenaEntity entity, List<TestCombatant> bots,
-                                                List<ArenaEntity> entities) { return 20; }
+            @Override public ArenaEntity applyEffectsToEntity(ArenaEntity entity, List<TestCombatant> bots,
+                                                              List<ArenaEntity> entities, ArenaBounds arena, int stepMs) {
+                return entity.withHp(Math.max(0, entity.hp() - 20)).withDamageTakenThisTick(20);
+            }
             @Override public boolean entityHitByCurrentAttack(ArenaEntity entity, List<TestCombatant> bots,
                                                               List<ArenaEntity> entities) { return true; }
         };
@@ -549,8 +583,10 @@ class AbilityEntitySystemTest {
             @Override public void damage(TestCombatant bot, double amount) {}
             @Override public void damageFromOwner(List<TestCombatant> bots, int ownerSlot, TestCombatant target,
                                                   double amount, double sourceX, double sourceY) {}
-            @Override public int damageToEntity(ArenaEntity entity, List<TestCombatant> bots,
-                                                List<ArenaEntity> entities) { return 5; }
+            @Override public ArenaEntity applyEffectsToEntity(ArenaEntity entity, List<TestCombatant> bots,
+                                                              List<ArenaEntity> entities, ArenaBounds arena, int stepMs) {
+                return entity.withHp(Math.max(0, entity.hp() - 5)).withDamageTakenThisTick(5);
+            }
             @Override public boolean entityHitByCurrentAttack(ArenaEntity entity, List<TestCombatant> bots,
                                                               List<ArenaEntity> entities) { return true; }
         };
@@ -577,8 +613,10 @@ class AbilityEntitySystemTest {
                                                   double amount, double sourceX, double sourceY) {
                 target.hp -= amount;
             }
-            @Override public int damageToEntity(ArenaEntity entity, List<TestCombatant> bots,
-                                                List<ArenaEntity> entities) { return 20; }
+            @Override public ArenaEntity applyEffectsToEntity(ArenaEntity entity, List<TestCombatant> bots,
+                                                              List<ArenaEntity> entities, ArenaBounds arena, int stepMs) {
+                return entity.withHp(Math.max(0, entity.hp() - 20)).withDamageTakenThisTick(20);
+            }
             @Override public boolean entityHitByCurrentAttack(ArenaEntity entity, List<TestCombatant> bots,
                                                               List<ArenaEntity> entities) { return true; }
         };
@@ -766,7 +804,7 @@ class AbilityEntitySystemTest {
     @Test
     void attackHitDoesNotTriggerMineWithoutBotContact() {
         ArenaEntity mine = new ArenaEntity("mine-1", "proximityMine", 1, 100, 100,
-                24, 0, 0, 176, 500, true);
+                24, 0, 0, 176, 500, true).withPhase("armed", false);
         TestCombatant attacker = new TestCombatant(2, 500, 500, 50, 100);
 
         List<ArenaEntity> result = AbilityEntitySystem.tick(
@@ -774,7 +812,6 @@ class AbilityEntitySystemTest {
                 new AbilityEntitySystem.Combat<>() {
                     @Override public void damage(TestCombatant bot, double amount) { bot.hp -= amount; }
                     @Override public void damageFromOwner(List<TestCombatant> bots, int ownerSlot, TestCombatant target, double amount, double sourceX, double sourceY) { target.hp -= amount; }
-                    @Override public int damageToEntity(ArenaEntity entity, List<TestCombatant> bots, List<ArenaEntity> entities) { return 0; }
                     @Override public boolean entityHitByCurrentAttack(ArenaEntity entity, List<TestCombatant> bots, List<ArenaEntity> entities) { return true; }
                 });
 
@@ -789,7 +826,7 @@ class AbilityEntitySystemTest {
     @Test
     void proximityMineTriggersAndDamagesWithinIncreasedRadius() {
         ArenaEntity mine = new ArenaEntity("mine", "proximityMine", 1, 100, 100,
-                24, 0, 0, 176, 500, true);
+                24, 0, 0, 176, 500, true).withPhase("armed", false);
         TestCombatant target = new TestCombatant(2, 180, 100, 50, 100);
         RecordingCombat combat = new RecordingCombat(false);
 
@@ -828,7 +865,7 @@ class AbilityEntitySystemTest {
         TestCombatant target = new TestCombatant(2, 150, 100, 50, 100);
 
         RecordingCombat mineCombat = new RecordingCombat(true);
-        ArenaEntity mine = new ArenaEntity("mine", "proximityMine", 1, 100, 100, 24, 0, 0, 176, 500, true);
+        ArenaEntity mine = new ArenaEntity("mine", "proximityMine", 1, 100, 100, 24, 0, 0, 176, 500, true).withPhase("armed", false);
         AbilityEntitySystem.tick(List.of(mine), List.of(target), new ArenaBounds(1000, 800), 100, mineCombat);
 
         RecordingCombat gravityCombat = new RecordingCombat(false);
@@ -847,7 +884,7 @@ class AbilityEntitySystemTest {
                 List.of(drone), List.of(target), new ArenaBounds(1000, 800), 100, droneCombat);
         assertThat(droneCombat.damage).isEqualTo(5);
         assertThat(droneEntities).singleElement().satisfies(updatedDrone ->
-                assertThat(updatedDrone.eventType()).isEqualTo("collision"));
+                assertThat(updatedDrone.eventType()).isEqualTo("schedule"));
         assertThat(droneEntities.getFirst().eventSequence()).isEqualTo(1);
         assertThat(droneEntities.getFirst().eventPhaseId()).isEqualTo("active");
 
@@ -869,7 +906,7 @@ class AbilityEntitySystemTest {
 
         TestCombatant mineTarget = new TestCombatant(2, 217.5, 100, 60, 100);
         RecordingCombat mineCombat = new RecordingCombat(false);
-        ArenaEntity mine = new ArenaEntity("mine", "proximityMine", 1, 100, 100, 24, 0, 0, 176, 500, true);
+        ArenaEntity mine = new ArenaEntity("mine", "proximityMine", 1, 100, 100, 24, 0, 0, 176, 500, true).withPhase("armed", false);
         AbilityEntitySystem.tick(List.of(mine), List.of(mineTarget), arena, 100, mineCombat);
         assertThat(mineCombat.damage).isEqualTo(30);
         assertThat(mineTarget.hp).isEqualTo(70);
@@ -902,7 +939,7 @@ class AbilityEntitySystemTest {
         AbilityEntitySystem.tick(List.of(zone), List.of(target), arena, 100, combat);
         assertThat(target.zoneSilenced).isFalse();
 
-        ArenaEntity mine = new ArenaEntity("mine", "proximityMine", 1, 100, 100, 24, 0, 0, 176, 500, true);
+        ArenaEntity mine = new ArenaEntity("mine", "proximityMine", 1, 100, 100, 24, 0, 0, 176, 500, true).withPhase("armed", false);
         ArenaEntity orbital = new ArenaEntity("orbital", "orbitalMarker", 1, 150, 100, 260, 0, 0, 0, 100, true);
         AbilityEntitySystem.tick(List.of(mine, orbital), List.of(target), arena, 100, combat);
         assertThat(combat.damage).isZero();
@@ -912,7 +949,6 @@ class AbilityEntitySystemTest {
         return new AbilityEntitySystem.Combat<>() {
             @Override public void damage(TestCombatant bot, double amount) {}
             @Override public void damageFromOwner(List<TestCombatant> bots, int ownerSlot, TestCombatant target, double amount, double sourceX, double sourceY) {}
-            @Override public int damageToEntity(ArenaEntity entity, List<TestCombatant> bots, List<ArenaEntity> entities) { return 0; }
             @Override public boolean entityHitByCurrentAttack(ArenaEntity entity, List<TestCombatant> bots, List<ArenaEntity> entities) { return false; }
         };
     }
@@ -926,7 +962,6 @@ class AbilityEntitySystemTest {
         return new AbilityEntitySystem.Combat<>() {
             @Override public void damage(TestCombatant bot, double amount) { bot.hp -= amount; }
             @Override public void damageFromOwner(List<TestCombatant> bots, int ownerSlot, TestCombatant target, double amount, double sourceX, double sourceY) { target.hp -= amount; }
-            @Override public int damageToEntity(ArenaEntity entity, List<TestCombatant> bots, List<ArenaEntity> entities) { return 0; }
             @Override public boolean entityHitByCurrentAttack(ArenaEntity entity, List<TestCombatant> bots, List<ArenaEntity> entities) { return false; }
         };
     }
@@ -939,7 +974,6 @@ class AbilityEntitySystemTest {
         private RecordingCombat(boolean entityHit) { this.entityHit = entityHit; }
         @Override public void damage(TestCombatant bot, double amount) { damage += amount; }
         @Override public void damageFromOwner(List<TestCombatant> bots, int ownerSlot, TestCombatant target, double amount, double sourceX, double sourceY) { damageCalls += 1; damage += amount; target.hp -= amount; }
-        @Override public int damageToEntity(ArenaEntity entity, List<TestCombatant> bots, List<ArenaEntity> entities) { return 0; }
         @Override public boolean entityHitByCurrentAttack(ArenaEntity entity, List<TestCombatant> bots, List<ArenaEntity> entities) { return entityHit; }
     }
 
@@ -974,10 +1008,20 @@ class AbilityEntitySystemTest {
         @Override public double entityHp() { return hp; }
         @Override public boolean ignoresHostileEffects() { return absoluteGuard; }
         @Override public void setEntityPosition(double x, double y) { this.x = x; this.y = y; }
-        @Override public void applySilence(int durationMs) { silenceMs = Math.max(silenceMs, durationMs); }
-        @Override public void applySlow(int durationMs) { slowedMs = Math.max(slowedMs, durationMs); }
-        @Override public void setZoneSilenced(boolean silenced) { zoneSilenced = silenced; }
-        @Override public void applyStun(int durationMs) { stunMs = Math.max(stunMs, durationMs); }
-        @Override public void applyInterrupt(int durationMs) { if (durationMs > 0) applyStun(durationMs); }
+        @Override public void applyStatus(StatusEffectState status, boolean clearsVelocity) {
+            switch (status.type) {
+                case "silence" -> {
+                    if ("presence".equals(status.mode)) zoneSilenced = true;
+                    else silenceMs = Math.max(silenceMs, status.remainingMs);
+                }
+                case "slow" -> slowedMs = Math.max(slowedMs, status.remainingMs);
+                case "stun" -> stunMs = Math.max(stunMs, status.remainingMs);
+                default -> { }
+            }
+        }
+        @Override public void clearZonePresence() { zoneSilenced = false; }
+        @Override public void applyInterrupt(int durationMs, Integer abilityId) {
+            if (durationMs > 0) stunMs = Math.max(stunMs, durationMs);
+        }
     }
 }

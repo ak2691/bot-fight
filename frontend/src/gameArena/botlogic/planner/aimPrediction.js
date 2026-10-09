@@ -1,7 +1,8 @@
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, AUTO_STEP_MS } from "../../modelPayloads/arenaConstants.js";
 import { ABILITY_STATS } from "../../gameconfig/Abilities.js";
-import { entityContractForAbility } from "../../ecs/contracts/AbilityContracts.js";
+import { entityContractForAbility, phaseSpeed } from "../../ecs/contracts/AbilityContracts.js";
 import { abilityIdFromBoundary } from "../../gameconfig/AbilityCompatibility.js";
+import { windupRemainingMs } from "../../gameconfig/AbilityState.js";
 import { AIM_MODES, MAX_LEAD_SECONDS } from "../code/configuration/constants.js";
 
 /** Seconds per simulation tick: displacement divided by this is a velocity per second. */
@@ -30,15 +31,15 @@ export function targetVelocityPerSecond(target) {
 export function projectileSpeedPerSecond(abilityId) {
     const contract = entityContractForAbility(abilityId);
     if (contract?.category !== "projectile") return 0;
-    const speedPerTick = Number(contract.phases?.[0]?.movement?.speed ?? 0);
+    const speedPerTick = Number(phaseSpeed(contract.phases?.[0]));
     return Number.isFinite(speedPerTick) && speedPerTick > 0 ? speedPerTick / AIM_TICK_SECONDS : 0;
 }
 
 /** Remaining wind-up for `auto`: what is left if it already started, otherwise the full wind-up. */
 export function windupRemainingSeconds(player, abilityId) {
     const windupMs = Number(ABILITY_STATS[abilityId]?.windupMs ?? 0);
-    const preparing = Number(player?.preparingAbility) === abilityId && Number(player?.preparingMs) > 0;
-    return (preparing ? Number(player.preparingMs) : windupMs) / 1000;
+    const preparingMs = windupRemainingMs(player, abilityId);
+    return (preparingMs > 0 ? preparingMs : windupMs) / 1000;
 }
 
 /** Lead time in seconds for an action block, or 0 for the default `current` aim. */

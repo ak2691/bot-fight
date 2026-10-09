@@ -589,13 +589,8 @@ export function buildTutorialArenaShapes(step = 0) {
         ? {
             ...player,
             hp: scenario.playerHp,
-            maxHp: scenario.playerMaxHp ?? player.health?.max ?? 150,
+            maxHp: scenario.playerMaxHp ?? player.maxHp ?? 150,
             startHp: scenario.playerHp,
-            health: {
-                ...(player.health ?? {}),
-                current: scenario.playerHp,
-                max: scenario.playerMaxHp ?? player.health?.max ?? 150,
-            },
         }
         : player;
     return [configuredPlayer, scenario.opponentHp ? { ...opponent, hp: scenario.opponentHp, maxHp: scenario.opponentHp } : opponent];

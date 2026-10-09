@@ -3,7 +3,7 @@ package com.example.botfight.simulation.core.state;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.botfight.simulation.bots.BotCodeService;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
+import com.example.botfight.simulation.core.orchestration.Bot;
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import java.util.HashMap;
 import org.junit.jupiter.api.Test;

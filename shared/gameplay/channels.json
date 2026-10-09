@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "channels": {
+    "ability": {
+      "label": "Weapons and abilities",
+      "blockedByStatuses": ["stun", "silence"],
+      "notReadyWhileStatuses": []
+    },
+    "dash": {
+      "label": "Dash",
+      "blockedByStatuses": ["stun", "slow"],
+      "notReadyWhileStatuses": ["slow"]
+    }
+  }
+}

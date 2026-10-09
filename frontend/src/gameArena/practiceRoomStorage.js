@@ -90,6 +90,31 @@ function teamNumberForPracticeBot(bot) {
         : PUZZLE_PLAYER_TEAM;
 }
 
+/**
+ * A bot saved as the old nested arena shape (transform, health, stats) is converted to the flat roster
+ * fields once, here. Its position is an internal arena point; flat roster fields are public.
+ */
+function flattenLegacyNestedBot(bot, coordinatesAreInternal) {
+    if (!bot || typeof bot !== "object" || !(bot.transform || bot.health)) return bot;
+    const { transform, health } = bot;
+    const flat = { ...bot };
+    delete flat.transform;
+    delete flat.health;
+    delete flat.stats;
+    const position = transform?.position;
+    const hasPosition = Number.isFinite(Number(position?.x)) && Number.isFinite(Number(position?.y));
+    const start = hasPosition
+        ? (coordinatesAreInternal ? position : internalPointToPublic(position))
+        : {};
+    return {
+        ...flat,
+        startX: flat.startX ?? start.x,
+        startY: flat.startY ?? start.y,
+        rotation: flat.rotation ?? transform?.rotation,
+        startHp: flat.startHp ?? health?.current,
+    };
+}
+
 function normalizedPracticeBot(bot, fallback) {
     const teamNumber = teamNumberForPracticeBot(bot);
     const slot = Math.max(1, Math.floor(Number(bot?.slot) || Number(fallback?.slot) || 1));
@@ -111,7 +136,8 @@ export function normalizePracticeConfig(source, { coordinatesAreInternal = false
         value.playerBot ? { ...value.playerBot, role: "PLAYER", teamNumber: PUZZLE_PLAYER_TEAM, slot: 1 } : null,
         value.opponentBot ? { ...value.opponentBot, role: "OPPONENT", teamNumber: PUZZLE_OPPONENT_TEAM, slot: 1 } : null,
     ].filter(Boolean);
-    const rawSourceBots = Array.isArray(value.bots) ? value.bots : legacyBots;
+    const rawSourceBots = (Array.isArray(value.bots) ? value.bots : legacyBots)
+        .map((bot) => flattenLegacyNestedBot(bot, coordinatesAreInternal));
     const sourceBots = coordinatesAreInternal
         ? rawSourceBots.map((bot) => {
             const point = internalPointToPublic({ x: bot?.startX, y: bot?.startY });

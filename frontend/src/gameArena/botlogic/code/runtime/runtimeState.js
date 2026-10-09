@@ -41,14 +41,8 @@ function botState(source = {}) {
         hpNetChangeLastTick: source.hpNetChangeLastTick ?? health.netChangeLastTick ?? 0,
         customVariables: { ...(source.customVariables ?? {}) },
         abilities: abilityIdsFromBoundary(source.abilities),
-        abilityCooldowns: abilityMapFromBoundary(source.abilityCooldowns),
-        abilityPendingCooldownMs: abilityMapFromBoundary(source.abilityPendingCooldownMs),
-        abilityCharges: abilityMapFromBoundary(source.abilityCharges),
-        abilityRechargeMs: abilityMapFromBoundary(source.abilityRechargeMs),
-        abilityActiveMs: abilityMapFromBoundary(source.abilityActiveMs),
+        abilityState: abilityStateFromBoundary(source.abilityState),
         abilityLastHitAgeMs: abilityMapFromBoundary(source.abilityLastHitAgeMs),
-        preparingAbility: source.preparingAbility == null ? null : abilityIdFromBoundary(source.preparingAbility),
-        preparingMs: Number(source.preparingMs) || 0,
     };
 }
 
@@ -101,4 +95,4 @@ function botOrder(first, second) {
     return firstIndex - secondIndex || String(first?.id ?? "").localeCompare(String(second?.id ?? ""));
 }
 
-import { abilityIdFromBoundary, abilityIdsFromBoundary, abilityMapFromBoundary } from "../../../gameconfig/AbilityCompatibility.js";
+import { abilityIdsFromBoundary, abilityMapFromBoundary, abilityStateFromBoundary } from "../../../gameconfig/AbilityCompatibility.js";

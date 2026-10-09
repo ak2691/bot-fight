@@ -39,6 +39,7 @@ import { matchEventOpponent, matchEventParticipants, matchEventViewer } from "..
 import { useMatchmaking } from "../../../matchmaking/matchmaking-context";
 import useMatchmakingSocket from "./useMatchmakingSocket.js";
 import { useAuth } from "../../../auth/auth-context";
+import { createBotState } from "../../../gameArena/modelPayloads/botState.js";
 
 const COUNTDOWN_UPDATE_INTERVAL_MS = 250;
 const LOADOUT_DRAFT_STORAGE_PREFIX = "match-loadout-draft:";
@@ -1208,7 +1209,7 @@ function arenaPreloadShapes(event) {
             const teamIndex = Math.max(0, teamParticipants.findIndex((candidate) => candidate.slot === participant.slot));
             const teamSize = Math.max(1, teamParticipants.length);
             const slotOne = participant.teamNumber === 1;
-            return {
+            return createBotState({
                 id: `bot-${participant.userId}`,
                 type: "bot",
                 userId: participant.userId,
@@ -1226,7 +1227,7 @@ function arenaPreloadShapes(event) {
                 combatLoadout: participant.selectedLoadout ?? "melee",
                 abilities: loadout.abilities,
                 locked: true,
-            };
+            });
         });
 }
 

@@ -12,14 +12,15 @@ import {
 import { ABILITY_STATS, abilityStats } from "./Abilities.js";
 import {
     ABILITY_CONTRACTS,
-    ATTACHED_ABILITY_CONTRACTS,
-    attachedAbilityContract,
+    abilityContract,
     ENTITY_CONTRACTS,
+    eventVerbs,
+    isEntityAbility,
+    phaseEffects,
+    triggerView,
+    triggerVerbs,
     EFFECT_TYPES,
-    effectOverrideKey,
-    resolveEffectOverride,
 } from "../ecs/contracts/AbilityContracts.js";
-import { entityContractForAbility } from "../ecs/contracts/AbilityContracts.js";
 
 test("ability identities are stable numeric keys independent of array position", () => {
     assert.equal(ABILITIES[3].id, 3);
@@ -57,7 +58,7 @@ test("numeric identity owns tuning and contracts", () => {
     assert.equal(ABILITY_STATS[34].damage, 8);
     assert.equal(ABILITY_STATS[34].range, 80);
     assert.equal(ABILITY_STATS[34].arc, 30);
-    assert.equal(ABILITY_STATS[19].cooldownMs, 0, "Dash costs stamina instead of a cooldown");
+    assert.equal(ABILITY_STATS[19].cooldownMs, 100, "Dash recovers for 100 ms after its 200 ms active stage (a 300 ms gap in all)");
     assert.equal(ABILITY_STATS[25].hitboxWidth, 60);
     assert.equal(ABILITY_STATS[30].hitboxWidth, 8);
     assert.equal(ABILITY_STATS[32].hitboxWidth, 10);
@@ -65,14 +66,13 @@ test("numeric identity owns tuning and contracts", () => {
     assert.equal(ABILITY_STATS[15].hitboxLength, 190);
     assert.equal(ABILITY_STATS[18].hitboxWidth, 80);
     assert.equal(ABILITY_STATS[18].hitboxLength, 115);
-    assert.equal(ATTACHED_ABILITY_CONTRACTS[25].phases[0].hitbox.shape, "rectangle");
-    assert.equal(ATTACHED_ABILITY_CONTRACTS[25].phases[0].hitbox.includeTargetRadius, true);
-    assert.equal(ATTACHED_ABILITY_CONTRACTS[25].phases[0].effects[0].distanceMode, "center_distance");
-    assert.equal(ATTACHED_ABILITY_CONTRACTS[25].activation.teleportOncePerActivation, true);
+    assert.equal(triggerView(25).hitbox.shape, "rectangle");
+    assert.equal(triggerView(25).hitbox.includeTargetRadius, true);
+    assert.equal(triggerView(25).effects[0].distanceMode, "center_distance");
+    assert.equal(abilityContract(25).activation.teleportOncePerActivation, true);
     assert.equal(abilityStats(3), ABILITY_STATS[3]);
-    assert.equal(attachedAbilityContract(3), ATTACHED_ABILITY_CONTRACTS[3]);
     assert.equal(ABILITY_STATS[3], abilityStats(3));
-    assert.equal(ATTACHED_ABILITY_CONTRACTS[3], attachedAbilityContract(3));
+    assert.equal(abilityContract(3), ABILITY_CONTRACTS[3]);
 });
 
 test("requested combat tuning is represented in the browser catalog", () => {
@@ -106,8 +106,8 @@ test("requested combat tuning is represented in the browser catalog", () => {
     assert.equal(ABILITY_STATS[6].activeMs, 100);
     assert.equal(ABILITY_STATS[6].hitboxWidth, 80);
     assert.equal(ABILITY_STATS[6].range, 184);
-    assert.equal(ATTACHED_ABILITY_CONTRACTS[6].phases[0].hitbox.shape, "rectangle");
-    assert.equal(ATTACHED_ABILITY_CONTRACTS[6].phases[0].hitbox.includeTargetRadius, true);
+    assert.equal(triggerView(6).hitbox.shape, "rectangle");
+    assert.equal(triggerView(6).hitbox.includeTargetRadius, true);
     assert.equal(ABILITY_STATS[17].damage, 5);
     assert.equal(ABILITY_STATS[18].cooldownMs, 7000);
     assert.equal(ABILITY_STATS[18].windupMs, 300);
@@ -126,7 +126,7 @@ test("requested combat tuning is represented in the browser catalog", () => {
     assert.equal(ABILITY_STATS[25].damage, 15);
     assert.equal(ABILITY_STATS[26].damage, 15);
     assert.equal(ABILITY_STATS[26].statuses.slow.durationMs, 2000);
-    assert.equal(ATTACHED_ABILITY_CONTRACTS[26].phases[0].visual.visualSize, 320);
+    assert.equal(triggerView(26).visual.visualSize, 320);
     assert.equal(ABILITY_STATS[30].cooldownMs, 8000);
     assert.equal(ABILITY_STATS[30].windupMs, 200);
     assert.equal(ABILITY_STATS[30].damage, 20);
@@ -139,27 +139,15 @@ test("requested combat tuning is represented in the browser catalog", () => {
 
 test("Tether Bolt returns on outbound collision and pulls once during the return phase", () => {
     const [outbound, returning] = ENTITY_CONTRACTS[28].phases;
-    assert.deepEqual(outbound.events.collision.actions, ["applyEffects", "transition"]);
-    assert.equal(outbound.events.collision.transition.to, "return");
-    assert.equal(outbound.events.collision.recheckCollisionOnTransition, false);
-    assert.equal(outbound.events.lifetimeEnd.transition.to, "return");
-    assert.equal(outbound.events.lifetimeEnd.recheckCollisionOnTransition, false);
-    assert.equal(returning.effects.find((effect) => effect.type === EFFECT_TYPES.PULL).amount, 250);
-    assert.deepEqual(returning.events.collision.targetPolicy, { mode: "once" });
-});
-
-test("status effect overrides address multiple status instances independently", () => {
-    const slow = { type: EFFECT_TYPES.STATUS, subtype: "slow", durationMs: 1000 };
-    const burn = { type: EFFECT_TYPES.STATUS, subtype: "burn", durationMs: 5000 };
-    const overrides = {
-        "status:slow": { durationMs: 2500 },
-        "status:burn": { durationMs: 7500 },
-    };
-
-    assert.equal(effectOverrideKey(slow), "status:slow");
-    assert.equal(effectOverrideKey(burn), "status:burn");
-    assert.equal(resolveEffectOverride(slow, overrides).durationMs, 2500);
-    assert.equal(resolveEffectOverride(burn, overrides).durationMs, 7500);
+    assert.deepEqual(eventVerbs(outbound.on.collision).map((verb) => verb.do), ["applyEffects", "transition"]);
+    assert.equal(eventVerbs(outbound.on.collision)[1].to, "return");
+    assert.equal(outbound.on.collision.recheckCollisionOnTransition, false);
+    assert.equal(outbound.on.collision.nearestOnly, true);
+    assert.equal(eventVerbs(outbound.on.lifetimeEnd)[0].to, "return");
+    assert.equal(outbound.on.lifetimeEnd.recheckCollisionOnTransition, false);
+    assert.equal(phaseEffects(returning).find((effect) => effect.type === EFFECT_TYPES.PULL).amount, 250);
+    assert.deepEqual(returning.on.collision.targetPolicy, { mode: "once" });
+    assert.equal(eventVerbs(returning.on.collision)[0].pullDirection, "owner");
 });
 
 test("legacy names convert only through explicit allowlisted compatibility functions", () => {
@@ -183,21 +171,23 @@ test("registered IDs are unique positive integers with matching stats and contra
     for (const id of ids) {
         assert.ok(Number.isSafeInteger(id) && id > 0);
         assert.ok(ABILITY_STATS[id]);
-        assert.ok(ATTACHED_ABILITY_CONTRACTS[id] || entityContractForAbility(id), id);
+        assert.ok(abilityContract(id), id);
     }
 });
 
 test("one normalized contract registry covers direct and spawned abilities", () => {
     assert.equal(Object.keys(ABILITY_CONTRACTS).length, 36);
-    assert.equal(Object.keys(ATTACHED_ABILITY_CONTRACTS).length, 22);
     assert.equal(Object.keys(ENTITY_CONTRACTS).length, 14);
+    assert.equal(Object.values(ABILITY_CONTRACTS).filter((contract) => isEntityAbility(contract.abilityId)).length, 14);
     for (const contract of Object.values(ABILITY_CONTRACTS)) {
-        assert.ok(contract.category);
-        assert.ok(contract.spawn);
         assert.ok(contract.activation);
-        assert.ok(contract.phases.length > 0);
+        assert.ok(contract.onTrigger.length > 0);
+        for (const entity of Object.values(contract.entities)) assert.ok(entity.phases.length > 0);
     }
-    assert.deepEqual(ENTITY_CONTRACTS[15].phases[0].events.collision.targetKinds, ["BOT", "SUMMON"]);
+    for (const [id, entity] of Object.entries(ENTITY_CONTRACTS)) {
+        assert.ok(triggerVerbs(Number(id)).some((verb) => verb.do === "spawn" && verb.entity === entity.entityType));
+    }
+    assert.deepEqual(ENTITY_CONTRACTS[15].phases[0].on.collision.targets, ["BOT", "SUMMON"]);
 });
 
 test("missing IDs stay missing instead of shifting later abilities", () => {

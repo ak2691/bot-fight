@@ -8,14 +8,48 @@ import java.util.Map;
 public final class AbilityEntityFactory {
     private AbilityEntityFactory() {}
 
+    /** Where one entity of a spawn pattern goes: a heading offset in degrees and a sideways offset in units. */
+    public record Placement(double angle, double lateral) {
+        public static final Placement AHEAD = new Placement(0, 0);
+    }
+
     /**
-     * Generic spawn route used by both configured abilities and short-lived
-     * projectiles. Target coordinates are only read for target-spawned
-     * contracts; non-finite values use the contract default.
+     * The placements a spawn pattern describes, in index order. No pattern is one entity straight ahead; a fan
+     * spreads {@code spreadDeg} across the heading, a ring is evenly spaced, a line is spaced sideways.
+     */
+    public static List<Placement> placements(AbilityContracts.SpawnPattern pattern) {
+        if (pattern == null) return List.of(Placement.AHEAD);
+        int count = Math.max(1, pattern.count());
+        List<Placement> placements = new java.util.ArrayList<>();
+        for (int index = 0; index < count; index += 1) {
+            placements.add(switch (pattern.type()) {
+                case FAN -> new Placement(count == 1 ? 0
+                        : -pattern.spreadDeg() / 2 + index * pattern.spreadDeg() / (count - 1), 0);
+                case RING -> new Placement(360.0 * index / count, 0);
+                case LINE -> new Placement(0, (index - (count - 1) / 2.0) * pattern.spacing());
+            });
+        }
+        return placements;
+    }
+
+    /** The single entity of the ability's spawn verb, placed straight ahead. */
+    public static ArenaEntity create(
+            String id, int abilityId, int ownerSlot, double ownerX, double ownerY, double ownerSize,
+            double ownerRotation, double damageMultiplier, double targetX, double targetY,
+            double arenaWidth, double arenaHeight) {
+        AbilityContracts.EntityContract contract = AbilityContracts.entityContractForAbility(abilityId);
+        if (contract == null) throw new IllegalArgumentException("No entity contract for ability: " + abilityId);
+        return create(id, contract, ownerSlot, ownerX, ownerY, ownerSize, ownerRotation, damageMultiplier,
+                targetX, targetY, arenaWidth, arenaHeight, Placement.AHEAD);
+    }
+
+    /**
+     * Generic spawn route used by both configured abilities and entities that spawn entities. Target coordinates
+     * are only read for target-spawned contracts; non-finite values use the contract default.
      */
     public static ArenaEntity create(
             String id,
-            int abilityId,
+            AbilityContracts.EntityContract contract,
             int ownerSlot,
             double ownerX,
             double ownerY,
@@ -25,18 +59,17 @@ public final class AbilityEntityFactory {
             double targetX,
             double targetY,
             double arenaWidth,
-            double arenaHeight) {
-        AbilityContracts.AbilityContract contract = AbilityContracts.entityContractForAbility(abilityId);
-        if (contract == null) throw new IllegalArgumentException("No entity contract for ability: " + abilityId);
-
+            double arenaHeight,
+            Placement placement) {
+        int abilityId = contract.abilityId();
         AbilityContracts.Spawn spawn = contract.spawn();
         AbilityContracts.AbilityPhase firstPhase = contract.phases().isEmpty()
                 ? null : contract.phases().getFirst();
         int size = phaseSize(firstPhase);
         double speed = firstPhase == null || firstPhase.movement() == null
                 ? 0 : firstPhase.movement().speed();
-        double rotation = spawn.rotationSpace() == AbilityContracts.RotationSpace.WORLD
-                ? spawn.rotation() : ownerRotation + spawn.rotation();
+        double rotation = (spawn.rotationSpace() == AbilityContracts.RotationSpace.WORLD
+                ? spawn.rotation() : ownerRotation + spawn.rotation()) + placement.angle();
         double x = ownerX;
         double y = ownerY;
         double directionX = 0;
@@ -56,12 +89,14 @@ public final class AbilityEntityFactory {
             double rightRadians = compassRadians(ownerRotation + 90);
             double rightX = Math.cos(rightRadians);
             double rightY = Math.sin(rightRadians);
+            double localX = spawn.offsetX() + placement.lateral();
             double localY = spawn.offsetY();
-            x += rightX * spawn.offsetX() + forwardX * localY;
-            y += rightY * spawn.offsetX() + forwardY * localY;
+            x += rightX * localX + forwardX * localY;
+            y += rightY * localX + forwardY * localY;
             if (speed > 0) {
-                directionX = forwardX;
-                directionY = forwardY;
+                double headingRadians = compassRadians(ownerRotation + placement.angle());
+                directionX = Math.cos(headingRadians);
+                directionY = Math.sin(headingRadians);
             }
         }
 
@@ -80,7 +115,7 @@ public final class AbilityEntityFactory {
         String phaseId = firstPhase == null ? null : firstPhase.id();
         // Snare Bomb starts in an event-controlled armed phase. Other
         // entities are allowed to advance from their first phase by elapsed
-        // time until a transition action locks them to a later phase.
+        // time until a transition verb locks them to a later phase.
         boolean phaseLocked = abilityId == 29;
 
         return new ArenaEntity(
@@ -111,7 +146,13 @@ public final class AbilityEntityFactory {
                 phaseLocked,
                 List.of(),
                 0,
-                null);
+                null,
+                Map.of(),
+                null,
+                contract.entityType(),
+                contract.bindToCast(),
+                placement.angle(),
+                placement.lateral());
     }
 
     private static int phaseSize(AbilityContracts.AbilityPhase phase) {

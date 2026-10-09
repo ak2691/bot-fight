@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { buildDeterministicLogicAction } from "./ArenaActionPlanner.js";
+import { buildDeterministicLogicAction as buildDeterministicLogicActionNormalized } from "./ArenaActionPlanner.js";
 import { leadAimTarget, leadSecondsForBlock, projectileSpeedPerSecond, targetVelocityPerSecond } from "./aimPrediction.js";
 import { normalizeAbilityStrategyConfiguration, validateAbilityStrategyConfiguration } from "../code/BotCode.js";
 import { buildStatePayload } from "../../modelPayloads/strategyStatePayload.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../code/BotCode.js";
+
+// The engine takes normalized brains; tests pass raw ones, so normalize here like the edge does.
+const buildDeterministicLogicAction = (configuration, ...rest) => buildDeterministicLogicActionNormalized(normalizeBrainForTick(configuration), ...rest);
 
 // Mirrors server AimPredictionParityTest; keep the cases in step.
 const player = (extra = {}) => ({ id: "main", x: 200, y: 400, rotation: 90, ...extra });
@@ -68,9 +72,9 @@ test("auto lead is wind-up plus projectile travel time", () => {
     // Sniper is hitscan: only its 900 ms wind-up counts, full when not started and the remainder once it has.
     assert.equal(projectileSpeedPerSecond(3), 0);
     assert.ok(Math.abs(leadSecondsForBlock({ aim: "auto", leadAbilityId: 3 }, player(), target(600, 400)) - 0.9) < 1e-9);
-    assert.ok(Math.abs(leadSecondsForBlock({ aim: "auto", leadAbilityId: 3 }, player({ preparingAbility: 3, preparingMs: 300 }), target(600, 400)) - 0.3) < 1e-9);
+    assert.ok(Math.abs(leadSecondsForBlock({ aim: "auto", leadAbilityId: 3 }, player({ abilityState: { 3: { stage: "windup", remainingMs: 300 } } }), target(600, 400)) - 0.3) < 1e-9);
     // A different ability in wind-up does not shorten the chosen one.
-    assert.ok(Math.abs(leadSecondsForBlock({ aim: "auto", leadAbilityId: 3 }, player({ preparingAbility: 9, preparingMs: 300 }), target(600, 400)) - 0.9) < 1e-9);
+    assert.ok(Math.abs(leadSecondsForBlock({ aim: "auto", leadAbilityId: 3 }, player({ abilityState: { 9: { stage: "windup", remainingMs: 300 } } }), target(600, 400)) - 0.9) < 1e-9);
     // Melee has no wind-up and no travel time.
     assert.equal(leadSecondsForBlock({ aim: "auto", leadAbilityId: 1 }, player(), target(600, 400)), 0);
     const predicted = leadAimTarget(target(600, 400, 580, 400), { aim: "auto", leadAbilityId: 3 }, player());

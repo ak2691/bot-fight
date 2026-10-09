@@ -5,13 +5,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.example.botfight.simulation.bots.BotCodeService;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Action;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Arena;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
+import com.example.botfight.simulation.core.orchestration.Bot;
 import com.example.botfight.simulation.core.state.BotStateService;
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import com.example.botfight.simulation.gameconfig.MovementConfig;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import com.example.botfight.simulation.core.state.LegacyAbility;
 
 /** Authoritative mirror of frontend MovementStamina.test.js; keep the cases and numbers in step. */
 class MovementStaminaParityTest {
@@ -57,11 +58,14 @@ class MovementStaminaParityTest {
         assertThat(MovementConfig.TICK_MS).isEqualTo(100);
         assertThat(new int[] {
                 MovementConfig.STAMINA_MAX, MovementConfig.REGEN_PER_TICK, MovementConfig.REGEN_DELAY_MS,
-                MovementConfig.HIT_STAMINA_REFUND, MovementConfig.SPRINT_DRAIN_PER_TICK, MovementConfig.DASH_COST,
-                MovementConfig.DASH_GAP_MS, MovementConfig.WINDUP_CANCEL_COST})
-                .containsExactly(100, 2, 500, 10, 3, 30, 300, 25);
+                MovementConfig.HIT_STAMINA_REFUND, MovementConfig.SPRINT_DRAIN_PER_TICK,
+                MovementConfig.WINDUP_CANCEL_COST})
+                .containsExactly(100, 2, 500, 10, 3, 25);
+        // Dash's cost and gap are ability data now: 30 stamina, then 200 ms active and a 100 ms cooldown.
+        assertThat(com.example.botfight.simulation.gameconfig.AbilityChannels.staminaCost(19)).isEqualTo(30);
+        assertThat(com.example.botfight.simulation.gameconfig.Abilities.definition(19).cooldownMs()).isEqualTo(100);
         assertThat(MovementConfig.SPRINT_MULTIPLIER).isEqualTo(1.5);
-        for (int ms : new int[] {MovementConfig.REGEN_DELAY_MS, MovementConfig.DASH_GAP_MS}) {
+        for (int ms : new int[] {MovementConfig.REGEN_DELAY_MS}) {
             assertThat(ms % MovementConfig.TICK_MS).isZero();
         }
     }
@@ -117,12 +121,12 @@ class MovementStaminaParityTest {
     }
 
     @Test
-    void dashGapAndStaminaCheckShowInReadyAndCooldownLeft() {
+    void dashCooldownAndStaminaCheckShowInReadyAndCooldownLeft() {
         Bot fresh = bot();
         assertThat(executor.selectedAbilityReady(fresh, 19)).isTrue();
         assertThat(executor.selectedAbilityCooldownMs(fresh, 19)).isZero();
         Bot gapped = bot();
-        gapped.dashGapMs = 200;
+        LegacyAbility.setCooldown(gapped, 19, 200);
         assertThat(executor.selectedAbilityReady(gapped, 19)).isFalse();
         assertThat(executor.selectedAbilityCooldownMs(gapped, 19)).isEqualTo(200);
         Bot shortOnStamina = bot();
@@ -198,7 +202,7 @@ class MovementStaminaParityTest {
 
         Bot winding = bot();
         step(winding, ability(3, 1, true));
-        assertThat(winding.preparingAbility).isEqualTo(3);
+        assertThat(LegacyAbility.preparingAbility(winding)).isEqualTo(3);
         assertThat(winding.x).isEqualTo(200 + fast);
         double windingX = winding.x;
         step(winding, walk(true));
@@ -221,19 +225,19 @@ class MovementStaminaParityTest {
     void cancelWindupSpendsTwentyFiveClearsTheWindupAndCanRestartNextTick() {
         Bot bot = bot();
         step(bot, ability(3, 0, false));
-        assertThat(bot.preparingAbility).isEqualTo(3);
-        assertThat(bot.preparingMs).isEqualTo(800);
+        assertThat(LegacyAbility.preparingAbility(bot)).isEqualTo(3);
+        assertThat(LegacyAbility.preparingMs(bot)).isEqualTo(800);
         step(bot, cancel());
-        assertThat(bot.preparingAbility).isNull();
-        assertThat(bot.preparingMs).isZero();
+        assertThat(LegacyAbility.preparingAbility(bot)).isNull();
+        assertThat(LegacyAbility.preparingMs(bot)).isZero();
         assertThat(bot.triggeredAbility).isNull();
         assertThat(bot.stamina).isEqualTo(75);
         assertThat(bot.staminaRegenDelayMs).isEqualTo(500);
-        assertThat(bot.abilityCooldowns.getOrDefault(3, 0)).isZero();
+        assertThat(LegacyAbility.cooldown(bot, 3)).isZero();
         assertThat(executor.selectedAbilityReady(bot, 3)).isTrue();
         step(bot, ability(3, 0, false));
-        assertThat(bot.preparingAbility).isEqualTo(3);
-        assertThat(bot.preparingMs).isEqualTo(800);
+        assertThat(LegacyAbility.preparingAbility(bot)).isEqualTo(3);
+        assertThat(LegacyAbility.preparingMs(bot)).isEqualTo(800);
         assertThat(bot.stamina).isEqualTo(75);
     }
 
@@ -255,8 +259,8 @@ class MovementStaminaParityTest {
         poor.staminaRegenDelayMs = 800;
         step(poor, ability(3, 0, false));
         step(poor, cancel());
-        assertThat(poor.preparingAbility).isEqualTo(3);
-        assertThat(poor.preparingMs).isEqualTo(700);
+        assertThat(LegacyAbility.preparingAbility(poor)).isEqualTo(3);
+        assertThat(LegacyAbility.preparingMs(poor)).isEqualTo(700);
         assertThat(poor.stamina).isEqualTo(24);
     }
 
@@ -265,8 +269,8 @@ class MovementStaminaParityTest {
         Bot bot = bot();
         step(bot, ability(3, 0, false));
         step(bot, ability(1, 0, false));
-        assertThat(bot.preparingAbility).isEqualTo(3);
-        assertThat(bot.preparingMs).isEqualTo(700);
+        assertThat(LegacyAbility.preparingAbility(bot)).isEqualTo(3);
+        assertThat(LegacyAbility.preparingMs(bot)).isEqualTo(700);
     }
 
     @Test
@@ -275,7 +279,6 @@ class MovementStaminaParityTest {
         run(bot, walk(false), 5);
         assertThat(bot.stamina).isEqualTo(100);
         assertThat(bot.staminaRegenDelayMs).isZero();
-        assertThat(bot.dashGapMs).isZero();
         assertThat(bot.sprinting).isFalse();
     }
 

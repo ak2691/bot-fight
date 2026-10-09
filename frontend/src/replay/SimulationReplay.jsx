@@ -7,14 +7,16 @@ import { AUTO_STEP_MS, BASE_BOT_HP, DEFENSE_WALL_TYPE, ARENA_HEIGHT_UNITS, ARENA
 import { closingZoneWarningShape } from "../gameArena/ecs/entities/ClosingZoneSystem.js";
 import { finalTeamHp, matchEndReason, roundLabel, teamHpFromBots } from "../gameArena/coding/matchHud.js";
 import { formatHp } from "../gameArena/gameconfig/visualState.js";
-import { attachedAbilityContract } from "../gameArena/ecs/contracts/AbilityContracts.js";
+import { triggerView } from "../gameArena/ecs/contracts/AbilityContracts.js";
 import { normalizeReplayObstacleShape } from "../gameArena/pixi/pixiVisualState.js";
 import { compassDegreesToRadians } from "../gameArena/botlogic/planner/arenaAngles.js";
 import MatchToolIcon from "../gameArena/coding/controls/MatchToolIcon.jsx";
 import BotLogo from "../components/BotLogo.jsx";
+import { activeRemainingMs, withoutLegacyAbilityFields } from "../gameArena/gameconfig/AbilityState.js";
 import { matchModeLabel } from "../matchmaking/matchModes.js";
 import { eloChangeTone, eloChangeValue } from "../pages/profile/profileMatchFormat.js";
 import { centeredTeamPosition, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, replayAbilitiesFor, replayAbilityTarget, replayAbilityVisual, replayBotAbilityState, replayDamageEvents, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayFrameIndexForElapsedMs, replayRayOrigin, replayRatingChanges, replayRemainingSeconds, replayResultVisibility, replayShapeKey } from "./replayPresentation.js";
+import { createBotState } from "../gameArena/modelPayloads/botState.js";
 
 const EMPTY_LIST = Object.freeze([]);
 const NOOP = () => { };
@@ -520,7 +522,7 @@ function replayArenaShapes(bots, entities, recentFrames = [], entranceProgress =
     return [
         ...botShapes.map((bot) => ({
             ...bot,
-            gunRayLength: Number(bot.abilityActiveMs?.[3] ?? 0) > 0 ? replayGunRayLength(bot, entityShapes) : undefined,
+            gunRayLength: activeRemainingMs(bot, 3) > 0 ? replayGunRayLength(bot, entityShapes) : undefined,
         })),
         ...entityShapes,
     ];
@@ -535,7 +537,7 @@ function botReplayShape(bot, damageEvents, entranceProgress, frames, frameIndex 
             ? bot.abilities
             : decodeBotLoadout(loadoutId).abilities,
     );
-    const abilityState = replayBotAbilityState(bot);
+    const { abilityState } = replayBotAbilityState(bot);
     const abilityVisual = replayPhase === "playback"
         ? replayAbilityVisual(bot, frames, frameIndex)
         : null;
@@ -547,8 +549,8 @@ function botReplayShape(bot, damageEvents, entranceProgress, frames, frameIndex 
         velocityX: Number(bot.x ?? 0) - Number(previousBot?.x ?? bot.x ?? 0),
         velocityY: Number(bot.y ?? 0) - Number(previousBot?.y ?? bot.y ?? 0),
     };
-    return {
-        ...bot,
+    return createBotState({
+        ...withoutLegacyAbilityFields(bot),
         x: replayEntranceX(bot, entranceProgress, ARENA_WIDTH_UNITS),
         id: bot.userId != null ? `bot-${bot.userId}` : `bot-slot-${bot.slot}`,
         type: "bot",
@@ -556,12 +558,9 @@ function botReplayShape(bot, damageEvents, entranceProgress, frames, frameIndex 
         combatLoadout: loadoutId,
         abilities,
         maxHp: Number(bot.maxHp ?? BASE_BOT_HP),
-        abilityActiveMs: abilityState.abilityActiveMs,
+        abilityState,
         abilityVisual,
         triggeredAbility: bot.triggeredAbility ?? null,
-        abilityCooldowns: { ...(bot.abilityCooldowns ?? {}) },
-        abilityCharges: { ...(bot.abilityCharges ?? {}) },
-        abilityRechargeMs: { ...(bot.abilityRechargeMs ?? {}) },
         locked: true,
         interpolationMs,
         username: bot.username,
@@ -576,7 +575,7 @@ function botReplayShape(bot, damageEvents, entranceProgress, frames, frameIndex 
         ...replayVelocity,
         ...abilityTarget,
         ...visualOrigin,
-    };
+    });
 }
 
 function forfeitWinnerBot(winner, teamIndex, teamSize, viewerUserId) {
@@ -622,8 +621,8 @@ function replayGunRayLength(bot, entities) {
             const offsetY = ay - originY;
             const distance = (offsetX * segmentY - offsetY * segmentX) / denominator;
             const segmentT = (offsetX * directionY - offsetY * directionX) / denominator;
-            const gunRange = Number(attachedAbilityContract(3)?.phases?.[0]?.hitbox?.range ?? 0);
+            const gunRange = Number(triggerView(3)?.hitbox?.range ?? 0);
             return distance >= 0 && distance <= gunRange && segmentT >= 0 && segmentT <= 1
                 ? Math.min(nearest, distance) : nearest;
-        }, Number(attachedAbilityContract(3)?.phases?.[0]?.hitbox?.range ?? 0));
+        }, Number(triggerView(3)?.hitbox?.range ?? 0));
 }

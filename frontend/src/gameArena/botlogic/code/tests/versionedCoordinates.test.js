@@ -6,10 +6,15 @@ import {
     CUSTOM_VARIABLE_OPERATIONS,
     STATE_VARIABLES,
     normalizeConditions,
-    selectAbilityStrategyActionPlan,
+    selectAbilityStrategyActionPlan as selectAbilityStrategyActionPlanNormalized,
 } from "../BotCode.js";
-import { buildDeterministicLogicAction } from "../../planner/ArenaActionPlanner.js";
+import { buildDeterministicLogicAction as buildDeterministicLogicActionNormalized } from "../../planner/ArenaActionPlanner.js";
 import { coordinateLimitsFor } from "../configuration/constants.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../BotCode.js";
+
+// The engine takes normalized brains; tests pass raw ones, so normalize here like the edge does.
+const selectAbilityStrategyActionPlan = (configuration, ...rest) => selectAbilityStrategyActionPlanNormalized(normalizeBrainForTick(configuration), ...rest);
+const buildDeterministicLogicAction = (configuration, ...rest) => buildDeterministicLogicActionNormalized(normalizeBrainForTick(configuration), ...rest);
 
 const V1 = "bot-logic-tree-v1";
 const V2 = "bot-logic-tree-v2";
@@ -24,7 +29,7 @@ test("position variables expose the full signed public coordinate range", () => 
 
 function battlePayload(player = { x: 600, y: 600, rotation: 0 }) {
     return {
-        playerModel: { ...player, hp: 100, abilities: [], abilityCooldowns: {}, customVariables: {} },
+        playerModel: { ...player, hp: 100, abilities: [], customVariables: {}, abilityState: {} },
         objects: [{ id: "opponent-model", type: "opponentModel", x: 600, y: 150, rotation: 180, hp: 100 }],
     };
 }

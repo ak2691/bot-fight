@@ -1,8 +1,8 @@
-import { attachedAbilityContract } from "../../../ecs/contracts/AbilityContracts.js";
-import { entityContractForAbility } from "../../../ecs/contracts/AbilityContracts.js";
+import { abilityContract, entityContractForAbility, findVerb, triggerVerbs, VERBS } from "../../../ecs/contracts/AbilityContracts.js";
 import { ABILITY_TAGS, ALL_ABILITY_DEFINITIONS, entitySelectableDefinitions } from "../../../loadout/BotLoadout.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../../../modelPayloads/arenaConstants.js";
-import { DASH_ABILITY_ID, MOVEMENT_CONFIG } from "../../../gameconfig/MovementConfig.js";
+import { MOVEMENT_CONFIG } from "../../../gameconfig/MovementConfig.js";
+import { DASH_CHANNEL, abilityChannel } from "../../../gameconfig/AbilityChannels.js";
 import { BOT_SELECTABLE_IDENTITIES, SELECTABLE_DEPENDENCIES, SELECTABLE_IDENTITIES, selectableHasIdentity } from "../../../modelPayloads/selectableIdentities.js";
 import { CUSTOM_NUMBER_MAX } from "../configuration/constants.js";
 
@@ -478,15 +478,15 @@ export function defaultSelectablePairForVariable(variable, selectableTypes = SEL
 }
 
 function abilityActionDefinition(ability, actionId) {
-    const contract = attachedAbilityContract(ability.id);
+    const contract = abilityContract(ability.id);
     const entity = entityContractForAbility(ability.id);
-    const movementConfig = contract?.phases?.some((phase) => phase.movement?.distance != null) ?? false;
+    const movementConfig = findVerb(triggerVerbs(ability.id), VERBS.MOVE) != null;
     const locationTarget = entity?.targeting?.position === "target";
     return {
         id: actionId,
         abilityId: ability.id,
         label: ability.actionLabel ?? `Ability: ${ability.label}`,
-        head: ability.id === DASH_ABILITY_ID ? ACTION_HEADS.DASH : ACTION_HEADS.ABILITY,
+        head: abilityChannel(ability.id) === DASH_CHANNEL ? ACTION_HEADS.DASH : ACTION_HEADS.ABILITY,
         targetMode: contract?.activation?.targetMode ?? (locationTarget ? "target" : null),
         coordinateTarget: movementConfig || locationTarget,
         locationTarget,

@@ -13,67 +13,31 @@ import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 public final class Abilities {
     private Abilities() {}
 
-    public enum ResourceModel { NONE, REGENERATE, RELOAD_WHEN_EMPTY, FIXED, HP }
+    public enum ResourceModel { NONE, RELOAD_WHEN_EMPTY }
     public enum FalloffMode { CONTINUOUS }
 
-    // Only ability-level timing and resource values are authored here. Damage,
+    // Only ability-level timing and resource values are authored here (shared/gameplay/abilities.json). Damage,
     // geometry, movement, effects, and visuals are owned by phase contracts.
-    private static final Map<Integer, TimingDefinition> TIMING_CATALOG = Map.ofEntries(
-            Map.entry(1, timing(500, 0, 300, 0)),
-            Map.entry(3, timing(9_000, 900, 200, 0)),
-            Map.entry(4, timing(12_000, 0, 1, 0)),
-            Map.entry(5, timing(5_500, 0, 500, 1_400)),
-            Map.entry(6, timing(9_600, 200, 100, 1_200)),
-            Map.entry(7, timing(4_600, 300, 400, 0)),
-            Map.entry(8, timing(10_000, 0, 500, 0)),
-            Map.entry(9, timing(6_700, 1_000, 300, 0)),
-            Map.entry(10, timing(11_700, 800, 300, 0)),
-            Map.entry(11, timing(10_000, 0, 300, 20_800)),
-            Map.entry(12, timing(400, 0, 300, 0, 10, 3_000, ResourceModel.RELOAD_WHEN_EMPTY)),
-            Map.entry(13, timing(10_700, 900, 300, 0)),
-            Map.entry(14, timing(11_000, 0, 1_000, 7_000)),
-            Map.entry(15, timing(10_000, 1_000, 2_000, 1_200)),
-            Map.entry(16, timing(9_000, 500, 0, 4_000)),
-            Map.entry(17, timing(8_000, 0, 300, 6_000)),
-            Map.entry(18, timing(7_000, 300, 500, 500)),
-            // Dash has no fixed cooldown: it costs stamina and waits out a short gap (MovementConfig).
-            Map.entry(19, timing(0, 0, 200, 200)),
-            Map.entry(20, timing(9_800, 200, 200, 0)),
-            Map.entry(21, timing(18_000, 0, 300, 3_100)),
-            Map.entry(22, timing(18_000, 500, 0, 1_500)),
-            Map.entry(23, timing(15_500, 500, 0, 1_500)),
-            Map.entry(24, timing(13_000, 1_000, 300, 5_000)),
-            Map.entry(25, timing(1_500, 0, 300, 0)),
-            Map.entry(26, timing(8_700, 0, 300, 0)),
-            Map.entry(27, timing(18_000, 0, 300, 1_300)),
-            Map.entry(28, timing(7_700, 300, 300, 600)),
-            Map.entry(29, timing(10_000, 0, 300, 16_000)),
-            Map.entry(30, timing(8_000, 200, 300, 0)),
-            Map.entry(31, timing(9_000, 0, 300, 6_000)),
-            Map.entry(32, timing(10_000, 300, 300, 0)),
-            Map.entry(33, timing(12_000, 500, 0, 4_000)),
-            Map.entry(34, timing(500, 0, 200, 0)),
-            Map.entry(35, timing(700, 100, 300, 0)),
-            Map.entry(36, timing(700, 500, 300, 0)),
-            Map.entry(37, timing(700, 300, 300, 0))
-    );
+    private static final Map<Integer, TimingDefinition> TIMING_CATALOG = timingCatalog();
+
+    private static Map<Integer, TimingDefinition> timingCatalog() {
+        Map<Integer, TimingDefinition> catalog = new LinkedHashMap<>();
+        for (GameplayData.AbilityData ability : GameplayData.get().abilities().abilities()) {
+            GameplayData.TimingData timing = ability.timing();
+            catalog.put(ability.id(), new TimingDefinition(
+                    orZero(timing.cooldownMs()), orZero(timing.windupMs()), orZero(timing.activeMs()),
+                    orZero(timing.durationMs()), orZero(timing.maxCharges()), orZero(timing.reloadMs()), 0,
+                    "reload".equals(timing.resourceModel()) ? ResourceModel.RELOAD_WHEN_EMPTY : ResourceModel.NONE));
+        }
+        return Collections.unmodifiableMap(catalog);
+    }
+
+    private static int orZero(Integer value) {
+        return value == null ? 0 : value;
+    }
 
     /** Compatibility view assembled from timing metadata and phase contracts. */
     public static final Map<Integer, AbilityDefinition> CATALOG = buildCatalog();
-
-    private static TimingDefinition timing(int cooldownMs, int windupMs,
-                                           int activeMs, int durationMs) {
-        return timing(cooldownMs, windupMs, activeMs, durationMs,
-                0, 0, ResourceModel.NONE);
-    }
-
-    private static TimingDefinition timing(int cooldownMs, int windupMs,
-                                           int activeMs, int durationMs,
-                                           int charges, int rechargeMs,
-                                           ResourceModel resourceModel) {
-        return new TimingDefinition(cooldownMs, windupMs, activeMs, durationMs,
-                charges, rechargeMs, 0, resourceModel);
-    }
 
     private static Map<Integer, AbilityDefinition> buildCatalog() {
         Map<Integer, AbilityDefinition> catalog = new LinkedHashMap<>();
@@ -90,19 +54,28 @@ public final class Abilities {
     }
 
     private static PhaseProjection phaseProjection(int id, TimingDefinition timing) {
-        AbilityContracts.AbilityContract direct = AbilityContracts.attachedAll().get(id);
-        AbilityContracts.AbilityContract entity = AbilityContracts.entityContractForAbility(id);
+        AbilityContracts.AbilityContract contract = AbilityContracts.forAbility(id);
+        AbilityContracts.EntityContract entity = AbilityContracts.entityContractForAbility(id);
+        AbilityContracts.MoveVerb moveVerb = contract == null ? null : contract.onTrigger().stream()
+                .filter(AbilityContracts.MoveVerb.class::isInstance)
+                .map(AbilityContracts.MoveVerb.class::cast).findFirst().orElse(null);
+        // The read model the stats are projected from: an entity's phases, or for any other ability one phase
+        // built from its trigger verbs. A summon's shot is a phase of its own.
         List<AbilityContracts.AbilityPhase> phases = entity != null && !entity.phases().isEmpty()
                 ? entity.phases()
-                : direct == null ? List.of() : direct.phases();
+                : contract == null ? List.of() : List.of(triggerPhase(contract, moveVerb));
         List<AbilityContracts.AbilityPhase> embeddedPhases = entity == null ? List.of()
-                : entity.abilities().stream()
-                        .flatMap(ability -> ability.phases().stream())
+                : entity.phases().stream()
+                        .map(AbilityContracts.AbilityPhase::scheduledHit)
+                        .filter(java.util.Objects::nonNull)
+                        .map(Abilities::shotPhase)
                         .toList();
         List<AbilityContracts.AbilityPhase> behaviorPhases = Stream.concat(
                 phases.stream(), embeddedPhases.stream()).toList();
-        List<AbilityContracts.Effect> effects = behaviorPhases.stream()
-                .flatMap(phase -> phase.effects().stream())
+        // Trigger-time effects (Rewind's restore) join the effects of the entity's phases.
+        List<AbilityContracts.Effect> effects = Stream.concat(
+                        contract == null ? Stream.<AbilityContracts.Effect>empty() : contract.triggerEffects().stream(),
+                        behaviorPhases.stream().flatMap(phase -> phase.effects().stream()))
                 .distinct()
                 .toList();
         AbilityContracts.AbilityPhase behaviorPhase = behaviorPhases.stream()
@@ -148,10 +121,10 @@ public final class Abilities {
         if (hitbox != null && hitbox.radius() != null) stats.put("radius", hitbox.radius());
         if (hitbox != null && hitbox.width() != null) stats.put("hitboxWidth", hitbox.width());
         if (hitbox != null && hitbox.length() != null) stats.put("hitboxLength", hitbox.length());
-        if (movement != null) {
-            stats.put("speed", movement.speed());
-            if (movement.distance() != null) stats.put("distance", movement.distance());
-            if (movement.trailMs() != null) stats.put("trailMs", movement.trailMs().doubleValue());
+        if (movement != null) stats.put("speed", movement.speed());
+        if (moveVerb != null) {
+            stats.put("distance", moveVerb.distance());
+            stats.put("trailMs", (double) moveVerb.trailMs());
         }
         if (visualPhase != null && visualPhase.visual() != null) {
             stats.put("visualSize", visualPhase.visual().visualSize());
@@ -162,34 +135,27 @@ public final class Abilities {
                 .map(AbilityContracts.Visual::visibleMs)
                 .findFirst().orElse(null);
         Integer eventVisibleMs = phases.stream()
-                .flatMap(phase -> phase.events().values().stream())
-                .map(AbilityContracts.PhaseEvent::visibleMs)
+                .flatMap(phase -> phase.on().values().stream())
+                .flatMap(event -> event.verbs().stream())
+                .filter(AbilityContracts.EmitVisualVerb.class::isInstance)
+                .map(verb -> ((AbilityContracts.EmitVisualVerb) verb).visibleMs())
                 .filter(value -> value != null)
                 .findFirst().orElse(null);
         if (visibleMs == null) visibleMs = eventVisibleMs;
         if (visibleMs != null) stats.put("visibleMs", visibleMs.doubleValue());
         AbilityContracts.PhaseEvent repeatedEvent = phases.stream()
-                .flatMap(phase -> phase.events().values().stream())
+                .flatMap(phase -> phase.on().values().stream())
                 .filter(event -> event.schedule() != null
                         && event.schedule().mode() == AbilityContracts.EventScheduleMode.REPEAT)
                 .findFirst().orElse(null);
-        Integer intervalMs = repeatedEvent == null
-                ? phases.stream()
-                        .map(AbilityContracts.AbilityPhase::execution)
-                        .filter(java.util.Objects::nonNull)
-                        .map(AbilityContracts.Execution::intervalMs)
-                        .filter(java.util.Objects::nonNull)
-                        .findFirst().orElse(null)
-                : repeatedEvent.schedule().intervalMs();
+        Integer intervalMs = repeatedEvent == null ? null : repeatedEvent.schedule().intervalMs();
         if (intervalMs != null) stats.put("intervalMs", intervalMs.doubleValue());
-        AbilityContracts.PhaseEvent embeddedVisualEvent = embeddedPhases.stream()
-                .map(phase -> phase.events().get(AbilityContracts.PhaseEventType.COLLISION))
-                .filter(event -> event != null && event.visualType() != null
-                        && event.visibleMs() != null)
+        Integer shotVisibleMs = entity == null ? null : entity.phases().stream()
+                .map(AbilityContracts.AbilityPhase::scheduledHit)
+                .filter(hit -> hit != null && hit.visual() != null && hit.visual().visibleMs() != null)
+                .map(hit -> hit.visual().visibleMs())
                 .findFirst().orElse(null);
-        if (embeddedVisualEvent != null) {
-            stats.put("shotVisualMs", embeddedVisualEvent.visibleMs().doubleValue());
-        }
+        if (shotVisibleMs != null) stats.put("shotVisualMs", shotVisibleMs.doubleValue());
         if (entity != null && !entity.phases().isEmpty()) {
             AbilityContracts.AbilityPhase firstPhase = entity.phases().getFirst();
             stats.put("size", phaseSize(firstPhase));
@@ -247,6 +213,39 @@ public final class Abilities {
                 damage == null ? null : damage.falloff(), damageOverTime, stats);
     }
 
+    /** One phase standing for an ability that spawns nothing: its first hitbox, its effects, its move and visual. */
+    private static AbilityContracts.AbilityPhase triggerPhase(AbilityContracts.AbilityContract contract,
+                                                              AbilityContracts.MoveVerb moveVerb) {
+        AbilityContracts.HitVerb hit = contract.hitVerbs().isEmpty() ? null : contract.hitVerbs().getFirst();
+        AbilityContracts.Visual visual = contract.onTrigger().stream()
+                .map(Abilities::verbVisual).filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        java.util.Map<AbilityContracts.PhaseEventType, AbilityContracts.PhaseEvent> events = new LinkedHashMap<>();
+        events.put(AbilityContracts.PhaseEventType.COLLISION, new AbilityContracts.PhaseEvent(List.of(
+                new AbilityContracts.ApplyEffectsVerb(false, contract.triggerEffects(), null, null, null))));
+        return new AbilityContracts.AbilityPhase("active", AbilityContracts.PhaseType.ZONE,
+                moveVerb == null ? null : new AbilityContracts.PhaseMovement(moveVerb.unitsPerTick()),
+                hit == null ? null : hit.hitbox(), visual, events, null);
+    }
+
+    /** A summon's shot as a phase: its hitbox and effects, with the shot's visual. */
+    private static AbilityContracts.AbilityPhase shotPhase(AbilityContracts.HitVerb shot) {
+        java.util.Map<AbilityContracts.PhaseEventType, AbilityContracts.PhaseEvent> events = new LinkedHashMap<>();
+        events.put(AbilityContracts.PhaseEventType.COLLISION, new AbilityContracts.PhaseEvent(List.of(
+                new AbilityContracts.ApplyEffectsVerb(false, shot.effects(), null, null, null))));
+        return new AbilityContracts.AbilityPhase("shot", AbilityContracts.PhaseType.ZONE, null,
+                shot.hitbox(), shot.visual(), events, null);
+    }
+
+    private static AbilityContracts.Visual verbVisual(AbilityContracts.Verb verb) {
+        return switch (verb) {
+            case AbilityContracts.HitVerb hit -> hit.visual();
+            case AbilityContracts.ApplyEffectsVerb apply -> apply.visual();
+            case AbilityContracts.MoveVerb move -> move.visual();
+            case AbilityContracts.FaceVerb face -> face.visual();
+            default -> null;
+        };
+    }
+
     private static double phaseSize(AbilityContracts.AbilityPhase phase) {
         if (phase == null) return 0;
         if (phase.visual() != null && phase.visual().visualSize() > 0) {
@@ -296,13 +295,14 @@ public final class Abilities {
     }
 
     public static Map<String, StatusDefinition> statuses(int id) {
-        AbilityContracts.AbilityContract direct = AbilityContracts.attachedAll().get(id);
-        AbilityContracts.AbilityContract entity = AbilityContracts.entityContractForAbility(id);
-        Stream<AbilityContracts.AbilityPhase> phases = direct == null
-                ? Stream.empty() : direct.phases().stream();
-        if (entity != null) phases = Stream.concat(phases, entity.phases().stream());
-        return phases
-                .flatMap(phase -> phase.effects().stream())
+        AbilityContracts.AbilityContract contract = AbilityContracts.forAbility(id);
+        AbilityContracts.EntityContract entity = AbilityContracts.entityContractForAbility(id);
+        Stream<AbilityContracts.Effect> effects = contract == null
+                ? Stream.empty() : contract.triggerEffects().stream();
+        if (entity != null) {
+            effects = Stream.concat(effects, entity.phases().stream().flatMap(phase -> phase.effects().stream()));
+        }
+        return effects
                 .filter(effect -> effect.type() != null)
                 .filter(effect -> switch (effect.type()) {
                     case STATUS, BUFF, DAMAGE_REDUCTION, DAMAGE_REFLECTION,

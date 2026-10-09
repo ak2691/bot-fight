@@ -1,9 +1,10 @@
 package com.example.botfight.simulation.core.logic;
 
+import com.example.botfight.simulation.core.state.AbilityState;
 import com.example.botfight.simulation.bots.BotLogicContracts;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Aim;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Arena;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
+import com.example.botfight.simulation.core.orchestration.Bot;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Entity;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.SelectableSnapshot;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.StrategyBlock;
@@ -60,15 +61,14 @@ public final class AimPrediction {
 
     /** Remaining wind-up if the ability already started, otherwise its full wind-up. */
     static double windupRemainingSeconds(Bot player, int abilityId) {
-        boolean preparing = player.preparingAbility != null && player.preparingAbility == abilityId
-                && player.preparingMs > 0;
-        double windupMs = preparing ? player.preparingMs : Abilities.windupMs(abilityId);
+        int preparingMs = AbilityState.windupRemainingMs(player, abilityId);
+        double windupMs = preparingMs > 0 ? preparingMs : Abilities.windupMs(abilityId);
         return windupMs / 1000.0;
     }
 
     /** Projectile travel speed in units per second; 0 for hitscan, melee and non-projectile abilities. */
     static double projectileSpeedPerSecond(int abilityId) {
-        AbilityContracts.AbilityContract contract = AbilityContracts.entityAll().get(abilityId);
+        AbilityContracts.EntityContract contract = AbilityContracts.entityAll().get(abilityId);
         if (contract == null || contract.category() != AbilityContracts.Category.PROJECTILE
                 || contract.phases().isEmpty() || contract.phases().getFirst().movement() == null) return 0;
         double speedPerTick = contract.phases().getFirst().movement().speed();

@@ -1,0 +1,547 @@
+{
+  "version": 1,
+  "notes": "Golden scenarios shared by the browser and server tests. Each bot starts at (x, y) facing `rotation`; `roots` is its bot-logic tree; `abilities` is added to the standard loadout (Dash). Both runtimes run `ticks` fixed 100 ms steps and record the combat log plus a per-tick state hash.",
+  "arena": {
+    "width": 1200,
+    "height": 1200
+  },
+  "scenarios": [
+    {
+      "id": "melee-slash-heavy-strike",
+      "description": "Slash, Heavy Slash and Basic Strike at close range: melee arcs, hit stamina refund, hit stagger.",
+      "ticks": 40,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [1,7,34],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":1,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":7,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":3,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":34,"selectable":"opponent_1"}],"children":[]}]}
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 390,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "melee-weapons",
+      "description": "Thrust, Cleave and Smash: weapon hitboxes, wind-up, knockback.",
+      "ticks": 50,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [35,36,37],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":37,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":36,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":3,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":35,"selectable":"opponent_1"}],"children":[]}]}
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 390,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "ranged-sniper-pistol-rail",
+      "description": "Sniper, Pistol and Rail Shot at 500 units: wind-up rays and falloff damage.",
+      "ticks": 60,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [3,12,13],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":13,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":3,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":3,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":12,"selectable":"opponent_1"}],"children":[]}]}
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 800,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "fireball-burn",
+      "description": "Fireball projectile impact and its burn damage over time.",
+      "ticks": 80,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [5],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":5,"selectable":"opponent_1"}],"children":[]}]}
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 800,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "stun-repelling-blast",
+      "description": "Stun and Repelling Blast: stun status, interrupt and knockback.",
+      "ticks": 40,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [6,8],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":6,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":8,"selectable":"opponent_1"}],"children":[]}]}
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 390,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "concussive-silence-beam",
+      "description": "Concussive Shot slow, Silence Pulse silence and Disruptive Beam.",
+      "ticks": 60,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [9,15,30],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":9,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":15,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":3,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":30,"selectable":"opponent_1"}],"children":[]}]}
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 700,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "grenades-singularity",
+      "description": "Grenade, Gravity Grenade and Singularity: fuse zones, pull and damage ticks.",
+      "ticks": 70,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [4,14,27],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":4,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":14,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":3,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":27,"selectable":"opponent_1"}],"children":[]}]}
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 700,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "self-heal-overclock-guard",
+      "description": "Basic Heal, Overclock and Absolute Guard on a wounded bot under melee attack.",
+      "ticks": 50,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [10,33,23],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":23,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":33,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":3,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":10,"selectable":"opponent_1"}],"children":[]}]}
+          ],
+          "hp": 200
+        },
+        {
+          "slot": 2,
+          "x": 390,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [1],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":1,"selectable":"opponent_1"}],"children":[]}]}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "reflection-armor",
+      "description": "Reactive Armor reduces and reflects Slash damage back at its attacker.",
+      "ticks": 50,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [16],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":16,"selectable":"opponent_1"}],"children":[]}]}
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 390,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [1],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":1,"selectable":"opponent_1"}],"children":[]}]}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "trap-proximity-mine",
+      "description": "Proximity Mine thrown at an idle bot: travel, armed zone, trigger and removal.",
+      "ticks": 60,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [11],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":11,"selectable":"opponent_1"}],"children":[]}]}
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 450,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "trap-snare-bomb",
+      "description": "Snare Bomb thrown at an idle bot: armed, triggered and destroyed phases.",
+      "ticks": 60,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [29],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":29,"selectable":"opponent_1"}],"children":[]}]}
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 380,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "summon-drones",
+      "description": "Hunter Drone and Repeller Drone summons: spawn, summon execution, hit points.",
+      "ticks": 80,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [17,31],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":17,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":31,"selectable":"opponent_1"}],"children":[]}]}
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 550,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "dash-chain",
+      "description": "Always-Dash east: stamina cost, dash gap, regeneration pause and the empty-stamina stop.",
+      "ticks": 30,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 100,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [19],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":19,"movementMode":"absolute","movementDirection":90}],"children":[]}]}
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 1100,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "sprint-drain",
+      "description": "Both bots sprint at each other until stamina runs out.",
+      "ticks": 30,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":90,"sprint":true}],"children":[]}]}
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 900,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":"move_walk","movementMode":"absolute","movementDirection":270,"sprint":true}],"children":[]}]}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cancel-windup",
+      "description": "Sniper wind-up cancelled by its own brain: cancel stamina cost, no cooldown.",
+      "ticks": 30,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [3],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":3,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"expression","left":"bot.selectedAbilityPreparing","ability":3,"selectable":"my_bot","leftSelectable":"my_bot","comparator":"eq","right":{"type":"boolean","value":true}},{"type":"expression","left":"bot.selectedAbilityPreparationMs","ability":3,"selectable":"my_bot","leftSelectable":"my_bot","comparator":"lt","right":{"type":"number","value":0.4}}],"actions":[{"action":"cancel_windup"}],"children":[]}]}
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 800,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "rewind-phase-lockon",
+      "description": "Rewind, Phase Strike teleport and Lock On at 200 units.",
+      "ticks": 50,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [21,25,20],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":25,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":20,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":3,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":21,"selectable":"opponent_1"}],"children":[]}]}
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 500,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "zones-orbital-null-frost",
+      "description": "Orbital Strike, Null Zone and Frost Ring: zone phases and presence statuses.",
+      "ticks": 60,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [22,24,26],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":22,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":24,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":3,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":26,"selectable":"opponent_1"}],"children":[]}]}
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 600,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "wind-tether-vampiric",
+      "description": "Wind Burst, Tether Bolt and Vampiric Beam: knockback, outbound/return projectile, healing.",
+      "ticks": 60,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [18,28,32],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":18,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":28,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":3,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":32,"selectable":"opponent_1"}],"children":[]}]}
+          ],
+          "hp": 220
+        },
+        {
+          "slot": 2,
+          "x": 600,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [],
+          "roots": []
+        }
+      ]
+    },
+    {
+      "id": "duel-mixed",
+      "description": "Both bots Slash, Fireball and Dash at once.",
+      "ticks": 100,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [1,5,19],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":1,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":5,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":3,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":19,"movementMode":"absolute","movementDirection":90}],"children":[]}]}
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 900,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [1,5,19],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":1,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":2,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":5,"selectable":"opponent_1"}],"children":[]}]},
+            {"priority":3,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":19,"movementMode":"absolute","movementDirection":90}],"children":[]}]}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fireball-into-armor",
+      "description": "Fireball burn and impact against Reactive Armor reflection.",
+      "ticks": 80,
+      "bots": [
+        {
+          "slot": 1,
+          "x": 300,
+          "y": 600,
+          "rotation": 90,
+          "abilities": [5],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":5,"selectable":"opponent_1"}],"children":[]}]}
+          ]
+        },
+        {
+          "slot": 2,
+          "x": 800,
+          "y": 600,
+          "rotation": 270,
+          "abilities": [16],
+          "roots": [
+            {"priority":1,"branches":[{"priority":1,"branchType":"if","conditions":[{"type":"always"}],"actions":[{"action":16,"selectable":"opponent_1"}],"children":[]}]}
+          ]
+        }
+      ]
+    }
+  ]
+}

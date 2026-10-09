@@ -160,14 +160,14 @@ class MovementStaminaSimulationTest {
         String dash = "{\"action\":19,\"movementMode\":\"absolute\",\"movementDirection\":90}";
         MatchPlaybackDTO result = simulate(brain("[]", "[" + root(1, ALWAYS, dash) + "]"), 1_600);
         var frames = result.frames();
-        // Dash at ticks 0, 4 and 8 (30 stamina each, one per 300 ms gap); a fourth needs 30 and only 10 is left.
+        // Dash at ticks 0, 4 and 8 (30 stamina each, one per 400 ms (200 ms active, then the cooldown)); a fourth needs 30 and only 10 is left.
         assertThat(first(frames.get(0)).stamina()).isEqualTo(70);
         assertThat(first(frames.get(3)).stamina()).isEqualTo(70);
         assertThat(first(frames.get(4)).stamina()).isEqualTo(40);
         assertThat(first(frames.get(7)).stamina()).isEqualTo(40);
         assertThat(first(frames.get(8)).stamina()).isEqualTo(10);
         for (int tick = 9; tick <= 12; tick += 1) assertThat(first(frames.get(tick)).stamina()).isLessThan(30);
-        // Dash never carries a fixed cooldown.
-        for (var frame : frames) assertThat(first(frame).abilityCooldowns().getOrDefault(19, 0)).isZero();
+        // Dash recovers for only its 100 ms cooldown, after its 200 ms active stage.
+        for (var frame : frames) assertThat(first(frame).abilityCooldowns().getOrDefault(19, 0)).isLessThanOrEqualTo(100);
     }
 }

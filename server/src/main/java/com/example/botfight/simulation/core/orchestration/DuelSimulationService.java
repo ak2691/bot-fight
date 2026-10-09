@@ -12,9 +12,11 @@ import com.example.botfight.simulation.core.logic.ChainRuntime;
 import com.example.botfight.simulation.core.logic.ConditionResolutionService;
 import com.example.botfight.simulation.core.logic.TargetingService;
 import com.example.botfight.simulation.core.replay.ReplayMappingService;
+import com.example.botfight.simulation.core.state.AbilityState;
 import com.example.botfight.simulation.core.state.BotStateService;
 import com.example.botfight.simulation.core.state.StaminaSystem;
 import com.example.botfight.simulation.bots.BotLogicContracts;
+import com.example.botfight.simulation.bots.BrainNormalizer;
 import com.example.botfight.simulation.ecs.entities.ClosingZoneSystem;
 import com.example.botfight.simulation.gameconfig.ClosingZoneConfig;
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
@@ -24,9 +26,7 @@ import com.example.botfight.simulation.ecs.abilities.AbilityEntitySystem;
 import com.example.botfight.simulation.ecs.entities.ArenaBounds;
 import com.example.botfight.simulation.ecs.entities.ArenaEntity;
 import com.example.botfight.simulation.geometry.ArenaUnits;
-import com.example.botfight.simulation.geometry.ArenaCoordinates;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.HashMap;
 import java.util.List;
@@ -47,12 +47,6 @@ public class DuelSimulationService {
     private static final int ARENA_HEIGHT_UNITS = ArenaUnits.HEIGHT;
     private static final int STEP_MS = 100;
     private static final double TURN_SPEED_DEGREES = 12.0;
-    private static final int MAX_LOGIC_BLOCKS = 100;
-    private static final int MAX_TOTAL_CONDITIONS = 300;
-    private static final double CUSTOM_NUMBER_LIMIT = BotLogicContracts.CUSTOM_NUMBER_LIMIT;
-    private static final int MAX_ROOTS = 100;
-    private static final int MIN_PRIORITY = 1;
-    private static final int MAX_PRIORITY = 10;
     private static final ClosingZoneConfig CLOSING_ZONE_CONFIG = ClosingZoneConfig.duelV1();
     public static final int SIMULATION_DURATION_MS = CLOSING_ZONE_CONFIG.simulationDurationMs();
     /** Timed rounds: up to six consecutive segments of at most 20 s, 120 s in all. */
@@ -124,6 +118,18 @@ public class DuelSimulationService {
         return simulate(request, new CompactReplayRecorder());
     }
 
+    /**
+     * Runs the authoritative duel like {@link #simulateWithoutReplay} and appends one entry per trigger,
+     * effect, status, spawn, phase change, removal and stamina change to {@code log}. Used by the golden
+     * and parity tests; rated runs never pass a log.
+     */
+    public void simulateLogged(DuelSimulationRequest request, CombatLog log, SimulationTickObserver observer) {
+        if (log == null) throw new IllegalArgumentException("combat log is required");
+        try (CombatLog.Binding ignored = log.bind()) {
+            simulate(request, new NoReplayRecorder(), observer);
+        }
+    }
+
     private <T> T simulate(DuelSimulationRequest request, ReplayRecorder<T> replayRecorder) {
         return simulate(request, replayRecorder, null);
     }
@@ -185,8 +191,7 @@ public class DuelSimulationService {
             recording = true;
         }
         int nextSegment = 1;
-        List<ArenaEntity> entities = new ArrayList<>();
-        ClosingZoneSystem.State closingZone = null;
+        TickState state = new TickState(arena, bots, zoneConfig, initialElapsedMs);
 
         // The browser applies its first fixed step after AUTO_STEP_MS has
         // elapsed. Keep replay timestamps and the number of simulated steps on
@@ -206,52 +211,18 @@ public class DuelSimulationService {
                 replayRecorder.initialize(arena, bots);
                 recording = true;
             }
-            entities = advanceEntityAges(entities);
-            for (Bot bot : bots) {
-                botStateService.startTick(bot);
-            }
-            List<Entity> selectables = new ArrayList<>();
-            entities.stream().map(DuelSimulationService::selectableSnapshot).forEach(selectables::add);
-            List<Action> predictedActions = bots.stream()
-                    .map(bot -> predictAction(bot, firstEnemy(bot, bots), selectables, arena))
-                    .toList();
-            for (int index = 0; index < bots.size(); index++) {
-                bots.get(index).lastPredictedAction = predictedActions.get(index);
-                actionExecutionService.execute(bots.get(index), predictedActions.get(index), arena);
-            }
-            for (Bot attacker : bots) {
-                actionExecutionService.resolveTriggeredAbilities(attacker, bots, arena);
-            }
-            for (Bot spawningBot : bots) {
-                ArenaEntity spawn = spawningBot.abilitySpawn;
-                if (spawn == null) continue;
-                entities.add(spawn);
-            }
-            entities = tickAbilityEntities(entities, bots, arena);
-            ClosingZoneSystem.TickResult<Bot> closingZoneUpdate = ClosingZoneSystem.tick(
-                    closingZone,
-                    initialElapsedMs + elapsedMs,
-                    STEP_MS,
-                    arena.width(),
-                    arena.height(),
-                    bots,
-                    zoneConfig,
-                    new ClosingZoneSystem.Damage<>() {
-                        @Override
-                        public double maxHp(Bot bot) {
-                            return bot.maxHp;
-                        }
+            CombatLog.beginTick(tick);
+            state.elapsedMs = elapsedMs;
+            decide(state);
+            act(state);
+            resolveHits(state);
+            spawn(state);
+            entities(state);
+            hazards(state);
+            settle(state);
 
-                        @Override
-                        public void apply(Bot bot, double amount) {
-                            botStateService.applyClosingZoneDamage(bot, amount);
-                        }
-                    });
-            closingZone = closingZoneUpdate.state();
-            bots.forEach(botStateService::settleTick);
-
-            List<ArenaEntity> frameEntities = new ArrayList<>(entities);
-            if (closingZoneUpdate.entity() != null) frameEntities.add(closingZoneUpdate.entity());
+            List<ArenaEntity> frameEntities = new ArrayList<>(state.entities);
+            if (state.closingZoneEntity != null) frameEntities.add(state.closingZoneEntity);
             if (recording) replayRecorder.addFrame(tick - recordTickOffset, elapsedMs - recordStartMs, bots, frameEntities);
             if (observer != null && observer.afterTick(elapsedMs, bots, frameEntities, arena)) {
                 return replayRecorder.complete(request.matchId(), null);
@@ -281,6 +252,150 @@ public class DuelSimulationService {
         return continues
                 ? replayRecorder.completeContinuing(request.matchId())
                 : replayRecorder.complete(request.matchId(), null);
+    }
+
+    /**
+     * What one tick's stages share. The entity list and the closing zone persist from tick to tick; the
+     * browser's arenaPreviewSimulation.js runs the same stages in the same order.
+     */
+    private static final class TickState {
+        final Arena arena;
+        final List<Bot> bots;
+        final ClosingZoneConfig zoneConfig;
+        final int initialElapsedMs;
+        int elapsedMs;
+        List<ArenaEntity> entities = new ArrayList<>();
+        ClosingZoneSystem.State closingZone;
+        ArenaEntity closingZoneEntity;
+        List<Action> predictedActions = List.of();
+
+        TickState(Arena arena, List<Bot> bots, ClosingZoneConfig zoneConfig, int initialElapsedMs) {
+            this.arena = arena;
+            this.bots = bots;
+            this.zoneConfig = zoneConfig;
+            this.initialElapsedMs = initialElapsedMs;
+        }
+    }
+
+    /** Entities age, one-tick outputs clear and every bot picks its action from the start-of-tick state. */
+    private void decide(TickState state) {
+        CombatLog.stage("decide");
+        state.entities = advanceEntityAges(state.entities);
+        for (Bot bot : state.bots) {
+            botStateService.startTick(bot);
+        }
+        List<Entity> selectables = new ArrayList<>();
+        state.entities.stream().map(DuelSimulationService::selectableSnapshot).forEach(selectables::add);
+        state.predictedActions = state.bots.stream()
+                .map(bot -> predictAction(bot, firstEnemy(bot, state.bots), selectables, state.arena))
+                .toList();
+    }
+
+    /** Stamina timers, stun, cancel, movement, channels and the ability triggers of every bot. */
+    private void act(TickState state) {
+        CombatLog.stage("act");
+        for (int index = 0; index < state.bots.size(); index++) {
+            Bot bot = state.bots.get(index);
+            bot.lastPredictedAction = state.predictedActions.get(index);
+            actionExecutionService.execute(bot, state.predictedActions.get(index), state.arena);
+        }
+        if (!CombatLog.active()) return;
+        for (Bot bot : state.bots) {
+            if (bot.triggeredAbility == null) continue;
+            CombatLog.record("trigger", CombatLog.bot(bot.slot), null, bot.triggeredAbility, null, null);
+        }
+    }
+
+    /** The trigger verbs of the abilities that triggered this tick hit the opposing bots or apply to their owner. */
+    private void resolveHits(TickState state) {
+        CombatLog.stage("resolveHits");
+        for (Bot attacker : state.bots) {
+            actionExecutionService.resolveTriggeredAbilities(attacker, state.bots, state.arena);
+        }
+    }
+
+    /** New ability entities join the world. */
+    private void spawn(TickState state) {
+        CombatLog.stage("spawn");
+        for (Bot spawningBot : state.bots) {
+            for (ArenaEntity spawn : spawningBot.abilitySpawn) {
+                CombatLog.record("spawn", CombatLog.bot(spawn.ownerSlot()), CombatLog.entityRef(spawn), spawn.abilityId(),
+                        spawn.type(), null);
+                state.entities.add(spawn);
+            }
+        }
+    }
+
+    /** Projectiles, zones, traps and summons advance and apply their effects. */
+    private void entities(TickState state) {
+        CombatLog.stage("entities");
+        List<ArenaEntity> before = state.entities;
+        state.entities = tickAbilityEntities(before, state.bots, state.arena);
+        if (CombatLog.active()) logEntityChanges(before, state.entities);
+    }
+
+    /** Phase transitions, removals and entities spawned by other entities, found by comparing worlds. */
+    private static void logEntityChanges(List<ArenaEntity> before, List<ArenaEntity> after) {
+        Map<String, ArenaEntity> afterById = new HashMap<>();
+        after.forEach(entity -> afterById.put(entity.id(), entity));
+        Set<String> beforeIds = new HashSet<>();
+        for (ArenaEntity entity : before) {
+            beforeIds.add(entity.id());
+            ArenaEntity next = afterById.get(entity.id());
+            if (next == null) {
+                CombatLog.record("removal", CombatLog.bot(entity.ownerSlot()), CombatLog.entityRef(entity), entity.abilityId(),
+                        entity.type(), null);
+                continue;
+            }
+            String from = phaseIdOf(entity);
+            String to = phaseIdOf(next);
+            if (!java.util.Objects.equals(from, to)) {
+                CombatLog.record("phase", CombatLog.bot(entity.ownerSlot()), CombatLog.entityRef(entity), entity.abilityId(),
+                        from + ">" + to, null);
+            }
+        }
+        for (ArenaEntity entity : after) {
+            if (beforeIds.contains(entity.id())) continue;
+            CombatLog.record("spawn", CombatLog.bot(entity.ownerSlot()), CombatLog.entityRef(entity), entity.abilityId(),
+                    entity.type(), null);
+        }
+    }
+
+    private static String phaseIdOf(ArenaEntity entity) {
+        AbilityContracts.AbilityPhase phase = AbilityContracts.phaseFor(entity);
+        return phase == null ? null : phase.id();
+    }
+
+    /** The closing zone shrinks and hurts the bots outside it. */
+    private void hazards(TickState state) {
+        CombatLog.stage("hazards");
+        ClosingZoneSystem.TickResult<Bot> update = ClosingZoneSystem.tick(
+                state.closingZone,
+                state.initialElapsedMs + state.elapsedMs,
+                STEP_MS,
+                state.arena.width(),
+                state.arena.height(),
+                state.bots,
+                state.zoneConfig,
+                new ClosingZoneSystem.Damage<>() {
+                    @Override
+                    public double maxHp(Bot bot) {
+                        return bot.maxHp;
+                    }
+
+                    @Override
+                    public void apply(Bot bot, double amount) {
+                        botStateService.applyClosingZoneDamage(bot, amount);
+                    }
+                });
+        state.closingZone = update.state();
+        state.closingZoneEntity = update.entity();
+    }
+
+    /** Healing lands, hit stamina refunds are paid and the per-tick measurements roll over. */
+    private void settle(TickState state) {
+        CombatLog.stage("settle");
+        state.bots.forEach(botStateService::settleTick);
     }
 
     private static int segmentEndAfter(List<SegmentRequest> segments, int startMs) {
@@ -558,17 +673,10 @@ public class DuelSimulationService {
     }
 
     private Bot prepareStrategy(Bot bot) {
-        JsonNode roots = bot.brain != null ? bot.brain.get("roots") : null;
-        bot.brainSchemaVersion = bot.brain != null
-                && BotLogicContracts.BRAIN_SCHEMA_V2.equals(textValue(field(bot.brain, "version"), ""))
-                ? BotLogicContracts.BRAIN_SCHEMA_V2 : BotLogicContracts.BRAIN_SCHEMA_V1;
-        // Chains share the roots' action and condition budget.
-        int[] remainingActions = { MAX_LOGIC_BLOCKS };
-        int[] remainingConditions = { MAX_TOTAL_CONDITIONS };
-        bot.normalizedStrategy = normalizeTreeRoots(roots, bot.brainSchemaVersion, remainingActions, remainingConditions);
-        JsonNode chains = bot.brain != null ? bot.brain.get("chains") : null;
-        bot.normalizedChains = ChainRuntime.normalize(chains, bot.brainSchemaVersion,
-                chainBlockNormalizer(bot.brainSchemaVersion), remainingActions, remainingConditions);
+        BrainNormalizer.Result brain = BrainNormalizer.normalize(bot.brain);
+        bot.brainSchemaVersion = brain.schemaVersion();
+        bot.normalizedStrategy = brain.roots();
+        bot.normalizedChains = brain.chains();
         return bot;
     }
 
@@ -598,7 +706,7 @@ public class DuelSimulationService {
                 continue;
             }
             if (isChainControl(block)) continue;
-            String head = actionHead(block.action);
+            String head = BrainNormalizer.actionHead(block.action);
             if (headTaken(plan, head)) continue;
             placeInPlan(plan, head, block);
         }
@@ -659,9 +767,8 @@ public class DuelSimulationService {
 
             @Override
             public boolean abilityBusy(int abilityId) {
-                boolean windingUp = player.preparingAbility != null && player.preparingAbility == abilityId
-                        && player.preparingMs > 0;
-                return windingUp || player.abilityActiveMs.getOrDefault(abilityId, 0) > 0;
+                return AbilityState.windupRemainingMs(player, abilityId) > 0
+                        || AbilityState.activeRemainingMs(player, abilityId) > 0;
             }
 
             @Override
@@ -671,29 +778,29 @@ public class DuelSimulationService {
 
             @Override
             public String head(Object action) {
-                return actionHead(action);
+                return BrainNormalizer.actionHead(action);
             }
         };
     }
 
-    private List<StrategyBlock> selectPriorityEntries(List<TreeRoot> roots, Bot player, Bot opponent, List<Entity> entities, Arena arena) {
+    private List<StrategyBlock> selectPriorityEntries(List<BrainNormalizer.TreeRoot> roots, Bot player, Bot opponent, List<Entity> entities, Arena arena) {
         return roots.isEmpty() ? List.of() : selectTreeEntries(roots, player, opponent, entities, arena);
     }
 
-    private List<StrategyBlock> selectTreeEntries(List<TreeRoot> normalized, Bot player, Bot opponent,
+    private List<StrategyBlock> selectTreeEntries(List<BrainNormalizer.TreeRoot> normalized, Bot player, Bot opponent,
             List<Entity> entities, Arena arena) {
         List<StrategyBlock> selected = new ArrayList<>();
-        for (TreeRoot root : normalized) {
+        for (BrainNormalizer.TreeRoot root : normalized) {
             selected.addAll(selectTreeBranch(root.branches(), player, opponent, entities, arena));
             root.actions().stream().filter(block -> strategyBlockExecutableNow(block, player, opponent, entities)).forEach(selected::add);
         }
         return selected;
     }
 
-    private List<StrategyBlock> selectTreeBranch(List<TreeBranch> branches, Bot player, Bot opponent,
+    private List<StrategyBlock> selectTreeBranch(List<BrainNormalizer.TreeBranch> branches, Bot player, Bot opponent,
             List<Entity> entities, Arena arena) {
         List<StrategyBlock> selected = new ArrayList<>();
-        for (TreeBranch branch : branches) {
+        for (BrainNormalizer.TreeBranch branch : branches) {
             StrategyBlock conditionBlock = branch.blocks().get(0);
             boolean matches = "else".equals(branch.branchType())
                     || conditionResolutionService.evaluateConditions(conditionBlock.conditions(), player, opponent, entities, arena);
@@ -709,153 +816,6 @@ public class DuelSimulationService {
         return selected;
     }
 
-    private static ChainRuntime.BlockNormalizer chainBlockNormalizer(String coordinateVersion) {
-        return new ChainRuntime.BlockNormalizer() {
-            @Override
-            public StrategyBlock normalize(JsonNode node) {
-                return normalizeStrategyBlock(node, 0, coordinateVersion);
-            }
-
-            @Override
-            public String head(Object action) {
-                BotLogicContracts.ActionContract contract = BotLogicContracts.actionContract(action);
-                return contract == null ? null : contract.head().name().toLowerCase();
-            }
-
-            @Override
-            public Object action(JsonNode node) {
-                return actionValue(field(node, "action"));
-            }
-
-            @Override
-            public int cost(StrategyBlock block) {
-                return strategyBlockActionCost(block);
-            }
-        };
-    }
-
-    private static List<TreeRoot> normalizeTreeRoots(JsonNode roots, String coordinateVersion,
-            int[] remainingActions, int[] remainingConditions) {
-        if (roots == null || !roots.isArray()) return List.of();
-        List<TreeRoot> normalized = new ArrayList<>();
-        int limit = Math.min(roots.size(), MAX_ROOTS);
-        for (int index = 0; index < limit; index += 1) {
-            JsonNode root = roots.get(index);
-            normalized.add(new TreeRoot(
-                    index,
-                    clamp(numberValue(field(root, "priority"), index + 1), 1, MAX_ROOTS),
-                    normalizeTreeBranches(field(root, "branches"), remainingActions, remainingConditions, coordinateVersion),
-                    normalizeRootActions(root, index, remainingActions, coordinateVersion)));
-        }
-        normalized.sort(Comparator.comparingDouble(TreeRoot::priority));
-        return List.copyOf(normalized);
-    }
-
-    private static List<StrategyBlock> normalizeRootActions(JsonNode root, int index, int[] remainingActions, String version) {
-        if (field(root, "actions") == null) return List.of();
-        List<StrategyBlock> actions = new ArrayList<>();
-        for (StrategyBlock block : normalizeTreeActions(root, index, version)) {
-            if (BotLogicContracts.ACTION_NONE.equals(block.action())) continue;
-            int cost = strategyBlockActionCost(block);
-            if (cost > remainingActions[0]) break;
-            remainingActions[0] -= cost;
-            actions.add(block);
-        }
-        return List.copyOf(actions);
-    }
-
-    private static List<TreeBranch> normalizeTreeBranches(JsonNode branches, int[] remainingActions, int[] remainingConditions,
-            String coordinateVersion) {
-        if (branches == null || !branches.isArray() || remainingConditions[0] <= 0) return List.of();
-        List<TreeBranch> normalized = new ArrayList<>();
-        for (int index = 0; index < branches.size() && remainingConditions[0] > 0; index += 1) {
-            JsonNode branch = branches.get(index);
-            List<StrategyBlock> blocks = new ArrayList<>();
-            for (StrategyBlock block : normalizeTreeActions(branch, index, coordinateVersion)) {
-                if (BotLogicContracts.ACTION_NONE.equals(block.action())) continue;
-                int cost = strategyBlockActionCost(block);
-                if (cost > remainingActions[0]) break;
-                blocks.add(block);
-                remainingActions[0] -= cost;
-            }
-            if (blocks.isEmpty()) {
-                blocks = List.of(new StrategyBlock(index, BotLogicContracts.ACTION_NONE, BotLogicContracts.SELECTABLE_OPPONENT, 0, 0, "target", ARENA_WIDTH_UNITS / 2.0, ARENA_HEIGHT_UNITS / 2.0, null, null, null, null, 1, ConditionResolutionService.normalizeConditions(field(branch, "conditions"), coordinateVersion)));
-            }
-            String branchType = index == 0 ? "if" : "else".equals(textValue(field(branch, "branchType"), "if")) ? "else" : "if";
-            if ("else".equals(branchType)) {
-                blocks = blocks.stream().map(block -> new StrategyBlock(block.index(), block.action(), block.selectable(), block.targetOffsetX(), block.targetOffsetY(), block.targetMode(), block.targetX(), block.targetY(), block.movementMode(), block.movementDirection(), block.phaseFacingMode(), block.variableTerms(), block.priority(), List.of(), block.targetAngle(), block.aim(), block.sprint(), block.fastTurn())).toList();
-            } else {
-                int conditionLimit = Math.min(remainingConditions[0], blocks.isEmpty() ? 0 : blocks.get(0).conditions().size());
-                List<Condition> limitedConditions = blocks.isEmpty() ? List.of() : blocks.get(0).conditions().subList(0, conditionLimit);
-                remainingConditions[0] -= conditionLimit;
-                blocks = blocks.stream().map(block -> new StrategyBlock(block.index(), block.action(), block.selectable(), block.targetOffsetX(), block.targetOffsetY(), block.targetMode(), block.targetX(), block.targetY(), block.movementMode(), block.movementDirection(), block.phaseFacingMode(), block.variableTerms(), block.priority(), limitedConditions, block.targetAngle(), block.aim(), block.sprint(), block.fastTurn())).toList();
-            }
-            normalized.add(new TreeBranch(
-                    branchType,
-                    clamp(numberValue(field(branch, "priority"), index + 1), 1, MAX_LOGIC_BLOCKS),
-                    blocks,
-                    normalizeTreeBranches(field(branch, "children"), remainingActions, remainingConditions, coordinateVersion)));
-        }
-        normalized.sort(Comparator.comparingDouble(TreeBranch::priority));
-        return List.copyOf(normalized);
-    }
-
-    private static List<StrategyBlock> normalizeTreeActions(JsonNode branch, int index, String coordinateVersion) {
-        JsonNode actions = field(branch, "actions");
-        List<StrategyBlock> blocks = new ArrayList<>();
-        Set<String> heads = new HashSet<>();
-        if (actions != null && actions.isArray() && !actions.isEmpty()) {
-            for (JsonNode actionNode : actions) {
-                Object action = actionValue(field(actionNode, "action"));
-                String head = actionHead(action);
-                String headKey = BotLogicContracts.ACTION_VARIABLE.equals(action) ? head + ":" + blocks.size() : head;
-                if (!heads.add(headKey)) continue;
-                double offsetX = offsetCoordinate(field(actionNode, "targetOffsetX"), coordinateVersion);
-                double offsetY = offsetCoordinate(field(actionNode, "targetOffsetY"), coordinateVersion);
-                double targetX = absoluteCoordinate(field(actionNode, "targetX"), coordinateVersion, true);
-                double targetY = absoluteCoordinate(field(actionNode, "targetY"), coordinateVersion, false);
-                if (isCenteredCoordinates(coordinateVersion)) {
-                    ArenaCoordinates.Offset offset = ArenaCoordinates.offsetToInternal(offsetX, offsetY);
-                    ArenaCoordinates.Point target = ArenaCoordinates.toInternal(targetX, targetY);
-                    offsetX = offset.x();
-                    offsetY = offset.y();
-                    targetX = target.x();
-                    targetY = target.y();
-                }
-                blocks.add(new StrategyBlock(index, action,
-                normalizeSelectable(textValue(field(actionNode, "selectable"), BotLogicContracts.SELECTABLE_OPPONENT), BotLogicContracts.SELECTABLE_OPPONENT),
-                        BotLogicContracts.ACTION_VARIABLE.equals(action)
-                                ? clamp(variableValue(firstNonNull(field(actionNode, "value"), field(actionNode, "operand"))), -CUSTOM_NUMBER_LIMIT, CUSTOM_NUMBER_LIMIT)
-                                : offsetX,
-                        offsetY,
-                        normalizeActionTargetMode(action, actionNode),
-                        targetX,
-                        targetY,
-                        textValue(field(actionNode, "movementMode"), null),
-                        BotLogicContracts.ACTION_VARIABLE.equals(action) ? textValue(field(actionNode, "operation"), "set") : movementDirectionValue(field(actionNode, "movementDirection"), null),
-                        BotLogicContracts.ACTION_VARIABLE.equals(action) ? textValue(field(actionNode, "variableId"), "") : movementDirectionValue(field(actionNode, "phaseFacingMode"), null),
-                        BotLogicContracts.ACTION_VARIABLE.equals(action) ? variableActionPayload(actionNode) : chainActionPayload(action, actionNode),
-                        actionPriority(branch),
-                        ConditionResolutionService.normalizeConditions(field(branch, "conditions"), coordinateVersion),
-                        clamp(numberValue(field(actionNode, "targetAngle"), 0), BotLogicContracts.ANGLE_MIN, BotLogicContracts.ANGLE_MAX),
-                        normalizeAim(action, actionNode),
-                        normalizeSprint(action, actionNode),
-                        normalizeFastTurn(action, actionNode)));
-            }
-        }
-        if (blocks.isEmpty()) blocks.add(normalizeStrategyBlock(branch, index, coordinateVersion));
-        if (blocks.stream().anyMatch(block -> !BotLogicContracts.ACTION_NONE.equals(block.action()))) {
-            blocks.removeIf(block -> BotLogicContracts.ACTION_NONE.equals(block.action()));
-        }
-        return blocks;
-    }
-
-    private static int strategyBlockActionCost(StrategyBlock block) {
-        if (block == null || BotLogicContracts.ACTION_NONE.equals(block.action())) return 0;
-        JsonNode terms = block.variableTerms();
-        return BotLogicContracts.ACTION_VARIABLE.equals(block.action())
-                && terms != null && terms.isArray() && !terms.isEmpty() ? terms.size() : 1;
-    }
 
     private static boolean actionUsesTarget(Object action) {
         return BotLogicContracts.actionUsesTarget(action);
@@ -876,7 +836,7 @@ public class DuelSimulationService {
         Object action = block.action();
         if (BotLogicContracts.ACTION_VARIABLE.equals(action)) return true;
         if (BotLogicContracts.ACTION_NONE.equals(action)) return false;
-        String head = actionHead(action);
+        String head = BrainNormalizer.actionHead(action);
         // Chain control is instant bookkeeping: it always selects its block and uses no category.
         if ("chain".equals(head)) return true;
         if ("movement".equals(head) || "rotation".equals(head)) return true;
@@ -886,117 +846,6 @@ public class DuelSimulationService {
         return ability != null && actionExecutionService.selectedAbilityExecutable(player, ability);
     }
 
-    private static StrategyBlock normalizeStrategyBlock(JsonNode block, int index, String coordinateVersion) {
-        Object action = actionValue(field(block, "action"));
-        double offsetX = offsetCoordinate(field(block, "targetOffsetX"), coordinateVersion);
-        double offsetY = offsetCoordinate(field(block, "targetOffsetY"), coordinateVersion);
-        double targetX = absoluteCoordinate(field(block, "targetX"), coordinateVersion, true);
-        double targetY = absoluteCoordinate(field(block, "targetY"), coordinateVersion, false);
-        if (isCenteredCoordinates(coordinateVersion)) {
-            ArenaCoordinates.Offset offset = ArenaCoordinates.offsetToInternal(offsetX, offsetY);
-            ArenaCoordinates.Point target = ArenaCoordinates.toInternal(targetX, targetY);
-            offsetX = offset.x();
-            offsetY = offset.y();
-            targetX = target.x();
-            targetY = target.y();
-        }
-        return new StrategyBlock(
-                index,
-                action,
-                normalizeSelectable(textValue(field(block, "selectable"), BotLogicContracts.SELECTABLE_OPPONENT), BotLogicContracts.SELECTABLE_OPPONENT),
-                BotLogicContracts.ACTION_VARIABLE.equals(action)
-                        ? clamp(variableValue(firstNonNull(field(block, "value"), field(block, "operand"))), -CUSTOM_NUMBER_LIMIT, CUSTOM_NUMBER_LIMIT)
-                        : offsetX,
-                offsetY,
-                normalizeActionTargetMode(action, block),
-                targetX,
-                targetY,
-                textValue(field(block, "movementMode"), null),
-                movementDirectionValue(field(block, "movementDirection"), null),
-                BotLogicContracts.ACTION_VARIABLE.equals(action)
-                        ? textValue(field(block, "phaseFacingMode"), null)
-                        : movementDirectionValue(field(block, "phaseFacingMode"), null),
-                BotLogicContracts.ACTION_VARIABLE.equals(action) ? variableActionPayload(block) : chainActionPayload(action, block),
-                actionPriority(block),
-                ConditionResolutionService.normalizeConditions(field(block, "conditions"), coordinateVersion),
-                clamp(numberValue(field(block, "targetAngle"), 0), BotLogicContracts.ANGLE_MIN, BotLogicContracts.ANGLE_MAX),
-                normalizeAim(action, block),
-                normalizeSprint(action, block),
-                normalizeFastTurn(action, block));
-    }
-
-    /** Run chain carries its chain ID in the block's payload node; other actions carry none. */
-    private static JsonNode chainActionPayload(Object action, JsonNode node) {
-        if (!BotLogicContracts.ACTION_RUN_CHAIN.equals(action)) return null;
-        return tools.jackson.databind.node.JsonNodeFactory.instance.objectNode()
-                .put("chainId", textValue(field(node, "chainId"), ""));
-    }
-
-    /** Fast turn is a Rotate setting and only a literal boolean true turns it on; anything else is off. */
-    private static boolean normalizeFastTurn(Object action, JsonNode node) {
-        return BotLogicContracts.ACTION_ROTATE_TOWARD_TARGET.equals(action)
-                && field(node, "fastTurn") != null && field(node, "fastTurn").isBoolean()
-                && field(node, "fastTurn").asBoolean();
-    }
-
-    /** Sprint is a Walk setting and only a literal boolean true turns it on; anything else is off. */
-    private static boolean normalizeSprint(Object action, JsonNode node) {
-        return BotLogicContracts.ACTION_MOVE_WALK.equals(action)
-                && field(node, "sprint") != null && field(node, "sprint").isBoolean()
-                && field(node, "sprint").asBoolean();
-    }
-
-    /**
-     * Lead aim is only honored on actions that aim at a selected entity. Anything missing or
-     * malformed normalizes to `current`, so brains saved before this setting behave as before.
-     */
-    private static Aim normalizeAim(Object action, JsonNode node) {
-        if (!BotLogicContracts.actionSupportsAim(action)) return Aim.CURRENT;
-        String mode = textValue(field(node, "aim"), BotLogicContracts.AIM_CURRENT);
-        if (BotLogicContracts.AIM_LEAD.equals(mode)) {
-            double seconds = BotLogicContracts.truncateToNumberPrecision(
-                    clamp(numberValue(field(node, "leadSeconds"), 0), 0, BotLogicContracts.MAX_LEAD_SECONDS));
-            return new Aim(BotLogicContracts.AIM_LEAD, seconds, null);
-        }
-        if (BotLogicContracts.AIM_AUTO.equals(mode)) {
-            JsonNode abilityNode = field(node, "leadAbilityId");
-            if (abilityNode != null && abilityNode.isIntegralNumber() && abilityNode.canConvertToInt()
-                    && com.example.botfight.simulation.gameconfig.AbilityRegistry.contains(abilityNode.intValue())) {
-                return new Aim(BotLogicContracts.AIM_AUTO, 0.0, abilityNode.intValue());
-            }
-        }
-        return Aim.CURRENT;
-    }
-
-    private static String normalizeActionTargetMode(Object action, JsonNode node) {
-        BotLogicContracts.ActionContract contract = BotLogicContracts.actionContract(action);
-        if (contract == null || !contract.coordinateTarget()) return "target";
-        String fallback = field(node, "targetX") != null || field(node, "targetY") != null ? "coordinates" : "target";
-        String requested = textValue(field(node, "targetMode"), fallback);
-        if (contract.angleTarget() && "angle".equals(requested)) return "angle";
-        if ("coordinates".equals(requested)) return "coordinates";
-        return "target";
-    }
-
-    private static boolean isCenteredCoordinates(String coordinateVersion) {
-        return BotLogicContracts.BRAIN_SCHEMA_V2.equals(coordinateVersion);
-    }
-
-    private static double absoluteCoordinate(JsonNode node, String coordinateVersion, boolean xAxis) {
-        boolean centered = isCenteredCoordinates(coordinateVersion);
-        double fallback = centered ? 0.0 : (xAxis ? ARENA_WIDTH_UNITS : ARENA_HEIGHT_UNITS) / 2.0;
-        if (node == null || !node.isNumber() || !Double.isFinite(node.asDouble())) return fallback;
-        double minimum = centered ? -ARENA_WIDTH_UNITS / 2.0 : 0.0;
-        double maximum = centered ? ARENA_WIDTH_UNITS / 2.0 : (xAxis ? ARENA_WIDTH_UNITS : ARENA_HEIGHT_UNITS);
-        return BotLogicContracts.truncateToNumberPrecision(Math.max(minimum, Math.min(maximum, node.asDouble())));
-    }
-
-    private static double offsetCoordinate(JsonNode node, String coordinateVersion) {
-        if (node == null || !node.isNumber() || !Double.isFinite(node.asDouble())) return 0.0;
-        double limit = isCenteredCoordinates(coordinateVersion)
-                ? ARENA_WIDTH_UNITS / 2.0 : ARENA_WIDTH_UNITS;
-        return BotLogicContracts.truncateToNumberPrecision(Math.max(-limit, Math.min(limit, node.asDouble())));
-    }
 
     private List<ArenaEntity> tickAbilityEntities(
             List<ArenaEntity> entities,
@@ -1015,17 +864,10 @@ public class DuelSimulationService {
                         Bot owner = activeBots.stream()
                                 .filter(bot -> bot.slot == ownerSlot).findFirst().orElse(null);
                         if (owner != null) {
-                            botStateService.applyDamage(target, amount, owner.slot, sourceX, sourceY);
+                            botStateService.applyDamageFrom(owner, target, amount, sourceX, sourceY);
                         } else {
                             botStateService.applyDamage(target, amount, ownerSlot, sourceX, sourceY);
                         }
-                    }
-
-                    @Override
-                    public int damageToEntity(ArenaEntity entity, List<Bot> activeBots,
-                                              List<ArenaEntity> activeEntities) {
-                        return actionExecutionService.damageToEntityThisTick(
-                                entity, activeBots, activeEntities);
                     }
 
                     @Override
@@ -1053,20 +895,41 @@ public class DuelSimulationService {
                     }
 
                     @Override
-                    public void applyStatus(List<Bot> activeBots, int ownerSlot, Bot target,
-                                            int abilityId, AbilityContracts.Effect effect) {
-                        Bot owner = activeBots.stream()
-                                .filter(bot -> bot.slot == ownerSlot).findFirst().orElse(null);
-                        if (owner != null) {
-                            actionExecutionService.applyEntityStatus(owner, target, abilityId, effect);
-                        }
+                    public Double ownerDamageMultiplier(List<Bot> activeBots, int ownerSlot) {
+                        return activeBots.stream().filter(bot -> bot.slot == ownerSlot).findFirst()
+                                .map(botStateService::damageMultiplier).orElse(null);
+                    }
+
+                    @Override
+                    public String spawnEntityId(List<Bot> activeBots, int ownerSlot, String idPrefix,
+                                                String parentEntityId) {
+                        Bot owner = activeBots.stream().filter(bot -> bot.slot == ownerSlot).findFirst().orElse(null);
+                        if (owner == null) return null;
+                        String entityId = idPrefix + "-" + owner.userId + "-" + owner.abilityEntitySerial++;
+                        // A child belongs to the activation that made its parent.
+                        owner.entityActivations.put(entityId,
+                                owner.entityActivations.getOrDefault(parentEntityId, owner.activationSerial));
+                        return entityId;
+                    }
+
+                    @Override
+                    public boolean castActive(List<Bot> activeBots, int ownerSlot, int abilityId) {
+                        return activeBots.stream().filter(bot -> bot.slot == ownerSlot).findFirst()
+                                .map(owner -> AbilityState.stage(owner, abilityId) == AbilityState.Stage.ACTIVE)
+                                .orElse(false);
+                    }
+
+                    @Override
+                    public double[] ownerPose(List<Bot> activeBots, int ownerSlot) {
+                        return activeBots.stream().filter(bot -> bot.slot == ownerSlot).findFirst()
+                                .map(owner -> new double[] {owner.x, owner.y, owner.rotation}).orElse(null);
                     }
 
                 });
     }
 
     private static SelectableSnapshot selectableSnapshot(ArenaEntity entity) {
-        AbilityContracts.AbilityContract contract = AbilityContracts.forEntity(entity);
+        AbilityContracts.EntityContract contract = AbilityContracts.forEntity(entity);
         boolean healthBearing = contract != null && contract.phases().stream()
                 .anyMatch(phase -> phase.health() != null);
         return new SelectableSnapshot("ability:" + entity.ownerSlot() + ":" + entity.id(), entity.type(),
@@ -1083,95 +946,7 @@ public class DuelSimulationService {
                 .toList());
     }
 
-    private static String actionHead(Object action) {
-        BotLogicContracts.ActionContract contract = BotLogicContracts.actionContract(action);
-        return contract == null ? "movement" : contract.head().name().toLowerCase();
-    }
 
-    private static Object actionValue(JsonNode node) {
-        if (node != null && node.isIntegralNumber() && node.canConvertToInt()) return node.intValue();
-        return textValue(node, BotLogicContracts.ACTION_NONE);
-    }
-
-    private static int normalizePriority(double value) {
-        return (int) clamp(Math.round(Double.isFinite(value) ? value : 1.0), MIN_PRIORITY, MAX_PRIORITY);
-    }
-
-    private static String normalizeSelectable(String selectableId, String fallback) {
-        String canonical = BotLogicContracts.canonicalSelectableId(selectableId);
-        if (BotLogicContracts.isAllowedSelectable(canonical)) return canonical;
-        return BotLogicContracts.canonicalSelectableId(fallback);
-    }
-
-    private static JsonNode field(JsonNode node, String field) {
-        return node != null && node.isObject() ? node.get(field) : null;
-    }
-
-    private static String textValue(JsonNode node, String fallback) {
-        return node != null && node.isTextual() ? node.asText() : fallback;
-    }
-
-    private static String movementDirectionValue(JsonNode node, String fallback) {
-        if (node != null && (node.isTextual() || (node.isNumber() && Double.isFinite(node.asDouble())))) {
-            return node.asText();
-        }
-        return fallback;
-    }
-
-    private static double numberValue(JsonNode node, double fallback) {
-        return node != null && node.isNumber()
-                ? BotLogicContracts.truncateToNumberPrecision(node.asDouble())
-                : fallback;
-    }
-
-    private static int actionPriority(JsonNode node) {
-        JsonNode explicitActionPriority = field(node, "actionPriority");
-        if (explicitActionPriority != null && explicitActionPriority.isNumber()) {
-            return normalizePriority(numberValue(explicitActionPriority, 1.0));
-        }
-        return 1;
-    }
-
-    /** A variable write carries its operand or its terms. */
-    private static JsonNode variableActionPayload(JsonNode node) {
-        return firstNonNull(field(node, "operand"), field(node, "terms"));
-    }
-
-    private static double variableValue(JsonNode node) {
-        if (node != null && node.isBoolean()) return node.asBoolean() ? 1 : 0;
-        if (node != null && node.isObject()) return numberValue(field(node, "value"), 0);
-        return numberValue(node, 0);
-    }
-
-    private static Operand normalizeOperand(JsonNode node) {
-        if (node == null || !node.isObject()) return Operand.number(0.0);
-        String type = textValue(node.get("type"), "number");
-        if ("variable".equals(type)) {
-            return Operand.variable(textValue(node.get("value"), ""));
-        }
-        if ("boolean".equals(type)) {
-            return Operand.bool(booleanValue(node.get("value"), true));
-        }
-        return Operand.number(numberValue(node.get("value"), 0.0));
-    }
-
-    private static boolean booleanValue(JsonNode node, boolean fallback) {
-        if (node == null) return fallback;
-        if (node.isBoolean()) return node.asBoolean();
-        if (node.isNumber()) return node.asInt() != 0;
-        if (node.isTextual()) {
-            String value = node.asText();
-            if ("true".equalsIgnoreCase(value) || "1".equals(value)) return true;
-            if ("false".equalsIgnoreCase(value) || "0".equals(value)) return false;
-        }
-        return fallback;
-    }
-
-    private static double edgeDistanceUnits(Entity entity, Arena arena) {
-        return Math.max(0, Math.min(
-                Math.min(entity.x(), arena.width() - entity.x()),
-                Math.min(entity.y(), arena.height() - entity.y())));
-    }
 
     /** The largest turn per tick the planner may assume: doubled only when the executor will really fast turn. */
     private static double turnStepDegrees(Bot player, boolean fastTurn) {
@@ -1185,25 +960,6 @@ public class DuelSimulationService {
         return clamp(shortestDelta(player.rotation, bearing) / turnStepDegrees(player, fastTurn), -1, 1);
     }
 
-    private static double clamp(double value, double min, double max) {
-        return Math.max(min, Math.min(max, value));
-    }
-
-    private static double round(double value) {
-        return Math.round(value * 1000.0) / 1000.0;
-    }
-
-    private static boolean hasText(String value) {
-        return value != null && !value.isBlank();
-    }
-
-    @SafeVarargs
-    private static <T> T firstNonNull(T... values) {
-        for (T value : values) {
-            if (value != null) return value;
-        }
-        return null;
-    }
 
     public record DuelSimulationRequest(
             UUID matchId,
@@ -1292,6 +1048,10 @@ public class DuelSimulationService {
         public Arena(int width, int height, int durationMs) {
             this(width, height, durationMs, ClosingZoneConfig.duelV1());
         }
+    }
+
+    private static double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     private static double turnTowardAngle(Bot player, double targetAngle, boolean fastTurn) {
@@ -1413,11 +1173,6 @@ public class DuelSimulationService {
     public record TargetPoint(double x, double y, int size) implements Entity {
     }
 
-    private record TreeRoot(int index, double priority, List<TreeBranch> branches, List<StrategyBlock> actions) {
-    }
-
-    private record TreeBranch(String branchType, double priority, List<StrategyBlock> blocks, List<TreeBranch> children) {
-    }
 
     public interface Entity {
         double x();
@@ -1427,168 +1182,6 @@ public class DuelSimulationService {
         int size();
     }
 
-    public static final class Bot implements Entity, AbilityEntityBot {
-        public UUID userId;
-        public String username;
-        public int slot;
-        /** Team identity used for targeting, friendly-fire rules, and scoring. */
-        public int teamNumber;
-        public double x;
-        public double y;
-        public double rotation;
-        public int size;
-        public String combatLoadout;
-        public JsonNode brain;
-        /** Coordinate semantics are owned by this bot's submitted brain. */
-        public String brainSchemaVersion = BotLogicContracts.BRAIN_SCHEMA_V1;
-        private List<TreeRoot> normalizedStrategy = List.of();
-        private Map<String, ChainRuntime.Chain> normalizedChains = Map.of();
-        /** The running action chain's call stack. It persists across ticks like the custom variables. */
-        public List<ChainRuntime.Frame> chainStack = new ArrayList<>();
-        /** Display metadata from the same normalized chains used by authoritative execution. */
-        public String chainName(String chainId) {
-            var chain = normalizedChains.get(chainId);
-            return chain == null ? chainId : chain.name();
-        }
-        /** What the brain decided for the tick that just ran (read by tests and replays). */
-        public Action lastPredictedAction;
-        public Set<Integer> abilities = Set.of();
-        public double hp;
-        public long matchElapsedMs;
-        public double maxHp;
-        public double moveSpeed;
-        public double attackDamageMultiplier = 1.0;
-        public double attackSpeedMultiplier = 1.0;
-        public double spawnX;
-        public double spawnY;
-        public int abilityEntitySerial = 1;
-        public Map<String, StatusEffectState> statusEffects = new HashMap<>();
-        public double dashRemaining;
-        public double dashStepDistance;
-        public double dashDirectionX;
-        public double dashDirectionY;
-        public double movementVelocityX;
-        public double movementVelocityY;
-        public double velocityX;
-        public double velocityY;
-        /** Start of the movement segment swept during the current tick. */
-        public double movementStartX;
-        public double movementStartY;
-        public int utilityHealAccumulatorMs;
-        public Map<Integer, Integer> abilityCooldowns = new HashMap<>();
-        /** Cooldowns reserved by an activation while its active phase is running. */
-        public Map<Integer, Integer> abilityPendingCooldownMs = new HashMap<>();
-        public Map<Integer, Integer> abilityActiveMs = new HashMap<>();
-        /** Milliseconds since each ability last hit an enemy bot; absent when it never has. */
-        public Map<Integer, Integer> abilityLastHitAgeMs = new HashMap<>();
-        /** Abilities that hit an enemy bot this tick, settled into abilityLastHitAgeMs by settleTick. */
-        public Set<Integer> abilityHitsThisTick = new java.util.LinkedHashSet<>();
-        /** Counts this bot's ability activations, so a hit stamina refund is paid once per activation. */
-        public int activationSerial;
-        /** Activations that already paid their hit refund. */
-        public Set<Integer> refundedActivations = new java.util.HashSet<>();
-        /** The activation that spawned each of this bot's entities, by entity id. */
-        public Map<String, Integer> entityActivations = new HashMap<>();
-        /** Hit refunds earned this tick, paid into stamina by settleTick. */
-        public int pendingStaminaRefund;
-        public Map<Integer, Integer> abilityCharges = new HashMap<>();
-        public Map<Integer, Integer> abilityRechargeMs = new HashMap<>();
-        public Map<String, Object> customVariables = new HashMap<>();
-        public Map<String, String> customVariableTypes = new HashMap<>();
-        /** Stamina (an integer, 0-100) and its timers; see StaminaSystem. */
-        public int stamina = com.example.botfight.simulation.gameconfig.MovementConfig.STAMINA_MAX;
-        public int staminaRegenDelayMs;
-        public boolean sprinting;
-        public boolean fastTurning;
-        public int dashGapMs;
-        public Integer preparingAbility;
-        public int preparingMs;
-        public double preparingTargetX = Double.NaN;
-        public double preparingTargetY = Double.NaN;
-        public Integer triggeredAbility;
-        public AbilityExecutionPayload triggeredAbilityPayload;
-        /** One-tick origin for the shared combat activation visual. */
-        public double visualOriginX = Double.NaN;
-        public double visualOriginY = Double.NaN;
-        public double visualOriginRotation = Double.NaN;
-        public final Set<String> entityHitIds = new HashSet<>();
-        /** Full immutable roster for this simulation, attached by the orchestrator. */
-        public List<Bot> matchBots = List.of();
-        public ArenaEntity abilitySpawn;
-        public double pendingHealing;
-        public double tickStartHp;
-        public double damageTakenThisTick;
-        public double damageTakenLastTick;
-        /** Monotonic replay-only event count for successful closing-zone hits. */
-        public int closingZoneDamageCount;
-        public double hpNetChangeLastTick;
-        public int temporalRewindMs;
-        public double temporalRewindX;
-        public double temporalRewindY;
-        public double temporalRewindHp;
-        public int temporalRewindPulseMs;
-
-        public Bot() {}
-
-        @Override
-        public double x() {
-            return x;
-        }
-
-        @Override
-        public double y() {
-            return y;
-        }
-
-        @Override
-        public int size() {
-            return size;
-        }
-
-        @Override public int entitySlot() { return slot; }
-        @Override public int entityTeam() { return teamNumber > 0 ? teamNumber : slot; }
-        @Override public double entityX() { return x; }
-        @Override public double entityY() { return y; }
-        @Override public double entityMovementStartX() { return movementStartX; }
-        @Override public double entityMovementStartY() { return movementStartY; }
-        @Override public int entitySize() { return size; }
-        @Override public double entityHp() { return hp; }
-        public boolean alive() { return hp > 0; }
-        public boolean projectileHittable() { return alive(); }
-        @Override public boolean ignoresHostileEffects() {
-            return !alive() || BotStateService.statusActive(this, "absolute-guard");
-        }
-        @Override public void setEntityPosition(double x, double y) { if (!ignoresHostileEffects()) { this.x = x; this.y = y; } }
-        @Override public void applySilence(int durationMs) {
-            if (!ignoresHostileEffects()) BotStateService.upsertStatusEffect(this,
-                    new StatusEffectState("silence", durationMs, 0)
-                            .addEffect(new StatusEffectState.Effect("silence", "constant")));
-        }
-        @Override public void applySlow(int durationMs) {
-            if (!ignoresHostileEffects()) BotStateService.upsertStatusEffect(this,
-                    new StatusEffectState("slow", durationMs, 0)
-                            .addEffect(new StatusEffectState.Effect("movement_modifier", "constant")
-                                    .movement(.5, .5)));
-        }
-        @Override public void setZoneSilenced(boolean silenced) {
-            if (silenced && !ignoresHostileEffects()) {
-                BotStateService.upsertStatusEffect(this,
-                        new StatusEffectState("silence", 0, 0).presence("null_zone")
-                                .addEffect(new StatusEffectState.Effect("silence", "constant")));
-            } else if (!silenced) {
-                statusEffects.entrySet().removeIf(entry -> "silence".equals(entry.getValue().type)
-                        && "presence".equals(entry.getValue().mode));
-            }
-        }
-        @Override public void applyStun(int durationMs) {
-            if (!ignoresHostileEffects()) BotStateService.upsertStatusEffect(this,
-                    new StatusEffectState("stun", durationMs, 0)
-                            .addEffect(new StatusEffectState.Effect("stun", "constant")));
-        }
-        @Override public void applyInterrupt(int durationMs) {
-            BotStateService.applyInterrupt(this, durationMs, null);
-        }
-    }
 
     public record SelectableSnapshot(
             String id,
@@ -1618,27 +1211,5 @@ public class DuelSimulationService {
         private StrategyBlock rotation;
         private StrategyBlock cancel;
         private StrategyBlock dash;
-    }
-
-    private static final class SeededRandom {
-        private int state;
-
-        private SeededRandom(String seedValue) {
-            state = 0x811C9DC5;
-            String seedText = seedValue != null ? seedValue : "";
-            for (int index = 0; index < seedText.length(); index += 1) {
-                state ^= seedText.charAt(index);
-                state *= 16_777_619;
-            }
-        }
-
-        private double next() {
-            state += 0x6D2B79F5;
-            int value = state;
-            value = (value ^ (value >>> 15)) * (value | 1);
-            value ^= value + ((value ^ (value >>> 7)) * (value | 61));
-            long unsigned = Integer.toUnsignedLong(value ^ (value >>> 14));
-            return unsigned / 4_294_967_296.0;
-        }
     }
 }

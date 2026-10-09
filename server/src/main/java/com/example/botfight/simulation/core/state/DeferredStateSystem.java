@@ -1,5 +1,7 @@
 package com.example.botfight.simulation.core.state;
 
+import com.example.botfight.simulation.core.orchestration.Bot;
+
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import java.util.List;
@@ -27,7 +29,7 @@ final class DeferredStateSystem {
 
     private DeferredStateSystem() {}
 
-    public static boolean tick(DuelSimulationService.Bot bot, int elapsedMs) {
+    public static boolean tick(Bot bot, int elapsedMs) {
         int elapsed = Math.max(0, elapsedMs);
         boolean completed = false;
         for (DeferredStateContract contract : CONTRACTS) {
@@ -36,7 +38,7 @@ final class DeferredStateSystem {
         return completed;
     }
 
-    private static boolean advance(DuelSimulationService.Bot bot,
+    private static boolean advance(Bot bot,
                                    DeferredStateContract contract,
                                    int elapsedMs) {
         int remainingBefore = Math.max(0, contract.remaining().applyAsInt(bot));
@@ -55,11 +57,11 @@ final class DeferredStateSystem {
     }
 
     private record DeferredStateContract(
-            ToIntFunction<DuelSimulationService.Bot> remaining,
-            ObjIntConsumer<DuelSimulationService.Bot> remainingSetter,
-            ToIntFunction<DuelSimulationService.Bot> completionVisual,
-            ObjIntConsumer<DuelSimulationService.Bot> completionVisualSetter,
-            ToIntFunction<DuelSimulationService.Bot> completionVisualDuration,
-            Consumer<DuelSimulationService.Bot> complete) {
+            ToIntFunction<Bot> remaining,
+            ObjIntConsumer<Bot> remainingSetter,
+            ToIntFunction<Bot> completionVisual,
+            ObjIntConsumer<Bot> completionVisualSetter,
+            ToIntFunction<Bot> completionVisualDuration,
+            Consumer<Bot> complete) {
     }
 }

@@ -218,12 +218,14 @@ function normalizeChainStepAction(raw, customVariables, coordinateVersion) {
         ? null : entry;
 }
 
-export function selectAbilityStrategyBlock(configuration, payload) {
-    return selectStrategyBlock(configuration, payload, selectionRuntime());
+/** Takes a normalized configuration (normalizeAbilityStrategyConfiguration); it is never normalized per call. */
+export function selectAbilityStrategyBlock(normalized, payload) {
+    return selectStrategyBlock(normalized, payload, selectionRuntime());
 }
 
-export function selectAbilityStrategyActionPlan(configuration, payload) {
-    return selectStrategyActionPlan(configuration, payload, selectionRuntime());
+/** Takes a normalized configuration (normalizeAbilityStrategyConfiguration); it is never normalized per call. */
+export function selectAbilityStrategyActionPlan(normalized, payload) {
+    return selectStrategyActionPlan(normalized, payload, selectionRuntime());
 }
 
 export function inspectAbilityStrategyConditions(configuration, payload) {
@@ -325,13 +327,12 @@ function abilityInspection(value) {
     } : null;
 }
 
-export function hasAbilityStrategyActions(configuration) {
-    return hasStrategyActions(configuration, normalizeAbilityStrategyConfiguration);
+export function hasAbilityStrategyActions(normalized) {
+    return hasStrategyActions(normalized);
 }
 
 function selectionRuntime() {
     return {
-        normalizeConfiguration: normalizeAbilityStrategyConfiguration,
         stateFromPayload,
         prepareCustomVariables: (state, definitions) => prepareCustomVariableState(state, definitions),
         selectPriorityCandidates: (normalized, state) => selectCandidates(normalized, state, {

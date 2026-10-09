@@ -7,7 +7,7 @@ import com.example.botfight.simulation.bots.BotLogicContracts;
 import com.example.botfight.simulation.bots.ConditionEvaluationService;
 import com.example.botfight.simulation.core.combat.ActionExecutionService;
 import com.example.botfight.simulation.core.logic.ConditionResolutionService;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
+import com.example.botfight.simulation.core.orchestration.Bot;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.DuelArenaRequest;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.DuelBotRequest;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.DuelSimulationRequest;

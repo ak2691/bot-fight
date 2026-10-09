@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyBotAction } from "../bots/ActionExecutionSystem.js";
-import { applyDamageToShape, resolveTriggeredAbilityCombat as resolveAbilityCombat } from "../../gameconfig/BotCombatSystem.js";
 import { abilityHitsTarget } from "../abilities/AbilityHitDetectionSystem.js";
 import { ABILITY_STATS, abilityDefinition, decodeBotLoadout, encodeBotLoadout } from "../../loadout/BotLoadout.js";
-import { ATTACHED_ABILITY_CONTRACTS, EFFECT_TYPES, TARGET_KINDS } from "../contracts/AbilityContracts.js";
+import { EFFECT_TYPES, TARGET_KINDS, triggerView } from "../contracts/AbilityContracts.js";
 import { compassDirection } from "../../botlogic/planner/arenaAngles.js";
+import { applyBotAction, resolveTriggeredAbilityCombat as resolveAbilityCombat } from "../../testing/pureTicks.js";
+import { preparingAbilityId, activeRemainingMs, pendingCooldownMs } from "../../gameconfig/AbilityState.js";
 
 // Mirrors server WeaponParityTest; keep both tables identical.
 const TARGET_RADIUS = 30;
@@ -19,8 +19,7 @@ const WEAPONS = Object.freeze([
 const attackerFor = (weapon, extra = {}) => ({
     id: "owner", slot: 1, x: 100, y: 100, size: 60, rotation: 90, hp: 150, maxHp: 150,
     moveSpeed: 8, attackSpeedMultiplier: 1, attackDamageMultiplier: 1,
-    abilities: [weapon.id], abilityCooldowns: { [weapon.id]: 0 }, abilityActiveMs: {},
-    ...extra,
+    abilities: [weapon.id], abilityState: {}, ...extra,
 });
 const triggered = (weapon, extra) => ({ ...attackerFor(weapon, extra), triggeredAbility: weapon.id });
 const defenderAt = (x, y, size = 60) => ({ id: "target", slot: 2, x, y, size, rotation: 270, hp: 150, maxHp: 150 });
@@ -33,8 +32,8 @@ const hits = (weapon, target) => abilityHitsTarget(triggered(weapon), target);
 
 for (const weapon of WEAPONS) {
     test(`${weapon.name} contract matches the weapon table`, () => {
-        const contract = ATTACHED_ABILITY_CONTRACTS[weapon.id];
-        const hitbox = contract.phases[0].hitbox;
+        const view = triggerView(weapon.id);
+        const hitbox = view.hitbox;
         assert.equal(hitbox.shape, weapon.shape);
         assert.equal(hitbox.includeTargetRadius, true);
         if (weapon.shape === "arc") {
@@ -44,9 +43,9 @@ for (const weapon of WEAPONS) {
             assert.equal(hitbox.length, weapon.length);
             assert.equal(hitbox.width, weapon.width);
         }
-        const damage = contract.phases[0].effects.find((effect) => effect.type === EFFECT_TYPES.DAMAGE);
+        const damage = view.effects.find((effect) => effect.type === EFFECT_TYPES.DAMAGE);
         assert.equal(damage.amount, weapon.damage);
-        const knockback = contract.phases[0].effects.find((effect) => effect.type === EFFECT_TYPES.KNOCKBACK);
+        const knockback = view.effects.find((effect) => effect.type === EFFECT_TYPES.KNOCKBACK);
         assert.equal(knockback?.amount, weapon.knockback);
         if (knockback) assert.deepEqual([...knockback.targetKinds], [TARGET_KINDS.BOT, TARGET_KINDS.SUMMON]);
         assert.equal(ABILITY_STATS[weapon.id].windupMs ?? 0, weapon.windupMs);
@@ -98,22 +97,22 @@ for (const weapon of WEAPONS) {
         let bot = attackerFor(weapon);
         const action = { abilityAction: { action: weapon.id } };
         for (let elapsed = stepMs; elapsed < weapon.windupMs; elapsed += stepMs) {
-            bot = applyBotAction(bot, action, stepMs, applyDamageToShape);
+            bot = applyBotAction(bot, action, stepMs);
             assert.equal(bot.triggeredAbility ?? null, null, `still winding up at ${elapsed} ms`);
-            assert.equal(bot.preparingAbility, weapon.id);
+            assert.equal(preparingAbilityId(bot), weapon.id);
         }
-        bot = applyBotAction(bot, action, stepMs, applyDamageToShape);
+        bot = applyBotAction(bot, action, stepMs);
         assert.equal(bot.triggeredAbility, weapon.id);
-        assert.equal(bot.preparingAbility ?? null, null);
-        assert.equal(bot.abilityActiveMs[weapon.id], weapon.activeMs);
-        assert.equal(bot.abilityPendingCooldownMs[weapon.id], weapon.cooldownMs);
+        assert.equal(preparingAbilityId(bot) ?? null, null);
+        assert.equal(activeRemainingMs(bot, weapon.id), weapon.activeMs);
+        assert.equal(pendingCooldownMs(bot, weapon.id), weapon.cooldownMs);
     });
 
     test(`${weapon.name} cooldown follows the attack speed multiplier`, () => {
         const bot = applyBotAction(attackerFor(weapon, { attackSpeedMultiplier: 2 }),
-            { abilityAction: { action: weapon.id } }, weapon.windupMs || 50, applyDamageToShape);
+            { abilityAction: { action: weapon.id } }, weapon.windupMs || 50);
         assert.equal(bot.triggeredAbility, weapon.id);
-        assert.equal(bot.abilityPendingCooldownMs[weapon.id], Math.round(weapon.cooldownMs / 2));
+        assert.equal(pendingCooldownMs(bot, weapon.id), Math.round(weapon.cooldownMs / 2));
     });
 }
 

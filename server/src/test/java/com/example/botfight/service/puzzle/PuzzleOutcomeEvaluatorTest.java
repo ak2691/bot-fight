@@ -1,5 +1,7 @@
 package com.example.botfight.service.puzzle;
 
+import com.example.botfight.simulation.core.orchestration.Bot;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.botfight.simulation.bots.ConditionEvaluationService;
@@ -25,8 +27,8 @@ class PuzzleOutcomeEvaluatorTest {
                         """),
                 jsonMapper.createArrayNode(),
                 90_000);
-        DuelSimulationService.Bot player = bot(1, 150);
-        DuelSimulationService.Bot opponent = bot(2, 0);
+        Bot player = bot(1, 150);
+        Bot opponent = bot(2, 0);
 
         boolean stopped = evaluator.afterTick(
                 100,
@@ -50,8 +52,8 @@ class PuzzleOutcomeEvaluatorTest {
                         [{"type":"expression","left":"selectable.hp","leftSelectable":"my_bot","comparator":"lte","right":{"type":"number","value":0}}]
                         """),
                 90_000);
-        DuelSimulationService.Bot player = bot(1, 0);
-        DuelSimulationService.Bot opponent = bot(2, 150);
+        Bot player = bot(1, 0);
+        Bot opponent = bot(2, 150);
 
         boolean stopped = evaluator.afterTick(
                 100,
@@ -116,7 +118,7 @@ class PuzzleOutcomeEvaluatorTest {
                         }
                         """.formatted(versionField, expectedY)),
                 90_000);
-        DuelSimulationService.Bot player = bot(1, 150);
+        Bot player = bot(1, 150);
         player.y = 150;
 
         boolean stopped = evaluator.afterTick(
@@ -129,8 +131,8 @@ class PuzzleOutcomeEvaluatorTest {
         assertThat(evaluator.status()).isEqualTo(expectedStatus);
     }
 
-    private DuelSimulationService.Bot bot(int slot, double hp) {
-        DuelSimulationService.Bot bot = new DuelSimulationService.Bot();
+    private Bot bot(int slot, double hp) {
+        Bot bot = new Bot();
         bot.slot = slot;
         bot.x = slot == 1 ? 250 : 750;
         bot.y = 500;

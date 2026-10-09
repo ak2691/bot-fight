@@ -69,7 +69,8 @@ test("puzzle play preserves the editable setup until Reset Stats is chosen", () 
     const autoPlaySource = read(AUTO_PLAY_HOOK_PATH);
 
     assert.doesNotMatch(autoPlaySource, /buildTutorialArenaShapes|buildAutoPlayStartShapes/);
-    assert.match(autoPlaySource, /setShapes\(\(previousShapes\) => advanceArenaPreviewTick/);
+    assert.match(autoPlaySource, /createFight\(shapesRef\.current/);
+    assert.match(autoPlaySource, /setShapes\(frame\)/);
     assert.match(arenaSource, /if \(isPuzzleMode\) \{\s*setShapes\(buildPracticeArenaShapes\([\s\S]*?puzzleArenaSetup/);
 });
 
@@ -164,9 +165,9 @@ test("editable code upgrades legacy coordinates before rendering movement contro
 test("Pixi hit-testing only selects bots and ignores visual effects", () => {
     const source = read(PIXI_CANVAS_PATH);
 
-    assert.match(source, /container\.eventMode = isBotShape\(shape\) \? "static" : "none"/);
+    assert.match(source, /container\.eventMode = isBotState\(shape\) \? "static" : "none"/);
     assert.match(source, /graphics\.eventMode = "none"/);
-    assert.match(source, /function beginDrag\(event, view\) \{\s*if \(!isBotShape\(view\.shape\)\) return;/);
+    assert.match(source, /function beginDrag\(event, view\) \{\s*if \(!isBotState\(view\.shape\)\) return;/);
 });
 
 test("code graph nodes can be dragged from their surfaces without stealing control clicks", () => {

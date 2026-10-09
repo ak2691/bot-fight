@@ -4,6 +4,16 @@ import { combatVisualDurationMs } from "../gameArena/gameconfig/visualState.js";
 import { centeredTeamPosition, displayedRoundWins, hydrateReplayBot, initialReplayHandoffFrame, interpolateReplayFrame, localReplaySchedule, mergeReplayFrames, replayAbilitiesFor, replayAbilityTarget, replayAbilityVisual, replayClockSeconds, replayDamageEvents, replayElapsedMs, replayEntranceProgress, replayEntranceX, replayBotAbilityState, replayFrameIndexForElapsedMs, replayRayOrigin, replayRatingChange, replayRatingChanges, replayRemainingMs, replayRemainingSeconds, replayResultRevealReached, replayResultVisibility, replayShapeKey } from "./replayPresentation.js";
 import { botSprinting, botStamina } from "../gameArena/gameconfig/StaminaSystem.js";
 import { runningChainSnapshot } from "../gameArena/botlogic/code/runtime/chainPresentation.js";
+import { createBotState } from "../gameArena/modelPayloads/botState.js";
+import { activeRemainingMs } from "../gameArena/gameconfig/AbilityState.js";
+
+test("hydrated replay bots are flat bot state with the bot kind and every field", () => {
+    const bot = hydrateReplayBot({ slot: 2, userId: "u2", x: 300, y: 400, hp: 120, rotation: 90 });
+    assert.equal(bot.kind, "bot");
+    assert.deepEqual([bot.slot, bot.x, bot.y, bot.hp, bot.rotation], [2, 300, 400, 120, 90]);
+    assert.deepEqual(Object.keys(bot).slice(0, Object.keys(createBotState({})).length), Object.keys(createBotState({})));
+    for (const nested of ["health", "stats", "transform"]) assert.equal(nested in bot, false);
+});
 
 test("chain presentation matches compact server fields and clears absent state", () => {
     const stack = [
@@ -69,17 +79,18 @@ test("replay visual timers follow authoritative frame time without presentation 
 });
 
 test("local replay preserves the organized ability timers used by Bot Room", () => {
-    assert.deepEqual(replayBotAbilityState({
-        abilityActiveMs: { 1: 300, 3: 850, 5: 500, 6: 400, 19: 100 },
-    }), {
+    // The replay DTO fields become ability records; the derived old fields read back the same timers.
+    const state = replayBotAbilityState({
         abilityActiveMs: { 1: 300, 3: 850, 5: 500, 6: 400, 19: 100 },
     });
+    for (const [id, ms] of Object.entries({ 1: 300, 3: 850, 5: 500, 6: 400, 19: 100 })) assert.equal(activeRemainingMs(state, id), ms);
+    assert.equal(state.abilityState[3].stage, "active");
 });
 
 test("replay does not infer one ability visual from another equipped ability", () => {
     const state = replayBotAbilityState({ abilities: [3, 5], abilityActiveMs: { 5: 500 } });
-    assert.equal(state.abilityActiveMs[5], 500);
-    assert.equal(state.abilityActiveMs[3] ?? 0, 0);
+    assert.equal(activeRemainingMs(state, 5), 500);
+    assert.equal(activeRemainingMs(state, 3) ?? 0, 0);
 });
 
 test("replay reconstructs direct ability visuals with the shared Bot Room duration", () => {

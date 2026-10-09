@@ -6,9 +6,10 @@ import com.example.botfight.simulation.bots.BotCodeService;
 import com.example.botfight.simulation.core.logic.ConditionResolutionService;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Action;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Arena;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
+import com.example.botfight.simulation.core.orchestration.Bot;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Condition;
 import com.example.botfight.simulation.core.state.BotStateService;
+import com.example.botfight.simulation.core.state.LegacyAbility;
 import com.example.botfight.simulation.gameconfig.GameConfigCatalog;
 import com.example.botfight.simulation.gameconfig.MovementConfig;
 import java.util.ArrayList;
@@ -170,15 +171,16 @@ class StaminaRefundTest {
     @Test
     void parityTraceDashIdleHitIdleDash() {
         Bot bot = bot();
-        List<List<Integer>> trace = new ArrayList<>();
+        List<List<Object>> trace = new ArrayList<>();
         Object[][] script = {
                 {dash(), null}, {idle(), null}, {idle(), SLASH}, {idle(), null}, {dash(), null}};
         for (Object[] entry : script) {
             step(bot, (Action) entry[0], (Integer) entry[1], 7);
-            trace.add(List.of(bot.stamina, bot.staminaRegenDelayMs, bot.dashGapMs));
+            trace.add(List.of(bot.stamina, bot.staminaRegenDelayMs, LegacyAbility.stage(bot, 19)));
         }
         assertThat(trace).containsExactly(
-                List.of(70, 500, 300), List.of(70, 400, 200), List.of(80, 300, 100), List.of(80, 200, 0), List.of(50, 500, 300));
+                List.of(70, 500, "active:200"), List.of(70, 400, "active:100"), List.of(80, 300, "cooldown:100"),
+                List.of(80, 200, "ready:0"), List.of(50, 500, "active:200"));
     }
 
     @Test

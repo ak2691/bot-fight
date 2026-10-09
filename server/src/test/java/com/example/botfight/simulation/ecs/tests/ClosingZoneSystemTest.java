@@ -2,6 +2,7 @@ package com.example.botfight.simulation.ecs.tests;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.example.botfight.simulation.core.state.StatusEffectState;
 import com.example.botfight.simulation.ecs.entities.AbilityEntityBot;
 import com.example.botfight.simulation.ecs.entities.ArenaEntity;
 import com.example.botfight.simulation.ecs.entities.ClosingZoneSystem;
@@ -153,9 +154,8 @@ class ClosingZoneSystemTest {
         @Override public double entityHp() { return hp; }
         @Override public boolean ignoresHostileEffects() { return false; }
         @Override public void setEntityPosition(double x, double y) { this.x = x; this.y = y; }
-        @Override public void applySilence(int durationMs) {}
-        @Override public void setZoneSilenced(boolean silenced) {}
-        @Override public void applyStun(int durationMs) {}
-        @Override public void applyInterrupt(int durationMs) {}
+        @Override public void applyStatus(StatusEffectState status, boolean clearsVelocity) {}
+        @Override public void clearZonePresence() {}
+        @Override public void applyInterrupt(int durationMs, Integer abilityId) {}
     }
 }

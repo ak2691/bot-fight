@@ -63,7 +63,7 @@ class StaminaRefundSimulationTest {
                         new DuelBotRequest(UUID.nameUUIDFromBytes("d".getBytes()), "d", 2, defenderX, MAIN_Y,
                                 270.0, 60, "custom", brain(ability, false), null, 2))),
                 (elapsedMs, bots, entities, arena) -> {
-                    DuelSimulationService.Bot main = bots.get(0);
+                    Bot main = bots.get(0);
                     if (samples.isEmpty()) {
                         main.stamina = 40;
                         main.staminaRegenDelayMs = PAUSED;

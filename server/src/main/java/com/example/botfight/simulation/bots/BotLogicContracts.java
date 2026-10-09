@@ -1,7 +1,7 @@
 package com.example.botfight.simulation.bots;
 
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
-import com.example.botfight.simulation.ecs.contracts.AbilityContracts.AbilityContract;
+import com.example.botfight.simulation.ecs.contracts.AbilityContracts.EntityContract;
 import com.example.botfight.simulation.gameconfig.MovementConfig;
 import com.example.botfight.simulation.geometry.ArenaUnits;
 import java.util.Collections;
@@ -348,7 +348,7 @@ public final class BotLogicContracts {
             selectables.put(opponent, new SelectableContract(
                     opponent, AbilityContracts.SelectableOwner.OWNER, null, null, 0, identities));
         }
-        for (AbilityContract entity : AbilityContracts.entityAll().values()) {
+        for (EntityContract entity : AbilityContracts.entityAll().values()) {
             if (entity.selectableOwner() == AbilityContracts.SelectableOwner.NONE) {
                 selectables.put(entity.entityType(), selectable(entity, entity.entityType()));
                 continue;
@@ -438,7 +438,7 @@ public final class BotLogicContracts {
 
     private static String canonicalSelectableBase(String base) {
         if (SELECTABLE_OPPONENT_LEGACY.equals(base)) return SELECTABLE_OPPONENT;
-        for (AbilityContract entity : AbilityContracts.entityAll().values()) {
+        for (EntityContract entity : AbilityContracts.entityAll().values()) {
             if (entity.selectableOwner() == AbilityContracts.SelectableOwner.NONE) continue;
             if (("my_" + entity.entityType()).equals(base)) {
                 return entitySelectableId(SELECTABLE_MY, entity.entityType());
@@ -457,15 +457,14 @@ public final class BotLogicContracts {
             return null;
         }
         if (!(action instanceof Integer abilityId) || !AbilityContracts.actions().contains(abilityId)) return null;
-        AbilityContracts.AbilityContract attachedAbilityContract = AbilityContracts.attachedAbilityContract(abilityId);
+        AbilityContracts.AbilityContract contract = AbilityContracts.forAbility(abilityId);
         AbilityContracts.Activation activation = AbilityContracts.activationFor(abilityId);
-        AbilityContract entity = AbilityContracts.entityContractForAbility(abilityId);
+        EntityContract entity = AbilityContracts.entityContractForAbility(abilityId);
         boolean locationTarget = entity != null && entity.spawn().targetPosition();
-        boolean movement = attachedAbilityContract != null && attachedAbilityContract.phases().stream()
-                .anyMatch(phase -> phase.movement() != null && phase.movement().distance() != null);
+        boolean movement = contract != null && contract.has(AbilityContracts.MoveVerb.class);
         String targetMode = activation.targetMode();
         if (targetMode == null && locationTarget) targetMode = "target";
-        return new ActionContract(abilityId == MovementConfig.DASH_ABILITY_ID ? ActionHead.DASH : ActionHead.ABILITY, false, movement,
+        return new ActionContract(com.example.botfight.simulation.gameconfig.AbilityChannels.isDash(abilityId) ? ActionHead.DASH : ActionHead.ABILITY, false, movement,
                 movement || locationTarget, locationTarget,
                 activation.phaseFacingDefault() != null, false, targetMode);
     }
@@ -638,7 +637,7 @@ public final class BotLogicContracts {
     public static Set<String> numericComparators() { return NUMERIC_COMPARATORS; }
     public static Set<String> booleanComparators() { return BOOLEAN_COMPARATORS; }
 
-    private static SelectableContract selectable(AbilityContract entity, String id) {
+    private static SelectableContract selectable(EntityContract entity, String id) {
         Set<SelectableIdentity> identities = new LinkedHashSet<>();
         identities.add(SelectableIdentity.ABILITY_ENTITY);
         identities.add(SelectableIdentity.POSITION);
@@ -728,19 +727,17 @@ public final class BotLogicContracts {
 
     private static Set<String> buildStatusEffects() {
         Set<String> effects = new LinkedHashSet<>();
-        for (AbilityContracts.AbilityContract ability : AbilityContracts.attachedAll().values()) {
-            addStatusEffects(effects, ability.phases());
-        }
-        for (AbilityContract entity : AbilityContracts.entityAll().values()) {
-            addStatusEffects(effects, entity.phases());
+        for (AbilityContracts.AbilityContract ability : AbilityContracts.all().values()) {
+            addStatusEffects(effects, ability.triggerEffects());
+            ability.entities().values().forEach(entity -> entity.phases()
+                    .forEach(phase -> addStatusEffects(effects, phase.effects())));
         }
         return Collections.unmodifiableSet(effects);
     }
 
     private static void addStatusEffects(Set<String> effects,
-                                         java.util.List<AbilityContracts.AbilityPhase> phases) {
-        for (AbilityContracts.Effect effect : phases.stream()
-                .flatMap(phase -> phase.effects().stream()).toList()) {
+                                         java.util.List<AbilityContracts.Effect> declared) {
+        for (AbilityContracts.Effect effect : declared) {
             if (isStatusEffect(effect) && effect.subtype() != null) {
                 effects.add(effect.subtype());
             }

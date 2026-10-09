@@ -1,56 +1,91 @@
 import { buildDeterministicLogicAction, idleAction } from "../botlogic/planner/ArenaActionPlanner.js";
 import { hasAbilityStrategyActions } from "../botlogic/code/BotCode.js";
 import { isAbilityEntity, tickAbilityEntityWorld } from "../ecs/abilities/AbilityEntitySystem.js";
-import { overlapsEntity } from "../gameconfig/hitboxGeometry.js";
+import { advanceEntityAge } from "../ecs/entities/EntityWorld.js";
 import { applyBotAction } from "../ecs/bots/ActionExecutionSystem.js";
-import {
-    applyDamageFromShapes,
-    applyDamageToShape,
-    resolveTriggeredAbilityCombatForRoster,
-    settlePendingHealing,
-} from "../gameconfig/BotCombatSystem.js";
+import { settleHealing } from "../ecs/abilities/effects.js";
+import { resolveTriggerVerbsForRoster } from "../ecs/abilities/verbs.js";
 import { settleAbilityHits } from "../gameconfig/AbilityHitRecord.js";
-import { triggeredAbilityDamage } from "../ecs/abilities/AbilityEffectSystem.js";
-import { abilityHitsTarget } from "../ecs/abilities/AbilityHitDetectionSystem.js";
 import { isClosingZone, tickClosingZoneWorld } from "../ecs/entities/ClosingZoneSystem.js";
+import { ACTION_TO_ABILITY } from "../loadout/BotLoadout.js";
+import { phaseForEntity } from "../ecs/contracts/AbilityContracts.js";
+import { beginCombatTick, botRef, entityRef, logCombat, setCombatStage, withCombatLog } from "../ecs/combatLog.js";
 import { AUTO_STEP_MS, ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "./arenaConstants.js";
 import { createStatePayloadFactory } from "./strategyStatePayload.js";
-import { toCanonicalBotShape, toSimulationBotShape } from "./arenaShapes.js";
+import { isBotState } from "./botState.js";
 
-function finalizeTickMeasurements(shape, before) {
-    if (!shape) return shape;
-    return settleAbilityHits({
-        ...shape,
-        damageTakenLastTick: Number(shape.damageTakenThisTick ?? 0),
-        damageTakenThisTick: 0,
-        hpNetChangeLastTick: Number(shape.hp ?? 0) - Number(before?.hp ?? shape.hp ?? 0),
-    }, AUTO_STEP_MS);
+/**
+ * The fight engine. `createFight(setup)` takes the bots, ability entities and closing zone of a setup (copying
+ * them: the caller's objects are never touched) and owns them from then on. `fight.step()` advances one tick
+ * through the seven stages and changes the fight's own bots and entities in place; `fight.frame()` returns new
+ * plain objects for callers (React, Pixi, tests). A caller never holds a working object: values nested inside a
+ * bot or entity (status lists, ability records) are replaced when they change, never edited, so a frame stays
+ * valid while the fight runs on.
+ *
+ * Brains read the snapshot of the start of the tick (built once, before anything changes). Code that compares
+ * before and after (hp change, damage taken) reads that snapshot for "before".
+ *
+ * The stages are the same ones the server's DuelSimulationService.simulate runs, in this order:
+ * decide, act, resolveHits, spawn, entities, hazards, settle. Pass `combatLog` (see ecs/combatLog.js) to record
+ * one entry per trigger, effect, status, spawn, phase change, removal and stamina change; with no log nothing
+ * is recorded.
+ *
+ * Options (all may be replaced per step): `selectedLoadout`, `opponentLoadout`, and the normalized brains
+ * `testingConfiguration` (slot 1) and `opponentTestingConfiguration` (slot 2). The brains in the options and
+ * in `bot.strategyConfiguration` are already normalized (see normalizeAbilityStrategyConfiguration); nothing
+ * here normalizes.
+ */
+export function createFight(setup, options = {}) {
+    const fight = {
+        bots: [],
+        entities: [],
+        closingZone: null,
+        options: { ...options },
+        step(overrides = null) {
+            stepFight(fight, overrides ? { ...fight.options, ...overrides } : fight.options);
+        },
+        frame() {
+            return [
+                ...fight.bots.map((bot) => ({ ...bot })),
+                ...fight.entities.map((entity) => ({ ...entity })),
+                ...(fight.closingZone ? [{ ...fight.closingZone }] : []),
+            ];
+        },
+    };
+    for (const shape of setup) {
+        if (isBotState(shape)) fight.bots.push({ ...shape });
+        else if (isClosingZone(shape)) fight.closingZone = { ...shape };
+        else if (isAbilityEntity(shape)) fight.entities.push({ ...shape });
+    }
+    return fight;
 }
 
-export function isSimulationBotShape(shape) {
-    return shape?.id === "main"
-        || shape?.id === "opponent-model"
-        || shape?.type === "circle"
-        || shape?.type === "bot"
-        || shape?.type === "botModel"
-        || shape?.type === "opponentModel"
-        || (shape?.slot != null && shape?.userId != null && shape?.abilityId == null);
+function stepFight(fight, options) {
+    withCombatLog(options.combatLog ?? null, () => {
+        beginCombatTick();
+        // Entities age at the start of the tick, before this tick's spawns join, as on the server.
+        for (const entity of fight.entities) advanceEntityAge(entity, AUTO_STEP_MS);
+        const snapshot = createStatePayloadFactory([
+            ...fight.bots,
+            ...fight.entities,
+            ...(fight.closingZone ? [fight.closingZone] : []),
+        ]);
+        const decisions = decide(fight, snapshot, options);
+        act(fight, decisions);
+        resolveHits(fight);
+        spawn(fight);
+        entities(fight);
+        hazards(fight);
+        settle(fight, snapshot);
+    });
 }
 
-/** Advance one browser-only preview tick from a single shared start-of-tick snapshot. */
-export function advanceArenaPreviewTick(prevShapes, {
-    selectedLoadout,
-    opponentLoadout,
-    testingConfiguration,
-    opponentTestingConfiguration,
-}) {
-    const statePayloads = createStatePayloadFactory(prevShapes);
-    const stateSnapshot = statePayloads.forActor(selectedLoadout);
-    const botBefores = prevShapes
-        .filter(isSimulationBotShape)
-        .map(toSimulationBotShape);
-    const mainBefore = botBefores.find((bot) => bot.id === "main") ?? null;
-    const botsAfterActions = botBefores.map((bot) => {
+/** Every bot picks its action from the start-of-tick snapshot. */
+function decide(fight, snapshot, options) {
+    setCombatStage("decide");
+    const { selectedLoadout, opponentLoadout, testingConfiguration, opponentTestingConfiguration } = options;
+    const stateSnapshot = snapshot.forActor(selectedLoadout);
+    return fight.bots.map((bot) => {
         const configuration = bot.id === "main"
             ? testingConfiguration
             : bot.id === "opponent-model"
@@ -65,55 +100,115 @@ export function advanceArenaPreviewTick(prevShapes, {
             && (bot.id === "main" || hasAbilityStrategyActions(configuration))
             ? buildDeterministicLogicAction(
                 configuration,
-                bot.id === "main" ? stateSnapshot : statePayloads.forActor(botLoadout, bot.id),
+                bot.id === "main" ? stateSnapshot : snapshot.forActor(botLoadout, bot.id),
             )
             : idleAction();
-        return {
-            ...applyBotAction({ ...bot, lastPredictedAction: action }, action, AUTO_STEP_MS, applyDamageToShape),
-            customVariables: action.customVariables,
-            chainStack: action.chainStack ?? [],
-            runningChain: action.runningChain ?? null,
-        };
+        return { bot, action };
     });
-    const spawnedEntities = botsAfterActions.map((bot) => bot.abilitySpawn).filter(Boolean);
-    let abilityEntities = [...prevShapes.filter(isAbilityEntity)];
-    const previousClosingZone = prevShapes.find(isClosingZone) ?? null;
-    abilityEntities.push(...spawnedEntities.filter(isAbilityEntity));
-    let activeBots = botsAfterActions.map((bot) => ({ ...bot, abilitySpawn: null }));
-    activeBots = resolveTriggeredAbilityCombatForRoster(activeBots);
-    const entityUpdate = tickAbilityEntityWorld({
-        entities: abilityEntities,
-        bots: activeBots,
+}
+
+/** Stamina timers, stun, cancel, movement, channels and the ability triggers of every bot. */
+function act(fight, decisions) {
+    setCombatStage("act");
+    for (const { bot, action } of decisions) {
+        bot.lastPredictedAction = action;
+        applyBotAction(bot, action, AUTO_STEP_MS);
+        bot.customVariables = action.customVariables;
+        bot.chainStack = action.chainStack ?? [];
+        bot.runningChain = action.runningChain ?? null;
+    }
+    for (const bot of fight.bots) {
+        if (bot.triggeredAbility == null) continue;
+        logCombat("trigger", {
+            source: botRef(bot),
+            abilityId: ACTION_TO_ABILITY[bot.triggeredAbility] ?? bot.triggeredAbility,
+        });
+    }
+}
+
+/** The trigger verbs of the abilities that triggered this tick hit the opposing bots or apply to their owner. */
+function resolveHits(fight) {
+    setCombatStage("resolveHits");
+    resolveTriggerVerbsForRoster(fight.bots);
+}
+
+/** New ability entities join the world; the bots' one-tick spawn slot is cleared. */
+function spawn(fight) {
+    setCombatStage("spawn");
+    const spawned = fight.bots.flatMap((bot) => bot.abilitySpawn ?? []).filter(isAbilityEntity);
+    for (const entity of spawned) {
+        logCombat("spawn", {
+            source: botRef(entity.ownerSlot),
+            target: entityRef(entity),
+            abilityId: entity.abilityId,
+            effect: entity.type,
+        });
+    }
+    fight.entities = [...fight.entities, ...spawned];
+    for (const bot of fight.bots) bot.abilitySpawn = [];
+}
+
+/** Projectiles, zones, traps and summons advance and apply their effects. */
+function entities(fight) {
+    setCombatStage("entities");
+    const before = fight.entities;
+    // The entities change in place, so what the log compares them with is noted first.
+    const phaseBefore = new Map(before.map((entity) => [entity.id, phaseForEntity(entity)?.id ?? null]));
+    const update = tickAbilityEntityWorld({
+        entities: before,
+        entitiesAged: true,
+        bots: fight.bots,
         stepMs: AUTO_STEP_MS,
         width: ARENA_WIDTH_UNITS,
         height: ARENA_HEIGHT_UNITS,
-    }, {
-        applyDamageToShape,
-        applyDamageFromShapes,
-        abilityHitsTarget,
-        triggeredAbilityDamage,
-        overlapsShape: overlapsEntity,
     });
-    activeBots = entityUpdate.bots;
-    const closingZoneUpdate = tickClosingZoneWorld({
-        zone: previousClosingZone,
-        bots: activeBots,
-        elapsedMs: Number(activeBots.find((bot) => bot.id === "main")?.matchElapsedMs
-            ?? mainBefore?.matchElapsedMs ?? AUTO_STEP_MS),
+    fight.entities = update.entities;
+    logEntityChanges(before, update.entities, phaseBefore);
+}
+
+/** Phase transitions, removals and entities spawned by other entities, found by comparing worlds. */
+function logEntityChanges(before, after, phaseBefore) {
+    const afterIds = new Set(after.map((entity) => entity.id));
+    for (const entity of before) {
+        if (!afterIds.has(entity.id)) {
+            logCombat("removal", { source: botRef(entity.ownerSlot), target: entityRef(entity), abilityId: entity.abilityId, effect: entity.type });
+            continue;
+        }
+        const from = phaseBefore.get(entity.id);
+        const to = phaseForEntity(entity)?.id ?? null;
+        if (from !== to) {
+            logCombat("phase", { source: botRef(entity.ownerSlot), target: entityRef(entity), abilityId: entity.abilityId, effect: `${from}>${to}` });
+        }
+    }
+    for (const entity of after) {
+        if (phaseBefore.has(entity.id)) continue;
+        logCombat("spawn", { source: botRef(entity.ownerSlot), target: entityRef(entity), abilityId: entity.abilityId, effect: entity.type });
+    }
+}
+
+/** The closing zone shrinks and hurts the bots outside it. */
+function hazards(fight) {
+    setCombatStage("hazards");
+    const main = fight.bots.find((bot) => bot.id === "main");
+    const update = tickClosingZoneWorld({
+        zone: fight.closingZone,
+        bots: fight.bots,
+        elapsedMs: Number(main?.matchElapsedMs ?? AUTO_STEP_MS),
         stepMs: AUTO_STEP_MS,
         width: ARENA_WIDTH_UNITS,
         height: ARENA_HEIGHT_UNITS,
-    }, { applyDamageToShape });
-    const settledBots = closingZoneUpdate.bots
-        .map(settlePendingHealing)
-        .map((bot) => finalizeTickMeasurements(
-            bot,
-            botBefores.find((before) => before.id === bot.id),
-        ));
-    abilityEntities = entityUpdate.entities;
-    return [
-        ...settledBots.map(toCanonicalBotShape),
-        ...abilityEntities,
-        ...(closingZoneUpdate.zone ? [closingZoneUpdate.zone] : []),
-    ];
+    });
+    fight.closingZone = update.zone;
+}
+
+/** Healing lands, hit stamina refunds are paid and the per-tick measurements roll over. */
+function settle(fight, snapshot) {
+    setCombatStage("settle");
+    for (const bot of fight.bots) {
+        settleHealing(bot);
+        bot.damageTakenLastTick = Number(bot.damageTakenThisTick ?? 0);
+        bot.damageTakenThisTick = 0;
+        bot.hpNetChangeLastTick = bot.hp - snapshot.core(bot).health.current;
+        settleAbilityHits(bot, AUTO_STEP_MS);
+    }
 }

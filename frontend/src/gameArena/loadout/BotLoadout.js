@@ -2,9 +2,10 @@ import { ABILITY_STATS, abilityStats } from "../gameconfig/Abilities.js";
 import { abilityIdentity } from "../gameconfig/AbilityRegistry.js";
 import { abilityIdFromBoundary } from "../gameconfig/AbilityCompatibility.js";
 import {
-    attachedAbilityContract,
-    attachedAbilityTargetsOwner,
-    effectsForAttachedAbility,
+    abilityAppliesToOwner,
+    phaseEffects as phaseEffectsOf,
+    triggerEffects,
+    triggerView,
     EFFECT_TYPES,
 } from "../ecs/contracts/AbilityContracts.js";
 import { entityContractForAbility } from "../ecs/contracts/AbilityContracts.js";
@@ -130,16 +131,15 @@ function abilityCapabilities(ability) {
         entityLabel: identity.label,
         entityCategory: entity.category.toLocaleLowerCase(),
     } : {};
-    const gameplay = attachedAbilityContract(ability.id);
     const catalogueTags = new Set();
-    const phaseTag = phaseCatalogueTag(ability.id, entity ?? gameplay, entityMetadata.entityCategory);
+    const phaseTag = phaseCatalogueTag(ability.id, entity, entityMetadata.entityCategory);
     if (phaseTag) catalogueTags.add(phaseTag);
     if (entityMetadata.entityCategory && CATALOGUE_ENTITY_TAGS.has(entityMetadata.entityCategory)
         && entityMetadata.entityCategory !== phaseTag) {
         catalogueTags.add(entityMetadata.entityCategory);
     }
-    const phaseEffects = (entity?.phases ?? []).flatMap((phase) => phase.effects ?? []);
-    const effects = Object.freeze([...effectsForAttachedAbility(ability.id), ...phaseEffects]
+    const entityEffects = (entity?.phases ?? []).flatMap(phaseEffectsOf);
+    const effects = Object.freeze([...triggerEffects(ability.id), ...entityEffects]
         .filter((effect, index, values) => values.findIndex((candidate) =>
             JSON.stringify(candidate) === JSON.stringify(effect)) === index));
     if (effects.some(isStatusEffect)) catalogueTags.add(ABILITY_TAGS.STATUS_EFFECT);
@@ -175,13 +175,14 @@ function abilityCapabilities(ability) {
 }
 
 /** Display-only classification derived from the phase host and hitbox. */
-function phaseCatalogueTag(abilityId, contract, entityCategory) {
-    const phase = contract?.phases?.[0];
-    if (!phase) return entityCategory ?? null;
-    if (entityCategory && ["projectile", "zone", "summon"].includes(phase.type)) return phase.type;
-    if (attachedAbilityTargetsOwner(abilityId)) return "self";
-    if (!phase.hitbox?.shape) return "self";
-    switch (phase.hitbox?.shape) {
+function phaseCatalogueTag(abilityId, entity, entityCategory) {
+    const phase = entity?.phases?.[0];
+    if (entity && !phase) return entityCategory ?? null;
+    if (entityCategory && ["projectile", "zone", "summon"].includes(phase?.type)) return phase.type;
+    if (!entity && abilityAppliesToOwner(abilityId)) return "self";
+    const hitbox = entity ? phase.hitbox : triggerView(abilityId)?.hitbox;
+    if (!hitbox?.shape) return "self";
+    switch (hitbox.shape) {
         case "ray": return "ray";
         case "arc":
         case "rectangle": return "melee";

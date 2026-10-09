@@ -1,15 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyBotAction } from "../bots/ActionExecutionSystem.js";
-import { applyDamageToShape } from "../../gameconfig/BotCombatSystem.js";
-import { DASH_ABILITY_ID, MOVEMENT_TICK_MS } from "../../gameconfig/MovementConfig.js";
+import { MOVEMENT_TICK_MS } from "../../gameconfig/MovementConfig.js";
 import { initialMovementState } from "../../gameconfig/StaminaSystem.js";
 import { abilityReady } from "../../botlogic/code/runtime/actionRuntime.js";
 import { ACTION_BY_ID } from "../../botlogic/code/contracts/BotLogicContracts.js";
 import { actionExecutionHead } from "../../botlogic/code/BotCode.js";
-import { buildDeterministicLogicAction } from "../../botlogic/planner/ArenaActionPlanner.js";
+import { buildDeterministicLogicAction as buildDeterministicLogicActionNormalized } from "../../botlogic/planner/ArenaActionPlanner.js";
 import { buildStatePayload } from "../../modelPayloads/strategyStatePayload.js";
 import { traceScenario } from "../../botlogic/code/tests/chainScenarioRunner.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../botlogic/code/BotCode.js";
+import { applyBotAction } from "../../testing/pureTicks.js";
+import { activeRemainingMs, pendingCooldownMs, preparingAbilityId, preparingRemainingMs, cooldownRemainingMs } from "../../gameconfig/AbilityState.js";
+
+// The engine takes normalized brains; tests pass raw ones, so normalize here like the edge does.
+const buildDeterministicLogicAction = (configuration, ...rest) => buildDeterministicLogicActionNormalized(normalizeBrainForTick(configuration), ...rest);
+
+const DASH_ABILITY_ID = 19;
 
 // Mirrors the server's DashChannelTest; keep the scenarios and numbers in step.
 const SLASH = 1;
@@ -25,13 +31,15 @@ function bot(extra = {}) {
     return {
         id: "main", slot: 1, x: 200, y: 400, size: 60, rotation: 90, hp: 100, maxHp: 100,
         moveSpeed: WALK, attackSpeedMultiplier: 1, movementVelocityX: 0, movementVelocityY: 0,
-        abilities: [SLASH, SNIPER, FIREBALL, DASH_ABILITY_ID], abilityCooldowns: {}, abilityActiveMs: {}, abilityCharges: {},
-        ...initialMovementState(),
+        abilities: [SLASH, SNIPER, FIREBALL, DASH_ABILITY_ID], abilityState: {}, ...initialMovementState(),
         ...extra,
     };
 }
 
-const step = (shape, action = idle) => applyBotAction(shape, action, MOVEMENT_TICK_MS, applyDamageToShape);
+/** The dash's stage and time left, e.g. "active:200" or "cooldown:100"; the server test prints the same. */
+const abilityStageMs = (shape, id) => `${shape.abilityState?.[id]?.stage ?? "ready"}:${shape.abilityState?.[id]?.remainingMs ?? 0}`;
+
+const step = (shape, action = idle) => applyBotAction(shape, action, MOVEMENT_TICK_MS);
 const status = (type) => ({ statusEffects: [{ type, remainingMs: 1000, mode: "duration" }] });
 
 test("Dash has its own action category and ignores the ability lock", () => {
@@ -39,18 +47,20 @@ test("Dash has its own action category and ignores the ability lock", () => {
     assert.equal(actionExecutionHead(ACTION_BY_ID.get(DASH_ABILITY_ID)), "dash");
     assert.equal(ACTION_BY_ID.get(SLASH).head, "ability");
     // Other abilities winding up or active never make a dash unready, and a dash never blocks them.
-    assert.equal(abilityReady(bot({ preparingAbility: SNIPER, preparingMs: 500 }), DASH_ABILITY_ID), true);
-    assert.equal(abilityReady(bot({ abilityActiveMs: { [FIREBALL]: 300 } }), DASH_ABILITY_ID), true);
-    assert.equal(abilityReady(bot({ abilityActiveMs: { [DASH_ABILITY_ID]: 300 } }), SLASH), true);
+    assert.equal(abilityReady(bot({ abilityState: { [SNIPER]: { stage: "windup", remainingMs: 500 } } }), DASH_ABILITY_ID), true);
+    assert.equal(abilityReady(bot({ abilityState: { [FIREBALL]: { stage: "active", remainingMs: 300 } } }), DASH_ABILITY_ID), true);
+    assert.equal(abilityReady(bot({ abilityState: { [DASH_ABILITY_ID]: { stage: "active", remainingMs: 300 } } }), SLASH), true);
 });
 
 test("a dash and a swing chosen on the same tick both start", () => {
     const both = step(bot(), { ...idle, abilityAction: swing, dashAction: dash });
     assert.equal(both.triggeredAbility, SLASH, "the swing owns the trigger so its hit still resolves");
-    assert.ok(both.abilityActiveMs[SLASH] > 0);
-    assert.ok(both.abilityActiveMs[DASH_ABILITY_ID] > 0);
+    assert.ok(activeRemainingMs(both, SLASH) > 0);
+    assert.ok(activeRemainingMs(both, DASH_ABILITY_ID) > 0);
     assert.equal(both.stamina, 70);
-    assert.equal(both.dashGapMs, 300);
+    // The dash pays its stamina and reserves its 100 ms cooldown; the swing does not touch either.
+    assert.equal(pendingCooldownMs(both, DASH_ABILITY_ID), 100);
+    assert.equal(abilityStageMs(both, DASH_ABILITY_ID), "active:200", "a dash started beside an ability keeps its full active stage");
     assert.ok(both.x > 200, "the dash moved the bot");
     // The dash alone still reports itself as triggered.
     assert.equal(step(bot(), { ...idle, dashAction: dash }).triggeredAbility, DASH_ABILITY_ID);
@@ -70,7 +80,7 @@ test("a dash and an attack are planned together from two roots, from one conditi
         assert.equal(action.abilityAction?.action, SLASH, name);
         assert.equal(action.dashAction?.action, DASH_ABILITY_ID, name);
         const started = step(bot(), action);
-        assert.ok(started.abilityActiveMs[SLASH] > 0 && started.abilityActiveMs[DASH_ABILITY_ID] > 0, `${name} starts both`);
+        assert.ok(activeRemainingMs(started, SLASH) > 0 && activeRemainingMs(started, DASH_ABILITY_ID) > 0, `${name} starts both`);
     }
 
     const chain = { id: "chain.both", name: "both", steps: [
@@ -85,27 +95,27 @@ test("a dash and an attack are planned together from two roots, from one conditi
 
 test("a dash starts during another ability's wind-up and active phase, and the wind-up carries on", () => {
     const winding = step(bot(), { ...idle, abilityAction: snipe });
-    assert.equal(winding.preparingAbility, SNIPER);
+    assert.equal(preparingAbilityId(winding), SNIPER);
     const dashedWhileWinding = step(winding, { ...idle, abilityAction: snipe, dashAction: dash });
     assert.equal(dashedWhileWinding.triggeredAbility, DASH_ABILITY_ID);
-    assert.equal(dashedWhileWinding.preparingAbility, SNIPER, "the wind-up continues while dashing");
-    assert.equal(dashedWhileWinding.preparingMs, winding.preparingMs - MOVEMENT_TICK_MS);
+    assert.equal(preparingAbilityId(dashedWhileWinding), SNIPER, "the wind-up continues while dashing");
+    assert.equal(preparingRemainingMs(dashedWhileWinding), preparingRemainingMs(winding) - MOVEMENT_TICK_MS);
 
     const active = step(bot(), { ...idle, abilityAction: swing });
-    assert.ok(active.abilityActiveMs[SLASH] > 0);
+    assert.ok(activeRemainingMs(active, SLASH) > 0);
     const dashedWhileActive = step(active, { ...idle, dashAction: dash });
     assert.equal(dashedWhileActive.triggeredAbility, DASH_ABILITY_ID);
-    assert.ok(dashedWhileActive.abilityActiveMs[SLASH] > 0 || dashedWhileActive.abilityCooldowns[SLASH] > 0);
+    assert.ok(activeRemainingMs(dashedWhileActive, SLASH) > 0 || cooldownRemainingMs(dashedWhileActive, SLASH) > 0);
 });
 
 test("an attack starts during a dash", () => {
     const dashing = step(bot(), { ...idle, dashAction: dash });
-    assert.ok(dashing.abilityActiveMs[DASH_ABILITY_ID] > 0);
+    assert.ok(activeRemainingMs(dashing, DASH_ABILITY_ID) > 0);
     const attacked = step(dashing, { ...idle, abilityAction: swing });
     assert.equal(attacked.triggeredAbility, SLASH);
-    assert.ok(attacked.abilityActiveMs[SLASH] > 0);
+    assert.ok(activeRemainingMs(attacked, SLASH) > 0);
     const winding = step(dashing, { ...idle, abilityAction: snipe });
-    assert.equal(winding.preparingAbility, SNIPER);
+    assert.equal(preparingAbilityId(winding), SNIPER);
 });
 
 test("silence does not stop Dash, while stun, slow and movement-lock do", () => {
@@ -127,13 +137,13 @@ test("silence does not stop Dash, while stun, slow and movement-lock do", () => 
     assert.equal(free.x, 350, "an unlocked dash covers its full 150 units");
 });
 
-test("the stamina and gap gates are unchanged", () => {
+test("the stamina and cooldown gates", () => {
     assert.equal(step(bot({ stamina: 29, staminaRegenDelayMs: 500 }), { ...idle, dashAction: dash }).triggeredAbility, null);
     assert.equal(step(bot({ stamina: 30, staminaRegenDelayMs: 500 }), { ...idle, dashAction: dash }).triggeredAbility, DASH_ABILITY_ID);
-    assert.equal(step(bot({ dashGapMs: 200 }), { ...idle, dashAction: dash }).triggeredAbility, null);
+    assert.equal(step(bot({ abilityState: { [DASH_ABILITY_ID]: { stage: "cooldown", remainingMs: 200 } } }), { ...idle, dashAction: dash }).triggeredAbility, null);
     const dashed = step(bot(), { ...idle, dashAction: dash });
     assert.equal(dashed.stamina, 70);
-    assert.equal(dashed.abilityCooldowns?.[DASH_ABILITY_ID] ?? 0, 0, "no cooldown");
+    assert.equal(cooldownRemainingMs(dashed, DASH_ABILITY_ID) ?? 0, 0, "the cooldown is reserved while the dash is active");
 });
 
 test("sprint holds through an ability's start, wind-up and active phase", () => {
@@ -151,7 +161,7 @@ test("sprint holds through an ability's start, wind-up and active phase", () => 
     assert.equal(current.stamina, 88);
 
     let winding = step(bot(), { ...run, abilityAction: snipe });
-    assert.equal(winding.preparingAbility, SNIPER);
+    assert.equal(preparingAbilityId(winding), SNIPER);
     assert.equal(winding.x, 200 + fast);
     const x = winding.x;
     winding = step(winding, run);
@@ -164,29 +174,29 @@ function trace(start, script) {
     const rows = [];
     for (const action of script) {
         current = step(current, action);
-        rows.push([current.triggeredAbility ?? null, current.x, current.stamina, current.staminaRegenDelayMs, current.dashGapMs, current.sprinting === true]);
+        rows.push([current.triggeredAbility ?? null, current.x, current.stamina, current.staminaRegenDelayMs, abilityStageMs(current, DASH_ABILITY_ID), current.sprinting === true]);
     }
     return rows;
 }
 
 test("parity trace: dash + swing", () => {
     assert.deepEqual(trace(bot(), [{ ...idle, abilityAction: swing, dashAction: dash }, idle, idle, idle, idle]), [
-        [SLASH, 275, 70, 500, 300, false],
-        [null, 350, 70, 400, 200, false],
-        [null, 350, 70, 300, 100, false],
-        [null, 350, 70, 200, 0, false],
-        [null, 350, 70, 100, 0, false],
+        [SLASH, 275, 70, 500, "active:200", false],
+        [null, 350, 70, 400, "active:100", false],
+        [null, 350, 70, 300, "cooldown:100", false],
+        [null, 350, 70, 200, "ready:0", false],
+        [null, 350, 70, 100, "ready:0", false],
     ]);
 });
 
 test("parity trace: sprint in, swing, run dry", () => {
     const run = { dx: 1, dy: 0, dRot: 0, sprint: true };
     assert.deepEqual(trace(bot({ stamina: 12, staminaRegenDelayMs: 500 }), [run, { ...run, abilityAction: swing }, run, run, run]), [
-        [null, 222.5, 9, 500, 0, true],
-        [SLASH, 245, 6, 500, 0, true],
-        [null, 267.5, 3, 500, 0, true],
-        [null, 290, 0, 500, 0, true],
-        [null, 305, 0, 400, 0, false],
+        [null, 222.5, 9, 500, "ready:0", true],
+        [SLASH, 245, 6, 500, "ready:0", true],
+        [null, 267.5, 3, 500, "ready:0", true],
+        [null, 290, 0, 500, "ready:0", true],
+        [null, 305, 0, 400, "ready:0", false],
     ]);
 });
 

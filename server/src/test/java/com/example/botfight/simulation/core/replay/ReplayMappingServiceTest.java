@@ -1,5 +1,7 @@
 package com.example.botfight.simulation.core.replay;
 
+import com.example.botfight.simulation.core.orchestration.Bot;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.botfight.DTO.match.MatchReplayDTO;
@@ -11,13 +13,14 @@ import tools.jackson.databind.json.JsonMapper;
 import com.example.botfight.simulation.ecs.entities.AbilityEntityFactory;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import com.example.botfight.simulation.core.state.LegacyAbility;
 
 class ReplayMappingServiceTest {
     private final ReplayMappingService replayMappingService = new ReplayMappingService();
 
     @Test
     void chainSnapshotCarriesOnlyTheTopFrameAndClearsWhenTheStackEnds() {
-        var bot = new DuelSimulationService.Bot();
+        var bot = new Bot();
         bot.chainStack.add(new ChainRuntime.Frame("chain.punish"));
         var child = new ChainRuntime.Frame("chain.followup");
         child.path = new ArrayList<>(List.of(1, "then", 0, "body", 2));
@@ -43,14 +46,14 @@ class ReplayMappingServiceTest {
 
     @Test
     void compactReplayPreservesZeroFacingAndDashDirection() {
-        DuelSimulationService.Bot bot = new DuelSimulationService.Bot();
+        Bot bot = new Bot();
         bot.slot = 1;
         bot.rotation = 0;
         bot.hp = 100;
         bot.maxHp = 100;
         bot.dashDirectionX = -1;
         bot.dashDirectionY = 0;
-        bot.abilityActiveMs.put(19, 300);
+        LegacyAbility.setActive(bot, 19, 300);
 
         MatchReplayDTO.ReplayBotDTO replayBot = replayMappingService
                 .toReplayFrame(100, List.of(bot), List.of())

@@ -2,9 +2,9 @@ package com.example.botfight.simulation.core.combat;
 
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Action;
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
+import com.example.botfight.simulation.core.orchestration.Bot;
 import com.example.botfight.simulation.gameconfig.Abilities;
-import com.example.botfight.simulation.gameconfig.MovementConfig;
+import com.example.botfight.simulation.gameconfig.AbilityChannels;
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import java.util.List;
 
@@ -40,14 +40,14 @@ public record AbilityExecutionPayload(
         return abilityId == null ? null : from(abilityId, action);
     }
 
-    /** The tick's ability channel: the selected ability, never Dash (which has its own channel). */
+    /** The tick's ability channel: the selected ability, never one of the dash channel. */
     public static AbilityExecutionPayload abilityChannel(Action action) {
         if (action == null) return null;
         Integer abilityId = AbilityContracts.abilityForAction(action.abilityAction());
-        return abilityId == null || abilityId == MovementConfig.DASH_ABILITY_ID ? null : from(abilityId, action);
+        return abilityId == null || AbilityChannels.isDash(abilityId) ? null : from(abilityId, action);
     }
 
-    /** The tick's dash channel: the planned dash, or a Dash selected through the ability channel (older callers). */
+    /** The tick's dash channel: the planned dash, or a dash-channel ability selected through the ability slot (older callers). */
     public static AbilityExecutionPayload dashChannel(Action action) {
         if (action == null) return null;
         DuelSimulationService.DashAction dash = action.dash();
@@ -60,7 +60,7 @@ public record AbilityExecutionPayload(
                     Double.NaN, Double.NaN, Double.NaN);
         }
         Integer abilityId = AbilityContracts.abilityForAction(action.abilityAction());
-        return abilityId != null && abilityId == MovementConfig.DASH_ABILITY_ID ? from(abilityId, action) : null;
+        return abilityId != null && AbilityChannels.isDash(abilityId) ? from(abilityId, action) : null;
     }
 
     public static AbilityExecutionPayload forAbility(Integer abilityId) {
@@ -79,7 +79,7 @@ public record AbilityExecutionPayload(
                 Double.NaN);
     }
 
-    public static AbilityExecutionPayload fromTriggered(DuelSimulationService.Bot bot) {
+    public static AbilityExecutionPayload fromTriggered(Bot bot) {
         return bot == null ? null : bot.triggeredAbilityPayload != null
                 ? bot.triggeredAbilityPayload : forAbility(bot.triggeredAbility);
     }
@@ -103,7 +103,7 @@ public record AbilityExecutionPayload(
                 && Double.isFinite(capturedRotation);
     }
 
-    /** Resolves the pose used by direct attached geometry and presentation. */
+    /** Resolves the pose used by the trigger hit geometry and presentation. */
     public Pose pose(Bot bot) {
         if (hasCapturedPose()) {
             return new Pose(capturedOriginX, capturedOriginY, capturedRotation);
@@ -117,17 +117,26 @@ public record AbilityExecutionPayload(
                 : contract.activation();
     }
 
-    /** Returns the active phase list for either an attached or entity ability. */
-    public List<AbilityContracts.AbilityPhase> phases() {
-        if (contract != null) return contract.phases();
-        AbilityContracts.AbilityContract entity = AbilityContracts.entityContractForAbility(abilityId);
-        return entity == null ? List.of() : entity.phases();
+    /** The ability's trigger {@code hit} verbs. */
+    public List<AbilityContracts.HitVerb> hitVerbs() {
+        return verbs().stream().filter(AbilityContracts.HitVerb.class::isInstance)
+                .map(AbilityContracts.HitVerb.class::cast).toList();
+    }
+
+    /** The ability's trigger verbs. */
+    public List<AbilityContracts.Verb> verbs() {
+        AbilityContracts.AbilityContract resolved = contract != null ? contract : AbilityContracts.forAbility(abilityId);
+        return resolved == null ? List.of() : resolved.onTrigger();
     }
 
     private Pose spawnPose(Bot bot) {
         if (bot == null) return new Pose(0, 0, 0);
-        AbilityContracts.Spawn spawn = contract == null ? null : contract.spawn();
-        if (spawn == null || !AbilityContracts.isAttachedAbility(abilityId)) {
+        // A hit verb fires from its origin on the owner; an ability with no hit verb acts from the owner itself.
+        AbilityContracts.AbilityContract resolved = contract != null ? contract : AbilityContracts.forAbility(abilityId);
+        AbilityContracts.HitVerb hit = resolved == null || resolved.hitVerbs().isEmpty()
+                ? null : resolved.hitVerbs().getFirst();
+        AbilityContracts.Spawn spawn = hit == null ? null : hit.origin();
+        if (spawn == null) {
             return new Pose(bot.x, bot.y, bot.rotation);
         }
 

@@ -7,34 +7,37 @@ export function isProjectileHittable(shape) {
     return isAliveBot(shape) && shape?.projectileHittable !== false;
 }
 
-import { clearPresenceStatuses, statusIsActive } from "../ecs/contracts/StatusContracts.js";
+import { statusIsActive } from "../ecs/contracts/StatusContracts.js";
+import { clearActiveStages } from "./AbilityState.js";
 
 /** Incoming systems must consult this before mutating hostile state. */
 export function ignoresHostileEffects(shape) {
     return !isAliveBot(shape) || statusIsActive(shape, "absolute-guard");
 }
 
-/** Clears gameplay effects when HP crosses to zero while preserving cooldowns and preparation state. */
+/**
+ * Clears gameplay effects in place when HP crosses to zero while preserving cooldowns and preparation state.
+ * Returns the bot.
+ */
 export function withoutBotStatuses(shape) {
-    return {
-        ...clearPresenceStatuses({ ...shape, statusEffects: [] }),
-        dashRemaining: 0,
-        dashTrailMs: 0,
-        dashInitialDistance: 0,
-        dashStepDistance: 0,
-        dashDirectionX: 0,
-        dashDirectionY: 0,
-        dashOriginX: null,
-        dashOriginY: null,
-        abilityActiveMs: {},
-        temporalRewindMs: 0,
-        temporalRewindPulseMs: 0,
-        temporalRewindX: null,
-        temporalRewindY: null,
-        temporalRewindHp: null,
-        temporalRewindVisualX: null,
-        temporalRewindVisualY: null,
-        abilityVisual: null,
-        pendingHealing: 0,
-    };
+    shape.statusEffects = [];
+    clearActiveStages(shape);
+    shape.dashRemaining = 0;
+    shape.dashTrailMs = 0;
+    shape.dashInitialDistance = 0;
+    shape.dashStepDistance = 0;
+    shape.dashDirectionX = 0;
+    shape.dashDirectionY = 0;
+    shape.dashOriginX = null;
+    shape.dashOriginY = null;
+    shape.temporalRewindMs = 0;
+    shape.temporalRewindPulseMs = 0;
+    shape.temporalRewindX = null;
+    shape.temporalRewindY = null;
+    shape.temporalRewindHp = null;
+    shape.temporalRewindVisualX = null;
+    shape.temporalRewindVisualY = null;
+    shape.abilityVisual = null;
+    shape.pendingHealing = 0;
+    return shape;
 }

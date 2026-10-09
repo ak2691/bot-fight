@@ -72,40 +72,32 @@ test("timer space stays stable and timed text disappears when the state is idle"
 });
 
 test("preparation, active, cooldown, and ready states use remaining-time direction", () => {
-    const preparing = abilityStatusFor({
-        preparingAbility: 18,
-        preparingMs: 200,
-    }, 18);
+    const preparing = abilityStatusFor({ abilityState: { 18: { stage: "windup", remainingMs: 200 } } }, 18);
     assert.equal(preparing.state, "preparing");
     assert.equal(preparing.remainingMs, 200);
     assert.ok(Math.abs(preparing.progress - (1 / 3)) < 0.0001);
     assert.equal(abilityRingBackground(preparing), "conic-gradient(from 0deg, #facc15 0 100.00%, #64748b 100.00% 100%)");
 
-    const availableDuringPreparation = abilityStatusFor({
-        preparingAbility: 18,
-        preparingMs: 200,
-    }, 7);
+    const availableDuringPreparation = abilityStatusFor({ abilityState: { 18: { stage: "windup", remainingMs: 200 } } }, 7);
     assert.equal(availableDuringPreparation.state, "ready");
     assert.equal(availableDuringPreparation.progress, 1);
     assert.equal(abilityRingColorFor(7, availableDuringPreparation), "#22c55e");
 
-    const active = abilityStatusFor({ abilityActiveMs: { 7: 200 } }, 7);
+    const active = abilityStatusFor({ abilityState: { 7: { stage: "active", remainingMs: 200 } } }, 7);
     assert.equal(active.state, "active");
     assert.equal(active.remainingMs, 200);
     assert.match(abilityRingBackground(active), /#7dd3fc/);
 
-    const lockOn = abilityStatusFor({ abilityActiveMs: { 20: 200 } }, 20);
+    const lockOn = abilityStatusFor({ abilityState: { 20: { stage: "active", remainingMs: 200 } } }, 20);
     assert.equal(lockOn.state, "active");
     assert.equal(lockOn.durationMs, 200);
 
-    const dash = abilityStatusFor({
-        abilityActiveMs: { 19: 200 },
-    }, 19);
+    const dash = abilityStatusFor({ abilityState: { 19: { stage: "active", remainingMs: 200 } } }, 19);
     assert.equal(dash.state, "active");
     assert.equal(dash.durationMs, 200);
     assert.ok(Math.abs(dash.progress - 0) < 0.0001);
 
-    const cooldown = abilityStatusFor({ abilityCooldowns: { 7: 2500 } }, 7);
+    const cooldown = abilityStatusFor({ abilityState: { 7: { stage: "cooldown", remainingMs: 2500 } } }, 7);
     assert.equal(cooldown.state, "cooldown");
     assert.equal(cooldown.durationMs, 4600);
     assert.ok(Math.abs(cooldown.progress - (1 - 2500 / 4600)) < 0.0001);
@@ -113,45 +105,37 @@ test("preparation, active, cooldown, and ready states use remaining-time directi
     assert.match(abilityRingBackground(cooldown), /#22c55e/);
     assert.match(abilityRingBackground(cooldown), /#64748b/);
 
-    const reactiveArmorCooldown = abilityStatusFor({ abilityCooldowns: { 16: 9000 } }, 16);
+    const reactiveArmorCooldown = abilityStatusFor({ abilityState: { 16: { stage: "cooldown", remainingMs: 9000 } } }, 16);
     assert.equal(reactiveArmorCooldown.state, "cooldown");
     assert.equal(reactiveArmorCooldown.durationMs, 9000);
     assert.equal(reactiveArmorCooldown.progress, 0);
 
-    const ready = abilityStatusFor({ abilityCooldowns: { 7: 0 } }, 7);
+    const ready = abilityStatusFor({ abilityState: { 7: { stage: "ready", remainingMs: 0 } } }, 7);
     assert.equal(ready.state, "ready");
     assert.equal(ready.progress, 1);
     assert.match(abilityRingBackground(ready), /#22c55e 0 100\.00%/);
 
     for (const abilityId of [3, 5]) {
-        const canonicalReplayState = abilityStatusFor({
-            abilityCooldowns: { [abilityId]: 0 },
-            abilityCharges: { [abilityId]: 1 },
-            abilityRechargeMs: { [abilityId]: 0 },
-        }, abilityId);
+        const canonicalReplayState = abilityStatusFor({ abilityState: { [abilityId]: { stage: "ready", remainingMs: 0, charges: 1, reloadMs: 0 } } }, abilityId);
         assert.equal(canonicalReplayState.state, "ready", `ability ${abilityId}`);
         assert.equal(abilityRingColorFor(abilityId, canonicalReplayState), "#22c55e");
     }
 });
 
 test("all ability resources use the canonical charge and recharge maps", () => {
-    assert.equal(abilityChargeCountFor({ abilityCharges: { 19: 1 } }, 19), null);
+    assert.equal(abilityChargeCountFor({ abilityState: { 19: { stage: "ready", remainingMs: 0, charges: 1 } } }, 19), null);
 
-    const pistolReload = abilityStatusFor({
-        abilityCooldowns: { 12: 0 },
-        abilityCharges: { 12: 0 },
-        abilityRechargeMs: { 12: 900 },
-    }, 12);
+    const pistolReload = abilityStatusFor({ abilityState: { 12: { stage: "ready", remainingMs: 0, charges: 0, reloadMs: 900 } } }, 12);
     assert.equal(pistolReload.state, "cooldown");
     assert.equal(pistolReload.durationMs, 3000);
     assert.equal(pistolReload.progress, 0.7);
-    assert.equal(abilityChargeCountFor({ abilityCharges: { 12: 11 } }, 12), 10);
+    assert.equal(abilityChargeCountFor({ abilityState: { 12: { stage: "ready", remainingMs: 0, charges: 11 } } }, 12), 10);
 
     // Sniper and Fireball no longer expose an ammunition count.
-    assert.equal(abilityChargeCountFor({ abilityCharges: { 3: 7 } }, 3), null);
-    assert.equal(abilityChargeCountFor({ abilityCharges: { 5: 3 } }, 5), null);
+    assert.equal(abilityChargeCountFor({ abilityState: { 3: { stage: "ready", remainingMs: 0, charges: 7 } } }, 3), null);
+    assert.equal(abilityChargeCountFor({ abilityState: { 5: { stage: "ready", remainingMs: 0, charges: 3 } } }, 5), null);
 
-    const fireballCooldown = abilityStatusFor({ abilityCooldowns: { 5: 2750 } }, 5);
+    const fireballCooldown = abilityStatusFor({ abilityState: { 5: { stage: "cooldown", remainingMs: 2750 } } }, 5);
     assert.equal(fireballCooldown.state, "cooldown");
     assert.equal(fireballCooldown.durationMs, 5500);
     assert.equal(fireballCooldown.progress, 0.5);
@@ -168,7 +152,7 @@ test("status presentation remains driven by generic charge fields", () => {
     const source = readFileSync(PANEL_PATH, "utf8");
     assert.match(source, /charges != null/);
     assert.match(source, /abilityChargeCountFor/);
-    assert.equal(abilityChargeCountFor({ abilityCharges: { 2: 12 } }, 2), null);
+    assert.equal(abilityChargeCountFor({ abilityState: { 2: { stage: "ready", remainingMs: 0, charges: 12 } } }, 2), null);
 });
 
 test("both fighter cards render every ability slot and never fabricate empty ones", () => {

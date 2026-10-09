@@ -107,6 +107,29 @@ test("legacy practice starts migrate from internal coordinates into centered pub
     assert.deepEqual(persisted.config.bots.map(({ startX, startY }) => [startX, startY]), [[0, -450], [0, 450]]);
 });
 
+test("bots saved in the old nested shape load once as flat roster fields", () => {
+    const nested = (teamNumber, x, y, rotation, hp) => ({
+        teamNumber,
+        slot: 1,
+        transform: { position: { x, y }, rotation, size: 60 },
+        health: { current: hp, max: 300 },
+        stats: { moveSpeed: 5 },
+    });
+    for (const version of [2, 3]) {
+        const storage = createStorage();
+        storage.setItem(PRACTICE_ROOM_STORAGE_KEY, JSON.stringify({
+            version,
+            config: { bots: [nested(1, 600, 1050, 0, 120), nested(2, 600, 150, 180, 300)] },
+        }));
+        const [player, opponent] = readPracticeRoomDraft(storage).config.bots;
+        assert.deepEqual([player.startX, player.startY, player.rotation, player.startHp], [0, -450, 0, 120], `v${version}`);
+        assert.deepEqual([opponent.startX, opponent.startY, opponent.rotation, opponent.startHp], [0, 450, 180, 300], `v${version}`);
+        for (const bot of [player, opponent]) {
+            assert.equal("transform" in bot || "health" in bot || "stats" in bot, false);
+        }
+    }
+});
+
 test("legacy saved Walk coordinates migrate to centered inputs with a zero origin", () => {
     const upgraded = upgradeStoredStrategyCoordinates({
         roots: [{ branches: [{

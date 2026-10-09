@@ -6,14 +6,14 @@ document is stale.
 ## Gameplay
 
 - [`ABILITIES.md`](ABILITIES.md): abilities, weapons, Dash and stamina,
-  contracts and phases, effects and statuses, entities, the tick order,
-  visuals, and how to add or tune an ability in both runtimes.
-- [`GAMEPLAY_REFACTOR_PLAN.md`](GAMEPLAY_REFACTOR_PLAN.md): planned refactor
-  to shared JSON data, a verb-based ability model and one entity tick
-  (stages R0-R8 with Sonnet prompts).
+  contracts and phases, effects and statuses, entities, the tick order, the
+  combat log and golden scenarios, visuals, and how to add or tune an ability in
+  both runtimes.
 - [`ARENA_VISUAL_AND_COMBAT_REGRESSION_CHECKLIST.md`](ARENA_VISUAL_AND_COMBAT_REGRESSION_CHECKLIST.md):
   recurring visual, timer and same-tick combat failures. Use for any ability,
   entity, replay field or bot-state change, and for reviews.
+- [`ONE_ENGINE_PLAN.md`](ONE_ENGINE_PLAN.md): later proposal to run one
+  simulation engine on both server and browser.
 - [`PLAYER_COORDINATES_AND_BRAIN_VERSIONS.md`](PLAYER_COORDINATES_AND_BRAIN_VERSIONS.md):
   public centered/Y-up coordinates versus internal ones, and brain schema
   versions v1/v2.

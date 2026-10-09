@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, BASE_BOT_HP } from "../modelPayloads/arenaConstants.js";
-import { toSimulationBotShape } from "../modelPayloads/arenaShapes.js";
+import { } from "../modelPayloads/arenaShapes.js";
 import { internalPointToPublic } from "../modelPayloads/arenaCoordinates.js";
 import {
     buildAbilityTestingArenaShapes,
     buildAbilityTestingPracticeConfig,
-    findAbilityTestingPreset,
-} from "./AbilityTestingPresets.js";
+    findAbilityTestingPreset } from "./AbilityTestingPresets.js";
 
 test("ability testing presets preserve their starting transforms in practice reset config", () => {
     const preset = findAbilityTestingPreset(24);
@@ -23,7 +22,7 @@ test("ability testing presets preserve their starting transforms in practice res
     assert.deepEqual(config.bots.map((bot) => bot.startHp), [BASE_BOT_HP, BASE_BOT_HP]);
     assert.equal(config.initialElapsedMs, 0);
 
-    const shapes = buildAbilityTestingArenaShapes(preset).map(toSimulationBotShape);
+    const shapes = buildAbilityTestingArenaShapes(preset);
     assert.deepEqual(shapes.map((shape) => [shape.x, shape.y, shape.rotation, shape.startX, shape.startY, shape.startRotation]), [
         [preset.playerPosition.x, preset.playerPosition.y, preset.playerRotation, preset.playerPosition.x, preset.playerPosition.y, preset.playerRotation],
         [preset.opponentPosition.x, preset.opponentPosition.y, preset.opponentRotation, preset.opponentPosition.x, preset.opponentPosition.y, preset.opponentRotation],

@@ -1,64 +1,63 @@
 import { abilityId } from "./AbilityRegistry.js";
+import { GAMEPLAY_DATA, withoutNulls } from "./gameplayData.js";
 import {
-    attachedAbilityContract,
     EFFECT_TYPES,
-    entityAbilityPhaseForEntity,
     entityContractForAbility,
+    findVerb,
+    PHASE_EVENT_TYPES,
+    phaseEffects,
+    scheduledHitVerb,
+    triggerEffects,
+    triggerVerbs,
+    VERBS,
 } from "../ecs/contracts/AbilityContracts.js";
 
-// Ability-level timing and resource metadata. Behavior that can change while
+// Ability-level timing and resource metadata (shared/gameplay/abilities.json). Behavior that can change while
 // an ability is active belongs to a phase contract, not this catalog.
-const ABILITY_TIMING_BY_ID = Object.freeze({
-    1: { cooldownMs: 500, windupMs: 0, activeMs: 300 },
-    3: { cooldownMs: 9000, windupMs: 900, activeMs: 200 },
-    4: { cooldownMs: 12000, activeMs: 1 },
-    5: { cooldownMs: 5500, activeMs: 500, durationMs: 1400 },
-    6: { cooldownMs: 9600, windupMs: 200, activeMs: 100, durationMs: 1200 },
-    7: { cooldownMs: 4600, windupMs: 300, activeMs: 400 },
-    8: { cooldownMs: 10000, activeMs: 500 },
-    9: { cooldownMs: 6700, windupMs: 1000, activeMs: 300 },
-    10: { cooldownMs: 11700, windupMs: 800, activeMs: 300 },
-    11: { cooldownMs: 10000, activeMs: 300, durationMs: 20800 },
-    12: { maxCharges: 10, resourceModel: "reload", chargeType: "ammunition", reloadMs: 3000, cooldownMs: 400, activeMs: 300 },
-    13: { cooldownMs: 10700, windupMs: 900, activeMs: 300 },
-    14: { cooldownMs: 11000, activeMs: 1000, durationMs: 7000 },
-    15: { cooldownMs: 10000, windupMs: 1000, activeMs: 2000, durationMs: 1200 },
-    16: { cooldownMs: 9000, windupMs: 500, activeMs: 0, durationMs: 4000 },
-    17: { cooldownMs: 8000, activeMs: 300, durationMs: 6000 },
-    18: { cooldownMs: 7000, windupMs: 300, activeMs: 500, durationMs: 500 },
-    // Dash has no fixed cooldown: it costs stamina and waits out a short gap (MovementConfig.js).
-    19: { cooldownMs: 0, activeMs: 200, durationMs: 200 },
-    20: { cooldownMs: 9800, windupMs: 200, activeMs: 200 },
-    21: { cooldownMs: 18000, activeMs: 300, durationMs: 3100 },
-    22: { cooldownMs: 18000, windupMs: 500, activeMs: 0, durationMs: 1500 },
-    23: { cooldownMs: 15500, windupMs: 500, activeMs: 0, durationMs: 1500 },
-    24: { cooldownMs: 13000, windupMs: 1000, activeMs: 300, durationMs: 5000 },
-    25: { cooldownMs: 1500, activeMs: 300 },
-    26: { cooldownMs: 8700, activeMs: 300 },
-    27: { cooldownMs: 18000, activeMs: 300, durationMs: 1300 },
-    28: { cooldownMs: 7700, activeMs: 300, windupMs: 300, durationMs: 600 },
-    29: { cooldownMs: 10000, activeMs: 300, durationMs: 16000 },
-    30: { cooldownMs: 8000, windupMs: 200, activeMs: 300 },
-    31: { cooldownMs: 9000, activeMs: 300, durationMs: 6000 },
-    32: { cooldownMs: 10000, windupMs: 300, activeMs: 300 },
-    33: { cooldownMs: 12000, windupMs: 500, activeMs: 0, durationMs: 4000 },
-    34: { cooldownMs: 500, activeMs: 200 },
-    35: { cooldownMs: 700, windupMs: 100, activeMs: 300 },
-    36: { cooldownMs: 700, windupMs: 500, activeMs: 300 },
-    37: { cooldownMs: 700, windupMs: 300, activeMs: 300 },
-});
+const ABILITY_TIMING_BY_ID = Object.freeze(Object.fromEntries(GAMEPLAY_DATA.abilities.abilities.map(
+    ({ id, timing }) => [id, Object.freeze(withoutNulls(timing))],
+)));
 
+/**
+ * The read model the stats below are projected from: for an ability that spawns an entity, the entity's phases
+ * (each with the effects its events apply); for any other ability, one phase built from its trigger verbs.
+ * `embeddedPhase` is the shot a summon fires from its timer event.
+ */
 function phasesFor(abilityValue) {
     const id = abilityId(abilityValue);
-    const entity = id == null ? null : entityContractForAbility(id);
-    if (entity?.phases?.length) return entity.phases;
-    return id == null ? [] : attachedAbilityContract(id)?.phases ?? [];
+    if (id == null) return [];
+    const entity = entityContractForAbility(id);
+    if (entity?.phases?.length) {
+        return entity.phases.map((phase) => ({
+            ...phase,
+            effects: phaseEffects(phase),
+            // The projection below keeps the old `speed` name for the unitsPerTick of a phase.
+            movement: phase.movement ? { ...phase.movement, speed: phase.movement.unitsPerTick } : undefined,
+        }));
+    }
+    const verbs = triggerVerbs(id);
+    const hit = findVerb(verbs, VERBS.HIT);
+    const move = findVerb(verbs, VERBS.MOVE);
+    return [{
+        id: "active",
+        hitbox: hit?.hitbox ?? undefined,
+        effects: triggerEffects(id),
+        movement: move ? { speed: move.unitsPerTick, distance: move.distance, trailMs: move.trailMs } : undefined,
+        visual: verbs.find((verb) => verb.visual)?.visual,
+        on: {},
+    }];
+}
+
+function embeddedShotPhase(id) {
+    const shot = scheduledHitVerb(entityContractForAbility(id)?.phases?.find((phase) => scheduledHitVerb(phase)));
+    return shot ? { hitbox: shot.hitbox, effects: shot.effects, shotVisibleMs: shot.visual?.visibleMs } : null;
 }
 
 function allEffectsFor(id, phases) {
-    const embeddedPhase = entityAbilityPhaseForEntity(id);
-    const effects = [...phases, ...(embeddedPhase ? [embeddedPhase] : [])]
-        .flatMap((phase) => phase.effects ?? []);
+    const embeddedPhase = embeddedShotPhase(id);
+    // Trigger-time effects (Rewind's restore) join the effects of the entity's phases.
+    const effects = [...triggerEffects(id), ...[...phases, ...(embeddedPhase ? [embeddedPhase] : [])]
+        .flatMap((phase) => phase.effects ?? [])];
     return effects.filter((effect, index, values) => values.findIndex((candidate) =>
         JSON.stringify(candidate) === JSON.stringify(effect)) === index);
 }
@@ -72,7 +71,7 @@ function phaseProjection(id) {
     const entity = entityContractForAbility(id);
     const timing = ABILITY_TIMING_BY_ID[id] ?? {};
     const effects = allEffectsFor(id, phases);
-    const embeddedPhase = entityAbilityPhaseForEntity(id);
+    const embeddedPhase = embeddedShotPhase(id);
     const projectionPhases = [...phases, ...(embeddedPhase ? [embeddedPhase] : [])];
     const damageEffect = firstEffect(effects, EFFECT_TYPES.DAMAGE);
     const behaviorPhase = projectionPhases.find((phase) => phase.effects?.some(
@@ -136,18 +135,16 @@ function phaseProjection(id) {
     if (movement.speed != null) stats.speed = Number(movement.speed);
     if (movement.distance != null) stats.distance = Number(movement.distance);
     if (movement.trailMs != null) stats.trailMs = Number(movement.trailMs);
-    if (movement.blockedByStatus != null) stats.blockedByStatus = movement.blockedByStatus;
     if (movement.turnDegrees != null) stats.turnStepDegrees = Number(movement.turnDegrees);
     if (visualPhase.visual?.visualSize != null) stats.visualSize = Number(visualPhase.visual.visualSize);
     if (visualPhase.visual?.visibleMs != null) stats.visualMs = Number(visualPhase.visual.visibleMs);
     const scheduledEvent = projectionPhases
-        .flatMap((phase) => Object.values(phase.events ?? {}))
+        .flatMap((phase) => Object.values(phase.on ?? {}))
         .find((event) => event?.schedule?.mode === "repeat");
-    const collisionIntervalMs = scheduledEvent?.schedule?.intervalMs
-        ?? behaviorPhase.execution?.intervalMs;
+    const collisionIntervalMs = scheduledEvent?.schedule?.intervalMs;
     if (collisionIntervalMs != null) stats.intervalMs = Number(collisionIntervalMs);
-    if (embeddedPhase?.events?.collision?.visibleMs != null) {
-        stats.shotVisualMs = Number(embeddedPhase.events.collision.visibleMs);
+    if (embeddedPhase?.shotVisibleMs != null) {
+        stats.shotVisualMs = Number(embeddedPhase.shotVisibleMs);
     }
     const entityPhase = entity?.phases?.[0] ?? null;
     const entityVisualSize = Number(entityPhase?.visual?.visualSize);

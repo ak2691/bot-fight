@@ -8,7 +8,10 @@ public final class HitStagger {
     public static final double MOVEMENT_MULTIPLIER = 0.85;
     public static final double ROTATION_MULTIPLIER = 0.85;
 
-    public static final int CONCUSSIVE_SLOW_DURATION_MS = 1_000;
-    public static final double CONCUSSIVE_MOVEMENT_MULTIPLIER = 0.50;
-    public static final double CONCUSSIVE_ROTATION_MULTIPLIER = 0.50;
+    // The slow status (shared/gameplay/statuses.json) is x0.5 movement and rotation.
+    private static final GameplayData.StatusEffectData SLOW_MODIFIER = GameplayData.get().statuses().statuses()
+            .get("slow").effects().stream()
+            .filter(effect -> "movement_modifier".equals(effect.type())).findFirst().orElseThrow();
+    public static final double CONCUSSIVE_MOVEMENT_MULTIPLIER = SLOW_MODIFIER.movementMultiplier();
+    public static final double CONCUSSIVE_ROTATION_MULTIPLIER = SLOW_MODIFIER.rotationMultiplier();
 }

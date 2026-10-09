@@ -130,7 +130,7 @@ class WeaponSimulationParityTest {
     @Test
     void targetsJustOutsideEffectiveReachTakeNoDamage() {
         for (Weapon weapon : WEAPONS) {
-            AbilityContracts.Hitbox hitbox = AbilityContracts.forAbility(weapon.id()).phases().getFirst().hitbox();
+            AbilityContracts.Hitbox hitbox = AbilityContracts.forAbility(weapon.id()).hitVerbs().getFirst().hitbox();
             double length = "arc".equals(hitbox.shape()) ? hitbox.range() : hitbox.length();
             double reach = length + 30;
             assertThat(hitFrames(fight(weapon, reach - 1, 1_500))).as(weapon.name() + " inside").isNotEmpty();

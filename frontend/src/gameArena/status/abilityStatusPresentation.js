@@ -1,5 +1,6 @@
 import { abilityDefinition } from "../loadout/BotLoadout.js";
 import { abilityChargeCount, abilityRechargeRemainingMs } from "../gameconfig/AbilityResourceSystem.js";
+import { activeRemainingMs, cooldownRemainingMs, windupRemainingMs } from "../gameconfig/AbilityState.js";
 
 export const ABILITY_RING_COLORS = Object.freeze({
     active: "#7dd3fc",
@@ -23,16 +24,15 @@ export function abilityRingColorFor(abilityId, status) {
 export function abilityStatusFor(bot, abilityId) {
     const definition = abilityDefinition(abilityId);
     const stats = definition?.stats ?? {};
-    const abilityActiveMs = positiveNumber(bot?.abilityActiveMs?.[abilityId]);
-    const activeMs = abilityActiveMs;
+    const activeMs = activeRemainingMs(bot, abilityId);
     const configuredActiveDurationMs = positiveNumber(stats.statusDurationMs ?? stats.durationMs ?? stats.activeMs ?? stats.visualMs);
     const activeDurationMs = configuredActiveDurationMs || (activeMs > 0 ? 300 : 0);
-    const preparing = bot?.preparingAbility === abilityId
-        && positiveNumber(bot?.preparingMs) > 0;
+    const preparingMs = windupRemainingMs(bot, abilityId);
+    const preparing = preparingMs > 0;
     const windupMs = positiveNumber(stats.windupMs);
 
     if (preparing && windupMs) {
-        const remainingMs = Math.min(windupMs, positiveNumber(bot?.preparingMs));
+        const remainingMs = Math.min(windupMs, preparingMs);
         return timedStatus("preparing", remainingMs, windupMs, 1 - remainingMs / windupMs);
     }
 
@@ -65,7 +65,7 @@ export function abilityChargeCountFor(bot, abilityId) {
 
 export function abilityCooldownFor(bot, abilityId, stats = abilityDefinition(abilityId)?.stats ?? {}) {
     const configuredCooldownMs = positiveNumber(stats.cooldownMs ?? stats.reuseCooldownMs);
-    const cooldownMs = positiveNumber(bot?.abilityCooldowns?.[abilityId]);
+    const cooldownMs = cooldownRemainingMs(bot, abilityId);
     // Cooldown is the recovery phase after active time; it is no longer a
     // parallel timer whose active portion needs to be subtracted for display.
     const cooldownDurationMs = Math.max(1, configuredCooldownMs);
@@ -136,7 +136,7 @@ function timedStatus(state, remainingMs, durationMs, progress) {
 }
 
 function isReady(bot, abilityId) {
-    if (positiveNumber(bot?.abilityActiveMs?.[abilityId]) > 0) return false;
+    if (activeRemainingMs(bot, abilityId) > 0) return false;
     const stats = abilityDefinition(abilityId)?.stats ?? {};
     const charges = abilityChargeCountFor(bot, abilityId);
     if (charges != null && Number(charges) <= 0) return false;

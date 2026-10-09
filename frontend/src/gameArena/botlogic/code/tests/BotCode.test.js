@@ -12,7 +12,7 @@ import {
     normalizeAbilityStrategyConfiguration,
     normalizeRoots,
     setLogicBranchPriority,
-    selectAbilityStrategyActionPlan,
+    selectAbilityStrategyActionPlan as selectAbilityStrategyActionPlanNormalized,
     setLogicRootPriority,
     validateAbilityStrategyConfiguration,
 } from "../BotCode.js";
@@ -22,12 +22,17 @@ import { ALL_ABILITY_DEFINITIONS, statusEffectDefinitionsForAbilities } from "..
 import { compareAngleValues, evaluateConditionNodes } from "../runtime/conditionEvaluator.js";
 import { matchingStrategySelectables, resolveAbilityStrategySelectable } from "../runtime/targeting.js";
 import { absoluteMovementAngle, normalizeRelativeMovementDegrees, relativeMovementAngle, relativeMovementVector, vectorToCompassDegrees } from "../../planner/arenaAngles.js";
-import { buildDeterministicLogicAction } from "../../planner/ArenaActionPlanner.js";
+import { buildDeterministicLogicAction as buildDeterministicLogicActionNormalized } from "../../planner/ArenaActionPlanner.js";
 import { nodePositionsForGraph, offsetsForGraphPositions } from "../configuration/nodePositions.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../BotCode.js";
+
+// The engine takes normalized brains; tests pass raw ones, so normalize here like the edge does.
+const selectAbilityStrategyActionPlan = (configuration, ...rest) => selectAbilityStrategyActionPlanNormalized(normalizeBrainForTick(configuration), ...rest);
+const buildDeterministicLogicAction = (configuration, ...rest) => buildDeterministicLogicActionNormalized(normalizeBrainForTick(configuration), ...rest);
 
 function payload(overrides = {}) {
     return {
-        playerModel: { x: 400, y: 400, hp: 100, abilities: ["swing", "concussive_shot"], abilityCooldowns: {}, ...overrides.playerModel },
+        playerModel: { x: 400, y: 400, hp: 100, abilities: ["swing", "concussive_shot"], ...overrides.playerModel },
         closingZone: overrides.closingZone ?? null,
         objects: overrides.objects ?? [{ id: "opponent-model", type: "opponentModel", x: 600, y: 400, hp: 100, rotation: 180 }],
     };
@@ -365,7 +370,7 @@ test("bot ability conditionals select the configured bot and declare a loadout d
             x: 600,
             y: 400,
             abilities: [5],
-            abilityActiveMs: { 5: 700 },
+            abilityState: { 5: { stage: "active", remainingMs: 700 } },
         }],
     })).primary.id, "root-1-1-1");
 
@@ -877,7 +882,7 @@ test("conditional ability choices expose active state and remaining active time"
     };
 
     assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
-        playerModel: { abilityActiveMs: { concussive_shot: 850 } },
+        playerModel: { abilityState: { concussive_shot: { stage: "active", remainingMs: 850 } } },
     })).primary.id, "active-ability");
     assert.equal(selectAbilityStrategyActionPlan(configuration, payload()).primary.id, "fallback");
 });
@@ -902,7 +907,7 @@ test("ability phase conditionals expose mutually exclusive active, cooldown, pre
         condition("bot.selectedAbilityCooldownMs", "eq", 0),
         condition("bot.selectedAbilityReady", "eq", false),
     ]), payload({
-        playerModel: { abilityActiveMs: { concussive_shot: 500 }, abilityCooldowns: { concussive_shot: 3000 } },
+        playerModel: { abilityState: { concussive_shot: { stage: "active", remainingMs: 500, cooldownMs: 3000 } } },
     }));
     assert.equal(activePlan.movement?.id, "phase");
 
@@ -912,7 +917,7 @@ test("ability phase conditionals expose mutually exclusive active, cooldown, pre
         condition("bot.selectedAbilityCooldownMs", "gt", 0),
         condition("bot.selectedAbilityReady", "eq", false),
     ]), payload({
-        playerModel: { abilityActiveMs: { concussive_shot: 0 }, abilityCooldowns: { concussive_shot: 500 } },
+        playerModel: { abilityState: { concussive_shot: { stage: "cooldown", remainingMs: 500 } } },
     }));
     assert.equal(cooldownPlan.movement?.id, "phase");
 
@@ -925,7 +930,7 @@ test("ability phase conditionals expose mutually exclusive active, cooldown, pre
         condition("bot.selectedAbilityCooldownMs", "eq", 0),
         condition("bot.selectedAbilityReady", "eq", false),
     ]), payload({
-        playerModel: { preparingAbility: 9, preparingMs: 400 },
+        playerModel: { abilityState: { 9: { stage: "windup", remainingMs: 400 } } },
     }));
     assert.equal(preparationPlan.movement?.id, "phase");
 
@@ -962,11 +967,7 @@ test("unowned ability conditionals resolve every ability state as false or zero"
     const stateWithStaleAbilityState = payload({
         playerModel: {
             abilities: [],
-            abilityActiveMs: { 12: 900 },
-            abilityCooldowns: { 12: 5000 },
-            abilityCharges: { 12: 2 },
-            preparingAbility: 12,
-            preparingMs: 600,
+            abilityState: { 12: { stage: "windup", remainingMs: 600, charges: 2 } },
         },
         objects: [{
             id: "opponent-model",
@@ -974,11 +975,7 @@ test("unowned ability conditionals resolve every ability state as false or zero"
             x: 600,
             y: 400,
             abilities: [],
-            abilityActiveMs: { 12: 900 },
-            abilityCooldowns: { 12: 5000 },
-            abilityCharges: { 12: 2 },
-            preparingAbility: 12,
-            preparingMs: 600,
+            abilityState: { 12: { stage: "windup", remainingMs: 600, charges: 2 } },
         }],
     });
 
@@ -1021,7 +1018,7 @@ test("ability conditionals resolve several selected abilities and numeric prepar
                 right: { type: "boolean", value: true },
             }], actions: [action] }] }],
         }, payload({
-            playerModel: { abilities: [16, 19, 33], abilityActiveMs: { [abilityId]: 500 } },
+            playerModel: { abilities: [16, 19, 33], abilityState: { [abilityId]: { stage: "active", remainingMs: 500 } } },
         }));
         assert.equal(result.movement?.id, `active-${abilityId}`, ability);
     }
@@ -1044,7 +1041,7 @@ test("ability conditionals resolve several selected abilities and numeric prepar
             },
         ], actions: [action] }] }],
     }, payload({
-        playerModel: { abilities: [13], preparingAbility: 13, preparingMs: 700 },
+        playerModel: { abilities: [13], abilityState: { 13: { stage: "windup", remainingMs: 700 } } },
     }));
     assert.equal(preparing.movement?.id, "preparing");
 });
@@ -1060,7 +1057,7 @@ test("condition inspection identifies the ability represented by Ability Active"
             right: { type: "boolean", value: true },
         }], actions: [] }] }],
     }, payload({
-        playerModel: { abilities: [16, 19], abilityActiveMs: { 16: 2500 } },
+        playerModel: { abilities: [16, 19], abilityState: { 16: { stage: "active", remainingMs: 2500 } } },
     }))[0];
 
     assert.deepEqual(inspection.ability, { id: 16, name: "reactive_armor", label: "Reactive Armor" });
@@ -1081,7 +1078,7 @@ test("numeric-string ability selections preserve Dash active-state conditions", 
     const normalized = normalizeAbilityStrategyConfiguration(configuration);
     assert.equal(normalized.roots[0].branches[0].conditions[0].ability, 19);
     assert.equal(selectAbilityStrategyActionPlan(configuration, payload({
-        playerModel: { abilities: [19], abilityActiveMs: { 19: 850 } },
+        playerModel: { abilities: [19], abilityState: { 19: { stage: "active", remainingMs: 850 } } },
     })).primary.id, "dash-active");
 });
 
@@ -1349,7 +1346,7 @@ test("right-hand ability and status variables keep their own selection metadata"
             ability: "dash",
         }], actions: [action] }] }],
     }, payload({
-        playerModel: { hp: 1, abilities: [19], abilityCooldowns: { 19: 1800 } },
+        playerModel: { hp: 1, abilities: [19], abilityState: { 19: { stage: "cooldown", remainingMs: 1800 } } },
     }));
     assert.equal(abilityResult.movement?.id, "right-ability");
 
@@ -1562,7 +1559,7 @@ test("a matching conditional with an unavailable ability falls through to the ne
         { id: "ready", branchType: "if", priority: 2, conditions: [{ type: "always" }], actions: [{ action: "concussive_shot" }] },
     ] }] };
     const plan = selectAbilityStrategyActionPlan(configuration, payload({
-        playerModel: { abilityCooldowns: { 1: 500 } },
+        playerModel: { abilityState: { 1: { stage: "cooldown", remainingMs: 500 } } },
     }));
 
     assert.equal(plan.ability.action, 9);

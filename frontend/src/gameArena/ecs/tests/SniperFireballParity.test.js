@@ -1,29 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyBotAction } from "../bots/ActionExecutionSystem.js";
-import { applyDamageToShape } from "../../gameconfig/BotCombatSystem.js";
 import { abilityHitsTarget } from "../abilities/AbilityHitDetectionSystem.js";
 import { createAbilityEntity } from "../entities/EntityFactory.js";
-import { tickAbilityEntityWorld } from "../abilities/AbilityEntitySystem.js";
 import { ABILITY_STATS } from "../../loadout/BotLoadout.js";
-import { ATTACHED_ABILITY_CONTRACTS, ENTITY_CONTRACTS } from "../contracts/AbilityContracts.js";
+import { ENTITY_CONTRACTS, phaseEffects, triggerView } from "../contracts/AbilityContracts.js";
 import { abilityIdFromBoundary } from "../../gameconfig/AbilityCompatibility.js";
 import { abilityIdFromLegacyName } from "../../gameconfig/AbilityRegistry.js";
+import { applyBotAction, tickAbilityEntityWorld } from "../../testing/pureTicks.js";
+import { preparingAbilityId } from "../../gameconfig/AbilityState.js";
 
 // Mirrors server SniperFireballParityTest; keep both in step.
-const noDamageCombat = {
-    applyDamageToShape: (bot, damage) => ({ ...bot, hp: Math.max(0, bot.hp - damage) }),
-    applyDamageFromShapes: (owner, target, damage) => [owner, { ...target, hp: target.hp - damage }],
-    abilityHitsTarget: () => false,
-    triggeredAbilityDamage: () => 0,
-    overlapsShape: () => false,
-};
-
 const sniperBot = (extra = {}) => ({
     id: "main", slot: 1, x: 100, y: 100, size: 60, rotation: 90, hp: 150, maxHp: 150,
     moveSpeed: 8, attackSpeedMultiplier: 1, attackDamageMultiplier: 1,
-    abilities: [3], abilityCooldowns: { 3: 0 }, abilityActiveMs: {},
-    ...extra,
+    abilities: [3], abilityState: {}, ...extra,
 });
 const firing = (extra) => ({ ...sniperBot(extra), triggeredAbility: 3 });
 
@@ -40,7 +30,7 @@ test("Sniper hits at 1200 range and misses beyond it, with flat damage", () => {
     assert.equal(abilityHitsTarget(attacker, { x: 100 + reach + 1, y: 100, size: 60 }), false);
     assert.equal(abilityHitsTarget(attacker, { x: 100 + 150, y: 100, size: 60 }), true);
     assert.equal(ABILITY_STATS[3].falloff, undefined);
-    assert.equal(ATTACHED_ABILITY_CONTRACTS[3].phases[0].effects[0].amount, 40);
+    assert.equal(triggerView(3).effects[0].amount, 40);
 });
 
 test("Sniper ray width of 6 sets its side edges", () => {
@@ -56,12 +46,12 @@ test("Sniper aim follows rotation during the wind-up and fires from the release 
     const target = { x: 700, y: 100, size: 60 };
     assert.equal(abilityHitsTarget({ ...bot, triggeredAbility: 3 }, target), false);
     for (let elapsed = 100; elapsed < 900; elapsed += 100) {
-        bot = applyBotAction(bot, action, 100, applyDamageToShape);
+        bot = applyBotAction(bot, action, 100);
         assert.equal(bot.triggeredAbility ?? null, null);
-        assert.equal(bot.preparingAbility, 3);
+        assert.equal(preparingAbilityId(bot), 3);
         assert.ok(bot.rotation > 0, "the bot keeps rotating while aiming");
     }
-    const released = applyBotAction(bot, action, 100, applyDamageToShape);
+    const released = applyBotAction(bot, action, 100);
     assert.equal(released.triggeredAbility, 3);
     assert.equal(released.rotation, 90);
     assert.equal(released.gunRayRotation, 90);
@@ -71,8 +61,8 @@ test("Sniper aim follows rotation during the wind-up and fires from the release 
 test("Sniper fires from the bot's position at release, not where the wind-up started", () => {
     const action = { dx: 1, dy: 0, dRot: 0, abilityAction: { action: 3 } };
     let bot = sniperBot();
-    for (let elapsed = 100; elapsed < 900; elapsed += 100) bot = applyBotAction(bot, action, 100, applyDamageToShape);
-    const released = applyBotAction(bot, action, 100, applyDamageToShape);
+    for (let elapsed = 100; elapsed < 900; elapsed += 100) bot = applyBotAction(bot, action, 100);
+    const released = applyBotAction(bot, action, 100);
     assert.equal(released.triggeredAbility, 3);
     assert.ok(released.x > 100, "moved while aiming");
     assert.equal(released.gunRayOriginX, released.x);
@@ -89,7 +79,7 @@ function fireballWorld(targetX, targetY, ticks = 16) {
     for (let tick = 0; tick < ticks; tick += 1) {
         const world = tickAbilityEntityWorld({
             entities, bots: [owner, target], stepMs: 100, width: 2000, height: 1000,
-        }, noDamageCombat);
+        });
         entities = world.entities;
         target = world.bots[1];
         const fireball = entities.find((entity) => entity.abilityId === 5);
@@ -103,7 +93,7 @@ test("Fireball contract is 64x64 with a 60 visual, 20 damage and 1400 ms lifetim
     assert.equal(phase.hitbox.width, 64);
     assert.equal(phase.hitbox.length, 64);
     assert.equal(phase.visual.visualSize, 60);
-    assert.equal(phase.effects[0].amount, 20);
+    assert.equal(phaseEffects(phase)[0].amount, 20);
     assert.equal(ENTITY_CONTRACTS[5].lifetime.duration, 1400);
     assert.equal(ABILITY_STATS[5].maxCharges, undefined);
 });

@@ -2,7 +2,7 @@ package com.example.botfight.simulation.core.combat;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
+import com.example.botfight.simulation.core.orchestration.Bot;
 import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Action;
 import com.example.botfight.simulation.ecs.contracts.AbilityContracts;
 import com.example.botfight.simulation.gameconfig.Abilities;
@@ -16,7 +16,7 @@ class AbilityExecutionPayloadTest {
 
         assertThat(payload.actionId()).isEqualTo(19);
         assertThat(payload.abilityId()).isEqualTo(19);
-        assertThat(payload.contract().phases().getFirst().movement()).isNotNull();
+        assertThat(payload.contract().has(AbilityContracts.MoveVerb.class)).isTrue();
         assertThat(payload.targetX()).isEqualTo(500);
         assertThat(payload.movementDirection()).isEqualTo("north");
     }
@@ -27,17 +27,23 @@ class AbilityExecutionPayloadTest {
                 new Action(0, 0, 0, null, 500, 400, null, null, null))).isNull();
     }
 
-    @Test
-    void resolvesAnAttachedRootSpawnRelativeToTheOwner() {
+    /** Slash with its hit verb firing from {@code origin}. */
+    private static AbilityContracts.AbilityContract slashFiringFrom(AbilityContracts.Spawn origin) {
         AbilityContracts.AbilityContract base = AbilityContracts.forAbility(1);
-        AbilityContracts.AbilityContract contract = new AbilityContracts.AbilityContract(
-                base.abilityId(), base.entityType(), base.runtimeType(), base.category(),
-                new AbilityContracts.Spawn(10, 20, false, 180,
-                        AbilityContracts.RotationSpace.OWNER, 0, 500, 400),
-                base.selectableOwner(), base.lifetime(), base.initialState(), base.activation(),
-                base.phases(), base.abilities());
+        AbilityContracts.HitVerb hit = base.hitVerbs().getFirst();
+        return new AbilityContracts.AbilityContract(base.abilityId(), base.activation(),
+                java.util.List.of(new AbilityContracts.HitVerb(hit.hitbox(), hit.targets(), hit.effects(),
+                        hit.nearestOnly(), hit.oncePerTarget(), hit.aim(), origin, hit.knockbackDirection(),
+                        hit.pullDirection(), hit.visual())),
+                java.util.Map.of(), null);
+    }
+
+    @Test
+    void resolvesAHitVerbOriginRelativeToTheOwner() {
         AbilityExecutionPayload payload = new AbilityExecutionPayload(
-                1, 1, Abilities.definition(1), contract,
+                1, 1, Abilities.definition(1),
+                slashFiringFrom(new AbilityContracts.Spawn(10, 20, false, 180,
+                        AbilityContracts.RotationSpace.OWNER, 0, 500, 400)),
                 Double.NaN, Double.NaN, null, null, null,
                 Double.NaN, Double.NaN, Double.NaN);
         Bot bot = new Bot();
@@ -49,14 +55,10 @@ class AbilityExecutionPayloadTest {
         assertThat(payload.pose(bot).y()).isEqualTo(110d);
         assertThat(payload.pose(bot).rotation()).isEqualTo(270d);
 
-        AbilityContracts.AbilityContract worldContract = new AbilityContracts.AbilityContract(
-                base.abilityId(), base.entityType(), base.runtimeType(), base.category(),
-                new AbilityContracts.Spawn(10, 20, false, -90,
-                        AbilityContracts.RotationSpace.WORLD, 0, 500, 400),
-                base.selectableOwner(), base.lifetime(), base.initialState(), base.activation(),
-                base.phases(), base.abilities());
         AbilityExecutionPayload worldPayload = new AbilityExecutionPayload(
-                1, 1, Abilities.definition(1), worldContract,
+                1, 1, Abilities.definition(1),
+                slashFiringFrom(new AbilityContracts.Spawn(10, 20, false, -90,
+                        AbilityContracts.RotationSpace.WORLD, 0, 500, 400)),
                 Double.NaN, Double.NaN, null, null, null,
                 Double.NaN, Double.NaN, Double.NaN);
         assertThat(worldPayload.pose(bot).rotation()).isEqualTo(-90d);

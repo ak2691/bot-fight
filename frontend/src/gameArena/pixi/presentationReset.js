@@ -18,16 +18,19 @@ function destroyDisplay(display) {
     display.destroy?.({ children: true });
 }
 
-function clearDisplayMap(displayMap) {
+function clearDisplayMap(displayMap, destroyEntry = null) {
     if (!displayMap) return;
-    for (const entry of displayMap.values()) destroyDisplay(entry.container);
+    for (const entry of displayMap.values()) {
+        destroyEntry?.(entry);
+        destroyDisplay(entry.container);
+    }
     displayMap.clear();
 }
 
-export function clearPresentationArtifacts({ views, visualViews, lockOnMarkers, particles } = {}) {
-    clearDisplayMap(views);
+/** `destroyView` releases per-view renderer state (e.g. scene-layer markers) before the view's display goes. */
+export function clearPresentationArtifacts({ views, visualViews, particles, destroyView = null } = {}) {
+    clearDisplayMap(views, destroyView);
     clearDisplayMap(visualViews);
-    clearDisplayMap(lockOnMarkers);
     if (!particles) return;
     particles.forEach((particle) => destroyDisplay(particle.display));
     particles.length = 0;

@@ -1,19 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyBotAction } from "../bots/ActionExecutionSystem.js";
-import { applyDamageToShape } from "../../gameconfig/BotCombatSystem.js";
-import { DASH_ABILITY_ID, MOVEMENT_CONFIG, MOVEMENT_TICK_MS } from "../../gameconfig/MovementConfig.js";
+import { MOVEMENT_CONFIG, MOVEMENT_TICK_MS } from "../../gameconfig/MovementConfig.js";
 import { initialMovementState } from "../../gameconfig/StaminaSystem.js";
 import { abilityCooldownMs, abilityReady } from "../../botlogic/code/runtime/actionRuntime.js";
 import { evaluateCondition, normalizeAbilityStrategyConfiguration } from "../../botlogic/code/BotCode.js";
 import { ACTION_BY_ID, STATE_VARIABLE_BY_ID } from "../../botlogic/code/contracts/BotLogicContracts.js";
 import { stateFromPayload } from "../../botlogic/code/runtime/runtimeState.js";
 import { buildStatePayload } from "../../modelPayloads/strategyStatePayload.js";
-import { buildDeterministicLogicAction } from "../../botlogic/planner/ArenaActionPlanner.js";
+import { buildDeterministicLogicAction as buildDeterministicLogicActionNormalized } from "../../botlogic/planner/ArenaActionPlanner.js";
 import { actionIdsForLoadoutConfiguration } from "../../gameconfig/CombatLoadouts.js";
-import { resetBotShape, toSimulationBotShape } from "../../modelPayloads/arenaShapes.js";
+import { resetBotShape } from "../../modelPayloads/arenaShapes.js";
 import { actionPickerDescription } from "../../coding/nodes/pickerSupport.js";
 import { STATUS_EFFECT_APPLICATIONS } from "../contracts/StatusContracts.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../botlogic/code/BotCode.js";
+import { applyBotAction } from "../../testing/pureTicks.js";
+import { preparingAbilityId, preparingRemainingMs, cooldownRemainingMs, activeRemainingMs } from "../../gameconfig/AbilityState.js";
+
+// The engine takes normalized brains; tests pass raw ones, so normalize here like the edge does.
+const buildDeterministicLogicAction = (configuration, ...rest) => buildDeterministicLogicActionNormalized(normalizeBrainForTick(configuration), ...rest);
+
+const DASH_ABILITY_ID = 19;
 
 const WALK_SPEED = 15;
 const idle = { dx: 0, dy: 0, dRot: 0 };
@@ -27,8 +33,7 @@ function bot(extra = {}) {
     return {
         id: "main", slot: 1, x: 200, y: 400, size: 60, rotation: 90, hp: 100, maxHp: 100,
         moveSpeed: WALK_SPEED, attackSpeedMultiplier: 1, movementVelocityX: 0, movementVelocityY: 0,
-        abilities: [1, 3, 19, 34], abilityCooldowns: {}, abilityActiveMs: {}, abilityCharges: {},
-        ...initialMovementState(),
+        abilities: [1, 3, 19, 34], abilityState: {}, ...initialMovementState(),
         ...extra,
     };
 }
@@ -38,7 +43,7 @@ const opponentShape = () => ({
     id: "opponent-model",
 });
 
-const step = (shape, action = idle) => applyBotAction(shape, action, MOVEMENT_TICK_MS, applyDamageToShape);
+const step = (shape, action = idle) => applyBotAction(shape, action, MOVEMENT_TICK_MS);
 function run(shape, action, ticks) {
     let current = shape;
     for (let tick = 0; tick < ticks; tick += 1) current = step(current, action);
@@ -53,7 +58,7 @@ test("every ms value in MovementConfig is a whole multiple of 100 and every amou
     }
     assert.deepEqual({ ...MOVEMENT_CONFIG }, {
         staminaMax: 100, regenPerTick: 2, regenDelayMs: 500, hitStaminaRefund: 10, sprintMultiplier: 1.5,
-        fastTurnMultiplier: 2, fastTurnDrainPerTick: 2, sprintDrainPerTick: 3, dashCost: 30, dashGapMs: 300, windupCancelCost: 25,
+        fastTurnMultiplier: 2, fastTurnDrainPerTick: 2, sprintDrainPerTick: 3, windupCancelCost: 25,
     });
 });
 
@@ -74,7 +79,7 @@ test("stamina regenerates only after the 500 ms pause, 2 per tick, capped at the
     assert.equal(current.stamina, 74);
     assert.equal(run(current, idle, 40).stamina, 100);
     // Any spend restarts the delay.
-    const respent = step({ ...current, dashGapMs: 0, abilityActiveMs: {} }, dashAction);
+    const respent = step(current, dashAction);
     assert.equal(respent.staminaRegenDelayMs, 500);
 });
 
@@ -94,7 +99,7 @@ test("at 0 stamina there is no exhaustion: the bot walks at full speed and refil
     assert.equal(current.stamina, 2, "regeneration resumes after the 500 ms pause");
 });
 
-test("a dash chain runs until stamina runs out, one dash per 300 ms gap", () => {
+test("a dash chain runs until stamina runs out, one dash per 400 ms (200 ms active, then the cooldown)", () => {
     let current = bot();
     const dashTicks = [];
     for (let tick = 0; tick < 20; tick += 1) {
@@ -106,12 +111,12 @@ test("a dash chain runs until stamina runs out, one dash per 300 ms gap", () => 
     assert.equal(abilityReady(current, DASH_ABILITY_ID), false);
 });
 
-test("the dash gap and the stamina check are reflected in Ready and Cooldown Left", () => {
+test("the dash cooldown and the stamina check are reflected in Ready and Cooldown Left", () => {
     const fresh = bot();
     assert.equal(abilityReady(fresh, DASH_ABILITY_ID), true);
     assert.equal(abilityCooldownMs(fresh, DASH_ABILITY_ID), 0);
 
-    const gapped = { ...fresh, dashGapMs: 200 };
+    const gapped = { ...fresh, abilityState: { [DASH_ABILITY_ID]: { stage: "cooldown", remainingMs: 200 } } };
     assert.equal(abilityReady(gapped, DASH_ABILITY_ID), false);
     assert.equal(abilityCooldownMs(gapped, DASH_ABILITY_ID), 200);
 
@@ -186,7 +191,7 @@ test("attacking no longer slows sprint: it holds while an ability starts, winds 
     assert.equal(current.stamina, 88);
 
     const winding = step(bot(), { ...snipe, dx: 1, sprint: true });
-    assert.equal(winding.preparingAbility, 3);
+    assert.equal(preparingAbilityId(winding), 3);
     assert.equal(winding.x, 200 + fast);
     const stillWinding = step(winding, walk({ sprint: true }));
     assert.equal(stillWinding.x - winding.x, fast);
@@ -200,23 +205,23 @@ test("attacking no longer slows sprint: it holds while an ability starts, winds 
 
 test("Cancel Wind-up clears the wind-up for 25 stamina, with no cooldown or charge, and the ability can restart next tick", () => {
     const winding = step(bot(), snipe);
-    assert.equal(winding.preparingAbility, 3);
-    assert.equal(winding.preparingMs, 800);
+    assert.equal(preparingAbilityId(winding), 3);
+    assert.equal(preparingRemainingMs(winding), 800);
 
     const cancelled = step(winding, cancel);
-    assert.equal(cancelled.preparingAbility, null);
-    assert.equal(cancelled.preparingMs, 0);
+    assert.equal(preparingAbilityId(cancelled), null);
+    assert.equal(preparingRemainingMs(cancelled), 0);
     assert.equal(cancelled.triggeredAbility, null);
     assert.equal(cancelled.stamina, 75);
     assert.equal(cancelled.staminaRegenDelayMs, 500);
-    assert.equal(cancelled.abilityCooldowns?.[3] ?? 0, 0, "no cooldown");
+    assert.equal(cooldownRemainingMs(cancelled, 3) ?? 0, 0, "no cooldown");
     assert.equal(Object.hasOwn(cancelled, "abilityRelockMs"), false, "no restart lock");
     assert.equal(abilityReady(cancelled, 3), true);
 
     // One ability action per tick: it did not restart on the cancel tick, but does on the next.
     const restarted = step(cancelled, snipe);
-    assert.equal(restarted.preparingAbility, 3);
-    assert.equal(restarted.preparingMs, 800);
+    assert.equal(preparingAbilityId(restarted), 3);
+    assert.equal(preparingRemainingMs(restarted), 800);
     assert.equal(restarted.stamina, 75, "starting the wind-up again costs nothing");
 });
 
@@ -233,16 +238,16 @@ test("Cancel Wind-up does nothing without a wind-up or enough stamina", () => {
 
     const winding = step(bot({ stamina: 24, staminaRegenDelayMs: 800 }), snipe);
     const refused = step(winding, cancel);
-    assert.equal(refused.preparingAbility, 3, "the wind-up continues");
-    assert.equal(refused.preparingMs, 700);
+    assert.equal(preparingAbilityId(refused), 3, "the wind-up continues");
+    assert.equal(preparingRemainingMs(refused), 700);
     assert.equal(refused.stamina, 24);
 });
 
 test("a wind-up already locked in continues even when another action is selected", () => {
     const winding = step(bot(), snipe);
     const continued = step(winding, slash);
-    assert.equal(continued.preparingAbility, 3);
-    assert.equal(continued.preparingMs, 700);
+    assert.equal(preparingAbilityId(continued), 3);
+    assert.equal(preparingRemainingMs(continued), 700);
 });
 
 test("Cancel Wind-up is a stable ability-channel action, executable only while it can cancel", () => {
@@ -264,7 +269,7 @@ test("Cancel Wind-up is a stable ability-channel action, executable only while i
     const result = brainTick(configuration, winding);
     assert.equal(result.plan.cancelWindup, true);
     assert.equal(result.plan.abilityAction, null, "the ability channel is untouched");
-    assert.equal(result.bot.preparingAbility, null);
+    assert.equal(preparingAbilityId(result.bot), null);
 });
 
 const sniperRoot = { name: "Use Sniper", branches: [{ conditions: [{ type: "always" }], actions: [{ action: 3 }] }] };
@@ -278,7 +283,7 @@ const cancelRoot = (extraConditions = []) => ({
 
 function brainBot(extra = {}) {
     // Flat simulation shape, like the one the arena ticks.
-    return { ...toSimulationBotShape(resetBotShape(bot({ type: "circle", combatLoadout: "custom:", loadout: { abilities: [3] } }))), id: "main", ...extra };
+    return { ...resetBotShape(bot({ type: "circle", combatLoadout: "custom:", loadout: { abilities: [3] } })), id: "main", ...extra };
 }
 
 /** One tick through the real path: brain -> planner -> action execution. */
@@ -295,13 +300,13 @@ for (const [title, roots] of [["cancel root second", [sniperRoot, cancelRoot()]]
         let cancelled = null;
         for (let tick = 0; tick < 12 && !cancelled; tick += 1) {
             const result = brainTick(configuration, current);
-            if (current.preparingAbility != null && result.bot.preparingAbility == null && result.bot.triggeredAbility == null) cancelled = { before: current, after: result.bot };
+            if (preparingAbilityId(current) != null && preparingAbilityId(result.bot) == null && result.bot.triggeredAbility == null) cancelled = { before: current, after: result.bot };
             current = result.bot;
         }
         assert.ok(cancelled, "the wind-up was cancelled");
-        assert.equal(cancelled.before.preparingMs, 300, "cancels once Prep Time is under 0.4 s");
+        assert.equal(preparingRemainingMs(cancelled.before), 300, "cancels once Prep Time is under 0.4 s");
         assert.equal(cancelled.after.stamina, 75, "spends 25 stamina");
-        assert.equal(cancelled.after.abilityCooldowns?.[3] ?? 0, 0, "no cooldown");
+        assert.equal(cooldownRemainingMs(cancelled.after, 3) ?? 0, 0, "no cooldown");
     });
 }
 
@@ -309,7 +314,7 @@ test("a cancel root that is true while NOT winding up does not block a lower-pri
     const alwaysCancel = { name: "Cancel", branches: [{ conditions: [{ type: "always" }], actions: [{ action: "cancel_windup" }] }] };
     const result = brainTick({ roots: [alwaysCancel, sniperRoot] }, brainBot());
     assert.equal(result.plan.abilityAction.action, 3);
-    assert.equal(result.bot.preparingAbility, 3);
+    assert.equal(preparingAbilityId(result.bot), 3);
     assert.equal(result.bot.stamina ?? 100, 100);
 });
 
@@ -317,12 +322,12 @@ test("Cancel Wind-up with less than 25 stamina lets the wind-up continue", () =>
     const configuration = { roots: [sniperRoot, cancelRoot()] };
     let current = brainBot({ stamina: 24, staminaRegenDelayMs: 800 });
     for (let tick = 0; tick < 5; tick += 1) current = brainTick(configuration, current).bot;
-    assert.equal(current.preparingAbility, 3, "still winding up");
-    assert.equal(current.preparingMs, 400);
+    assert.equal(preparingAbilityId(current), 3, "still winding up");
+    assert.equal(preparingRemainingMs(current), 400);
     assert.ok(current.stamina <= 24 + 4, "nothing was spent on a cancel");
-    assert.equal(abilityReady({ ...current, preparingAbility: null, preparingMs: 0 }, 3), true);
+    assert.equal(abilityReady({ ...current, abilityState: {} }, 3), true);
     const done = run(current, { ...idle, abilityAction: { action: 3, targetX: 800, targetY: 400 } }, 4);
-    assert.equal(done.triggeredAbility === 3 || done.abilityActiveMs?.[3] > 0, true, "the shot fires");
+    assert.equal(done.triggeredAbility === 3 || activeRemainingMs(done, 3) > 0, true, "the shot fires");
 });
 
 test("Walk carries an optional boolean sprint; brains without it are unchanged", () => {
@@ -341,9 +346,9 @@ test("Walk carries an optional boolean sprint; brains without it are unchanged",
     assert.equal(planOf({ sprint: true }).sprint, true);
 
     // An old shape with no stamina fields behaves exactly as before and stays untouched.
-    const legacy = { ...bot() };
-    for (const key of Object.keys(initialMovementState())) delete legacy[key];
-    const moved = step(legacy, walk());
+    const oldShape = { ...bot() };
+    for (const key of Object.keys(initialMovementState())) delete oldShape[key];
+    const moved = step(oldShape, walk());
     assert.equal(moved.x, 200 + WALK_SPEED);
     for (const key of Object.keys(initialMovementState())) assert.equal(Object.hasOwn(moved, key), false, key);
 });
@@ -355,7 +360,7 @@ test("resetting a bot restores full stamina and clears timers", () => {
     assert.equal(Object.hasOwn(reset, "exhaustedMs"), false);
     assert.equal(reset.staminaRegenDelayMs, 0);
     assert.equal(reset.sprinting, false);
-    assert.equal(reset.dashGapMs, 0);
+    assert.equal(Object.hasOwn(reset, "dashGapMs"), false);
     assert.equal(Object.hasOwn(reset, "abilityRelockMs"), false);
 });
 
@@ -399,7 +404,7 @@ test("Cancel and an ability can share one node: Cancel does not use the ability 
     assert.equal(first.plan.cancelWindup, undefined);
     const second = brainTick(both, first.bot);
     assert.equal(second.plan.cancelWindup, true, "winding up: Cancel runs alongside the still-selected ability");
-    assert.equal(second.bot.preparingAbility, null);
+    assert.equal(preparingAbilityId(second.bot), null);
     assert.equal(second.bot.stamina, 75);
 });
 

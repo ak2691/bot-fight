@@ -1,230 +1,75 @@
 import {
-    PHASE_ACTIONS,
-    PHASE_EVENT_TYPES,
-    TARGET_KINDS,
-    TARGET_POLICY_MODES,
     eventTargetsKind,
+    eventVerbs,
+    TARGET_KINDS,
 } from "../contracts/AbilityContracts.js";
-import { applyEntityEffects } from "./EntityEffectSystem.js";
+import { entityEffectStats } from "./effects.js";
 import { entityContract, phaseForEntity } from "../contracts/AbilityContracts.js";
-import { withComponentState } from "../entities/EntityWorld.js";
+import { canApplyToTarget, executeVerb, transitionEntityPhase } from "./verbs.js";
+
+export { canApplyToTarget, transitionEntityPhase };
 
 /**
- * Dispatches a contract event to one entity.
+ * Dispatches a contract event to one entity by running the event's `do` verbs through the verb executor.
  *
- * Collision detection deliberately stays outside this module. A detector
- * supplies stable target IDs and this dispatcher turns those IDs into the
- * allowlisted payload changes declared by the current phase. That keeps
- * geometry, lifecycle transitions, and bot-payload mutation independent and
- * makes two copies of the same entity maintain independent hit ledgers.
+ * Collision detection deliberately stays outside this module. A detector supplies stable target IDs and the
+ * verbs turn those IDs into the allowlisted payload changes declared by the current phase. That keeps
+ * geometry, lifecycle transitions, and bot-payload mutation independent and makes two copies of the same
+ * entity maintain independent hit ledgers.
+ *
+ * The entity and the bots change in place. Returns { entity, bots, emittedVisuals, spawned, hitConnected }:
+ * `entity` is the same entity, or null when the event removed it. `spawned` lists entities that a `spawn` verb
+ * of the event created; the caller adds them to the world.
  */
 export function dispatchEntityEvent(entity, eventType, {
     bots = [],
     world = {},
-    combat,
     phase = phaseForEntity(entity),
+    contract = null,
     targetIds = [],
     targetDistances = null,
     effectSources = null,
     collisionDistance = undefined,
+    seekTargetId = null,
 } = {}) {
-    const handler = phase?.events?.[eventType];
-    if (!handler) return { entity, bots, emittedVisuals: [] };
+    const handler = phase?.on?.[eventType];
+    if (!handler) return { entity, bots, emittedVisuals: [], spawned: [], hitConnected: false };
 
-    let nextEntity = entity;
-    let nextBots = bots;
-    const contract = entityContract(entity?.entityContractId ?? entity?.abilityId ?? entity?.type);
-    const abilityId = nextEntity?.abilityId ?? contract?.abilityId;
-    const emittedVisuals = [];
-    const targets = normalizeTargetIds(targetIds);
-    const actions = Array.isArray(handler.actions) ? handler.actions : [];
-    const effectTypes = normalizeEffectTypes(
-        handler.effects ?? handler.effectTypes ?? phase.effects ?? phase.effectTypes,
-    );
-    const hitbox = phase?.hitbox;
-    const phaseRange = hitbox?.range ?? hitbox?.length ?? hitbox?.radius;
-    const phaseStats = {
-        ...(phase?.statOverrides ?? {}),
-        ...(phaseRange == null ? {} : { range: phaseRange, radius: phaseRange }),
+    const run = {
+        kind: "entity",
+        entity,
+        bots,
+        world,
+        phase,
+        event: handler,
+        eventType,
+        contract: contract ?? entityContract(entity),
+        targets: normalizeTargetIds(targetIds),
+        targetDistances,
+        effectSources,
+        collisionDistance,
+        seekTargetId,
+        entityStats: entityEffectStats(phase),
+        eventReachesBots: eventTargetsKind(handler, TARGET_KINDS.BOT),
+        emittedVisuals: [],
+        spawned: [],
+        hitConnected: false,
     };
-
-
-    for (const action of actions) {
-        if (action === PHASE_ACTIONS.APPLY_EFFECTS) {
-            if (!eventTargetsKind(handler, TARGET_KINDS.BOT)) continue;
-            for (const targetId of targets) {
-                const targetIndex = findTargetIndex(nextBots, targetId);
-                if (targetIndex < 0 || !canApplyToTarget(nextEntity, targetId, handler.targetPolicy, world)) continue;
-                const target = nextBots[targetIndex];
-                const targetDistance = targetDistances instanceof Map
-                    ? targetDistances.get(targetId)
-                    : targetDistances?.[targetId];
-                const effectSource = effectSources instanceof Map
-                    ? effectSources.get(targetId) ?? nextEntity
-                    : nextEntity;
-                const result = applyEntityEffects(
-                    nextBots,
-                    targetIndex,
-                    effectSource,
-                    abilityId,
-                    combat,
-                    {
-                        effectTypes,
-                        statusTypes: handler.statusTypes ?? null,
-                        world,
-                        knockbackDirection: handler.knockbackDirection ?? phase.knockbackDirection ?? "source",
-                        pullDirection: handler.pullDirection ?? phase.pullDirection ?? "source",
-                        collisionDistance: Number.isFinite(Number(targetDistance))
-                            ? Number(targetDistance)
-                            : collisionDistance,
-                        effectOverrides: handler.effectOverrides ?? phase.effectOverrides,
-                        statOverrides: phaseStats,
-                        effects: phase.effects,
-                    },
-                );
-                nextBots = result.bots;
-                nextEntity = recordTargetApplication(nextEntity, target, handler.targetPolicy, world);
-            }
-        } else if (action === PHASE_ACTIONS.TRANSITION) {
-            nextEntity = transitionEntityPhase(
-                nextEntity,
-                handler.transition?.to,
-            );
-        } else if (action === PHASE_ACTIONS.EMIT_VISUAL) {
-            // The simulation records only the semantic event occurrence. The
-            // renderer resolves its asset, size, and animation duration from
-            // the browser ability contract.
-            const semanticEventType = String(eventType).toLowerCase();
-            const visibleMs = resolveNumber(
-                handler.visibleMs,
-                nextEntity,
-                world,
-                0,
-            );
-            nextEntity = withComponentState(nextEntity, {
-                eventSequence: Number(nextEntity.eventSequence ?? 0) + 1,
-                eventType: semanticEventType,
-                eventPhaseId: phase?.id ?? nextEntity.phaseId ?? null,
-                // The countdown is frontend-only presentation state. Pixi
-                // resolves the event's visual metadata from the ability contract.
-                visualEvent: Number(nextEntity.visualEvent ?? 0) + 1,
-                visualEventMs: visibleMs,
-            });
-            emittedVisuals.push({
-                eventType: semanticEventType,
-            });
-        } else if (action === PHASE_ACTIONS.REMOVE) {
-            nextEntity = null;
-        }
-
-        if (!nextEntity) break;
+    for (const verb of eventVerbs(handler)) {
+        executeVerb(verb, run);
+        if (!run.entity) break;
     }
-
-    return { entity: nextEntity, bots: nextBots, emittedVisuals };
-}
-
-/** Applies an event to the owner, useful for self phases and activation hooks. */
-export function dispatchEntityOwnerEvent(entity, eventType, options = {}) {
-    const owner = (options.bots ?? []).find((bot) => bot?.id === entity?.ownerId)
-        ?? (options.bots ?? []).find((bot) => Number(bot?.slot) === Number(entity?.ownerSlot));
-    return dispatchEntityEvent(entity, eventType, {
-        ...options,
-        targetIds: owner ? [owner.id] : [],
-    });
-}
-
-/** Returns whether this entity may affect a target during the current phase. */
-export function canApplyToTarget(entity, targetId, targetPolicy = null, world = {}) {
-    const mode = targetPolicy?.mode ?? TARGET_POLICY_MODES.EVERY_TICK;
-    if (mode === TARGET_POLICY_MODES.EVERY_TICK) return true;
-    const key = targetKey(targetId);
-    const lastHit = entity?.hitLedger?.[key];
-    if (!lastHit) return true;
-    if (mode === TARGET_POLICY_MODES.ONCE) return false;
-
-    const intervalMs = targetPolicyIntervalMs(targetPolicy, entity, world);
-    return eventTimestampMs(entity, world) - Number(lastHit.atMs ?? 0) >= intervalMs;
-}
-
-/** Changes phase without replacing the entity identity. */
-export function transitionEntityPhase(entity, phaseId) {
-    if (!entity || phaseId == null) return entity;
-    const contract = entityContract(entity.entityContractId ?? entity.abilityId ?? entity.type);
-    const nextPhase = contract?.phases?.find((phase) => phase.id === phaseId);
-    if (!nextPhase) return entity;
-    const changes = {
-        phaseId,
-        phaseTimerMs: 0,
-        eventScheduleState: {},
-        phaseLocked: true,
-        phaseEnteredThisTick: true,
-        ...(Number(nextPhase.movement?.speed ?? 0) <= 0 ? { velocityX: 0, velocityY: 0 } : {}),
-        // Persistence is phase-local. A target affected by a fuse phase can
-        // be affected again by the damage phase of the same logical entity.
-        hitLedger: {},
-        ...(nextPhase.type === "zone" || nextPhase.type === "self" ? { armed: true } : {}),
+    return {
+        entity: run.entity,
+        bots: run.bots,
+        emittedVisuals: run.emittedVisuals,
+        spawned: run.spawned,
+        hitConnected: run.hitConnected,
     };
-    return withComponentState(entity, changes);
-}
-
-function recordTargetApplication(entity, target, targetPolicy, world) {
-    const mode = targetPolicy?.mode ?? TARGET_POLICY_MODES.EVERY_TICK;
-    const key = targetKey(target);
-    if (mode === TARGET_POLICY_MODES.EVERY_TICK) return entity;
-    return withComponentState(entity, {
-        hitLedger: {
-            ...(entity.hitLedger ?? {}),
-            // The entity clock is advanced at the start of a fixed tick. Store
-            // the time at which this event was evaluated, not the end-of-tick
-            // clock value, so an interval measured in ticks remains intuitive:
-            // a hit on tick 3 with a five-tick interval is eligible on tick 8.
-            [key]: { atMs: eventTimestampMs(entity, world) },
-        },
-    });
-}
-
-function eventTimestampMs(entity, world) {
-    return Math.max(
-        0,
-        Number(entity?.ageMs ?? 0) - Math.max(0, Number(world?.stepMs ?? 0)),
-    );
-}
-
-function targetPolicyIntervalMs(targetPolicy, entity, world) {
-    const raw = targetPolicy?.intervalMs ?? 0;
-    const value = resolveNumber(raw, entity, world, Number(world.stepMs ?? 0));
-    return Math.max(0, value);
-}
-
-function resolveNumber(value, entity, world, fallback) {
-    if (value == null) return fallback;
-    if (typeof value === "number") return value;
-    if (typeof value === "string") {
-        const numericValue = Number(value);
-        return Number.isFinite(numericValue) ? numericValue : fallback;
-    }
-    if (typeof value === "object") {
-        if (value.stat != null) return resolveNumber(value.stat, entity, world, value.fallback ?? fallback);
-        if (value.value != null) return resolveNumber(value.value, entity, world, fallback);
-    }
-    return fallback;
-}
-
-function normalizeEffectTypes(effects) {
-    if (!Array.isArray(effects)) return null;
-    return effects.map((effect) => typeof effect === "string" ? effect : effect?.type).filter(Boolean);
 }
 
 function normalizeTargetIds(targetIds) {
     return [...new Set((Array.isArray(targetIds) ? targetIds : [targetIds])
         .filter((targetId) => targetId != null)
         .map((targetId) => typeof targetId === "object" ? targetId.id ?? targetId.slot : targetId))];
-}
-
-function findTargetIndex(bots, targetId) {
-    return bots.findIndex((bot) => bot?.id === targetId || String(bot?.slot) === String(targetId));
-}
-
-function targetKey(target) {
-    return String(typeof target === "object" ? target?.id ?? target?.slot : target);
 }

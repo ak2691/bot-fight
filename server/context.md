@@ -43,21 +43,40 @@ All Java paths below are under
 - `simulation/core/`: the package-coupled authoritative duel runtime, organized
   by role into `orchestration/` (fixed-step duel flow), `logic/`
   (conditions, targeting, and custom-variable actions), `combat/`
-  (actions, abilities, projectiles, and entity hits), `state/` (bot state,
+  (actions, abilities, projectiles, and entity hits; `Effects.java` is the
+  effect registry for bots and HP entities and `FindTargets.java` the one target
+  query), `state/` (bot state,
   movement, and deferred transitions), and `replay/` (authoritative replay
   mapping). The role packages communicate through explicit authoritative types
-  owned by the orchestration package.
+  owned by the orchestration package: `orchestration/Bot.java` is the mutable
+  per-bot duel state, and `DuelSimulationService` keeps the tick stages, action
+  planning and replay recording. `state/AbilityState.java` holds the per-bot
+  `abilityState` records (stage, remaining time, charges, reload, wind-up target)
+  and the channel-busy helpers; replay DTOs and conditions read the old loose
+  fields through its `legacy*` views.
+  `orchestration/CombatLog.java` is the optional, thread-bound combat log
+  (off in rated runs; `DuelSimulationService.simulateLogged` binds one). The
+  duel tick runs the named stages decide, act, resolveHits, spawn, entities,
+  hazards, settle, matching the browser's `arenaPreviewSimulation.js`.
 - `simulation/bots/`: submitted bot configuration reading, the declarative
-  bot-code contract registry, and normalized condition evaluation.
+  bot-code contract registry, normalized condition evaluation, and
+  `BrainNormalizer.java`, which turns a brain's JSON into the bounded priority
+  tree and chains (the one place submitted brain JSON is read for a duel).
 - `simulation/geometry/`: pure authoritative distance, angle, and arena-unit
   calculations.
 - `simulation/gameconfig/`: authoritative ability definitions, shield contracts,
-  and the active duel configuration.
+  and the active duel configuration. `GameplayData.java` loads and checks the
+  shared `gameplay/*.json` (Maven copies `../shared/gameplay` onto the classpath);
+  `Abilities`, `AbilityRegistry`, `MovementConfig` and `ecs/contracts/AbilityContracts`
+  read from it. `AbilityChannels` reads each ability's channel and stamina cost
+  and the channels' blocking statuses (`channels.json`).
 - `simulation/ecs/`: authoritative ability-entity model, split into
   `contracts/`, `abilities/`, and `entities/`. `contracts/` owns the unified
-  `AbilityContracts.java` registry. Direct and spawned abilities share one
-  `AbilityContract`/`AbilityPhase` shape; each phase declares its concrete
-  effects, hitbox, visual, repeat scheduler, and allowlisted event response.
+  `AbilityContracts.java` registry. An ability is `onTrigger` verbs plus the
+  `entities` its spawn verbs create; an entity is `AbilityPhase`s whose events run
+  the same verbs. `core/combat/AbilityVerbs.java` is the one verb executor (a
+  `Host` per place it runs: the act stage in `ActionExecutionService`, resolveHits
+  in `AbilityEffectService`, entity events in `AbilityEntitySystem`).
   Collision services supply target IDs and the entity system routes effects into
   bot state without replacing the logical entity on transitions.
 - `src/main/resources/db/migration/`: append-only Flyway schema history.
@@ -77,7 +96,8 @@ All Java paths below are under
 | Submission endpoint/persistence | submission controller/service areas | DTO, repository, and domain areas |
 | Puzzle authoring, published list, and admin role boundary | puzzle controller/service areas | auth/security, puzzle domain/repository, migration, and frontend puzzle page |
 | Brain/loadout boundary validation | validation service area | combat catalog, frontend schema, and focused tests |
-| Rated simulation orchestration | `simulation/core/orchestration/DuelSimulationService.java` | replay DTO and matchmaking lifecycle |
+| Rated simulation orchestration | `simulation/core/orchestration/DuelSimulationService.java`, `Bot.java` | replay DTO and matchmaking lifecycle |
+| Brain JSON normalization and limits | `simulation/bots/BrainNormalizer.java` | `BotLogicContracts`, `ConditionResolutionService.normalizeConditions`, submission validation |
 | Combat/ability/effect parity | `simulation/gameconfig/`, `simulation/core/combat/`, `simulation/core/logic/`, `simulation/core/state/`, `simulation/ecs/` | duel orchestration, frontend Game Arena context, docs index |
 | Replay/result mismatch | `simulation/core/replay/`, `DTO/` | match orchestration/matchmaking and frontend replay areas |
 | Database/schema | `domain/`, `repository/`, `resources/db/migration/` | services enforcing ownership/state transitions |
@@ -117,6 +137,10 @@ From `server/` on Windows, run the narrowest test with Maven's `-Dtest=...`
 selector, then `.\mvnw.cmd test` for contract or lifecycle changes. Relevant
 suites are grouped under `src/test/java/com/example/botfight/service/`,
 `simulation/`, and `simulation/gameconfig/` or `simulation/ecs/`.
+
+`simulation/core/orchestration/GoldenScenariosTest` compares the shared golden
+scenarios (`../shared/gameplay-tests/`) with `golden.server.json`; regenerate
+with `-Dgolden.update=true` after an intended gameplay change.
 
 There is no active `server/package.json`; do not use the obsolete Node
 simulation commands from older guidance.

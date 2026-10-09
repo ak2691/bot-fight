@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "tickMs": 100,
+  "config": {
+    "staminaMax": 100,
+    "regenPerTick": 2,
+    "regenDelayMs": 500,
+    "hitStaminaRefund": 10,
+    "sprintMultiplier": 1.5,
+    "sprintDrainPerTick": 3,
+    "fastTurnMultiplier": 2,
+    "fastTurnDrainPerTick": 2,
+    "windupCancelCost": 25
+  }
+}

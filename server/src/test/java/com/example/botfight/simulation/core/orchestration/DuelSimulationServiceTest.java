@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Disabled;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import com.example.botfight.simulation.core.state.LegacyAbility;
 
 class DuelSimulationServiceTest {
 
@@ -394,30 +395,28 @@ class DuelSimulationServiceTest {
         GameConfigCatalog catalog = new GameConfigCatalog();
         BotStateService botStateService = new BotStateService(catalog, new com.example.botfight.simulation.bots.BotCodeService());
         ActionExecutionService actionExecutionService = new ActionExecutionService(botStateService);
-        DuelSimulationService.Bot bot = new DuelSimulationService.Bot();
+        Bot bot = new Bot();
         bot.abilities = Set.of(20);
 
-        bot.abilityActiveMs.put(20, 500);
-        bot.abilityCooldowns.put(20, 3000);
+        LegacyAbility.setActive(bot, 20, 500);
+        LegacyAbility.setCooldown(bot, 20, 3000);
         assertThat(actionExecutionService.selectedAbilityReady(bot, 20)).isFalse();
         assertThat(actionExecutionService.selectedAbilityCooldownMs(bot, 20)).isZero();
         assertThat(actionExecutionService.selectedAbilityOnCooldown(bot, 20)).isFalse();
 
-        bot.abilityActiveMs.put(20, 0);
+        LegacyAbility.setActive(bot, 20, 0);
         assertThat(actionExecutionService.selectedAbilityCooldownMs(bot, 20)).isEqualTo(3000);
         assertThat(actionExecutionService.selectedAbilityOnCooldown(bot, 20)).isTrue();
         assertThat(actionExecutionService.selectedAbilityReady(bot, 20)).isFalse();
 
-        bot.abilityCooldowns.put(20, 0);
-        bot.preparingAbility = 20;
-        bot.preparingMs = 400;
+        LegacyAbility.setCooldown(bot, 20, 0);
+        LegacyAbility.setPreparing(bot, 20, 400);
         assertThat(actionExecutionService.selectedAbilityReady(bot, 20)).isFalse();
         assertThat(actionExecutionService.selectedAbilityCooldownMs(bot, 20)).isZero();
         assertThat(actionExecutionService.selectedAbilityOnCooldown(bot, 20)).isFalse();
         assertThat(actionExecutionService.selectedAbilityExecutable(bot, 20)).isTrue();
 
-        bot.preparingAbility = null;
-        bot.preparingMs = 0;
+        LegacyAbility.setPreparing(bot, null, 0);
         assertThat(actionExecutionService.selectedAbilityReady(bot, 20)).isTrue();
     }
 
@@ -428,16 +427,15 @@ class DuelSimulationServiceTest {
         ActionExecutionService actionExecutionService = new ActionExecutionService(botStateService);
         ConditionResolutionService resolver = new ConditionResolutionService(
                 new ConditionEvaluationService(), actionExecutionService);
-        DuelSimulationService.Bot player = new DuelSimulationService.Bot();
-        DuelSimulationService.Bot opponent = new DuelSimulationService.Bot();
+        Bot player = new Bot();
+        Bot opponent = new Bot();
         player.abilities = Set.of();
         opponent.abilities = Set.of();
-        for (DuelSimulationService.Bot selected : List.of(player, opponent)) {
-            selected.abilityActiveMs.put(5, 900);
-            selected.abilityCooldowns.put(5, 5000);
-            selected.abilityCharges.put(5, 2);
-            selected.preparingAbility = 5;
-            selected.preparingMs = 600;
+        for (Bot selected : List.of(player, opponent)) {
+            LegacyAbility.setActive(selected, 5, 900);
+            LegacyAbility.setCooldown(selected, 5, 5000);
+            LegacyAbility.setCharges(selected, 5, 2);
+            LegacyAbility.setPreparing(selected, 5, 600);
         }
 
         String[] variables = {

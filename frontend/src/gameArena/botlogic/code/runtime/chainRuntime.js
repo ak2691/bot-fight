@@ -1,4 +1,4 @@
-import { abilityIdFromBoundary } from "../../../gameconfig/AbilityCompatibility.js";
+import { activeRemainingMs, windupRemainingMs } from "../../../gameconfig/AbilityState.js";
 import { canCancelWindup } from "../../../gameconfig/StaminaSystem.js";
 import { ACTION_HEADS, BOT_CODE_ACTIONS } from "../contracts/BotLogicContracts.js";
 import { CHAIN_STEP_TYPES, MAX_CALL_DEPTH, TICK_MS } from "../configuration/constants.js";
@@ -84,8 +84,7 @@ function isStunned(bot) {
 
 /** True while the bot is winding up or running the ability. Anything else means it has ended. */
 function abilityBusy(bot, abilityId) {
-    const windingUp = Number(bot?.preparingMs) > 0 && abilityIdFromBoundary(bot?.preparingAbility) === abilityId;
-    return windingUp || Number(bot?.abilityActiveMs?.[abilityId]) > 0;
+    return windupRemainingMs(bot, abilityId) > 0 || activeRemainingMs(bot, abilityId) > 0;
 }
 
 function listAt(chain, path) {

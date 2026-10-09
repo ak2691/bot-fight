@@ -1,11 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { advanceArenaPreviewTick } from "../../modelPayloads/arenaPreviewSimulation.js";
-import { buildInitialArenaShapes, buildOpponentShape, mergeBotShapeUpdates, toSimulationBotShape } from "../../modelPayloads/arenaShapes.js";
+import { advanceShapes as advanceArenaPreviewTickNormalized } from "../../testing/fightTick.js";
+import { buildInitialArenaShapes, buildOpponentShape } from "../../modelPayloads/arenaShapes.js";
 import { NEVER_HIT_SECONDS, abilitySinceHitSeconds } from "../../gameconfig/AbilityHitRecord.js";
 import { createAbilityEntity } from "../entities/EntityFactory.js";
-import { applyEntityEffects } from "../abilities/EntityEffectSystem.js";
+import { applyEffectsFromEntity } from "../abilities/effects.js";
 import { STATE_VARIABLE_BY_ID } from "../../botlogic/code/contracts/BotLogicContracts.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../../botlogic/code/BotCode.js";
+import { activeRemainingMs } from "../../gameconfig/AbilityState.js";
+
+// The tick takes normalized brains; tests pass raw ones, so normalize here like the edge does.
+const normalizeOrNull = (configuration) => (configuration ? normalizeBrainForTick(configuration) : configuration);
+const advanceArenaPreviewTick = (shapes, options) => advanceArenaPreviewTickNormalized(shapes, {
+    ...options,
+    testingConfiguration: normalizeOrNull(options.testingConfiguration),
+    opponentTestingConfiguration: normalizeOrNull(options.opponentTestingConfiguration),
+});
 
 // Mirrors server TimeSinceHitSimulationTest; keep the scenarios and numbers in step.
 const SLASH = 1;
@@ -23,14 +33,15 @@ function arena({ ability, defenderX, defenderY = MAIN_Y, allyX = null }) {
     const loadout = `custom:${ability}`;
     let shapes = buildInitialArenaShapes(null).map((shape) => {
         const placed = shape.id === "main"
-            ? mergeBotShapeUpdates(shape, { x: 300, y: MAIN_Y, rotation: 90, teamNumber: 1 })
-            : mergeBotShapeUpdates(shape, { x: defenderX, y: defenderY, rotation: 270 });
+            ? { ...shape, x: 300, y: MAIN_Y, rotation: 90, teamNumber: 1 }
+            : { ...shape, x: defenderX, y: defenderY, rotation: 270 };
         return { ...placed, abilities: [ability], combatLoadout: loadout };
     });
     if (allyX != null) {
-        const teammate = mergeBotShapeUpdates(buildOpponentShape({ slot: 3, userId: "ally", teamNumber: 1, selectedLoadout: loadout }), {
+        const teammate = {
+            ...buildOpponentShape({ slot: 3, userId: "ally", teamNumber: 1, selectedLoadout: loadout }),
             id: "bot-ally", type: "bot", x: allyX, y: MAIN_Y, rotation: 270,
-        });
+        };
         shapes = [...shapes, teammate];
     }
     return { shapes, loadout };
@@ -43,7 +54,7 @@ function runArena({ shapes, loadout }, configuration, ticks, opponentConfigurati
         current = advanceArenaPreviewTick(current, {
             selectedLoadout: loadout, opponentLoadout: loadout, testingConfiguration: configuration, opponentTestingConfiguration: opponentConfiguration,
         });
-        const bots = Object.fromEntries(current.filter((shape) => shape.slot != null).map((shape) => [shape.id, toSimulationBotShape(shape)]));
+        const bots = Object.fromEntries(current.filter((shape) => shape.slot != null).map((shape) => [shape.id, shape]));
         history.push({ main: bots.main, defender: bots["opponent-model"], ally: bots["bot-ally"], entities: current.filter((shape) => shape.abilityId != null) });
     }
     return history;
@@ -78,7 +89,7 @@ test("Fireball hit is attributed at impact time, not cast time", () => {
     const configuration = { roots: [castAbility(FIREBALL)] };
     const history = runArena(arena({ ability: FIREBALL, defenderX: 800 }), configuration, 24);
     const impact = firstTickWhere(history, ({ defender }) => defender.hp < defender.maxHp);
-    const cast = firstTickWhere(history, ({ main }) => main.triggeredAbility === FIREBALL || main.abilityActiveMs?.[FIREBALL] > 0);
+    const cast = firstTickWhere(history, ({ main }) => main.triggeredAbility === FIREBALL || activeRemainingMs(main, FIREBALL) > 0);
     assert.ok(impact > 1, "the projectile takes time to arrive");
     assert.ok(cast < impact, "the Fireball was cast before it landed");
     for (let tick = 0; tick < impact; tick += 1) assert.equal(history[tick].main.abilityLastHitAgeMs?.[FIREBALL], undefined, `tick ${tick}`);
@@ -106,9 +117,13 @@ test("Entity effects record a hit for the owner only when they land on an enemy 
     const ally = { id: "a", slot: 3, teamNumber: 1, x: 300, y: 100, size: 60, hp: 150, maxHp: 150 };
     const enemy = { id: "e", slot: 2, teamNumber: 2, x: 500, y: 100, size: 60, hp: 150, maxHp: 150 };
     const source = { ownerId: "o", ownerSlot: 1, x: 300, y: 100, abilityId: FIREBALL };
-    const combat = { applyDamageFromShapes: (from, to, damage) => [from, { ...to, hp: to.hp - damage }] };
     const effects = [{ type: "damage", amount: 5, targetKinds: ["BOT"] }];
-    const land = (targetIndex) => applyEntityEffects([owner, ally, enemy], targetIndex, source, FIREBALL, combat, { effects }).bots;
+    // The effects change the bots in place, so each landing starts from fresh copies.
+    const land = (targetIndex) => {
+        const bots = [owner, ally, enemy].map((bot) => ({ ...bot }));
+        applyEffectsFromEntity(bots, targetIndex, source, FIREBALL, { effects });
+        return bots;
+    };
 
     assert.deepEqual(land(1)[0].abilityHitsThisTick ?? [], []);
     assert.deepEqual(land(2)[0].abilityHitsThisTick, [FIREBALL]);
@@ -117,7 +132,7 @@ test("Entity effects record a hit for the owner only when they land on an enemy 
 
 test("A hit on an enemy summon does not count", () => {
     const { shapes, loadout } = arena({ ability: SLASH, defenderX: 300, defenderY: 1150 });
-    const opponent = toSimulationBotShape(shapes.find((shape) => shape.id === "opponent-model"));
+    const opponent = shapes.find((shape) => shape.id === "opponent-model");
     const drone = { ...createAbilityEntity(opponent, 17, {}), x: 380, y: MAIN_Y };
     const history = runArena({ shapes: [...shapes, drone], loadout }, { roots: [castAbility(SLASH)] }, 6);
     assert.ok(history.at(-1).entities.find((entity) => entity.abilityId === 17).hp < drone.hp, "the Slash did hit the summon");

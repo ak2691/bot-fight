@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { buildTutorialArenaShapes, getTutorialScenario, hasTutorialPriorityOrder, TUTORIAL_ACTIONS, TUTORIAL_STEP_COUNT } from "./TutorialPresets.js";
-import { normalizeAbilityStrategyConfiguration, selectAbilityStrategyActionPlan } from "../gameArena/botlogic/code/BotCode.js";
+import { normalizeAbilityStrategyConfiguration, selectAbilityStrategyActionPlan as selectAbilityStrategyActionPlanNormalized } from "../gameArena/botlogic/code/BotCode.js";
 import { buildStatePayload } from "../gameArena/modelPayloads/strategyStatePayload.js";
 import { stateFromPayload } from "../gameArena/botlogic/code/runtime/runtimeState.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS } from "../gameArena/modelPayloads/arenaConstants.js";
@@ -14,6 +14,10 @@ import {
     restoreTutorialNavigationScrollPosition,
     tutorialLessonNavigationForArena,
 } from "./tutorialLessonNavigation.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../gameArena/botlogic/code/BotCode.js";
+
+// The engine takes normalized brains; tests pass raw ones, so normalize here like the edge does.
+const selectAbilityStrategyActionPlan = (configuration, ...rest) => selectAbilityStrategyActionPlanNormalized(normalizeBrainForTick(configuration), ...rest);
 
 const tutorialCopy = (lessonId) => getTutorialLesson(lessonId).description
     .flatMap((paragraph) => paragraph?.type === "steps" ? paragraph.items : [paragraph])
@@ -25,9 +29,9 @@ const emptyPayload = {
         y: 400,
         hp: 80,
         abilities: [],
-        abilityCooldowns: {},
         customVariables: {},
-    },
+ abilityState: {},
+},
     objects: [{ id: "opponent-model", type: "opponentModel", x: 600, y: 400, hp: 100 }],
 };
 
@@ -84,21 +88,21 @@ test("tutorial arena starts use the current arena center and preserve lesson spa
     const centerX = ARENA_WIDTH_UNITS / 2;
     const centerY = ARENA_HEIGHT_UNITS / 2;
 
-    assert.equal(shapes[0].transform.position.x, centerX);
+    assert.equal(shapes[0].x, centerX);
     assert.equal(shapes[0].spawnX, centerX);
-    assert.equal(shapes[0].transform.position.y, centerY + 60);
+    assert.equal(shapes[0].y, centerY + 60);
     assert.equal(shapes[0].spawnY, centerY + 60);
-    assert.equal(shapes[1].transform.position.x, centerX);
+    assert.equal(shapes[1].x, centerX);
     assert.equal(shapes[1].spawnX, centerX);
-    assert.equal(shapes[1].transform.position.y, centerY);
+    assert.equal(shapes[1].y, centerY);
     assert.equal(shapes[1].spawnY, centerY);
-    assert.ok(shapes[0].transform.position.y > shapes[1].transform.position.y);
+    assert.ok(shapes[0].y > shapes[1].y);
 });
 
 test("My Bot starts below the opponent in every tutorial lesson", () => {
     for (let step = 0; step < TUTORIAL_STEP_COUNT; step += 1) {
         const [player, opponent] = buildTutorialArenaShapes(step);
-        assert.ok(player.transform.position.y > opponent.transform.position.y, getTutorialScenario(step).id);
+        assert.ok(player.y > opponent.y, getTutorialScenario(step).id);
     }
 });
 
@@ -113,7 +117,7 @@ test("vulnerability tutorial configures its attacks and tactics", () => {
     assert.equal(first.goal, "defeat_opponent_survive");
     assert.equal(firstPlayer.hp, 40);
     assert.equal(firstPlayer.maxHp, 300);
-    assert.equal(firstPlayer.transform.position.y - firstOpponent.transform.position.y, 300);
+    assert.equal(firstPlayer.y - firstOpponent.y, 300);
     assert.equal(first.opponentLoadout, "sandbox:7,13");
     assert.equal(first.solution.roots.length, 4);
     assert.equal(firstConditions.some((condition) => condition.left === "bot.selectedAbilityPreparationMs" && condition.ability === TUTORIAL_ACTIONS.RAIL_SHOT && condition.right.value === 0.2), true);
@@ -329,11 +333,11 @@ test("new tutorial lessons resolve focused practice presets", () => {
     assert.deepEqual(dontMiss.opponentCode.customVariables, []);
     assert.deepEqual(dontMiss.opponentCode.roots, []);
     assert.equal(Math.hypot(
-        dontMissPlayer.transform.position.x - dontMissOpponent.transform.position.x,
-        dontMissPlayer.transform.position.y - dontMissOpponent.transform.position.y,
+        dontMissPlayer.x - dontMissOpponent.x,
+        dontMissPlayer.y - dontMissOpponent.y,
     ), 300);
-    assert.deepEqual(dontMissOpponent.transform.position, { x: 600, y: 450 });
-    assert.equal(dontMissPlayer.transform.rotation, 180);
+    assert.deepEqual([dontMissOpponent.x, dontMissOpponent.y], [600, 450]);
+    assert.equal(dontMissPlayer.rotation, 180);
     const [aimingPlayer, aimingOpponent] = buildTutorialArenaShapes("aiming-basics");
     assert.equal(aiming.playerLoadout, "sandbox:");
     assert.equal(aiming.opponentLoadout, "sandbox:");
@@ -341,8 +345,8 @@ test("new tutorial lessons resolve focused practice presets", () => {
     assert.equal(aiming.solution.roots.flatMap((rootNode) => rootNode.branches).flatMap((branchNode) => branchNode.actions).some((action) => action.action === TUTORIAL_ACTIONS.FIREBALL), false);
     assert.doesNotMatch(tutorialCopy("aiming-basics"), /Fireball/i);
     assert.equal(Math.hypot(
-        aimingPlayer.transform.position.x - aimingOpponent.transform.position.x,
-        aimingPlayer.transform.position.y - aimingOpponent.transform.position.y,
+        aimingPlayer.x - aimingOpponent.x,
+        aimingPlayer.y - aimingOpponent.y,
     ), 300);
     assert.deepEqual(aiming.opponentCode.customVariables, [
         { id: "custom.aiming-count", name: "Count", valueType: "number", initialValue: 0 },
@@ -386,8 +390,8 @@ test("new tutorial lessons resolve focused practice presets", () => {
     assert.equal(movementPlan.movement.movementDirection, 90);
 
     const movedShapes = buildTutorialArenaShapes("aiming-basics").map((shape) => shape.id === "opponent-model" ? { ...shape, x: 115 } : shape);
-    const movedPayload = buildStatePayload(movedShapes, aiming.opponentLoadout, "opponent-model");
-    movedPayload.playerModel.customVariables = movementPlan.customVariables;
+    const movedBase = buildStatePayload(movedShapes, aiming.opponentLoadout, "opponent-model");
+    const movedPayload = { ...movedBase, playerModel: { ...movedBase.playerModel, customVariables: movementPlan.customVariables } };
     const movedPlan = selectAbilityStrategyActionPlan(aimingConfiguration, movedPayload);
     assert.equal(movedPlan.customVariables["custom.aiming-count"], 1);
     assert.equal(movedPlan.customVariables["custom.aiming-lock"], false);

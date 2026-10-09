@@ -1,8 +1,8 @@
-import { attachedAbilityContract } from "../ecs/contracts/AbilityContracts.js";
 import { movingCircleCollision, movingRectangleCollision } from "./geometry.js";
 import { compassDegreesToRadians, compassDirection } from "../botlogic/planner/arenaAngles.js";
-import { entityAbilityPhaseForEntity, entityAbilitySpawnForEntity, entityContract, phaseForEntity } from "../ecs/contracts/AbilityContracts.js";
+import { entityContract, entityShot, phaseForEntity, triggerView } from "../ecs/contracts/AbilityContracts.js";
 import { COMBAT_VISUAL_ABILITY_IDS, combatVisualDurationMs, combatVisualRemainingMs } from "./visualState.js";
+import { activeRemainingMs } from "./AbilityState.js";
 
 export const COLLIDER_SHAPES = Object.freeze({
     CIRCLE: "circle",
@@ -25,16 +25,11 @@ export function entityAbilitySpawnTransform(entity, spawn = null, ownerRotation 
     };
 }
 
-/** Resolves a direct attached ability's owner-relative spawn point. */
-export function attachedAbilitySpawnTransform(bot, spawn = null, ownerRotation = null) {
-    return entityAbilitySpawnTransform(bot, spawn, ownerRotation);
-}
-
 /**
- * Resolves a direct ability pose, using authored activation capture fields when
- * present and otherwise resolving the root spawn against the current owner.
+ * Resolves the pose a trigger verb fires from, using authored activation capture fields when
+ * present and otherwise resolving the verb's origin against the current owner.
  */
-export function attachedAbilityPose(bot, spawn = null, capture = null) {
+export function abilityPose(bot, spawn = null, capture = null) {
     const captureFields = capture && typeof capture === "object"
         ? Object.entries(capture) : [];
     const fieldForSource = (source) => captureFields.find(([, value]) => value === source)?.[0];
@@ -50,7 +45,7 @@ export function attachedAbilityPose(bot, spawn = null, capture = null) {
             rotation: Number(bot[rotationField]),
         };
     }
-    return attachedAbilitySpawnTransform(bot, spawn);
+    return entityAbilitySpawnTransform(bot, spawn);
 }
 
 /** Resolves the declarative collider metadata for an arena entity. */
@@ -69,8 +64,7 @@ export function hitboxGeometryForBot(bot, position = null) {
     const abilityId = activeDirectAbilityForBot(bot);
     if (abilityId == null) return null;
 
-    const contract = attachedAbilityContract(abilityId);
-    const hitbox = contract?.phases?.[0]?.hitbox;
+    const hitbox = triggerView(abilityId)?.hitbox;
     if (!hitbox?.shape) return null;
 
     const remainingMs = combatVisualRemainingMs(bot, abilityId);
@@ -285,16 +279,16 @@ export function entityMotionAngle(entity, start = null, end = null) {
 
 function summonAbilityHitboxGeometry(entity) {
     const contract = contractForEntity(entity);
-    const phase = entityAbilityPhaseForEntity(entity);
-    const transform = entityAbilitySpawnTransform(entity, entityAbilitySpawnForEntity(entity));
+    const shot = entityShot(entity);
+    const transform = entityAbilitySpawnTransform(entity, shot?.origin ?? null);
     const remainingMs = Number(entity?.shotVisualMs ?? 0);
-    if (!phase || remainingMs <= 0) return null;
-    const rangeValue = phase.hitbox?.range ?? phase.hitbox?.length;
-    const length = resolveStatValue(rangeValue, {}, phase);
+    if (!shot || remainingMs <= 0) return null;
+    const rangeValue = shot.hitbox?.range ?? shot.hitbox?.length;
+    const length = resolveStatValue(rangeValue, {}, shot);
     if (length <= 0) return null;
     const durationMs = Math.max(
         1,
-        Number(phase.visual?.visibleMs ?? phase.durationMs ?? 300),
+        Number(shot.visual?.visibleMs ?? 300),
         remainingMs,
     );
     return {
@@ -302,7 +296,7 @@ function summonAbilityHitboxGeometry(entity) {
         x: transform.x,
         y: transform.y,
         length,
-        width: Math.max(1, Number(phase.hitbox?.width ?? 5)),
+        width: Math.max(1, Number(shot.hitbox?.width ?? 5)),
         rotation: compassDegreesToRadians(transform.rotation),
         opacity: Math.min(1, remainingMs / durationMs),
         remainingMs,
@@ -314,16 +308,15 @@ function summonAbilityHitboxGeometry(entity) {
 function activeDirectAbilityForBot(bot) {
     const visualAbility = Number(bot?.abilityVisual?.ability);
     if (Number.isSafeInteger(visualAbility)
-        && hasAttachedHitbox(visualAbility)
+        && hasTriggerHitbox(visualAbility)
         && Number(bot?.abilityVisual?.ms ?? 0) > 0) return visualAbility;
     return COMBAT_VISUAL_ABILITY_IDS.find((abilityId) =>
-        hasAttachedHitbox(abilityId)
-        && Number(bot?.abilityActiveMs?.[abilityId] ?? 0) > 0) ?? null;
+        hasTriggerHitbox(abilityId)
+        && activeRemainingMs(bot, abilityId) > 0) ?? null;
 }
 
-function hasAttachedHitbox(abilityId) {
-    const phase = attachedAbilityContract(abilityId)?.phases?.[0];
-    return phase?.type === "botAttached" && Boolean(phase.hitbox?.shape);
+function hasTriggerHitbox(abilityId) {
+    return Boolean(triggerView(abilityId)?.hitbox?.shape);
 }
 
 function phaseStat(value, stats, fallback) {

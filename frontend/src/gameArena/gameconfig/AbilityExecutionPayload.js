@@ -1,7 +1,6 @@
 import { ABILITY_STATS } from "./Abilities.js";
-import { attachedAbilityContract } from "../ecs/contracts/AbilityContracts.js";
+import { abilityContract } from "../ecs/contracts/AbilityContracts.js";
 import { abilityId as resolveAbilityId } from "./AbilityRegistry.js";
-import { entityContractForAbility } from "../ecs/contracts/AbilityContracts.js";
 
 const EMPTY_ACTIVATION = Object.freeze({});
 
@@ -10,8 +9,8 @@ const EMPTY_ACTIVATION = Object.freeze({});
  *
  * The authored action remains a small stable ID. The runtime receives this
  * payload so systems can apply the phase behavior without branching on
- * individual ability IDs. Entity abilities use their entity contract here;
- * attached abilities use their attached contract.
+ * individual ability IDs. The contract is the ability's own record: its
+ * `activation` metadata, `onTrigger` verbs and `entities`.
  */
 export function abilityExecutionPayload(value) {
     if (isExecutionPayload(value)) return value;
@@ -22,7 +21,7 @@ export function abilityExecutionPayload(value) {
     const abilityId = resolveAbilityId(rawId);
     if (abilityId == null) return null;
 
-    const contract = attachedAbilityContract(abilityId) ?? entityContractForAbility(abilityId);
+    const contract = abilityContract(abilityId);
     if (!contract) return null;
 
     return Object.freeze({
@@ -41,7 +40,7 @@ function isExecutionPayload(value) {
         && Number.isSafeInteger(value.actionId)
         && Number.isSafeInteger(value.abilityId)
         && abilityId === value.actionId
-        && value.contract === (attachedAbilityContract(abilityId) ?? entityContractForAbility(abilityId))
+        && value.contract === abilityContract(abilityId)
         && value.stats === ABILITY_STATS[abilityId]
         && value.activation === (value.contract.activation ?? EMPTY_ACTIVATION));
 }

@@ -1,12 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { advanceArenaPreviewTick } from "../gameArena/modelPayloads/arenaPreviewSimulation.js";
+import { advanceShapes as advanceArenaPreviewTickNormalized } from "../gameArena/testing/fightTick.js";
 import { createPreviewBaseline, restorePreviewBaseline } from "../gameArena/modelPayloads/previewBaseline.js";
-import { toSimulationBotShape } from "../gameArena/modelPayloads/arenaShapes.js";
+import { } from "../gameArena/modelPayloads/arenaShapes.js";
 import { sanitizeStrategyConfigurationForLoadout } from "../gameArena/persistence/arenaStrategyStorage.js";
 import { TUTORIAL_COMPLETION_PREFIX, loadTutorialBooleanState } from "../gameArena/persistence/tutorialStorage.js";
 import { buildTutorialArenaShapes, getTutorialScenario, TUTORIAL_ACTIONS } from "./TutorialPresets.js";
 import { completeTutorialGoal } from "./tutorialCompletion.js";
+import { normalizeAbilityStrategyConfiguration as normalizeBrainForTick } from "../gameArena/botlogic/code/BotCode.js";
+
+// The tick takes normalized brains; tests pass raw ones, so normalize here like the edge does.
+const normalizeOrNull = (configuration) => (configuration ? normalizeBrainForTick(configuration) : configuration);
+const advanceArenaPreviewTick = (shapes, options) => advanceArenaPreviewTickNormalized(shapes, {
+    ...options,
+    testingConfiguration: normalizeOrNull(options.testingConfiguration),
+    opponentTestingConfiguration: normalizeOrNull(options.opponentTestingConfiguration),
+});
 
 function memoryStorage() {
     const values = new Map();
@@ -34,7 +43,7 @@ function dontMissScenario() {
 }
 
 function opponentState(shapes) {
-    return toSimulationBotShape(shapes.find((shape) => shape.id === "opponent-model"));
+    return shapes.find((shape) => shape.id === "opponent-model");
 }
 
 test("Don't Miss keeps Opponent 1 completely still at its original position", () => {
@@ -49,11 +58,11 @@ test("Don't Miss keeps Opponent 1 completely still at its original position", ()
     assert.deepEqual(scenario.opponentCode.customVariables, []);
     assert.deepEqual(scenario.opponentCode.roots, []);
     assert.equal(Math.hypot(
-        player.transform.position.x - opponent.transform.position.x,
-        player.transform.position.y - opponent.transform.position.y,
+        player.x - opponent.x,
+        player.y - opponent.y,
     ), 300);
-    assert.deepEqual(opponent.transform.position, { x: 600, y: 450 });
-    assert.deepEqual([player.transform.rotation, opponent.transform.rotation], [180, 180]);
+    assert.deepEqual([opponent.x, opponent.y], [600, 450]);
+    assert.deepEqual([player.rotation, opponent.rotation], [180, 180]);
 
     let shapes = initialShapes;
     for (let tickNumber = 0; tickNumber < 120; tickNumber += 1) shapes = tick(shapes, scenario);
@@ -96,10 +105,10 @@ test("Don't Miss pause, resume, and Reset Stats preserve the stationary opponent
     const reset = restorePreviewBaseline(baseline);
     assert.deepEqual(reset.map((shape) => shape.id), ["main", "opponent-model"]);
     assert.deepEqual(reset.map((shape) => {
-        const bot = toSimulationBotShape(shape);
+        const bot = shape;
         return [bot.x, bot.y, bot.rotation, bot.hp, bot.statusEffects.length];
     }), initialShapes.map((shape) => {
-        const bot = toSimulationBotShape(shape);
+        const bot = shape;
         return [bot.x, bot.y, bot.rotation, bot.hp, bot.statusEffects.length];
     }));
 });
@@ -135,7 +144,7 @@ test("Don't Miss supplied solution completes only after a Fireball hits the stat
         const opponent = opponentState(shapes);
         assert.ok(completedAtTick != null, "the configured solution eventually hits the opponent");
         assert.deepEqual([opponent.x, opponent.y], [600, 450]);
-        assert.ok(opponent.health.current < opponent.health.max, "the completed lesson records Fireball damage");
+        assert.ok(opponent.hp < opponent.maxHp, "the completed lesson records Fireball damage");
         assert.equal(loadTutorialBooleanState(TUTORIAL_COMPLETION_PREFIX, "dont-miss"), true);
         assert.equal(completeTutorialGoal(scenario, shapes, "dont-miss"), false);
     } finally {

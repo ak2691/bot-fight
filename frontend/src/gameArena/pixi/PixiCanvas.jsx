@@ -3,30 +3,30 @@ import { Circle, Container, Graphics, Rectangle, Sprite, Text } from "pixi.js";
 import ArenaLoadingScreen from "../../components/ArenaLoadingScreen.jsx";
 import AbilityStatusPanel from "../status/AbilityStatusPanel.jsx";
 import { ABILITY_STATS } from "../gameconfig/Abilities.js";
-import { attachedAbilityContract } from "../ecs/contracts/AbilityContracts.js";
 import { ABILITIES } from "../gameconfig/AbilityRegistry.js";
+import { isWindingUp } from "../gameconfig/AbilityState.js";
 import { CLOSING_ZONE_TYPE } from "../gameconfig/ArenaHazardConfig.js";
-import { abilityActiveOpacity, basicHealParticleSpec, combatVisualRemainingMs, healthBarPercent, abilityVisualOpacity, BASIC_HEAL_PARTICLE_COUNT, REPULSOR_BURST_VISUAL_MS, repulsorBurstDiameter, repulsorBurstFrameIndex, repulsorBurstProgress, sweepAngle, visualProgress } from "../gameconfig/visualState.js";
+import { basicHealParticleSpec, healthBarPercent, BASIC_HEAL_PARTICLE_COUNT, REPULSOR_BURST_VISUAL_MS } from "../gameconfig/visualState.js";
 import { ARENA_HEIGHT_UNITS, ARENA_WIDTH_UNITS, BOT_SIZE } from "../modelPayloads/arenaConstants.js";
 import { internalPointToPublic } from "../modelPayloads/arenaCoordinates.js";
-import { toSimulationBotShape } from "../modelPayloads/arenaShapes.js";
+import { createBotState, isBotState } from "../modelPayloads/botState.js";
 import { interpolatePosition } from "./snapshotInterpolation.js";
-import { activeBotVisual, closingZoneDamageOccurred, entityCaption, botColorRole, botInteriorAlpha, botMovementRotation, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, heavySlashRotation, isBotShape, LOCK_ON_PRESENTATION, lockOnTargetPoint, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, shapeInterpolationMs, shapeWithoutVisualEvent, visualAnimationDescriptorForShape, visualForShape, visualInstanceForShape, visualInstanceIsActive, VISUAL_LIFECYCLES, visualSizeForShape, smashFlashAlpha, thrustLengthFraction, weaponActiveProgress, weaponWindupAlpha, weaponWindupProgress, sniperSightAlpha, sniperSightLength } from "./pixiVisualState.js";
+import { activeBotVisual, closingZoneDamageOccurred, entityCaption, botColorRole, botInteriorAlpha, botSpritesOverlap, botStatusLabels, entityVisualRotation, grenadeDetonateProgress, LOCK_ON_PRESENTATION, pixiLayerForShape, presentationDefinitionForShape, presentationTypeForShape, projectileTrailStyle, shapeInterpolationMs, shapeWithoutVisualEvent, visualAnimationDescriptorForShape, visualForShape, visualInstanceForShape, visualInstanceIsActive, VISUAL_LIFECYCLES, visualSizeForShape } from "./pixiVisualState.js";
 import { spriteFrame, spriteFrameAtProgress } from "./arenaSpriteAssets.js";
 import { loadArenaPresentationAssets } from "./arenaPresentationAssets.js";
 import FatalRecoveryScreen from "../../components/FatalRecoveryScreen.jsx";
 import { isUnsupportedWebGL } from "../../auth/fatalRecovery.js";
-import { textureMuzzleAnchor } from "./abilitySpriteAssets.js";
-import { visualRayLength } from "./rayPresentationGeometry.js";
 import { advanceParticle } from "./particleMotion.js";
 import { createPresentationClock } from "./presentationClock.js";
 import { clearPresentationArtifacts, initialPresentationViewState } from "./presentationReset.js";
-import { BOT_ABILITY_PRESENTATION_DEFINITIONS, botAbilityActiveMs, botAbilityPresentationForId, botAbilityPresentationForRole, botAbilityWindupEffect } from "./botAbilityPresentationDefinitions.js";
+import { destroyBotAbilityRenderers, syncBotAbilityRenderers, updateBotAbilityRenderers } from "./renderers/index.js";
+import { hideCachedEffects, rendererKit, showCachedEffect } from "./renderers/pixiToolkit.js";
+import { showRay } from "./renderers/rendererHelpers.js";
 import { compassDegreesToRadians, vectorToCompassDegrees } from "../botlogic/planner/arenaAngles.js";
 import { entityAbilitySpawnTransform, hitboxGeometriesForEntity, hitboxGeometryForBot } from "../gameconfig/hitboxGeometry.js";
 import { acquirePixiApplication, attachPixiApplication, releasePixiApplication } from "./pixiApplication.js";
 import { statusIsActive } from "../ecs/contracts/StatusContracts.js";
-import { entityAbilityPhaseForEntity, entityAbilitySpawnForEntity, entityContract } from "../ecs/contracts/AbilityContracts.js";
+import { entityContract, entityShot } from "../ecs/contracts/AbilityContracts.js";
 import "./PixiCanvas.css";
 
 const MIN_ZOOM = 1;
@@ -35,22 +35,6 @@ const BOT_TOUCH_TARGET_PX = 48;
 const ROTATION_HANDLE_TOUCH_TARGET_PX = 48;
 const ROTATION_HANDLE_BASE_HIT_RADIUS_UNITS = 14;
 const BOT_CAPTION_FONT_SIZE = 14;
-const MELEE_PRESENTATION = botAbilityPresentationForRole("melee");
-const DASH_PRESENTATION = botAbilityPresentationForRole("dash");
-const LOCK_ON_PRESENTATION_DEFINITION = botAbilityPresentationForRole("lock-on");
-const REPULSOR_PRESENTATION = botAbilityPresentationForRole("repulsor");
-
-function directPhaseForAbility(abilityId) {
-    return attachedAbilityContract(abilityId)?.phases?.[0] ?? null;
-}
-
-function directVisualForAbility(abilityId) {
-    return directPhaseForAbility(abilityId)?.visual ?? {};
-}
-
-function directHitboxForAbility(abilityId) {
-    return directPhaseForAbility(abilityId)?.hitbox ?? {};
-}
 const BOT_CAPTION_MIN_PX = 8;
 const BOT_CAPTION_MAX_PX = 14;
 const BOT_CAPTION_OFFSET_UNITS = 37;
@@ -138,7 +122,6 @@ export default function PixiCanvas({
     allowBotRotation = false,
     allowLockedBotEditing = false,
 }) {
-    const presentationShapes = shapes.map(toSimulationBotShape);
     const hostRef = useRef(null);
     const runtimeRef = useRef(null);
     const previousPresentationResetVersionRef = useRef(presentationResetVersion);
@@ -150,7 +133,7 @@ export default function PixiCanvas({
         const resetPresentation = previousPresentationResetVersionRef.current !== presentationResetVersion;
         previousPresentationResetVersionRef.current = presentationResetVersion;
         optionsRef.current = {
-            shapes: presentationShapes,
+            shapes: shapes,
             selectedId,
             onSelectShape,
             onUpdateShape,
@@ -169,9 +152,9 @@ export default function PixiCanvas({
             allowLockedBotEditing,
         };
         runtimeRef.current?.setPlaying(isPlaying);
-        if (resetPresentation) runtimeRef.current?.resetPresentation(presentationShapes);
-        else runtimeRef.current?.syncShapes(presentationShapes);
-    }, [allowBotRotation, allowLockedBotEditing, editable, hitboxesEnabled, isPlaying, lockCamera, measurementEnabled, measurementPoints, onDeselectAll, onMeasurementPointsChange, onSelectShape, onShapeDragEnd, onUpdateShape, placementSide, presentationResetVersion, selectedId, presentationShapes]);
+        if (resetPresentation) runtimeRef.current?.resetPresentation(shapes);
+        else runtimeRef.current?.syncShapes(shapes);
+    }, [allowBotRotation, allowLockedBotEditing, editable, hitboxesEnabled, isPlaying, lockCamera, measurementEnabled, measurementPoints, onDeselectAll, onMeasurementPointsChange, onSelectShape, onShapeDragEnd, onUpdateShape, placementSide, presentationResetVersion, selectedId, shapes]);
 
     useEffect(() => {
         let disposed = false;
@@ -215,7 +198,7 @@ export default function PixiCanvas({
         };
     }, []);
 
-    const bots = presentationShapes.filter(isBotShape);
+    const bots = shapes.filter(isBotState);
     const blueTeamBots = bots.filter((bot) => botColorRole(bot) === "blue");
     const redTeamBots = bots.filter((bot) => botColorRole(bot) === "red");
     const hasMultipleTeamMembers = blueTeamBots.length > 1 || redTeamBots.length > 1;
@@ -227,7 +210,7 @@ export default function PixiCanvas({
     const opponentBot = bots.find((bot) => bot.id === "opponent-model")
         ?? bots.find((bot) => bot.id !== playerBot?.id);
     const opponentStatusBot = opponentBot
-        ?? (showMissingOpponentStatus ? { id: "opponent-model", slot: 2, teamNumber: 2, abilities: [], opponentUsername: "OPPONENT" } : null);
+        ?? (showMissingOpponentStatus ? createBotState({ id: "opponent-model", slot: 2, teamNumber: 2, opponentUsername: "OPPONENT" }) : null);
     const renderStatusPanels = (teamBots) => teamBots.map((bot) => (
         <AbilityStatusPanel key={bot.id ?? `slot-${bot.slot}`} bot={bot} statusRoster={bots} showParticipantNumbers={showParticipantNumbers} showEmptySlot={showEmptyAbilitySlot} abilityInfoEnabled={abilityInfoEnabled} />
     ));
@@ -352,7 +335,6 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
 
     const views = new Map();
     const visualViews = new Map();
-    const lockOnMarkers = new Map();
     const particles = [];
     let zoom = MIN_ZOOM;
     let viewCenter = { x: ARENA_WIDTH_UNITS / 2, y: ARENA_HEIGHT_UNITS / 2 };
@@ -406,7 +388,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     }
 
     function botHitAreaRadius(shape) {
-        const radius = Number(shape.size ?? (isBotShape(shape) ? BOT_SIZE : 30)) / 2;
+        const radius = Number(shape.size ?? (isBotState(shape) ? BOT_SIZE : 30)) / 2;
         // The bot's opaque model is slightly inset in its texture. Keep the
         // body target at the model edge; the rotation handle gets a separate
         // hit region so it cannot enlarge the bot's selectable body.
@@ -432,8 +414,8 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     }
 
     function selectionHitArea(shape) {
-        const bodyRadius = isBotShape(shape) ? botInteractionRadius(shape) : botHitAreaRadius(shape);
-        if (!isBotShape(shape) || optionsRef.current.selectedId !== shape.id || !canRotateBot(shape)) {
+        const bodyRadius = isBotState(shape) ? botInteractionRadius(shape) : botHitAreaRadius(shape);
+        if (!isBotState(shape) || optionsRef.current.selectedId !== shape.id || !canRotateBot(shape)) {
             return new Circle(0, 0, bodyRadius);
         }
         const handleDistance = rotationHandleDistanceForShape(shape);
@@ -480,7 +462,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         caption.anchor.set(0.5);
         caption.eventMode = "none";
         container.addChild(baseSprite, graphics, rotationHandle, caption);
-        container.eventMode = isBotShape(shape) ? "static" : "none";
+        container.eventMode = isBotState(shape) ? "static" : "none";
         if (visualInstance) container.eventMode = "none";
         container.cursor = visualInstance ? "default" : canEditBot(shape) ? "grab" : "default";
         container.hitArea = visualInstance ? null : selectionHitArea(shape);
@@ -495,10 +477,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             authoritativeShape: initialState.authoritativeShape,
             visualInstance,
             blockHeldStartedAt: null,
-            dashSmokeOrigin: null,
-            dashSmokeRotation: 0,
-            dashSmokeStartedAt: null,
-            repulsorBurstStartedAt: repulsorBurstStartTime(shape, now),
+            abilityRenderers: new Map(),
             visualAnimationStartedAt: visualAnimation.startedAt,
             visualAnimationDurationMs: visualAnimation.durationMs,
             visualAnimationKey: visualAnimation.key,
@@ -556,6 +535,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         const nextIds = new Set(nextShapes.map((shape) => shape.id));
         for (const [id, view] of views) {
             if (nextIds.has(id)) continue;
+            destroyBotAbilityRenderers(view, rendererKit);
             view.container.destroy({ children: true });
             views.delete(id);
         }
@@ -608,14 +588,6 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
                 view.visualInstance = nextPhaseVisualInstance;
             }
             const current = sampleViewPosition(view, now);
-            const wasDashing = botAbilityActiveMs(previousShape, DASH_PRESENTATION) > 0;
-            const startsDashing = botAbilityActiveMs(shape, DASH_PRESENTATION) > 0;
-            if (!suppressTransientPresentation && startsDashing && !wasDashing) {
-                view.dashSmokeOrigin = { ...current };
-                // The supplied smoke frames face north before rotation.
-                view.dashSmokeRotation = botMovementRotation(shape) + Math.PI / 2;
-                view.dashSmokeStartedAt = now;
-            }
             const replayFrameGap = hasReplayFrameIndices ? replayFrameIndex - previousReplayFrameIndex : 0;
             const shouldSnapReplayTransition = hasReplayFrameIndices && (
                 replayFrameGap > 1
@@ -638,7 +610,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
                 const origin = snapPositions ? target : current;
                 view.motion = { from: origin, to: target, startedAt: now, durationMs };
             }
-            view.container.eventMode = isBotShape(phaseShape) ? "static" : "none";
+            view.container.eventMode = isBotState(phaseShape) ? "static" : "none";
             view.container.cursor = canEditBot(phaseShape) ? "grab" : "default";
             view.rotationHandle.cursor = canRotateBot(phaseShape) ? "grab" : "default";
             view.container.hitArea = selectionHitArea(phaseShape);
@@ -654,32 +626,33 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             if (!suppressTransientPresentation && (hasHitParticleEvent || hasLegacyHitFlash || hasLocalHpDamage)) {
                 spawnBurst(current.x, current.y, 0xfca5a5, 12);
             }
-            if (!suppressTransientPresentation && isBotShape(shape) && closingZoneDamageOccurred(shape, previousShape)) {
+            if (!suppressTransientPresentation && isBotState(shape) && closingZoneDamageOccurred(shape, previousShape)) {
                 spawnBurst(current.x, current.y, 0xc084fc, 6);
             }
-            const previousAbility = activeBotVisual(previousShape);
-            const nextAbility = activeBotVisual(phaseShape);
-            const nextAbilityPresentation = botAbilityPresentationForId(nextAbility);
-            if (nextAbilityPresentation?.visualClock === "repulsorBurst") {
-                if (previousAbility !== nextAbility || view.repulsorBurstStartedAt == null) {
-                    view.repulsorBurstStartedAt = repulsorBurstStartTime(shape, now);
-                }
-            } else {
-                view.repulsorBurstStartedAt = null;
-            }
-            const startEffect = nextAbilityPresentation?.onVisualStart;
-            if (!suppressTransientPresentation && isBotShape(phaseShape) && previousAbility !== nextAbility && startEffect) {
-                if (startEffect.type === "burst") {
-                    spawnBurst(phaseShape.x, phaseShape.y, startEffect.color, startEffect.count);
-                } else if (startEffect.type === "repairPulse") {
-                    spawnRepairPulseParticles(current.x, current.y);
-                }
+            if (isBotState(phaseShape)) {
+                syncBotAbilityRenderers(view, {
+                    shape,
+                    phaseShape,
+                    previousShape,
+                    current,
+                    now,
+                    suppressTransient: suppressTransientPresentation,
+                    activeAbilityId: activeBotVisual(phaseShape),
+                    previousActiveAbilityId: activeBotVisual(previousShape),
+                    effects: { spawnBurst, spawnRepairPulse: spawnRepairPulseParticles },
+                    kit: rendererKit,
+                });
             }
         }
     }
 
     function resetPresentation(nextShapes) {
-        clearPresentationArtifacts({ views, visualViews, lockOnMarkers, particles });
+        clearPresentationArtifacts({
+            views,
+            visualViews,
+            particles,
+            destroyView: (view) => destroyBotAbilityRenderers(view, rendererKit),
+        });
         drag = null;
         rotationDrag = null;
         pan = null;
@@ -694,13 +667,13 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
     }
 
     function canEditBot(shape) {
-        return isBotShape(shape)
+        return isBotState(shape)
             && optionsRef.current.editable
             && (!shape.locked || optionsRef.current.allowLockedBotEditing);
     }
 
     function beginDrag(event, view) {
-        if (!isBotShape(view.shape)) return;
+        if (!isBotState(view.shape)) return;
         if (optionsRef.current.measurementEnabled && event.button === 0) {
             event.stopPropagation();
             const point = camera.toLocal(event.global);
@@ -784,9 +757,9 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         }
     }
 
-    function spawnRepairPulseParticles(x, y) {
+    function spawnRepairPulseParticles(x, y, visualSize) {
         for (let index = 0; index < BASIC_HEAL_PARTICLE_COUNT; index += 1) {
-            const spec = basicHealParticleSpec(index, directVisualForAbility(botAbilityPresentationForRole("basic-heal").id).visualSize ?? 12);
+            const spec = basicHealParticleSpec(index, visualSize);
             const display = new Text({
                 text: "+",
                 style: { fill: 0x6ee7b7, fontFamily: "monospace", fontSize: spec.fontSize, fontWeight: "bold", align: "center" },
@@ -813,7 +786,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
         refreshSelectionHitAreas();
         const captionScale = captionScaleForCamera(camera.scale.x);
         const botViews = [...views.values()]
-            .filter((view) => isBotShape(view.shape))
+            .filter((view) => isBotState(view.shape))
             .map((view) => ({ view, position: sampleViewPosition(view, now) }));
         const overlappingBotIds = new Set();
         for (let leftIndex = 0; leftIndex < botViews.length; leftIndex += 1) {
@@ -829,7 +802,7 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             const position = sampleViewPosition(view, now);
             view.container.position.set(position.x, position.y);
             view.caption.scale.set(captionScale);
-            if (isBotShape(view.shape)) drawBot(view, position, optionsRef.current.selectedId === view.shape.id, now, arenaSprites, overlappingBotIds.has(view.shape.id), canRotateBot(view.shape), rotationHandleDistanceForShape(view.shape), botViews);
+            if (isBotState(view.shape)) drawBot(view, position, optionsRef.current.selectedId === view.shape.id, now, arenaSprites, overlappingBotIds.has(view.shape.id), canRotateBot(view.shape), rotationHandleDistanceForShape(view.shape), botViews, layers);
             else {
                 drawEntity(view, optionsRef.current.selectedId === view.shape.id, now, arenaSprites, botViews, position);
                 drawStatusIcons(view.graphics, view.shape, Number(view.shape.size ?? 0) / 2, 44);
@@ -845,7 +818,6 @@ function createArenaRuntime(app, optionsRef, arenaSprites) {
             drawStandaloneVisual(view, now, arenaSprites);
         }
         drawHitboxes(hitboxLayer, views, now, optionsRef, sampleViewPosition);
-        drawLockOnMarkers(layers.lockOn, lockOnMarkers, botViews, arenaSprites);
         drawPlacementOverlay(overlay, optionsRef.current.placementSide);
         const points = optionsRef.current.measurementPoints ?? [];
         if (!optionsRef.current.measurementEnabled) {
@@ -1090,7 +1062,7 @@ function drawArena(graphics) {
     graphics.rect(2, 2, Math.max(0, ARENA_WIDTH_UNITS - 4), Math.max(0, ARENA_HEIGHT_UNITS - 4)).stroke({ color: 0x475569, width: 4 });
 }
 
-function drawBot(view, position, selected, now, arenaSprites, overlapping = false, canRotate = false, rotationDistance = null, otherBots = []) {
+function drawBot(view, position, selected, now, arenaSprites, overlapping = false, canRotate = false, rotationDistance = null, otherBots = [], layers = null) {
     const { shape, baseSprite, graphics, rotationHandle, caption } = view;
     const colorRole = botColorRole(shape);
     const tone = colorRole === "red" ? COLORS.opponent : COLORS.player;
@@ -1101,6 +1073,10 @@ function drawBot(view, position, selected, now, arenaSprites, overlapping = fals
     graphics.clear();
 
     const dead = Number(shape.hp ?? 0) <= 0;
+    const rendererContext = {
+        pass: "body", shape, graphics, position, now, arenaSprites, radius, rotation, dead, otherBots, layers, kit: rendererKit,
+        activeAbilityId: activeBotVisual(shape),
+    };
     baseSprite.visible = true;
     baseSprite.texture = arenaSprites.abilities.bot;
     // Source art faces down; arena angle zero faces right. Dash direction may
@@ -1124,30 +1100,12 @@ function drawBot(view, position, selected, now, arenaSprites, overlapping = fals
         graphics.roundRect(-width / 2, -radius - 16, width, 8, 2).fill(0x09090b).stroke({ color: 0x3f3f46, width: 1 });
         graphics.rect(-width / 2 + 1, -radius - 15, (width - 2) * healthBarPercent(shape.hp, shape.maxHp) / 100, 6).fill(COLORS.hp);
     }
-    if (!dead && shape.preparingAbility) {
+    if (!dead && isWindingUp(shape)) {
         const pulse = 0.55 + Math.sin(now / 85) * 0.25;
         graphics.circle(0, 0, radius + 12).stroke({ color: 0xfde68a, alpha: pulse, width: 3 });
     }
-    if (!dead) drawWeaponWindup(graphics, shape, radius, rotation, position, otherBots);
+    updateBotAbilityRenderers(view, rendererContext);
     if (hitFlash) graphics.circle(0, 0, radius + 2).fill({ color: 0xef4444, alpha: 0.5 }).stroke({ color: 0xfca5a5, width: 3 });
-    if (!dead) drawDashSmoke(view, position, radius, now, arenaSprites);
-    const swingActiveMs = botAbilityActiveMs(shape, MELEE_PRESENTATION);
-    if (MELEE_PRESENTATION.bodyEffect?.type === "meleeSwing" && swingActiveMs > 0) {
-        const meleeHitbox = directHitboxForAbility(MELEE_PRESENTATION.id);
-        const meleeVisual = directVisualForAbility(MELEE_PRESENTATION.id);
-        const activeMs = Number(ABILITY_STATS[MELEE_PRESENTATION.id].activeMs ?? MELEE_PRESENTATION.bodyEffect.activeMsFallback);
-        const halfArc = Number(meleeHitbox.arc ?? 0) / 2;
-        const angle = rotation + radians(sweepAngle(swingActiveMs, activeMs, -halfArc, halfArc));
-        const progress = visualProgress(swingActiveMs, activeMs);
-        const forwardOffset = radius / 2;
-        showCachedEffect(view, "swing", spriteFrameAtProgress(arenaSprites.abilities.meleeSlash, progress), {
-            x: Math.cos(rotation) * forwardOffset,
-            y: Math.sin(rotation) * forwardOffset,
-            rotation: angle,
-            width: Number(meleeVisual.visualSize ?? Number(meleeHitbox.range ?? 92) * 2.25),
-            height: Number(meleeVisual.visualSize ?? Number(meleeHitbox.range ?? 92) * 2.25),
-        });
-    }
     drawStatusIcons(graphics, shape, radius);
     drawStatusAnimations(graphics, shape, radius, now);
     if (dead) drawDeadMarker(graphics);
@@ -1156,58 +1114,12 @@ function drawBot(view, position, selected, now, arenaSprites, overlapping = fals
     caption.style.fill = tone;
     caption.position.set(0, -radius - BOT_CAPTION_OFFSET_UNITS);
     caption.visible = true;
-    drawBotWorldEffects(shape, position, view, now, arenaSprites);
+    rendererContext.pass = "world";
+    updateBotAbilityRenderers(view, rendererContext);
 }
 
-function drawLockOnMarkers(layer, markers, botViews, arenaSprites) {
-    for (const marker of markers.values()) marker.container.visible = false;
 
-    for (const source of botViews) {
-        const shape = source.view.shape;
-        if (Number(shape.hp ?? 1) <= 0 || botAbilityActiveMs(shape, LOCK_ON_PRESENTATION_DEFINITION) <= 0) continue;
-        const targetPoint = lockOnTargetPoint(shape);
-        if (!targetPoint) continue;
 
-        const targetView = botViews
-            .filter((candidate) => candidate.view !== source.view && Number(candidate.view.shape.hp ?? 1) > 0)
-            .sort((left, right) => distanceSquared(left.position, targetPoint) - distanceSquared(right.position, targetPoint))[0];
-        const targetPosition = targetView?.position ?? targetPoint;
-        const markerId = shape.id ?? `slot-${shape.slot}`;
-        let marker = markers.get(markerId);
-        if (!marker) {
-            marker = createLockOnMarker(layer, arenaSprites.abilities.lockOnCrosshair);
-            markers.set(markerId, marker);
-        }
-
-        marker.container.position.set(targetPosition.x, targetPosition.y);
-        const targetDiameter = Math.max(1, Number(targetView?.view.shape.size ?? BOT_SIZE) || BOT_SIZE);
-        const activeDurationMs = Number(ABILITY_STATS[LOCK_ON_PRESENTATION_DEFINITION.id].activeMs ?? 300);
-        const activeScale = 1 + Math.max(0, Math.min(1, botAbilityActiveMs(shape, LOCK_ON_PRESENTATION_DEFINITION) / activeDurationMs)) * 0.08;
-        const containedScale = Math.min(1, (targetDiameter * 0.72) / LOCK_ON_PRESENTATION.markerSize);
-        marker.container.scale.set(containedScale * activeScale);
-        marker.container.visible = true;
-    }
-}
-
-function createLockOnMarker(layer, texture) {
-    const container = new Container();
-    const crosshair = new Sprite(texture);
-    crosshair.anchor.set(0.5);
-    crosshair.width = LOCK_ON_PRESENTATION.markerSize;
-    crosshair.height = LOCK_ON_PRESENTATION.markerSize;
-    crosshair.tint = 0xffffff;
-    crosshair.eventMode = "none";
-    container.eventMode = "none";
-    container.addChild(crosshair);
-    layer.addChild(container);
-    return { container };
-}
-
-function distanceSquared(left, right) {
-    const dx = Number(left?.x ?? 0) - Number(right?.x ?? 0);
-    const dy = Number(left?.y ?? 0) - Number(right?.y ?? 0);
-    return dx * dx + dy * dy;
-}
 
 function rotationHandleDistance(radius) {
     return radius * 1.5 + 42;
@@ -1288,53 +1200,8 @@ function drawDeadMarker(graphics) {
     graphics.moveTo(5, 9).lineTo(5, 15).stroke({ color: 0x09090b, width: 2 });
 }
 
-function hideCachedEffects(view) {
-    for (const sprite of view.cachedEffects.values()) sprite.visible = false;
-}
 
-function showCachedEffect(view, slot, texture, { x = 0, y = 0, rotation = 0, alpha = 1, width = null, height = null, tint = 0xffffff, anchorX = 0.5, anchorY = 0.5, blendMode = null } = {}) {
-    let sprite = view.cachedEffects.get(slot);
-    if (!sprite) {
-        sprite = new Sprite({ anchor: 0.5 });
-        sprite.eventMode = "none";
-        view.cachedEffects.set(slot, sprite);
-        view.container.addChildAt(sprite, 1);
-    }
-    sprite.texture = texture;
-    sprite.anchor.set(anchorX, anchorY);
-    sprite.position.set(x, y);
-    sprite.rotation = rotation;
-    sprite.alpha = alpha;
-    sprite.tint = tint;
-    sprite.blendMode = blendMode ?? "normal";
-    if (width != null) sprite.width = width;
-    if (height != null) sprite.height = height;
-    sprite.visible = true;
-    return sprite;
-}
 
-function drawDashSmoke(view, position, radius, now, arenaSprites) {
-    const frames = arenaSprites.abilities.dashSmoke;
-    if (!frames?.length || view.dashSmokeStartedAt == null) return;
-    const elapsedMs = now - view.dashSmokeStartedAt;
-    if (elapsedMs >= 500) {
-        view.dashSmokeOrigin = null;
-        view.dashSmokeStartedAt = null;
-        return;
-    }
-    const origin = view.dashSmokeOrigin ?? position;
-    const visualSize = Number(directVisualForAbility(DASH_PRESENTATION.id).visualSize ?? radius * 3.8);
-    showCachedEffect(view, "dash-smoke", spriteFrame(frames, elapsedMs, 100, false), {
-        x: origin.x - position.x,
-        y: origin.y - position.y,
-        rotation: view.dashSmokeRotation,
-        alpha: 0.92,
-        width: visualSize,
-        height: visualSize * 0.5,
-        anchorX: 0.5,
-        blendMode: "screen",
-    });
-}
 
 const STATUS_ICON_STYLE = Object.freeze({
     RA: { foreground: 0xfbbf24, background: 0x78350f, border: 0x92400e },
@@ -1397,11 +1264,6 @@ function drawStatusSymbol(graphics, status, x, y, color) {
     }
 }
 
-function repulsorBurstStartTime(shape, now) {
-    if (activeBotVisual(shape) !== REPULSOR_PRESENTATION.id) return null;
-    const elapsed = REPULSOR_BURST_VISUAL_MS - combatVisualRemainingMs(shape, REPULSOR_PRESENTATION.id);
-    return now - clamp(elapsed, 0, REPULSOR_BURST_VISUAL_MS);
-}
 
 function drawStatusAnimations(graphics, shape, radius, now) {
     const frame = Math.floor(now / 120) % 4;
@@ -1434,298 +1296,17 @@ function drawDroplet(graphics, x, y, size, color) {
     graphics.poly([x, y - size * 1.6, x + size, y, x + size * 0.65, y + size, x, y + size * 1.35, x - size * 0.65, y + size, x - size, y]).fill(color);
 }
 
-function drawBotWorldEffects(shape, position, view, now, arenaSprites) {
-    const { graphics } = view;
-    const rotation = compassDegreesToRadians(shape.rotation);
-    for (const definition of Object.values(BOT_ABILITY_PRESENTATION_DEFINITIONS)) {
-        const effect = definition.directEffect;
-        if (!effect || botAbilityActiveMs(shape, definition) <= 0) continue;
-        if (effect.type === "gunRay") {
-            const alpha = abilityActiveOpacity(shape, definition.id);
-            const originX = Number(shape.gunRayOriginX ?? shape.x);
-            const originY = Number(shape.gunRayOriginY ?? shape.y);
-            const originRotation = Number(shape.gunRayRotation ?? shape.rotation);
-            const hitbox = directHitboxForAbility(definition.id);
-            const visual = directVisualForAbility(definition.id);
-            showAbilityRayEffect(view, "gun", arenaSprites, position, originX, originY, originRotation, definition.id,
-                Number(hitbox.range ?? 700), alpha, Number(visual.visualSize ?? 16), 0xffffff, effect.rayFrames);
-            showMuzzleFlash(view, arenaSprites, position, originX, originY, originRotation, alpha, Number(shape.size ?? 60));
-        } else if (effect.type === "stun") {
-            const activeMs = botAbilityActiveMs(shape, definition);
-            const activeDurationMs = Math.max(1, Number(ABILITY_STATS[definition.id].activeMs ?? 100));
-            const opacity = clamp(activeMs / activeDurationMs, 0, 1);
-            const progress = visualProgress(activeMs, activeDurationMs);
-            const botRadius = Number(shape.size ?? BOT_SIZE) / 2;
-            const stunVisualSize = Number(directVisualForAbility(definition.id).visualSize ?? shape.size ?? 60);
-            showCachedEffect(view, "stun", spriteFrameAtProgress(arenaSprites.abilities.stun, progress), {
-                // The supplied frame is vertically elongated; keep that long axis
-                // aligned with the bot's facing direction and project it from
-                // the forward edge instead of centering it over the bot.
-                x: Math.cos(rotation) * botRadius,
-                y: Math.sin(rotation) * botRadius,
-                rotation: rotation - Math.PI / 2,
-                alpha: opacity,
-                width: stunVisualSize * 1.8,
-                height: stunVisualSize * 3.6,
-                anchorY: 0,
-                blendMode: "screen",
-            });
-        }
-    }
-    for (const definition of Object.values(BOT_ABILITY_PRESENTATION_DEFINITIONS)) {
-        const effect = definition.shapeEffect;
-        const activeMs = effect ? Number(shape[effect.timerField] ?? 0) : 0;
-        if (effect?.type !== "temporalRewindPulse" || activeMs <= 0) continue;
-        const progress = visualProgress(activeMs, effect.durationMs);
-        const x = Number(shape[effect.xField] ?? shape[effect.fallbackXField] ?? position.x);
-        const y = Number(shape[effect.yField] ?? shape[effect.fallbackYField] ?? position.y);
-        showCachedEffect(view, effect.slot, spriteFrameAtProgress(arenaSprites.abilities[effect.asset], progress), {
-            x: x - position.x,
-            y: y - position.y,
-            alpha: 1 - progress,
-            tint: effect.tint,
-            width: effect.width,
-            height: effect.height,
-        });
-    }
-
-    const visual = activeBotVisual(shape);
-    if (!visual) return;
-    const definition = botAbilityPresentationForId(visual);
-    const effect = definition?.activeEffect;
-    if (!effect || effect.type === "none") return;
-    const phase = directPhaseForAbility(visual);
-    const phaseHitbox = phase?.hitbox ?? {};
-    const phaseVisual = phase?.visual ?? {};
-    const selfGuardFlash = definition.selfGuardFlash === true;
-    const duration = Number(phaseVisual.visibleMs ?? 300);
-    const activeRemainingMs = botAbilityActiveMs(shape, definition);
-    const configuredActiveMs = Number(phaseVisual.visibleMs ?? ABILITY_STATS[visual]?.activeMs ?? duration);
-    const replayActivationRemainingMs = Math.max(0, duration - Math.max(0, configuredActiveMs - activeRemainingMs));
-    const remaining = selfGuardFlash
-        ? Math.max(Number(shape.abilityVisual?.ms ?? 0), replayActivationRemainingMs)
-        : combatVisualRemainingMs(shape, visual);
-    const opacity = abilityVisualOpacity(shape, visual, duration);
-    const originX = Number(shape.abilityVisual?.x ?? shape.visualOriginX ?? position.x);
-    const originY = Number(shape.abilityVisual?.y ?? shape.visualOriginY ?? position.y);
-    const originRotation = Number(shape.abilityVisual?.rotation ?? shape.visualOriginRotation ?? shape.rotation);
-    const angle = compassDegreesToRadians(originRotation);
-    if (effect.type === "repulsorBurst") {
-        const frames = arenaSprites.abilities.repulsorBlast;
-        if (!frames?.length) return;
-        // Fill the 100 ms snapshot gaps with a cosmetic renderer clock; it
-        // never feeds collision, damage, knockback, cooldown, or authority.
-        const elapsed = view.repulsorBurstStartedAt == null
-            ? duration - remaining
-            : now - view.repulsorBurstStartedAt;
-        const progress = repulsorBurstProgress(elapsed, duration);
-        const frameIndex = repulsorBurstFrameIndex(progress, frames.length);
-        const diameter = repulsorBurstDiameter(progress, Number(phaseVisual.visualSize ?? Number(phaseHitbox.radius ?? 110) * 2), frames.length);
-        showCachedEffect(view, "ability", frames[frameIndex], {
-            x: originX - position.x,
-            y: originY - position.y,
-            alpha: 1,
-            tint: 0xffffff,
-            width: diameter,
-            height: diameter,
-        });
-    } else if (effect.type === "heavySlash") {
-        const halfArc = Number(phaseHitbox.arc ?? 0) / 2;
-        const sweep = heavySlashRotation(originRotation, sweepAngle(remaining, duration, -halfArc, halfArc));
-        // A hitboxSizeScale sizes the sprite from the real hitbox range so retuning the weapon resizes it.
-        const sizingRange = Number(directHitboxForAbility(effect.sizingHitboxAbilityId).range ?? 92);
-        showSlashEffect(view, arenaSprites.abilities.heavySlash, remaining, duration, sweep,
-            effect.hitboxSizeScale ? sizingRange * effect.hitboxSizeScale : Number(phaseVisual.visualSize ?? sizingRange * 2.4),
-            effect.tint ?? 0xffffff, opacity);
-    } else if (effect.type === "thrust") {
-        if (botAbilityActiveMs(shape, definition) > 0) drawThrustActive(graphics, effect, angle, position, originX, originY, phaseHitbox, Number(shape.size ?? BOT_SIZE) / 2,
-            weaponActiveProgress(botAbilityActiveMs(shape, definition), ABILITY_STATS[visual]?.activeMs));
-    } else if (effect.type === "smash") {
-        if (botAbilityActiveMs(shape, definition) > 0) {
-            drawSmashActive(graphics, effect, angle, position, originX, originY, phaseHitbox,
-                weaponActiveProgress(botAbilityActiveMs(shape, definition), ABILITY_STATS[visual]?.activeMs));
-        }
-    } else if (effect.type === "abilityRay") {
-        const height = Number(phaseVisual.visualSize ?? effect.height);
-        showAbilityRayEffect(view, "ability", arenaSprites, position, originX, originY, originRotation, visual,
-            Number(phaseHitbox.range ?? 500), opacity, height, 0xffffff, effect.rayFrames);
-        if (effect.muzzleFlash) showMuzzleFlash(view, arenaSprites, position, originX, originY, originRotation, opacity, Number(shape.size ?? 60));
-    } else if (effect.type === "proceduralRay") {
-        const rayWidth = Number(phaseHitbox.width ?? effect.fallbackWidth);
-        drawProceduralAbilityRay(graphics, position, originX, originY, originRotation,
-            Number(phaseHitbox.range ?? effect.fallbackRange), effect.color, opacity,
-            Number.isFinite(rayWidth) && rayWidth > 0 ? rayWidth : effect.fallbackWidth);
-        if (effect.muzzleFlash) showMuzzleFlash(view, arenaSprites, position, originX, originY, originRotation, opacity, Number(shape.size ?? 60));
-    } else if (effect.type === "temporalAnchor") {
-        const radius = Number(phaseVisual.visualSize ?? shape.size ?? BOT_SIZE) / 2;
-        const pulse = 0.55 + Math.sin(now / effect.periodMs) * effect.pulse;
-        graphics.circle(0, 0, radius + 12).stroke({ color: 0xfbbf24, alpha: pulse, width: 3 });
-        graphics.circle(0, 0, radius + 20).stroke({ color: 0xfef3c7, alpha: pulse * 0.45, width: 2 });
-    } else if (effect.type === "phaseStrike") {
-        const progress = visualProgress(remaining, duration);
-        showCachedEffect(view, "ability", spriteFrameAtProgress(arenaSprites.abilities.phaseStrike, progress), {
-            x: originX - position.x,
-            y: originY - position.y,
-            rotation: angle,
-            alpha: opacity,
-            tint: 0xf0abfc,
-            width: Number(phaseVisual.visualSize ?? phaseHitbox.length ?? 100),
-            height: Number(phaseHitbox.width ?? 60),
-            anchorX: 0,
-            blendMode: "screen",
-        });
-    } else if (effect.type === "frostRing") {
-        const progress = visualProgress(remaining, duration);
-        const frostFrames = arenaSprites.abilities.frostRing;
-        if (!frostFrames?.length) return;
-        showCachedEffect(view, "frost-ring", spriteFrameAtProgress(frostFrames, progress), {
-            x: originX - position.x,
-            y: originY - position.y,
-            alpha: opacity,
-            tint: 0xffffff,
-            width: Number(phaseVisual.visualSize ?? Number(phaseHitbox.radius ?? 120) * 2),
-            height: Number(phaseVisual.visualSize ?? Number(phaseHitbox.radius ?? 120) * 2),
-            blendMode: "screen",
-        });
-    } else if (effect.type === "shield") {
-        const progress = visualProgress(remaining, duration);
-        const radius = Number(phaseVisual.visualSize ?? 80) / 2 + progress * 16;
-        showCachedEffect(view, "ability", spriteFrameAtProgress(arenaSprites.abilities.shield, progress), { rotation: angle + Math.PI, alpha: 1 - progress, tint: effect.tint, width: radius * 2, height: radius * 2 });
-    }
-}
 
 // Weapon placeholder telegraphs. Everything is derived from the contract hitbox
 // and bot state (no randomness), so live play and replay draw identically.
-function rotatePoint(angle, forward, lateral) {
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    return [forward * cos - lateral * sin, forward * sin + lateral * cos];
-}
 
-function rectanglePoints(angle, ox, oy, length, width) {
-    return [[0, -width / 2], [length, -width / 2], [length, width / 2], [0, width / 2]]
-        .flatMap(([forward, lateral]) => {
-            const [x, y] = rotatePoint(angle, forward, lateral);
-            return [ox + x, oy + y];
-        });
-}
 
-function weaponSectorPoints(angle, ox, oy, range, arcDegrees) {
-    const half = radians(arcDegrees) / 2;
-    const steps = Math.max(4, Math.ceil(arcDegrees / 10));
-    const points = [ox, oy];
-    for (let step = 0; step <= steps; step += 1) {
-        const [x, y] = rotatePoint(angle - half + (half * 2 * step) / steps, range, 0);
-        points.push(ox + x, oy + y);
-    }
-    return points;
-}
 
-function drawWeaponWindup(graphics, shape, radius, rotation, position, otherBots = []) {
-    const windup = botAbilityWindupEffect(shape);
-    if (!windup) return;
-    const { definition, effect } = windup;
-    const progress = weaponWindupProgress(shape, definition.id, ABILITY_STATS[definition.id]?.windupMs);
-    if (progress == null) return;
-    const hitbox = directHitboxForAbility(definition.id);
-    if (effect.type === "sniperSight") {
-        // The aim follows the bot's current facing every frame, since the bot may keep turning during the wind-up.
-        const targets = otherBots
-            .filter(({ view }) => view.shape !== shape && Number(view.shape.hp ?? 1) > 0)
-            .map(({ position: other, view }) => ({ x: other.x, y: other.y, size: view.shape.size }));
-        const length = sniperSightLength(position, shape.rotation, Number(hitbox.range ?? 0), Number(hitbox.width ?? 0), targets);
-        const [ex, ey] = rotatePoint(rotation, length, 0);
-        graphics.moveTo(0, 0).lineTo(ex, ey).stroke({
-            color: effect.color, alpha: sniperSightAlpha(progress, effect.alphaMin, effect.alphaMax, effect.pulses), width: effect.width,
-        });
-    } else if (effect.type === "thrustWindup") {
-        const front = radius - effect.pullbackUnits * progress;
-        const [x1, y1] = rotatePoint(rotation, front - effect.lengthUnits, 0);
-        const [x2, y2] = rotatePoint(rotation, front, 0);
-        graphics.moveTo(x1, y1).lineTo(x2, y2).stroke({ color: effect.color, alpha: 0.9, width: effect.width });
-    } else if (effect.type === "cleaveWindup") {
-        const alpha = weaponWindupAlpha(progress, effect.alphaStart, effect.alphaEnd);
-        const range = Number(hitbox.range ?? 0);
-        const arc = Number(hitbox.arc ?? 0);
-        graphics.poly(weaponSectorPoints(rotation, 0, 0, range * progress, arc)).fill({ color: effect.color, alpha: alpha * 0.6 });
-        graphics.poly(weaponSectorPoints(rotation, 0, 0, range, arc)).stroke({ color: effect.color, alpha, width: effect.outlineWidth });
-    } else if (effect.type === "smashWindup") {
-        const alpha = weaponWindupAlpha(progress, effect.alphaStart, effect.alphaEnd);
-        graphics.poly(rectanglePoints(rotation, 0, 0, Number(hitbox.length ?? 0), Number(hitbox.width ?? 0)))
-            .stroke({ color: effect.color, alpha, width: effect.outlineWidth });
-    }
-}
 
-function drawThrustActive(graphics, effect, angle, position, originX, originY, hitbox, radius, progress) {
-    const ox = originX - position.x;
-    const oy = originY - position.y;
-    const fraction = thrustLengthFraction(progress, effect.extendFraction, effect.holdFraction);
-    // The shaft emerges from the bot's front edge and never draws inside the body.
-    const end = Math.max(radius, Number(hitbox.length ?? 0) * fraction);
-    const [sx, sy] = rotatePoint(angle, radius * 0.6, 0);
-    const [bx, by] = rotatePoint(angle, end - effect.tipLength, 0);
-    graphics.moveTo(ox + sx, oy + sy).lineTo(ox + bx, oy + by).stroke({ color: effect.color, alpha: 1, width: effect.width });
-    const tip = [[end, 0], [end - effect.tipLength, -effect.tipHalfWidth], [end - effect.tipLength, effect.tipHalfWidth]]
-        .flatMap(([forward, lateral]) => {
-            const [x, y] = rotatePoint(angle, forward, lateral);
-            return [ox + x, oy + y];
-        });
-    graphics.poly(tip).fill({ color: effect.color, alpha: 1 });
-}
 
-function drawSmashActive(graphics, effect, angle, position, originX, originY, hitbox, progress) {
-    const ox = originX - position.x;
-    const oy = originY - position.y;
-    const length = Number(hitbox.length ?? 0);
-    const width = Number(hitbox.width ?? 0);
-    graphics.poly(rectanglePoints(angle, ox, oy, length, width))
-        .fill({ color: effect.color, alpha: smashFlashAlpha(progress, effect.fillAlpha) });
-    const [ax, ay] = rotatePoint(angle, length, -width / 2 + 8);
-    const [bx, by] = rotatePoint(angle, length, width / 2 - 8);
-    graphics.moveTo(ox + ax, oy + ay).lineTo(ox + bx, oy + by)
-        .stroke({ color: effect.impactColor, alpha: 1 - progress, width: effect.impactWidth });
-    // Dust puffs drift outward from the far edge along fixed lanes, fading with progress.
-    for (let puff = 0; puff < effect.dustPuffs; puff += 1) {
-        const lane = puff - (effect.dustPuffs - 1) / 2;
-        const [x, y] = rotatePoint(angle, length + 10 + progress * 30, lane * (width * 0.4 + progress * 25));
-        graphics.circle(ox + x, oy + y, 8 + progress * 8).fill({ color: effect.dustColor, alpha: (1 - progress) * 0.8 });
-    }
-}
 
-function drawProceduralAbilityRay(graphics, position, originX, originY, rotation, range, color, alpha, width) {
-    const startX = Number(originX) - Number(position.x);
-    const startY = Number(originY) - Number(position.y);
-    const angle = compassDegreesToRadians(rotation);
-    const endX = startX + Math.cos(angle) * range;
-    const endY = startY + Math.sin(angle) * range;
-    graphics.moveTo(startX, startY).lineTo(endX, endY).stroke({ color, alpha: alpha * 0.26, width: width * 2.6 });
-    graphics.moveTo(startX, startY).lineTo(endX, endY).stroke({ color, alpha, width });
-    graphics.circle(endX, endY, width * 1.8).fill({ color, alpha: alpha * 0.65 });
-}
 
-function showSlashEffect(view, frames, remaining, duration, rotation, size, tint, alpha) {
-    const texture = spriteFrameAtProgress(frames, visualProgress(remaining, duration));
-    showCachedEffect(view, "ability", texture, { rotation, width: size, height: size, tint, alpha });
-}
 
-function showAbilityRayEffect(view, slot, arenaSprites, position, originX, originY, rotation, abilityId, length, alpha, height, tint = 0xffffff, framesKey = null) {
-    const frames = arenaSprites.abilities.rays[framesKey ?? ABILITIES[abilityId]?.name];
-    const x = Number.isFinite(originX) ? originX : position.x;
-    const y = Number.isFinite(originY) ? originY : position.y;
-    const texture = spriteFrameAtProgress(frames, 1 - alpha);
-    const muzzleAnchor = textureMuzzleAnchor(texture);
-    showCachedEffect(view, slot, texture, {
-        x: x - position.x,
-        y: y - position.y,
-        rotation: compassDegreesToRadians(rotation),
-        alpha,
-        tint,
-        width: visualRayLength(length, muzzleAnchor),
-        height,
-        anchorX: muzzleAnchor,
-        blendMode: "screen",
-    });
-}
 
 function drawStandaloneVisual(view, now, arenaSprites) {
     const { shape, baseSprite, graphics, caption } = view;
@@ -1742,14 +1323,15 @@ function drawStandaloneVisual(view, now, arenaSprites) {
         return;
     }
     if (presentationType === "gun") {
-        const shotPhase = entityAbilityPhaseForEntity(shape);
-        const shotTransform = entityAbilitySpawnTransform(shape, entityAbilitySpawnForEntity(shape));
+        const shotPhase = entityShot(shape);
+        const shotTransform = entityAbilitySpawnTransform(shape, shotPhase?.origin ?? null);
         if (!shotPhase) return;
         const eventVisual = visualForShape(shape);
         const durationMs = Number(eventVisual?.visibleMs);
         if (!Number.isFinite(durationMs) || durationMs <= 0) return;
         const alpha = 1 - clamp(visualAnimationElapsedMs(view, now) / durationMs, 0, 1);
-        showAbilityRayEffect(
+        showRay(
+            rendererKit,
             view,
             "standalone-ray",
             arenaSprites,
@@ -1785,23 +1367,6 @@ function drawStandaloneVisual(view, now, arenaSprites) {
     baseSprite.height = spriteSize.height;
 }
 
-function showMuzzleFlash(view, arenaSprites, position, originX, originY, rotation, alpha, botSize) {
-    const frames = arenaSprites.abilities.muzzleFlash;
-    if (!frames?.length) return;
-    const x = Number.isFinite(originX) ? originX : position.x;
-    const y = Number.isFinite(originY) ? originY : position.y;
-    const size = Math.max(42, Number(botSize ?? 60) * 1.25);
-    showCachedEffect(view, "muzzle-flash", spriteFrameAtProgress(frames, 1 - alpha), {
-        x: x - position.x,
-        y: y - position.y,
-        rotation: compassDegreesToRadians(rotation),
-        alpha,
-        width: size,
-        height: size * 0.58,
-        anchorX: 0.08,
-        blendMode: "screen",
-    });
-}
 
 function drawEntity(view, selected, now, arenaSprites, botViews = [], position = null) {
     const { shape, baseSprite, graphics, caption } = view;
@@ -1900,7 +1465,7 @@ function drawHitboxes(graphics, views, now, optionsRef, sampleViewPosition) {
     if (!optionsRef.current.hitboxesEnabled) return;
     for (const view of views.values()) {
         const position = sampleViewPosition(view, now);
-        const geometries = isBotShape(view.shape)
+        const geometries = isBotState(view.shape)
             ? [hitboxGeometryForBot(view.shape, position)]
             : hitboxGeometriesForEntity(view.shape);
         for (const geometry of geometries.filter(Boolean)) drawHitboxGeometry(graphics, geometry, position);
@@ -2216,9 +1781,6 @@ function explosionColor(type) {
     return 0xfdba74;
 }
 
-function radians(degrees) {
-    return Number(degrees ?? 0) * Math.PI / 180;
-}
 
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));

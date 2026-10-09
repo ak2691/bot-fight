@@ -10,6 +10,7 @@ import {
     botHasAbility,
 } from "./actionRuntime.js";
 import { abilityIdFromBoundary } from "../../../gameconfig/AbilityCompatibility.js";
+import { isWindingUp, windupRemainingMs } from "../../../gameconfig/AbilityState.js";
 import { abilitySinceHitSeconds } from "../../../gameconfig/AbilityHitRecord.js";
 import { abilityBaseRange } from "../../../loadout/abilityBaseRange.js";
 import { botFastTurning, botSprinting, botStamina } from "../../../gameconfig/StaminaSystem.js";
@@ -82,7 +83,7 @@ const RUNTIME_RESOLVERS = Object.freeze({
     [STATE_VARIABLE_SOURCES.SELECTABLE_MOVING]: ({ selectable }) => lastTickDisplacement(selectable).moved,
     [STATE_VARIABLE_SOURCES.BOT_ANY_ABILITY_PREPARING]: (context) => {
         const bot = botForContext(context);
-        return bot != null && bot.preparingAbility != null && Number(bot.preparingMs) > 0;
+        return bot != null && isWindingUp(bot);
     },
     [STATE_VARIABLE_SOURCES.BOT_STAMINA]: (context) => {
         const bot = botForContext(context);
@@ -116,14 +117,13 @@ const RUNTIME_RESOLVERS = Object.freeze({
     [STATE_VARIABLE_SOURCES.SELECTED_ABILITY_PREPARING]: (context) => {
         const bot = botForContext(context);
         const ability = selectedAbilityId(context);
-        return botHasAbility(bot, ability) && bot?.preparingAbility === ability && Number(bot.preparingMs) > 0;
+        return botHasAbility(bot, ability) && windupRemainingMs(bot, ability) > 0;
     },
     [STATE_VARIABLE_SOURCES.SELECTED_ABILITY_PREPARATION_MS]: (context) => {
         const bot = botForContext(context);
         const ability = selectedAbilityId(context);
-        // preparingMs is the remaining countdown for the active wind-up.
-        return botHasAbility(bot, ability) && bot?.preparingAbility === ability
-            ? millisecondsToSeconds(bot.preparingMs ?? 0) : 0;
+        // The windup record's remainingMs is the remaining countdown for the active wind-up.
+        return botHasAbility(bot, ability) ? millisecondsToSeconds(windupRemainingMs(bot, ability)) : 0;
     },
     // Static contract value; the selectable only decides which bot the condition is about.
     [STATE_VARIABLE_SOURCES.SELECTED_ABILITY_BASE_RANGE]: (context) => abilityBaseRange(selectedAbilityId(context)),

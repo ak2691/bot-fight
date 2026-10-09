@@ -1,15 +1,14 @@
 package com.example.botfight.simulation.core.state;
 
-import static com.example.botfight.simulation.gameconfig.MovementConfig.DASH_ABILITY_ID;
-import static com.example.botfight.simulation.gameconfig.MovementConfig.DASH_COST;
-import static com.example.botfight.simulation.gameconfig.MovementConfig.DASH_GAP_MS;
 import static com.example.botfight.simulation.gameconfig.MovementConfig.FAST_TURN_DRAIN_PER_TICK;
 import static com.example.botfight.simulation.gameconfig.MovementConfig.REGEN_DELAY_MS;
 import static com.example.botfight.simulation.gameconfig.MovementConfig.REGEN_PER_TICK;
 import static com.example.botfight.simulation.gameconfig.MovementConfig.STAMINA_MAX;
 import static com.example.botfight.simulation.gameconfig.MovementConfig.WINDUP_CANCEL_COST;
 
-import com.example.botfight.simulation.core.orchestration.DuelSimulationService.Bot;
+import com.example.botfight.simulation.core.orchestration.CombatLog;
+import com.example.botfight.simulation.core.orchestration.Bot;
+import com.example.botfight.simulation.gameconfig.AbilityChannels;
 
 /**
  * Stamina rules, mirrored by the browser's gameconfig/StaminaSystem.js.
@@ -27,23 +26,21 @@ public final class StaminaSystem {
         return Math.max(0, Math.min(STAMINA_MAX, bot.stamina));
     }
 
-    public static boolean dashReady(Bot bot) {
-        return stamina(bot) >= DASH_COST && bot.dashGapMs <= 0;
-    }
-
-    /** Time until Dash can start again, assuming no further stamina is spent. */
-    public static int dashWaitMs(Bot bot) {
-        int gap = Math.max(0, bot.dashGapMs);
-        int missing = DASH_COST - stamina(bot);
-        if (missing <= 0) return gap;
+    /**
+     * Time until the bot can afford an ability's stamina cost, assuming no further stamina is spent: what is
+     * left of the regeneration pause, then the ticks of regeneration. 0 when it costs nothing or is affordable.
+     */
+    public static int staminaWaitMs(Bot bot, int abilityId) {
+        int missing = AbilityChannels.staminaCost(abilityId) - stamina(bot);
+        if (missing <= 0) return 0;
         int lockout = Math.max(0, bot.staminaRegenDelayMs);
         int regenMs = (int) Math.ceil(missing / (double) REGEN_PER_TICK) * 100;
-        return Math.max(gap, lockout + regenMs);
+        return lockout + regenMs;
     }
 
-    /** Stamina-side readiness: only Dash is gated, on stamina and its gap. */
+    /** Stamina-side readiness: the bot must have enough stamina to pay the ability's cost (0 for most). */
     public static boolean abilityStaminaReady(Bot bot, int abilityId) {
-        return abilityId != DASH_ABILITY_ID || dashReady(bot);
+        return stamina(bot) >= AbilityChannels.staminaCost(abilityId);
     }
 
     /**
@@ -57,43 +54,43 @@ public final class StaminaSystem {
     /** Adds refunded stamina (capped at the maximum) without touching the regeneration pause. */
     public static void refund(Bot bot, int amount) {
         if (amount <= 0) return;
+        CombatLog.record("stamina", null, CombatLog.bot(bot.slot), null, "refund", amount);
         bot.stamina = Math.min(STAMINA_MAX, stamina(bot) + amount);
     }
 
     public static boolean canCancelWindup(Bot bot) {
-        return bot.preparingAbility != null && bot.preparingMs > 0 && stamina(bot) >= WINDUP_CANCEL_COST;
+        return AbilityState.isWindingUp(bot) && stamina(bot) >= WINDUP_CANCEL_COST;
     }
 
     /** One tick of stamina bookkeeping. */
     public static final class Tick {
+        private final int slot;
         private final int stamina;
         private final int regenDelayMs;
-        private final int dashGapMs;
         private int spent;
         private boolean spentAny;
-        private boolean dashStarted;
         private boolean sprinting;
         private boolean fastTurning;
 
         private Tick(Bot bot, int elapsedMs) {
+            this.slot = bot.slot;
             int delay = Math.max(0, bot.staminaRegenDelayMs);
             int current = stamina(bot);
             boolean regenerates = delay <= 0 && current < STAMINA_MAX;
             this.stamina = regenerates ? Math.min(STAMINA_MAX, current + REGEN_PER_TICK) : current;
             this.regenDelayMs = Math.max(0, delay - elapsedMs);
-            this.dashGapMs = Math.max(0, bot.dashGapMs - elapsedMs);
         }
 
         public void spend(int amount) {
             if (amount <= 0) return;
+            CombatLog.record("stamina", null, CombatLog.bot(slot), null, "spend", amount);
             spent += amount;
             spentAny = true;
         }
 
-        /** Dash pays stamina and starts its gap instead of a cooldown. */
-        public void spendDash() {
-            spend(DASH_COST);
-            dashStarted = true;
+        /** Pays the stamina an activation of the ability costs; an ability with no cost leaves the pause alone. */
+        public void spendForAbility(int abilityId) {
+            spend(AbilityChannels.staminaCost(abilityId));
         }
 
         public void setSprinting(boolean value) {
@@ -109,7 +106,6 @@ public final class StaminaSystem {
             int result = Math.max(0, stamina - spent);
             bot.stamina = result;
             bot.staminaRegenDelayMs = spentAny ? REGEN_DELAY_MS : regenDelayMs;
-            bot.dashGapMs = dashStarted ? DASH_GAP_MS : dashGapMs;
             bot.sprinting = sprinting;
             bot.fastTurning = fastTurning;
         }
@@ -121,10 +117,7 @@ public final class StaminaSystem {
 
     /** Clears the wind-up with no cooldown or used charge; the caller pays through {@link Tick#spend}. */
     public static void clearWindup(Bot bot) {
-        bot.preparingAbility = null;
-        bot.preparingMs = 0;
-        bot.preparingTargetX = Double.NaN;
-        bot.preparingTargetY = Double.NaN;
+        AbilityState.clearWindup(bot);
     }
 
     public static int cancelCost() {
